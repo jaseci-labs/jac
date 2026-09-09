@@ -1,36 +1,22 @@
+import from core.brand.theme { useTheme }
 import from .button { buttonVariants }
 import from core.utils { cn }
 import from "@jac/runtime" { Link }
-import from react { useEffect }
 import from core.install { ensure_install }
 import from "@hugeicons/react" { HugeiconsIcon }
-import from "@hugeicons/core-free-icons" {
-    GithubIcon,
-    Moon01Icon,
-    Sun01Icon,
-    DiscordIcon
-}
+import from "@hugeicons/core-free-icons" { GithubIcon, Moon01Icon, Sun01Icon }
 
 def:pub Navbar -> JsxElement {
-    has dark: bool = True;
+    theme = useTheme();
+    dark = theme.dark;
 
-    can with entry {
-        dark = document.documentElement.classList.contains("dark");
+    can with [dark] entry {
+        document.documentElement.classList.toggle("dark", dark);
     }
 
-    async def freshen_installer {
+    async can with entry {
         _ = await ensure_install();
     }
-
-    useEffect(
-        lambda {
-            _ = freshen_installer();
-            return lambda {};
-        },
-        []
-    );
-
-    def toggle_theme(_e: MouseEvent);
 
     return
         <header
@@ -55,16 +41,10 @@ def:pub Navbar -> JsxElement {
                         Wait, Wuuut?!
                     </Link>
                     <Link
-                        to="/leaderboard"
+                        to="/jacyac"
                         className="rounded-md pl-3 pr-3 pt-1.5 pb-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                     >
-                        Ninja Scores
-                    </Link>
-                    <Link
-                        to="/socialize"
-                        className="rounded-md pl-3 pr-3 pt-1.5 pb-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                    >
-                        Socialize
+                        JacYac
                     </Link>
                     <Link
                         to="/docs/latest"
@@ -73,7 +53,7 @@ def:pub Navbar -> JsxElement {
                         Docs
                     </Link>
                     <button
-                        onClick={toggle_theme}
+                        onClick={lambda { theme.toggle(); }}
                         title="Toggle theme"
                         className={buttonVariants().call(
                             None, {"variant": "ghost", "size": "icon"}
@@ -108,22 +88,20 @@ def:pub Navbar -> JsxElement {
                             className="size-4"
                         />
                     </a>
-                    <a
-                        href="https://discord.gg/6j3QNdtcN6"
-                        target="_blank"
-                        rel="noreferrer"
+                    <Link
+                        to="/jacyac"
                         className={cn(
                             buttonVariants().call(None, {"size": "sm"}),
                             "hidden sm:inline-flex"
                         )}
                     >
-                        <HugeiconsIcon
-                            icon={DiscordIcon}
-                            strokeWidth={2}
+                        <img
+                            src="/static/assets/jacyak-logo.svg"
+                            alt=""
                             className="size-4"
                         />
-                        Join the Discord
-                    </a>
+                        Join JacYac
+                    </Link>
                 </div>
             </div>
         </header>;

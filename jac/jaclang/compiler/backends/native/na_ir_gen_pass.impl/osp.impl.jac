@@ -209,9 +209,18 @@ impl NaIRGenPass._osp_collect_slots(arch_name: str, is_entry: bool) -> list {
     if _model is None {
         return slots;
     }
-    _src = _model.entry_slots(arch_name) if is_entry else _model.exit_slots(arch_name);
-    for _slot in _src {
-        thunk = self.osp_thunk_funcs.get(f"{arch_name}.{_slot.ability}");
+
+    merged: dict = {};
+    layout = self._arch_layout(arch_name);
+    order = layout.mro if layout is not None else [arch_name];
+    for owner in reversed(order) {
+        source = _model.entry_slots(owner) if is_entry else _model.exit_slots(owner);
+        for slot in source {
+            merged[slot.ability] = slot;
+        }
+    }
+    for _slot in merged.values() {
+        thunk = self.osp_thunk_funcs.get(f"{_slot.owner}.{_slot.ability}");
         if thunk is None {
             continue;
         }
@@ -704,7 +713,7 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     _rgn_tgt: ir.Value = self.builder.call(
         _rgn_of_fn, [self._coerce_type(_tgt_i64, i64)], name="conn.rgn.tgt"
     );
-    self.builder.call(
+    connected = self.builder.call(
         osp_conn_fn,
         [
             _src_i64,
@@ -716,6 +725,21 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
             self._coerce_type(_rgn_tgt, _argtys[6])
         ]
     );
+    self._emit_runtime_raise(
+        self.builder.icmp_signed("==", connected, ir.Constant(connected.type, -1)),
+        "RuntimeError",
+        "cannot connect a destroyed node"
+    );
+    if co.capture_edges {
+        i8p = ir.IntType(8).as_pointer();
+        self._emit_list_helpers("ptr", i8p);
+        helpers = self.list_helpers["ptr"];
+        result = self.builder.call(helpers["new"], [], name="conn.edges");
+        self.builder.call(
+            helpers["append"], [result, self._coerce_type(edge_obj, i8p)]
+        );
+        return result;
+    }
     return tgt;
 }
 

@@ -613,16 +613,17 @@ def seal_finalize(
     for p in sealable_sources(str(pkg_path)) {
         rel = Path(p).relative_to(pkg_path);
         jir = precompiled_dir / pyver / rel.with_suffix(".jir");
-        if not precompiled_jir_matches_source(jir.read_bytes(), p, identity) {
+        if not precompiled_jir_matches_source(
+            jir.read_bytes(), p, identity, str(pkg_path)
+        ) {
             foreign.append(str(rel));
         }
     }
     if foreign {
         console.error(
-            f"Seal aborted: {len(foreign)} module(s) carry a JIR this compiler "
-            f"did not produce (first: {foreign[:5]}). Their module keys name a "
-            "different compiler content digest, so the seed served bytecode "
-            "built by another compiler at this same version (#8178). Delete "
+            f"Seal aborted: {len(foreign)} module(s) carry stale JIRs "
+            f"(first: {foreign[:5]}). Their source, compiler identity, or "
+            "compile-time dependencies no longer match. Delete "
             f"{precompiled_dir} and re-run the precompile."
         );
         return 1;
@@ -913,7 +914,9 @@ def run_precompile(
         try {
             if jir_path.is_file() {
                 existing = jir_path.read_bytes();
-                if precompiled_jir_matches_source(existing, jac_path)
+                if precompiled_jir_matches_source(
+                    existing, jac_path, package_root=package_dir
+                )
                     and embed_src == (read_debug_source(existing) is not None) {
                     return {"status": "reused", "rel": str(rel)};
                 }

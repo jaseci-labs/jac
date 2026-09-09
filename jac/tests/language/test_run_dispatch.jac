@@ -88,20 +88,21 @@ test "kind cli-native -> execute via run" {
     assert p.verb == "run";
 }
 
-test "kind native-binary -> build via nacompile" {
+test "kind native-binary -> build via jac build --native" {
     p = _plan("kind = \"native-binary\"\nentry-point = \"main.jac\"\n", "main.jac");
     assert p.action == "build";
-    assert p.verb == "nacompile";
+    assert p.verb == "native";
     assert "output" in p.flags;
-    assert "nacompile" in p.command_line();
+    assert "--native" in p.command_line();
 }
 
-test "kind native-lib -> build shared via nacompile" {
+test "kind native-lib -> build a shared library via jac build --native --lib" {
     p = _plan("kind = \"native-lib\"\nentry-point = \"lib.jac\"\n", "lib.jac");
     assert p.action == "build";
-    assert p.verb == "nacompile";
-    assert p.flags.get("shared") == True;
-    assert "--shared" in p.command_line();
+    assert p.verb == "native";
+    assert "--native" in p.command_line();
+    assert p.flags.get("lib") == True;
+    assert "--lib" in p.command_line();
 }
 
 test "kind service -> serve headless" {
@@ -323,7 +324,7 @@ test "KIND_SPECS is the single source of truth for every kind" {
         # The table key and the spec's own name can never drift apart.
         assert spec.name == kname;
         assert spec.action in ["execute", "build", "serve"];
-        assert spec.verb in ["run", "nacompile", "build"];
+        assert spec.verb in ["run", "build", "native"];
         assert spec.description;
         assert spec.`entry;
         # kind_entry() reads the table rather than a second hardcoded list.
@@ -666,5 +667,76 @@ test "--serve is a plain serve: the kind's dev default does not ride along" {
     # Kind properties other than the dev default still ride along.
     svc = _plan("kind = \"service\"\nentry-point = \"api.jac\"\n", "api.jac");
     assert execution._kind_serve_flags(svc, True, True).get("no_client") == True;
+    _cleanup();
+}
+
+test "python backend overrides a native project and restores compiler context" {
+    import from jaclang.compiler.frontend.codeinfo {
+        get_effective_default_codespace_override
+    }
+    d = _mk_project("kind = \"cli-native\"\n", "main.jac");
+    previous = get_effective_default_codespace_override();
+    captured = io.StringIO();
+    saved = sys.stdout;
+    try {
+        sys.stdout = captured;
+        rc = execution.run(target=os.path.join(d, "main.jac"), backend="python");
+    } finally {
+        sys.stdout = saved;
+    }
+    # Native printf bypasses StringIO: this proves Python executed the entry.
+    assert rc == 0;
+    assert captured.getvalue().strip() == "ok";
+    assert get_effective_default_codespace_override() == previous;
+    _cleanup();
+}
+
+test "backend flag selects either executor and forwards program arguments" {
+    import subprocess;
+    d = _mk_project(
+        "kind = \"cli\"\n", "main.jac", "import sys; with entry { print(sys.argv[1]); }"
+    );
+    for backend in ["python", "native"] {
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "jaclang",
+                "run",
+                "--backend",
+                backend,
+                os.path.join(d, "main.jac"),
+                "--",
+                "forwarded"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300
+        );
+        assert result.returncode == 0 , result.stderr;
+        assert result.stdout.strip() == "forwarded" , result.stdout;
+    }
+    _cleanup();
+}
+
+test "backend override rejects unsupported execution modes" {
+    d = _mk_project("kind = \"service\"\n", "main.jac");
+    source = os.path.join(d, "main.jac");
+    assert execution.run(target=source, backend="invalid") == 1;
+    assert execution.run(target=source, backend="python", show=True) == 1;
+    assert execution.run(target=source, backend="native", debug_mode=True) == 1;
+    assert execution.run(target=source, backend="python", entry_name="f") == 1;
+    assert execution.run(target="bundle.jab", backend="python") == 1;
+    _cleanup();
+}
+
+test "python backend restores compiler context when compilation fails" {
+    import from jaclang.compiler.frontend.codeinfo {
+        get_effective_default_codespace_override
+    }
+    d = _mk_project("kind = \"cli\"\n", "broken.jac", "with entry { print(");
+    previous = get_effective_default_codespace_override();
+    assert execution.run(target=os.path.join(d, "broken.jac"), backend="python") == 1;
+    assert get_effective_default_codespace_override() == previous;
     _cleanup();
 }

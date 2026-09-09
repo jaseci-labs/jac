@@ -103,7 +103,7 @@ impl JcirGenPass.exit_module with Module exit {
         mod_path_norm.endswith('/jaclang/lib.jac')
         or mod_path_norm.endswith('/jaclang/lib.py')
     );
-    if (self.jaclib_imports and not is_jaclib_module) {
+    if ((self.jaclib_imports or self._runtime_aliases) and not is_jaclib_module) {
         self.preamble.append(
             self.nod(
                 'ImportFrom',
@@ -117,7 +117,15 @@ impl JcirGenPass.exit_module with Module exit {
                             [name, None],
                             jac_node=self.ir_out
                         ) for name in sorted(list(self.jaclib_imports))
-                    ],
+                    ]
+                        + [
+                            self.nod(
+                                'alias',
+                                ['name', 'asname'],
+                                [name, self._runtime_aliases[name]],
+                                jac_node=self.ir_out
+                            ) for name in sorted(self._runtime_aliases)
+                        ],
                     0
                 ],
                 jac_node=self.ir_out

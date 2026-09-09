@@ -42,7 +42,11 @@ glob FORBIDDEN: dict[str, str] = {
      # at sites where the declaration IS the fact.
      SANCTIONED: dict[tuple, tuple] = {
          ("es/esast_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
-             3,
+             4,
+             "return_type_is_jsx (#8314) reads the declared return annotation "
+             "to pick a component's call ABI; the declaration is the fact, "
+             "and the type checker keys component-hood off the same "
+             "predicate so the two cannot disagree. "
              "symbol-FACT readers over already-resolved symbols at call "
              "lowering: resolve_import_source_module (#7632, the delegated "
              "body of the former local _resolve_source_module, shared with "
@@ -56,6 +60,12 @@ glob FORBIDDEN: dict[str, str] = {
              "check path cannot disagree about what is bound. The former "
              "classify_call fallback is deleted (#7418): call_kind is "
              "stamped authoritatively by the required inference schedule"
+         ),
+         ("es/esast_gen_pass.impl/decls.impl.jac", "symbol_utils"): (
+             1,
+             "return_type_is_jsx (#8314) reads the declared return annotation "
+             "to record a component export; same declaration-surface "
+             "predicate the type checker uses"
          ),
          ("es/esast_gen_pass.impl/module.impl.jac", "symbol_utils"): (
              1,
@@ -75,10 +85,11 @@ glob FORBIDDEN: dict[str, str] = {
              "InteropBinding recorded by BoundaryAnalysisPass"
          ),
          ("es/esast_gen_pass.impl/osp.impl.jac", "symbol_utils"): (
-             1,
+             2,
              "collect_field_names/symbol_owner_archetype - symbol-FACT "
              "readers over an already-resolved walker symbol when building "
-             "the spawn argument object. The symbol_linked_source_module "
+             "the spawn argument object and deriving the endpoint identity from "
+             "the resolved walker declaration. The symbol_linked_source_module "
              "read (#7740) left with the esast-time pull hook (#7679): "
              "cross-module pulls now happen in the placement solver before "
              "codegen, so ES generation only consumes stamped facts"
@@ -148,7 +159,11 @@ glob FORBIDDEN: dict[str, str] = {
              "stamped Expr.ct_value"
          ),
          ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
-             2,
+             5,
+             "imported_module_name reads the stamped ModuleType and import "
+             "declaration to preserve aliased module identity. "
+             "resolved_callee consumes the resolved call declaration for "
+             "ownership transfer and raises-effect lowering. "
              "classify_call as the shadowing-aware builtin test for the "
              "`type(None)` isinstance argument form (#6957) - consuming the "
              "central classification instead of re-implementing name "
@@ -169,8 +184,16 @@ glob FORBIDDEN: dict[str, str] = {
              "backend stopped reaching into the analysis module for it rather "
              "than merely renaming the reach"
          ),
-         ("native/na_ir_gen_pass.impl/objects.impl.jac", "symbol_utils"): (
+         ("native/na_ir_gen_pass.impl/expr.impl.jac", "symbol_utils"): (
              1,
+             "imported_module_name consumes the stamped ModuleType and "
+             "resolved import declaration for native module attributes"
+         ),
+         ("native/na_ir_gen_pass.impl/objects.impl.jac", "symbol_utils"): (
+             3,
+             "resolve_expr_symbol reads the expression attached symbol; "
+             "imported_module_name reads its stamped ModuleType and import "
+             "declaration. Neither asks the evaluator to resolve a type. "
              "collect_method_names as the central ancestor-method walk over "
              "an already-resolved archetype symbol - a symbol-FACT reader, "
              "not a re-run of member resolution"

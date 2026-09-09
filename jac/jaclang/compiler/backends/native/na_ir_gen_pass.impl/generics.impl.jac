@@ -136,11 +136,9 @@ impl NaIRGenPass._solve_generic_call(
     }
 
     sig = ability.signature;
-    params = sig.get_parameters() if sig is not None else [];
+    params = sig.get_parameters() if isinstance(sig, uni.FuncSignature) else [];
     _ft = ability.name_ref.type if ability.name_ref is not None else None;
-    _ft_params = list(_ft.parameters or [])
-        if _ft is not None and _ft?.parameters
-        else [];
+    _ft_params = list(_ft.parameters) if isinstance(_ft, SemanticFunctionType) else [];
     positional: list = [];
     kw_map: dict = {};
     for a in (nd.params or []) {
@@ -443,7 +441,10 @@ impl NaIRGenPass._stamp_mono_fn(
 ) -> (ir.Function | None) {
     name = ability.name_ref.sym_name if ability.name_ref else "unnamed";
     sig = ability.signature;
-    param_types: list = [];
+    if not isinstance(sig, uni.FuncSignature) {
+        return None;
+    }
+    param_types: list[ir.Type] = [];
     for p in sig.get_parameters() {
         param_types.append(
             self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
@@ -459,35 +460,12 @@ impl NaIRGenPass._stamp_mono_fn(
     self._mono_fns[memo_key] = fn;
     self._record_ret_facts(spec_name, sig);
 
-    saved_builder = self._builder;
-    saved_locals = self.local_vars if self?.local_vars else {};
-    saved_param_vars = self.param_vars;
-    saved_nogc = self.nogc_no_free_vars;
-    saved_nogc_owned = self.nogc_owned_str_vars;
-    saved_region = self.region_handle_vars;
-    saved_region_opens = self.region_open_stack;
-    saved_list_struct = self.var_list_elem_struct;
-    saved_cell_vars = self.closure_cell_vars;
-    saved_cell_handles = self.closure_cell_handles;
     saved_symtab = dict(self.func_symtab);
-    saved_gen_ctx = self._gen_ctx;
-    self._gen_ctx = None;
     self.func_symtab[name] = fn;
     try {
         self._codegen_ability(ability);
     } finally {
-        self._builder = saved_builder;
-        self.local_vars = saved_locals;
-        self.param_vars = saved_param_vars;
-        self.nogc_no_free_vars = saved_nogc;
-        self.nogc_owned_str_vars = saved_nogc_owned;
-        self.region_handle_vars = saved_region;
-        self.region_open_stack = saved_region_opens;
-        self.var_list_elem_struct = saved_list_struct;
-        self.closure_cell_vars = saved_cell_vars;
-        self.closure_cell_handles = saved_cell_handles;
         self.func_symtab = saved_symtab;
-        self._gen_ctx = saved_gen_ctx;
     }
     return fn;
 }
@@ -508,8 +486,11 @@ impl NaIRGenPass._instantiate_generic_for_target(
         return None;
     }
     ability = self.generic_fns.get(func_name);
-    sig = ability.signature if ability is not None else None;
-    if sig is None {
+    if ability is None {
+        return None;
+    }
+    sig = ability.signature;
+    if not isinstance(sig, uni.FuncSignature) {
         return None;
     }
     _tgt_params = tag_t.parameters or [];
@@ -622,13 +603,13 @@ impl NaIRGenPass._stamp_mono_method(
     struct_type = self.struct_types.get(arch_name);
     sig = ability.signature;
     if struct_type is None
-        or sig is None
+        or not isinstance(sig, uni.FuncSignature)
         or ability.is_static
         or ability.is_classmethod {
         self.emit(E5092, node_override=ability, kind="method", name=full_name);
         return None;
     }
-    param_types: list = [struct_type.as_pointer()];
+    param_types: list[ir.Type] = [struct_type.as_pointer()];
     for p in sig.get_parameters() {
         param_types.append(
             self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
@@ -671,7 +652,7 @@ impl NaIRGenPass._find_source_ability(
 ) -> (uni.Ability | None) {
     import os;
     import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
-    _base = os.path.dirname(self.ir_in.loc.mod_path) if self.ir_in?.loc else None;
+    _base = os.path.dirname(self.ir_in.loc.mod_path);
     _clean = mod_name[:-3] if mod_name.endswith(".na") else mod_name;
     (_src, full_path) = resolve_native_module(_clean, _base);
     if full_path is None {

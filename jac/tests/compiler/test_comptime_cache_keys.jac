@@ -22,6 +22,7 @@ import from jaclang.compiler.driver.compiler { JacCompiler }
 import from jaclang.compiler.driver.jir {
     SEC_CTDEPS,
     get_module_cache_path,
+    precompiled_jir_matches_source,
     read_section_bytes
 }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -418,5 +419,22 @@ test "a native-placed fold is not served from a stale IR cache" {
             "the native IR cache served a stale fold after its comptime "
             "producer changed"
         );
+    }
+}
+
+
+test "precompile reuse rejects changed producers before sealing" {
+    paths = _spec_pair("spec one");
+    with _isolated(paths["root"]) {
+        _folded(paths["consumer"]);
+        blob = precompile_unit(paths["consumer"], paths["root"]);
+        assert blob is not None;
+        assert precompiled_jir_matches_source(
+            blob, paths["consumer"], package_root=paths["root"]
+        );
+        _write(paths["producer"], "comptime SPEC: str = \"spec two\";\n");
+        assert not precompiled_jir_matches_source(
+            blob, paths["consumer"], package_root=paths["root"]
+        ) , "precompile would reuse and seal the old producer's value";
     }
 }

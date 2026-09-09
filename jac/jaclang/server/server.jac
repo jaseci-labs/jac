@@ -131,7 +131,6 @@ obj ModuleIntrospector {
     def _extract_access_levels -> None;
     def _collect_cross_boundary_endpoints -> None;
     def _register_sealed_bindings(sm: dict[str, any], img_root: str) -> None;
-    def _fill_endpoint_effect_defaults -> None;
     def _collect_functions -> dict[str, Callable[(..., any)]];
     def _collect_walkers -> dict[str, type[WalkerArchetype]];
     def _check_module_freshness -> None;

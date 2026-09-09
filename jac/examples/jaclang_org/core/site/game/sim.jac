@@ -18,6 +18,9 @@ glob HP_MAX: float = 100.0,
      SPAWN_Y: float = 2.0,
      SPAWN_Z: float = 12.0;
 
+glob JUMP_SPEED: float = 8.0,
+     GRAVITY: float = 22.0;
+
 glob MOVE_SPEED: float = 8.0,
      PITCH_LIMIT: float = 85.0,
      FIRE_COOLDOWN: float = 0.55,
@@ -45,10 +48,13 @@ obj Cmd {
         move_side: float = 0.0,
         yaw: float = 0.0,
         pitch: float = 0.0,
-        fire: bool = False;
+        fire: bool = False,
+        jump: bool = False;
 }
 
 obj Player {
+    def tick(cmd: &mut Cmd) -> bool;
+
     has x: float = 0.0,
         y: float = 2.0,
         z: float = 12.0,
@@ -57,6 +63,8 @@ obj Player {
         prev_z: float = 12.0,
         yaw: float = 0.0,
         pitch: float = 0.0,
+        vy: float = 0.0,
+        grounded: bool = True,
         hp: float = 100.0,
         fire_cd: float = 0.0,
         hurt_t: float = 0.0,
@@ -71,97 +79,163 @@ obj Stats {
         deaths: int = 0;
 }
 
+obj Enemy {
+    has x: float = 0.0,
+        y: float = 0.0,
+        z: float = 0.0,
+        prev_x: float = 0.0,
+        prev_y: float = 0.0,
+        prev_z: float = 0.0,
+        base_y: float = 0.0,
+        phase: float = 0.0,
+        strafe_dir: float = 0.0,
+        strafe_t: float = 0.0,
+        fire_t: float = 0.0,
+        charge: float = 0.0,
+        respawn_t: float = 0.0,
+        alive: int = 0,
+        gen: int = 0;
+}
+
+obj Projectile {
+    def step {
+        self.x += self.vx * TICK_DT;
+        self.y += self.vy * TICK_DT;
+        self.z += self.vz * TICK_DT;
+        self.life -= TICK_DT;
+    }
+
+    has x: float = 0.0,
+        y: float = 0.0,
+        z: float = 0.0,
+        prev_x: float = 0.0,
+        prev_y: float = 0.0,
+        prev_z: float = 0.0,
+        vx: float = 0.0,
+        vy: float = 0.0,
+        vz: float = 0.0,
+        life: float = 0.0;
+}
+
+obj Spark {
+    def step -> bool;
+
+    has x: float = 0.0,
+        y: float = 0.0,
+        z: float = 0.0,
+        prev_x: float = 0.0,
+        prev_y: float = 0.0,
+        prev_z: float = 0.0,
+        vx: float = 0.0,
+        vy: float = 0.0,
+        vz: float = 0.0,
+        life: float = 0.0,
+        fade: float = 0.0,
+        size: float = 0.0,
+        grav: float = 0.0,
+        cr: int = 0,
+        cg: int = 0,
+        cb: int = 0;
+}
+
+def remove_at[T](items: &mut list[own T], i: int) {
+    last = items.pop();
+    if i < len(items) {
+        items[i] = last;
+    }
+}
+
 obj EnemyPool {
-    has x: list[float] = [],
-        y: list[float] = [],
-        z: list[float] = [],
-        prev_x: list[float] = [],
-        prev_y: list[float] = [],
-        prev_z: list[float] = [],
-        base_y: list[float] = [],
-        phase: list[float] = [],
-        strafe_dir: list[float] = [],
-        strafe_t: list[float] = [],
-        fire_t: list[float] = [],
-        charge: list[float] = [],
-        respawn_t: list[float] = [],
-        alive: list[int] = [],
-        gen: list[int] = [];
+    has items: list[own Enemy] = [];
+
+    def size -> int {
+        return len(self.items);
+    }
 }
 
-obj RocketPool {
-    has x: list[float] = [],
-        y: list[float] = [],
-        z: list[float] = [],
-        prev_x: list[float] = [],
-        prev_y: list[float] = [],
-        prev_z: list[float] = [],
-        vx: list[float] = [],
-        vy: list[float] = [],
-        vz: list[float] = [],
-        life: list[float] = [],
-        count: int = 0;
-}
+obj ProjectilePool {
+    has items: list[own Projectile] = [];
 
-obj ShotPool {
-    has x: list[float] = [],
-        y: list[float] = [],
-        z: list[float] = [],
-        prev_x: list[float] = [],
-        prev_y: list[float] = [],
-        prev_z: list[float] = [],
-        vx: list[float] = [],
-        vy: list[float] = [],
-        vz: list[float] = [],
-        life: list[float] = [],
-        count: int = 0;
+    def size -> int {
+        return len(self.items);
+    }
+
+    def remove(i: int) {
+        remove_at(&mut self.items, i);
+    }
 }
 
 obj SparkPool {
-    has x: list[float] = [],
-        y: list[float] = [],
-        z: list[float] = [],
-        prev_x: list[float] = [],
-        prev_y: list[float] = [],
-        prev_z: list[float] = [],
-        vx: list[float] = [],
-        vy: list[float] = [],
-        vz: list[float] = [],
-        life: list[float] = [],
-        fade: list[float] = [],
-        size: list[float] = [],
-        grav: list[float] = [],
-        cr: list[int] = [],
-        cg: list[int] = [],
-        cb: list[int] = [],
-        count: int = 0;
+    has items: list[own Spark] = [];
+
+    def size -> int {
+        return len(self.items);
+    }
+
+    def remove(i: int) {
+        remove_at(&mut self.items, i);
+    }
+}
+
+obj Boom {
+    has x: float = 0.0,
+        y: float = 0.0,
+        z: float = 0.0;
+}
+
+obj Kill {
+    has slot: int = 0,
+        gen: int = 0,
+        x: float = 0.0,
+        y: float = 0.0,
+        z: float = 0.0;
 }
 
 obj Events {
-    has boom_x: list[float] = [],
-        boom_y: list[float] = [],
-        boom_z: list[float] = [],
-        boom_n: int = 0,
-        kill_slot: list[int] = [],
-        kill_gen: list[int] = [],
-        kill_x: list[float] = [],
-        kill_y: list[float] = [],
-        kill_z: list[float] = [],
-        kill_n: int = 0,
-        dmg: list[float] = [],
-        dmg_n: int = 0;
+    has booms: list[own Boom] = [],
+        kills: list[own Kill] = [],
+        damage: list[float] = [];
+
+    def boom(x: float, y: float, z: float) {
+        if len(self.booms) < MAX_EVENTS {
+            self.booms.append(Boom(x=x, y=y, z=z));
+        }
+    }
+
+    def kill(slot: int, gen: int, x: float, y: float, z: float) {
+        if len(self.kills) < MAX_EVENTS {
+            self.kills.append(Kill(slot=slot, gen=gen, x=x, y=y, z=z));
+        }
+    }
+
+    def hurt(amount: float) {
+        if len(self.damage) < MAX_EVENTS {
+            self.damage.append(amount);
+        }
+    }
+}
+
+obj FrameState {
+    has acc: float = 0.0,
+        prev_mx: float = 0.0,
+        prev_my: float = 0.0,
+        mouse_warmup: int = 12,
+        mouse_sens: float = 0.12,
+        mouse_captured: bool = False;
 }
 
 obj Game {
-    has player: Player = Player(),
-        stats: Stats = Stats(),
-        cmd: Cmd = Cmd(),
-        enemies: EnemyPool = EnemyPool(),
-        rockets: RocketPool = RocketPool(),
-        shots: ShotPool = ShotPool(),
-        sparks: SparkPool = SparkPool(),
-        events: Events = Events(),
-        rng: Rng = Rng(),
+    has player: own Player = Player(),
+        stats: own Stats = Stats(),
+        cmd: own Cmd = Cmd(),
+        enemies: own EnemyPool = EnemyPool(),
+        rockets: own ProjectilePool = ProjectilePool(),
+        shots: own ProjectilePool = ProjectilePool(),
+        sparks: own SparkPool = SparkPool(),
+        events: own Events = Events(),
+        processing: own Events = Events(),
+        input: own FrameState = FrameState(),
+        rng: own Rng = Rng(),
         time: float = 0.0;
 }
 
@@ -229,4 +303,4 @@ def process_events(w: &mut Game);
 
 def sim_tick(w: &mut Game);
 
-def world_new -> Game;
+def world_new -> own Game;

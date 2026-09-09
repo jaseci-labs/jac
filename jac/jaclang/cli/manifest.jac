@@ -3,6 +3,7 @@ import from jaclang.comptime { module_of }
 
 comptime import from jaclang.cli.commands.analysis {
     SPEC_CHECK,
+    SPEC_EXPLAIN,
     SPEC_FORMAT,
     SPEC_GEN_PARSER,
     SPEC_PRECOMMIT,
@@ -17,7 +18,6 @@ comptime import from jaclang.cli.commands.execution { SPEC_RUN, SPEC_X }
 comptime import from jaclang.cli.commands.fix { SPEC_FIX }
 comptime import from jaclang.cli.commands.guide { SPEC_GUIDE }
 comptime import from jaclang.cli.commands.mcp { SPEC_MCP_CMD }
-comptime import from jaclang.cli.commands.nacompile { SPEC_NACOMPILE }
 comptime import from jaclang.cli.commands.precompile { SPEC_PRECOMPILE }
 comptime import from jaclang.cli.commands.project {
     SPEC_CLEAN,
@@ -51,6 +51,7 @@ comptime VERB_BUDGET: int = 26,
          "dev": "jac run --dev",
          "bundle": "jac build [--as jab|sealed|binary|wheel|npm]",
          "eject": "jac build --as source",
+         "nacompile": "jac build <file.jac> --native [--memory managed|rc|nogc] [--lib]",
          "js": "jac tool jac2js <file>",
          "jac2py": "jac tool jac2py <file>",
          "py2jac": "jac tool py2jac <file>",
@@ -105,6 +106,7 @@ comptime ROUTES: list[CommandSpec] = [
          _route(SPEC_CREATE),
          _route(SPEC_DB),
          _route(SPEC_DOT),
+         _route(SPEC_EXPLAIN),
          _route(SPEC_FIX),
          _route(SPEC_FORMAT),
          _route(SPEC_GEN_PARSER),
@@ -113,7 +115,6 @@ comptime ROUTES: list[CommandSpec] = [
          _route(SPEC_LSP),
          _route(SPEC_MCP_CMD),
          _route(SPEC_MODEL),
-         _route(SPEC_NACOMPILE),
          _route(SPEC_PRECOMMIT),
          _route(SPEC_PRECOMPILE),
          _route(SPEC_REMOVE),
@@ -155,7 +156,7 @@ with entry {
         r.name
         for r in ROUTES
         if len({a.dest or a.name for a in r.args}) != len(r.args)
-    ] , "a command declares two arguments that bind the same name. This block is also load-bearing for #8880: ROUTES is a comptime fold of the command specs and its cached artifact does not re-key on them, so a spec that gains an argument without this file's bytes moving ships a kit whose parser rejects the new flag. Delete this only once that fold keys on its producers.";
+    ] , "a command declares two arguments that bind the same name.";
 }
 
 def get_command_meta(name: str) -> CommandSpec | None;

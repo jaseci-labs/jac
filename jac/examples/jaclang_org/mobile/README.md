@@ -1,102 +1,42 @@
-# Socialize, mobile
+# JacYac mobile
 
-The mobile face of the jaclang.org workspace: a React Native (mobUI) client
-for the same social graph the site serves at `/socialize`. Sign up, post,
-like, reply, follow people, browse trending hashtags, and join channels --
-against the very same accounts and the very same persisted graph as the web
-app, because both consume one domain module: `core/social_graph.jac`.
+The React Native face of JacYac. `main.jac` renders
+`core/jacyac/native/JacYacMobile.jac`, which is also embedded on the website.
+Both it and the web renderer consume `core/jacyac/state.jac` and
+`core/jacyac/session.jac`; graph operations and error handling are shared.
 
-There is no backend in this directory, and no UI either: `main.jac` is a
-shell that renders `SocializeMobile` from `core/socialize_mobile/`, where the
-whole phone lives. It sits in `core/` because two apps consume it -- this one
-wraps it for Android and iOS, and the site's landing page wraps the same
-component in a bezel (`web/landing/MobileShowcase.jac`), so the phone on
-jaclang.org is this app, imported. Every walker the screens spawn
-(`load_feed`, `create_tweet`, `like_tweet`, `follow_user`, `join_channel`,
-...) comes from `core.social_graph`, and the compiler turns each
-`root spawn` into a call across the app boundary to the `social_graph`
-service app that owns those walkers. Whether that service shares the web
-server's process or runs on its own is a profile (`jac run --serve` vs
-`--fleet`); nothing here changes between the two.
-
-## Run it
+The UI uses `@jac/mobui` primitives, native styles, the shared JacYac SVG,
+real uploaded avatars (initials when absent), and the same light/dark
+palette as web. Theme changes propagate to the live phone embed. Native
+fonts load through Expo Font from the configured Jac backend. The native
+bio editor uses the shared profile update operation, including clearing a bio.
 
 ```bash
-jac install                              # once: pulls the npm deps
-jac run --dev mobile                     # native: Metro, press a / i or scan the Expo Go QR
-jac run --dev --platform web mobile      # the same UI in a browser via react-native-web
-jac build mobile --platform android      # APK
-jac build mobile --platform ios          # .app / .ipa (macOS or EAS)
-jac test mobile                          # the pure-Jac helpers in core/socialize_mobile/format.jac
+jac install
+jac run web
+jac setup mobile
+jac run --dev mobile
+jac run --dev --platform web mobile
+jac build mobile --platform android
+jac build mobile --platform ios
+jac test mobile
 ```
 
-The first native run needs `jac setup mobile` (an Expo project is scaffolded
-under `.jac/mobile-rn/`). Point the app at a running server -- `jac run web`
-in another terminal is enough; the dev API base URL is injected for you.
+The web preview uses React Native Web; it is not a native-device test.
+`core/jacyac/native/icon.native.jac` selects native icons while the default
+variant uses browser icons. `core/brand/font.native.jac` loads the same
+Geist font asset used by web. See the workspace README for shared ownership,
+brand generation, and validation commands.
 
-## Layout
+Ninja Scores is available from the Scores tab, including before sign-in.
+Repository search, sorting, GitHub repository selection, and project mutations
+use the same shared state as the web app. Submissions appear publicly under
+the submitting JacYac profile.
 
-```
-mobile/
-  main.jac                  def:pub app -- renders <SocializeMobile/>
-core/socialize_mobile/
-  SocializeMobile.jac       the root component -- auth gate, state, screen switch, tab bar;
-                            embedded={True} sizes it to its container instead of the window
-  impl/SocializeMobile.impl.jac  the handlers: every bridged call, wrapped for BridgeError
-  theme.jac                 tokens as objs (C, S, R, F) + one StyleSheet
-  icon.jac                  <Icon name=.../> on web    (lucide-react)
-  icon.native.jac           <Icon name=.../> on native (lucide-react-native)
-  format.jac                pure helpers shared by the screens (+ format.test.jac)
-  components/               Avatar, TweetCard, Composer, TabBar, BridgeBanner, StatusView
-  screens/                  AuthScreen, FeedScreen, ExploreScreen, ChannelsScreen, ProfileScreen
-```
-
-## What to look at
-
-**Only `@jac/mobui` primitives.** Layout is `View`, text is `Text`, taps
-are `Pressable`, input is `TextInput`, lists scroll in a `ScrollView` with a
-`RefreshControl`, the channel creator is a `Modal`. Styling is React Native's
-model: `style={styles.x}` objects from one `StyleSheet.create` in
-`theme.jac`, no CSS, no `className`. The primitives are typed: the checker
-reads the declarations shipped beside `@jac/mobui`, so a misspelled prop on
-`View` is E1101 like any other component, and `StyleSheet.create` or
-`useWindowDimensions()` have real return types. Inside a `kind = "mobile"`
-root a raw `<div>` is additionally E1105; the shared tree in `core/` keeps
-to the primitives by convention, and the site builds it with
-react-native-web.
-
-**Typed tokens.** `theme.jac` declares the design tokens as `obj`s
-(`Colors`, `Spacing`, `Radii`, `Fonts`) and exports one instance of each
-(`C`, `S`, `R`, `F`), so `C.accent` is a typed attribute read that the checker
-verifies -- not a dict looked up by attribute at runtime. Re-skin the whole app
-by editing the field defaults.
-
-**One icon API, two backends.** `icon.jac` and `icon.native.jac` declare the
-same `Icon(name, size, color, fill)` over the same name table; the compiler
-picks the `.native.jac` file for the app's native platforms (android / ios)
-and the plain file for its web platform. The variant-agreement check (E5105)
-keeps the two public surfaces identical.
-
-**Friendly failure.** Every bridged call in `impl/SocializeMobile.impl.jac` sits in a
-`try { ... } except BridgeError as e { reportBridge(e, ...); }`. The
-`BridgeError` family (`BridgeUnavailable`, `BridgeTimeout`, `BridgeRejected`)
-comes from `@jac/runtime`; `reportBridge` maps each to a one-line message and
-remembers which loader to re-run, and `BridgeBanner` shows it with a Retry
-button instead of a crashed screen. Auth calls additionally catch plain
-network errors so a dead server reads as "can't reach the server" on the
-login form.
-
-**State like the web app.** `def:pub SocializeMobile` keeps its state in `has` fields,
-mounts with `can with entry`, reacts to login with `can with [isLoggedIn]
-entry`, and passes typed callbacks (`Callable[[str], None]`) down to screens
-that own only their local UI state (a draft, an open modal). The shapes it
-renders are the domain's own `obj`s and nodes -- `ProfileBundle`,
-`ChannelBundle`, `TrendingTag`, `Profile`, `Tweet` -- read straight out of
-`result.reports`.
-
-## Theme
-
-Dark-first, jaclang orange (`#ff6b35`) accent, pink likes, blue replies. On
-the web target the page is capped at 640px and centred so it reads as a
-phone column; on native it fills the screen; embedded on the landing page it
-fills the bezel.
+GitHub sign-in opens the system browser through Expo WebBrowser. Jac Scale
+completes the provider callback, and the initiating device redeems the result
+using its private, expiring polling secret. No GitHub client secret is bundled
+into the app, and no custom URL scheme is required. Configure the backend's
+GitHub OAuth credentials and callback as described in the workspace README.
+A physical device needs a reachable HTTPS backend rather than the development
+loopback URL. Browser previews use the web PKCE flow instead.

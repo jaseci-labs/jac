@@ -1373,14 +1373,18 @@ impl GrammarExtractPass.interpret_stmt(stmt: uni.UniNode) -> GExpr | None {
             }
 
             if isinstance(stmt.value, uni.ListVal) and hasattr(stmt.value, 'values') {
+                items: list[GExpr] = [];
                 for elem in stmt.value.values {
                     inner_call = self.get_call_from_expr(elem);
                     if inner_call is not None {
                         result = self.interpret_call(inner_call);
                         if result is not None {
-                            return result;
+                            items.append(result);
                         }
                     }
+                }
+                if items {
+                    return GSeq(items=items);
                 }
             }
         }
@@ -1388,6 +1392,13 @@ impl GrammarExtractPass.interpret_stmt(stmt: uni.UniNode) -> GExpr | None {
     }
     if isinstance(stmt, uni.IfStmt) or isinstance(stmt, uni.ElseIf) {
         return self.interpret_if(stmt);
+    }
+    if isinstance(stmt, uni.TryStmt) and not stmt.excepts {
+        body = list(stmt.body);
+        if stmt.finally_body is not None {
+            body.extend(stmt.finally_body.body);
+        }
+        return self.interpret_stmts(body);
     }
     if isinstance(stmt, uni.WhileStmt) {
         return self.interpret_while(stmt);
@@ -2369,8 +2380,19 @@ impl GrammarExtractPass.get_self_method(nd: uni.Expr) -> str | None {
 }
 
 impl GrammarExtractPass.get_token_args(call: uni.FuncCall) -> list {
+    params = call.params;
+    if params is None {
+        return [];
+    }
+    if self.get_self_method(call.target) == "consume_uni" and len(params) == 2 {
+        literal = uni.literal_string_value(params[1]);
+        if literal is not None {
+            import json;
+            return [json.dumps(literal)];
+        }
+    }
     result: list = [];
-    for param in call.params {
+    for param in params {
         if isinstance(param, uni.AtomTrailer) and param.is_attr {
             if isinstance(param.target, uni.Name) {
                 if param.target.value == "TokenKind" {

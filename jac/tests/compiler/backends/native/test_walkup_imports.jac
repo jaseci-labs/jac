@@ -28,7 +28,16 @@ test "dotted walk-up import then a relative sibling import lowers natively" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "walkup");
         res = subprocess.run(
-            [sys.executable, "-m", "jaclang", "nacompile", FIXTURE, "-o", out_bin],
+            [
+                sys.executable,
+                "-m",
+                "jaclang",
+                "build",
+                "--native",
+                FIXTURE,
+                "-o",
+                out_bin
+            ],
             capture_output=True,
             text=True
         );

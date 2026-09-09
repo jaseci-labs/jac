@@ -65,7 +65,7 @@ test "a module's env key is the same inside and outside the config probe guards"
     # another on write, and recompiled on every run.
     base = Path(os.path.realpath(tempfile.mkdtemp(prefix="jac_key_purity_")));
     (base / "jac.toml").write_text(
-        '[project]\nname = "keyed"\n\n[gc]\ndefault = "none"\n'
+        '[project]\nname = "keyed"\n\n[memory]\nprofile = "nogc"\n'
     );
     mod = base / "util.jac";
     mod.write_text("def two -> int {\n    return 2;\n}\n");

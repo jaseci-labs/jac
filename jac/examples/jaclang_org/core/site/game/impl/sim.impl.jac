@@ -1,34 +1,13 @@
 impl push_boom(w: &mut Game, x: float, y: float, z: float) {
-    n = w.events.boom_n;
-    if n >= MAX_EVENTS {
-        return;
-    }
-    w.events.boom_x[n] = x;
-    w.events.boom_y[n] = y;
-    w.events.boom_z[n] = z;
-    w.events.boom_n = n + 1;
+    w.events.boom(x, y, z);
 }
 
 impl push_kill(w: &mut Game, slot: int, gen: int, x: float, y: float, z: float) {
-    n = w.events.kill_n;
-    if n >= MAX_EVENTS {
-        return;
-    }
-    w.events.kill_slot[n] = slot;
-    w.events.kill_gen[n] = gen;
-    w.events.kill_x[n] = x;
-    w.events.kill_y[n] = y;
-    w.events.kill_z[n] = z;
-    w.events.kill_n = n + 1;
+    w.events.kill(slot, gen, x, y, z);
 }
 
 impl push_damage(w: &mut Game, amount: float) {
-    n = w.events.dmg_n;
-    if n >= MAX_EVENTS {
-        return;
-    }
-    w.events.dmg[n] = amount;
-    w.events.dmg_n = n + 1;
+    w.events.hurt(amount);
 }
 
 impl spawn_spark(
@@ -46,27 +25,28 @@ impl spawn_spark(
     cg: int,
     cb: int
 ) {
-    n = w.sparks.count;
+    n = w.sparks.size();
     if n >= MAX_SPARKS {
         return;
     }
-    w.sparks.x[n] = x;
-    w.sparks.y[n] = y;
-    w.sparks.z[n] = z;
-    w.sparks.prev_x[n] = x;
-    w.sparks.prev_y[n] = y;
-    w.sparks.prev_z[n] = z;
-    w.sparks.vx[n] = vx;
-    w.sparks.vy[n] = vy;
-    w.sparks.vz[n] = vz;
-    w.sparks.life[n] = life;
-    w.sparks.fade[n] = life;
-    w.sparks.size[n] = size;
-    w.sparks.grav[n] = grav;
-    w.sparks.cr[n] = cr;
-    w.sparks.cg[n] = cg;
-    w.sparks.cb[n] = cb;
-    w.sparks.count = n + 1;
+    item = Spark();
+    item.x = x;
+    item.y = y;
+    item.z = z;
+    item.prev_x = x;
+    item.prev_y = y;
+    item.prev_z = z;
+    item.vx = vx;
+    item.vy = vy;
+    item.vz = vz;
+    item.life = life;
+    item.fade = life;
+    item.size = size;
+    item.grav = grav;
+    item.cr = cr;
+    item.cg = cg;
+    item.cb = cb;
+    w.sparks.items.append(item);
 }
 
 impl spark_burst(
@@ -93,75 +73,36 @@ impl spark_burst(
 }
 
 impl remove_spark(w: &mut Game, i: int) {
-    last = w.sparks.count - 1;
-    w.sparks.x[i] = w.sparks.x[last];
-    w.sparks.y[i] = w.sparks.y[last];
-    w.sparks.z[i] = w.sparks.z[last];
-    w.sparks.prev_x[i] = w.sparks.prev_x[last];
-    w.sparks.prev_y[i] = w.sparks.prev_y[last];
-    w.sparks.prev_z[i] = w.sparks.prev_z[last];
-    w.sparks.vx[i] = w.sparks.vx[last];
-    w.sparks.vy[i] = w.sparks.vy[last];
-    w.sparks.vz[i] = w.sparks.vz[last];
-    w.sparks.life[i] = w.sparks.life[last];
-    w.sparks.fade[i] = w.sparks.fade[last];
-    w.sparks.size[i] = w.sparks.size[last];
-    w.sparks.grav[i] = w.sparks.grav[last];
-    w.sparks.cr[i] = w.sparks.cr[last];
-    w.sparks.cg[i] = w.sparks.cg[last];
-    w.sparks.cb[i] = w.sparks.cb[last];
-    w.sparks.count = last;
+    w.sparks.remove(i);
 }
 
 impl remove_rocket(w: &mut Game, i: int) {
-    last = w.rockets.count - 1;
-    w.rockets.x[i] = w.rockets.x[last];
-    w.rockets.y[i] = w.rockets.y[last];
-    w.rockets.z[i] = w.rockets.z[last];
-    w.rockets.prev_x[i] = w.rockets.prev_x[last];
-    w.rockets.prev_y[i] = w.rockets.prev_y[last];
-    w.rockets.prev_z[i] = w.rockets.prev_z[last];
-    w.rockets.vx[i] = w.rockets.vx[last];
-    w.rockets.vy[i] = w.rockets.vy[last];
-    w.rockets.vz[i] = w.rockets.vz[last];
-    w.rockets.life[i] = w.rockets.life[last];
-    w.rockets.count = last;
+    w.rockets.remove(i);
 }
 
 impl remove_shot(w: &mut Game, i: int) {
-    last = w.shots.count - 1;
-    w.shots.x[i] = w.shots.x[last];
-    w.shots.y[i] = w.shots.y[last];
-    w.shots.z[i] = w.shots.z[last];
-    w.shots.prev_x[i] = w.shots.prev_x[last];
-    w.shots.prev_y[i] = w.shots.prev_y[last];
-    w.shots.prev_z[i] = w.shots.prev_z[last];
-    w.shots.vx[i] = w.shots.vx[last];
-    w.shots.vy[i] = w.shots.vy[last];
-    w.shots.vz[i] = w.shots.vz[last];
-    w.shots.life[i] = w.shots.life[last];
-    w.shots.count = last;
+    w.shots.remove(i);
 }
 
 impl respawn_enemy(w: &mut Game, i: int) {
-    w.enemies.x[i] = rand_range(&mut w.rng, -14.0, 14.0);
-    w.enemies.base_y[i] = rand_range(&mut w.rng, 1.2, 5.0);
-    w.enemies.z[i] = rand_range(&mut w.rng, -16.0, 0.0);
-    w.enemies.phase[i] = rand_range(&mut w.rng, 0.0, 6.28);
-    w.enemies.y[i] = w.enemies.base_y[i];
-    w.enemies.prev_x[i] = w.enemies.x[i];
-    w.enemies.prev_y[i] = w.enemies.y[i];
-    w.enemies.prev_z[i] = w.enemies.z[i];
-    w.enemies.strafe_dir[i] = rand_sign(&mut w.rng);
-    w.enemies.strafe_t[i] = rand_range(&mut w.rng, 1.0, 2.6);
-    w.enemies.fire_t[i] = rand_range(&mut w.rng, 2.0, 5.0);
-    w.enemies.charge[i] = 0.0;
-    w.enemies.respawn_t[i] = 0.0;
-    w.enemies.alive[i] = 1;
+    w.enemies.items[i].x = rand_range(&mut w.rng, -14.0, 14.0);
+    w.enemies.items[i].base_y = rand_range(&mut w.rng, 1.2, 5.0);
+    w.enemies.items[i].z = rand_range(&mut w.rng, -16.0, 0.0);
+    w.enemies.items[i].phase = rand_range(&mut w.rng, 0.0, 6.28);
+    w.enemies.items[i].y = w.enemies.items[i].base_y;
+    w.enemies.items[i].prev_x = w.enemies.items[i].x;
+    w.enemies.items[i].prev_y = w.enemies.items[i].y;
+    w.enemies.items[i].prev_z = w.enemies.items[i].z;
+    w.enemies.items[i].strafe_dir = rand_sign(&mut w.rng);
+    w.enemies.items[i].strafe_t = rand_range(&mut w.rng, 1.0, 2.6);
+    w.enemies.items[i].fire_t = rand_range(&mut w.rng, 2.0, 5.0);
+    w.enemies.items[i].charge = 0.0;
+    w.enemies.items[i].respawn_t = 0.0;
+    w.enemies.items[i].alive = 1;
 }
 
 impl spawn_rocket(w: &mut Game) {
-    n = w.rockets.count;
+    n = w.rockets.size();
     if n >= MAX_ROCKETS {
         return;
     }
@@ -171,24 +112,25 @@ impl spawn_rocket(w: &mut Game) {
     dx = -jsin(yaw_r) * cp;
     dy = jsin(pitch_r);
     dz = -jcos(yaw_r) * cp;
-    w.rockets.x[n] = w.player.x + dx * 1.2;
-    w.rockets.y[n] = w.player.y - 0.25 + dy * 1.2;
-    w.rockets.z[n] = w.player.z + dz * 1.2;
-    w.rockets.prev_x[n] = w.rockets.x[n];
-    w.rockets.prev_y[n] = w.rockets.y[n];
-    w.rockets.prev_z[n] = w.rockets.z[n];
-    w.rockets.vx[n] = dx * ROCKET_SPEED;
-    w.rockets.vy[n] = dy * ROCKET_SPEED;
-    w.rockets.vz[n] = dz * ROCKET_SPEED;
-    w.rockets.life[n] = ROCKET_LIFE;
-    w.rockets.count = n + 1;
+    item = Projectile();
+    item.x = w.player.x + dx * 1.2;
+    item.y = w.player.y - 0.25 + dy * 1.2;
+    item.z = w.player.z + dz * 1.2;
+    item.prev_x = item.x;
+    item.prev_y = item.y;
+    item.prev_z = item.z;
+    item.vx = dx * ROCKET_SPEED;
+    item.vy = dy * ROCKET_SPEED;
+    item.vz = dz * ROCKET_SPEED;
+    item.life = ROCKET_LIFE;
+    w.rockets.items.append(item);
     w.player.fire_cd = FIRE_COOLDOWN;
     w.player.kick_t = 0.22;
     w.player.muzzle_t = 0.07;
 }
 
 impl spawn_shot(w: &mut Game, ex: float, ey: float, ez: float) {
-    n = w.shots.count;
+    n = w.shots.size();
     if n >= MAX_SHOTS {
         return;
     }
@@ -202,17 +144,18 @@ impl spawn_shot(w: &mut Game, ex: float, ey: float, ez: float) {
     if d < 0.01 {
         return;
     }
-    w.shots.x[n] = ex;
-    w.shots.y[n] = ey;
-    w.shots.z[n] = ez;
-    w.shots.prev_x[n] = ex;
-    w.shots.prev_y[n] = ey;
-    w.shots.prev_z[n] = ez;
-    w.shots.vx[n] = dx / d * SHOT_SPEED;
-    w.shots.vy[n] = dy / d * SHOT_SPEED;
-    w.shots.vz[n] = dz / d * SHOT_SPEED;
-    w.shots.life[n] = SHOT_LIFE;
-    w.shots.count = n + 1;
+    item = Projectile();
+    item.x = ex;
+    item.y = ey;
+    item.z = ez;
+    item.prev_x = ex;
+    item.prev_y = ey;
+    item.prev_z = ez;
+    item.vx = dx / d * SHOT_SPEED;
+    item.vy = dy / d * SHOT_SPEED;
+    item.vz = dz / d * SHOT_SPEED;
+    item.life = SHOT_LIFE;
+    w.shots.items.append(item);
 }
 
 impl store_prev(w: &mut Game) {
@@ -220,136 +163,161 @@ impl store_prev(w: &mut Game) {
     w.player.prev_y = w.player.y;
     w.player.prev_z = w.player.z;
     for i in range(MAX_ENEMIES) {
-        w.enemies.prev_x[i] = w.enemies.x[i];
-        w.enemies.prev_y[i] = w.enemies.y[i];
-        w.enemies.prev_z[i] = w.enemies.z[i];
+        w.enemies.items[i].prev_x = w.enemies.items[i].x;
+        w.enemies.items[i].prev_y = w.enemies.items[i].y;
+        w.enemies.items[i].prev_z = w.enemies.items[i].z;
     }
-    rn = w.rockets.count;
+    rn = w.rockets.size();
     for i in range(rn) {
-        w.rockets.prev_x[i] = w.rockets.x[i];
-        w.rockets.prev_y[i] = w.rockets.y[i];
-        w.rockets.prev_z[i] = w.rockets.z[i];
+        w.rockets.items[i].prev_x = w.rockets.items[i].x;
+        w.rockets.items[i].prev_y = w.rockets.items[i].y;
+        w.rockets.items[i].prev_z = w.rockets.items[i].z;
     }
-    sn = w.shots.count;
+    sn = w.shots.size();
     for i in range(sn) {
-        w.shots.prev_x[i] = w.shots.x[i];
-        w.shots.prev_y[i] = w.shots.y[i];
-        w.shots.prev_z[i] = w.shots.z[i];
+        w.shots.items[i].prev_x = w.shots.items[i].x;
+        w.shots.items[i].prev_y = w.shots.items[i].y;
+        w.shots.items[i].prev_z = w.shots.items[i].z;
     }
-    pn = w.sparks.count;
+    pn = w.sparks.size();
     for i in range(pn) {
-        w.sparks.prev_x[i] = w.sparks.x[i];
-        w.sparks.prev_y[i] = w.sparks.y[i];
-        w.sparks.prev_z[i] = w.sparks.z[i];
+        w.sparks.items[i].prev_x = w.sparks.items[i].x;
+        w.sparks.items[i].prev_y = w.sparks.items[i].y;
+        w.sparks.items[i].prev_z = w.sparks.items[i].z;
     }
 }
 
-impl tick_player(w: &mut Game) {
-    w.player.fire_cd -= TICK_DT;
-    if w.player.hurt_t > 0.0 {
-        w.player.hurt_t -= TICK_DT;
+impl Player.tick(cmd: &mut Cmd) -> bool {
+    self.fire_cd -= TICK_DT;
+    if self.hurt_t > 0.0 {
+        self.hurt_t -= TICK_DT;
     }
-    if w.player.invuln_t > 0.0 {
-        w.player.invuln_t -= TICK_DT;
+    if self.invuln_t > 0.0 {
+        self.invuln_t -= TICK_DT;
     }
-    if w.player.kick_t > 0.0 {
-        w.player.kick_t -= TICK_DT;
+    if self.kick_t > 0.0 {
+        self.kick_t -= TICK_DT;
     }
-    if w.player.muzzle_t > 0.0 {
-        w.player.muzzle_t -= TICK_DT;
+    if self.muzzle_t > 0.0 {
+        self.muzzle_t -= TICK_DT;
     }
-    w.player.safe_t += TICK_DT;
-    if w.player.safe_t > HP_REGEN_DELAY and w.player.hp < HP_MAX {
-        w.player.hp += HP_REGEN_RATE * TICK_DT;
-        if w.player.hp > HP_MAX {
-            w.player.hp = HP_MAX;
+    self.safe_t += TICK_DT;
+    if self.safe_t > HP_REGEN_DELAY and self.hp < HP_MAX {
+        self.hp += HP_REGEN_RATE * TICK_DT;
+        if self.hp > HP_MAX {
+            self.hp = HP_MAX;
         }
     }
 
-    w.player.yaw = w.cmd.yaw;
-    w.player.pitch = w.cmd.pitch;
+    self.yaw = cmd.yaw;
+    self.pitch = cmd.pitch;
 
-    mf = w.cmd.move_fwd;
-    ms = w.cmd.move_side;
+    mf = cmd.move_fwd;
+    ms = cmd.move_side;
     ml = jsqrt(mf * mf + ms * ms);
     if ml > 1.0 {
         mf = mf / ml;
         ms = ms / ml;
     }
-    yaw_r = w.player.yaw * DEG2RAD;
+    yaw_r = self.yaw * DEG2RAD;
     fwd_x = -jsin(yaw_r);
     fwd_z = -jcos(yaw_r);
     rgt_x = jcos(yaw_r);
     rgt_z = -jsin(yaw_r);
-    w.player.x += (fwd_x * mf + rgt_x * ms) * MOVE_SPEED * TICK_DT;
-    w.player.z += (fwd_z * mf + rgt_z * ms) * MOVE_SPEED * TICK_DT;
+    self.x += (fwd_x * mf + rgt_x * ms) * MOVE_SPEED * TICK_DT;
+    self.z += (fwd_z * mf + rgt_z * ms) * MOVE_SPEED * TICK_DT;
 
-    if w.cmd.fire and w.player.fire_cd <= 0.0 {
+    if cmd.jump and self.grounded {
+        self.vy = JUMP_SPEED;
+        self.grounded = False;
+    }
+    cmd.jump = False;
+    if not self.grounded {
+        self.vy -= GRAVITY * TICK_DT;
+        self.y += self.vy * TICK_DT;
+        if self.y <= SPAWN_Y {
+            self.y = SPAWN_Y;
+            self.vy = 0.0;
+            self.grounded = True;
+        }
+    }
+    firing = cmd.fire and self.fire_cd <= 0.0;
+    cmd.fire = False;
+    return firing;
+}
+
+impl tick_player(w: &mut Game) {
+    if w.player.tick(&mut w.cmd) {
         spawn_rocket(w);
     }
 }
 
 impl tick_enemies(w: &mut Game) {
     for i in range(MAX_ENEMIES) {
-        if w.enemies.alive[i] == 1 {
-            w.enemies.y[i] = w.enemies.base_y[i]
-                + 0.4 * jsin(w.time * 1.5 + w.enemies.phase[i]);
+        if w.enemies.items[i].alive == 1 {
+            w.enemies.items[i].y = w.enemies.items[i].base_y
+                + 0.4 * jsin(w.time * 1.5 + w.enemies.items[i].phase);
 
-            dx = w.player.x - w.enemies.x[i];
-            dz = w.player.z - w.enemies.z[i];
+            dx = w.player.x - w.enemies.items[i].x;
+            dz = w.player.z - w.enemies.items[i].z;
             dist = jsqrt(dx * dx + dz * dz);
             if dist > 0.5 {
                 nx = dx / dist;
                 nz = dz / dist;
 
-                w.enemies.strafe_t[i] -= TICK_DT;
-                if w.enemies.strafe_t[i] <= 0.0 {
-                    w.enemies.strafe_dir[i] = rand_sign(&mut w.rng);
-                    w.enemies.strafe_t[i] = rand_range(&mut w.rng, 1.0, 2.6);
+                w.enemies.items[i].strafe_t -= TICK_DT;
+                if w.enemies.items[i].strafe_t <= 0.0 {
+                    w.enemies.items[i].strafe_dir = rand_sign(&mut w.rng);
+                    w.enemies.items[i].strafe_t = rand_range(&mut w.rng, 1.0, 2.6);
                 }
-                w.enemies.x[i] += -nz
-                    * w.enemies.strafe_dir[i]
+                w.enemies.items[i].x += -nz
+                    * w.enemies.items[i].strafe_dir
                     * ENEMY_STRAFE_SPEED
                     * TICK_DT;
-                w.enemies.z[i] += nx
-                    * w.enemies.strafe_dir[i]
+                w.enemies.items[i].z += nx
+                    * w.enemies.items[i].strafe_dir
                     * ENEMY_STRAFE_SPEED
                     * TICK_DT;
 
                 if dist > ENEMY_FAR_DIST {
-                    w.enemies.x[i] += nx * ENEMY_ADVANCE_SPEED * TICK_DT;
-                    w.enemies.z[i] += nz * ENEMY_ADVANCE_SPEED * TICK_DT;
+                    w.enemies.items[i].x += nx * ENEMY_ADVANCE_SPEED * TICK_DT;
+                    w.enemies.items[i].z += nz * ENEMY_ADVANCE_SPEED * TICK_DT;
                 } elif dist < ENEMY_NEAR_DIST {
-                    w.enemies.x[i] -= nx * ENEMY_RETREAT_SPEED * TICK_DT;
-                    w.enemies.z[i] -= nz * ENEMY_RETREAT_SPEED * TICK_DT;
+                    w.enemies.items[i].x -= nx * ENEMY_RETREAT_SPEED * TICK_DT;
+                    w.enemies.items[i].z -= nz * ENEMY_RETREAT_SPEED * TICK_DT;
                 }
             }
 
-            if w.enemies.x[i] > ARENA_HALF_X {
-                w.enemies.x[i] = ARENA_HALF_X;
+            if w.enemies.items[i].x > ARENA_HALF_X {
+                w.enemies.items[i].x = ARENA_HALF_X;
             }
-            if w.enemies.x[i] < -ARENA_HALF_X {
-                w.enemies.x[i] = -ARENA_HALF_X;
+            if w.enemies.items[i].x < -ARENA_HALF_X {
+                w.enemies.items[i].x = -ARENA_HALF_X;
             }
-            if w.enemies.z[i] > ARENA_Z_NEAR {
-                w.enemies.z[i] = ARENA_Z_NEAR;
+            if w.enemies.items[i].z > ARENA_Z_NEAR {
+                w.enemies.items[i].z = ARENA_Z_NEAR;
             }
-            if w.enemies.z[i] < ARENA_Z_FAR {
-                w.enemies.z[i] = ARENA_Z_FAR;
+            if w.enemies.items[i].z < ARENA_Z_FAR {
+                w.enemies.items[i].z = ARENA_Z_FAR;
             }
 
-            w.enemies.fire_t[i] -= TICK_DT;
-            if w.enemies.fire_t[i] <= 0.0 and dist < ENEMY_SIGHT_DIST {
-                w.enemies.charge[i] += TICK_DT;
-                if w.enemies.charge[i] >= CHARGE_T {
-                    spawn_shot(w, w.enemies.x[i], w.enemies.y[i], w.enemies.z[i]);
-                    w.enemies.charge[i] = 0.0;
-                    w.enemies.fire_t[i] = rand_range(&mut w.rng, 2.8, 5.4);
+            w.enemies.items[i].fire_t -= TICK_DT;
+            if w.enemies.items[i].fire_t <= 0.0 and dist < ENEMY_SIGHT_DIST {
+                w.enemies.items[i].charge += TICK_DT;
+                if w.enemies.items[i].charge >= CHARGE_T {
+                    spawn_shot(
+                        w,
+                        w.enemies.items[i].x,
+                        w.enemies.items[i].y,
+                        w.enemies.items[i].z
+                    );
+                    w.enemies.items[i].charge = 0.0;
+                    w.enemies.items[i].fire_t = rand_range(&mut w.rng, 2.8, 5.4);
                 }
             }
         } else {
-            w.enemies.respawn_t[i] -= TICK_DT;
-            if w.enemies.respawn_t[i] <= 0.0 {
+            w.enemies.items[i].respawn_t -= TICK_DT;
+            if w.enemies.items[i].respawn_t <= 0.0 {
                 respawn_enemy(w, i);
             }
         }
@@ -358,14 +326,11 @@ impl tick_enemies(w: &mut Game) {
 
 impl tick_rockets(w: &mut Game) {
     i = 0;
-    while i < w.rockets.count {
-        w.rockets.x[i] += w.rockets.vx[i] * TICK_DT;
-        w.rockets.y[i] += w.rockets.vy[i] * TICK_DT;
-        w.rockets.z[i] += w.rockets.vz[i] * TICK_DT;
-        w.rockets.life[i] -= TICK_DT;
-        rx = w.rockets.x[i];
-        ry = w.rockets.y[i];
-        rz = w.rockets.z[i];
+    while i < w.rockets.size() {
+        w.rockets.items[i].step();
+        rx = w.rockets.items[i].x;
+        ry = w.rockets.items[i].y;
+        rz = w.rockets.items[i].z;
         svx = rand_range(&mut w.rng, -0.4, 0.4);
         svy = rand_range(&mut w.rng, 0.1, 0.6);
         svz = rand_range(&mut w.rng, -0.4, 0.4);
@@ -374,14 +339,14 @@ impl tick_rockets(w: &mut Game) {
         if ry <= 0.1 {
             boom = True;
         }
-        if w.rockets.life[i] <= 0.0 {
+        if w.rockets.items[i].life <= 0.0 {
             boom = True;
         }
         for ti in range(MAX_ENEMIES) {
-            if w.enemies.alive[ti] == 1 and not boom {
-                ddx = rx - w.enemies.x[ti];
-                ddy = ry - w.enemies.y[ti];
-                ddz = rz - w.enemies.z[ti];
+            if w.enemies.items[ti].alive == 1 and not boom {
+                ddx = rx - w.enemies.items[ti].x;
+                ddy = ry - w.enemies.items[ti].y;
+                ddz = rz - w.enemies.items[ti].z;
                 if ddx * ddx + ddy * ddy + ddz * ddz < ROCKET_HIT_R2 {
                     boom = True;
                 }
@@ -398,21 +363,20 @@ impl tick_rockets(w: &mut Game) {
 
 impl tick_shots(w: &mut Game) {
     i = 0;
-    while i < w.shots.count {
-        w.shots.x[i] += w.shots.vx[i] * TICK_DT;
-        w.shots.y[i] += w.shots.vy[i] * TICK_DT;
-        w.shots.z[i] += w.shots.vz[i] * TICK_DT;
-        w.shots.life[i] -= TICK_DT;
+    while i < w.shots.size() {
+        w.shots.items[i].step();
         gone = False;
-        if w.shots.life[i] <= 0.0 {
+        if w.shots.items[i].life <= 0.0 {
             gone = True;
-        } elif w.shots.y[i] < 0.05 {
-            spark_burst(w, w.shots.x[i], 0.1, w.shots.z[i], 3, 2.0, 150, 90, 200);
+        } elif w.shots.items[i].y < 0.05 {
+            spark_burst(
+                w, w.shots.items[i].x, 0.1, w.shots.items[i].z, 3, 2.0, 150, 90, 200
+            );
             gone = True;
         } else {
-            ddx = w.shots.x[i] - w.player.x;
-            ddy = w.shots.y[i] - w.player.y;
-            ddz = w.shots.z[i] - w.player.z;
+            ddx = w.shots.items[i].x - w.player.x;
+            ddy = w.shots.items[i].y - w.player.y;
+            ddz = w.shots.items[i].z - w.player.z;
             if ddx * ddx + ddy * ddy + ddz * ddz < SHOT_HIT_R2 {
                 push_damage(w, SHOT_DAMAGE);
                 gone = True;
@@ -428,19 +392,8 @@ impl tick_shots(w: &mut Game) {
 
 impl tick_sparks(w: &mut Game) {
     i = 0;
-    while i < w.sparks.count {
-        w.sparks.x[i] += w.sparks.vx[i] * TICK_DT;
-        w.sparks.y[i] += w.sparks.vy[i] * TICK_DT;
-        w.sparks.z[i] += w.sparks.vz[i] * TICK_DT;
-        w.sparks.vy[i] -= w.sparks.grav[i] * TICK_DT;
-        if w.sparks.y[i] < 0.05 and w.sparks.grav[i] > 0.0 {
-            w.sparks.y[i] = 0.05;
-            w.sparks.vy[i] = -w.sparks.vy[i] * 0.35;
-            w.sparks.vx[i] = w.sparks.vx[i] * 0.7;
-            w.sparks.vz[i] = w.sparks.vz[i] * 0.7;
-        }
-        w.sparks.life[i] -= TICK_DT;
-        if w.sparks.life[i] <= 0.0 {
+    while i < w.sparks.size() {
+        if w.sparks.items[i].step() {
             remove_spark(w, i);
         } else {
             i += 1;
@@ -464,29 +417,32 @@ impl apply_damage(w: &mut Game, amount: float) {
         w.player.z = SPAWN_Z;
         w.player.prev_x = SPAWN_X;
         w.player.prev_y = SPAWN_Y;
+        w.player.vy = 0.0;
+        w.player.grounded = True;
+        w.cmd.jump = False;
         w.player.prev_z = SPAWN_Z;
     }
 }
 
 impl process_events(w: &mut Game) {
+    swap(&mut w.events, &mut w.processing);
     bi = 0;
-    while bi < w.events.boom_n {
-        bx = w.events.boom_x[bi];
-        `by = w.events.boom_y[bi];
-        bz = w.events.boom_z[bi];
+    while bi < len(w.processing.booms) {
+        bx = w.processing.booms[bi].x;
+        `by = w.processing.booms[bi].y;
+        bz = w.processing.booms[bi].z;
         for ei in range(MAX_ENEMIES) {
-            if w.enemies.alive[ei] == 1 {
-                ddx = w.enemies.x[ei] - bx;
-                ddy = w.enemies.y[ei] - `by;
-                ddz = w.enemies.z[ei] - bz;
+            if w.enemies.items[ei].alive == 1 {
+                ddx = w.enemies.items[ei].x - bx;
+                ddy = w.enemies.items[ei].y - `by;
+                ddz = w.enemies.items[ei].z - bz;
                 if ddx * ddx + ddy * ddy + ddz * ddz < BLAST_R2 {
-                    push_kill(
-                        w,
+                    w.processing.kill(
                         ei,
-                        w.enemies.gen[ei],
-                        w.enemies.x[ei],
-                        w.enemies.y[ei],
-                        w.enemies.z[ei]
+                        w.enemies.items[ei].gen,
+                        w.enemies.items[ei].x,
+                        w.enemies.items[ei].y,
+                        w.enemies.items[ei].z
                     );
                 }
             }
@@ -496,33 +452,33 @@ impl process_events(w: &mut Game) {
         spawn_spark(w, bx, `by, bz, 0.0, 0.6, 0.0, 0.28, 0.9, -0.5, 255, 235, 160);
         bi += 1;
     }
-    w.events.boom_n = 0;
+    w.processing.booms.clear();
 
     ki = 0;
-    while ki < w.events.kill_n {
-        slot = w.events.kill_slot[ki];
-        if w.enemies.alive[slot] == 1
-            and w.enemies.gen[slot] == w.events.kill_gen[ki] {
-            w.enemies.alive[slot] = 0;
-            w.enemies.gen[slot] += 1;
-            w.enemies.respawn_t[slot] = rand_range(&mut w.rng, 1.2, 2.6);
+    while ki < len(w.processing.kills) {
+        slot = w.processing.kills[ki].slot;
+        if w.enemies.items[slot].alive == 1
+            and w.enemies.items[slot].gen == w.processing.kills[ki].gen {
+            w.enemies.items[slot].alive = 0;
+            w.enemies.items[slot].gen += 1;
+            w.enemies.items[slot].respawn_t = rand_range(&mut w.rng, 1.2, 2.6);
             w.stats.score += 1;
-            kx = w.events.kill_x[ki];
-            ky = w.events.kill_y[ki];
-            kz = w.events.kill_z[ki];
+            kx = w.processing.kills[ki].x;
+            ky = w.processing.kills[ki].y;
+            kz = w.processing.kills[ki].z;
             spark_burst(w, kx, ky, kz, 12, 7.0, 235, 90, 60);
             spark_burst(w, kx, ky, kz, 5, 4.0, 255, 210, 110);
         }
         ki += 1;
     }
-    w.events.kill_n = 0;
+    w.processing.kills.clear();
 
     di = 0;
-    while di < w.events.dmg_n {
-        apply_damage(w, w.events.dmg[di]);
+    while di < len(w.processing.damage) {
+        apply_damage(w, w.processing.damage[di]);
         di += 1;
     }
-    w.events.dmg_n = 0;
+    w.processing.damage.clear();
 }
 
 impl sim_tick(w: &mut Game) {
@@ -536,80 +492,28 @@ impl sim_tick(w: &mut Game) {
     process_events(w);
 }
 
-impl world_new -> Game {
-    w: own Game = Game();
+impl world_new -> own Game {
+    w = Game();
     for i in range(MAX_ENEMIES) {
-        w.enemies.x.append(0.0);
-        w.enemies.y.append(0.0);
-        w.enemies.z.append(0.0);
-        w.enemies.prev_x.append(0.0);
-        w.enemies.prev_y.append(0.0);
-        w.enemies.prev_z.append(0.0);
-        w.enemies.base_y.append(0.0);
-        w.enemies.phase.append(0.0);
-        w.enemies.strafe_dir.append(1.0);
-        w.enemies.strafe_t.append(0.0);
-        w.enemies.fire_t.append(0.0);
-        w.enemies.charge.append(0.0);
-        w.enemies.respawn_t.append(0.0);
-        w.enemies.alive.append(0);
-        w.enemies.gen.append(0);
-    }
-    for i in range(MAX_ROCKETS) {
-        w.rockets.x.append(0.0);
-        w.rockets.y.append(0.0);
-        w.rockets.z.append(0.0);
-        w.rockets.prev_x.append(0.0);
-        w.rockets.prev_y.append(0.0);
-        w.rockets.prev_z.append(0.0);
-        w.rockets.vx.append(0.0);
-        w.rockets.vy.append(0.0);
-        w.rockets.vz.append(0.0);
-        w.rockets.life.append(0.0);
-    }
-    for i in range(MAX_SHOTS) {
-        w.shots.x.append(0.0);
-        w.shots.y.append(0.0);
-        w.shots.z.append(0.0);
-        w.shots.prev_x.append(0.0);
-        w.shots.prev_y.append(0.0);
-        w.shots.prev_z.append(0.0);
-        w.shots.vx.append(0.0);
-        w.shots.vy.append(0.0);
-        w.shots.vz.append(0.0);
-        w.shots.life.append(0.0);
-    }
-    for i in range(MAX_SPARKS) {
-        w.sparks.x.append(0.0);
-        w.sparks.y.append(0.0);
-        w.sparks.z.append(0.0);
-        w.sparks.prev_x.append(0.0);
-        w.sparks.prev_y.append(0.0);
-        w.sparks.prev_z.append(0.0);
-        w.sparks.vx.append(0.0);
-        w.sparks.vy.append(0.0);
-        w.sparks.vz.append(0.0);
-        w.sparks.life.append(0.0);
-        w.sparks.fade.append(1.0);
-        w.sparks.size.append(0.1);
-        w.sparks.grav.append(9.0);
-        w.sparks.cr.append(255);
-        w.sparks.cg.append(255);
-        w.sparks.cb.append(255);
-    }
-    for i in range(MAX_EVENTS) {
-        w.events.boom_x.append(0.0);
-        w.events.boom_y.append(0.0);
-        w.events.boom_z.append(0.0);
-        w.events.kill_slot.append(0);
-        w.events.kill_gen.append(0);
-        w.events.kill_x.append(0.0);
-        w.events.kill_y.append(0.0);
-        w.events.kill_z.append(0.0);
-        w.events.dmg.append(0.0);
+        w.enemies.items.append(Enemy());
     }
     for i in range(MAX_ENEMIES) {
         respawn_enemy(&mut w, i);
     }
     return w;
+}
+
+impl Spark.step -> bool {
+    self.x += self.vx * TICK_DT;
+    self.y += self.vy * TICK_DT;
+    self.z += self.vz * TICK_DT;
+    self.vy -= self.grav * TICK_DT;
+    if self.y < 0.05 and self.grav > 0.0 {
+        self.y = 0.05;
+        self.vy = -self.vy * 0.35;
+        self.vx = self.vx * 0.7;
+        self.vz = self.vz * 0.7;
+    }
+    self.life -= TICK_DT;
+    return self.life <= 0.0;
 }

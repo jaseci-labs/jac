@@ -70,11 +70,14 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                         right=es.ConditionalExpression(
                             `test=es.CallExpression(
                                 callee=es.MemberExpression(
-                                    object=es.Identifier(name='props'),
-                                    property=es.Identifier(name='hasOwnProperty'),
+                                    object=es.Identifier(name='Object'),
+                                    property=es.Identifier(name='hasOwn'),
                                     computed=False
                                 ),
-                                arguments=[es.Literal(value=fname)]
+                                arguments=[
+                                    es.Identifier(name='props'),
+                                    es.Literal(value=fname)
+                                ]
                             ),
                             consequent=es.MemberExpression(
                                 object=es.Identifier(name='props'),
@@ -99,11 +102,14 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                         right=es.ConditionalExpression(
                             `test=es.CallExpression(
                                 callee=es.MemberExpression(
-                                    object=es.Identifier(name='props'),
-                                    property=es.Identifier(name='hasOwnProperty'),
+                                    object=es.Identifier(name='Object'),
+                                    property=es.Identifier(name='hasOwn'),
                                     computed=False
                                 ),
-                                arguments=[es.Literal(value='_jac_id')]
+                                arguments=[
+                                    es.Identifier(name='props'),
+                                    es.Literal(value='_jac_id')
+                                ]
                             ),
                             consequent=es.MemberExpression(
                                 object=es.Identifier(name='props'),
@@ -593,13 +599,14 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                                 es.IfStatement(
                                     `test=es.CallExpression(
                                         callee=es.MemberExpression(
-                                            object=es.Identifier(name='props'),
-                                            property=es.Identifier(
-                                                name='hasOwnProperty'
-                                            ),
+                                            object=es.Identifier(name='Object'),
+                                            property=es.Identifier(name='hasOwn'),
                                             computed=False
                                         ),
-                                        arguments=[es.Literal(value='_jac_id')]
+                                        arguments=[
+                                            es.Identifier(name='props'),
+                                            es.Literal(value='_jac_id')
+                                        ]
                                     ),
                                     consequent=es.ExpressionStatement(
                                         expression=es.AssignmentExpression(

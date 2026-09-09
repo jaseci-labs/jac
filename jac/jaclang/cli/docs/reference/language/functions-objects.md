@@ -971,7 +971,7 @@ impl Calculator.multiply {
 
 A single `.jac` module can span all three codespaces -- server, client, and native. There is no per-file spelling for placement: the compiler infers each declaration's codespace from the code itself (JSX and npm imports seed client, extern C declarations seed native, everything else defaults to server), and `[placement.pins]` in `jac.toml` is the override when a decision must be forced. The only compound filename suffixes are the annexes: `.impl.jac` for implementations and `.test.jac` for tests. See [Codespace Model](primitives.md#codespace-model) for the inference rules and [Placement](../placement.md) for pins.
 
-Under `[build] default_codespace = "native"` (the default), the placement solver decides whether a whole anchor-free module can lower natively; a module that prefers native but cannot lower demotes to the server codespace with a note. To force a whole module native, use `jac nacompile`, `jac build --as native`, or `CompileOptions(force_codespace='native')`.
+Under `[placement] default = "native"` (the default), the placement solver decides whether a whole anchor-free module can lower natively; a module that prefers native but cannot lower demotes to the server codespace with a note. To force a whole module native, use `jac build <file> --native` or `CompileOptions(force_codespace='native')`.
 
 #### Native Modules
 

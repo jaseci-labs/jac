@@ -1,4 +1,3 @@
-import from react { useEffect }
 import from core.site.ui.badge { Badge }
 import from core.site.ui.SectionRail { SectionRail }
 import from core.site.landing.Reveal { Reveal }
@@ -32,14 +31,14 @@ glob GROUPS: list[dict] = [
                  {
                      "tag": "apps, same trick",
                      "title": "One import crosses an app boundary",
-                     "body": "The same import that erases the client/server line erases the service line. jac.toml declares this workspace's apps, and core/social_graph.jac is one of them: a file-rooted service app that the web app, the mobile app, and the cli app all consume by importing it. The boundary is structural, so it compiles and type-checks as a cut no matter how it is deployed; the topology is a profile, so it shares one process under jac run and runs as its own process behind the gateway in the fleet. The scorer works the same way: submit a repo on the Ninja Scores page and its breakdown names the process that scored it.",
+                     "body": "The same import that erases the client/server line erases the service line. jac.toml declares this workspace's apps, and core/social_graph.jac is one of them: a file-rooted service app that the web app, the mobile app, and the cli app all consume by importing it. The boundary is structural, so it compiles and type-checks as a cut no matter how it is deployed; the topology is a profile, so it shares one process under jac run and runs as its own process behind the gateway in the fleet. The scorer works the same way: JacYac submits a repository to the scoring service and displays its typed score breakdown. The shared state module below is consumed by both the web and React Native renderers.",
                      "path": "jac.toml",
                      "needle": "[apps.social_graph]",
                      "hl": 3,
                      "before": 2,
                      "after": 8,
-                     "path2": "core/site/socialize/Socialize.jac",
-                     "needle2": "import from core.social_graph {",
+                     "path2": "core/jacyac/state.jac",
+                     "needle2": "    setup_profile,",
                      "hl2": 1,
                      "before2": 1,
                      "after2": 12,
@@ -55,7 +54,7 @@ glob GROUPS: list[dict] = [
                      "before": 1,
                      "after": 12,
                      "path2": "core/site/game/webgl_host.jac",
-                     "needle2": "sh.game = await init()",
+                     "needle2": "game = (await init()) as int;",
                      "hl2": 1,
                      "before2": 4,
                      "after2": 4,
@@ -74,7 +73,7 @@ glob GROUPS: list[dict] = [
                  },
                  {
                      "define": "substrate",
-                     "tag": "cl means client",
+                     "tag": "inferred client",
                      "title": "The highlighter is Jac too",
                      "body": "The syntax coloring in every window on this page happens in your browser, in Jac. Nothing marks this module as client code, and it lives in core/, outside every app; it compiles to JavaScript because client components import it, the same way the game module compiles to wasm. One language, three targets, decided by the edges of the import graph.",
                      "path": "core/jac_tokenizer.jac",
@@ -93,7 +92,7 @@ glob GROUPS: list[dict] = [
              "pre": "",
              "hot": "Topokinetic",
              "post": ": computation moves to the data",
-             "blurb": "The docs and the leaderboard are persistent graphs, and the code that serves them travels: walkers descend, fold, and climb the topology instead of querying it from a distance.",
+             "blurb": "The docs and JacYac projects are persistent graphs, and the code that serves them travels: walkers descend, fold, and climb the topology instead of querying it from a distance.",
              "define": "topokinetic",
              "sections": [
                  {
@@ -102,7 +101,7 @@ glob GROUPS: list[dict] = [
                      "title": "The URL walks a graph",
                      "body": "The docs on this site are not files behind a router; they are nodes in a persistent graph. A walker spawns at the root and descends, and because version and directory nodes share a supertype, one polymorphic ability handles every hop. Whatever the walker lands on becomes the response: the URL is a path through the graph, literally.",
                      "path": "core/docs/graph.jac",
-                     "needle": "can descend with DocContainer entry",
+                     "needle": "walker:pub doc_page {",
                      "hl": 1,
                      "before": 2,
                      "after": 12,
@@ -157,7 +156,7 @@ glob GROUPS: list[dict] = [
                      "title": "The type switch that walked away",
                      "body": "Deriving a page's URL used to be a function with an isinstance ladder inside. Now it is a walker spawned on the node that climbs the Contains edges upward: the type of wherever it lands picks the ability that runs, and the version node's empty ability is the stop condition, because a walker that does not visit simply halts.",
                      "path": "core/docs/graph.jac",
-                     "needle": "can climb_dir with DocDir entry",
+                     "needle": "walker trace_route {",
                      "hl": 1,
                      "before": 8,
                      "after": 10,
@@ -188,9 +187,9 @@ glob GROUPS: list[dict] = [
                  {
                      "tag": "queries are paths",
                      "title": "The lookup is one expression",
-                     "body": "Finding a repo on the leaderboard is not a loop with an if inside. The bracketed edge reference is a small query algebra: direction, edge type, node type, field predicate, one expression. Assign it to a variable and it is a query; hand it to visit and it is an itinerary.",
-                     "path": "core/leaderboard/impl/board.impl.jac",
-                     "needle": "[?:RepoEntry, full==full_name]",
+                     "body": "Importing historical Ninja Scores finds an existing project under its archive profile with one expression. The bracketed edge reference is a small query algebra: direction, edge type, node type, field predicate, one expression. Assign it to a variable and it is a query; hand it to visit and it is an itinerary.",
+                     "path": "core/social_graph.jac",
+                     "needle": "existing = [archive->:Owns:->[?:Project, full==item.full]];",
                      "hl": 1,
                      "before": 2,
                      "after": 6,
@@ -205,34 +204,89 @@ glob GROUPS: list[dict] = [
              "pre": "",
              "hot": "Gradual ownership",
              "post": ": a dial, not a divide",
-             "blurb": "Managed semantics by default, borrow checking adopted one declaration at a time, all the way down to a game loop with no garbage collector and no reference counts.",
+             "blurb": "Owned state, borrowed rendering, and typed entity pools in the game you can play here. The same simulation also validates the compiler's zero-RC memory profile.",
              "define": "borrow",
              "sections": [
                  {
-                     "tag": "ownership",
-                     "title": "Borrow-checked at 60Hz",
-                     "body": "The game's whole world is one owned value, threaded through the simulation as explicit borrows the compiler proves. The hot loop runs with zero garbage collection and zero reference counting: not tuned down, compiled out. The second window is where the borrowing happens: the renderer takes the world as &Game, a read-only loan checked at compile time.",
+                     "tag": "ownership tree",
+                     "title": "One owner, all the way down",
+                     "body": "Game owns the player, entity pools, event buffers, input state, and random generator. Ownership continues through fields and into list elements, so the compiler knows which parent is responsible for each value. The same simulation is tested under managed, RC, and nogc profiles; this website uses managed memory.",
+                     "path": "core/site/game/sim.jac",
+                     "needle": "obj Game {",
+                     "hl": 12,
+                     "before": 0,
+                     "after": 3,
+
+                 },
+                 {
+                     "tag": "borrowed rendering",
+                     "title": "A renderer that can only read",
+                     "body": "RenderView contains shared borrows of just the fields drawing needs. Each frame finishes its simulation updates, builds this local view, and lends it to the renderer. The view cannot become an independent owner or escape the lifetime of the game it borrows.",
+                     "path": "core/site/game/arena.jac",
+                     "needle": "obj RenderView {",
+                     "hl": 9,
+                     "before": 0,
+                     "after": 3,
+
+                 },
+                 {
+                     "tag": "receiver inference",
+                     "title": "Methods say what they change",
+                     "body": "Player.tick updates the player and takes an exclusive borrow of the command state. The compiler infers the mutating receiver from the method body. At the call site, the player and command are separate fields, so their mutable access can coexist without borrowing unrelated game state.",
                      "path": "core/site/game/impl/sim.impl.jac",
-                     "needle": "w: own Game = Game()",
-                     "hl": 1,
-                     "before": 3,
+                     "needle": "impl tick_player(w: &mut Game)",
+                     "hl": 4,
+                     "before": 0,
+                     "after": 3,
+
+                 },
+                 {
+                     "tag": "owned collections",
+                     "title": "Remove an entity by moving it",
+                     "body": "Enemy, projectile, and spark pools store typed owned records. This generic helper pops the final record and moves it into the removed slot when needed. The container releases the replaced value; the code needs no parallel field arrays or hand-written destructor loop.",
+                     "path": "core/site/game/sim.jac",
+                     "needle": "def remove_at[T]",
+                     "hl": 6,
+                     "before": 0,
+                     "after": 6,
+
+                 },
+                 {
+                     "tag": "mutable places",
+                     "title": "Two event buffers, one swap",
+                     "body": "A tick swaps the pending and processing buffers through explicit mutable borrows of disjoint fields. Processing then reads typed explosion and kill records while building effects. Kill records carry slot generations so a stale event cannot score against a replacement enemy.",
+                     "path": "core/site/game/impl/sim.impl.jac",
+                     "needle": "impl process_events(w: &mut Game)",
+                     "hl": 2,
+                     "before": 0,
                      "after": 12,
-                     "path2": "core/site/game/impl/arena.impl.jac",
-                     "needle2": "impl draw_enemies(w: &Game, alpha: float)",
-                     "hl2": 1,
-                     "before2": 1,
-                     "after2": 10,
+
+                 },
+                 {
+                     "tag": "ownership at the boundary",
+                     "title": "Starting returns ownership; stopping consumes it",
+                     "body": "The native API returns an owned Game from init and consumes it in shutdown. In the browser, the Wasm boundary represents that game as an integer handle. Stopping uses take to clear the optional handle before calling shutdown, while session checks keep stale callbacks from stopping a replacement game. That host lifecycle is explicit; the integer is not itself an own Game contract.",
+                     "path": "core/site/game/arena.jac",
+                     "needle": "def init -> own Game;",
+                     "hl": 5,
+                     "before": 0,
+                     "after": 5,
+                     "path2": "core/site/game/webgl_host.jac",
+                     "needle2": "game = take(sh.game);",
+                     "hl2": 4,
+                     "before2": 3,
+                     "after2": 6,
 
                  },
                  {
                      "tag": "determinism",
                      "title": "A sim you could replay",
-                     "body": "Rendering runs at whatever rate your display gives it; the simulation steps at a fixed 60Hz through this accumulator, and frames interpolate between the last two ticks. The sim module makes no platform calls at all, so the same inputs replay the same game, tick for tick.",
+                     "body": "Rendering follows the display while the simulation steps at a fixed 60Hz. The accumulator preserves elapsed time and rendering interpolates between ticks. The simulation owns its seeded random generator and makes no platform calls. Space jumps and left click shoots; input presses remain queued until a simulation tick consumes them.",
                      "path": "core/site/game/impl/arena.impl.jac",
-                     "needle": "while acc >= TICK_DT",
-                     "hl": 3,
+                     "needle": "while w.input.acc >= TICK_DT",
+                     "hl": 4,
                      "before": 6,
-                     "after": 8,
+                     "after": 13,
 
                  },
 
@@ -260,7 +314,7 @@ glob GROUPS: list[dict] = [
                  {
                      "tag": "decl vs impl",
                      "title": "The what and the how, apart",
-                     "body": "Any declaration can push its body into an impl file, and every directory of this site now keeps an impl folder holding its modules' implementations. The first window is the what: a one-line decl inside the component, ending in a semicolon. The second is the how, living in the impl folder next door. The compiler stitches them back together as one unit.",
+                     "body": "Any declaration can push its body into an impl file, and this site uses adjacent impl folders where separating the interface makes the code easier to read. The first window is the what: a one-line decl inside the component, ending in a semicolon. The second is the how, living in the impl folder next door. The compiler stitches them back together as one unit.",
                      "path": "core/site/landing/Showcase.jac",
                      "needle": "async def load_samples -> None;",
                      "hl": 1,
@@ -277,8 +331,8 @@ glob GROUPS: list[dict] = [
                      "tag": "the-kicker-anchor",
                      "title": "This page, reading itself",
                      "body": "Every section above is one entry in a list at the top of this page's own source, and the page is a loop over that list. This window resolved its own entry: the anchor it searched for is the tag printed beside this paragraph. Wait, wuuut.",
-                     "path": "web/pages/wait-wuuut.jac",
-                     "needle": "the-kicker-anchor",
+                     "path": "core/site/landing/WaitWuuut.jac",
+                     "needle": "\"tag\": \"the-kicker-anchor\"",
                      "hl": 1,
                      "before": 6,
                      "after": 10,
@@ -293,7 +347,7 @@ glob GROUPS: list[dict] = [
      ABSENT: list[dict] = [
          {
              "thing": "a database",
-             "why": "The docs and the leaderboard live in a persistent graph. root outlives every request with no schema, no connection string, no setup."
+             "why": "The docs and JacYac projects live in a persistent graph. root outlives every request with no schema, no connection string, no setup."
          },
          {
              "thing": "an ORM or migrations",
@@ -320,8 +374,8 @@ glob GROUPS: list[dict] = [
              "why": "The function signature is the schema. Arguments are typed and checked at the boundary."
          },
          {
-             "thing": "auth or session plumbing",
-             "why": "Every visitor gets an isolated root graph by default; root.shared is the one deliberately shared world."
+             "thing": "hand-written JWT signing",
+             "why": "Jac handles session tokens and per-user roots. Jac Scale provides the OAuth sessions used by GitHub sign-in."
          },
          {
              "thing": "a package.json",
@@ -329,7 +383,7 @@ glob GROUPS: list[dict] = [
          },
          {
              "thing": "webpack or vite config",
-             "why": "Bundling, code splitting, static assets, and the dev server all come out of jac start."
+             "why": "Bundling, code splitting, static assets, and the dev server all come out of jac run."
          },
          {
              "thing": "a wasm toolchain",

@@ -30,7 +30,7 @@ The key distinction: `async/await` multiplexes tasks on one thread (cooperative)
 !!! note
     Async functions must be `await`ed from an async context. A `with entry`
     block is **not** async, so `await` cannot appear there directly -- it fails
-    to compile with `error[E5043]: ... 'await' outside function`. To drive a
+    checking with `error[E2085]: 'await' is only valid inside an 'async' function or ability`. To drive a
     coroutine from `with entry`, hand it to `asyncio.run()`; only use `await`
     inside an `async def`/`async can`:
 
@@ -85,6 +85,8 @@ async walker DataFetcher {
     }
 }
 ```
+
+A plain `walker` with an `async can` entry or exit ability also uses async traversal, including when the ability is inherited. From a synchronous caller with no running event loop, `spawn` completes the traversal before returning. Inside a running event loop, it returns a coroutine: use `await (w spawn node)` or pass the coroutine to `asyncio.gather()`. Exceptions from abilities propagate to the caller.
 
 ### 3 Async For Loops
 

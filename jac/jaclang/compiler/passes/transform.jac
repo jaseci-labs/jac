@@ -7,8 +7,7 @@ import from jaclang.compiler.frontend.diagnostics {
     Severity
 }
 import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
-import from abc { ABC }
-import from jaclang.compiler.frontend.unitree { UniNode }
+import from jaclang.compiler.frontend.unitree { Source, UniNode }
 
 obj Alert {
     has msg: str,
@@ -35,20 +34,31 @@ obj DiagnosticPolicy {
         _inline_cache: dict[(tuple[str, int], list[str])] = {};
 
     def is_suppressed(
-        diag: DiagnosticInfo, loc: (CodeLocInfo | Span | None) = None
+        diag: DiagnosticInfo,
+        loc: (CodeLocInfo | Span | None) = None,
+        source: (Source | None) = None
     ) -> bool;
 
-    def _inline_suppressed(diag: DiagnosticInfo, loc: (CodeLocInfo | Span)) -> bool;
+    def _inline_suppressed(
+        diag: DiagnosticInfo, loc: (CodeLocInfo | Span), source: (Source | None) = None
+    ) -> bool;
 }
 
-obj BaseTransform(ABC) {
+obj PassResult {
+    has errors_had: list[Alert] = [],
+        warnings_had: list[Alert] = [],
+        time_taken: float = 0.0;
+}
+
+walker BaseTransform {
     has ir_in: UniNode,
         cancel_token: any = None,
         cancel_requested: bool = False,
         errors_had: list[Alert] = [],
         warnings_had: list[Alert] = [],
         time_taken: float = 0.0,
-        ir_out: UniNode postinit;
+        ir_out: UniNode postinit,
+        completed: (PassResult | None) = None;
 
     def postinit -> None;
     def timed_transform(ir_in: UniNode) -> UniNode {
@@ -68,7 +78,7 @@ obj BaseTransform(ABC) {
     def is_canceled -> bool;
 }
 
-obj Transform(BaseTransform) {
+walker Transform(BaseTransform) {
     has cur_node: UniNode postinit,
         policy: (DiagnosticPolicy | None) = None;
 
@@ -82,7 +92,7 @@ obj Transform(BaseTransform) {
         node_override: (UniNode | None) = None,
         related: (list[tuple[str, UniNode]] | None) = None,
         help_text: (str | None) = None,
-        **kwargs: any
+        **kwargs: object
     ) -> bool;
 
     def _is_suppressed(diag: DiagnosticInfo, loc: CodeLocInfo | None = None) -> bool;

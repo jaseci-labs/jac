@@ -548,7 +548,9 @@ impl PyastBuildPass.proc_slice(nd: py_ast.Slice) -> IndexSlice {
     }
 }
 
-impl PyastBuildPass._proc_compr(nd: py_ast.AST, compr_cls: type) -> UniNode {
+impl PyastBuildPass._proc_compr(
+    nd: PyComprehensionNode, compr_cls: type[ComprT]
+) -> ComprT {
     elt = self.convert(nd.elt);
     generators = [self.convert(gen) for gen in nd.generators];
     valid = [

@@ -1,6 +1,6 @@
 # One Binary, Build Anything
 
-Jac ships as a single native binary. One download gives you a complete polyglot development environment -- no system Python, no Node.js, no C toolchain, no package manager to install first. Everything is bundled.
+Jac distributes its core compiler and development tools through a native binary. The bundled runtimes cover the standard Jac workflow; project dependencies, model weights, and platform-specific build tools may require additional downloads or setup.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
@@ -10,15 +10,7 @@ That's it. You now have a compiler, a runtime, a package manager, a server, a bu
 
 ## The toolchain is the hidden tier
 
-The fragmentation that [Why Jac Exists](why-jac.md) counts does not stop at
-the program text. The toolchain is a substrate of its own: interpreter,
-bundler, compilers, linker, package managers, server, and deployer, each
-separately installed and separately versioned. Version skew between them is a
-*discontinuity* in time, the same marshaling failure with the filesystem as
-the wire format, and "works on my machine" is its error message. The `jac`
-binary dissolves this boundary the way the language dissolves the others: by
-internalizing the whole toolchain under one content-addressed version. The
-version vector of your toolchain collapses to length one.
+A shared distribution reduces the number of core tools developers install and version separately. It does not eliminate dependency management: record application dependencies in `jac.toml`, retain the lockfile, and check the requirements for your build target. Deployment credentials and external services remain part of the environment.
 
 ## One compiler for the whole application: the polypiler
 
@@ -39,7 +31,7 @@ maintain: they are compiler output, owned and re-derived on every build.
 |---|---|---|
 | **CPython 3.14** | System Python, pyenv, venvs | Bundled -- runs your `.jac` files and PyPI imports |
 | **Bun** | Node.js, npm, npx | Bundled -- compiles `.jac` to JS, manages npm deps |
-| **LLVM + Zig linker** | gcc, clang, make, cmake | Bundled -- `jac build --as native` produces native binaries |
+| **LLVM + Zig linker** | gcc, clang, make, cmake | Bundled -- `jac build <file> --native` produces native binaries |
 | **Package manager** | pip, npm, pipx | `jac install` for PyPI and npm |
 | **REST server** | Flask, FastAPI, Express | `jac run` -- walkers become API endpoints |
 | **Kubernetes deployer** | Docker + kubectl + Helm | `jac scale deploy` -- one-command K8s deployment |
@@ -52,7 +44,7 @@ maintain: they are compiler output, owned and re-derived on every build.
 
 ## Two Scopes for Dependencies
 
-Jac has exactly two places dependencies can live. No more "is this in my venv or system Python?" confusion.
+Jac distinguishes project dependencies from globally installed Python tools. Use project scope for dependencies required to build or run an application.
 
 ### Project scope (default)
 
@@ -139,7 +131,7 @@ For machines with nothing installed at all -- no Jac, no Python, no Node -- proj
 jac build --as binary      # -> one executable, full runtime included
 ```
 
-And when your program fits the restricted `na` subset, `jac build --as native` compiles it through LLVM into a small, dependency-free binary instead. See [`jac build`](../reference/cli/index.md#jac-build) for all artifact projections and the binary-vs-native trade-off.
+And when your program fits the restricted `na` subset, `jac build <file> --native` compiles it through LLVM into a small, dependency-free binary instead. See [`jac build`](../reference/cli/index.md#jac-build) for all artifact projections and the binary-vs-native trade-off.
 
 ## How It Works
 

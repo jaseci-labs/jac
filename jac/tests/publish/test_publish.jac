@@ -675,8 +675,7 @@ test "WheelBuilder skips client codespace files with a record" {
         pkg = proj / "mypkg";
         pkg.mkdir();
         (pkg / "core.jac").write_text("def go() -> int {\n    return 1;\n}\n");
-        (pkg / "view.jac").write_text("def View() -> None {}\n");
-        (proj / "jac.toml").write_text('[placement.pins]\n"mypkg.view" = "client"\n');
+        (pkg / "view.jac").write_text("def View() -> JsxElement { return <div />; }\n");
         cfg = pkg_config_with_include(proj, "mypkg");
         builder = WheelBuilder(config=cfg, project_root=proj);
         data = builder.build();

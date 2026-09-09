@@ -1,24 +1,26 @@
 import from core.site.ui.badge { Badge }
 import from core.site.ui.button { Button }
 import from .Reveal { Reveal }
-import from react { useEffect }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { GameController01Icon, PlayIcon }
 
 def:pub WasmGame -> JsxElement {
     has launched: bool = False,
         canvasRef: Ref[HTMLCanvasElement] = Ref(),
-        stopRef: Ref[any] = Ref();
+        scoreRef: Ref[HTMLElement] = Ref(),
+        hpRef: Ref[HTMLElement] = Ref(),
+        deathsRef: Ref[HTMLElement] = Ref(),
+        fpsRef: Ref[HTMLElement] = Ref(),
+        stopRef: Ref[Callable[[], None]] = Ref();
 
     def launch(_e: MouseEvent);
 
-    useEffect(
-        lambda { return lambda { if stopRef.current {
+    can with exit {
+        if stopRef.current {
             stopRef.current();
             stopRef.current = None;
-        }}; },
-        []
-    );
+        }
+    }
 
     return
         <section
@@ -34,7 +36,7 @@ def:pub WasmGame -> JsxElement {
                         <h2
                             className="text-balance text-3xl font-bold tracking-tight sm:text-4xl"
                         >
-                            This entire experience is one Jac program.
+                            This experience is one Jac program becoming 6 distinct apps.
                         </h2>
                         <p className="mt-4 text-balance text-lg text-muted-foreground">
                             Frontend (codegen to JS in your browser), Backend (codegen to Python on the server), and this game (same codegen backend Rust, Zig, C &amp; C++ use). Jac is{" "}
@@ -84,21 +86,15 @@ def:pub WasmGame -> JsxElement {
                                     style={{"textShadow": "0 1px 2px #000"}}
                                 >
                                     hp{" "}
-                                    <b id="game-hud-hp" className="text-primary">100</b>
+                                    <b ref={hpRef} className="text-primary">100</b>
                                     {" · "}
                                     kills{" "}
-                                    <b id="game-hud-score" className="text-primary">
-                                        0
-                                    </b>
+                                    <b ref={scoreRef} className="text-primary">0</b>
                                     {" · "}
                                     deaths{" "}
-                                    <b id="game-hud-deaths" className="text-primary">
-                                        0
-                                    </b>
+                                    <b ref={deathsRef} className="text-primary">0</b>
                                     {" · "}
-                                    <b id="game-hud-fps" className="text-primary">
-                                        0
-                                    </b>{" "}
+                                    <b ref={fpsRef} className="text-primary">0</b>{" "}
                                     fps
                                 </div>
                                 {if not launched {
@@ -142,7 +138,7 @@ def:pub WasmGame -> JsxElement {
                             <b className="text-foreground">WASD</b>{" "}
                             move · mouse / arrows aim ·{" "}
                             <b className="text-foreground">Space</b>{" "}
-                            fire ·{" "}
+                            jump · left click fire ·{" "}
                             <b className="text-foreground">Tab</b>{" "}
                             /{" "}
                             <b className="text-foreground">Esc</b>{" "}

@@ -38,6 +38,51 @@ test "unpack of tuple[Any, ...] adds without per-op overload errors" {
     assert errors == [] , errors;
 }
 
+test "variadic tuple iteration preserves its declared element type" {
+    errors = check_src(
+        """
+obj Entry { has module: str; }
+def paths(entries: tuple[Entry, ...]) -> list[str] {
+    result: list[str] = [];
+    for item in entries {
+        result.append(item.module.replace(".", "/") + ".jac");
+    }
+    return result;
+}
+"""
+    );
+    assert errors == [] , errors;
+}
+
+test "variadic tuple iteration still rejects incompatible element uses" {
+    errors = check_src(
+        """
+def invalid(values: tuple[str, ...]) -> None {
+    for value in values {
+        number: int = value;
+    }
+}
+"""
+    );
+    assert errors;
+}
+
+test "tuple union destructuring preserves each element position" {
+    errors = check_src(
+        """
+obj Left { has name: str; }
+obj Right { has name: str; }
+def takes(name: str, count: int) -> None {}
+def inspect_pairs(left: Left, right: Right) -> None {
+    for (item, count) in ((left, 3), (right, 5)) {
+        takes(item.name, count);
+    }
+}
+"""
+    );
+    assert errors == [] , errors;
+}
+
 test "annotated tuple returns flow through int params and int slots" {
     src = "def rd(b: bytes, o: int) -> tuple[int, int] {\n"
     "    return (b[o], o + 1);\n"

@@ -490,44 +490,19 @@ def _write_cache_atomic(cache_file: Path, payload: bytes) {
 def _fetch_verified_asset(
     url: str, checksum_url: str, cache_file: Path, what: str
 ) -> bytes {
-    want = "";
-    if checksum_url {
-        parts = _http_get_bytes(checksum_url).decode("utf-8").split();
-        if not parts {
-            raise RuntimeError(
-                f"Checksum file at {checksum_url} is empty or malformed; "
-                f"cannot verify the download."
-            );
-        }
-        want = parts[0].strip().lower();
-        if cache_file.is_file() {
-            cached_bytes: bytes | None = None;
-            try {
-                cached_bytes = cache_file.read_bytes();
-            } except OSError {}
-            if cached_bytes is not None
-                and hashlib.sha256(cached_bytes).hexdigest() == want {
-                logger.info(f"Using the cached {what} (checksum match).");
-                return cached_bytes;
-            }
-        }
+    import from jaclang.toolchains.store { Artifact, fetch }
+    if not checksum_url {
+        raise RuntimeError(
+            f"No checksum is available for {what}; refusing an unverified download."
+        );
     }
-    payload = _http_get_bytes(url);
-    if want {
-        got = hashlib.sha256(payload).hexdigest();
-        if got != want {
-            raise RuntimeError(
-                f"Checksum mismatch for the downloaded {what} "
-                f"(expected {want}, got {got}); refusing to ship it."
-            );
-        }
-        try {
-            _write_cache_atomic(cache_file, payload);
-        } except Exception as e {
-            logger.warning(f"Could not cache the downloaded {what} ({e}).");
-        }
+    parts = _http_get_bytes(checksum_url).decode("utf-8").split();
+    if not parts {
+        raise RuntimeError(f"Checksum file at {checksum_url} is empty or malformed.");
     }
-    return payload;
+    digest = parts[0].strip().lower();
+    artifact = Artifact("jac-deployment", digest, "asset", url, digest);
+    return fetch(artifact, cache_file).read_bytes();
 }
 
 

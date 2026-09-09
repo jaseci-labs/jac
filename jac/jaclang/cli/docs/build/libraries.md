@@ -81,9 +81,9 @@ def:pub point_sum(p: Point) -> int { return p.x + p.y; }
 ```
 
 ```bash
-jac nacompile mathlib.jac --shared                    # → ./libmathlib.so
-jac nacompile mathlib.jac --shared --target macos     # → ./libmathlib.dylib
-jac nacompile mathlib.jac --shared --target windows   # → ./libmathlib.dll
+jac build --native mathlib.jac --lib                    # → ./libmathlib.so
+jac build --native mathlib.jac --lib --target macos     # → ./libmathlib.dylib
+jac build --native mathlib.jac --lib --target windows   # → ./libmathlib.dll
 ```
 
 Load it like any other shared library -- here from Python via `ctypes`:

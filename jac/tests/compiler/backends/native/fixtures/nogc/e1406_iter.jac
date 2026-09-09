@@ -1,4 +1,4 @@
-"""Must-fail under --enforce-nogc: iter() retains a raw collection reference (E1406)."""
+"""Must-fail under --memory nogc: iter() retains a raw collection reference (E1406)."""
 
 glob data = [1, 2, 3],
      it = iter(data);

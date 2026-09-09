@@ -415,6 +415,12 @@ def get_type_of_binary_operation(
 
     if isinstance(expr.op, (ConnectOp, DisconnectOp)) {
         def is_node_type_instance(t: TypeBase) -> bool {
+            if isinstance(t, TypeVarType) and t.bound is not None {
+                bound = t.bound.clone_as_instance()
+                    if isinstance(t.bound, ClassType)
+                    else t.bound;
+                return is_node_type_instance(bound);
+            }
             if isinstance(t, ClassType) and t.is_node_type() and t.is_instance() {
                 return True;
             }
@@ -452,7 +458,13 @@ def get_type_of_binary_operation(
                 and t.is_builtin()
                 and t.shared.class_name == "list" {
                 if t.private.type_args and len(t.private.type_args) > 0 {
-                    return is_valid_node_operand(t.private.type_args[0]);
+                    elem = t.private.type_args[0];
+                    members = elem.types if isinstance(elem, UnionType) else [elem];
+                    return all(
+                        m.is_any_type()
+                            or isinstance(m, UnknownType)
+                            or is_node_type_instance(m) for m in members
+                    );
                 }
 
                 return False;
@@ -481,7 +493,9 @@ def get_type_of_binary_operation(
             ) {
                 if (t.private.type_args is not None and len(t.private.type_args) > 0) {
                     elem_type = t.private.type_args[0];
-                    if is_valid_node_operand(elem_type) {
+                    if elem_type.is_any_type()
+                        or isinstance(elem_type, UnknownType)
+                        or is_node_type_instance(elem_type) {
                         return True;
                     }
                 }
@@ -560,7 +574,17 @@ def get_type_of_binary_operation(
                 }
             }
 
-            return right_type;
+            if expr.op.capture_edges and evaluator.prefetch.list_class {
+                edge_type = evaluator._get_class_from_module(
+                    evaluator.jac_builtins_module, "Edge"
+                );
+                if edge_type is not None {
+                    result = evaluator.prefetch.list_class.clone_as_instance();
+                    result.private.type_args = [edge_type.clone_as_instance()];
+                    return result;
+                }
+            }
+            return left_type if expr.op.edge_dir.value == 1 else right_type;
         }
         if isinstance(expr.op, DisconnectOp) {
             fcond = expr.op.edge_spec.filter_cond;

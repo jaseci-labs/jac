@@ -2,8 +2,8 @@
 
 The JIT tests exercise each dict operation in-process (default compile
 options), pinpointing the failing operation via per-function sentinels.
-The GC-matrix tests AOT-compile the same fixture with `--gc rc`,
-`--gc cycles`, `--gc none`, and headerless `--gc none --enforce-nogc`
+The GC-matrix tests AOT-compile the same fixture with `--memory rc`,
+`--memory managed`, `--memory nogc`, and headerless `--memory nogc`
 (the mode whose dict drop path must walk ctrl-occupied slots instead of
 densely freeing uninitialized key slots), then run the binary and expect
 a clean exit: the fixture asserts internally and prints OK.
@@ -72,7 +72,7 @@ test "dict f64 keys hash and compare" {
 def _run_fixture_with_gc(extra_flags: list[str], tag: str) {
     src = os.path.join(FIXTURES, PROG);
     out_bin = os.path.join(tempfile.mkdtemp(), f"dict_hash_ops_{tag}.bin");
-    cmd = [sys.executable, "-m", "jaclang", "nacompile", src];
+    cmd = [sys.executable, "-m", "jaclang", "build", "--native", src];
     cmd += extra_flags;
     cmd += ["-o", out_bin];
     comp = subprocess.run(cmd, capture_output=True, text=True, timeout=300);
@@ -85,19 +85,19 @@ def _run_fixture_with_gc(extra_flags: list[str], tag: str) {
     assert proc.stdout.strip() == "OK dict_hash_ops" , f"unexpected output under {tag}: {proc.stdout.strip()!r}";
 }
 
-test "dict ops pass under --gc rc" {
-    _run_fixture_with_gc(["--gc", "rc"], "rc");
+test "dict ops pass under --memory rc" {
+    _run_fixture_with_gc(["--memory", "rc"], "rc");
 }
 
-test "dict ops pass under --gc cycles" {
-    _run_fixture_with_gc(["--gc", "cycles"], "cycles");
+test "dict ops pass under --memory managed" {
+    _run_fixture_with_gc(["--memory", "managed"], "cycles");
 }
 
-test "dict ops pass under --gc none" {
-    _run_fixture_with_gc(["--gc", "none"], "none");
+test "dict ops pass under --memory nogc" {
+    _run_fixture_with_gc(["--memory", "nogc"], "none");
 }
 
-test "dict ops pass under headerless --gc none --enforce-nogc" {
+test "dict ops pass under headerless --memory nogc" {
     # Dedicated ownership-dialect fixture: the scope-exit drop must walk
     # ctrl-occupied slots only (a dense keys[0..len) drop frees garbage from
     # uninitialized slots), and popitem must survive the pop freeing the
@@ -109,11 +109,11 @@ test "dict ops pass under headerless --gc none --enforce-nogc" {
             sys.executable,
             "-m",
             "jaclang",
-            "nacompile",
+            "build",
+            "--native",
             src,
-            "--gc",
-            "none",
-            "--enforce-nogc",
+            "--memory",
+            "nogc",
             "-o",
             out_bin
         ],

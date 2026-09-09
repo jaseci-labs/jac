@@ -61,7 +61,7 @@ impl NaIRGenPass._emit_os_environ_call(
         null_end = self.builder.block;
 
         self.builder.position_at_end(ok_bb);
-        copied = self._rc_strdup(cur, name="environ.pop.str");
+        copied = self._rc_strdup(cur, name="environ.pop.str", raw=True);
         unset_fn = self._get_or_declare_extern("unsetenv", i32, [i8p]);
         self.builder.call(unset_fn, [nameval], name="environ.pop.unset");
         self.builder.branch(merge_bb);
@@ -97,7 +97,7 @@ impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None)
         );
         fn = self._get_or_declare_extern("getcwd", i8p, [i8p, i64]);
         self.builder.call(fn, [bufp, ir.Constant(i64, 4096)], name="os.getcwd");
-        return self._rc_strdup(bufp, name="os.cwd.str");
+        return self._rc_strdup(bufp, name="os.cwd.str", raw=True);
     }
 
     if name == "getenv" {
@@ -134,7 +134,7 @@ impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None)
         self.builder.branch(merge_bb);
         null_end = self.builder.block;
         self.builder.position_at_end(ok_bb);
-        copied = self._rc_strdup(val, name="os.getenv.str");
+        copied = self._rc_strdup(val, name="os.getenv.str", raw=True);
         self.builder.branch(merge_bb);
         ok_end = self.builder.block;
         self.builder.position_at_end(merge_bb);
@@ -333,7 +333,7 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
 
         after = self.builder.gep(hit, [ir.Constant(i64, 1)], name="bn.after");
         start = self.builder.select(is_null, p, after, name="bn.start");
-        return self._rc_strdup(start, name="bn.str");
+        return self._rc_strdup(start, name="bn.str", raw=True);
     }
 
     if name == "dirname" and params {
@@ -397,11 +397,11 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
         );
         self.builder.cbranch(is_null, null_bb, ok_bb);
         self.builder.position_at_end(null_bb);
-        fallback = self._rc_strdup(p, name="rp.fallback");
+        fallback = self._rc_strdup(p, name="rp.fallback", raw=True);
         self.builder.branch(merge_bb);
         null_end = self.builder.block;
         self.builder.position_at_end(ok_bb);
-        resolved = self._rc_strdup(bufp, name="rp.str");
+        resolved = self._rc_strdup(bufp, name="rp.str", raw=True);
         self.builder.branch(merge_bb);
         ok_end = self.builder.block;
         self.builder.position_at_end(merge_bb);

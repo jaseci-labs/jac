@@ -5,17 +5,17 @@ import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pass_driver { run_pass }
 import from jaclang.testing.test { parametrize }
 
-glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures"),
-     CHECKER_FIXTURES = os.path.join(
+glob FIXTURES: str = os.path.join(
+         JAC_ROOT, "tests", "compiler", "passes", "fixtures"
+     ),
+     CHECKER_FIXTURES: str = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "checker"
      ),
-     LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+     LANG_FIXTURES: str = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      NO_TC = CompileOptions(default_codespace='server');
 
 def assert_error_pretty_found(needle: str, haystack: str) {
@@ -3232,6 +3232,16 @@ test "generic_call_inference" {
     assert "Cannot assign Item to int" in errors_str;
 }
 
+test "tuple iterable inference includes every position" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_tuple_iterable_inference.jac");
+    program.compile(path, options=NO_TC);
+    errors = "\n".join(error.pretty_print() for error in program.errors_had);
+    assert len(program.errors_had) == 2 , errors;
+    assert "bad_forward" in errors , errors;
+    assert "bad_reverse" in errors , errors;
+}
+
 """Test bidirectional type inference for container literals and type[X] covariance."""
 test "bidirectional_container_inference" {
     program = JacProgram();
@@ -3849,20 +3859,9 @@ test "root_cause_9_any_in_union" {
         for e in program.errors_had
         if e.loc and 396 <= e.loc.first_line <= 415
     ];
-    # 1 error. The any-in-union attr-access bug is fixed (#7158): `any`
-    # absorbs, so no E1099 "missing from any" is emitted here.
-    #
-    # This was 2 while the fixture spelled the union member `Any` without
-    # importing it: an unbound name made the whole union Unknown, so
-    # `edge.__jac__` errored for a reason that had nothing to do with union
-    # handling. Spelling it `any` lets the absorb actually run, and that
-    # error is gone. What remains is one E1053 in fail_any_in_union_method:
-    # `(any | str).upper()` yields Unknown rather than `str | any`, so it
-    # cannot pass as Sized -- a real remaining gap, which is what this
-    # fixture exists to pin.
-    assert len(rc9_errors) == 1 , f"Expected 1 any-in-union error, got {len(
-        rc9_errors
-    )}:\n"
+    # Both member lookup and calls preserve the Any alternative. The known
+    # str branch returns str from upper(), so len(val.upper()) is valid.
+    assert not rc9_errors , "Unexpected any-in-union errors:\n"
         + "\n---\n".join(e.pretty_print() for e in rc9_errors);
 }
 
@@ -3951,29 +3950,16 @@ test "root_causes_total_error_count" {
         options=NO_TC
     );
 
-    # 24 errors located in the fixture itself (the count is scoped to the
-    # fixture file: stub-evaluation diagnostics such as typeshed E0075 are
-    # attributed to whichever program first evaluates the stub classes, so
-    # an unscoped count is process-order-dependent). Down from 25: Root
-    # Cause 9's union member is spelled `any` now instead of an `Any` the
-    # fixture never imported, so the union absorbs instead of collapsing to
-    # Unknown and one error there is gone (see root_cause_9_any_in_union).
-    # 25 was down from 29: dotted stdlib submodules (`importlib.util`)
-    # resolve through ModuleType attribute access, removing the
-    # `.util`-on-Unknown errors from the Root Cause 6 corpus. Before that,
-    # 29 was down from 35: partial union member access returning resolved
-    # types instead of Unknown eliminated 6 cascading errors.
+    # Scope the count to this fixture: diagnostics from lazy stub evaluation
+    # depend on which program first evaluates the imported classes.
     _fixture_errors = [
         e
         for e in program.errors_had
         if e.loc and str(e.loc.mod_path).endswith("checker_narrowing_root_causes.jac")
     ];
-    # Down from 24 to 14: Root Cause 6's spec_from_file_location chain
-    # types as `ModuleSpec | None` now that aliased stub re-exports are
-    # followed, so its ten Unknown cascades are gone; the member-miss fix
-    # (inherited object.__getattribute__ no longer resolves every miss to
-    # Any) restored the E1030s the dynamic-attr root causes always expected.
-    assert len(_fixture_errors) == 14 , f"Expected 14 fixture errors, got {len(
+    # Union member calls now preserve Any, removing Root Cause 9's last
+    # spurious error. The remaining negative cases still emit 13 errors.
+    assert len(_fixture_errors) == 13 , f"Expected 13 fixture errors, got {len(
         _fixture_errors
     )}:\n"
         + "\n---\n".join(e.pretty_print() for e in _fixture_errors);
@@ -4133,23 +4119,70 @@ test "jsx_step2_handler_aliases" {
         + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
 
+def _jsx_msgs(program: JacProgram, code: str) -> list {
+    return sorted(
+        [
+            d.msg
+            for d in program.errors_had + program.warnings_had
+            if d.code and d.code.code == code
+        ]
+    );
+}
+
 test "jsx_step3_jsx_prop_check" {
     path = os.path.join(CHECKER_FIXTURES, "checker_jsx_step3_jsx_prop_check.jac");
     program = JacProgram();
     mod = program.compile(path, options=NO_TC);
+    all_diags = "\n---\n".join(
+        d.pretty_print() for d in program.errors_had + program.warnings_had
+    );
 
-    e1100_errors = [
-        e
-        for e in program.errors_had
-        if e.code and e.code.code == "E1100"
-    ];
-    assert len(e1100_errors) >= 1 , f"Expected E1100 for JSX prop type mismatch, got {len(
-        e1100_errors
-    )} E1100 errors. All errors:\n"
-        + "\n---\n".join(
-            f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
-            for err in program.errors_had
-        );
+    assert len(_jsx_msgs(program, "E1100")) >= 1 , f"Expected E1100 for the onClick type mismatch:\n{all_diags}";
+
+    # A call site passing no attribute and a zero-parameter component are
+    # checked like any other; nested content counts as `children`, a comment
+    # does not.
+    e1102 = _jsx_msgs(program, "E1102");
+    assert len(e1102) == 3 , f"Expected 3 E1102 (Plain 'title', Card 'children' twice):\n{all_diags}";
+    assert len(
+        [
+            m
+            for m in e1102
+            if "prop 'title'" in m
+        ]
+    )
+        == 1 , f"Expected one E1102 naming 'title':\n{all_diags}";
+    assert len(
+        [
+            m
+            for m in e1102
+            if "prop 'children'" in m
+        ]
+    )
+        == 2 , f"Expected two E1102 naming 'children':\n{all_diags}";
+    e1101 = _jsx_msgs(program, "E1101");
+    assert len(e1101) == 1 and "bogus" in e1101[0] , f"Expected exactly 1 E1101 (Zero 'bogus'):\n{all_diags}";
+
+    # Children handed to a component that declares none are dropped by the
+    # codegen, so the call site is warned.
+    w1053 = _jsx_msgs(program, "W1053");
+    assert len(w1053) == 2 , f"Expected 2 W1053 (Plain, Zero):\n{all_diags}";
+    assert len(
+        [
+            m
+            for m in w1053
+            if "Component 'Plain'" in m
+        ]
+    )
+        == 1 , f"Expected W1053 on 'Plain':\n{all_diags}";
+    assert len(
+        [
+            m
+            for m in w1053
+            if "Component 'Zero'" in m
+        ]
+    )
+        == 1 , f"Expected W1053 on 'Zero':\n{all_diags}";
 }
 
 test "jsx_step4_lambda_inference" {
@@ -4290,6 +4323,16 @@ test "jsx_props_bag_untyped_and_typed" {
     assert "UntypedComp" in w1052[0].pretty_print() , f"Expected W1052 for 'UntypedComp', got: {w1052[
         0
     ].pretty_print()}";
+
+    # A `props` bundle beside another parameter has no valid lowering: E1109
+    # fires once, on MixedComp.
+    e1109 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1109"
+    ];
+    assert len(e1109) == 1 and "MixedComp" in e1109[0].pretty_print() , f"Expected exactly 1 E1109 (MixedComp), got:\n"
+        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
 test "jsx_intrinsic_tag_names_do_not_emit_w1051" {
@@ -5199,4 +5242,20 @@ test "match_wildcard_no_warning_noise" {
     assert not noise , (
         "case _ must not draw warning noise; got: " + str([str(w) for w in noise])
     );
+}
+
+test "client cleanup returns only warn when ignored" {
+    program = JacProgram();
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_client_effect_returns.jac"),
+        options=NO_TC
+    );
+    assert not program.errors_had , str(program.errors_had);
+    ignored = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W2014"
+    ];
+    assert len(ignored) == 2 , str(ignored);
+    assert [w.loc.first_line for w in ignored] == [7, 10];
 }

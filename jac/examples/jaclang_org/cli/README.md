@@ -80,7 +80,7 @@ signed-in user.
 | `commands/score.jac` | The offline scorer: `parse_repo_ref`, `score_repo` (the exact pipeline `core/scoring_service.jac` runs), `as_dict`, `render`, `run_score` |
 | `commands/docs.jac` | `run_docs`: bridges to `docs_sync_tick` / `docs_status` (owned by `web`) |
 | `commands/feed.jac` | `run_feed`, `run_post`: bridges to the `social_graph` walkers; `FeedLine` is the CLI's own view of a reported tweet |
-| `commands/common.jac` | Exit codes, `explain_bridge_error` (one place that turns the `BridgeError` family into a code and a hint), and the `str_field` / `int_field` / `list_field` readers that accept a rehydrated object or a wire dict alike |
+| `commands/common.jac` | Exit codes and `explain_bridge_error`; endpoint consumers use declared record fields |
 
 ## Tests
 

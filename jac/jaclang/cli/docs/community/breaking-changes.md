@@ -7,6 +7,29 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Memory profile: `[memory]`, `jac build --native`, and `jac explain` replace `jac nacompile`, `--gc`, `[gc]`, `[build.native]` and the compile-time `JAC_*` variables
+
+The memory axis is one declaration of intent. `[memory] profile = "managed" | "rc" | "nogc"` replaces `[gc] default`; `[memory] enforce` / `exempt` replace `[gc.enforce] modules` / `grandfathered`; `[native] target / opt / debug / threads` replace `[build.native]`; `[placement] default` replaces `[build] default_codespace`. `jac nacompile` is gone: `jac build <file> --native` compiles one self-contained artifact (a binary when the module has `with entry`, a C-ABI library otherwise; `--lib` forces the library), with `--memory`, `--target-triple` and `--debug` as its only knobs. Invariants are no longer flags: `--assert-no-rc` is always on under `nogc`, `--strict` is a property of every native artifact, `--scrub` is `jac clean --cache`. No compile-time environment variable sets behavior; a built binary reads only `JAC_GC=off` and `JAC_THREADS`, and the cycle collector runs by default under `managed`. `jac explain memory | placement | ir` replaces `JAC_RC_STATS`, `JAC_NOGC_DEBUG`, `JAC_NA_DEBUG`-style output, `jac check --placements`, and `JAC_DUMP_IR` / `JAC_DEBUG_IR` / `JAC_SYMMAP`.
+
+| Old | New |
+|---|---|
+| `jac nacompile file.jac` | `jac build file.jac --native` |
+| `--gc cycles / rc / none` | `--memory managed / rc / nogc` |
+| `--enforce-nogc`, `--assert-no-rc`, `--strict` | implied by `nogc`; invariants of every native artifact |
+| `--shared` | inferred from the absence of `with entry`; `--lib` to force |
+| `-t`, `JAC_NATIVE_TARGET`, `[build.native] target` | `--target-triple`, `[native] target` |
+| `-g`, `JAC_NATIVE_DEBUG`, `JAC_RC_DEBUG_CODEGEN`, `[build.native] debug`, `rc_debug_codegen` | `--debug`, `[native] debug` |
+| `--scrub` | `jac clean --cache` |
+| `JAC_OPT_LEVEL`, `[build.native] opt_level` | `[native] opt` |
+| `[gc] default`, `[gc.enforce] modules / grandfathered` | `[memory] profile / enforce / exempt` |
+| `[build] default_codespace` | `[placement] default` |
+| `JAC_RC_STATS`, `JAC_NOGC_DEBUG` | `jac explain memory` |
+| `JAC_DUMP_IR`, `JAC_DEBUG_IR`, `JAC_SYMMAP`, `[build.native] dump_ir` | `jac explain ir` |
+| `JAC_NO_GC`, `JAC_GC_CYCLES` | run time only: `JAC_GC=off`; collection on by default |
+| `JAC_FLOW_THREADS` | `[native] threads`, run-time override `JAC_THREADS` |
+
+---
+
 ### Workspaces: `[apps]` replaces `[scale.microservices]`, `client` / `client_kind`, `base_route_app`, `--client` and `JAC_ENV`; Capacitor is deleted ([#8823](https://github.com/jaseci-labs/jac/issues/8823), unreleased)
 
 A project is now a set of **apps** over shared code. Each app is an `[apps.<name>]` table in `jac.toml` with a `kind`, an optional directory `path` (or a file `entry-point` for a file-rooted app), a `platform` and a `route`; everything under no app root is shared. The kind decides the client: `web-app`, `web-static` and `desktop` render the DOM, `mobile` is a React Native mobUI app, and `--platform` is the only per-run override. The app boundary is structural -- it always compiles and type-checks as a cut -- and where the apps run is profile: `jac run <app>` colocates the workspace's service apps in one process, `--fleet` (or `[scale.gateway] colocate = false`) runs them as separate local processes, and `jac scale deploy` always deploys a fleet. A project with no `[apps]` table is one implicit app and its `jac.toml` is unchanged, except that the `mobile` kind names the React Native mobUI app and the Capacitor web-view shell no longer exists. Full reference: [Workspaces & Apps](../reference/apps.md).

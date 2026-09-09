@@ -369,7 +369,18 @@ impl JacWalker.`spawn(
         }
     }
     if warch.__jac_async__ {
-        return JacRuntimeInterface.async_spawn_call(`walker=`walker, nd=loc);
+        import asyncio;
+        import from typing { cast }
+        task = cast(
+            Coroutine[any, any, WalkerArchetype],
+            JacRuntimeInterface.async_spawn_call(`walker=`walker, nd=loc)
+        );
+        try {
+            asyncio.get_running_loop();
+        } except RuntimeError {
+            return asyncio.run(task);
+        }
+        return task;
     }
     return JacRuntimeInterface.spawn_call(`walker=`walker, nd=loc);
 }
@@ -633,68 +644,13 @@ impl JacArchetype.make_archetype(cls: type[Archetype]) -> type[Archetype] {
         setattr(
             cls,
             'reports',
-            dataclasses.field(
-                default_factory=`list, init=False, repr=False, compare=False
-            )
+            field(default_factory=`list, init=False, repr=False, compare=False)
         );
     }
-    _own_anns: dict[str, object] = cls.__dict__.get('__annotations__', {});
-    if _own_anns {
-        if not cls.__doc__ {
-            cls.__doc__ = cls.__name__;
-        }
-        _pre_attrs = dict(cls.__dict__);
-        try {
-            dataclass(eq=False)(cls);
-        } except TypeError {
-            for _rname in _own_anns {
-                if _rname in _pre_attrs and _rname not in cls.__dict__ {
-                    setattr(cls, _rname, _pre_attrs[_rname]);
-                }
-            }
-
-            _seen_default = False;
-            for _base in reversed(cls.__mro__[1:]) {
-                _base_fields: dict[str, dataclasses.Field] = getattr(
-                    _base, '__dataclass_fields__', {}
-                );
-                for _bf in _base_fields.values() {
-                    if _bf.`default is not dataclasses.MISSING
-                        or _bf.default_factory is not dataclasses.MISSING {
-                        _seen_default = True;
-                    }
-                }
-            }
-            for (_fname, _fann) in _own_anns.items() {
-                if "ClassVar" in str(_fann) or "InitVar" in str(_fann) {
-                    continue;
-                }
-                _own_val = _pre_attrs.get(_fname, dataclasses.MISSING);
-                _has_default = _own_val is not dataclasses.MISSING;
-                if _has_default
-                    and isinstance(_own_val, dataclasses.Field)
-                    and _own_val.`default is dataclasses.MISSING
-                    and _own_val.default_factory is dataclasses.MISSING {
-                    _has_default = False;
-                }
-                if _has_default {
-                    _seen_default = True;
-                } elif _seen_default {
-                    if isinstance(_own_val, dataclasses.Field) {
-                        if _own_val.init {
-                            _own_val.kw_only = True;
-                        }
-                    } else {
-                        setattr(cls, _fname, dataclasses.field(kw_only=True));
-                    }
-                }
-            }
-            dataclass(eq=False)(cls);
-        }
-    } else {
-        dataclass(eq=False, init=False)(cls);
+    if cls.__dict__.get('__annotations__') and not cls.__doc__ {
+        cls.__doc__ = cls.__name__;
     }
-    return cls;
+    return make_object(cls);
 }
 
 impl JacModule.impl_patch_filename(
@@ -1010,16 +966,6 @@ impl JacTest.run_test(
     return ret_count;
 }
 
-impl JacArchetype.field(
-    factory: (Callable[([], T)] | None) = None, `init: bool = True
-) -> T {
-    if factory {
-        return field(default_factory=factory);
-    }
-    return field(`init=`init);
-}
-
-
 impl JacBuiltin.log_report(expr: any, custom: bool = False) -> None {
     import from jaclang.runtime.osp_kernel { osp_report, _current_scope }
     if custom {
@@ -1153,6 +1099,15 @@ impl JacGraph.connect(
     left = [left] if isinstance(left, NodeArchetype) else left;
     right_is_node = isinstance(right, NodeArchetype);
     right = [right] if isinstance(right, NodeArchetype) else right;
+    for operands in (left, right) {
+        for operand in operands {
+            if not isinstance(operand, NodeArchetype) {
+                raise TypeError(
+                    "connect operands must be nodes or flat collections of nodes"
+                );
+            }
+        }
+    }
     edges = [];
     for i in left {
         _left = i.__jac__;
@@ -1473,8 +1428,13 @@ impl JacPersistence._destroy_anchors(objs: any, strict: bool) -> list[Anchor] {
 }
 
 impl JacPersistence.destroy(objs: any, strict: bool = False) -> None {
+    anchors = JacPersistence._destroy_anchors(objs, strict);
+    if not anchors {
+        return;
+    }
     import from jaclang.runtime.osp_kernel { osp_forget }
-    for anchor in JacPersistence._destroy_anchors(objs, strict) {
+    import from jaclang.runtime.region { run_drop }
+    for anchor in anchors {
         if isinstance(anchor.archetype, Root) {
             raise RuntimeError("cannot destroy root");
         }
@@ -1490,6 +1450,7 @@ impl JacPersistence.destroy(objs: any, strict: bool = False) -> None {
                         `edge.detach();
                         `edge.destroyed = True;
                         _edge_handle: any = `edge.archetype;
+                        run_drop(_edge_handle);
                         osp_forget(_edge_handle);
                         if eid is not None {
                             JacRuntimeInterface.get_context().mem.delete(eid);
@@ -1509,6 +1470,7 @@ impl JacPersistence.destroy(objs: any, strict: bool = False) -> None {
             }
             anchor.destroyed = True;
             _handle: any = anchor.archetype;
+            run_drop(_handle);
             osp_forget(_handle);
         }
     }

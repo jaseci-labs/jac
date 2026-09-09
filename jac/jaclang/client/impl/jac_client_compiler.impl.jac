@@ -115,6 +115,7 @@ impl JacClientCompiler.compile(
         native=native
     );
     self._has_pages = self._scan_and_compile_pages(
+        entry_manifest=artifact.manifest,
         visited=visited,
         collected_exports=collected_exports,
         collected_globals=collected_globals,
@@ -253,6 +254,29 @@ impl JacClientCompiler.compile_dependencies_recursively(
     artifact = self.jac_compiler.compile_module(module_path);
     self._collect_na_modules(artifact);
     manifest = artifact.manifest;
+    for (dependency, names) in manifest.runtime_imports.items() {
+        if not names {
+            continue;
+        }
+        dependency_path = Path(dependency).resolve();
+        if native {
+            dependency_path = self._native_variant(dependency_path);
+        }
+        dependency_manifest = self.jac_compiler.compile_module(
+            dependency_path
+        ).manifest;
+        exported = set(dependency_manifest.exports + dependency_manifest.globals);
+        missing = sorted(set(names) - exported);
+        if missing {
+            raise ClientBundleError(
+                f"{module_path}: runtime import(s) {', '.join(
+                    missing
+                )} are not exported "
+                f"by {dependency_path}. Use :pub for runtime values; annotation-only "
+                "references must not produce runtime imports."
+            );
+        }
+    }
     exports_list = self.jac_compiler.extract_exports(manifest);
     collected_exports.update(exports_list);
     non_root_globals: dict[(str, any)] = {};
@@ -465,7 +489,8 @@ impl JacClientCompiler.compile_runtime_utils(
     import importlib;
 
     for _m in re.finditer(
-        r'from\s+[\'"]((?:\./)?[^\'"]*html_tag_map\.js)[\'"]', runtimeutils_js
+        r'(?:from|import)\s+[\'"]((?:\./)?[^\'"]*html_tag_map\.js)[\'"]',
+        runtimeutils_js
     ) {
         rel = _m.group(1);
         if rel.startswith('./') {
@@ -579,6 +604,7 @@ impl JacClientCompiler.compile_mobui_utils(
 
 impl JacClientCompiler._scan_and_compile_pages(
     self: JacClientCompiler,
+    entry_manifest: any = None,
     visited: (set[Path] | None) = None,
     collected_exports: (set[str] | None) = None,
     collected_globals: (dict[(str, any)] | None) = None,
@@ -593,6 +619,7 @@ impl JacClientCompiler._scan_and_compile_pages(
         self._warn_pages_without_routes(scanner);
         return False;
     }
+    self._check_entry_renders_routes(entry_manifest);
     self._route_scanner = scanner;
     source_root = self.project_dir;
     for page_file in scanner.get_page_files() {
@@ -607,6 +634,22 @@ impl JacClientCompiler._scan_and_compile_pages(
     }
     self._generate_routes_manifest();
     return True;
+}
+
+impl JacClientCompiler._check_entry_renders_routes(
+    self: JacClientCompiler, entry_manifest: any
+) -> None {
+    import from jaclang.client.route_scanner { entry_drops_route_children }
+    if not entry_drops_route_children(entry_manifest) {
+        return;
+    }
+    raise ClientBundleError(
+        "'app' declares no 'children' parameter, so every pages/ route would "
+        "be discarded. The generated entry renders app with the route tree as "
+        "its children; declare `def:pub app(children: any) -> JsxElement` and "
+        "render them (`<Theme>{children}</Theme>`), or take a single `props` "
+        "parameter and render `props.children`."
+    );
 }
 
 impl JacClientCompiler._warn_pages_without_routes(

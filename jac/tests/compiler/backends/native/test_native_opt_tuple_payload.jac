@@ -31,7 +31,7 @@ glob FIXTURES = os.path.join(
 def compile_fixture -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
     opts = CompileOptions(
-        force_codespace='native', force_target_program=True, na_gc_mode="cycles"
+        force_codespace='native', force_target_program=True, memory_profile="managed"
     );
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, FIXTURE)), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];

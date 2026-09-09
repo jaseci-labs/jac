@@ -5,9 +5,9 @@ import from _socket_native {
     sock_connect,
     sock_send,
     sock_recv,
-    sock_close,
-    errno_message
+    sock_close
 }
+import from _errno_native { errno_message }
 
 glob AF_UNSPEC: int = 0,
      AF_INET: int = 2,

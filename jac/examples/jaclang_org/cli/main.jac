@@ -45,7 +45,7 @@ def build_parser -> argparse.ArgumentParser {
         help="sync: ask the site to ingest its bundled docs; status: what the graph holds"
     );
     feed = commands.add_parser(
-        "feed", help="read your Socialize feed from a running site"
+        "feed", help="read your JacYac feed from a running site"
     );
     feed.add_argument(
         "--limit",
@@ -56,7 +56,7 @@ def build_parser -> argparse.ArgumentParser {
     feed.add_argument(
         "--search", dest="query", `default="", help="only tweets containing this text"
     );
-    post = commands.add_parser("post", help="post to Socialize through a running site");
+    post = commands.add_parser("post", help="post to JacYac through a running site");
     post.add_argument("text", help="what to say");
     return parser;
 }

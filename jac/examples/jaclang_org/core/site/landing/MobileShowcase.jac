@@ -1,23 +1,14 @@
 import from core.site.ui.badge { Badge }
-import from core.site.ui.CodeBlock { CodeBlock }
+import from core.site.source.CodeSpotlight { CodeSpotlight }
 import from .Reveal { Reveal }
 import from "@jac/runtime" { Link }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { CheckmarkCircle01Icon, ArrowUpRight01Icon }
-import from core.socialize_mobile.SocializeMobile { SocializeMobile }
+import from core.jacyac.native.JacYacMobile { JacYacMobile }
 
-glob _IMPORT_LINES: list[str] = [
-         "import from core.socialize_mobile.SocializeMobile {",
-         "    SocializeMobile",
-         "}",
-         "",
-         "<PhoneFrame>",
-         "    <SocializeMobile embedded={True}/>",
-         "</PhoneFrame>"
-     ],
-     _POINTS: list[str] = [
+glob _POINTS: list[str] = [
          "Every screen is @jac/mobui: View, Text, Pressable, ScrollView. No div, no CSS. Built natively it is React Native; on this page react-native-web draws it.",
-         "The same account and the same graph as /socialize. Sign in on either and the other already knows you; post here and it lands in the site feed.",
+         "The same account and the same graph as /jacyac. Sign in on either and the other already knows you; post here and it lands in the site feed.",
          "It talks to core/social_graph.jac by spawning walkers. There is no API client in the phone and no route table on the server.",
          "jac run mobile puts the identical source on an Android or iOS device through Expo; jac build --platform ios mobile ships it."
      ];
@@ -41,7 +32,7 @@ def:pub PhoneFrame(children: any = None) -> JsxElement {
                     className="pointer-events-none absolute -right-[13px] top-32 h-20 w-[3px] rounded-r bg-neutral-800"
                 ></div>
                 <div
-                    className="relative h-[700px] overflow-hidden rounded-[2.4rem] bg-[#0b0d12]"
+                    className="relative h-[700px] overflow-hidden rounded-[2.4rem] bg-background"
                 >
                     {children}
                 </div>
@@ -78,17 +69,20 @@ def:pub MobileShowcase -> JsxElement {
                 >
                     <Reveal delay={120}>
                         <PhoneFrame>
-                            <SocializeMobile embedded={True}/>
+                            <JacYacMobile embedded={True}/>
                         </PhoneFrame>
                         <p className="mt-4 text-center text-sm text-muted-foreground">
                             Live. Sign up, post, follow, join a channel.
                         </p>
                     </Reveal>
-                    <Reveal delay={200}>
+                    <Reveal delay={200} className="min-w-0">
                         <div className="pt-2">
-                            <CodeBlock
-                                lines={_IMPORT_LINES}
-                                title="core/site/landing/MobileShowcase.jac"
+                            <CodeSpotlight
+                                path="core/site/landing/MobileShowcase.jac"
+                                needle="<JacYacMobile embedded={True}/>"
+                                before={2}
+                                after={4}
+                                compact={True}
                             />
                             <h3 className="mt-8 text-xl font-semibold tracking-tight">
                                 One import. That is the whole embed.
@@ -97,9 +91,7 @@ def:pub MobileShowcase -> JsxElement {
                                 className="mt-3 text-base leading-relaxed text-muted-foreground"
                             >
                                 The phone UI lives in{" "}
-                                <span className="font-mono">
-                                    core/socialize_mobile/
-                                </span>
+                                <span className="font-mono">core/jacyac/native/</span>
                                 , shared by two apps: the{" "}
                                 <span className="font-mono">mobile</span>{" "}
                                 app wraps it for Android and iOS, and this page wraps it in a bezel. The compiler picks the native icon variant for the device build and the web one here, and type-checks both.
@@ -121,7 +113,7 @@ def:pub MobileShowcase -> JsxElement {
                                 }}
                             </ul>
                             <Link
-                                to="/socialize"
+                                to="/jacyac"
                                 className="mt-6 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
                             >
                                 Open the web version side by side

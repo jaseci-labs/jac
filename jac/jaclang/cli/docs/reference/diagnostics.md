@@ -306,9 +306,26 @@ Emitted by `JsxIntrinsicGuardPass` when a module of a `mobile` app (see [Mobile]
 !!! tip "Fixing `E1105`"
     `E1105` fires only in the modules of a `mobile` app (`kind = "mobile"` on its `[apps.<name>]` table in `jac.toml`, or `[project] kind` in a single-app project). Replace the HTML tag with the suggested `@jac/mobui` primitive: `div`/`section`/`main` -> `View`, `span`/`p`/`h1`-`h6` -> `Text`, `button` -> `Pressable`, `input`/`textarea` -> `TextInput`, `img` -> `Image`, `ul`/`ol` -> `ScrollView`. If the lowercase name is meant to be a component, import it so it resolves in scope. Apps of every other kind are unaffected -- HTML tags remain valid there.
 
+### JSX Children
+
+Both apply to every **component** -- any ability whose return annotation names `JsxElement`, `JsxPage` or `JsxLayout`, including a union with one of them (`JsxPage` and `JsxLayout` are what a `pages/` route or layout module returns). That is the same predicate the client codegen uses to pick a component's call ABI, so a declaration these reject is exactly a declaration it would mis-lower. The runtime's own `__jac`-prefixed helpers are called directly rather than through the props protocol, and are not components.
+
+A component receives JSX children only if it declares a parameter literally named `children`. The codegen destructures a component's declared parameter names out of `props` with no rest element, so children handed to a component that never declares them are discarded with no runtime signal -- the failure mode is a blank render with a clean `jac check`. A component whose single parameter is named `props` receives the object whole, so children arrive as `props.children` and are never dropped.
+
+| Code | Message |
+|------|---------|
+| `W1053` | Component '{component}' declares no 'children' parameter, so the children passed here are discarded |
+| `E1109` | Component '{name}' declares a 'props' bundle alongside other parameters; the bundle must be the only parameter |
+
+!!! tip "Fixing `W1053`"
+    Declare `children: any = None` on the component and render it (`<>{children}</>`, or nest it inside a wrapper element). If a component is not meant to take children, remove them from the call site instead. The one call site the checker cannot see is the generated `pages/` entry, which renders `app` with the route tree as its children (`createElement(app, null, <routes/>)`); the client build refuses an `app` that has no `children` parameter (a lone `props` also receives them) with the same explanation.
+
+!!! tip "Fixing `E1109`"
+    A parameter named `props` means the component is handed the whole call-site object, so it cannot coexist with another parameter. Written positionally the codegen emits `const {props, tone} = props`, which is not valid JavaScript and fails the bundle; written keyword-only it emits a positional signature the renderer never calls that way, so every other parameter silently keeps its default. Pick one convention: name the props you take (`def Card(title: str, tone: str)`), or take the bundle alone (`def Card(props: CardProps)`) and read the rest off it. Because `props` is now exclusive, a component that declares it always receives children as `props.children`, which is why `W1053` never fires on one.
+
 ### Ownership / Borrow Errors
 
-Emitted by `OwnershipCheckPass` for `own`/`imm`/`borrow`/`&`/`&mut` bindings and `in <handle> { }` region opens. See [Ownership & Borrowing](language/ownership-borrowing.md). On the native pathway the checker is one of the required analyses: it always runs there, and error-severity findings block native codegen -- a clean check is what makes the annotations trustworthy facts for lowering (see the [Ownership Fact Schema](../internals/ownership-checker-spec.md)). Whether diagnostics are *displayed* never changes generated code; builds with and without display are bit-identical.
+Emitted by `OwnershipCheckPass` for `own`/`lin`/`imm`/`&`/`&mut` bindings and derived views and `in <handle> { }` region opens. See [Ownership & Borrowing](language/ownership-borrowing.md). On the native pathway the checker is one of the required analyses: it always runs there, and error-severity findings block native codegen -- a clean check is what makes the annotations trustworthy facts for lowering (see the [Ownership Fact Schema](../internals/ownership-checker-spec.md)). Whether diagnostics are *displayed* never changes generated code; builds with and without display are bit-identical.
 
 | Code | Message |
 |------|---------|
@@ -316,7 +333,7 @@ Emitted by `OwnershipCheckPass` for `own`/`imm`/`borrow`/`&`/`&mut` bindings and
 | `E1302` | Conflicting mutable borrow of '{name}' while another borrow is live |
 | `E1303` | Cannot mutate '{name}' while a shared borrow of it is live |
 | `E1304` | '{name}' is destroyed while still borrowed |
-| `E1305` | *Reserved, not yet registered* -- will be "Linear resource '{name}' is never consumed" once the planned `linear` marker lands (a `linear` binding must be moved exactly once; plain `own` is affine and may be silently dropped) |
+| `E1305` | Linear binding '{name}' is never consumed |
 | `E1306` | Borrow of '{name}' escapes its scope |
 | `E1307` | Reference to '{name}' escapes its region |
 | `E1308` | '{name}' is not sendable across a concurrency boundary |
@@ -324,10 +341,15 @@ Emitted by `OwnershipCheckPass` for `own`/`imm`/`borrow`/`&`/`&mut` bindings and
 | `E1311` | Cannot freeze '{name}': the value may be aliased |
 | `E1313` | `flow for` does not allow {name} |
 | `E1314` | `partition(n)` does not allow {name} |
+| `E1315` | A view does not allow {name} |
+| `E1316` | Cannot move '{name}' out of '{place}' without take() |
+| `E1317` | Cannot move '{name}' out of the element '{place}' |
+| `E1318` | Cannot call mutating method '{method}' through a shared borrow of '{name}' |
+| `E1319` | Invalid {operation} place: {reason} |
 
 ### Zero-RC Enforcement Errors
 
-Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac nacompile --enforce-nogc`, or a module matching a `jac.toml [gc.enforce]` pattern -- see [Zero-RC ownership compilation](language/native-pathway.md#zero-rc-ownership-compilation)). They make zero-RC ownership coverage a compile-time contract: every heap-typed contract position must be in the owned world, and each violation is a hard error that blocks native codegen. The `{provenance}` in every message states why the module is enforced (the CLI flag or the matching config pattern).
+Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac build --native --memory nogc`, or a module matching a `jac.toml [memory]` pattern -- see [Zero-RC ownership compilation](language/native-pathway.md#zero-rc-ownership-compilation)). They make zero-RC ownership coverage a compile-time contract: every heap-typed contract position must be in the owned world, and each violation is a hard error that blocks native codegen. The `{provenance}` in every message states why the module is enforced (the CLI flag or the matching config pattern).
 
 | Code | Message |
 |------|---------|
@@ -336,7 +358,9 @@ Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac n
 | `E1403` | Heap value '{name}' crosses implicitly out of a nogc-enforced module ({provenance}) |
 | `E1404` | '{name}' is `any`-typed and could be heap-allocated in a nogc-enforced module ({provenance}) |
 | `E1405` | Closure capture of '{name}' escapes its scope in a nogc-enforced module ({provenance}) |
-| `E1406` | '{name}' has retaining or aliasing semantics not supported in a nogc-enforced module ({provenance}) |
+| `E1406` | {name} ({provenance}) -- the message names the value, why it cannot enter the owned world (a borrow of `x`, an `imm` value, a place read, a retaining builtin) and the destination; the help names the idiom that fits (`own p` copy, `take(place)`, iterate by value, or a fresh value) |
+| `E1407` | '{name}' raises {exc}, and the entry block does not handle it |
+| `E1407` | '{name}' raises {exc}, and the entry block does not handle it |
 
 ### Type-Only Import Bindings
 
@@ -360,6 +384,7 @@ Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac n
 | `W1050` | Unknown intrinsic JSX element '<{tag}>' |
 | `W1051` | Expression type could not be resolved (Unknown) |
 | `W1052` | JSX component '{component}' uses an untyped props bag (`props: any`); its JSX props cannot be type-checked |
+| `W1053` | Component '{component}' declares no 'children' parameter, so the children passed here are discarded |
 | `W1310` | Region open on '{name}' has an empty body |
 | `W1312` | Owned value '{name}' silently seals into managed storage |
 

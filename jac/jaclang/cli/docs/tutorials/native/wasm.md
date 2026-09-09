@@ -14,7 +14,7 @@ Compile Jac's native (`na`) subset to WebAssembly and run it in the browser at n
 
 ## 1. Write a native module
 
-The `na` codespace is the statically-compiled subset of Jac ([native pathway reference](../../reference/language/native-pathway.md)). Create `sum.jac` (compiling it with `jac nacompile` forces it native):
+The `na` codespace is the statically-compiled subset of Jac ([native pathway reference](../../reference/language/native-pathway.md)). Create `sum.jac` (compiling it with `jac build --native` forces it native):
 
 ```jac
 def:pub add(a: int, b: int) -> int {
@@ -25,7 +25,7 @@ def:pub add(a: int, b: int) -> int {
 ## 2. Compile to WebAssembly
 
 ```bash
-jac nacompile sum.jac --target wasm32 -o sum.wasm
+jac build --native sum.jac --target wasm32 -o sum.wasm
 ```
 
 ```
@@ -76,27 +76,28 @@ call is `await`ed. On the server the import compiles to nothing: an
 `na import` never executes the native module under Python (a *plain* import
 of a native module is the server-side ctypes crossing instead).
 
-If the native module declares its own FFI externs (say, raylib calls), the
-page must supply their JavaScript implementations before the first call:
+If the native module declares host imports, supply a typed host implementation
+before its first call:
 
 ```jac
-import from "@jac/wasm_host" { set_na_env }
+import from "@jac/wasm_host" { bind_na_host }
+import from "@jac/webgl" { WebGLHost }
+import from .arena { init, frame, shutdown }
 
-import from .arena { init }
-
-async def launch(shim: any, env_fns: dict) {
-    set_na_env("arena", shim, {"env": env_fns});
+async def launch(canvas: HTMLCanvasElement) {
+    host = WebGLHost(canvas=canvas);
+    bind_na_host(init, host);
     game = await init();
+    await frame(game);
+    await shutdown(game);
 }
 ```
 
-A pure-computation module like `sum` needs no `set_na_env` at all.
-
-For a full worked example of the pattern -- a borrow-checked, zero-GC game
-loop running as wasm, rendered through a WebGL shim -- see the shooter on
-jaclang.org's own source (`game/arena.jac` and `game/webgl_host.jac`):
-`webgl_host.jac` reaches the game through exactly the `na import` +
-`set_na_env` pair above.
+The compiler checks the host's methods against native import declarations and
+generates registration and value conversions. Owned native objects cross as
+opaque handles; consuming an owned parameter invalidates its handle. A pure
+computation module needs no host registration. The jaclang.org game uses this
+interface and the shared WebGL implementation.
 
 ## Concurrency on wasm
 

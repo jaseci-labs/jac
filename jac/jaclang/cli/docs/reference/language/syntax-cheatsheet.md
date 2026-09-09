@@ -1316,7 +1316,7 @@ with entry {
 # `&`/`&mut` take a shared/mutable borrow; `imm` is deep-immutable.
 # Unannotated bindings are untouched -- the checker only tracks
 # what you tag. On native, full coverage enables zero-RC builds
-# (jac nacompile --gc none --enforce-nogc --assert-no-rc).
+# (jac build --native --memory nogc).
 
 obj Buffer { has n: int = 0; }
 
@@ -1434,8 +1434,7 @@ node Secret { has value: str; }
 #                parts from JSX/npm, native parts from C extern decls)
 # .jac        Client implementation variant of a logical module
 # (native)       No native extension - a module infers native, is pinned
-#                native in jac.toml, or is forced via jac nacompile /
-#                jac build --as native
+#                native in jac.toml, or is forced via jac build --native
 # .impl.jac      Implementation annex (method bodies)
 # .test.jac      Test annex
 # .style.css     Scoped CSS annex (auto-scopes classes for the matching component file)

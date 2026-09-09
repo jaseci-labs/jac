@@ -20,7 +20,7 @@ def aot_native_errors(name: str) -> list {
             aot_mode=True,
             force_codespace="native",
             force_target_program=True,
-            na_gc_mode="cycles",
+            memory_profile="managed",
             no_ir_cache=True
         )
     );

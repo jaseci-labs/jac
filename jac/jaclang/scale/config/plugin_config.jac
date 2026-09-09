@@ -1072,7 +1072,7 @@ class JacScalePluginConfig {
                         "namespace": {
                             "type": "string",
                             "default": "jaclang_scale",
-                            "description": "Metrics namespace prefix (e.g., myapp_http_requests_total)"
+                            "description": "Metrics namespace prefix (e.g., myapp_http_requests_total). Sanitized to [a-zA-Z0-9_] before use; a rewritten value logs a warning at startup"
                         },
                         "walker_metrics": {
                             "type": "bool",

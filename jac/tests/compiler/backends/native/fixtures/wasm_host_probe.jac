@@ -17,8 +17,17 @@ def compute(n: int) -> int {
     return len(s);
 }
 
+def finalized -> int {
+    try {
+        return 7;
+    } finally {
+        print("finished");
+    }
+}
+
 with entry {
     print(3.14);
     print(compute(10));
     print("UP".lower());
+    print(finalized());
 }

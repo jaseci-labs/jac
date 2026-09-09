@@ -1,5 +1,3 @@
-import from react { useEffect }
-
 def:pub SectionRail(items: list[dict]) -> JsxElement {
     has active: str = "",
         visible: bool = False,
@@ -37,38 +35,35 @@ def:pub SectionRail(items: list[dict]) -> JsxElement {
         );
     }
 
-    useEffect(
-        lambda {
-            on_scroll = lambda (_e: any) {
-                best = "";
-                for it in items {
-                    el: any = document.getElementById(it["id"] as str);
-                    if el {
-                        r: any = el.getBoundingClientRect();
-                        if (r.top as float) < (window.innerHeight as float) * 0.45 {
-                            best = it["id"] as str;
-                        }
+    can with entry {
+        on_scroll = lambda (_e: any) {
+            best = "";
+            for it in items {
+                el: any = document.getElementById(it["id"] as str);
+                if el {
+                    r: any = el.getBoundingClientRect();
+                    if (r.top as float) < (window.innerHeight as float) * 0.45 {
+                        best = it["id"] as str;
                     }
                 }
-                if best != lastRef.current {
-                    lastRef.current = best;
-                    active = best;
-                    reveal();
-                    schedule_fade();
-                }
-            };
-            window.addEventListener("scroll", on_scroll);
-            on_scroll(None);
-            return lambda {
-                window.removeEventListener("scroll", on_scroll);
-                if timerRef.current {
-                    clearTimeout(timerRef.current);
-                    timerRef.current = None;
-                }
-            };
-        },
-        []
-    );
+            }
+            if best != lastRef.current {
+                lastRef.current = best;
+                active = best;
+                reveal();
+                schedule_fade();
+            }
+        };
+        window.addEventListener("scroll", on_scroll);
+        on_scroll(None);
+        return lambda {
+            window.removeEventListener("scroll", on_scroll);
+            if timerRef.current {
+                clearTimeout(timerRef.current);
+                timerRef.current = None;
+            }
+        };
+    }
 
     return
         <nav

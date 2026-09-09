@@ -924,6 +924,15 @@ test "union JsxElement return type still triggers props-destructure lowering" {
     assert isinstance(error_banner.params[0], es.Identifier);
     assert error_banner.params[0].name == "props";
 
+    # `JsxPage` and `JsxLayout` returns are components too, lowered through the
+    # same props protocol (`return_type_is_jsx` in `symbol_utils` is the one predicate
+    # the checker and the emitter share).
+    for name in ["PageComp", "LayoutComp"] {
+        assert len(funcs[name].params) == 1 , f"{name} should take one props parameter";
+        assert isinstance(funcs[name].params[0], es.Identifier);
+        assert funcs[name].params[0].name == "props" , f"{name} should be emitted with the props-protocol signature";
+    }
+
     direct_ret = _fn_stmts(funcs["direct_call"])[0];
     assert isinstance(direct_ret, es.ReturnStatement);
     direct_call = direct_ret.argument;

@@ -52,7 +52,7 @@ def _project -> Path {
     );
     (proj / "main.jac").write_text(
         'import from .shared.Navbar { Navbar }\n\n'
-        'def:pub app() -> any {\n    return <main><Navbar /></main>;\n}\n'
+        'def:pub app(children: any = None) -> any {\n    return <main><Navbar />{children}</main>;\n}\n'
     );
     return proj;
 }
@@ -160,4 +160,21 @@ test "a warm client build over a real layout is served from the cache" {
         );
     }
     assert _build(proj) == [] , "the build after that must be fully served again";
+}
+
+test "a pages entry whose app cannot receive the route tree is refused" {
+    # The generated entry renders `app` with the routes as its children; an
+    # `app` without `children` would drop every page, so the build stops here.
+    import from jaclang.client.client_bundle { ClientBundleError }
+    proj = _project();
+    (proj / "main.jac").write_text(
+        'def:pub app -> JsxElement {\n    return <main>shell</main>;\n}\n'
+    );
+    refused = False;
+    try {
+        _compiler(proj).jac_client_compiler.compile(None, proj / "main.jac");
+    } except ClientBundleError as e {
+        refused = "children" in str(e);
+    }
+    assert refused , "an app that drops the route tree must fail the client build";
 }

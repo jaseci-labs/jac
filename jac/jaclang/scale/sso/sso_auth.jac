@@ -1,14 +1,23 @@
 import logging;
+import json;
+import secrets;
+import re;
+import from http.cookies { SimpleCookie }
+import from jaclang.server.identity.auth_tokens { AuthTokenStore }
+import from jaclang.server.serving.datatypes { RedirectResponse }
+import from jaclang.scale.sso.provider { OAuth2CodeProvider }
+import from jaclang.scale.sso.oauth_session {
+    OAuthSession,
+    challenge_of,
+    complete_identity
+}
 import from jaclang.server.identity.user_manager { UserManager }
 import from jaclang.server.serving.datatypes { Request, Response }
 import from jaclang.server.transport { TransportResponse, Meta }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.config.firebase_env { firebase_project_id_env_hint }
 import from jaclang.scale.shared.enums { Platforms, Operations }
-import from jaclang.scale.shared.utils {
-    generate_random_password,
-    is_safe_loopback_redirect
-}
+import from jaclang.scale.shared.utils { is_safe_loopback_redirect }
 import from jaclang.scale.sso.provider { SSOProvider, SSOUserInfo }
 
 glob logger = logging.getLogger(__name__);
@@ -157,8 +166,30 @@ impl SSOAuth.sso_initiate(
         );
     }
 
-    state = client_callback if is_safe_loopback_redirect(client_callback) else None;
-    return await sso.initiate_auth(state=state);
+    if not isinstance(sso, OAuth2CodeProvider) {
+        return TransportResponse.fail(
+            code='SSO_INIT_FAILED', message='Unsupported redirect provider'
+        );
+    }
+    verifier = secrets.token_urlsafe(48);
+    oauth_session = OAuthSession(users=self.users, provider=sso, platform=platform);
+    started = oauth_session.begin(
+        challenge_of(verifier),
+        client_callback=(client_callback or "")
+            if is_safe_loopback_redirect(client_callback)
+            else ""
+    );
+    response = RedirectResponse(url=started.url, status_code=303);
+    secure = sso.redirect_uri.startswith("https://");
+    cookie = "jac_sso_"
+        + started.state
+        + "="
+        + verifier
+        + "; Path=/sso/; HttpOnly; Max-Age=600";
+    cookie += "; SameSite=None; Secure" if secure else "; SameSite=Lax";
+    response.headers.set("Set-Cookie", cookie);
+    response.headers.set("Cache-Control", "no-store");
+    return response;
 }
 
 impl SSOAuth.sso_callback(request: Request, platform: str) -> TransportResponse {
@@ -186,17 +217,52 @@ impl SSOAuth.sso_callback(request: Request, platform: str) -> TransportResponse 
             meta=Meta(extra={'http_status': 500})
         );
     }
-    try {
-        user_info = await sso.handle_callback(request);
-    } except Exception as e {
+    if not isinstance(sso, OAuth2CodeProvider) {
         return TransportResponse.fail(
-            code='AUTHENTICATION_FAILED',
-            message=f"Authentication failed: {str(e)}",
+            code='AUTHENTICATION_FAILED', message='Unsupported redirect provider'
+        );
+    }
+    state = sso._callback_param(request, 'state') or '';
+    if re.fullmatch(r"[A-Za-z0-9_-]{43}", state) is None {
+        return TransportResponse.fail(
+            code='INVALID_STATE',
+            message='Invalid or missing sign-in state',
             meta=Meta(extra={'http_status': 401})
         );
     }
-
-    return self._complete_sso_login(platform, user_info);
+    cookies: any = SimpleCookie();
+    try {
+        cookies.load(request.headers.get('Cookie') or '');
+    } except Exception {}
+    cookie = cookies.get('jac_sso_' + state);
+    verifier = str(cookie.value) if cookie else '';
+    record = AuthTokenStore.instance().peek_token(state, 'oauth_session:' + platform);
+    callback = str(json.loads(record['identity_value']).get('client_callback') or '')
+        if record
+        else '';
+    oauth_session = OAuthSession(users=self.users, provider=sso, platform=platform);
+    result = await oauth_session.finish(
+        sso._callback_param(request, 'code') or '', state, verifier
+    );
+    if not result.ok {
+        return TransportResponse.fail(
+            code='AUTHENTICATION_FAILED',
+            message=result.error,
+            meta=Meta(extra={'http_status': 401})
+        );
+    }
+    user_id = self.users.validate_jwt_token(result.token) or '';
+    return TransportResponse.success(
+        data={
+            'message': 'Login successful',
+            'token': result.token,
+            'username': result.username,
+            'user_id': user_id,
+            'root_id': self.users.get_root_id(user_id) or '',
+            'platform': platform
+        },
+        meta=Meta(extra={'http_status': 200, 'client_callback': callback})
+    );
 }
 
 impl SSOAuth.firebase_token_auth_with_id_token(id_token: str) -> TransportResponse {
@@ -236,67 +302,24 @@ impl SSOAuth.firebase_token_auth_with_id_token(id_token: str) -> TransportRespon
 impl SSOAuth._complete_sso_login(
     platform: str, user_info: SSOUserInfo
 ) -> TransportResponse {
-    email = user_info.email;
-    if not email {
-        return TransportResponse.fail(
-            code='EMAIL_MISSING',
-            message=f"Email not provided by {platform}",
-            meta=Meta(extra={'http_status': 400})
-        );
-    }
-    external_id = user_info.external_id;
-    sso_fields = user_info.profile_fields();
-
-    existing = self.users.find_user_by_identity(email);
-    if existing {
-        user_id = existing.get('user_id', '');
-
-        self.users.link_sso_account(user_id, platform, external_id);
-
-        if sso_fields {
-            raw_profile = existing.get('profile') if existing else None;
-            current_profile: dict[str, any] = (
-                raw_profile if isinstance(raw_profile, dict) else {}
-            );
-
-            raw_sso = current_profile.get('sso');
-            current_sso: dict[str, any] = raw_sso if isinstance(raw_sso, dict) else {};
-            current_sso[platform] = sso_fields;
-            current_profile['sso'] = current_sso;
-            self.users.update_user_fields(user_id, {'profile': current_profile});
-        }
-        token = self.users.create_jwt_token(user_id);
-        return TransportResponse.success(
-            data={
-                'message': 'Login successful',
-                'user_id': user_id,
-                'token': token,
-                'platform': platform,
-                'root_id': existing.get('root_id', '')
-            },
-            meta=Meta(extra={'http_status': 200})
-        );
-    }
-
-    sso_profile = {'sso': {platform: sso_fields}} if sso_fields else None;
-    result = self.users.create_user_with_identities(
-        identities=[{'type': 'email', 'value': email, 'verified': True}],
-        credential={'type': 'password', 'password': generate_random_password()},
-        profile=sso_profile
-    );
-    if 'error' in result {
+    result = complete_identity(self.users, user_info, platform);
+    if not result.ok {
         return TransportResponse.fail(
             code='USER_CREATION_FAILED',
-            message=result.get('error', 'User creation failed'),
+            message=result.error,
             meta=Meta(extra={'http_status': 400})
         );
     }
-    user_id = result.get('user_id', '');
-
-    self.users.link_sso_account(user_id, platform, external_id);
-    result['token'] = self.users.create_jwt_token(user_id);
-    result['platform'] = platform;
+    user_id = self.users.validate_jwt_token(result.token) or '';
     return TransportResponse.success(
-        data=result, meta=Meta(extra={'http_status': 201})
+        data={
+            'message': 'Login successful',
+            'token': result.token,
+            'username': result.username,
+            'user_id': user_id,
+            'root_id': self.users.get_root_id(user_id) or '',
+            'platform': platform
+        },
+        meta=Meta(extra={'http_status': 200})
     );
 }

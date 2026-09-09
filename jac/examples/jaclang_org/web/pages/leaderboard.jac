@@ -1,5 +1,5 @@
-import from core.site.leaderboard.Leaderboard { Leaderboard }
+import from "@jac/runtime" { Navigate }
 
 def:pub page -> JsxPage {
-    return <Leaderboard/>;
+    return <Navigate to="/jacyac/scores" replace={True}/>;
 }

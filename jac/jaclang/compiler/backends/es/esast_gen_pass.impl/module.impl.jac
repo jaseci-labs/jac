@@ -248,6 +248,7 @@ impl EsastGenPass.exit_module with uni.Module exit {
         );
     }
     program = self.sync_loc(es.Program(body=body), jac_node=here);
+    self._finalize_runtime_imports(program);
     here.gen.es_ast = program;
     here.gen.js = es_to_js(here.gen.es_ast);
     here.gen.client_manifest = self.client_manifest;

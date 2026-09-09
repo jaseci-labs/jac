@@ -1,5 +1,5 @@
 """`def drop` must fire when a managed (rc/cycles) release destroys the
-object, not only under enforced headerless `--gc none` (issue #7466 bug 4).
+object, not only under enforced headerless `--memory nogc` (issue #7466 bug 4).
 The hook mutates module globals so the JIT tests can observe firing count
 and order without capturing stdout."""
 

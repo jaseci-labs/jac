@@ -52,16 +52,6 @@ jac/jaclang/scale/deploy/autoscale/hpa_autoscaler.impl.jac
 jac/jaclang/scale/deploy/autoscale/hpa_autoscaler.jac
 jac/jaclang/scale/runtime/context/tracing.jac
 
-# Type evaluator internals.
-jac/jaclang/compiler/types/type_evaluator.impl/construct_types.impl.jac
-jac/jaclang/compiler/types/type_evaluator.impl/evaluator_util_methods.impl.jac
-jac/jaclang/compiler/types/type_evaluator.impl/imported.impl.jac
-jac/jaclang/compiler/types/type_evaluator.impl/jsx_type_check.impl.jac
-jac/jaclang/compiler/types/type_evaluator.impl/parameter_type_check.impl.jac
-jac/jaclang/compiler/types/type_evaluator.impl/ts_declarations.impl.jac
-jac/jaclang/compiler/types/type_evaluator.impl/type_evaluator.impl.jac
-jac/jaclang/compiler/types/type_evaluator.jac
-
 # Runtime library.
 jac/jaclang/client/targets/desktop/native/cef/cef_subprocess.jac
 

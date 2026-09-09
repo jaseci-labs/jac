@@ -9,9 +9,12 @@ as `promoted=N`.
 """
 
 import os;
+import from jaclang.compiler.driver.compile_options {
+    push_native_target,
+    pop_native_target
+}
 import subprocess;
 import sys;
-import tempfile;
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -21,25 +24,24 @@ glob FIXTURE = os.path.join(
      );
 
 def _compile_ir(gc_mode: str, enforce: bool) -> str {
-    prev = os.environ.get("JAC_NATIVE_TARGET", None);
-    os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
+    prev = push_native_target("wasm32-unknown-unknown");
     try {
         prog = JacProgram();
         ir = prog.compile(
             file_path=FIXTURE,
             options=CompileOptions(
-                aot_mode=True, na_gc_mode=gc_mode, nogc_enforce_all=enforce
+                aot_mode=True,
+                na_gc_mode=gc_mode,
+                nogc_enforce_all=enforce,
+                no_ir_cache=True,
+                skip_native_engine=True
             )
         );
         assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
         assert ir is not None and ir.gen.llvm_ir is not None;
         return str(ir.gen.llvm_ir);
     } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_TARGET", None);
-        } else {
-            os.environ["JAC_NATIVE_TARGET"] = prev;
-        }
+        pop_native_target(prev);
     }
 }
 
@@ -78,27 +80,21 @@ test "headerless mode: borrowed-only owner is stack-promoted" {
     assert "malloc" not in body , body;
 }
 
-test "rc-stats reports promoted count" {
-    with tempfile.TemporaryDirectory() as tmp {
-        env = dict(os.environ);
-        env["JAC_RC_STATS"] = "1";
-        res = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "nacompile",
-                FIXTURE,
-                "--gc",
-                "rc",
-                "-o",
-                os.path.join(tmp, "stkbin")
-            ],
-            capture_output=True,
-            text=True,
-            env=env
-        );
-        assert res.returncode == 0 , res.stderr;
-        assert "promoted=1" in res.stderr , res.stderr;
-    }
+test "jac explain memory reports the promoted count" {
+    res = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "jaclang",
+            "explain",
+            "memory",
+            FIXTURE,
+            "--memory",
+            "rc"
+        ],
+        capture_output=True,
+        text=True
+    );
+    assert res.returncode == 0 , res.stderr;
+    assert "promoted=1" in res.stderr , res.stderr;
 }

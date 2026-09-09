@@ -1,4 +1,4 @@
-"""Tests for the C-ABI shared-library build (`jac nacompile --shared`).
+"""Tests for the C-ABI shared-library build (`jac build --native --lib`).
 
 These exercise the three pure-Jac linkers' shared-object paths — ELF .so
 (ET_DYN), Mach-O .dylib (MH_DYLIB), and PE .dll (IMAGE_FILE_DLL) — driven by a
@@ -12,6 +12,10 @@ since those binaries cannot be executed on a Linux host.
 """
 
 import os;
+import from jaclang.compiler.driver.compile_options {
+    push_native_target,
+    pop_native_target
+}
 import struct;
 import sys;
 import tempfile;
@@ -49,8 +53,7 @@ wrappers (mirroring the nacompile CLI), and emit a PIC relocatable object.
 
 Returns (object_bytes, export_symbols)."""
 def emit_shared_object(fixture: str, triple: str) -> tuple {
-    prev = os.environ.get("JAC_NATIVE_TARGET", None);
-    os.environ["JAC_NATIVE_TARGET"] = triple;
+    prev = push_native_target(triple);
     try {
         prog = JacProgram();
         ir = prog.compile(
@@ -63,7 +66,7 @@ def emit_shared_object(fixture: str, triple: str) -> tuple {
         ir_txt = native_linked_ir_text(ir);
         exports = list(ir.gen._exported_symbols);
         # Delegate to the production emitter so shared-init + RC-wrapper
-        # injection is identical to `jac nacompile --shared` (no divergence).
+        # injection is identical to `jac build --native --lib` (no divergence).
         (src, _extra_exports) = _inject_shared_init(ir_txt, []);
         exports.extend(_extra_exports);
         llvm.initialize_all_targets();
@@ -75,11 +78,7 @@ def emit_shared_object(fixture: str, triple: str) -> tuple {
         );
         relobj = tm.emit_object(mod);
     } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_TARGET", None);
-        } else {
-            os.environ["JAC_NATIVE_TARGET"] = prev;
-        }
+        pop_native_target(prev);
     }
     return (relobj, exports);
 }
@@ -214,7 +213,7 @@ test "_inject_shared_init emits the glob-init call for a quoted symbol" {
     (out_q, _e) = _inject_shared_init(ir_quoted, []);
     assert "call void @__jac_glob_init()" in out_q , (
         "_inject_shared_init dropped the own-module glob-init call on the "
-        "quoted-symbol form (regression: globals never initialize in --shared)"
+        "quoted-symbol form (regression: globals never initialize in --lib)"
     );
     # The unquoted form must still match too.
     ir_unquoted = 'define void @__jac_glob_init()\n';
@@ -232,11 +231,11 @@ test "_inject_shared_init emits the glob-init call for a quoted symbol" {
 
 
 test "ELF shared object initializes a global clib struct on dlopen" {
-    # Regression guard for the `--shared` global-clib-struct segfault. The
+    # Regression guard for the `--lib` global-clib-struct segfault. The
     # struct pointer `g` is populated by __jac_glob_init, which only runs if
     # __jac_shared_init calls it -- exactly what the quoted-symbol bug broke.
     # Built as a plain executable the same code is fine (the JIT path resolves
-    # the init via get_function_address); only --shared's AOT text scan broke.
+    # the init via get_function_address); only --lib's AOT text scan broke.
     (relobj, exports) = emit_shared_object(
         "shared_glob_struct.jac", "x86_64-unknown-linux-gnu"
     );
@@ -539,13 +538,13 @@ test "PE dll has IMAGE_FILE_DLL, export directory, and a non-zero entry" {
 # ─── CLI shared-init regression ──────────────────────────────────────────────
 # The test helper `emit_shared_object` builds __jac_shared_init by hand and
 # uses the correct glob-init probe (`"__jac_glob_init" in ir_txt`). The
-# `jac nacompile --shared` CLI does the same injection in `_inject_shared_init`
+# `jac build --native --lib` CLI does the same injection in `_inject_shared_init`
 # (nacompile.impl.jac), but its probe checked `"@__jac_glob_init(" — which
 # never matches llvmlite's quoted `@"__jac_glob_init"` output, so the call was
-# silently dropped and every runtime-initialized global in a --shared library
+# silently dropped and every runtime-initialized global in a --lib library
 # stayed NULL. This test drives the actual CLI so a regression in the probe
 # surfaces as a segfault, not a silent no-op.
-"""Fixture source: a --shared lib with a global clib struct that needs runtime
+"""Fixture source: a --lib lib with a global clib struct that needs runtime
 init (not a compile-time constant). The export reads the struct field; if
 __jac_shared_init never called __jac_glob_init, the global pointer is NULL and
 the field read segfaults."""
@@ -564,7 +563,7 @@ glob _CLI_SHARED_FIXTURE = (
          "}\n"
      );
 
-test "jac nacompile --shared initialises runtime globals via __jac_shared_init" {
+test "jac build --native --lib initialises runtime globals via __jac_shared_init" {
     # The CLI probe + DT_INIT_ARRAY path is ELF-specific; skip on non-Linux.
     if not sys.platform.startswith("linux") {
         return;
@@ -581,12 +580,12 @@ test "jac nacompile --shared initialises runtime globals via __jac_shared_init" 
         }
         lib_out = os.path.join(d, "lib.so");
         res = subprocess.run(
-            [jac, "nacompile", "--shared", lib_src, "-o", lib_out],
+            [jac, "build", "--native", "--lib", lib_src, "-o", lib_out],
             capture_output=True,
             text=True,
             timeout=300
         );
-        assert res.returncode == 0 , f"nacompile --shared failed:\n{res.stderr}";
+        assert res.returncode == 0 , f"nacompile --lib failed:\n{res.stderr}";
         assert os.path.exists(lib_out) , "shared library not produced";
         # dlopen triggers DT_INIT_ARRAY -> __jac_shared_init -> __jac_glob_init.
         # If the init call was dropped, the global pointer is NULL and set_g
@@ -672,7 +671,7 @@ glob _CLI_PROCESS_EXTERN_FIXTURE = (
      );
 
 
-test "jac nacompile --shared resolves a CPython C-API import from the host process (macOS host only)" {
+test "jac build --native --lib resolves a CPython C-API import from the host process (macOS host only)" {
     # What the compiler kernel does, end to end: `import from c` a CPython
     # C-API symbol and get called from Python through ctypes. This test process
     # is CPython, so a correctly linked dylib finds PyDict_Size by flat lookup
@@ -693,12 +692,12 @@ test "jac nacompile --shared resolves a CPython C-API import from the host proce
         }
         lib_out = os.path.join(d, "libprocext.dylib");
         res = subprocess.run(
-            [jac, "nacompile", "--shared", lib_src, "-o", lib_out],
+            [jac, "build", "--native", "--lib", lib_src, "-o", lib_out],
             capture_output=True,
             text=True,
             timeout=600
         );
-        assert res.returncode == 0 , f"nacompile --shared failed:\n{res.stderr}";
+        assert res.returncode == 0 , f"nacompile --lib failed:\n{res.stderr}";
         assert os.path.exists(lib_out) , "shared library not produced";
         # dlopen: the 0.37.3 kernel died on this line.
         lib = ctypes.PyDLL(lib_out);

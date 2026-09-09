@@ -8,14 +8,20 @@ impl RcFactsPass._run_impl(ir_in: Module) -> Module {
     self._stamp_escapes(ir_in);
     self._stamp_region_handles(ir_in);
     self._stamp_last_use(ir_in);
+    self._stamp_scope_cleanup(ir_in);
     self._stamp_move_in(ir_in);
     return ir_in;
 }
 
-impl RcFactsPass._enclosing_fn_scope(nd: UniNode) -> (UniNode | None) {
+impl RcFactsPass._enclosing_fn_scope(
+    nd: UniNode, stop_at_comprehension: bool = False
+) -> UniNode | None {
     cur = nd.parent;
     while cur is not None {
-        if isinstance(cur, (Ability, LambdaExpr, Test, ModuleCode)) {
+        if isinstance(cur, (Ability, ImplDef, LambdaExpr, Test, ModuleCode)) {
+            return cur;
+        }
+        if stop_at_comprehension and isinstance(cur, (ListCompr, DictCompr)) {
             return cur;
         }
         cur = cur.parent;
@@ -245,13 +251,19 @@ impl RcFactsPass._collect_last_use(
         for nm in stmt.get_all_sub_nodes(Name) {
             sym = nm.sym;
             if sym is None
-                or sym.storage != SymbolStorage.LOCAL
                 or sym.na_escapes
-                or self._is_param_sym(sym)
-                or nm.sym_name == "self" {
+                or (nm.sym_name == "self" and sym.ownership != OwnershipKind.OWN)
+                or not self._last_use_tracked(sym) {
                 continue;
             }
-            if self._enclosing_fn_scope(nm) is not owner {
+            if not same_lexical_scope(self._enclosing_fn_scope(nm), owner) {
+                continue;
+            }
+            decl = sym.decl;
+            if decl is None
+                or not same_lexical_scope(
+                    self._enclosing_fn_scope(decl, stop_at_comprehension=True), owner
+                ) {
                 continue;
             }
             sym_last[id(sym)] = (idx, nm.sym_name);
@@ -268,6 +280,13 @@ impl RcFactsPass._collect_last_use(
             out[key].append(_name);
         }
     }
+}
+
+impl RcFactsPass._last_use_tracked(sym: Symbol) -> bool {
+    if sym.storage == SymbolStorage.LOCAL {
+        return not self._is_param_sym(sym);
+    }
+    return sym.storage == SymbolStorage.PARAM and sym.ownership == OwnershipKind.OWN;
 }
 
 impl RcFactsPass._stamp_move_in(ir_in: Module) -> None {
@@ -517,4 +536,48 @@ impl RcFactsPass.transform(ir_in: Module) -> Module {
 
 impl RcFactsPass.run_walk with Module entry {
     self.ir_out = self._run_impl(here);
+}
+
+impl RcFactsPass._stamp_scope_cleanup(ir_in: Module) -> None {
+    out: dict[int, list[str]] = {};
+    for ability in ir_in.get_all_sub_nodes(Ability) {
+        names: list[str] = [];
+        borrows: list[str] = [];
+        seen: set[int] = set();
+        for nm in ability.get_all_sub_nodes(Name) {
+            sym = nm.sym;
+            if sym is None
+                or id(sym) in seen
+                or sym.storage not in (SymbolStorage.LOCAL, SymbolStorage.PARAM)
+                or nm.find_parent_of_type(Ability) is not ability {
+                continue;
+            }
+            seen.add(id(sym));
+            if is_borrow_kind(sym.ownership) {
+                borrows.append(nm.sym_name);
+                continue;
+            }
+            owns = sym.ownership == OwnershipKind.OWN;
+            if not owns and sym.defn {
+                decl = sym.defn[0].parent;
+                if isinstance(decl, (Assignment, ParamVar))
+                    and decl.type_tag is not None {
+                    owns = any(
+                        [
+                            isinstance(un, UnaryExpr)
+                                and un.ownership == OwnershipKind.OWN
+                            for un in decl.type_tag.get_all_sub_nodes(UnaryExpr)
+                        ]
+                    );
+                }
+            }
+            if owns {
+                names.append(nm.sym_name);
+            }
+        }
+        if names or borrows {
+            out[id(ability)] = list(reversed(borrows)) + list(reversed(names));
+        }
+    }
+    ir_in.rc_scope_cleanup = out;
 }

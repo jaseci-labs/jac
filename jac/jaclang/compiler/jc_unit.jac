@@ -13,8 +13,13 @@ import from jaclang.compiler.jc_materialize {
 
 import from jaclang.compiler.frontend.parser.parser { parse_program }
 import from jaclang.compiler.frontend.parser.tokens { SrcDiag, CommentData }
-import from jaclang.compiler.frontend.unitree { Module, UniNode }
+import from jaclang.compiler.frontend.unitree { GraphExpr, Module, UniNode }
 import from jaclang.compiler.frontend.roles { AccessorsRole, BodyRole, SpecRole }
+import from jaclang.compiler.frontend.constant { CodeContext }
+import from jaclang.compiler.frontend.unitree { Import }
+import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
+import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+import from jaclang.compiler.passes.transform { Alert }
 
 obj JcState {
     has p_errs: int = 0,
@@ -22,7 +27,15 @@ obj JcState {
         mod_h: int = 0,
         diags_h: int = 0,
         lexdiags_h: int = 0,
-        comments_h: int = 0;
+        comments_h: int = 0,
+        early_context: int = 0,
+        completed: int = 0,
+        validation_errors_h: int = 0,
+        validation_warnings_h: int = 0,
+        symbols_errors_h: int = 0,
+        symbols_warnings_h: int = 0,
+        validation_time: float = 0.0,
+        symbols_time: float = 0.0;
 }
 
 glob _JC: JcState = JcState(),
@@ -44,12 +57,58 @@ def _clear_results {
     _drop_h(_JC.diags_h);
     _drop_h(_JC.lexdiags_h);
     _drop_h(_JC.comments_h);
+    _drop_h(_JC.validation_errors_h);
+    _drop_h(_JC.validation_warnings_h);
+    _drop_h(_JC.symbols_errors_h);
+    _drop_h(_JC.symbols_warnings_h);
+    _JC.validation_errors_h = 0;
+    _JC.validation_warnings_h = 0;
+    _JC.symbols_errors_h = 0;
+    _JC.symbols_warnings_h = 0;
+    _JC.completed = 0;
+    _JC.validation_time = 0.0;
+    _JC.symbols_time = 0.0;
     _JC.mod_h = 0;
     _JC.diags_h = 0;
     _JC.lexdiags_h = 0;
     _JC.comments_h = 0;
     _JC.p_errs = 0;
     _JC.lex_errs = 0;
+}
+
+def:pub jc_set_early(context: int) -> int {
+    _JC.early_context = context;
+    return 0;
+}
+
+def:pub jc_completed -> int {
+    return _JC.completed;
+}
+
+def:pub jc_pass_time(pass_id: int) -> float {
+    return _JC.validation_time if pass_id == 1 else _JC.symbols_time;
+}
+
+def:pub jc_take_pass_alerts(pass_id: int, warnings: int) -> int {
+    h = 0;
+    if pass_id == 1 {
+        if warnings != 0 {
+            h = _JC.validation_warnings_h;
+            _JC.validation_warnings_h = 0;
+        } else {
+            h = _JC.validation_errors_h;
+            _JC.validation_errors_h = 0;
+        }
+    } else {
+        if warnings != 0 {
+            h = _JC.symbols_warnings_h;
+            _JC.symbols_warnings_h = 0;
+        } else {
+            h = _JC.symbols_errors_h;
+            _JC.symbols_errors_h = 0;
+        }
+    }
+    return h;
 }
 
 def _clear_annexes {
@@ -105,6 +164,63 @@ def _materialize(
     return 0;
 }
 
+def _finish_unit(
+    r: Region,
+    mod: Module,
+    p_diags: list[SrcDiag],
+    comments: list[CommentData],
+    lex_diags: list[SrcDiag]
+) -> int {
+    validation: (ASTValidationPass | None) = None;
+    symbols: (SymTabBuildPass | None) = None;
+
+    if _JC.early_context != 0
+        and _JC.p_errs == 0
+        and _JC.lex_errs == 0
+        and not mod.get_all_sub_nodes(GraphExpr) {
+        if _JC.early_context == 2 {
+            mod.set_code_context(CodeContext.CLIENT);
+        } elif _JC.early_context == 3 {
+            mod.set_code_context(CodeContext.NATIVE);
+        }
+        validation = ASTValidationPass(ir_in=mod);
+        _JC.completed = 1;
+        has_absorb = False;
+        for imp in mod.get_all_sub_nodes(Import) {
+            if imp.is_absorb {
+                has_absorb = True;
+                break;
+            }
+        }
+
+        if not has_absorb {
+            symbols = SymTabBuildPass(ir_in=mod);
+            _JC.completed = 3;
+        }
+    }
+    status = _materialize(r, mod, p_diags, comments, lex_diags);
+    if status != 0 {
+        return status;
+    }
+    if validation is not None {
+        _JC.validation_time = validation.time_taken;
+        _JC.validation_errors_h = _mz_list(validation.errors_had, _alert_tag());
+        _JC.validation_warnings_h = _mz_list(validation.warnings_had, _alert_tag());
+    }
+    if symbols is not None {
+        _JC.symbols_time = symbols.time_taken;
+        _JC.symbols_errors_h = _mz_list(symbols.errors_had, _alert_tag());
+        _JC.symbols_warnings_h = _mz_list(symbols.warnings_had, _alert_tag());
+    }
+    jc_mz_dispose();
+    return 0;
+}
+
+def _alert_tag -> int {
+    import from jaclang.runtime.osp_tag { stable_osp_tag }
+    return stable_osp_tag("Alert");
+}
+
 def _run_in_region(src: str, path: str) -> int {
     status = 0;
     r = Region();
@@ -123,7 +239,7 @@ def _run_in_region(src: str, path: str) -> int {
             }
         }
         if status == 0 {
-            status = _materialize(r, mod, p_diags, comments, lex_diags);
+            status = _finish_unit(r, mod, p_diags, comments, lex_diags);
         }
     }
     return status;
@@ -133,6 +249,7 @@ def:pub jc_run(src: str, path: str) -> int {
     _clear_results();
     status = _run_in_region(src, path);
     _clear_annexes();
+    _JC.early_context = 0;
     return status;
 }
 

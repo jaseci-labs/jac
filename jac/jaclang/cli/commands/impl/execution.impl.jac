@@ -182,11 +182,11 @@ def _pin_run_scope(filename: str, takeover: (bool | None)) -> None {
 }
 
 def _default_codespace_is_native -> bool {
-    import from jaclang.project.config { get_config, BuildConfig }
+    import from jaclang.project.config { get_config, PlacementConfig }
     cfg = get_config();
-    effective = cfg.build.default_codespace
+    effective = cfg.placement.default_codespace
         if cfg is not None
-        else BuildConfig().default_codespace;
+        else PlacementConfig().default_codespace;
     return effective == 'native';
 }
 
@@ -463,8 +463,8 @@ def _serve_with(
 }
 
 def _build_plan(plan: RunPlan) -> int {
-    if plan.verb == "nacompile" {
-        import from jaclang.cli.commands.nacompile { nacompile }
+    if plan.verb == "native" {
+        import from jaclang.cli.commands.native_build { native_build }
         out = plan.flags.get("output", "");
         if out {
             out_dir = os.path.dirname(out);
@@ -472,8 +472,8 @@ def _build_plan(plan: RunPlan) -> int {
                 os.makedirs(out_dir, exist_ok=True);
             }
         }
-        return nacompile(
-            filename=plan.entry_path, output=out, shared=plan.flags.get("shared", False)
+        return native_build(
+            filename=plan.entry_path, output=out, lib=plan.flags.get("lib", False)
         );
     }
     if plan.verb == "build" {
@@ -796,9 +796,20 @@ impl run(
     takeover: (bool | None) = None,
     fleet: bool = False,
     workers: (str | None) = None,
-    args: list = []
+    args: list = [],
+    backend: str = ""
 ) -> int {
     use_line_buffered_output();
+    if backend not in ("", "python", "native") {
+        console.error("--backend must be python or native.");
+        return 1;
+    }
+    if backend and (target.endswith(".jab") or debug_mode or entry_name) {
+        console.error(
+            "--backend requires ordinary Jac source execution; it cannot be combined with .jab, --debug or --entry."
+        );
+        return 1;
+    }
 
     if target.endswith(".jab") {
         if dev {
@@ -867,7 +878,26 @@ impl run(
         return 1;
     }
 
+    if backend
+        and (
+            want_serve or (plan is not None and plan.action == "build" and not file)
+        ) {
+        console.error(
+            "--backend applies only when executing Jac source, not serving or building an app."
+        );
+        return 1;
+    }
+    if backend
+        and not (file or (plan.entry_path if plan is not None else "")).endswith(
+            ".jac"
+        ) {
+        console.error("--backend requires a .jac source file.");
+        return 1;
+    }
     if show {
+        if backend {
+            console.print(f"backend      : {backend}");
+        }
         return _show_run(plan, app, target, file, want_serve);
     }
 
@@ -899,11 +929,16 @@ impl run(
     if entry_name {
         return _invoke_entrypoint(exec_target, entry_name, args, main, root_id, nd);
     }
-    return _exec_file(exec_target, main, cache, diagnostics, args);
+    return _exec_file(exec_target, main, cache, diagnostics, args, backend);
 }
 
 def _exec_file(
-    filename: str, main: bool, cache: bool, diagnostics: str, args: list
+    filename: str,
+    main: bool,
+    cache: bool,
+    diagnostics: str,
+    args: list,
+    backend: str = ""
 ) -> int {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from jaclang.project.config { get_config }
@@ -924,7 +959,17 @@ def _exec_file(
     sys.argv = [filename] + list(args);
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
+    import from jaclang.compiler.frontend.codeinfo {
+        get_effective_default_codespace_override,
+        set_effective_default_codespace
+    }
+    previous_codespace = get_effective_default_codespace_override();
     try {
+        if backend {
+            set_effective_default_codespace(
+                'server' if backend == 'python' else 'native'
+            );
+        }
         if filename.endswith('.jac') {
             native_executed = False;
 
@@ -942,14 +987,16 @@ def _exec_file(
             import from jaclang.compiler.driver.boundary_classify {
                 module_demoted_native as _na_demoted
             }
-            if (
-                _kind_forced
-                or (
-                    _default_codespace_is_native()
-                    and sys.stdout is sys.__stdout__
-                    and not _na_demoted(filename)
-                )
-            ) {
+            if backend != "python"
+                and (
+                    backend == "native"
+                    or _kind_forced
+                    or (
+                        _default_codespace_is_native()
+                        and sys.stdout is sys.__stdout__
+                        and not _na_demoted(filename)
+                    )
+                ) {
                 import ctypes;
                 import from jaclang.compiler.driver.compile_options {
                     CompileOptions as _RunOpts
@@ -958,7 +1005,7 @@ def _exec_file(
                 program = Jac.get_program();
                 _run_options = (
                     _RunOpts(force_codespace='native', force_target_program=True)
-                        if _kind_forced
+                        if _kind_forced or backend == "native"
                         else None
                 );
                 ir_mod = program.compile(file_path=full_path, options=_run_options);
@@ -984,15 +1031,35 @@ def _exec_file(
                         }
                     }
                 }
-                if _kind_forced and not native_executed {
+                if (_kind_forced or backend == "native") and not native_executed {
                     console.error(
-                        "cli-native project did not produce a runnable native "
+                        "Native execution was requested but did not produce a runnable native "
                         "entry (no engine or no jac_entry)."
                     );
                     return 1;
                 }
             }
             if not native_executed {
+                if backend == "python" {
+                    import from jaclang.compiler.driver.compile_options {
+                        CompileOptions
+                    }
+                    program = Jac.get_program();
+                    program.compile(
+                        file_path=os.path.abspath(filename),
+                        options=CompileOptions(
+                            force_codespace="server",
+                            default_codespace="server",
+                            force_target_program=True
+                        )
+                    );
+                    if program.errors_had {
+                        for error in program.errors_had {
+                            console.error(error.pretty_print());
+                        }
+                        return 1;
+                    }
+                }
                 Jac.jac_import(
                     target=mod,
                     base_path=base,
@@ -1036,6 +1103,7 @@ def _exec_file(
         }
         return 1 if diagnostics != "none" else 0;
     } finally {
+        set_effective_default_codespace(previous_codespace);
         sys.argv = original_argv;
         mach.close();
     }
@@ -1202,6 +1270,7 @@ impl serve(
     lng = filename.split('.')[-1];
 
     try {
+        console.print("Jac is analyzing your project. Please be patient...");
         Jac.jac_import(target=mod, base_path=base, lng=lng);
         if Jac.get_program().errors_had {
             for error in Jac.get_program().errors_had {
@@ -1425,31 +1494,34 @@ impl serve(
         return 1;
     } except KeyboardInterrupt {
         console.print('\nShutting down');
-        if hot_reloader is not None {
-            hot_reloader.stop();
-        }
-        for started_vite in vite_holder {
-            started_vite.terminate();
-            started_vite.`wait(timeout=5);
-        }
-        mach.close();
         return 0;
     } except Exception as e {
         import from jaclang.runtime.traceback_render { dump_traceback }
         import from jaclang.server.net { PortInUseError }
-        if hot_reloader is not None {
-            hot_reloader.stop();
-        }
-        for started_vite in vite_holder {
-            started_vite.terminate();
-        }
-        mach.close();
         if isinstance(e, PortInUseError) {
             raise;
         }
         console.error(f"Server error: {e}");
         console.error(dump_traceback(e));
         return 1;
+    } finally {
+        try {
+            if hot_reloader is not None {
+                hot_reloader.stop();
+            }
+        } finally {
+            import subprocess;
+            for started_vite in vite_holder {
+                started_vite.terminate();
+                try {
+                    started_vite.`wait(timeout=5);
+                } except subprocess.TimeoutExpired {
+                    started_vite.kill();
+                    started_vite.`wait();
+                }
+            }
+            mach.close();
+        }
     }
 }
 

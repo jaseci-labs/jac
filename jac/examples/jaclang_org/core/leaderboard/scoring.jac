@@ -1,5 +1,6 @@
 import re;
 import math;
+import from core.ai { CodeReview }
 import from core.github { RepoMeta }
 import from core.timefmt { days_since }
 
@@ -21,7 +22,8 @@ obj ScorePart {
 }
 
 obj ScoreBreakdown {
-    has total: int = 0,
+    has ai_review: CodeReview | None = None,
+        total: int = 0,
         belt: str = "white",
         substance: int = 0,
         breadth: int = 0,

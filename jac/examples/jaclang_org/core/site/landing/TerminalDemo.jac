@@ -1,5 +1,3 @@
-import from react { useEffect }
-
 glob _SCRIPT: list[dict] = [
          {"k": "cmd", "t": "jac create trailmate --use jac-shadcn"},
          {"k": "out", "t": "  Themed starter ready (nova / orange / geist)"},
@@ -14,62 +12,59 @@ glob _SCRIPT: list[dict] = [
 def:pub TerminalDemo(className: str = "") -> JsxElement {
     has shown: list[dict] = [];
 
-    useEffect(
-        lambda {
-            si = 0;
-            ci = 0;
-            pause = 18;
-            done: list[dict] = [];
-            interval = setInterval(
-                lambda {
-                    if pause > 0 {
-                        pause = pause - 1;
-                        return None;
-                    }
-                    if si >= len(_SCRIPT) {
-                        pause = 200;
-                        si = 0;
-                        ci = 0;
-                        done = [];
-                        return None;
-                    }
-                    st = _SCRIPT[si];
-                    kind = st["k"] as str;
-                    full = st["t"] as str;
-                    if kind == "cmd" {
-                        if ci < len(full) {
-                            ci = ci + 2;
-                            if ci > len(full) {
-                                ci = len(full);
-                            }
-                            cur = "";
-                            j = 0;
-                            while j < ci {
-                                cur = cur + full[j];
-                                j = j + 1;
-                            }
-                            shown = done + [{"k": "cmd", "t": cur, "live": True}];
-                        } else {
-                            done = done + [{"k": "cmd", "t": full, "live": False}];
-                            shown = done;
-                            si = si + 1;
-                            ci = 0;
-                            pause = 14;
+    can with entry {
+        si = 0;
+        ci = 0;
+        pause = 18;
+        done: list[dict] = [];
+        interval = setInterval(
+            lambda {
+                if pause > 0 {
+                    pause = pause - 1;
+                    return None;
+                }
+                if si >= len(_SCRIPT) {
+                    pause = 200;
+                    si = 0;
+                    ci = 0;
+                    done = [];
+                    return None;
+                }
+                st = _SCRIPT[si];
+                kind = st["k"] as str;
+                full = st["t"] as str;
+                if kind == "cmd" {
+                    if ci < len(full) {
+                        ci = ci + 2;
+                        if ci > len(full) {
+                            ci = len(full);
                         }
+                        cur = "";
+                        j = 0;
+                        while j < ci {
+                            cur = cur + full[j];
+                            j = j + 1;
+                        }
+                        shown = done + [{"k": "cmd", "t": cur, "live": True}];
                     } else {
-                        done = done + [st];
+                        done = done + [{"k": "cmd", "t": full, "live": False}];
                         shown = done;
                         si = si + 1;
-                        pause = 7;
+                        ci = 0;
+                        pause = 14;
                     }
-                    return None;
-                },
-                28
-            );
-            return lambda { clearInterval(interval); };
-        },
-        []
-    );
+                } else {
+                    done = done + [st];
+                    shown = done;
+                    si = si + 1;
+                    pause = 7;
+                }
+                return None;
+            },
+            28
+        );
+        return lambda { clearInterval(interval); };
+    }
 
     return
         <div

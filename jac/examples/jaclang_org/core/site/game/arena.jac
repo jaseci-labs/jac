@@ -1,5 +1,6 @@
 import from platform_rl {
     open_window,
+    close_window,
     should_close,
     frame_dt,
     key_held,
@@ -35,6 +36,12 @@ import from platform_rl {
 }
 import from sim {
     Game,
+    Cmd,
+    Player,
+    Stats,
+    EnemyPool,
+    ProjectilePool,
+    SparkPool,
     world_new,
     sim_tick,
     TICK_DT,
@@ -47,32 +54,40 @@ import from sim {
 }
 import from gmath { jsin, lerp, clampf }
 
-glob acc: float = 0.0,
-     prev_mx: float = 0.0,
-     prev_my: float = 0.0,
-     mouse_warmup: int = 12,
-     mouse_sens: float = 0.12,
-     mouse_captured: bool = False;
+obj RenderView {
+    has cmd: &Cmd,
+        player: &Player,
+        stats: &Stats,
+        enemies: &EnemyPool,
+        rockets: &ProjectilePool,
+        shots: &ProjectilePool,
+        sparks: &SparkPool,
+        time: float;
+}
 
 def sample_input(w: &mut Game, dtf: float);
 
 def draw_enemy_model(ex: float, ey: float, ez: float, k: float);
 
-def draw_enemies(w: &Game, alpha: float);
+def draw_enemies(w: &RenderView, alpha: float);
 
-def draw_rockets(w: &Game, alpha: float);
+def draw_rockets(w: &RenderView, alpha: float);
 
-def draw_shots(w: &Game, alpha: float, rt: float);
+def draw_shots(w: &RenderView, alpha: float, rt: float);
 
-def draw_sparks(w: &Game, alpha: float);
+def draw_sparks(w: &RenderView, alpha: float);
 
-def draw_weapon(w: &Game, cx: float, cy: float, cz: float, rt: float);
+def draw_weapon(w: &RenderView, cx: float, cy: float, cz: float, rt: float);
 
-def draw_hud(w: &Game, rt: float);
+def draw_hud(w: &RenderView, rt: float);
 
-def render(w: &Game, alpha: float);
+def render(w: &RenderView, alpha: float);
 
-def init -> Game;
+def init -> own Game;
+
+def shutdown(w: own Game) {
+    close_window();
+}
 
 def frame(w: &mut Game) -> bool;
 

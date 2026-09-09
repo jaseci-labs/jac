@@ -13,4 +13,7 @@ with entry {
     print(os.path.isfile("/tmp/jac_ospath_missing_zz"));
     print(os.path.getsize("/tmp/jac_ospath_probe.txt"));
     print(os.path.getsize("/tmp/jac_ospath_missing_zz"));
+    print(os.path.isdir(os.getcwd()));
+    print(os.path.basename("/tmp/jac_ospath_probe.txt"));
+    print(os.getenv("JAC_NATIVE_OS_PATH_TEST"));
 }

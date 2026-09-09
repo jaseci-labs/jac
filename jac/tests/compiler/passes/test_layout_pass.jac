@@ -33,6 +33,28 @@ def get_registry(fixture: str) -> LayoutRegistry {
 }
 
 # ── LAYOUT_COMPATIBLE_PRIMITIVES ──────────────────────────────
+test "dispatch headers are independent of backend placement" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    layouts: list[ArchetypeLayout] = [];
+    for context in ["client", "native", "server"] {
+        program = JacProgram();
+        module = program.compile(
+            "layout_placement.jac",
+            use_str="obj Box { has value: int; } def accepts(value: object) -> bool { return isinstance(value, Box); }",
+            options=CompileOptions(force_codespace=context, no_cgen=True)
+        );
+        assert not program.errors_had;
+        layout = get_layout_registry(module, program).get_layout("Box");
+        assert layout is not None;
+        layouts.append(layout);
+    }
+    for layout in layouts {
+        assert layout.has_vtable;
+        assert layout.field_index == layouts[0].field_index;
+        assert layout.vtable_ptr_slot == layouts[0].vtable_ptr_slot;
+    }
+}
+
 test "LAYOUT_COMPATIBLE_PRIMITIVES contains all expected types" {
     expected = {
         "int",

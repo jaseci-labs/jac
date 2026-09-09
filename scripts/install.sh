@@ -212,7 +212,7 @@ get_latest_version() {
 
     # Extract tag_name, strip leading 'v'
     local tag
-    tag=$(echo "$response" | grep -o '"tag_name":[[:space:]]*"[^"]*"' | head -1 | grep -o '"v[^"]*"' | tr -d '"' | sed 's/^v//')
+    tag=$(echo "$response" | grep -o '"tag_name":[[:space:]]*"[^"]*"' | sed -n '1p' | grep -o '"v[^"]*"' | tr -d '"' | sed 's/^v//')
 
     if [[ -z "$tag" ]]; then
         err "Could not determine latest version from GitHub Releases."
@@ -243,7 +243,7 @@ resolve_release_metadata() {
 
     # Find a jac-<version>-<os>-<arch> asset to extract the jac binary version
     # (the jaclang version, which can differ from the jaseci release tag).
-    ASSET_VERSION=$(echo "$response" | grep -o '"name":[[:space:]]*"jac-[^"]*"' | head -1 | grep -oE 'jac-[0-9]+\.[0-9]+\.[0-9]+' | sed 's/^jac-//')
+    ASSET_VERSION=$(echo "$response" | grep -o '"name":[[:space:]]*"jac-[^"]*"' | sed -n '1p' | grep -oE 'jac-[0-9]+\.[0-9]+\.[0-9]+' | sed 's/^jac-//')
 
     if [[ -z "$ASSET_VERSION" ]]; then
         err "Could not determine the jac binary version from release v${release_tag} assets."
@@ -274,7 +274,7 @@ find_last_release_with_platform() {
         fi
         probed=$((probed + 1))
         body=$(api_curl "${GITHUB_API}/releases/tags/${tag}" 2>/dev/null) || continue
-        if echo "$body" | grep -qE "\"name\":[[:space:]]*\"jac-[0-9]+\.[0-9]+\.[0-9]+-${OS}-${ARCH}\""; then
+        if grep -qE "\"name\":[[:space:]]*\"jac-[0-9]+\.[0-9]+\.[0-9]+-${OS}-${ARCH}\"" <<< "$body"; then
             echo "${tag#v}"
             return 0
         fi
@@ -289,7 +289,9 @@ find_last_release_with_platform() {
 require_platform_asset() {
     local asset="$1"
 
-    if printf '%s\n' "$RELEASE_ASSETS" | grep -qxF "$asset"; then
+    # A quiet grep may exit on the first asset; a pipe producer could then
+    # fail with SIGPIPE under pipefail despite the successful match.
+    if grep -qxF "$asset" <<< "$RELEASE_ASSETS"; then
         return 0
     fi
 

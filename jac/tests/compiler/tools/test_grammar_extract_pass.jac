@@ -184,6 +184,7 @@ obj Parser {
     def check(kind: TokenKind) -> bool { return True; }
     def match_tok(kind: TokenKind) -> bool { return True; }
     def expect(kind: TokenKind) -> int { return 0; }
+    def consume_uni(kind: TokenKind, value: str | None = None) -> int { return 0; }
     def advance -> int { return 0; }
     def flagged -> bool { return True; }
     def parse_module;
@@ -203,6 +204,7 @@ obj Parser {
     def parse_covered;
     def parse_wrapped;
     def parse_trying;
+    def parse_contextual;
 }
 
 impl Parser.parse_module {
@@ -217,6 +219,7 @@ impl Parser.parse_module {
     self.parse_either();
     self.parse_covered();
     self.parse_trying();
+    self.parse_contextual();
 }
 
 impl Parser.parse_loopy {
@@ -338,6 +341,14 @@ impl Parser.parse_trying {
     }
     return self.parse_leaf();
 }
+
+impl Parser.parse_contextual {
+    try {
+        kid = [self.consume_uni(TokenKind.NAME, "graph"), self.expect(TokenKind.LBRACE)];
+    } finally {
+        self.expect(TokenKind.SEMI);
+    }
+}
 """;
 
 """Compile the mini parser fixture and run extraction on it."""
@@ -356,6 +367,11 @@ def mini_pass -> GrammarExtractPass {
 
 def mini_rules -> dict {
     return {r.name: r for r in mini_pass().rules};
+}
+
+test "contextual tokens and finally blocks retain their grammar" {
+    rules = mini_rules();
+    assert fmt(rules["contextual"].body) == '"graph" "{" ";"';
 }
 
 test "or merged match_tok loop emits full token set" {

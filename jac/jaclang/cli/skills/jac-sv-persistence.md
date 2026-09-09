@@ -1,9 +1,9 @@
 ---
 name: jac-sv-persistence
-description: Modeling relationships and querying the graph from server endpoints - connecting entities, multi-step reads, filtering, find-by-id (jid loop, jobj lookup), view models / to_view projections - plus schema changes, field renames, migration, quarantine, and database backends. Load when server code stores or queries relational data, or when a schema edit breaks reads. Pair with `jac-sv-endpoints`.
+description: Store and query durable graph data and evolve schemas. Use for root attachment, identity lookup, migrations, or failed persisted reads.
 ---
 
-The server's graph IS the database. Create entities by attaching nodes to `root` (or to each other via typed edges); read them with list-comprehension traversals; filter and aggregate with bracket predicates and `len()`. Writes persist automatically - no save/commit call needed inside endpoints (`commit()` exists for scripts that exit abruptly).
+Use nodes and edges as the application data model. In a persistence-enabled context, attachment to persistent graph state promotes transient nodes into storage. Endpoint transactions manage successful writes; scripts and background work must follow the persistence lifecycle described by the runtime. Disconnecting an edge does not delete a previously persisted node: use explicit deletion when intended.
 
 ```jac
 node User { has name: str; }
@@ -37,8 +37,8 @@ def:pub posts_by(user_id: str) -> list[Post] {
     return [];
 }
 
-# UPDATE - resolve the jid with jobj() and mutate in place; jobj is O(1) and the
-# ONLY way to reach a node granted from another user's root ([root -->] can't).
+# UPDATE - resolve a known jid with jobj() and mutate in place.
+# Identity lookup does not replace access checks; a grant need not add a root edge.
 def:pub publish(post_id: str) -> Post | None {
     target = jobj(post_id);
     if isinstance(target, Post) {
@@ -165,7 +165,7 @@ jac db recover-all --app app.jac        # re-attempt every quarantined row
 
 ## Pitfalls
 
-- **THE dev-loop landmine: `{"detail": "Invalid anchor id ..."}` 500s** on previously-working endpoints = stale anchors persisted by a previous run under a different schema. Stop the server, `rm -rf .jac/data/`, restart. Fine in dev (it deletes local data); in production use the alias/quarantine machinery above instead.
+- **Invalid anchors after a change:** check the reference, selected app/store, and schema migration state. Follow `jac-debugging` and `jac-sv-persistence`; do not infer that an anchor error requires deleting project data.
 - A node is not persisted until it's reachable from `root`. `Post(title="x")` alone is a dangling node; `root ++> Post(...)` (or a typed edge from a reachable node) is what commits it.
 - **Find-by-id keys on `jid()`, two patterns**: the in-root loop (`for p in [root-->][?:Post] { if jid(p) == id ... }`) and `jobj(id)` + `isinstance` - O(1), and REQUIRED when the target lives under another user's root (granted foreign nodes are unreachable from `[root-->]`). NEVER Python `id()`: an in-memory address that changes every restart and differs across workers, so lookups silently return empty.
 - **`jobj` resolves regardless of grants** - it never authorizes. Police the subsequent read/mutation with grant levels (`jac-sv-multi-user`); don't treat a jid as a secret capability.

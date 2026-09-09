@@ -1,32 +1,18 @@
 # Why Jac Exists
 
-Modern software development has fragmented into a patchwork of languages,
-package ecosystems, and configuration dialects. Consider the stack a competent
-team assembles today for an ordinary product: a React frontend, a Python API, a
-relational database, a cache, a task queue, an LLM feature, containers, CI, and
-infrastructure-as-code. Count the notations a maintainer must read: four
-languages where logic lives (TypeScript, Python, SQL, shell), two presentation
-notations (JSX, CSS), and six configuration dialects (JSON, TOML, three
-unrelated YAML schemas, Dockerfile, HCL, dotenv). That is twelve notations and
-five package ecosystems, each ecosystem with its own resolver and its own
-advisory feed. Nobody chose this. It is what precipitates when every
-architectural seam is also a change of language, type system, and serialization
-regime.
+An application often represents the same concept in several places: a database
+schema, a server model, an API response, and a client type. Changing a field can
+require coordinated edits across those representations. Code generation and
+contract checking help, but their coverage depends on how the tools are
+connected.
 
-The number that matters more is harder to see: the count of places where
-meaning is re-encoded with no tool checking the encoding. We call such a place
-a *discontinuity*: a boundary at which the representation of meaning must
-change and over which no verifier has jurisdiction. We call what
-discontinuities cost *glue*: code or configuration whose sole purpose is to
-carry meaning across a discontinuity, adding no domain behavior of its own. For
-example, the ORM model restates the SQL schema, the Pydantic schema restates
-the ORM model, the TypeScript interface restates the Pydantic schema, the route
-table names functions a second time in URL vocabulary, and the prompt template
-restates your types in English. Every one of those restatements is glue, and
-every one sits on a discontinuity.
+Jac brings several of these declarations into one language. Its compiler can
+use shared type information when checking supported client/server calls, and
+its runtime provides graph storage and model-backed functions. The practical
+aim is to reduce the mappings an application author must maintain.
 
-The diagram below traces the path one value walks from its source of truth to
-the pixels that render it:
+For example, a conventional web application might carry a value through this
+sequence:
 
 ```mermaid
 graph LR
@@ -37,84 +23,47 @@ graph LR
     TS --> JSX["component binding<br/><i>JSX</i>"]
 ```
 
-Five dialects, three hand-authored representation changes, and not one pair of
-adjacent boxes that any verifier spans. Within TypeScript's territory, a
-renamed field is a build error at every stale use. Between territories there is
-nothing: the whole-program type checker of the modern stack is `grep`. Note
-that defects do not distribute evenly across a codebase. They pool at the
-discontinuities, because a discontinuity is by definition a place where the
-machinery that prevents defects has no reach.
-
----
+Some applications generate these mappings; others maintain them by hand. Jac
+lets a supported cross-tier call refer directly to the declared function and
+its types. This reduces duplication, while runtime validation, authorization,
+and failure handling remain necessary.
 
 ## Two assumptions, seventy years old
 
-This fragmentation is not required, and the case comes in two parts.
+Jac's design explores two independent questions: how much of an application a
+language can describe and check together, and how computation can be expressed
+over connected data. Its research vocabulary calls the corresponding language
+classes *synechic* and *topokinetic*.
 
-First, none of it is required by modularity. Modules need boundaries and
-interfaces. Nothing requires that a boundary also be a change of language, type
-system, package ecosystem, serialization regime, and deployment unit all at
-once. The conventional stack bundles one good idea (decomposition) with five
-contingent ones and sells them as a package.
+The second question provides a useful juxtaposition with the von Neumann
+model: instead of expressing every operation as data delivered to a fixed
+procedure, a Jac walker carries state through a graph and executes abilities
+at the nodes it visits. This is a programming abstraction. It does not require
+a different processor architecture or imply that code physically migrates
+between machines on every visit.
 
-Second, none of it is required by computation. The pattern traces to the 1945
-report that defined the stored-program computer, and to two silent assumptions
-latent in its picture of a machine. The first assumption is that *computation
-is stationary*: the site of processing is fixed, and data travels to it, from
-memory to processor, and by later extension from disk to memory, from database
-to application, from server to client. The second assumption is that *the
-machine is the program's world*: a program's semantics extend exactly to the
-edge of its memory and no further, so frontend and backend, managed and
-native, script and service are separate programs, joined by hand. Neither
-assumption is a law of computation. Both are engineering defaults from a
-report about a machine with one memory, and seventy years of habit made them
-look like laws.
-
-Jac is one bet against each assumption. Discarding the second gives a language
-that presents one continuous, checked medium across every substrate an
-application touches; that property is named *synechic*. Discarding the first
-gives a language in which computation moves through the shape of its data;
-that property is named *topokinetic*. [The Two Ideas](ideas-behind-jac.md)
-defines both and states why they compound.
-
----
+The first question concerns continuity across runtimes and ecosystems. Jac can
+target server, browser, and native execution within one project, with placement
+and interoperability rules determining which combinations are supported.
+[The Two Ideas](ideas-behind-jac.md) explains this design vocabulary. You do not
+need it to write your first program.
 
 ## Why this matters more in the era of AI authorship
 
-Coding models now write a large share of new code, and this tempts a shortcut:
-if machines can emit the four copies of a record in seconds, the copies look
-free. The inference fails three ways.
+Generated code needs the same checks as handwritten code. Shared declarations
+can give a coding agent useful diagnostics when it changes a server contract
+without updating a client. They do not establish that an application behaves
+correctly or that a model-generated result is meaningful.
 
-First, glue is the most mechanically derivable text in software, and it
-dominates the corpora the models learned from. A generator of code is, before
-anything else, a generator of glue. Second, glue's cost was never the typing.
-The cost is verification. Discontinuities are precisely the program points no
-tool can check, so cheap generation against fixed verification cost moves the
-bottleneck: ten times the glue is ten times the unverifiable surface, and a
-fluent model drifts more plausibly than a tired human. Third, every generated
-serializer and manifest returns to the training corpus as evidence that this
-is what software is.
-
-A continuous medium changes the terms for human and machine authors at once.
-A whole Jac application fits in one file that fits in a context window. Every
-cross-tier invariant is a compile-time property, so an agent's mistake is a
-diagnostic, not a production incident. A `sem` annotation is read three ways:
-by the prompt synthesizer as specification, by the maintainer as
-documentation, and by the coding agent as context.
-
-When authorship is abundant, the scarce resource is *jurisdiction*: the reach
-of the verifiers that can examine a change and say no. A language is where
-that reach is decided. Discontinuities that were tolerable when humans wrote
-software are untenable when machines do, and Jac is built to leave no program
-point where the only reviewer is hope.
-
----
+For development with an assistant, Jac bundles task-specific coding guides
+with the compiler. Start with `jac guide jac-essentials`, retrieve the guide for
+the task, and check and exercise the resulting program. For human learners,
+the tutorials explain the same constructs through runnable examples and
+observable results.
 
 ## Next steps
 
-- [The Two Ideas](ideas-behind-jac.md): the two properties the diagnosis
-  forces, defined precisely
-- [One App, Two Stacks](jac-vs-traditional-stack.md): the same argument, made
-  by building one app both ways and counting
-- [Core Concepts](what-makes-jac-different.md): the practical tour of the
-  language these ideas produce
+- [Install Jac](install.md) and run a first program.
+- [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) to learn through a project.
+- [Core Concepts](what-makes-jac-different.md) introduces the main language features.
+- [One App, Two Stacks](jac-vs-traditional-stack.md) compares two implementations of one application.

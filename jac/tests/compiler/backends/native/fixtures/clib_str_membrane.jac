@@ -1,8 +1,5 @@
-"""str arguments and returns cross the clib membrane through the JacStr
-descriptor shims: wrap to the descriptor, unwrap to a NUL-terminated
-char* for C, and wrap-raw the C return back in. Behavior is identical
-in every gc mode; the shims are the step-2 scaffolding of the
-fat-descriptor migration."""
+"""String arguments and borrowed C returns cross the shared string boundary.
+The interior pointer returned by strchr must survive its temporary argument."""
 
 import from c { def strcmp(a: str, b: str) -> i32;  }
 import from c { def strchr(s: str, c: i32) -> str;  }
@@ -15,6 +12,10 @@ def mk(k: int) -> str {
     return base[0:3] + "ha";
 }
 
+def borrowed_tail(k: int) -> str {
+    return strchr(mk(k), 112);
+}
+
 with entry {
     a: own str = mk(1);
     b: own str = mk(0);
@@ -23,5 +24,7 @@ with entry {
     print(strcmp(c, "beta") < 0);
     tail = strchr("hello", 108);
     print(tail);
+    retained: own str = borrowed_tail(1);
+    print(retained);
     print("end");
 }

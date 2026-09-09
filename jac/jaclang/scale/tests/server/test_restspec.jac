@@ -14,7 +14,7 @@ test "custom method walker" {
     client = make_client("restspec_fixtures.jac");
     try {
         response = client.get("/walker/GetWalker");
-        assert response.status_code == 200;
+        assert response.status_code == 200 , response.text;
         data = extract_data(response.json());
         assert data["reports"][0]["message"] == "GetWalker executed";
     } finally {

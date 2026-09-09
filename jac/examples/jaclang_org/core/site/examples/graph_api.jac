@@ -19,4 +19,4 @@ walker:pub list_tasks {
     }
 }
 
-# jac start graph_api.jac  ->  POST /walker/add_task
+# jac run graph_api.jac  ->  POST /walker/add_task

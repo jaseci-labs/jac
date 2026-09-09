@@ -1459,7 +1459,7 @@ test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
         }
         func = `node.func;
         return (
-            (isinstance(func, ast3.Name) and func.id == "acall_llm")
+            (isinstance(func, ast3.Name) and func.id == "_jac_runtime_acall_llm")
             or (isinstance(func, ast3.Attribute) and func.attr == "acall_llm")
         );
     }

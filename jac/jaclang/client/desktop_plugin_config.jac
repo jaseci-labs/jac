@@ -204,7 +204,7 @@ class JacDesktopPluginConfig {
         return PluginMetadata(
             name="desktop",
             version=pkg_version("jaclang"),
-            description="Jac-native desktop target (webview + nacompile)."
+            description="Jac-native desktop target (webview + native build)."
         ).to_dict();
     }
 

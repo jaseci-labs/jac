@@ -12,7 +12,7 @@ calls are pointed.
 
 These boot the same module the binary boots, in this interpreter, with the
 image built by the same `build_jab` the desktop target uses. No webview, no
-display, no nacompile.
+display, no native build.
 """
 
 import json;

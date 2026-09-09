@@ -287,9 +287,20 @@ impl MicroserviceGateway.build_forward_headers(request: Request) -> dict[str, st
 }
 
 impl MicroserviceGateway.handle_health -> Response {
+    statuses = [e.status for e in self.registry.entries.values()];
+    degraded = `any(
+        s in (ServiceStatus.UNHEALTHY, ServiceStatus.STOPPED) for s in statuses
+    );
+    if not statuses or all(s == ServiceStatus.HEALTHY for s in statuses) {
+        overall = "healthy";
+    } elif degraded {
+        overall = "degraded";
+    } else {
+        overall = "starting";
+    }
     return JSONResponse(
-        status_code=200,
-        content={"status": "healthy", "services": self.registry.health_summary()}
+        status_code=503 if degraded else 200,
+        content={"status": overall, "services": self.registry.health_summary()}
     );
 }
 

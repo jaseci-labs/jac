@@ -1,4 +1,4 @@
-"""Heterogeneous containers under headerless --gc none --enforce-nogc.
+"""Heterogeneous containers under headerless --memory nogc.
 
 Jacval element slots carry no RC header, so container death must reclaim
 boxed heap payloads through the stamped elem-drop slot: the drop walk hands

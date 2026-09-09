@@ -1,6 +1,6 @@
 ---
 name: jac-comptime
-description: Compile-time evaluation with `comptime` - bindings, `comptime if`/`for`/`assert`, comptime defs and imports, comptime parameters on defs and archetypes, the `jaclang.comptime` intrinsics (`fields`, `members`, `sizeof`, `embed_file`, ...), what erases on which tier, and the E0033/E0108/E0109 diagnostics. Load when a value should be computed by the compiler, when a table must be derived from the program itself, or when a `comptime` site reports E0033.
+description: Compute values and specialize code at compile time. Use for comptime declarations, reflection, embedding, or E0033/E0108/E0109 diagnostics.
 ---
 
 `comptime` marks a value the compiler computes while the module compiles. It is a property of values, not a macro system: an expression is comptime-known when it is built from literals, other comptime values, enum members, types, and the program's own declarations. The same Jac is interpreted by the compiler; there is no second language.

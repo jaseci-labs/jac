@@ -1,4 +1,3 @@
-import from react { useEffect }
 import from core.utils { cn }
 import from .SourceBrowser { SourceBrowser }
 import from "@hugeicons/react" { HugeiconsIcon }
@@ -24,41 +23,38 @@ def:pub FloatingSource(
         offX: Ref[any] = Ref(0),
         offY: Ref[any] = Ref(0);
 
-    useEffect(
-        lambda {
-            if always_float {
-                size_anim = True;
-                return lambda {};
-            }
-            target = anchorRef.current;
-            if not target {
-                return lambda {};
-            }
-            obs: any = new(
+    can with entry {
+        if always_float {
+            size_anim = True;
+            return;
+        }
+        target = anchorRef.current;
+        if not target {
+            return;
+        }
+        obs: any = new(
+            IntersectionObserver,  # jac:ignore[E1053]
+            lambda (entries: any) { floating = not entries[0].isIntersecting; },
+            {"threshold": 0.0}
+        );
+        obs.observe(target);
+        finale: any = document.getElementById("explorer");
+        fobs: any = None;
+        if finale {
+            fobs = new(
                 IntersectionObserver,  # jac:ignore[E1053]
-                lambda (entries: any) { floating = not entries[0].isIntersecting; },
-                {"threshold": 0.0}
+                lambda (entries: any) { yielded = entries[0].isIntersecting; },
+                {"threshold": 0.12}
             );
-            obs.observe(target);
-            finale: any = document.getElementById("explorer");
-            fobs: any = None;
-            if finale {
-                fobs = new(
-                    IntersectionObserver,  # jac:ignore[E1053]
-                    lambda (entries: any) { yielded = entries[0].isIntersecting; },
-                    {"threshold": 0.12}
-                );
-                fobs.observe(finale);
+            fobs.observe(finale);
+        }
+        return lambda {
+            obs.disconnect();
+            if fobs {
+                fobs.disconnect();
             }
-            return lambda {
-                obs.disconnect();
-                if fobs {
-                    fobs.disconnect();
-                }
-            };
-        },
-        []
-    );
+        };
+    }
 
     def apply_offset(nx: float, ny: float, force: bool = False) {
         el: any = winRef.current;
@@ -107,18 +103,15 @@ def:pub FloatingSource(
         el.style.transform = "translate(" + str(nx) + "px, " + str(ny) + "px)";
     }
 
-    useEffect(
-        lambda {
-            on_resize = lambda (_ev: any) { apply_offset(
-                (offX.current or 0) as float, (offY.current or 0) as float
-            ); };
-            window.addEventListener("resize", on_resize);
-            return lambda { window.removeEventListener("resize", on_resize); };
-        },
-        [floating]
-    );
+    can with [floating, always_float, pulled] entry {
+        on_resize = lambda (_ev: any) { apply_offset(
+            (offX.current or 0) as float, (offY.current or 0) as float
+        ); };
+        window.addEventListener("resize", on_resize);
+        return lambda { window.removeEventListener("resize", on_resize); };
+    }
 
-    can with [floating, pulled] entry {
+    can with [floating, always_float, pulled] entry {
         active = floating or always_float or pulled;
         if winRef.current {
             if active {
@@ -135,7 +128,8 @@ def:pub FloatingSource(
             }
         }
         if active {
-            _ = setTimeout(lambda { size_anim = True; }, 500);
+            timer = setTimeout(lambda { size_anim = True; }, 500);
+            return lambda { clearTimeout(timer); };
         } else {
             size_anim = False;
         }

@@ -1,4 +1,5 @@
 import os;
+import from jaclang.toolchains.desktop { ensure_webview }
 import shutil;
 import subprocess;
 import from pathlib { Path }
@@ -19,27 +20,6 @@ import from jaclang.client.targets.desktop._dev_launch {
     desktop_app_runtime_env,
     jac_desktop_deps_shell_export,
     jac_desktop_webkit_shell_export
-}
-
-def _ensure_libwebview(webview_dir: Path) -> Path {
-    lib = webview_dir / libwebview_name();
-    if lib.exists() {
-        return lib;
-    }
-    console.print(f"  Building {libwebview_name()} (one-time)...", style="muted");
-    script = webview_dir / "build_libwebview.sh";
-
-    try {
-        script.chmod(script.stat().st_mode | 0o111);
-    } except OSError {}
-    res = subprocess.run([str(script)]);
-    if res.returncode != 0 or not lib.exists() {
-        raise RuntimeError(
-            f"Failed to build {libwebview_name()} - is WebKitGTK + a C toolchain installed? "
-            "See jaclang/client/targets/desktop/native/webview/README.md."
-        );
-    }
-    return lib;
 }
 
 def _assemble_native_host(
@@ -64,7 +44,7 @@ def _assemble_native_host(
         shutil.copytree(dist_dir, output_dir / "dist");
     }
     webview_dir = _find_webview_dir();
-    lib = _ensure_libwebview(webview_dir);
+    lib = ensure_webview(webview_dir);
     out_lib_name = libwebview_name();
     shutil.copy2(lib, output_dir / out_lib_name);
     shutil.copy2(webview_dir / "webview.jac", output_dir / "webview.jac");
@@ -87,10 +67,17 @@ def _assemble_native_host(
     );
     (output_dir / "host.jac").write_text(host_src);
 
-    console.print("  Compiling native host (jac nacompile)...", style="muted");
+    console.print("  Compiling native host (jac build --native)...", style="muted");
     binary = output_dir / app_name;
     res = subprocess.run(
-        [_jac_bin(), "nacompile", str(output_dir / "host.jac"), "-o", str(binary)],
+        [
+            _jac_bin(),
+            "build",
+            "--native",
+            str(output_dir / "host.jac"),
+            "-o",
+            str(binary)
+        ],
         cwd=str(output_dir),
         env=_jac_subprocess_env()
     );

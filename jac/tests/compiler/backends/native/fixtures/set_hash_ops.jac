@@ -136,7 +136,7 @@ def order_after_deletes -> str {
     s.remove("two");
     s.add("five");
     out: str = "";
-    for v in iter(s) {
+    for v in s {
         out += v + ";";
     }
     return out;

@@ -256,7 +256,174 @@ impl JcirGenPass.exit_func_call with FuncCall exit {
     self._exit_func_call_impl(here);
 }
 
+impl JcirGenPass._place_parts(arg: UniNode) -> (tuple | None) {
+    place = arg;
+    if isinstance(arg, UnaryExpr) and is_borrow_kind(arg.ownership) {
+        place = arg.operand;
+    }
+    cg = self.val(place);
+    if cg.cls == 'Attribute' {
+        return ('attr', cg.get('value'), self.const_of(cg.get('attr')));
+    }
+    if cg.cls == 'Subscript' {
+        return ('item', cg.get('value'), cg.get('slice'));
+    }
+    if cg.cls == 'Name' {
+        return ('name', cg.get('id'), None);
+    }
+    return None;
+}
+
+impl JcirGenPass._name_swap_expr(store_id: str, value: CgNode) -> CgNode {
+    return self.nod(
+        'NamedExpr',
+        ['target', 'value'],
+        [self.nod('Name', ['id', 'ctx'], [store_id, self.nod('Store', [], [])]), value]
+    );
+}
+
+impl JcirGenPass._name_take_expr(owner: str) -> CgNode {
+    moved = self.nod(
+        'Tuple',
+        ['elts', 'ctx'],
+        [
+            [self.name_load(owner), self._name_swap_expr(owner, self.const_of(None))],
+            self.nod('Load', [], [])
+        ]
+    );
+    return self.nod(
+        'Subscript',
+        ['value', 'slice', 'ctx'],
+        [moved, self.const_of(0), self.nod('Load', [], [])]
+    );
+}
+
+impl JcirGenPass._lower_take(nd: FuncCall) -> (CgNode | None) {
+    params = list(nd.params or []);
+    if len(params) != 1 or isinstance(params[0], KWPair) {
+        return None;
+    }
+    parts = self._place_parts(params[0]);
+    if parts is None {
+        return None;
+    }
+    (kind, owner, key) = parts;
+    if kind == 'name' {
+        return self._name_take_expr(owner);
+    }
+    helper = '_jac_take_attr' if kind == 'attr' else '_jac_take_item';
+    return self.nod(
+        'Call',
+        ['func', 'args', 'keywords'],
+        [self.builtin_name(helper), [owner, key], []]
+    );
+}
+
+impl JcirGenPass._lower_swap(nd: FuncCall) -> (CgNode | None) {
+    params = list(nd.params or []);
+    if len(params) != 2 or any([isinstance(p, KWPair) for p in params]) {
+        return None;
+    }
+    pa = self._place_parts(params[0]);
+    pb = self._place_parts(params[1]);
+    if pa is None or pb is None {
+        return None;
+    }
+    (ka, oa, keya) = pa;
+    (kb, ob, keyb) = pb;
+    if ka == 'name' and kb == 'name' {
+        inner = self.nod(
+            'Tuple',
+            ['elts', 'ctx'],
+            [
+                [self.name_load(ob), self._name_swap_expr(ob, self.name_load(oa))],
+                self.nod('Load', [], [])
+            ]
+        );
+        old_b = self.nod(
+            'Subscript',
+            ['value', 'slice', 'ctx'],
+            [inner, self.const_of(0), self.nod('Load', [], [])]
+        );
+        return self.nod(
+            'Subscript',
+            ['value', 'slice', 'ctx'],
+            [
+                self.nod(
+                    'Tuple',
+                    ['elts', 'ctx'],
+                    [
+                        [self._name_swap_expr(oa, old_b), self.const_of(None)],
+                        self.nod('Load', [], [])
+                    ]
+                ),
+                self.const_of(1),
+                self.nod('Load', [], [])
+            ]
+        );
+    }
+    if ka == 'name' or kb == 'name' {
+        (name_id, pk, pobj, pkey) = (oa, kb, ob, keyb)
+            if ka == 'name'
+            else (ob, ka, oa, keya);
+        helper = '_jac_replace_attr' if pk == 'attr' else '_jac_replace_item';
+        replaced = self.nod(
+            'Call',
+            ['func', 'args', 'keywords'],
+            [self.builtin_name(helper), [pobj, pkey, self.name_load(name_id)], []]
+        );
+        return self.nod(
+            'Subscript',
+            ['value', 'slice', 'ctx'],
+            [
+                self.nod(
+                    'Tuple',
+                    ['elts', 'ctx'],
+                    [
+                        [self._name_swap_expr(name_id, replaced), self.const_of(None)],
+                        self.nod('Load', [], [])
+                    ]
+                ),
+                self.const_of(1),
+                self.nod('Load', [], [])
+            ]
+        );
+    }
+    return self.nod(
+        'Call',
+        ['func', 'args', 'keywords'],
+        [
+            self.builtin_name('_jac_swap_places'),
+            [
+                oa,
+                keya,
+                self.const_of(ka == 'attr'),
+                ob,
+                keyb,
+                self.const_of(kb == 'attr')
+            ],
+            []
+        ]
+    );
+}
+
 impl JcirGenPass._exit_func_call_impl(nd: FuncCall) -> None {
+    if isinstance(nd.target, Name) and nd.target.sym_name in ('take', 'swap') {
+        import from jaclang.compiler.symbol_utils { CallKind, classify_call }
+        lowered = (
+            (
+                self._lower_take(nd)
+                    if nd.target.sym_name == 'take'
+                    else self._lower_swap(nd)
+            )
+                if classify_call(nd) == CallKind.BUILTIN
+                else None
+        );
+        if lowered is not None {
+            self.set_out(nd, [lowered]);
+            return;
+        }
+    }
     call_cv = nd.ct_value;
     if (
         nd.callee_decl is not None

@@ -1309,7 +1309,7 @@ test "plugin bridge links with full native stack" {
             f.write(src);
         }
         result = subprocess.run(
-            [jac, "nacompile", "host.jac", "-o", "test_integration"],
+            [jac, "build", "--native", "host.jac", "-o", "test_integration"],
             cwd=tmp,
             capture_output=True,
             text=True,

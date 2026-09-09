@@ -1,6 +1,6 @@
 ---
 name: jac-by-llm
-description: Delegating a function's body to an LLM call - structured outputs (objects, enums, lists), tool use/ReAct agents, model & provider configuration (API keys, Ollama/local), multi-turn chat, streaming, image/video inputs, MockLLM testing, prompt wiring via sem. Load when any function should be powered by an LLM. Pair with jac-walker-patterns when LLMs drive graph agents, jac-testing for MockLLM tests.
+description: Implement model-delegated functions, structured outputs, tools, and provider configuration. Use for by llm(), sem annotations, or MockLLM tests.
 ---
 
 `by llm(...)` replaces a function body with an LLM call. The signature declares typed args and a return type; at call time the LLM generates a value matching the return type, optionally using any functions listed in `tools=[...]` as ReAct helpers. Describe every LLM-visible thing - the function itself, each parameter, each field of a return obj - with `sem` statements, not docstrings. `sem` is the prompt the LLM sees.

@@ -1,5 +1,5 @@
-import from core.socialize_mobile.SocializeMobile { SocializeMobile }
+import from core.jacyac.native.JacYacMobile { JacYacMobile }
 
 def:pub app -> JsxElement {
-    return <SocializeMobile/>;
+    return <JacYacMobile/>;
 }

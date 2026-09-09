@@ -1,4 +1,80 @@
 import from jaclang.compiler.tools.unparse_pass { unparse_node }
+import from jaclang.compiler.symbol_utils { return_type_is_jsx }
+
+impl EsastGenPass._field_constructor_args(
+    nd: uni.FuncCall,
+    args: list[es.Expression | es.SpreadElement],
+    props: list[es.Property | es.SpreadElement]
+) -> (es.Expression | None) {
+    import from jaclang.compiler.types.types { ClassType }
+    import from jaclang.compiler.field_semantics { positional_field_names }
+    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+
+    target_type = nd.target.type;
+    if not isinstance(target_type, ClassType)
+        or not target_type.is_instantiable_class() {
+        return None;
+    }
+    arch = target_type.shared.symbol_table;
+    if not isinstance(arch, uni.Archetype)
+        or (
+            self._arch_kind_of_type(target_type) is None
+            and arch.sym_name not in self.shared_arch_names
+        ) {
+        return None;
+    }
+    source = arch.find_parent_of_type(uni.Module);
+    assert source is not None;
+    layout = get_layout_registry(source, self.prog).get_layout(arch.sym_name);
+    assert layout is not None;
+    fields: list[uni.HasVar] = [];
+    for field in layout.fields {
+        declaration = field.decl_node;
+        if isinstance(declaration, uni.HasVar) {
+            fields.append(declaration);
+        }
+    }
+    if not fields and "__post_init__" not in layout.method_index {
+        return None;
+    }
+    if not args {
+        return self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
+    }
+    names = positional_field_names(fields);
+    if len(args) <= len(names)
+        and all(not isinstance(arg, es.SpreadElement) for arg in args)
+        and all(
+            isinstance(prop, es.Property)
+                and isinstance(prop.key, es.Identifier)
+                and prop.key.name not in names[:len(args)] for prop in props
+        ) {
+        bound: list[es.Property | es.SpreadElement] = [];
+        for (index, arg) in enumerate(args) {
+            bound.append(
+                es.Property(
+                    key=es.Literal(value=names[index]),
+                    value=cast(es.Expression, arg),
+                    kind='init',
+                    method=False,
+                    shorthand=False,
+                    computed=names[index] == '__proto__'
+                )
+            );
+        }
+        return self.sync_loc(
+            es.ObjectExpression(properties=[*bound, *props]), jac_node=nd
+        );
+    }
+    return self._build_jac_call(
+        ["_jac", "builtin", "bindFields"],
+        [
+            es.ArrayExpression(elements=args),
+            es.ObjectExpression(properties=props),
+            es.ArrayExpression(elements=[es.Literal(value=name) for name in names])
+        ],
+        nd
+    );
+}
 
 impl EsastGenPass._resolve_source_module(nd: uni.Import) -> (uni.Module | None) {
     import from jaclang.compiler.symbol_utils { resolve_import_source_module }
@@ -103,21 +179,6 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
     return None;
 }
 
-impl EsastGenPass._return_type_includes_jsx_element(rt: uni.Expr) -> bool {
-    if (
-        isinstance(rt, uni.BinaryExpr)
-        and isinstance(rt.op, uni.Token)
-        and rt.op.name == Tok.BW_OR
-    ) {
-        return (
-            self._return_type_includes_jsx_element(rt.left)
-            or self._return_type_includes_jsx_element(rt.right)
-        );
-    }
-    return isinstance(rt, uni.Name)
-        and rt.value in ('JsxElement', 'JsxPage', 'JsxLayout');
-}
-
 impl EsastGenPass._return_type_route_role(rt: uni.Expr) -> (str | None) {
     if (
         isinstance(rt, uni.BinaryExpr)
@@ -146,7 +207,7 @@ impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
         return None;
     }
     rt = nd.signature.return_type;
-    if rt is None or not self._return_type_includes_jsx_element(rt) {
+    if not return_type_is_jsx(rt) {
         return None;
     }
     name = nd.name_ref.sym_name;
@@ -172,7 +233,7 @@ impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
         if sig.get_parameters() {
             rt = sig.return_type;
 
-            if rt is not None and self._return_type_includes_jsx_element(rt) {
+            if return_type_is_jsx(rt) {
                 if (
                     ability_node.name_ref
                     and ability_node.name_ref.sym_name
@@ -781,12 +842,27 @@ impl EsastGenPass._try_lower_server_rpc_call(
         args_obj = self._wrap_with_kwargs_temp(args_obj, spread_arg, nd);
     }
 
+    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+    source_module = ability_node.find_parent_of_type(uni.Module);
+    contract_id = endpoint_key(source_module, "func", ability_node.sym_name);
     result_expr: es.Expression = self.sync_loc(
         es.CallExpression(
             callee=self.sync_loc(es.Identifier(name='__jacCallFunction'), jac_node=nd),
             arguments=[
                 self.sync_loc(es.Literal(value=func_name), jac_node=nd),
-                args_obj
+                args_obj,
+                es.ObjectExpression(
+                    properties=[
+                        es.Property(
+                            key=es.Literal(value="contract"),
+                            value=es.Literal(value=contract_id),
+                            kind="init",
+                            method=False,
+                            shorthand=False,
+                            computed=False
+                        )
+                    ]
+                )
             ]
         ),
         jac_node=nd
@@ -934,6 +1010,11 @@ impl EsastGenPass._bind_client_value_refs(nd: uni.Module) -> list[es.Statement] 
 }
 
 impl EsastGenPass.exit_func_call with uni.FuncCall exit {
+    place_op = self._lower_place_builtin(here);
+    if place_op is not None {
+        here.gen.es_ast = place_op;
+        return;
+    }
     if (
         (here.callee_decl is not None and here.callee_decl.is_comptime)
         or (isinstance(here.target, uni.Name) and self._ct_only_name(here.target))
@@ -1166,6 +1247,17 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
     if isinstance(here.target, uni.BuiltinType)
         and isinstance(callee, es.MemberExpression) {
         self.needs_jac_runtime = True;
+    }
+
+    field_args = self._field_constructor_args(here, args, props);
+    if field_args is not None {
+        here.gen.es_ast = self.sync_loc(
+            es.NewExpression(
+                callee=cast(es.Expression, callee), arguments=[field_args]
+            ),
+            jac_node=here
+        );
+        return;
     }
 
     args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=here);

@@ -133,7 +133,7 @@ segment as an L1 population event keyed by every exported UUID.
   over `JacRegion` with identical observable behavior; annotations
   stripped, same rows written.
 - **Mode invariance**: build-seal-commit-reload-traverse produces
-  byte-identical output under `--gc none/rc/cycles`.
+  byte-identical output under `--memory nogc/rc/cycles`.
 - **Round trip**: promote then hydrate reproduces the traversal digest
   of the never-persisted graph; the existing ownbench digest machinery
   (`test_ownbench_differential.jac` pattern) extends to a

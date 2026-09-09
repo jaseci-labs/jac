@@ -14,6 +14,7 @@ glob _NATIVE_LINES: list[str] = [
          "    a: own Buffer = Buffer();   # opt in, one declaration",
          "    v: &Buffer = &a;            # shared borrow of the owner",
          "    a.n = 5;    # error[E1303]: cannot mutate while borrowed",
+         "    print(v.n); # the borrow remains live through this use",
          "    b = a;      # moves the value out of 'a'",
          "    print(a);   # error[E1301]: use of 'a' after move",
          "}",
@@ -154,7 +155,7 @@ def:pub Showcase -> JsxElement {
                             <TabsContent value="ai">
                                 <ShowcasePanel
                                     lines={sample_lines("ai_priority")}
-                                    file="triage.jac"
+                                    file="core/site/examples/ai_priority.jac"
                                     heading="There is no prompt to write."
                                     blurb="Delegate a function body to a model with two words."
                                     points={[
@@ -170,7 +171,7 @@ def:pub Showcase -> JsxElement {
                             <TabsContent value="graph">
                                 <ShowcasePanel
                                     lines={sample_lines("graph_api")}
-                                    file="api.jac"
+                                    file="core/site/examples/graph_api.jac"
                                     heading="Your graph is your API."
                                     blurb="Nodes and edges are the data model. Walkers — mobile computation — are the endpoints."
                                     points={[
@@ -186,13 +187,13 @@ def:pub Showcase -> JsxElement {
                             <TabsContent value="full">
                                 <ShowcasePanel
                                     lines={sample_lines("fullstack_todo")}
-                                    file="app.jac"
+                                    file="core/site/examples/fullstack_todo.jac"
                                     heading="Frontend and backend in one file."
-                                    blurb="cl code compiles to React for the browser. Everything else compiles to Python for the server."
+                                    blurb="The JSX component compiles to React, while the graph operations stay on the server."
                                     points={[
-                                        "await add_todo(...) is a real RPC — HTTP call, serialization, and shared types, all generated.",
+                                        "await get_todos() is a real RPC — HTTP call, serialization, and shared types, all generated.",
                                         "Rename a field: every stale use on either side is a compile error.",
-                                        "jac run --serve serves it. jac run --dev adds hot reload.",
+                                        "jac run serves it. jac run --dev adds hot reload.",
 
                                     ]}
                                     link_label="Full-stack tutorial"
@@ -202,7 +203,7 @@ def:pub Showcase -> JsxElement {
                             <TabsContent value="native">
                                 <ShowcasePanel
                                     lines={_NATIVE_LINES}
-                                    file="buffer.jac"
+                                    file="Ownership diagnostics · illustrative example"
                                     heading="Systems code, by degrees."
                                     blurb="Gradual borrow checking turns the managed-vs-systems divide into a gradient."
                                     points={[

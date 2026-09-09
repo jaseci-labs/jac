@@ -1,5 +1,27 @@
 import from jaclang.compiler.backends.native.llvm { ir }
 
+def struct_layouts(module: ir.Module) -> dict[str, tuple[list[int], int]] {
+    """Read identified struct offsets and sizes from LLVM's target ABI.""";
+    import from jaclang.compiler.backends.native.llvm { binding }
+    probe = ir.Module(name="layout", context=module.context);
+    probe.data_layout = module.data_layout;
+    for (name, struct) in module.context.identified_types.items() {
+        if not struct.is_opaque {
+            ir.GlobalVariable(probe, struct, name=name);
+        }
+    }
+    layouts: dict[str, tuple[list[int], int]] = {};
+    with binding.parse_assembly(str(probe)) as bound, binding.create_target_data(
+        str(module.data_layout)
+    ) as target_data {
+        for value in bound.global_variables {
+            count = len(module.context.identified_types[value.name].elements);
+            layouts[value.name] = target_data.get_global_struct_layout(value, count);
+        }
+    }
+    return layouts;
+}
+
 def scalar_layout(llt: (ir.Type | None)) -> tuple {
     if isinstance(llt, ir.DoubleType) {
         return (8, 8, [(0, True, 64)]);

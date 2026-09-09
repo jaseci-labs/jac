@@ -104,7 +104,7 @@ test "unknown command avoids heavy imports" {
 }
 
 test "hidden commands dispatch via manifest" {
-    for argv in (["nacompile", "--help"], ) {
+    for argv in (["build", "--native", "--help"], ) {
         (code, err) = _probe(argv, blocked=set());
         assert code == 0 , f"jac {' '.join(argv)} failed: {err}";
     }

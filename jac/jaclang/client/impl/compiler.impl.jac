@@ -85,7 +85,7 @@ impl ViteCompiler._emit_wasm_module(self: ViteCompiler, module_path: Path) -> bo
         return False;
     }
     stem = native_wasm_stem(str(module_path));
-    dist = self.jac_client_compiler._get_client_dir() / 'dist';
+    dist = self.vite_bundler.output_dir;
     dist.mkdir(parents=True, exist_ok=True);
     out_path = dist / f"{stem}.wasm";
     out_path.write_bytes(wasm);
@@ -188,7 +188,6 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
         raise ClientBundleError('Runtime path not set');
     }
     import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
-    import from jaclang.client.client_surface { prepend_active_runtime_globals }
     runtime_utils_path = Path(resolve_client_runtime_cl_path());
     runtime = self.jac_compiler.compile_module(runtime_utils_path);
     runtimeutils_js = runtime.js;
@@ -203,22 +202,15 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
     );
     self.compiled_dir.mkdir(parents=True, exist_ok=True);
 
-    core_path = runtime_utils_path.parent / 'client_runtime_core.jac';
-    if core_path.exists() {
-        import re;
-        core_match = re.search(
-            r'from\s+[\'\"]([^\'\"]*client_runtime_core\.js)[\'\"]', runtimeutils_js
-        );
-        if core_match {
-            core = self.jac_compiler.compile_module(core_path);
-            core_js = prepend_active_runtime_globals(core.js);
-            runtimeutils_js = runtimeutils_js.replace(
-                core_match.group(1), './client_runtime_core.js'
-            );
-            core_out = self.compiled_dir / 'client_runtime_core.js';
-            core_out.write_text(core_js, encoding='utf-8');
-            self.jac_client_compiler._write_source_map(
-                core, str(core_path), core_out, core_js
+    visited: set[Path] = {runtime_utils_path.resolve()};
+    for (name, dependency) in runtime.manifest.imports.items() {
+        if name in self.jac_client_compiler.SELF_COMPILED_VIRTUAL_MODULES {
+            continue;
+        }
+        dependency_path = Path(str(dependency)).resolve();
+        if dependency_path.suffix == '.jac' {
+            self.jac_client_compiler.compile_dependencies_recursively(
+                dependency_path, visited=visited, source_root=runtime_utils_path.parent
             );
         }
     }

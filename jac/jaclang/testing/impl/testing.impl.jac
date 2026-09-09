@@ -77,6 +77,7 @@ impl JacTestClient._ensure_initialized -> None {
     }
 
     Jac.set_base_path(self._base_path);
+    Jac.set_full_target_path(self._jac_file);
 
     mach = Jac.create_j_context(
         user_root=None, base_path_dir=self._base_path, full_target_path=self._jac_file

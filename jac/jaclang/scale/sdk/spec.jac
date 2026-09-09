@@ -31,8 +31,8 @@ obj DeploySpec {
     ) -> DeploySpec {
         cfg = dict(config or {});
         cfg.setdefault('source', path);
-        import dataclasses;
-        known = {field.name for field in dataclasses.fields(DeploySpec)};
+        import from jaclang.runtime.object_model { fields }
+        known = {field.name for field in fields(DeploySpec)};
         unknown = sorted(set(cfg.keys()) - known);
         if unknown {
             raise ValueError(

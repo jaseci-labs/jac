@@ -46,7 +46,10 @@ def:pub CodeSpotlight(
         }
         sp = span as SourceSpan;
         rows = sp.hl_to - sp.hl_from + 1;
-        target = (hl.offsetTop as float)
+        highlight: any = hl.getBoundingClientRect();
+        viewport: any = el.getBoundingClientRect();
+        target = (el.scrollTop as float) + (highlight.top as float)
+            - (viewport.top as float)
             - ((el.clientHeight as float) - (hl.offsetHeight as float) * rows) * 0.35;
         if target < 0.0 {
             target = 0.0;
@@ -151,7 +154,7 @@ def:pub CodeSpotlight(
             </div>
             <div
                 ref={scrollRef}
-                className={"code-scroll overflow-auto pt-2 pb-3 "
+                className={"code-scroll shrink-0 overflow-auto pt-2 pb-3 "
                     + ("h-[220px]" if compact else "h-[360px]")}
             >
                 {if failed {

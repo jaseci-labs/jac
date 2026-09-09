@@ -10,6 +10,7 @@ import from jaclang.compiler.frontend.unitree {
     Name,
     Source,
     Symbol,
+    SymbolProvider,
     Token,
     UniNode,
     UniScopeNode
@@ -85,8 +86,8 @@ import from jaclang.compiler.types.stubcat.format {
     unpack_header
 }
 
-obj CatProvider {
-    has cat: any,
+obj CatProvider(SymbolProvider) {
+    has cat: StubCatalog,
         type_id: int,
         alias_mod: int,
         alias_name: str,
@@ -97,11 +98,14 @@ obj CatProvider {
         memo: (TypeBase | None) = None,
         memo_set: bool = False;
 
-    def resolve_type(evaluator: any, symbol: Symbol) -> TypeBase {
+    override def resolve_type(symbol: Symbol) -> TypeBase {
         if not self.memo_set {
-            resolved: TypeBase = (
+            resolved = (
                 self.cat.type_of(self.type_id) if self.type_id >= 0 else UnknownType()
             );
+            if resolved is None {
+                resolved = UnknownType();
+            }
             self.memo = resolved;
             self.memo_set = True;
             try {
@@ -115,22 +119,22 @@ obj CatProvider {
         return found;
     }
 
-    def definition -> (Symbol | None) {
+    override def definition -> (Symbol | None) {
         if self.alias_mod < 0 {
             return None;
         }
         return self.cat.symbol_in_module(self.alias_mod, self.alias_name);
     }
 
-    def property_kind -> int {
+    override def property_kind -> int {
         return self.prop_kind;
     }
 
-    def property_write_kind -> int {
+    override def property_write_kind -> int {
         return self.write_kind;
     }
 
-    def property_write_type -> (TypeBase | None) {
+    override def property_write_type -> (TypeBase | None) {
         if self.write_type_id < 0 {
             return None;
         }
@@ -139,7 +143,7 @@ obj CatProvider {
 }
 
 node CatScope(UniScopeNode) {
-    has cat: any,
+    has cat: StubCatalog,
         cat_id: int,
         cat_kind: int,
         cat_name: str,
@@ -150,7 +154,7 @@ node CatScope(UniScopeNode) {
 
     def init(
         *,
-        cat: any,
+        cat: StubCatalog,
         cat_id: int,
         kind: int,
         name: str,
@@ -203,11 +207,13 @@ node CatScope(UniScopeNode) {
 }
 
 node CatModule(Module) {
-    has cat: any,
+    has cat: StubCatalog,
         cat_id: int,
         cat_kids: dict[str, int];
 
-    def init(*, cat: any, cat_id: int, name: str, kids: dict[str, int], tok: Token) {
+    def init(
+        *, cat: StubCatalog, cat_id: int, name: str, kids: dict[str, int], tok: Token
+    ) {
         self.cat = cat;
         self.cat_id = cat_id;
         self.cat_kids = kids;

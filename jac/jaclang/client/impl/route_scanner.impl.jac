@@ -239,3 +239,14 @@ impl _route_exports_from_ast(mod: any) -> tuple[((str | None), (str | None))] {
     }
     return (page_name, layout_name);
 }
+
+impl entry_drops_route_children(manifest: any) -> bool {
+    if manifest is None or "app" not in manifest.exports {
+        return False;
+    }
+    names = manifest.params.get("app");
+    if names is None {
+        return False;
+    }
+    return "children" not in names and names != ["props"];
+}

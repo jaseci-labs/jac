@@ -5,9 +5,14 @@ Exposes public functions for cart operations. Callable via:
   - sv import: `sv import from cart_app { view_cart, add_to_cart, clear_cart }`
 """
 
-import from shared.models { Cart, Product, Products, Order }
 # declared pip dep imported at boot: proves pod installs reach the served process
 import humanize;
+
+
+node Cart {
+    has items: list[dict] = [];
+}
+
 
 def _get_or_create_cart -> Cart {
     carts = [root-->][?:Cart];

@@ -1,6 +1,6 @@
 ---
 name: jac-apps
-description: Workspace apps - one repo, many targets, one type-checked codebase. The `[apps.<name>]` tables in jac.toml (kind, path, entry-point, platform, route; anything else is a hard error), dir-rooted vs file-rooted vs shared membership, the implicit single app, per-app effective config overlays, ownership of server-placed shared code (E5107, `[project] default-app`, `[apps.<owner>.placement.pins]`), the bridge surface and its laws (E2039/E2040 isolation and layering, E5104 cycles, E5106 non-pub, E5108 nodes and edges never cross), colocated vs `--fleet` vs `jac scale deploy`, and the app-name positional on run/build/test/check/setup. Load when a project has or needs more than one app, when a diagnostic in E5104-E5108 or E2039/E2040 appears, or when deciding what is shared and what belongs to an app. Pair with `jac-sv-microservices` (service apps and awaiting bridge stubs), `jac-project-kinds` (what each kind builds), `jac-config`, `jac-mobile-app`, `jac-desktop-app`.
+description: Configure workspace app membership, shared modules, and cross-app boundaries. Use for multi-app projects or E2039/E2040 and E5104–E5108 diagnostics.
 ---
 
 A Jac project is a set of **apps** over one body of **shared code**. Each app is a table in `jac.toml` with a *kind* (what it builds) and a root (which files are its). Everything under no app's root is shared: any app may import it, none owns it. A project with no `[apps]` table is the simplest case, one **implicit app** named after `[project] name`, and nothing about that `jac.toml` changed.
@@ -73,7 +73,7 @@ import from core.social_graph { create_tweet, load_feed }
 walker:pub post_and_show {
     has text: str = "";
 
-    can run with Root entry {
+    async can run with Root entry {
         posted = await create_tweet(content=self.text);   # runs on social_graph
         feed = await load_feed(limit=10);
         report feed.reports;

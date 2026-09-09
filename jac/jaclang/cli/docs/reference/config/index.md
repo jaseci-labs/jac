@@ -265,6 +265,18 @@ The `diagnostics` setting controls how compilation errors and warnings are repor
 
 The CLI flag `-e` / `--diagnostics` overrides this setting.
 
+### Execution backend override
+
+Use `jac run --backend python app.jac` to execute Jac source through the Python
+bytecode backend, or `jac run --backend native app.jac` to require native
+execution. Without `--backend`, the project and placement settings select the
+backend automatically. The override applies only to this invocation.
+
+Put run options before the source path; arguments after the path are passed to
+the program. For example, `jac run --backend python app.jac -- input.txt` passes
+`input.txt` to the program. Backend selection applies to source execution, not
+serving, building, sealed bundles, `--debug`, or `--entry`.
+
 ---
 
 ### [serve]
@@ -375,10 +387,8 @@ Build configuration:
 ```toml
 [build]
 dir = ".jac"                # Build artifacts directory
-default_codespace = "native"  # Codespace for markerless .jac modules: "native"/"na" or "server"/"sv"
+native_closure_cap = 256    # Largest native closure the whole-module path will link
 ```
-
-`default_codespace` controls how a plain `.jac` module (not a `.jac` implementation variant) is treated when whole-module native compilation is possible. With `"native"` (the default) the compiler infers: a module with no server-requiring constructs, and whose imported plain `.jac` modules are likewise native-clean, is compiled whole-module in the native codespace and executed through the native engine. Modules with server-requiring constructs (OSP archetypes, python imports, serve endpoints, test blocks, JSX, and similar) compile in the server codespace exactly as before, and an inferred-native module that does not lower yet is transparently recompiled server-side with a dim `note:` -- the preference is always safe. Set `"server"` to opt a project out of native inference entirely; `[placement.pins]` entries mapping to `"native"` and forced builds (`jac nacompile`, `jac build --as native`, `CompileOptions(force_codespace='native')`) remain strict mandates.
 
 The `dir` setting controls where all build artifacts are stored:
 
@@ -389,18 +399,14 @@ The `dir` setting controls where all build artifacts are stored:
 
 ---
 
-### [placement.pins]
+### [placement]
 
-Placement overrides. Element placement (server / client / native) is inferred
-by the compiler from evidence in the source (see
-[Placement](../placement.md)); this table is the escape hatch when a decision
-must be forced. Keys are
-[fnmatch](https://docs.python.org/3/library/fnmatch.html) patterns matched
-against an element's dotted path -- `module` or `module.element`, relative to
-the project root -- and values are `"server"`, `"client"`, or `"native"`
-(any other value is a hard error at load time):
+Where markerless code runs, and the pins that override the solver:
 
 ```toml
+[placement]
+default = "native"        # markerless .jac modules: "native"/"na" or "server"/"sv"
+
 [placement.pins]
 "app.API_KEY"   = "server"    # one element: keep a secret out of the JS bundle
 "app.summarize" = "server"    # client calls to it bridge over RPC instead
@@ -408,39 +414,50 @@ the project root -- and values are `"server"`, `"client"`, or `"native"`
 helpers         = "client"    # module-level pin: the whole module
 ```
 
-A pinned element is immovable to the placement solver; everything else
-re-solves around it. Module-level `"server"` pins additionally give client
-imports of that module full service-boundary semantics (non-`:pub` items
-callable with auth, boundary types collected). Pins are part of the program:
-changing them invalidates the compilation cache, and
-`jac check --placements` reports them in each element's evidence chain.
+`default` controls how a plain `.jac` module (not a `.jac` implementation variant) is treated when whole-module native compilation is possible. With `"native"` (the default) the compiler infers: a module with no server-requiring constructs, and whose imported plain `.jac` modules are likewise native-clean, is compiled whole-module in the native codespace and executed through the native engine. Modules with server-requiring constructs (OSP archetypes, python imports, serve endpoints, test blocks, JSX, and similar) compile in the server codespace, and an inferred-native module that does not lower yet is transparently recompiled server-side with a dim `note:` -- the preference is always safe. Set `"server"` to opt a project out of native inference entirely; `[placement.pins]` entries mapping to `"native"` and forced builds (`jac build --native`, `CompileOptions(force_codespace='native')`) remain strict mandates.
 
-Pins can also be overlaid per app -- `[apps.<name>.placement.pins]` merges
-over this table for that app's modules -- and a pin is one way to name the
-**owner** of a server-placed shared module when several apps serve
-(`E5107`). Declaring that a module runs as its own **service** is a different
-fact with a different home: an `[apps.<name>]` table with `kind = "service"`
-(see [Workspaces & Apps](../apps.md)); imports of what that app owns lower to
-typed-async bridge stubs automatically.
+Element placement (server / client / native) is inferred by the compiler from evidence in the source (see [Placement](../placement.md)); `[placement.pins]` is the escape hatch when a decision must be forced. Keys are [fnmatch](https://docs.python.org/3/library/fnmatch.html) patterns matched against an element's dotted path -- `module` or `module.element`, relative to the project root -- and values are `"server"`, `"client"`, or `"native"` (any other value is a hard error at load time).
+
+A pinned element is immovable to the placement solver; everything else re-solves around it. Module-level `"server"` pins additionally give client imports of that module full service-boundary semantics (non-`:pub` items callable with auth, boundary types collected). Pins are part of the program: changing them invalidates the compilation cache, and `jac explain placement` reports them in each element's evidence chain.
+
+Pins can also be overlaid per app -- `[apps.<name>.placement.pins]` merges over this table for that app's modules -- and a pin is one way to name the **owner** of a server-placed shared module when several apps serve (`E5107`). Declaring that a module runs as its own **service** is a different fact with a different home: an `[apps.<name>]` table with `kind = "service"` (see [Workspaces & Apps](../apps.md)); imports of what that app owns lower to typed-async bridge stubs automatically.
 
 ---
 
-### [gc]
+### [memory]
 
-Memory-management defaults for **native** compilation (`jac nacompile`):
+The one declaration of memory intent, checked on every backend and reported by `jac check` without a native build:
 
 ```toml
-[gc]
-default = "cycles"    # gc mode emitted when --gc is not passed: "cycles", "rc", or "none"
-
-[gc.enforce]
-modules = []          # module-name patterns compiled under zero-RC nogc enforcement
-grandfathered = []    # patterns exempted from enforcement (checked before `modules`)
+[memory]
+profile = "managed"       # managed | rc | nogc   (artifact-wide)
+enforce = ["core.*"]      # incremental only: hold these modules to the nogc contract under a managed profile
+exempt  = ["legacy.*"]    # both lists are ignored, with a warning, when profile = "nogc"
 ```
 
-`default` selects the memory-management runtime the native backend emits when `jac nacompile` is invoked without an explicit `--gc`: `cycles` (reference counting plus the cycle collector), `rc` (reference counting only), or `none` (no retain/release call sites).
+| | `managed` | `rc` | `nogc` |
+|---|---|---|---|
+| Runtime emitted | reference counting plus the cycle collector, collecting automatically | reference counting only | none |
+| Contract | opt-in per binding; `enforce` patterns for modules ahead of the flip | same | every module, no exemptions |
+| Self-checks | none | none | RC-free IR scan, always on; a failure is a compiler bug |
 
-`[gc.enforce] modules` lists `fnmatch`-style patterns matched against compiled module names; a native module matching one is compiled under **nogc enforcement**, which makes zero-RC ownership coverage a compile-time contract -- every heap-typed parameter, return type, and `has` field must be in the owned world, and violations are hard [`E1401`-`E1406`](../diagnostics.md#zero-rc-enforcement-errors) errors that block codegen. `grandfathered` patterns exempt matching modules, so a codebase can adopt enforcement incrementally. The `jac nacompile --enforce-nogc` flag enforces the compiled module regardless of these patterns. See [Zero-RC ownership compilation](../language/native-pathway.md#zero-rc-ownership-compilation).
+`enforce` lists `fnmatch`-style patterns matched against compiled module names; a native module matching one is compiled under **nogc enforcement**, which makes zero-RC ownership coverage a compile-time contract -- every heap-typed parameter, return type, and `has` field must be in the owned world, and violations are hard [`E1401`-`E1407`](../diagnostics.md#zero-rc-enforcement-errors) errors that block codegen. `exempt` patterns exclude matching modules, so a codebase can adopt enforcement incrementally. `jac build <file> --native --memory nogc` overrides the profile for one build. See [Zero-RC ownership compilation](../language/native-pathway.md#zero-rc-ownership-compilation).
+
+---
+
+### [native]
+
+How `jac build --native` emits code:
+
+```toml
+[native]
+target = ""               # "" or "host" (default), "wasm32", or an LLVM triple
+opt = 2                   # optimization level
+debug = false             # DWARF, unoptimized JIT path, and the RC trace machinery, together
+threads = 4               # `flow for` width; a built binary can override with JAC_THREADS
+```
+
+A built binary reads two environment variables at run time and no others: `JAC_GC=off` disables collection for leak debugging (collection is on by default under `managed`), and `JAC_THREADS` overrides the `flow for` width. Nothing at compile time reads the environment; `jac explain memory|placement|ir` replaces the old diagnostic variables.
 
 ---
 

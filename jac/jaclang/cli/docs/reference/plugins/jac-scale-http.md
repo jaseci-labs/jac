@@ -1816,7 +1816,8 @@ JAC_APP_INVENTORY_URL=http://host-a:8001 jac run orders --port 8000
 
 #### Troubleshooting
 
-- **`{"detail":"Invalid anchor id ..."}` 500s.** Stale anchors persisted from a previous run with a different schema. Stop the server, `rm -rf .jac/data/`, and restart. Not specific to cross-app calls; any `def:pub` call can hit this after a schema change.
+If an endpoint reports an invalid anchor, check its ID, the selected app and store, and recent schema changes. Run `jac guide jac-debugging --section diagnose-state-and-cache-errors` for the diagnostic sequence. Preserve existing data until you have identified the cause and chosen a repair.
+
 - **`BridgeUnavailable: app 'x' is not registered`.** The provider app is neither colocated nor reachable: the served app has no `[apps.x]` table to colocate, or in a fleet/multi-host setup `JAC_APP_X_URL` is unset.
 - **`BridgeRejected` with status 404 / 401.** The element is not on the provider's bridge surface (`jac check` reports `E5106` for the compile-time half), or the hop carried no usable `Authorization` for a `:priv` endpoint.
 - **`E1042` at a call you did not think was remote.** The imported element is owned by another app; add `await` (and make the enclosing function `async`).
@@ -1908,3 +1909,46 @@ The visualizer uses a force-directed layout with color-coded node types, edge la
 | `GET /graph/data` | Returns graph nodes and edges as JSON (optional `Authorization` header) |
 
 ---
+
+### OAuth sessions for browser and native clients
+
+`jaclang.scale.sso.oauth_session.OAuthSession` is the shared authorization-code
+flow used by Scale and available to application callback facades. Construct it
+with a `UserManager`, an `OAuth2CodeProvider`, and the provider name. The
+provider supplies its registered `redirect_uri`; application facades must
+choose that URL from server configuration, never from arbitrary request input.
+
+`begin(challenge, mode="web", link_user="")` issues expiring random state and
+an S256 PKCE authorization URL. `finish(code, state, verifier)` validates the
+client/app binding and consumes state before exchanging the code. The verifier
+must be a cryptographically random 43–128-character value. Keep it on the
+originating client. A supplied `link_user` must already have been authenticated
+by the server; it is not an untrusted request parameter.
+
+Scale exposes `POST /sso/{platform}/begin`, `/finish`, and `/poll`. Begin accepts
+`challenge` and `mode`; an authenticated Bearer session requests account
+linking, while an anonymous request requests sign-in. Finish accepts `code`,
+`state`, and `verifier`. For client-managed web flows configure
+`[scale.sso] client_auth_callback_url`: the provider callback forwards the
+short-lived code and state there for the client to finish. It does not forward
+a session token in this flow.
+
+For native clients, `begin(..., mode="native")` also returns a random `poll`
+secret that must stay on the initiating device. Open the authorization URL in
+the system browser. The server callback calls `complete_native(code, state)`;
+`poll(poll_secret)` atomically redeems the result on the device. Results expire
+after two minutes and contain the application's session token, never the
+provider access token. Cancellation and timeout should return the user to the
+sign-in screen. The begin/session state expires after ten minutes.
+
+Existing `/sso/{platform}/login` and `/register` browser routes use the same
+session implementation with a per-attempt HttpOnly state cookie. Callback
+requests without that browser binding are rejected before token exchange.
+Loopback destinations are stored in server-side state, not trusted from the
+callback query string. HTTPS flows use Secure cookies.
+
+Users are resolved by `(provider, external_id)`. Matching email addresses no
+longer automatically merge accounts. Existing password users must sign in and
+explicitly connect the provider; existing linked SSO users keep their accounts
+when their email or provider username changes. GitHub sign-in requires only
+public identity and does not request email or repository access permissions.

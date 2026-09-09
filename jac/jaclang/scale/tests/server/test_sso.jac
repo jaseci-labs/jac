@@ -1,981 +1,218 @@
-import json;
-import json as json_lib;
-import os;
-import shutil;
 import asyncio;
-import from tempfile { mkdtemp }
-import from dataclasses { dataclass }
-import from types { TracebackType }
-import unittest.mock;
-
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.datatypes { JSONResponse, RedirectResponse }
-
-import from jaclang.scale.config.config_loader { reset_scale_config }
-import from jaclang.scale.shared.utils { is_safe_loopback_redirect }
+import json;
+import from urllib.parse { urlparse, parse_qs }
+import from unittest.mock { patch, AsyncMock }
+import from jaclang.server.serving.datatypes {
+    Request,
+    QueryParams,
+    URL,
+    Headers,
+    RedirectResponse
+}
+import from jaclang.server.serving.endpoint { JEndPoint }
+import from jaclang.server.server { EndpointHost }
+import from jaclang.server.identity.user_manager { UserManager }
+import from jaclang.server.identity.auth_tokens { AuthTokenStore }
+import from jaclang.server.transport { TransportResponse, Meta }
+import from jaclang.scale.sso.sso_auth { SSOAuth }
+import from jaclang.scale.sso.provider { SSOUserInfo }
+import from jaclang.scale.sso.github { GithubSSOProvider }
 import from jaclang.scale.sso.google { GoogleSSOProvider }
 import from jaclang.scale.sso.apple { AppleSSOProvider }
-import from jaclang.scale.sso.github { GithubSSOProvider }
-import from jaclang.scale.server.sso_ext { SSOExtension }
-import from jaclang.scale.sso.sso_auth { SSOAuth }
-import from jaclang.scale.tests.support { RecordingHost }
-import from jaclang.scale.shared.enums { Platforms, Operations }
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.server.transport { TransportResponse }
+import from jaclang.scale.server.sso_ext { SSOExtension, resolve_sso_client_redirect }
+import from jaclang.scale.shared.utils { is_safe_loopback_redirect }
+import from .oauth_fixtures { FakeTokens, fake_users }
 
-def _as_any(v: any) -> any {
-    return v;
-}
+obj RecordingHost(EndpointHost) {
+    has users: UserManager,
+        endpoints: list[JEndPoint] = [];
 
-def mock_sso_config_with_credentials -> dict {
-    return {
-        "host": "http://localhost:8000",
-        "google": {
-            "client_id": "test_client_id",
-            "client_secret": "test_client_secret"
-        },
-        "apple": {
-            "client_id": "apple_test_client_id",
-            "client_secret": "apple_test_client_secret"
-        },
-        "github": {
-            "client_id": "github_test_client_id",
-            "client_secret": "github_test_client_secret"
-        }
-    };
-}
+    has user_manager: UserManager { getter; }
 
-def mock_sso_config_without_credentials -> dict {
-    return {
-        "host": "http://localhost:8000",
-        "google": {"client_id": "", "client_secret": ""},
-        "apple": {"client_id": "", "client_secret": ""},
-        "github": {"client_id": "", "client_secret": ""}
-    };
-}
+    def identity -> UserManager {
+        return self.users;
+    }
 
-def mock_sso_config_partial_credentials -> dict {
-    return {
-        "host": "http://localhost:8000",
-        "google": {"client_id": "test_id", "client_secret": ""},
-        "apple": {"client_id": "apple_test_id", "client_secret": ""},
-        "github": {"client_id": "github_test_id", "client_secret": ""}
-    };
-}
-
-@dataclass
-obj MockUserInfo {
-    has email: str,
-        id: str = "mock_sso_id",
-        external_id: str = "mock_external_id",
-        first_name: str = "Test",
-        last_name: str = "User",
-        display_name: str = "Test User",
-        picture: str = "https://example.com/picture.jpg";
-
-    def profile_fields -> dict[str, any] {
-        fields: dict[str, any] = {};
-        for key in ['display_name', 'first_name', 'last_name', 'picture'] {
-            val = getattr(self, key, None);
-            if val {
-                fields[key] = val;
-            }
-        }
-        return fields;
+    def add_endpoint(endpoint: JEndPoint) {
+        self.endpoints.append(endpoint);
     }
 }
 
-"""Build a Request carrying an OAuth callback code, as the provider sees it."""
-def _callback_request(code: str = "auth-code-123") -> Request {
-    import from jaclang.server.serving.datatypes { QueryParams, URL }
+impl RecordingHost.user_manager.getter -> UserManager {
+    return self.users;
+}
+
+def configured -> SSOAuth {
+    return SSOAuth(
+        users=fake_users(),
+        platforms={
+            "github": {"client_id": "id", "client_secret": "secret"},
+            "google": {"client_id": "id", "client_secret": "secret"},
+            "apple": {"client_id": "id", "client_secret": "secret"}
+        }
+    );
+}
+
+def callback_request(state: str, cookie: str = "") -> Request {
     return Request(
         method="GET",
-        url=URL(path="/sso/callback", query=f"code={code}"),
-        query_params=QueryParams(raw={"code": [code]})
+        url=URL(path="/sso/github/callback"),
+        query_params=QueryParams(raw={"state": [state], "code": ["code"]}),
+        headers=Headers(raw=[("Cookie", cookie)])
     );
 }
 
-"""Stand in for a JSON response from a provider's token or userinfo endpoint."""
-obj _OAuthResp {
-    has payload: dict,
-        status_code: int = 200;
-
-    def json -> any {
-        return self.payload;
-    }
-
-    def ok -> bool {
-        return 200 <= self.status_code < 400;
-    }
-
-    def text -> str {
-        return json_lib.dumps(self.payload);
+test "Configured providers use the configured callback endpoint" {
+    auth = configured();
+    assert isinstance(auth.get_sso("github"), GithubSSOProvider);
+    assert isinstance(auth.get_sso("google"), GoogleSSOProvider);
+    assert isinstance(auth.get_sso("apple"), AppleSSOProvider);
+    assert auth.get_sso("invalid") is None;
+    for platform in ["github", "google", "apple"] {
+        p: any = auth.get_sso(platform);
+        assert p.redirect_uri.endswith("/sso/" + platform + "/callback");
     }
 }
 
-"""Serve canned JSON per request, in call order."""
-def _oauth_responder(payloads: list) -> any {
-    seen: dict = {"n": 0};
-
-    async def _fake_arequest(method: str, url: str, **kwargs: any) -> _OAuthResp {
-        i = seen["n"];
-        seen["n"] = i + 1;
-        return _OAuthResp(payload=payloads[min(i, len(payloads) - 1)]);
-    }
-    return _fake_arequest;
-}
-
-
-obj MockGoogleSSO {
-    has client_id: str,
-        client_secret: str,
-        redirect_uri: str,
-        allow_insecure_http: bool = False;
-
-    def postinit {
-        self.get_login_redirect = self._default_get_login_redirect;
-        self.verify_and_process = self._default_verify_and_process;
-        self.initiate_auth = self._default_initiate_auth;
-        self.handle_callback = self._default_handle_callback;
-    }
-
-    async def _default_get_login_redirect -> RedirectResponse {
-        return RedirectResponse(url="https://accounts.google.com/oauth/authorize");
-    }
-
-    async def _default_verify_and_process(_request: Request) -> MockUserInfo {
-        return MockUserInfo(email="test@example.com");
-    }
-
-    async def _default_initiate_auth(state: str | None = None) -> RedirectResponse {
-        return RedirectResponse(url="https://accounts.google.com/oauth/authorize");
-    }
-
-    async def _default_handle_callback(request: Request) -> MockUserInfo {
-        return await self.verify_and_process(request);
-    }
-
-    def __enter__ -> "MockGoogleSSO" {
-        return self;
-    }
-
-    def __exit__(
-        _exc_type: type | None,
-        _exc_val: BaseException | None,
-        _exc_tb: TracebackType | None
-    ) {
-        0;
+test "Legacy browser initiation binds random state to an HttpOnly cookie" {
+    tokens: any = FakeTokens();
+    with patch.object(AuthTokenStore, "instance", return_value=tokens) {
+        auth = configured();
+        result: any = asyncio.run(
+            auth.sso_initiate("github", "login", "http://127.0.0.1:4567/callback")
+        );
+        assert isinstance(result, RedirectResponse);
+        params = parse_qs(urlparse(result.headers.get("location")).query);
+        state = params["state"][0];
+        assert state != "http://127.0.0.1:4567/callback";
+        assert params["code_challenge_method"] == ["S256"];
+        assert "HttpOnly" in result.headers.get("set-cookie");
+        assert "jac_sso_" + state in result.headers.get("set-cookie");
+        record = tokens.peek_token(state, "oauth_session:github");
+        assert json.loads(record["identity_value"])["client_callback"]
+            == "http://127.0.0.1:4567/callback";
     }
 }
 
-obj MockAppleSSO {
-    has client_id: str,
-        client_secret: str,
-        redirect_uri: str,
-        allow_insecure_http: bool = False;
-
-    def postinit {
-        self.get_login_redirect = self._default_get_login_redirect;
-        self.verify_and_process = self._default_verify_and_process;
-        self.initiate_auth = self._default_initiate_auth;
-        self.handle_callback = self._default_handle_callback;
-    }
-
-    async def _default_get_login_redirect -> RedirectResponse {
-        return RedirectResponse(url="https://appleid.apple.com/auth/authorize");
-    }
-
-    async def _default_verify_and_process(_request: Request) -> MockUserInfo {
-        return MockUserInfo(email="test@privaterelay.appleid.com");
-    }
-
-    async def _default_initiate_auth(state: str | None = None) -> RedirectResponse {
-        return RedirectResponse(url="https://appleid.apple.com/auth/authorize");
-    }
-
-    async def _default_handle_callback(request: Request) -> MockUserInfo {
-        return await self.verify_and_process(request);
-    }
-
-    def __enter__ -> "MockAppleSSO" {
-        return self;
-    }
-
-    def __exit__(
-        _exc_type: type | None,
-        _exc_val: BaseException | None,
-        _exc_tb: TracebackType | None
-    ) {
-        0;
-    }
-}
-
-obj MockGithubSSO {
-    has client_id: str,
-        client_secret: str,
-        redirect_uri: str,
-        allow_insecure_http: bool = False;
-
-    def postinit {
-        self.get_login_redirect = self._default_get_login_redirect;
-        self.verify_and_process = self._default_verify_and_process;
-        self.initiate_auth = self._default_initiate_auth;
-        self.handle_callback = self._default_handle_callback;
-    }
-
-    async def _default_get_login_redirect -> RedirectResponse {
-        return RedirectResponse(url="https://github.com/login/oauth/authorize");
-    }
-
-    async def _default_verify_and_process(_request: Request) -> MockUserInfo {
-        return MockUserInfo(email="test@github.com");
-    }
-
-    async def _default_initiate_auth(state: str | None = None) -> RedirectResponse {
-        return RedirectResponse(url="https://github.com/login/oauth/authorize");
-    }
-
-    async def _default_handle_callback(request: Request) -> MockUserInfo {
-        return await self.verify_and_process(request);
-    }
-
-    def __enter__ -> "MockGithubSSO" {
-        return self;
-    }
-
-    def __exit__(
-        _exc_type: type | None,
-        _exc_val: BaseException | None,
-        _exc_tb: TracebackType | None
-    ) {
-        0;
-    }
-}
-
-obj MockScaleConfig {
-    has sso_config: dict | None = None,
-        _sso_config: dict postinit;
-
-    def postinit {
-        self._sso_config = self.sso_config or mock_sso_config_with_credentials();
-    }
-
-    def get_sso_config -> dict {
-        return self._sso_config;
-    }
-
-    def get_jwt_config -> dict {
-        return {"secret": "test_secret", "algorithm": "HS256", "exp_delta_days": 1};
-    }
-
-    def get_database_config -> dict {
-        return {"redis_url": None, "shelf_db_path": ".jac/data/anchor_store.db"};
-    }
-
-    def get_kubernetes_config -> dict {
-        return {"namespace": "default"};
-    }
-
-    def get_monitoring_config -> dict {
-        return {"enabled": False};
-    }
-
-    def get_events_config -> dict {
-        return {"enabled": False};
-    }
-}
-
-def _get_response_body(result: JSONResponse | TransportResponse) -> str {
-    if isinstance(result, JSONResponse) {
-        return result.body.decode("utf-8");
-    } elif isinstance(result, TransportResponse) {
-        response_dict = {
-            "ok": result.ok,
-            "type": result.type,
-            "data": result.data,
-            "error": None
-        };
-        if not result.ok and result.error {
-            response_dict["error"] = {
-                "code": result.error.code,
-                "message": result.error.message,
-                "details": result.error.details
-            };
+test "Legacy browser callback rejects missing state and missing browser binding" {
+    tokens: any = FakeTokens();
+    with patch.object(AuthTokenStore, "instance", return_value=tokens) {
+        auth = configured();
+        with patch.object(
+            GithubSSOProvider, "_exchange_code", new_callable=AsyncMock
+        ) as exchange {
+            assert not asyncio.run(
+                auth.sso_callback(callback_request(""), "github")
+            ).ok;
+            started: any = asyncio.run(auth.sso_initiate("github", "login"));
+            state = parse_qs(urlparse(started.headers.get("location")).query)["state"][
+                0
+            ];
+            assert not asyncio.run(
+                auth.sso_callback(callback_request(state), "github")
+            ).ok;
+            exchange.assert_not_awaited();
         }
-        if result.meta {
-            meta_dict = {};
-            if result.meta.request_id {
-                meta_dict["request_id"] = result.meta.request_id;
-            }
-            if result.meta.trace_id {
-                meta_dict["trace_id"] = result.meta.trace_id;
-            }
-            if result.meta.timestamp {
-                meta_dict["timestamp"] = result.meta.timestamp;
-            }
-            if result.meta.extra {
-                meta_dict["extra"] = result.meta.extra;
-            }
-            if meta_dict {
-                response_dict["meta"] = meta_dict;
-            }
-        }
-        return json.dumps(response_dict);
-    } else {
-        raise TypeError(f"Unexpected response type: {type(result)}");
     }
 }
 
-def _setup_user_manager -> tuple[str, SSOAuth] {
-    test_dir = mkdtemp();
-    reset_scale_config();
-    mock_config = MockScaleConfig(mock_sso_config_with_credentials());
-    user_manager = UserManager(base_path=test_dir);
-    with unittest.mock.patch(
-        "jaclang.scale.sso.sso_auth.get_scale_config", return_value=mock_config
-    ) {
-        sso = SSOAuth(users=user_manager);
-    }
-    return (test_dir, sso);
-}
-
-def _parse_body(result: JSONResponse | TransportResponse) -> dict {
-    return json.loads(_get_response_body(result));
-}
-
-def _create_existing_user(user_manager: UserManager, email: str) -> str {
-    result = user_manager.create_user_with_identities(
-        identities=[{'type': 'email', 'value': email, 'verified': True}],
-        credential={'type': 'password', 'password': 'existing_pass'}
-    );
-    return result.get('user_id', '');
-}
-
-def _teardown_user_manager(test_dir: str) {
-    if os.path.exists(test_dir) {
-        shutil.rmtree(test_dir);
-    }
-}
-
-test "get sso with google platform" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        with unittest.mock.patch(
-            "jaclang.scale.sso.google.GoogleSSOProvider", side_effect=MockGoogleSSO
-        ) as mock_sso {
-            sso = auth.get_sso(Platforms.GOOGLE.value);
-            assert sso is not None;
-            assert sso.client_id == "test_client_id";
-            assert sso.client_secret == "test_client_secret";
-            mock_sso.assert_called_once();
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "get sso with invalid platform" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        sso = auth.get_sso("invalid_platform");
-        assert sso is None;
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "get sso with unconfigured platform" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        reset_scale_config();
-        mock_config = MockScaleConfig(mock_sso_config_without_credentials());
-        with unittest.mock.patch(
-            "jaclang.scale.sso.sso_auth.get_scale_config", return_value=mock_config
+test "Legacy browser callback completes only once with the originating cookie" {
+    tokens: any = FakeTokens();
+    with patch.object(AuthTokenStore, "instance", return_value=tokens) {
+        auth = configured();
+        started: any = asyncio.run(auth.sso_initiate("github", "login"));
+        state = parse_qs(urlparse(started.headers.get("location")).query)["state"][0];
+        cookie = started.headers.get("set-cookie").split(";")[0];
+        with patch.object(
+            GithubSSOProvider,
+            "_exchange_code",
+            new_callable=AsyncMock,
+            return_value={"access_token": "provider-token"}
+        ) as exchange, patch.object(
+            GithubSSOProvider,
+            "fetch_user",
+            new_callable=AsyncMock,
+            return_value=SSOUserInfo(email="", external_id="123", username="alice")
         ) {
-            um = SSOAuth(users=user_manager);
-            sso = um.get_sso(Platforms.GOOGLE.value);
-            assert sso is None;
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "get sso redirect uri format" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        with unittest.mock.patch(
-            "jaclang.scale.sso.google.GoogleSSOProvider", side_effect=MockGoogleSSO
-        ) {
-            sso = _as_any(auth.get_sso(Platforms.GOOGLE.value));
-            assert sso.redirect_uri == "http://localhost:8000/sso/google/callback";
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "sso initiate success" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        with unittest.mock.patch.object(
-            auth, 'get_sso', return_value=MockGoogleSSO("id", "secret", "uri")
-        ) {
-            coro: any = auth.sso_initiate(
-                Platforms.GOOGLE.value, Operations.LOGIN.value
+            response = asyncio.run(
+                auth.sso_callback(callback_request(state, cookie), "github")
             );
-            result: any = asyncio.run(coro);
-            assert isinstance(result, RedirectResponse);
-            assert "google.com" in (result.headers.get("location", "") or "");
+            assert response.ok;
+            assert response.data["token"] == "session-token";
+            assert not asyncio.run(
+                auth.sso_callback(callback_request(state, cookie), "github")
+            ).ok;
+            assert exchange.await_count == 1;
         }
-    } finally {
-        _teardown_user_manager(test_dir);
     }
 }
 
-test "sso initiate with invalid platform" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        coro: any = auth.sso_initiate("invalid_platform", Operations.LOGIN.value);
-        result: any = asyncio.run(coro);
-        assert isinstance(result, (JSONResponse, TransportResponse));
-        body = _get_response_body(result);
-        assert "Invalid platform" in body;
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
+test "SSO rejects invalid platforms operations and unconfigured providers" {
+    auth = configured();
+    assert not asyncio.run(auth.sso_initiate("invalid", "login")).ok;
+    assert not asyncio.run(auth.sso_initiate("github", "invalid")).ok;
+    assert not asyncio.run(auth.sso_callback(callback_request(""), "invalid")).ok;
+    del auth.platforms["github"];
+    assert not asyncio.run(auth.sso_initiate("github", "login")).ok;
+    assert not asyncio.run(auth.sso_callback(callback_request(""), "github")).ok;
 }
 
-test "sso initiate with unconfigured platform" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        auth.platforms = {};
-        coro: any = auth.sso_initiate(Platforms.GOOGLE.value, Operations.LOGIN.value);
-        result: any = asyncio.run(coro);
-        assert isinstance(result, (JSONResponse, TransportResponse));
-        body = _get_response_body(result);
-        assert "not configured" in body;
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "sso initiate with invalid operation" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        coro: any = auth.sso_initiate(Platforms.GOOGLE.value, "invalid_operation");
-        result: any = asyncio.run(coro);
-        assert isinstance(result, (JSONResponse, TransportResponse));
-        body = _get_response_body(result);
-        assert "Invalid operation" in body;
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "sso initiate when get sso fails" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=None) {
-            coro: any = auth.sso_initiate(
-                Platforms.GOOGLE.value, Operations.LOGIN.value
-            );
-            result: any = asyncio.run(coro);
-            assert isinstance(result, (JSONResponse, TransportResponse));
-            body = _get_response_body(result);
-            assert "Failed to initialize SSO" in body;
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "sso callback login existing user" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        user_id = _create_existing_user(user_manager, "test@example.com");
-        mock_request = unittest.mock.Mock(spec=Request);
-        mock_sso = MockGoogleSSO("id", "secret", "uri");
-        mock_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=MockUserInfo(email="test@example.com")
-        );
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=mock_sso) {
-            coro: any = auth.sso_callback(
-                _as_any(mock_request), Platforms.GOOGLE.value
-            );
-            result: any = asyncio.run(coro);
-            assert isinstance(result, (JSONResponse, TransportResponse));
-            parsed = _parse_body(result);
-            data = parsed["data"];
-            assert data["message"] == "Login successful";
-            assert data["user_id"] == user_id;
-            token = data["token"];
-            assert token;
-            assert user_manager.validate_jwt_token(token) == user_id;
-            accounts = user_manager.get_sso_accounts(user_id);
-            assert len(accounts) == 1;
-            assert accounts[0]["platform"] == "google";
-            assert accounts[0]["external_id"] == "mock_external_id";
-            stored = user_manager.get_user(user_id);
-            google_sso = stored["profile"]["sso"]["google"];
-            assert google_sso["display_name"] == "Test User";
-            assert google_sso["picture"] == "https://example.com/picture.jpg";
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "sso callback existing user with no profile data" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        user_id = _create_existing_user(user_manager, "test@example.com");
-        mock_request = unittest.mock.Mock(spec=Request);
-        mock_sso = MockGoogleSSO("id", "secret", "uri");
-        mock_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=MockUserInfo(
-                email="test@example.com",
-                display_name=_as_any(None),
-                first_name=_as_any(None),
-                last_name=_as_any(None),
-                picture=_as_any(None)
-            )
-        );
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=mock_sso) {
-            coro: any = auth.sso_callback(
-                _as_any(mock_request), Platforms.GOOGLE.value
-            );
-            result: any = asyncio.run(coro);
-            assert isinstance(result, (JSONResponse, TransportResponse));
-            data = _parse_body(result)["data"];
-            assert data["message"] == "Login successful";
-            assert user_manager.validate_jwt_token(data["token"]) == user_id;
-            accounts = user_manager.get_sso_accounts(user_id);
-            assert len(accounts) == 1;
-            assert accounts[0]["platform"] == "google";
-            stored = user_manager.get_user(user_id);
-            assert stored is not None , "stored user must exist";
-            assert "sso" not in (stored.get("profile") or {});
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "sso callback new user with no profile data" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        mock_request = unittest.mock.Mock(spec=Request);
-        assert user_manager.find_user_by_identity("newuser@example.com") is None;
-        mock_sso = MockGoogleSSO("id", "secret", "uri");
-        mock_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=MockUserInfo(
-                email="newuser@example.com",
-                display_name=_as_any(None),
-                first_name=_as_any(None),
-                last_name=_as_any(None),
-                picture=_as_any(None)
-            )
-        );
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=mock_sso) {
-            coro: any = auth.sso_callback(
-                _as_any(mock_request), Platforms.GOOGLE.value
-            );
-            result: any = asyncio.run(coro);
-            assert isinstance(result, (JSONResponse, TransportResponse));
-            data = _parse_body(result)["data"];
-            user_id = data["user_id"];
-            assert user_id;
-            assert user_manager.validate_jwt_token(data["token"]) == user_id;
-            created = user_manager.find_user_by_identity("newuser@example.com");
-            assert created is not None;
-            assert created["user_id"] == user_id;
-            assert "sso" not in (created.get("profile") or {});
-            accounts = user_manager.get_sso_accounts(user_id);
-            assert len(accounts) == 1;
-            assert accounts[0]["platform"] == "google";
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "sso callback auto register new user" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        mock_request = unittest.mock.Mock(spec=Request);
-        assert user_manager.find_user_by_identity("newuser@example.com") is None;
-        mock_sso = MockGoogleSSO("id", "secret", "uri");
-        mock_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=MockUserInfo(email="newuser@example.com")
-        );
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=mock_sso) {
-            coro: any = auth.sso_callback(
-                _as_any(mock_request), Platforms.GOOGLE.value
-            );
-            result: any = asyncio.run(coro);
-            assert isinstance(result, (JSONResponse, TransportResponse));
-            data = _parse_body(result)["data"];
-            user_id = data["user_id"];
-            assert user_id;
-            assert user_manager.validate_jwt_token(data["token"]) == user_id;
-            created = user_manager.find_user_by_identity("newuser@example.com");
-            assert created is not None;
-            assert created["user_id"] == user_id;
-            google_sso = created["profile"]["sso"]["google"];
-            assert google_sso["display_name"] == "Test User";
-            assert google_sso["first_name"] == "Test";
-            assert google_sso["last_name"] == "User";
-            assert google_sso["picture"] == "https://example.com/picture.jpg";
-            accounts = user_manager.get_sso_accounts(user_id);
-            assert len(accounts) == 1;
-            assert accounts[0]["platform"] == "google";
-            assert accounts[0]["external_id"] == "mock_external_id";
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "sso callback with invalid platform" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        mock_request = unittest.mock.Mock(spec=Request);
-        coro: any = auth.sso_callback(_as_any(mock_request), "invalid_platform");
-        result: any = asyncio.run(coro);
-        assert isinstance(result, (JSONResponse, TransportResponse));
-        body = _get_response_body(result);
-        assert "Invalid platform" in body;
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "sso callback with unconfigured platform" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        mock_request = unittest.mock.Mock(spec=Request);
-        auth.platforms = {};
-        coro: any = auth.sso_callback(_as_any(mock_request), Platforms.GOOGLE.value);
-        result: any = asyncio.run(coro);
-        assert isinstance(result, (JSONResponse, TransportResponse));
-        body = _get_response_body(result);
-        assert "not configured" in body;
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "sso callback when get sso fails" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        mock_request = unittest.mock.Mock(spec=Request);
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=None) {
-            coro: any = auth.sso_callback(
-                _as_any(mock_request), Platforms.GOOGLE.value
-            );
-            result: any = asyncio.run(coro);
-            assert isinstance(result, (JSONResponse, TransportResponse));
-            body = _get_response_body(result);
-            assert "Failed to initialize SSO" in body;
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "sso callback when email not provided" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        mock_request = unittest.mock.Mock(spec=Request);
-        mock_sso = MockGoogleSSO("id", "secret", "uri");
-        mock_user_info = MockUserInfo(email="");
-        _as_any(mock_user_info).email = None;
-        mock_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=mock_user_info
-        );
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=mock_sso) {
-            coro: any = auth.sso_callback(
-                _as_any(mock_request), Platforms.GOOGLE.value
-            );
-            result: any = asyncio.run(coro);
-            assert isinstance(result, (JSONResponse, TransportResponse));
-            body = _get_response_body(result);
-            assert "Email not provided" in body;
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "sso callback authentication failure" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        mock_request = unittest.mock.Mock(spec=Request);
-        mock_sso = MockGoogleSSO("id", "secret", "uri");
-        mock_sso.verify_and_process = unittest.mock.AsyncMock(
-            side_effect=Exception("Authentication failed")
-        );
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=mock_sso) {
-            coro: any = auth.sso_callback(
-                _as_any(mock_request), Platforms.GOOGLE.value
-            );
-            result: any = asyncio.run(coro);
-            assert isinstance(result, (JSONResponse, TransportResponse));
-            body = _get_response_body(result);
-            assert "Authentication failed" in body;
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "supported platforms initialization with jac toml credentials" {
-    reset_scale_config();
-    mock_config = MockScaleConfig(
-        {
-            "host": "http://localhost:8000",
-            "google": {"client_id": "toml_test_id", "client_secret": "toml_test_secret"}
-        }
+test "GitHub sign-in needs public identity only and no email permission" {
+    p = GithubSSOProvider(
+        client_id="id", client_secret="secret", redirect_uri="https://app.test/callback"
     );
-    with unittest.mock.patch(
-        "jaclang.scale.sso.sso_auth.get_scale_config", return_value=mock_config
-    ) {
-        user_manager = SSOAuth(users=unittest.mock.Mock());
-        assert "google" in user_manager.platforms;
-        assert user_manager.platforms["google"]["client_id"] == "toml_test_id";
-    }
-}
-
-test "supported platforms initialization without jac toml credentials" {
-    reset_scale_config();
-    mock_config = MockScaleConfig(mock_sso_config_without_credentials());
-    with unittest.mock.patch(
-        "jaclang.scale.sso.sso_auth.get_scale_config", return_value=mock_config
-    ) {
-        user_manager = SSOAuth(users=unittest.mock.Mock());
-        assert "google" not in user_manager.platforms;
-    }
-}
-
-def _setup_real_user_manager -> tuple[str, SSOAuth] {
-    return _setup_user_manager();
-}
-
-test "link sso account success" {
-    (test_dir, auth) = _setup_real_user_manager();
-    user_manager = auth.users;
-    try {
-        user1 = user_manager.create_internal_user("user1", "pass1");
-        user1_id = user1.get("user_id", "user1");
-
-        result = user_manager.link_sso_account(user1_id, "google", "ext_123");
-        assert result.get("message") == "SSO account linked successfully";
-
-        accounts = user_manager.get_sso_accounts(user1_id);
-        assert len(accounts) == 1;
-        assert accounts[0]["platform"] == "google";
-        assert accounts[0]["external_id"] == "ext_123";
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "link sso account duplicate" {
-    (test_dir, auth) = _setup_real_user_manager();
-    user_manager = auth.users;
-    try {
-        user1 = user_manager.create_internal_user("user1", "pass1");
-        user1_id = user1.get("user_id", "user1");
-        user2 = user_manager.create_internal_user("user2", "pass2");
-        user2_id = user2.get("user_id", "user2");
-
-        user_manager.link_sso_account(user1_id, "google", "ext_123");
-
-        result = user_manager.link_sso_account(user2_id, "google", "ext_123");
-        assert "already linked to another user" in result.get("error", "");
-
-        result = user_manager.link_sso_account(user1_id, "google", "ext_123");
-        assert "already linked to this user" in result.get("message", "");
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "unlink sso account" {
-    (test_dir, auth) = _setup_real_user_manager();
-    user_manager = auth.users;
-    try {
-        user1 = user_manager.create_internal_user("user1", "pass1");
-        user1_id = user1.get("user_id", "user1");
-
-        user_manager.link_sso_account(user1_id, "google", "ext_123");
-
-        result = user_manager.unlink_sso_account(user1_id, "google");
-        assert result.get("message") == "SSO account unlinked successfully";
-
-        accounts = user_manager.get_sso_accounts(user1_id);
-        assert len(accounts) == 0;
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "get user by sso" {
-    (test_dir, auth) = _setup_real_user_manager();
-    user_manager = auth.users;
-    try {
-        user1 = user_manager.create_internal_user("user1", "pass1");
-        user1_id = user1.get("user_id", "user1");
-
-        user_manager.link_sso_account(user1_id, "google", "ext_123");
-
-        user = user_manager.get_user_by_sso("google", "ext_123");
-        assert user is not None;
-        assert user["user_id"] == user1_id;
-
-        user = user_manager.get_user_by_sso("google", "nonexistent");
-        assert user is None;
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "register sso endpoints" {
-    mock_config = MockScaleConfig(mock_sso_config_with_credentials());
-    host = RecordingHost(users=_as_any(unittest.mock.Mock()));
-    with unittest.mock.patch(
-        "jaclang.scale.sso.sso_auth.get_scale_config", return_value=mock_config
-    ) {
-        SSOExtension().register(_as_any(host));
-    }
-    sso_paths = [(e.path, e.method.name) for e in host._endpoints];
-    assert ("/sso/{platform}/{operation}", "GET") in sso_paths;
-    assert ("/sso/{platform}/callback", "GET") in sso_paths;
-    assert ("/sso/{platform}/callback", "POST") in sso_paths;
-    assert ("/sso/firebase/token", "POST") in sso_paths;
-}
-
-def _setup_callback_wrapper_server(sso_config: dict) -> tuple {
-    mock_config = MockScaleConfig(sso_config);
-    host = RecordingHost(users=_as_any(unittest.mock.Mock()));
-    ext = SSOExtension();
-    with unittest.mock.patch(
-        "jaclang.scale.sso.sso_auth.get_scale_config", return_value=mock_config
-    ) {
-        ext.register(_as_any(host));
-    }
-    callbacks = [
-        e
-        for e in host._endpoints
-        if e.path == "/sso/{platform}/callback" and e.method.name == "GET"
-    ];
-    return (ext, callbacks[0].callback, mock_config);
-}
-
-test "sso callback honors loopback client callback from state" {
-    sso_config = mock_sso_config_with_credentials();
-    sso_config["client_auth_callback_url"] = "https://app.jaseci.org/auth/callback";
-    (ext, wrapper, mock_config) = _setup_callback_wrapper_server(sso_config);
-    ext.sso.sso_callback = unittest.mock.AsyncMock(
-        return_value=TransportResponse.success(data={"token": "tok123"})
-    );
-    mock_request = unittest.mock.Mock(spec=Request);
-    loopback = "http://127.0.0.1:43117/auth/callback";
-    mock_request.query_params = {"state": loopback};
-    with unittest.mock.patch(
-        "jaclang.scale.server.sso_ext.get_scale_config", return_value=mock_config
-    ) {
-        result = asyncio.run(wrapper(mock_request, Platforms.GOOGLE.value));
-    }
-    assert isinstance(result, RedirectResponse);
-    location = result.headers.get("location", "") or "";
-    assert location.startswith(loopback);
-    assert "tok123" in location;
-
-    assert "jaseci.org" not in location;
-}
-
-test "sso callback rejects non-loopback client callback from state" {
-    sso_config = mock_sso_config_with_credentials();
-    sso_config["client_auth_callback_url"] = "https://app.jaseci.org/auth/callback";
-    (ext, wrapper, mock_config) = _setup_callback_wrapper_server(sso_config);
-    ext.sso.sso_callback = unittest.mock.AsyncMock(
-        return_value=TransportResponse.success(data={"token": "tok123"})
-    );
-    mock_request = unittest.mock.Mock(spec=Request);
-    mock_request.query_params = {"state": "https://evil.com/steal"};
-    with unittest.mock.patch(
-        "jaclang.scale.server.sso_ext.get_scale_config", return_value=mock_config
-    ) {
-        result = asyncio.run(wrapper(mock_request, Platforms.GOOGLE.value));
-    }
-    assert isinstance(result, RedirectResponse);
-    location = result.headers.get("location", "") or "";
-    assert location.startswith("https://app.jaseci.org/auth/callback");
-    assert "evil.com" not in location;
-}
-
-test "sso initiate forwards loopback client callback as state" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        loopback = "http://127.0.0.1:43117/auth/callback";
-        mock_sso = MockGoogleSSO("id", "secret", "uri");
-        mock_sso.initiate_auth = unittest.mock.AsyncMock(
-            return_value=RedirectResponse(
-                url="https://accounts.google.com/oauth/authorize"
-            )
-        );
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=mock_sso) {
-            coro: any = auth.sso_initiate(
-                Platforms.GOOGLE.value, Operations.LOGIN.value, loopback
-            );
-            asyncio.run(coro);
-            mock_sso.initiate_auth.assert_called_once_with(state=loopback);
+    assert p.scope() == "";
+    with patch.object(
+        GithubSSOProvider,
+        "_api_get",
+        new_callable=AsyncMock,
+        return_value={
+            "id": 123,
+            "login": "alice",
+            "name": "Alice",
+            "avatar_url": "https://avatars.githubusercontent.com/u/123"
         }
-    } finally {
-        _teardown_user_manager(test_dir);
+    ) as api {
+        info = asyncio.run(p.fetch_user("token", {}));
+        assert info.external_id == "123" and info.username == "alice";
+        assert info.email == "";
+        api.assert_awaited_once_with("/user", "token");
     }
 }
 
-test "sso initiate drops non-loopback client callback" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        mock_sso = MockGoogleSSO("id", "secret", "uri");
-        mock_sso.initiate_auth = unittest.mock.AsyncMock(
-            return_value=RedirectResponse(
-                url="https://accounts.google.com/oauth/authorize"
-            )
+test "SSO endpoint registration includes browser and native session APIs" {
+    host = RecordingHost(users=fake_users());
+    with patch("jaclang.scale.server.sso_ext.SSOAuth", return_value=configured()) {
+        SSOExtension().register(host);
+    }
+    paths = [(e.path, e.method.name) for e in host.endpoints];
+    for suffix in ["begin", "finish", "poll"] {
+        assert ("/sso/{platform}/" + suffix, "POST") in paths;
+    }
+    assert ("/sso/{platform}/callback", "GET") in paths;
+    assert ("/sso/{platform}/callback", "POST") in paths;
+    assert ("/sso/firebase/token", "POST") in paths;
+}
+
+test "Client callback destinations are never taken from untrusted OAuth state" {
+    fallback_url = "https://app.test/callback";
+    assert resolve_sso_client_redirect("https://evil.test/steal", fallback_url)
+        == fallback_url;
+    assert resolve_sso_client_redirect("http://127.0.0.1:4000/callback", fallback_url)
+        == "http://127.0.0.1:4000/callback";
+    assert not is_safe_loopback_redirect("http://127.0.0.1.evil.test/callback");
+    assert not is_safe_loopback_redirect("javascript:alert(1)");
+    tokens: any = FakeTokens();
+    with patch.object(AuthTokenStore, "instance", return_value=tokens) {
+        auth = configured();
+        result: any = asyncio.run(
+            auth.sso_initiate("github", "login", "https://evil.test/steal")
         );
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=mock_sso) {
-            coro: any = auth.sso_initiate(
-                Platforms.GOOGLE.value, Operations.LOGIN.value, "https://evil.com/steal"
-            );
-            asyncio.run(coro);
-            mock_sso.initiate_auth.assert_called_once_with(state=None);
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
+        state = parse_qs(urlparse(result.headers.get("location")).query)["state"][0];
+        assert json.loads(
+            tokens.peek_token(state, "oauth_session:github")["identity_value"]
+        )["client_callback"]
+            == "";
     }
 }
 
@@ -992,437 +229,4 @@ test "is safe loopback redirect truth table" {
     assert not is_safe_loopback_redirect("file:///etc/passwd");
     assert not is_safe_loopback_redirect("");
     assert not is_safe_loopback_redirect(None);
-}
-
-test "google sso provider initiate auth" {
-    provider = GoogleSSOProvider(
-        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
-    );
-    coro: any = provider.initiate_auth(state="st-1");
-    response: any = asyncio.run(coro);
-    assert response.status_code == 303;
-    location = response.headers.get("Location");
-    assert location.startswith("https://accounts.google.com/o/oauth2/v2/auth");
-    assert "client_id=id" in location;
-    assert "response_type=code" in location;
-    assert "state=st-1" in location;
-    assert "scope=openid" in location;
-}
-
-test "google sso provider handle callback" {
-    provider = GoogleSSOProvider(
-        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
-    );
-    responder = _oauth_responder(
-        [
-            {"access_token": "tok-abc"},
-            {
-                "sub": "12345",
-                "email": "test@example.com",
-                "name": "Test User",
-                "given_name": "Test",
-                "family_name": "User"
-            }
-        ]
-    );
-    with unittest.mock.patch("jaclang.scale.sso.provider.arequest", responder), unittest.mock.patch(
-        "jaclang.scale.sso.google.arequest", responder
-    ) {
-        coro: any = provider.handle_callback(_callback_request());
-        result: any = asyncio.run(coro);
-    }
-    assert result.email == "test@example.com";
-    assert result.external_id == "12345";
-    assert result.display_name == "Test User";
-}
-
-test "get sso with apple platform" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        with unittest.mock.patch(
-            "jaclang.scale.sso.apple.AppleSSOProvider", side_effect=MockAppleSSO
-        ) as mock_sso {
-            sso = auth.get_sso(Platforms.APPLE.value);
-            assert sso is not None;
-            assert sso.client_id == "apple_test_client_id";
-            assert sso.client_secret == "apple_test_client_secret";
-            mock_sso.assert_called_once();
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "get sso apple redirect uri format" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        with unittest.mock.patch(
-            "jaclang.scale.sso.apple.AppleSSOProvider", side_effect=MockAppleSSO
-        ) {
-            sso = _as_any(auth.get_sso(Platforms.APPLE.value));
-            assert sso.redirect_uri == "http://localhost:8000/sso/apple/callback";
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "apple sso initiate success" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        with unittest.mock.patch.object(
-            auth, 'get_sso', return_value=MockAppleSSO("id", "secret", "uri")
-        ) {
-            coro: any = auth.sso_initiate(
-                Platforms.APPLE.value, Operations.LOGIN.value
-            );
-            result: any = asyncio.run(coro);
-            assert isinstance(result, RedirectResponse);
-            assert "apple.com" in (result.headers.get("location", "") or "");
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "apple sso callback login existing user" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        user_id = _create_existing_user(user_manager, "test@privaterelay.appleid.com");
-        mock_request = unittest.mock.Mock(spec=Request);
-        mock_sso = MockAppleSSO("id", "secret", "uri");
-        mock_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=MockUserInfo(email="test@privaterelay.appleid.com")
-        );
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=mock_sso) {
-            coro: any = auth.sso_callback(_as_any(mock_request), Platforms.APPLE.value);
-            result: any = asyncio.run(coro);
-            assert isinstance(result, (JSONResponse, TransportResponse));
-            data = _parse_body(result)["data"];
-            assert data["message"] == "Login successful";
-            assert data["user_id"] == user_id;
-            assert user_manager.validate_jwt_token(data["token"]) == user_id;
-            accounts = user_manager.get_sso_accounts(user_id);
-            assert len(accounts) == 1;
-            assert accounts[0]["platform"] == "apple";
-            stored = user_manager.get_user(user_id);
-            assert stored["profile"]["sso"]["apple"]["display_name"] == "Test User";
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "apple sso callback auto register new user" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        mock_request = unittest.mock.Mock(spec=Request);
-        assert (
-            user_manager.find_user_by_identity("newuser@privaterelay.appleid.com")
-            is None
-        );
-        mock_sso = MockAppleSSO("id", "secret", "uri");
-        mock_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=MockUserInfo(email="newuser@privaterelay.appleid.com")
-        );
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=mock_sso) {
-            coro: any = auth.sso_callback(_as_any(mock_request), Platforms.APPLE.value);
-            result: any = asyncio.run(coro);
-            assert isinstance(result, (JSONResponse, TransportResponse));
-            data = _parse_body(result)["data"];
-            user_id = data["user_id"];
-            assert user_id;
-            assert user_manager.validate_jwt_token(data["token"]) == user_id;
-            created = user_manager.find_user_by_identity(
-                "newuser@privaterelay.appleid.com"
-            );
-            assert created is not None;
-            assert created["user_id"] == user_id;
-            apple_sso = created["profile"]["sso"]["apple"];
-            assert apple_sso["display_name"] == "Test User";
-            assert apple_sso["picture"] == "https://example.com/picture.jpg";
-            accounts = user_manager.get_sso_accounts(user_id);
-            assert len(accounts) == 1;
-            assert accounts[0]["platform"] == "apple";
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "apple sso provider initiate auth" {
-    provider = AppleSSOProvider(
-        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
-    );
-    coro: any = provider.initiate_auth();
-    response: any = asyncio.run(coro);
-    assert response.status_code == 303;
-    location = response.headers.get("Location");
-    assert location.startswith("https://appleid.apple.com/auth/authorize");
-    # Apple posts the callback as a form, so the mode is requested up front.
-    assert "response_mode=form_post" in location;
-}
-
-test "apple sso provider handle callback" {
-    import from jaclang.server.serving.authcrypt { jwt_encode }
-    provider = AppleSSOProvider(
-        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
-    );
-    # Apple carries identity in the id_token rather than a userinfo endpoint.
-    id_token = jwt_encode(
-        {"sub": "apple_12345", "email": "test@privaterelay.appleid.com"}, "unused"
-    );
-    responder = _oauth_responder([{"access_token": "tok", "id_token": id_token}]);
-    with unittest.mock.patch("jaclang.scale.sso.provider.arequest", responder) {
-        coro: any = provider.handle_callback(_callback_request());
-        result: any = asyncio.run(coro);
-    }
-    assert result.email == "test@privaterelay.appleid.com";
-    assert result.external_id == "apple_12345";
-}
-
-test "supported platforms initialization with apple credentials" {
-    reset_scale_config();
-    mock_config = MockScaleConfig(
-        {
-            "host": "http://localhost:8000",
-            "google": {"client_id": "google_id", "client_secret": "google_secret"},
-            "apple": {"client_id": "apple_id", "client_secret": "apple_secret"}
-        }
-    );
-    with unittest.mock.patch(
-        "jaclang.scale.sso.sso_auth.get_scale_config", return_value=mock_config
-    ) {
-        user_manager = SSOAuth(users=unittest.mock.Mock());
-        assert "google" in user_manager.platforms;
-        assert "apple" in user_manager.platforms;
-        assert user_manager.platforms["apple"]["client_id"] == "apple_id";
-    }
-}
-
-test "supported platforms initialization without apple credentials" {
-    reset_scale_config();
-    mock_config = MockScaleConfig(
-        {
-            "host": "http://localhost:8000",
-            "google": {"client_id": "google_id", "client_secret": "google_secret"},
-            "apple": {"client_id": "", "client_secret": ""}
-        }
-    );
-    with unittest.mock.patch(
-        "jaclang.scale.sso.sso_auth.get_scale_config", return_value=mock_config
-    ) {
-        user_manager = SSOAuth(users=unittest.mock.Mock());
-        assert "google" in user_manager.platforms;
-        assert "apple" not in user_manager.platforms;
-    }
-}
-
-test "get sso with github platform" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        with unittest.mock.patch(
-            "jaclang.scale.sso.github.GithubSSOProvider", side_effect=MockGithubSSO
-        ) as mock_sso {
-            sso = auth.get_sso(Platforms.GITHUB.value);
-            assert sso is not None;
-            assert sso.client_id == "github_test_client_id";
-            assert sso.client_secret == "github_test_client_secret";
-            mock_sso.assert_called_once();
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "get sso github redirect uri format" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        with unittest.mock.patch(
-            "jaclang.scale.sso.github.GithubSSOProvider", side_effect=MockGithubSSO
-        ) {
-            sso = _as_any(auth.get_sso(Platforms.GITHUB.value));
-            assert sso.redirect_uri == "http://localhost:8000/sso/github/callback";
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "github sso initiate success" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        with unittest.mock.patch.object(
-            auth, 'get_sso', return_value=MockGithubSSO("id", "secret", "uri")
-        ) {
-            coro: any = auth.sso_initiate(
-                Platforms.GITHUB.value, Operations.LOGIN.value
-            );
-            result: any = asyncio.run(coro);
-            assert isinstance(result, RedirectResponse);
-            assert "github.com" in (result.headers.get("location", "") or "");
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "github sso callback login existing user" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        user_id = _create_existing_user(user_manager, "test@github.com");
-        mock_request = unittest.mock.Mock(spec=Request);
-        mock_sso = MockGithubSSO("id", "secret", "uri");
-        mock_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=MockUserInfo(email="test@github.com")
-        );
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=mock_sso) {
-            coro: any = auth.sso_callback(
-                _as_any(mock_request), Platforms.GITHUB.value
-            );
-            result: any = asyncio.run(coro);
-            assert isinstance(result, (JSONResponse, TransportResponse));
-            data = _parse_body(result)["data"];
-            assert data["message"] == "Login successful";
-            assert data["user_id"] == user_id;
-            assert user_manager.validate_jwt_token(data["token"]) == user_id;
-            accounts = user_manager.get_sso_accounts(user_id);
-            assert len(accounts) == 1;
-            assert accounts[0]["platform"] == "github";
-            stored = user_manager.get_user(user_id);
-            assert stored["profile"]["sso"]["github"]["display_name"] == "Test User";
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "github sso callback auto register new user" {
-    (test_dir, auth) = _setup_user_manager();
-    user_manager = auth.users;
-    try {
-        mock_request = unittest.mock.Mock(spec=Request);
-        assert user_manager.find_user_by_identity("newuser@github.com") is None;
-        mock_sso = MockGithubSSO("id", "secret", "uri");
-        mock_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=MockUserInfo(email="newuser@github.com")
-        );
-        with unittest.mock.patch.object(auth, 'get_sso', return_value=mock_sso) {
-            coro: any = auth.sso_callback(
-                _as_any(mock_request), Platforms.GITHUB.value
-            );
-            result: any = asyncio.run(coro);
-            assert isinstance(result, (JSONResponse, TransportResponse));
-            data = _parse_body(result)["data"];
-            user_id = data["user_id"];
-            assert user_id;
-            assert user_manager.validate_jwt_token(data["token"]) == user_id;
-            created = user_manager.find_user_by_identity("newuser@github.com");
-            assert created is not None;
-            assert created["user_id"] == user_id;
-            github_sso = created["profile"]["sso"]["github"];
-            assert github_sso["display_name"] == "Test User";
-            assert github_sso["picture"] == "https://example.com/picture.jpg";
-            accounts = user_manager.get_sso_accounts(user_id);
-            assert len(accounts) == 1;
-            assert accounts[0]["platform"] == "github";
-        }
-    } finally {
-        _teardown_user_manager(test_dir);
-    }
-}
-
-test "github sso provider initiate auth" {
-    provider = GithubSSOProvider(
-        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
-    );
-    coro: any = provider.initiate_auth();
-    response: any = asyncio.run(coro);
-    assert response.status_code == 303;
-    location = response.headers.get("Location");
-    assert location.startswith("https://github.com/login/oauth/authorize");
-    assert "scope=user" in location;
-}
-
-test "github sso provider handle callback" {
-    provider = GithubSSOProvider(
-        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
-    );
-    responder = _oauth_responder(
-        [
-            {"access_token": "tok-abc"},
-            {
-                "id": "github_12345",
-                "email": "test@github.com",
-                "name": "GitHub User",
-                "avatar_url": "https://avatars/1"
-            }
-        ]
-    );
-    with unittest.mock.patch("jaclang.scale.sso.provider.arequest", responder), unittest.mock.patch(
-        "jaclang.scale.sso.github.arequest", responder
-    ) {
-        coro: any = provider.handle_callback(_callback_request());
-        result: any = asyncio.run(coro);
-    }
-    assert result.email == "test@github.com";
-    assert result.external_id == "github_12345";
-    assert result.display_name == "GitHub User";
-}
-
-test "supported platforms initialization with github credentials" {
-    reset_scale_config();
-    mock_config = MockScaleConfig(
-        {
-            "host": "http://localhost:8000",
-            "github": {"client_id": "github_id", "client_secret": "github_secret"}
-        }
-    );
-    with unittest.mock.patch(
-        "jaclang.scale.sso.sso_auth.get_scale_config", return_value=mock_config
-    ) {
-        user_manager = SSOAuth(users=unittest.mock.Mock());
-        assert "github" in user_manager.platforms;
-        assert user_manager.platforms["github"]["client_id"] == "github_id";
-    }
-}
-
-test "supported platforms initialization without github credentials" {
-    reset_scale_config();
-    mock_config = MockScaleConfig(
-        {
-            "host": "http://localhost:8000",
-            "google": {"client_id": "google_id", "client_secret": "google_secret"},
-            "github": {"client_id": "", "client_secret": ""}
-        }
-    );
-    with unittest.mock.patch(
-        "jaclang.scale.sso.sso_auth.get_scale_config", return_value=mock_config
-    ) {
-        user_manager = SSOAuth(users=unittest.mock.Mock());
-        assert "google" in user_manager.platforms;
-        assert "github" not in user_manager.platforms;
-    }
-}
-
-test "supported platforms initialization with all providers" {
-    reset_scale_config();
-    mock_config = MockScaleConfig(mock_sso_config_with_credentials());
-    with unittest.mock.patch(
-        "jaclang.scale.sso.sso_auth.get_scale_config", return_value=mock_config
-    ) {
-        user_manager = SSOAuth(users=unittest.mock.Mock());
-        assert "google" in user_manager.platforms;
-        assert "apple" in user_manager.platforms;
-        assert "github" in user_manager.platforms;
-    }
 }

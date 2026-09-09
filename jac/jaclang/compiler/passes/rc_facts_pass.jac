@@ -6,12 +6,14 @@ import from jaclang.compiler.frontend.unitree {
     BinaryExpr,
     BoolExpr,
     CompareExpr,
+    ConnectOp,
     DictCompr,
     DictVal,
     Expr,
     FString,
     FuncCall,
     FuncSignature,
+    ImplDef,
     IfElseExpr,
     IfStmt,
     InForStmt,
@@ -28,6 +30,7 @@ import from jaclang.compiler.frontend.unitree {
     ParamVar,
     ReturnStmt,
     SetVal,
+    same_lexical_scope,
     String,
     Symbol,
     Test,
@@ -58,6 +61,11 @@ def result_ownership(expr: (Expr | None)) -> Ownership {
         return Ownership.UNKNOWN;
     }
     if isinstance(expr, FuncCall) {
+        return Ownership.OWNED;
+    }
+    if isinstance(expr, BinaryExpr)
+        and isinstance(expr.op, ConnectOp)
+        and expr.op.capture_edges {
         return Ownership.OWNED;
     }
     if isinstance(expr, (ListVal, SetVal, DictVal, ListCompr, DictCompr)) {
@@ -123,9 +131,14 @@ walker RcFactsPass(Transform) {
     def _stamp_region_handles(ir_in: Module) -> None;
     def _asn_makes_region_handle(nd: Assignment) -> bool;
     def _use_ok_for_stack(nm: NameAtom) -> bool;
-    def _enclosing_fn_scope(nd: UniNode) -> (UniNode | None);
+    def _enclosing_fn_scope(
+        nd: UniNode, stop_at_comprehension: bool = False
+    ) -> UniNode | None;
+
     def _is_param_sym(sym: Symbol) -> bool;
+    def _last_use_tracked(sym: Symbol) -> bool;
     def _stamp_last_use(ir_in: Module) -> None;
+    def _stamp_scope_cleanup(ir_in: Module) -> None;
     def _stamp_move_in(ir_in: Module) -> None;
     def _collect_last_use(
         owner: UniNode, body: Sequence[UniNode], out: dict[int, list[str]]

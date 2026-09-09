@@ -1,5 +1,11 @@
 import logging;
+import from jaclang.server.identity.rate_limit { consume_limit }
 import traceback;
+import from jaclang.server.identity.config { auth_settings }
+import from jaclang.server.identity.registration_challenge {
+    issue_challenge,
+    consume_challenge
+}
 import from jaclang.server.identity.audit { client_ip, emit as audit }
 import from jaclang.server.identity.auth_models {
     AddIdentityRequest,
@@ -66,10 +72,94 @@ def normalize_identity(identity_input: any) -> tuple[str, str, str] {
 }
 
 
+def registration_limit(
+    request: Request, scope: str, cap: int, seconds: int
+) -> TransportResponse | None {
+    retry = consume_limit(scope, client_ip(request), cap, seconds);
+    if retry < 0 {
+        return fail(
+            'LIMIT_UNAVAILABLE',
+            'Registration is temporarily unavailable. Please try again.',
+            503
+        );
+    }
+    if retry > 0 {
+        return fail(
+            'RATE_LIMITED',
+            f"Too many attempts. Try again in {retry} seconds.",
+            429,
+            {'retry_after_seconds': retry}
+        );
+    }
+    return None;
+}
+
 def register_auth_endpoints(server: EndpointHost) {
     users = server.identity();
 
-    def register_handler(body_data: RegisterRequest) -> TransportResponse {
+    def challenge_handler(request: Request) -> TransportResponse {
+        if not auth_settings().registration_challenge {
+            return ok({'required': False});
+        }
+        limited = registration_limit(
+            request,
+            'registration-challenge',
+            auth_settings().registration_challenges_per_10_minutes,
+            600
+        );
+        if limited is not None {
+            return limited;
+        }
+        try {
+            return ok({'required': True, 'challenge': issue_challenge()});
+        } except Exception {
+            return fail(
+                'CHALLENGE_UNAVAILABLE',
+                'Verification is unavailable. Please try again.',
+                503
+            );
+        }
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/user/register/challenge',
+            callback=challenge_handler,
+            tags=['User APIs'],
+            summary='Registration challenge'
+        )
+    );
+
+    def register_handler(
+        body_data: RegisterRequest, request: Request
+    ) -> TransportResponse {
+        limited = registration_limit(
+            request,
+            'registration-attempt',
+            auth_settings().registration_attempts_per_hour,
+            3600
+        );
+        if limited is not None {
+            return limited;
+        }
+        if auth_settings().registration_challenge {
+            try {
+                verified = consume_challenge(body_data.challenge);
+            } except Exception {
+                return fail(
+                    'CHALLENGE_UNAVAILABLE',
+                    'Verification is unavailable. Please try again.',
+                    503
+                );
+            }
+            if not verified {
+                return fail(
+                    'CHALLENGE_REQUIRED',
+                    'Complete a fresh registration verification and try again.',
+                    400
+                );
+            }
+        }
         identities = [i.model_dump(mode='json') for i in body_data.identities];
         credential = body_data.credential.model_dump(mode='json');
         try {

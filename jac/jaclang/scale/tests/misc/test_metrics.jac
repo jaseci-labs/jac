@@ -38,6 +38,8 @@ test "prometheus disabled when configured" {
 test "prometheus uses custom namespace" {
     collector = PrometheusMetricsCollector(config=ENABLED_CONFIG);
     assert collector._namespace == "test_app";
+    collector.record_request("GET", "/walker/ping", 200, 0.01);
+    assert b"test_app_http_requests_total" in collector.expose();
 }
 
 test "prometheus walker metrics enabled" {

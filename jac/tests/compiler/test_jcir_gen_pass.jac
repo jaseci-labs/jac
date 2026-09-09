@@ -39,13 +39,13 @@ import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.backends.py.codegen_shim { compile_ir, transcribe }
 
 """Compile a source string, then re-emit it: (pipeline tree, fresh tree, bytes)."""
-def dual_compile(src: str, path: str) -> tuple {
+def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple {
     prog = JacProgram();
     mod = prog.compile(
         use_str=src,
         file_path=path,
         options=CompileOptions(
-            force_codespace="server",
+            force_codespace=codespace,
             skip_native_engine=True,
             no_ir_cache=True,
             suppress_codes=["E5092"]
@@ -467,7 +467,7 @@ def make_adder(n: int) -> any {
 def block_lambda_user -> int {
     fn = lambda (x: int) -> int {
         y = x * 2;
-        return y + 1;
+        return y + 1 + (_jac_lambda_1 - 123);
     };
     return apply(fn, 10) + apply(make_adder(5), 1);
 }
@@ -479,14 +479,41 @@ def defaulted(cb: any = lambda {
     return cb();
 }
 
+def nested -> int {
+    return (lambda {
+        outer = 7;
+        return (lambda { inner = outer + 1; return inner; })();
+    })();
+}
+
+def comprehension -> list[int] {
+    callbacks = [lambda { value = i + 1; return value; } for i in [1, 2]];
+    assert callbacks[0] is not callbacks[1];
+    return [callback() for callback in callbacks];
+}
+
+def iterable_scope -> list[int] {
+    outer = [1, 2];
+    return [value for value in (lambda { result = outer; return result; })()];
+}
+
+glob _jac_lambda_1 = 123;
+
 with entry {
     r1 = block_lambda_user();
     r2 = defaulted();
+    r3 = nested();
+    r4 = comprehension();
+    r5 = iterable_scope();
+    assert r3 == 8;
+    assert r4 == [3, 3];
+    assert r5 == [1, 2];
+    assert _jac_lambda_1 == 123;
 }
 """;
     (ref_tree, got_tree, _) = dual_compile(src, "lambda_fixture.jac");
     assert_dump_equal(ref_tree, got_tree);
-    exec_both(ref_tree, got_tree, "lambda_fixture.jac", ["r1", "r2"]);
+    exec_both(ref_tree, got_tree, "lambda_fixture.jac", ["r1", "r2", "r3", "r4", "r5"]);
     missing: list = [];
     for node in pyast.walk(got_tree) {
         if "lineno" in node._attributes {
@@ -640,7 +667,9 @@ test "doubles correctly" {
     assert double(2) == 4;
 }
 """;
-    (ref_tree, got_tree, blob) = dual_compile(src, "testblock_fixture.jac");
+    (ref_tree, got_tree, blob) = dual_compile(
+        src, "testblock_fixture.jac", codespace="native"
+    );
     assert_dump_equal(ref_tree, got_tree);
     result = compile_ir(blob);
     assert len(result.diags) == 0;

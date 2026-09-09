@@ -102,8 +102,8 @@ def _build_app(
         );
     }
 
-    if kind_builds and plan_verb == "nacompile" {
-        import from jaclang.cli.commands.nacompile { nacompile }
+    if kind_builds and plan_verb == "native" {
+        import from jaclang.cli.commands.native_build { native_build }
         if not entry_path or not os.path.isfile(entry_path) {
             console.error(
                 f"No entry file for app '{app.name}'.",
@@ -121,10 +121,8 @@ def _build_app(
         if out_dir {
             os.makedirs(out_dir, exist_ok=True);
         }
-        return nacompile(
-            filename=entry_path,
-            output=out,
-            shared=bool(plan_flags.get("shared", False))
+        return native_build(
+            filename=entry_path, output=out, lib=bool(plan_flags.get("shared", False))
         );
     }
 
@@ -161,20 +159,6 @@ def _build_app(
             force=False
         );
     }
-    if projection == "native" {
-        import from jaclang.cli.commands.nacompile { nacompile }
-        if not entry_path or not os.path.isfile(entry_path) {
-            console.error(
-                "No entry file for the native projection.",
-                hint="Set the app's entry-point or pass one: jac build main.jac --as native"
-            );
-            return 1;
-        }
-        os.makedirs(output, exist_ok=True);
-        return nacompile(
-            filename=entry_path, output=os.path.join(output, _entry_stem(entry_path))
-        );
-    }
     console.error(f"Unknown projection: '{projection}'");
     return 1;
 }
@@ -186,9 +170,48 @@ impl build(
     output: str = "dist",
     check_only: bool = False,
     platform: str | None = None,
-    fat: bool = False
+    fat: bool = False,
+    native: bool = False,
+    lib: bool = False,
+    memory: str = "",
+    native_target: str = "",
+    debug: bool = False
 ) -> int {
     import from jaclang.project.config { get_config }
+    if native or lib or memory or native_target or debug {
+        import from jaclang.cli.commands.native_build { native_build }
+        if not native {
+            console.error(
+                "--lib, --memory, --target-triple and --debug describe a native build.",
+                hint="Add --native: jac build main.jac --native --memory nogc"
+            );
+            return 1;
+        }
+        src = target;
+        if not src or not os.path.isfile(src) {
+            cfg_n = get_config(start_path=Path.cwd(), force_discover=True);
+            (app_n, file_n, rc_n) = _build_target(cfg_n, target)
+                if cfg_n is not None
+                else (None, "", 1);
+            if rc_n or not file_n {
+                console.error(
+                    "jac build --native needs a .jac file.",
+                    hint="jac build main.jac --native"
+                );
+                return 1;
+            }
+            src = file_n;
+        }
+        out = "" if output == "dist" else output;
+        return native_build(
+            filename=src,
+            output=out,
+            lib=lib,
+            target=native_target,
+            debug=debug,
+            memory=memory
+        );
+    }
 
     cfg = get_config(start_path=Path.cwd(), force_discover=True);
     if cfg is None or cfg.project_root is None {

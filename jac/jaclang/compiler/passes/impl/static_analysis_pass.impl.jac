@@ -404,6 +404,38 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
         }
     }
 
+    for nd in mod.get_all_sub_nodes(typ=AwaitExpr) {
+        in_async = False;
+        parent = nd.parent;
+        while parent is not None {
+            if isinstance(parent, LambdaExpr) {
+                break;
+            }
+            if isinstance(parent, Test) {
+                in_async = parent.in_client_context();
+                break;
+            }
+            if isinstance(parent, Ability) {
+                in_async = parent.is_async;
+                break;
+            }
+            if isinstance(parent, ImplDef) {
+                _dl = parent.decl_link;
+                if isinstance(_dl, Ability) {
+                    in_async = _dl.is_async;
+                }
+                break;
+            }
+            if isinstance(parent, Archetype) {
+                break;
+            }
+            parent = parent.parent;
+        }
+        if not in_async {
+            self.emit(E2085, node_override=nd);
+        }
+    }
+
     for nd in mod.get_all_sub_nodes(typ=Archetype) {
         if nd.src_endpoint is not None and nd.arch_kind != "edge" {
             self.emit(
