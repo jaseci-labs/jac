@@ -302,6 +302,15 @@ obj MatchArgsToParamsResult {
         argument_errors: bool = False;
 }
 
+glob MAX_LISTED_OVERLOADS: int = 4;
+
+obj ArgTypeMismatch {
+    has param_name: str,
+        actual: str,
+        expected: str,
+        callable_reason: str | None = None;
+}
+
 obj NarrowingTarget {
     has key: str,
         declared_type: TypeBase,
@@ -696,8 +705,14 @@ walker TypeEvaluator {
     def validate_arg_types(
         args: MatchArgsToParamsResult,
         checking_overload: bool = False,
+        mismatches: list[ArgTypeMismatch] | None = None,
         solved_type_vars: (dict[str, TypeBase] | None) = None
     ) -> bool;
+
+    def _callable_reason(arg_type: TypeBase, expected: TypeBase) -> str | None;
+    def _describe_overload_rejections(
+        rejections: list[tuple[int, ArgTypeMismatch]]
+    ) -> str | None;
 
     def _merge_catalog_field_params(
         tab: CatScope, param_map: dict[str, Parameter], skip_deferred: bool
