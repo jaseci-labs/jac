@@ -1,9 +1,11 @@
 """Tests for the admin portal's opt-in defaults and bootstrap credential policy."""
 
+import logging;
 import os;
 import shutil;
 import tempfile;
 import uuid;
+import from logging.handlers { MemoryHandler }
 import from pathlib { Path }
 import from unittest.mock { patch }
 import from jaclang.scale.config.config_loader {
@@ -16,6 +18,23 @@ import from jaclang.server.identity.user_manager { UserManager }
 
 def _admin_name -> str {
     return f"admin-{uuid.uuid4().hex[:8]}";
+}
+
+
+def _capture_warnings(fn: any) -> list[str] {
+    capture = MemoryHandler(1000);
+    root_logger = logging.getLogger();
+    root_logger.addHandler(capture);
+    try {
+        fn();
+        return [
+            r.getMessage()
+            for r in capture.buffer
+            if r.levelno >= logging.WARNING
+        ];
+    } finally {
+        root_logger.removeHandler(capture);
+    }
 }
 
 
@@ -87,12 +106,29 @@ test "JAC_ADMIN_ENABLED turns the portal off explicitly" {
 
 test "an unrecognized JAC_ADMIN_ENABLED warns and stays disabled" {
     with patch.dict(os.environ, {"JAC_ADMIN_ENABLED": "ture"}, clear=True) {
-        with patch("logging.getLogger") as get_logger {
+        seen: list[str] = [];
+        def attempt {
             assert not resolve_admin_enabled(True);
-            warning = get_logger.return_value.warning;
-            assert warning.call_count == 1;
-            assert "JAC_ADMIN_ENABLED" in warning.call_args[0][0];
         }
+        seen = _capture_warnings(attempt);
+        assert [
+            m
+            for m in seen
+            if "JAC_ADMIN_ENABLED" in m
+        ]
+            == [
+                m
+                for m in seen
+                if "'ture'" in m
+            ] , seen;
+        assert len(
+            [
+                m
+                for m in seen
+                if "JAC_ADMIN_ENABLED" in m
+            ]
+        )
+            == 1 , seen;
     }
 }
 
