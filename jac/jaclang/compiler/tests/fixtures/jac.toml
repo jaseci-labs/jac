@@ -1,7 +1,5 @@
 [placement.pins]
 "bundled_stdlib_defaults.adler32_default_seed" = "native"
-"bundled_stdlib_defaults.import:secrets" = "native"
-"bundled_stdlib_defaults.import:zlib" = "native"
 "bundled_stdlib_defaults.token_hex_default_len" = "native"
 "bundled_stdlib_sig.dumps_kw_len" = "native"
 "bundled_stdlib_sig.dumps_pos_len" = "native"

@@ -3,6 +3,7 @@ name = "jac-scale-admin"
 version = "1.0.0"
 description = "JAC-Scale Admin Portal"
 entry-point = "main.jac"
+kind = "web-app"
 
 [client]
 base_path = "/admin/"
@@ -32,8 +33,3 @@ vite = "^6.4.1"
 typescript = "^5.3.3"
 "@types/react" = "^19.2.0"
 "@types/react-dom" = "^19.2.0"
-
-# The service layer is browser fetch helpers with no JSX for inference to
-# find; pin it client so standalone `jac check` types the host APIs.
-[placement.pins]
-"services.*" = "client"
