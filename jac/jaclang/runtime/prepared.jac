@@ -67,9 +67,17 @@ def load_prepared_module(path: str) -> types.ModuleType {
     if (prepared_code(path) is None) {
         raise RuntimeError(f'No prepared executable artifact for {path}');
     }
-    modules = Jac.jac_import(
-        target=base_stem(path), base_path=os.path.dirname(path), lng='jac'
-    );
+    application = application_for(path);
+    base = os.path.dirname(path);
+    target = base_stem(path);
+    if application is not None and path != application.entry {
+        relative_dir = os.path.relpath(base, application.root);
+        if relative_dir != '.' {
+            target = relative_dir.replace(os.sep, '.') + '.' + target;
+        }
+        base = application.root;
+    }
+    modules = Jac.jac_import(target=target, base_path=base, lng='jac');
     if not modules {
         raise RuntimeError(f'Prepared module did not initialize: {path}');
     }

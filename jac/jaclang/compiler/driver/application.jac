@@ -209,7 +209,7 @@ def prepare_application(
         completed[0] += 1;
     }
     def progress() -> str {
-        current = f' · {os.path.relpath(active[-1], `root)}' if active else '';
+        current = ' · ' + os.path.relpath(active[-1], `root) if active else '';
         return f'Preparing application: {completed[0]} modules · {(
             time.monotonic() - started
         ):.1f}s{current}';
