@@ -195,8 +195,8 @@ def _prepare_sealed(
     import from jaclang.compiler.backends.py.artifact_imports { runtime_sources }
     import from jaclang.jac0core.sealed { image_for_bundle_dir, register_image }
     bundle_dir = Path(image_root) / '_precompiled';
-    if image_for_bundle_dir(bundle_dir) is None
-        and register_image(bundle_dir) is None {
+    image = image_for_bundle_dir(bundle_dir) or register_image(bundle_dir);
+    if image is None {
         raise RuntimeError(
             f'Sealed application has no artifact manifest: {image_root}'
         );
@@ -219,6 +219,18 @@ def _prepare_sealed(
         os.path.realpath(os.path.join(image_root, binding['src']))
         for binding in manifest.get('cross_bindings', [])
     );
+    for path in list(pending) {
+        parent = Path(path).parent;
+        while parent.is_relative_to(image_root) {
+            relative = parent.relative_to(image_root).as_posix();
+            for (source, info) in image.manifest['modules'].items() {
+                if info.get('package') and Path(source).parent.as_posix() == relative {
+                    pending.add(os.path.realpath(os.path.join(image_root, source)));
+                }
+            }
+            parent = parent.parent;
+        }
+    }
     compiler = program._get_compiler();
     while pending {
         path = pending.pop();

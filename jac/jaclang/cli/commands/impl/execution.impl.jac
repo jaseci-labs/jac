@@ -1268,7 +1268,7 @@ impl serve(
         );
         console.print("Initializing application...", style="bold");
         import from jaclang.runtime.prepared { initialize_application }
-        initialize_application(prepared, cfg, served);
+        mod = initialize_application(prepared, cfg, served).__name__;
         if Jac.get_program().errors_had {
             for error in Jac.get_program().errors_had {
                 console.error(error.pretty_print());

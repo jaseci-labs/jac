@@ -18,7 +18,10 @@ source analysis or rebuild their client bundle at startup. Sealing follows both
 bytecode imports and serving exports so shared server dependencies are included
 even when placement also assigns them to the client. Deployment bundles bake
 the serving manifest before sealing; extracted images are registered and verified
-before preparation reads their artifacts.
+before preparation reads their artifacts. Package initializers are prepared with
+the entry module. Initialization uses the manifest's module identities, and the
+server receives the initialized entry's identity, so an entry such as `app.jac`
+cannot be confused with its enclosing sealed package named `app`.
 
 The coordinator, executable-import discovery, and runtime revision record are
 Jac modules. The Python import hook reads the revision registry only after that

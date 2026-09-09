@@ -261,7 +261,7 @@ test "staging a project cleans up after itself" {
 }
 
 
-test "a real pod binary seals the app into a .jab (source + _precompiled + manifest)" {
+test "a real pod binary seals and serves an entry named app" {
     # The checkout's own binary stands in for the downloaded pod binary; the
     # mechanism (stage -> precompile_bytecode.jac --seal -> pack _precompiled/**)
     # is identical for release binaries.
@@ -269,7 +269,10 @@ test "a real pod binary seals the app into a .jab (source + _precompiled + manif
     import json;
     base = Path(_mini_app());
     (base / "jac.toml").write_text(
-        '[project]\nname="mini"\nkind="service"\nentry-point="svc.jac"\n'
+        '[project]\nname="mini"\nkind="service"\nentry-point="app.jac"\n'
+    );
+    (base / "app.jac").write_text(
+        'walker:pub echo { can run with Root entry { report "hello"; } }\n'
     );
     raw = pack_jab(str(base), jac_bin.read_bytes());
     names = _names(raw);
@@ -291,6 +294,24 @@ test "a real pod binary seals the app into a .jab (source + _precompiled + manif
         if n.startswith("_precompiled/")
     ];
     assert any([n.endswith("svc.jir") for n in pre]) , pre;
+    with tempfile.TemporaryDirectory(prefix="jac-sealed-entry-") as tmp {
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive {
+            archive.extractall(tmp, filter="data");
+        }
+        env = dict(os.environ);
+        env["JAC_NO_DEV_SOURCE"] = "1";
+        result = subprocess.run(
+            [str(jac_bin), "run", "--serve", "--faux", "app.jac"],
+            cwd=tmp,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=90
+        );
+        assert result.returncode == 0 , result.stdout + result.stderr;
+        assert "/walker/echo" in result.stdout , result.stdout;
+        assert "Preparing dynamically imported module" not in result.stdout;
+    }
 }
 
 test "sealing includes bytecode imports and serving exports despite client placement" {
@@ -318,7 +339,7 @@ test "sealing includes bytecode imports and serving exports despite client place
         out = base / "_precompiled" / "units";
         out.mkdir(parents=True);
         (out / "main.jir").write_bytes(artifact);
-        (base / ".jac").mkdir();
+        (base / ".jac").mkdir(exist_ok=True);
         (base / ".jac" / "serve_manifest.json").write_text(
             json.dumps(
                 {

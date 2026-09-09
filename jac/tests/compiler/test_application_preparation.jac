@@ -148,21 +148,30 @@ test "runtime logs and toolchain directories do not become application inputs" {
 test "sealed preparation consumes baked artifacts without compiling retained source" {
     import json;
     import hashlib;
+    import sys;
     import from jaclang.jac0core { sealed }
     images_before = list(sealed._images);
     import from jaclang.compiler.driver.jir { get_module_cache_path }
     import from jaclang.server.sealed_serve { client_dist_for }
     with tempfile.TemporaryDirectory(prefix='jac-prepared-sealed-') as tmp {
         base = Path(tmp);
-        path = base / 'sealed_app.jac';
+        path = base / 'prepared_sealed_test.jac';
+        package_init = base / '__init__.jac';
+        package_init.write_text('');
         path.write_text("def:pub hello -> str { return 'sealed'; }\n");
         try {
-            first = prepare_application(str(path), JacProgram(), tmp);
+            first = prepare_application(
+                str(path), JacProgram(), tmp, services=[str(package_init)]
+            );
             data = get_module_cache_path(str(path)).read_bytes();
+            init_data = get_module_cache_path(str(package_init)).read_bytes();
             forget(str(path));
             bundle = base / '_precompiled';
             (bundle / sealed.python_tag()).mkdir(parents=True);
-            (bundle / sealed.python_tag() / 'sealed_app.jir').write_bytes(data);
+            (bundle / sealed.python_tag() / 'prepared_sealed_test.jir').write_bytes(
+                data
+            );
+            (bundle / sealed.python_tag() / '__init__.jir').write_bytes(init_data);
             (bundle / 'MANIFEST.json').write_text(
                 json.dumps(
                     {
@@ -171,11 +180,17 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                         'jir_format_version': sealed.JIR_FORMAT_VERSION,
                         'package': 'prepared_sealed_test',
                         'modules': {
-                            'sealed_app.jac': {
-                                'module': 'prepared_sealed_test.sealed_app',
-                                'jir': 'sealed_app.jir',
+                            'prepared_sealed_test.jac': {
+                                'module': 'prepared_sealed_test.prepared_sealed_test',
+                                'jir': 'prepared_sealed_test.jir',
                                 'package': False,
                                 'sha256': hashlib.sha256(data).hexdigest()
+                            },
+                            '__init__.jac': {
+                                'module': 'prepared_sealed_test',
+                                'jir': '__init__.jir',
+                                'package': True,
+                                'sha256': hashlib.sha256(init_data).hexdigest()
                             }
                         }
                     }
@@ -188,6 +203,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
             dist.mkdir(parents=True);
             (dist / 'arena.wasm').write_bytes(b'baked wasm');
             path.write_text('retained source must never be analyzed');
+            package_init.write_text('retained initializer must never be analyzed');
             with patch.object(
                 JacCompiler,
                 '_compile_pipeline',
@@ -200,14 +216,19 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 prepared = prepare_application(
                     str(path), JacProgram(), tmp, client=True, dev=False
                 );
+                assert str(package_init) in prepared.code;
                 module: any = initialize_application(prepared);
             }
+            assert module.__file__ == str(path);
+            assert module.__name__ == 'prepared_sealed_test.prepared_sealed_test';
             assert module.hello() == 'sealed';
             assert sealed.image_for_bundle_dir(bundle) is not None;
             assert prepared.client_compiler is None;
             assert client_dist_for(str(path)) == dist;
             assert (dist / 'arena.wasm').read_bytes() == b'baked wasm';
         } finally {
+            sys.modules.pop('prepared_sealed_test.prepared_sealed_test', None);
+            sys.modules.pop('prepared_sealed_test', None);
             sealed._images[:] = images_before;
             forget(str(path));
         }

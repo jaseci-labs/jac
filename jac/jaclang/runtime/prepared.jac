@@ -62,6 +62,8 @@ def containing_application(path: str) -> (PreparedApplication | None) {
 def load_prepared_module(path: str) -> types.ModuleType {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.jac0core.sealed { image_for_bundle_dir }
+    import from pathlib { Path }
     path = os.path.realpath(path);
     if (prepared_code(path) is None) {
         raise RuntimeError(f'No prepared executable artifact for {path}');
@@ -75,6 +77,13 @@ def load_prepared_module(path: str) -> types.ModuleType {
             target = relative_dir.replace(os.sep, '.') + '.' + target;
         }
         base = application.root;
+    }
+    if application is not None {
+        image = image_for_bundle_dir(Path(application.root) / '_precompiled');
+        if image is not None {
+            relative = Path(path).relative_to(application.root).as_posix();
+            target = image.manifest['modules'][relative]['module'];
+        }
     }
     modules = Jac.jac_import(target=target, base_path=base, lng='jac');
     if not modules {
