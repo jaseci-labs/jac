@@ -187,6 +187,23 @@ test "bootstrap refuses to provision an admin without a configured password" {
 }
 
 
+test "bootstrap refuses the placeholder password every previous doc advertised" {
+    import from jaclang.server.identity.user_manager { PLACEHOLDER_ADMIN_PASSWORD }
+
+    tmp = tempfile.mkdtemp();
+    try {
+        manager = UserManager(base_path=tmp);
+        username = _admin_name();
+        result = manager.bootstrap_admin_user(username, PLACEHOLDER_ADMIN_PASSWORD);
+        assert "error" in result;
+        assert PLACEHOLDER_ADMIN_PASSWORD in result["error"];
+        assert manager.find_user_by_identity(username) is None;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
 test "rotating through update_password clears a pending reset" {
     tmp = tempfile.mkdtemp();
     try {

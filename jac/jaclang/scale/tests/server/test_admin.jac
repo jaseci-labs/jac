@@ -3,11 +3,10 @@
 import uuid;
 import from jaclang.scale.tests.scale_test_client {
     ScaleTestClient,
+    TEST_ADMIN_PASSWORD,
     make_client,
     extract_data
 }
-
-glob DEFAULT_ADMIN_PASSWORD: str = "changeme";
 
 # ============================================================================
 # Admin Login Tests
@@ -16,8 +15,7 @@ test "admin login success" {
     client = make_client();
     try {
         response = client.post(
-            "/admin/login",
-            json={"username": "admin", "password": DEFAULT_ADMIN_PASSWORD}
+            "/admin/login", json={"username": "admin", "password": TEST_ADMIN_PASSWORD}
         );
         assert response.status_code == 200;
         data = extract_data(response.json());
@@ -125,8 +123,7 @@ test "bootstrap token cannot reach admin endpoints before the password reset" {
     client = make_client();
     try {
         response = client.post(
-            "/admin/login",
-            json={"username": "admin", "password": DEFAULT_ADMIN_PASSWORD}
+            "/admin/login", json={"username": "admin", "password": TEST_ADMIN_PASSWORD}
         );
         assert response.status_code == 200;
         data = extract_data(response.json());
@@ -141,7 +138,7 @@ test "bootstrap token cannot reach admin endpoints before the password reset" {
         reset = client.post(
             "/admin/reset-password",
             json={
-                "current_password": DEFAULT_ADMIN_PASSWORD,
+                "current_password": TEST_ADMIN_PASSWORD,
                 "new_password": "TestAdmin123!"
             },
             headers={"Authorization": f"Bearer {token}"}

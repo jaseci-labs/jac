@@ -1234,7 +1234,7 @@ password is rotated.
 |--------|------|---------|-------------|
 | `enabled` | bool | `false` | Serve the admin portal and create the bootstrap admin user |
 | `username` | string | `"admin"` | Admin username |
-| `default_password` | string | none | Bootstrap password. Required when `enabled = true` |
+| `default_password` | string | none | Bootstrap password. Required when `enabled = true`; the historical placeholder `changeme` is refused |
 | `session_expiry_hours` | int | `24` | Admin session duration in hours |
 | `require_password_reset` | bool | `true` | Force the bootstrap admin to rotate its password on first login |
 

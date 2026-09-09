@@ -20,6 +20,7 @@ import from jaclang.server.identity.config {
 
 glob logger = logging.getLogger(__name__),
      SYSTEM_USER: str = '__system__',
+     PLACEHOLDER_ADMIN_PASSWORD: str = 'changeme',
      _root_id_request_cache: ContextVar[dict[str, str] | None] = ContextVar(
          '_jaclang_root_id_cache', `default=None
      );

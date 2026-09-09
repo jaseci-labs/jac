@@ -537,8 +537,6 @@ import from jaclang.scale.tests.scale_test_client {
     extract_data
 }
 
-glob DEFAULT_ADMIN_PASSWORD: str = "changeme";
-
 # --- Auth enforcement: all telemetry endpoints require admin token ---
 test "REST summary endpoint returns 403 without auth token" {
     client = make_client();

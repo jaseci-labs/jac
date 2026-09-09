@@ -474,6 +474,14 @@ impl UserManager.bootstrap_admin_user(
             )
         };
     }
+    if bootstrap_password == PLACEHOLDER_ADMIN_PASSWORD {
+        return {
+            'error': (
+                f"refusing to provision '{admin_username}' with the placeholder "
+                f"password '{PLACEHOLDER_ADMIN_PASSWORD}'"
+            )
+        };
+    }
 
     result = self.create_internal_user(admin_username, bootstrap_password);
     if 'error' in result {
