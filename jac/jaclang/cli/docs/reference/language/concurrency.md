@@ -30,7 +30,7 @@ The key distinction: `async/await` multiplexes tasks on one thread (cooperative)
 !!! note
     Async functions must be `await`ed from an async context. A `with entry`
     block is **not** async, so `await` cannot appear there directly -- it fails
-    to compile with `error[E5043]: ... 'await' outside function`. To drive a
+    checking with `error[E2085]: 'await' is only valid inside an 'async' function or ability`. To drive a
     coroutine from `with entry`, hand it to `asyncio.run()`; only use `await`
     inside an `async def`/`async can`:
 

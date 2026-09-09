@@ -916,3 +916,16 @@ with entry {
         id_fn=lambda (x: tuple[str, str]) { x[0]; }
     );
 }
+
+
+test "E2085 permits inferred client functions and async client tests" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='import from "@jac/runtime" { jacLogin }\n'
+        'def app -> JsxElement { await jacLogin("a", "b"); return <div/>; }\n'
+        'test "login" { await jacLogin("a", "b"); }\n',
+        file_path="await_client.jac",
+        no_cgen=True
+    );
+    assert not prog.errors_had , str(prog.errors_had);
+}
