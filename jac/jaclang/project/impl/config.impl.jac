@@ -214,6 +214,29 @@ impl JacConfig.apply_profile(
     if "scripts" in profile {
         self.scripts.update(profile["scripts"]);
     }
+    if "apps" in profile {
+        self.merge_apps_table(profile["apps"]);
+    }
+}
+
+impl JacConfig.merge_apps_table(apps_table: dict[str, any]) -> None {
+    import copy;
+    if not isinstance(apps_table, dict) or not apps_table {
+        return;
+    }
+    base = self._base_data.get("apps");
+    if not isinstance(base, dict) {
+        raise ValueError(
+            "an overlay declares [apps] but jac.toml does not; "
+            "declare every app in jac.toml and let the overlay retune it"
+        );
+    }
+    merged = _deep_merge(copy.deepcopy(base), copy.deepcopy(apps_table));
+    self._base_data["apps"] = merged;
+    self._raw_data["apps"] = copy.deepcopy(merged);
+    self.apps = parse_apps(
+        self._base_data.get("project", {}), _interpolate_recursive(merged)
+    );
 }
 
 impl JacConfig.apply_profile_overlay(profile_name: str | None = None) -> None {
@@ -357,6 +380,9 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
         } else {
             self._raw_data[key] = value;
         }
+    }
+    if "apps" in data {
+        self.merge_apps_table(data["apps"]);
     }
 }
 
@@ -1178,7 +1204,16 @@ impl _parse_toml_data(
                 secret=str(auth_data.get("secret", "")),
                 algorithm=str(auth_data.get("algorithm", "HS256")),
                 token_ttl_days=int(auth_data.get("token_ttl_days", 7)),
-                password_hash_cost=int(auth_data.get("password_hash_cost", 14))
+                password_hash_cost=int(auth_data.get("password_hash_cost", 14)),
+                registration_challenge=bool(
+                    auth_data.get("registration_challenge", False)
+                ),
+                registration_attempts_per_hour=max(
+                    0, int(auth_data.get("registration_attempts_per_hour", 0))
+                ),
+                registration_challenges_per_10_minutes=max(
+                    0, int(auth_data.get("registration_challenges_per_10_minutes", 0))
+                )
             )
         );
     }

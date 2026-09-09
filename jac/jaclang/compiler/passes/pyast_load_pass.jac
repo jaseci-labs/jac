@@ -107,6 +107,7 @@ import from jaclang.compiler.frontend.roles {
 }
 
 glob T = TypeVar('T', bound=UniNode),
+     ComprT = TypeVar('ComprT', bound=ListCompr),
      _reserved_keywords = RESERVED_IDENT_NAMES;
 
 glob PyPositioned: TypeAlias = py_ast.stmt
@@ -216,7 +217,7 @@ walker PyastBuildPass(Transform) {
     def proc_nonlocal(nd: py_ast.Nonlocal) -> Semi;
     def proc_pass(nd: py_ast.Pass) -> Semi;
     def proc_set(nd: py_ast.Set) -> SetVal;
-    def _proc_compr(nd: PyComprehensionNode, compr_cls: type[T]) -> T;
+    def _proc_compr(nd: PyComprehensionNode, compr_cls: type[ComprT]) -> ComprT;
     def proc_set_comp(nd: py_ast.SetComp) -> ListCompr;
     def proc_slice(nd: py_ast.Slice) -> IndexSlice;
     def proc_starred(nd: py_ast.Starred) -> UnaryExpr;

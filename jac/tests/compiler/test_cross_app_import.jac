@@ -270,3 +270,30 @@ test "a provider's import of a shared pure helper is not an app edge" {
         "the walker import still bridges to its owner when the binding is unlinked"
     );
 }
+
+
+test "ownership classification parses syntax without retaining type analysis trees" {
+    import tempfile;
+    import from pathlib { Path }
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import jaclang.compiler.driver.boundary_classify as boundary;
+    import jaclang.compiler.frontend.parser.frontend as frontend;
+    unlinked: any = None;
+    with tempfile.TemporaryDirectory() as d {
+        path = Path(d) / "owned.jac";
+        path.write_text("node Owned {}\n");
+        with patch.object(boundary, "symbol_linked_source_module", return_value=None), patch.object(
+            boundary, "bridgeable_import_target", return_value=str(path)
+        ), patch.object(
+            JacCompiler, "parse_str", side_effect=AssertionError("placement reentry")
+        ), patch.object(frontend, "parse", wraps=frontend.parse) as parse {
+            assert boundary._module_carries_owned_elements(unlinked);
+            assert boundary._module_carries_owned_elements(unlinked);
+            assert parse.call_count == 1;
+            path.write_text("def helper -> int { return 1; }\n");
+            assert not boundary._module_carries_owned_elements(unlinked);
+            assert parse.call_count == 2;
+        }
+    }
+}

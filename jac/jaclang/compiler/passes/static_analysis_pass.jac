@@ -3,6 +3,7 @@ import from jaclang.compiler.frontend.unitree {
     Archetype,
     Assignment,
     AtomTrailer,
+    AwaitExpr,
     BinaryExpr,
     Bool,
     CompareExpr,
@@ -28,6 +29,7 @@ import from jaclang.compiler.frontend.unitree {
     Int,
     IterForStmt,
     KWPair,
+    LambdaExpr,
     MatchPattern,
     Module,
     ModuleItem,
@@ -38,6 +40,7 @@ import from jaclang.compiler.frontend.unitree {
     ReturnStmt,
     Semi,
     SubTag,
+    Test,
     Token,
     UniNode,
     UniScopeNode,
@@ -61,7 +64,8 @@ import from jaclang.compiler.frontend.diagnostics {
     E2018,
     E2027,
     E2055,
-    E2083
+    E2083,
+    E2085
 }
 import type from jaclang.compiler.driver.program { JacProgram }
 

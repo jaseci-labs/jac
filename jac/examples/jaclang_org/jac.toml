@@ -1,7 +1,7 @@
 [project]
 name = "jaclang_org"
 default-app = "web"
-jac-version = "==0.37.3"
+jac-version = "==0.37.10"
 
 # Makes this site scaffoldable as a template: `jac create <name> --awesome`
 # dumps it (the payload bundles this tree as awesome_template beside the
@@ -48,6 +48,11 @@ jaclang_source = "../.."
 [precommit]
 typecheck = true
 
+[serve.auth]
+registration_challenge = true
+registration_attempts_per_hour = 5
+registration_challenges_per_10_minutes = 20
+
 [test]
 directories = ["core", "web", "mobile", "cli"]
 
@@ -88,7 +93,12 @@ components_dir = "core/site/ui"
 utils_path = "core/utils.jac"
 
 [dependencies]
+
+[byllm.model]
+default_model = "anthropic/claude-sonnet-5"
+
 [dependencies.npm]
+"@noble/hashes" = "^2.0.1"
 react-native-web = "^0.19.13"
 embla-carousel-react = "*"
 "@hugeicons/core-free-icons" = "*"
@@ -122,6 +132,7 @@ min_width = 900
 min_height = 600
 
 [apps.mobile.dependencies.npm.native]
+"@noble/hashes" = "^2.0.1"
 expo-web-browser = "~15.0.0"
 expo-crypto = "~15.0.0"
 expo-font = "~14.0.0"

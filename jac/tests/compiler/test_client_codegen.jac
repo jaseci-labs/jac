@@ -139,7 +139,7 @@ test "def pub and endpoint effects" {
     prog = JacProgram();
 
     # --- def pub called from client imports jac call function ---
-    defpub_code = '"""\nTest def:pub called from client context.\n"""\n\nimport os;\n\ndef:pub get_server_data(name: str) -> dict {\n    return {"message": "Hello " + name + os.sep};\n}\n\ndef:pub app() -> Any {\n    data = await get_server_data("World");\n    return <div>{data}</div>;\n}\n';
+    defpub_code = '"""\nTest def:pub called from client context.\n"""\n\nimport os;\n\ndef:pub get_server_data(name: str) -> dict {\n    return {"message": "Hello " + name + os.sep};\n}\n\nasync def:pub app() -> Any {\n    data = await get_server_data("World");\n    return <div>{data}</div>;\n}\n';
     mod = compile_inline(defpub_code, prog);
     js = mod.gen.js;
     assert js.strip() , "Expected JavaScript output for client code";
@@ -148,7 +148,7 @@ test "def pub and endpoint effects" {
     assert '__jacCallFunction("get_server_data"' in js , "Should generate __jacCallFunction call with function name";
 
     # --- endpoint effects classifies walkers and functions ---
-    effects_code = '"""Test auto endpoint effects."""\n\nnode Todo {\n    has title: str,\n        done: bool = False;\n}\n\nwalker get_todos {\n    can visit_root with Root entry {\n        report [-->];\n    }\n}\n\nwalker create_todo {\n    has title: str;\n    can do_create with Root entry {\n        here ++> Todo(title=self.title);\n    }\n}\n\ndef:pub get_stats() -> dict {\n    return {"count": 10};\n}\n\ndef:pub reset_data() -> dict {\n    items = [];\n    del items;\n    return {};\n}\n\ndef:pub app() -> Any {\n    todos = root spawn get_todos();\n    root spawn create_todo(title="test");\n    stats = await get_stats();\n    result = await reset_data();\n    return <div>{stats}{result}{todos}</div>;\n}\n';
+    effects_code = '"""Test auto endpoint effects."""\n\nnode Todo {\n    has title: str,\n        done: bool = False;\n}\n\nwalker get_todos {\n    can visit_root with Root entry {\n        report [-->];\n    }\n}\n\nwalker create_todo {\n    has title: str;\n    can do_create with Root entry {\n        here ++> Todo(title=self.title);\n    }\n}\n\ndef:pub get_stats() -> dict {\n    return {"count": 10};\n}\n\ndef:pub reset_data() -> dict {\n    items = [];\n    del items;\n    return {};\n}\n\nasync def:pub app() -> Any {\n    todos = root spawn get_todos();\n    root spawn create_todo(title="test");\n    stats = await get_stats();\n    result = await reset_data();\n    return <div>{stats}{result}{todos}</div>;\n}\n';
     mod2 = compile_inline(effects_code, prog);
     effects = mod2.gen.client_manifest.endpoint_effects;
     # Walker reader: no write operations in body
@@ -177,7 +177,7 @@ test "endpoint effects follow helper calls" {
     # inside a plain `def` helper. The classifier must follow the call into
     # the helper -- otherwise the walker is misclassified as a reader and the
     # client cache is never invalidated after the mutation.
-    code = '"""Interprocedural endpoint effect analysis."""\n\nnode Item {\n    has title: str,\n        tags: list = [];\n}\n\ndef _add_tag(it: Item, label: str) -> None {\n    it.tags = it.tags + [label];\n}\n\nwalker tag_item {\n    has label: str;\n    can do_tag with Root entry {\n        for it in [-->[?:Item]] {\n            _add_tag(it, self.label);\n        }\n    }\n}\n\ndef:pub mark_item(label: str) -> dict {\n    items = [];\n    for it in items {\n        _add_tag(it, label);\n    }\n    return {};\n}\n\ndef:pub app() -> Any {\n    root spawn tag_item(label="x");\n    result = await mark_item("y");\n    return <div>{result}</div>;\n}\n';
+    code = '"""Interprocedural endpoint effect analysis."""\n\nnode Item {\n    has title: str,\n        tags: list = [];\n}\n\ndef _add_tag(it: Item, label: str) -> None {\n    it.tags = it.tags + [label];\n}\n\nwalker tag_item {\n    has label: str;\n    can do_tag with Root entry {\n        for it in [-->[?:Item]] {\n            _add_tag(it, self.label);\n        }\n    }\n}\n\ndef:pub mark_item(label: str) -> dict {\n    items = [];\n    for it in items {\n        _add_tag(it, label);\n    }\n    return {};\n}\n\nasync def:pub app() -> Any {\n    root spawn tag_item(label="x");\n    result = await mark_item("y");\n    return <div>{result}</div>;\n}\n';
     mod = compile_inline(code, prog);
     effects = mod.gen.client_manifest.endpoint_effects;
 

@@ -1,4 +1,5 @@
 import os;
+import from functools { lru_cache }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -308,6 +309,18 @@ def same_workspace(consumer_path: str, provider_path: str) -> bool {
     return os.path.realpath(cws.toml_path) == os.path.realpath(pws.toml_path);
 }
 
+@lru_cache(maxsize=256)
+def _source_carries_owned_elements(path: str, stamp: tuple[int, int]) -> bool {
+    import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+    import from jaclang.compiler.frontend.parser.frontend { parse }
+    (module, had_error) = parse(read_file_with_encoding(path), path);
+    return not had_error
+        and any(
+            isinstance(stmt, uni.Archetype)
+                and stmt.arch_kind in ('walker', 'node', 'edge') for stmt in module.body
+        );
+}
+
 def _module_carries_owned_elements(nd: uni.Import) -> bool {
     linked = symbol_linked_source_module(nd);
     if linked is None {
@@ -315,11 +328,12 @@ def _module_carries_owned_elements(nd: uni.Import) -> bool {
         if resolved is None {
             return False;
         }
-        import from jaclang.compiler.passes.boundary_analysis_pass {
-            _parse_module_for_types
-        }
-        linked = _parse_module_for_types(resolved);
-        if linked is None {
+        try {
+            stat = os.stat(resolved);
+            return _source_carries_owned_elements(
+                resolved, (stat.st_mtime_ns, stat.st_size)
+            );
+        } except OSError {
             return False;
         }
     }

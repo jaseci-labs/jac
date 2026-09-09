@@ -36,6 +36,7 @@ test "quoted generic union and callable annotations share normal type semantics"
         ("int", "int"),
         ("Item", "Item"),
         ("int | None", "int | NoneType"),
+        ("(str, int)", "tuple[str, int]"),
         ("Literal[\"x\"]", "Literal[\"x\"]"),
         ("list[Item]", "list[Item]"),
         ("dict[str, list[Item]]", "dict[str, list[Item]]"),

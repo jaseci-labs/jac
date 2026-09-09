@@ -34,7 +34,7 @@ def:pub TweetCard(
     tweet: Tweet,
     myUsername: str,
     onLike: Callable[[str], None],
-    onComment: Callable[[str, str], None],
+    onComment: Callable[[str, str], bool],
     onDelete: Callable[[str], None],
 ) -> JsxElement {
     theme = useTheme();
@@ -42,13 +42,21 @@ def:pub TweetCard(
     styles = makeStyles(C);
     has showComments: bool = False,
         commentText: str = "",
-        confirmDelete: bool = False;
+        confirmDelete: bool = False,
+        replying: bool = False;
 
-    def submitComment {
+    async def submitComment {
         text = commentText.strip();
-        if text {
-            onComment(jid(tweet), text);
-            commentText = "";
+        if not text or replying {
+            return;
+        }
+        replying = True;
+        try {
+            if await onComment(jid(tweet), text) {
+                commentText = "";
+            }
+        } finally {
+            replying = False;
         }
     }
 

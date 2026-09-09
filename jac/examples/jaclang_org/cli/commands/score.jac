@@ -1,5 +1,6 @@
 import json;
 import re;
+import from core.ai { optional_review }
 import from core.github {
     RepoMeta,
     code_breakdown,
@@ -84,7 +85,9 @@ def score_repo(owner: str, name: str, quiet: bool = False) -> ScoreResult {
     if an.jac_files == 0 {
         return ScoreResult(error="not_jac", meta=meta);
     }
-    return ScoreResult(ok=True, meta=meta, an=an, breakdown=score(meta, an), sha=sha);
+    breakdown = score(meta, an);
+    breakdown.ai_review = optional_review(files);
+    return ScoreResult(ok=True, meta=meta, an=an, breakdown=breakdown, sha=sha);
 }
 
 def as_dict(res: ScoreResult) -> dict[str, object] {
@@ -121,6 +124,19 @@ def as_dict(res: ScoreResult) -> dict[str, object] {
         "breadth": sc.breadth,
         "craft": sc.craft,
         "community": sc.community,
+        "ai_review": {
+            "summary": sc.ai_review.summary,
+            "strength": {
+                "observation": sc.ai_review.strength.observation,
+                "evidence": sc.ai_review.strength.evidence
+            },
+            "opportunity": {
+                "action": sc.ai_review.opportunity.action,
+                "reason": sc.ai_review.opportunity.reason
+            }
+        }
+            if sc.ai_review
+            else None,
         "details": [
             {
                 "category": p.category,
@@ -168,6 +184,14 @@ def render(res: ScoreResult) -> str {
         lines.append(
             f"  {p.category:<10} {p.label:<26} {p.pts:>5.1f} / {p.max:<4.0f} {p.note}"
         );
+    }
+    if sc.ai_review {
+        lines.append("\n  AI code review · sampled files");
+        lines.append("  " + sc.ai_review.summary);
+        lines.append("  Strength: " + sc.ai_review.strength.observation);
+        lines.append("  Evidence: " + sc.ai_review.strength.evidence);
+        lines.append("  Next step: " + sc.ai_review.opportunity.action);
+        lines.append("  " + sc.ai_review.opportunity.reason);
     }
     return "\n".join(lines);
 }

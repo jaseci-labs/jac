@@ -4,6 +4,7 @@ impl TypeEvaluator.validate_arg_types(
     solved_type_vars: (dict[str, TypeBase] | None) = None
 ) -> bool {
     has_errors: bool = False;
+    binding_failures: set[Expr | KWPair] = set();
 
     bindings: dict[str, TypeBase] = solved_type_vars
         if solved_type_vars is not None
@@ -16,9 +17,12 @@ impl TypeEvaluator.validate_arg_types(
         if isinstance(value, LambdaExpr) {
             continue;
         }
-        self.assign_type_to_type_var(
+        if not self.assign_type_to_type_var(
             param.param_type, self.get_type_of_expression(value), bindings
-        );
+        ) {
+            binding_failures.add(arg);
+            has_errors = True;
+        }
     }
 
     for (arg, param) in args.arg_params.items() {
@@ -31,6 +35,18 @@ impl TypeEvaluator.validate_arg_types(
         }
         value = arg.value if isinstance(arg, KWPair) else arg;
         arg_type = self.get_type_of_expression(value, expected_type=expected);
+        if arg in binding_failures {
+            if not checking_overload {
+                self.emit_diag(
+                    E1053,
+                    arg,
+                    actual=str(arg_type),
+                    name=param.name,
+                    expected=str(expected)
+                );
+            }
+            continue;
+        }
         if isinstance(arg_type, UnknownType) and arg_type.is_incomplete {
             continue;
         }
@@ -68,7 +84,34 @@ impl TypeEvaluator.validate_arg_types(
 }
 
 impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
-    caller_type = self.get_type_of_expression(expr.target);
+    return self._validate_call_type(expr, self.get_type_of_expression(expr.target));
+}
+
+impl TypeEvaluator._validate_call_type(
+    expr: FuncCall, caller_type: TypeBase
+) -> TypeBase {
+    if isinstance(caller_type, UnionType) {
+        return self._union_narrowed_types(
+            [self._validate_call_type(expr, member) for member in caller_type.types]
+        );
+    }
+    if isinstance(caller_type, ClassType) and self._is_type_subscript(caller_type) {
+        constructor = self._get_type_for_member_lookup(caller_type);
+        if constructor is not caller_type {
+            return self._validate_call_type(expr, constructor);
+        }
+        inner_type = caller_type.private.type_args[0];
+        if isinstance(inner_type, TypeVarType) {
+            candidates = inner_type.constraints
+                or ([inner_type.bound] if inner_type.bound is not None else []);
+            for candidate in candidates {
+                if isinstance(candidate, ClassType) {
+                    self._validate_call_type(expr, candidate.clone_as_class());
+                }
+            }
+            return inner_type;
+        }
+    }
 
     if self._is_expr_super(expr.target) {
         return caller_type;
@@ -220,7 +263,11 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
             ret = specialized.return_type or UnknownType();
         }
 
-        if caller_type.is_async or self._is_sv_async_call(expr) {
+        if self._is_sv_async_call(expr)
+            or (
+                caller_type.is_async
+                and not (caller_type.function_flags & FunctionTypeFlags.Generator)
+            ) {
             ret = self._make_coroutine_type(ret);
         }
         return ret;
@@ -660,13 +707,9 @@ impl TypeEvaluator._strip_implicit_self_cls(method: FunctionType) -> FunctionTyp
         method.parameters
         and (method.parameters[0].is_self or method.parameters[0].is_cls)
     ) {
-        return FunctionType(
-            func_name=method.func_name,
-            return_type=method.return_type,
-            parameters=method.parameters[1:],
-            function_flags=method.function_flags,
-            type_params=method.type_params,
-        );
+        bound_method = method.clone();
+        bound_method.parameters = bound_method.parameters[1:];
+        return bound_method;
     }
     return method;
 }
@@ -674,17 +717,19 @@ impl TypeEvaluator._strip_implicit_self_cls(method: FunctionType) -> FunctionTyp
 impl TypeEvaluator._get_method_with_overloads(
     method_member: ClassMember, caller_type: ClassType
 ) -> TypeBase {
-    method_ty = self.get_type_of_symbol(method_member.symbol);
+    method_ty = self.get_type_of_member(method_member, caller_type);
 
     if not isinstance(method_ty, FunctionType) {
         return method_ty;
     }
-    method_ty = method_ty.specialize(caller_type);
     overloaded_fns: list[FunctionType] = [method_ty];
     for overload in method_member.overloads {
-        overload_member_ty = self.get_type_of_symbol(overload);
+        overload_member_ty = self.specialize_member_type(
+            self.get_type_of_symbol(overload),
+            caller_type,
+            self.declaring_class_of(overload, caller_type)
+        );
         if isinstance(overload_member_ty, FunctionType) {
-            overload_member_ty = overload_member_ty.specialize(caller_type);
             overloaded_fns.append(overload_member_ty);
         }
     }
@@ -751,13 +796,69 @@ impl TypeEvaluator.assign_type_to_type_var(
         return True;
     }
 
-    if isinstance(param_type, UnionType) {
-        for member in param_type.types {
-            if isinstance(member, TypeVarType) {
-                self.assign_type_to_type_var(member, arg_type, bindings);
+    if isinstance(arg_type, UnionType) {
+        solutions: dict[str, dict[str, TypeBase]] = {};
+        for argument in arg_type.types {
+            candidate = dict(bindings);
+            if not self.assign_type_to_type_var(param_type, argument, candidate) {
+                return False;
+            }
+            for (name, value) in candidate.items() {
+                value_alternatives = value.types
+                    if isinstance(value, UnionType)
+                    else [value];
+                for alternative in value_alternatives {
+                    solutions.setdefault(name, {})[alternative.mangle()] = alternative;
+                }
             }
         }
+        for (name, merged_alternatives) in solutions.items() {
+            values = list(merged_alternatives.values());
+            opaque = next(
+                (
+                    value
+                    for value in values
+                    if self.is_explicit_any(value)
+                ),
+                None
+            );
+            bindings[name] = opaque
+                if opaque is not None
+                else (values[0] if len(values) == 1 else UnionType(types=values));
+        }
         return True;
+    }
+
+    if isinstance(param_type, UnionType) {
+        if not any(
+            isinstance(member, (TypeVarType, FunctionType, UnionType))
+                or (isinstance(member, ClassType) and bool(member.private.type_args))
+            for member in param_type.types
+        ) {
+            return True;
+        }
+        members = [
+            m
+            for m in param_type.types
+            if not isinstance(m, TypeVarType)
+        ]
+            + [
+                m
+                for m in param_type.types
+                if isinstance(m, TypeVarType)
+            ];
+        for member in members {
+            candidate = dict(bindings);
+            if self.assign_type_to_type_var(member, arg_type, candidate)
+                and self.assign_type(
+                    arg_type,
+                    self._convert_to_instance(apply_solved_type_vars(member, candidate))
+                ) {
+                bindings.update(candidate);
+                return True;
+            }
+        }
+        return False;
     }
 
     if isinstance(param_type, FunctionType) and isinstance(arg_type, FunctionType) {
@@ -1145,16 +1246,33 @@ impl TypeEvaluator._overload_accepts_receiver(
 }
 
 
+impl TypeEvaluator._receiver_type_var_bindings(
+    method: FunctionType, receiver: TypeBase | None
+) -> dict[str, TypeBase] {
+    if receiver is None {
+        return {};
+    }
+    bindings: dict[str, TypeBase] = {"Self": receiver};
+    if method.parameters {
+        first = method.parameters[0];
+        if (first.is_self or first.is_cls) and first.param_type is not None {
+            self.assign_type_to_type_var(first.param_type, receiver, bindings);
+        }
+    }
+    return bindings;
+}
+
 impl TypeEvaluator._collect_type_var_bindings(
     method: FunctionType,
     expr: FuncCall,
     is_unbound_call: bool = False,
     is_constructor_call: bool = False
 ) -> dict[str, TypeBase] {
-    bindings: dict[str, TypeBase] = {};
-
     receiver = self._call_receiver_type(expr);
-    if receiver is not None {
+    bindings = self._receiver_type_var_bindings(method, receiver)
+        if not is_unbound_call
+        else {};
+    if is_unbound_call and receiver is not None {
         bindings["Self"] = receiver;
     }
 

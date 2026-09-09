@@ -482,6 +482,9 @@ jobs:
           - chunk: passes-main
             paths: tests/compiler/passes tests/compiler/backends/es
             sealed: "1"
+            # Keep headroom for compiler workers and ES subprocesses on the
+            # 16 GB runner; auto-sized concurrency repeatedly lost the runner.
+            jobs: "2"
           - chunk: toplevel
             paths: tests/compiler/test_*.jac
             sealed: "1"
@@ -1398,22 +1401,24 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/jac-kit
-      - name: Build a release APK with a fresh managed Android SDK
+      # Keep the small multiscreen fixture for focused dual-target tests; this
+      # lane packages the real JacYac mobile workspace with a fresh Android SDK.
+      - name: Build the JacYac release APK with a fresh managed Android SDK
         run: |
           set -euo pipefail
           export JAC_TOOLCHAIN_DIR="$RUNNER_TEMP/toolchains"
           export ANDROID_HOME="$JAC_TOOLCHAIN_DIR/android-sdk/linux-x64"
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
-          cp -r jac/tests/client/fixtures/react_native_multiscreen "$RUNNER_TEMP/mobile-app"
-          printf '\n[client.react_native]\nrelease = true\n' >> "$RUNNER_TEMP/mobile-app/jac.toml"
+          cp -r jac/examples/jaclang_org "$RUNNER_TEMP/mobile-app"
+          printf '\n[client.react_native]\nrelease = true\nproject_dir = ".jac/mobile-rn"\n' >> "$RUNNER_TEMP/mobile-app/jac.toml"
           jac setup --toolchain android
           cd "$RUNNER_TEMP/mobile-app"
-          jac build --platform android main.jac
+          jac build --platform android mobile
           test -n "$(find .jac/mobile-rn/android/app/build/outputs/apk -name '*.apk' -print -quit)"
       - name: Upload the generated APK
         uses: actions/upload-artifact@v4
         with:
-          name: managed-android-apk
+          name: jacyac-android-apk
           path: ${{ runner.temp }}/mobile-app/.jac/mobile-rn/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 7

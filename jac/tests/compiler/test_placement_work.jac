@@ -158,6 +158,30 @@ test "client placement reaches the end of a long import chain" {
     }
 }
 
+test "client placement follows imports inside a function" {
+    with tempfile.TemporaryDirectory(prefix="jac-placement-nested-") as tmp {
+        helper = os.path.join(tmp, "helper.jac");
+        with open(helper, "w") as stream {
+            stream.write("def value -> int { return 42; }");
+        }
+        path = os.path.join(tmp, "app.jac");
+        with open(path, "w") as stream {
+            stream.write(
+                "def app -> JsxElement { import from helper { value } return <div>{value()}</div>; }"
+            );
+        }
+        prog = JacProgram();
+        mod = prog.compile(path, no_cgen=True);
+        assert not prog.errors_had , [str(e) for e in prog.errors_had];
+        dependency = prog.find_module(helper);
+        assert dependency is not None;
+        ability = dependency.get_all_sub_nodes(uni.Ability)[0];
+        assert ability.code_context == CodeContext.CLIENT;
+        assert ability.codespace_dual;
+        assert len(solver.placement_work(prog).owned[id(mod)]) == 1;
+    }
+}
+
 test "a cyclic import graph converges and remains idle after solving" {
     with tempfile.TemporaryDirectory(prefix="jac-placement-cycle-") as tmp {
         for (name, other) in [("left", "right"), ("right", "left")] {

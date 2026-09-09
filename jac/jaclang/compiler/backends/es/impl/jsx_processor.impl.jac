@@ -337,7 +337,9 @@ impl EsJsxProcessor.normal_attribute(
         return StaticAttr(name=attr_name, value=value_expr, jac_node=nd);
     } elif isinstance(nd.value, uni.String) {
         import html;
-        attr_value = html.unescape(nd.value.lit_value);
+        literal = uni.literal_string_value(nd.value);
+        assert literal is not None;
+        attr_value = html.unescape(literal);
         sheet = self.pass_ref.scoped_styles;
         if (sheet is not None and attr_name in ('className', 'class')) {
             attr_value = sheet.rewrite_class_value(attr_value);

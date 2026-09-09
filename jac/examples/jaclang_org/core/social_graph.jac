@@ -1,4 +1,6 @@
 import from core.jacyac.validation { valid_post }
+import from core.jacyac.genius { GuideSample, random_guide, optional_fact }
+import from core.jacyac.limits { PostingDenied, posting_limit }
 import re;
 import base64;
 import datetime;
@@ -82,6 +84,83 @@ edge Member {}
 edge ChannelPost {}
 edge HasAvatar {}
 edge Owns {}
+
+edge Studies {}
+edge PublishesAs {}
+
+node GeniusMemory {
+    has last_posted: str = "",
+        previous_guide: str = "";
+}
+
+node GeniusTopic {
+    has sample: GuideSample;
+}
+
+@schedule(cron="0 * * * *")
+walker:priv jacyac_genius {
+    has memory: GeniusMemory | None = None,
+        content: str = "";
+
+    can wake with Root entry {
+        visit [-->[?:GeniusMemory]] else {
+            visit here ++> GeniusMemory();
+        }
+    }
+
+    can explore with GeniusMemory entry {
+        self.memory = here;
+        if here.last_posted and here.last_posted[:13] == now_iso()[:13] {
+            disengage;
+        }
+        try {
+            sample = random_guide(here.previous_guide);
+            if sample is None {
+                disengage;
+            }
+            topics = [here->:Studies:->[?:GeniusTopic]];
+            if topics {
+                topics[0].sample = sample;
+                visit topics[0];
+            } else {
+                visit here +>:Studies():+> GeniusTopic(sample=sample);
+            }
+        } except Exception {
+            disengage;
+        }
+    }
+
+    can compose with GeniusTopic entry {
+        self.content = optional_fact(here.sample);
+        if not self.content {
+            disengage;
+        }
+        visit [->:PublishesAs:->[?:Profile]] else {
+            author = root ++> Profile(
+                username="jacyac_genius",
+                display_name="JacYac Genius",
+                bio="An AI Jac enthusiast sharing hourly fun facts from the Jac guide.",
+                created_at=now_iso()
+            );
+            grant(author, level=AccessLevel.CONNECT);
+            here +>:PublishesAs():+> author;
+            visit author;
+        }
+    }
+
+    can publish with Profile entry {
+        if self.memory is None or not valid_post(self.content) {
+            disengage;
+        }
+        post = here +>:Post():+> Tweet(
+            content=self.content, author_username=here.username, created_at=now_iso()
+        );
+        grant(post, level=AccessLevel.WRITE);
+        self.memory.last_posted = post.created_at;
+        topics = [self.memory->:Studies:->[?:GeniusTopic]];
+        self.memory.previous_guide = topics[0].sample.title;
+    }
+}
 
 node Profile {
     has username: str = "",
@@ -817,7 +896,7 @@ walker get_channels {
 
 walker create_tweet {
     has content: str,
-        reports: list[Tweet] = [];
+        reports: list[Tweet | PostingDenied] = [];
 
     can run with Root entry {
         if not valid_post(self.content) {
@@ -827,6 +906,11 @@ walker create_tweet {
     }
 
     can make with Profile entry {
+        denied = posting_limit(jid(root));
+        if denied is not None {
+            report denied;
+            disengage;
+        }
         new = here +>:Post():+> Tweet(
             content=self.content, author_username=here.username, created_at=_now()
         );
@@ -948,6 +1032,14 @@ walker add_comment(find_tweet) {
             return;
         }
         if jid(here) == self.tweet_id {
+            if not [root-->[?:Profile]] {
+                disengage;
+            }
+            denied = posting_limit(jid(root));
+            if denied is not None {
+                report denied;
+                disengage;
+            }
             comment = {
                 "username": self.actor,
                 "content": self.content,
@@ -1021,6 +1113,11 @@ walker create_channel_tweet(find_channel) {
         if jid(here) == self.channel_id {
             me = [root-->[?:Profile]][0];
             if [edge me->:Member:->here] {
+                denied = posting_limit(jid(root));
+                if denied is not None {
+                    report denied;
+                    disengage;
+                }
                 new = here +>:ChannelPost():+> Tweet(
                     content=self.content, author_username=me.username, created_at=_now()
                 );

@@ -144,6 +144,7 @@ walker DocIRGenPass(UniPass) {
     can exit_disconnect_op with uni.DisconnectOp exit;
     can exit_compare_expr with uni.CompareExpr exit;
     can exit_atom_unit with uni.AtomUnit exit;
+    can exit_graph_expr with uni.GraphExpr exit;
     can exit_expr_as_item with uni.ExprAsItem exit;
     can exit_filter_compr with uni.FilterCompr exit;
     can exit_assign_compr with uni.AssignCompr exit;

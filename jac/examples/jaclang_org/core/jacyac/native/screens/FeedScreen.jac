@@ -23,7 +23,7 @@ def:pub FeedScreen(
     onRefresh: Callable[[], None],
     tweets: list[Tweet],
     onLike: Callable[[str], None],
-    onComment: Callable[[str, str], None],
+    onComment: Callable[[str, str], bool],
     onDelete: Callable[[str], None],
 ) -> JsxElement {
     theme = useTheme();

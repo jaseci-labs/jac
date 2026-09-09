@@ -63,7 +63,11 @@ impl useJacYac.postTweet -> None {
     }
     try {
         posting = True;
-        root spawn create_tweet(content=composerText.strip());
+        result: any = root spawn create_tweet(content=composerText.strip());
+        if result.reports[0]?.message {
+            bridgeMessage = result.reports[0].message;
+            return;
+        }
         composerText = "";
         await refreshSocial();
     } except BridgeError as e {
@@ -86,18 +90,24 @@ impl useJacYac.handleLike(tweetId: str) -> None {
     }
 }
 
-impl useJacYac.handleComment(tweetId: str, content: str) -> None {
+impl useJacYac.handleComment(tweetId: str, content: str) -> bool {
     try {
         if not valid_post(content) {
-            return;
+            return False;
         }
-        root spawn add_comment(tweet_id=tweetId, content=content.strip());
+        result: any = root spawn add_comment(tweet_id=tweetId, content=content.strip());
+        if result.reports[0]?.message {
+            bridgeMessage = result.reports[0].message;
+            return False;
+        }
         await refreshSocial();
+        return True;
     } except BridgeError as e {
         bridgeMessage = bridge_error(e);
     } except Exception {
         bridgeMessage = "Something went wrong. Please try again.";
     }
+    return False;
 }
 
 impl useJacYac.handleDelete(tweetId: str) -> None {
@@ -507,9 +517,13 @@ impl useJacYac.handleChannelPost(text: str) -> bool {
     }
     try {
         posting = True;
-        root spawn create_channel_tweet(
+        result: any = root spawn create_channel_tweet(
             channel_id=jid(selectedChannel.channel), content=text.strip()
         );
+        if result.reports[0]?.message {
+            bridgeMessage = result.reports[0].message;
+            return False;
+        }
         await refreshSocial();
         return True;
     } except BridgeError as e {
