@@ -27,7 +27,19 @@ impl NaIRGenPass.postinit -> None {
 
     _tm = _target.create_target_machine(codemodel="large");
     self.llvm_module.data_layout = str(_tm.target_data);
+    self._pointer_size = _tm.target_data.pointer_size();
     self.llvm_module.triple = _tm.triple;
+    if _ni_opts.native_closed_world {
+        self.llvm_module.add_named_metadata("llvm.module.flags").add(
+            self.llvm_module.add_metadata(
+                [
+                    ir.Constant(ir.IntType(32), 1),
+                    "Virtual Function Elim",
+                    ir.Constant(ir.IntType(32), 1)
+                ]
+            )
+        );
+    }
 
     if _ni_src and _ni_opts.native_debug {
         _ni_src_dir: str = _ni_os.path.dirname(_ni_os.path.abspath(_ni_src));

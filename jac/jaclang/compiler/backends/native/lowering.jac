@@ -63,7 +63,7 @@ def prepare_native_library(
     tuning = llvm.create_pipeline_tuning_options(speed_level=0);
     builder = llvm.create_pass_builder(target, tuning);
     manager = llvm.ModulePassManager();
-    manager.add_global_dead_code_eliminate_pass();
+    manager.add_global_dead_code_eliminate_pass(in_lto_post_link=True);
     manager.run(module, builder);
     remaining = module.functions;
     assert isinstance(remaining, Iterator);
@@ -78,6 +78,10 @@ def prepare_native_library(
             "Incomplete native library closure: " + ", ".join(sorted(failed))
         );
     }
+    lower_types = llvm.ModulePassManager();
+    lower_types.add_whole_program_devirt_pass();
+    lower_types.add_lower_type_tests_pass();
+    lower_types.run(module, builder);
     module.verify();
 }
 

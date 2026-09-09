@@ -11,6 +11,59 @@ import from jaclang.compiler.backends.native.na_compile_pass {
 }
 import from tests.support { compile_native }
 
+test "closed world Jac lowering annotates inherited virtual calls" {
+    import from tests.support { compile_native_ir, native_force_opts }
+    options = native_force_opts();
+    options.native_closed_world = True;
+    ast = compile_native_ir("inheritance.jac", options=options);
+    text = str(ast.gen.llvm_ir);
+    assert "llvm.type.checked.load" in text;
+    assert "!vcall_visibility" in text;
+    assert '!"jac.vtable.Animal"' in text;
+    clone = options.clone_for_native_import();
+    assert clone.native_closed_world;
+    before = clone.codegen_fingerprint();
+    clone.native_closed_world = False;
+    assert before != clone.codegen_fingerprint();
+}
+
+test "closed world virtual elimination preserves live inherited dispatch" {
+    import from jaclang.compiler.backends.native.shared_emit { init_object_codegen }
+    init_object_codegen();
+    target = llvm.Target.from_default_triple();
+    assert isinstance(target, llvm.Target);
+    machine = target.create_target_machine();
+    assert isinstance(machine, llvm.TargetMachine);
+    for (visibility, offset, rejected) in [(1, 0, False), (1, 8, True), (0, 0, True)] {
+        body = '@vtable = constant [2 x ptr] [ptr @good, ptr @unsupported.__jac_demoted], !type !0, !type !1, !vcall_visibility !2\n'
+        'define i64 @good() { ret i64 42 }\n'
+        'define i64 @unsupported.__jac_demoted() { ret i64 0 }\n'
+        'declare {ptr, i1} @llvm.type.checked.load(ptr, i32, metadata)\n'
+        'define i64 @entry() {\n'
+        f'%checked = call {{ptr, i1}} @llvm.type.checked.load(ptr @vtable, i32 {offset}, metadata !"Base")\n'
+        '%fn = extractvalue {ptr, i1} %checked, 0\n'
+        '%v = call i64 %fn()\nret i64 %v\n}\n'
+        '!0 = !{i64 0, !"Base"}\n!1 = !{i64 0, !"Derived"}\n'
+        f'!2 = !{{i64 {visibility}}}\n'
+        '!llvm.module.flags = !{!3}\n!3 = !{i32 1, !"Virtual Function Elim", i32 1}\n';
+        module = llvm.parse_assembly(body);
+        module.data_layout = str(machine.target_data);
+        caught = False;
+        try {
+            prepare_native_library(module, machine, {"entry"});
+        } except ValueError {
+            caught = True;
+        }
+        assert caught == rejected;
+        if not rejected {
+            text = str(module);
+            assert "unsupported.__jac_demoted" not in text;
+            assert "call { ptr, i1 } @llvm.type.checked.load" not in text;
+            assert len(machine.emit_object(module)) > 0;
+        }
+    }
+}
+
 test "library closure checks exports and indirect dependencies before optimization" {
     import from jaclang.compiler.backends.native.shared_emit { init_object_codegen }
     init_object_codegen();

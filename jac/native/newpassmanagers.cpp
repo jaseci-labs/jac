@@ -605,6 +605,11 @@ LLVMPY_module_AddModuleDebugInfoPrinterPass(LLVMModulePassManagerRef MPM) {
     }
 #include "PASSREGISTRY.def"
 
+API_EXPORT(void)
+LLVMPY_module_AddGlobalDCEPass(LLVMModulePassManagerRef MPM, bool InLTOPostLink) {
+    llvm::unwrap(MPM)->addPass(GlobalDCEPass(InLTOPostLink));
+}
+
 #define MODULE_PASS(NAME)                                                      \
     API_EXPORT(void) LLVMPY_module_Add##NAME(LLVMModulePassManagerRef MPM) {   \
         llvm::unwrap(MPM)->addPass(NAME());                                    \

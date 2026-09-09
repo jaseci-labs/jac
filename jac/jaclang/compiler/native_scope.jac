@@ -13,6 +13,7 @@ glob NATIVE_SCOPE: tuple[str, ...] = (
          "jaclang.compiler.jc_materialize",
          "jaclang.compiler.jc_unit",
          "jaclang.compiler.frontend.diagnostics",
+         "jaclang.compiler.frontend.diagnostic_utils",
          "jaclang.compiler.passes.transform",
          "jaclang.compiler.passes.uni_pass",
          "jaclang.compiler.passes.ast_validation_pass",

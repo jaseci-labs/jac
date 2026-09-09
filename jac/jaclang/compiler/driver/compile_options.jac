@@ -29,6 +29,7 @@ obj CompileOptions {
         force_target_program: bool = False,
         aot_mode: bool = False,
         kernel_unit: bool = False,
+        native_closed_world: bool = False,
         force_codespace: str = "",
         memory_profile: (str | None) = None,
         na_gc_mode: (str | None) = None,
@@ -126,7 +127,8 @@ obj CompileOptions {
                 f"opt={self.opt_level}",
                 f"app={self.target_app}",
                 f"app_kind={self.app_kind}",
-                f"kernel_unit={int(bool(self.kernel_unit))}"
+                f"kernel_unit={int(bool(self.kernel_unit))}",
+                f"closed_world={int(self.native_closed_world)}"
             ]
         );
     }
@@ -170,6 +172,7 @@ obj CompileOptions {
             rc_debug_codegen=self.rc_debug_codegen,
             native_target=self.native_target,
             native_debug=self.native_debug,
+            native_closed_world=self.native_closed_world,
             opt_level=self.opt_level,
             dump_ir_path=self.dump_ir_path,
             debug_ir=self.debug_ir,

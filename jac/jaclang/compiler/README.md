@@ -47,6 +47,21 @@ OSP runtime. Linked declarations and implementations use one primary scope.
 Keep pass algorithms in `passes/`, and extend this shared boundary when another
 pass moves into the kernel.
 
+The internal compiler library is linked with `native_build(..., lib=True,
+closed_world=True)`: its exported C entry points do not expose a Jac virtual-call
+ABI. All calls through Jac vtables, including calls through base classes, must
+belong to that linkage unit. The option propagates to native imports and changes
+the code-generation cache identity. Ordinary libraries default to open-world
+dispatch. Do not enable it for libraries whose clients can invoke Jac methods
+through object pointers.
+
+Closed-world emission supplies LLVM type metadata and checked virtual loads.
+The library linker internalizes non-exported definitions, runs LLVM global dead
+code/virtual-function elimination, and rejects surviving incomplete lowering
+before lowering the checked loads for machine-code emission. A demoted method
+is removable only when LLVM proves it unreachable; exported and indirect calls
+remain part of the required closure.
+
 This path still materializes mutable host graph objects. Immutable fragment
 publication, owner/root coupling, dependency reuse and retained prior binding
 results are remaining work in [the compiler migration epic](https://github.com/jaseci-labs/jac/issues/9061).

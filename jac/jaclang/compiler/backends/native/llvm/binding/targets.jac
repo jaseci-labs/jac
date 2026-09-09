@@ -5,6 +5,7 @@ import from ctypes {
     c_char_p,
     c_longlong,
     c_int,
+    c_uint,
     c_size_t,
     c_void_p,
     string_at
@@ -105,6 +106,10 @@ def create_target_data(layout: str) -> TargetData {
     Use :func:`create_target_data` to create instances.
     """
 class TargetData(ffi.ObjectRef) {
+    def pointer_size(self: TargetData) -> int {
+        return int(ffi.lib.LLVMPY_PointerSize(self));
+    }
+
     def get_global_struct_layout(
         self: TargetData, value: ValueRef, field_count: int
     ) -> tuple[list[int], int] {
@@ -371,6 +376,8 @@ with entry {
     ffi.lib.LLVMPY_DisposeTargetData.argtypes = [ffi.LLVMTargetDataRef];
     ffi.lib.LLVMPY_ABISizeOfType.argtypes = [ffi.LLVMTargetDataRef, ffi.LLVMTypeRef];
     ffi.lib.LLVMPY_ABISizeOfType.restype = c_longlong;
+    ffi.lib.LLVMPY_PointerSize.argtypes = [ffi.LLVMTargetDataRef];
+    ffi.lib.LLVMPY_PointerSize.restype = c_uint;
     ffi.lib.LLVMPY_OffsetOfElement.argtypes = [
         ffi.LLVMTargetDataRef,
         ffi.LLVMTypeRef,

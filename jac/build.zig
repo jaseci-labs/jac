@@ -582,6 +582,14 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     return .{ .bin = bin, .place = &place.step };
 }
 
+fn addShimSourceInputs(b: *std.Build, cc: *std.Build.Step.Run, sources: []const []const u8) void {
+    for (sources) |source| cc.addFileArg(b.path(b.fmt("native/{s}", .{source})));
+    // System-command caching does not discover preprocessor dependencies.
+    for ([_][]const u8{ "core.h", "memorymanager.h", "PASSREGISTRY.def" }) |header| {
+        cc.addFileInput(b.path(b.fmt("native/{s}", .{header})));
+    }
+}
+
 /// Linux link path for the LLVMPY_* shim. Which path a target takes is decided by
 /// the C++ runtime of its pinned slice (pins.isLibcxx), not the arch, so
 /// flipping a target to the libc++/zig path is a table edit in llvm_release.zig.
@@ -660,7 +668,7 @@ fn linuxShim(
     if (!use_zig) cc.addArgs(&.{ "-static-libstdc++", "-static-libgcc" });
     cc.addArg(b.fmt("-I{s}/include", .{llvm_dir}));
     // Shim sources passed directly (not as a .a) so their LLVMPY_* symbols survive.
-    for (shim_srcs) |f| cc.addFileArg(b.path(b.fmt("native/{s}", .{f})));
+    addShimSourceInputs(b, cc, shim_srcs);
     // zig/2.17 path only: fold in the glibc-floor compat TU (weak rseq
     // descriptors) so the libc++ LLVM archives' newer-glibc refs resolve without
     // raising the floor above 2.17 (#7082). Harmless if unreferenced (weak, hidden).
@@ -749,7 +757,7 @@ fn macosShim(
     cc.addArgs(shim_flags);
     cc.addArg(b.fmt("-I{s}/include", .{llvm_dir}));
     // Shim sources passed directly (not as a .a) so ld64 keeps every LLVMPY_*.
-    for (shim_srcs) |f| cc.addFileArg(b.path(b.fmt("native/{s}", .{f})));
+    addShimSourceInputs(b, cc, shim_srcs);
     // Link every LLVM static archive; ld64 drops what the shim never references.
     var it = dir.iterate();
     while (it.next(io) catch @panic("jacllvm: lib iterate failed")) |entry| {

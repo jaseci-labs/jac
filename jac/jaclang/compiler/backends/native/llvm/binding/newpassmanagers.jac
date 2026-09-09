@@ -384,8 +384,18 @@ class ModulePassManager(ffi.ObjectRef, NewPassManager) {
         ffi.lib.LLVMPY_module_AddReversePostOrderFunctionAttrsPass(self);
     }
 
-    def add_global_dead_code_eliminate_pass(self: ModulePassManager) -> object {
-        ffi.lib.LLVMPY_module_AddGlobalDCEPass(self);
+    def add_global_dead_code_eliminate_pass(
+        self: ModulePassManager, in_lto_post_link: bool = False
+    ) -> object {
+        ffi.lib.LLVMPY_module_AddGlobalDCEPass(self, in_lto_post_link);
+    }
+
+    def add_lower_type_tests_pass(self: ModulePassManager) -> object {
+        ffi.lib.LLVMPY_module_AddLowerTypeTestsPass(self);
+    }
+
+    def add_whole_program_devirt_pass(self: ModulePassManager) -> object {
+        ffi.lib.LLVMPY_module_AddWholeProgramDevirtPass(self);
     }
 
     def add_global_opt_pass(self: ModulePassManager) -> object {
@@ -638,7 +648,16 @@ with entry {
     ffi.lib.LLVMPY_module_AddReversePostOrderFunctionAttrsPass.argtypes = [
         ffi.LLVMModulePassManagerRef
     ];
-    ffi.lib.LLVMPY_module_AddGlobalDCEPass.argtypes = [ffi.LLVMModulePassManagerRef];
+    ffi.lib.LLVMPY_module_AddGlobalDCEPass.argtypes = [
+        ffi.LLVMModulePassManagerRef,
+        c_bool
+    ];
+    ffi.lib.LLVMPY_module_AddLowerTypeTestsPass.argtypes = [
+        ffi.LLVMModulePassManagerRef
+    ];
+    ffi.lib.LLVMPY_module_AddWholeProgramDevirtPass.argtypes = [
+        ffi.LLVMModulePassManagerRef
+    ];
     ffi.lib.LLVMPY_module_AddGlobalOptPass.argtypes = [ffi.LLVMModulePassManagerRef];
     ffi.lib.LLVMPY_module_AddIPSCCPPass.argtypes = [ffi.LLVMModulePassManagerRef];
     ffi.lib.LLVMPY_module_AddInternalizePass.argtypes = [ffi.LLVMModulePassManagerRef];

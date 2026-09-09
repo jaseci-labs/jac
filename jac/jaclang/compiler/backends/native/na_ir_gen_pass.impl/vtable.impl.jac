@@ -40,6 +40,20 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
 
     vtable_global.linkage = "";
     vtable_global.initializer = vtable_init;
+    if self.prog.options.native_closed_world {
+        vtable_global.set_metadata(
+            "vcall_visibility",
+            self.llvm_module.add_metadata([ir.Constant(ir.IntType(64), 1)])
+        );
+        for base in self._mro_of(arch_name) {
+            vtable_global.add_metadata(
+                "type",
+                self.llvm_module.add_metadata(
+                    [ir.Constant(ir.IntType(64), 0), "jac.vtable." + base]
+                )
+            );
+        }
+    }
 }
 
 impl NaIRGenPass._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None) {
@@ -370,10 +384,34 @@ impl NaIRGenPass._codegen_virtual_call(
     );
     vtable_ptr = self.builder.load(vtable_ptr_ptr, name="vtable.ptr");
 
-    method_slot = self.builder.gep(
-        vtable_ptr, [ir.Constant(i32, method_idx)], name=f"vt.{method_name}"
-    );
-    method_i8 = self.builder.load(method_slot, name=f"fn.{method_name}.raw");
+    if self.prog.options.native_closed_world {
+        checked_type = ir.FunctionType(
+            ir.LiteralStructType([i8_ptr, ir.IntType(1)]),
+            [i8_ptr, i32, ir.MetaDataType()]
+        );
+        checked_fn = self.llvm_module.globals.get("llvm.type.checked.load");
+        if checked_fn is None {
+            checked_fn = ir.Function(
+                self.llvm_module, checked_type, name="llvm.type.checked.load"
+            );
+        }
+        checked = self.builder.call(
+            checked_fn,
+            [
+                self.builder.bitcast(vtable_ptr, i8_ptr),
+                ir.Constant(i32, method_idx * self._pointer_size),
+                ir.MetaDataString(self.llvm_module, "jac.vtable." + obj_type_name)
+            ]
+        );
+        method_i8 = self.builder.extract_value(
+            checked, 0, name=f"fn.{method_name}.raw"
+        );
+    } else {
+        method_slot = self.builder.gep(
+            vtable_ptr, [ir.Constant(i32, method_idx)], name=f"vt.{method_name}"
+        );
+        method_i8 = self.builder.load(method_slot, name=f"fn.{method_name}.raw");
+    }
 
     typed_fn = self.builder.bitcast(
         method_i8, fn_type.as_pointer(), name=f"fn.{method_name}"

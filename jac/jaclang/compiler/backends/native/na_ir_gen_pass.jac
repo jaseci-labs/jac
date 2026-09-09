@@ -160,6 +160,7 @@ walker NaIRGenPass(Transform) {
 
     has ir_in: uni.Module,
         _llvm_module: (ir.Module | None) = None,
+        _pointer_size: int = 0,
         _type_map: (dict[str, ir.Type] | None) = None,
         _complex_struct_type: (ir.IdentifiedStructType | None) = None,
         _range_struct_type: (ir.IdentifiedStructType | None) = None,
