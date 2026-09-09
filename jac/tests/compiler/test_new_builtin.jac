@@ -24,8 +24,8 @@ glob _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_new_builtin_"),
 
 with entry {
     os.makedirs(_client_tmp_dir, exist_ok=True);
-    with open(os.path.join(_client_tmp_dir, "jac.toml"), "w") as _pins {
-        _pins.write('[placement.pins]\n"*" = "client"\n');
+    with open(os.path.join(_client_tmp_dir, "jac.toml"), "w") as config {
+        config.write('[project]\nkind = "js-package"\n');
     }
 }
 
