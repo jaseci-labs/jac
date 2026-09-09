@@ -65,6 +65,11 @@ def sealed_root_for(path: str) -> (str | None) {
 
 
 def serve_manifest_for(path: str) -> (dict[str, any] | None) {
+    import from jaclang.runtime.prepared { prepared_manifest }
+    prepared = prepared_manifest(path);
+    if prepared is not None {
+        return prepared;
+    }
     img_root = sealed_root_for(path);
     if img_root is None {
         return None;
@@ -83,6 +88,11 @@ def serve_manifest_for(path: str) -> (dict[str, any] | None) {
 
 
 def client_dist_for(path: str) -> (Path | None) {
+    import from jaclang.runtime.prepared { application_for }
+    prepared = application_for(path);
+    if prepared is not None and prepared.client_dist and not prepared.dev {
+        return Path(prepared.client_dist);
+    }
     img_root = sealed_root_for(path);
     if img_root is None {
         return None;

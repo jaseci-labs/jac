@@ -196,6 +196,15 @@ impl HotReloader._process_change(file_path: str, is_directory: bool = False) -> 
 }
 
 impl HotReloader._dispatch_change(file_path: str, is_directory: bool = False) -> None {
+    import from jaclang.runtime.prepared { application_for }
+    entry_path = str(Path(self.base_path) / (self.module_name + '.jac'));
+    if application_for(entry_path) is not None {
+        self._reload_server_module(file_path);
+        if self._build_status is BuildStatus.COMPILING {
+            self._signal_full_reload();
+        }
+        return;
+    }
     if is_directory {
         if not Path(file_path).exists() {
             self._remove_compiled_dir(file_path);
@@ -405,13 +414,10 @@ impl HotReloader._refresh_routing(file_path: str) -> None {
 impl HotReloader._reload_server_module(file_path: str) -> None {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
 
-    sys.modules.pop(self.module_name, None);
+    import from jaclang.runtime.prepared { application_for }
+    entry_path = str(Path(self.base_path) / (self.module_name + '.jac'));
+    previous = application_for(entry_path);
     program = Jac.program;
-    if program is not None {
-        for key in list(program.mod.hub.keys()) {
-            sys.modules.pop(self._path_to_module(key), None);
-        }
-    }
 
     try {
         resolved_path = str(Path(file_path).resolve());
@@ -426,9 +432,43 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
     }
 
     try {
-        Jac.jac_import(
-            target=self.module_name, base_path=self.base_path, reload_module=True
-        );
+        import from jaclang.runtime.prepared { application_for }
+        entry_path = str(Path(self.base_path) / (self.module_name + '.jac'));
+        prepared = application_for(entry_path);
+        if prepared is not None {
+            import from jaclang.compiler.driver.application { reprepare_application }
+            prepared = reprepare_application(prepared, Jac.get_program());
+            if prepared.client_compiler is not None {
+                self.client_compiler = prepared.client_compiler;
+            }
+        }
+        # Keep the live revision available until compilation has succeeded.
+        sys.modules.pop(self.module_name, None);
+        Jac.loaded_modules.pop(self.module_name, None);
+        if previous is not None {
+            for (name, loaded) in list(sys.modules.items()) {
+                source = getattr(loaded, '__file__', None);
+                if source and os.path.realpath(source) in previous.code {
+                    sys.modules.pop(name, None);
+                    Jac.loaded_modules.pop(name, None);
+                }
+            }
+        } elif program is not None {
+            for key in list(program.mod.hub.keys()) {
+                sys.modules.pop(self._path_to_module(key), None);
+            }
+        }
+        if prepared is not None {
+            import from jaclang.runtime.prepared { initialize_application }
+            import from jaclang.project.config { get_config_for_dir }
+            cfg = get_config_for_dir(prepared.root);
+            served = cfg.app_for_path(prepared.entry) if cfg is not None else None;
+            initialize_application(prepared, cfg, served);
+        } else {
+            Jac.jac_import(
+                target=self.module_name, base_path=self.base_path, reload_module=True
+            );
+        }
         console.print(f"[HMR] Reloaded: {file_path}");
     } except SyntaxError as e {
         console.error(

@@ -17,6 +17,14 @@ import from jaclang.testing.testing { JacTestClient }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
+# Direct introspection follows the same explicit preparation contract as serving.
+def prepare_source(path: str) {
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    prepare_application(path, Jac.get_program(), str(Path(path).parent));
+}
+
+
 def _as_any(v: any) -> any {
     return v;
 }
@@ -709,9 +717,11 @@ test "serve root app inference follows intent not incidence" {
     # (`client_page`), reachable at /cl/client_page. That is an incidental page,
     # not a declared entry point, so it must NOT be promoted to / -- the root
     # path stays the JSON API index.
+    prepare_source(fixture_abs_path("serve_api.jac"));
     api_intro = ModuleIntrospector("serve_api", FIXTURES);
     assert api_intro.resolve_root_app() == "";
     # A conventionally-named entry page (`app`) signals intent and IS inferred.
+    prepare_source(fixture_abs_path("client_fullstack_app.jac"));
     app_intro = ModuleIntrospector("client_fullstack_app", FIXTURES);
     assert app_intro.resolve_root_app() == "app";
 }
@@ -1769,6 +1779,7 @@ test "serve blocking sync walkers run concurrently via to_thread" {
         introspector = ModuleIntrospector(
             module_name="serve_blocking_io", base_path=str(Path(jac_file).parent)
         );
+        prepare_source(jac_file);
         introspector.load();
         walkers = introspector.get_walkers();
         assert "slow_blocking" in walkers , "slow_blocking walker not found";
@@ -1811,6 +1822,7 @@ test "endpoint effect classifier follows helper calls" {
     introspector = ModuleIntrospector(
         module_name="serve_helper_effects", base_path=str(Path(jac_file).parent)
     );
+    prepare_source(jac_file);
     introspector.load();
     effects = introspector._client_manifest.get("endpoint_effects", {});
     import json;
@@ -1844,6 +1856,7 @@ test "spawn_walker_sync and spawn_walker_async dispatch to explicit paths" {
         introspector = ModuleIntrospector(
             module_name="serve_blocking_io", base_path=str(Path(jac_file).parent)
         );
+        prepare_source(jac_file);
         introspector.load();
         walker_cls = introspector.get_walkers()["slow_blocking"];
         user_mgr = UserManager(base_path=tmpdir);
@@ -1888,6 +1901,7 @@ test "concurrent async walkers run concurrently end-to-end" {
         introspector = ModuleIntrospector(
             module_name="serve_blocking_io", base_path=str(Path(jac_file).parent)
         );
+        prepare_source(jac_file);
         introspector.load();
         walker_cls = introspector.get_walkers()["slow_async"];
         assert getattr(walker_cls, "__jac_async__", False) , "slow_async walker must be async";
@@ -2102,6 +2116,7 @@ test "concurrent multi-user requests do not race on ctx.user_root" {
         introspector = ModuleIntrospector(
             module_name="serve_blocking_io", base_path=str(Path(jac_file).parent)
         );
+        prepare_source(jac_file);
         introspector.load();
         walkers = introspector.get_walkers();
         async_walker = walkers["whoami_async"];
@@ -2420,6 +2435,10 @@ test "spa fallback status is route aware when pages exist" {
         proj = Path(tmpdir);
         shutil.copy(fixture_abs_path("client_app.jac"), proj / "routed_app.jac");
         write_routed_pages(proj);
+        if not (proj / "routed_app.jac").exists() {
+            (proj / "routed_app.jac").write_text("def:pub app -> int { return 1; }\n");
+        }
+        prepare_source(str(proj / "routed_app.jac"));
         intro = ModuleIntrospector("routed_app", str(proj));
         assert intro.spa_fallback_status("/") == 200;
         assert intro.spa_fallback_status("/about") == 200;
@@ -2490,8 +2509,8 @@ test "serve spa fallback keeps 200 for known page routes" {
 }
 
 """The route table must follow the app across reloads: every reload path goes
-through _load_manifest, which clears the cached patterns so the next fallback
-request rescans pages/. Without the reset, a page added after first request
+through preparation followed by _load_manifest, which clears the cached patterns
+so the next fallback request reads the newly prepared route table. Without the reset, a page added after first request
 404s until restart and a deleted page keeps answering 200."""
 test "spa fallback route table refreshes on manifest reload" {
     import from jaclang.server.server { ModuleIntrospector }
@@ -2499,14 +2518,20 @@ test "spa fallback route table refreshes on manifest reload" {
         proj = Path(tmpdir);
         shutil.copy(fixture_abs_path("client_app.jac"), proj / "routed_app.jac");
         write_routed_pages(proj);
+        if not (proj / "routed_app.jac").exists() {
+            (proj / "routed_app.jac").write_text("def:pub app -> int { return 1; }\n");
+        }
+        prepare_source(str(proj / "routed_app.jac"));
         intro = ModuleIntrospector("routed_app", str(proj));
         assert intro.spa_fallback_status("/pricing") == 404;
         page_src = "def:pub View() -> JsxPage {\n    return <div>p</div>;\n}\n";
         (proj / "pages" / "pricing.jac").write_text(page_src);
         assert intro.spa_fallback_status("/pricing") == 404 , "table is cached until a reload";
+        prepare_source(str(proj / "routed_app.jac"));
         intro._load_manifest();
         assert intro.spa_fallback_status("/pricing") == 200 , f"patterns={intro._load_spa_routes()}";
         (proj / "pages" / "about.jac").unlink();
+        prepare_source(str(proj / "routed_app.jac"));
         intro._load_manifest();
         assert intro.spa_fallback_status("/about") == 404;
         assert intro.spa_fallback_status("/pricing") == 200;
@@ -2523,6 +2548,10 @@ test "spa fallback root is route aware without an index page" {
         pages.mkdir(parents=True, exist_ok=True);
         page_src = "def:pub View() -> JsxPage {\n    return <div>p</div>;\n}\n";
         (pages / "dashboard.jac").write_text(page_src);
+        if not (proj / "routed_app.jac").exists() {
+            (proj / "routed_app.jac").write_text("def:pub app -> int { return 1; }\n");
+        }
+        prepare_source(str(proj / "routed_app.jac"));
         intro = ModuleIntrospector("routed_app", str(proj));
         assert intro.spa_fallback_status("/") == 404;
         assert intro.spa_fallback_status("/dashboard") == 200;

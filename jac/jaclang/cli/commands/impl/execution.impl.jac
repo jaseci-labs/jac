@@ -6,8 +6,6 @@ import from pathlib { Path }
 import from jaclang.cli.console { console, use_line_buffered_output }
 import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 import from jaclang.server.assembly {
-    assemble_served_program,
-    colocate_services as _colocate_services,
     gateway_colocates as _gateway_colocates,
     service_apps as _service_apps
 }
@@ -1181,20 +1179,6 @@ def _serve_fleet(
 }
 
 
-def _client_display_path(path: Path, base: str) -> str {
-    import jaclang;
-    resolved = path.resolve();
-    roots = [Path(base).resolve(), Path(jaclang.__file__).resolve().parent.parent];
-    for parent in roots {
-        try {
-            return str(resolved.relative_to(parent));
-        } except ValueError {
-            continue;
-        }
-    }
-    return path.name;
-}
-
 impl serve(
     filename: str,
     port: int = 0,
@@ -1267,10 +1251,23 @@ impl serve(
         }
     }
     (base, mod, mach) = _proc_file(filename);
-    lng = filename.split('.')[-1];
 
     try {
-        Jac.jac_import(target=mod, base_path=base, lng=lng);
+        console.print("Preparing application...", style="bold");
+        import from jaclang.compiler.driver.application { prepare_application }
+        import from jaclang.server.assembly { service_apps }
+        project_root = str(cfg.project_root) if cfg and cfg.project_root else base;
+        services = service_apps(cfg, served) if cfg and served else [];
+        prepared = prepare_application(
+            filename, Jac.get_program(), project_root,
+            [svc.entry_path(project_root) for svc in services],
+            not no_client and not faux
+                and (served is None or served.kind == "web-app"),
+            dev
+        );
+        console.print("Initializing application...", style="bold");
+        import from jaclang.runtime.prepared { initialize_application }
+        initialize_application(prepared, cfg, served);
         if Jac.get_program().errors_had {
             for error in Jac.get_program().errors_had {
                 console.error(error.pretty_print());
@@ -1278,7 +1275,6 @@ impl serve(
             mach.close();
             return 1;
         }
-        assemble_served_program(cfg, served, base);
     } except Exception as e {
         if Jac.get_program().errors_had {
             for error in Jac.get_program().errors_had {
@@ -1331,6 +1327,9 @@ impl serve(
     }
     ServerClass = Jac.get_api_server_class();
     server = ServerClass(module_name=mod, base_path=base, settings=settings);
+    if prepared.client_compiler is not None {
+        server.introspector._bundle_builder._compiler = prepared.client_compiler;
+    }
     if faux {
         try {
             server.print_endpoint_docs();
@@ -1390,61 +1389,6 @@ impl serve(
             console.warning(f"HMR initialization failed: {e}");
         }
 
-        if not no_client {
-            try {
-                import time;
-                import from jaclang.compiler.driver.pass_driver { compile_progress }
-                compiler = server.introspector._bundle_builder._get_compiler();
-                compiled: list[str] = [];
-                active: list[str] = [];
-                completed: list[int] = [0];
-                started = time.perf_counter();
-                with console.status("Compiling client...") as status {
-                    def _on_module(file_path: str) {
-                        compiled.append(file_path);
-                        active.append(file_path);
-                    }
-                    def _on_finished(file_path: str) {
-                        active.remove(file_path);
-                        completed[0] += 1;
-                    }
-                    def _progress_text -> str {
-                        current = list(active);
-                        detail = (
-                            f"Compiling client: {completed[0]} completed"
-                            f" · {len(current)} active · {time.perf_counter()
-                                - started:.1f}s"
-                        );
-                        if current {
-                            detail += " · "
-                                + _client_display_path(Path(current[-1]), base);
-                        }
-                        return detail;
-                    }
-                    status.update(_progress_text);
-                    with compile_progress.listen(_on_module, _on_finished) {
-                        compiler.compile(server.introspector._module, Path(filename));
-                    }
-                }
-                elapsed = time.perf_counter() - started;
-                detail = (
-                    f"{len(compiled)} modules compiled"
-                        if compiled
-                        else "all modules served from cache"
-                );
-                console.print(
-                    f"  ✔ Initial client compilation completed ({detail}, {elapsed:.1f}s)"
-                );
-
-                compiler._emit_na_wasm(Path(filename));
-            } except Exception as e {
-                console.warning(f"Initial client compilation failed: {e}");
-
-                if hot_reloader is not None {
-                    hot_reloader.record_error(str(filename), str(e));
-                }
-            }
-        }
     }
 
     def _announce_ready(actual_port: int) {

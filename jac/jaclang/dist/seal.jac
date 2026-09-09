@@ -207,7 +207,9 @@ def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict | None) {
             }
         }
     }
+    import from jaclang.compiler.driver.application { prepare_route_metadata }
     return {
+        'spa_routes': prepare_route_metadata(str(entry_file.parent)),
         'client': client,
         'func_access': func_access,
         'walker_access': walker_access,

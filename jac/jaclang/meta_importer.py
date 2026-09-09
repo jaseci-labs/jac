@@ -350,9 +350,25 @@ class JacMetaImporter(MetaPathFinder, Loader):
         # Get and execute bytecode using the compiler singleton
         compiler = Jac.get_compiler()
         program = Jac.get_program()
-        codeobj = compiler.get_bytecode(
-            full_target=file_path,
-            target_program=program,
+        # The registry is itself Jac. Read it only after its import completes;
+        # importing it here would recurse while bootstrapping the compiler.
+        registry = sys.modules.get("jaclang.runtime.prepared")
+        lookup = getattr(registry, "application_for", None)
+        prepared = lookup(file_path) if lookup is not None else None
+        prepared_path = os.path.realpath(file_path)
+        if prepared is None:
+            containing_lookup = getattr(registry, "containing_application", None)
+            containing = (
+                containing_lookup(file_path) if containing_lookup is not None else None
+            )
+            if containing is not None:
+                from jaclang.compiler.driver.application import prepare_dynamic_module
+
+                prepared = prepare_dynamic_module(file_path, program, containing)
+        codeobj = (
+            prepared.code.get(prepared_path)
+            if prepared is not None
+            else compiler.get_bytecode(full_target=file_path, target_program=program)
         )
         if not codeobj:
             if is_pkg:
@@ -396,8 +412,10 @@ class JacMetaImporter(MetaPathFinder, Loader):
             program.mtir_map.update(renamed)
 
         # Inject native interop infrastructure if needed (sv↔na interop)
-        native_engine, interop_py_funcs = compiler.get_native_interop_setup(
-            file_path, program
+        native_engine, interop_py_funcs = (
+            prepared.native.get(prepared_path, (None, None))
+            if prepared is not None
+            else compiler.get_native_interop_setup(file_path, program)
         )
         if native_engine is not None:
             module.__dict__["__jac_native_engine__"] = native_engine

@@ -22,6 +22,7 @@ import tempfile;
 import urllib.request;
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
+import from jaclang.compiler.driver.application { prepare_application }
 import from jaclang.project.config { set_config }
 import from jaclang.server { sv_client }
 import from jaclang.server.server { JacAPIServer }
@@ -112,6 +113,7 @@ def _load(tmp: str, mod: str, base: str) {
     if mod in sys.modules {
         del sys.modules[mod];
     }
+    prepare_application(str(Path(base) / (mod + '.jac')), Jac.get_program(), base);
     Jac.jac_import(target=mod, base_path=base, lng="jac");
 }
 
