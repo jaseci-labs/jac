@@ -8,7 +8,7 @@ def _compiler(project: Path) -> any {
     (project / "package.json").write_text('{"name":"imports","version":"0.0.0"}');
     (project / "jac.toml").write_text(
         '[project]\nname = "imports"\nkind = "web-app"\n'
-        '[placement.pins]\n"provider" = "client"\n"main" = "client"\n'
+        '[placement.pins]\n"provider" = "client"\n'
     );
     builder = ViteClientBundleBuilder(vite_package_json=project / "package.json");
     compiler = builder._get_compiler().jac_client_compiler;

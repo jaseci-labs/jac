@@ -119,7 +119,7 @@ test "type to typeof and spawn operator" {
 
 test "client import local jac module gets relative path" {
     with TemporaryDirectory() as tmpdir {
-        (Path(tmpdir) / "jac.toml").write_text('[placement.pins]\n"*" = "client"\n');
+        (Path(tmpdir) / "jac.toml").write_text('[project]\nkind = "js-package"\n');
         local_module = Path(tmpdir) / "mymodule.jac";
         local_module.write_text("def helper() -> int { return 42; }");
         main_file = Path(tmpdir) / "main.jac";
@@ -334,7 +334,7 @@ def:pub app -> JsxElement {
 test "absolute imports in nested modules emit importer-relative specifiers" {
     with TemporaryDirectory() as td {
         with open(os.path.join(td, "jac.toml"), "w") as f {
-            f.write('[placement.pins]\n"*" = "client"\n');
+            f.write('[project]\nkind = "js-package"\n');
         }
         os.makedirs(os.path.join(td, "vm"));
         os.makedirs(os.path.join(td, "blocks"));
