@@ -255,6 +255,65 @@ test "scheduler setup succeeds without apscheduler installed" {
     }
 }
 
+def _import_probe_without_kubernetes(module: str) -> str {
+    import subprocess;
+    import sys;
+    probe = (
+        "import sys\n"
+        "for name in ['kubernetes', 'kubernetes.client', 'kubernetes.client.exceptions', "
+        "'kubernetes.config', 'kubernetes.config.config_exception', 'kubernetes.watch']:\n"
+        "    sys.modules[name] = None\n"
+        f"import {module}\n"
+        "print('import-ok=True')\n"
+    );
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, timeout=300
+    );
+    assert result.returncode == 0 , f"probe failed for {module} without kubernetes: {result.stderr[-2000:]}";
+    return result.stdout;
+}
+
+test "kubernetes_observer imports cleanly even when the kubernetes package is unavailable" {
+    out = _import_probe_without_kubernetes(
+        "jaclang.scale.deploy.autoscale.kubernetes_observer"
+    );
+    assert "import-ok=True" in out;
+}
+
+test "observer_registry imports cleanly even when the kubernetes package is unavailable" {
+    out = _import_probe_without_kubernetes(
+        "jaclang.scale.deploy.autoscale.observer_registry"
+    );
+    assert "import-ok=True" in out;
+}
+
+test "observer registry names the deploy.k8s capability instead of an AttributeError on None" {
+    import from jaclang.scale.deploy.autoscale.observer_registry {
+        AutoscalerObserverRegistry
+    }
+    AutoscalerObserverRegistry._instances = {};
+
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.autoscale.observer_registry.require_optional",
+        side_effect=ImportError(
+            "'kubernetes' is required for this feature. "
+            "Capability 'deploy.k8s' is required but not installed."
+        )
+    ) {
+        raised = False;
+        try {
+            AutoscalerObserverRegistry.get_or_create("ns-missing-k8s");
+        } except ImportError as e {
+            raised = True;
+            assert "deploy.k8s" in str(e);
+            assert "jac-scale[" not in str(e);
+        }
+        assert raised , "Expected an actionable ImportError naming deploy.k8s, not a raw AttributeError on a None client";
+    }
+
+    AutoscalerObserverRegistry._instances = {};
+}
+
 test "scheduler create_job raises clear error without apscheduler" {
     import from jaclang.scale.scheduler.scheduler { JacScaleScheduler }
 

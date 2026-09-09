@@ -488,6 +488,42 @@ metadata = { queueName = "orders", mode = "QueueLength", value = "50", protocol 
 host = { name = "rabbitmq-secret", key = "host" }
 ```
 
+#### Runtime Status and Live Observation
+
+Both engines expose the same normalized status shape, so callers never need to branch on `autoscaler_engine`.
+
+**One-shot query:**
+
+```jac
+with entry {
+    status = autoscaler.get_runtime_status(autoscaler_name, scale_target_name, namespace);
+    # status.state: "inactive" | "activating" | "active" | "deactivating" | "degraded" | "unknown"
+    # status.desired_replicas / current_replicas / ready_replicas
+    # status.trigger_active, status.scaler_ready  (None when the engine doesn't report one)
+}
+```
+
+`inactive` is the intentional, healthy scale-to-zero resting state, not an error -- a plain HPA target (see [HPA Engine](#hpa-engine-default)) never reports it, since `minReplicas` is always at least 1 under that engine.
+
+!!! note "Live updates, not polling"
+    `AutoscalerObserverRegistry.get_or_create(namespace, cluster_key=None)` hands back one shared watcher per `(cluster, namespace)` -- every caller that asks for the same namespace gets the same observer instance, so N callers never open N Kubernetes watch connections. Subscribe with `observer.subscribe(scale_target_name=...)` and pull updates with `subscription.poll(timeout_seconds=...)`, which returns an `AutoscalerTransition` (`previous_state`, `state`, `resource_version`, `observed_at`) only when the normalized state actually changes -- a watch reconnect never re-announces a state nothing actually left. `observed_at` is when this process saw the change, not a durable record of when it happened; persist that yourself if you need history across an observer restart.
+
+    Each `get_or_create` call increments a reference count for that `(cluster, namespace)`; call `AutoscalerObserverRegistry.release(namespace, cluster_key=None)` once you're done with it. The watcher's threads stop only when the count reaches zero, so other callers still watching that namespace are unaffected. `shutdown_all()` bypasses reference counting entirely and stops every watcher process-wide -- reserve it for process shutdown or test teardown.
+
+    ```jac
+    with entry {
+        observer = AutoscalerObserverRegistry.get_or_create(namespace);
+        subscription = observer.subscribe(scale_target_name=scale_target_name);
+        transition = subscription.poll(timeout_seconds=30.0);
+        if transition {
+            print(f"{transition.previous_state} -> {transition.state}");
+        }
+        AutoscalerObserverRegistry.release(namespace);
+    }
+    ```
+
+    For HTTP-activated workloads (`apply_http_activation`, see the KEDA HTTP Add-on note above), `activating` distinguishes "KEDA has requested more replicas" from `active` ("the target Deployment is actually ready to receive traffic") -- watch for `active`, not just a desired-replica bump, before routing a request through.
+
 #### HTTP Add-on Activation (Scale-to-Zero on Request)
 
 The KEDA engine above scales on CPU, memory, or any KEDA trigger, but none of those triggers can wake a workload from zero replicas in response to an incoming HTTP request itself. There is nothing listening on the Service to observe traffic when replicas are at zero. The [KEDA HTTP Add-on](https://keda.sh/http-add-on/0.15/) closes that gap: it intercepts HTTP traffic bound for the target, holds the request while a zero-replica workload starts, and forwards it only once the workload is ready.

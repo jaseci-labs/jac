@@ -26,12 +26,10 @@ impl KEDAAutoscaler._validate_triggers{
 }
 
 impl KEDAAutoscaler._get_cluster_key{
-    try {
-        import from kubernetes.client { Configuration }
-        return Configuration.get_default_copy().host or "default";
-    } except (ImportError, AttributeError) {
-        return "default";
+    import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+        default_cluster_key
     }
+    return default_cluster_key();
 }
 
 impl KEDAAutoscaler.preflight{
@@ -1006,6 +1004,152 @@ impl KEDAAutoscaler.discover_capabilities{
 
 impl KEDAAutoscaler.invalidate_capabilities{
     self._capabilities_cache.pop(self._capabilities_cache_key(), None);
+}
+
+impl KEDAAutoscaler._normalize_keda_status{
+    if scaled_object is None {
+        return AutoscalerRuntimeStatus(
+            state=AutoscalerState.UNKNOWN.value,
+            desired_replicas=0,
+            current_replicas=0,
+            ready_replicas=0,
+            message="ScaledObject not found"
+        );
+    }
+
+    status = scaled_object.get("status", {});
+    conditions = status.get("conditions", []);
+    cond_by_type = {c["type"]: c for c in conditions};
+    resource_version = scaled_object.get("metadata", {}).get("resourceVersion");
+
+    hpa_status = (hpa or {}).get("status", {});
+    deployment_status = (deployment or {}).get("status", {});
+
+    desired = hpa_status.get("desired_replicas");
+    if desired is None {
+        desired = deployment_status.get("replicas", 0) or 0;
+    }
+    current = hpa_status.get("current_replicas");
+    if current is None {
+        current = deployment_status.get("replicas", 0) or 0;
+    }
+    ready = deployment_status.get("ready_replicas", 0) or 0;
+
+    ready_cond = cond_by_type.get("Ready");
+    active_cond = cond_by_type.get("Active");
+    fallback_cond = cond_by_type.get("Fallback");
+    paused_cond = cond_by_type.get("Paused");
+
+    scaler_ready = (ready_cond.get("status") == "True") if ready_cond else None;
+    trigger_active = (active_cond.get("status") == "True") if active_cond else None;
+
+    def build(state: str, message: (str | None) = None) -> AutoscalerRuntimeStatus {
+        return AutoscalerRuntimeStatus(
+            state=state,
+            desired_replicas=desired,
+            current_replicas=current,
+            ready_replicas=ready,
+            trigger_active=trigger_active,
+            scaler_ready=scaler_ready,
+            conditions=conditions,
+            resource_version=resource_version,
+            message=message
+        );
+    }
+
+    if ready_cond and ready_cond.get("status") == "False" {
+        return build(
+            AutoscalerState.DEGRADED.value,
+            ready_cond.get("message") or ready_cond.get("reason")
+        );
+    }
+    if fallback_cond and fallback_cond.get("status") == "True" {
+        return build(
+            AutoscalerState.DEGRADED.value, "scaler using static fallback replica count"
+        );
+    }
+    if paused_cond and paused_cond.get("status") == "True" {
+        return build(AutoscalerState.INACTIVE.value, "paused via annotation");
+    }
+    if active_cond is None {
+        return build(
+            AutoscalerState.UNKNOWN.value,
+            "Active condition missing from ScaledObject status"
+        );
+    }
+    if trigger_active and desired == 0 and current == 0 {
+        return build(
+            AutoscalerState.ACTIVATING.value, "trigger active; no replica data yet"
+        );
+    }
+    if (not trigger_active) and desired == 0 and current == 0 {
+        return build(AutoscalerState.INACTIVE.value);
+    }
+    if trigger_active and ready < desired {
+        return build(AutoscalerState.ACTIVATING.value);
+    }
+    if ready == desired and desired == current and desired > 0 {
+        return build(AutoscalerState.ACTIVE.value);
+    }
+    if not trigger_active {
+        return build(AutoscalerState.DEACTIVATING.value);
+    }
+    if current > desired {
+        return build(AutoscalerState.DEACTIVATING.value);
+    }
+    return build(
+        AutoscalerState.UNKNOWN.value,
+        f"unrecognized state combination: conditions={conditions}"
+    );
+}
+
+impl KEDAAutoscaler.get_runtime_status{
+    api = self._custom_api or client.CustomObjectsApi();
+    try {
+        scaled_object = api.get_namespaced_custom_object(
+            group="keda.sh",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="scaledobjects",
+            name=autoscaler_name
+        ) as dict[str, any];
+    } except ApiException as e {
+        if e.status in [404, 422] {
+            return self._normalize_keda_status(None, None, None);
+        }
+        raise;
+    }
+
+    hpa_name = scaled_object.get("status", {}).get("hpaName");
+    hpa_dict: (dict[str, any] | None) = None;
+    if hpa_name {
+        v2_api = self._v2_api or AutoscalingV2Api();
+        try {
+            hpa = v2_api.read_namespaced_horizontal_pod_autoscaler(
+                name=hpa_name, namespace=namespace
+            ) as any;
+            hpa_dict = hpa.to_dict() as dict[str, any];
+        } except ApiException as e {
+            if e.status not in [404, 422] {
+                raise;
+            }
+        }
+    }
+
+    apps_api = self._apps_api or client.AppsV1Api();
+    deployment_dict: (dict[str, any] | None) = None;
+    try {
+        deployment = apps_api.read_namespaced_deployment(
+            name=scale_target_name, namespace=namespace
+        ) as any;
+        deployment_dict = deployment.to_dict() as dict[str, any];
+    } except ApiException as e {
+        if e.status not in [404, 422] {
+            raise;
+        }
+    }
+
+    return self._normalize_keda_status(scaled_object, hpa_dict, deployment_dict);
 }
 
 impl KEDAAutoscaler.format_capabilities{

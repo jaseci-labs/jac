@@ -30,6 +30,39 @@ obj AutoscalerSpec {
         behavior_overlay: dict[str, any] = {};
 }
 
+enum AutoscalerState {
+    INACTIVE = "inactive",
+    ACTIVATING = "activating",
+    ACTIVE = "active",
+    DEACTIVATING = "deactivating",
+    DEGRADED = "degraded",
+    UNKNOWN = "unknown",
+}
+
+obj AutoscalerRuntimeStatus {
+    has state: str,
+        desired_replicas: int,
+        current_replicas: int,
+        ready_replicas: int,
+        trigger_active: (bool | None) = None,
+        scaler_ready: (bool | None) = None,
+        conditions: list[dict[str, any]] = [],
+        resource_version: (str | None) = None,
+        message: (str | None) = None;
+}
+
+obj AutoscalerTransition {
+    has autoscaler_name: str,
+        scale_target_name: str,
+        namespace: str,
+        previous_state: (str | None),
+        state: str,
+        observed_at: str,
+        resource_version: str,
+        reason: (str | None) = None,
+        message: (str | None) = None;
+}
+
 
 class Autoscaler {
     static def _managed_labels -> dict[str, str] {
@@ -97,6 +130,14 @@ class Autoscaler {
     def resource_name_for(self: Autoscaler, target: str) -> str {
         raise NotImplementedError(
             "resource_name_for() must be implemented by a concrete Autoscaler subclass."
+        );
+    }
+
+    def get_runtime_status(
+        self: Autoscaler, autoscaler_name: str, scale_target_name: str, namespace: str
+    ) -> AutoscalerRuntimeStatus {
+        raise NotImplementedError(
+            "get_runtime_status() must be implemented by a concrete Autoscaler subclass"
         );
     }
 }
