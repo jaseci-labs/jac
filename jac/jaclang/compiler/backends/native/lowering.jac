@@ -12,7 +12,6 @@ enum NativeLoweringKind { CALLABLE = "callable", FIELD = "field" }
 def prepare_native_library(
     module: ModuleRef, target: TargetMachine, exports: set[str]
 ) {
-    import from collections.abc { Iterator }
     import jaclang.compiler.backends.native.llvm.binding as llvm;
     functions = module.functions;
     globals = module.global_variables;
