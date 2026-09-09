@@ -122,6 +122,7 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self._stamp_arch_view_bindings();
     self._process_partition_sugar();
     self._nogc_setup();
+    self._stamp_immutable_aliases();
     self._emit_place_intrinsic_diagnostics();
     if not self.owned_decl
         and not self.borrow_meta

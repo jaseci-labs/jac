@@ -17,6 +17,33 @@ import from tests.ownership_helpers {
     expect_ownership_codes,
     render_alerts
 }
+import from jaclang.testing.test { parametrize }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.driver.program { JacProgram }
+import from tests.ownership_helpers { FIXTURES }
+import os;
+
+def _immutable_alias_case(profile: str) {
+    for (fixture, expected) in [
+        ("freeze_alias_write.jac", ["E1309"]),
+        ("freeze_projection_write.jac", ["E1309"]),
+        ("freeze_scalar_copy_ok.jac", [])
+    ] {
+        prog = JacProgram();
+        prog.compile(
+            os.path.join(FIXTURES, fixture),
+            options=CompileOptions(memory_profile=profile)
+        );
+        expect_ownership_codes(prog, expected);
+        if not expected {
+            assert not prog.errors_had , render_alerts(prog);
+        }
+    }
+}
+
+with entry {
+    parametrize("immutable aliases", ["managed", "rc", "nogc"], _immutable_alias_case);
+}
 
 test "freeze of an owned binding is clean and error-free" {
     prog = compile_fixture("freeze_own_ok.jac");

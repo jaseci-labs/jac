@@ -1,5 +1,50 @@
 import from jaclang.compiler.frontend.diagnostics { E1309 }
 
+"""Preserve readonly access through local aliases of frozen references.
+
+Copying a scalar does not alias storage. Reference projections do, so
+their aliases inherit the input's immutable access contract in every
+memory profile. Lifetime inference remains with the borrow analysis.
+"""
+impl OwnershipCheckPass._stamp_immutable_aliases -> None {
+    dependents: dict[SymId, list[Name]] = {};
+    for assignment in self.idx_assignments {
+        if assignment.aug_op is not None
+            or len(assignment.target) != 1
+            or not isinstance(assignment.target[0], Name)
+            or self._expr_scalar_typed(assignment.value) {
+            continue;
+        }
+        source = assignment.value;
+        while isinstance(source, AtomTrailer) {
+            source = source.target;
+        }
+        if not isinstance(source, Name) or source.sym is None {
+            continue;
+        }
+        sid = self._name_sym_id(source);
+        if sid not in dependents {
+            dependents[sid] = [];
+        }
+        dependents[sid].append(assignment.target[0]);
+    }
+    pending = list(self.imm_decl);
+    while pending {
+        source_id = pending.pop();
+        for target in dependents.get(source_id, []) {
+            sid = self._name_sym_id(target);
+            if target.sym is None or sid in self.imm_decl {
+                continue;
+            }
+            if target.sym.ownership == OwnershipKind.NONE {
+                target.sym.ownership = OwnershipKind.IMM;
+            }
+            self.imm_decl[sid] = target;
+            pending.append(sid);
+        }
+    }
+}
+
 impl OwnershipCheckPass._emit_marker_diagnostics -> None {
     if not self.imm_decl {
         return;

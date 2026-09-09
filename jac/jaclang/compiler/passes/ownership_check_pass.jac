@@ -190,6 +190,7 @@ walker OwnershipCheckPass(Transform) {
     def _emit_enforcement_diagnostics -> None;
     def _build_index(tree: UniNode) -> None;
     def _stamp_ownership -> None;
+    def _stamp_immutable_aliases -> None;
     def _stamp_overwrite_consumed -> None;
     def _stamp_move_sites -> None;
     def _receiver_mode(ability: Ability | None) -> OwnershipKind;
