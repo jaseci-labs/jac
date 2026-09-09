@@ -797,9 +797,7 @@ obj OspGraph {
         for h in members {
             if h in self.adj {
                 self.light_detach(h);
-                a: Adj = self.adj[h];
-                stash.append(a);
-                self.adj.pop(h);
+                stash.append(self.adj.pop(h));
             }
             if h in self.dead {
                 self.dead.pop(h);
