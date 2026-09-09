@@ -792,8 +792,7 @@ obj OspGraph {
         if rgn not in self.regions {
             return 0;
         }
-        members: set[int] = self.regions[rgn];
-        del self.regions[rgn];
+        members: set[int] = self.regions.pop(rgn);
         stash: list[Adj] = [];
         for h in members {
             if h in self.adj {

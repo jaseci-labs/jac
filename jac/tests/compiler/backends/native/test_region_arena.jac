@@ -178,13 +178,19 @@ test "phase W: walkers reclaim -- spawn-heavy loop fires drop per walker" {
 }
 
 test "R3: region-resident topology traverses live and reclaims at drop" {
-    (eng, ir) = compile_native("region_graph.jac");
-    scenario = get_func(eng, "scenario", ctypes.c_int64);
-    result = scenario();
-    assert result == 3 , f"scenario() == {result}, expected traversal sum 3";
-    read_log = get_func(eng, "read_log", ctypes.c_int64);
-    log = read_log();
-    assert log == 2 , f"handle drop must reclaim both nodes: {log} != 2";
+    for mode in ["cycles", "rc", "none"] {
+        (eng, ir) = compile_native(
+            "region_graph.jac", gc_mode=mode, nogc_enforce=mode == "none"
+        );
+        scenario = get_func(eng, "scenario", ctypes.c_int64);
+        read_log = get_func(eng, "read_log", ctypes.c_int64);
+        for _ in range(20) {
+            result = scenario();
+            assert result == 3 , f"{mode}: expected traversal sum 3, got {result}";
+            log = read_log();
+            assert log == 2 , f"{mode}: handle drop must reclaim both nodes, got {log}";
+        }
+    }
 }
 
 test "R3: growth rule -- mid-traversal allocations land in region_of(here)" {
