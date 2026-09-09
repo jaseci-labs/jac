@@ -1137,88 +1137,58 @@ test "vite build injects core deps without prompting" {
     }
 }
 
-"""Test that jac run --dev auto-installs watchdog and performs initial compilation."""
-test "start dev with client does initial compilation" {
-    test_project_name = "test-start-dev-client";
+test "start dev prepares the client before initialization" {
+    import signal;
+    import socket;
+    import subprocess;
+    import from jaclang.scale.runtime.context.util { jac_executable }
     with tempfile.TemporaryDirectory() as temp_dir {
-        original_cwd = os.getcwd();
+        executable = jac_executable();
+        created = subprocess.run(
+            [executable, "create", "--kind", "web-app", "test-start-dev-client"],
+            cwd=temp_dir,
+            capture_output=True,
+            text=True,
+            timeout=300
+        );
+        assert created.returncode == 0 , created.stdout + created.stderr;
+        project = Path(temp_dir) / "test-start-dev-client";
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock {
+            sock.bind(("127.0.0.1", 0));
+            port = sock.getsockname()[1];
+        }
+        log = Path(temp_dir) / "server.log";
+        with log.open("w") as stream {
+            process = Popen(
+                [executable, "run", "--dev", "--port", str(port), "main.jac"],
+                cwd=project,
+                stdout=stream,
+                stderr=subprocess.STDOUT
+            );
+        }
         try {
-            os.chdir(temp_dir);
-            # Create a client project
-            process = Popen(
-                ["jac", "create", "--kind", "web-app", test_project_name],
-                stdin=PIPE,
-                stdout=PIPE,
-                stderr=PIPE,
-                text=True,
-            );
-            (stdout, stderr) = process.communicate();
-            assert process.returncode == 0;
-            # Change to project directory
-            os.chdir(test_project_name);
-            # Run jac run --dev main.jac (should auto-install watchdog and compile)
-            process = Popen(
-                ["jac", "run", "--dev", "main.jac"],
-                stdout=PIPE,
-                stderr=PIPE,
-                text=True,
-            );
-            # Wait for watchdog install and compilation messages
-            start_time = time.time();
             output = "";
-            found_watchdog = False;
-            found_compilation = False;
-            while (time.time() - start_time < 50) {
-                if process.stdout is None {
+            deadline = time.monotonic() + 300;
+            while time.monotonic() < deadline {
+                output = log.read_text(errors="replace");
+                assert process.poll() is None , output;
+                if "Server ready" in output {
                     break;
                 }
-                line = process.stdout.readline();
-                if not line {
-                    if process.poll() is not None {
-                        break;
-                    }
-                    time.sleep(0.1);
-                    continue;
-                }
-                output += line;
-                if "Installing watchdog" in line or "watchdog installed" in line {
-                    found_watchdog = True;
-                }
-                if "Initial client compilation completed" in line {
-                    found_compilation = True;
-                    break;
-                }
+                time.sleep(0.1);
             }
-            # Terminate the process
-            process.terminate();
-            try {
-                process.`wait(timeout=5);
-            } except Exception {
-                process.kill();
-            }
-            # Close pipes
-            if process.stdout {
-                process.stdout.close();
-            }
-            if process.stderr {
-                process.stderr.close();
-            }
-            # The watchdog auto-install message only appears when watchdog is not
-            # already installed in the test environment (e.g. test-client). When it
-            # is pre-installed (e.g. test-core-runtime), the dev server skips the
-            # install, so only assert the message in the not-pre-installed case.
-            import importlib.util;
-            watchdog_preinstalled = importlib.util.find_spec("watchdog") is not None;
-            if not watchdog_preinstalled {
-                assert found_watchdog , (
-                    f"Expected watchdog auto-install message in output, but got: {output}"
-                );
-            }
-            assert found_compilation , (
-                f"Expected 'Initial client compilation completed' in output, but got: {output}"
-            );
+            assert "Server ready" in output , output;
+            assert output.index("Compiling client and native artifacts")
+                < output.index("Initializing application")
+                < output.index("Server ready") , output;
         } finally {
-            os.chdir(original_cwd);
+            process.send_signal(signal.SIGINT);
+            try {
+                process.`wait(timeout=15);
+            } except subprocess.TimeoutExpired {
+                process.kill();
+                process.`wait();
+            }
         }
     }
 }
