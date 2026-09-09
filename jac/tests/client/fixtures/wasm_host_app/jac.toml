@@ -1,4 +1,5 @@
 [project]
+kind = "web-app"
 name = "wasm_host_app"
 version = "1.0.0"
 description = "Regression fixture: client imports @jac/wasm_host (issue #7189)"

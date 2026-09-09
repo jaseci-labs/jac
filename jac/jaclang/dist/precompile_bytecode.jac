@@ -561,6 +561,69 @@ def collect_payloads(pkg_path: Path) -> dict[str, str] {
     return payloads;
 }
 
+def seal_runtime_closure(pkg_path: Path, out_dir: Path, embed_src: bool) -> bool {
+    import from jaclang.compiler.backends.py.artifact_imports { runtime_sources }
+    import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
+    base = str(pkg_path.resolve());
+    sources = sealable_sources(base);
+    pending = list(out_dir.rglob("*.jir"));
+    visited: set[str] = set();
+
+    def add_dependency(dependency: str) -> bool {
+        relative = Path(dependency).relative_to(pkg_path);
+        target = out_dir / relative.with_suffix(".jir");
+        if not target.is_file() {
+            console.print(f"  Sealing runtime dependency: {relative}");
+            data = precompile_unit(dependency, base, embed_src);
+            if data is None {
+                console.error(f"Seal aborted: runtime dependency failed: {dependency}");
+                return False;
+            }
+            target.parent.mkdir(parents=True, exist_ok=True);
+            target.write_bytes(data);
+        }
+        if dependency not in sources {
+            sources.append(dependency);
+        }
+        _placement_cache.setdefault(base, {}).setdefault(dependency, set()).add(
+            "server"
+        );
+        if dependency not in visited {
+            pending.append(target);
+        }
+        return True;
+    }
+
+    serving = pkg_path / SERVE_MANIFEST_REL;
+    if serving.is_file() {
+        for binding in json.loads(serving.read_text()).get("cross_bindings", []) {
+            if not add_dependency(str((pkg_path / binding["src"]).resolve())) {
+                return False;
+            }
+        }
+    }
+    while pending {
+        artifact = pending.pop();
+        source = str(pkg_path / artifact.relative_to(out_dir).with_suffix(".jac"));
+        if source in visited {
+            continue;
+        }
+        visited.add(source);
+        bytecode = read_section_bytes(artifact.read_bytes(), SEC_BYTECODE);
+        if bytecode is None {
+            console.error(f"Seal aborted: no bytecode in {artifact}");
+            return False;
+        }
+        for dependency in runtime_sources(marshal.loads(bytecode), source, base) {
+            if not add_dependency(dependency) {
+                return False;
+            }
+        }
+    }
+    return True;
+}
+
+
 def seal_finalize(
     pkg_path: Path,
     precompiled_dir: Path,
@@ -590,6 +653,11 @@ def seal_finalize(
             f"JIR format drift: jir.jac writes {writes} but sealed.py "
             f"reads {reads}. Update jaclang/jac0core/sealed.py."
         );
+        return 1;
+    }
+
+    if pkg_name != "jaclang"
+        and not seal_runtime_closure(pkg_path, precompiled_dir / pyver, embed_src) {
         return 1;
     }
 

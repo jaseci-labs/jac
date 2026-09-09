@@ -1,4 +1,5 @@
 [project]
+kind = "web-app"
 name = "fullstack"
 version = "1.0.0"
 description = "Jac fullstack application: fullstack"

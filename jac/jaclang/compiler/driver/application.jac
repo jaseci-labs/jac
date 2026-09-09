@@ -193,6 +193,14 @@ def _prepare_sealed(
         patch_co_filenames_bytes
     }
     import from jaclang.compiler.backends.py.artifact_imports { runtime_sources }
+    import from jaclang.jac0core.sealed { image_for_bundle_dir, register_image }
+    bundle_dir = Path(image_root) / '_precompiled';
+    if image_for_bundle_dir(bundle_dir) is None
+        and register_image(bundle_dir) is None {
+        raise RuntimeError(
+            f'Sealed application has no artifact manifest: {image_root}'
+        );
+    }
     manifest = json.loads((Path(image_root) / SERVE_MANIFEST_REL).read_text());
     manifest['root'] = image_root;
     revision = PreparedApplication(

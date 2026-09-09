@@ -14,7 +14,11 @@ Programmatic servers must prepare their source application before loading it.
 `JacTestClient` and the in-process scale host perform preparation themselves.
 Sealed applications load their executable closure, native sections, serving
 manifest, and client distribution directly from the image. They never enter
-source analysis or rebuild their client bundle at startup.
+source analysis or rebuild their client bundle at startup. Sealing follows both
+bytecode imports and serving exports so shared server dependencies are included
+even when placement also assigns them to the client. Deployment bundles bake
+the serving manifest before sealing; extracted images are registered and verified
+before preparation reads their artifacts.
 
 The coordinator, executable-import discovery, and runtime revision record are
 Jac modules. The Python import hook reads the revision registry only after that

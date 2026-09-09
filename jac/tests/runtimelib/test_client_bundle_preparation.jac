@@ -21,7 +21,7 @@ test "a failed production client build prevents initialization and a corrected r
         source.write_text(
             'import from pathlib { Path }\n'
                 + 'with entry { Path("initialized").write_text("yes"); }\n'
-                + 'import cl from "totally-not-a-real-package-7998" { boom }\n'
+                + 'import from "totally-not-a-real-package-7998" { boom }\n'
                 + 'def:pub app -> JsxElement { return <div>{boom()}</div>; }\n'
         );
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock {

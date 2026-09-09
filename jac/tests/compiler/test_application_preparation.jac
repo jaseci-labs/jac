@@ -147,6 +147,9 @@ test "runtime logs and toolchain directories do not become application inputs" {
 
 test "sealed preparation consumes baked artifacts without compiling retained source" {
     import json;
+    import hashlib;
+    import from jaclang.jac0core { sealed }
+    images_before = list(sealed._images);
     import from jaclang.compiler.driver.jir { get_module_cache_path }
     import from jaclang.server.sealed_serve { client_dist_for }
     with tempfile.TemporaryDirectory(prefix='jac-prepared-sealed-') as tmp {
@@ -157,9 +160,26 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
             first = prepare_application(str(path), JacProgram(), tmp);
             data = get_module_cache_path(str(path)).read_bytes();
             forget(str(path));
-            (base / '_precompiled').mkdir();
-            (base / '_precompiled' / 'MANIFEST.json').write_text(
-                json.dumps({'modules': {'sealed_app.jac': {}}})
+            bundle = base / '_precompiled';
+            (bundle / sealed.python_tag()).mkdir(parents=True);
+            (bundle / sealed.python_tag() / 'sealed_app.jir').write_bytes(data);
+            (bundle / 'MANIFEST.json').write_text(
+                json.dumps(
+                    {
+                        'format': sealed.MANIFEST_FORMAT,
+                        'python_tag': sealed.python_tag(),
+                        'jir_format_version': sealed.JIR_FORMAT_VERSION,
+                        'package': 'prepared_sealed_test',
+                        'modules': {
+                            'sealed_app.jac': {
+                                'module': 'prepared_sealed_test.sealed_app',
+                                'jir': 'sealed_app.jir',
+                                'package': False,
+                                'sha256': hashlib.sha256(data).hexdigest()
+                            }
+                        }
+                    }
+                )
             );
             (base / '.jac' / 'serve_manifest.json').write_text(
                 json.dumps(first.manifests[str(path)])
@@ -169,8 +189,6 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
             (dist / 'arena.wasm').write_bytes(b'baked wasm');
             path.write_text('retained source must never be analyzed');
             with patch.object(
-                JacCompiler, '_sealed_jir_data', return_value=(data, tmp)
-            ), patch.object(
                 JacCompiler,
                 '_compile_pipeline',
                 side_effect=AssertionError('sealed source was compiled')
@@ -185,10 +203,12 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 module: any = initialize_application(prepared);
             }
             assert module.hello() == 'sealed';
+            assert sealed.image_for_bundle_dir(bundle) is not None;
             assert prepared.client_compiler is None;
             assert client_dist_for(str(path)) == dist;
             assert (dist / 'arena.wasm').read_bytes() == b'baked wasm';
         } finally {
+            sealed._images[:] = images_before;
             forget(str(path));
         }
     }
