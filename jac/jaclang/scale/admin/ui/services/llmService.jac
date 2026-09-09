@@ -33,7 +33,7 @@ async def:pub getLLMTraces(
 
 async def:pub getLLMTraceDetail(token: str, invocationId: str) -> dict {
     return await get(
-        "/admin/llm/telemetry/traces/" + encodeURIComponent(invocationId), token
+        f"/admin/llm/telemetry/traces/{encodeURIComponent(invocationId)}", token
     );
 }
 

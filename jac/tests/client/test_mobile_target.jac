@@ -468,9 +468,16 @@ test "react native scaffold writes Expo project files" {
         assert '"strict": false' in tsconfig_content;
         assert '"strict": true' not in tsconfig_content;
         app_json = (rn_dir / "app.json").read_text();
-        # D8: New Architecture + Hermes from day one.
-        assert "newArchEnabled" in app_json;
-        assert "hermes" in app_json;
+        # D8 (New Architecture + Hermes from day one) is now the only way an
+        # Expo app can be built, so SDK 57 removed both keys from the config
+        # schema and `expo-doctor` fails a project that still declares them.
+        # The intent is unchanged; stating it in app.json is now the error.
+        assert "newArchEnabled" not in app_json , (
+            "SDK 57 removed newArchEnabled from the Expo config schema"
+        );
+        assert "jsEngine" not in app_json , (
+            "SDK 57 removed jsEngine from the Expo config schema"
+        );
     }
 }
 
@@ -1715,6 +1722,50 @@ test "react native scaffold writes eas.json with build and update profiles" {
             f"cli.version must not derive from EXPO_SDK_VERSION (got '{cli_version}'); "
             "EAS CLI is versioned independently of the Expo SDK"
         );
+    }
+}
+
+test "the scaffold's expo packages all track the SDK the scaffold pins" {
+    # Since SDK 57 Expo versions its own packages with the SDK major, so a
+    # half-landed bump reads as a working scaffold: `expo` says 57 while
+    # `expo-asset` still says 12, and the mismatch only surfaces on a user's
+    # machine as a metro resolution error. Presence assertions above cannot
+    # see it, because the package is still there. Pin the majors instead.
+    import tempfile;
+    import json;
+    import from jaclang.client.targets.react_native.scaffold { write_expo_scaffold }
+    import from jaclang.client.targets.react_native.common { EXPO_SDK_VERSION }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        project_root = Path(tmp);
+        rn_dir = project_root / "mobile-rn";
+        write_expo_scaffold(rn_dir, project_root);
+        pkg = json.loads((rn_dir / "package.json").read_text(encoding="utf-8"));
+        deps = pkg["dependencies"];
+        sdk = str(EXPO_SDK_VERSION);
+        assert deps["expo"] == f"~{sdk}.0.0" , (
+            f"expo must track EXPO_SDK_VERSION, got '{deps['expo']}'"
+        );
+        assert pkg["devDependencies"]["babel-preset-expo"] == f"~{sdk}.0.0" , (
+            "babel-preset-expo must track EXPO_SDK_VERSION"
+        );
+        # Every expo-owned package the scaffold pins by hand. react-native and
+        # the community packages are versioned on their own lines and are
+        # deliberately not checked here.
+        for name in [
+            "expo-asset",
+            "expo-constants",
+            "expo-secure-store",
+            "expo-status-bar"
+        ] {
+            assert name in deps , f"scaffold must pin {name}";
+            assert deps[name].startswith(f"~{sdk}.") , (
+                f"{name} is '{deps[name]}', which is not an SDK {sdk} release. "
+                "Expo versions its packages with the SDK major; run "
+                "`expo install --check` against a scaffolded app and copy the "
+                "versions it reports."
+            );
+        }
     }
 }
 

@@ -487,10 +487,20 @@ def classify_client_import_item(
         return ClientImportVerdict.CLIENT;
     }
     if isinstance(owner, uni.Ability) {
+        consumer = item.find_parent_of_type(uni.Module);
+        provider_app = consumer_owner_app(source_mod);
+        authenticated_endpoint = (
+            owner.access is not None
+            and owner.access.tag.name in (Tok.KW_PRIV, Tok.KW_PROT)
+            and consumer is not None
+            and bool(provider_app)
+            and consumer_owner_app(consumer) == provider_app
+            and same_workspace(consumer.loc.mod_path, source_mod.loc.mod_path)
+        );
         if (
             not owner.is_method
             and owner.access is not None
-            and owner.access.tag.name == Tok.KW_PUB
+            and (owner.access.tag.name == Tok.KW_PUB or authenticated_endpoint)
         ) {
             return ClientImportVerdict.BRIDGED;
         }

@@ -6,4 +6,3 @@
 "test_closures.test_all_closures" = "client"
 "crossbound_server" = "server"
 "failload_server" = "server"
-"serve_api.greet" = "server"
