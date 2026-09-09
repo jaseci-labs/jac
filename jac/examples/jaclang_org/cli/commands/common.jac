@@ -42,25 +42,3 @@ def explain_bridge_error(e: BridgeError) -> int {
     warn("jacorg: " + where + " failed" + _suffix(e.detail));
     return EXIT_FAILURE;
 }
-
-def field_of(raw: object, name: str) -> object {
-    if isinstance(raw, dict) {
-        return raw.get(name);
-    }
-    return getattr(raw, name, None);
-}
-
-def str_field(raw: object, name: str) -> str {
-    v = field_of(raw, name);
-    return "" if v is None else str(v);
-}
-
-def int_field(raw: object, name: str) -> int {
-    v = field_of(raw, name);
-    return v if isinstance(v, int) else 0;
-}
-
-def list_field(raw: object, name: str) -> list[object] {
-    v = field_of(raw, name);
-    return list(v) if isinstance(v, list) else [];
-}

@@ -1,5 +1,5 @@
 import os;
-import from dataclasses { MISSING }
+import from jaclang.runtime.object_model { MISSING }
 import from typing { cast }
 import from uuid { UUID }
 

@@ -1,6 +1,6 @@
 """Field-less archetypes keep the constructor of a special base (#8030 B1).
 
-make_archetype applies dataclass() to every archetype; for a class that
+make_archetype installs Jac field semantics on every archetype; for a class that
 declares no fields of its own that must not synthesize a zero-arg
 __init__ that shadows an inherited constructor (builtin bases, classes
 with explicit init). Mirrors the jac0 bootstrap's no-fields -> init=False
@@ -34,7 +34,7 @@ test "field-less obj without bases still constructs zero-arg" {
 }
 
 
-test "obj with fields keeps its dataclass constructor" {
+test "obj with fields keeps its generated constructor" {
     w = WithField(n=3);
     assert w.n == 3;
 }

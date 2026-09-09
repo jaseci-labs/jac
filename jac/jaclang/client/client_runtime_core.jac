@@ -1,3 +1,19 @@
+import from jaclang.client.auth_contract { SignupResult }
+import from jaclang.client.endpoint_cache {
+    __endpointKey,
+    __getEndpointEffects as cache___getEndpointEffects,
+    __getCacheState as cache___getCacheState,
+    __isFresh as cache___isFresh,
+    __cacheGet as cache___cacheGet,
+    __cacheSet as cache___cacheSet,
+    __evictOldest as cache___evictOldest,
+    __overlaps as cache___overlaps,
+    __invalidateEndpoint as cache___invalidateEndpoint,
+    __cachedEndpointCall as cache___cachedEndpointCall,
+    __invalidateEffects as cache___invalidateEffects,
+    __jacClearCache as cache___jacClearCache
+}
+
 obj:pub BridgeError(Exception) {
     has app: str = "",
         name: str = "",
@@ -48,7 +64,7 @@ async def:pub jacSignup(
     identities_or_username: (str | list),
     credential_or_password: (str | dict),
     profile: (dict | None) = None
-) -> dict;
+) -> SignupResult;
 
 async def:pub jacLogin(
     identity_or_username: (str | dict), credential_or_password: (str | dict)
@@ -95,6 +111,7 @@ async def:pub __cachedEndpointCall(
     endpoint_key: str, args_key: str, fetch_fn: any
 ) -> any;
 
+def:pub __invalidateEffects(writes: list[str]) -> None;
 def:pub __invalidateEndpoint(endpoint_key: str) -> None;
 def:pub __overlaps(list1: list[str], list2: list[str]) -> bool;
 

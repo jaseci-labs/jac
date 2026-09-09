@@ -1,8 +1,7 @@
-"""Step-2 gate of the fat-descriptor string migration (#7870): the JacStr
-descriptor exists and every str crossing of the clib ABI membrane goes
-through the wrap/unwrap shims (header-aware wrap outbound, raw-strlen
-wrap inbound) while core ops still traffic in i8*. Behavior stays
-byte-identical across gc modes."""
+"""String ABI conversions preserve content and ownership across memory modes.
+
+Outgoing values expose a NUL-terminated C view. Incoming strings are copied
+into Jac-owned storage before temporary arguments or foreign owners expire."""
 
 import os;
 import subprocess;
@@ -20,11 +19,11 @@ glob FIXTURE = os.path.join(
          "fixtures",
          "clib_str_membrane.jac"
      ),
-     EXPECTED = "0\nTrue\nllo\nend\n",
+     EXPECTED = "0\nTrue\nllo\npha\nend\n",
      MODE_FLAGS = {
-         "none": ["--enforce-nogc", "--gc", "none", "--assert-no-rc"],
-         "rc": ["--gc", "rc"],
-         "cycles": ["--gc", "cycles"]
+         "none": ["--memory", "nogc"],
+         "rc": ["--memory", "rc"],
+         "cycles": ["--memory", "managed"]
      };
 
 def _compile_ir(gc_mode: str, enforce: bool) -> str {
@@ -54,7 +53,7 @@ test "membrane output is byte-identical across gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"csm_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "nacompile", FIXTURE]
+                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

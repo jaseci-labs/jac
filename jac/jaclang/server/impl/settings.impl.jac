@@ -231,6 +231,9 @@ impl ServeSettings.load(
             secret=env_value('AUTH_SECRET') or cfg.auth.secret,
             algorithm=env_value('AUTH_ALGORITHM') or cfg.auth.algorithm,
             token_ttl_days=env_int('AUTH_TOKEN_TTL_DAYS', cfg.auth.token_ttl_days),
+            registration_challenge=cfg.auth.registration_challenge,
+            registration_attempts_per_hour=cfg.auth.registration_attempts_per_hour,
+            registration_challenges_per_10_minutes=cfg.auth.registration_challenges_per_10_minutes,
             password_hash_cost=max(
                 10,
                 min(17, env_int('AUTH_PASSWORD_HASH_COST', cfg.auth.password_hash_cost))

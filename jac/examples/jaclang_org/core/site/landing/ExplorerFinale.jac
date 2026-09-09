@@ -7,8 +7,11 @@ import from "@jac/runtime" { Link }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" {
     GlobeIcon,
-    CloudServerIcon,
-    CpuIcon,
+    SmartPhone01Icon,
+    ComputerIcon,
+    CommandLineIcon,
+    UserGroupIcon,
+    ChartHistogramIcon,
     StarIcon,
     Book02Icon,
     BookOpen01Icon,
@@ -18,7 +21,7 @@ import from "@hugeicons/core-free-icons" {
 glob BOOK_URL: str = "https://doi.org/10.5281/zenodo.21464040",
      RUN_LINES: list[str] = ["jac create mysite --awesome", "cd mysite", "jac run"];
 
-def:pub CodespaceCard(icon: any, tag: str, title: str, body: str) -> JsxElement {
+def:pub WorkspaceAppCard(icon: any, tag: str, title: str, body: str) -> JsxElement {
     return
         <div
             className="flex items-start gap-4 rounded-xl border border-border/70 bg-card/40 pt-5 pb-5 pl-5 pr-5"
@@ -59,32 +62,52 @@ def:pub ExplorerFinale -> JsxElement {
                         <h2
                             className="text-balance text-3xl font-bold tracking-tight sm:text-4xl"
                         >
-                            You just watched this whole codebase run.
+                            One Program. One codebase. Six distinct apps.
                         </h2>
                         <p className="mt-4 text-balance text-lg text-muted-foreground">
-                            The explorer that followed you down the page holds the entire site — every layer of what you just used, in one program.
+                            Explore the full workspace behind this site: four ways to use it and two services, all sharing the same Jac core.
                         </p>
                     </div>
                 </Reveal>
                 <Reveal delay={100}>
-                    <div className="mt-12 grid grid-cols-1 gap-4 lg:grid-cols-3">
-                        <CodespaceCard
+                    <div
+                        className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+                    >
+                        <WorkspaceAppCard
                             icon={GlobeIcon}
-                            tag="cl"
-                            title="JavaScript, in your browser"
-                            body="This page — the carousels, the floating explorer, the docs reader — compiled from Jac to the React app running in front of you right now."
+                            tag="web"
+                            title="The website"
+                            body="The site in front of you: live docs, the source explorer, JacYac, Ninja Scores, and the WebAssembly rocket arena."
                         />
-                        <CodespaceCard
-                            icon={CloudServerIcon}
-                            tag="sv"
-                            title="Python bytecode, in the cloud"
-                            body="The walkers serving the docs graph and this live source view — the backend you've been calling on every scroll."
+                        <WorkspaceAppCard
+                            icon={SmartPhone01Icon}
+                            tag="mobile"
+                            title="JacYac on your phone"
+                            body="A mobUI app for the JacYac feed, profiles, channels, and Ninja Scores, built on the same social graph and scoring core."
                         />
-                        <CodespaceCard
-                            icon={CpuIcon}
-                            tag="na"
-                            title="Native code, via LLVM"
-                            body="The rocket arena — machine code from the same backend Rust, Zig, C, C++, Swift & Mojo use, running here as WebAssembly."
+                        <WorkspaceAppCard
+                            icon={CommandLineIcon}
+                            tag="cli"
+                            title="The command line"
+                            body="Score repositories, read and post to JacYac, and sync or inspect the docs graph from your terminal."
+                        />
+                        <WorkspaceAppCard
+                            icon={ComputerIcon}
+                            tag="desktop"
+                            title="The desktop app"
+                            body="The same site in an OS webview, connected to jaclang.org for its live backend."
+                        />
+                        <WorkspaceAppCard
+                            icon={UserGroupIcon}
+                            tag="social_graph"
+                            title="The social service"
+                            body="Profiles, follows, posts, comments, and channels live in a persistent graph, explored and updated by Jac walkers."
+                        />
+                        <WorkspaceAppCard
+                            icon={ChartHistogramIcon}
+                            tag="scoring"
+                            title="The scoring service"
+                            body="Analyze GitHub codebases, calculate Ninja Scores and belts, and add optional AI insights to the reports."
                         />
                     </div>
                 </Reveal>
@@ -95,7 +118,7 @@ def:pub ExplorerFinale -> JsxElement {
                     <p
                         className="mt-4 text-center font-mono text-xs text-muted-foreground"
                     >
-                        the whole thing · one program · zero glue
+                        six apps · one shared core · all Jac
                     </p>
                     <div className="mx-auto mt-10 max-w-xl text-center">
                         <p className="text-balance text-muted-foreground">

@@ -411,7 +411,7 @@ class ClassDef:
     bases: str = ""
     body: list = field(default_factory=list)
     decorators: list = field(default_factory=list)
-    is_dataclass: bool = False
+    is_object: bool = False
     arch_kind: str = ""
 
 
@@ -442,6 +442,7 @@ class FuncDef:
     is_static: bool = False
     is_classmethod: bool = False
     is_async: bool = False
+    is_abstract: bool = False
     event: str = ""
     trigger: str = ""
 
@@ -950,6 +951,30 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
                     break
             j += 1
         inner = tokens[i + 1 : j]
+        if len(inner) >= 2 and inner[0].value == "?" and inner[1].type == TT.COLON:
+            type_tokens = inner[2:]
+            if not type_tokens or any(
+                t.type != (TT.NAME if n % 2 == 0 else TT.DOT)
+                for n, t in enumerate(type_tokens)
+            ) or len(type_tokens) % 2 == 0:
+                raise ParseError(f"line {tok.line}: seed type filters require a type name")
+            origin = _pop_primary_expr(out)
+            if not origin:
+                raise ParseError(f"line {tok.line}: type filter needs an iterable")
+            item = "_jac_seed_filter_item"
+            names = {t.value for t in tokens if t.type == TT.NAME}
+            while item in names:
+                item += "_"
+            out.extend([
+                _tok(TT.LBRACKET, "[", tok), _tok(TT.NAME, item, tok),
+                _tok(TT.NAME, "for", tok), _tok(TT.NAME, item, tok),
+                _tok(TT.NAME, "in", tok), *origin, _tok(TT.NAME, "if", tok),
+                _tok(TT.NAME, "isinstance", tok), _tok(TT.LPAREN, "(", tok),
+                _tok(TT.NAME, item, tok), _tok(TT.COMMA, ",", tok), *type_tokens,
+                _tok(TT.RPAREN, ")", tok), _tok(TT.RBRACKET, "]", tok),
+            ])
+            i = j + 1
+            continue
         edges_only = False
         if inner and inner[0].type == TT.NAME and inner[0].value == "edge" and not inner[0].backtick:
             edges_only = True
@@ -1239,7 +1264,7 @@ def transform_tokens(tokens: list[Token]) -> list[Token]:
                     "postinit": "__post_init__",
                     "init_subclass": "__init_subclass__",
                 }
-                if mname in dunder_map:
+                if not tokens[i + 2].backtick and mname in dunder_map:
                     out.append(tokens[i + 1])  # DOT
                     out.append(
                         Token(
@@ -1340,7 +1365,7 @@ def transform_tokens(tokens: list[Token]) -> list[Token]:
             continue
 
         # === .init → .__init__  (general dunder method name conversion) ===
-        if tok.type == TT.NAME and out and out[-1].type == TT.DOT:
+        if tok.type == TT.NAME and not tok.backtick and out and out[-1].type == TT.DOT:
             dunder_map = {
                 "init": "__init__",
                 "postinit": "__post_init__",
@@ -1763,7 +1788,7 @@ class Parser:
             bases=bases,
             body=body,
             decorators=decorators,
-            is_dataclass=is_dc,
+            is_object=is_dc,
             arch_kind=arch_kind,
         )
 
@@ -1890,8 +1915,12 @@ class Parser:
         event, trigger = self._parse_event_clause()
         return_type = ""
         if self._match(TT.ARROW):
-            return_type = self._collect_type()
-        if self._match(TT.SEMI):
+            return_type = self._collect_type(stop_names={"abst"})
+        is_abstract = bool(self._match(TT.NAME, "abst"))
+        if is_abstract:
+            self._expect(TT.SEMI)
+            body = [PassStmt()]
+        elif self._match(TT.SEMI):
             body = [PassStmt()]
         else:
             self._expect(TT.LBRACE)
@@ -1906,6 +1935,7 @@ class Parser:
             is_static=is_static,
             is_classmethod=is_classmethod,
             is_async=is_async,
+            is_abstract=is_abstract,
             event=event,
             trigger=trigger,
         )
@@ -2360,7 +2390,7 @@ class CodeGen:
     def __init__(self) -> None:
         self.lines: list[str] = []
         self.indent = 0
-        self.needs_dataclass_import = False
+        self.needs_object_model_import = False
         self.needs_enum_import = False
         self.needs_typing_import = False
         self.impl_registry: dict[str, list[ImplDef]] = {}
@@ -2391,8 +2421,8 @@ class CodeGen:
     def generate(self, module: Module) -> str:
         self._scan_needs(module.body)
         self._line("from __future__ import annotations")
-        if self.needs_dataclass_import:
-            self._line("from dataclasses import dataclass, field")
+        if self.needs_object_model_import:
+            self._line("from jaclang.runtime.object_model import make_object as _jac_make_object, field")
         if self.needs_enum_import:
             self._line("import enum")
         if self.needs_typing_import:
@@ -2405,15 +2435,15 @@ class CodeGen:
             self.lines.insert(1, "import jaclang.jac0core.osp0 as _jac_osp")
         if any("ClassVar[" in ln for ln in self.lines[header_len:]):
             self.lines.insert(1, "from typing import ClassVar")
+        if any("_jac_abc." in ln for ln in self.lines[header_len:]):
+            self.lines.insert(1, "import abc as _jac_abc")
         return "\n".join(self.lines) + "\n"
 
     def _scan_needs(self, body: list) -> None:
         for node in body:
             if isinstance(node, ClassDef):
-                if node.is_dataclass:
-                    has_dc = any("dataclass" in d for d in node.decorators)
-                    if not has_dc:
-                        self.needs_dataclass_import = True
+                if node.is_object:
+                    self.needs_object_model_import = True
                 self._scan_needs(node.body)
             elif isinstance(node, EnumDef):
                 if not node.bases or node.value_type:
@@ -2529,47 +2559,17 @@ class CodeGen:
     def _emit_class(self, node: ClassDef) -> None:
         for dec in node.decorators:
             self._line(f"@{dec}")
-        # node/edge/walker: the runtime's make_archetype (Archetype.__init_subclass__)
-        # applies dataclass(eq=False) itself, exactly as for full-compiler output;
-        # a second application would clash with the fields it injects.
-        if node.is_dataclass and not node.arch_kind:
-            has_dc = any("dataclass" in d for d in node.decorators)
-            if not has_dc:
-                # Check if the class has 'has' fields. Property-only `has`
-                # declarations (accessor blocks) are not dataclass fields, so a
-                # class whose only `has` is a property must keep its inherited
-                # __init__ rather than getting an arg-less generated one.
-                has_fields = any(
-                    isinstance(n, HasDecl) and any(not v.accessors for v in n.vars)
-                    for n in node.body
-                )
-                # Check if the class has a manual __init__ (def init)
-                impls = self.impl_registry.get(node.name, [])
-                has_init = any(
-                    isinstance(n, FuncDef) and n.name in ("init", "__init__")
-                    for n in node.body
-                ) or any(
-                    i.target.endswith(".init") or i.target.endswith(".__init__")
-                    for i in impls
-                )
-                if has_fields and not has_init:
-                    # Class uses has fields with dataclass-generated __init__
-                    # Use kw_only=True when class has parents to avoid
-                    # field ordering issues (child required fields after
-                    # parent defaulted fields)
-                    if node.bases:
-                        self._line("@dataclass(eq=False, repr=False, kw_only=True)")
-                    else:
-                        self._line("@dataclass(eq=False, repr=False)")
-                else:
-                    # Suppress dataclass __init__ to preserve manual
-                    # or inherited __init__
-                    self._line("@dataclass(eq=False, repr=False, init=False)")
+        # Nodes, edges and walkers use the runtime subclass hook. Plain Jac
+        # objects use the same model directly during seed bootstrapping.
+        if node.is_object and not node.arch_kind:
+            self._line("@_jac_make_object")
         tp_str = f"[{node.type_params}]" if node.type_params else ""
         bases = node.bases
         if node.arch_kind:
             arch_base = "_jac_osp." + node.arch_kind.capitalize()
             bases = f"{bases}, {arch_base}" if bases else arch_base
+        if any(isinstance(member, FuncDef) and member.is_abstract for member in node.body):
+            bases = f"{bases}, _jac_abc.ABC" if bases else "_jac_abc.ABC"
         base_str = f"({bases})" if bases else ""
         self._line(f"class {node.name}{tp_str}{base_str}:")
         self.indent += 1
@@ -2699,6 +2699,8 @@ class CodeGen:
             self._line("@classmethod")
         if node.is_static:
             self._line("@staticmethod")
+        if node.is_abstract:
+            self._line("@_jac_abc.abstractmethod")
         _dunder_names = {"init": "__init__", "postinit": "__post_init__"}
         name = _dunder_names.get(node.name, node.name)
         func_params = list(node.params)

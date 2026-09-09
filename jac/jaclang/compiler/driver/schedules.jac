@@ -3,6 +3,7 @@ import from contextvars { ContextVar }
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
+import from jaclang.compiler.passes.graph_lowering_pass { GraphLoweringPass }
 import from jaclang.compiler.passes.boundary_analysis_pass { BoundaryAnalysisPass }
 import from jaclang.compiler.passes.decl_impl_match_pass { DeclImplMatchPass }
 import from jaclang.compiler.passes.endpoint_effect_pass { EndpointEffectPass }
@@ -24,7 +25,13 @@ def get_symtab_ir_sched -> list[type[Transform]] {
         }
     }
     return validate_schedule(
-        [ASTValidationPass, SymTabBuildPass, DeclImplMatchPass, PlacementApplyPass],
+        [
+            GraphLoweringPass,
+            ASTValidationPass,
+            SymTabBuildPass,
+            DeclImplMatchPass,
+            PlacementApplyPass
+        ],
         origin='symtab-ir schedule'
     );
 }
@@ -38,6 +45,7 @@ glob SYMTAB_SCHED_DEPS: tuple = ('jaclang.compiler.symbol_utils', ),
          'jaclang.compiler.symbol_utils',
          'jaclang.compiler.expr_keys',
          'jaclang.compiler.type_registry',
+         'jaclang.compiler.field_semantics',
          'jaclang.compiler.intrinsic_registry',
          'jaclang.compiler.types.type_evaluator',
          'jaclang.compiler.types.stubcat.modiface',
@@ -51,6 +59,7 @@ glob SYMTAB_SCHED_DEPS: tuple = ('jaclang.compiler.symbol_utils', ),
          'jaclang.project.mobui_scope'
      ),
      ANALYSIS_SCHED_DEPS: tuple = (
+         'jaclang.compiler.field_semantics',
          'jaclang.compiler.passes.type_checker_pass',
          'jaclang.compiler.types.type_evaluator',
          'jaclang.compiler.passes.pyast_load_pass',
@@ -76,13 +85,11 @@ glob SYMTAB_SCHED_DEPS: tuple = ('jaclang.compiler.symbol_utils', ),
          'jaclang.compiler.tools.jac_auto_lint_pass'
      ),
      CODEGEN_SCHED_DEPS: tuple = (
+         'jaclang.compiler.passes.rc_facts_pass',
          'jaclang.compiler.backends.es',
          'jaclang.compiler.passes.freeze_structure_pass'
      ),
-     NATIVE_CODEGEN_DEPS: tuple = (
-         'jaclang.compiler.passes.rc_facts_pass',
-         'jaclang.compiler.backends.native'
-     );
+     NATIVE_CODEGEN_DEPS: tuple = ('jaclang.compiler.backends.native', );
 
 def module_in_flight(names: tuple) -> str {
     import sys;
@@ -180,7 +187,13 @@ def get_boundary_analysis_sched -> list[type[Transform]] {
 
 def get_bootstrap_ir_sched -> list[type[Transform]] {
     return validate_schedule(
-        [ASTValidationPass, SymTabBuildPass, DeclImplMatchPass, SemanticAnalysisPass],
+        [
+            GraphLoweringPass,
+            ASTValidationPass,
+            SymTabBuildPass,
+            DeclImplMatchPass,
+            SemanticAnalysisPass
+        ],
         origin='bootstrap-ir schedule'
     );
 }
@@ -201,6 +214,7 @@ def get_ir_gen_sched(
         }
 
         passes: list[type[Transform]] = [
+            GraphLoweringPass,
             ASTValidationPass,
             SymTabBuildPass,
             DeclImplMatchPass,
@@ -354,16 +368,16 @@ def get_py_code_gen(
     try {
         _import_all(CODEGEN_SCHED_DEPS);
         import from jaclang.compiler.backends.es { EsastGenPass }
+        import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
 
-        passes: list[type[Transform]] = [EsastGenPass];
+        passes: list[type[Transform]] = [RcFactsPass, EsastGenPass];
         if native {
             _import_all(NATIVE_CODEGEN_DEPS);
-            import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
             import from jaclang.compiler.backends.native {
                 NaIRGenPass,
                 NativeCompilePass
             }
-            passes.extend([RcFactsPass, NaIRGenPass, NativeCompilePass]);
+            passes.extend([NaIRGenPass, NativeCompilePass]);
             _note_native_schedule_failure(None);
         }
         passes.extend(_py_codegen_tail());
@@ -372,7 +386,9 @@ def get_py_code_gen(
         }
         passes.append(FreezeStructurePass);
         return validate_schedule(
-            passes, preprovided=provided, origin='codegen schedule'
+            passes,
+            preprovided={'CfgSucc'} if provided is None else provided,
+            origin='codegen schedule'
         );
     } except ImportError as e {
         fail_loud_on_compiler_source(e);

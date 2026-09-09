@@ -1,6 +1,5 @@
 import from core.site.ui.GraphBackdrop { GraphBackdrop }
 import from core.leaderboard.format { belt_class, belt_label }
-import from "@jac/runtime" { Link }
 import from core.site.ui.badge { Badge }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { ChampionIcon }
@@ -117,7 +116,7 @@ def:pub Section(title: str, total: str, blurb: str) -> JsxElement {
 
 def:pub Methodology -> JsxElement {
     return
-        <section className="relative overflow-hidden pt-28 pb-24">
+        <section className="relative overflow-hidden py-8">
             <div className="hero-glow absolute inset-0"></div>
             <GraphBackdrop/>
             <div className="relative mx-auto max-w-3xl pl-4 pr-4 sm:pl-6 sm:pr-6">
@@ -127,20 +126,15 @@ def:pub Methodology -> JsxElement {
                         strokeWidth={2}
                         className="size-3.5"
                     />
-                    Ninja Leaderboard
+                    Ninja Scores
                 </Badge>
-                <h1
-                    className="text-balance text-4xl font-bold tracking-tight sm:text-5xl"
-                >
+                <h2 className="text-balance text-2xl font-bold tracking-tight">
                     How the{" "}
                     <span className="text-gradient">score</span>{" "}
                     is earned
-                </h1>
+                </h2>
                 <p className="mt-4 text-muted-foreground">
                     Four categories, 100 points. Every repo is downloaded at a pinned commit and statically read — the code is never executed. Substance and breadth measure the Jac itself, craft measures project hygiene, and community is the one place popularity counts — capped at a fifth of the total, so code always outweighs clout.{" "}
-                    <Link to="/leaderboard" className="text-primary hover:underline">
-                        ← back to the board
-                    </Link>
                 </p>
                 <Section
                     title="Substance"

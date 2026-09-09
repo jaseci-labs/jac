@@ -487,6 +487,7 @@ def strip_css_imports(compiled_dir: Path) -> int {
 }
 
 def run_expo_prebuild(rn_dir: Path, platform: str = "android") {
+    import from jaclang.toolchains.javascript { build_environment }
     plat = str(platform or "android").strip().lower();
     if plat not in ["android", "ios"] {
         raise ValueError(
@@ -499,6 +500,7 @@ def run_expo_prebuild(rn_dir: Path, platform: str = "android") {
     subprocess.run(
         cmd,
         cwd=rn_dir,
+        env=build_environment(dict(os.environ)),
         check=True,
         capture_output=False,
         timeout=SUBPROCESS_TIMEOUT_BUILD
@@ -507,6 +509,11 @@ def run_expo_prebuild(rn_dir: Path, platform: str = "android") {
 }
 
 def run_gradle_assemble(rn_dir: Path, release: bool = False) -> Path {
+    import from jaclang.toolchains.android { ensure_android }
+    import from jaclang.toolchains.javascript { build_environment }
+    import from jaclang.toolchains.store { InstallLock, offline }
+    environment = build_environment(ensure_android().env());
+    environment.setdefault("NODE_ENV", "production" if release else "development");
     android_dir = rn_dir / "android";
     if not android_dir.exists() {
         raise RuntimeError(
@@ -528,20 +535,26 @@ def run_gradle_assemble(rn_dir: Path, release: bool = False) -> Path {
     }
 
     gradle_task = "assembleRelease" if release else "assembleDebug";
-    cmd = [str(gradlew), gradle_task];
+    cmd = [str(gradlew), gradle_task, "--no-daemon"];
+    if offline() {
+        cmd.append("--offline");
+    }
     console.print(f"  Running gradle: {' '.join(cmd)}", style="muted");
     console.print(
         "  (First build downloads Gradle + Android SDK components; "
         "can take 5–10 minutes.)",
         style="muted"
     );
-    subprocess.run(
-        cmd,
-        cwd=android_dir,
-        check=True,
-        capture_output=False,
-        timeout=SUBPROCESS_TIMEOUT_BUILD
-    );
+    with InstallLock(Path(environment["ANDROID_HOME"]) / ".jac-sdk.lock") {
+        subprocess.run(
+            cmd,
+            env=environment,
+            cwd=android_dir,
+            check=True,
+            capture_output=False,
+            timeout=SUBPROCESS_TIMEOUT_BUILD
+        );
+    }
 
     preferred = (
         android_dir
@@ -590,10 +603,34 @@ def run_xcodebuild_ios(
     if platform_mod.system() != "Darwin" {
         raise RuntimeError("iOS xcodebuild requires macOS with Xcode installed.");
     }
+    import from jaclang.toolchains.apple { ensure_apple }
+    import from jaclang.toolchains.javascript { build_environment }
+    import from jaclang.toolchains.host { run_step }
+    environment = build_environment(ensure_apple());
+    environment.setdefault("NODE_ENV", "production" if release else "development");
     ios_dir = rn_dir / "ios";
     if not ios_dir.exists() {
         raise RuntimeError(
             f"iOS project not found at {ios_dir}. Did expo prebuild fail?"
+        );
+    }
+    import from jaclang.toolchains.store { offline }
+    if offline() {
+        locked = ios_dir / "Podfile.lock";
+        installed = ios_dir / "Pods" / "Manifest.lock";
+        if not locked.is_file()
+            or not installed.is_file()
+            or locked.read_bytes() != installed.read_bytes() {
+            raise RuntimeError(
+                "iOS native dependencies are not ready offline. Build online first."
+            );
+        }
+    } else {
+        run_step(
+            "Installing iOS native dependencies",
+            ["pod", "install"],
+            ios_dir,
+            environment
         );
     }
     workspace = _find_first_workspace_or_project(ios_dir);
@@ -636,6 +673,7 @@ def run_xcodebuild_ios(
     subprocess.run(
         cmd,
         cwd=ios_dir,
+        env=environment,
         check=True,
         capture_output=False,
         timeout=SUBPROCESS_TIMEOUT_BUILD
@@ -679,10 +717,22 @@ def run_xcodebuild_ios(
 def run_eas_local_build(
     rn_dir: Path, platform: str, profile: str = "production", release: bool = True
 ) -> Path {
+    import from jaclang.toolchains.store { offline }
+    if offline() {
+        raise RuntimeError(
+            "EAS builds require network access; disable JAC_OFFLINE or use the native builder."
+        );
+    }
     plat = str(platform or "").strip().lower();
     if plat not in ["android", "ios"] {
         raise ValueError(f"Unsupported EAS platform '{platform}'");
     }
+    import from jaclang.toolchains.javascript { build_environment }
+    import from jaclang.toolchains.android { ensure_android }
+    import from jaclang.toolchains.apple { ensure_apple }
+    environment = build_environment(
+        ensure_android().env() if plat == "android" else ensure_apple()
+    );
     ext = ".ipa" if plat == "ios" else ".apk";
     mode = "release" if release else "debug";
     out_dir = rn_dir / "dist";
@@ -704,6 +754,7 @@ def run_eas_local_build(
     subprocess.run(
         cmd,
         cwd=rn_dir,
+        env=environment,
         check=True,
         capture_output=False,
         timeout=SUBPROCESS_TIMEOUT_BUILD

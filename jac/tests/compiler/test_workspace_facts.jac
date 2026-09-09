@@ -338,3 +338,51 @@ test "same-app and shared uses are not isolation diagnostics" {
         }
     }
 }
+
+
+test "a shared graph model follows its only service consumer across helper imports" {
+    with tempfile.TemporaryDirectory(prefix="jac-owner-closure-") as tmp {
+        _write(tmp, "jac.toml", WORKSPACE_TOML);
+        _write(
+            tmp,
+            "web/main.jac",
+            "import from core.social { count }\ndef:pub app -> JsxElement { return <div>{count()}</div>; }\n"
+        );
+        _write(
+            tmp,
+            "core/social.jac",
+            "import from core.repository { count_items }\ndef:pub count -> int { return count_items(); }\n"
+        );
+        _write(
+            tmp,
+            "core/repository.jac",
+            "import from core.model { Item }\ndef count_items -> int { root ++> Item(); return 1; }\n"
+        );
+        model = _write(tmp, "core/model.jac", "node Item { has label: str = \"\"; }\n");
+        (owner, ambiguous) = owner_app_for_path(model);
+        assert owner is not None;
+        assert owner.name == "social" and not ambiguous , (
+            "web reaches the service boundary, not the service's private graph model"
+        );
+    }
+}
+
+
+test "shared ownership and cache keys follow changes to app import roots" {
+    import from jaclang.compiler.driver.jir { module_env_fingerprint }
+    with tempfile.TemporaryDirectory(prefix="jac-owner-change-") as tmp {
+        files = _workspace(tmp);
+        _write(tmp, "core/social.jac", "import from core.store { Item }\n");
+        (owner, _) = owner_app_for_path(files["store"]);
+        assert owner is not None and owner.name == "social";
+        before = module_env_fingerprint(files["store"]);
+        _write(tmp, "web/new_page.jac", "import from core.store { Item }\n");
+        (shared, _) = owner_app_for_path(files["store"]);
+        assert shared is not None and shared.name == "web";
+        assert module_env_fingerprint(files["store"]) != before;
+        os.remove(os.path.join(tmp, "web/new_page.jac"));
+        (restored, _) = owner_app_for_path(files["store"]);
+        assert restored is not None and restored.name == "social";
+        assert module_env_fingerprint(files["store"]) == before;
+    }
+}

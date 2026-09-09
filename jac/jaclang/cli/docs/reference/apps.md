@@ -177,12 +177,17 @@ That app is the module's **owner**:
 - Otherwise, when the workspace has exactly one serving app, it owns every
   server-placed shared module implicitly. A `web` app plus a `mobile` app plus
   a `cli` app needs no service tables at all: `web` owns the server side.
-- When several apps serve, `[project] default-app` breaks the tie: the default
-  app is the implicit owner of every server-placed shared module that no
-  service app claims. In the flagship, `web` owns the docs graph and the
-  leaderboard while `social_graph` and `scoring` own their own entry files.
+- When several apps serve, a shared module reached by only one serving app
+  belongs to that app. Reachability follows Jac imports and annexes, stopping
+  at another app's boundary. Importing a service does not make its private
+  dependencies belong to the caller. In the flagship, the leaderboard graph
+  model belongs to `social_graph`, its only consuming service.
+- Otherwise, `[project] default-app` breaks the tie for shared modules with
+  multiple possible owners or no consumers. Explicit app ownership pins take
+  precedence over inferred ownership.
 - Two or more serving apps, no `default-app`, and a shared module that defines
-  walkers or node/edge archetypes with no explicit owner is **`E5107`**. Give the module its own `[apps.<name>]`
+  walkers or node/edge archetypes with neither an explicit owner nor a single
+  inferred consumer is **`E5107`**. Give the module its own `[apps.<name>]`
   table (`kind = "service"`, `entry-point = "<path>"`), or pin it to an owner
   with `[apps.<owner>.placement.pins] "<module>" = "server"`.
 
@@ -338,7 +343,7 @@ import from core.social_graph { create_tweet, load_feed }
 
 # awaited: the result comes back, failures raise
 walker:pub post_and_show {
-    can run with Root entry {
+    async can run with Root entry {
         posted = await create_tweet(content=self.text);   # runs on social_graph
         feed = await load_feed(limit=10);
         report feed.reports;

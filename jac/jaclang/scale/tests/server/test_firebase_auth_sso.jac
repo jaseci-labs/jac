@@ -211,6 +211,7 @@ test 'firebase token auth login existing user' {
     user_manager = auth.users;
     try {
         user_id = _create_existing_user(user_manager, 'user@example.com');
+        user_manager.link_sso_account(user_id, 'firebase', 'firebase-uid-123');
         mock_sso = MockFirebaseSSO(
             SSOUserInfo(
                 email='user@example.com',
@@ -265,7 +266,8 @@ test 'firebase token auth auto register new user' {
             token = result.data['token'];
             assert token;
             assert user_manager.validate_jwt_token(token) == user_id;
-            created = user_manager.find_user_by_identity('newuser@example.com');
+            assert user_manager.find_user_by_identity('newuser@example.com') is None;
+            created = user_manager.get_user(user_id);
             assert created is not None;
             assert created['user_id'] == user_id;
             assert created['profile']['sso']['firebase']['display_name'] == 'New User';
@@ -349,6 +351,7 @@ test 'firebase token endpoint http integration' {
         user_manager = client.server.user_manager;
         auth = _sso_of(client.server);
         user_id = _create_existing_user(user_manager, 'user@example.com');
+        user_manager.link_sso_account(user_id, 'firebase', 'firebase-uid-123');
         mock_sso = MockFirebaseSSO(
             SSOUserInfo(
                 email='user@example.com',

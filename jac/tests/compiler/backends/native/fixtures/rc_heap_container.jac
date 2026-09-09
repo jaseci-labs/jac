@@ -1,6 +1,6 @@
 """Heap-element containers must compile under every gc mode (issue #7466
 bug 3). Emitting the container's element-release helper re-entered
-_emit_rc_helpers under --gc rc / plain --gc none because the re-entry guard
+_emit_rc_helpers under --memory rc / plain --memory nogc because the re-entry guard
 checked a cycles-only global, so the RC debug globals were defined twice
 (DuplicatedNameError: __rc_debug)."""
 

@@ -11,6 +11,12 @@ import sys;
 import tempfile;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
+import from tests.compiler.backends.es.codegen_helpers {
+    compile_fixture_to_js,
+    compile_fixture_to_js_production,
+    _resolve_fixture_path,
+    _fatal_compile_errors
+}
 import jaclang;
 import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.es_unparse {
@@ -19,10 +25,7 @@ import from jaclang.compiler.backends.es.es_unparse {
     template_element_raw
 }
 import from jaclang.compiler.backends.es.primitives_es { ESDictEmitter, ESEmitCtx }
-import from jaclang.compiler.backends.es.estree { Node as EsNode }
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.compiler.driver.modresolver { convert_to_js_import_path }
-import from jaclang.compiler.passes.transform { Alert }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.pass_driver { run_pass }
 
@@ -30,8 +33,6 @@ glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
      ),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
-     _js_compile_cache: dict[str, str] = {},
-     _js_production_compile_cache: dict[str, str] = {},
      _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_js_");
 
 with entry {
@@ -48,74 +49,6 @@ def write_temp_jac(code: str) -> str {
         tmp.write(code);
         return tmp.name;
     }
-}
-
-"""Resolve a fixture name to an on-disk path."""
-def _resolve_fixture_path(fixture_name: str, fixture_dir: str = "") -> str {
-    fixture_path = fixture_name;
-    if not Path(fixture_path).exists() and fixture_dir {
-        fixture_path = os.path.join(fixture_dir, fixture_name);
-    }
-    return fixture_path;
-}
-
-"""Return compile errors that are not non-fatal TypeCheckPass diagnostics."""
-def _fatal_compile_errors(prog: JacProgram) -> list[Alert] {
-    # Filter out type-checker diagnostics (non-fatal warnings about
-    # Unknown types in client code).  Only fail on parse/compile errors.
-    # issubclass: diagnostics may come from TypeCheckPass itself or its
-    # TypeCheckPass schedule entry.
-    return [
-        e
-        for e in prog.errors_had
-        if not issubclass(e.from_pass, TypeCheckPass)
-    ];
-}
-
-"""Compile a Jac fixture to JavaScript and return the emitted source."""
-def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
-    fixture_path = _resolve_fixture_path(fixture_name, fixture_dir);
-    cache_key = os.path.abspath(fixture_path);
-    if cache_key in _js_compile_cache {
-        return _js_compile_cache[cache_key];
-    }
-    prog = JacProgram();
-    ir = prog.compile(file_path=fixture_path, no_cgen=True);
-    _fatal = _fatal_compile_errors(prog);
-    assert not _fatal , (
-        f"Compilation errors in {fixture_name}: {[str(e) for e in _fatal]}"
-    );
-
-    es_pass = run_pass(EsastGenPass, ir, prog);
-    es_ir = es_pass.ir_out;
-
-    assert hasattr(es_ir.gen, "es_ast") , "es_ast attribute missing";
-    es_ast = es_ir.gen.es_ast;
-    assert isinstance(es_ast, EsNode) , "es_ast should be an EsNode";
-
-    result = es_to_js(es_ast);
-    _js_compile_cache[cache_key] = result;
-    return result;
-}
-
-"""Compile a fixture through the normal production codegen path."""
-def compile_fixture_to_js_production(fixture_name: str, fixture_dir: str = "") -> str {
-    fixture_path = _resolve_fixture_path(fixture_name, fixture_dir);
-    cache_key = os.path.abspath(fixture_path);
-    if cache_key in _js_production_compile_cache {
-        return _js_production_compile_cache[cache_key];
-    }
-    prog = JacProgram();
-    ir = prog.compile(file_path=fixture_path);
-    _fatal = _fatal_compile_errors(prog);
-    assert not _fatal , (
-        f"Compilation errors in {fixture_name}: {[str(e) for e in _fatal]}"
-    );
-    assert ir.gen.js and ir.gen.js.strip() , (
-        f"Production JS codegen produced no output for {fixture_name}"
-    );
-    _js_production_compile_cache[cache_key] = ir.gen.js;
-    return ir.gen.js;
 }
 
 """Ensure generated JavaScript has balanced delimiters."""
@@ -437,11 +370,11 @@ test "category1 named imports generate correct js" {
         "import { helper } from \"./utils.js\";",
         "import { formatter as format } from \"../lib.js\";",
         "import { settings } from \"../../config.js\";",
-        "import { renderJsxTree, jacLogin, jacLogout } from \"@jac/runtime\";",
+        "import { jacLogin } from \"@jac/runtime\";",
 
     ];
     for pattern in imports {
-        assert pattern in js_code;
+        assert pattern in js_code , f"Missing {pattern}: {js_code}";
     }
 
     assert "function example_usage()" in js_code;
@@ -924,10 +857,11 @@ test "separated files" {
     # `input` is destructured from useState (external React typings) so its
     # static type is unknown — `.strip()` routes through the polymorphic
     # runtime dispatcher instead of leaking the Python method name.
-    # The walker lives in the `separated` service app, so the spawn also
-    # carries the provider's app and route after the fields object.
+    # This module is consumed only by `separated`, so shared ownership
+    # keeps the spawn within that app while retaining its boundary contract.
     assert (
-        "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.call(input, \"strip\")},"
+        "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.call(input, \"strip\")}, "
+            + "{\"contract\": \"[\\\"separated\\\",\\\"separated.jac\\\",\\\"walker\\\",\\\"create_todo\\\"]\"});"
         in js_code
     );
 }
@@ -976,7 +910,7 @@ test "bridged call kwargs preserve names in jac call function" {
     js_code = compile_fixture_to_js(fixture, FIXTURES);
 
     # Pure-kwargs single arg: ``greet(name=input_text)``
-    assert '__jacCallFunction("greet", {"name": __jacS_input_text.val})' in js_code , (
+    assert '__jacCallFunction("greet", {"name": __jacS_input_text.val},' in js_code , (
         "Single-kwarg call must propagate the name into the args object;\n"
         + "got:\n"
         + js_code
@@ -985,8 +919,8 @@ test "bridged call kwargs preserve names in jac call function" {
     # Pure-kwargs out-of-order: ``add_pair(b=2, a=1)`` — both keys must be
     # present in the args object regardless of source order.
     assert (
-        '__jacCallFunction("add_pair", {"b": 2, "a": 1})' in js_code
-        or '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code
+        '__jacCallFunction("add_pair", {"b": 2, "a": 1},' in js_code
+        or '__jacCallFunction("add_pair", {"a": 1, "b": 2},' in js_code
     ) , (
         "Kwargs-only call must include all kwarg keys in the args object;\n"
         + "got:\n"
@@ -995,7 +929,7 @@ test "bridged call kwargs preserve names in jac call function" {
 
     # Mixed positional + kwarg: ``add_pair(1, b=2)`` — first param mapped
     # by position to its server-side name, second carried by kwarg key.
-    assert '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code , (
+    assert '__jacCallFunction("add_pair", {"a": 1, "b": 2},' in js_code , (
         "Mixed positional/kwarg call must merge both into the args object;\n"
         + "got:\n"
         + js_code
@@ -1003,7 +937,7 @@ test "bridged call kwargs preserve names in jac call function" {
 
     # ``**dict`` spread against a known signature can lower to declared
     # parameter-key reads, avoiding the old single-object positional shape.
-    assert '__jacCallFunction("add_pair", {"a": kw["a"], "b": kw["b"]})' in js_code , (
+    assert '__jacCallFunction("add_pair", {"a": kw["a"], "b": kw["b"]},' in js_code , (
         "**dict spread against known signature must compile to keyed parameter reads;\n"
         + "got:\n"
         + js_code
@@ -1011,10 +945,10 @@ test "bridged call kwargs preserve names in jac call function" {
 
     # Sanity: the obvious bug-shape — empty args object — must not appear
     # for any of these named calls.
-    assert '__jacCallFunction("greet", {})' not in js_code , (
+    assert '__jacCallFunction("greet", {},' not in js_code , (
         "Bug regression: kwargs were dropped, emitting empty args object."
     );
-    assert '__jacCallFunction("add_pair", {})' not in js_code , (
+    assert '__jacCallFunction("add_pair", {},' not in js_code , (
         "Bug regression: kwargs were dropped, emitting empty args object."
     );
 
@@ -1025,7 +959,7 @@ test "bridged call kwargs preserve names in production jac2js path" {
     fixture = "svc_kwargs/sv_import_kwargs_client.jac";
     js_code = compile_fixture_to_js_production(fixture, FIXTURES);
 
-    assert '__jacCallFunction("greet", {"name": __jacS_input_text.val})' in js_code , (
+    assert '__jacCallFunction("greet", {"name": __jacS_input_text.val},' in js_code , (
         "Production jac2js path must lower bridged-call kwargs directly into the RPC args object;\n"
         + "got:\n"
         + js_code
@@ -1035,7 +969,7 @@ test "bridged call kwargs preserve names in production jac2js path" {
         + "got:\n"
         + js_code
     );
-    assert '__jacCallFunction("greet", {})' not in js_code , (
+    assert '__jacCallFunction("greet", {},' not in js_code , (
         "Production jac2js path must not emit an empty RPC args object for kwargs calls."
     );
 }

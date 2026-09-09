@@ -203,28 +203,67 @@ def:pub Subscriber() -> JsxElement {
 }
 ```
 
-!!! warning "Sharing a handle between setup and cleanup"
-    `can with entry` and `can with exit` compile to *separate* `useEffect` closures, so a variable created in `entry` is not visible from `exit`. When setup produces a handle that cleanup needs -- an interval id, a subscription, an event listener -- do the setup and teardown in a **single** `useEffect` whose callback *returns* the cleanup function:
+### Setup with a Local Cleanup Handle
+
+Return a cleanup function from a **synchronous** `can with entry` block when
+setup creates a timer, observer, or subscription. Setup and cleanup share the
+same closure, so cleanup releases exactly the resource that setup created:
 
 ```jac
-import from react { useEffect }
-
 def:pub Timer() -> JsxElement {
     has seconds: int = 0;
 
-    useEffect(lambda {
-        intervalId = setInterval(lambda { seconds = seconds + 1; }, 1000);
-        # The returned function is the cleanup -- it runs on unmount
+    can with entry {
+        intervalId = setInterval(lambda { seconds += 1; }, 1000);
         return lambda { clearInterval(intervalId); };
-    }, []);
-
-        <p>Seconds: {seconds}</p>
     }
+
+    return <p>Seconds: {seconds}</p>;
+}
 ```
+
+On React and Preact, cleanup runs before setup runs again when a listed
+dependency changes, and on unmount. For example, `can with [channel] entry`
+can subscribe to a channel and return a function that unsubscribes from that
+same subscription. Solid registers the returned function with `onCleanup`;
+its effects track reactive reads automatically.
+
+Separate `can with entry` and `can with exit` blocks have separate closures.
+Use a returned cleanup when teardown needs setup-local variables. An exit
+block is useful for teardown that reads a component-level `Ref` instead.
+Return either a cleanup function or no value from a synchronous entry block.
+
+Async entry blocks run inside an async task. Their return values **do not**
+register cleanup. When async work needs cancellation, start it inside a
+synchronous entry block and return cancellation from that outer block:
+
+```jac
+can with [url] entry {
+    controller = new(AbortController);
+    async def load {
+        try {
+            response = await fetch(url, {"signal": controller.signal});
+            result = await response.json();
+            if not controller.signal.aborted {
+                data = result;
+            }
+        } except Exception {
+            if not controller.signal.aborted {
+                error = "Could not load data";
+            }
+        }
+    }
+    _ = load();
+    return lambda { controller.abort(); };
+}
+```
+
+Here `url`, `data`, and `error` are component state. Returning a value from an
+async entry or an exit block produces W2014 because that value is ignored.
 
 ### Manual useEffect
 
-The `can with entry/exit` syntax above is the idiomatic approach and should be preferred. However, you can also use `useEffect` manually by importing from React -- this is useful for complex patterns involving `useRef` or `useCallback`:
+The lifecycle syntax above is the idiomatic approach, including effects that use refs or return cleanup. Explicit `useEffect` remains available for React library interoperability:
 
 ```jac
 import from react { useEffect }
@@ -236,8 +275,8 @@ def:pub DataFetcher() -> JsxElement {
         fetch_data();
     }, []);
 
-        <div>...</div>
-    }
+    return <div>...</div>;
+}
 ```
 
 ---

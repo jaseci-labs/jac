@@ -21,7 +21,7 @@ what freed memory happens to contain.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, get_func }
+import from tests.support { TESTS_DIR, get_func, compile_native_ir }
 import jaclang;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -121,7 +121,8 @@ test "param shadow: other fn's param names add no retain-on-return" {
     # `push(s, v)` is never called; its param `v` must not make `make_vec`'s
     # `return v` path treat the fresh local as a borrowed param and retain it
     # (rc=2 at the caller -> every returned Vec leaks).
-    (eng, ir) = compile_native("rc_param_shadow_return.jac");
+    (eng, _) = compile_native("rc_param_shadow_return.jac");
+    ir = compile_native_ir("rc_param_shadow_return.jac");
     body = fn_ir(ir, "make_vec");
     n = body.count('call void @"__rc_retain"');
     assert n == 0 , f"make_vec should return its owned local with no retain, found {n}";
@@ -134,7 +135,8 @@ test "param shadow: loop-exit cleanup still releases same-named locals" {
     # `use2(a: &Box, b: &Box)`'s param names match `churn`'s two fresh loop
     # locals; the loop-exit (iter_end) cleanup must still release both or the
     # final iteration's Boxes are never freed.
-    (eng, ir) = compile_native("rc_param_shadow_looptail.jac");
+    (eng, _) = compile_native("rc_param_shadow_looptail.jac");
+    ir = compile_native_ir("rc_param_shadow_looptail.jac");
     body = fn_ir(ir, "churn");
     assert "iter.cleanup.a" in body , "loop-exit cleanup for local 'a' was suppressed";
     assert "iter.cleanup.b" in body , "loop-exit cleanup for local 'b' was suppressed";
@@ -144,7 +146,7 @@ test "param shadow: loop-exit cleanup still releases same-named locals" {
 }
 
 # --- Heap-element containers under non-default gc modes (issue #7466, 3) ---
-test "heap-element container compiles and runs under --gc rc" {
+test "heap-element container compiles and runs under --memory rc" {
     # The list[str] element-release helper used to re-enter _emit_rc_helpers
     # (its guard checked a cycles-only global) and redefine __rc_debug:
     # DuplicatedNameError ICE under rc, fine under the default cycles mode.
@@ -154,14 +156,14 @@ test "heap-element container compiles and runs under --gc rc" {
     assert result == 2 , f"Expected 2, got {result}";
 }
 
-test "heap-element container compiles and runs under plain --gc none" {
+test "heap-element container compiles and runs under plain --memory nogc" {
     (eng, _) = compile_native("rc_heap_container.jac", gc_mode="none");
     count_strs = get_func(eng, "count_strs", ctypes.c_int64);
     result = count_strs();
     assert result == 2 , f"Expected 2, got {result}";
 }
 
-test "import sys compiles under --gc rc (argv list is a heap container)" {
+test "import sys compiles under --memory rc (argv list is a heap container)" {
     (eng, _) = compile_native("rc_import_sys.jac", gc_mode="rc");
     addr = eng.get_function_address("argc_minus_one");
     assert addr != 0 , "argc_minus_one not emitted";
@@ -170,7 +172,15 @@ test "import sys compiles under --gc rc (argv list is a heap container)" {
 # --- def drop parity across gc modes (issue #7466, 4) ---
 """Run the drop fixture and assert the hook fired once per destroyed Res."""
 def check_drop_parity(gc_mode: str | None) {
-    (eng, ir) = compile_native("rc_drop_hook.jac", gc_mode=gc_mode);
+    (eng, _) = compile_native("rc_drop_hook.jac", gc_mode=gc_mode);
+    ir = compile_native_ir(
+        "rc_drop_hook.jac",
+        options=CompileOptions(
+            force_codespace="native",
+            force_target_program=True,
+            na_gc_mode=gc_mode or "cycles"
+        )
+    );
     body = fn_ir(ir, "__rc_release_Res");
     assert 'call' in body and 'Res.drop' in body , "managed release fn does not invoke the drop hook";
     run_drops = get_func(eng, "run_drops", ctypes.c_int64);
@@ -185,7 +195,7 @@ def check_drop_parity(gc_mode: str | None) {
     assert last == 7 , f"last drop should see tag=7, got {last}";
 }
 
-test "drop hook fires on rc release (--gc rc)" {
+test "drop hook fires on rc release (--memory rc)" {
     check_drop_parity("rc");
 }
 

@@ -95,7 +95,7 @@ ordering holds for every tool invocation the build adds. Every other step runs
 the in-checkout compiler on that interpreter through the small boot program in
 `build.zig` (`JACBOOT_SRC`):
 `payload <subcommand>` for the Jac payload tool and `jac <args>` for the CLI,
-which is how the stub itself is built (`jac nacompile --strict launcher/launcher.jac`). No prior jac binary is needed; jaclang
+which is how the stub itself is built (`jac build --native --strict launcher/launcher.jac`). No prior jac binary is needed; jaclang
 has no third-party runtime dependencies. The pins (pbs release, LLVM slices) live
 in `bootstrap/pins.json`, read by both `build.zig` and the Jac tool.
 
@@ -103,7 +103,7 @@ Build-time host deps: `zig` + network (plus an optional, best-effort `strip`).
 
 ## Debugging
 
-* `JAC_NA_DEBUG=1 jac nacompile launcher/launcher.jac` prints why a function in
+* `JAC_NA_DEBUG=1 jac build --native launcher/launcher.jac` prints why a function in
   the stub's closure would be demoted to Python-only; the stub must lower in
   full (a demoted function cannot run before CPython exists).
 * To boot a freshly built stub against an existing payload:

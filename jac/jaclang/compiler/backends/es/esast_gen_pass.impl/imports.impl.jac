@@ -131,6 +131,9 @@ impl EsastGenPass.exit_import with uni.Import exit {
     } else {
         return;
     }
+    if resolved_path.endswith(".jac") {
+        self.module_import_paths[js_import_path] = resolved_path;
+    }
     source = self.sync_loc(es.Literal(value=js_import_path), jac_node=here.from_loc);
     specifiers:
         list[
@@ -263,6 +266,7 @@ impl EsastGenPass._generate_sv_import_stubs(
         param_names: list[str] = [];
         param_type_map: dict[str, str] = {};
         ret_type_name: str = '';
+        effect_key: str = '';
         if binding is not None {
             param_names = list(binding.param_names);
             for i in range(len(param_names)) {
@@ -275,13 +279,13 @@ impl EsastGenPass._generate_sv_import_stubs(
                 if binding.ast_node is not None
                 else None;
             if _src_mod is not None {
+                import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+                effect_key = endpoint_key(_src_mod, "func", func_name);
                 src_effect = _src_mod.gen.interop_manifest.endpoint_effects.get(
-                    f"func:{func_name}"
+                    effect_key
                 );
                 if src_effect is not None {
-                    self.client_manifest.endpoint_effects[f"func:{func_name}"] = (
-                        src_effect
-                    );
+                    self.client_manifest.endpoint_effects[effect_key] = src_effect;
                 }
             }
         }
@@ -321,9 +325,22 @@ impl EsastGenPass._generate_sv_import_stubs(
             args_obj
         ];
         provider_opts = self._sv_provider_options(nd);
-        if provider_opts is not None {
-            call_args.append(provider_opts);
+        if provider_opts is None {
+            provider_opts = es.ObjectExpression(properties=[]);
         }
+        if effect_key and isinstance(provider_opts, es.ObjectExpression) {
+            provider_opts.properties.append(
+                es.Property(
+                    key=es.Literal(value="contract"),
+                    value=es.Literal(value=effect_key),
+                    kind="init",
+                    method=False,
+                    shorthand=False,
+                    computed=False
+                )
+            );
+        }
+        call_args.append(provider_opts);
         call_expr = self.sync_loc(
             es.CallExpression(
                 callee=self.sync_loc(
@@ -366,6 +383,9 @@ impl EsastGenPass._is_client_native_import(nd: uni.Import) -> bool {
 
 impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
+    import json;
+    contracts: dict = {};
+    host_imports: dict = {};
     resolved_path = nd.from_loc.resolve_relative_path();
     stem = native_wasm_stem(resolved_path);
 
@@ -396,19 +416,22 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
     }
 
     props: list[(es.AssignmentProperty | es.RestElement)] = [];
-    export_names: list[(es.Expression | es.SpreadElement | None)] = [];
     for item in nd.items {
         if not isinstance(item, uni.ModuleItem)
             or not isinstance(item.name, uni.Name) {
             continue;
         }
+        if self._sv_import_item_is_type(nd, item) {
+            continue;
+        }
         export_name = item.name.sym_name;
         local_name = item.alias.sym_name if item.alias else export_name;
-        export_names.append(
-            self.sync_loc(
-                es.Literal(value=export_name, raw=f'"{export_name}"'), jac_node=item
-            )
-        );
+        binding = self.ir_in.gen.interop_manifest.bindings.get(local_name);
+        if binding is None or not binding.native_contract {
+            raise ValueError(f"Missing native contract for '{export_name}'");
+        }
+        contracts[export_name] = binding.native_contract;
+        host_imports = self.ir_in.gen.interop_manifest.native_host_imports[stem];
         props.append(
             self.sync_loc(
                 es.AssignmentProperty(
@@ -429,7 +452,14 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
             callee=es.Identifier(name=bind_local),
             arguments=[
                 self.sync_loc(es.Literal(value=stem, raw=f'"{stem}"'), jac_node=nd),
-                self.sync_loc(es.ArrayExpression(elements=export_names), jac_node=nd),
+                self.sync_loc(
+                    es.Literal(
+                        value=json.dumps(
+                            {"exports": contracts, "imports": host_imports}
+                        )
+                    ),
+                    jac_node=nd
+                ),
 
             ]
         ),
@@ -488,4 +518,66 @@ impl EsastGenPass._import_item_named(name: str) -> (uni.ModuleItem | None) {
         }
     }
     return None;
+}
+
+impl EsastGenPass._finalize_runtime_imports(program: es.Program) -> None {
+    if not self.module_import_paths {
+        return;
+    }
+    manifest = self.client_manifest;
+    assert manifest is not None;
+    value_body = es.Program(
+        body=[
+            stmt
+            for stmt in program.body
+            if not isinstance(stmt, es.ImportDeclaration)
+        ]
+    );
+
+    import re;
+    referenced: set[str] = set();
+    pending: list[any] = [value_body];
+    while pending {
+        value = pending.pop();
+        if isinstance(value, (es.Identifier, es.JsxIdentifier)) {
+            referenced.update(re.findall(r"[A-Za-z_$][A-Za-z0-9_$]*", value.name));
+        } elif isinstance(value, es.RawCode) {
+            referenced.update(re.findall(r"[A-Za-z_$][A-Za-z0-9_$]*", value.code));
+        } elif isinstance(value, es.Node) {
+            pending.extend(
+                child
+                for (key, child) in vars(value).items()
+                if key not in ("loc", "type")
+            );
+        } elif isinstance(value, (list, tuple)) {
+            pending.extend(value);
+        }
+    }
+    for stmt in program.body {
+        if not isinstance(stmt, es.ImportDeclaration) {
+            continue;
+        }
+        source = stmt.source;
+        assert source is not None;
+        source_path = self.module_import_paths.get(str(source.value));
+        if source_path is None {
+            continue;
+        }
+        stmt.specifiers = [
+            spec
+            for spec in stmt.specifiers
+            if spec.local is not None and spec.local.name in referenced
+        ];
+        names: list[str] = [];
+        for spec in stmt.specifiers {
+            if isinstance(spec, es.ImportSpecifier) {
+                imported = spec.imported;
+                assert imported is not None;
+                names.append(imported.name);
+            } elif isinstance(spec, es.ImportDefaultSpecifier) {
+                names.append("default");
+            }
+        }
+        manifest.runtime_imports.setdefault(source_path, []).extend(names);
+    }
 }

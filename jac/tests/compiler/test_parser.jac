@@ -38,6 +38,22 @@ test "fstring escape brace" {
     assert not had_error;
 }
 
+test "graph object lookup remains distinct from ownership borrows" {
+    import from jaclang.compiler.frontend.constant { OwnershipKind }
+    (module, errors) = rd_parse(
+        "with entry { a = &(id); b = & id; c = &value; d = &mut value; }", ""
+    );
+    assert not errors;
+    expressions = module.get_all_sub_nodes(uni.UnaryExpr);
+    assert [expr.ownership for expr in expressions]
+        == [
+            OwnershipKind.NONE,
+            OwnershipKind.NONE,
+            OwnershipKind.BORROW,
+            OwnershipKind.MUT_BORROW
+        ];
+}
+
 test "parser fam" {
     (module, had_error) = rd_parse(load_fixture("fam.jac"), "");
     assert not had_error;

@@ -1,6 +1,7 @@
 import ast as py_ast;
 
 import from pathlib { Path }
+import from jaclang.compiler.driver.program { JacProgram }
 
 glob _SEEDS: list[str] = [
          "jaclang.lib.jaclib",
@@ -154,7 +155,7 @@ def scan_jaclang_imports(py_src: str) -> set[str] {
 }
 
 
-def _compile_runtime_module(pkg_root: Path, path: Path) -> str {
+def _compile_runtime_module(pkg_root: Path, path: Path, prog: JacProgram) -> str {
     if path.suffix == ".py" {
         return path.read_text(encoding="utf-8");
     }
@@ -171,9 +172,13 @@ def _compile_runtime_module(pkg_root: Path, path: Path) -> str {
         }
         return compile_jac(jac_source, str(path), impl_sources=impl_sources or None);
     }
-    import from jaclang.compiler.driver.program { JacProgram }
-    prog = JacProgram();
-    ir = prog.compile(file_path=str(path));
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    ir = prog.compile(
+        file_path=str(path),
+        options=CompileOptions(
+            force_target_program=True, need_full_ast=True, force_codespace="server"
+        )
+    );
     if prog.errors_had {
         details = "\n".join(f"  {err}" for err in prog.errors_had);
         raise ValueError(f"runtime vendor: {path.name} failed to compile:\n{details}");
@@ -265,6 +270,7 @@ def build_runtime_closure(
     sources: dict[str, str] = {};
     dests: dict[str, Path] = {};
     queue: list[str] = [str(s) for s in seeds];
+    program = JacProgram();
     while queue {
         mod = str(queue.pop(0));
         if (mod in sources) or (mod == "jaclang") or _deny(mod) {
@@ -281,7 +287,7 @@ def build_runtime_closure(
                 queue.append(parent);
             }
         }
-        compiled = _compile_runtime_module(pkg_root, src_file);
+        compiled = _compile_runtime_module(pkg_root, src_file, program);
         sources[mod] = _strip_impl_patch_lines(
             compiled.replace(str(pkg_root), "jaclang")
         );

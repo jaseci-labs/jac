@@ -1,4 +1,4 @@
-"""Fixture for the C-ABI shared-library build (`jac nacompile --shared`).
+"""Fixture for the C-ABI shared-library build (`jac build --native --lib`).
 
 Exercises the export surface the shared-object linkers must expose: `:pub`
 free functions (scalar in/out), a `:pub` global, and opaque object handles

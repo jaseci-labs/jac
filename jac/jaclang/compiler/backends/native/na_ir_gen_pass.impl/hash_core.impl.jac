@@ -1,3 +1,23 @@
+impl NaIRGenPass._hash_key_spec(key_type: ir.Type) -> tuple[str, int] {
+    if isinstance(key_type, ir.DoubleType) {
+        return ("f64", 0);
+    }
+    if self._is_bytes_type(key_type) {
+        return ("bytes", 0);
+    }
+    if isinstance(key_type, ir.PointerType) {
+        if isinstance(key_type.pointee, ir.LiteralStructType) {
+            _sz = self._get_struct_size(key_type.pointee);
+            return (self._tuple_spec_name(key_type.pointee), _sz);
+        }
+        if isinstance(key_type.pointee, ir.IdentifiedStructType) {
+            return ("ref." + key_type.pointee.name, 0);
+        }
+        return ("ptr", 0);
+    }
+    return ("i64", 0);
+}
+
 glob HASH_CTRL_EMPTY: int = 0,
      HASH_CTRL_TOMBSTONE: int = 1,
      HASH_INIT_CAP: int = 8,
@@ -63,27 +83,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
         if (_key_sz > 0 and not is_bytes_key and not is_str_key)
         else None;
     if _tkf is not None {
-        _hv: ir.Value = ir.Constant(i64, HASH_FNV_BASIS);
-        for (_fi, _fk) in _tkf {
-            _fv = self._tuple_key_field_val(bhe, hash_fn.args[0], _fi, _fk);
-            if _fk == "str" or _fk == "jacstr" {
-                _fh = bhe.call(self._str_fnv_fn(), [_fv], name=f"tk.sh{_fi}");
-            } elif _fk == "f64" {
-                _fh = bhe.bitcast(_fv, i64, name=f"tk.fb{_fi}");
-            } elif _fk == "ptr" {
-                _fh = bhe.ptrtoint(_fv, i64, name=f"tk.pi{_fi}");
-            } elif isinstance(_fv.type, ir.IntType) and _fv.type.width == 64 {
-                _fh = _fv;
-            } else {
-                _fh = bhe.zext(_fv, i64, name=f"tk.zx{_fi}");
-            }
-            _hv = bhe.mul(
-                bhe.xor(_hv, _fh, name=f"tk.hx{_fi}"),
-                ir.Constant(i64, HASH_FNV_PRIME),
-                name=f"tk.hm{_fi}"
-            );
-        }
-        bhe.ret(_hv);
+        bhe.ret(self._emit_tuple_key_hash(bhe, hash_fn.args[0]));
     } elif is_bytes_key or is_str_key or _key_sz > 0 {
         h_a = bhe.alloca(i64, name="h");
         idx_a = bhe.alloca(i64, name="idx");
@@ -432,6 +432,12 @@ impl NaIRGenPass._emit_hash_core_helpers(
             ov_u: any = bu.load(vsp, name="ov");
             bu.store(v_s, vsp);
             self._emit_elem_release(bu, _vt, ov_u);
+        } elif _hl
+            and isinstance(_vt, ir.PointerType)
+            and self._elem_kind(_vt) != "raw" {
+            ov_hl: any = bu.load(vsp, name="ov");
+            bu.store(v_s, vsp);
+            bu = self._emit_elem_slot_drop(bu, ins_fn, d_s, layout, 1, ov_hl);
         } else {
             bu.store(v_s, vsp);
         }
@@ -601,6 +607,8 @@ impl NaIRGenPass._emit_hash_core_helpers(
         vv_rm: any = bdel.load(bdel.gep(va_rm, [res_rm], name="vvp"), name="vv");
         if not _hl {
             self._emit_elem_release(bdel, _vt, vv_rm);
+        } elif isinstance(_vt, ir.PointerType) {
+            bdel = self._emit_elem_slot_drop(bdel, remove_fn, d_rm, layout, 1, vv_rm);
         }
         bdel.store(
             ir.Constant(val_type, None), bdel.gep(va_rm, [res_rm], name="vclear")
@@ -1051,16 +1059,13 @@ impl NaIRGenPass._str_fnv_fn -> ir.Function {
     return fn;
 }
 
-impl NaIRGenPass._tuple_key_fields(key_type: ir.Type) -> (list | None) {
-    if not isinstance(key_type, ir.PointerType) {
-        return None;
-    }
-    pointee = key_type.pointee;
+impl NaIRGenPass._tuple_key_fields(key_type: ir.Type) -> list[tuple[int, str]] | None {
+    pointee = key_type.pointee if isinstance(key_type, ir.PointerType) else key_type;
     if not isinstance(pointee, ir.LiteralStructType) {
         return None;
     }
     i8p = ir.IntType(8).as_pointer();
-    out: list = [];
+    out: list[tuple[int, str]] = [];
     for (i, ety) in enumerate(pointee.elements) {
         if isinstance(ety, ir.IntType) {
             out.append((i, "int"));
@@ -1070,6 +1075,8 @@ impl NaIRGenPass._tuple_key_fields(key_type: ir.Type) -> (list | None) {
             out.append((i, "str"));
         } elif self._str_desc_ty is not None and ety == self._str_desc_ty {
             out.append((i, "jacstr"));
+        } elif self._tuple_key_fields(ety) is not None {
+            out.append((i, "tuple"));
         } elif isinstance(ety, ir.PointerType) {
             out.append((i, "ptr"));
         } else {
@@ -1083,6 +1090,14 @@ impl NaIRGenPass._tuple_key_field_val(
     b: ir.IRBuilder, key_ptr: ir.Value, idx: int, kind: str
 ) -> ir.Value {
     i32 = ir.IntType(32);
+    if isinstance(key_ptr.type, ir.LiteralStructType) {
+        field = b.extract_value(key_ptr, idx, name=f"tk.f{idx}");
+        if kind == "jacstr" {
+            data_idx = JACSTR_DESC_FIELDS[self._str_desc_kind()].index("data");
+            return b.extract_value(field, data_idx, name=f"tk.data{idx}");
+        }
+        return field;
+    }
     path = [ir.Constant(i32, 0), ir.Constant(i32, idx)];
     if kind == "jacstr" {
         data_idx = JACSTR_DESC_FIELDS[self._str_desc_kind()].index("data");
@@ -1090,6 +1105,34 @@ impl NaIRGenPass._tuple_key_field_val(
     }
     fp = b.gep(key_ptr, path, name=f"tk.fp{idx}");
     return b.load(fp, name=f"tk.f{idx}");
+}
+
+impl NaIRGenPass._emit_tuple_key_hash(b: ir.IRBuilder, value: ir.Value) -> ir.Value {
+    i64 = ir.IntType(64);
+    fields = self._tuple_key_fields(value.type);
+    assert fields is not None;
+    result: ir.Value = ir.Constant(i64, HASH_FNV_BASIS);
+    for (idx, kind) in fields {
+        field = self._tuple_key_field_val(b, value, idx, kind);
+        hashed: ir.Value;
+        if kind in ("str", "jacstr") {
+            hashed = b.call(self._str_fnv_fn(), [field], name="tk.str.hash");
+        } elif kind == "tuple" {
+            hashed = self._emit_tuple_key_hash(b, field);
+        } elif kind == "f64" {
+            zero = b.fcmp_ordered("==", field, ir.Constant(field.type, 0.0));
+            bits = b.bitcast(field, i64, name="tk.float.bits");
+            hashed = b.select(zero, ir.Constant(i64, 0), bits, name="tk.float.hash");
+        } elif kind == "ptr" {
+            hashed = b.ptrtoint(field, i64, name="tk.ptr.hash");
+        } elif field.type == i64 {
+            hashed = field;
+        } else {
+            hashed = b.zext(field, i64, name="tk.int.hash");
+        }
+        result = b.mul(b.xor(result, hashed), ir.Constant(i64, HASH_FNV_PRIME));
+    }
+    return result;
 }
 
 
@@ -1109,6 +1152,13 @@ impl NaIRGenPass._tuple_spec_name(struct_type: ir.LiteralStructType) -> str {
             sig += "s";
         } elif kind == "jacstr" {
             sig += "j";
+        } elif kind == "tuple" {
+            element = struct_type.elements[i];
+            nested = element.pointee
+                if isinstance(element, ir.PointerType)
+                else element;
+            storage = "p" if isinstance(element, ir.PointerType) else "v";
+            sig += "n" + storage + self._tuple_spec_name(nested) + "e";
         } else {
             sig += "p";
         }

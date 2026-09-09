@@ -111,7 +111,7 @@ class PointerType(Type) {
 }
 
 class _TypedPointerType(PointerType) {
-    def init(self: _TypedPointerType, pointee: any, addrspace: any = 0) -> object {
+    def init(self: _TypedPointerType, pointee: Type, addrspace: any = 0) -> object {
         super.init(None, addrspace);
         assert ((pointee is not None) and (`type(pointee) is not PointerType));
         assert not isinstance(pointee, VoidType);
@@ -371,7 +371,7 @@ class _Repeat(object) {
         return self.size;
     }
 
-    def __iter__(self: _Repeat) -> object {
+    def __iter__(self: _Repeat) -> Iterator[any] {
         return repeat(self.value, self.size);
     }
 
@@ -543,7 +543,7 @@ class BaseStructType(Aggregate) {
         return len(self.elements);
     }
 
-    def __iter__(self: BaseStructType) -> object {
+    def __iter__(self: BaseStructType) -> Iterator[any] {
         assert (self.elements is not None);
         return iter(self.elements);
     }

@@ -160,6 +160,21 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
         val_type = ir.IntType(8).as_pointer();
     }
 
+    resolved_key = self._elem_storage_llvm(key_expr.type);
+    if resolved_key is not None {
+        key_type = ir.IntType(8).as_pointer()
+            if self._str_desc_ty is not None and resolved_key == self._str_desc_ty
+            else resolved_key;
+        (key_type_name, key_size) = self._hash_key_spec(key_type);
+    }
+    resolved_value = self._elem_storage_llvm(val_expr.type);
+    if resolved_value is not None {
+        val_type = ir.IntType(8).as_pointer()
+            if self._str_desc_ty is not None and resolved_value == self._str_desc_ty
+            else resolved_value;
+        val_type_name = self._dict_val_spec(val_type);
+    }
+
     self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);
     dict_key = f"{key_type_name}:{val_type_name}";
     helpers = self.dict_helpers.get(dict_key);
@@ -240,6 +255,16 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
         elem_type = ir.IntType(8).as_pointer();
     }
 
+    if isinstance(out_expr, uni.Expr) and out_expr.type is not None {
+        resolved = self._elem_storage_llvm(out_expr.type);
+        if resolved is not None {
+            elem_type = ir.IntType(8).as_pointer()
+                if self._str_desc_ty is not None and resolved == self._str_desc_ty
+                else resolved;
+            (elem_type_name, elem_size) = self._hash_key_spec(elem_type);
+        }
+    }
+
     self._emit_set_helpers(elem_type_name, elem_type, elem_size);
     helpers = self.set_helpers.get(elem_type_name);
     if helpers is None {
@@ -270,8 +295,8 @@ impl NaIRGenPass._emit_compr_element(
     spec: str
 ) -> None {
     if kind == "dict" {
-        key_val = self._str_norm(self._codegen_expr(key_expr));
-        value_val = self._str_norm(self._codegen_expr(val_expr));
+        key_val = self._str_norm_optional(self._codegen_expr(key_expr));
+        value_val = self._str_norm_optional(self._codegen_expr(val_expr));
         value_val = self._nogc_elem_prep(val_expr, value_val);
         if key_val is not None and value_val is not None {
             helpers = self.dict_helpers.get(spec);
@@ -301,7 +326,7 @@ impl NaIRGenPass._emit_compr_element(
         return;
     }
     if kind == "set" {
-        val = self._str_norm(self._codegen_expr(key_expr));
+        val = self._str_norm_optional(self._codegen_expr(key_expr));
         val = self._nogc_elem_prep(key_expr, val);
         if val is not None {
             helpers = self.set_helpers.get(spec);
@@ -332,7 +357,7 @@ impl NaIRGenPass._emit_compr_element(
         return;
     }
 
-    val = self._str_norm(self._codegen_expr(key_expr));
+    val = self._str_norm_optional(self._codegen_expr(key_expr));
     val = self._nogc_elem_prep(key_expr, val);
     if val is not None {
         helpers = self.list_helpers.get(spec);
@@ -382,6 +407,23 @@ impl NaIRGenPass._codegen_compr_walk(
         self._emit_compr_element(kind, acc, key_expr, val_expr, spec);
         return;
     }
+    state = self._enter_bindings(inherit=True);
+    try {
+        self._codegen_compr_walk_body(comprs, idx, kind, acc, key_expr, val_expr, spec);
+    } finally {
+        self._leave_bindings(state, release=True);
+    }
+}
+
+impl NaIRGenPass._codegen_compr_walk_body(
+    comprs: list,
+    idx: int,
+    kind: str,
+    acc: ir.Value,
+    key_expr: uni.UniNode,
+    val_expr: (uni.UniNode | None),
+    spec: str
+) -> None {
     inner = comprs[idx];
     loop_target = inner.target;
     collection = inner.collection;
@@ -403,47 +445,77 @@ impl NaIRGenPass._codegen_compr_walk(
         return;
     }
 
-    coll_elem_type_name = self._infer_list_elem_type(coll_val);
-    if coll_elem_type_name is None {
-        coll_elem_type_name = self._elem_spec_of(collection);
-    }
-    if coll_elem_type_name is None and isinstance(coll_val.type, ir.PointerType) {
-        coll_elem_type_name = "ptr";
-    }
-    if coll_elem_type_name is None {
-        return;
-    }
-    coll_helpers = self.list_helpers.get(coll_elem_type_name);
-    if coll_helpers is None {
-        return;
-    }
-    _coll_want = coll_helpers["len"].function_type.args[0];
-    if coll_val.type != _coll_want {
-        if self._spec_from_container_ptr(coll_val.type) is None {
-            self.emit(
-                E5092,
-                node_override=collection,
-                kind="expression",
-                name="comprehension over an element-erased collection",
-                help_text="The collection unified to an untyped pointer, so which list layout to read it as is no longer recoverable. Give every branch producing it the same concrete element type."
-            );
+    coll_elem_type_name: str | None = None;
+    dict_key = self._dict_key_reconcile(self._dict_key_of(collection), coll_val);
+    if dict_key is not None {
+        coll_helpers = self.dict_helpers.get(dict_key);
+        if coll_helpers is None {
             return;
         }
-        coll_val = self.builder.bitcast(coll_val, _coll_want, name="compr.coll.cast");
+        coll_get = coll_helpers["get_key"];
+        actual_elem_type = coll_helpers["key_type"];
+        coll_elem_type_name = dict_key.split(":")[0];
+    } else {
+        coll_elem_type_name = self._infer_list_elem_type(coll_val);
+        if coll_elem_type_name is None {
+            coll_elem_type_name = self._elem_spec_of(collection);
+        }
+        if coll_elem_type_name is None and isinstance(coll_val.type, ir.PointerType) {
+            coll_elem_type_name = "ptr";
+        }
+        if coll_elem_type_name is None {
+            return;
+        }
+        coll_helpers = self.list_helpers.get(coll_elem_type_name);
+        if coll_helpers is None {
+            return;
+        }
+        coll_get = coll_helpers["get"];
+        actual_elem_type = coll_helpers["elem_type"];
+        _coll_want = coll_helpers["len"].function_type.args[0];
+        if coll_val.type != _coll_want {
+            if self._spec_from_container_ptr(coll_val.type) is None {
+                self.emit(
+                    E5092,
+                    node_override=collection,
+                    kind="expression",
+                    name="comprehension over an element-erased collection",
+                    help_text="The collection unified to an untyped pointer, so which list layout to read it as is no longer recoverable. Give every branch producing it the same concrete element type."
+                );
+                return;
+            }
+            coll_val = self.builder.bitcast(
+                coll_val, _coll_want, name="compr.coll.cast"
+            );
+        }
     }
+    unpack_target = loop_target if isinstance(loop_target, uni.TupleVal) else None;
     loop_var_name = self._get_name(loop_target);
-    if loop_var_name is None {
+    if loop_var_name is None and unpack_target is None {
         return;
     }
+    targets = unpack_target.values if unpack_target is not None else [loop_target];
+    names: list[str] = [];
+    for target in targets {
+        name = self._get_name(target);
+        if name is not None {
+            names.append(name);
+        }
+    }
+    self._shadow_bindings(names);
     i64 = ir.IntType(64);
     len_val = self.builder.call(coll_helpers["len"], [coll_val], name="compr.len");
     idx_alloca = self._entry_alloca(i64, "compr.idx");
     self.builder.store(ir.Constant(i64, 0), idx_alloca);
 
-    actual_elem_type = coll_helpers["elem_type"];
     inner_type: (ir.Type | None) = None;
-    if coll_elem_type_name == "ptr" {
+    if dict_key is None and coll_elem_type_name == "ptr" {
         inner_type = self._list_elem_llvm_of(collection);
+        if inner_type is None {
+            inner_type = self._elem_storage_llvm(
+                self._flow_narrowed_type_of(loop_target)
+            );
+        }
         if inner_type is not None and not isinstance(inner_type, ir.PointerType) {
             inner_type = None;
         }
@@ -451,15 +523,18 @@ impl NaIRGenPass._codegen_compr_walk(
             actual_elem_type = inner_type;
         }
     }
-    loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
+    loop_alloca: ir.Value | None = None;
+    if unpack_target is None and loop_var_name is not None {
+        loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
 
-    if isinstance(actual_elem_type, ir.PointerType) {
-        _compr_saved_block = self.builder.block;
-        self.builder.position_after(loop_alloca);
-        self.builder.store(ir.Constant(actual_elem_type, None), loop_alloca);
-        self.builder.position_at_end(_compr_saved_block);
+        if isinstance(actual_elem_type, ir.PointerType) {
+            _compr_saved_block = self.builder.block;
+            self.builder.position_after(loop_alloca);
+            self.builder.store(ir.Constant(actual_elem_type, None), loop_alloca);
+            self.builder.position_at_end(_compr_saved_block);
+        }
+        self.local_vars[loop_var_name] = loop_alloca;
     }
-    self.local_vars[loop_var_name] = loop_alloca;
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="compr.cond");
     body_bb = func.append_basic_block(name="compr.body");
@@ -472,8 +547,8 @@ impl NaIRGenPass._codegen_compr_walk(
     self.builder.cbranch(cmp, body_bb, end_bb);
     self.builder.position_at_end(body_bb);
     body_idx = self.builder.load(idx_alloca, name="compr.body.idx");
-    elem_val = self.builder.call(
-        coll_helpers["get"], [coll_val, body_idx], name="compr.elem"
+    elem_val: ir.Value = self.builder.call(
+        coll_get, [coll_val, body_idx], name="compr.elem"
     );
 
     if elem_val.type != actual_elem_type {
@@ -485,12 +560,24 @@ impl NaIRGenPass._codegen_compr_walk(
         }
     }
 
-    if isinstance(actual_elem_type, ir.PointerType) {
-        _compr_old = self.builder.load(loop_alloca, name="compr.old");
-        self._emit_rc_release_simple(_compr_old, op="compr_elem", loc="");
-        self._emit_rc_retain(elem_val, op="compr_elem", loc="");
+    if unpack_target is not None {
+        if not self._codegen_tuple_unpack(unpack_target.values, elem_val, None) {
+            self.emit(
+                E5092,
+                node_override=unpack_target,
+                kind="comprehension target",
+                name="tuple unpacking"
+            );
+            return;
+        }
+    } elif loop_alloca is not None {
+        if isinstance(actual_elem_type, ir.PointerType) {
+            _compr_old = self.builder.load(loop_alloca, name="compr.old");
+            self._emit_rc_release_simple(_compr_old, op="compr_elem", loc="");
+            self._emit_rc_retain(elem_val, op="compr_elem", loc="");
+        }
+        self.builder.store(elem_val, loop_alloca);
     }
-    self.builder.store(elem_val, loop_alloca);
     if conditionals {
         filter_bb = func.append_basic_block(name="compr.filter");
         skip_bb = func.append_basic_block(name="compr.skip");
@@ -570,6 +657,7 @@ impl NaIRGenPass._codegen_compr_range_walk(
     i64 = ir.IntType(64);
     start_val = self._coerce_type(start_val, i64);
     stop_val = self._coerce_type(stop_val, i64);
+    self._shadow_bindings([loop_var_name]);
     loop_alloca = self._entry_alloca(i64, loop_var_name);
     self.builder.store(start_val, loop_alloca);
     self.local_vars[loop_var_name] = loop_alloca;

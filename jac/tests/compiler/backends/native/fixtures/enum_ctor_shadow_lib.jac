@@ -4,5 +4,5 @@ enum Tone { SOFT = 1, LOUD = 2 }
 
 
 def boost(x: int) -> int {
-    return int(Tone(x)) + 10;
+    return Tone(x).value + 10;
 }

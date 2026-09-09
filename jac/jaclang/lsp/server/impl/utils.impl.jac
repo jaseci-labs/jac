@@ -212,3 +212,84 @@ impl gen_diagnostics(
             if warning.loc.mod_path == from_path
         ];
 }
+
+impl doc_of_sym(sym: Symbol) -> (str | None) {
+    if not sym.decl {
+        return None;
+    }
+    decl = sym.decl.name_of;
+    if isinstance(decl, uni.AstDocNode) and decl.doc {
+        doc_lit = decl.doc.lit_value;
+        if isinstance(doc_lit, str) {
+            return doc_lit;
+        }
+    }
+    if isinstance(decl, uni.HasVar) {
+        if (arch_has := decl.find_parent_of_type(uni.ArchHas)) and arch_has.doc {
+            arch_doc_lit = arch_has.doc.lit_value;
+            if isinstance(arch_doc_lit, str) {
+                return arch_doc_lit;
+            }
+        }
+    }
+    return None;
+}
+
+impl completion_item_from_sym(name: str, sym: Symbol) -> lspt.CompletionItem {
+    kind = completion_kind_from_sym(sym);
+    text = doc_of_sym(sym);
+    documentation = lspt.MarkupContent(kind=lspt.MarkupKind.PlainText, value=text)
+        if text
+        else None;
+    return lspt.CompletionItem(label=name, kind=kind, documentation=documentation);
+}
+
+impl get_completion_items(ty: (TypeBase | UniScopeNode)) -> list[lspt.CompletionItem] {
+    ret: list[lspt.CompletionItem] = [];
+    if isinstance(ty, UniScopeNode) {
+        scope: (UniScopeNode | None) = ty;
+        while scope {
+            for (name, sym) in scope.names_in_scope.items() {
+                ret.append(completion_item_from_sym(name, sym));
+            }
+            scope = scope.parent_scope;
+        }
+    } elif isinstance(ty, ClassType) {
+        if not ty.shared.mro {
+            compute_mro_linearization(ty);
+        }
+        for cls in ty.shared.mro {
+            for (name, sym) in cls.shared.symbol_table.names_in_scope.items() {
+                ret.append(completion_item_from_sym(name, sym));
+            }
+        }
+    } elif isinstance(ty, ModuleType) {
+        mod_symtab = ty.symbol_table;
+        if mod_symtab is not None {
+            for (name, sym) in mod_symtab.names_in_scope.items() {
+                ret.append(completion_item_from_sym(name, sym));
+            }
+        }
+    }
+    return ret;
+}
+
+impl completion_kind_from_sym(sym: Symbol) -> lspt.CompletionItemKind {
+    decl = sym.decl.name_of;
+    if isinstance(decl, uni.ModulePath) {
+        return lspt.CompletionItemKind.Module;
+    }
+    if isinstance(decl, uni.Ability) {
+        return lspt.CompletionItemKind.Function;
+    }
+    if isinstance(decl, uni.Archetype) {
+        return lspt.CompletionItemKind.Class;
+    }
+    if isinstance(decl, uni.Enum) {
+        return lspt.CompletionItemKind.Enum;
+    }
+    if isinstance(decl, uni.HasVar) {
+        return lspt.CompletionItemKind.Variable;
+    }
+    return lspt.CompletionItemKind.Text;
+}

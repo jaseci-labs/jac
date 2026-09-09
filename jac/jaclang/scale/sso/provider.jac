@@ -7,6 +7,7 @@ import from jaclang.server.serving.datatypes { RedirectResponse, Request, Respon
 obj SSOUserInfo {
     has email: str,
         external_id: str,
+        username: str = '',
         display_name: (str | None) = None,
         first_name: (str | None) = None,
         last_name: (str | None) = None,
@@ -14,7 +15,7 @@ obj SSOUserInfo {
 
     def profile_fields -> dict[str, any] {
         fields: dict[str, any] = {};
-        for key in ['display_name', 'first_name', 'last_name', 'picture'] {
+        for key in ['display_name', 'first_name', 'last_name', 'picture', 'username'] {
             val = getattr(self, key, None);
             if val {
                 fields[key] = val;
@@ -94,16 +95,18 @@ obj OAuth2CodeProvider(SSOProvider) {
         );
     }
 
-    async def _exchange_code(code: str) -> dict[str, any] {
-        form = urlencode(
-            {
-                'grant_type': 'authorization_code',
-                'code': code,
-                'client_id': self.client_id,
-                'client_secret': self.client_secret,
-                'redirect_uri': self.redirect_uri
-            }
-        );
+    async def _exchange_code(code: str, code_verifier: str = '') -> dict[str, any] {
+        fields = {
+            'grant_type': 'authorization_code',
+            'code': code,
+            'client_id': self.client_id,
+            'client_secret': self.client_secret,
+            'redirect_uri': self.redirect_uri
+        };
+        if code_verifier {
+            fields['code_verifier'] = code_verifier;
+        }
+        form = urlencode(fields);
         resp = await arequest(
             'POST',
             self.token_url(),
@@ -125,7 +128,7 @@ obj OAuth2CodeProvider(SSOProvider) {
         return payload;
     }
 
-    def _callback_param(request: Request, name: str) -> (str | None) {
+    static def _callback_param(request: Request, name: str) -> (str | None) {
         value = request.query_params.get(name);
         if value is not None {
             return value;

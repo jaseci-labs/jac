@@ -67,11 +67,19 @@ def _required_runtime_globals(
 def with_runtime_globals(
     js_code: str, backend: (FrameworkBackend | None) = None
 ) -> str {
+    import re;
     (names, src) = _required_runtime_globals(backend);
     missing = [
         name
         for name in names
-        if f"function {name}(" not in js_code
+        if re.search(r"\b" + re.escape(name) + r"\b", js_code) is not None
+            and re.search(
+                r"(?m)^(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+"
+                    + re.escape(name)
+                    + r"\b",
+                js_code
+            )
+                is None
     ];
     if not missing {
         return js_code;

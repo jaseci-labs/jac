@@ -1,15 +1,10 @@
 import os;
 import json;
 import shutil;
-import hashlib;
 import subprocess;
 import sys;
-import tarfile;
-import from http.client { HTTPResponse }
-import from urllib.request { urlopen, urlretrieve }
 import from pathlib { Path }
 import from jaclang.cli.console { console }
-import from jaclang.runtime.graph_utils { host_arch }
 import from jaclang.client.targets.desktop._dev_launch { desktop_launch_env }
 
 def _jaclang_src_roots -> list[Path] {
@@ -64,7 +59,8 @@ def _find_desktop_native_dir -> Path {
 
 def _find_native_asset_dir(subdir: str, marker: str) -> Path {
     if subdir == "webview" and marker == "webview.jac" {
-        return _find_desktop_native_dir() / "webview";
+        import from jaclang.toolchains.desktop { source_workspace }
+        return source_workspace(_find_desktop_native_dir() / "webview", "webview");
     }
     for src in _jaclang_src_roots() {
         dev = src / "jaclang" / "client" / "targets" / "desktop" / "native" / subdir;
@@ -90,11 +86,13 @@ def _find_native_asset_dir(subdir: str, marker: str) -> Path {
 }
 
 def _find_webview_dir -> Path {
-    return _find_desktop_native_dir() / "webview";
+    import from jaclang.toolchains.desktop { source_workspace }
+    return source_workspace(_find_desktop_native_dir() / "webview", "webview");
 }
 
 def _find_cef_dir -> Path {
-    return _find_native_asset_dir("cef", "cef.jac");
+    import from jaclang.toolchains.desktop { source_workspace }
+    return source_workspace(_find_native_asset_dir("cef", "cef.jac"), "cef");
 }
 
 def _jac_subprocess_env -> dict[str, str] {
@@ -102,13 +100,8 @@ def _jac_subprocess_env -> dict[str, str] {
 }
 
 def _patchelf_rpath(binary: Path, rpath: str) -> bool {
-    patchelf = shutil.which("patchelf");
-    if not patchelf {
-        console.print(
-            f"  [yellow]patchelf not found; {binary.name}'s shared deps must be on LD_LIBRARY_PATH at runtime[/yellow]"
-        );
-        return False;
-    }
+    import from jaclang.toolchains.system { ensure_patchelf }
+    patchelf = ensure_patchelf();
     res = subprocess.run([patchelf, "--set-rpath", rpath, str(binary)]);
     if res.returncode != 0 {
         console.print(
@@ -224,32 +217,38 @@ def _inject_platform(host_src: str, platform_src: str) -> str {
     return "\n".join(lines[:at] + [plat] + lines[at:]);
 }
 
-def _nacompile_cef(
+def _native_build_cef(
     cef_dir: Path, source_name: str, build_name: str, output: Path, shared: bool,
 ) -> Path {
-    build_dir = cef_dir / ".build";
-    build_dir.mkdir(parents=True, exist_ok=True);
-    build_src = build_dir / build_name;
-    host_src = (cef_dir / source_name).read_text();
-    platform_src = (cef_dir / "cef_platform.jac").read_text();
-    build_src.write_text(_inject_platform(host_src, platform_src));
-    cmd = [_jac_bin(), "nacompile"];
-    if shared {
-        cmd.append("--shared");
+    import from jaclang.toolchains.store { InstallLock }
+    with InstallLock(cef_dir / ".native-build.lock") {
+        build_dir = cef_dir / ".build";
+        build_dir.mkdir(parents=True, exist_ok=True);
+        build_src = build_dir / build_name;
+        host_src = (cef_dir / source_name).read_text();
+        platform_src = (cef_dir / "cef_platform.jac").read_text();
+        build_src.write_text(_inject_platform(host_src, platform_src));
+        cmd = [_jac_bin(), "build", "--native"];
+        if shared {
+            cmd.append("--lib");
+        }
+        cmd += [str(build_src), "-o", str(output)];
+        res = subprocess.run(cmd);
+        if res.returncode != 0 or not output.exists() {
+            raise RuntimeError(
+                f"jac build --native failed for {output.name} (source {source_name})."
+            );
+        }
+        _patchelf_rpath(output, "$ORIGIN");
+        return output;
     }
-    cmd += [str(build_src), "-o", str(output)];
-    res = subprocess.run(cmd);
-    if res.returncode != 0 or not output.exists() {
-        raise RuntimeError(
-            f"jac nacompile failed for {output.name} (source {source_name})."
-        );
-    }
-    _patchelf_rpath(output, "$ORIGIN");
-    return output;
 }
 
+
 def build_cef_dispatch(cef_dir: Path) -> Path {
-    return _nacompile_cef(
+    import from jaclang.toolchains.desktop { source_workspace }
+    cef_dir = source_workspace(cef_dir, "cef");
+    return _native_build_cef(
         cef_dir,
         "cef_dispatch.jac",
         "cef_dispatch_build.jac",
@@ -259,7 +258,9 @@ def build_cef_dispatch(cef_dir: Path) -> Path {
 }
 
 def build_cef_subprocess(cef_dir: Path) -> Path {
-    return _nacompile_cef(
+    import from jaclang.toolchains.desktop { source_workspace }
+    cef_dir = source_workspace(cef_dir, "cef");
+    return _native_build_cef(
         cef_dir,
         "cef_subprocess.jac",
         "cef_subprocess_build.jac",
@@ -267,255 +268,6 @@ def build_cef_subprocess(cef_dir: Path) -> Path {
         False,
     );
 }
-
-def _cef_locked_version(sums_lock: Path) -> str {
-    for line in sums_lock.read_text().split("\n") {
-        s = line.strip();
-        if s.startswith("# version:") {
-            return s[len("# version:"):].strip();
-        }
-    }
-    return "";
-}
-
-def _cef_expected_sha1(sums_lock: Path, archive: str) -> str {
-    for line in sums_lock.read_text().split("\n") {
-        s = line.strip();
-        if (not s) or s.startswith("#") {
-            continue;
-        }
-        parts = s.split();
-        if len(parts) == 2 and parts[1] == archive {
-            return parts[0];
-        }
-    }
-    return "";
-}
-
-def _cef_plat_tag -> str {
-    arch = host_arch();
-    if arch == "x86_64" {
-        return "linux64";
-    }
-    if arch == "aarch64" {
-        return "linuxarm64";
-    }
-    raise RuntimeError(f"unsupported architecture for CEF: {arch}");
-}
-
-def _cef_index_sha1(plat_tag: str, archive: str) -> str {
-    try {
-        response: HTTPResponse = urlopen(
-            "https://cef-builds.spotifycdn.com/index.json", timeout=30
-        );
-        with response as resp {
-            idx = json.loads(resp.read().decode("utf-8"));
-        }
-        versions = idx.get(plat_tag, {}).get("versions", []);
-        for v in versions {
-            for f in v.get("files", []) {
-                if f.get("name") == archive {
-                    return f.get("sha1", "");
-                }
-            }
-        }
-    } except Exception {
-        return "";
-    }
-    return "";
-}
-
-def _sha1_file(path: Path) -> str {
-    h = hashlib.sha1();
-    with open(str(path), "rb") as f {
-        while True {
-            chunk = f.read(1048576);
-            if not chunk {
-                break;
-            }
-            h.update(chunk);
-        }
-    }
-    return h.hexdigest();
-}
-
-def _extract_cef_headers(tarball: Path, headers_dir: Path) {
-    if headers_dir.exists() {
-        shutil.rmtree(headers_dir);
-    }
-    with tarfile.open(str(tarball), "r:bz2") as tf {
-        for m in tf {
-            parts = m.name.split("/", 1);
-            if len(parts) < 2 {
-                continue;
-            }
-            rel = parts[1];
-            if not rel.startswith("include/") {
-                continue;
-            }
-            target = headers_dir / rel;
-            if m.isdir() {
-                target.mkdir(parents=True, exist_ok=True);
-            } else {
-                target.parent.mkdir(parents=True, exist_ok=True);
-                with tf.extractfile(m) as src {
-                    with open(str(target), "wb") as dst {
-                        shutil.copyfileobj(src, dst);
-                    }
-                }
-            }
-        }
-    }
-}
-
-def _extract_cef_runtime(tarball: Path, dist_dir: Path) {
-    need = {
-        "libcef.so",
-        "libEGL.so",
-        "libGLESv2.so",
-        "libvk_swiftshader.so",
-        "vk_swiftshader_icd.json",
-        "v8_context_snapshot.bin",
-        "chrome-sandbox",
-        "icudtl.dat"
-    };
-    if dist_dir.exists() {
-        shutil.rmtree(dist_dir);
-    }
-    dist_dir.mkdir(parents=True, exist_ok=True);
-    with tarfile.open(str(tarball), "r:bz2") as tf {
-        for m in tf {
-            parts = m.name.split("/", 1);
-            if len(parts) < 2 {
-                continue;
-            }
-            rel = parts[1];
-            base = rel.split("/")[-1];
-            seg0 = rel.split("/")[0];
-            want = (base in need) or base.endswith(".pak") or (seg0 == "locales");
-            if not want {
-                continue;
-            }
-            flat = rel;
-            for pfx in ["Release/", "Resources/", "Debug/"] {
-                if flat.startswith(pfx) {
-                    flat = flat[len(pfx):];
-                    break;
-                }
-            }
-            target = dist_dir / flat;
-            if m.isdir() {
-                target.mkdir(parents=True, exist_ok=True);
-            } else {
-                target.parent.mkdir(parents=True, exist_ok=True);
-                with tf.extractfile(m) as src {
-                    with open(str(target), "wb") as dst {
-                        shutil.copyfileobj(src, dst);
-                    }
-                }
-            }
-        }
-    }
-}
-
-def fetch_cef_dist(cef_dir: Path, headers_only: bool = False) -> Path {
-    sums_lock = cef_dir / "cef_sums.lock";
-    if not sums_lock.exists() {
-        raise RuntimeError(f"missing CEF trust anchor: {sums_lock}");
-    }
-    version = os.environ.get("CEF_VERSION") or _cef_locked_version(sums_lock);
-    if not version {
-        raise RuntimeError(f"no '# version:' directive in {sums_lock}");
-    }
-    dist_dir = cef_dir / "cef_dist";
-    version_stamp = dist_dir / ".cef_version";
-    headers_dir = cef_dir / "cef_headers";
-    headers_marker = headers_dir / "include" / "capi" / "cef_app_capi.h";
-    cached_tarball = cef_dir / ".cef_tarball.tar.bz2";
-
-    if headers_only and headers_marker.exists() {
-        return headers_dir;
-    }
-    if (
-        (not headers_only)
-        and version_stamp.exists()
-        and (version_stamp.read_text().strip() == version)
-        and (dist_dir / "libcef.so").exists()
-        and headers_marker.exists()
-    ) {
-        return dist_dir;
-    }
-
-    plat_tag = _cef_plat_tag();
-    archive = f"cef_binary_{version}_{plat_tag}.tar.bz2";
-    expected = _cef_expected_sha1(sums_lock, archive);
-    if not expected {
-        raise RuntimeError(
-            f"no pinned SHA-1 for {archive} in cef_sums.lock; refusing to "
-            "download an unverified CEF archive."
-        );
-    }
-    resolved = f"https://cef-builds.spotifycdn.com/{archive}";
-    console.print(f"  Resolving CEF {version} for {plat_tag}...", style="muted");
-
-    index_sha1 = _cef_index_sha1(plat_tag, archive);
-    if index_sha1 and (index_sha1 != expected) {
-        raise RuntimeError(
-            "live CEF index SHA-1 disagrees with cef_sums.lock for "
-                + archive
-                + f" (pinned {expected}, index {index_sha1}); pin or release host is stale."
-        );
-    }
-
-    if not cached_tarball.exists() {
-        console.print(
-            "  Downloading CEF distribution (~800 MB, one-time)...", style="muted"
-        );
-        ok = False;
-        last_err = "";
-        for _ in range(3) {
-            try {
-                urlretrieve(resolved, str(cached_tarball));
-                ok = True;
-                break;
-            } except Exception as err {
-                last_err = str(err);
-            }
-        }
-        if not ok {
-            raise RuntimeError(f"CEF download failed: {last_err}");
-        }
-    }
-
-    actual = _sha1_file(cached_tarball);
-    if actual != expected {
-        cached_tarball.unlink();
-        raise RuntimeError(
-            f"SHA-1 mismatch for CEF archive (expected {expected}, got {actual}); "
-            "deleted the corrupted download."
-        );
-    }
-    console.print(f"  SHA-1 verified: {actual}", style="muted");
-
-    if headers_only {
-        if not headers_marker.exists() {
-            _extract_cef_headers(cached_tarball, headers_dir);
-        }
-        return headers_dir;
-    }
-
-    if not (dist_dir / "libcef.so").exists() {
-        console.print(f"  Extracting CEF runtime to {dist_dir}...", style="muted");
-        _extract_cef_runtime(cached_tarball, dist_dir);
-    }
-    version_stamp.write_text(version);
-    if not headers_marker.exists() {
-        _extract_cef_headers(cached_tarball, headers_dir);
-    }
-    console.print(f"  Staged CEF {version} in {dist_dir}", style="muted");
-    return dist_dir;
-}
-
 
 def serving_app_for(config: any, entry_file: Path, backend: str) -> str {
     if config is None or not config.is_workspace or not config.apps {

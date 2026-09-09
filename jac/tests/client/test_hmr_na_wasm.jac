@@ -227,3 +227,34 @@ test "a failed wasm emit does not reload the page" {
         "reloading on a failed emit swaps in nothing and hides the error"
     );
 }
+
+test "wasm and its import manifest follow the client bundle output directory" {
+    import json;
+    import from unittest.mock { patch }
+    import from jaclang.client.vite_client_bundle { ViteClientBundleBuilder }
+
+    with TemporaryDirectory() as tmp {
+        project = Path(tmp);
+        (project / "package.json").write_text('{"name":"wasm-output"}');
+        wasm = bytes.fromhex("0061736d01000000");
+        for output in [
+            project / ".jac" / "client" / "web" / "dist",
+            project / "custom-output"
+        ] {
+            builder = ViteClientBundleBuilder(
+                vite_package_json=project / "package.json", vite_output_dir=output
+            );
+            compiler = builder._get_compiler();
+            with patch(
+                "jaclang.compiler.backends.native.wasm_build.compile_to_wasm",
+                return_value=wasm
+            ) {
+                assert compiler._emit_wasm_module(project / "arena.jac");
+            }
+            assert (output / "arena.wasm").read_bytes() == wasm;
+            manifest = json.loads((output / "arena.wasm.imports.json").read_text());
+            assert manifest["imports"] == {};
+        }
+        assert not (project / ".jac" / "client" / "dist" / "arena.wasm").exists();
+    }
+}

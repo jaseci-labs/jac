@@ -1,3 +1,4 @@
+import from jaclang.client.auth_contract { SignupResult }
 import from 'solid-js' {
     createSignal as solidCreateSignal,
     createMemo,
@@ -112,7 +113,7 @@ async def:pub jacSignup(
     identities_or_username: (str | list),
     credential_or_password: (str | dict),
     profile: (dict | None) = None
-) -> dict;
+) -> SignupResult;
 
 async def:pub jacLogin(
     identity_or_username: (str | dict), credential_or_password: (str | dict)
@@ -140,7 +141,7 @@ def:pub Link(props: dict[str, any]) -> JsxElement;
 def:pub Navigate(props: dict[str, any]) -> JsxElement;
 def:pub Outlet(props: dict[str, any] = {}) -> JsxElement | None;
 def:pub useRouter -> dict;
-def:pub AuthGuard(redirect: str = "/login", children: any = None) -> JsxElement;
+def:pub AuthGuard(redirect: str = "/login", children: any = None) -> JsxElement | None;
 
 def:pub __jacMakeLayoutRoot(layout_component: any) -> any;
 

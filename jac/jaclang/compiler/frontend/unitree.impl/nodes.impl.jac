@@ -1476,14 +1476,7 @@ impl Symbol.storage.getter -> SymbolStorage {
         ) {
             cur = cur.parent;
         }
-        if (cur is None) or (cur is def_scope) {
-            continue;
-        }
-
-        if isinstance(cur, ImplDef) and (cur.decl_link is def_scope) {
-            continue;
-        }
-        if isinstance(def_scope, ImplDef) and (def_scope.decl_link is cur) {
+        if cur is None or same_lexical_scope(cur, def_scope) {
             continue;
         }
         return SymbolStorage.CAPTURED;
@@ -1525,6 +1518,22 @@ impl Symbol.in_stub_scope -> bool {
 
 impl Symbol.__repr__ -> str {
     return f"Symbol({self.sym_name}, {self.sym_type}, {self.access},{self.defn})";
+}
+
+impl Module.set_code_context(context: CodeContext) -> None {
+    self.decided_codespace = context.value;
+    for elem in self.body {
+        if isinstance(elem, ContextAwareNode) {
+            elem.code_context = context;
+            if isinstance(elem, ModuleCode) and elem.body {
+                for inner in elem.body {
+                    if isinstance(inner, ContextAwareNode) {
+                        inner.code_context = context;
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl UniScopeNode._init_scope(
@@ -1663,9 +1672,20 @@ impl UniScopeNode.find_scope(name: str) -> (UniScopeNode | None) {
     return None;
 }
 
+impl same_lexical_scope(left: UniNode | None, right: UniNode | None) -> bool {
+    if left is None or right is None {
+        return False;
+    }
+    return left is right
+        or (isinstance(left, ImplDef) and left.decl_link is right)
+        or (isinstance(right, ImplDef) and right.decl_link is left);
+}
+
 impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
     out: list[Symbol] = [];
-    for name in self.get_all_sub_nodes(Name) {
+    names: list[Name] = self.get_all_sub_nodes(Name);
+    names.extend(self.get_all_sub_nodes(SpecialVarRef));
+    for name in names {
         if is_identifier_slot(name) {
             continue;
         }
@@ -1674,9 +1694,16 @@ impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
             continue;
         }
         tab = sym.parent_tab;
+        if name.value == "super" and tab is not None {
+            receiver = tab.names_in_scope.get("self");
+            if receiver is not None {
+                sym = receiver;
+                tab = sym.parent_tab;
+            }
+        }
         if (
             (tab is None)
-            or (tab is self)
+            or same_lexical_scope(tab, self)
             or not isinstance(tab, (Ability, ImplDef, LambdaExpr, Test))
         ) {
             continue;
@@ -1684,7 +1711,7 @@ impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
 
         scope = self.parent_scope;
         while (scope is not None) {
-            if (scope is tab) {
+            if same_lexical_scope(scope, tab) {
                 if sym not in out {
                     out.append(sym);
                 }
@@ -1715,9 +1742,13 @@ impl UniScopeNode.adopt_primary(sym: Symbol, alias: str = "") -> None {
 }
 
 impl UniScopeNode._drop_primary(sym: Symbol) -> None {
-    for e in [edge self->:ScopePrimary:->] {
-        if getattr(e, "__jac__").target.archetype is sym {
-            del e;
+    edges = [edge self->:ScopePrimary:->];
+    targets = [self->:ScopePrimary:->];
+    for i in range(len(targets)) {
+        target: Symbol = targets[i];
+        if target is sym {
+            edge_to_drop = edges[i];
+            del edge_to_drop;
             break;
         }
     }
@@ -1914,7 +1945,12 @@ impl ContextAwareNode.postinit -> None {}
 
 impl ContextAwareNode.code_context.getter -> CodeContext {
     found = [self->:PlacedIn:->];
-    return CodeContext(found[0].kind) if found else CodeContext.SERVER;
+    if found {
+        target: Codespace = found[0];
+        return CodeContext(target.kind);
+    }
+    enclosing = self.find_parent_of_type(ContextAwareNode);
+    return enclosing.code_context if enclosing is not None else CodeContext.SERVER;
 }
 
 impl ContextAwareNode.code_context.setter(code_context: CodeContext) {
@@ -1924,7 +1960,11 @@ impl ContextAwareNode.code_context.setter(code_context: CodeContext) {
 
 impl Module.decided_codespace.getter -> str {
     found = [self->:DecidedCodespace:->];
-    return found[0].kind if found else "";
+    if found {
+        target: Codespace = found[0];
+        return target.kind;
+    }
+    return "";
 }
 
 impl Module.decided_codespace.setter(decided_codespace: str) {
@@ -2183,8 +2223,11 @@ impl Module.postinit -> None {
     self.ct_file_deps = [];
     self.ct_body_deps = [];
     self.rc_last_use = {};
+    self.rc_scope_cleanup = {};
     _rc_move_in: set[int] = set();
     self.rc_move_in = _rc_move_in;
+    _own_move_sites: set[int] = set();
+    self.own_move_sites = _own_move_sites;
     UniNode.postinit(self);
     UniScopeNode._init_scope(self, name=self.name);
 }
@@ -2683,6 +2726,8 @@ impl Enum.postinit -> None {
 
 
 impl Ability.postinit -> None {
+    _raises: list[str] = [];
+    self.raises = _raises;
     UniNode.postinit(self);
     if (self.name_ref is None) {
         first_tok = self.kid[0]
@@ -2732,16 +2777,21 @@ impl Ability.is_method.getter -> bool {
 }
 
 impl Ability.is_cls_method.getter -> bool {
-    return (
-        self.is_classmethod
-        or (
-            self.is_method
-            and `any(
-                (isinstance(dec, Name) and (dec.sym_name == 'classmethod'))
-                for dec in (self.decorators or ())
-            )
-        )
-    );
+    if self.is_classmethod {
+        return True;
+    }
+    if not self.is_method {
+        return False;
+    }
+    decorators = self.decorators;
+    if decorators is not None {
+        for dec in decorators {
+            if isinstance(dec, Name) and dec.sym_name == 'classmethod' {
+                return True;
+            }
+        }
+    }
+    return False;
 }
 
 impl Ability.is_def.getter -> bool {
@@ -3088,8 +3138,36 @@ impl DeleteStmt.is_location(target: Expr) -> bool {
 }
 
 
+impl DeleteStmt.type_has_graph_member(t: (TypeBase | None)) -> bool {
+    import from jaclang.compiler.types.types { ClassType, TypeVarType, UnionType }
+    if isinstance(t, TypeVarType) {
+        return DeleteStmt.type_has_graph_member(t.bound);
+    }
+    if isinstance(t, UnionType) {
+        return any(DeleteStmt.type_has_graph_member(member) for member in t.types);
+    }
+    if isinstance(t, ClassType) {
+        if t.is_node_type() or t.is_edge_type() or t.is_walker_type() {
+            return True;
+        }
+        if t.is_builtin(["list", "tuple", "set", "frozenset"]) {
+            return any(
+                DeleteStmt.type_has_graph_member(item)
+                for item in (t.private.type_args or [])
+            );
+        }
+        if t.is_builtin("dict") and len(t.private.type_args or []) == 2 {
+            return DeleteStmt.type_has_graph_member(t.private.type_args[1]);
+        }
+    }
+    return False;
+}
+
 impl DeleteStmt.type_may_hold_graph(t: (TypeBase | None)) -> bool {
     import from jaclang.compiler.types.types { ClassType, UnionType }
+    if DeleteStmt.type_has_graph_member(t) {
+        return True;
+    }
 
     def never_graph(ty: any) -> bool {
         if isinstance(ty, UnionType) {
@@ -3098,11 +3176,7 @@ impl DeleteStmt.type_may_hold_graph(t: (TypeBase | None)) -> bool {
         if not isinstance(ty, ClassType) {
             return False;
         }
-        if ty.is_any_type()
-            or ty.is_node_type()
-            or ty.is_edge_type()
-            or ty.is_walker_type()
-            or not ty.is_builtin() {
+        if ty.is_any_type() or not ty.is_builtin() {
             return False;
         }
         class_name = ty.shared.class_name;
@@ -3397,6 +3471,11 @@ impl AtomTrailer.as_attr_list.getter -> list[AstSymbolNode] {
 }
 
 impl AtomUnit.postinit -> None {
+    UniNode.postinit(self);
+    Expr.postinit(self);
+}
+
+impl GraphExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
 }
@@ -3994,7 +4073,7 @@ impl NameAtom.sym.getter -> (Symbol | None) {
     return found[0] if found else None;
 }
 
-impl NameAtom.sym.setter(sym: Symbol) {
+impl NameAtom.sym.setter(sym: Symbol | None) {
     del [edge self->:SymOf:->];
     if sym is not None {
         self +>:SymOf:+> sym;
@@ -4075,16 +4154,10 @@ impl lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | 
 
 impl record_cross_scope_rebind(py_scope: UniScopeNode, name: str, sym: Symbol) -> None {
     outer_tab = sym.parent_tab;
-    if outer_tab is None or outer_tab is py_scope {
+    if outer_tab is None or same_lexical_scope(outer_tab, py_scope) {
         return;
     }
     if not isinstance(py_scope, (Ability, ImplDef, Test)) {
-        return;
-    }
-    if isinstance(py_scope, ImplDef) and py_scope.decl_link is outer_tab {
-        return;
-    }
-    if isinstance(outer_tab, ImplDef) and outer_tab.decl_link is py_scope {
         return;
     }
     if isinstance(outer_tab, Module) {
@@ -4261,11 +4334,12 @@ impl type_only_import_of(nd: NameAtom) -> (ModuleItem | None) {
     return found;
 }
 
-impl in_type_position(nd: UniNode) -> bool {
+impl in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool {
     cur: UniNode = nd;
     parent = cur.parent;
     while parent is not None {
-        if isinstance(parent, (SubTag, TypeAlias, TypeParam, IndexSlice)) {
+        if isinstance(parent, (SubTag, TypeAlias, TypeParam))
+            or (include_subscripts and isinstance(parent, IndexSlice)) {
             return True;
         }
         if isinstance(parent, CastExpr) and parent.cast_type is cur {

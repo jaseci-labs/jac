@@ -9,6 +9,10 @@ stays byte-identical across all three gc modes.
 """
 
 import os;
+import from jaclang.compiler.driver.compile_options {
+    push_native_target,
+    pop_native_target
+}
 import subprocess;
 import sys;
 import tempfile;
@@ -21,31 +25,29 @@ glob FIXDIR = os.path.join(
      ),
      FIXTURE = os.path.join(FIXDIR, "own_field_drop_count.jac"),
      MODE_FLAGS = {
-         "none": ["--enforce-nogc", "--gc", "none", "--assert-no-rc"],
-         "rc": ["--gc", "rc"],
-         "cycles": ["--gc", "cycles"]
+         "none": ["--memory", "nogc"],
+         "rc": ["--memory", "rc"],
+         "cycles": ["--memory", "managed"]
      };
 
 def _compile_ir_headerless -> str {
-    prev = os.environ.get("JAC_NATIVE_TARGET", None);
-    os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
+    prev = push_native_target("wasm32-unknown-unknown");
     try {
         prog = JacProgram();
         ir = prog.compile(
             file_path=FIXTURE,
             options=CompileOptions(
-                aot_mode=True, na_gc_mode="none", nogc_enforce_all=True
+                aot_mode=True,
+                memory_profile="nogc",
+                no_ir_cache=True,
+                skip_native_engine=True
             )
         );
         assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
         assert ir is not None and ir.gen.llvm_ir is not None;
         return str(ir.gen.llvm_ir);
     } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_TARGET", None);
-        } else {
-            os.environ["JAC_NATIVE_TARGET"] = prev;
-        }
+        pop_native_target(prev);
     }
 }
 
@@ -67,7 +69,7 @@ test "flattened output stays byte-identical across all gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"ofi_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "nacompile", FIXTURE]
+                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

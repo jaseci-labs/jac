@@ -1,14 +1,14 @@
 ---
 name: jac-native-shared
-description: Building C-ABI shared libraries from Jac with `jac nacompile --shared` - the `:pub` export surface, opaque object handles with jac_retain/jac_release, automatic init on load, and consuming the .so/.dylib/.dll from ctypes or gcc. Load when exposing Jac code to C, C++, Rust, Go, or Python-ctypes hosts, or cross-building a .dylib/.dll. Pair with `jac-native` (the native subset itself).
+description: Export C-ABI shared libraries from Jac. Use for public native functions, library builds, or foreign callers.
 ---
 
-`jac nacompile --shared` packages a native Jac module as a **C-ABI shared library** any FFI-capable host can `dlopen` or link. Jac's own linker emits the file - no gcc/ld/lld, even for cross-targets:
+`jac build --native --lib` packages a native Jac module as a **C-ABI shared library** any FFI-capable host can `dlopen` or link. Jac's own linker emits the file - no gcc/ld/lld, even for cross-targets:
 
 ```bash
-jac nacompile mathlib.jac --shared                    # -> ./libmathlib.so   (host platform)
-jac nacompile mathlib.jac --shared --target macos     # -> ./libmathlib.dylib (Mach-O, ad-hoc signed on arm64)
-jac nacompile mathlib.jac --shared --target windows   # -> ./mathlib.dll      (PE, DllMain init)
+jac build --native mathlib.jac --lib                    # -> ./libmathlib.so   (host platform)
+jac build --native mathlib.jac --lib --target macos     # -> ./libmathlib.dylib (Mach-O, ad-hoc signed on arm64)
+jac build --native mathlib.jac --lib --target windows   # -> ./mathlib.dll      (PE, DllMain init)
 ```
 
 ## `:pub` is the export surface - no entry point
@@ -41,7 +41,7 @@ def:pub greet(name: str) -> str { return "hi " + name; }
 
 ## The ABI: scalars by value, objects as opaque handles
 
-Scalars cross by value (`int` -> `int64`, `float` -> `double`, `bool`); `str` crosses as a NUL-terminated `char*` both directions. Jac objects/lists/dicts cross as **opaque `void*` handles** - pass them back into other `:pub` functions, never dereference. The library exports `jac_retain(void*)` / `jac_release(void*)` to manage their refcounted lifetime. (Those two wrappers exist only when the library was built under a managed gc mode - the default; a zero-RC `--gc none` build emits no RC helpers to wrap, so the exports are absent by design. See `jac-native-memory`.)
+Scalars cross by value (`int` -> `int64`, `float` -> `double`, `bool`); `str` crosses as a NUL-terminated `char*` both directions. Jac objects/lists/dicts cross as **opaque `void*` handles** - pass them back into other `:pub` functions, never dereference. The library exports `jac_retain(void*)` / `jac_release(void*)` to manage their refcounted lifetime. (Those two wrappers exist only when the library was built under a managed gc mode - the default; a zero-RC `--memory nogc` build emits no RC helpers to wrap, so the exports are absent by design. See `jac-native-memory`.)
 
 ```python
 import ctypes

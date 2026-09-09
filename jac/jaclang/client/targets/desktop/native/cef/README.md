@@ -8,7 +8,7 @@ selects it with `[desktop] engine = "cef"` in `jac.toml`; `jac build <app>` and
 
 ## Architecture
 
-The `cef` host is a single `jac nacompile` binary. There is **no C
+The `cef` host is a single `jac build --native` binary. There is **no C
 shim**: the CEF vtables and glue are written in Jac-native (`*.jac`) and
 compiled directly. libpython is **not** used to talk to Chromium; it only
 embeds a minimal CPython runtime for the loopback HTTP server.
@@ -76,7 +76,7 @@ with entry {                       # generated host.jac
 
 Both shells boot through the same runtime module (`native/host_boot.jac` --
 plugins, in-process dispatch, loopback server + `oauth_broker`), and both
-compile a generated `host.jac` via `jac nacompile`. They differ only in
+compile a generated `host.jac` via `jac build --native`. They differ only in
 the renderer:
 
 | | Native webview (`engine = "native"`) | CEF (`engine = "cef"`) |
@@ -104,7 +104,7 @@ On the first build with `engine = "cef"` the pipeline fetches the CEF distributi
 native pieces automatically (all in Jac -- see `desktop_build.jac`; `build.jac`
 is the standalone entry). You need:
 
-- `jac` on `PATH` (the native pieces compile with `jac nacompile`, **no gcc**;
+- `jac` on `PATH` (the native pieces compile with `jac build --native`, **no gcc**;
   the download + SHA-1 verify + unpack run in-process via the Python stdlib, so
   **no `curl`**)
 - `patchelf` (optional) -- the Jac native linker already emits an `$ORIGIN`

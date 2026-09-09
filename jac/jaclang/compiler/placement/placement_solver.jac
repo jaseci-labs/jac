@@ -805,12 +805,17 @@ def _pull_boundary_import(imp: uni.Import, module: uni.Module, prog: any) -> int
     work.observe(module);
     if (
         _is_sv_import(imp)
+        or imp.is_typed
         or imp.is_virtual_jac
         or imp.has_string_path
         or imp.from_loc is None
         or not imp.items
-        or imp.code_context != CodeContext.CLIENT
+        or not imp.in_client_context()
     ) {
+        return 0;
+    }
+    import from jaclang.compiler.driver.boundary_classify { plain_native_import_target }
+    if plain_native_import_target(imp, prog) is not None {
         return 0;
     }
     resolved = imp.from_loc.resolve_relative_path();

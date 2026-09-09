@@ -24,6 +24,10 @@ does, give each of its cases its own test.
 """
 
 import ctypes;
+import from jaclang.compiler.driver.compile_options {
+    push_native_target,
+    pop_native_target
+}
 import from _ctypes { CFuncPtr }
 import io;
 import os;
@@ -34,6 +38,7 @@ import from tests.support {
     JAC_ROOT,
     TESTS_DIR,
     compile_native,
+    compile_native_ir,
     get_func,
     native_force_opts
 }
@@ -3200,10 +3205,10 @@ test "clib extensionless logical import produces extern declares (issue #6387)" 
 test "clib extensionless import resolves per platform (issue #6387)" {
     # The same source names the platform-correct filename off the target triple:
     # libraylib.so (ELF) / libraylib.dylib (Mach-O) / raylib.dll (PE). Cross-
-    # targets via JAC_NATIVE_TARGET, mirroring the AArch64 ABI test below.
+    # targets through push_native_target, mirroring the AArch64 ABI test below.
     import os as _os;
     import from jaclang.compiler.driver.compile_options { CompileOptions }
-    _saved = _os.environ.get("JAC_NATIVE_TARGET");
+    _saved = push_native_target("");
     _fix = str(os.path.join(FIXTURES, "clib_logical_import.jac"));
     try {
         for (tgt, want) in [
@@ -3213,18 +3218,14 @@ test "clib extensionless import resolves per platform (issue #6387)" {
             ("arm64-apple-darwin", "libraylib.dylib"),
             ("x86_64-pc-windows-msvc", "raylib.dll")
         ] {
-            _os.environ["JAC_NATIVE_TARGET"] = tgt;
+            push_native_target(tgt);
             prog = JacProgram();
             ir = prog.compile(_fix, options=CompileOptions());
             assert not prog.errors_had , f"{tgt}: {prog.errors_had}";
             assert list(ir.gen._clib_paths) == [want] , f"{tgt}: got {ir.gen._clib_paths}, want [{want}]";
         }
     } finally {
-        if _saved is None {
-            del _os.environ["JAC_NATIVE_TARGET"];
-        } else {
-            _os.environ["JAC_NATIVE_TARGET"] = _saved;
-        }
+        pop_native_target(_saved);
     }
 }
 
@@ -3234,31 +3235,22 @@ test "clib dotted logical import maps to origin-relative subdir (issue #6387)" {
     # $ORIGIN / @loader_path runpath from #6380.
     import os as _os;
     import from jaclang.compiler.driver.compile_options { CompileOptions }
-    _saved = _os.environ.get("JAC_NATIVE_TARGET");
+    _saved = push_native_target("");
     _fix = str(os.path.join(FIXTURES, "clib_logical_dotted.jac"));
     try {
-        _os.environ["JAC_NATIVE_TARGET"] = "x86_64-unknown-linux-gnu";
+        push_native_target("x86_64-unknown-linux-gnu");
         ir = JacProgram().compile(_fix, options=CompileOptions());
         assert list(ir.gen._clib_paths) == ["$ORIGIN/libs/libraylib.so"] , f"ELF: {ir.gen._clib_paths}";
-        _os.environ["JAC_NATIVE_TARGET"] = "arm64-apple-darwin";
+        push_native_target("arm64-apple-darwin");
         ir2 = JacProgram().compile(_fix, options=CompileOptions());
         assert list(ir2.gen._clib_paths) == ["@loader_path/libs/libraylib.dylib"] , f"Mach-O: {ir2.gen._clib_paths}";
     } finally {
-        if _saved is None {
-            del _os.environ["JAC_NATIVE_TARGET"];
-        } else {
-            _os.environ["JAC_NATIVE_TARGET"] = _saved;
-        }
+        pop_native_target(_saved);
     }
 }
 
 test "clib struct value-type coercion" {
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "clib_struct_coerce.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    ir = compile_native_ir("clib_struct_coerce.jac");
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = str(ir.gen.llvm_ir);
     # --- Large struct (Vec2: 128-bit, float fields) ---
@@ -3298,11 +3290,7 @@ test "clib System V AMD64 ABI lowering" {
     if "x86_64" not in platform.machine() and "AMD64" not in platform.machine() {
         return;
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "clib_sysv_abi.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    ir = compile_native_ir("clib_sysv_abi.jac");
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     s = str(ir.gen.llvm_ir);
     # SSE eightbytes: float fields pack into <2 x float> / trailing float.
@@ -3320,6 +3308,18 @@ test "clib System V AMD64 ABI lowering" {
     assert '%"Cam.cabi" = type' in s , "C-layout type for nested struct";
     assert 'byval(%"Cam.cabi")' in s , "Cam passed byval";
     assert 'sret(%"Cam.cabi")' in s , "Cam returned via sret";
+    result_declaration = next(
+        line
+        for line in s.splitlines()
+        if line.startswith('declare void @"cam_mk"')
+    );
+    argument_declaration = next(
+        line
+        for line in s.splitlines()
+        if line.startswith('declare float @"cam_fovy"')
+    );
+    assert 'sret(%"Cam.cabi") align 8' in result_declaration;
+    assert 'byval(%"Cam.cabi") align 8' in argument_declaration;
     # The non-injective return-boxing (gap #7) is gone: a scalar return is never
     # rerouted through struct boxing.
     assert "clib.cabi.arg" in s , "nested struct packed to C layout for byval";
@@ -3331,7 +3331,7 @@ test "jac run loads a transitive imported-module clib (issue #6687)" {
     # carries an `$ORIGIN`-relative path; the imported-dependency clib loader
     # did not strip that loader token, so the library was never loaded into the
     # JIT and its FFI symbols resolved to NULL -- the process SIGSEGV'd after a
-    # clean compile, while the byte-identical `jac nacompile` binary ran fine.
+    # clean compile, while the byte-identical `jac build --native` binary ran fine.
     # The library must now be loaded so the cross-module FFI call returns 21.
     import platform;
     import shutil;
@@ -3389,14 +3389,9 @@ test "clib AArch64 AAPCS ABI lowering" {
     # foreign-call ABI matches what clang produces under AAPCS (Phase 2 of #6353).
     import os as _os;
     import from jaclang.compiler.driver.compile_options { CompileOptions }
-    _saved = _os.environ.get("JAC_NATIVE_TARGET");
-    _os.environ["JAC_NATIVE_TARGET"] = "aarch64-unknown-linux-gnu";
+    _saved = push_native_target("aarch64-unknown-linux-gnu");
     try {
-        prog = JacProgram();
-        ir = prog.compile(
-            str(os.path.join(FIXTURES, "clib_sysv_abi.jac")), options=CompileOptions()
-        );
-        assert not prog.errors_had , f"Errors: {prog.errors_had}";
+        ir = compile_native_ir("clib_sysv_abi.jac");
         assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
         s = str(ir.gen.llvm_ir);
         assert "aarch64" in str(ir.gen.llvm_ir.triple) , "module not retargeted";
@@ -3416,11 +3411,7 @@ test "clib AArch64 AAPCS ABI lowering" {
         assert "byval" not in s , "AAPCS must not emit byval";
         assert 'sret(%"Cam.cabi")' in s , "Cam returned via sret";
     } finally {
-        if _saved is None {
-            del _os.environ["JAC_NATIVE_TARGET"];
-        } else {
-            _os.environ["JAC_NATIVE_TARGET"] = _saved;
-        }
+        pop_native_target(_saved);
     }
 }
 
@@ -3684,7 +3675,7 @@ test "native-default chess.jac runs via cli" {
             f.write(
                 '[project]\nname = "chess-na"\n\n[dev]\njaclang_source = "'
                     + _src.replace("\\", "/")
-                    + '"\n\n[build]\ndefault_codespace = "na"\n'
+                    + '"\n\n[placement]\ndefault = "na"\n'
             );
         }
         result = subprocess.run(
@@ -3709,7 +3700,7 @@ test "native-default chess.jac runs via cli" {
 
 test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Finding 2)" {
     # A regular `.jac` (no `na {}` block) that imports a bundled na_stdlib module
-    # is auto-promoted by `jac nacompile`. The entry point emits a call to each
+    # is auto-promoted by `jac build --native`. The entry point emits a call to each
     # imported module's `__jac_glob_init_<safe>` (driven by
     # native_transitive_sources), so the cross-module merge MUST link those
     # modules' definitions. Before the fix, BoundaryAnalysisPass only classified
@@ -3724,7 +3715,7 @@ test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Findi
     with tempfile.TemporaryDirectory() as tmpdir {
         out = os.path.join(tmpdir, "autopromote_bundled_zlib");
         comp = subprocess.run(
-            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out],
+            [sys.executable, "-m", "jaclang", "build", "--native", fixture, "-o", out],
             capture_output=True,
             text=True,
             timeout=180
@@ -3764,7 +3755,7 @@ test "sys argv via jac run native default" {
             f.write(
                 '[project]\nname = "argv-na"\n\n[dev]\njaclang_source = "'
                     + _src.replace("\\", "/")
-                    + '"\n\n[build]\ndefault_codespace = "na"\n'
+                    + '"\n\n[placement]\ndefault = "na"\n'
             );
         }
         result = subprocess.run(
@@ -3807,7 +3798,16 @@ test "sys argv via nacompile" {
         out_bin = os.path.join(tmpdir, "sys_argv_bin");
         # Step 1: Compile to native binary
         comp = subprocess.run(
-            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            [
+                sys.executable,
+                "-m",
+                "jaclang",
+                "build",
+                "--native",
+                fixture,
+                "-o",
+                out_bin
+            ],
             capture_output=True,
             text=True,
             timeout=120
@@ -3897,7 +3897,16 @@ test "sys stdout/stderr streams via nacompile" {
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "sys_streams_bin");
         comp = subprocess.run(
-            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            [
+                sys.executable,
+                "-m",
+                "jaclang",
+                "build",
+                "--native",
+                fixture,
+                "-o",
+                out_bin
+            ],
             capture_output=True,
             text=True,
             timeout=120
@@ -3932,7 +3941,16 @@ test "native osp kernel links transitively through an imported module (issue #66
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "osp_kernel_transitive");
         comp = subprocess.run(
-            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            [
+                sys.executable,
+                "-m",
+                "jaclang",
+                "build",
+                "--native",
+                fixture,
+                "-o",
+                out_bin
+            ],
             capture_output=True,
             text=True,
             timeout=120
@@ -3967,7 +3985,16 @@ test "native osp graph survives a cross-module spawn (kernel glob-init runs once
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "osp_xmod_buildsplit");
         comp = subprocess.run(
-            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            [
+                sys.executable,
+                "-m",
+                "jaclang",
+                "build",
+                "--native",
+                fixture,
+                "-o",
+                out_bin
+            ],
             capture_output=True,
             text=True,
             timeout=120
@@ -4005,7 +4032,16 @@ test "native osp node constructed in a non-OSP module carries its dispatch tag (
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "osp_ctor_only");
         comp = subprocess.run(
-            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            [
+                sys.executable,
+                "-m",
+                "jaclang",
+                "build",
+                "--native",
+                fixture,
+                "-o",
+                out_bin
+            ],
             capture_output=True,
             text=True,
             timeout=120
@@ -4045,7 +4081,16 @@ test "native osp construct living only in an impl annex materializes imported ar
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "osp_xmod_annexbuild");
         comp = subprocess.run(
-            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            [
+                sys.executable,
+                "-m",
+                "jaclang",
+                "build",
+                "--native",
+                fixture,
+                "-o",
+                out_bin
+            ],
             capture_output=True,
             text=True,
             timeout=120
@@ -4089,9 +4134,19 @@ test "aarch64 standalone binary runs (issue #6366)" {
         out_bin = os.path.join(tmpdir, "a64_roundtrip");
         # Step 1: cross-compile for aarch64.
         comp_env = dict(os.environ);
-        comp_env["JAC_NATIVE_TARGET"] = "aarch64-unknown-linux-gnu";
         comp = subprocess.run(
-            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            [
+                sys.executable,
+                "-m",
+                "jaclang",
+                "build",
+                "--native",
+                "--target-triple",
+                "aarch64-unknown-linux-gnu",
+                fixture,
+                "-o",
+                out_bin
+            ],
             capture_output=True,
             text=True,
             timeout=120,
@@ -4151,9 +4206,19 @@ test "aarch64 static-musl binary runs (cross vendor-musl, #7626 C1)" {
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "a64_static");
         comp_env = dict(os.environ);
-        comp_env["JAC_NATIVE_TARGET"] = "aarch64-unknown-linux-musl";
         comp = subprocess.run(
-            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            [
+                sys.executable,
+                "-m",
+                "jaclang",
+                "build",
+                "--native",
+                "--target-triple",
+                "aarch64-unknown-linux-musl",
+                fixture,
+                "-o",
+                out_bin
+            ],
             capture_output=True,
             text=True,
             timeout=180,
@@ -6377,8 +6442,11 @@ test "restore-failure falls back to recompile for inferred modules (item #19)" {
 # buf[i], and a struct load + store into the element pointer for buf[i] = val.
 test "ptr subscript read/write: no E5090 and correct GEP IR (#6707, #6708)" {
     prog = JacProgram();
+    options = native_force_opts();
+    options.no_ir_cache = True;
+    options.skip_native_engine = True;
     ir = prog.compile(
-        str(os.path.join(FIXTURES, "ptr_subscript.jac")), options=native_force_opts()
+        str(os.path.join(FIXTURES, "ptr_subscript.jac")), options=options
     );
     e5090 = [
         e.code.code

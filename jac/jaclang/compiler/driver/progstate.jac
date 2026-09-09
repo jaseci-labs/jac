@@ -2,7 +2,7 @@ import os;
 import sys;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
-import from jaclang.compiler.passes.transform { Alert }
+import from jaclang.compiler.passes.transform { Alert, PassResult }
 import type from jaclang.compiler.driver.mtp { Info }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
 
@@ -307,6 +307,11 @@ class AnalysisLedger {
     }
 }
 
+obj PendingPassResults {
+    has module: uni.Module,
+        results: dict[str, PassResult];
+}
+
 class AnalysisCaches {
     has placement_summaries: dict[str, any],
         placement_state: dict[str, any],
@@ -314,6 +319,7 @@ class AnalysisCaches {
         mtir_map: dict[(str, Info)],
         pass_runs: dict[str, int],
         pass_time: dict[str, float],
+        early_passes: dict[int, PendingPassResults],
         cache_events: dict[str, int];
 
     def init(self: AnalysisCaches) {
@@ -323,7 +329,28 @@ class AnalysisCaches {
         self.mtir_map: dict[(str, Info)] = {};
         self.pass_runs: dict[str, int] = {};
         self.pass_time: dict[str, float] = {};
+        self.early_passes: dict[int, PendingPassResults] = {};
         self.cache_events: dict[str, int] = {};
+    }
+
+    def record_early(
+        self: AnalysisCaches, module: uni.Module, results: dict[str, PassResult]
+    ) {
+        self.early_passes[id(module)] = PendingPassResults(module, results);
+    }
+
+    def take_early(
+        self: AnalysisCaches, module: uni.Module, name: str
+    ) -> (PassResult | None) {
+        pending = self.early_passes.get(id(module));
+        if pending is None {
+            return None;
+        }
+        result = pending.results.pop(name, None);
+        if not pending.results {
+            self.early_passes.pop(id(module));
+        }
+        return result;
     }
 }
 

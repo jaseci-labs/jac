@@ -68,9 +68,9 @@ sleep 1
 echo
 echo "=============================================="
 echo "4) Native binary (AOT compile, then run)"
-echo "Running: jac nacompile chess.jac  then  time ./chess -b 20"
+echo "Running: jac build --native chess.jac  then  time ./chess -b 20"
 echo "=============================================="
-jac nacompile chess.jac
+jac build --native chess.jac
 _s=$(date +%s.%N); time ./chess -b 20; _e=$(date +%s.%N)
 t_native=$(awk "BEGIN{printf \"%.3f\", $_e-$_s}")
 echo "interesting..."

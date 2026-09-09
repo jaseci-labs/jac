@@ -2,7 +2,7 @@
 
 This tutorial walks you through building and running an existing Jac full-stack
 app as a native desktop app. The desktop targets turn your app into **one
-`jac nacompile`d binary plus a web engine** - no Rust toolchain, no PyInstaller,
+`jac build --native`d binary plus a web engine** - no Rust toolchain, no PyInstaller,
 and no separate backend process. They build the same `cl` frontend the web target
 produces, then compile a native host that embeds CPython to serve that bundle and
 renders it in either the OS-native webview (WebKitGTK on Linux, WKWebView on
@@ -69,7 +69,7 @@ This:
 1. builds your `cl` codespace with the standard Vite pipeline (`.jac/client/dist/`),
 2. generates a native host that embeds CPython to serve that bundle on a loopback
    port and renders it in the OS webview,
-3. compiles the host with `jac nacompile` into a single binary.
+3. compiles the host with `jac build --native` into a single binary.
 
 The output lands in `.jac/client/desktop/`:
 

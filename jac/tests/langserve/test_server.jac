@@ -278,7 +278,7 @@ test "test_go_to_definition_md_path" {
             (10, 34, "jaclang/__init__.py:"),
             (11, 40, "jaclang/compiler/frontend/constant.jac:0:0-0:0"),
             (11, 51, "jaclang/compiler/frontend/constant.jac:2:5-2:15"),
-            (13, 40, "jaclang/compiler/types/type_utils.jac:0:0-0:0"),
+            (13, 32, "jaclang/lsp/server/utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/types/__init__.py:0:0-0:0"),
             (18, 5, "compiler/types/types.jac:59:5-59:13"),
             (20, 40, "jaclang/compiler/frontend/unitree.jac:0:0-0:0"),
@@ -1498,6 +1498,36 @@ test "an embedded server leaves the process's root logger level alone" {
             f"{root_logger.level}; quieting the process belongs to the stdio "
             "entry point, not the engine"
         );
+    } finally {
+        teardown_test();
+    }
+}
+
+test "inlay hints show inferred receiver modes and raises effects" {
+    setup_test();
+    try {
+        lsp = create_server();
+        hints_file = uris.from_fs_path(fixture_path("ownership_hints.jac"));
+        assert hints_file is not None;
+        lsp.type_check_file(hints_file);
+        hints = lsp.get_inlay_hints(
+            hints_file,
+            lspt.Range(
+                start=lspt.Position(line=0, character=0),
+                end=lspt.Position(line=200, character=0)
+            )
+        );
+        labels = sorted([h.label for h in hints]);
+        assert labels
+            == [
+                " raises ValueError",
+                " raises ValueError",
+                "(&mut self)",
+                "(&self)"
+            ] , labels;
+        by_line = {h.position.line: h.label for h in hints};
+        assert by_line.get(3) == "(&mut self)" , by_line;
+        assert by_line.get(7) == "(&self)" , by_line;
     } finally {
         teardown_test();
     }

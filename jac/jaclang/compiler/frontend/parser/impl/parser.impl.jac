@@ -56,6 +56,7 @@ impl Parser.check_peek_any(*kinds: TokenKind) -> bool {
 
 impl Parser.postinit{
     self.source = Source(self.source_code, self.file_path);
+    self._tokens_len = len(self.tokens);
 }
 
 impl Parser.match_tok(kind: TokenKind) -> LexToken | None {
@@ -106,8 +107,11 @@ impl Parser.expect(kind: TokenKind) -> LexToken {
     return self.current();
 }
 
-impl Parser.consume_uni(kind: TokenKind) -> Token {
+impl Parser.consume_uni(kind: TokenKind, value: str | None = None) -> Token {
     tok = self.expect(kind);
+    if value is not None and tok.value != value {
+        self.emit_diag(f"Expected '{value}', got '{tok.value}'", "E0001", loc=tok.loc);
+    }
     return self.make_uni_token(tok);
 }
 
@@ -1105,7 +1109,7 @@ impl Parser.parse_ref -> Expr {
             target = self.parse_await_expr();
             kids.append(target);
             return UnaryExpr(
-                operand=target, op=op, ownership=OwnershipKind.BORROW, kid=kids
+                operand=target, op=op, ownership=OwnershipKind.NONE, kid=kids
             );
         }
 
@@ -1811,6 +1815,9 @@ impl Parser.parse_special_ref -> Expr | None {
 }
 
 impl Parser.parse_atom -> Expr {
+    if self.check(TokenKind.KW_GRAPH) {
+        return self.parse_graph_expr();
+    }
     if self.check_any(
         TokenKind.INT,
         TokenKind.HEX,
@@ -1926,6 +1933,30 @@ impl Parser.parse_atom -> Expr {
         f"Unexpected token in expression: '{self.current().kind.value}'", "E0004"
     );
     return self.make_name(self.advance());
+}
+
+impl Parser.parse_graph_expr -> GraphExpr {
+    kid: list[UniNode] = [
+        self.consume_uni(TokenKind.KW_GRAPH),
+        self.consume_uni(TokenKind.LBRACE)
+    ];
+    exprs: list[Expr] = [];
+    while not self.check(TokenKind.RBRACE) and not self.at_end() {
+        start = self.pos;
+        expr = self.parse_expression();
+        exprs.append(expr);
+        kid.append(expr);
+        if self.check(TokenKind.SEMI) {
+            kid.append(self.consume_uni(TokenKind.SEMI));
+        } elif not self.check(TokenKind.RBRACE) {
+            kid.append(self.consume_uni(TokenKind.SEMI));
+        }
+        if self.pos == start {
+            self.advance();
+        }
+    }
+    kid.append(self.consume_uni(TokenKind.RBRACE));
+    return GraphExpr(exprs=exprs, kid=kid);
 }
 
 impl Parser.parse_tuple_item -> Expr | KWPair {
@@ -4826,26 +4857,30 @@ impl Parser._recover_misplaced_disconnect -> None {
     }
 }
 
-impl Parser.parse_ownership_prefix(kids: list[UniNode]) -> OwnershipKind {
+impl Parser.parse_ownership_prefix(kids: list[UniNode]) -> tuple[OwnershipKind, bool] {
     if self.check(TokenKind.KW_OWN) {
         own_tok = self.expect(TokenKind.KW_OWN);
         kids.append(self.make_uni_token(own_tok));
-        return OwnershipKind.OWN;
+        return (OwnershipKind.OWN, False);
+    } elif self.check(TokenKind.KW_LIN) {
+        lin_tok = self.expect(TokenKind.KW_LIN);
+        kids.append(self.make_uni_token(lin_tok));
+        return (OwnershipKind.OWN, True);
     } elif self.check(TokenKind.KW_IMM) {
         imm_tok = self.expect(TokenKind.KW_IMM);
         kids.append(self.make_uni_token(imm_tok));
-        return OwnershipKind.IMM;
+        return (OwnershipKind.IMM, False);
     } elif self.check(TokenKind.BW_AND) {
         amp_tok = self.expect(TokenKind.BW_AND);
         kids.append(self.make_uni_token(amp_tok));
         if self.check(TokenKind.KW_MUT) {
             mut_tok = self.expect(TokenKind.KW_MUT);
             kids.append(self.make_uni_token(mut_tok));
-            return OwnershipKind.MUT_BORROW;
+            return (OwnershipKind.MUT_BORROW, False);
         }
-        return OwnershipKind.BORROW;
+        return (OwnershipKind.BORROW, False);
     }
-    return OwnershipKind.NONE;
+    return (OwnershipKind.NONE, False);
 }
 
 impl Parser.parse_assignment_with_target(
@@ -4856,10 +4891,10 @@ impl Parser.parse_assignment_with_target(
         colon_uni = self.make_uni_token(self.previous());
 
         own_kid: list[UniNode] = [colon_uni];
-        own_kind = self.parse_ownership_prefix(own_kid);
+        (own_kind, own_lin) = self.parse_ownership_prefix(own_kid);
         tp = self.parse_pipe();
         own_kid.append(tp);
-        type_tag = SubTag(tag=tp, ownership=own_kind, kid=own_kid);
+        type_tag = SubTag(tag=tp, ownership=own_kind, linear=own_lin, kid=own_kid);
     }
     value: (Expr | YieldExpr | None) = None;
     aug_op: (Token | None) = None;
@@ -6147,10 +6182,12 @@ impl Parser.parse_param_var -> ParamVar | None {
     if self.match_tok(TokenKind.COLON) {
         param_colon_uni = self.make_uni_token(self.previous());
         param_type_kid: list[UniNode] = [param_colon_uni];
-        param_kind = self.parse_ownership_prefix(param_type_kid);
+        (param_kind, param_lin) = self.parse_ownership_prefix(param_type_kid);
         tp = self.parse_pipe();
         param_type_kid.append(tp);
-        type_tag = SubTag(tag=tp, ownership=param_kind, kid=param_type_kid);
+        type_tag = SubTag(
+            tag=tp, ownership=param_kind, linear=param_lin, kid=param_type_kid
+        );
     }
     default_val: Expr | None = None;
     param_eq_uni: Token | None = None;
@@ -6483,10 +6520,10 @@ impl Parser.parse_global_var_assignment -> Assignment {
     if self.match_tok(TokenKind.COLON) {
         gv_colon_uni = self.make_uni_token(self.previous());
         gv_own_kid: list[UniNode] = [gv_colon_uni];
-        gv_own_kind = self.parse_ownership_prefix(gv_own_kid);
+        (gv_own_kind, gv_lin) = self.parse_ownership_prefix(gv_own_kid);
         tp = self.parse_pipe();
         gv_own_kid.append(tp);
-        type_tag = SubTag(tag=tp, ownership=gv_own_kind, kid=gv_own_kid);
+        type_tag = SubTag(tag=tp, ownership=gv_own_kind, linear=gv_lin, kid=gv_own_kid);
     }
     value: (Expr | YieldExpr | None) = None;
     targets: list[Expr] = [name];

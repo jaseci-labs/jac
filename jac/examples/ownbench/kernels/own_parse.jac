@@ -7,7 +7,7 @@ enforced build every per-token operation is allocation-free -- views
 are rootless {data, len} descriptors, compares run length-aware memcmp
 over descriptor parts, and char probes read through the static char
 cache. The digest must be byte-identical across gc modes and the
-enforced build must compile --assert-no-rc."""
+enforced build must compile."""
 
 import sys;
 import time;

@@ -31,7 +31,7 @@ glob _KINDS: list[dict] = [
          {"name": "AI agents & LLM apps", "cmd": "def act -> Plan by llm();"},
          {"name": "Python package (PyPI wheel)", "cmd": "jac build --as wheel"},
          {"name": "npm package (+ .d.ts)", "cmd": "jac build --as npm"},
-         {"name": "C-ABI shared library", "cmd": "jac nacompile --shared"},
+         {"name": "C-ABI shared library", "cmd": "jac build --native --lib"},
 
      ];
 
@@ -137,7 +137,7 @@ def:pub Capabilities -> JsxElement {
                                         <p
                                             className="mt-8 text-center text-sm text-muted-foreground"
                                         >
-                                            Proof in the repo: a playable chess engine as a standalone binary, a raylib shooter running as in-browser wasm, and Jacyak — a full social app in{" "}
+                                            Proof in the repo: a playable chess engine as a standalone binary, a raylib shooter running as in-browser wasm, and JacYac — a full social app in{" "}
                                             <span
                                                 className="font-medium text-foreground"
                                             >

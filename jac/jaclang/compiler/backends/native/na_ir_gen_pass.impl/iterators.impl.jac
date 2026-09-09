@@ -8,10 +8,10 @@ impl NaIRGenPass._ensure_iter_types -> None {
     self._register_iter_struct("JacIter", ["next_fn", "state"], [i64, i8p]);
     self._jac_iter_type = self.struct_types["JacIter"];
 
-    self._register_iter_struct("ListIterState", ["coll", "idx"], [i64, i64]);
-    self._register_iter_struct("StrIterState", ["s", "idx"], [i64, i64]);
-    self._register_iter_struct("DictKeyIterState", ["coll", "idx"], [i64, i64]);
-    self._register_iter_struct("SetIterState", ["coll", "idx"], [i64, i64]);
+    self._register_iter_struct("ListIterState", ["coll", "idx"], [i8p, i64]);
+    self._register_iter_struct("StrIterState", ["s", "idx"], [i8p, i64]);
+    self._register_iter_struct("DictKeyIterState", ["coll", "idx"], [i8p, i64]);
+    self._register_iter_struct("SetIterState", ["coll", "idx"], [i8p, i64]);
 
     self._register_iter_struct(
         "RangeIterState", ["cur", "stop", "step"], [i64, i64, i64]
@@ -96,6 +96,27 @@ impl NaIRGenPass._make_jac_iter(next_fn: ir.Function, state_ptr: ir.Value) -> ir
     return ji;
 }
 
+impl NaIRGenPass._make_collection_iter(
+    next_fn: ir.Function, state_name: str, collection: ir.Value
+) -> ir.Value {
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    state = self._alloc_iter_struct(state_name);
+    if not self._is_owned(collection) {
+        self._emit_rc_retain(collection, op="iter_source");
+    }
+    self.builder.store(
+        self.builder.bitcast(collection, i8p),
+        self.builder.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 0)])
+    );
+    self.builder.store(
+        ir.Constant(i64, 0),
+        self.builder.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 1)])
+    );
+    return self._make_jac_iter(next_fn, state);
+}
+
 impl NaIRGenPass._emit_iter_advance(
     b: ir.IRBuilder, iter_val: ir.Value, out_ptr: ir.Value
 ) -> ir.Value {
@@ -152,8 +173,8 @@ impl NaIRGenPass._list_iter_next_fn(
     coll_slot = b.gep(
         state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="lit.coll.slot"
     );
-    coll_i64 = b.load(coll_slot, name="lit.coll.i64");
-    list_ptr = b.inttoptr(coll_i64, list_ptr_type, name="lit.list");
+    coll = b.load(coll_slot, name="lit.coll");
+    list_ptr = b.bitcast(coll, list_ptr_type, name="lit.list");
     idx_slot = b.gep(
         state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="lit.idx.slot"
     );
@@ -176,20 +197,9 @@ impl NaIRGenPass._list_iter_next_fn(
 impl NaIRGenPass._make_list_iter(
     list_val: ir.Value, elem_type_name: str, elem_type: ir.Type
 ) -> ir.Value {
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    next_fn = self._list_iter_next_fn(elem_type_name, elem_type);
-    state = self._alloc_iter_struct("ListIterState");
-    coll_i64 = self.builder.ptrtoint(list_val, i64, name="lit.coll.store");
-    coll_slot = self.builder.gep(
-        state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="lit.coll.field"
+    return self._make_collection_iter(
+        self._list_iter_next_fn(elem_type_name, elem_type), "ListIterState", list_val
     );
-    self.builder.store(coll_i64, coll_slot);
-    idx_slot = self.builder.gep(
-        state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="lit.idx.field"
-    );
-    self.builder.store(ir.Constant(i64, 0), idx_slot);
-    return self._make_jac_iter(next_fn, state);
 }
 
 impl NaIRGenPass._get_char_cache_gv -> ir.Value {
@@ -237,8 +247,7 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     s_slot = b.gep(
         state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="sit.s.slot"
     );
-    s_i64 = b.load(s_slot, name="sit.s.i64");
-    s_ptr = b.inttoptr(s_i64, i8p, name="sit.s");
+    s_ptr = b.load(s_slot, name="sit.s");
     idx_slot = b.gep(
         state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="sit.idx.slot"
     );
@@ -268,20 +277,9 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
 }
 
 impl NaIRGenPass._make_str_iter(str_val: ir.Value) -> ir.Value {
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    next_fn = self._str_iter_next_fn();
-    state = self._alloc_iter_struct("StrIterState");
-    s_i64 = self.builder.ptrtoint(str_val, i64, name="sit.s.store");
-    s_slot = self.builder.gep(
-        state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="sit.s.field"
+    return self._make_collection_iter(
+        self._str_iter_next_fn(), "StrIterState", str_val
     );
-    self.builder.store(s_i64, s_slot);
-    idx_slot = self.builder.gep(
-        state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="sit.idx.field"
-    );
-    self.builder.store(ir.Constant(i64, 0), idx_slot);
-    return self._make_jac_iter(next_fn, state);
 }
 
 impl NaIRGenPass._bytes_iter_next_fn -> ir.Function {
@@ -308,7 +306,7 @@ impl NaIRGenPass._bytes_iter_next_fn -> ir.Function {
     s_slot = b.gep(
         state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="bit.s.slot"
     );
-    bvp = b.inttoptr(b.load(s_slot, name="bit.s.i64"), bt_ptr, name="bit.bv");
+    bvp = b.bitcast(b.load(s_slot, name="bit.s"), bt_ptr, name="bit.bv");
     idx_slot = b.gep(
         state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="bit.idx.slot"
     );
@@ -336,20 +334,9 @@ impl NaIRGenPass._bytes_iter_next_fn -> ir.Function {
 }
 
 impl NaIRGenPass._make_bytes_iter(bytes_val: ir.Value) -> ir.Value {
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    next_fn = self._bytes_iter_next_fn();
-    state = self._alloc_iter_struct("StrIterState");
-    s_i64 = self.builder.ptrtoint(bytes_val, i64, name="bit.s.store");
-    s_slot = self.builder.gep(
-        state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="bit.s.field"
+    return self._make_collection_iter(
+        self._bytes_iter_next_fn(), "StrIterState", bytes_val
     );
-    self.builder.store(s_i64, s_slot);
-    idx_slot = self.builder.gep(
-        state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="bit.idx.field"
-    );
-    self.builder.store(ir.Constant(i64, 0), idx_slot);
-    return self._make_jac_iter(next_fn, state);
 }
 
 impl NaIRGenPass._dict_iter_next_fn(dict_key: str) -> ir.Function {
@@ -380,8 +367,8 @@ impl NaIRGenPass._dict_iter_next_fn(dict_key: str) -> ir.Function {
     coll_slot = b.gep(
         state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="dit.coll.slot"
     );
-    coll_i64 = b.load(coll_slot, name="dit.coll.i64");
-    dict_ptr = b.inttoptr(coll_i64, dict_ptr_type, name="dit.dict");
+    coll = b.load(coll_slot, name="dit.coll");
+    dict_ptr = b.bitcast(coll, dict_ptr_type, name="dit.dict");
     idx_slot = b.gep(
         state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="dit.idx.slot"
     );
@@ -402,24 +389,9 @@ impl NaIRGenPass._dict_iter_next_fn(dict_key: str) -> ir.Function {
 }
 
 impl NaIRGenPass._make_dict_iter(dict_val: ir.Value, dict_key: str) -> ir.Value {
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    next_fn = self._dict_iter_next_fn(dict_key);
-    state = self._alloc_iter_struct("DictKeyIterState");
-    coll_i64 = self.builder.ptrtoint(dict_val, i64, name="dit.coll.store");
-    self.builder.store(
-        coll_i64,
-        self.builder.gep(
-            state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="dit.coll.field"
-        )
+    return self._make_collection_iter(
+        self._dict_iter_next_fn(dict_key), "DictKeyIterState", dict_val
     );
-    self.builder.store(
-        ir.Constant(i64, 0),
-        self.builder.gep(
-            state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="dit.idx.field"
-        )
-    );
-    return self._make_jac_iter(next_fn, state);
 }
 
 impl NaIRGenPass._set_iter_next_fn(
@@ -449,8 +421,8 @@ impl NaIRGenPass._set_iter_next_fn(
     coll_slot = b.gep(
         state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="set.coll.slot"
     );
-    coll_i64 = b.load(coll_slot, name="set.coll.i64");
-    set_ptr = b.inttoptr(coll_i64, set_ptr_type, name="set.set");
+    coll = b.load(coll_slot, name="set.coll");
+    set_ptr = b.bitcast(coll, set_ptr_type, name="set.set");
     idx_slot = b.gep(
         state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="set.idx.slot"
     );
@@ -474,24 +446,9 @@ impl NaIRGenPass._set_iter_next_fn(
 impl NaIRGenPass._make_set_iter(
     set_val: ir.Value, elem_type_name: str, elem_type: ir.Type
 ) -> ir.Value {
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    next_fn = self._set_iter_next_fn(elem_type_name, elem_type);
-    state = self._alloc_iter_struct("SetIterState");
-    coll_i64 = self.builder.ptrtoint(set_val, i64, name="set.coll.store");
-    self.builder.store(
-        coll_i64,
-        self.builder.gep(
-            state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="set.coll.field"
-        )
+    return self._make_collection_iter(
+        self._set_iter_next_fn(elem_type_name, elem_type), "SetIterState", set_val
     );
-    self.builder.store(
-        ir.Constant(i64, 0),
-        self.builder.gep(
-            state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="set.idx.field"
-        )
-    );
-    return self._make_jac_iter(next_fn, state);
 }
 
 impl NaIRGenPass._range_iter_next_fn -> ir.Function {
@@ -766,18 +723,11 @@ impl NaIRGenPass._build_iter_from_expr(expr: uni.UniNode) -> (tuple | None) {
             return self._build_iter_from_expr(params[0]);
         }
     }
-    val = self._str_norm(self._codegen_expr(expr));
+    val = self._str_norm_optional(self._codegen_expr(expr));
     if val is None {
         return None;
     }
-    _built = self._make_iter_from_value(val, expr);
-    if _built is not None
-        and self._iter_owned_srcs is not None
-        and _built[0] is not val
-        and self._is_owned(val) {
-        self._iter_owned_srcs.append(val);
-    }
-    return _built;
+    return self._make_iter_from_value(val, expr);
 }
 
 impl NaIRGenPass._make_map_iter(up: tuple, callee: tuple) -> (tuple | None) {
@@ -1282,12 +1232,8 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     is_user_iterable = _ustruct is not None and self._arch_implements_iter(_ustruct);
     built: (tuple | None) = None;
     owns_iter = False;
-    _saved_srcs = self._iter_owned_srcs;
-    _iter_srcs: list = [];
     if is_adapter_call or is_user_iterable {
-        self._iter_owned_srcs = _iter_srcs;
         built = self._build_iter_from_expr(coll);
-        self._iter_owned_srcs = _saved_srcs;
         owns_iter = True;
     } else {
         elem_t = self._iter_elem_llvm_of(coll);
@@ -1309,8 +1255,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     is_tuple_target = isinstance(nd.target, uni.TupleVal);
 
     _gen_it_spill: (ir.Value | None) = None;
-    if self._gen_ctx is not None
-        and self.builder.function is self._gen_ctx["resume_fn"] {
+    if self._gen_ctx is not None and self.builder.function is self._gen_ctx.resume_fn {
         _gen_it_spill = self._entry_alloca(iter_val.type, "iterf.itslot");
         self.builder.store(iter_val, _gen_it_spill);
     }
@@ -1319,18 +1264,11 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     if _gen_it_spill is None and owns_iter {
         _it_slot_var = self._bind_loop_coll_slot(iter_val);
     }
-    _src_slot_vars: list[str] = [];
-    for _src in _iter_srcs {
-        _src_nm = self._bind_loop_coll_slot(_src);
-        if _src_nm is not None {
-            _src_slot_vars.append(_src_nm);
-        }
-    }
 
     elem_slot = self._entry_alloca(elem_type, "iter.elem");
     a0: (ir.Value | None) = None;
     a1: (ir.Value | None) = None;
-    if is_tuple_target {
+    if isinstance(nd.target, uni.TupleVal) {
         targets = nd.target.values or [];
         if len(targets) != 2 {
             return False;
@@ -1339,6 +1277,9 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         t1_type = elem_type.elements[1];
         n0 = self._get_name(targets[0]);
         n1 = self._get_name(targets[1]);
+        if n0 is None or n1 is None {
+            return False;
+        }
         a0 = self._entry_alloca(t0_type, n0);
         a1 = self._entry_alloca(t1_type, n1);
         self.local_vars[n0] = a0;
@@ -1394,9 +1335,6 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         self._release_loop_coll_slot(_it_slot_var, op="iter_end", loc=_loc);
     } elif owns_iter {
         self._emit_rc_release_simple(iter_val, op="iter_end", loc=_loc);
-    }
-    for _src_nm in _src_slot_vars {
-        self._release_loop_coll_slot(_src_nm, op="iter_src_end", loc=_loc);
     }
     return True;
 }

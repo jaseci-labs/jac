@@ -1,7 +1,7 @@
 """Fully-owned real program: RPN evaluator + prime sieve under nogc enforcement.
 
-Must compile clean with --enforce-nogc and produce identical output to a
-managed build; under --gc none it must pass --assert-no-rc and run leak-free.
+Must compile clean with --memory nogc and produce identical output to a
+managed build; under --memory nogc it must pass and run leak-free.
 """
 
 obj Stack {

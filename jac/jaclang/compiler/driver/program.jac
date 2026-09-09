@@ -1,4 +1,4 @@
-import sys;
+import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import types;
 import from threading { Event }
 import jaclang.compiler.frontend.unitree as uni;
@@ -19,12 +19,6 @@ import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.mtp { Info }
 import type from jaclang.compiler.passes.transform { Transform }
 
-with entry {
-    if sys.getrecursionlimit() < 12000 {
-        sys.setrecursionlimit(12000);
-    }
-}
-
 class JacProgram {
     has hub: ModuleHub,
         deps: DepGraph,
@@ -44,7 +38,7 @@ class JacProgram {
     def _get_compiler(self: JacProgram) -> JacCompiler;
     def iface_registry(self: JacProgram) -> any;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
-    def stub_catalog(self: JacProgram) -> any;
+    def stub_catalog(self: JacProgram) -> StubCatalog | None;
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
     def release_compile_closure(self: JacProgram, collect: bool = True) -> None;
     def release_native_dep_units(self: JacProgram) -> None;

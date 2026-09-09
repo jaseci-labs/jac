@@ -211,7 +211,7 @@ impl NaIRGenPass._mt_ensure -> None {
     b.position_at_end(wc);
     b.cbranch(b.icmp_unsigned(">", b.load(krem), ir.Constant(i32, 0)), wb, wd);
     b.position_at_end(wb);
-    r = b.call(f_gen, []);
+    r: ir.Value = b.call(f_gen, []);
     kcur = b.load(krem);
     lt32 = b.icmp_unsigned("<", kcur, ir.Constant(i32, 32));
 

@@ -4,8 +4,8 @@
 tombstone-aware probing, used-counting 75% rehash, insertion-order array), so
 this mirrors the dict matrix: the JIT tests exercise each set operation
 in-process, pinpointing the failing operation via per-function sentinels; the
-GC-matrix tests AOT-compile the same fixture with `--gc rc`, `--gc cycles`,
-and `--gc none`, run the binary, and expect a clean exit (the fixture asserts
+GC-matrix tests AOT-compile the same fixture with `--memory rc`, `--memory managed`,
+and `--memory nogc`, run the binary, and expect a clean exit (the fixture asserts
 internally and prints OK).
 """
 
@@ -84,7 +84,7 @@ test "set f64 elements hash and compare" {
 def _run_fixture_with_gc(extra_flags: list[str], tag: str) {
     src = os.path.join(FIXTURES, PROG);
     out_bin = os.path.join(tempfile.mkdtemp(), f"set_hash_ops_{tag}.bin");
-    cmd = [sys.executable, "-m", "jaclang", "nacompile", src];
+    cmd = [sys.executable, "-m", "jaclang", "build", "--native", src];
     cmd += extra_flags;
     cmd += ["-o", out_bin];
     comp = subprocess.run(cmd, capture_output=True, text=True, timeout=300);
@@ -97,14 +97,14 @@ def _run_fixture_with_gc(extra_flags: list[str], tag: str) {
     assert proc.stdout.strip() == "OK set_hash_ops" , f"unexpected output under {tag}: {proc.stdout.strip()!r}";
 }
 
-test "set ops pass under --gc rc" {
-    _run_fixture_with_gc(["--gc", "rc"], "rc");
+test "set ops pass under --memory rc" {
+    _run_fixture_with_gc(["--memory", "rc"], "rc");
 }
 
-test "set ops pass under --gc cycles" {
-    _run_fixture_with_gc(["--gc", "cycles"], "cycles");
+test "set ops pass under --memory managed" {
+    _run_fixture_with_gc(["--memory", "managed"], "cycles");
 }
 
-test "set ops pass under --gc none" {
-    _run_fixture_with_gc(["--gc", "none"], "none");
+test "set ops pass under --memory nogc" {
+    _run_fixture_with_gc(["--memory", "nogc"], "none");
 }

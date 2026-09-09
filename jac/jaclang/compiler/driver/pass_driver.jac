@@ -1,9 +1,9 @@
 import atexit;
 import os;
 import sys;
-import from collections.abc { Callable, Iterator }
+import from collections.abc { Callable, Iterator, Sequence }
 import from contextlib { contextmanager }
-import from jaclang.compiler.passes.transform { DiagnosticPolicy }
+import from jaclang.compiler.passes.transform { Alert, DiagnosticPolicy }
 import from jaclang.compiler.driver.program { JacProgram }
 
 def diagnostic_policy_for(
@@ -92,8 +92,8 @@ def _alert_in_internal_stub(loc_path: str) -> bool {
 }
 
 def deliver_alerts(
-    errors: list,
-    warnings: list,
+    errors: Sequence[Alert],
+    warnings: Sequence[Alert],
     prog: JacProgram,
     policy: (DiagnosticPolicy | None) = None
 ) {
@@ -135,6 +135,32 @@ def run_pass(
     inst: any = None;
     if getattr(pass_cls, 'HOST_PASS', False) {
         kwargs['prog'] = prog;
+    }
+    completed = prog.analysis.take_early(ir_in, pass_cls.__name__);
+    if completed is not None {
+        if completed.errors_had or completed.warnings_had {
+            sources = {ir_in.source.file_path: ir_in.source};
+            for nd in ir_in._in_mod_nodes {
+                sources[nd.loc.mod_path] = nd.loc.orig_src;
+            }
+            completed.errors_had = [
+                alert
+                for alert in completed.errors_had
+                if alert.code is None
+                    or not pol.is_suppressed(
+                        alert.code, alert.loc, source=sources.get(alert.loc.mod_path)
+                    )
+            ];
+            completed.warnings_had = [
+                alert
+                for alert in completed.warnings_had
+                if alert.code is None
+                    or not pol.is_suppressed(
+                        alert.code, alert.loc, source=sources.get(alert.loc.mod_path)
+                    )
+            ];
+        }
+        kwargs['completed'] = completed;
     }
     try {
         inst = pass_cls(

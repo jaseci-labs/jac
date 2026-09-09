@@ -1817,6 +1817,7 @@ impl gen_parser -> int {
 
 impl grammar(output: str = "", strict: bool = False) -> int {
     import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
     import from jaclang.compiler.tools.grammar_extract_pass { GrammarExtractPass }
     import jaclang;
     parser_path = str(
@@ -1827,7 +1828,15 @@ impl grammar(output: str = "", strict: bool = False) -> int {
             / "parser.jac"
     );
     prog = JacProgram();
-    mod = prog.compile(parser_path, no_cgen=True);
+    mod = prog.compile(
+        parser_path,
+        options=CompileOptions(
+            symtab_ir_only=True,
+            no_cgen=True,
+            need_full_ast=True,
+            force_target_program=True
+        )
+    );
     if prog.errors_had {
         console.error("Failed to compile parser module.");
         for e in prog.errors_had {
@@ -1970,4 +1979,89 @@ def _drop_git_ignored(paths: list[str]) -> list[str] {
 def _should_ignore(file_path: str, ignore_patterns: list) -> bool {
     import from jaclang.compiler.frontend.helpers { path_matches_exclude }
     return path_matches_exclude(file_path, ignore_patterns);
+}
+
+impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> int {
+    import os;
+    import from jaclang.cli.console { console }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    if not os.path.isfile(filename) {
+        console.error(f"File not found: {filename}");
+        return 1;
+    }
+    path = os.path.abspath(filename);
+    prog = JacProgram();
+    if topic == "memory" {
+        import from jaclang.compiler.passes.ownership_hints { inferred_hints }
+        mod = prog.compile(
+            file_path=path,
+            options=CompileOptions(
+                rc_stats=True, nogc_debug=True, memory_profile=(memory or None)
+            )
+        );
+        for err in prog.errors_had {
+            console.print(err.pretty_print());
+        }
+        if mod is None {
+            return 1;
+        }
+        console.print(
+            f"memory profile: {prog.options.memory_profile
+                if prog.options
+                else 'managed'}"
+        );
+        hints = inferred_hints(mod);
+        console.print(f"inferred facts: {len(hints)}");
+        for h in sorted(hints, key=lambda (h) { (h.line, h.col); }) {
+            console.print(
+                f"  {os.path.basename(path)}:{h.line}:{h.col}  {h.label.strip()}"
+            );
+        }
+        console.print(f"move sites: {len(mod.own_move_sites)}");
+        console.print(
+            f"last-use releases: {sum([len(v) for v in mod.rc_last_use.values()])}"
+        );
+        return 0;
+    }
+    if topic == "placement" {
+        import from jaclang.compiler.placement.placement { collect_placement_rows }
+        import from jaclang.cli.check_report { print_placement_report }
+        prog.compile(file_path=path);
+        for err in prog.errors_had {
+            console.print(err.pretty_print());
+        }
+        print_placement_report(collect_placement_rows(prog));
+        return 0;
+    }
+    import re;
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        native_linked_ir_text
+    }
+    mod = prog.compile(
+        file_path=path,
+        options=CompileOptions(
+            aot_mode=True, default_codespace="native", force_target_program=True
+        )
+    );
+    for err in prog.errors_had {
+        console.print(err.pretty_print());
+    }
+    if mod is None or mod.gen.llvm_ir is None {
+        console.error(
+            "No native IR was produced for this module; see the diagnostics above."
+        );
+        return 1;
+    }
+    ir_text = native_linked_ir_text(mod);
+    out_path = output or (os.path.splitext(path)[0] + ".ll");
+    with open(out_path, "w", encoding="utf-8") as fh {
+        fh.write(ir_text);
+    }
+    console.print(f"wrote {out_path} ({len(ir_text)} bytes)");
+    console.print("symbols:");
+    for m in re.finditer(r"^define [^@]*@([A-Za-z0-9_.$]+)\(", ir_text, re.M) {
+        console.print(f"  {m.group(1)}");
+    }
+    return 0;
 }

@@ -1813,12 +1813,18 @@ test "endpoint effect classifier follows helper calls" {
     );
     introspector.load();
     effects = introspector._client_manifest.get("endpoint_effects", {});
+    import json;
+    for (identity, info) in effects.items() {
+        assert json.loads(identity)
+            == [info["app"], info["module"], info["kind"], info["name"]];
+    }
+    effects = {info["kind"] + ":" + info["name"]: info for info in effects.values()};
 
     assert "walker:tag_item" in effects , "tag_item should be classified";
-    assert effects["walker:tag_item"]["is_writer"] , "tag_item mutates the graph via the _add_tag helper -- must be a writer";
+    assert effects["walker:tag_item"]["writes"] , "tag_item mutates the graph via the _add_tag helper -- must be a writer";
 
     assert "walker:list_items" in effects , "list_items should be classified";
-    assert not effects["walker:list_items"]["is_writer"] , "list_items only reports -- must be a reader";
+    assert not effects["walker:list_items"]["writes"] , "list_items only reports -- must be a reader";
 }
 
 test "spawn_walker_sync and spawn_walker_async dispatch to explicit paths" {

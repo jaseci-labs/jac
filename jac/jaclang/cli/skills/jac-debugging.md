@@ -1,6 +1,6 @@
 ---
 name: jac-debugging
-description: The Jac fix loop - reading `jac check` diagnostics (E/W code anatomy, `jac guide` pointers), `# jac:ignore[CODE]` suppression, stale-cache triage (`jac clean` scopes vs the global `~/.cache/jac` vs `.jac/data`), cross-boundary drift after server-contract changes (W1101/W1051 in client files), `jac check --lint --fix` vs `jac fmt`, graph inspection with `jac dot`. Load when a build fails, errors look wrong, or behavior is stale/inexplicable.
+description: Diagnose compiler errors, stale behavior, graph failures, and cross-boundary mismatches. Use for targeted repair and data-preserving cache or schema triage.
 ---
 
 The core loop: write -> `jac check <paths>` -> read the diagnostic -> follow its guide pointer -> fix -> re-check -> `jac test`.
@@ -33,18 +33,18 @@ Prefer fixing the cause; suppression hides real regressions later. Project-wide 
 
 `jac run` reports diagnostics too: `-e all` shows warnings, `-e none` silences everything (default `error`); the default comes from `[run] diagnostics`.
 
-## Stale-cache triage table
+## Diagnose state and cache errors
 
-Compiled bytecode and persisted graph data both outlive your source edits. When behavior makes no sense, suspect staleness **before** suspecting your code:
+Start with the first diagnostic, the selected app, and the active storage configuration. An invalid anchor is evidence of an unresolved reference, not proof that the compiler cache or database is stale.
 
-| Symptom | Fix |
+| Symptom | Next check |
 |---|---|
-| `NodeAnchor <id> is not a valid reference` / `Invalid anchor id` | `jac clean --all --force` (stale persisted graph vs recompiled types) |
-| Syntax/type errors on code you know is correct; edits seem ignored | `jac clean --cache` (project bytecode), then `rm -rf ~/.cache/jac` (global per-user cache; use after upgrading Jaseci packages) |
-| A served app starts returning 500s with anchor/schema errors after model changes | Stop the server, `rm -rf .jac/data/`, restart (dev only - this deletes data; see `jac-sv-persistence` for migration-safe renames) |
-| Tests green once, red on re-run with leftover nodes | `jac clean --all --force` before the run (see `jac-testing`) |
+| Invalid anchor or missing node | Check the ID, app/store selection, deletion history, and access context. After schema edits, inspect migration aliases and quarantined records with the persistence guide. |
+| Edits appear ignored | Confirm which source and compiler version are running; restart the server after server changes. If compiled artifacts are stale, use `jac clean --cache`. |
+| Tests depend on run order or old nodes | Create isolated fixtures, identify the nodes each test creates, and clean up those fixtures. Do not assert totals on a shared root. |
+| A server returns 500 after a model change | Read the server traceback and compare the stored schema with the current declarations before choosing a migration or repair. |
 
-`jac clean` scopes: default = `.jac/data` only; `--cache` bytecode; `--all` data+cache+venv+client; `--force` skips the confirm prompt. The global (per-user) cache is cleared by deleting `~/.cache/jac`.
+`jac clean` removes configured project directories: by default the data directory; `--cache` selects compiled artifacts; `--all` also includes data, packages, and client output; `--force` bypasses confirmation. It is not a general reset for an external database. Reset data only when it is explicitly disposable or its deletion is authorized; name the exact target and preserve anything needed for migration or diagnosis. See `jac-sv-persistence` for schema evolution.
 
 ## `jac check --lint --fix` vs `jac fmt`
 
@@ -62,7 +62,7 @@ jac dot app.jac -o graph.dot    # save (render with graphviz)
 jac dot app.jac -d 3            # limit traversal depth
 ```
 
-If `jac dot` itself throws `NodeAnchor ... is not a valid reference`, that's the triage table again: `jac clean --all --force` and re-run.
+If `jac dot` reports an invalid anchor, apply the reference and storage checks above before retrying.
 
 For a served app, `jac browse` drives a headless Chrome from the CLI (`jac browse open localhost:8000`, `snapshot`, `click @e1`, `screenshot`) - end-to-end checks without Playwright.
 
@@ -85,7 +85,7 @@ Measured on a real fullstack app (47 seeded contract mutations): `jac check` fla
 
 - **Don't "fix" a type error by switching to `any`** - it defers the error to the next typed boundary (see `jac-types` for the real moves, including the `as` cast).
 - **`W2003` unused-name warnings fail an otherwise clean check** - prefix intentionally-unused names with `_` (see `jac-core-cheatsheet`).
-- **A diagnostic pointing at correct-looking code** usually means staleness (table above) or a wrong-dot relative import upstream resolving to `<Unknown>` - check the first error in the list, not the loudest one.
+- **A diagnostic pointing at correct-looking code** can originate in an upstream import or unresolved type. Check the first error and the resolved source before changing caches.
 
 ## See also
 

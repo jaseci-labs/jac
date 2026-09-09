@@ -89,6 +89,7 @@ walker UnparsePass(UniPass) {
     can exit_dict_compr with uni.DictCompr exit;
     can exit_atom_trailer with uni.AtomTrailer exit;
     can exit_atom_unit with uni.AtomUnit exit;
+    can exit_graph_expr with uni.GraphExpr exit;
     can exit_yield_expr with uni.YieldExpr exit;
     can exit_func_call with uni.FuncCall exit;
     can exit_index_slice with uni.IndexSlice exit;

@@ -86,6 +86,7 @@ def compile_page(path: str, backend: any) -> str {
 """Emit the compiled `@jac/runtime` shim + its core into the work dir."""
 def write_runtime(work: Path) {
     runtime_path = resolve_client_runtime_cl_path("react");
+    write_runtime_support(work, runtime_path);
     (work / "jac_runtime.js").write_text(
         rewrite_core_specifier(compile_react(runtime_path)), encoding="utf-8"
     );
@@ -93,6 +94,15 @@ def write_runtime(work: Path) {
         compile_react(str(Path(runtime_path).parent / "client_runtime_core.jac")),
         encoding="utf-8"
     );
+}
+
+def write_runtime_support(work: Path, runtime_path: str) {
+    for name in ["auth_contract", "endpoint_cache"] {
+        (work / (name + ".js")).write_text(
+            compile_react(str(Path(runtime_path).parent / (name + ".jac"))),
+            encoding="utf-8"
+        );
+    }
 }
 
 """`bun install` a dep set into `work`; defaults to the shared one.

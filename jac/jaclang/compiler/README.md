@@ -23,9 +23,47 @@ this file is the map of the tree and the rules that keep it organized.
 
 The loose modules at this level are the native frontend kernel
 (`jc_unit`, `jc_materialize`, `native_compiler`, `native_scope`: the parser
-compiled natively and loaded as a shared library) and registries shared by
-analysis and codegen (`symbol_utils`, `expr_keys`, `type_registry`,
+and its early analysis passes compiled natively and loaded as a shared library)
+and registries shared by analysis and codegen (`symbol_utils`, `expr_keys`, `type_registry`,
 `intrinsic_registry`).
+
+## Native early analysis
+
+When the driver knows a module's codespace before parsing, `jc_unit` runs the
+existing `ASTValidationPass` and `SymTabBuildPass` after annex weaving, inside
+the parse region. The tree and symbol graph cross into the host together.
+Modules with wildcard imports defer symbol construction until the driver's
+dependency resolver has made the imported names available. Parsing without a
+compiler program, or without a known codespace, keeps the ordinary host schedule.
+
+`PassResult` carries completed diagnostics and timing through the ordinary pass
+driver, which applies diagnostic policy and records each pass once. Native field
+and reference-container layouts come from the backend's ABI metadata;
+`jc_materialize` preserves object identity when copying symbol indexes and edges.
+Keep pass algorithms in `passes/`, and extend this shared boundary when another
+pass moves into the kernel.
+
+`scripts/native_compile_bench.jac` at the repository root measures uncached AOT
+application builds with a warm compiler. Set `JAC_COMPILER_LIB` to each built
+kernel when comparing revisions.
+
+Measured on 2026-09-06 with `examples/chess/chess.jac`, Linux x86-64 on a
+Threadripper 9980X: ten builds per kernel in two fresh-process batches, two
+excluded warmups per batch, ordered baseline/new/new/baseline. Both kernels used
+the same host compiler source; the baseline kernel predates native early passes.
+Startup was excluded; application IR caching was disabled and linking included.
+
+| Median | Parser-only kernel | Early-analysis kernel |
+| --- | ---: | ---: |
+| Full AOT build | 3.646 s | 3.537 s |
+| AST validation (pass ledger) | 34.25 ms | 11.22 ms |
+| Symbol construction (pass ledger) | 38.19 ms | 14.00 ms |
+| Both passes combined (pass ledger) | 72.45 ms | 25.04 ms |
+
+The observed total median improvement is 3.0%; the migrated passes are 2.9x
+faster together. Total build ranges overlap (3.423–4.193 s baseline,
+3.340–4.145 s new), so the end-to-end figure is a local measurement rather than a
+guaranteed speedup. Both generated executables completed an automatic game.
 
 ## Rules
 

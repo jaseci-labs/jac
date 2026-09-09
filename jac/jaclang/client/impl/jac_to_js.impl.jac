@@ -14,5 +14,7 @@ impl JacToJSCompiler.extract_exports(manifest: (ClientManifest | None)) -> list[
 }
 
 impl JacToJSCompiler.compile_module(module_path: Path) -> ClientArtifact {
-    return self._compile_to_js(module_path);
+    artifact = self._compile_to_js(module_path);
+    self.boundary_contracts[str(module_path)] = artifact.boundary_contracts;
+    return artifact;
 }

@@ -9,6 +9,7 @@ impl run_lang_server -> None {
     server.feature(lspt.TEXT_DOCUMENT_DID_CHANGE)(did_change);
     server.feature(lspt.TEXT_DOCUMENT_DID_CLOSE)(did_close);
     server.feature(lspt.TEXT_DOCUMENT_FORMATTING)(formatting);
+    server.feature(lspt.TEXT_DOCUMENT_INLAY_HINT)(inlay_hint);
     server.feature(
         lspt.WORKSPACE_DID_CREATE_FILES,
         lspt.FileOperationRegistrationOptions(
@@ -96,6 +97,12 @@ impl document_symbol(
     ls: JacLangServer, params: lspt.DocumentSymbolParams
 ) -> list[lspt.DocumentSymbol] {
     return ls.get_outline(params.text_document.uri);
+}
+
+impl inlay_hint(
+    ls: JacLangServer, params: lspt.InlayHintParams
+) -> list[lspt.InlayHint] {
+    return ls.get_inlay_hints(params.text_document.uri, params.range);
 }
 
 impl hover(

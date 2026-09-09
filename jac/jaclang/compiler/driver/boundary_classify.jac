@@ -1,4 +1,5 @@
 import os;
+import from functools { lru_cache }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -9,19 +10,7 @@ import from jaclang.compiler.placement.workspace {
 }
 
 def _coerce_module(module: uni.Module, context: CodeContext) {
-    module.decided_codespace = context.value;
-    for elem in module.body {
-        if isinstance(elem, uni.ContextAwareNode) {
-            elem.code_context = context;
-            if (isinstance(elem, uni.ModuleCode) and elem.body) {
-                for inner in elem.body {
-                    if isinstance(inner, uni.ContextAwareNode) {
-                        inner.code_context = context;
-                    }
-                }
-            }
-        }
-    }
+    module.set_code_context(context);
 }
 
 def _coerce_client_module(module: uni.Module) {
@@ -320,6 +309,18 @@ def same_workspace(consumer_path: str, provider_path: str) -> bool {
     return os.path.realpath(cws.toml_path) == os.path.realpath(pws.toml_path);
 }
 
+@lru_cache(maxsize=256)
+def _source_carries_owned_elements(path: str, stamp: tuple[int, int]) -> bool {
+    import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+    import from jaclang.compiler.frontend.parser.frontend { parse }
+    (module, had_error) = parse(read_file_with_encoding(path), path);
+    return not had_error
+        and any(
+            isinstance(stmt, uni.Archetype)
+                and stmt.arch_kind in ('walker', 'node', 'edge') for stmt in module.body
+        );
+}
+
 def _module_carries_owned_elements(nd: uni.Import) -> bool {
     linked = symbol_linked_source_module(nd);
     if linked is None {
@@ -327,11 +328,12 @@ def _module_carries_owned_elements(nd: uni.Import) -> bool {
         if resolved is None {
             return False;
         }
-        import from jaclang.compiler.passes.boundary_analysis_pass {
-            _parse_module_for_types
-        }
-        linked = _parse_module_for_types(resolved);
-        if linked is None {
+        try {
+            stat = os.stat(resolved);
+            return _source_carries_owned_elements(
+                resolved, (stat.st_mtime_ns, stat.st_size)
+            );
+        } except OSError {
             return False;
         }
     }
@@ -485,10 +487,20 @@ def classify_client_import_item(
         return ClientImportVerdict.CLIENT;
     }
     if isinstance(owner, uni.Ability) {
+        consumer = item.find_parent_of_type(uni.Module);
+        provider_app = consumer_owner_app(source_mod);
+        authenticated_endpoint = (
+            owner.access is not None
+            and owner.access.tag.name in (Tok.KW_PRIV, Tok.KW_PROT)
+            and consumer is not None
+            and bool(provider_app)
+            and consumer_owner_app(consumer) == provider_app
+            and same_workspace(consumer.loc.mod_path, source_mod.loc.mod_path)
+        );
         if (
             not owner.is_method
             and owner.access is not None
-            and owner.access.tag.name == Tok.KW_PUB
+            and (owner.access.tag.name == Tok.KW_PUB or authenticated_endpoint)
         ) {
             return ClientImportVerdict.BRIDGED;
         }

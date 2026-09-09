@@ -93,7 +93,9 @@ test "urllib.request.urlopen GET over the libcurl floor (sv<->na congruent)" {
 
         # Native libcurl floor: same status and body length, parsed from the
         # real HTTP exchange against the loopback server.
-        (eng, _) = compile_native("prim_urllib.jac");
+        # Rebuild dependencies so JIT shared-library loading is exercised even
+        # when earlier tests have populated the native IR cache.
+        (eng, _) = compile_native("prim_urllib.jac", no_ir_cache=True);
         assert _call_na_int(eng, "urlopen_status_na") == py["status"] , "status";
         assert _call_na_int(eng, "urlopen_body_length_na") == py["body_length"] , (
             "body_length"

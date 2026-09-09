@@ -1,4 +1,5 @@
 import os;
+import from core.ai { optional_review }
 import from core.github {
     RepoMeta,
     code_breakdown,
@@ -58,7 +59,9 @@ def:pub fetch_and_score(owner: str, name: str) -> ScoredPayload {
     if an.jac_files == 0 {
         return ScoredPayload(error="not_jac", meta=meta, service_pid=pid);
     }
+    breakdown = score(meta, an);
+    breakdown.ai_review = optional_review(files);
     return ScoredPayload(
-        ok=True, meta=meta, an=an, breakdown=score(meta, an), sha=sha, service_pid=pid
+        ok=True, meta=meta, an=an, breakdown=breakdown, sha=sha, service_pid=pid
     );
 }

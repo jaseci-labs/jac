@@ -36,12 +36,10 @@ obj PlacementWork {
         self.references.pop(mid, None);
         old = self.owned.get(mid, []);
         owned: list[int] = [];
-        for stmt in module.body {
-            if isinstance(stmt, uni.Import) {
-                eid = id(stmt);
-                owned.append(eid);
-                self.edges[eid] = (stmt, module);
-            }
+        for stmt in module.get_all_sub_nodes(uni.Import) {
+            eid = id(stmt);
+            owned.append(eid);
+            self.edges[eid] = (stmt, module);
         }
         for eid in set(old) - set(owned) {
             self.unwatch(eid);

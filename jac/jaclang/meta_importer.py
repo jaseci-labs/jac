@@ -262,7 +262,7 @@ class JacMetaImporter(MetaPathFinder, Loader):
                 raise ImportError(
                     f"{retired}: the .na.jac marker was retired in 0.35 -- "
                     "rename the file to .jac; native placement is inferred "
-                    "(or forced by 'jac nacompile' / 'jac build --as native')."
+                    "(or forced by 'jac build --native')."
                 )
 
         return None

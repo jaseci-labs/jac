@@ -18,6 +18,12 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
                  )
              ),
              Arg.create(
+                 "backend",
+                 `default="",
+                 choices=["python", "native"],
+                 help="Execution backend (omit for automatic selection)"
+             ),
+             Arg.create(
                  "show",
                  typ=bool,
                  `default=False,
@@ -261,7 +267,8 @@ def run(
     takeover: bool | None = None,
     fleet: bool = False,
     workers: str | None = None,
-    args: list[str] = []
+    args: list[str] = [],
+    backend: str = ""
 ) -> int;
 
 def serve(

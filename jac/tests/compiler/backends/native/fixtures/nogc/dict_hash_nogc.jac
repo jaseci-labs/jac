@@ -1,4 +1,4 @@
-"""Hash-table dict under headerless --gc none --enforce-nogc.
+"""Hash-table dict under headerless --memory nogc.
 
 The scope-exit drop of `d` is the regression target: live entries sit at
 sparse ctrl-occupied slots, so a dense keys[0..len) drop frees garbage from

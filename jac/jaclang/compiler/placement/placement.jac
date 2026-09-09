@@ -1,7 +1,7 @@
 import os;
 import json;
 import jaclang.compiler.frontend.unitree as uni;
-import from dataclasses { field }
+import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 
 glob PLACEMENT_SCHEMA: int = 1,
@@ -665,16 +665,13 @@ def scan_native_blockers(
                             item.dot_path_str,
                             _resolve_import_path(item),
                             not imp.is_absorb,
-                            not imp.is_absorb
-                                and item.alias is None
-                                and item.path is not None
-                                and len(item.path) == 1
+                            not imp.is_absorb and item.path is not None
                         )
                     );
                 }
             }
         }
-        for (name, path, is_bare, is_plain_bare) in targets {
+        for (name, path, is_bare, is_module_import) in targets {
             clean = name.lstrip('.') if name else '';
             if is_bare {
                 if clean and clean in NATIVE_SUPPORTED_STDLIB {
@@ -683,7 +680,9 @@ def scan_native_blockers(
                 if clean and is_bundled_native_module(clean) {
                     continue;
                 }
-                if not (is_plain_bare and path is not None and path.endswith('.jac')) {
+                if not (
+                    is_module_import and path is not None and path.endswith('.jac')
+                ) {
                     return (f"non-native import '{clean}'", deps);
                 }
             }

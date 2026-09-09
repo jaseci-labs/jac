@@ -157,11 +157,26 @@ impl JacProgram.load_dependency_module(
     }
 
     mod: uni.Module;
+    foreign_untyped = (
+        resolved_path in target_hub
+        and target_program is not self
+        and not resolved_path.endswith('.pyi')
+        and not target_hub[resolved_path].stub_only
+        and not target_program.analysis.analyses_run.provides(
+            target_hub[resolved_path], 'TypeOf'
+        )
+    );
     if resolved_path in self.mod.hub {
         mod = self.mod.hub[resolved_path];
-    } elif resolved_path in target_hub {
+    } elif resolved_path in target_hub and not foreign_untyped {
         mod = target_hub[resolved_path];
     } else {
+        if foreign_untyped {
+            events = self.analysis.cache_events;
+            events["untyped_foreign_tree_skipped"] = (
+                events.get("untyped_foreign_tree_skipped", 0) + 1
+            );
+        }
         if resolved_path.endswith('.pyi') {
             import ast as py_ast;
             import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
@@ -195,7 +210,7 @@ impl JacProgram.load_dependency_module(
                 )
             );
         }
-        if not hasattr(mod, "cat_kids") {
+        if not hasattr(mod, "cat_kids") and not foreign_untyped {
             target_program.install_module(resolved_path, mod);
         }
     }
@@ -245,7 +260,7 @@ impl JacProgram._get_compiler(self: JacProgram) -> JacCompiler {
     return self._compiler;
 }
 
-impl JacProgram.stub_catalog(self: JacProgram) -> any {
+impl JacProgram.stub_catalog(self: JacProgram) -> StubCatalog | None {
     return self._get_compiler().stub_catalog();
 }
 
@@ -348,6 +363,7 @@ impl JacProgram.release_compile_closure(
     self.scratch.clear();
     self.analysis.analyses_run.clear();
     self.analysis.placement_state.pop('work', None);
+    self.analysis.early_passes.clear();
     if self._iface is not None {
         self._iface.on_closure_release();
     }

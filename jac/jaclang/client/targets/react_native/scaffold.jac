@@ -109,17 +109,17 @@ def _build_package_json(app_slug: str, native_deps: dict[str, str]) -> str {
         },
         "dependencies": {
             "expo": f"~{EXPO_SDK_VERSION}.0.0",
-            "expo-asset": "~12.0.7",
-            "expo-constants": "~18.0.7",
-            "expo-secure-store": "~15.0.6",
-            "expo-status-bar": "~3.0.7",
-            "react": "19.1.0",
+            "expo-asset": "~57.0.16",
+            "expo-constants": "~57.0.17",
+            "expo-secure-store": "~57.0.3",
+            "expo-status-bar": "~57.0.1",
+            "react": "19.2.3",
             "react-native": REACT_NATIVE_VERSION,
             "@react-navigation/native": "^7.1.14",
             "@react-navigation/native-stack": "^7.3.21",
-            "react-native-gesture-handler": "~2.28.0",
-            "react-native-safe-area-context": "5.6.0",
-            "react-native-screens": "~4.16.0",
+            "react-native-gesture-handler": "~2.32.0",
+            "react-native-safe-area-context": "~5.7.0",
+            "react-native-screens": "~4.26.0",
             "react-error-boundary": "^4.1.2",
             "react-hook-form": "^7.54.0",
             "@hookform/resolvers": "^3.10.0",
@@ -128,8 +128,8 @@ def _build_package_json(app_slug: str, native_deps: dict[str, str]) -> str {
         "devDependencies": {
             "@babel/core": "^7.25.0",
             "babel-preset-expo": f"~{EXPO_SDK_VERSION}.0.0",
-            "@types/react": "~19.1.0",
-            "typescript": "~5.9.2"
+            "@types/react": "~19.2.4",
+            "typescript": "~6.0.3"
         }
     };
     for (pkg_name, version) in native_deps.items() {
@@ -146,8 +146,6 @@ def _build_app_json(app_slug: str, app_id: str, app_name: str) -> str {
             "version": "1.0.0",
             "orientation": "portrait",
             "userInterfaceStyle": "light",
-            "newArchEnabled": True,
-            "jsEngine": "hermes",
             "ios": {"supportsTablet": True, "bundleIdentifier": app_id},
             "android": {
                 "package": app_id,
@@ -375,16 +373,6 @@ def write_expo_scaffold(
     return any_written;
 }
 
-def ensure_native_deps_installed(rn_dir: Path) -> None {
-    expo_dir = rn_dir / "node_modules" / "expo";
-    if expo_dir.exists() {
-        console.print("  ✔ Expo dependencies already installed", style="muted");
-        return;
-    }
-
-    console.print(
-        "  Installing native deps (this can take a while on first setup)...",
-        style="muted"
-    );
+def ensure_native_deps_installed(rn_dir: Path) {
     run_manifest_install(rn_dir);
 }

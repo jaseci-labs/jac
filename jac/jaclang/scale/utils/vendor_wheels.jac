@@ -3,7 +3,7 @@ import sys;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.jac0core.sealed { python_tag }
-import from jaclang.project.config { JacConfig, get_config_for_path }
+import from jaclang.project.config { JacConfig }
 import from jaclang.project.providers { get_python_provider, resolve_plan }
 import from jaclang.dist.jab_vendor {
     download_wheels,
@@ -71,7 +71,9 @@ def main {
     }
     app_dir = Path(args[0]).resolve();
     platform_tag = args[1] if len(args) > 1 else "";
-    config = get_config_for_path(app_dir);
+
+    toml_path = app_dir / "jac.toml";
+    config = JacConfig.load(toml_path) if toml_path.is_file() else None;
     if config is None {
         console.error(f"No jac.toml under {app_dir}; nothing to vendor.");
         sys.`exit(1);

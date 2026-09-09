@@ -1,3 +1,4 @@
+import json;
 import from urllib.parse { quote }
 import from jaclang.server.identity.auth_models { FirebaseTokenRequest }
 import from jaclang.server.middleware { require_user }
@@ -13,6 +14,9 @@ import from jaclang.server.transport { TransportResponse }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.shared.utils { is_safe_loopback_redirect }
 import from jaclang.scale.sso.sso_auth { SSOAuth }
+import from jaclang.scale.sso.provider { OAuth2CodeProvider }
+import from jaclang.scale.sso.oauth_session { OAuthSession }
+import from jaclang.runtime.object_model { asdict }
 import from jaclang.scale.webhook.webhook { ApiKeyManager }
 
 
@@ -71,13 +75,138 @@ obj SSOExtension(ServerExtension) {
             )
         );
 
+        def configured_session(platform: str) -> OAuthSession | None {
+            provider = sso.get_sso(platform);
+            if not isinstance(provider, OAuth2CodeProvider) {
+                return None;
+            }
+            return OAuthSession(
+                users=server.user_manager, provider=provider, platform=platform
+            );
+        }
+        async def oauth_begin(
+            request: Request, platform: str, challenge: str, mode: str = "web"
+        ) -> TransportResponse {
+            session = configured_session(platform);
+            if session is None {
+                return TransportResponse.fail(
+                    code="SSO_NOT_CONFIGURED", message="SSO provider is not configured"
+                );
+            }
+            link_user = "";
+            if request.headers.get("Authorization") {
+                (user_id, error) = require_user(request);
+                if error is not None {
+                    return error;
+                }
+                link_user = str(user_id);
+            }
+            callback = str(
+                get_scale_config().get_sso_config().get('client_auth_callback_url')
+                    or ''
+            );
+            if mode == "web" and not callback {
+                return TransportResponse.fail(
+                    code="SSO_NOT_CONFIGURED",
+                    message="Configure client_auth_callback_url for client-managed OAuth"
+                );
+            }
+            result = session.begin(challenge, mode, link_user, callback, True);
+            return TransportResponse.success(data=asdict(result));
+        }
+        async def oauth_finish(
+            platform: str, code: str, state: str, verifier: str
+        ) -> TransportResponse {
+            session = configured_session(platform);
+            if session is None {
+                return TransportResponse.fail(
+                    code="SSO_NOT_CONFIGURED", message="SSO provider is not configured"
+                );
+            }
+            result = await session.finish(code, state, verifier);
+            return TransportResponse.success(data=asdict(result));
+        }
+        def oauth_poll(platform: str, poll: str) -> TransportResponse {
+            session = configured_session(platform);
+            if session is None {
+                return TransportResponse.fail(
+                    code="SSO_NOT_CONFIGURED", message="SSO provider is not configured"
+                );
+            }
+            return TransportResponse.success(data=asdict(session.poll(poll)));
+        }
+        for (path, callback, names) in [
+            ("begin", oauth_begin, ["challenge", "mode"]),
+            ("finish", oauth_finish, ["code", "state", "verifier"]),
+            ("poll", oauth_poll, ["poll"])
+        ] {
+            server.add_endpoint(
+                JEndPoint(
+                    method=HTTPMethod.POST,
+                    path="/sso/{platform}/" + path,
+                    callback=callback,
+                    parameters=[platform_param]
+                        + [
+                            APIParameter(
+                                name=name,
+                                data_type="string",
+                                required=name != "mode",
+                                kind=ParameterType.BODY
+                            ) for name in names
+                        ],
+                    tags=["SSO APIs"],
+                    summary="OAuth session " + path
+                )
+            );
+        }
+
         async def sso_callback(
             request: Request, platform: str
         ) -> (Response | TransportResponse) {
+            session = configured_session(platform);
+            state = OAuth2CodeProvider._callback_param(request, 'state') or '';
+            record = session.record(state) if session is not None else None;
+            state_data = json.loads(record['identity_value']) if record else {};
+            if session is not None
+                and state_data.get('client_managed')
+                and state_data.get('mode') == 'web' {
+                target = str(state_data.get('client_callback') or '');
+                suffix = '&' if '?' in target else '?';
+                code = OAuth2CodeProvider._callback_param(request, 'code') or '';
+                denied = OAuth2CodeProvider._callback_param(request, 'error') or '';
+                return RedirectResponse(
+                    url=target
+                        + suffix
+                        + 'code='
+                        + quote(code)
+                        + '&state='
+                        + quote(state)
+                        + '&error='
+                        + quote(denied),
+                    headers={
+                        'Cache-Control': 'no-store',
+                        'Referrer-Policy': 'no-referrer'
+                    }
+                );
+            }
+            if session is not None and session.callback_mode(state) == 'native' {
+                message = await session.complete_native(
+                    OAuth2CodeProvider._callback_param(request, 'code') or '', state
+                );
+                return Response(
+                    content=message,
+                    headers={
+                        'Cache-Control': 'no-store',
+                        'Referrer-Policy': 'no-referrer'
+                    }
+                );
+            }
             result = await sso.sso_callback(request, platform);
             sso_config = get_scale_config().get_sso_config();
             configured_url = str(sso_config.get('client_auth_callback_url', ''));
-            requested_url = request.query_params.get('state') or '';
+            requested_url = str(result.meta.extra.get('client_callback') or '')
+                if result.meta
+                else '';
             frontend_url = resolve_sso_client_redirect(requested_url, configured_url);
             if not frontend_url {
                 return result;

@@ -38,6 +38,7 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/backends/common/fmt_kernel.jac",
     "compiler/passes/annex_weave.jac",
     "compiler/passes/ast_validation_pass.jac",
+    "compiler/passes/graph_lowering_pass.jac",
     "compiler/passes/boundary_analysis_pass.jac",
     "compiler/passes/decl_impl_match_pass.jac",
     "compiler/passes/endpoint_effect_pass.jac",
@@ -45,12 +46,16 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/passes/sym_tab_build_pass.jac",
     "compiler/passes/transform.jac",
     "compiler/native_scope.jac",
+    "compiler/field_semantics.jac",
     "compiler/native_compiler.jac",
     "compiler/jc_unit.jac",
     "compiler/jc_materialize.jac",
     "compiler/passes/uni_pass.jac",
     "compiler/tools/treeprinter.jac",
     "runtime/runtime.jac",
+    "runtime/object_model.jac",
+    "runtime/object_interop.jac",
+    "runtime/region.jac",
     "runtime/archetype.jac",
     "runtime/constructs.jac",
     "runtime/graph_query.jac",
@@ -73,7 +78,7 @@ SEED_PATHS: tuple[str, ...] = (
 )
 
 # Modules that live under a seed directory but belong to the native
-# toolchain tier: nacompile builds them into a shared library, and they
+# toolchain tier: jac build --native --lib builds them into a shared library, and they
 # never execute as bytecode (extern `import from c` declarations have no
 # Python lowering). The jac0 sweep and the seed-manifest gate skip them;
 # tier stamping (is_seed_source) is unaffected, which also keeps them out

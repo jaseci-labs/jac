@@ -25,7 +25,7 @@ version = "1.0.0"
 
 [jacpack]
 name = "desktop"
-description = "Jac desktop app (OS webview + nacompile)"
+description = "Jac desktop app (OS webview + native build)"
 jaclang = "0.9.8"
 
 [jacpack.options]

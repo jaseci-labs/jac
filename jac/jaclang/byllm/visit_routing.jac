@@ -1,6 +1,6 @@
 import enum;
 import re;
-import from dataclasses { fields, is_dataclass }
+import from jaclang.runtime.object_interop { fields, is_record }
 import from types { UnionType }
 import from jaclang.byllm._optdeps.loguru { logger }
 import from jaclang.byllm.llm { BaseLLM }
@@ -52,7 +52,7 @@ def _describe_arch(arch: object) -> str {
         }
     }
     parts: list[str] = [];
-    if is_dataclass(arch) {
+    if is_record(arch) {
         for f in fields(arch) {
             if f.name.startswith("_") {
                 continue;
@@ -129,7 +129,7 @@ def _slugify(text: object) -> str {
 
 
 def _first_field_value(arch: object) -> object {
-    if is_dataclass(arch) {
+    if is_record(arch) {
         for f in fields(arch) {
             if not f.name.startswith("_") {
                 return getattr(arch, f.name);

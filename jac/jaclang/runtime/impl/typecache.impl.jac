@@ -1,5 +1,5 @@
 import sys;
-import from dataclasses { fields, is_dataclass }
+import from jaclang.runtime.object_interop { fields, is_record }
 import from typing { cast }
 
 glob _cache: dict[type, dict[str, object]] = {};
@@ -50,7 +50,7 @@ impl get_field_types(cls: type) -> dict[str, object] {
     if (cached := _cache.get(cls)) is not None {
         return cached;
     }
-    if not is_dataclass(cls) {
+    if not is_record(cls) {
         _cache[cls] = {};
         return {};
     }
@@ -62,7 +62,7 @@ impl get_field_types(cls: type) -> dict[str, object] {
 }
 
 impl warm(cls: type) -> None {
-    if cls in _cache or not is_dataclass(cls) {
+    if cls in _cache or not is_record(cls) {
         return;
     }
     out = _collect(cls);

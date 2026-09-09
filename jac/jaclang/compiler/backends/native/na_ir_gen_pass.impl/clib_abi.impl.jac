@@ -271,7 +271,7 @@ impl NaIRGenPass._codegen_clib_call(
             );
         }
     }
-    result = self.builder.call(
+    result: ir.Value = self.builder.call(
         func, call_args, name=f"call.{func_name}", arg_attrs=arg_attrs
     );
     rkind = ret_plan["kind"];

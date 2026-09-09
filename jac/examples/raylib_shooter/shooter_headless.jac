@@ -7,9 +7,9 @@ borrows, `f(&mut w)` call sites), so the whole program passes the enforced
 ownership checker and compiles headerless with **no collector and zero
 reference counting**, machine-checked:
 
-    jac nacompile shooter_headless.jac --enforce-nogc --gc none --assert-no-rc
+    jac build --native shooter_headless.jac --memory nogc
 
-The same unchanged source also compiles under `--gc rc` and `--gc cycles`;
+The same unchanged source also compiles under `--memory rc` and `--memory managed`;
 `demo.sh --headless` builds all three and checks the digests are
 byte-identical, so the borrow-checked build is a semantics-preserving drop-in
 (the ownbench erasure/identity discipline applied to a real game loop).

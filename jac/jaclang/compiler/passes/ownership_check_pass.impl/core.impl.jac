@@ -1,8 +1,12 @@
 import from jaclang.compiler.frontend.diagnostics {
     E1301,
+    E1316,
+    E1317,
+    E1318,
     E1302,
     E1303,
     E1304,
+    E1305,
     E1306,
     E1311,
     W1312
@@ -45,7 +49,14 @@ glob _MOVE_EXEMPT_CALLS: tuple = (
          "replace",
          "join",
          "get",
-         "write"
+         "write",
+         "issubset",
+         "issuperset",
+         "isdisjoint",
+         "union",
+         "intersection",
+         "difference",
+         "symmetric_difference"
      ),
      _NONRETAINING_STDLIB_MODULES: tuple = (
          "os",
@@ -60,6 +71,24 @@ impl OwnershipCheckPass.postinit -> None {
     super.postinit();
 }
 
+glob _MUTATING_CONTAINER_METHODS: frozenset[str] = frozenset(
+         {
+             "append",
+             "insert",
+             "add",
+             "remove",
+             "pop",
+             "clear",
+             "extend",
+             "update",
+             "setdefault",
+             "popitem",
+             "sort",
+             "reverse",
+             "discard"
+         }
+     );
+
 impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self.owned_decl = {};
     self.consumed_syms = set();
@@ -70,7 +99,6 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self.in_reaching_borrows = {};
     self.consumed_at = {};
     self.borrow_created_at = {};
-    self.loop_depth_flagged_names = set();
     self.idx_assignments = [];
     self.idx_names = [];
     self.idx_params = [];
@@ -80,13 +108,21 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self.imm_decl = {};
     self.view_syms = set();
     self.view_elision_fns = {};
+    ir_in.own_move_sites = set();
+    self.receiver_modes = {};
+    self.receiver_probe = set();
+    self.arch_view_syms = set();
 
     self._build_index(ir_in);
+    self._stamp_receiver_modes();
+    self._stamp_raises_effects();
     self._stamp_ownership();
     self._stamp_loop_borrows();
     self._stamp_region_borrows();
+    self._stamp_arch_view_bindings();
     self._process_partition_sugar();
     self._nogc_setup();
+    self._emit_place_intrinsic_diagnostics();
     if not self.owned_decl
         and not self.borrow_meta
         and not self.imm_decl
@@ -104,10 +140,14 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     ];
     self._run_dataflow(cfg_nodes);
     self._stamp_overwrite_consumed();
+    self._stamp_move_sites();
     self._run_borrow_liveness(cfg_nodes);
     self._run_reaching_borrows(cfg_nodes);
-    self._emit_loop_move_diagnostics();
     self._emit_diagnostics();
+    self._emit_linear_diagnostics(cfg_nodes);
+    self._emit_receiver_diagnostics();
+    self._emit_raises_diagnostics();
+    self._emit_place_move_diagnostics();
     self._emit_borrow_diagnostics();
     self._emit_element_space_conflicts();
     self._emit_move_while_borrowed(cfg_nodes);
@@ -232,6 +272,10 @@ impl OwnershipCheckPass._stamp_ownership -> None {
             sid = self._name_sym_id(own_target);
             own_target.sym.ownership = OwnershipKind.OWN;
             self.owned_decl[sid] = own_target;
+            if nd.type_tag is not None and nd.type_tag.linear {
+                own_target.sym.linear = True;
+                self.linear_decl[sid] = own_target;
+            }
         }
         borrow_target = self._is_borrow_decl(nd);
         if borrow_target is not None and borrow_target.sym is not None {
@@ -284,6 +328,10 @@ impl OwnershipCheckPass._stamp_ownership -> None {
         } elif tag.ownership == OwnershipKind.OWN {
             name.sym.ownership = OwnershipKind.OWN;
             self.owned_decl[sid] = name;
+            if tag.linear {
+                name.sym.linear = True;
+                self.linear_decl[sid] = name;
+            }
         } elif tag.ownership == OwnershipKind.IMM {
             name.sym.ownership = OwnershipKind.IMM;
             self.imm_decl[sid] = name;
@@ -561,9 +609,9 @@ impl OwnershipCheckPass._assign_kill_gen(
             }
         }
     }
-    val_owned = self._owned_sym_of_expr(nd.value);
-    if val_owned is not None
-        and (isinstance(nd.value, Name) or not self._expr_scalar_typed(nd.value)) {
+
+    val_owned = self._owned_sym_of(nd.value);
+    if val_owned is not None {
         gen.add(val_owned);
     }
     return (kill, gen);
@@ -594,37 +642,49 @@ impl _stdlib_attr_call_root(call: FuncCall) -> (str | None) {
     return None;
 }
 
+impl OwnershipCheckPass._call_consumes_args(call: FuncCall) -> bool {
+    if isinstance(call.target, Name) and call.target.sym_name in _MOVE_EXEMPT_CALLS {
+        return False;
+    }
+    if isinstance(call.target, AtomTrailer) {
+        if isinstance(call.target.right, Name)
+            and call.target.right.value in _NONRETAINING_METHOD_CALLS {
+            return False;
+        }
+        _stdlib_root = _stdlib_attr_call_root(call);
+        if _stdlib_root is not None and _stdlib_root in _NONRETAINING_STDLIB_MODULES {
+            return False;
+        }
+        if self._nogc_container_grow_method(call) is not None {
+            return False;
+        }
+    }
+    return True;
+}
+
 impl OwnershipCheckPass._call_move_gen(nd: UniCFGNode) -> set[SymId] {
     gen: set[SymId] = set();
     for call in nd.get_all_sub_nodes(FuncCall) {
         if self._cfg_owner(call) is not nd {
             continue;
         }
-        if isinstance(call.target, Name)
-            and call.target.sym_name in _MOVE_EXEMPT_CALLS {
-            continue;
-        }
-        if isinstance(call.target, AtomTrailer) {
-            if isinstance(call.target.right, Name)
-                and call.target.right.value in _NONRETAINING_METHOD_CALLS {
-                continue;
-            }
-            _stdlib_root = _stdlib_attr_call_root(call);
-            if _stdlib_root is not None
-                and _stdlib_root in _NONRETAINING_STDLIB_MODULES {
-                continue;
-            }
-
-            if self._nogc_container_grow_method(call) is not None {
-                continue;
+        if self._method_call_mode(call) == OwnershipKind.OWN {
+            recv = self._method_call_receiver(call);
+            recv_owned = self._owned_sym_of(recv);
+            if recv_owned is not None {
+                gen.add(recv_owned);
             }
         }
+        consumes_all = self._call_consumes_args(call);
         for param in self._call_params(call) {
             arg: Expr | None = None;
             if isinstance(param, KWPair) {
                 arg = param.value;
             } elif isinstance(param, Expr) {
                 arg = param;
+            }
+            if not consumes_all and not self._grow_arg_moves(call, arg) {
+                continue;
             }
             owned = self._owned_sym_of(arg);
             if owned is not None {
@@ -633,6 +693,196 @@ impl OwnershipCheckPass._call_move_gen(nd: UniCFGNode) -> set[SymId] {
         }
     }
     return gen;
+}
+
+impl OwnershipCheckPass._emit_linear_diagnostics(cfg_nodes: list[UniCFGNode]) -> None {
+    if not self.linear_decl {
+        return;
+    }
+    universe = set(self.linear_decl.keys());
+    must_in = solve_forward_must(cfg_nodes, self._transfer, universe);
+    for (sid, decl) in self.linear_decl.items() {
+        scope: UniNode | None = decl.find_parent_of_type(Ability);
+        if scope is None {
+            scope = decl.find_parent_of_type(ModuleCode);
+        }
+        if scope is None {
+            continue;
+        }
+        for n in cfg_nodes {
+            if n is scope
+                or not self._node_within(n, scope)
+                or not self._is_scope_exit(n) {
+                continue;
+            }
+            if sid not in self._transfer(n, must_in.get(id(n), set())) {
+                self.emit(E1305, node_override=decl, name=decl.sym_name);
+                break;
+            }
+        }
+    }
+}
+
+impl OwnershipCheckPass._node_within(nd: UniNode, scope: UniNode) -> bool {
+    cur: UniNode | None = nd.parent;
+    while cur is not None {
+        if cur is scope {
+            return True;
+        }
+        cur = cur.parent;
+    }
+    return False;
+}
+
+impl OwnershipCheckPass._is_scope_exit(nd: UniCFGNode) -> bool {
+    if not nd.bb_out {
+        return bool(nd.bb_in);
+    }
+    if isinstance(nd, AstElseBodyNode) and nd.else_body is not None {
+        return False;
+    }
+    for succ in nd.bb_out {
+        if not self._node_within(succ, nd) {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl OwnershipCheckPass._raise_type_name(nd: RaiseStmt) -> (str | None) {
+    cause = nd.cause;
+    if isinstance(cause, FuncCall) {
+        cause = cause.target;
+    }
+    if isinstance(cause, Name) {
+        return cause.sym_name;
+    }
+    if isinstance(cause, AtomTrailer) and isinstance(cause.right, Name) {
+        return cause.right.sym_name;
+    }
+    if cause is None {
+        handler = nd.find_parent_of_type(Except);
+        if handler is not None {
+            ex = handler.ex_type;
+            if isinstance(ex, Name) {
+                return ex.sym_name;
+            }
+        }
+        return "Exception";
+    }
+    return None;
+}
+
+impl OwnershipCheckPass._handled_by_enclosing_try(
+    nd: UniNode, exc: str, stop: UniNode
+) -> bool {
+    child: UniNode = nd;
+    cur: UniNode | None = nd.parent;
+    while cur is not None and cur is not stop {
+        if isinstance(cur, TryStmt) and child in list(cur.body) {
+            for handler in cur.excepts {
+                ex = handler.ex_type;
+                caught = ex.sym_name if isinstance(ex, Name) else None;
+                if caught in (exc, "Exception", "BaseException") {
+                    return True;
+                }
+            }
+        }
+        child = cur;
+        cur = cur.parent;
+    }
+    return False;
+}
+
+impl OwnershipCheckPass._callee_ability(call: FuncCall) -> (Ability | None) {
+    import from jaclang.compiler.symbol_utils { resolved_callee }
+    return resolved_callee(call);
+}
+
+impl OwnershipCheckPass._local_raises(ab: UniNode) -> set[str] {
+    out: set[str] = set();
+    for rs in ab.get_all_sub_nodes(RaiseStmt) {
+        owner = rs.find_parent_of_type(Ability);
+        if isinstance(ab, Ability) {
+            if owner is not ab {
+                continue;
+            }
+        } elif owner is not None and self._node_within(owner, ab) {
+            continue;
+        }
+        exc = self._raise_type_name(rs);
+        if exc is None or self._handled_by_enclosing_try(rs, exc, ab) {
+            continue;
+        }
+        out.add(exc);
+    }
+    for call in ab.get_all_sub_nodes(FuncCall) {
+        owner = call.find_parent_of_type(Ability);
+        if isinstance(ab, Ability) and owner is not ab {
+            continue;
+        }
+        if not isinstance(ab, Ability)
+            and owner is not None
+            and self._node_within(owner, ab) {
+            continue;
+        }
+        callee = self._callee_ability(call);
+        if callee is None or callee is ab {
+            continue;
+        }
+        for exc in callee.raises {
+            if not self._handled_by_enclosing_try(call, exc, ab) {
+                out.add(exc);
+            }
+        }
+    }
+    return out;
+}
+
+impl OwnershipCheckPass._stamp_raises_effects -> None {
+    abilities = [
+        ab
+        for ab in self.ir_in.get_all_sub_nodes(Ability)
+        if ab.body is not None
+    ];
+    if not abilities {
+        return;
+    }
+    for ab in abilities {
+        ab.raises = [];
+    }
+    changed = True;
+    while changed {
+        changed = False;
+        for ab in abilities {
+            new = sorted(self._local_raises(ab));
+            if new != ab.raises {
+                ab.raises = new;
+                changed = True;
+            }
+        }
+    }
+}
+
+impl OwnershipCheckPass._grow_arg_moves(call: FuncCall, arg: Expr | None) -> bool {
+    if not isinstance(arg, Name) or self._owned_sym_of(arg) is None {
+        return False;
+    }
+    _grow = self._nogc_container_grow_method(call);
+    if _grow is None or _grow == "add" {
+        return False;
+    }
+    _direct = False;
+    for _p in self._call_params(call) {
+        if (_p.value if isinstance(_p, KWPair) else _p) is arg {
+            _direct = True;
+            break;
+        }
+    }
+    if not _direct {
+        return False;
+    }
+    return not self._nogc_type_is_str(arg);
 }
 
 impl OwnershipCheckPass._return_move_gen(nd: UniCFGNode) -> set[SymId] {
@@ -738,7 +988,11 @@ impl OwnershipCheckPass._borrow_assign_kill_gen(
         if target is not None {
             borrow_id = self._name_sym_id(target);
             kill.add(borrow_id);
-            if self._borrow_source_owner(nd) is not None {
+            if self._borrow_source_owner(nd) is not None
+                or (
+                    borrow_id in self.arch_view_syms
+                    and self.borrow_created_at.get(borrow_id) is nd
+                ) {
                 gen.add(borrow_id);
             }
         }
@@ -864,16 +1118,528 @@ impl OwnershipCheckPass._stamp_overwrite_consumed -> None {
     }
 }
 
+impl OwnershipCheckPass._owned_field_of(expr: Expr | None) -> (Name | None) {
+    if not (
+        isinstance(expr, AtomTrailer) and expr.is_attr and isinstance(expr.right, Name)
+    ) {
+        return None;
+    }
+    fsym = expr.right.sym;
+    if fsym is None or not fsym.defn {
+        return None;
+    }
+    hv = fsym.defn[0].find_parent_of_type(HasVar);
+    if hv is None or hv.type_tag is None {
+        return None;
+    }
+    if self._nogc_tag_shape(hv.type_tag) != "heap" {
+        return None;
+    }
+    if self._expr_scalar_typed(expr) or self._nogc_str_elem_ok(expr) {
+        return None;
+    }
+    if self._own_field_target(expr) or self.nogc_prov is not None {
+        return expr.right;
+    }
+    return None;
+}
+
+impl OwnershipCheckPass._place_text(expr: Expr) -> str {
+    base = self._place_of(expr);
+    field = (
+        expr.right.sym_name
+            if isinstance(expr, AtomTrailer) and isinstance(expr.right, Name)
+            else ""
+    );
+    if base is None {
+        return field;
+    }
+    return f"{base.sym_name}.{field}" if field else base.sym_name;
+}
+
+impl OwnershipCheckPass._owned_index_of(expr: Expr | None) -> (Name | None) {
+    if not (isinstance(expr, AtomTrailer) and isinstance(expr.right, IndexSlice)) {
+        return None;
+    }
+    if expr.right.is_range {
+        return None;
+    }
+    base = self._place_of(expr);
+    if base is None or base.sym is None {
+        return None;
+    }
+    if not self._nogc_is_container_expr(expr.target) {
+        return None;
+    }
+    if self._expr_scalar_typed(expr) or self._nogc_str_elem_ok(expr, idx_ctx=True) {
+        return None;
+    }
+    if not self._nogc_expr_type_is_heap(expr) {
+        return None;
+    }
+    if base.sym.ownership == OwnershipKind.OWN or self.nogc_prov is not None {
+        return base;
+    }
+    return None;
+}
+
+impl OwnershipCheckPass._emit_place_move(expr: Expr) -> None {
+    field = self._owned_field_of(expr);
+    if field is not None {
+        self.emit(
+            E1316, node_override=expr, name=field.sym_name, place=self._place_text(expr)
+        );
+        return;
+    }
+    base = self._owned_index_of(expr);
+    if base is not None {
+        self.emit(
+            E1317, node_override=expr, name=base.sym_name, place=f"{base.sym_name}[...]"
+        );
+    }
+}
+
+impl OwnershipCheckPass._callee_own_param_names(call: FuncCall) -> (set[str] | None) {
+    tgt = call.target;
+    sym = tgt.sym
+        if isinstance(tgt, (Name, AtomTrailer)) and hasattr(tgt, "sym")
+        else None;
+    decl = sym.decl if sym is not None else None;
+    ability = decl.find_parent_of_type(Ability) if decl is not None else None;
+    if ability is None or not isinstance(ability.signature, FuncSignature) {
+        return None;
+    }
+    out: set[str] = set();
+    for (i, p) in enumerate(ability.signature.get_parameters()) {
+        if p.type_tag is not None and p.type_tag.ownership == OwnershipKind.OWN {
+            out.add(f"#{i}");
+            if p.name is not None {
+                out.add(p.name.sym_name);
+            }
+        }
+    }
+    return out;
+}
+
+impl OwnershipCheckPass._emit_place_move_diagnostics -> None {
+    for nd in self.idx_assignments {
+        if nd.aug_op is not None or len(nd.target) != 1 or nd.value is None {
+            continue;
+        }
+        tgt = nd.target[0];
+        dest_owning = self._is_own_decl(nd) is not None
+            or (isinstance(tgt, AtomTrailer) and self._owned_field_of(tgt) is not None);
+        if dest_owning {
+            self._emit_place_move(nd.value);
+        }
+    }
+    for call in self.ir_in.get_all_sub_nodes(FuncCall) {
+        is_ctor = self._seal_arch_ctor(call) or self._nogc_fresh_arch_elem(call);
+        own_params = None if is_ctor else self._callee_own_param_names(call);
+        if not is_ctor and not own_params {
+            continue;
+        }
+        for (i, param) in enumerate(self._call_params(call)) {
+            arg = param.value if isinstance(param, KWPair) else param;
+            if is_ctor {
+                self._emit_place_move(arg);
+                continue;
+            }
+            key = param.key.sym_name
+                if isinstance(param, KWPair) and param.key is not None
+                else f"#{i}";
+            if key in own_params {
+                self._emit_place_move(arg);
+            }
+        }
+    }
+    for ret in self.idx_returns {
+        fn = ret.find_parent_of_type(Ability);
+        if fn is None
+            or not isinstance(fn.signature, FuncSignature)
+            or ret.expr is None {
+            continue;
+        }
+        rtype = fn.signature.return_type;
+        if rtype is None {
+            continue;
+        }
+        if isinstance(rtype, UnaryExpr)
+            and (
+                is_borrow_kind(rtype.ownership) or rtype.ownership == OwnershipKind.IMM
+            ) {
+            continue;
+        }
+        self._emit_place_move(ret.expr);
+    }
+}
+
+impl OwnershipCheckPass._stamp_move_sites -> None {
+    sites: set[int] = set();
+    for nm in self.idx_names {
+        if self._owned_sym_of(nm) is None {
+            continue;
+        }
+        if not self._is_move_producing_use(nm)
+            and not self._is_consuming_receiver(nm) {
+            continue;
+        }
+        _cfg = self._cfg_owner(nm);
+        if _cfg is not None and self._name_sym_id(nm) in self._consumed_gen_at(_cfg) {
+            sites.add(id(nm));
+        }
+    }
+    self.ir_in.own_move_sites = sites;
+}
+
+impl OwnershipCheckPass._is_consuming_receiver(nd: Name) -> bool {
+    trailer = nd.parent;
+    if not (
+        isinstance(trailer, AtomTrailer) and trailer.target is nd and trailer.is_attr
+    ) {
+        return False;
+    }
+    call = trailer.parent;
+    if not (isinstance(call, FuncCall) and call.target is trailer) {
+        return False;
+    }
+    return self._method_call_mode(call) == OwnershipKind.OWN;
+}
+
+impl OwnershipCheckPass._method_call_receiver(call: FuncCall) -> (Name | None) {
+    trailer = call.target;
+    if not (isinstance(trailer, AtomTrailer) and trailer.is_attr) {
+        return None;
+    }
+    return self._place_of(trailer.target);
+}
+
+impl OwnershipCheckPass._method_call_mode(call: FuncCall) -> OwnershipKind {
+    trailer = call.target;
+    if not (isinstance(trailer, AtomTrailer) and trailer.is_attr) {
+        return OwnershipKind.NONE;
+    }
+    callee = call.callee_decl;
+    if callee is None or not callee.is_method {
+        if isinstance(trailer.right, Name)
+            and trailer.right.sym_name in _MUTATING_CONTAINER_METHODS
+            and self._nogc_is_container_expr(trailer.target) {
+            return OwnershipKind.MUT_BORROW;
+        }
+        return OwnershipKind.NONE;
+    }
+    return self._receiver_mode(callee);
+}
+
+impl OwnershipCheckPass._is_builtin_mutator(ability: Ability | None) -> bool {
+    if ability is None {
+        return False;
+    }
+    _nm = ability.name_ref;
+    _mname = _nm.sym_name if isinstance(_nm, Name) else "";
+    if _mname not in _MUTATING_CONTAINER_METHODS {
+        return False;
+    }
+    _arch = ability.find_parent_of_type(Archetype);
+    return _arch is not None
+        and _arch.name.value
+            in (
+                "list",
+                "dict",
+                "set",
+                "MutableSequence",
+                "MutableMapping",
+                "MutableSet"
+            );
+}
+
+impl OwnershipCheckPass._explicit_receiver_mode(
+    ability: Ability
+) -> (OwnershipKind | None) {
+    sig = ability.signature;
+    if not isinstance(sig, FuncSignature) {
+        return None;
+    }
+    for p in sig.get_parameters() {
+        if p.name is None or p.name.sym_name != "self" {
+            continue;
+        }
+        if p.type_tag is None or p.type_tag.ownership == OwnershipKind.NONE {
+            return None;
+        }
+        kind = p.type_tag.ownership;
+        if kind == OwnershipKind.IMM {
+            return OwnershipKind.BORROW;
+        }
+        return kind;
+    }
+    return None;
+}
+
+impl OwnershipCheckPass._method_writes_self(ability: Ability) -> bool {
+    for asgn in ability.get_all_sub_nodes(Assignment) {
+        for tgt in asgn.target {
+            base = self._place_of(tgt);
+            if isinstance(tgt, AtomTrailer)
+                and base is not None
+                and base.sym_name == "self" {
+                return True;
+            }
+        }
+    }
+    for call in ability.get_all_sub_nodes(FuncCall) {
+        if call.call_kind == "builtin"
+            and isinstance(call.target, Name)
+            and call.target.sym_name == "take" {
+            for param in self._call_params(call) {
+                if isinstance(param, Expr) {
+                    base = self._place_of(param);
+                    if base is not None and base.sym_name == "self" {
+                        return True;
+                    }
+                }
+            }
+        }
+        trailer = call.target;
+        if not (isinstance(trailer, AtomTrailer) and trailer.is_attr) {
+            continue;
+        }
+        base = self._place_of(trailer.target);
+        if base is None or base.sym_name != "self" or trailer.target is base {
+            continue;
+        }
+        if isinstance(trailer.right, Name)
+            and trailer.right.sym_name in _MUTATING_CONTAINER_METHODS {
+            return True;
+        }
+    }
+    for un in ability.get_all_sub_nodes(UnaryExpr) {
+        if is_mut_kind(un.ownership) {
+            base = self._place_of(un.operand);
+            if base is not None and base.sym_name == "self" {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
+impl OwnershipCheckPass._trailer_writes_root(top: UniNode) -> bool {
+    _p = top.parent;
+    if isinstance(_p, Assignment) {
+        for _t in _p.target {
+            if _t is top {
+                return True;
+            }
+        }
+        return False;
+    }
+    if isinstance(_p, UnaryExpr) and is_mut_kind(_p.ownership) and _p.operand is top {
+        return True;
+    }
+    if isinstance(_p, FuncCall) and _p.target is top and isinstance(top, AtomTrailer) {
+        if isinstance(top.right, Name)
+            and top.right.sym_name in _MUTATING_CONTAINER_METHODS {
+            return True;
+        }
+        return self._receiver_mode(self._callee_ability(_p))
+            == OwnershipKind.MUT_BORROW;
+    }
+    return False;
+}
+
+impl OwnershipCheckPass._name_written_through(nm: Name) -> bool {
+    _sid = self._name_sym_id(nm);
+    for _u in self.name_uses_by_sym.get(_sid, []) {
+        if _u is nm {
+            continue;
+        }
+        _top: UniNode = _u;
+        while isinstance(_top.parent, AtomTrailer) and _top.parent.target is _top {
+            _top = _top.parent;
+        }
+        if self._trailer_writes_root(_top) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl OwnershipCheckPass._self_method_callees(ability: Ability) -> list[Ability] {
+    out: list[Ability] = [];
+    for call in ability.get_all_sub_nodes(FuncCall) {
+        trailer = call.target;
+        if not (isinstance(trailer, AtomTrailer) and trailer.is_attr) {
+            continue;
+        }
+        recv_root = self._place_of(trailer.target);
+        if recv_root is None or recv_root.sym_name != "self" {
+            continue;
+        }
+        callee = call.callee_decl;
+        if callee is not None and callee.is_method {
+            out.append(callee);
+        }
+    }
+    return out;
+}
+
+impl OwnershipCheckPass._receiver_mode(ability: Ability | None) -> OwnershipKind {
+    if ability is None or not ability.is_method or ability.is_static {
+        return OwnershipKind.NONE;
+    }
+    key = id(ability);
+    if key in self.receiver_modes {
+        return self.receiver_modes[key];
+    }
+    explicit = self._explicit_receiver_mode(ability);
+    if explicit is not None {
+        self.receiver_modes[key] = explicit;
+        return explicit;
+    }
+    if ability.find_parent_of_type(Module) is not self.ir_in {
+        mode = ability.receiver_mode;
+        if mode == OwnershipKind.NONE {
+            mode = OwnershipKind.MUT_BORROW
+                if self._is_builtin_mutator(ability)
+                else OwnershipKind.BORROW;
+        }
+        self.receiver_modes[key] = mode;
+        return mode;
+    }
+    if key in self.receiver_probe {
+        return OwnershipKind.BORROW;
+    }
+    self.receiver_probe.add(key);
+    mode = OwnershipKind.BORROW;
+    if self._method_writes_self(ability) {
+        mode = OwnershipKind.MUT_BORROW;
+    } else {
+        for callee in self._self_method_callees(ability) {
+            if self._receiver_mode(callee) == OwnershipKind.MUT_BORROW {
+                mode = OwnershipKind.MUT_BORROW;
+                break;
+            }
+        }
+    }
+    self.receiver_probe.discard(key);
+    self.receiver_modes[key] = mode;
+    return mode;
+}
+
+impl OwnershipCheckPass._stamp_receiver_modes -> None {
+    changed = True;
+    methods = [
+        a
+        for a in self.ir_in.get_all_sub_nodes(Ability)
+        if a.is_method
+    ];
+    while changed {
+        changed = False;
+        for m in methods {
+            before = self.receiver_modes.get(id(m));
+            self.receiver_modes.pop(id(m), None);
+            mode = self._receiver_mode(m);
+            self.receiver_modes[id(m)] = mode;
+            if before != mode {
+                changed = True;
+            }
+        }
+    }
+    for m in methods {
+        m.receiver_mode = self.receiver_modes.get(id(m), OwnershipKind.NONE);
+    }
+}
+
+impl OwnershipCheckPass._emit_receiver_diagnostics -> None {
+    for call in self.ir_in.get_all_sub_nodes(FuncCall) {
+        if call.call_kind == "builtin"
+            and isinstance(call.target, Name)
+            and call.target.sym_name in ("take", "swap") {
+            for param in self._call_params(call) {
+                if isinstance(param, Expr) {
+                    recv = self._place_of(param);
+                    if recv is not None {
+                        self._check_mutating_receiver(recv, call, call.target.sym_name);
+                    }
+                }
+            }
+            continue;
+        }
+        if self._method_call_mode(call) != OwnershipKind.MUT_BORROW {
+            continue;
+        }
+        recv = self._method_call_receiver(call);
+        trailer = call.target;
+        if recv is None or recv.sym is None or not isinstance(trailer, AtomTrailer) {
+            continue;
+        }
+        method = trailer.right.sym_name if isinstance(trailer.right, Name) else "";
+        self._check_mutating_receiver(recv, call, method);
+    }
+}
+
+impl OwnershipCheckPass._check_mutating_receiver(
+    recv: Name, call: FuncCall, method: str
+) -> None {
+    if recv.sym is None {
+        return;
+    }
+    sid = self._name_sym_id(recv);
+    if sid in self.imm_decl {
+        self._emit_imm_mutation(sid, call, self.imm_decl.get(sid));
+        return;
+    }
+    if sid in self.borrow_meta
+        and sid not in self.view_syms
+        and not self._borrow_is_mut_of(sid) {
+        owner_id = self._borrow_owner_of(sid);
+        self.emit(
+            E1318,
+            node_override=call,
+            method=method,
+            name=self._owned_name(owner_id, recv.sym_name)
+                if owner_id is not None
+                else recv.sym_name
+        );
+        return;
+    }
+    owner_id = self._target_owner_sym(recv);
+    if owner_id is None {
+        return;
+    }
+    cfg = self._cfg_owner(call);
+    if cfg is None {
+        return;
+    }
+    for borrow_id in self._active_borrows_at(cfg) {
+        if owner_id in self._borrow_owners_of(borrow_id)
+            and not self._borrow_is_mut_of(borrow_id) {
+            borrow_site = self.borrow_created_at.get(borrow_id);
+            borrow_name = self._borrow_display_name(borrow_id, "");
+            related = [(f"shared borrow of '{borrow_name}' created here", borrow_site)]
+                if borrow_site is not None
+                else None;
+            self.emit(
+                E1303,
+                node_override=call,
+                name=self._owned_name(owner_id, ""),
+                related=related
+            );
+            break;
+        }
+    }
+}
+
 impl OwnershipCheckPass._is_move_producing_use(nd: Name) -> bool {
     kind = self._classify_access(nd);
     if kind == AccessKind.CALL_ARG {
         _call = nd.find_parent_of_type(FuncCall);
-        if _call is not None
-            and isinstance(_call.target, Name)
-            and _call.target.sym_name in _MOVE_EXEMPT_CALLS {
-            return False;
-        }
-        return True;
+        return (
+            _call is None
+            or self._call_consumes_args(_call)
+            or self._grow_arg_moves(_call, nd)
+        );
     }
     if kind == AccessKind.RETURN_VALUE {
         return True;
@@ -907,16 +1673,10 @@ impl OwnershipCheckPass._owned_sym_of(nd: UniNode | None) -> (SymId | None) {
 }
 
 impl OwnershipCheckPass._owned_sym_of_expr(nd: Expr | None) -> (SymId | None) {
-    if isinstance(nd, AtomTrailer) and isinstance(nd.right, IndexSlice) {
-        _m = "";
-        try {
-            _m = nd.type.mangle() if nd.type is not None else "";
-        } except Exception {
-            _m = "";
-        }
-        if _m == "str" {
-            return None;
-        }
+    if isinstance(nd, AtomTrailer)
+        and isinstance(nd.right, IndexSlice)
+        and self._nogc_type_is_str(nd) {
+        return None;
     }
     cur = nd;
     while isinstance(cur, AtomTrailer) {
@@ -939,6 +1699,23 @@ impl OwnershipCheckPass._owned_name(sym_id: SymId, fallback: str) -> str {
         return decl.sym_name;
     }
     return fallback;
+}
+
+impl OwnershipCheckPass._borrow_owners_of(borrow_id: SymId) -> list[SymId] {
+    meta = self.borrow_meta.get(borrow_id);
+    if meta is None {
+        return [];
+    }
+    out: list[SymId] = [];
+    if meta.owner is not None {
+        out.append(meta.owner);
+    }
+    for extra in meta.extra_owners {
+        if extra not in out {
+            out.append(extra);
+        }
+    }
+    return out;
 }
 
 impl OwnershipCheckPass._borrow_owner_of(borrow_id: SymId) -> (SymId | None) {
@@ -998,69 +1775,12 @@ impl OwnershipCheckPass._target_owner_sym(nd: Expr) -> (SymId | None) {
     return None;
 }
 
-impl OwnershipCheckPass._loop_depth(nd: UniNode) -> int {
-    depth = 0;
-    cur = nd.parent;
-    while cur is not None {
-        if isinstance(cur, (WhileStmt, InForStmt, IterForStmt)) {
-            depth += 1;
-        }
-        cur = cur.parent;
-    }
-    return depth;
-}
-
-impl OwnershipCheckPass._emit_loop_move_diagnostics -> None {
-    for nd in self.idx_names {
-        owned = self._owned_sym_of(nd);
-        if owned is None {
-            continue;
-        }
-        if not self._is_read_name(nd) {
-            continue;
-        }
-
-        if not self._is_move_producing_use(nd) {
-            continue;
-        }
-        decl = self.owned_decl.get(owned);
-        if decl is None {
-            continue;
-        }
-        cfg_nd = nd.find_parent_of_type(UniCFGNode);
-        if cfg_nd is not None and owned in self.in_consumed.get(id(cfg_nd), set()) {
-            continue;
-        }
-
-        _assign = nd.find_parent_of_type(Assignment);
-        if _assign is not None and _assign.aug_op is None {
-            (_ra_kill, _ra_gen) = self._assign_kill_gen(_assign);
-            if owned in _ra_kill {
-                continue;
-            }
-        }
-        if self._loop_depth(nd) > self._loop_depth(decl) {
-            sym_name = self._owned_name(owned, nd.sym_name);
-            self.emit(
-                E1301,
-                node_override=nd,
-                name=sym_name,
-                related=[(f"'{sym_name}' declared here, outside the loop", decl)]
-            );
-            self.loop_depth_flagged_names.add(id(nd));
-        }
-    }
-}
-
 impl OwnershipCheckPass._emit_diagnostics -> None {
     for nd in self.idx_names {
         if self._owned_sym_of(nd) is None {
             continue;
         }
         if self._is_write_target(nd) {
-            continue;
-        }
-        if id(nd) in self.loop_depth_flagged_names {
             continue;
         }
         owner = nd.find_parent_of_type(UniCFGNode);
@@ -1149,7 +1869,7 @@ impl OwnershipCheckPass._emit_move_while_borrowed(cfg_nodes: list[UniCFGNode]) -
                 continue;
             }
             for borrow_id in active {
-                if self._borrow_owner_of(borrow_id) == owner_id
+                if owner_id in self._borrow_owners_of(borrow_id)
                     and borrow_id not in self.e1304_borrow_ids {
                     borrow_site = self.borrow_created_at.get(borrow_id);
                     borrow_name = self._borrow_display_name(borrow_id, "");
@@ -1247,7 +1967,7 @@ impl OwnershipCheckPass._emit_borrow_diagnostics -> None {
             active = self._active_borrows_at(cfg);
             for borrow_id in active {
                 if (
-                    self._borrow_owner_of(borrow_id) == tgt_owner_id
+                    tgt_owner_id in self._borrow_owners_of(borrow_id)
                     and not self._borrow_is_mut_of(borrow_id)
                     and self._fields_overlap(
                         self._borrow_field_of(borrow_id), self._single_field_of(tgt)

@@ -48,29 +48,30 @@ obj RunConfig {
         diagnostics: str = "error";
 }
 
-obj NativeBuildConfig {
-    has opt_level: int = 2,
-        dump_ir: str = "",
-        target: str = "",
+obj NativeConfig {
+    has target: str = "",
+        opt: int = 2,
         debug: bool = False,
-        rc_debug_codegen: bool = False;
+        threads: int = 4;
 }
 
-obj GcEnforceConfig {
-    has modules: list[str] = [],
-        grandfathered: list[str] = [];
+obj MemoryConfig {
+    has profile: str = "managed",
+        enforce: list[str] = [],
+        exempt: list[str] = [];
+
+    def gc_mode -> str {
+        return {"managed": "cycles", "rc": "rc", "nogc": "none"}[self.profile];
+    }
 }
 
-obj GcConfig {
-    has `default: str = "cycles",
-        enforce: GcEnforceConfig = GcEnforceConfig();
+obj PlacementConfig {
+    has default_codespace: str = "native";
 }
 
 obj BuildConfig {
     has dir: str = ".jac",
-        default_codespace: str = "native",
-        native_closure_cap: int = 256,
-        native: NativeBuildConfig = NativeBuildConfig();
+        native_closure_cap: int = 256;
 }
 
 obj TestConfig {
@@ -146,7 +147,10 @@ obj ServeAuthConfig {
     has secret: str = "",
         algorithm: str = "HS256",
         token_ttl_days: int = 7,
-        password_hash_cost: int = 14;
+        password_hash_cost: int = 14,
+        registration_challenge: bool = False,
+        registration_attempts_per_hour: int = 0,
+        registration_challenges_per_10_minutes: int = 0;
 }
 
 obj ServeConfig {
@@ -250,7 +254,9 @@ obj JacConfig {
     has project: ProjectConfig = ProjectConfig(),
         run: RunConfig = RunConfig(),
         build: BuildConfig = BuildConfig(),
-        gc: GcConfig = GcConfig(),
+        native: NativeConfig = NativeConfig(),
+        memory: MemoryConfig = MemoryConfig(),
+        placement: PlacementConfig = PlacementConfig(),
         `test: TestConfig = TestConfig(),
         serve: ServeConfig = ServeConfig(),
         format: FormatConfig = FormatConfig(),
@@ -329,6 +335,7 @@ obj JacConfig {
     ) -> bool;
 
     def merge_from_toml_file(toml_path: Path) -> None;
+    def merge_apps_table(apps_table: dict[str, any]) -> None;
     def app(name: str) -> AppConfig | None;
     def resolve_app(name: str = "") -> AppConfig;
     def resolved_kind(app: AppConfig) -> str;

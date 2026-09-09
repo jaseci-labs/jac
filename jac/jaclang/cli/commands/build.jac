@@ -34,16 +34,56 @@ comptime SPEC_BUILD: CommandSpec = CommandSpec(
                      "wheel",
                      "npm",
                      "source",
-                     "native",
                      "client"
                  ],
                  help=(
                      "What to emit: 'jab' (single-file sealed app bundle, default), "
                      "'sealed' (unpacked image dir), 'binary' (self-contained "
                      "executable), 'wheel' (PyPI), 'npm' (tarball), 'source' "
-                     "(ejected FastAPI+JS tree), 'native' (AOT native binary), "
-                     "'client' (the app's client bundle only)"
+                     "(ejected FastAPI+JS tree), 'client' (the app's client bundle only)"
                  )
+             ),
+             Arg.create(
+                 "native",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 help=(
+                     "Compile one self-contained native artifact through LLVM: a binary "
+                     "when the module has a `with entry` block, a C-ABI library otherwise"
+                 )
+             ),
+             Arg.create(
+                 "lib",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 help="With --native: force the C-ABI shared library form (.so/.dylib/.dll)"
+             ),
+             Arg.create(
+                 "memory",
+                 `default="",
+                 choices=["managed", "rc", "nogc"],
+                 short="",
+                 help=(
+                     "With --native: memory profile for this build, overriding [memory] "
+                     "profile in jac.toml (managed = refcounting + cycle collector, rc = "
+                     "refcounting only, nogc = no runtime, every module borrow-checked)"
+                 )
+             ),
+             Arg.create(
+                 "target-triple",
+                 dest="native_target",
+                 `default="",
+                 short="",
+                 help="With --native: 'host' (default), 'wasm32', or an LLVM triple"
+             ),
+             Arg.create(
+                 "debug",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 help="With --native: DWARF debug info, symbols, and the RC trace machinery"
              ),
              Arg.create(
                  "output",
@@ -84,6 +124,13 @@ comptime SPEC_BUILD: CommandSpec = CommandSpec(
              ("jac build web", "Build the app named 'web'"),
              ("jac build --all", "Build every app into dist/<app>/"),
              ("jac build --as binary", "Build a self-contained executable"),
+             ("jac build main.jac --native", "Compile one module to a native binary"),
+             (
+                 "jac build main.jac --native --memory nogc",
+                 "Borrow-checked, no runtime"
+             ),
+             ("jac build lib.jac --native --lib", "Compile a C-ABI shared library"),
+             ("jac build main.jac --native --target wasm32", "Compile to WebAssembly"),
              ("jac build --fat", "Build a fat jab (Python deps vendored)"),
              ("jac build --as wheel", "Build a PyPI wheel"),
              ("jac build --as client web", "Build only the web app's browser bundle"),
@@ -112,5 +159,10 @@ def build(
     output: str = "dist",
     check_only: bool = False,
     platform: str | None = None,
-    fat: bool = False
+    fat: bool = False,
+    native: bool = False,
+    lib: bool = False,
+    memory: str = "",
+    native_target: str = "",
+    debug: bool = False
 ) -> int;

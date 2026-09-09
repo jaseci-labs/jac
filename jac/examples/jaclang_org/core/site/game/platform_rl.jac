@@ -1,5 +1,7 @@
 import from raylib {
-    def InitWindow(width: i32, height: i32, title: str) -> None;  def WindowShouldClose -> bool;  def BeginDrawing -> None;  def EndDrawing -> None;  def rlClearColor(
+    def CloseWindow -> None;  def InitWindow(
+        width: i32, height: i32, title: str
+    ) -> None;  def WindowShouldClose -> bool;  def BeginDrawing -> None;  def EndDrawing -> None;  def rlClearColor(
         r: u8, g: u8, b: u8, a: u8
     ) -> None;  def rlClearScreenBuffers -> None;  def DrawFPS(
         pos_x: i32, pos_y: i32
@@ -134,3 +136,7 @@ def draw_box(
 def draw_floor(half: int, step: float);
 
 def draw_rect2d(x: float, y: float, w: float, h: float, r: int, g: int, b: int);
+
+def close_window {
+    CloseWindow();
+}

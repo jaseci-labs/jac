@@ -1,7 +1,7 @@
 """Dependency-free tests for the Jac-native CEF binding.
 
 Compile-only: these need ONLY the jac toolchain - no CEF runtime, no
-libpython-dev, no display. `jac nacompile` records the needed shared libraries
+libpython-dev, no display. `jac build --native` records the needed shared libraries
 (DT_NEEDED) and an $ORIGIN runpath without dlopening them, so a host that binds
 libcef_dispatch.so (or libpython) links cleanly with nothing installed. This
 catches binding-signature drift, wrong/missing externs, wrong soname, and
@@ -46,7 +46,7 @@ def _compile_cef_host(host_src: str) -> tuple {
             f.write(host_src);
         }
         result = subprocess.run(
-            [jac, "nacompile", "host.jac", "-o", "out"],
+            [jac, "build", "--native", "host.jac", "-o", "out"],
             cwd=tmp,
             capture_output=True,
             text=True,
@@ -122,12 +122,12 @@ test "cef binding host compiles and links libcef_dispatch.so" {
     assert b"$ORIGIN" in data , "binary must carry an $ORIGIN runpath";
 }
 
-"""Regression: a bare `f;` name statement compiles but is a NO-OP in nacompile;
+"""Regression: a bare `f;` name statement compiles but is a NO-OP in a native build;
 a zero-arg function must be invoked as `f()`. The cef-subprocess helper and the
 host's `_init_exe_dir` previously used the bare form, so they silently ran
 nothing. This pins the runtime semantic the fix relies on: an entry-invoked
 function actually executes."""
-test "nacompile invokes a zero-arg function called from entry with parentheses" {
+test "a native build invokes a zero-arg function called from entry with parentheses" {
     jac = shutil.which("jac") or "jac";
     tmp = tempfile.mkdtemp();
     try {
@@ -135,7 +135,7 @@ test "nacompile invokes a zero-arg function called from entry with parentheses" 
             f.write("import sys;\ndef _go { sys.`exit(7); }\nwith entry { _go(); }\n");
         }
         comp = subprocess.run(
-            [jac, "nacompile", "m.jac", "-o", "out"],
+            [jac, "build", "--native", "m.jac", "-o", "out"],
             cwd=tmp,
             capture_output=True,
             text=True,
@@ -146,7 +146,7 @@ test "nacompile invokes a zero-arg function called from entry with parentheses" 
         run = subprocess.run([out], capture_output=True, timeout=60);
         assert run.returncode == 7 , (
             f"entry did not invoke _go() (exit {run.returncode}); "
-            "bare-name calls are no-ops in nacompile -- use f()"
+            "bare-name calls are no-ops in a native build -- use f()"
         );
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -207,7 +207,7 @@ test "JAC_CEF_DISABLE_GPU wires through to --disable-gpu in cef_dispatch" {
     );
 }
 
-# String-only (no nacompile / CEF / display): the generated CEF host boots
+# String-only (no native build / CEF / display): the generated CEF host boots
 # through the same host_boot runtime module as the webview host, in cef mode,
 # and serves the sealed app image on the loopback server like the webview host.
 test "cef host source boots the runtime host in cef mode with its app image" {

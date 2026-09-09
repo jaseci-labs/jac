@@ -1,3 +1,4 @@
+import from jaclang.compiler.expr_keys { type_tag_borrows }
 impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> None {
     if elem_type_name in self.list_helpers {
         return;
@@ -241,7 +242,7 @@ impl NaIRGenPass._empty_list_dest_spec(nd: uni.ListVal) -> (str | None) {
             if _tn is not None {
                 _slot = self.local_vars.get(_tn);
                 if _slot is not None and isinstance(_slot.type, ir.PointerType) {
-                    _spec = self._spec_from_list_slot_type(_slot.type.pointee);
+                    _spec = self._spec_from_list_slot_type(_slot.pointee_type);
                     if _spec is not None {
                         return _spec;
                     }
@@ -270,6 +271,18 @@ impl NaIRGenPass._empty_list_dest_spec(nd: uni.ListVal) -> (str | None) {
 impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     self._pending_list_elem_struct = None;
     if not nd.values {
+        destination = nd.parent;
+        tag = destination.type_tag
+            if isinstance(destination, (uni.Assignment, uni.HasVar))
+                and destination.value is nd
+            else None;
+        aos_type = self._aos_elem_of(tag or nd);
+        if aos_type is not None {
+            self._emit_aos_list_helpers(aos_type);
+            return self.builder.call(
+                self.list_helpers[f"aos.{aos_type}"]["new"], [], name="aos.new"
+            );
+        }
         elem_type_name = "";
         _decl_par = nd.parent;
         _bare_list_decl = False;
@@ -334,7 +347,11 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             _empty_new = self._rc_call_with_ctx(
                 helpers["new"], [], op="new", loc=_empty_loc, name="list.empty"
             );
-            self._nogc_stamp_elem_drops(_empty_new, self._nogc_type_arg_mangles(nd));
+            if not self._container_is_view(nd) {
+                self._nogc_stamp_elem_drops(
+                    _empty_new, self._nogc_type_arg_mangles(nd)
+                );
+            }
             return _empty_new;
         }
         return None;
@@ -350,7 +367,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     _first_src_info: (dict | None) = None;
     if _first_spread is not None {
         _first_src_info = self._container_src_info(
-            self._str_norm(self._codegen_expr(_first_spread))
+            self._str_norm_optional(self._codegen_expr(_first_spread))
         );
         if _first_src_info is None {
             self.emit(
@@ -363,7 +380,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             return None;
         }
     } else {
-        first_val = self._str_norm(self._codegen_expr(nd.values[0]));
+        first_val = self._str_norm_optional(self._codegen_expr(nd.values[0]));
         if first_val is None {
             return None;
         }
@@ -380,7 +397,12 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         }
     }
     _lit_spec = self._elem_spec_of(nd);
-    if _lit_spec == "jacval" and self?.jacval_type {
+    _aos_lit = self._aos_elem_of(nd);
+    if _aos_lit is not None {
+        self._emit_aos_list_helpers(_aos_lit);
+        elem_type_name = f"aos.{_aos_lit}";
+        elem_type = self.list_helpers[elem_type_name]["elem_type"];
+    } elif _lit_spec == "jacval" and self?.jacval_type {
         elem_type = self.jacval_type;
         elem_type_name = "jacval";
     } elif _lit_spec in ("i64", "f64")
@@ -407,7 +429,9 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         self._pending_list_elem_struct = elem_type;
     }
 
-    self._emit_list_helpers(elem_type_name, elem_type);
+    if _aos_lit is None {
+        self._emit_list_helpers(elem_type_name, elem_type);
+    }
     helpers = self.list_helpers[elem_type_name];
     i8p = ir.IntType(8).as_pointer();
 
@@ -417,7 +441,9 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     list_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_list_new_loc, name="list.new"
     );
-    self._nogc_stamp_elem_drops(list_val, self._nogc_type_arg_mangles(nd));
+    if not self._container_is_view(nd) {
+        self._nogc_stamp_elem_drops(list_val, self._nogc_type_arg_mangles(nd));
+    }
 
     _linit_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
@@ -469,7 +495,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         _spread_op = self._spread_operand(nd.values[i]);
         if _spread_op is not None {
             _src_info = self._container_src_info(
-                self._str_norm(self._codegen_expr(_spread_op))
+                self._str_norm_optional(self._codegen_expr(_spread_op))
             );
             if _src_info is None {
                 self.emit(
@@ -499,7 +525,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             );
             continue;
         }
-        val = self._str_norm(self._codegen_expr(nd.values[i]));
+        val = self._str_norm_optional(self._codegen_expr(nd.values[i]));
         if val is None {
             self.emit(
                 E5092,
@@ -636,9 +662,6 @@ impl NaIRGenPass._codegen_index_set(
     target_val: ir.Value, index_val: ir.Value, value: ir.Value, elem_type_name: str
 ) -> None {
     _normed = self._str_norm(value);
-    if _normed is None {
-        return;
-    }
     value = _normed;
     helpers = self.list_helpers.get(elem_type_name);
     if helpers is None {
@@ -749,10 +772,11 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
     );
     b.ret(_selfp);
 
-    append_fn = self._define_function(
-        f"__list_append_aos_{tname}", ir.FunctionType(ir.VoidType(), [_stp, _tp])
+    push_fn = self._define_function(
+        f"__list_push_aos_{tname}", ir.FunctionType(ir.VoidType(), [_stp, _tp])
     );
-    append_fn.linkage = "private";
+    push_fn.linkage = "private";
+    append_fn = push_fn;
     _a_entry = append_fn.append_basic_block("entry");
     _a_grow = append_fn.append_basic_block("grow");
     _a_store = append_fn.append_basic_block("store");
@@ -795,8 +819,16 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
             _a_szT
         ]
     );
-    b.call(_free, [b.bitcast(append_fn.args[1], i8p, name="a.shell8")]);
     b.store(b.add(_a_len, ir.Constant(i64, 1), name="a.len1"), _a_len_p);
+    b.ret_void();
+
+    append_fn = self._define_function(
+        f"__list_append_aos_{tname}", ir.FunctionType(ir.VoidType(), [_stp, _tp])
+    );
+    append_fn.linkage = "private";
+    b = ir.IRBuilder(append_fn.append_basic_block("entry"));
+    b.call(push_fn, [append_fn.args[0], append_fn.args[1]]);
+    b.call(_free, [b.bitcast(append_fn.args[1], i8p, name="a.shell8")]);
     b.ret_void();
 
     get_fn = self._define_function(
@@ -881,7 +913,8 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
         _d_selfp,
         self.container_layouts[f"List.aos.{tname}"],
         "d",
-        _aos_drop_elem
+        _aos_drop_elem,
+        reverse=True
     );
     _d_data = b.load(
         b.gep(_d_selfp, [_z, ir.Constant(i32, 2)], name="d.data.p"), name="d.data"
@@ -896,10 +929,33 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
     self.list_helpers[_spec] = {
         "new": new_fn,
         "append": append_fn,
+        "push": push_fn,
         "get": get_fn,
         "set": set_fn,
         "len": len_fn,
-        "elem_type": _tp
+        "elem_type": _tp,
+        "elem_struct": _t_struct,
+        "drop_fields": _d_fields
     };
     return st;
+}
+
+impl NaIRGenPass._aos_elem_struct(type_key: str) -> (ir.Type | None) {
+    if not type_key.startswith("aos.") {
+        return None;
+    }
+    _h = self.list_helpers.get(type_key);
+    return _h["elem_struct"] if _h is not None else None;
+}
+
+
+impl NaIRGenPass._container_is_view(nd: uni.UniNode) -> bool {
+    _p = nd.parent;
+    while isinstance(_p, (uni.CfgExpr, uni.IfElseExpr)) {
+        _p = _p.parent;
+    }
+    if isinstance(_p, (uni.Assignment, uni.HasVar)) and _p.type_tag is not None {
+        return type_tag_borrows(_p.type_tag);
+    }
+    return False;
 }

@@ -459,7 +459,8 @@ diff <(kubectl get -n calc-demo deployment,service,hpa,pdb,ingress -o yaml) plan
 
 ## Common Pitfalls
 
-- **`{"detail":"Invalid anchor id ..."}` 500s.** Stale anchor data persisted from a previous run with a different schema. Stop the server, `rm -rf .jac/data/`, and restart. Not specific to cross-app calls; any `def:pub` call can hit this after a schema change.
+If an endpoint reports an invalid anchor, check its ID, the selected app and store, and recent schema changes. Run `jac guide jac-debugging --section diagnose-state-and-cache-errors` for the diagnostic sequence. Preserve existing data until you have identified the cause and chosen a repair.
+
 - **`E1042` on a call that looks local.** The imported element is owned by another app, so the stub is a coroutine: `await` it and make the enclosing function or ability `async`.
 - **`E5106` on an import.** The consumer names something that is not on the provider's bridge surface. Mark the function `def:pub`, or move it into shared code (a module under no app root) if both apps need it in-process.
 - **`E5107` on a shared module.** Two serving apps reach the same server-placed shared module and neither owns it. Give it its own `[apps.<name>]` table (`kind = "service"`, `entry-point = ...`) or pin an owner with `[apps.<owner>.placement.pins]`.

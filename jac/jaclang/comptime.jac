@@ -1,10 +1,9 @@
 import sys;
 import platform as _platform;
-import from dataclasses {
-    MISSING as _MISSING,
-    fields as _dc_fields,
-    is_dataclass as _is_dataclass,
-    field as _dc_field
+import from jaclang.runtime.object_model { MISSING as _MISSING, field as _object_field }
+import from jaclang.runtime.object_interop {
+    fields as _record_fields,
+    is_record as _is_record
 }
 import from enum { Enum as _PyEnum }
 import from typing { get_type_hints as _get_type_hints }
@@ -148,7 +147,7 @@ def semstr(t: any, field: str = "") -> (str | None) {
 
 def fields(t: type) -> list[FieldInfo] {
     out: list[FieldInfo] = [];
-    if not _is_dataclass(t) {
+    if not _is_record(t) {
         return out;
     }
     try {
@@ -158,13 +157,13 @@ def fields(t: type) -> list[FieldInfo] {
     }
     inner = t?._jac_semstr_inner;
     sems: dict = inner if isinstance(inner, dict) else {};
-    for f in _dc_fields(t) {
+    for f in _record_fields(t) {
         if f.name.startswith("_") {
             continue;
         }
         plain = f.`default;
         factory = f.default_factory;
-        has_dflt = plain is not _MISSING or factory is not _MISSING;
+        has_dflt = plain is not _MISSING or factory is not None;
         dflt: any = plain if plain is not _MISSING else None;
         out.append(
             FieldInfo(
@@ -180,8 +179,8 @@ def fields(t: type) -> list[FieldInfo] {
 }
 
 def has_field(t: type, field: str) -> bool {
-    if _is_dataclass(t) {
-        for f in _dc_fields(t) {
+    if _is_record(t) {
+        for f in _record_fields(t) {
             if f.name == field {
                 return True;
             }
@@ -244,7 +243,7 @@ def _size_align(t: any) -> tuple {
     if scalar is not None {
         return scalar;
     }
-    if not _is_dataclass(t) {
+    if not _is_record(t) {
         return (8, 8, );
     }
     try {
@@ -254,7 +253,7 @@ def _size_align(t: any) -> tuple {
     }
     off = 0;
     top = 1;
-    for f in _dc_fields(t) {
+    for f in _record_fields(t) {
         ft = hints.get(f.name, f.`type);
         inner = _scalar_size_align(ft) or (8, 8, );
         (sz, al) = inner;
@@ -284,7 +283,6 @@ glob _SPECIALIZED: dict = {};
 
 def specialize(cls: type, **ct: any) -> type {
     import copy as _copy;
-    import functools as _functools;
     key = (cls, tuple(sorted(ct.items(), key=_ct_sort_key)), );
     hit = _SPECIALIZED.get(key);
     if hit is not None {
@@ -295,11 +293,12 @@ def specialize(cls: type, **ct: any) -> type {
     for (k, v) in ct.items() {
         annotations[k] = `type(v);
         if isinstance(v, (list, dict, set)) {
-            ns[k] = _dc_field(
-                default_factory=_functools.partial(_copy.copy, v), kw_only=True
-            );
+            def copy_default(value: object = v) -> object {
+                return _copy.copy(value);
+            }
+            ns[k] = _object_field(default_factory=copy_default, kw_only=True);
         } else {
-            ns[k] = _dc_field(`default=v, kw_only=True);
+            ns[k] = _object_field(`default=v, kw_only=True);
         }
     }
     made = `type(cls.__name__, (cls, ), ns);

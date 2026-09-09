@@ -78,6 +78,15 @@ def register_page_endpoints(server: JacAPIServer) {
     settings = server.resolved_settings();
     config = get_config();
     root_app = server.introspector.resolve_root_app();
+    asset_dist = settings.client_dist;
+    if not asset_dist {
+        import from jaclang.server.sealed_serve { client_dist_for }
+        source_path = getattr(server.module, '__file__', '') or '';
+        sealed_dist = client_dist_for(source_path) if source_path else None;
+        if sealed_dist is not None {
+            asset_dist = str(sealed_dist);
+        }
+    }
 
     def render_page(request: Request, page_name: str, **kwargs: JsonValue) -> Response {
         sibling = sibling_app_dist(config, page_name, server.base_path);
@@ -146,7 +155,7 @@ def register_page_endpoints(server: JacAPIServer) {
     }
 
     def root_index(request: Request, **kwargs: JsonValue) -> Response {
-        index = client_dist_index(settings.client_dist);
+        index = client_dist_index(asset_dist);
         if index is not None {
             return file_response(request, str(index), cache_control='no-cache');
         }
@@ -218,9 +227,7 @@ def register_page_endpoints(server: JacAPIServer) {
     );
 
     def static_file(request: Request, file_path: str) -> Response {
-        candidate = find_static_candidate(
-            _static_base(server), file_path, settings.client_dist
-        );
+        candidate = find_static_candidate(_static_base(server), file_path, asset_dist);
         if candidate is None {
             return JSONResponse(
                 content={'error': 'Static file not found'}, status_code=404
@@ -253,15 +260,13 @@ def register_page_endpoints(server: JacAPIServer) {
         if file_path.startswith(API_PREFIXES) or file_path.startswith(CL_PREFIX) {
             return JSONResponse(content={'error': 'Not found'}, status_code=404);
         }
-        candidate = find_root_asset(
-            _static_base(server), file_path, settings.client_dist
-        );
+        candidate = find_root_asset(_static_base(server), file_path, asset_dist);
         if candidate is not None {
             return file_response(
                 request, str(candidate), cache_control=ASSET_CACHE_CONTROL
             );
         }
-        index = client_dist_index(settings.client_dist);
+        index = client_dist_index(asset_dist);
         if index is not None and not Path(file_path).suffix {
             return file_response(request, str(index), cache_control='no-cache');
         }

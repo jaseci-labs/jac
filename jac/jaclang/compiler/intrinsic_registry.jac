@@ -85,6 +85,18 @@ glob INTRINSIC_REGISTRY = IntrinsicRegistry(
                  result_spec="f64",
                  dispatch=IntrinsicDispatch.BITS_FLOAT
              ),
+             "__mem_load_i32": IntrinsicEntry(
+                 name="__mem_load_i32",
+                 param_specs=["i64"],
+                 result_spec="i32",
+                 dispatch=IntrinsicDispatch.MEM_LOAD
+             ),
+             "__mem_store_i32": IntrinsicEntry(
+                 name="__mem_store_i32",
+                 param_specs=["i64", "i32"],
+                 result_spec="none",
+                 dispatch=IntrinsicDispatch.MEM_STORE
+             ),
              "__mem_load_i64": IntrinsicEntry(
                  name="__mem_load_i64",
                  param_specs=["i64"],

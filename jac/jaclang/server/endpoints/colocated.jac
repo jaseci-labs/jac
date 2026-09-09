@@ -1,3 +1,4 @@
+import from jaclang.server.endpoint_contract { check_endpoint_contract }
 import logging;
 import os;
 import from jaclang.compiler.frontend.constant { Constants as Con }
@@ -91,6 +92,12 @@ def _walker_callback(
         if nd {
             fields['_jac_spawn_node'] = nd;
         }
+        mismatch = check_endpoint_contract(
+            request, walker_cls, "walker", walker_name, provider_app
+        );
+        if mismatch is not None {
+            return mismatch;
+        }
         caller = username or Con.GUEST.value;
         key = idempotency_key(request, caller, provider_app, walker_name);
         replay = replay_cached(key);
@@ -123,6 +130,12 @@ def _function_callback(
         args = _body(request);
         if args is None {
             return _fail('INVALID_JSON', 'Invalid JSON', 400);
+        }
+        mismatch = check_endpoint_contract(
+            request, func_obj, "func", func_name, provider_app
+        );
+        if mismatch is not None {
+            return mismatch;
         }
         caller = username or Con.GUEST.value;
         key = idempotency_key(request, caller, provider_app, func_name);

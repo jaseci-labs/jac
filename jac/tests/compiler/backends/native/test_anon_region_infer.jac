@@ -11,6 +11,10 @@ either way.
 """
 
 import os;
+import from jaclang.compiler.driver.compile_options {
+    push_native_target,
+    pop_native_target
+}
 import subprocess;
 import sys;
 import tempfile;
@@ -24,28 +28,23 @@ glob FIXDIR = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
      MODE_FLAGS = {
-         "none": ["--gc", "none"],
-         "rc": ["--gc", "rc"],
-         "cycles": ["--gc", "cycles"]
+         "none": ["--memory", "nogc"],
+         "rc": ["--memory", "rc"],
+         "cycles": ["--memory", "managed"]
      };
 
 def _compile_mod(fixture: str) -> any {
-    prev = os.environ.get("JAC_NATIVE_TARGET", None);
-    os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
+    prev = push_native_target("wasm32-unknown-unknown");
     try {
         prog = JacProgram();
         ir = prog.compile(
             file_path=os.path.join(FIXDIR, fixture),
-            options=CompileOptions(aot_mode=True, na_gc_mode="rc")
+            options=CompileOptions(aot_mode=True, memory_profile="rc")
         );
         assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
         return ir;
     } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_TARGET", None);
-        } else {
-            os.environ["JAC_NATIVE_TARGET"] = prev;
-        }
+        pop_native_target(prev);
     }
 }
 
@@ -79,7 +78,8 @@ test "inferred region drops LIFO at close in every gc mode" {
                     sys.executable,
                     "-m",
                     "jaclang",
-                    "nacompile",
+                    "build",
+                    "--native",
                     os.path.join(FIXDIR, "anon_region_spawn.jac")
                 ]
                     + MODE_FLAGS[mode]
@@ -107,9 +107,10 @@ test "declined fixtures still run correctly" {
                     sys.executable,
                     "-m",
                     "jaclang",
-                    "nacompile",
+                    "build",
+                    "--native",
                     os.path.join(FIXDIR, fixture),
-                    "--gc",
+                    "--memory",
                     "rc",
                     "-o",
                     out_bin

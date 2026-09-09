@@ -57,6 +57,10 @@ async def completion(
     );
 }
 
+def inlay_hint(
+    ls: JacLangServer, params: lspt.InlayHintParams
+) -> list[lspt.InlayHint];
+
 def hover(
     ls: JacLangServer, params: lspt.TextDocumentPositionParams
 ) -> Optional[lspt.Hover];

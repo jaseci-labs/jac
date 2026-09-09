@@ -23,7 +23,12 @@ So `import from os.path { normpath }` binds CPython's `posixpath` on the sv
 *same source* on both), while a user module of the same name always shadows the
 bundled one. A bundled module links through the existing cross-module machinery
 (binding population, then extern forward-decl, then `link_in`), on both the AOT
-(`jac nacompile`) and JIT execution paths.
+(`jac build --native`) and JIT execution paths.
+
+Bundled library functions use module-qualified LLVM symbols derived from their
+relative library paths. This keeps symbols stable across installations and
+separates Jac functions from libc symbols and functions in other modules. The
+native layout records the emitted name separately from its source-level key.
 
 ## Shipped modules
 
@@ -33,7 +38,10 @@ bundled one. A bundled module links through the existing cross-module machinery
   algorithm verbatim: absolutize both sides, drop empty components, walk off
   the shared prefix with `..` for each remaining `start` component, and answer
   `.` when nothing is left. `normcase` is the identity, which is what it is on
-  POSIX.
+  POSIX. Filesystem operations (`exists`, `isfile`, `isdir`, `realpath`,
+  `getsize`, and `getmtime`) expose typed entry points backed by the existing
+  native OS primitives. These declarations keep direct and aliased imports
+  consistent with calls through `os.path`.
 - **`json.jac`** (#6940 Phase 1) -- a recursive-descent `loads` over boxed
   `any` (dict/list/str/int/float/bool/None) plus a `dumps` serializer matching
   CPython's default `(', ', ': ')` separators and insertion-ordered keys.
@@ -324,7 +332,7 @@ bundled one. A bundled module links through the existing cross-module machinery
   symbols: `libzstd` is built with `ZSTD_TRACE` and references those four hooks
   weakly, which the dynamic loader binds to 0 (JIT path) but the AOT static
   linker emits as hard dynamic-undefined symbols -- the stubs satisfy them so a
-  `jac nacompile` binary links and runs. Native-host only (wasm gets a clean
+  `jac build --native` binary links and runs. Native-host only (wasm gets a clean
   link error). Pinned sv<->na congruent by `test_zstd_equivalence.jac`.
 
 - **`tarfile.jac`** (Mechanism B) + **`_tarfile_native.jac`** (tiny libc FFI

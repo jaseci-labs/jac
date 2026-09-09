@@ -1,14 +1,14 @@
 [project]
 name = "jaclang_org"
 default-app = "web"
-jac-version = "==0.37.3"
+jac-version = "==0.37.11"
 
 # Makes this site scaffoldable as a template: `jac create <name> --awesome`
 # dumps it (the payload bundles this tree as awesome_template beside the
 # jaclang package). The section never reaches a scaffolded project's jac.toml.
 [jacpack]
 name = "awesome"
-description = "The full jaclang.org workspace: a web app, a mobUI mobile app, and a CLI over one shared core, with live docs, the leaderboard, socialize, and a wasm game"
+description = "The full jaclang.org workspace: a web app, a mobUI mobile app, and a CLI over one shared core, with live docs, the leaderboard, JacYac, and a wasm game"
 
 # The workspace. Anything under core/ belongs to no app and is shared; the
 # two file-rooted service apps own exactly their entry files. An app
@@ -48,17 +48,22 @@ jaclang_source = "../.."
 [precommit]
 typecheck = true
 
+[serve.auth]
+registration_challenge = true
+registration_attempts_per_hour = 5
+registration_challenges_per_10_minutes = 20
+
 [test]
 directories = ["core", "web", "mobile", "cli"]
 
 # `jac test cli` / `jac test mobile` run one app; a bare `jac test` targets the
 # default app (web) and so runs the workspace list above. The mobile app is a
-# shell over the phone UI in core/socialize_mobile, so its tests live there.
+# shell over the phone UI in core/jacyac/native, so its tests live there.
 [apps.cli.test]
 directories = ["."]
 
 [apps.mobile.test]
-directories = ["core/socialize_mobile"]
+directories = ["core/jacyac"]
 
 [check.lint]
 select = ["all", "strip-comments", "strip-docstrings"]
@@ -72,11 +77,9 @@ exclude = [
     "core/leaderboard/format.jac",
 ]
 
-[gc]
-default = "none"
-
-[gc.enforce]
-modules = ["arena*", "sim*", "gmath*", "platform_rl*"]
+[memory]
+profile = "managed"
+enforce = ["arena*", "sim*", "gmath*", "platform_rl*"]
 
 [jac-shadcn]
 style = "nova"
@@ -90,7 +93,13 @@ components_dir = "core/site/ui"
 utils_path = "core/utils.jac"
 
 [dependencies]
+
+[byllm.model]
+default_model = "anthropic/claude-sonnet-5"
+
 [dependencies.npm]
+"@noble/hashes" = "^2.0.1"
+react-native-web = "^0.19.13"
 embla-carousel-react = "*"
 "@hugeicons/core-free-icons" = "*"
 "@hugeicons/react" = "*"
@@ -122,20 +131,15 @@ height = 860
 min_width = 900
 min_height = 600
 
-[apps.mobile.dependencies.npm]
-react-native-web = "^0.19.13"
-
 [apps.mobile.dependencies.npm.native]
+"@noble/hashes" = "^2.0.1"
+expo-web-browser = "~15.0.0"
+expo-crypto = "~15.0.0"
+expo-font = "~14.0.0"
 lucide-react-native = "^0.469.0"
 react-native-svg = "^15.13.0"
 
-# identity.jac is pure client helpers over the social graph's wire shapes;
-# without JSX of its own the solver cannot see that, so pin it. The [client.*]
-# tables below are workspace-wide: the web app and the desktop app share one
-# UI (core/site) and so one client configuration.
-[placement.pins]
-"core.site.socialize.identity" = "client"
-
+# Client configuration is workspace-wide; web and desktop share core/site.
 [client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]

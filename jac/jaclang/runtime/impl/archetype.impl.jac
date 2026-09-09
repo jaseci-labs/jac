@@ -141,7 +141,7 @@ impl Anchor.`report -> AnchorReport {
     return AnchorReport(
         id=self.ensure_id().hex,
         context=asdict(self.archetype)
-            if (is_dataclass(self.archetype) and not isinstance(self.archetype, `type))
+            if (is_jac_object(self.archetype) and not isinstance(self.archetype, `type))
             else {}
     );
 }
@@ -230,7 +230,7 @@ impl EdgeAnchor.detach -> None {
     sv_forget_edge(self);
 
     import from jaclang.runtime.runtime { JacRuntime }
-    ctx = JacRuntime.exec_ctx;
+    ctx = JacRuntime.peek_context();
     aid = self.id;
     if ctx is not None and aid is not None {
         ctx.mem.delete(aid);

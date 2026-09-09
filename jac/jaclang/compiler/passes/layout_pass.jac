@@ -4,10 +4,12 @@ import from jaclang.compiler.frontend.unitree {
     Archetype,
     Assignment,
     AstSymbolNode,
+    AstTypedVarNode,
     AtomTrailer,
     BinaryExpr,
     BuiltinType,
     Enum,
+    Expr,
     FuncCall,
     FuncSignature,
     HasVar,
@@ -16,10 +18,12 @@ import from jaclang.compiler.frontend.unitree {
     ModuleItem,
     Name,
     TupleVal,
+    TypeParam,
     UnaryExpr,
     UniNode
 }
 import from jaclang.compiler.passes.transform { Transform }
+import type from jaclang.compiler.types.types { TypeBase }
 import from jaclang.compiler.frontend.const_fold { fold_const }
 import from jaclang.compiler.frontend.constant { OwnershipKind, Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E5030, W5031, W5032 }
@@ -45,7 +49,9 @@ obj FieldInfo {
         default_expr: (UniNode | None) = None,
         owner: str = "",
         is_func_ptr: bool = False,
-        decl_node: (UniNode | None) = None;
+        decl_node: (HasVar | TypeParam | None) = None;
+
+    has semantic_type: TypeBase | None { getter; }
 }
 
 obj MethodSlot {
@@ -146,8 +152,16 @@ def layout_slot_count(lay: ArchetypeLayout) -> int {
     return top;
 }
 
-def declaring_module_path(base_expr: UniNode) -> str {
+def declaring_module_path(base_expr: Expr) -> str {
     import os;
+    import from jaclang.compiler.types.types { ClassType }
+    base_type = base_expr.type;
+    if isinstance(base_type, ClassType) and base_type._shared is not None {
+        scope = base_type.shared.symbol_table;
+        if isinstance(scope, Archetype) and scope.loc.mod_path {
+            return os.path.realpath(scope.loc.mod_path);
+        }
+    }
     if not isinstance(base_expr, AstSymbolNode) {
         return "";
     }
@@ -256,7 +270,7 @@ def adopt_imported_bases(module: Module) -> list[str] {
         }
     }
     layouts = reg.layouts;
-    order = sorted(layouts.keys(), key=lambda (n: str) { len(layouts[n].mro or [n]); });
+    order = reg.dependency_order(list(layouts));
     adopted: list[str] = [];
     for name in order {
         lay = reg.layouts.get(name);
@@ -587,6 +601,7 @@ obj LayoutRegistry {
     def resolve_method_owner(arch_name: str, method_name: str) -> (str | None);
     def get_mro(name: str) -> list[str];
     def get_topo_order -> list[str];
+    def dependency_order(names: list[str]) -> list[str];
     def is_primary_ancestor(child: str, ancestor: str) -> bool;
 }
 

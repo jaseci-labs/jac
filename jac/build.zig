@@ -219,7 +219,7 @@ pub fn build(b: *std.Build) void {
 
     // Standalone: harvest a static-musl runtime (libc.a + libzigc.a + compiler-rt
     // + crt) from the bundled Zig toolchain into .pbs-build/<osarch>/musl/lib, so
-    // `jac nacompile` can fully static-link Linux executables against musl with
+    // `jac build --native` can fully static-link Linux executables against musl with
     // NO external toolchain at compile time. Idempotent; Linux only.
     if (std.mem.startsWith(u8, host_osarch, "linux-")) {
         const vendor_musl = tool.run("payload", &.{ "build-musl", host_osarch, b.pathFromRoot(b.fmt(".pbs-build/{s}/musl/lib", .{host_osarch})), b.graph.zig_exe });
@@ -229,7 +229,7 @@ pub fn build(b: *std.Build) void {
     }
 
     // Arch-parameterized variants: `zig cc -target <arch>-linux-musl` cross-
-    // compiles musl from any host, so a cross `jac nacompile` and the aarch64 CI
+    // compiles musl from any host, so a cross `jac build --native` and the aarch64 CI
     // lane can static-link without target hardware (#7626 C1).
     inline for ([_][]const u8{ "linux-x86_64", "linux-aarch64" }) |cross_osarch| {
         const vendor_musl_cross = tool.run("payload", &.{ "build-musl", cross_osarch, b.pathFromRoot(b.fmt(".pbs-build/{s}/musl/lib", .{cross_osarch})), b.graph.zig_exe });
@@ -272,12 +272,12 @@ pub fn build(b: *std.Build) void {
     };
 
     // --- launcher stub: the in-checkout compiler compiles launcher/ natively --
-    // `--strict` makes any native-seam demotion in the stub's closure a hard
-    // error: a function demoted to Python-only cannot run before CPython
+    // A native build treats any native-seam demotion in the stub's closure as
+    // a hard error: a function demoted to Python-only cannot run before CPython
     // exists. (The whole-program type-check gate is not used here: it cannot
     // see the bundled per-OS native floors the launcher imports.) Needs the
     // LLVMPY_* shim placed in-tree and the target's C floor archives.
-    const build_stub = tool.run("jac", &.{ "nacompile", "--strict" });
+    const build_stub = tool.run("jac", &.{ "build", "--native" });
     build_stub.addFileArg(b.path("launcher/launcher.jac"));
     build_stub.addArg("-o");
     const stub = build_stub.addOutputFileArg("jac-stub");
@@ -382,7 +382,7 @@ pub fn build(b: *std.Build) void {
 
         // Linux: harvest a static-musl runtime for the target and bundle it so
         // the shipped binary can fully static-link Linux executables against
-        // musl at nacompile time -- no glibc/loader dep.
+        // musl at native build time -- no glibc/loader dep.
         if (link_dir == null and std.mem.startsWith(u8, osarch, "linux-")) {
             const musl_lib = b.pathFromRoot(b.fmt(".pbs-build/{s}/musl/lib", .{osarch}));
             const vendor_musl = tool.run("payload", &.{ "build-musl", osarch, musl_lib, b.graph.zig_exe });

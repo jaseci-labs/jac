@@ -151,6 +151,13 @@ impl JcirGenPass.exit_binary_expr with BinaryExpr exit {
             self.nod('keyword', ['arg', 'value'], ['left', left]),
             self.nod('keyword', ['arg', 'value'], ['right', right])
         ];
+        if here.op.capture_edges {
+            keywords.append(
+                self.nod(
+                    'keyword', ['arg', 'value'], ['edges_only', self.const_of(True)]
+                )
+            );
+        }
         if here.op.conn_type {
             keywords.append(
                 self.nod(
@@ -346,13 +353,21 @@ impl JcirGenPass.exit_bool_expr with BoolExpr exit {
     );
 }
 
+impl JcirGenPass.enter_lambda_expr with LambdaExpr entry {
+    self._push_hoist_frame();
+}
+
 impl JcirGenPass.exit_lambda_expr with LambdaExpr exit {
-    if isinstance(here.body, list) {
-        tail = here.tail_return_expr();
-        if tail is not None {
-            self._emit_lambda_expr_body(here, tail);
-            return;
-        }
+    frame = self._hoist_frames.pop();
+    signature_roots: list[UniNode] = [here.signature] if here.signature else [];
+    (body_hoists, enclosing_hoists) = self._split_scope_hoists(frame, signature_roots);
+    self._hoist_frames[-1].extend(enclosing_hoists);
+    tail = here.body if isinstance(here.body, Expr) else here.tail_return_expr();
+    if tail is not None and not body_hoists {
+        self._emit_lambda_expr_body(here, tail);
+        return;
+    }
+    if isinstance(here.body, list) or tail is not None {
         if (here.signature and self.outs(here.signature)) {
             arguments = self.val(here.signature);
         } else {
@@ -363,7 +378,16 @@ impl JcirGenPass.exit_lambda_expr with LambdaExpr exit {
                 jac_node=here
             );
         }
-        body_stmts = self.resolve_stmt_block(here.body, doc=None);
+        body_stmts: list[CgItem];
+        if tail is not None {
+            body_stmts = [
+                self.nod('Return', ['value'], [self.val(tail)], jac_node=here)
+            ];
+        } else {
+            assert not isinstance(here.body, Expr);
+            body_stmts = self.resolve_stmt_block(here.body, doc=None);
+        }
+        body_stmts = [*body_hoists, *body_stmts];
         directive_stmts = self.scope_directive_stmts([here]);
         if directive_stmts {
             body_stmts = [*directive_stmts, *body_stmts];
@@ -451,14 +475,7 @@ impl JcirGenPass.exit_unary_expr with UnaryExpr exit {
     }
     if here.op.name == Tok.BW_AND {
         if is_borrow_kind(here.ownership) {
-            self.set_out(
-                here,
-                [
-                    self.call_node(
-                        self.builtin_name('jref'), [self.val(here.operand)], []
-                    )
-                ]
-            );
+            self.set_out(here, [self.val(here.operand)]);
         } else {
             self._emit_jobj_ref(here);
         }
@@ -711,8 +728,23 @@ impl JcirGenPass.exit_inner_compr with InnerCompr exit {
     );
 }
 
+impl JcirGenPass.enter_list_compr with ListCompr entry {
+    if here.__class__ is ListCompr {
+        self._push_hoist_frame();
+    }
+}
+
 impl JcirGenPass.exit_list_compr with ListCompr exit {
     if here.__class__ is not ListCompr {
+        return;
+    }
+    frame = self._hoist_frames.pop();
+    (hoists, enclosing_hoists) = self._split_scope_hoists(
+        frame, [here.compr[0].collection]
+    );
+    self._hoist_frames[-1].extend(enclosing_hoists);
+    if hoists {
+        self.set_out(here, [self._statement_list_comprehension(here, hoists)]);
         return;
     }
     self.set_out(
@@ -724,6 +756,71 @@ impl JcirGenPass.exit_list_compr with ListCompr exit {
                 [self.val(here.out_expr), [self.val(i) for i in here.compr]]
             )
         ]
+    );
+}
+
+impl JcirGenPass._statement_list_comprehension(
+    nd: ListCompr, hoists: list[CgNode]
+) -> CgNode {
+    func_name = self._next_lambda_name();
+    result_name = self._reserve_name(func_name + '_result');
+    iterable_name = self._reserve_name(func_name + '_iterable');
+    result = self.name_load(result_name, jac_node=nd);
+    append = self.nod(
+        'Attribute',
+        ['value', 'attr', 'ctx'],
+        [result, 'append', self.nod('Load', [], [])]
+    );
+    call = self.nod(
+        'Call', ['func', 'args', 'keywords'], [append, [self.val(nd.out_expr)], []]
+    );
+    statements: list[CgNode] = [self.nod('Expr', ['value'], [call])];
+    for index in range(len(nd.compr) - 1, -1, -1) {
+        generator = self.val(nd.compr[index]);
+        conditions = generator.get('ifs');
+        for condition in reversed(conditions) {
+            statements = [
+                self.nod('If', ['test', 'body', 'orelse'], [condition, statements, []])
+            ];
+        }
+        iterable = self.name_load(iterable_name, jac_node=nd)
+            if index == 0
+            else generator.get('iter');
+        statements = [
+            self.nod(
+                'For',
+                ['target', 'iter', 'body', 'orelse', 'type_comment'],
+                [generator.get('target'), iterable, statements, [], None]
+            )
+        ];
+    }
+    target = self.nod('Name', ['id', 'ctx'], [result_name, self.nod('Store', [], [])]);
+    empty = self.nod('List', ['elts', 'ctx'], [[], self.nod('Load', [], [])]);
+    initialize = self.nod('Assign', ['targets', 'value'], [[target], empty]);
+    body: list[CgItem] = [
+        *hoists,
+        initialize,
+        *statements,
+        self.nod('Return', ['value'], [result])
+    ];
+    argument = self.nod('arg', ['arg', 'annotation'], [iterable_name, None]);
+    arguments = self.nod(
+        'arguments',
+        ['posonlyargs', 'args', 'kwonlyargs', 'kw_defaults', 'defaults'],
+        [[], [argument], [], [], []]
+    );
+    function = self.nod(
+        'FunctionDef',
+        ['name', 'args', 'body', 'decorator_list', 'returns', 'type_params'],
+        [func_name, arguments, body, [], None, []],
+        jac_node=nd
+    );
+    reference = self._function_expr_from_def(function, nd);
+    return self.nod(
+        'Call',
+        ['func', 'args', 'keywords'],
+        [reference, [self.val(nd.compr[0]).get('iter')], []],
+        jac_node=nd
     );
 }
 
@@ -774,6 +871,13 @@ impl JcirGenPass.exit_dict_compr with DictCompr exit {
 
 impl JcirGenPass.exit_name with Name exit {
     if here.__class__ is not Name {
+        return;
+    }
+    if here.expr_ctx == ExprCtx.LOAD
+        and id(here) in self.ir_in.own_move_sites
+        and here.sym is not None
+        and here.sym.storage in (SymbolStorage.LOCAL, SymbolStorage.PARAM) {
+        self.set_out(here, [self._name_take_expr(self._py_name(here))]);
         return;
     }
     name = here.sym_name;

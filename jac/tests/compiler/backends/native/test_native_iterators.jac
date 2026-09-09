@@ -14,6 +14,21 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
+test "list consumes the remaining iterator values with their element types" {
+    (eng, _) = compile_native("iter_protocol.jac");
+    f = get_func(eng, "iterator_list_values", ctypes.c_int64);
+    assert f() == 25;
+}
+
+test "returned iterators own their local source collections" {
+    (eng, _) = compile_native("iter_protocol.jac");
+    f = get_func(eng, "returned_iterator_values", ctypes.c_int64);
+    drops = get_func(eng, "iterator_item_drop_count", ctypes.c_int64);
+    before = drops();
+    assert f() == 268;
+    assert drops() - before == 2;
+}
+
 # --- map / filter ---
 test "iter map sum" {
     (eng, _) = compile_native("iter_adapters.jac");

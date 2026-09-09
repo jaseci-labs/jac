@@ -1,6 +1,6 @@
 ---
 name: jac-sv-microservices
-description: Splitting a Jac backend into service apps - `[apps.<name>] kind = "service"` tables in jac.toml (written by `jac create --app`), plain imports across an app boundary that lower to typed-async bridge stubs (`await` them), the BridgeError family, the outbox for un-awaited spawns, ownership of shared server code (E5107), the app DAG (E5104), colocated vs `--fleet` topology, `JAC_APP_<APP>_URL` discovery, remote walker spawns, boundary types, the gateway. Load when one server module must call another app of the workspace, or when a server-placed shared module has more than one serving app. Pair with `jac-sv-endpoints`, `jac-config` (the [apps] tables), `jac-sv-deploy` (k8s), `jac-sv-streaming` (SSE across apps).
+description: Connect service apps through awaited bridges and typed errors. Use for cross-app calls, fleet execution, outbox behavior, or service discovery.
 ---
 
 Services are declared in ONE place: an `[apps.<name>]` table in `jac.toml` with `kind = "service"`. A **file-rooted** service app (`entry-point = "<file>"`, no `path`) owns exactly that file; a dir-rooted one (`path = "<dir>"`) owns everything under it. `jac create --app <name> --kind service` writes the table. There is NO discovery from source and no import form - what makes an import a bridge is that the imported element is **owned by a different app** than the importer.
@@ -139,6 +139,6 @@ Gateway knobs: `[scale.gateway]` (`gateway_port`, `boot_health_timeout`, `boot_m
 - **`E2039`** = an app reaching into another app's non-bridge declarations. Shared code goes under no app root; app code stays behind the bridge.
 - **`BridgeUnavailable: app 'x' is not registered`** = not colocated (no `[apps.x]` in this workspace) and no `JAC_APP_X_URL`.
 - **`Error: No jac.toml found`** - `jac run <app>` needs the workspace's `jac.toml` in the cwd or an ancestor.
-- **`{"detail": "Invalid anchor id ..."}` 500s** = stale persisted anchors after a schema change - stop, `rm -rf .jac/data/`, restart (not app-specific; full story in `jac-sv-persistence`).
+- **Invalid anchors after a change:** check the reference, selected app/store, and schema migration state. Follow `jac-debugging` and `jac-sv-persistence`; do not infer that an anchor error requires deleting project data.
 - Multi-host = env-var wiring, always. Colocated providers can never serve another machine.
 - Route collisions (`[apps.a] route` = `[apps.b] route`, or an app route that a page owns) are hard config errors; the default is `/api/<name>`.

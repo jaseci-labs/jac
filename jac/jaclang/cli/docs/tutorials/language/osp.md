@@ -268,7 +268,7 @@ Hello, Carol!
 ```
 
 !!! info "`visit` is a promise, not a jump"
-    `visit` does **not** move the walker. It *enqueues* destinations: when the current ability finishes, the walker proceeds to the next node in its queue. That's why the default traversal is breadth-first (each node appends its neighbors to the back of the queue), why `visit` at the top of an ability doesn't run other nodes "in the middle of" your code, and why a walker's schedule is fully deterministic -- given the same graph, the same walker visits the same nodes in the same order, every run. You can also steer the queue: `visit : 0 : [-->];` inserts at the *front*, turning the traversal depth-first (see [traversal control](../../reference/language/osp.md#object-spatial-queries) in the reference).
+    `visit` does **not** move the walker. It *enqueues* destinations: when the current ability finishes, the walker proceeds to the next node in its queue. That's why the default traversal is breadth-first (each node appends its neighbors to the back of the queue), why `visit` at the top of an ability doesn't run other nodes "in the middle of" your code, and how the queue determines traversal order. Reproducible traversal also requires stable neighbor ordering, inputs, and ability behavior; concurrent graph changes or external calls can change the result. You can also steer the queue: `visit : 0 : [-->];` inserts at the *front*, turning the traversal depth-first (see [traversal control](../../reference/language/osp.md#object-spatial-queries) in the reference).
 
 ---
 

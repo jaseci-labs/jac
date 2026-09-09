@@ -57,7 +57,7 @@ impl NaIRGenPass._emit_rc_debug_globals -> None {
             );
             _notice = self._get_fmt_string(
                 "jac: RC debug tracing not compiled in"
-                    + " (build with JAC_RC_DEBUG_CODEGEN=1)"
+                    + " (build with --debug or [native] debug = true)"
             );
             _notice_ptr = _b_en.gep(
                 _notice, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="en.notice"

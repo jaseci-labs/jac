@@ -87,7 +87,8 @@ def na_lines(fixture: str) -> list {
             sys.executable,
             "-m",
             "jaclang",
-            "nacompile",
+            "build",
+            "--native",
             os.path.join(FIXTURES, fixture),
             "-o",
             out_bin
@@ -159,7 +160,7 @@ test "generated values answer as CPython does" {
 
 test "a module-local auto is not read as the enum's" {
     seams = seam_report("enum_auto_shadow.jac");
-    assert "attribute access 'Soft'" in seams , (
+    assert "demoting loudness" in seams , (
         f"this module's own `auto` was counted as a generated value:\n{seams}"
     );
     (prog, ir) = compile_native("enum_auto_shadow.jac");

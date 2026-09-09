@@ -1,4 +1,4 @@
-impl EsastGenPass._ensure_backend -> None {
+impl EsastGenPass._ensure_backend -> FrameworkBackend {
     if self.backend is None {
         import from jaclang.compiler.backends.es.backends.registry {
             resolve_active_backend
@@ -15,6 +15,8 @@ impl EsastGenPass._ensure_backend -> None {
             self.backend = ReactBackend();
         }
     }
+    assert self.backend is not None;
+    return self.backend;
 }
 
 impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) {
@@ -122,21 +124,16 @@ impl EsastGenPass._audit_free_identifiers(nd: uni.Module, program: es.Program) -
             continue;
         }
         origin: (uni.Name | None) = None;
-        imported = False;
         for cand in names {
             if (cand.value != free.name) or (cand.sym is None) {
                 continue;
-            }
-            if cand.sym.decl.find_parent_of_type(uni.Import) is not None {
-                imported = True;
-                break;
             }
             origin = cand;
             if cand.loc.first_line == free.line {
                 break;
             }
         }
-        if imported or (origin is None) {
+        if origin is None {
             continue;
         }
         reported.add(free.name);
@@ -503,6 +500,9 @@ impl EsastGenPass.enter_walk with uni.UniNode entry {
 }
 
 impl EsastGenPass.before_pass -> None {
+    for nd in self.ir_in.flatten() {
+        nd.gen.es_ast = None;
+    }
     import from jaclang.compiler.frontend.codeinfo { ClientManifest }
 
     import from jaclang.compiler.frontend.module_facts { client_capability_violations }

@@ -1,6 +1,6 @@
 ---
 name: jac-fullstack-patterns
-description: Wiring `main.jac` as the entry for a fullstack Jac app - endpoint registration, client mount, calling walkers from the client (`root spawn`), the import rules that tie client modules to server modules, endpoint caching, `[serve]` config. Load when starting a new app, adding the first server endpoint, creating a server module, or debugging how the top-level pieces connect. Pair with `jac-sv-endpoints`, `jac-cl-components`, `jac-scaffold`.
+description: Connect client components to server functions and walkers in a Jac web app. Use for entry-point wiring, generated transport, and async results.
 ---
 
 A fullstack Jac app has three layers: `main.jac` (entry), server modules (plain `.jac` files - server is the default placement), and client components (plain `.jac` with JSX infers client). Both halves of a feature live in the same folder - see `jac-cl-organization`. Codespace placement is **inferred** (see `jac-codespaces`): JSX and string-path npm imports mark a declaration client, references pull helpers/`glob`s/imports into the bundle, and `def:pub` endpoints in server-anchored modules stay server. `main.jac` mixes both sides naturally - server imports and endpoints first, client section below, no wrapper syntax exists or is needed:

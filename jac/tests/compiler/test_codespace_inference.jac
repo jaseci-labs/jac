@@ -133,7 +133,7 @@ test "service-cut import placement is inferred while boundary fact stays" {
 test "plain client import of a server endpoint bridges over rpc" {
     mod = compile_fixture("infer_import_bridge_client.jac", cgen=True);
     js = mod.gen.js;
-    assert 'infer_import_bridge_service' not in js , (
+    assert 'from "./infer_import_bridge_service.js"' not in js , (
         "plain import of a server module must not emit a dead ES import; got:\n" + js
     );
     assert '__jacCallFunction("fetch_msg"' in js , (

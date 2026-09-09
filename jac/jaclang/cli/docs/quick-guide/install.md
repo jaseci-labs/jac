@@ -1,6 +1,6 @@
 # Installation and First Run
 
-Get Jac installed and ready to use in under 2 minutes.
+Install Jac, verify the version, and run a first program. Download and setup time depend on your platform and connection.
 
 ---
 

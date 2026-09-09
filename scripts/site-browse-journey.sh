@@ -86,7 +86,7 @@ for i in 1 2 3; do
 done
 jac browse wait '#top' || fail "landing #top never appeared"
 # The headless profile persists localStorage between runs; start from a clean
-# slate so the socialize journey always begins at the auth form.
+# slate so the JacYac journey always begins at the auth form.
 jac browse eval 'localStorage.clear(); sessionStorage.clear(); "storage cleared"' \
     || fail "could not clear browser storage"
 title="$(jac browse get title)"
@@ -165,21 +165,39 @@ check '(() => {
   return "live source windows loaded";
 })()'
 
-# ------------------------------------------------------------ leaderboard ---
-step "leaderboard: page renders the board shell"
+# ----------------------------------------------------------- Ninja Scores ---
+step "Ninja Scores: the legacy board opens the public JacYac directory"
 open_page "$BASE_URL/leaderboard"
-wait_for_text "The board" 30
+wait_for_text "Ninja Scores" 30
+jac browse wait 'section[aria-label="Ninja Scores"]' || fail "public scores never appeared"
 check '(() => {
-  const input = document.querySelector("input");
-  if (!input) throw new Error("no repo submit input on the leaderboard");
-  const btn = [...document.querySelectorAll("button")]
-    .find((b) => /Score my repo/.test(b.textContent));
-  if (!btn) throw new Error("no submit button on the leaderboard");
-  return "leaderboard shell rendered";
+  if (location.pathname !== "/jacyac/scores") {
+    throw new Error("legacy leaderboard did not redirect into JacYac");
+  }
+  const section = document.querySelector("section[aria-label=\"Ninja Scores\"]");
+  if (!section.querySelector("input[aria-label=\"Search Ninja Scores\"]")) {
+    throw new Error("public scores search is missing");
+  }
+  if (!section.textContent.includes("Sign in to add your project")) {
+    throw new Error("anonymous scores must offer sign-in before submission");
+  }
+  if (section.querySelector("input[aria-label=\"GitHub repository URL\"]")) {
+    throw new Error("anonymous visitor was offered repository submission");
+  }
+  const header = document.querySelector("header");
+  const join = [...header.querySelectorAll("a")]
+    .find(a => a.textContent.trim() === "Join JacYac");
+  if (!join || join.getAttribute("href") !== "/jacyac") {
+    throw new Error("site CTA does not open JacYac");
+  }
+  if (header.textContent.includes("Ninja Scores")) {
+    throw new Error("Ninja Scores still appears in the site-wide navigation");
+  }
+  return "legacy redirect, public scores, and signed-in submission boundary verified";
 })()'
 
 # -------------------------------------------------------------- socialize ---
-step "socialize: signup through the real form"
+step "JacYac: signup through the real form"
 open_page "$BASE_URL/socialize"
 jac browse wait '#lx-username' || fail "auth form never appeared"
 check '(() => {
@@ -202,7 +220,30 @@ check '(() => {
 jac browse wait 'textarea' || fail "feed composer never appeared after signup"
 wait_for_text "$USER_NAME" 15
 
-step "socialize: post a tweet"
+step "JacYac: signed-in Ninja Scores validates submissions and retains the draft"
+open_page "$BASE_URL/jacyac/scores"
+jac browse wait 'input[aria-label="GitHub repository URL"]' || fail "signed-in repository input never appeared"
+check '(() => {
+  const submit = document.querySelector("section[aria-label=\"Ninja Scores\"] button[type=submit]");
+  if (!submit || submit.textContent.trim() !== "Add project" || !submit.disabled) {
+    throw new Error("empty repository submission must be disabled");
+  }
+  return "signed-in repository submission rendered";
+})()'
+jac browse fill 'input[aria-label="GitHub repository URL"]' 'https://example.com/owner/repo' || fail "could not fill repository URL"
+jac browse click 'section[aria-label="Ninja Scores"] button[type=submit]' || fail "could not submit invalid repository"
+wait_for_text "That is not a GitHub repository" 20
+check '(() => {
+  const input = document.querySelector("input[aria-label=\"GitHub repository URL\"]");
+  if (input.value !== "https://example.com/owner/repo") {
+    throw new Error("failed submission discarded the repository draft");
+  }
+  return "invalid repository rejected and draft retained";
+})()'
+open_page "$BASE_URL/jacyac"
+jac browse wait 'textarea' || fail "modern JacYac route lost the session"
+
+step "JacYac: post a tweet"
 jac browse fill 'textarea' "$TWEET_TEXT" || fail "could not fill composer"
 # The sidebar has a "Post" nav button too; the composer submit is the first
 # enabled "Post" that follows the textarea in document order.
@@ -218,10 +259,10 @@ check '(() => {
 })()'
 wait_for_text "Hello from the CI journey ${RUN_TAG}" 20
 
-step "socialize: hashtag shows up in trending"
+step "JacYac: hashtag shows up in trending"
 wait_for_text "#jacdev" 20
 
-step "socialize: like the tweet"
+step "JacYac: like the tweet"
 check '(() => {
   const like = [...document.querySelectorAll("main article button")]
     .find((b) => b.querySelector("svg.lucide-heart"));
@@ -240,7 +281,10 @@ check '(async () => {
   throw new Error("like count never reached 1");
 })()'
 
-step "socialize: comment on the tweet"
+# Posts, comments, and channel posts share the default 10-second account quota.
+# Keep this happy-path journey within the same limits as real users.
+sleep 10
+step "JacYac: comment on the tweet"
 check '(() => {
   const reply = [...document.querySelectorAll("main article button")]
     .find((b) => b.querySelector("svg.lucide-message-circle"));
@@ -253,7 +297,7 @@ jac browse fill 'main article input' "$COMMENT_TEXT" || fail "could not fill rep
 jac browse press Enter || fail "could not submit reply"
 wait_for_text "CI reply ${RUN_TAG}" 20
 
-step "socialize: create a channel and post in it"
+step "JacYac: create a channel and post in it"
 check '(() => {
   const nav = [...document.querySelectorAll("aside button")]
     .find((b) => /Channels/.test(b.textContent));
@@ -288,6 +332,7 @@ check "(() => {
   return 'channel opened';
 })()"
 jac browse wait 'textarea' || fail "channel composer never appeared"
+sleep 10
 jac browse fill 'textarea' "$CHANNEL_POST" || fail "could not fill channel post"
 check '(() => {
   const ta = document.querySelector("textarea");
@@ -301,7 +346,7 @@ check '(() => {
 })()'
 wait_for_text "First CI post in ${CHANNEL_NAME}" 20
 
-step "socialize: session and data survive a reload"
+step "JacYac: session and data survive a reload"
 open_page "$BASE_URL/socialize"
 jac browse wait 'textarea' || fail "reload lost the session (auth form is back)"
 wait_for_text "Hello from the CI journey ${RUN_TAG}" 30
@@ -341,5 +386,5 @@ if printf '%s' "$console_out" \
 fi
 
 step "done"
-echo "journey complete: landing, wait-wuuut, leaderboard, socialize"
-echo "(signup/post/trend/like/comment/channels/reload), docs, 404, console"
+echo "journey complete: landing, wait-wuuut, public Ninja Scores, JacYac"
+echo "(signup/repository validation/post/trend/like/comment/channels/reload), legacy routes, docs, 404, console"

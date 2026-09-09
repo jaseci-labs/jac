@@ -1,3 +1,4 @@
+@font-face { font-family: "Geist"; src: url("/static/assets/Geist.ttf") format("truetype"); font-weight: 100 900; font-display: swap; }
 /* jaclang.org custom layer — sits on top of the generated shadcn global.css.
    Safe from `jac retheme` (which only overwrites global.css). */
 

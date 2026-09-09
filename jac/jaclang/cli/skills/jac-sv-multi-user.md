@@ -1,6 +1,6 @@
 ---
 name: jac-sv-multi-user
-description: Multi-user data sharing - cross-user permission grants (the ambient AccessLevel enum, everyone or one specific user), the shared root / public feed pattern (root.shared), archetype-wide access policy (__jac_access__), per-user grants with allow_root, roles, scanning every user's root (allroots). Load when logged-in users need to see or act on each other's data, or when tempted to fake "shared" data with a def:pub global graph. Pair with `jac-sv-auth`, `jac-node-edge-patterns`.
+description: Implement graph sharing and per-user authorization. Use for grants, shared roots, roles, or operations on another user’s data.
 ---
 
 Authenticated endpoints give every user an isolated subgraph hung off *their* `root` (see `jac-sv-auth`). Cross-user features punch through that isolation three ways:

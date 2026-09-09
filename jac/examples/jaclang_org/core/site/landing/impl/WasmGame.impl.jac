@@ -5,22 +5,22 @@ impl WasmGame.launch(_e: MouseEvent) {
     if canvasRef.current {
         stopRef.current = run_game(
             canvasRef.current,
-            lambda (exports: any, game: any, fps: int) {
-                score_el: any = document.getElementById("game-hud-score");
-                hp_el: any = document.getElementById("game-hud-hp");
-                deaths_el: any = document.getElementById("game-hud-deaths");
-                fps_el: any = document.getElementById("game-hud-fps");
+            lambda (score: int, hp: float, deaths: int, fps: int) {
+                score_el = scoreRef.current;
+                hp_el = hpRef.current;
+                deaths_el = deathsRef.current;
+                fps_el = fpsRef.current;
                 if score_el {
-                    score_el.textContent = exports.get_score(game);
+                    score_el.textContent = str(score);
                 }
                 if hp_el {
-                    hp_el.textContent = Math.round(exports.get_hp(game));
+                    hp_el.textContent = str(Math.round(hp));
                 }
                 if deaths_el {
-                    deaths_el.textContent = exports.get_deaths(game);
+                    deaths_el.textContent = str(deaths);
                 }
                 if fps_el {
-                    fps_el.textContent = fps;
+                    fps_el.textContent = str(fps);
                 }
             },
         );
