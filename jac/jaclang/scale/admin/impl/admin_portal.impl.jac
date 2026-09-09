@@ -40,8 +40,18 @@ impl JacAPIServerAdmin._warn_dormant_admin(admin_username: str) -> None {
     if manager is None {
         return;
     }
-    existing = manager.find_user_by_identity(admin_username);
-    if existing is None or not manager.is_admin(str(existing.get('user_id', ''))) {
+    try {
+        existing = manager.find_user_by_identity(admin_username);
+        dormant = existing is not None
+            and manager.is_admin(str(existing.get('user_id', '')));
+    } except Exception as e {
+        logger.debug(
+            f"Skipped the dormant admin check for '{admin_username}': the identity "
+            f"store is not reachable yet ({type(e).__name__}: {e})"
+        );
+        return;
+    }
+    if not dormant {
         return;
     }
     logger.warning(
