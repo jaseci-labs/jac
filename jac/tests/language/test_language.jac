@@ -1062,3 +1062,9 @@ test "deep walker chain does not hit recursion limit" {
     output = run_jac(os.path.join(FIXTURES, "deep_walker_chain.jac"));
     assert "1500" in output , f"Walker should visit all 1500 nodes: {output}";
 }
+
+
+test "plain walkers execute async abilities in sync and async callers" {
+    output = run_jac(os.path.join(FIXTURES, "inferred_async_walker.jac"));
+    assert "async abilities completed" in output;
+}

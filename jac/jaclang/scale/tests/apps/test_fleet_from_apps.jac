@@ -13,6 +13,7 @@ import from jaclang.scale.runtime.fleet {
     FLEET_ENV,
     FleetSpec,
     ROOT_PREFIX,
+    consumer_provider_edges,
     fleet_from_config,
     fleet_from_env,
     fleet_of,
@@ -77,8 +78,8 @@ test "fleet membership comes from [apps]: service kinds only, served app hosts" 
         assert fleet.root_app == "web" , fleet.root_app;
         assert set(fleet.service_names()) == {"orders", "cart"} , fleet.names();
         assert "tool" not in fleet.members , "a cli app is never a fleet member";
-        assert fleet.member("web").is_root;
-        assert not fleet.member("orders").is_root;
+        assert fleet.members["web"].is_root;
+        assert not fleet.members["orders"].is_root;
     } finally {
         shutil.rmtree(d, ignore_errors=True);
     }
@@ -102,8 +103,10 @@ test "member files are absolute locally and bundle-relative for a deploy" {
     d = _workspace();
     try {
         local = fleet_from_config(_config(d), project_root=d);
-        assert os.path.isabs(local.member("orders").file);
-        assert local.member("orders").file.endswith(os.path.join("core", "orders.jac"));
+        assert os.path.isabs(local.members["orders"].file);
+        assert local.members["orders"].file.endswith(
+            os.path.join("core", "orders.jac")
+        );
         shipped = fleet_from_config(_config(d), project_root=d, relative_to=d);
         assert shipped.files()["orders"] == "core/orders.jac" , shipped.files();
         assert shipped.files()["web"] == "web/main.jac" , shipped.files();
@@ -202,7 +205,7 @@ test "the fleet round-trips through JAC_SV_FLEET" {
         assert back is not None;
         assert back.root_app == "web";
         assert back.routes() == {"orders": "/api/orders"};
-        assert back.member("web").file == "web/main.jac";
+        assert back.members["web"].file == "web/main.jac";
         assert json.loads(fleet.to_env())["root"] == "web";
     } finally {
         if saved is None {
@@ -218,7 +221,7 @@ test "a solo app is a fleet of one root member" {
     fleet = solo_fleet("shop", "main.jac");
     assert fleet.root_app == "shop";
     assert fleet.service_names() == [];
-    assert fleet.member("shop").file == "main.jac";
+    assert fleet.members["shop"].file == "main.jac";
 }
 
 
@@ -229,8 +232,10 @@ test "the gateway registry mounts services at their routes and the host at /" {
     assert registry.entries["web"].prefix == ROOT_PREFIX;
     assert registry.entries["orders"].prefix == "/api/orders";
     assert registry.entries["orders"].env["JAC_SV_NAME"] == "orders";
-    assert registry.match_route("/api/orders/walker/Create").name == "orders";
-    assert registry.match_route("/api/basket/function/view").name == "cart";
+    orders = registry.match_route("/api/orders/walker/Create");
+    cart = registry.match_route("/api/basket/function/view");
+    assert orders is not None and orders.name == "orders";
+    assert cart is not None and cart.name == "cart";
     assert registry.match_route("/walker/Home") is None , (
         "root paths belong to the host, not a prefix match"
     );
@@ -331,5 +336,95 @@ test "an app that does not compile stops the fleet loudly" {
     } finally {
         sv_client.clear_consumer_providers();
         shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+glob _BRIDGE_TOML: str = '[project]\n'
+     'name = "bridged"\n'
+     'default-app = "web"\n'
+     '\n'
+     '[apps.web]\n'
+     'kind = "web-app"\n'
+     'path = "web"\n'
+     '\n'
+     '[apps.orders]\n'
+     'kind = "service"\n'
+     'entry-point = "core/orders.jac"\n'
+     '\n'
+     '[apps.cart]\n'
+     'kind = "service"\n'
+     'entry-point = "core/cart.jac"\n';
+
+
+def _bridge_workspace -> str {
+    d = tempfile.mkdtemp(prefix="jac-fleet-bridge-");
+    (Path(d) / "jac.toml").write_text(_BRIDGE_TOML, encoding="utf-8");
+    (Path(d) / "web").mkdir();
+    (Path(d) / "web" / "main.jac").write_text("with entry {}\n", encoding="utf-8");
+    (Path(d) / "core").mkdir();
+    (Path(d) / "core" / "cart.jac").write_text(
+        'def:pub view_cart -> dict {\n    return {"items": []};\n}\n', encoding="utf-8"
+    );
+    (Path(d) / "core" / "orders.jac").write_text(
+        'import from cart { view_cart }\n'
+        '\n'
+        'async def:pub place_order -> dict {\n'
+        '    return await view_cart();\n'
+        '}\n',
+        encoding="utf-8"
+    );
+    return d;
+}
+
+
+test "a compiled cross-app import is reported as a consumer/provider edge" {
+    d = _bridge_workspace();
+    try {
+        cfg = _config(d);
+        apps = [cfg.app("web"), cfg.app("orders"), cfg.app("cart")];
+        edges = consumer_provider_edges(cfg, d, apps);
+        assert ("orders", "cart") in edges , (
+            f"a declared cross-app import produced no edge: {edges!r}"
+        );
+    } finally {
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+test "edge analysis visits modules registered while analyzing either hub" {
+    import from types { SimpleNamespace }
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.scale.runtime.fleet { _compiled_app_edges }
+    def module(edges: list) -> any {
+        return SimpleNamespace(
+            gen=SimpleNamespace(
+                interop_manifest=SimpleNamespace(
+                    app_edges=edges, walker_access={}, func_access={}
+                )
+            )
+        );
+    }
+    first = module([]);
+    added = module([("web", "orders")]);
+    internal = module([]);
+    final = module([("orders", "db")]);
+    user_hub = {"first": first};
+    compiler_hub = {"internal": internal};
+    def analyze(prog: any, mod: any, schedule: any) {
+        if mod is first {
+            user_hub["added"] = added;
+        }
+        if mod is internal {
+            compiler_hub["final"] = final;
+        }
+    }
+    with patch.object(JacProgram, "compile"), patch.object(
+        JacProgram, "_search_hubs", return_value=[user_hub, compiler_hub]
+    ), patch.object(JacProgram, "run_schedule", analyze) {
+        edges = _compiled_app_edges("main.jac", "web", "web-app", "/tmp");
+        assert set(edges) == {("web", "orders"), ("orders", "db")};
     }
 }

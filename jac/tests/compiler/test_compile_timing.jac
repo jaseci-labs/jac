@@ -496,7 +496,7 @@ never consulted from under the test runner.
 glob PRECOMPILE_GATE: str = os.path.join(
          TESTS_DIR, "compiler", "fixtures", "precompile_gate"
      ),
-     GATE_COLD_MAX_RUNS: int = 560,
+     GATE_COLD_MAX_RUNS: int = 620,
      GATE_COLD_MAX_RATIO: float = 0.6;
 
 def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
@@ -539,6 +539,7 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
     runs = sum(prog.analysis.pass_runs.values()) if prog is not None else 0;
     events = dict(prog.analysis.cache_events) if prog is not None else {};
     if prog is not None {
+        publish("precompile-pass-runs", str(dict(prog.analysis.pass_runs)));
         prog.analysis.pass_runs.clear();
         prog.analysis.pass_time.clear();
         prog.analysis.cache_events.clear();
@@ -587,7 +588,7 @@ test "the cold precompile path stays inside its work envelope" {
         );
         assert cold <= GATE_COLD_MAX_RUNS , (
             f"cold precompile did {cold} pass runs; the ceiling is {GATE_COLD_MAX_RUNS} "
-            "(recorded 472 against 1213 without the cache): closure work the cache used to take back is being redone"
+            "(recorded 568 against 1445 without the cache, including 58 graph-lowering runs): closure work the cache used to take back is being redone"
         );
         assert cold <= GATE_COLD_MAX_RATIO * no_cache , (
             f"cold precompile with the cache did {cold} pass runs against {no_cache} without it "

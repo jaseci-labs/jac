@@ -1591,6 +1591,35 @@ impl DocIRGenPass.exit_list_val with uni.ListVal exit {
     here.gen.doc_ir = self.format_comma_collection(here);
 }
 
+impl DocIRGenPass.exit_graph_expr with uni.GraphExpr exit {
+    parts: list[doc.DocType] = [];
+    for (index, child) in enumerate(here.kid[2:-1]) {
+        if isinstance(child, uni.Expr) {
+            parts.extend([self.line(), child.gen.doc_ir]);
+            following = here.kid[index + 3];
+            if not (isinstance(following, uni.Token) and following.name == Tok.SEMI) {
+                parts.append(self.text(";"));
+            }
+        } else {
+            parts.append(child.gen.doc_ir);
+        }
+    }
+    here.gen.doc_ir = self.group(
+        self.concat(
+            [
+                here.kid[0].gen.doc_ir,
+                self.space(),
+                here.kid[1].gen.doc_ir,
+                self.indent(self.concat(parts), ast_node=here),
+                self.line(),
+                here.kid[-1].gen.doc_ir
+            ],
+            ast_node=here
+        ),
+        ast_node=here
+    );
+}
+
 impl DocIRGenPass.exit_atom_trailer with uni.AtomTrailer exit {
     parts: list[doc.DocType] = [];
     for i in here.kid {

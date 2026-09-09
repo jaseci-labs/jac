@@ -713,7 +713,7 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     _rgn_tgt: ir.Value = self.builder.call(
         _rgn_of_fn, [self._coerce_type(_tgt_i64, i64)], name="conn.rgn.tgt"
     );
-    self.builder.call(
+    connected = self.builder.call(
         osp_conn_fn,
         [
             _src_i64,
@@ -725,6 +725,21 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
             self._coerce_type(_rgn_tgt, _argtys[6])
         ]
     );
+    self._emit_runtime_raise(
+        self.builder.icmp_signed("==", connected, ir.Constant(connected.type, -1)),
+        "RuntimeError",
+        "cannot connect a destroyed node"
+    );
+    if co.capture_edges {
+        i8p = ir.IntType(8).as_pointer();
+        self._emit_list_helpers("ptr", i8p);
+        helpers = self.list_helpers["ptr"];
+        result = self.builder.call(helpers["new"], [], name="conn.edges");
+        self.builder.call(
+            helpers["append"], [result, self._coerce_type(edge_obj, i8p)]
+        );
+        return result;
+    }
     return tgt;
 }
 

@@ -810,7 +810,7 @@ def _pull_boundary_import(imp: uni.Import, module: uni.Module, prog: any) -> int
         or imp.has_string_path
         or imp.from_loc is None
         or not imp.items
-        or imp.code_context != CodeContext.CLIENT
+        or not imp.in_client_context()
     ) {
         return 0;
     }

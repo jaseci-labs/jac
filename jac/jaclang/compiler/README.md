@@ -37,6 +37,8 @@ The tree and symbol graph cross into the host together.
 Modules with wildcard imports defer symbol construction until the driver's
 dependency resolver has made the imported names available. Parsing without a
 compiler program, or without a known codespace, keeps the ordinary host schedule.
+Graph-construction expressions also defer early analysis until the shared graph
+lowering pass has introduced their scopes and imports.
 
 `PassResult` carries completed diagnostics and timing through the ordinary pass
 driver, which applies diagnostic policy and records each pass once. Native field

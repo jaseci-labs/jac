@@ -6,6 +6,7 @@ import from jaclang.compiler.frontend.unitree {
     BinaryExpr,
     BoolExpr,
     CompareExpr,
+    ConnectOp,
     DictCompr,
     DictVal,
     Expr,
@@ -65,6 +66,11 @@ def result_ownership(expr: (Expr | None)) -> Ownership {
             else Ownership.OWNED;
     }
     if isinstance(expr, FuncCall) {
+        return Ownership.OWNED;
+    }
+    if isinstance(expr, BinaryExpr)
+        and isinstance(expr.op, ConnectOp)
+        and expr.op.capture_edges {
         return Ownership.OWNED;
     }
     if isinstance(expr, (ListVal, SetVal, DictVal, ListCompr, DictCompr)) {

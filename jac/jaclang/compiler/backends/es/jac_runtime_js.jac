@@ -1179,6 +1179,20 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
   types: __JAC_TYPES_RUNTIME__,
 
   builtin: {
+    bindFields(args, keywords, names) {
+      if (args.length > names.length) {
+        throw new _jac.exc.TypeError(`Expected at most ${names.length} positional arguments, got ${args.length}`);
+      }
+      const props = Object.assign(Object.create(null), keywords);
+      for (let i = 0; i < args.length; i++) {
+        const name = names[i];
+        if (Object.prototype.hasOwnProperty.call(props, name)) {
+          throw new _jac.exc.TypeError(`Multiple values for argument '${name}'`);
+        }
+        props[name] = args[i];
+      }
+      return props;
+    },
     round(n, ndigits) {
       if (ndigits === undefined) return Math.round(n);
       const f = Math.pow(10, ndigits);
@@ -1299,6 +1313,18 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     },
     id(o) {
       if (o === null || o === undefined) return 0;
+      if (typeof o === "object" || typeof o === "function") {
+        // Share reference identity across separately emitted Jac modules,
+        // without retaining otherwise unreachable objects.
+        const key = Symbol.for("jac.objectIdentity");
+        const state = globalThis[key] ??= { ids: new WeakMap(), next: 1 };
+        let value = state.ids.get(o);
+        if (value === undefined) {
+          value = state.next++;
+          state.ids.set(o, value);
+        }
+        return value;
+      }
       if (typeof o === "number") return o;
       return typeof o === "string" ? _jac.builtin._strHash(o) : 0;
     },
@@ -1919,16 +1945,21 @@ function __ospId(o) {
   if (h === undefined) { h = __ospO.length; __ospO.push(o); __ospH.set(o, h); }
   return h;
 }
-function __ospConnW(src, tgt, mkEdge, undirected, tag = -1) {
+function __ospConnW(src, tgt, mkEdge, undirected, tag = -1, edgesOnly = false) {
   const srcs = Array.isArray(src) ? src : [src];
   const tgts = Array.isArray(tgt) ? tgt : [tgt];
+  for (const value of [...srcs, ...tgts]) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      throw new TypeError("connect operands must be nodes or flat collections of nodes");
+    }
+  }
   const sh = srcs.map(__ospId);
   const th = tgts.map(__ospId);
   const eh = [];
   for (let i = 0; i < sh.length * th.length; i++) eh.push(__ospId(mkEdge()));
   const r = __ospC.osp_conn_many(sh, th, eh, undirected ? 1 : 0, tag, 0, 0);
   if (r < 0) throw new Error("cannot connect a destroyed node");
-  return tgts.length === 1 ? tgts[0] : tgts;
+  return edgesOnly ? eh.map((h) => __ospO[h]) : tgt;
 }
 function __ospRefsW(origin, dir, tag = -1, edgesOnly = 0, pred = null) {
   const oh = __ospId(origin);

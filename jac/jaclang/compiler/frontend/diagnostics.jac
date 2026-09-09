@@ -334,6 +334,18 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Cannot delete {what}",
          help="`del` takes either a location to unbind -- a name, an attribute, or a subscript -- or an expression yielding graph objects to destroy. This target is neither."
      ),
+     E0084 = _err(
+         "E0084",
+         Category.SYNTAX,
+         "Graph construction requires outward directed connections",
+         help="Use `++>` or `+>:Edge:+>` inside `graph { ... }`. Incoming and undirected mutation remain available outside construction expressions."
+     ),
+     E0085 = _err(
+         "E0085",
+         Category.SYNTAX,
+         "Graph construction cannot suspend execution",
+         help="Resolve awaited values and asynchronous iterables before entering `graph { ... }`. Construction expressions are synchronous."
+     ),
      W0060 = _warn(
          "W0060",
          Category.SYNTAX,
@@ -410,7 +422,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1020 = _err("E1020", Category.TYPE, "Cannot unpack non-iterable {type}"),
      E1021 = _err("E1021", Category.TYPE, "Type \"{type}\" is not iterable"),
      E1022 = _err(
-         "E1022", Category.TYPE, "Type {type} is not iterable (no __iter__ method)"
+         "E1022", Category.TYPE, "Type {type} is not iterable (no {method} method)"
      ),
      E1023 = _err("E1023", Category.TYPE, "Type \"{type}\" is not callable"),
      E1030 = _err(
@@ -1503,6 +1515,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "implicit return when it is the final statement of a function, "
          "ability, or lambda body.",
          help="Add ';' to discard the expression's value, or use an explicit `return` if the value should leave the enclosing function from this position."
+     ),
+     E2085 = _err(
+         "E2085",
+         Category.SEMANTIC,
+         "'await' is only valid inside an 'async' function or ability",
+         help="Mark the enclosing function or ability 'async' (e.g. `async def` or `async can`) so it compiles to a coroutine capable of `await`; otherwise remove the `await` and call it synchronously."
      ),
      W3001 = _warn(
          "W3001",

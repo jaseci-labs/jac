@@ -952,6 +952,12 @@ impl UnparsePass.exit_atom_unit with uni.AtomUnit exit {
     here.gen.jac = "(" + here.value.gen.jac + ")";
 }
 
+impl UnparsePass.exit_graph_expr with uni.GraphExpr exit {
+    here.gen.jac = "graph { "
+        + " ".join([expr.gen.jac + ";" for expr in here.exprs])
+        + " }";
+}
+
 impl UnparsePass.exit_yield_expr with uni.YieldExpr exit {
     parts: list = ["yield"];
     if here.with_from {

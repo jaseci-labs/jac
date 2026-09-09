@@ -282,13 +282,18 @@ impl JcirGenPass.jaclib_obj(obj_name: str) -> CgNode {
     if cached is not None {
         return self.name_load(cached);
     }
-    alias = "_jac_runtime_" + obj_name;
+    alias = self._reserve_name("_jac_runtime_" + obj_name);
+    self._runtime_aliases[obj_name] = alias;
+    return self.name_load(alias);
+}
+
+impl JcirGenPass._reserve_name(preferred: str) -> str {
+    alias = preferred;
     while alias in self._reserved_names {
         alias += "_";
     }
     self._reserved_names.add(alias);
-    self._runtime_aliases[obj_name] = alias;
-    return self.name_load(alias);
+    return alias;
 }
 
 impl JcirGenPass.builtin_name(name: str) -> CgNode {
@@ -347,7 +352,7 @@ impl JcirGenPass.py_ctx(nd: AstSymbolNode) -> CgNode {
 
 impl JcirGenPass._next_lambda_name -> str {
     self._lambda_counter += 1;
-    return f"_jac_lambda_{self._lambda_counter}";
+    return self._reserve_name(f"_jac_lambda_{self._lambda_counter}");
 }
 
 impl JcirGenPass._push_hoist_frame -> None {
@@ -446,6 +451,40 @@ impl JcirGenPass._report_leaked_hoisted_lambdas -> None {
 impl JcirGenPass._function_expr_from_def(
     func_def: CgNode, jac_node: UniNode
 ) -> CgNode {
+    if isinstance(jac_node, LambdaExpr) {
+        parent = jac_node.parent;
+        immediate = isinstance(parent, FuncCall) and parent.target is jac_node;
+        has_defaults = jac_node.signature is not None
+            and any(param.value is not None for param in jac_node.signature.params);
+        if not immediate or has_defaults {
+            factory_name = self._next_lambda_name();
+            args = self.nod(
+                'arguments',
+                ['posonlyargs', 'args', 'kwonlyargs', 'kw_defaults', 'defaults'],
+                [[], [], [], [], []],
+                jac_node=jac_node
+            );
+            returned = self.nod(
+                'Return',
+                ['value'],
+                [self.name_load(str(func_def.get('name')), jac_node=jac_node)],
+                jac_node=jac_node
+            );
+            factory = self.nod(
+                'FunctionDef',
+                ['name', 'args', 'body', 'decorator_list', 'returns', 'type_params'],
+                [factory_name, args, [func_def, returned], [], None, []],
+                jac_node=jac_node
+            );
+            self._hoist_lambda(factory);
+            return self.call_node(
+                self.name_load(factory_name, jac_node=jac_node),
+                [],
+                [],
+                jac_node=jac_node
+            );
+        }
+    }
     self._hoist_lambda(func_def);
     return self.nod(
         'Name',

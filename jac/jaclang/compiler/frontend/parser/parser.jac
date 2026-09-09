@@ -60,6 +60,7 @@ import from jaclang.compiler.frontend.unitree {
     FuncSignature,
     GenCompr,
     GlobalVars,
+    GraphExpr,
     HasVar,
     IfElseExpr,
     IfStmt,
@@ -407,7 +408,7 @@ obj Parser {
     def match_any(*kinds: TokenKind) -> LexToken | None;
     def expect(kind: TokenKind) -> LexToken;
     def expect_any(*kinds: TokenKind) -> LexToken;
-    def consume_uni(kind: TokenKind) -> Token;
+    def consume_uni(kind: TokenKind, value: str | None = None) -> Token;
     def expect_name(context: str = "identifier") -> LexToken;
     def error(message: str);
     def emit_diag(
@@ -482,6 +483,7 @@ obj Parser {
     def parse_builtin_type -> Expr | None;
     def parse_special_ref -> Expr | None;
     def parse_atom -> Expr;
+    def parse_graph_expr -> GraphExpr;
     def parse_tuple_item -> Expr | KWPair;
     def parse_paren_expr -> Expr;
     def parse_bracket_expr -> Expr;

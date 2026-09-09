@@ -2,7 +2,31 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.37.8 (Latest Release)
+## jaclang 0.37.10 (Latest Release)
+
+### New Features
+
+- **Registration protection and JacYac limits**: Add optional expiring, single-use registration challenges and database-backed request limits, preserve drafts when posting quotas are reached, and build the JacYac mobile app as the Android CI artifact. Release PRs also synchronize the jaclang.org workspace’s exact Jac version pin.
+
+### Bug Fixes
+
+- Fix macOS native binaries aborting at startup with a missing `__errno_location` symbol by preserving platform-specific module filenames during dependency linking.
+- **Fix: scale-to-zero pods no longer rebuild their venv on every wake**: `jac scale deploy` now builds the app's Python environment once at seal time, from the same vendored wheels pods already ship, and seals it into the `.jab` bundle. A woken pod unpacks it with the rest of the bundle and `jac install` verifies a dependency marker instead of reinstalling, cutting the measured 21s per-wake install (issue #8695) to about a second. Seal hosts that cannot install the pod-platform wheels (cross-arch deploys, thin bundles) fall back to the previous boot-time install automatically; `JAC_SEAL_SKIP_VENV=1` opts out explicitly.
+- **Compiler: Native ownership and object semantics**: Fix native tuple-valued dictionary conversions and temporary ownership, computed union properties, inherited destruction, and imported function aliases. Jac object fields, constructors, and reflection now use shared Jac-owned object semantics while preserving external Python dataclass interoperability.
+- **Native field factories and library imports**: Field factories can call user-defined functions and built-in list constructors, with separate constructor argument ordering for `init=False` and `kw_only` fields. Fix mixed `os.path` operations, bundled library symbol collisions, and legacy type-alias overload resolution.
+- **Native compiler kernel**: Fix symbol-table construction aborting on self-field assignments and compiler-state fields materializing as strings.
+
+## jaclang 0.37.9
+
+### Breaking Changes
+
+- **Retained boundary contracts and typed Wasm integration**: Native browser imports now generate scalar conversions and opaque ownership handles from declarations. Replace `set_na_env` and manual host dictionaries with `bind_na_host(export, typed_host)`; reusable graphics support is available through `@jac/webgl`. Signup returns a `SignupResult` record instead of a dictionary, so consumers use its `success`, `user_id`, `error`, and `status` fields. Qualified endpoint identities, conservative effect summaries, concurrent cache invalidation, external JSON response contracts, and a production boundary audit share retained compiler metadata. Compiler and client artifact caches are invalidated for the new formats.
+
+### New Features
+
+- **Selective guide retrieval**: Add `jac guide <topic> --sections` and `--section <slug>` with JSON output so readers and coding agents can retrieve individual sections of bundled guides and documentation. New project instructions and generic MCP startup begin with a compact essentials guide and route to task-specific references.
+
+## jaclang 0.37.8
 
 ### Breaking Changes
 
