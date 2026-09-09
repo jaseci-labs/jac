@@ -182,13 +182,15 @@ test "R3: region-resident topology traverses live and reclaims at drop" {
         (eng, ir) = compile_native(
             "region_graph.jac", gc_mode=mode, nogc_enforce=mode == "none"
         );
-        scenario = get_func(eng, "scenario", ctypes.c_int64);
         read_log = get_func(eng, "read_log", ctypes.c_int64);
-        for _ in range(20) {
-            result = scenario();
-            assert result == 3 , f"{mode}: expected traversal sum 3, got {result}";
-            log = read_log();
-            assert log == 2 , f"{mode}: handle drop must reclaim both nodes, got {log}";
+        for name in ["scenario", "cyclic_scenario"] {
+            scenario = get_func(eng, name, ctypes.c_int64);
+            for _ in range(20) {
+                result = scenario();
+                assert result == 3 , f"{mode}: expected live-node sum 3, got {result}";
+                log = read_log();
+                assert log == 2 , f"{mode}: handle drop must reclaim both nodes, got {log}";
+            }
         }
     }
 }
