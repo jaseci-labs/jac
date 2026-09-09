@@ -3,12 +3,69 @@ import from jaclang.compiler.backends.native.llvm { ir, binding as llvm }
 import from jaclang.compiler.backends.native.lowering {
     NativeLoweringIssue,
     NativeLoweringKind,
-    native_lowering_issues
+    native_lowering_issues,
+    prepare_native_library
 }
 import from jaclang.compiler.backends.native.na_compile_pass {
     native_demoted_ir_symbols
 }
 import from tests.support { compile_native }
+
+test "library closure checks exports and indirect dependencies before optimization" {
+    import from jaclang.compiler.backends.native.shared_emit { init_object_codegen }
+    init_object_codegen();
+    target = llvm.Target.from_default_triple();
+    assert isinstance(target, llvm.Target);
+    machine = target.create_target_machine();
+    assert isinstance(machine, llvm.TargetMachine);
+    for (body, exports, rejected) in [
+        (
+            'define i64 @entry() { ret i64 7 }\ndefine i64 @unsupported() { ret i64 0 }',
+            {"entry"},
+            False
+        ),
+        (
+            'define i64 @entry() { %v = call i64 @unsupported()\nret i64 %v }\ndefine i64 @unsupported() { ret i64 0 }',
+            {"entry"},
+            True
+        ),
+        (
+            '@dispatch = global ptr @unsupported\ndefine i64 @entry() { ret i64 7 }\ndefine i64 @unsupported() { ret i64 0 }',
+            {"entry", "dispatch"},
+            True
+        ),
+        (
+            'define i64 @entry() { ret i64 7 }\ndefine i64 @unsupported() { ret i64 0 }',
+            {"entry", "unsupported"},
+            True
+        ),
+        ('define i64 @entry() { ret i64 7 }', {"entry"}, True)
+    ] {
+        records = ir.Module(name="verdict");
+        NativeLoweringIssue(
+            symbol="unsupported",
+            kind=NativeLoweringKind.CALLABLE,
+            source="fixture.jac",
+            code="E5092",
+            detail="cannot lower"
+        ).record(
+            records
+        );
+        module = llvm.parse_assembly(str(records) + "\n" + body);
+        caught = False;
+        try {
+            prepare_native_library(module, machine, exports);
+        } except ValueError {
+            caught = True;
+        }
+        assert caught == rejected;
+        if not rejected {
+            text = str(module);
+            assert "define i64 @entry" in text;
+            assert "define internal i64 @unsupported" not in text;
+        }
+    }
+}
 
 test "method demotion is visible without changing the method ABI name" {
     (_, module) = compile_native("partial_native.jac");

@@ -591,6 +591,18 @@ impl native_build(
     assert isinstance(_tm, llvm.TargetMachine);
     target_machine = _tm;
 
+    if shared {
+        import from jaclang.compiler.backends.native.lowering { prepare_native_library }
+        try {
+            prepare_native_library(
+                mod, target_machine, set(export_symbols + init_funcs)
+            );
+        } except (ValueError, RuntimeError) as error {
+            console.error(str(error));
+            return 1;
+        }
+    }
+
     _opt_level = int(options.opt_level or 0);
     _dump_path = options.dump_ir_path or "";
 

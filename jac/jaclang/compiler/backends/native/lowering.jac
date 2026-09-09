@@ -1,8 +1,87 @@
 import json;
 import re;
 import from jaclang.compiler.backends.native.llvm { ir }
+import type from jaclang.compiler.backends.native.llvm.binding {
+    ModuleRef,
+    TargetMachine,
+    ValueRef
+}
 
 enum NativeLoweringKind { CALLABLE = "callable", FIELD = "field" }
+
+# Use LLVM's dependency traversal, including function addresses in global tables.
+# Only removal of an actual definition proves a recorded failure unreachable.
+# Check before optimization can inline a demoted body and erase that evidence.
+def prepare_native_library(
+    module: ModuleRef, target: TargetMachine, exports: set[str]
+) {
+    import from collections.abc { Iterator }
+    import jaclang.compiler.backends.native.llvm.binding as llvm;
+    functions = module.functions;
+    globals = module.global_variables;
+    assert isinstance(functions, Iterator);
+    assert isinstance(globals, Iterator);
+    members: list[ValueRef] = list(functions) + list(globals);
+    defined = {
+        str(member.name)
+        for member in members
+        if not member.is_declaration
+    };
+    missing = exports - defined;
+    if missing {
+        raise ValueError(
+            "Native library exports have no definitions: " + ", ".join(sorted(missing))
+        );
+    }
+    issues = native_lowering_issues(str(module));
+    failed: set[str] = set();
+    candidates: dict[str, str] = {};
+    for issue in issues {
+        if issue.kind == NativeLoweringKind.FIELD {
+            failed.add(issue.symbol);
+            continue;
+        }
+        symbol = issue.symbol;
+        actual = symbol if symbol in defined else symbol + ".__jac_demoted";
+        if actual not in defined {
+            failed.add(symbol);
+        } else {
+            candidates[actual] = symbol;
+        }
+    }
+    for name in defined {
+        if name.endswith(".__jac_demoted") {
+            candidates[name] = name[:-len(".__jac_demoted")];
+        }
+    }
+    for member in members {
+        name = str(member.name);
+        if not member.is_declaration
+            and name not in exports
+            and not name.startswith("llvm.") {
+            member.linkage = "internal";
+        }
+    }
+    tuning = llvm.create_pipeline_tuning_options(speed_level=0);
+    builder = llvm.create_pass_builder(target, tuning);
+    manager = llvm.ModulePassManager();
+    manager.add_global_dead_code_eliminate_pass();
+    manager.run(module, builder);
+    remaining = module.functions;
+    assert isinstance(remaining, Iterator);
+    for function in remaining {
+        name = str(function.name);
+        if name in candidates {
+            failed.add(candidates[name]);
+        }
+    }
+    if failed {
+        raise ValueError(
+            "Incomplete native library closure: " + ", ".join(sorted(failed))
+        );
+    }
+    module.verify();
+}
 
 obj NativeLoweringIssue {
     has symbol: str,
