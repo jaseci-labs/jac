@@ -4,7 +4,6 @@ import from jaclang.client.targets.registry { ClientTarget }
 
 obj WebTarget(ClientTarget) {
     has name: str = "web",
-        `default: bool = True,
         requires_setup: bool = False,
         config_section: str = "plugin.client",
         output_dir: Path = Path(".jac/client/dist");

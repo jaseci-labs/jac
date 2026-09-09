@@ -38,9 +38,11 @@ impl _StubResp.headers.getter -> any {
 
 obj _StubClient {
     has body_text: str,
-        content_type: str = "application/json";
+        content_type: str = "application/json",
+        headers_seen: list[dict] = [];
 
-    def post(path: str, json: any = None) -> _StubResp {
+    def post(path: str, json: any = None, headers: (dict | None) = None) -> _StubResp {
+        self.headers_seen.append(dict(headers or {}));
         return _StubResp(body_text=self.body_text, content_type=self.content_type);
     }
 }
@@ -222,5 +224,129 @@ test "sv_service_call still unwraps JSON envelope when not SSE" {
         assert result == "plain_json_ok";
     } finally {
         sv_client._test_clients.pop("json_mod", None);
+    }
+}
+
+
+test "sv_walker_call carries the idempotency header through the scale transport" {
+    stub = _StubClient(
+        body_text=json.dumps({"ok": True, "data": {"result": {}, "reports": []}})
+    );
+    sv_client._test_clients["hdr_mod"] = stub;
+    try {
+        JacScalePlugin.sv_walker_call(
+            "hdr_mod", "Greet", {}, None, headers={"X-Jac-Idempotency-Key": "k-1"}
+        );
+        assert stub.headers_seen[0]["X-Jac-Idempotency-Key"] == "k-1";
+    } finally {
+        sv_client._test_clients.pop("hdr_mod", None);
+    }
+}
+
+
+obj _StubTransport {
+    has calls: list[dict] = [];
+
+    def sv_transport_available -> bool {
+        return True;
+    }
+
+    def sv_service_call(
+        app: str, func_name: str, args: dict, headers: (dict | None) = None
+    ) -> any {
+        self.calls.append(
+            {"kind": "fn", "name": func_name, "headers": dict(headers or {})}
+        );
+        return "ok";
+    }
+
+    def sv_walker_call(
+        app: str,
+        walker_name: str,
+        args: dict,
+        stub_cls: any,
+        headers: (dict | None) = None
+    ) -> any {
+        self.calls.append(
+            {"kind": "walker", "name": walker_name, "headers": dict(headers or {})}
+        );
+        return {"reports": []};
+    }
+}
+
+
+test "spawn_walker hands the idempotency key to the scale transport" {
+    import asyncio;
+    import unittest.mock;
+    stub = _StubTransport();
+
+    def _transport -> any {
+        return stub;
+    }
+    patcher: any = unittest.mock.patch.object(
+        sv_client, "_scale_transport", _transport
+    );
+    try {
+        sv_client.register("scale_hdr_mod", "http://demo.invalid");
+        with patcher {
+            asyncio.run(
+                sv_client.spawn_walker(
+                    "scale_hdr_mod",
+                    "Greet",
+                    {"name": "ada"},
+                    None,
+                    idempotency_key="k-2"
+                )
+            );
+            asyncio.run(sv_client.call("scale_hdr_mod", "ping", {}));
+        }
+        assert stub.calls[0]["kind"] == "walker";
+        assert stub.calls[0]["headers"]["X-Jac-Idempotency-Key"] == "k-2";
+        assert stub.calls[1]["kind"] == "fn";
+        assert "X-Jac-Idempotency-Key" not in stub.calls[1]["headers"];
+    } finally {
+        sv_client.unregister("scale_hdr_mod");
+    }
+}
+
+
+test "an outbox delivery reaches the scale transport with its idempotency key" {
+    import os;
+    import unittest.mock;
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.server.outbox {
+        STATUS_DELIVERED,
+        SqliteOutboxStore,
+        default_idempotency_key,
+        deliver_pending,
+        enqueue,
+        use_store
+    }
+    stub = _StubTransport();
+
+    def _transport -> any {
+        return stub;
+    }
+    patcher: any = unittest.mock.patch.object(
+        sv_client, "_scale_transport", _transport
+    );
+    with TemporaryDirectory() as tmp {
+        store = SqliteOutboxStore(path=os.path.join(tmp, "outbox.sqlite"));
+        use_store(store);
+        try {
+            sv_client.register("outbox_scale_mod", "http://demo.invalid");
+            key = default_idempotency_key("outbox_scale_mod", "Greet", {"name": "ada"});
+            enqueue("outbox_scale_mod", "Greet", {"name": "ada"});
+            with patcher {
+                assert deliver_pending() == 1;
+            }
+            assert stub.calls[0]["name"] == "Greet";
+            assert stub.calls[0]["headers"]["X-Jac-Idempotency-Key"] == key;
+            stored = store.get_by_key(key);
+            assert stored is not None and stored.status == STATUS_DELIVERED;
+        } finally {
+            sv_client.unregister("outbox_scale_mod");
+            use_store(None);
+        }
     }
 }

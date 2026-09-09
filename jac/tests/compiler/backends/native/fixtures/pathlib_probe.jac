@@ -72,4 +72,31 @@ with entry {
     print(str(Path(str(h.where.parent))));
     print(str(Path(Path("a//b/c"))));
     print(str(Path(Path("/tmp")) / "x"));
+
+    children = Path("/tmp/jac_pathlib_probe_dir").iterdir();
+    print(iter(children) is children);
+}
+
+glob names: list[str] = [];
+
+with entry {
+    for child in children {
+        names.append(child.name);
+        print(str(child.parent) == "/tmp/jac_pathlib_probe_dir");
+    }
+    print(sorted(names));
+    snapshot = list(Path("/tmp/jac_pathlib_probe_dir").iterdir());
+    print(sorted([child.name for child in snapshot]));
+    print(len(list(children)));
+    print(len(list(Path("/tmp/jac_pathlib_probe_dir/sub").iterdir())));
+    try {
+        _ = list(Path("/tmp/jac_pathlib_missing_zz").iterdir());
+    } except FileNotFoundError {
+        print("missing directory");
+    }
+    try {
+        _ = list(Path("/tmp/jac_pathlib_probe.txt").iterdir());
+    } except NotADirectoryError {
+        print("not a directory");
+    }
 }

@@ -12,6 +12,8 @@ glob logger = logging.getLogger(__name__),
          'checkout',
          'release',
          'drain_all',
+         'forget_all',
+         'detach',
          'pool_stats'
      ];
 
@@ -27,6 +29,15 @@ def _pool_max -> int {
         return max(0, int(os.environ.get('JAC_DB_POOL_MAX', '16') or 16));
     } except ValueError {
         return 16;
+    }
+}
+
+
+def _pool_total_max -> int {
+    try {
+        return max(0, int(os.environ.get('JAC_DB_POOL_TOTAL_MAX', '48') or 48));
+    } except ValueError {
+        return 48;
     }
 }
 
@@ -127,13 +138,44 @@ def release(info: any, conn: any) -> None {
             kept.append((conn, now));
         }
         _pools[key] = kept;
+        evicted = _evict_oldest_locked(_pool_total_max());
     }
     for old in expired {
+        _discard(old);
+    }
+    for old in evicted {
         _discard(old);
     }
     if overflow is not None {
         _discard(overflow);
     }
+}
+
+
+def _evict_oldest_locked(keep: int) -> list {
+    total = sum(len(bucket) for bucket in _pools.values());
+    if total <= keep {
+        return [];
+    }
+    parked: list[tuple[float, str, any]] = [
+        (at, key, conn) for (key, bucket) in _pools.items() for (conn, at) in bucket
+    ];
+    parked.sort(key=lambda (item: tuple[float, str, any]) { item[0]; });
+    doomed = parked[:total - keep];
+    victims: set[int] = {id(conn) for (_at, _key, conn) in doomed};
+    for key in list(_pools.keys()) {
+        remaining = [
+            item
+            for item in _pools[key]
+            if id(item[0]) not in victims
+        ];
+        if remaining {
+            _pools[key] = remaining;
+        } else {
+            _pools.pop(key, None);
+        }
+    }
+    return [conn for (_at, _key, conn) in doomed];
 }
 
 
@@ -146,6 +188,52 @@ def drain_all {
         for (conn, _at) in bucket {
             _discard(conn);
         }
+    }
+}
+
+
+def forget_all {
+    with _lock {
+        buckets = list(_pools.values());
+        _pools.clear();
+    }
+    for bucket in buckets {
+        for (conn, _at) in bucket {
+            detach(conn);
+        }
+    }
+}
+
+
+def detach(conn: any) -> None {
+    if conn is None {
+        return;
+    }
+    try {
+        conn._closed = True;
+        sock = conn?._sock;
+        if sock is not None {
+            sock.detach();
+        }
+        conn._sock = None;
+    } except Exception {}
+}
+
+
+def _before_fork {
+    drain_all();
+}
+
+
+def _after_fork_in_child {
+    _lock = threading.Lock();
+    forget_all();
+}
+
+
+with entry {
+    if hasattr(os, 'register_at_fork') {
+        os.register_at_fork(before=_before_fork, after_in_child=_after_fork_in_child);
     }
 }
 

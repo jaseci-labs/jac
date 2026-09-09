@@ -7,12 +7,12 @@ This is the executable witness of the ownership design's erasure and
 monotonicity guarantees, and the regression net for the headerless codegen
 fixes of 2026-07-17, which only differential execution can see:
   - overwrite-release on `x = f(x)` dropped the value the callee had taken
-    ownership of (use-after-free under --gc none, masked under rc);
+    ownership of (use-after-free under --memory nogc, masked under rc);
   - caller-arg and scope-exit releases ignored ownership transfer into
     `own` parameters (use-after-free that surfaced only under allocation
     reuse; deriv segfaults without the fix).
 
-The enforced build compiles with --assert-no-rc, so a zero-RC regression
+The enforced build compiles with, so a zero-RC regression
 fails the compile step itself. The erasure test round-trips a kernel
 through harness/erase.jac (the executable Theorem-3 eraser) and checks the
 bare build reproduces the annotated digest.
@@ -42,15 +42,15 @@ glob OWNBENCH = str(Path(__file__).resolve().parents[4] / "examples" / "ownbench
 """nacompile flags for a memory mode."""
 def _mode_flags(mode: str) -> list[str] {
     if mode == "none" {
-        return ["--enforce-nogc", "--gc", "none", "--assert-no-rc"];
+        return ["--memory", "nogc"];
     }
-    return ["--gc", mode];
+    return ["--memory", "rc" if mode == "rc" else "managed"];
 }
 
 """Compile `src` to `out_bin` under `mode`; assert success."""
 def _nacompile(src: str, mode: str, out_bin: str) {
     comp = subprocess.run(
-        [sys.executable, "-m", "jaclang", "nacompile", src]
+        [sys.executable, "-m", "jaclang", "build", "--native", src]
             + _mode_flags(mode)
             + ["-o", out_bin],
         capture_output=True,

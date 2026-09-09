@@ -1,9 +1,18 @@
 [project]
 name = "microservice-port-fixture"
+default-app = "main"
+
+# One service app is enough to put `jac run --fleet` on the gateway path,
+# which is the path whose port handling this fixture exists to pin.
+
+[apps.main]
+kind = "web-app"
 entry-point = "main.jac"
 
-# One route is enough to put `jac run --serve` on the gateway path: declaring
-# [scale.microservices.routes] is what turns microservice mode on, and that is
-# the path whose port handling this fixture exists to pin.
-[scale.microservices.routes]
-echo_service = "/echo"
+[apps.echo_service]
+kind = "service"
+entry-point = "echo_service.jac"
+route = "/echo"
+
+[scale.gateway]
+colocate = false

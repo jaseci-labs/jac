@@ -29,30 +29,12 @@ glob CORE_RUNTIME_DEPS: dict[str, str] = {
      LEGACY_META_PACKAGES: set = {"jac-client-node", "@jac-client/dev-deps"};
 
 
-def resolve_client_target_name(config: JacConfig) -> str {
-    import os;
-    client_config = config.get_plugin_config("client");
-    raw = str(client_config.get("target", "") or "").strip();
-    if raw == "" {
-        raw = str(os.environ.get("JAC_CLIENT_TARGET", "") or "").strip();
-    }
-    if raw == "" {
-        return "web";
-    }
-    normalized = raw.lower().replace("-", "_");
-    if normalized in ("rn", "reactnative") {
-        return "react_native";
-    }
-    return normalized;
-}
-
-
 def target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, str] {
     npm_plugin_deps: dict = dict(config.plugin_dependencies.get("npm", {}));
     deps: dict[str, str] = {};
     key1 = str(target_name or "").strip();
-    key2 = key1.replace("_", "-");
-    for key in [key1, key2] {
+    keys = [key1, key1.replace("_", "-"), key1.replace("-", "_")];
+    for key in dict.fromkeys(keys) {
         if key == "" {
             continue;
         }
@@ -66,6 +48,66 @@ def target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, str
         }
     }
     return deps;
+}
+
+
+def _app_wants_client(config: JacConfig, app: any) -> bool {
+    import from jaclang.project.kinds { kind_has_client }
+    return app.implicit or kind_has_client(app.kind);
+}
+
+
+def app_npm_deps(config: JacConfig) -> list[tuple[str, str, str, bool]] {
+    import from jaclang.client.targets.registry { KIND_TARGET }
+    (base_deps, base_dev) = manifest_plugin_deps(config, "npm");
+    out: list[tuple[str, str, str, bool]] = [];
+    seen: dict[tuple[str, bool], tuple[str, str]] = {};
+
+    def _add(name: str, version: str, origin: str, dev: bool) {
+        key = (name, dev);
+        first = seen.get(key);
+        if first is not None {
+            if first[1] != version {
+                import from jaclang.cli.console { console }
+                console.warning(
+                    f"npm dependency '{name}' is pinned to '{first[1]}' by "
+                    f"{first[0]} and to '{version}' by {origin}; using "
+                    f"'{first[1]}' ({first[0]} was declared first)"
+                );
+            }
+            return;
+        }
+        seen[key] = (origin, version);
+        out.append((name, version, origin, dev));
+    }
+
+    for app in (list(config.apps.values()) or [config.resolve_app("")]) {
+        if not _app_wants_client(config, app) {
+            continue;
+        }
+        target_name = KIND_TARGET.get(config.resolved_kind(app), "web");
+        effective = (
+            config.effective_for_app(app.name) if app.name in config.apps else config
+        );
+        for (name, version) in target_scoped_npm_deps(effective, target_name).items() {
+            _add(name, version, f"target:{target_name}", False);
+        }
+        if app.implicit {
+            continue;
+        }
+        (app_deps, app_dev) = manifest_plugin_deps(effective, "npm");
+        for (name, version) in app_deps.items() {
+            if name not in base_deps {
+                _add(name, version, f"app:{app.name}", False);
+            }
+        }
+        for (name, version) in app_dev.items() {
+            if name not in base_dev {
+                _add(name, version, f"app:{app.name}", True);
+            }
+        }
+    }
+    return out;
 }
 
 
@@ -160,15 +202,15 @@ obj NpmProvider(EcosystemProvider) {
                     );
                 }
             }
-            target_name = resolve_client_target_name(config);
-            for (pkg, version) in target_scoped_npm_deps(config, target_name).items() {
+            for (pkg, version, origin, is_dev) in app_npm_deps(config) {
                 resolved.append(
                     ResolvedDependency(
                         name=pkg,
                         version=version,
                         ecosystem="npm",
                         source="npm",
-                        origin=f"target:{target_name}"
+                        origin=origin,
+                        dev=is_dev
                     )
                 );
             }

@@ -242,28 +242,24 @@ test "in dev the API port never builds a production client bundle" {
     # thread, which in dev is a cold `bun install` plus a full vite build,
     # untimed and under a lock, so the request never got a response head.
     #
-    # Both halves have to bite. The fixture pins a base_route_app, so the SPA
-    # fallback really does have a page to render and a 404 can only come from
-    # the dev guard, not from having nothing to serve. And the bundle builder
-    # is spied on, so "refused" has to mean refused before the build, not a
+    # Both halves have to bite. The fixture exports a client root named `app`,
+    # which the server infers as the root page, so the SPA fallback really
+    # does have a page to render and a 404 can only come from the dev guard,
+    # not from having nothing to serve. And the bundle builder is spied on,
+    # so "refused" has to mean refused before the build, not a
     # ClientBundleError raised after one.
     import from jaclang.client.client_bundle { ClientBundleError }
-    import from jaclang.project.config { JacConfig, ServeConfig }
 
     with TemporaryDirectory() as tmp {
         app = _spa_app(tmp);
-        client = JacTestClient.from_file(
-            app,
-            base_path=tmp,
-            config=JacConfig(serve=ServeConfig(base_route_app="app"))
-        );
+        client = JacTestClient.from_file(app, base_path=tmp);
         (builds, spy) = _build_spy();
         try {
             introspector = client.server.introspector;
             setattr(introspector._bundle_builder, "build", spy);
-            client.server.dev_mode = True;
+            client.server.resolved_settings().dev = True;
             introspector.dev_mode = True;
-            root_app = introspector.resolve_root_app("app");
+            root_app = introspector.resolve_root_app();
             raised = "";
             try {
                 introspector.ensure_bundle();

@@ -1,7 +1,7 @@
 """A `TypeAlias` glob is a declaration a type checker reads, not a value.
 
 Native glob lowering already skips the assignment
-(`ModuleCodegenPass.is_erased_type_decl`); the import in front of it was
+(`ModuleFacts.is_erased_type_decl`); the import in front of it was
 what still demoted the module.
 """
 

@@ -538,6 +538,16 @@ def materialize_themed_starter(
     return True;
 }
 
+def _theme_app_root(config: any, project_root: Path) -> Path {
+    try {
+        app = config.resolve_app("");
+    } except ValueError {
+        return project_root;
+    }
+    app_root = app.root_dir(str(project_root));
+    return Path(app_root) if app_root else project_root;
+}
+
 def retheme_project(config: any, overrides: dict) -> bool {
     if config is None or config.project_root is None {
         console.error(
@@ -564,9 +574,10 @@ def retheme_project(config: any, overrides: dict) -> bool {
 
     project_root = Path(str(config.project_root));
     toml_path = project_root / "jac.toml";
+    app_root = _theme_app_root(config, project_root);
 
     set_shadcn_section(toml_path, merged);
-    styles_dir = project_root / "styles";
+    styles_dir = app_root / "styles";
     styles_dir.mkdir(parents=True, exist_ok=True);
     (styles_dir / "global.css").write_text(
         generate_global_css(merged.get("font", "figtree"), resolve_css_vars(merged))
@@ -591,11 +602,15 @@ def retheme_project(config: any, overrides: dict) -> bool {
             + ")",
         style="bold cyan"
     );
-    console.print("  + styles/global.css", style="green");
+    css_label = "styles/global.css";
+    if app_root != project_root {
+        css_label = str((app_root / "styles" / "global.css").relative_to(project_root));
+    }
+    console.print("  + " + css_label, style="green");
 
     if new_style != old_style {
         restyled = 0;
-        ui_dir = project_root / "components" / "ui";
+        ui_dir = app_root / "components" / "ui";
         components_meta: dict = load_registry().get("components", {});
         stem_to_key: dict = {};
         for key in components_meta {

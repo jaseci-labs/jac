@@ -58,6 +58,66 @@ def _check_retire(served: int, rss_mb: int) -> bool {
     );
 }
 
+def _reached_by_imports(prog: any, root_mod: any) -> list[str] {
+    import os;
+    import from jaclang.compiler.frontend.unitree { Import as _Imp }
+    seen: set[str] = set();
+    for m in prog.mod.hub.values() {
+        if m.loc and m.loc.mod_path {
+            seen.add(os.path.realpath(str(m.loc.mod_path)));
+        }
+    }
+    stack: list = [root_mod] if root_mod is not None else [];
+    visited: set[int] = set();
+    while stack {
+        mod = stack.pop();
+        if id(mod) in visited {
+            continue;
+        }
+        visited.add(id(mod));
+        for imp in mod.get_all_sub_nodes(_Imp) {
+            if imp.from_loc is None {
+                continue;
+            }
+            try {
+                target = imp.from_loc.resolve_relative_path();
+            } except Exception {
+                continue;
+            }
+            if not isinstance(target, str) or not target.endswith('.jac') {
+                continue;
+            }
+            rp = os.path.realpath(target);
+            seen.add(rp);
+            nxt = prog.find_module(target) or prog.mod.hub.get(target);
+            if nxt is not None and id(nxt) not in visited {
+                stack.append(nxt);
+            }
+        }
+    }
+    return sorted(seen);
+}
+
+def _check_unit(
+    path: str, app_name: str, kind: str, target: str, root_dir: str
+) -> dict[(str, any)] {
+    return {
+        'path': path,
+        'app': app_name,
+        'kind': kind,
+        'target': target,
+        'root_dir': root_dir,
+        'label': app_name or 'shared'
+    };
+}
+
+def _is_app_name(target: str) -> bool {
+    return bool(target)
+        and not target.endswith('.jac')
+        and '/' not in target
+        and '\\' not in target;
+}
+
 def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
     import os;
     import from jaclang.compiler.driver.program { JacProgram }
@@ -71,7 +131,8 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
         'errors': [],
         'warnings': [],
         'placements': {},
-        'coverage': {}
+        'coverage': {},
+        'reached': []
     };
     if not Path(file_path).exists() {
         result['errors'] = [
@@ -126,10 +187,21 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                     native_parity=True,
                     force_target_program=True,
                     iface_ok=True,
-                    suppress_codes=list(opts.get("suppress_codes") or [])
+                    suppress_codes=list(opts.get("suppress_codes") or []),
+                    target_app=str(opts.get("target_app") or ""),
+                    app_kind=str(opts.get("app_kind") or ""),
+                    project_root=(
+                        str(opts["project_root"]) if opts.get("project_root") else None
+                    )
                 )
             );
         }
+        import from jaclang.compiler.driver.compiler { JacCompiler as _JC }
+        root_mod = prog.find_module(file_path) or prog.mod.hub.get(file_path);
+        result['reached'] = _reached_by_imports(prog, root_mod);
+        result['owned_elements'] = bool(
+            root_mod is not None and _JC._module_defines_owned_elements(root_mod)
+        );
         if opts.get("placements") {
             import from jaclang.compiler.placement.placement { collect_placement_rows }
             result['placements'] = collect_placement_rows(prog);
@@ -192,7 +264,8 @@ impl check(
     fix: bool = False,
     native_coverage: bool = False,
     placements: bool = False,
-    jobs: str = ""
+    jobs: str = "",
+    app: str = ""
 ) -> int {
     import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
     import from jaclang.cli.workpool {
@@ -231,10 +304,56 @@ impl check(
         );
     }
 
-    (all_files, had_path_errors) = _iter_jac_files(
-        paths, ignore_list, include_annex=False
-    );
-    total_to_check = len(all_files);
+    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    ws = workspace_for_path(os.getcwd()) if not paths else None;
+    units: list[dict[(str, any)]] = [];
+    had_path_errors = False;
+    if ws is not None {
+        selected = [
+            a
+            for a in ws.apps.values()
+            if (not app) or a.name == app
+        ];
+        if app and not selected {
+            console.error(
+                f"Error: no app named '{app}' in {ws.toml_path} "
+                f"(apps: {', '.join(ws.apps)})."
+            );
+            return 2;
+        }
+        for a in selected {
+            if not os.path.isfile(a.`entry) {
+                console.error(
+                    f"Error: entry '{a.`entry}' of app '{a.name}' does not exist."
+                );
+                had_path_errors = True;
+                continue;
+            }
+            units.append(
+                _check_unit(a.`entry, a.name, a.kind, a.name, ws.project_root)
+            );
+        }
+    } else {
+        (explicit_files, had_path_errors) = _iter_jac_files(
+            paths, ignore_list, include_annex=False
+        );
+        for f in explicit_files {
+            f_ws = workspace_for_path(f);
+            owner: any = None;
+            if f_ws is not None {
+                owner = f_ws.app(app) if app else f_ws.app_for_path(f);
+            }
+            units.append(
+                _check_unit(
+                    f,
+                    owner.name if owner is not None else '',
+                    owner.kind if owner is not None else '',
+                    owner.name if owner is not None else '',
+                    f_ws.project_root if f_ws is not None else ''
+                )
+            );
+        }
+    }
     cfg = get_config();
     raw_jobs = jobs_setting("check", jobs, cfg.dev if cfg else None);
 
@@ -242,12 +361,6 @@ impl check(
         raw_jobs,
         env_var="JAC_CHECK_JOBS",
         worker_bytes=_check_rss_cap_mb() * 1024 * 1024
-    );
-    use_pool = (
-        pool_available()
-        and not forced_serial(raw_jobs)
-        and workers > 1
-        and total_to_check > 1
     );
     opts: dict[(str, any)] = {
         'parse_only': parse_only,
@@ -257,71 +370,222 @@ impl check(
         'ignore': list(ignore_list)
     };
 
-    total_files = failed_files=total_errors=total_warnings=0;
-    results_by_idx: dict[(int, dict)] = {};
+    results: list[dict[(str, any)]] = [];
+    reached: set[str] = set();
+    plan: dict[(str, int)] = {'total': len(units)};
     placement_report: dict = {};
     coverage_report: dict = {};
 
-    def request_extra(idx: int, path: str) -> dict[(str, any)] {
-        return {'opts': opts, 'collect': (not use_pool) and (idx < total_to_check - 1)};
+    def run_units(batch: list[dict[(str, any)]]) -> None {
+        if not batch {
+            return;
+        }
+        total = len(batch);
+        use_pool = (
+            pool_available()
+            and not forced_serial(raw_jobs)
+            and workers > 1
+            and total > 1
+        );
+
+        def request_extra(idx: int, path: str) -> dict[(str, any)] {
+            unit = batch[idx];
+            job_opts = dict(opts);
+            job_opts['target_app'] = unit['target'];
+            job_opts['app_kind'] = unit['kind'];
+            job_opts['project_root'] = unit['root_dir'];
+            return {'opts': job_opts, 'collect': (not use_pool) and (idx < total - 1)};
+        }
+
+        def on_dispatch(idx: int, path: str) {
+            console.print(f"  Checking {path}...");
+        }
+
+        def on_record(idx: int, record: dict[(str, any)]) {
+            unit = batch[idx];
+            path = unit['path'];
+            res = _wire_dict(record.get('result'));
+            if not res {
+                detail = record.get('crash') or record.get('error') or 'no result';
+                res = {
+                    'path': path,
+                    'success': False,
+                    'errors': [
+                        _message_diag(f"Error checking '{path}': {detail}", path)
+                    ],
+                    'warnings': [],
+                    'placements': {},
+                    'coverage': {},
+                    'reached': []
+                };
+            }
+            res['label'] = unit['label'];
+            res['_unit'] = unit;
+            for m in _wire_list(res.get('reached')) {
+                reached.add(os.path.realpath(str(m)));
+            }
+            results.append(res);
+            print_file_progress(
+                path, bool(res.get('success')), len(results), plan['total']
+            );
+            if placements {
+                placement_report.update(_wire_dict(res.get('placements')));
+            }
+            if native_coverage {
+                coverage_report.update(_wire_dict(res.get('coverage')));
+            }
+        }
+
+        pool = WorkPool(
+            items=[u['path'] for u in batch],
+            job=_check_file_job,
+            on_record=on_record,
+            jobs=min(workers, max(1, total)),
+            request_extra=request_extra,
+            retire=_check_retire,
+            on_dispatch=on_dispatch,
+            rss_log_env="JAC_CHECK_RSS_LOG",
+            crash_prefix="jac-check-crash-"
+        );
+        if use_pool {
+            import from jaclang.runtime.runtime { JacRuntime }
+            try {
+                JacRuntime.get_compiler().ensure_stub_catalog();
+            } except Exception {}
+            pool.run();
+        } else {
+            pool.run_inline();
+        }
     }
 
-    def on_dispatch(idx: int, path: str) {
-        console.print(f"  Checking {path}...");
-    }
-
-    def on_record(idx: int, record: dict[(str, any)]) {
-        path = all_files[idx];
-        res = _wire_dict(record.get('result'));
-        if not res {
-            detail = record.get('crash') or record.get('error') or 'no result';
-            res = {
-                'path': path,
-                'success': False,
-                'errors': [_message_diag(f"Error checking '{path}': {detail}", path)],
-                'warnings': [],
-                'placements': {},
-                'coverage': {}
-            };
+    run_units(units);
+    if ws is not None {
+        ws_root = os.path.realpath(ws.project_root);
+        shared_units: list[dict[(str, any)]] = [];
+        shared_seen: set[tuple[(str, str)]] = set();
+        for res in list(results) {
+            unit = res.get('_unit');
+            if not unit or not unit.get('target') {
+                continue;
+            }
+            for m in _wire_list(res.get('reached')) {
+                rp = os.path.realpath(str(m));
+                if (
+                    not rp.endswith('.jac')
+                    or not rp.startswith(ws_root + os.sep)
+                    or _should_ignore(rp, ignore_list)
+                    or ws.app_for_path(rp) is not None
+                ) {
+                    continue;
+                }
+                key = (rp, str(unit['target']));
+                if key in shared_seen {
+                    continue;
+                }
+                shared_seen.add(key);
+                shared_units.append(
+                    _check_unit(
+                        rp,
+                        unit['target'],
+                        unit['kind'],
+                        unit['target'],
+                        unit['root_dir']
+                    )
+                );
+            }
         }
-        results_by_idx[idx] = res;
-        total_files += 1;
-        errs = len(_wire_list(res.get('errors')));
-        warns = len(_wire_list(res.get('warnings')));
-        total_errors += errs;
-        total_warnings += warns;
-        success = bool(res.get('success'));
-        print_file_progress(path, success, total_files, total_to_check);
-        if not success {
-            failed_files += 1;
+        if shared_units {
+            plan['total'] += len(shared_units);
+            run_units(shared_units);
         }
-        if placements {
-            placement_report.update(_wire_dict(res.get('placements')));
+        serving_names = {a.name for a in ws.serving_apps()};
+        reach_map: dict[(str, set[str])] = {};
+        owned_paths: set[str] = set();
+        for res in list(results) {
+            unit = res.get('_unit');
+            if not unit {
+                continue;
+            }
+            tgt = str(unit.get('target') or '');
+            if not tgt {
+                continue;
+            }
+            unit_path = os.path.realpath(str(unit['path']));
+            reach_map.setdefault(unit_path, set()).add(tgt);
+            for m in _wire_list(res.get('reached')) {
+                reach_map.setdefault(os.path.realpath(str(m)), set()).add(tgt);
+            }
+            if res.get('owned_elements') and ws.app_for_path(unit_path) is None {
+                owned_paths.add(unit_path);
+            }
         }
-        if native_coverage {
-            coverage_report.update(_wire_dict(res.get('coverage')));
+        for rp in sorted(owned_paths) {
+            reaching = sorted(
+                [
+                    a
+                    for a in reach_map.get(rp, set())
+                    if a in serving_names
+                ]
+            );
+            if len(reaching) < 2 {
+                continue;
+            }
+            (owner, ambiguous) = ws.owner_app_for_path(rp);
+            if owner is not None or not ambiguous {
+                continue;
+            }
+            import from jaclang.compiler.frontend.diagnostics { E5107 }
+            msg = E5107.format_message(
+                module=os.path.basename(rp), apps=', '.join(reaching)
+            );
+            results.append(
+                {
+                    'path': rp,
+                    'success': False,
+                    'errors': [_message_diag(f"error[E5107]: {msg}", rp)],
+                    'warnings': [],
+                    'placements': {},
+                    'coverage': {},
+                    'reached': [],
+                    'label': 'shared'
+                }
+            );
+            plan['total'] += 1;
         }
-    }
-
-    pool = WorkPool(
-        items=list(all_files),
-        job=_check_file_job,
-        on_record=on_record,
-        jobs=min(workers, max(1, total_to_check)),
-        request_extra=request_extra,
-        retire=_check_retire,
-        on_dispatch=on_dispatch,
-        rss_log_env="JAC_CHECK_RSS_LOG",
-        crash_prefix="jac-check-crash-"
-    );
-    if use_pool {
-        import from jaclang.runtime.runtime { JacRuntime }
-        try {
-            JacRuntime.get_compiler().ensure_stub_catalog();
-        } except Exception {}
-        pool.run();
-    } else {
-        pool.run_inline();
+        sweep_roots = [ws.project_root];
+        sel = ws.app(app) if app else None;
+        if sel is not None and sel.root_dir {
+            sweep_roots = [sel.root_dir];
+        }
+        (candidates, _sweep_errs) = _iter_jac_files(
+            sweep_roots, ignore_list, include_annex=False
+        );
+        rooted = {os.path.realpath(u['path']) for u in units};
+        orphans: list[dict[(str, any)]] = [];
+        for f in candidates {
+            real = os.path.realpath(f);
+            if real in rooted {
+                continue;
+            }
+            owner = ws.app_for_path(f);
+            if owner is None and real in reached {
+                continue;
+            }
+            if app and (owner is None or owner.name != app) {
+                continue;
+            }
+            orphans.append(
+                _check_unit(
+                    f,
+                    owner.name if owner is not None else '',
+                    owner.kind if owner is not None else '',
+                    owner.name if owner is not None else '',
+                    ws.project_root
+                )
+            );
+        }
+        plan['total'] += len(orphans);
+        run_units(orphans);
     }
     if native_coverage {
         import from jaclang.compiler.driver.na_coverage { na_coverage_end }
@@ -329,19 +593,32 @@ impl check(
         _CHECK_STATE["coverage_on"] = False;
     }
 
+    multi = len({r['label'] for r in results}) > 1;
     failed_results: list[dict] = [];
-    for idx in range(total_to_check) {
-        res = results_by_idx.get(idx);
-        if res is None {
-            continue;
+    total_errors = failed_files=0;
+    for res in results {
+        errs = _wire_list(res.get('errors'));
+        warns = _wire_list(res.get('warnings'));
+        if multi {
+            prefix = f"[{res['label']}] ";
+            for d in errs + warns {
+                if isinstance(d, dict) {
+                    d['pretty'] = prefix + str(d.get('pretty') or '');
+                    d['text'] = prefix + str(d.get('text') or '');
+                }
+            }
         }
-        warnings = _wire_list(res.get('warnings'));
-        if not res.get('success') or (len(warnings) > 0 and not nowarn) {
+        total_errors += len(errs);
+        if not res.get('success') {
+            failed_files += 1;
+        }
+        if not res.get('success') or (len(warns) > 0 and not nowarn) {
             failed_results.append(
                 {
-                    'path': res.get('path'),
-                    'errors': _wire_list(res.get('errors')),
-                    'warnings': warnings
+                    'path': (f"[{res['label']}] " if multi else '')
+                        + str(res.get('path')),
+                    'errors': errs,
+                    'warnings': warns
                 }
             );
         }
@@ -360,7 +637,7 @@ impl check(
     }
 
     elapsed = time() - start_time;
-    print_final_summary(total_files - failed_files, failed_files, elapsed);
+    print_final_summary(len(results) - failed_files, failed_files, elapsed);
     return 1 if (total_errors > 0 or had_path_errors) else 0;
 }
 
@@ -1377,6 +1654,7 @@ def _write_git_hook(hook_path: str, body: str, force: bool) -> int {
 }
 
 impl `test(
+    target: str = "",
     paths: list = [],
     test_name: str = "",
     filter: str = "",
@@ -1399,9 +1677,41 @@ impl `test(
     }
     cfg = get_config();
     cfg_root = str(cfg.project_root) if (cfg and cfg.project_root) else "";
+    app_root = "";
+    app_cfg: any = None;
+    explicit_app = False;
+    if target {
+        if cfg is not None and _is_app_name(target) and target in cfg.apps {
+            app_cfg = cfg.app(target);
+            explicit_app = True;
+        } elif _is_app_name(target) and not Path(target).exists() {
+            console.error(
+                f"Error: '{target}' is neither an app of jac.toml nor a path."
+            );
+            return 1;
+        } else {
+            paths = [target] + list(paths);
+        }
+    } elif cfg is not None and not paths and not directory {
+        try {
+            app_cfg = cfg.resolve_app("");
+        } except ValueError {
+            app_cfg = None;
+        }
+    }
+    re_root = explicit_app
+        or (app_cfg is not None and cfg is not None and cfg.is_workspace);
+    if app_cfg is not None and cfg is not None and app_cfg.name in cfg.apps {
+        cfg = cfg.effective_for_app(app_cfg.name);
+        app_root = app_cfg.root_dir(cfg_root) or cfg_root;
+        if app_cfg.is_file_rooted() and not paths {
+            paths = [app_cfg.entry_path(cfg_root)];
+        }
+    }
     def _rooted(raw: str) -> str {
-        if cfg_root and not os.path.isabs(raw) {
-            return os.path.join(cfg_root, raw);
+        base = app_root or cfg_root;
+        if base and not os.path.isabs(raw) {
+            return os.path.join(base, raw);
         }
         return raw;
     }
@@ -1415,6 +1725,9 @@ impl `test(
     }
 
     roots: (str | list[str]) = directory;
+    if (not paths and not directory and re_root and app_root) {
+        roots = [app_root];
+    }
     if (not paths and not directory) {
         cfg_dirs: list[str] = [];
         if cfg {
@@ -1424,6 +1737,15 @@ impl `test(
         resolved: list[str] = [];
         for raw in cfg_dirs {
             rt = _rooted(raw);
+            if (
+                app_root
+                and cfg_root
+                and not os.path.isabs(raw)
+                and not Path(rt).is_dir()
+                and Path(os.path.join(cfg_root, raw)).is_dir()
+            ) {
+                rt = os.path.join(cfg_root, raw);
+            }
             if not Path(rt).is_dir() {
                 console.error(
                     f"Error: [test] directory '{raw}' "
@@ -1435,7 +1757,7 @@ impl `test(
         }
         if resolved {
             roots = resolved;
-        } else {
+        } elif not roots {
             paths = [cfg_root or os.getcwd()];
         }
     }
@@ -1495,6 +1817,7 @@ impl gen_parser -> int {
 
 impl grammar(output: str = "", strict: bool = False) -> int {
     import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
     import from jaclang.compiler.tools.grammar_extract_pass { GrammarExtractPass }
     import jaclang;
     parser_path = str(
@@ -1505,7 +1828,15 @@ impl grammar(output: str = "", strict: bool = False) -> int {
             / "parser.jac"
     );
     prog = JacProgram();
-    mod = prog.compile(parser_path, no_cgen=True);
+    mod = prog.compile(
+        parser_path,
+        options=CompileOptions(
+            symtab_ir_only=True,
+            no_cgen=True,
+            need_full_ast=True,
+            force_target_program=True
+        )
+    );
     if prog.errors_had {
         console.error("Failed to compile parser module.");
         for e in prog.errors_had {
@@ -1648,4 +1979,89 @@ def _drop_git_ignored(paths: list[str]) -> list[str] {
 def _should_ignore(file_path: str, ignore_patterns: list) -> bool {
     import from jaclang.compiler.frontend.helpers { path_matches_exclude }
     return path_matches_exclude(file_path, ignore_patterns);
+}
+
+impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> int {
+    import os;
+    import from jaclang.cli.console { console }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    if not os.path.isfile(filename) {
+        console.error(f"File not found: {filename}");
+        return 1;
+    }
+    path = os.path.abspath(filename);
+    prog = JacProgram();
+    if topic == "memory" {
+        import from jaclang.compiler.passes.ownership_hints { inferred_hints }
+        mod = prog.compile(
+            file_path=path,
+            options=CompileOptions(
+                rc_stats=True, nogc_debug=True, memory_profile=(memory or None)
+            )
+        );
+        for err in prog.errors_had {
+            console.print(err.pretty_print());
+        }
+        if mod is None {
+            return 1;
+        }
+        console.print(
+            f"memory profile: {prog.options.memory_profile
+                if prog.options
+                else 'managed'}"
+        );
+        hints = inferred_hints(mod);
+        console.print(f"inferred facts: {len(hints)}");
+        for h in sorted(hints, key=lambda (h) { (h.line, h.col); }) {
+            console.print(
+                f"  {os.path.basename(path)}:{h.line}:{h.col}  {h.label.strip()}"
+            );
+        }
+        console.print(f"move sites: {len(mod.own_move_sites)}");
+        console.print(
+            f"last-use releases: {sum([len(v) for v in mod.rc_last_use.values()])}"
+        );
+        return 0;
+    }
+    if topic == "placement" {
+        import from jaclang.compiler.placement.placement { collect_placement_rows }
+        import from jaclang.cli.check_report { print_placement_report }
+        prog.compile(file_path=path);
+        for err in prog.errors_had {
+            console.print(err.pretty_print());
+        }
+        print_placement_report(collect_placement_rows(prog));
+        return 0;
+    }
+    import re;
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        native_linked_ir_text
+    }
+    mod = prog.compile(
+        file_path=path,
+        options=CompileOptions(
+            aot_mode=True, default_codespace="native", force_target_program=True
+        )
+    );
+    for err in prog.errors_had {
+        console.print(err.pretty_print());
+    }
+    if mod is None or mod.gen.llvm_ir is None {
+        console.error(
+            "No native IR was produced for this module; see the diagnostics above."
+        );
+        return 1;
+    }
+    ir_text = native_linked_ir_text(mod);
+    out_path = output or (os.path.splitext(path)[0] + ".ll");
+    with open(out_path, "w", encoding="utf-8") as fh {
+        fh.write(ir_text);
+    }
+    console.print(f"wrote {out_path} ({len(ir_text)} bytes)");
+    console.print("symbols:");
+    for m in re.finditer(r"^define [^@]*@([A-Za-z0-9_.$]+)\(", ir_text, re.M) {
+        console.print(f"  {m.group(1)}");
+    }
+    return 0;
 }

@@ -7,6 +7,27 @@ import from tests.support { JAC_ROOT }
 import from tempfile { NamedTemporaryFile, TemporaryDirectory }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+
+test "endpoint identity preserves compact JSON and escaping" {
+    import json;
+    import from types { SimpleNamespace }
+    import from jaclang.compiler.frontend.codeinfo { endpoint_descriptor }
+    with TemporaryDirectory() as directory {
+        mod = SimpleNamespace(
+            loc=SimpleNamespace(mod_path=os.path.join(directory, "identity.jac")),
+            name='module, "quoted"',
+            owner_app=""
+        );
+        name = 'name with spaces, "quotes" and \\slashes';
+        descriptor = endpoint_descriptor(mod, "func", name);
+        assert endpoint_key(mod, "func", name)
+            == json.dumps(
+                [descriptor["app"], descriptor["module"], "func", name],
+                separators=(",", ":")
+            );
+    }
+}
 
 glob FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
@@ -89,9 +110,11 @@ test "type to typeof and spawn operator" {
     spawn_code = "walker MixedWalker {\n    has label: str;\n    has count: int;\n    has meta: dict = {};\n    can execute with Root entry;\n}\n\ndef spawn_client() -> dict {\n    node_id = \"abcd\";\n    extra = {\"meta\": {\"source\": \"client\"}};\n    positional = node_id spawn MixedWalker(\"First\", 3);\n    spread = MixedWalker(\"Second\", 1, **extra) spawn root;\n    return {\"positional\": positional, \"spread\": spread};\n}\n";
     mod2 = compile_inline(spawn_code, prog, client=True);
     js = mod2.gen.js;
-    assert '__jacSpawn("MixedWalker", node_id, {"label": "First", "count": 3})' in js;
-    assert '__jacSpawn("MixedWalker", "", {"label": "Second", "count": 1, ...extra})'
+    assert '__jacSpawn("MixedWalker", node_id, {"label": "First", "count": 3},' in js;
+    assert '__jacSpawn("MixedWalker", "", {"label": "Second", "count": 1, ...extra},'
         in js;
+    import json;
+    assert json.dumps(endpoint_key(mod2, "walker", "MixedWalker")) in js;
 }
 
 test "client import local jac module gets relative path" {
@@ -116,7 +139,7 @@ test "def pub and endpoint effects" {
     prog = JacProgram();
 
     # --- def pub called from client imports jac call function ---
-    defpub_code = '"""\nTest def:pub called from client context.\n"""\n\nimport os;\n\ndef:pub get_server_data(name: str) -> dict {\n    return {"message": "Hello " + name + os.sep};\n}\n\ndef:pub app() -> Any {\n    data = await get_server_data("World");\n    return <div>{data}</div>;\n}\n';
+    defpub_code = '"""\nTest def:pub called from client context.\n"""\n\nimport os;\n\ndef:pub get_server_data(name: str) -> dict {\n    return {"message": "Hello " + name + os.sep};\n}\n\nasync def:pub app() -> Any {\n    data = await get_server_data("World");\n    return <div>{data}</div>;\n}\n';
     mod = compile_inline(defpub_code, prog);
     js = mod.gen.js;
     assert js.strip() , "Expected JavaScript output for client code";
@@ -125,25 +148,25 @@ test "def pub and endpoint effects" {
     assert '__jacCallFunction("get_server_data"' in js , "Should generate __jacCallFunction call with function name";
 
     # --- endpoint effects classifies walkers and functions ---
-    effects_code = '"""Test auto endpoint effects."""\n\nnode Todo {\n    has title: str,\n        done: bool = False;\n}\n\nwalker get_todos {\n    can visit_root with Root entry {\n        report [-->];\n    }\n}\n\nwalker create_todo {\n    has title: str;\n    can do_create with Root entry {\n        here ++> Todo(title=self.title);\n    }\n}\n\ndef:pub get_stats() -> dict {\n    return {"count": 10};\n}\n\ndef:pub reset_data() -> dict {\n    items = [];\n    del items;\n    return {};\n}\n\ndef:pub app() -> Any {\n    todos = root spawn get_todos();\n    root spawn create_todo(title="test");\n    stats = await get_stats();\n    result = await reset_data();\n    return <div>{stats}{result}{todos}</div>;\n}\n';
+    effects_code = '"""Test auto endpoint effects."""\n\nnode Todo {\n    has title: str,\n        done: bool = False;\n}\n\nwalker get_todos {\n    can visit_root with Root entry {\n        report [-->];\n    }\n}\n\nwalker create_todo {\n    has title: str;\n    can do_create with Root entry {\n        here ++> Todo(title=self.title);\n    }\n}\n\ndef:pub get_stats() -> dict {\n    return {"count": 10};\n}\n\ndef:pub reset_data() -> dict {\n    items = [];\n    del items;\n    return {};\n}\n\nasync def:pub app() -> Any {\n    todos = root spawn get_todos();\n    root spawn create_todo(title="test");\n    stats = await get_stats();\n    result = await reset_data();\n    return <div>{stats}{result}{todos}</div>;\n}\n';
     mod2 = compile_inline(effects_code, prog);
     effects = mod2.gen.client_manifest.endpoint_effects;
     # Walker reader: no write operations in body
-    assert "walker:get_todos" in effects , "get_todos should be in endpoint_effects";
-    assert not effects["walker:get_todos"]["is_writer"] , "get_todos should be classified as reader";
+    assert endpoint_key(mod2, "walker", "get_todos") in effects , "get_todos should be in endpoint_effects";
+    assert not effects[endpoint_key(mod2, "walker", "get_todos")]["writes"] , "get_todos should be classified as reader";
     # Walker writer: has connect op (++>) and node constructor
-    assert "walker:create_todo" in effects , "create_todo should be in endpoint_effects";
-    assert effects["walker:create_todo"]["is_writer"] , "create_todo should be classified as writer";
+    assert endpoint_key(mod2, "walker", "create_todo") in effects , "create_todo should be in endpoint_effects";
+    assert effects[endpoint_key(mod2, "walker", "create_todo")]["writes"] , "create_todo should be classified as writer";
     # Function reader: just returns data, no mutations
-    assert "func:get_stats" in effects , "get_stats should be in endpoint_effects";
-    assert not effects["func:get_stats"]["is_writer"] , "get_stats should be classified as reader";
+    assert endpoint_key(mod2, "func", "get_stats") in effects , "get_stats should be in endpoint_effects";
+    assert not effects[endpoint_key(mod2, "func", "get_stats")]["writes"] , "get_stats should be classified as reader";
     # Function writer: has del statement
-    assert "func:reset_data" in effects , "reset_data should be in endpoint_effects";
-    assert effects["func:reset_data"]["is_writer"] , "reset_data should be classified as writer";
-    # Verify touches metadata is present
+    assert endpoint_key(mod2, "func", "reset_data") in effects , "reset_data should be in endpoint_effects";
+    assert effects[endpoint_key(mod2, "func", "reset_data")]["writes"] , "reset_data should be classified as writer";
+    # Verify read dependencies is present
     for key in effects {
-        assert "touches" in effects[key] , f"{key} should have touches list";
-        assert len(effects[key]["touches"]) > 0 , f"{key} should have non-empty touches";
+        assert "reads" in effects[key] , f"{key} should have read dependency list";
+        assert len(effects[key]["reads"]) > 0 , f"{key} should have non-empty read dependencies";
     }
 }
 
@@ -154,17 +177,17 @@ test "endpoint effects follow helper calls" {
     # inside a plain `def` helper. The classifier must follow the call into
     # the helper -- otherwise the walker is misclassified as a reader and the
     # client cache is never invalidated after the mutation.
-    code = '"""Interprocedural endpoint effect analysis."""\n\nnode Item {\n    has title: str,\n        tags: list = [];\n}\n\ndef _add_tag(it: Item, label: str) -> None {\n    it.tags = it.tags + [label];\n}\n\nwalker tag_item {\n    has label: str;\n    can do_tag with Root entry {\n        for it in [-->[?:Item]] {\n            _add_tag(it, self.label);\n        }\n    }\n}\n\ndef:pub mark_item(label: str) -> dict {\n    items = [];\n    for it in items {\n        _add_tag(it, label);\n    }\n    return {};\n}\n\ndef:pub app() -> Any {\n    root spawn tag_item(label="x");\n    result = await mark_item("y");\n    return <div>{result}</div>;\n}\n';
+    code = '"""Interprocedural endpoint effect analysis."""\n\nnode Item {\n    has title: str,\n        tags: list = [];\n}\n\ndef _add_tag(it: Item, label: str) -> None {\n    it.tags = it.tags + [label];\n}\n\nwalker tag_item {\n    has label: str;\n    can do_tag with Root entry {\n        for it in [-->[?:Item]] {\n            _add_tag(it, self.label);\n        }\n    }\n}\n\ndef:pub mark_item(label: str) -> dict {\n    items = [];\n    for it in items {\n        _add_tag(it, label);\n    }\n    return {};\n}\n\nasync def:pub app() -> Any {\n    root spawn tag_item(label="x");\n    result = await mark_item("y");\n    return <div>{result}</div>;\n}\n';
     mod = compile_inline(code, prog);
     effects = mod.gen.client_manifest.endpoint_effects;
 
     # The walker mutates Item.tags only inside the `_add_tag` helper.
-    assert "walker:tag_item" in effects , "tag_item should be in endpoint_effects";
-    assert effects["walker:tag_item"]["is_writer"] , "tag_item mutates the graph via a helper -- must be classified as writer";
+    assert endpoint_key(mod, "walker", "tag_item") in effects , "tag_item should be in endpoint_effects";
+    assert effects[endpoint_key(mod, "walker", "tag_item")]["writes"] , "tag_item mutates the graph via a helper -- must be classified as writer";
 
     # Same for a def:pub function delegating its write to a helper.
-    assert "func:mark_item" in effects , "mark_item should be in endpoint_effects";
-    assert effects["func:mark_item"]["is_writer"] , "mark_item mutates the graph via a helper -- must be classified as writer";
+    assert endpoint_key(mod, "func", "mark_item") in effects , "mark_item should be in endpoint_effects";
+    assert effects[endpoint_key(mod, "func", "mark_item")]["writes"] , "mark_item mutates the graph via a helper -- must be classified as writer";
 }
 
 test "jac call function sends params directly" {

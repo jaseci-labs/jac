@@ -78,11 +78,11 @@ test "the stamped verdict is the computation it replaced" {
 
 
 test "the emitter unit no longer names the driver" {
-    text = (
-        PKG_PATH / "compiler" / "backends" / "py" / "impl" / "jcir_gen_pass.impl.jac"
-    ).read_text(
-        encoding="utf-8"
+    impl_dir = PKG_PATH / "compiler" / "backends" / "py" / "jcir_gen_pass.impl";
+    text = "\n".join(
+        f.read_text(encoding="utf-8") for f in sorted(impl_dir.glob("*.impl.jac"))
     );
+    assert text , f"no emitter bodies under {impl_dir}";
     assert "self.prog" not in text , (
         "the JCIR emitter reaches for the compile driver again; a sealed "
         "pass cannot, and the driver-seam coverage forbids the name"

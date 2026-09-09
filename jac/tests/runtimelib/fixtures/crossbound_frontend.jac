@@ -1,6 +1,7 @@
-"""Client component that calls cross-module server endpoints via `sv import`.
+"""Client component that calls cross-module server endpoints over the bridge.
 
-The `sv import` + `await <fn>()` is the cross-boundary signal Path B keys on.
+The client-context import of server-placed elements + `await <fn>()` is the
+cross-boundary signal Path B keys on.
 `CrossView` is imported as a boundary type; `cross_orphan` is intentionally not
 referenced here.
 """

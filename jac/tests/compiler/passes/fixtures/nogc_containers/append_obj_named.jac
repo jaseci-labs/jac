@@ -1,4 +1,4 @@
-"""Must fence (E1406): appending a named owned archetype binding into a list."""
+"""A named own archetype binding appended to a list moves into it (#8984 rule 3)."""
 
 obj Box {
     has tag: int = 0;

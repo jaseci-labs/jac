@@ -53,6 +53,23 @@ def _looks_like_script_token(tok: str) -> bool {
     return (not tok.startswith('-') and tok.lower().endswith(('.jac', '.py', '.jab')));
 }
 
+def _workspace_app_names -> set[str] {
+    cwd = Path.cwd();
+    for d in [cwd] + list(cwd.parents) {
+        toml_path = d / 'jac.toml';
+        if not toml_path.is_file() {
+            continue;
+        }
+        try {
+            apps = tomllib.loads(toml_path.read_text(encoding='utf-8')).get('apps');
+        } except Exception {
+            return set();
+        }
+        return set(apps.keys()) if isinstance(apps, dict) else set();
+    }
+    return set();
+}
+
 def _write_stdout(text: str) {
     sys.stdout.write(text);
     if not text.endswith('\n') {
@@ -129,7 +146,7 @@ impl handle_manifest_route(raw_argv: list[str]) -> None {
 
     if first in dispatchable {
         command_name = first;
-    } elif _looks_like_script_token(first) {
+    } elif _looks_like_script_token(first) or first in _workspace_app_names() {
         sys.argv = [sys.argv[0], 'run'] + raw_argv;
         command_name = 'run';
     } else {

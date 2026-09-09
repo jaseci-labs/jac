@@ -1,6 +1,6 @@
 ---
 name: jac-concurrency
-description: Running Jac code in parallel - flow/wait concurrent expressions (thread pool), async def/await, async walkers, and when to use which. Load for any parallel, background, threaded, or async work.
+description: Choose and implement async calls, walkers, flow/wait tasks, and lent loops. Use for concurrent work and backend-specific execution constraints.
 ---
 
 Jac has two concurrency models. `flow expr()` launches the call on a **thread pool** and returns a future immediately; `wait future` blocks for the result. `async def`/`await` is Python asyncio - cooperative, single-threaded, for I/O waits. Don't reach for `import threading` - `flow`/`wait` is the idiomatic form.
@@ -50,7 +50,7 @@ with entry {
 
 ## `flow for` - the disjoint-partition loop
 
-`flow for x in &xs { }` / `flow for m in &mut xs { }` applies the `flow` modifier to a loop: the body is declared per-element over a lent collection and the closing brace is the join. The checker proves the shape race-free (lent collection required, no `break`/`return` across the join, no shared mutation in the body - E1313/E1308; write through the `&mut` element instead). Int accumulators in the reduction shapes (`acc += x`, `acc = min(acc, x)`, `acc = max(acc, x)`) are licensed: each task folds a private partial and the join combines them, so the result equals the sequential fold. In a zero-RC enforced native build (`jac nacompile --enforce-nogc --gc none`) it runs genuinely parallel - element ranges fan out over pthreads and join at the brace (`JAC_FLOW_THREADS` sets the width, default 4). `--gc rc` builds fan out the same way with atomic refcounts; `--gc cycles`, Python, and wasm run it sequentially with identical results. Full rules live in the `jac-native-memory` guide.
+`flow for x in &xs { }` / `flow for m in &mut xs { }` applies the `flow` modifier to a loop: the body is declared per-element over a lent collection and the closing brace is the join. The checker proves the shape race-free (lent collection required, no `break`/`return` across the join, no shared mutation in the body - E1313/E1308; write through the `&mut` element instead). Int accumulators in the reduction shapes (`acc += x`, `acc = min(acc, x)`, `acc = max(acc, x)`) are licensed: each task folds a private partial and the join combines them, so the result equals the sequential fold. In a zero-RC enforced native build (`jac build --native --memory nogc`) it runs genuinely parallel - element ranges fan out over pthreads and join at the brace (`[native] threads` sets the width, default 4; `JAC_THREADS` overrides at run time). `--memory rc` builds fan out the same way with atomic refcounts; `--memory managed`, Python, and wasm run it sequentially with identical results. Full rules live in the `jac-native-memory` guide.
 
 ## Choosing
 
@@ -68,8 +68,10 @@ Rule of thumb: blocking/synchronous functions you want overlapped → `flow`. An
 - `await` outside an `async def` is invalid - from `with entry`, drive async code with `asyncio.run(main())`.
 - On the client, **imported server-endpoint calls are async - always `await` them** or you get a `Promise`, not data (see `jac-fullstack-patterns`).
 - `wait` in a loop body that also contains the `flow` = accidental serial execution. Two passes: launch-all, then wait-all.
-- Ownership-annotated payloads must be **sendable** across `flow` (E1308): scalars, `imm`, or an `own` moved into the boundary - a live `&`/`&mut` borrow can't cross. Moving an `own Region` handle transfers its whole region subgraph zero-copy, legal only while no borrows of the handle are live. Unannotated code is unaffected. See `jac-native-memory`.
+- Ownership-annotated payloads must be **sendable** across `flow` (E1308): scalars, `imm`, or an `own` moved into the boundary - a live borrow crosses only through join-bounded lending: `h = flow f(&x); ... wait h;` in the same block, with no intervening owner access or side exit. Otherwise `&`/`&mut` is rejected. Moving an `own Region` handle transfers its whole region subgraph zero-copy, legal only while no borrows of the handle are live. Unannotated code is unaffected. See `jac-native-memory`.
 
 ## See also
 
 `jac-python-interop` (asyncio and other Python libs) · `jac-walker-patterns` (walkers, spawn) · `jac-sv-endpoints` (async server endpoints) · `jac-native-memory` (sendability rules, regions)
+
+Chunked lending uses `flow for c in &mut xs.chunks(n)` (or shared `&xs.chunks(n)`). Chunks stay local to the joined loop and may not grow or escape. `lin` payloads move like `own` but must be consumed on every path. For region partitions, freezing, view restrictions, and full borrowing rules, load `jac-native-memory`.

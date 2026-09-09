@@ -107,7 +107,7 @@ test "a standalone test module still lowers its test-block calls (stopgap retire
         prog = JacProgram();
         mod = prog.compile(mod_path);
         js = mod.gen.js;
-        assert "new TestClient()" in js , (
+        assert "new TestClient({})" in js , (
             f"the archetype constructor reached the bundle as a plain call: {js}"
         );
         assert "_jac.builtin.jid(" in js , (

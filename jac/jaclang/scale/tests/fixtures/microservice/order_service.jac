@@ -1,9 +1,9 @@
 """Order microservice fixture.
 
-Imports inventory_service with `sv` keyword, meaning it treats
+Imports inventory_service across the service boundary, meaning it treats
 inventory_service as a separate microservice. The compiler generates
-HTTP client stubs so calls to check_stock, reserve_stock, etc.
-go over the network rather than being in-process.
+typed-async HTTP client stubs so calls to check_stock, reserve_stock, etc.
+are awaited and go over the network rather than being in-process.
 """
 
 import from inventory_service {
@@ -52,14 +52,14 @@ obj OrderRecord {
         total: float = 0.0;
 }
 
-glob _orders: dict[str, OrderRecord] = {};
-glob _state: dict[str, int] = {"next_id": 1};
+glob _orders: dict[str, OrderRecord] = {},
+     _state: dict[str, int] = {"next_id": 1};
 
 # ============================================================================
 # Public Functions
 # ============================================================================
 """Create an order after validating stock via inventory_service."""
-def:pub create_order(items: list[dict]) -> OrderResult {
+async def:pub create_order(items: list[dict]) -> OrderResult {
     order_items: list[OrderItem] = [];
     total: float = 0.0;
 
@@ -69,15 +69,15 @@ def:pub create_order(items: list[dict]) -> OrderResult {
         qty: int = item["quantity"];
 
         # These calls go over HTTP to inventory_service (sv import)
-        stock: StockInfo = check_stock(sku);
+        stock: StockInfo = await check_stock(sku);
         if not stock.in_stock or stock.quantity < qty {
             return OrderResult(success=False, error=f"Insufficient stock for {sku}");
         }
 
-        price: PriceInfo = get_price(sku);
+        price: PriceInfo = await get_price(sku);
 
         # Reserve the stock in inventory microservice
-        reservation: Reservation = reserve_stock(sku, qty);
+        reservation: Reservation = await reserve_stock(sku, qty);
         if not reservation.success {
             return OrderResult(success=False, error=reservation.error);
         }
@@ -115,13 +115,13 @@ def:pub get_order(order_id: str) -> OrderInfo {
 # ============================================================================
 # Walkers
 # ============================================================================
-walker:pub CheckOrderFeasibility {
-    has sku: str;
-    has quantity: int = 1;
+async walker:pub CheckOrderFeasibility {
+    has sku: str,
+        quantity: int = 1;
 
-    can check with Root entry {
+    async can check with Root entry {
         # Cross-service call to inventory microservice
-        stock: StockInfo = check_stock(self.sku);
+        stock: StockInfo = await check_stock(self.sku);
         feasible = stock.in_stock and stock.quantity >= self.quantity;
         report FeasibilityResult(
             sku=self.sku,

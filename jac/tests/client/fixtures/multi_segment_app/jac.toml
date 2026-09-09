@@ -21,7 +21,4 @@ typescript = "^5.3.3"
 [dev-dependencies]
 watchdog = ">=3.0.0"
 
-[serve]
-base_route_app = "app"
-
 [client]

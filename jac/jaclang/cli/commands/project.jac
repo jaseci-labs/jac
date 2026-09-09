@@ -23,8 +23,20 @@ comptime SPEC_CREATE: CommandSpec = CommandSpec(
              Arg.create(
                  "kind",
                  `default="",
-                 help="Project kind to scaffold (cli, cli-native, service, web-app, ...)",
+                 help="Project or app kind to scaffold (cli, cli-native, service, web-app, ...)",
                  short="k"
+             ),
+             Arg.create(
+                 "app",
+                 `default="",
+                 short="",
+                 help="Scaffold an app of --kind inside the current project and register [apps.<app>] in its jac.toml"
+             ),
+             Arg.create(
+                 "path",
+                 `default="",
+                 short="",
+                 help="With --app: directory for the app, relative to the project root (default: the app name)"
              ),
              Arg.create(
                  "use",
@@ -131,6 +143,10 @@ comptime SPEC_CREATE: CommandSpec = CommandSpec(
              ),
              ("jac create myapp --kind web-app", "Scaffold a full-stack web app"),
              (
+                 "jac create --app mobile --kind mobile",
+                 "Add a mobile app to the current project as [apps.mobile]"
+             ),
+             (
                  "jac create mysite --awesome",
                  "Dump the entire jaclang.org site as your project"
              ),
@@ -148,6 +164,8 @@ def create(
     name: str = "",
     force: bool = False,
     kind: str = "",
+    app: str = "",
+    path: str = "",
     use: str = "default",
     awesome: bool = False,
     `list: bool = False,
@@ -532,4 +550,6 @@ def clean(
 
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
-def bundle(output: str = "dist", target: str = "wheel", fat: bool = False) -> int;
+def bundle(
+    output: str = "dist", target: str = "wheel", fat: bool = False, app: str = ""
+) -> int;

@@ -17,7 +17,7 @@ import from jaclang.compiler.backends.native.linker_common {
     resolve_floor_dir,
     floor_lib_dir
 }
-import from jaclang.cli.commands.nacompile { _resolve_ca_bundle, _floor_ca_bundle }
+import from jaclang.cli.commands.native_build { _resolve_ca_bundle, _floor_ca_bundle }
 
 
 """mkdir -p `path`, returning it."""

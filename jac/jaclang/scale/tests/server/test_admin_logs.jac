@@ -1,11 +1,11 @@
 """Tests for A-05a's JacAPIServerLogs mixin. Verifies the 3 endpoint
-paths get registered correctly on the NativeJServer; the actual
+paths get registered correctly on the endpoint host; the actual
 handler bodies are integration-tested via the real-cluster e2e
 (scripts/k8s_microservice_real_e2e.sh) since they require a live
 Loki backend."""
 
 import from jaclang.scale.admin.logs { JacAPIServerLogs }
-import from jaclang.scale.server.native_server { NativeJServer }
+import from jaclang.scale.tests.support { RecordingHost }
 
 
 obj LogsHost(JacAPIServerLogs) {
@@ -15,7 +15,7 @@ obj LogsHost(JacAPIServerLogs) {
 
 test "register_logs_endpoints adds /admin/logs, /admin/logs/services, /admin/logs/trace/{id}" {
     host = LogsHost();
-    host.server = NativeJServer();
+    host.server = RecordingHost();
 
     host.register_logs_endpoints();
 
@@ -31,7 +31,7 @@ test "all logs endpoints are GET (read-only surface)" {
     import from jaclang.server.serving.endpoint { HTTPMethod }
 
     host = LogsHost();
-    host.server = NativeJServer();
+    host.server = RecordingHost();
     host.register_logs_endpoints();
 
     for ep in host.server._endpoints {
@@ -44,7 +44,7 @@ test "all logs endpoints are GET (read-only surface)" {
 
 test "logs endpoints are tagged 'Logs' so OpenAPI groups them" {
     host = LogsHost();
-    host.server = NativeJServer();
+    host.server = RecordingHost();
     host.register_logs_endpoints();
 
     for ep in host.server._endpoints {
@@ -129,16 +129,14 @@ test "service list collapses to [app_name] in monolith mode" {
     # app's pods.
     import from jaclang.scale.admin.logs { _services_for_mode }
 
-    mono = _services_for_mode(False, {}, "jac-builder-dev");
+    mono = _services_for_mode(False, [], "jac-builder-dev");
     assert mono == ["jac-builder-dev"] , f"monolith services = {mono}";
 
-    mono_no_name = _services_for_mode(False, {}, "");
+    mono_no_name = _services_for_mode(False, [], "");
     assert mono_no_name == [] , f"monolith w/o name = {mono_no_name}";
 
-    micro = _services_for_mode(
-        True, {"builder-sv": {}, "jac-coder-sv": {}}, "jac-builder-dev"
-    );
-    # Gateway first, then routes sorted - matches kubectl get pods order.
+    micro = _services_for_mode(True, ["jac-coder-sv", "builder-sv"], "jac-builder-dev");
+    # Gateway first, then apps sorted - matches kubectl get pods order.
     assert micro == ["gateway", "builder-sv", "jac-coder-sv"] , f"microservice services = {micro}";
 }
 

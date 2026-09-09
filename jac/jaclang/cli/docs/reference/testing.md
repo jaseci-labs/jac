@@ -214,6 +214,24 @@ All of them report through the same `jac test` pass/fail pipeline, and the CLI o
 
 ---
 
+## Tests in a Workspace
+
+In a project with several [apps](apps.md), `jac test` takes an app name the
+way `jac run` does. `jac test social_graph` reads `[test]` from that app's
+effective config (its `[apps.social_graph.test]` overlay over the base table)
+and resolves `directory` / `directories` against the app root; a bare
+`jac test` targets `[project] default-app`, or the sole app. Tests under
+shared code belong to no app and run with the base `[test]` table.
+
+The compiler stamps the app's facts onto every module it tests, so the same
+laws hold in a test as in the app itself: a test in app A cannot reach app B
+except through B's walkers and `def:pub` functions, and a bridged call in a
+test is awaited exactly as it is in the app. A test that needs two apps
+talking runs the consumer's tests with the providers colocated, which is what
+`jac run <app>` does by default.
+
+---
+
 ## Test Output
 
 One character per test: `.` passed, `s` skipped, `F` failed, `E` errored,

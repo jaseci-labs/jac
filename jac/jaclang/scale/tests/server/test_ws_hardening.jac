@@ -8,7 +8,7 @@ import shutil;
 import time;
 import from tempfile { mkdtemp }
 import from jaclang.scale.config.config_loader { reset_scale_config }
-import from jaclang.scale.identity.user_manager { JacScaleUserManager }
+import from jaclang.server.identity.user_manager { UserManager }
 import from jaclang.scale.tests.scale_test_client { make_client }
 import from jaclang.scale.websocket.websocket {
     WebSocketConnectionManager,
@@ -23,9 +23,7 @@ import from jaclang.scale.websocket.protocol { ws_handle_control, ws_heartbeat_l
 
 
 def _ws_client -> any {
-    client = make_client("test_api.jac");
-    client.server.register_websocket_endpoints();
-    return client;
+    return make_client("test_api.jac");
 }
 
 
@@ -58,16 +56,16 @@ obj _FakeWebSocket {
 }
 
 
-"""Build a real JacScaleUserManager backed by a temp SQLite identity store.
+"""Build a real UserManager backed by a temp SQLite identity store.
 
 The control-frame tests drive the real `validate_jwt_token_detail` / `create_jwt_token`
 so the token-swap and expiry defenses are checked against production validation logic,
 not a canned return.
 """
-def _real_user_manager -> tuple[str, JacScaleUserManager] {
+def _real_user_manager -> tuple[str, UserManager] {
     test_dir = mkdtemp();
     reset_scale_config();
-    return (test_dir, JacScaleUserManager(base_path=test_dir));
+    return (test_dir, UserManager(base_path=test_dir));
 }
 
 

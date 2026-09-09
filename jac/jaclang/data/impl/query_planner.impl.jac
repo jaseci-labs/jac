@@ -26,7 +26,7 @@ def _acl_pushdown_root(q: GraphQuery, upto: int) -> (str | None) {
         return None;
     }
     import from jaclang.runtime.runtime { JacRuntimeInterface }
-    import from jaclang.runtime.archetype { Archetype }
+    import from jaclang.runtime.archetype { Archetype, Root }
     base = Archetype?.__jac_access__;
     for hop in q.hops[:upto] {
         nd = hop.nd;
@@ -35,7 +35,8 @@ def _acl_pushdown_root(q: GraphQuery, upto: int) -> (str | None) {
         }
         types = nd if isinstance(nd, tuple) else (nd, );
         for nt in types {
-            if nt?.__jac_access__ is not base {
+            if nt?.__jac_access__ is not base
+                or (isinstance(nt, type) and issubclass(Root, nt)) {
                 return None;
             }
         }

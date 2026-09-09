@@ -225,7 +225,7 @@ test "a serial jac check over compiler-tree then client files stays clean" {
     pkg = prog._get_compiler().selfhost.jaclang_root();
     files = [
         os.path.join(pkg, "compiler", "driver", "ifacecache.jac"),
-        os.path.join(pkg, "client", "targets", "pwa_target.jac")
+        os.path.join(pkg, "client", "targets", "pwa_build.jac")
     ];
     for f in files {
         assert os.path.isfile(f) , f"missing fixture {f}";

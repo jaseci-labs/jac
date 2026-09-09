@@ -17,7 +17,7 @@ obj Span {
 }
 
 obj _Spinner {
-    has text: str,
+    has text: any,
         stream: any,
         frames: list[str],
         style_prefix: str,
@@ -31,7 +31,7 @@ obj _Spinner {
         self._stop = Event();
     }
 
-    def update(text: str = '') {
+    def update(text: any = '') {
         self.text = text;
     }
 
@@ -46,9 +46,19 @@ obj _Spinner {
         idx = 0;
         while not self._stop.is_set() {
             frame = self.frames[idx % len(self.frames)];
+            current = self.text;
+            text = str(current() if callable(current) else current);
+            try {
+                width = os.get_terminal_size().columns;
+            } except OSError {
+                width = 0;
+            }
+            if width > 8 and len(text) > width - 3 {
+                text = text[:width - 6] + "...";
+            }
             try {
                 self.stream.write(
-                    f"\r{self.style_prefix}{frame}{self.reset} {self.text}"
+                    f"\r{self.style_prefix}{frame}{self.reset} {text}\033[K"
                 );
                 self.stream.flush();
             } except (BrokenPipeError, OSError) {
@@ -75,7 +85,7 @@ obj _Spinner {
 }
 
 obj _NullStatus {
-    def update(text: str = '') -> None {
+    def update(text: any = '') -> None {
         return;
     }
 

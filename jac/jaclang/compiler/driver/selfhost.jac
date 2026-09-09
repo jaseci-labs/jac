@@ -39,8 +39,12 @@ obj SelfHostCache {
             if self.is_selfhost(target_program) {
                 return self.program;
             }
-            import from jaclang.compiler.frontend.codeinfo { is_native_by_location }
-            if is_native_by_location(file_path) {
+            import from jaclang.compiler.frontend.codeinfo {
+                is_native_by_location,
+                is_shared_runtime_module
+            }
+            if is_native_by_location(file_path)
+                or is_shared_runtime_module(file_path) {
                 return target_program;
             }
             import from jaclang.compiler.native_scope {
@@ -90,7 +94,10 @@ obj SelfHostCache {
 
 impl SelfHostCache.program.getter -> JacProgram {
     if (self._program is None) {
-        self._program = JacProgram();
+        import from jaclang.runtime.runtime { JacRuntime }
+        prog = JacProgram();
+        prog._compiler = JacRuntime.get_compiler();
+        self._program = prog;
     }
     return self._program;
 }

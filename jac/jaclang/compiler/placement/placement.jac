@@ -1,7 +1,7 @@
 import os;
 import json;
 import jaclang.compiler.frontend.unitree as uni;
-import from dataclasses { field }
+import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 
 glob PLACEMENT_SCHEMA: int = 1,
@@ -185,14 +185,20 @@ def _is_pub_element(stmt: uni.UniNode) -> bool {
     );
 }
 
-def project_has_server(source_path: str) -> bool {
-    import from jaclang.compiler.placement.placement_pins { config_kind_space }
-    return config_kind_space(source_path) != 'client';
+def project_kind_name(module: (uni.Module | None)) -> str {
+    if module is None {
+        return '';
+    }
+    if module.app_kind {
+        return module.app_kind;
+    }
+    import from jaclang.compiler.placement.placement_pins { config_project_kind }
+    return config_project_kind(module.loc.mod_path or '') if module.loc else '';
 }
 
-def project_kind_name(source_path: str) -> str {
-    import from jaclang.compiler.placement.placement_pins { config_project_kind }
-    return config_project_kind(source_path);
+def project_has_server(module: (uni.Module | None)) -> bool {
+    import from jaclang.compiler.placement.workspace { kind_codespace }
+    return kind_codespace(project_kind_name(module)) != 'client';
 }
 
 def _resolve_import_path(nd: (uni.ModulePath | uni.ModuleItem)) -> (str | None) {
@@ -316,7 +322,8 @@ def _element_reqs(stmt: uni.UniNode) -> list {
         and isinstance(stmt.signature, uni.EventSignature) {
         reqs.append(['SERVER', 'event ability outside an archetype']);
     }
-    if _is_pub_element(stmt) and project_has_server(stmt.loc.mod_path or '') {
+    if _is_pub_element(stmt)
+        and project_has_server(stmt.find_parent_of_type(uni.Module)) {
         reqs.append(['ENDPOINT', 'pub access']);
     }
     return reqs;
@@ -482,14 +489,9 @@ def module_anchor_reasons(module: uni.Module) -> list[str] {
         reasons.append('config pin');
     }
     if mod_path {
-        import os;
-        import from jaclang.compiler.placement.service_cut { is_service_module_stem }
-        stem = os.path.basename(mod_path);
-        if stem.endswith('.jac') {
-            stem = stem[:-4];
-        }
-        if is_service_module_stem(mod_path, stem) {
-            reasons.append('declared service');
+        import from jaclang.compiler.driver.boundary_classify { is_service_app_entry }
+        if is_service_app_entry(mod_path) {
+            reasons.append('service app entry');
         }
     }
     for arch in module.get_all_sub_nodes(uni.Archetype) {
@@ -663,16 +665,13 @@ def scan_native_blockers(
                             item.dot_path_str,
                             _resolve_import_path(item),
                             not imp.is_absorb,
-                            not imp.is_absorb
-                                and item.alias is None
-                                and item.path is not None
-                                and len(item.path) == 1
+                            not imp.is_absorb and item.path is not None
                         )
                     );
                 }
             }
         }
-        for (name, path, is_bare, is_plain_bare) in targets {
+        for (name, path, is_bare, is_module_import) in targets {
             clean = name.lstrip('.') if name else '';
             if is_bare {
                 if clean and clean in NATIVE_SUPPORTED_STDLIB {
@@ -681,7 +680,9 @@ def scan_native_blockers(
                 if clean and is_bundled_native_module(clean) {
                     continue;
                 }
-                if not (is_plain_bare and path is not None and path.endswith('.jac')) {
+                if not (
+                    is_module_import and path is not None and path.endswith('.jac')
+                ) {
                     return (f"non-native import '{clean}'", deps);
                 }
             }

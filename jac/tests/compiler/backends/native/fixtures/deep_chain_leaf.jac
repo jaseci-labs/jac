@@ -5,7 +5,7 @@
 `DeepBase`... which the leaf then copies as `['DeepLeaf', 'DeepMid']`.
 `slot_a` is therefore invisible here unless the chain is continued through
 `DeepMid`'s own recorded ancestry. That is the exact shape of
-`UniPass -> ModuleCodegenPass -> Transform -> BaseTransform`.
+`NaIRGenPass -> Transform -> BaseTransform`.
 """
 
 import from .deep_chain_mid { DeepMid }

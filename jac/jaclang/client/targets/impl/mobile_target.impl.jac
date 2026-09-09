@@ -1,383 +1,570 @@
 import os;
+import shutil;
+import subprocess;
 import platform as platform_mod;
-import from pathlib { Path }
-import from typing { Optional, cast }
+import from typing { Optional }
 import from jaclang.cli.console { console }
+import from jaclang.runtime.runtime { JacRuntime as Jac }
 import from jaclang.server.watcher { FileChangeEvent }
-import from jaclang.client.mobile_dev_host {
-    resolve_mobile_dev_host,
-    resolve_mobile_server_port,
-    resolve_mobile_vite_port
-}
-import from jaclang.client.mobile_setup_env {
-    mobile_setup_platform_env_restore,
-    mobile_setup_platform_env_swap
-}
-import from jaclang.client.targets.mobile.bundle { _build_android, _build_ios }
-import from jaclang.client.targets.mobile.common {
+import from jaclang.client.targets.react_native.common {
     DEFAULT_APP_ID,
     DEFAULT_APP_NAME,
-    MOBILE_SETUP_MODES,
-    _ensure_android_cleartext_for_lan_dev,
-    _normalize_mobile_platform,
-    _run_cap_cmd
+    DEFAULT_APP_SLUG,
+    detect_lan_ipv4,
+    resolve_rn_project_dir
 }
-import from jaclang.client.targets.mobile.config {
-    _add_mobile_config,
-    _load_mobile_config,
-    _resolve_mobile_setup_mode
+import from jaclang.client.targets.react_native.scaffold {
+    ensure_native_deps_installed,
+    write_expo_scaffold
 }
-import from jaclang.client.targets.mobile.deps {
-    _check_and_report_dependencies,
-    _require_macos_for_ios,
-    _try_check_mobile_dependencies
+import from jaclang.client.targets.react_native.build {
+    lint_native_incompatible_usage,
+    lint_unmapped_tags,
+    read_user_js_sources,
+    run_expo_prebuild,
+    run_gradle_assemble,
+    run_eas_local_build,
+    run_eas_update_opt_in,
+    run_xcodebuild_ios,
+    stage_native_image_assets,
+    entry_module_for,
+    stage_compiled_entry,
+    strip_css_imports,
+    write_native_entry
 }
-import from jaclang.client.targets.mobile.dev {
-    _assert_mobile_port_available,
-    _describe_cap_run_completion,
-    _get_api_base_url_str,
-    _inject_capacitor_dev_url,
-    _mobile_ensure_watchdog,
-    _mobile_read_dev_env,
-    _mobile_setup_android_port_reverse,
-    _mobile_start_backend_server,
-    _restore_capacitor_config,
-    _run_cap_run_live_reload,
-    _warn_mobile_dev_api_url
+import from jaclang.client.config_loader { JacClientConfig }
+import from jaclang.client.targets.react_native.config {
+    _resolve_rn_android_builder,
+    _resolve_rn_eas_profile,
+    _resolve_rn_eas_update_branch,
+    _resolve_rn_eas_update_enabled,
+    _resolve_rn_eas_update_message,
+    _resolve_rn_ios_builder,
+    _resolve_rn_release
 }
-import from jaclang.client.targets.mobile.scaffold {
-    _ensure_capacitor_config,
-    _ensure_capacitor_deps,
-    _ensure_android_platform,
-    _ensure_ios_platform,
-    _ensure_placeholder_index
+import from jaclang.client.targets.react_native.dev {
+    inject_dev_api_base_url,
+    resolve_metro_port,
+    restore_app_json,
+    rn_hmr_on_jac_changed,
+    run_expo_start,
+    setup_android_port_reverse,
+    JAC_RN_DEV_HOST_ENV
 }
 import from jaclang.client.targets.client_dev_common {
-    _ClientHmrHandler,
-    prepare_vite_dev_compilation,
+    ensure_watchdog_common,
     install_dev_signal_handlers,
+    resolve_port_or_next_available,
+    start_backend_server_common,
     stop_dev_watcher,
     terminate_dev_processes
 }
 
 impl MobileTarget.setup(project_dir: Path) -> None {
-    android_dir = project_dir / "android";
-    ios_dir = project_dir / "ios";
-    is_macos = platform_mod.system() == "Darwin";
-    (setup_mode, explicit_setup_mode) = _resolve_mobile_setup_mode(
-        project_dir, is_macos
+    import from jaclang.client.targets.react_native.common { normalize_rn_platform }
+
+    rn_dir = resolve_rn_project_dir(project_dir);
+    console.print(
+        f"\n📱 Setting up React Native target (Expo) at {rn_dir}", style="bold"
     );
-    platforms: list[str] = [];
-    if setup_mode == "all" {
-        if not is_macos and explicit_setup_mode {
-            console.warning(
-                "  iOS scaffold in --platform all requires macOS; using Android."
-            );
-        }
-        platforms = ["android", "ios"] if is_macos else ["android"];
-    } elif setup_mode == "android" {
-        platforms = ["android"];
-    } elif setup_mode == "ios" {
-        if is_macos {
-            platforms = ["ios"];
-        } elif explicit_setup_mode {
-            raise RuntimeError(
-                "iOS scaffold setup requires macOS. "
-                "Use --platform android on Linux/Windows."
-            );
-        } else {
-            console.warning(
-                "  default_platform is ios but host is not macOS; using Android scaffold."
-            );
-            platforms = ["android"];
-        }
-    } else {
-        raise ValueError(
-            f"Unsupported setup platform '{setup_mode}'. "
-            f"Supported: {', '.join(MOBILE_SETUP_MODES)}"
-        );
-    }
-    needs_android = "android" in platforms;
-    needs_ios = "ios" in platforms;
 
-    if (not needs_android or android_dir.exists())
-        and (not needs_ios or ios_dir.exists()) {
-        return;
-    }
+    write_expo_scaffold(
+        rn_dir,
+        project_dir,
+        app_name=DEFAULT_APP_NAME,
+        app_slug=DEFAULT_APP_SLUG,
+        app_id=DEFAULT_APP_ID
+    );
 
-    console.print("\n📱 Setting up mobile target (Capacitor)", style="bold");
-    console.print(f"  Project directory: {project_dir}", style="muted");
+    ensure_native_deps_installed(rn_dir);
 
-    try {
-        checked: set[str] = set();
-        for plat in platforms {
-            if plat not in checked {
-                _check_and_report_dependencies(plat);
-                checked.add(plat);
-            }
-        }
-    } except Exception as e {
-        console.warning(f"  Dependency check encountered an issue: {e}");
-        console.print(
-            "  Setup will continue, but some dependencies may be missing.",
-            style="muted"
-        );
-    }
-
-    import from jaclang.client.vite_bundler { ViteBundler }
-    bundler = ViteBundler(project_dir=project_dir);
-    web_dist_dir = Path(bundler.output_dir).resolve();
-    web_dist_dir.mkdir(parents=True, exist_ok=True);
-
-    _ensure_capacitor_deps(project_dir);
-    _ensure_capacitor_config(project_dir, web_dist_dir);
-
-    if needs_android {
-        _ensure_android_platform(project_dir, web_dist_dir);
-    }
-    if needs_ios {
-        _ensure_ios_platform(project_dir, web_dist_dir);
-    }
-
-    mobile_cfg = _load_mobile_config(project_dir);
-    app_name = mobile_cfg.get("app_name", DEFAULT_APP_NAME);
-    app_id = mobile_cfg.get("app_id", DEFAULT_APP_ID);
-    try {
-        _add_mobile_config(project_dir, app_name, app_id);
-    } except Exception as e {
-        console.warning(f"  Failed to add [client.mobile] to jac.toml: {e}");
-    }
-
-    setup_label = ", ".join(platforms);
-    console.success(f"Mobile target setup complete ({setup_label}).");
+    console.success("Mobile (React Native) setup complete.");
     console.print("\nNext steps:", style="bold");
-    if needs_android {
-        console.print("  Android:");
-        console.print(
-            "    Dev:   jac run --client mobile --dev main.jac", style="muted"
-        );
-        console.print("    Build: jac build --client mobile --platform android");
-    }
-    if needs_ios {
-        console.print("  iOS:");
-        console.print(
-            "    Dev:   jac run --client mobile --dev --platform ios main.jac",
-            style="muted"
-        );
-        console.print("    Build: jac build --client mobile --platform ios");
-    }
+    console.print(
+        "  Build (Android): jac build --platform android <app>", style="muted"
+    );
+    console.print("  Build (iOS):     jac build --platform ios <app>", style="muted");
+    console.print("  Build (browser): jac build --platform web <app>", style="muted");
+    console.print("  Dev:             jac run --dev <app>", style="muted");
+    console.print(
+        f"  EAS Build:       cd {rn_dir} && npx eas build --platform android",
+        style="muted"
+    );
+    console.print(
+        f"  EAS Update:      cd {rn_dir} && npx eas update --branch preview",
+        style="muted"
+    );
 }
 
 impl MobileTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
-    import from jaclang.client.vite_bundler { ViteBundler }
-    selected_platform = _normalize_mobile_platform(platform);
-    mobile_cfg = _load_mobile_config(project_dir);
+    plat = (platform or "android").lower();
+    if plat == "web" {
+        import from jaclang.client.targets.web_target { WebTarget }
+        console.print(
+            "\n📱 Building mobile app for the browser (react-native-web)", style="bold"
+        );
+        web = WebTarget();
+        web.project_dir = project_dir;
+        return web.build(entry_file, project_dir, None);
+    }
+    if plat not in ["android", "ios"] {
+        raise ValueError(
+            f"Unsupported mobile platform '{plat}'. "
+            "Use --platform android, ios, or web."
+        );
+    }
+    client_cfg = JacClientConfig(project_dir);
+    rn_cfg = client_cfg.get_react_native_config();
+    release = _resolve_rn_release(rn_cfg);
+    build_label = "release" if release else "debug";
+    ios_builder = _resolve_rn_ios_builder(rn_cfg);
+    rn_dir = resolve_rn_project_dir(project_dir, client_cfg);
 
     console.print(
-        f"\n📱 Building mobile app (Capacitor {selected_platform.capitalize()})",
-        style="bold"
+        f"\n📱 Building React Native app ({plat}, {build_label})", style="bold"
     );
 
-    _try_check_mobile_dependencies(selected_platform);
-    _require_macos_for_ios(selected_platform);
+    if plat == "ios" and platform_mod.system() != "Darwin" {
+        if ios_builder == "xcodebuild" {
+            raise RuntimeError(
+                "iOS native build requested on non-macOS host.\n"
+                "The default iOS builder is xcodebuild, which requires macOS + Xcode.\n"
+                "Use one of:\n"
+                "  1) Run `jac build --platform ios <app>` on macOS\n"
+                "  2) Use EAS Build cloud from any OS:\n"
+                "     npx eas build --platform ios --profile production --non-interactive\n"
+                "  3) Set [client.react_native].ios_builder = \"eas\" and run "
+                f"the same EAS command from {rn_dir}"
+            );
+        }
+        raise RuntimeError(
+            "iOS EAS local builds require macOS (Xcode toolchain).\n"
+            "On Linux/Windows, use EAS Build cloud instead:\n"
+            "  npx eas build --platform ios --profile production --non-interactive\n"
+            f"Run that command inside {rn_dir}."
+        );
+    }
 
-    prev_setup_platform = mobile_setup_platform_env_swap(selected_platform);
-    try {
+    if not (rn_dir / "package.json").exists() {
+        console.print("  Scaffold not found — running setup first...", style="muted");
         self.setup(project_dir);
-    } finally {
-        mobile_setup_platform_env_restore(prev_setup_platform);
     }
 
-    console.print("  Step 1: Building web bundle...", style="muted");
-    web_bundle_path = super.build(entry_file, project_dir, None);
-    console.print(f"  ✔ Web bundle built: {web_bundle_path}", style="success");
+    ensure_native_deps_installed(rn_dir);
+    (_, compiled_dir) = self._compile_native_jac_modules(entry_file);
 
-    bundler = ViteBundler(project_dir=project_dir);
-    web_dist_dir = Path(bundler.output_dir).resolve();
-    _ensure_capacitor_config(project_dir, web_dist_dir);
+    js_sources = read_user_js_sources(compiled_dir);
+    lint_unmapped_tags(compiled_dir, sources=js_sources);
+    lint_native_incompatible_usage(compiled_dir, sources=js_sources);
+    strip_css_imports(compiled_dir);
+
+    entry_module: str = entry_module_for(entry_file, project_dir);
+    stage_compiled_entry(compiled_dir, rn_dir, entry_module);
+    stage_native_image_assets(rn_dir / "jac-src", rn_dir);
+    write_native_entry(rn_dir);
 
     console.print(
-        f"  Step 2: Syncing with Capacitor ({selected_platform})...", style="muted"
+        f"  Step 2: Running expo prebuild ({plat.capitalize()})...", style="muted"
     );
-    _run_cap_cmd(
-        project_dir, ["sync", selected_platform], f"cap sync {selected_platform}"
-    );
-    console.print("  ✔ Capacitor sync complete", style="success");
+    run_expo_prebuild(rn_dir, plat);
 
-    if selected_platform == "android" {
-        artifact = _build_android(project_dir, mobile_cfg);
+    artifact: Path;
+    if plat == "android" {
+        android_builder = _resolve_rn_android_builder(rn_cfg);
+        if android_builder == "eas" {
+            eas_profile = _resolve_rn_eas_profile(rn_cfg, release);
+            console.print(
+                f"  Step 3: Building Android with EAS local (profile={eas_profile})...",
+                style="muted"
+            );
+            artifact = run_eas_local_build(
+                rn_dir, platform="android", profile=eas_profile, release=release
+            );
+        } else {
+            console.print("  Step 3: Building Android with Gradle...", style="muted");
+            artifact = run_gradle_assemble(rn_dir, release=release);
+        }
+    } elif ios_builder == "eas" {
+        eas_profile = _resolve_rn_eas_profile(rn_cfg, release);
+        console.print(
+            f"  Step 3: Building iOS with EAS local (profile={eas_profile})...",
+            style="muted"
+        );
+        artifact = run_eas_local_build(
+            rn_dir, platform="ios", profile=eas_profile, release=release
+        );
     } else {
-        artifact = _build_ios(project_dir, mobile_cfg);
+        console.print("  Step 3: Building iOS with xcodebuild...", style="muted");
+        artifact = run_xcodebuild_ios(rn_dir, release=release);
     }
 
-    console.success(f"Mobile build complete: {artifact}");
+    if _resolve_rn_eas_update_enabled(rn_cfg) {
+        update_branch = _resolve_rn_eas_update_branch(rn_cfg, release);
+        update_msg = _resolve_rn_eas_update_message(rn_cfg);
+        run_eas_update_opt_in(
+            rn_dir, platform=plat, branch=update_branch, message=update_msg
+        );
+    }
+
+    console.success(f"React Native build complete: {artifact}");
+    if plat == "android" {
+        console.print("\nInstall with: adb install -r " + str(artifact), style="muted");
+    } else {
+        console.print(
+            "\nInstall on a booted simulator with: " "xcrun simctl install booted "
+                + str(artifact)
+                + "\n"
+                "For signing/provisioning and real-device distribution, follow "
+                "Expo iOS build docs:\n"
+                "  https://docs.expo.dev/build-reference/ios-builds/",
+            style="muted"
+        );
+    }
     return artifact;
 }
 
 impl MobileTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
-    hot_watcher: any = None;
-    (host_override, plat_mode) = _mobile_read_dev_env();
-    vite_port = resolve_mobile_vite_port(project_dir, port);
-    effective_api = api_port if api_port > 0 else port + 1;
-    mobile_cfg = _load_mobile_config(project_dir);
-    if plat_mode and plat_mode != "auto" {
-        plat = _normalize_mobile_platform(plat_mode);
-    } else {
-        plat = _normalize_mobile_platform(
-            mobile_cfg.get("default_platform", "android")
+    rn_dir = resolve_rn_project_dir(project_dir);
+    if not (rn_dir / "package.json").exists() {
+        raise RuntimeError(
+            "React Native scaffold not found. Run `jac setup <app>` "
+            "before `jac run --dev <app>`."
         );
+    }
+
+    requested_api = api_port if api_port > 0 else port;
+    requested_metro = resolve_metro_port();
+    metro_port = resolve_port_or_next_available(requested_metro, "Metro");
+    api_eff = resolve_port_or_next_available(
+        requested_api, "API", reserved=[metro_port]
+    );
+
+    host_override = os.environ.get(JAC_RN_DEV_HOST_ENV, "").strip();
+    visible_host: str;
+    if host_override {
+        visible_host = host_override;
+    } else {
+        lan = detect_lan_ipv4();
+        visible_host = lan or "127.0.0.1";
     }
 
     console.print(
-        f"\nMobile dev (Capacitor + Vite HMR) - {plat.capitalize()}", style="bold"
-    );
-    _try_check_mobile_dependencies(plat);
-    _require_macos_for_ios(plat);
-    _warn_mobile_dev_api_url(project_dir);
-    prev_setup_platform = mobile_setup_platform_env_swap(plat);
-    try {
-        self.setup(project_dir);
-    } finally {
-        mobile_setup_platform_env_restore(prev_setup_platform);
-    }
-
-    visible_host = cast(str, resolve_mobile_dev_host(plat, host_override));
-
-    if plat == "android" {
-        _ensure_android_cleartext_for_lan_dev(project_dir);
-    }
-
-    (bundler, compiler) = prepare_vite_dev_compilation(project_dir, entry_file);
-
-    toml_base_url = _get_api_base_url_str(project_dir);
-    server_port = cast(int, resolve_mobile_server_port(toml_base_url, effective_api));
-
-    _assert_mobile_port_available(vite_port, "Vite");
-    if server_port != vite_port {
-        _assert_mobile_port_available(server_port, "API");
-    }
-
-    if plat == "android" {
-        _mobile_setup_android_port_reverse(vite_port, server_port);
-    }
-
-    cast(any, bundler).create_vite_config(
-        entry_file,
-        api_base_url_override="",
-        is_dev=True,
-        api_port=server_port,
-        for_mobile_dev=True,
-        mobile_hmr_host=visible_host,
-        mobile_hmr_port=vite_port
+        f"\nReact Native dev (Expo + Metro Fast Refresh) — host {visible_host}",
+        style="bold"
     );
 
-    console.print(f"  Starting Vite dev server (port {vite_port})…", style="muted");
-    vite_process = bundler.start_dev_server(
-        port=vite_port, suppress_initial_output=True, host=visible_host
-    );
-    if not vite_process {
-        raise RuntimeError("Failed to start Vite dev server");
-    }
+    (jac_compiler, compiled_dir) = self._compile_native_jac_modules(entry_file);
+    js_sources = read_user_js_sources(compiled_dir);
+    lint_unmapped_tags(compiled_dir, sources=js_sources);
+    lint_native_incompatible_usage(compiled_dir, sources=js_sources);
+    strip_css_imports(compiled_dir);
 
-    if _mobile_ensure_watchdog() {
-        import from jaclang.server.watcher { JacFileWatcher }
+    entry_module: str = entry_module_for(entry_file, project_dir);
+    stage_compiled_entry(compiled_dir, rn_dir, entry_module);
+    stage_native_image_assets(rn_dir / "jac-src", rn_dir);
+    write_native_entry(rn_dir);
 
-        hmr_handler = _ClientHmrHandler(
-            compiler=compiler, entry_file=entry_file, project_dir=project_dir
-        );
-        hot_watcher = JacFileWatcher(watch_paths=[str(project_dir.resolve())]);
-        hot_watcher.add_callback(hmr_handler.on_event);
-        hot_watcher.start();
-    }
+    dev_api_url = f"http://{visible_host}:{api_eff}";
+    original_app_json = inject_dev_api_base_url(rn_dir, dev_api_url);
 
-    server_process = _mobile_start_backend_server(entry_file, project_dir, server_port);
+    setup_android_port_reverse(metro_port, api_eff);
 
-    vite_p = vite_process;
-    srv_p = server_process;
+    backend_p: any = None;
+    watcher_p: any = None;
 
-    def cleanup_servers {
-        console.print("\n  Stopping Vite and API server…", style="muted");
-        stop_dev_watcher(hot_watcher);
-        terminate_dev_processes([vite_p, srv_p]);
+    def cleanup {
+        console.print("\n  Stopping Metro, backend, and watcher…", style="muted");
+        stop_dev_watcher(watcher_p);
+        terminate_dev_processes([backend_p]);
+        restore_app_json(rn_dir, original_app_json);
         console.print("  ✔ Stopped", style="success");
     }
 
     install_dev_signal_handlers();
 
-    web_dist_dir = Path(bundler.output_dir).resolve();
-    _ensure_capacitor_config(project_dir, web_dist_dir);
-    _ensure_placeholder_index(web_dist_dir);
-
-    dev_url = f"http://{visible_host}:{vite_port}";
-    original_cap_config = _inject_capacitor_dev_url(project_dir, dev_url);
-
     try {
-        _run_cap_cmd(project_dir, ["sync", plat], f"cap sync {plat}");
-        rc = _run_cap_run_live_reload(project_dir, plat, visible_host, vite_port);
-        outcome = _describe_cap_run_completion(rc, dev_url);
-        msg_style = "bold green" if outcome["ok"] else "bold yellow";
-        for i in range(len(outcome["messages"])) {
-            line = outcome["messages"][i];
-            style = msg_style if i == 0 else "muted";
-            console.print(f"\n  {line}" if i == 0 else f"  {line}", style=style);
+        console.print(
+            f"  Starting Jac API backend on port {api_eff}...", style="muted"
+        );
+        backend_p = start_backend_server_common(entry_file, project_dir, api_eff);
+
+        if ensure_watchdog_common("the device") {
+            import from jaclang.server.watcher { JacFileWatcher }
+
+            hmr_handler = _RNHmrHandler(
+                compiler=jac_compiler,
+                entry_file=entry_file,
+                project_dir=project_dir,
+                rn_dir=rn_dir,
+                entry_module=entry_module
+            );
+            watcher_p = JacFileWatcher(watch_paths=[str(project_dir.resolve())]);
+            watcher_p.add_callback(hmr_handler.on_event);
+            watcher_p.start();
         }
-        console.print("");
-        import from time { sleep }
-        while True {
-            sleep(1);
+
+        console.print(
+            f"\n📱 React Native dev ready.\n"
+            f"   Metro     : http://{visible_host}:{metro_port}\n"
+            f"   API       : {dev_api_url}\n"
+            f"   Edit client .jac files — Metro will Fast Refresh on save.\n",
+            style="bold green"
+        );
+
+        rc = run_expo_start(rn_dir, metro_port, clear_cache=True);
+        if rc != 0 {
+            console.warning(
+                f"  expo start exited with code {rc} — see Metro output above."
+            );
         }
     } except KeyboardInterrupt {
         console.print("\n  Interrupted.", style="muted");
     } finally {
-        _restore_capacitor_config(project_dir, original_cap_config);
-        cleanup_servers();
+        cleanup();
     }
+}
+
+impl MobileTarget._compile_native_jac_modules(entry_file: Path) -> tuple[(any, Path)] {
+    console.print("  Step 1: Compiling Jac modules + native runtime...", style="muted");
+
+    import from jaclang.client.vite_client_bundle { ViteClientBundleBuilder }
+    builder = Jac.get_client_bundle_builder();
+    if not isinstance(builder, ViteClientBundleBuilder) {
+        raise RuntimeError(
+            "Client bundle builder is unavailable — the jac-client compiler "
+            "stack is required for react-native builds. Ensure "
+            "`jaclang.client` is installed and importable."
+        );
+    }
+    vite_compiler = builder._get_compiler();
+    jac_compiler = vite_compiler.jac_client_compiler;
+    compiled_dir = jac_compiler.compiled_dir;
+    if compiled_dir is None {
+        raise RuntimeError(
+            "JacClientCompiler.compiled_dir is None; project config likely "
+            "missing. Run `jac setup <app>` first."
+        );
+    }
+    compiled_dir.mkdir(parents=True, exist_ok=True);
+    jac_compiler.compile(None, entry_file, native=True);
+    console.print("  ✔ Jac modules compiled with native runtime", style="success");
+    return (jac_compiler, compiled_dir);
 }
 
 impl MobileTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
-    import from jaclang.client.vite_bundler { ViteBundler }
+    import from jaclang.client.targets.react_native.common { normalize_rn_platform }
 
-    if api_port != 8000 {
-        console.print(
-            f"  Note: --port {api_port} applies to `jac run` flows; "
-            "`cap run` uses the baked web bundle only.",
-            style="muted"
-        );
-    }
-    plat_mode = os.environ.get("JAC_MOBILE_PLATFORM", "auto");
-    mobile_cfg = _load_mobile_config(project_dir);
-    if plat_mode and plat_mode != "auto" {
-        plat = _normalize_mobile_platform(plat_mode);
+    rn_cfg = JacClientConfig(project_dir).get_react_native_config();
+    default_plat = (
+        os.environ.get("JAC_MOBILE_PLATFORM", "")
+        or str(rn_cfg.get("default_platform", "") or "android")
+    ).strip().lower();
+    plat = normalize_rn_platform(default_plat);
+
+    artifact = self.build(entry_file, project_dir, platform=plat);
+
+    if plat == "ios" {
+        _start_ios(artifact, project_dir);
     } else {
-        plat = mobile_cfg.get("default_platform", "android");
-        plat = _normalize_mobile_platform(plat);
+        _start_android(artifact, project_dir);
+    }
+}
+
+impl _RNHmrHandler.on_event(evt: FileChangeEvent) -> None {
+    rn_hmr_on_jac_changed(
+        evt,
+        self.compiler,
+        self.entry_file,
+        self.project_dir,
+        self.rn_dir,
+        self.entry_module
+    );
+}
+
+def _start_android(apk_path: Path, project_dir: Path) -> None {
+    import json;
+    adb = shutil.which("adb");
+    if not adb {
+        console.warning(
+            "  adb not found on PATH. APK built successfully but "
+            "auto-install skipped.\n"
+            f"  Install manually: adb install -r {apk_path}"
+        );
+        return;
+    }
+
+    rn_dir = resolve_rn_project_dir(project_dir);
+    pkg_name: str | None = None;
+    try {
+        app_cfg = json.loads((rn_dir / "app.json").read_text(encoding="utf-8"));
+        pkg_name = app_cfg["expo"]["android"]["package"];
+    } except Exception as e {
+        console.warning(
+            f"  Failed to read android.package from app.json ({e}); "
+            "skipping auto-launch. APK is installed though."
+        );
     }
 
     console.print(
-        f"\n📱 Starting mobile app (Capacitor {plat.capitalize()})", style="bold"
+        f"  Installing APK on device: adb install -r {apk_path}", style="muted"
     );
-    _try_check_mobile_dependencies(plat);
-    _require_macos_for_ios(plat);
-    prev_setup_platform = mobile_setup_platform_env_swap(plat);
-    try {
-        self.setup(project_dir);
-    } finally {
-        mobile_setup_platform_env_restore(prev_setup_platform);
+    subprocess.run([adb, "install", "-r", str(apk_path)], check=True);
+
+    if pkg_name {
+        pkg_str: str = str(pkg_name);
+        console.print(f"  Launching: {pkg_str}", style="muted");
+        launch_cmd: list[str] = [
+            adb,
+            "shell",
+            "monkey",
+            "-p",
+            pkg_str,
+            "-c",
+            "android.intent.category.LAUNCHER",
+            "1"
+        ];
+        subprocess.run(launch_cmd, check=False, capture_output=True);
     }
-    console.print("  Building web bundle…", style="muted");
-    web_bundle_path = super.build(entry_file, project_dir, None);
-    console.print(f"  ✔ Web bundle: {web_bundle_path}", style="success");
+    console.success("App installed and launched.");
+}
 
-    bundler = ViteBundler(project_dir=project_dir);
-    web_dist_dir = Path(bundler.output_dir).resolve();
-    _ensure_capacitor_config(project_dir, web_dist_dir);
+def _start_ios(artifact_path: Path, project_dir: Path) {
+    import json;
+    rn_dir = resolve_rn_project_dir(project_dir);
+    if platform_mod.system() != "Darwin" {
+        raise RuntimeError(
+            "iOS install & launch requires macOS with Xcode.\n"
+            "On Linux/Windows, use EAS Build cloud and TestFlight:\n"
+            "  npx eas build --platform ios --profile preview\n"
+            "  npx eas submit --platform ios\n"
+            f"Run inside {rn_dir}."
+        );
+    }
 
-    _run_cap_cmd(project_dir, ["sync", plat], f"cap sync {plat}");
-    _run_cap_cmd(project_dir, ["run", plat], f"cap run {plat}");
+    xcrun = shutil.which("xcrun");
+    if not xcrun {
+        raise RuntimeError(
+            "xcrun not found. Install Xcode CLI tools:\n" "  xcode-select --install"
+        );
+    }
+
+    bundle_id: str | None = None;
+    try {
+        app_cfg = json.loads((rn_dir / "app.json").read_text(encoding="utf-8"));
+        bundle_id = app_cfg["expo"]["ios"]["bundleIdentifier"];
+    } except Exception as e {
+        console.warning(
+            f"  Failed to read ios.bundleIdentifier from app.json ({e}); "
+            "will attempt install without auto-launch."
+        );
+    }
+
+    sim_result = subprocess.run(
+        [xcrun, "simctl", "list", "devices", "-j"],
+        capture_output=True,
+        text=True,
+        check=True
+    );
+    import json as json_mod;
+    sim_data = json_mod.loads(sim_result.stdout);
+    devices: dict[str, list[dict[str, any]]] = sim_data.get("devices", {});
+
+    booted_udid: str | None = None;
+    for (runtime_key, device_list) in devices.items() {
+        for dev in device_list {
+            if dev.get("isAvailable") and dev.get("state") == "Booted" {
+                booted_udid = dev["udid"];
+                break;
+            }
+        }
+        if booted_udid {
+            break;
+        }
+    }
+
+    if not booted_udid {
+        target_udid: str | None = None;
+        for (runtime_key, device_list) in devices.items() {
+            if "iOS" not in runtime_key {
+                continue;
+            }
+            for dev in device_list {
+                if dev.get("isAvailable") and "iPhone" in dev.get("name", "") {
+                    target_udid = dev["udid"];
+                    break;
+                }
+            }
+            if target_udid {
+                break;
+            }
+        }
+        if target_udid {
+            console.print(f"  Booting simulator {target_udid}...", style="muted");
+            subprocess.run(
+                [xcrun, "simctl", "boot", target_udid], check=True, capture_output=True
+            );
+            booted_udid = target_udid;
+        } else {
+            raise RuntimeError(
+                "No iOS simulator available. Open Xcode > Window > Devices "
+                "and Simulators to create one."
+            );
+        }
+    }
+
+    install_target: Path = artifact_path;
+    if artifact_path.is_file() and artifact_path.suffix == ".ipa" {
+        import tempfile;
+        import zipfile;
+        console.print(f"  Extracting .app from {artifact_path.name}...", style="muted");
+        with tempfile.TemporaryDirectory() as tmp {
+            temp_root = Path(tmp);
+            with zipfile.ZipFile(artifact_path) as zf {
+                zf.extractall(temp_root);
+            }
+            payload_dir = temp_root / "Payload";
+            app_candidates = [
+                f
+                for f in payload_dir.`glob("*.app")
+                if f.is_dir()
+            ];
+            if not app_candidates {
+                raise RuntimeError(
+                    f"No .app bundle found inside {artifact_path} "
+                    "(expected Payload/*.app)."
+                );
+            }
+            install_target = app_candidates[0];
+            _simctl_install_and_launch(xcrun, booted_udid, install_target, bundle_id);
+        }
+    } else {
+        _simctl_install_and_launch(xcrun, booted_udid, install_target, bundle_id);
+    }
+    console.success("iOS app installed and launched on simulator.");
+}
+
+def _simctl_install_and_launch(
+    xcrun: str, udid: str, app_path: Path, bundle_id: str | None
+) {
+    console.print(
+        f"  Installing .app on simulator {udid}: {app_path.name}", style="muted"
+    );
+    subprocess.run(
+        [xcrun, "simctl", "install", udid, str(app_path)],
+        check=True,
+        capture_output=True
+    );
+    if bundle_id {
+        bid: str = str(bundle_id);
+        console.print(f"  Launching: {bid}", style="muted");
+        subprocess.run(
+            [xcrun, "simctl", "launch", udid, bid], check=False, capture_output=True
+        );
+    }
 }

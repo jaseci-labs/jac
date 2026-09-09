@@ -20,21 +20,23 @@ def compiler_source_failure_details(path: str) -> str {
 }
 
 def module_scoped_failure_details(path: str, program: JacProgram) -> str {
-    norm = os.path.normpath(path);
-    stem = norm[:-4] if norm.endswith('.jac') else norm;
-    prefix = stem + '.';
-    lines: list[str] = [];
-    for alert in program.errors_had {
-        try {
-            alert_path = os.path.normpath(alert.loc.mod_path);
-        } except Exception {
-            continue;
-        }
-        if alert_path == norm or alert_path.startswith(prefix) {
-            lines.append(alert.pretty_print());
-        }
+    return '\n'.join(a.pretty_print() for a in program.diags.owned_errors(path));
+}
+
+def bootstrap_tier_failure_details(path: str) -> str {
+    import from jaclang.compiler.driver.schedules { schedule_tier_reason }
+    reason = schedule_tier_reason();
+    if not reason {
+        return '';
     }
-    return '\n'.join(lines);
+    return (
+        f"{path} was compiled on the bootstrap tier because {reason}, and "
+        "that tier could not produce its bytecode. A module that needs the "
+        "full compiler must not be reached from a schedule dependency at "
+        "module scope: keep that import function-local, or pre-import the "
+        "module in the schedule loader (see IR_SCHED_DEPS in "
+        "jaclang.compiler.driver.schedules)."
+    );
 }
 
 def _compiler_source_root -> str {

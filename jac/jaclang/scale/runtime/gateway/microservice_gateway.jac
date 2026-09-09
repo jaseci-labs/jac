@@ -17,9 +17,12 @@ import from jaclang.scale.runtime.context.util {
     DEFAULT_CLIENT_DIST_DIR
 }
 
+import from jaclang.server.identity.user_manager { UserManager }
+import from jaclang.server.server { EndpointHost }
+import from jaclang.server.serving.drain { DrainState }
+import from jaclang.server.serving.endpoint { JEndPoint }
 import from jaclang.scale.admin.admin_portal { JacAPIServerAdmin }
 import from jaclang.scale.admin.workloads { JacAPIServerWorkloads }
-import from jaclang.scale.server.serve { JacAPIServerAuth }
 import from jaclang.scale.admin.logs { JacAPIServerLogs }
 import from jaclang.scale.admin.traces { JacAPIServerTraces }
 import from jaclang.scale.admin.ops { JacAPIServerOps }
@@ -36,7 +39,7 @@ glob logger = logging.getLogger(__name__),
          "keep-alive"
      };
 
-obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerAuth, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerLLMTelemetry) {
+obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerLLMTelemetry) {
     has registry: ServiceRegistry,
         app: any = None,
         port: int = DEFAULT_GATEWAY_PORT,
@@ -53,9 +56,12 @@ obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerAuth, JacAPIServerWorkloa
         base_path: str = ".",
         route_table: ServiceRouteTable = ServiceRouteTable(),
         _spec_crawl: any = None,
-        port_pinned: bool = False;
+        port_pinned: bool = False,
+        drain: DrainState = DrainState();
 
     def setup -> ServingApp;
+    def add_endpoint(ep: JEndPoint) -> None;
+    def identity -> UserManager;
     def resolve_target_url(service_entry: ServiceEntry, path: str, query: str) -> str;
     def handle_health -> Response;
     def handle_health_live -> Response;
@@ -66,9 +72,10 @@ obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerAuth, JacAPIServerWorkloa
     ) -> Response | None;
 
     def eligible_services -> list[tuple[str, ServiceEntry]];
-    def app_service -> ServiceEntry | None;
-    async def forward_to_app(request: Request, path: str) -> Response | None;
-    async def forward_static_to_app(request: Request, path: str) -> Response | None;
+    def root_member -> ServiceEntry | None;
+    def shell_answers(request: Request, path: str) -> bool;
+    async def forward_to_root(request: Request, path: str) -> Response | None;
+    async def forward_static_to_root(request: Request, path: str) -> Response | None;
     async def resolve_learned_owner(path: str) -> ServiceEntry | None;
     async def forward_root_path(
         request: Request, service_entry: ServiceEntry, path: str, base_url: str = ""

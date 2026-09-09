@@ -76,12 +76,13 @@ def _mem_to_bytes(val: any) -> int | None {
 
 obj PlanValidator {
     has bundle: any,
-        ms_cfg: any,
-        svc_configs: any;
+        routes: any = {},
+        gateway_cfg: any = {},
+        svc_configs: any = {};
 
     def run -> list[Diagnostic] {
         out: list[Diagnostic] = [];
-        routes = dget(self.ms_cfg, "routes");
+        routes: dict = self.routes if isinstance(self.routes, dict) else {};
         deployments = dget(self.bundle, "deployments");
         scaling = dget(self.bundle, "scaling");
 
@@ -102,8 +103,8 @@ obj PlanValidator {
                         severity="error",
                         service=svc_name,
                         message=(
-                            f"route '{svc_name}' has no generated Deployment "
-                            "manifest; check that the .jac file exists in the "
+                            f"app '{svc_name}' has no generated Deployment "
+                            "manifest; check that its entry file exists in the "
                             "project directory"
                         )
                     )
@@ -152,9 +153,8 @@ obj PlanValidator {
                 Diagnostic(
                     severity="error",
                     message=(
-                        f"route name '{GATEWAY_NAME}' is reserved for the internal "
-                        "gateway sentinel; rename this microservice in "
-                        "[scale.microservices.routes]"
+                        f"app name '{GATEWAY_NAME}' is reserved for the internal "
+                        "gateway sentinel; rename this app in [apps]"
                     )
                 )
             );
@@ -167,8 +167,8 @@ obj PlanValidator {
                     Diagnostic(
                         severity="error",
                         message=(
-                            f"route path {path_s!r} is claimed by both "
-                            f"'{seen[path_s]}' and '{svc}'; each gateway path "
+                            f"route {path_s!r} is claimed by both "
+                            f"'{seen[path_s]}' and '{svc}'; each app route "
                             "must be unique"
                         )
                     )

@@ -22,7 +22,7 @@ def:pub server_stats -> dict {
     return {"cwd": os.getcwd()};
 }
 
-def:pub app -> JsxElement {
+async def:pub app -> JsxElement {
     stats = await server_stats();
     todos = root spawn list_items();
     return <div>{stats}</div>;

@@ -117,9 +117,9 @@ Naming the port is what makes it a contract, not where you named it. A project t
 pins 3000 usually has something addressing 3000, a proxy or an OAuth callback or a
 hardcoded URL, and moving to 3001 would break it silently.
 
-One exception, for now. On a microservice project -- one declaring
-`[scale.microservices.routes]`, which `jac create --kind web-app` writes -- a
-`[scale.microservices] gateway_port` in `jac.toml` does **not** pin, because the loaded
+One exception, for now. When a workspace's service apps run as a fleet
+(`jac run <app> --fleet`, or `[scale.gateway] colocate = false`), a
+`[scale.gateway] gateway_port` in `jac.toml` does **not** pin, because the loaded
 config supplies a default for that key and nothing downstream can tell a port you chose
 from one that was merely assumed. Pass `--port` to pin the gateway.
 
@@ -247,11 +247,12 @@ Response (all walker responses are wrapped in a standard envelope):
 - **OpenAPI JSON:** `http://localhost:8000/openapi.json`
 - **Graph Visualizer:** `http://localhost:8000/graph` - interactive visualization of your application's graph
 
-These endpoints are enabled by default. To disable them (e.g. in production), set `docs_enabled = false` in your `jac.toml`:
+These endpoints are enabled by default. To disable them (e.g. in production), turn them off in your `jac.toml`:
 
 ```toml
-[scale.server]
+[serve]
 docs_enabled = false
+graph_enabled = false
 ```
 
 ---

@@ -82,11 +82,11 @@ def project_signing_secret(base_path: str) -> str {
 
 def _unpersistable_secret(path: str, reason: str) -> str {
     return (
-        f"no [scale.jwt] secret is configured and none could be kept at {path} "
+        f"no [serve.auth] secret is configured and none could be kept at {path} "
         f"({reason}). Refusing to sign with a secret this process would keep to "
         'itself: every other process serving this project would reject the '
         'tokens it issues, and every session would end when it does. Set '
-        '[scale.jwt] secret, or make the project data directory writable '
+        '[serve.auth] secret, or make the project data directory writable '
         '(JAC_DATA_PATH points it elsewhere).'
     );
 }

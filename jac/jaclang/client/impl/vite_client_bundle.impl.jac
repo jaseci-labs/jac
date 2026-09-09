@@ -32,7 +32,7 @@ impl make_client_bundle_builder(
     }
     return ViteClientBundleBuilder(
         vite_package_json=package_json_path,
-        vite_output_dir=client_dir / 'dist',
+        vite_output_dir=bundler._client_app_dir() / 'dist',
         vite_minify=False
     );
 }
@@ -52,6 +52,23 @@ impl ViteClientBundleBuilder._compile_bundle(
     (bundle_code, bundle_hash, client_exports, client_globals) = compiler.compile_and_bundle(
         module, module_path
     );
+    import json;
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.compiler.boundary_audit { boundary_audit }
+    if self.vite_output_dir is not None {
+        (self.vite_output_dir / "boundaries.json").write_text(
+            json.dumps(
+                boundary_audit(
+                    Jac.get_program(),
+                    list(
+                        compiler.jac_client_compiler.jac_compiler.boundary_contracts.values()
+                    )
+                ),
+                indent=2
+            ),
+            encoding="utf-8"
+        );
+    }
     return ClientBundle(
         module_name=module.__name__,
         code=bundle_code,
@@ -70,8 +87,8 @@ impl ViteClientBundleBuilder._get_compiler(
                 'Vite package.json not found. Set vite_package_json when using ViteClientBundleBuilder'
             );
         }
-        compile_to_js_func: Callable[([Path], tuple[(str, (ModuleType | None))])] = cast(
-            Callable[([Path], tuple[(str, (ModuleType | None))])], self._compile_to_js
+        compile_to_js_func: Callable[[Path], ClientArtifact] = cast(
+            Callable[[Path], ClientArtifact], self._compile_to_js
         );
         self._compiler = ViteCompiler(
             vite_package_json=self.vite_package_json,

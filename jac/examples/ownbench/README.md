@@ -14,9 +14,9 @@ the same source:
 
 | mode | flags | meaning |
 |---|---|---|
-| none | `--enforce-nogc --gc none --assert-no-rc` | headerless codegen, static drops, machine-checked zero RC |
-| rc | `--gc rc` | pure reference counting, no cycle collector |
-| cycles | `--gc cycles` | reference counting + cycle collector (default) |
+| none | `--memory nogc` | headerless codegen, static drops, machine-checked zero RC |
+| rc | `--memory rc` | pure reference counting, no cycle collector |
+| cycles | `--memory managed` | reference counting + cycle collector (default) |
 
 The kernels print a deterministic digest on stdout plus one `ns=<wall ns>`
 timing line; byte-identical digests across all modes are the executable
@@ -80,7 +80,7 @@ and silently falls back to the jac binary's bundled (older) compiler.
 
 Four kernels cover the topology-aligned region experiments (regions
 coexist with the managed heap; these never use enforcement or
-`--gc none`):
+`--memory nogc`):
 
 - `reg_graph`: build-traverse-discard. Per request: build a subgraph of N
   nodes under `in r { ... }` (optional back-edges every B nodes for

@@ -1,6 +1,6 @@
 ---
 name: jac-cl-routing
-description: Multi-page navigation on the client - pages/ directory routing, [id] params, layouts, route groups, redirects, and programmatic navigation. Load when adding pages or multi-screen flows. Pair with `jac-cl-components` (the components being routed), `jac-cl-auth` (protected routes).
+description: Implement page routes, parameters, layouts, groups, redirects, and navigation. Use when adding screens or debugging route resolution.
 ---
 
 Two routing systems, both client-side (URL changes, no full reload). **File-based routing is the recommended default**: files in a `pages/` directory become routes by convention - no Router wiring at all. Manual `<Router>`/`<Routes>` is the explicit alternative for apps that want one file of route declarations.
@@ -131,7 +131,7 @@ def:pub app(children: any) -> JsxElement {
 ⚠ Two failure modes, both easy to hit:
 
 - **Omitting the export** fails the build: `"app" is not exported by "compiled/main.js"` (in dev, the browser shows `SyntaxError: ... does not provide an export named 'app'`). A JSX-less `app` is just as bad: `def:pub app(children) { return children as JsxElement; }` carries no client signal, so inference places it **server** and it is never exported to the client entry - the same failure. Wrap `children` in JSX (`<>{children}</>` or a provider) so `app` is placed client. A `pages/` directory still needs `main.jac` to export a client `app`; the entry imports it by name.
-- **An `app` that ignores `children`** - e.g. the single-page shape `def:pub app -> JsxElement { <Home/> }` - **silently drops every route.** `jac check` passes, the bundle builds, the server starts, no error anywhere, and `pages/` simply never renders. This is the most common way a file-based app ends up stuck showing one stale page.
+- **An `app` that ignores `children`** - e.g. the single-page shape `def:pub app -> JsxElement { <Home/> }` - **drops every route**, so `pages/` never renders and the app stays stuck on one page. In a project with a `pages/` directory the client build now refuses it with an explanation rather than a silent blank screen. A single `props` parameter satisfies it too, since the route tree arrives as `props.children`.
 
 Also note `return children;` alone fails `jac check` with `E1002: Cannot return Any, expected JsxElement` - cast it (`children as JsxElement`) or wrap it in JSX.
 
@@ -186,6 +186,6 @@ def:pub AppShell() -> JsxElement {
 ## Pitfalls
 
 - `useParams()` returns a `dict` - **subscript access only** (`params["id"]`); `params.id` fails E1030 and `params.get("id")` crashes at runtime (it's a plain JS object). Missing params come back as JS `undefined`, which `is not None` MISSES - use truthy checks (`if not userId`). See `jac-cl-components`.
-- Routing uses clean BrowserRouter URLs (`/users/123`, not `#/users/123`). `jac run` handles the SPA fallback automatically (serves the app HTML for extensionless non-API paths when `[serve] base_route_app` is set - see `jac-fullstack-patterns`). **Any other production host must do the same SPA fallback** or deep links / refreshes 404.
+- Routing uses clean BrowserRouter URLs (`/users/123`, not `#/users/123`). `jac run` handles the SPA fallback automatically (serves the app HTML for extensionless non-API paths - see `jac-fullstack-patterns`). **Any other production host must do the same SPA fallback** or deep links / refreshes 404.
 - Guards with `has`/hooks: a component's hooks must run before any conditional `return <Navigate/>` - see the rules-of-hooks pitfall in `jac-cl-components`. Prefer the `(auth)/` group convention for file-based routing, which avoids per-page guard code entirely.
 - Routing exports from `@jac/runtime`: `Router`, `Routes`, `Route`, `Link`, `Navigate`, `Outlet`, `AuthGuard`, `useNavigate`, `useLocation`, `useParams`, `useRouter`.

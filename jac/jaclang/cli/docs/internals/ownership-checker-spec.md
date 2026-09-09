@@ -17,14 +17,7 @@ code table is in
 
 ## The three ground rules
 
-**1. Opt-in.** The checker only reasons about bindings the programmer
-explicitly tagged -- `own`, `imm`, `linear`, `borrow` / `&` / `&mut` -- plus
-allocations under an `in <handle> { ... }` region open. An unannotated binding
-is invisible to every rule below; annotating one binding never changes what is
-reported about another module, function, or unannotated binding. A module with
-no annotations and no region opens produces no E13xx diagnostics, ever.
-Unannotated code keeps the managed RC/GC floor exactly as before: gradual
-adoption is unchanged.
+**1. Gradual contracts.** Explicit `own`, `lin`, `imm`, `&`, and `&mut` states, derived moves/views, receiver contracts, and allocations under region opens establish the tracked facts. Under nogc enforcement, local ownership states are inferred as well. Ordinary unannotated managed code retains its RC/GC floor; inferred dependencies of annotated code are not exempt from checking merely because a local lacks a written annotation.
 
 **2. Symbol-level granularity, with single-field borrow splitting.** The unit
 of tracking is the *binding* -- a declared local or parameter, identified by
@@ -53,22 +46,13 @@ about heap objects:
   root object is itself an `own` binding outside `glob` state. The ownership
   annotation on a `has` var rides on the inner tag expression
   (`UnaryExpr.ownership` under `SubTag.tag`), not on `SubTag.ownership`.
-- There is no interprocedural analysis. A call is handled by its signature
-  only: passing an `own`/`linear` value to a call is a consuming move; what the
-  callee does internally is checked separately, in the callee. Two
+- Calls use ownership signatures, inferred receiver modes, and borrowed-result dependencies; they do not solve arbitrary cross-function aliasing. An `own`/`lin` argument moves when the destination consumes it; a borrow parameter lends it instead. Callee bodies are checked separately. Two
   contract-known exceptions borrow instead of consuming: read-only builtin
   methods (`find`, `startswith`, `split`, `join`, `replace`, `get`, `write`,
   ...) and calls into the native stdlib surface (`os`/`sys`/`time`/`math`/
   `random`/`struct`), whose C-backed shims copy or read transiently and never
-  retain. str-typed subscript/slice results are fresh copies and likewise do
-  not consume their base. Container grow methods (`append`/`add`/`insert` on
-  a list/set/dict receiver) also do not consume their arguments: under the
-  headerless contract fresh strings move into the container and named
-  bindings are copied in at codegen, so the source binding stays live.
-- There is no alias analysis through managed storage. Once a value is moved
-  into a field, container, or graph object (sealed across the membrane), the
-  checker's knowledge of it ends; reading it back yields an ordinary managed
-  value with no ownership state.
+  retain. String reads do not consume their source; under enforcement step-free slices carry view dependencies, while explicit stepped slices materialize owned strings. Named owned strings copy into containers and remain live. Named owned archetypes instead move into list elements and dict values; later source use is E1301.
+- There is no alias analysis through arbitrary managed storage. Owned fields and owned container elements retain ownership contracts; ordinary managed stores cross the membrane. Local views preserve borrow roots through borrow-containing types, including inherited fields and generic arguments.
 - Flow-sensitivity is per-function CFG dataflow over those symbol ids (the
   `in_consumed` / live-borrow sets), solved on the compiler's shared worklist
   framework (`passes/dataflow.jac`). Branches merge conservatively:
@@ -90,20 +74,26 @@ always within the symbol-level, intraprocedural bounds above.
 
 | Code | Guarantee when clean |
 |------|----------------------|
-| `E1301` | No tagged `own`/`linear` binding is read on any CFG path after the move that consumed it, unless it was reassigned (revived) in between. |
+| `E1301` | No tagged `own`/`lin` binding is read on any CFG path after the move that consumed it, unless it was reassigned (revived) in between. |
 | `E1302` | No point in the function has two live borrows of one owner where at least one is `&mut`. Shared borrows may coexist; a mutable borrow is exclusive. |
 | `E1303` | An owner is never written (assigned, field/subscript-written through, or `&mut`-reborrowed) while a shared `&` borrow of it is live. |
 | `E1304` | No borrow outlives its owner's scope: if a borrow binding declared in an outer scope points at an owner declared in an inner one, the owner's scope end is flagged. |
-| `E1305` | Every `linear` binding is consumed (moved to a final owner, passed on, or sealed into managed storage) at least once before its scope ends. Consuming it *twice* is `E1301`, so a clean function uses each `linear` binding exactly once. Plain `own` is affine -- never consuming it is *not* an error, and E1305 is only ever emitted for `linear`. |
-| `E1306` | No `&`/`&mut` value escapes the scope that created it: not returned (except the single-passthrough-parameter case), not stored into a field or subscript slot. Borrows are second-class; there are no lifetimes to solve because escape is banned outright. |
+| `E1305` | Every `lin` binding is consumed (moved to a final owner, passed on, or sealed into managed storage) at least once before its scope ends. Consuming it *twice* is `E1301`, so a clean function uses each `lin` binding exactly once. Plain `own` is affine -- never consuming it is *not* an error, and E1305 is only ever emitted for `lin`. |
+| `E1306` | No `&`/`&mut` value escapes the scope that created it: not returned (except the single-passthrough-parameter case), not stored into longer-lived storage. Local borrow-containing views and borrowed-result derivation preserve owner dependencies; they do not grant arbitrary escaping lifetimes. |
 | `E1307` | No reference rooted in an `in <handle> {}` region open outlives the handle: not returned (except via single-region elision on a lone `&Region` parameter), not stored where it outlives the handle (legal outward flows become shared borrows of the handle), not handed to an opaque callee (calls that also receive the handle, non-retaining builtins per `JAC_TYPE_REGISTRY`, methods on region-rooted receivers, and constructors under the open are exempt), not sent across a concurrency boundary while borrows of the handle exist, and not wired into managed topology. Extent is dynamic, so the heap-typed result of a call made under the open is region-rooted by the same rules unless the call receives the handle -- with one carve-out: a *directed* connect from a managed anchor into a region-local node, under an open on an owned named handle, is the **seal** (it consumes the handle via the operator-move dataflow and promotes the subgraph; the open admits no archetype instantiation or connect after it, and reuse of the handle is `E1301`). The non-seal shapes (region edge out to managed, undirected wiring, anonymous opens, borrowed `&Region` handles) keep the rejection. Scalar values and `own` reboxes of scalars/strings copy out freely. The bulk free at the handle's drop point therefore cannot create a dangling reference to a region-rooted binding. |
-| `E1308` | Every value crossing a `flow`/`thread_run` send boundary is statically race-free at the binding level: a deep-immutable scalar (`int`/`float`/`bool`/`str`/`bytes`, sendable by value), a deep-immutable `imm`, an `own`/`linear` moved into the boundary, or a join-bounded lend -- an inline `&`/`&mut` of an owner whose flow handle is bound and `wait`-ed in the same statement block before any other use of the owner (the join is the borrow's extent). Live borrows outside that shape and unconsumed `linear` bindings do not cross. `wait` is a receive, not a send: the payload crossed at `flow` time, so reading a handle in `wait` is not a boundary crossing. |
+| `E1308` | Every value crossing a `flow`/`thread_run` send boundary is statically race-free at the binding level: a deep-immutable scalar (`int`/`float`/`bool`/`str`/`bytes`, sendable by value), a deep-immutable `imm`, an `own`/`lin` moved into the boundary, or a join-bounded lend -- an inline `&`/`&mut` of an owner whose flow handle is bound and `wait`-ed in the same statement block before any other use of the owner (the join is the borrow's extent). Live borrows outside that shape and unconsumed `lin` bindings do not cross. `wait` is a receive, not a send: the payload crossed at `flow` time, so reading a handle in `wait` is not a boundary crossing. |
 | `E1309` | An `imm` binding is never mutated *through that binding*: no reassignment, no field/subscript write through it, no `&mut` of it. (It is the binding that is deep-immutable; the checker cannot see writes through a separately-obtained managed alias.) |
 | `E1311` | Every expression-position `imm x` operand is statically unique: an `own` binding (consumed by the operator) or a fresh expression. Uniqueness is the proof that no other handle can ever write the frozen value, which is what lets the operator erase to its operand on every backend. |
+| `E1313` | A `flow for` uses a lent element/chunk collection, keeps control flow within its join, and does not grow its borrowed structure; unsupported loop and chunk forms are rejected. Capture safety is checked separately by E1308, with the recognized integer reductions exempted. |
+| `E1314` | `partition(n)` uses an owned Region, a literal count, and immediate unpacking into exactly that many plain names; every child is independently affine. |
+| `E1315` | A view is not made an owner or stored into a field, container, or global. Returned views derive only from borrowed parameters/receivers, with dependencies preserved at callers. |
+| `E1316` | Reading an owned field into an owning destination cannot duplicate its ownership; optional fields must be extracted with `take`. |
+| `E1317` | Reading an owned container element cannot silently move it; use a removing operation such as `pop`. |
+| `E1318` | A shared borrowed receiver cannot invoke a mutating method, including inferred user methods and builtin container mutators. |
+| `E1319` | `take` addresses optional local/attribute storage; `swap` receives two explicit mutable borrows of same-typed local/attribute storage. |
 
 What none of the codes guarantee: memory safety of unannotated code, absence
-of aliasing through the managed graph, cross-function or cross-module
-lifetimes, or anything about runtime behaviour. The managed RC/GC floor is
+of aliasing through the managed graph, arbitrary cross-function alias relationships, or foreign-handle lifecycle correctness. Borrowed-result signatures carry only the dependencies the checker can derive. The managed RC/GC floor is
 what keeps unchecked code safe; the checker only adds move/borrow discipline
 on top for the bindings that asked for it.
 

@@ -82,7 +82,7 @@ test "solid reports signals runtime symbols for reactive lowering" {
     assert backend.effect_symbols(
         Effect(body=[], deps=[], is_entry=True, is_async=False)
     )
-        == ["createEffect"];
+        == ["createEffect", "onCleanup"];
     assert backend.effect_symbols(
         Effect(body=[], deps=[], is_entry=False, is_async=False)
     )
@@ -539,4 +539,13 @@ test "solid runtime shim imports no react ecosystem package" {
             }
         }
     }
+}
+
+test "solid registers closure-local returned cleanup" {
+    js = compile_fixture_with_backend(
+        "reactive_effects_return_cleanup.jac", SolidBackend()
+    );
+    assert "onCleanup(__jacCleanup)" in js;
+    assert 'typeof __jacCleanup === "function"' in js;
+    assert 'removeEventListener("jac-ping", listener)' in js;
 }

@@ -1,6 +1,6 @@
 # One App, Two Stacks
 
-This page makes the argument of [Why Jac Exists](why-jac.md) by counting. We build the same Todo app twice: once on a traditional stack (a Python backend, a React frontend, an ORM, API route definitions, and serialization logic, spread across separate projects), and once in Jac, where nodes are the data model, walkers and `def:pub` functions are the API, and JSX components hold the UI. Every artifact the traditional stack needs and Jac does not is *glue*: code whose sole purpose is to carry meaning across a *discontinuity*. The totals are at the bottom.
+This page compares two implementations of a Todo application: Jac and a selected Python/React stack. It illustrates where Jac can generate transport and representation code that the other implementation maintains explicitly. The counts describe these examples, not all possible implementations; code generation and different framework choices would change the comparison.
 
 ---
 
@@ -43,10 +43,10 @@ def:pub app() -> JsxElement {
 
 - `node Todo` defines the data model with automatic persistence to a graph database
 - `def:pub get_todos` creates an HTTP API endpoint
-- `cl def:pub app()` defines a React component that runs on the client
+- `def:pub app()` defines a React component that runs on the client
 - `has items` becomes `useState` in the generated JavaScript
 - `async can with entry` becomes `useEffect(() => {...}, [])` for loading data on mount
-- `with entry` seeds initial data into the graph database
+- `get_todos` seeds data when called; repeated calls create additional nodes. A production list endpoint should separate seeding from reads.
 - `await get_todos()` handles the HTTP request to the backend
 
 ---
@@ -421,57 +421,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 
 ## Counting What Matters
 
-Line count is the least of it. The sharper comparison is structural: how many
-notations you maintain, how many times one fact is written down, and how many
-pairs of artifacts are kept consistent only by discipline -- because a pair no
-tool can check is where the next bug comes from.
+The structural difference in these examples is the number of separately maintained declarations. The Python/React version declares a server model, a response schema, and a client interface. Jac can share type declarations and generate supported transport code. Both versions still need application configuration, dependencies, and behavioral tests.
 
-| Measure | Traditional stack (this page) | Jac |
-|---|---|---|
-| General-purpose languages | 3 (Python, TypeScript, SQL via the ORM) | 1 |
-| Auxiliary dialects | 5 (JSON ×2, TS config, HTML, `requirements.txt`) | 0 in this app (1 `jac.toml` in a full project) |
-| Copies of the `Todo` shape | 3 (SQLAlchemy model, Pydantic schema, TS interface) | 1 (`node Todo`) |
-| Boundary-only artifacts (files or config sections) | 5 (`database.py`, `types.ts`, `api.ts`, the `vite.config.ts` proxy section, the CORS block in `main.py`) | 0 |
-| Artifact pairs synced by discipline alone | at least 4 (model↔schema, schema↔interface, route↔client, proxy↔server port) | 0 -- one compiler sees every pair |
-
-That last row is the load-bearing one. Every "kept in sync by hand" pair is a
-place where meaning is re-encoded and **no verifier has jurisdiction over the
-encoding** -- the comment in `types.ts` above says it out loud: "These must be
-kept in sync with the backend Pydantic schemas." Kept in sync *by whom*? By
-convention, by review, and ultimately by `grep`. The whole-program type
-checker of a traditional stack is `grep`.
+This example uses dictionaries and an unparameterized list in places. That limits the type information available to the checker; a shared typed return model would provide a stronger contract. Treat the example as an illustration of program structure, not a measurement of defect prevention.
 
 ## The Rename Test
 
-Don't take the table's word for it -- run the experiment. Rename `title` to
-`name` on the Todo type in each stack, then run every checker the stack has to
-exhaustion, and count what gets caught.
+To inspect contract checking, rename `title` to `name` in the data model and run the checkers for each implementation. Record which stale uses produce diagnostics and which remain unchecked. Then exercise the API and client, since compilation alone does not verify the behavior.
 
-**Traditional stack.** Rename the column and `TodoModel.title`. Now:
+In the Python/React version shown here, the Pydantic response model and TypeScript interface are maintained separately. Updating one does not update the others. Other stacks can use generated clients, schema validation, or contract tests to cover this gap.
 
-- `mypy`/`pyright` flags backend *code* that uses the old attribute -- but not
-  the Pydantic `TodoResponse`, which is a separate class and still says
-  `title`, and still type-checks fine on its own.
-- `tsc` flags frontend uses of `Todo.title` -- *if* you remember to edit
-  `types.ts`, which no tool connects to the backend. If you don't, everything
-  compiles green on both sides.
-- Nothing checks the wire. The first sign of a missed copy is `undefined`
-  rendering in the browser, or a 500 in production -- discovered at runtime,
-  by whoever is on call.
-- The database migration is a fourth, separately authored artifact.
+In Jac, shared typed declarations give the compiler information for diagnosing stale uses on either side of a supported bridge. Dynamic values and unparameterized containers can weaken that coverage. Schema migration is also a separate concern: declare rename intent and inspect stored data as described in [Persistence & Schema Migration](../reference/persistence.md).
 
-**Jac.** Rename `title` on `node Todo`. Run `jac check`. Every stale use --
-the `def:pub` function on the server, the `item.title` in the JSX on the
-client -- is a **compile error with a file and line number**, because the
-client and server are the same program checked by the same compiler against
-one declaration. When it builds again, it works again. (Persisted data
-migrates by rule rather than by hand -- see
-[Persistence & Schema Migration](../reference/persistence.md).)
-
-This is the practical meaning of Jac's design bet: not that boundaries
-disappear, but that every boundary crossing lands inside the reach of the
-compiler -- across tiers, as this page shows, and equally across the package
-ecosystems (PyPI, npm, C) a real application draws on, which enter through a
-plain `import` instead of a wrapper. The property has a name, *synechic*.
-[Why Jac Exists](why-jac.md) carries the diagnosis this page just measured,
-and [The Two Ideas](ideas-behind-jac.md) carries the full argument.
+[Why Jac Exists](why-jac.md) explains the motivation for reducing repeated representations. [The Two Ideas](ideas-behind-jac.md) describes the broader design vocabulary.

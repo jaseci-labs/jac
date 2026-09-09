@@ -1,24 +1,86 @@
 [project]
 name = "es-fixtures"
 
-# Service cut for the sv-to-sv / typed-interop fixture pairs (#7772):
-# consumers import these stems across the service boundary.
-[scale.microservices.routes]
-sv_relative_provider = "/sv-relative"
-typed_return_obj = "/t-obj"
-typed_return_nested = "/t-nested"
-typed_return_enum = "/t-enum"
-typed_optional_union = "/t-union"
-typed_collection_return = "/t-coll"
-typed_args_obj = "/t-args"
-typed_bidirectional = "/t-bidi"
-typed_dict_return = "/t-dict"
-typed_walker_spawn = "/t-wspawn"
-typed_walker_fields = "/t-wfields"
-typed_graph_return = "/t-graph"
-separated = "/separated"
-separated_defpub = "/separated-defpub"
+# App boundaries for the sv-to-sv / typed-interop fixture pairs (#7772):
+# each provider stem is a file-rooted service app; consumers compiled here
+# are shared modules that bridge to the app owning the stem they import.
+[apps.sv_relative_provider]
+kind = "service"
+entry-point = "sv_relative_provider.jac"
+route = "/sv-relative"
+
+[apps.sv_relative_consumer]
+kind = "service"
+entry-point = "sv_relative_consumer.jac"
+route = "/sv-relative-consumer"
+
+[apps.typed_return_obj]
+kind = "service"
+entry-point = "typed_return_obj.jac"
+route = "/t-obj"
+
+[apps.typed_return_nested]
+kind = "service"
+entry-point = "typed_return_nested.jac"
+route = "/t-nested"
+
+[apps.typed_return_enum]
+kind = "service"
+entry-point = "typed_return_enum.jac"
+route = "/t-enum"
+
+[apps.typed_optional_union]
+kind = "service"
+entry-point = "typed_optional_union.jac"
+route = "/t-union"
+
+[apps.typed_collection_return]
+kind = "service"
+entry-point = "typed_collection_return.jac"
+route = "/t-coll"
+
+[apps.typed_args_obj]
+kind = "service"
+entry-point = "typed_args_obj.jac"
+route = "/t-args"
+
+[apps.typed_bidirectional]
+kind = "service"
+entry-point = "typed_bidirectional.jac"
+route = "/t-bidi"
+
+[apps.typed_dict_return]
+kind = "service"
+entry-point = "typed_dict_return.jac"
+route = "/t-dict"
+
+[apps.typed_walker_spawn]
+kind = "service"
+entry-point = "typed_walker_spawn.jac"
+route = "/t-wspawn"
+
+[apps.typed_walker_fields]
+kind = "service"
+entry-point = "typed_walker_fields.jac"
+route = "/t-wfields"
+
+[apps.typed_graph_return]
+kind = "service"
+entry-point = "typed_graph_return.jac"
+route = "/t-graph"
+
+[apps.separated]
+kind = "service"
+entry-point = "separated.jac"
+route = "/separated"
+
+[apps.separated_defpub]
+kind = "service"
+entry-point = "separated_defpub.jac"
+route = "/separated-defpub"
+
 [placement.pins]
+"ownership_places" = "client"
 "del_plain_name_es" = "client"
 "del_semantics_es" = "client"
 "advanced_language_features" = "client"

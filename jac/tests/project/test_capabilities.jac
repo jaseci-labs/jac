@@ -145,7 +145,7 @@ test "serve derives no database capability under any intent (#8000)" {
     # driver is vendored with the runtime, never installed as a capability.
     for intent in [
         {},
-        {"microservices": {"enabled": True}},
+        {"gateway": {"colocate": False}},
         {"database": {"type": "postgres"}}
     ] {
         for caps_cmds in [
@@ -529,7 +529,7 @@ test "scale app inferred as kind=cli still installs the serve closure (#7206)" {
     tmp = tempfile.mkdtemp(prefix="jac_capinst_");
     project_dir = Path(tmp) / "svc";
     project_dir.mkdir();
-    # No [project] kind + plain main.jac -> resolve_project_kind infers "cli"
+    # No [project] kind + plain main.jac -> resolve_app_kind infers "cli"
     # (action="execute"), yet [scale] means the app is served.
     (project_dir / "jac.toml").write_text(
         '[project]\nname = "svc"\nversion = "0.1.0"\nentry-point = "main.jac"\n\n'

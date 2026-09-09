@@ -2,13 +2,13 @@
 
 The classes exported here are the pass infrastructure (Transform/UniPass
 bases, diagnostics values) plus the bootstrap-critical analysis passes
-the jac0 tier compiles. Codegen passes live in their backends
-(jaclang.compiler.backends.*) and placement in jaclang.compiler.placement;
-re-exporting them here would make this package's init cyclic with the
-backends, which import pass bases from this package's modules.
+the jac0 tier compiles. Codegen passes and their shared bases live in
+jaclang.compiler.backends (common/, py/, es/, native/) and placement in
+jaclang.compiler.placement; re-exporting them here would make this
+package's init cyclic with the backends, which import pass bases from
+this package's modules.
 """
 
-from jaclang.compiler.passes.ast_gen import BaseAstGenPass
 from jaclang.compiler.passes.ast_validation_pass import ASTValidationPass
 from jaclang.compiler.passes.boundary_analysis_pass import BoundaryAnalysisPass
 from jaclang.compiler.passes.decl_impl_match_pass import DeclImplMatchPass
@@ -26,7 +26,6 @@ from jaclang.compiler.passes.uni_pass import UniPass
 __all__ = [
     "Alert",
     "ASTValidationPass",
-    "BaseAstGenPass",
     "BaseTransform",
     "BoundaryAnalysisPass",
     "DeclImplMatchPass",

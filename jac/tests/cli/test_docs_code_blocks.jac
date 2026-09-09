@@ -70,3 +70,38 @@ test "docs corpus jac code blocks all parse" {
         + "\n".join(failures[:40])
     );
 }
+
+
+test "day planner complete checkpoints inside callouts parse" {
+    docs_dir = guide_store.docs_dir() / "tutorials" / "first-app";
+    count = 0;
+    for path in sorted(docs_dir.glob("day-planner-*.md")) {
+        lines = path.read_text(encoding="utf-8").splitlines();
+        i = 0;
+        while i < len(lines) {
+            if lines[i].startswith("??? note \"Complete `") {
+                i += 1;
+                while i < len(lines) and not lines[i].strip() {
+                    i += 1;
+                }
+                if i < len(lines) and lines[i] == "    ```jac" {
+                    start = i + 1;
+                    i += 1;
+                    code: list[str] = [];
+                    while i < len(lines) and lines[i] != "    ```" {
+                        code.append(
+                            lines[i][4:] if lines[i].startswith("    ") else lines[i]
+                        );
+                        i += 1;
+                    }
+                    assert i < len(lines) , f"Unclosed checkpoint in {path}:{start}";
+                    (had, pd, ld) = parse_diags("\n".join(code), f"{path}:{start}");
+                    assert not had , f"Checkpoint syntax in {path}:{start}: {pd or ld}";
+                    count += 1;
+                }
+            }
+            i += 1;
+        }
+    }
+    assert count >= 10 , f"Expected complete tutorial files, found {count}";
+}

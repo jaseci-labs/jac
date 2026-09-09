@@ -11,12 +11,13 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 }
 import from jaclang.scale.config.config_loader { JacScaleConfig }
 import from jaclang.scale.deploy.autoscale.autoscaler { Autoscaler, AutoscalerSpec }
+import from jaclang.scale.runtime.fleet { fleet_of }
 
 
 def _builder(services: dict) -> ManifestBuilder {
     return ManifestBuilder(
         k8s_config=KubernetesConfig(app_name="t", namespace="t-ns"),
-        microservices_config={"services": services},
+        fleet=fleet_of({}, overrides=services),
         dry_run=True
     );
 }
@@ -290,36 +291,6 @@ test "JAC_PROFILE overlay file reaches the scale plugin config" {
     }
 }
 
-test "deprecated JAC_ENV still selects the profile for plugin configs" {
-    import tempfile;
-    tmp = tempfile.mkdtemp();
-    with open(os.path.join(tmp, "jac.toml"), "w") as f {
-        f.write(
-            '[project]\nname = "t"\nversion = "0.0.1"\nentry-point = "main.jac"\n\n'
-                + '[scale.kubernetes]\nmin_replicas = 3\n'
-        );
-    }
-    with open(os.path.join(tmp, "jac.preview.toml"), "w") as f {
-        f.write('[scale.kubernetes]\nmin_replicas = 1\n');
-    }
-    old_profile = os.environ.pop("JAC_PROFILE", None);
-    old_env = os.environ.get("JAC_ENV");
-    os.environ["JAC_ENV"] = "preview";
-    try {
-        cfg = JacScaleConfig(project_dir=Path(tmp)).get_kubernetes_config();
-        assert cfg.get("min_replicas") == 1;
-    } finally {
-        if old_env is None {
-            del os.environ["JAC_ENV"];
-        } else {
-            os.environ["JAC_ENV"] = old_env;
-        }
-        if old_profile is not None {
-            os.environ["JAC_PROFILE"] = old_profile;
-        }
-    }
-}
-
 test "without JAC_PROFILE the base config is unchanged" {
     import tempfile;
     tmp = tempfile.mkdtemp();
@@ -343,12 +314,13 @@ test "without JAC_PROFILE the base config is unchanged" {
     }
 }
 
-test "embedder-supplied config gets schema defaults (client entry included)" {
-    b = _builder({"svc_a": {}});
-    cfg = b._ms_cfg();
-    assert cfg["client"]["entry"] == "main.jac";
+test "embedder-supplied overrides reach the builder with gateway defaults" {
+    b = _builder({"svc_a": {"replicas": 2}});
+    cfg = b._gateway_cfg();
     assert cfg["gateway_port"] == 8000;
-    assert cfg["services"] == {"svc_a": {}};
+    assert b._drain_timeout() == 10;
+    assert b._service_config("svc_a") == {"replicas": 2};
+    assert b._service_config("svc_b") == {};
 }
 
 
@@ -361,18 +333,16 @@ test "gateway entrypoint serves the shipped bundle and never rebuilds it" {
 }
 
 
-test "embedder overrides survive normalization" {
+test "embedder gateway overrides survive normalization" {
     b = ManifestBuilder(
         k8s_config=KubernetesConfig(app_name="t", namespace="t-ns"),
-        microservices_config={
-            "gateway_port": 9001,
-            "client": {"entry": False},
-            "services": {"svc_a": {}}
-        },
+        fleet=fleet_of({}, overrides={"svc_a": {}}),
+        gateway_config={"gateway_port": 9001, "replicas": 3},
+        client_entry="",
         dry_run=True
     );
-    cfg = b._ms_cfg();
+    cfg = b._gateway_cfg();
     assert cfg["gateway_port"] == 9001;
-    assert cfg["client"]["entry"] == "";
-    assert cfg["drain_timeout_seconds"] == 10.0;
+    assert b._client_entry() == "";
+    assert b._service_config("__gateway__") == {"replicas": 3};
 }

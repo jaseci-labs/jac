@@ -513,7 +513,13 @@ def _emit_main_py(
         ];
     }
 
-    lines += ['', 'from jaclang.server.server import UserManager, ExecutionManager'];
+    lines += [
+        '',
+        'from jaclang.server.identity.config import configure_identity',
+        'from jaclang.server.identity.user_manager import UserManager',
+        'from jaclang.server.server import ExecutionManager',
+        'from jaclang.server.settings import ServeSettings'
+    ];
 
     if entry_module {
         lines += [
@@ -535,6 +541,8 @@ def _emit_main_py(
 
     lines += [
         '',
+        '_settings = ServeSettings.load(_BASE)',
+        'configure_identity(_settings.auth, _BASE)',
         '_um = UserManager(base_path=_BASE)',
         '_em = ExecutionManager(base_path=_BASE, user_manager=_um)',
         '_GUEST = "__guest__"',

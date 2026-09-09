@@ -461,7 +461,44 @@ impl SolidBackend.lower_effect(e: Effect) -> list[es.Statement] {
         iife_call = es.CallExpression(callee=async_arrow, arguments=[]);
         effect_body.append(es.ExpressionStatement(expression=iife_call));
     } else {
-        effect_body = e.body;
+        setup = es.ArrowFunctionExpression(
+            params=[],
+            body=es.BlockStatement(body=e.body),
+            async_=False,
+            expression=False
+        );
+        effect_body = [
+            es.VariableDeclaration(
+                kind='const',
+                declarations=[
+                    es.VariableDeclarator(
+                        id=es.Identifier(name='__jacCleanup'),
+                        init=es.CallExpression(callee=setup, arguments=[])
+                    )
+                ]
+            ),
+            es.IfStatement(
+                `test=es.BinaryExpression(
+                    operator='===',
+                    left=es.UnaryExpression(
+                        operator='typeof',
+                        prefix=True,
+                        argument=es.Identifier(name='__jacCleanup')
+                    ),
+                    right=es.Literal(value='function')
+                ),
+                consequent=es.BlockStatement(
+                    body=[
+                        es.ExpressionStatement(
+                            expression=es.CallExpression(
+                                callee=es.Identifier(name='onCleanup'),
+                                arguments=[es.Identifier(name='__jacCleanup')]
+                            )
+                        )
+                    ]
+                )
+            )
+        ];
     }
     effect_callback = es.ArrowFunctionExpression(
         params=[],
@@ -525,7 +562,7 @@ impl SolidBackend.effect_symbols(e: Effect) -> list[str] {
     if not e.is_entry {
         return ["onCleanup"];
     }
-    return ["createEffect"];
+    return ["createEffect"] if e.is_async else ["createEffect", "onCleanup"];
 }
 
 impl SolidBackend.async_boundary_symbols(a: AsyncBoundary) -> list[str] {

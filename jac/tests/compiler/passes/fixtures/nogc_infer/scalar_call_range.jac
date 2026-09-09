@@ -1,5 +1,5 @@
 """A scalar (int) local initialized from a call must not be move-tracked
-under --enforce-nogc (issue #7466 bug 5): scalars are copied by value, so
+under --memory nogc (issue #7466 bug 5): scalars are copied by value, so
 passing `iters` to range() in a for-header (whose CFG node sits on the loop
 back edge) must not report use-after-move."""
 

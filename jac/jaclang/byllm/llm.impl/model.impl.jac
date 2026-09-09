@@ -29,6 +29,9 @@ impl Model.postinit -> None {
                 _disable_debugging();
             }
             litellm.drop_params = _litellm_config.get("drop_params", True);
+            litellm.include_cost_in_streaming_usage = _litellm_config.get(
+                "include_cost_in_streaming_usage", True
+            );
         }
 
         native_override = self.config.get(
@@ -97,6 +100,94 @@ impl Model.invoke(mt_run: MTRuntime) -> any {
         );
         _current_invocation_id.reset(_ctx_token);
         raise;
+    }
+}
+
+impl Model.ainvoke(mt_run: MTRuntime) -> object {
+    import uuid;
+    import time;
+    import types as _types_mod;
+
+    logging_stream = mt_run.stream and mt_run.call_params.get("logging", False);
+    no_tools = len(mt_run.tools) == 0;
+    handled_directly = no_tools and not logging_stream;
+    if not handled_directly {
+        return await super.ainvoke(mt_run);
+    }
+
+    _parent = _current_invocation_id.get(None);
+    mt_run._parent_invocation_id = _parent;
+    mt_run._invocation_id = str(uuid.uuid4());
+    _ctx_token = _current_invocation_id.set(mt_run._invocation_id);
+    _start = time.time();
+
+    try {
+        result = await super.ainvoke(mt_run);
+
+        if isinstance(result, _types_mod.AsyncGeneratorType) {
+            _current_invocation_id.reset(_ctx_token);
+            return _astream_with_telemetry(result, mt_run, self.model_name, _start);
+        }
+
+        _emit_agent_telemetry(
+            mt_run,
+            result,
+            self.model_name,
+            (time.time() - _start) * 1000,
+            "success",
+            None
+        );
+        _current_invocation_id.reset(_ctx_token);
+        return result;
+    } except Exception as e {
+        _emit_agent_telemetry(
+            mt_run, None, self.model_name, (time.time() - _start) * 1000, "error", e
+        );
+        _current_invocation_id.reset(_ctx_token);
+        raise;
+    }
+}
+
+async def _astream_with_telemetry(
+    agen: AsyncGenerator[object, None], mt: object, model_name: str, start: float
+) -> AsyncGenerator[object, None] {
+    import asyncio;
+    import contextvars;
+    import time;
+
+    invocation_id = mt?._invocation_id;
+    ctx = contextvars.copy_context();
+    if invocation_id is not None {
+        ctx.run(_current_invocation_id.set, invocation_id);
+    }
+
+    _completed = False;
+    try {
+        while True {
+            try {
+                item = await asyncio.Task(agen.__anext__(), context=ctx);
+            } except StopAsyncIteration {
+                _completed = True;
+                break;
+            }
+            yield item;
+        }
+    } except Exception as inner_e {
+        _emit_agent_telemetry(
+            mt, None, model_name, (time.time() - start) * 1000, "error", inner_e
+        );
+        raise;
+    } finally {
+        if _completed {
+            _emit_agent_telemetry(
+                mt,
+                "[streaming]",
+                model_name,
+                (time.time() - start) * 1000,
+                "success",
+                None
+            );
+        }
     }
 }
 

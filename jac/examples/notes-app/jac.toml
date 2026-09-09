@@ -2,6 +2,7 @@
 name = "notes-app"
 version = "0.1.0"
 description = "Notes app example exercising the CEF desktop target"
+kind = "desktop"
 entry-point = "main.jac"
 
 [client]

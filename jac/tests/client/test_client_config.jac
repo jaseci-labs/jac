@@ -194,14 +194,22 @@ test "endpoint effects classify readers and writers" {
                 "utf-8", errors="ignore"
             );
             effects = _endpoint_effects(body);
+            import json;
+            for (identity, info) in effects.items() {
+                assert json.loads(identity)
+                    == [info["app"], info["module"], info["kind"], info["name"]];
+            }
+            effects = {
+                info["kind"] + ":" + info["name"]: info for info in effects.values()
+            };
             for reader in ["walker:ping_server", "walker:get_server_message"] {
                 assert reader in effects , f"{reader} should be classified";
-                assert not effects[reader]["is_writer"] , (
-                    f"{reader} should be a reader (is_writer=false)"
+                assert not effects[reader]["writes"] , (
+                    f"{reader} should be a reader (writes=[])"
                 );
             }
             assert "walker:create_item" in effects , "writer should be classified";
-            assert effects["walker:create_item"]["is_writer"] , (
+            assert effects["walker:create_item"]["writes"] , (
                 "create_item mutates Root and should be a writer"
             );
         } finally {

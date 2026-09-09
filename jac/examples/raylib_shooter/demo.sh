@@ -88,21 +88,21 @@ find_jac() {
 # shooter_headless.jac is the shooter's game loop with the renderer swapped
 # for a deterministic digest and the ownership dial turned all the way up: it
 # passes the enforced borrow checker and compiles headerless with NO collector
-# and machine-checked zero reference counting (--enforce-nogc --gc none
-# --assert-no-rc). The same source also builds under rc and cycles; identical
+# and machine-checked zero reference counting (--memory nogc). The same
+# source also builds under rc and managed; identical
 # digests across the three prove the borrow-checked build changes nothing.
 HEADLESS_FRAMES="${HEADLESS_FRAMES:-100000}"
 
 if [ "$MODE" = "headless" ]; then
   JAC="$(find_jac)"
   echo ">> compiling: shooter_headless.jac under three memory modes"
-  echo "   none   : --enforce-nogc --gc none --assert-no-rc  (borrow-checked, zero RC)"
-  echo "   rc     : --gc rc                                  (reference counting)"
-  echo "   cycles : --gc cycles                              (rc + cycle collector)"
-  "$JAC" nacompile shooter_headless.jac --enforce-nogc --gc none --assert-no-rc \
+  echo "   nogc    : --memory nogc     (borrow-checked, zero RC)"
+  echo "   rc      : --memory rc       (reference counting)"
+  echo "   managed : --memory managed  (rc + cycle collector)"
+  "$JAC" build --native shooter_headless.jac --memory nogc \
     -o shooter_headless_none >/dev/null
-  "$JAC" nacompile shooter_headless.jac --gc rc     -o shooter_headless_rc     >/dev/null
-  "$JAC" nacompile shooter_headless.jac --gc cycles -o shooter_headless_cycles >/dev/null
+  "$JAC" build --native shooter_headless.jac --memory rc     -o shooter_headless_rc     >/dev/null
+  "$JAC" build --native shooter_headless.jac --memory managed -o shooter_headless_cycles >/dev/null
 
   echo ">> simulating ${HEADLESS_FRAMES} frames per build (240 Hz game tick) ..."
   headless_digests=""
@@ -207,8 +207,8 @@ echo ">> staged   : raylib shared library set -> ./ (via $stage_name)"
 build_jac() {
   local JAC
   JAC="$(find_jac)"
-  echo ">> compiling: $JAC nacompile shooter.jac"
-  "$JAC" nacompile shooter.jac
+  echo ">> compiling: $JAC build --native shooter.jac"
+  "$JAC" build --native shooter.jac
 }
 
 # Locate a Zig toolchain, downloading the single-archive distribution into

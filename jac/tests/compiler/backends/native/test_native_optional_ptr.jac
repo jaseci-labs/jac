@@ -13,7 +13,13 @@ segfaulted; these tests pin the diagnostic and the guard-free IR shape.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    compile_native,
+    compile_native_ir,
+    get_func,
+    native_force_opts
+}
 
 import from jaclang.compiler.driver.program { JacProgram }
 
@@ -124,7 +130,7 @@ test "un-narrowed optional use at strict sites is E1121, never runtime UB" {
 }
 
 test "IR shape: tagged optionals, jacval slots, no NULL-guarded strcmp" {
-    (_, ir) = compile_native("optional_ptr.jac");
+    ir = compile_native_ir("optional_ptr.jac");
     text = str(ir.gen.llvm_ir);
     assert "JacOpt." in text , "pointer optionals did not lower to JacOpt";
     assert "List.jacval" in text , "optional elements did not lower to jacval slots";

@@ -1,14 +1,13 @@
-"""jac-shop - E-Commerce Microservice App.
+"""jac-shop - an e-commerce workspace of service apps.
 
-Microservice architecture:
-  - products_app.jac: catalog functions (list_products, get_product)
-  - cart_app.jac: cart functions (view_cart, add_to_cart, clear_cart)
-  - orders_app.jac: order functions; sv imports cart_app for inter-service calls
-  - main.jac: this file - client UI + gateway entry point
+Apps (see jac.toml [apps]):
+  - products_app: catalog functions (list_products, get_product)
+  - cart_app: cart functions (view_cart, add_to_cart, clear_cart)
+  - orders_app: order functions; bridges to cart_app across the app boundary
+  - web (this file): client UI, hosts the gateway
 
-Run: jac run --serve main.jac
-  Gateway on :8000
-  Services auto-spawn on-demand via sv import (hash-based ports in 18xxx)
+Run: jac run web            (service apps colocated in-process)
+     jac run web --fleet    (service apps as local processes behind :8000)
 """
 
 # Client-side UI - served as static SPA by the gateway

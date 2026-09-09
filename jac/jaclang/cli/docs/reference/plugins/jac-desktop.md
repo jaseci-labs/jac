@@ -2,7 +2,7 @@
 
 The **desktop target** (historically the standalone `jac-desktop` plugin, now built
 into `jaclang` core) adds a Jac-native desktop build to full-stack Jac apps. A
-desktop app is **one `jac nacompile`d binary plus a web engine** - no Rust
+desktop app is **one `jac build --native`d binary plus a web engine** - no Rust
 toolchain, no PyInstaller, no separate process.
 
 It builds the same Vite frontend that the **jac-client** framework produces (the `cl`
@@ -12,10 +12,12 @@ bundle on a loopback port and renders it in either the OS-native webview
 Embedded Framework (CEF). The embedded interpreter is also where the `sv`
 backend runs in-process.
 
-The `desktop` and `cef` targets register automatically as part of
-`jaclang` core, so `jac build --client desktop`,
-`jac run --client desktop`, `jac build --client cef`, and
-`jac run --client cef` work out of the box.
+The desktop target registers automatically as part of `jaclang` core. An app
+declared with `kind = "desktop"` (`jac create myapp --kind desktop`, or `jac
+create --app studio --kind desktop` inside a workspace) builds and launches the
+native window from `jac build <app>` and `jac run <app>` with no flag. The
+renderer is `[desktop] engine`: `"native"` (the default, the OS webview) or
+`"cef"` (Chromium).
 
 ---
 
@@ -27,17 +29,10 @@ The desktop target ships with `jaclang` core -- there is nothing extra to instal
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-Building a desktop app links a small native webview wrapper (`libwebview.so`),
-which is compiled on first use, so the build machine needs the OS web engine plus
-a C toolchain. On Debian/Ubuntu:
-
-```bash
-sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
-```
-
-(`jaclang` ships a helper,
-`jaclang/client/targets/desktop/native/webview/install_webkit_deps.sh`,
-that installs these.)
+Jac provisions the native webview wrapper and its build dependencies automatically.
+Use `jac setup --toolchain desktop` to prepare them ahead of time. Linux system
+libraries require administrator access; downloads and generated native libraries
+live in the managed toolchain cache.
 
 ---
 
@@ -45,37 +40,46 @@ that installs these.)
 
 There is **no setup step** - the native host is generated at build time.
 
-```bash
-jac build --client desktop      # -> .jac/client/desktop/<app>  (single binary + dist/)
-jac run --client desktop        # build, then launch the native window
-
-jac build --client cef  # -> .jac/client/cef/  (Chromium/CEF)
-jac run --client cef    # build, then launch the CEF window
+```toml
+[apps.studio]          # or [project] kind = "desktop" in a single-app project
+kind = "desktop"
+path = "studio"
 ```
 
-The output directory `.jac/client/desktop/` contains the self-contained binary,
-its `dist/` (the served bundle), and `libwebview.so`. The binary resolves its
-sibling `dist/` and `libwebview.so` relative to itself, so the directory is
-relocatable.
+```bash
+jac build studio       # -> .jac/client/desktop/<app>  (single binary + dist/)
+jac run studio         # build, then launch the native window
+jac run --dev studio   # HMR: Vite on loopback + recompile on .jac saves (engine = "native" only)
+```
 
-Use `desktop` when you want the smallest native wrapper around the platform web
-engine. Use `cef` when your app needs a consistent Chromium runtime
-across machines, stricter parity with browser APIs, or CEF-specific diagnostics.
-The CEF target stages the CEF runtime, `libcef_dispatch.so`, `cef-subprocess`,
-and support files beside the app binary.
+In a single-app project the app name is implied: `jac build` / `jac run`.
+
+The output directory `.jac/client/desktop/` contains the self-contained binary,
+its `dist/` (the served bundle), and the renderer's libraries: `libwebview.so`
+with the native engine; the CEF runtime, `libcef_dispatch.so`, `cef-subprocess`
+and support files with `engine = "cef"`. The binary resolves its siblings
+relative to itself, so the directory is relocatable.
+
+Use the native engine when you want the smallest wrapper around the platform
+web engine. Use `cef` when your app needs a consistent Chromium runtime across
+machines, stricter parity with browser APIs, or CEF-specific diagnostics; CEF
+has no HMR, so `jac run --dev` needs `engine = "native"`.
 
 ---
 
 ## Configuration
 
-App identity and window geometry come from `[desktop]` in `jac.toml`:
+App identity, window geometry, the engine and the backend come from `[desktop]`
+in `jac.toml`. In a workspace, `[apps.<name>.desktop]` overlays it for that
+app, the way `[apps.<name>.client]` overlays `[client]`:
 
 ```toml
 [desktop]
 name = "my-app"
 identifier = "com.example.myapp"
 version = "1.0.0"
-engine = "native"  # "native" or "cef"
+engine = "native"        # "native" (OS webview) or "cef" (Chromium)
+backend = "embedded"     # or the URL of the server the app talks to
 
 [desktop.window]
 title = "My App"
@@ -86,30 +90,36 @@ min_height = 600
 resizable = true
 ```
 
+`backend` says where the app's server runs:
+
+- `"embedded"` (the default): the desktop process serves the program itself.
+  The build seals the project into an image shipped beside the binary (the
+  workspace's default serving app plus its colocated service apps, or the
+  desktop app's own server side in a single-app project) and the host boots
+  it on a loopback port.
+- a URL such as `"https://jaclang.org"`: the app is a native window onto that
+  server. The bundle is built with that as its API base, so every walker and
+  function call goes there, and the host serves only the bundle and the
+  desktop broker. The desktop app needs no server-side code of its own.
+
 `engine` defaults to `"native"`. Set it to `"cef"` when the project should use
-Chromium Embedded Framework:
-
-```toml
-[desktop]
-engine = "cef"
-```
-
-Then build or launch the matching target:
+Chromium Embedded Framework. Then build or launch the app as usual:
 
 ```bash
-jac build --client cef
-jac run --client cef
+jac build studio
+jac run studio
 ```
 
 The example app at `jac/examples/notes-app/` is a small notes editor that uses
 `engine = "cef"` and includes a diagnostics drawer for the desktop bridge,
-loopback broker, and `localStorage` persistence checks.
+loopback broker, and `localStorage` persistence checks. `jac/examples/jaclang_org`
+ships jaclang.org itself as a desktop app with `backend = "https://jaclang.org"`.
 
 ---
 
 ## CEF runtime flags
 
-The `cef` target accepts a few environment variables for diagnostics and
+The CEF engine accepts a few environment variables for diagnostics and
 platform workarounds:
 
 | Variable | Effect |
@@ -126,7 +136,7 @@ platform workarounds:
 For example:
 
 ```bash
-cd .jac/client/cef
+cd .jac/client/desktop
 JAC_CEF_DISABLE_GPU=1 OZONE_PLATFORM=x11 ./my-app
 ```
 
@@ -201,15 +211,24 @@ notification = true
 ## How it works
 
 1. `WebTarget` builds the `cl` codespace with the standard Vite pipeline into
-   `.jac/client/dist/`.
-2. jac-desktop generates a native host that:
-   - `Py_Initialize()`s an embedded CPython and starts `http.server` on a
-     loopback port in a daemon thread, serving `dist/` (resolved next to the
-     binary);
+   the app's client dir (`.jac/client/<app>/dist/` in a workspace). With a
+   remote `backend`, that URL is baked in as the bundle's API base.
+2. jac-desktop seals the program into an app image (`app.jab`, through the same
+   `build_jab` that `jac build` uses) and generates a native host that:
+   - boots the fused Jac runtime with an embedded CPython, materializes the
+     image and runs the one Jac server (`JacAPIServer`) on a loopback port,
+     serving the built bundle as its client and, for an embedded backend, the
+     program with its colocated service apps behind their `/api/<app>` routes;
+   - registers the desktop broker as a server extension under `/__jac/`:
+     health, the SSO session, the OAuth start/callback pair, the plugin event
+     stream and plugin invocation;
    - opens either an OS-native webview or a CEF browser window and navigates to
-     that loopback URL.
-3. `jac nacompile` lowers the host to a native binary via Jac's pure-Jac linker
+     that loopback origin. Walker and function calls are ordinary HTTP, exactly
+     as in the browser; there is no second transport for the native window.
+3. `jac build --native` lowers the host to a native binary via Jac's pure-Jac linker
    (no `cc`/`ld`), recording the renderer libraries with an `$ORIGIN` runpath.
+
+Each desktop app of a workspace builds under its own `.jac/client/<app>/desktop/`.
 
 The native webview binding, build tooling, and a dependency-free test suite live
 inside `jaclang` core under `jaclang/client/targets/desktop/native/webview/`.
@@ -220,8 +239,8 @@ The CEF binding, pinned CEF fetch tooling, and QA checklist live under
 
 ## Status
 
-Beta 🧪. `jac build --client desktop` produces a working, self-contained native
-desktop binary that renders your `cl` UI and runs `sv` walkers/functions
-in-process on the embedded interpreter, with HMR dev mode via
-`jac run --client desktop --dev`. Per-OS packaging/signing remains open. See
+Beta 🧪. `jac build <app>` on a `desktop` app produces a working, self-contained
+native desktop binary that renders your `cl` UI and serves your program from
+the sealed image on a loopback port (or points at a remote server), with HMR
+dev mode via `jac run --dev <app>`. Per-OS packaging/signing remains open. See
 [issue #6436](https://github.com/jaseci-labs/jaseci/issues/6436).

@@ -202,26 +202,43 @@ with entry {
 
 ### 5 Keywords
 
-Jac keywords are reserved and cannot be used as identifiers:
+Every word below is reserved: the lexer turns it into a keyword token, so it
+cannot name a variable, field, parameter, function or archetype without the
+backtick escape described under [Identifiers](#6-identifiers). Using one
+anyway is error **E0013**, and the escape is the fix. After a dot no escape is
+needed: `sys.exit(0)` and `re.match(...)` are attribute reads and always parse.
 
-| Category | Keywords |
-|----------|----------|
-| **Archetypes** | `obj`, `node`, `edge`, `walker`, `class`, `enum` |
-| **Abilities** | `can`, `def`, `init`, `postinit` |
-| **Access** | `pub`, `priv`, `protect`, `static`, `override`, `abst`, `Self` |
-| **Control** | `if`, `elif`, `else`, `while`, `for`, `match`, `case`, `switch`, `default` |
-| **Loop** | `break`, `continue` |
-| **Return** | `return`, `yield`, `report`, `skip` |
-| **Exception** | `try`, `except`, `finally`, `raise`, `assert` |
-| **OSP** | `visit`, `disengage`, `spawn`, `here`, `root`, `visitor` |
-| **Module** | `import`, `include`, `from`, `as`, `glob` |
-| **Compile time** | `comptime` (see [Compile-Time Evaluation](comptime.md)) |
-| **Blocks** | `cl` (client), `sv` (server), `na` (native) |
-| **Other** | `with`, `test`, `impl`, `sem`, `by`, `del`, `in`, `is`, `and`, `or`, `not`, `async`, `await`, `flow`, `wait`, `lambda`, `props` |
+<!-- reserved-words:begin -- pinned to jaclang.compiler.frontend.parser.tokens.reserved_words by tests/compiler/test_reserved_words.jac -->
+```text
+abst and any as assert async await awaiting bool break by bytes can case class comptime
+continue def default del deleter dict disengage edge elif else entry enum except exit f32 f64
+finally float flow for forever from getter glob graph has here i16 i32 i64 i8 if imm
+impl import in include init int is lambda lin list match mut node not obj or
+override own postinit priv props protect pub raise report return root self sem set setter skip
+spawn static str super switch test try tuple type u16 u32 u64 u8 visit visitor wait
+walker while with yield
+```
+<!-- reserved-words:end -->
+
+Three groups inside that list read differently in a *reading* position:
+
+- **Special references** `self`, `super`, `root`, `here`, `visitor`, `props`,
+  `init` and `postinit` are read directly and never take a backtick: write
+  `self.name`, `root ++> n`, `def init`. They still cannot be bound
+  (`root = x;` and `for here in ...` are errors).
+- **Built-in type names** `int`, `float`, `str`, `bool`, `bytes`, `list`,
+  `dict`, `set`, `tuple`, `type`, `any` and the fixed-width numerics `i8` to
+  `i64`, `u8` to `u64`, `f32`, `f64` are keywords to the lexer but accepted
+  wherever a name can go, so `type(x)` and `list(xs)` work unescaped. Only
+  `any` needs the backtick to reach the built-in function (see below).
+- **Ownership** words `own`, `mut`, `imm` and `awaiting` are reserved like
+  every other keyword even though they only appear in type positions.
+
+`True`, `False` and `None` are literal values rather than keywords. `Self` and
+the block markers `cl`, `sv` and `na` are ordinary names with contextual
+meaning; they are not reserved.
 
 **Note:** The abstract modifier keyword is `abst`, not `abstract` (and not `abs`, which is the built-in absolute-value function).
-
-**Note:** `entry` and `exit` are *contextual* keywords -- they have special meaning only in entry/exit clauses (`with entry`, `can ... with Root exit`) and remain valid as ordinary identifiers (`entry = 5;` is fine).
 
 ### 6 Identifiers
 

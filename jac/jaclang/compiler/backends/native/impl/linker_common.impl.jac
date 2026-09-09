@@ -1,5 +1,83 @@
 import struct;
 
+impl read_uleb128(b: bytes, o: int) -> tuple[int, int] {
+    r = 0;
+    s = 0;
+    while True {
+        x = b[o];
+        o += 1;
+        r |= (x & 0x7f) << s;
+        s += 7;
+        if not (x & 0x80) {
+            return (r, o);
+        }
+    }
+}
+
+impl read_sleb128(b: bytes, o: int) -> tuple[int, int] {
+    r = 0;
+    s = 0;
+    while True {
+        x = b[o];
+        o += 1;
+        r |= (x & 0x7f) << s;
+        s += 7;
+        if not (x & 0x80) {
+            if x & 0x40 {
+                r |= -(1 << s);
+            }
+            return (r, o);
+        }
+    }
+}
+
+impl encode_uleb128(v: int) -> bytes {
+    out = bytearray();
+    while True {
+        x = v & 0x7f;
+        v >>= 7;
+        if v {
+            out.append(x | 0x80);
+        } else {
+            out.append(x);
+            return bytes(out);
+        }
+    }
+}
+
+impl encode_uleb128_padded5(v: int) -> bytes {
+    out = bytearray();
+    i = 0;
+    while i < 5 {
+        x = (v >> (7 * i)) & 0x7f;
+        if i < 4 {
+            out.append(x | 0x80);
+        } else {
+            out.append(x);
+        }
+        i += 1;
+    }
+    return bytes(out);
+}
+
+impl encode_sleb128(v: int) -> bytes {
+    out = bytearray();
+    while True {
+        x = v & 0x7f;
+        v >>= 7;
+        if (v == 0 and not (x & 0x40)) or (v == -1 and (x & 0x40)) {
+            out.append(x);
+            return bytes(out);
+        }
+        out.append(x | 0x80);
+    }
+}
+
+impl read_leb_name(b: bytes, o: int) -> tuple[str, int] {
+    (n, o) = read_uleb128(b, o);
+    return (b[o:o + n].decode("latin1"), o + n);
+}
+
 impl _align(value: int, alignment: int) -> int {
     if alignment <= 1 {
         return value;

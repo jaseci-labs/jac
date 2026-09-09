@@ -17,7 +17,17 @@ def _parse_entry_file(entry_file: Path) -> tuple[str, str] {
     return (base, mod);
 }
 
-impl WebTarget.setup(project_dir: Path) -> None {}
+def _pwa_enabled(project_dir: Path) -> bool {
+    import from jaclang.client.config_loader { JacClientConfig }
+    return JacClientConfig(project_dir).is_pwa_enabled();
+}
+
+impl WebTarget.setup(project_dir: Path) -> None {
+    if _pwa_enabled(project_dir) {
+        import from jaclang.client.targets.pwa_build { ensure_pwa_icons }
+        ensure_pwa_icons(project_dir);
+    }
+}
 
 impl WebTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
@@ -150,6 +160,10 @@ impl WebTarget.build(
         loaded_mod=loaded_mod,
         project_dir=project_dir
     );
+    if _pwa_enabled(project_dir) {
+        import from jaclang.client.targets.pwa_build { apply_pwa }
+        apply_pwa(dist_dir, project_dir);
+    }
     return bundle_path;
 }
 

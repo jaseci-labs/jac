@@ -273,10 +273,8 @@ test "ws route rejects with 1012 during drain" {
     import from jaclang.scale.runtime.gateway.microservice_gateway {
         MicroserviceGateway
     }
-    import from jaclang.scale.runtime.lifecycle.drain { reset_drain, start_drain }
     import from jaclang.testing.testkit { ServingTestClient as TestClient }
 
-    reset_drain();
     reg = ServiceRegistry();
     reg.register(
         ServiceEntry(
@@ -292,7 +290,7 @@ test "ws route rejects with 1012 during drain" {
     gw.setup();
 
     client = TestClient(gw.app);
-    start_drain(10.0);
+    gw.drain.start("test");
     try {
         raised = False;
         try {
@@ -304,7 +302,7 @@ test "ws route rejects with 1012 during drain" {
         }
         assert raised;
     } finally {
-        reset_drain();
+        gw.drain.reset();
     }
 }
 

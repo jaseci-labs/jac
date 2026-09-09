@@ -389,7 +389,7 @@ test "a compile acting on an inferred native verdict persists no interface" {
     );
     # The rule itself, on a machine whose native toolchain may not let the
     # verdict pass: an inferred verdict skips the interface, a declared one
-    # does not.
+    # reaches it through the analysis flavor; codegen never encodes.
     reg = gen.iface_registry();
     encodes = reg.prog.analysis.cache_events.get("iface_encode", 0);
     mod.decided_codespace = "native";
@@ -402,6 +402,11 @@ test "a compile acting on an inferred native verdict persists no interface" {
         == before , "an inferred verdict overwrote the persisted interface";
     mod.codespace_inferred = False;
     reg.persist_after_compile(dep, mod, CompileOptions(), 0, 0);
+    assert read_iface_hash(
+        read_section_bytes(get_module_cache_path(dep).read_bytes(), SEC_IFACE)
+    )
+        == before , "a codegen persist of a declared placement encoded an interface";
+    reg.persist_after_compile(dep, mod, _check_opts(), 0, 0);
     assert read_iface_hash(
         read_section_bytes(get_module_cache_path(dep).read_bytes(), SEC_IFACE)
     )
@@ -585,5 +590,178 @@ test "a comptime import takes the dependency's tree and rides its edits" {
     assert edited.errors_had , "a comptime value edit that keeps the interface did not re-analyze the importer";
     assert edited.analysis.cache_events.get("analysis_replay", 0) == 0 , (
         f"the importer replayed stale diagnostics after a comptime input changed (events: {edited.analysis.cache_events})"
+    );
+}
+
+glob TWIN_MODEL: str = (
+         "obj Cfg {\n" "    has x: int = 1,\n" "        name: str = \"cfg\";\n" "}\n"
+     ),
+     TWIN_ENV: str = (
+         "import from models { Cfg }\n\n"
+         "obj Env {\n"
+         "    has config: Cfg;\n\n"
+         "    def get -> Cfg {\n"
+         "        return self.config;\n"
+         "    }\n"
+         "}\n"
+     ),
+     TWIN_PROVIDER: str = (
+         "import from env { Env }\n"
+         "import from models { Cfg }\n\n"
+         "obj Prov(Env) {\n"
+         "    def make -> Cfg {\n"
+         "        return Cfg(x=self.config.x + 1);\n"
+         "    }\n"
+         "}\n"
+     ),
+     TWIN_MAIN: str = (
+         "import from provider { Prov }\n"
+         "import from models { Cfg }\n\n"
+         "with entry {\n"
+         "    p = Prov(config=Cfg());\n"
+         "    print(p.make().x, p.get().name);\n"
+         "}\n"
+     );
+
+def _twin_project -> dict[str, str] {
+    tmp = tempfile.mkdtemp();
+    paths: dict[str, str] = {};
+    for (name, body) in (
+        ("models", TWIN_MODEL),
+        ("env", TWIN_ENV),
+        ("provider", TWIN_PROVIDER),
+        ("main", TWIN_MAIN)
+    ) {
+        path = os.path.join(tmp, f"{name}.jac");
+        with open(path, "w") as fh {
+            fh.write(body);
+        }
+        paths[name] = os.path.realpath(path);
+    }
+    return paths;
+}
+
+def _class_scope(prog: JacProgram, path: str, name: str) -> any {
+    import from jaclang.compiler.types.types { ClassType }
+    mod = prog.mod.hub[path];
+    sym = mod.names_in_scope[name];
+    typ = prog.get_type_evaluator().get_type_of_symbol(sym);
+    assert isinstance(typ, ClassType) , f"{name} is not a class: {typ}";
+    return typ.shared.symbol_table;
+}
+
+test "a class shared follows the tree the program holds for its module" {
+    # A runtime import recompiles a dependency that analysis loaded as a
+    # symbol-table-only tree: the old tree leaves the hub and is collected,
+    # which severs its scopes from their module. The evaluator interns one
+    # shared per class site, so every type handed out so far points at the
+    # class scope of that dead tree; an interface written afterwards could
+    # neither cross-reference it (no module) nor record it locally (no
+    # scope), and read back as a class without members (jac#8909).
+    import gc;
+    paths = _twin_project();
+    prog = JacProgram();
+    prog.compile(paths["main"], options=CompileOptions());
+    first = _class_scope(prog, paths["models"], "Cfg");
+    assert first is prog.mod.hub[paths["models"]].find_scope("Cfg") , "the interned class does not point at the hub's tree after the first compile";
+    prog.invalidate_module(paths["models"]);
+    gc.collect();
+    prog.compile(paths["models"], options=CompileOptions());
+    live = prog.mod.hub[paths["models"]].find_scope("Cfg");
+    assert live is not first , "the recompile did not produce a new tree";
+    assert _class_scope(prog, paths["models"], "Cfg") is live , "the interned class still points at the evicted tree's scope";
+    prog.invalidate_module(paths["provider"]);
+    gc.collect();
+    prog.compile(paths["provider"], options=CompileOptions());
+    assert not prog.errors_had , [a.pretty_print() for a in prog.errors_had];
+    # Interfaces are written by analysis-driven closures, so the program that
+    # holds the intern encodes each module itself; a fresh check of the
+    # importer must then hydrate those interfaces and see every member.
+    for name in ("models", "env", "provider") {
+        prog.compile(paths[name], options=_check_opts());
+    }
+    assert not prog.errors_had , [a.pretty_print() for a in prog.errors_had];
+    (warm, diags) = _check(paths["main"]);
+    assert not warm.errors_had , f"the importer read a member-less class from the cache: {diags}";
+    assert warm.analysis.cache_events.get("dep_hydrate", 0) > 0 , (
+        f"the dependencies were not served from the interface cache (events: {warm.analysis.cache_events})"
+    );
+}
+
+test "an interface that cannot place a class is not persisted" {
+    # The writer decides between a cross-reference and a local record by
+    # the module above the class scope. With no module there is no honest
+    # record, and a record with an empty scope is a lie every later compile
+    # would trust (the dependency digests still match). The builder refuses,
+    # and the persist step leaves the cache untouched for this compile.
+    import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
+    import from jaclang.compiler.types.stubcat.modiface {
+        IncoherentInterface,
+        build_module_iface
+    }
+    paths = _twin_project();
+    prog = JacProgram();
+    prog.compile(
+        paths["provider"],
+        options=CompileOptions(no_cgen=True, force_target_program=True)
+    );
+    _class_scope(prog, paths["models"], "Cfg").parent_scope = None;
+    provider = prog.mod.hub[paths["provider"]];
+    refused = False;
+    try {
+        build_module_iface(provider, prog.get_type_evaluator(), jaclang_pkg_dir());
+    } except IncoherentInterface as exc {
+        refused = True;
+        assert any("Cfg" in o for o in exc.orphans) , f"the refusal does not name the unplaceable class: {exc.orphans}";
+    }
+    assert refused , "an interface with an unplaceable class was built";
+    cache_path = get_module_cache_path(paths["provider"]);
+    before = cache_path.read_bytes() if cache_path.exists() else b"";
+    reg = prog.iface_registry();
+    reg.forget(paths["provider"]);
+    reg.persist_after_compile(paths["provider"], provider, prog.options, 0, 0);
+    assert prog.analysis.cache_events.get("iface_incoherent", 0) == 1 , (
+        f"the persist step did not record the refusal (events: {prog.analysis.cache_events})"
+    );
+    after = cache_path.read_bytes() if cache_path.exists() else b"";
+    assert after == before , "an incoherent interface was written to the cache";
+}
+
+test "a cross-reference into a stub is answered by the catalog" {
+    # A hub can hold a source-parsed tree of a typeshed stub (the compiler's
+    # own bootstrap keeps those); its module scope lacks the names a
+    # version guard declares, so resolving a cross-reference through it
+    # produced an orphan class. The catalog is the authority for stubs.
+    import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
+    stub = os.path.join(jaclang_pkg_dir(), "vendor", "typeshed", "stdlib", "types.pyi");
+    prog = JacProgram();
+    served = prog.iface_registry().resolve_module(stub);
+    assert served is not None , "the stub could not be resolved";
+    assert served.names_in_scope.get("NoneType") is not None , (
+        f"the stub resolved to a tree without NoneType: {type(served).__name__}"
+    );
+    shared = prog.iface_registry().resolve_shared(stub, "NoneType", "NoneType");
+    assert shared is not None , "NoneType did not resolve to a class";
+}
+
+test "a codegen compile records dependency rows but encodes no interface" {
+    (main, dep) = _project();
+    prog = JacProgram();
+    prog.compile(main, options=CompileOptions(force_target_program=True));
+    data = get_module_cache_path(main).read_bytes();
+    assert read_section_bytes(data, SEC_DEPS) is not None , "no SEC_DEPS after codegen";
+    assert read_section_bytes(data, SEC_IFACE) is None , (
+        "a codegen compile encoded an interface; encoding belongs to the frontier"
+    );
+    assert prog.analysis.cache_events.get("iface_encode", 0) == 0 , (
+        f"codegen compile encoded (events: {prog.analysis.cache_events})"
+    );
+    _check(main);
+    data = get_module_cache_path(main).read_bytes();
+    assert read_section_bytes(data, SEC_IFACE) is not None , (
+        "the frontier compile did not add the interface to the merged JIR"
+    );
+    assert read_section_bytes(data, SEC_DEPS) is not None , (
+        "the frontier merge dropped the dependency rows"
     );
 }

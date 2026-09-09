@@ -12,10 +12,10 @@ SSO configuration is managed via the `jac.toml` file in your project root.
 Add the following configuration to your `jac.toml`:
 
 ```toml
-[scale.jwt]
+[serve.auth]
 secret = "your_jwt_secret_key"
 algorithm = "HS256"
-exp_delta_days = 7
+token_ttl_days = 7
 
 [scale.sso]
 host = "http://localhost:8000"
@@ -227,11 +227,11 @@ Jac Scale replaces the core `UserManager` through its built-in persistence provi
 
     ```jac
     static def get_user_manager(base_path: str) -> UserManager {
-        return JacScaleUserManager(base_path=base_path);
+        return UserManager(base_path=base_path);
     }
     ```
 
-3. **Custom Logic**: The `JacScaleUserManager` extends the base `UserManager` to add:
+3. **Custom Logic**: The `UserManager` extends the base `UserManager` to add:
     - JWT-based authentication
     - SSO handling (unified callback with auto-registration)
     - SSO account linking

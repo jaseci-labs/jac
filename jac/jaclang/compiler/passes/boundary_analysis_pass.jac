@@ -1,4 +1,4 @@
-import from dataclasses { field }
+import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     ArchHas,
@@ -79,6 +79,14 @@ walker BoundaryAnalysisPass(UniPass) {
 
     def _register_na_client_import(nd: Import) -> None;
     def _register_client_bridged_import(nd: Import) -> None;
+    def _provider_module_of(nd: Import) -> (Module | None);
+    def _record_app_edge(nd: Import) -> None;
+    def _bridge_targets(mod: Module) -> list[tuple[(str, str)]];
+    def _check_app_cycle(nd: Import, consumer_app: str, provider_app: str) -> None;
+    def _find_ability(mod: Module, target: str) -> (Ability | None);
+    def _parsed_provider_of(nd: Import) -> (Module | None);
+    def _reject_owned_type_import(nd: Import, item: ModuleItem, kind: str) -> None;
+    def _check_provider_pub(nd: Import, item: ModuleItem) -> None;
     def _extract_walker_has_fields(
         walker_nd: (Archetype | None)
     ) -> tuple[list[str], list[str]];
@@ -88,6 +96,7 @@ walker BoundaryAnalysisPass(UniPass) {
         type_name: str, search_mods: list[Module]
     ) -> (Archetype | Enum | None);
 
+    can enter_atom_trailer with AtomTrailer entry;
     can enter_ability with Ability entry;
     can enter_func_call with FuncCall entry;
     def _extract_subscript_inner(expr: (UniNode | None)) -> str;

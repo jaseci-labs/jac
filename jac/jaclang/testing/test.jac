@@ -23,11 +23,9 @@ obj JacTestCheck {
     }
 
     obj TestSuite {
-        with entry {
-            test_case: unittest.FunctionTestCase;
-            func_name: str;
+        has test_case: unittest.FunctionTestCase,
+            func_name: str,
             display_name: str;
-        }
     }
 
     with entry {

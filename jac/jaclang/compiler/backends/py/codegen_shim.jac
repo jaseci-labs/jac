@@ -172,6 +172,7 @@ obj CirSplice {
 
 obj CirCompiledModule {
     has mod_path: str,
+        tree: ast.Module,
         code_obj: any = None,
         bytecode: bytes = b"";
 }
@@ -383,7 +384,10 @@ def compile_ir(ir_bytes: bytes) -> CirResult {
         }
         modules.append(
             CirCompiledModule(
-                mod_path=m.mod_path, code_obj=code_obj, bytecode=marshal.dumps(code_obj)
+                mod_path=m.mod_path,
+                tree=built_root,
+                code_obj=code_obj,
+                bytecode=marshal.dumps(code_obj)
             )
         );
     }

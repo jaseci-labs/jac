@@ -52,6 +52,7 @@ glob DT_NULL = 0,
      DT_STRSZ = 10,
      DT_SYMENT = 11,
      DT_DEBUG = 21,
+     DT_BIND_NOW = 24,
      DT_PLTGOT = 3,
      DT_PLTRELSZ = 2,
      DT_PLTREL = 20,
@@ -702,6 +703,19 @@ def _apply_debug_reloc(
 }
 
 
+impl ElfLinker._undefined_bindings -> dict[str, int] {
+    bindings: dict[str, int] = {};
+    for sym in self.symbols {
+        if sym.shndx == SHN_UNDEF and sym.name and sym.bind >= STB_GLOBAL {
+            previous = bindings.get(sym.name);
+            if previous is None or sym.bind == STB_GLOBAL {
+                bindings[sym.name] = sym.bind;
+            }
+        }
+    }
+    return bindings;
+}
+
 impl ElfLinker.build_executable -> bytes {
     arch = self.arch;
     assert arch is not None;
@@ -757,6 +771,8 @@ impl ElfLinker.build_executable -> bytes {
         sec_idx += 1;
     }
 
+    undefined_bindings = self._undefined_bindings();
+    referenced_names = {rela.sym_name for rela in self.relocations};
     known_data_syms = {"stdin", "stdout", "stderr", "environ"};
     extern_func_syms: list[str] = [];
     extern_data_syms: list[str] = [];
@@ -774,7 +790,8 @@ impl ElfLinker.build_executable -> bytes {
         if sym.shndx == SHN_UNDEF
             and sym.name
             and sym.bind >= STB_GLOBAL
-            and sym.name not in defined_names {
+            and sym.name not in defined_names
+            and sym.name in referenced_names {
             is_data = sym.typ == STT_OBJECT
                 or (sym.typ == STT_NOTYPE and sym.name in known_data_syms);
             if is_data {
@@ -846,7 +863,7 @@ impl ElfLinker.build_executable -> bytes {
     for sym_name in extern_syms {
         st_name = dynstr_offsets.get(sym_name, 0);
         sym_type = STT_OBJECT if sym_name in extern_data_set else STT_FUNC;
-        st_info = (STB_GLOBAL << 4) | sym_type;
+        st_info = (undefined_bindings[sym_name] << 4) | sym_type;
         dynsym_data.extend(
             struct.pack("<IBBHQQ", st_name, st_info, 0, SHN_UNDEF, 0, 0)
         );
@@ -867,6 +884,10 @@ impl ElfLinker.build_executable -> bytes {
     got_plt_size = got_plt_entries * 8;
 
     dyn_entries: list[tuple[int, int]] = [];
+
+    if any(undefined_bindings[nm] == STB_WEAK for nm in extern_func_syms) {
+        dyn_entries.append((DT_BIND_NOW, 0));
+    }
     for lib in self.needed_libs {
         dyn_entries.append((DT_NEEDED, dynstr_offsets.get(lib, 0)));
     }
@@ -1698,6 +1719,8 @@ impl ElfLinker.build_shared_object -> bytes {
         sec_idx += 1;
     }
 
+    undefined_bindings = self._undefined_bindings();
+    referenced_names = {rela.sym_name for rela in self.relocations};
     known_data_syms = {"stdin", "stdout", "stderr", "environ"};
     extern_func_syms: list[str] = [];
     extern_data_syms: list[str] = [];
@@ -1705,7 +1728,10 @@ impl ElfLinker.build_shared_object -> bytes {
     sym_idx_placement: dict[int, tuple[str, int]] = {};
     sym_i = 0;
     for sym in self.symbols {
-        if sym.shndx == SHN_UNDEF and sym.name and sym.bind >= STB_GLOBAL {
+        if sym.shndx == SHN_UNDEF
+            and sym.name
+            and sym.bind >= STB_GLOBAL
+            and sym.name in referenced_names {
             is_data = sym.typ == STT_OBJECT
                 or (sym.typ == STT_NOTYPE and sym.name in known_data_syms);
             if is_data {
@@ -1849,6 +1875,10 @@ impl ElfLinker.build_shared_object -> bytes {
     dynamic_foff = cur_offset;
 
     dyn_entries: list[tuple[int, int]] = [];
+
+    if any(undefined_bindings[nm] == STB_WEAK for nm in extern_func_syms) {
+        dyn_entries.append((DT_BIND_NOW, 0));
+    }
     for lib in self.needed_libs {
         dyn_entries.append((DT_NEEDED, dynstr_offsets.get(lib, 0)));
     }
@@ -2226,7 +2256,7 @@ impl ElfLinker.build_shared_object -> bytes {
         );
     }
     for nm in extern_func_syms {
-        st_info = (STB_GLOBAL << 4) | STT_FUNC;
+        st_info = (undefined_bindings[nm] << 4) | STT_FUNC;
         dynsym_data.extend(
             struct.pack(
                 "<IBBHQQ", dynstr_offsets.get(nm, 0), st_info, 0, SHN_UNDEF, 0, 0
@@ -2234,7 +2264,7 @@ impl ElfLinker.build_shared_object -> bytes {
         );
     }
     for nm in extern_data_syms {
-        st_info = (STB_GLOBAL << 4) | STT_OBJECT;
+        st_info = (undefined_bindings[nm] << 4) | STT_OBJECT;
         dynsym_data.extend(
             struct.pack(
                 "<IBBHQQ", dynstr_offsets.get(nm, 0), st_info, 0, SHN_UNDEF, 0, 0
@@ -2746,13 +2776,21 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes, merge_ns: int = 0) ->
                 )
                     or (existing_common and new_def)
                     or (
+                        existing_sym.shndx == SHN_UNDEF
+                        and crt_sym.shndx == SHN_UNDEF
+                        and existing_sym.bind == STB_WEAK
+                        and crt_sym.bind == STB_GLOBAL
+                    )
+                    or (
                         existing_def
                         and existing_sym.bind == STB_WEAK
                         and new_def
                         and crt_sym.bind == STB_GLOBAL
                     );
                 if `override {
-                    new_shndx = sec_idx_map.get(crt_sym.shndx, crt_sym.shndx);
+                    new_shndx = SHN_UNDEF
+                        if crt_sym.shndx == SHN_UNDEF
+                        else sec_idx_map.get(crt_sym.shndx, crt_sym.shndx);
                     linker.symbols[existing_idx] = ElfSymbol(
                         name=crt_sym.name,
                         value=adjusted_value,

@@ -4,9 +4,6 @@ version = "1.0.0"
 description = "JAC-Scale Admin Portal"
 entry-point = "main.jac"
 
-[serve]
-base_route_app = "app"
-
 [client]
 base_path = "/admin/"
 

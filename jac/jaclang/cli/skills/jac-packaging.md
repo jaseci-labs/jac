@@ -1,6 +1,6 @@
 ---
 name: jac-packaging
-description: Packaging a Jac project as a wheel and publishing it to PyPI, and npm packages via `jac build --as npm` - jac.toml metadata, the package-directory layout, console-script entry points, extras, precompiled bytecode, twine/npm upload. Load when turning a project into a pip-installable CLI tool, an importable library, or an npm component library. Pair with `jac-scaffold` (creating the project) and `jac-impl-files` (source layout).
+description: Build Python wheels and npm packages from Jac projects. Use for package layout, metadata, exports, and authorized publication.
 ---
 
 `jac build --as wheel` builds a standard PEP 427 wheel plus an sdist (`dist/<name>-<version>-py3-none-any.whl`, `dist/<name>-<version>.tar.gz`) straight from `jac.toml` - no `setup.py`, no `pyproject.toml`. Upload with `twine`. `jac build --as npm` builds an npm tarball from the same `jac.toml`. This covers three shapes: a **CLI tool** (installs a terminal command), an **importable library** (consumed under the `jac` binary, then `import`), and an **npm component library**.

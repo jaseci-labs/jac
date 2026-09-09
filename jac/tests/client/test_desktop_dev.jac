@@ -160,8 +160,9 @@ test "hmr handler recompiles on in-tree .jac change" {
                 path=str(entry_file), change_type=ChangeType.MODIFIED, timestamp=0.0
             )
         );
-        assert len(jc.calls) == 1 , "entry module must be recompiled on .jac save";
-        assert len(compiler.compile_calls) == 1 , "compiled client must be rebuilt on .jac save";
+        assert compiler.compile_calls == [(None, str(entry_file))] , (
+            "the client must be rebuilt from its entry on .jac save"
+        );
     }
 }
 
@@ -185,7 +186,7 @@ test "hmr handler ignores non-.jac and out-of-tree files" {
                 path=str(css_file), change_type=ChangeType.MODIFIED, timestamp=0.0
             )
         );
-        assert len(jc.calls) == 0 , "non-.jac changes must not trigger a recompile";
+        assert compiler.compile_calls == [] , "non-.jac changes must not trigger a recompile";
         # Out-of-tree .jac file -> no recompile.
         with tempfile.TemporaryDirectory() as other_dir {
             outside = Path(other_dir) / "other.jac";
@@ -195,7 +196,9 @@ test "hmr handler ignores non-.jac and out-of-tree files" {
                     path=str(outside), change_type=ChangeType.MODIFIED, timestamp=0.0
                 )
             );
-            assert len(jc.calls) == 0 , "out-of-tree .jac changes must not trigger a recompile";
+            assert compiler.compile_calls == [] , (
+                "out-of-tree .jac changes must not trigger a recompile"
+            );
         }
     }
 }

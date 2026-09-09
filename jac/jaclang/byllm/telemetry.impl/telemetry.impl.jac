@@ -4,6 +4,29 @@ impl register_agent_callback(callback: Callable) -> None {
     }
 }
 
+impl _aggregate_usage(usage_history: list[dict]) -> dict[str, object] {
+    totals: dict = {};
+    by_kind: dict = {};
+    for u in usage_history {
+        kind = u.get("call_kind", "react_iteration");
+        if kind not in by_kind {
+            by_kind[kind] = {};
+        }
+        for (k, v) in u.items() {
+            if isinstance(v, (int, float)) {
+                totals[k] = totals.get(k, 0) + v;
+                by_kind[kind][k] = by_kind[kind].get(k, 0) + v;
+            }
+        }
+    }
+    return {
+        "total": totals,
+        "by_kind": by_kind,
+        "per_call": list(usage_history),
+        "requests": len(usage_history)
+    };
+}
+
 impl _emit_agent_telemetry(
     mt_run: object,
     result: object,
@@ -50,6 +73,14 @@ impl _emit_agent_telemetry(
         }
     }
 
+    tokens: dict = {"total": {}, "by_kind": {}, "per_call": [], "requests": 0};
+    try {
+        history: any = mt_run._usage_history or [];
+        tokens = _aggregate_usage(history);
+    } except Exception as e {
+        logger.debug(f"tokens aggregation failed: {e}");
+    }
+
     record_mtir = mt_run?.mtir;
     record = {
         "invocation_id": getattr(mt_run, "_invocation_id"),
@@ -62,7 +93,8 @@ impl _emit_agent_telemetry(
         "model": model_name,
         "latency_ms": latency_ms,
         "status": status,
-        "error": str(error)[:1000] if error else None
+        "error": str(error)[:1000] if error else None,
+        "tokens": tokens
     };
 
     for callback in _agent_callbacks {

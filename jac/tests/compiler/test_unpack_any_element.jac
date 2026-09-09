@@ -47,14 +47,16 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURES = os.path.join(TESTS_DIR, "compiler", "fixtures");
 
-"""Type-check a fixture and return its errors."""
+"""Type-check a fixture and return its errors, each prefixed by its code."""
 def check_errors(fixture: str) -> list {
     prog = JacProgram();
     prog.compile(
         file_path=str(os.path.join(FIXTURES, fixture)),
         options=CompileOptions(no_cgen=True)
     );
-    return [str(e) for e in (prog.errors_had or [])];
+    return [
+        f"{e.code.code if e.code else '----'}: {e}" for e in (prog.errors_had or [])
+    ];
 }
 
 test "unpacking elements of a bare tuple or list type-checks clean" {
@@ -88,4 +90,14 @@ test "unpacking through a bare-generic chain binds Any, not Unknown" {
     joined = " ".join(errs);
     assert "E1020" not in joined , f"bare-generic chain unpack errored: {errs}";
     assert "E1053" not in joined , f"Unknown leaked out of the chain: {errs}";
+}
+
+test "destructuring over an explicitly `any` iterable binds `any`, not Unknown" {
+    # #8982 item 11: `for (k, v) in cfg.apps.items()` with `cfg: any` bound
+    # Unknown to both targets, so `v.kind` was E1032 while `a: any = cfg.apps;
+    # a.kind` on the same value was accepted. `_get_iterable_element_type`
+    # knew `types.AnyType` and `UnknownType` but not the explicit spelling.
+    errs = check_errors("unpack_any_element.jac");
+    joined = " ".join(errs);
+    assert "E1032" not in joined , f"Unknown leaked out of an `any` iterable: {errs}";
 }

@@ -25,7 +25,7 @@ def _expose_backend(client: ScaleTestClient) -> tuple {
     import from jaclang.server.serving.server { ServingServer }
     backend = client._server;
     assert backend is not None , "client has no in-process server";
-    server = ServingServer(app=backend.server.app, host="127.0.0.1", port=0);
+    server = ServingServer(app=backend.require_app(), host="127.0.0.1", port=0);
     server.serve_background();
     assert server.bound_port , "backend server did not start in time";
     return (server, server.bound_port);

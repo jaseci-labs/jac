@@ -13,6 +13,7 @@ minus the window. Needs only the jac toolchain (`nacompile`).
 import os;
 import shutil;
 import subprocess;
+import sys;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.client.targets.desktop.desktop_build {
@@ -29,7 +30,7 @@ test "na host boots the fused runtime (no display)" {
         "import from fused.bringup { engine_boot }\n"
         "with entry {\n"
         "    api = engine_boot().api;\n"
-        "    api.PyRun_SimpleString(\"import jaclang; from jaclang.client.targets.desktop.native import oauth_broker; print('ENGINE_BOOT_OK', flush=True)\");\n"
+        "    api.PyRun_SimpleString(\"import jaclang, ssl, os; from jaclang.client.targets.desktop.native import oauth_broker; assert ssl.create_default_context().cert_store_stats()['x509_ca'] > 0; print('ENGINE_BOOT_OK', os.environ.get('SSL_CERT_FILE'), flush=True)\");\n"
         "    api.Py_Finalize();\n"
         "}\n"
     );
@@ -47,7 +48,7 @@ test "na host boots the fused runtime (no display)" {
         # chosen by the nearest jac.toml from the cwd, and the host must be built
         # by the same compiler whose fused library was just staged beside it.
         comp = subprocess.run(
-            [jac, "nacompile", str(host), "-o", str(binary)],
+            [jac, "build", "--native", str(host), "-o", str(binary)],
             capture_output=True,
             text=True,
             timeout=300
@@ -58,8 +59,11 @@ test "na host boots the fused runtime (no display)" {
         # Append this jac's [payload][trailer] so the host carries the fused runtime
         # and engine_boot() can materialize it from /proc/self/exe at launch.
         _bundle_runtime(binary);
+        env = dict(os.environ);
+        env.pop("SSL_CERT_FILE", None);
+        env.pop("SSL_CERT_DIR", None);
         run = subprocess.run(
-            [str(binary)], cwd=tmp, capture_output=True, text=True, timeout=120
+            [str(binary)], cwd=tmp, env=env, capture_output=True, text=True, timeout=120
         );
         assert run.returncode == 0 , (
             f"engine-boot binary exited {run.returncode}\n"
@@ -69,6 +73,14 @@ test "na host boots the fused runtime (no display)" {
             f"fused-runtime boot marker missing\n"
             f"stdout:\n{run.stdout}\nstderr:\n{run.stderr}"
         );
+        custom_ca = out_dir / "custom-ca.pem";
+        shutil.copy2(Path(sys.prefix) / "floor" / "cacert.pem", custom_ca);
+        env["SSL_CERT_FILE"] = str(custom_ca);
+        custom = subprocess.run(
+            [str(binary)], cwd=tmp, env=env, capture_output=True, text=True, timeout=120
+        );
+        assert custom.returncode == 0 , custom.stderr;
+        assert str(custom_ca) in custom.stdout , "runtime replaced an explicit CA bundle";
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
     }

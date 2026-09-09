@@ -4,7 +4,7 @@ impl JacToJSCompiler.add_runtime_imports(js_code: str) -> str {
 }
 
 impl JacToJSCompiler.extract_globals(
-    manifest: (ClientManifest | None), module: ModuleType
+    manifest: (ClientManifest | None), module: (ModuleType | None)
 ) -> dict[str, any] {
     return self._extract_client_globals(manifest, module);
 }
@@ -13,10 +13,8 @@ impl JacToJSCompiler.extract_exports(manifest: (ClientManifest | None)) -> list[
     return self._extract_client_exports(manifest);
 }
 
-impl JacToJSCompiler.compile_module(
-    module_path: Path
-) -> tuple[str, (ModuleType | None), (ClientManifest | None)] {
-    (module_js, mod) = self._compile_to_js(module_path);
-    manifest = mod.gen.client_manifest if mod else None;
-    return (module_js, mod, manifest);
+impl JacToJSCompiler.compile_module(module_path: Path) -> ClientArtifact {
+    artifact = self._compile_to_js(module_path);
+    self.boundary_contracts[str(module_path)] = artifact.boundary_contracts;
+    return artifact;
 }

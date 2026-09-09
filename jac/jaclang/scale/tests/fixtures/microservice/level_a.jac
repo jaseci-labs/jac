@@ -7,6 +7,7 @@ chain and ensure all three services are registered before serving.
 
 import from level_b { level_b_forward }
 
-def:pub level_a_start(msg: str) -> str {
-    return f"level_a -> {level_b_forward(msg)}";
+async def:pub level_a_start(msg: str) -> str {
+    forwarded = await level_b_forward(msg);
+    return f"level_a -> {forwarded}";
 }

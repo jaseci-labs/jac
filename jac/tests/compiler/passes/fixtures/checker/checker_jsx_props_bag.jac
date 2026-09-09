@@ -5,7 +5,8 @@
   but is flagged once at its definition with W1052.
 - A typed props bag validates JSX attributes against the members of the
   props object's type (E1101 for unknown props, E1100 for type mismatches)
-  and is NOT flagged with W1052."""
+  and is NOT flagged with W1052.
+- A `props` bundle beside any other parameter is rejected (E1109)."""
 
 obj TypedProps {
     has title: str,
@@ -20,6 +21,11 @@ def UntypedComp(props: any) -> JsxElement {
 # Typed props bag — fully checked, no W1052.
 def TypedComp(props: TypedProps) -> JsxElement {
     return <div>{props.title}</div>;
+}
+
+# E1109: a `props` bundle beside another parameter has no valid lowering.
+def MixedComp(props: any, tone: str = "flat") -> JsxElement {
+    return <div>{props.children}{tone}</div>;
 }
 
 with entry {

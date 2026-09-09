@@ -11,12 +11,13 @@ import os;
 import uuid;
 import from datetime { UTC, datetime, timedelta }
 import from jaclang.server.serving.authcrypt { jwt_encode }
-import from jaclang.scale.config.config_loader { normalize_microservices_config }
-import from jaclang.scale.identity.user_manager {
-    jwt_algorithm,
-    jwt_secret,
-    JacScaleUserManager
+import from jaclang.scale.config.config_loader { normalize_gateway_config }
+import from jaclang.server.identity.config {
+    signing_algorithm as jwt_algorithm,
+    signing_secret as jwt_secret
 }
+import from jaclang.server.identity.user_manager { UserManager }
+import from jaclang.scale.server.extensions { fleet_provisions_unknown_users }
 
 glob _SV_ENV: str = "JAC_SV_NAME";
 
@@ -31,7 +32,7 @@ def _gateway_token(user_id: str) -> str {
 
 
 """A manager built as the given process type, or None if Postgres is absent."""
-def _manager(sv_name: str) -> (JacScaleUserManager | None) {
+def _manager(sv_name: str) -> (UserManager | None) {
     previous = os.environ.get(_SV_ENV);
     if sv_name {
         os.environ[_SV_ENV] = sv_name;
@@ -39,7 +40,10 @@ def _manager(sv_name: str) -> (JacScaleUserManager | None) {
         del os.environ[_SV_ENV];
     }
     try {
-        return JacScaleUserManager(base_path=".");
+        return UserManager(
+            base_path=".",
+            provision_unknown_users=fleet_provisions_unknown_users(sv_name)
+        );
     } except Exception as e {
         print(f"[skip] embedded postgres unavailable: {e}");
         return None;
@@ -114,9 +118,9 @@ test "an expired gateway token is never provisioned into existence" {
 
 
 test "gateway-owned identity is on by default and can be turned off" {
-    default_config = normalize_microservices_config({});
+    default_config = normalize_gateway_config({});
     assert default_config["identity"]["gateway_owned"] is True;
 
-    opted_out = normalize_microservices_config({"identity": {"gateway_owned": False}});
+    opted_out = normalize_gateway_config({"identity": {"gateway_owned": False}});
     assert opted_out["identity"]["gateway_owned"] is False;
 }

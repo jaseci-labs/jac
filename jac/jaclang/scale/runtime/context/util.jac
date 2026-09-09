@@ -63,18 +63,19 @@ def in_cluster_namespace -> str {
 }
 
 
-def http_forward_timeout(service_name: str | None = None) -> float {
+def http_forward_timeout(app_name: str | None = None) -> float {
     try {
         import from jaclang.scale.config.config_loader { get_scale_config }
-        ms_cfg = get_scale_config().get_microservices_config();
-        if service_name {
-            svc_cfg = ms_cfg.get("services", {}).get(service_name, {});
-            if "http_forward_timeout" in svc_cfg {
-                return float(svc_cfg["http_forward_timeout"]);
+        scale_cfg = get_scale_config();
+        if app_name {
+            app_cfg = scale_cfg.get_app_scale_config(app_name);
+            if "http_forward_timeout" in app_cfg {
+                return float(app_cfg["http_forward_timeout"]);
             }
         }
-        if "http_forward_timeout" in ms_cfg {
-            return float(ms_cfg["http_forward_timeout"]);
+        gw_cfg = scale_cfg.get_gateway_config();
+        if "http_forward_timeout" in gw_cfg {
+            return float(gw_cfg["http_forward_timeout"]);
         }
     } except Exception {}
     return _DEFAULT_HTTP_FORWARD_TIMEOUT;
@@ -84,9 +85,9 @@ def http_forward_timeout(service_name: str | None = None) -> float {
 def route_refresh_seconds -> float {
     try {
         import from jaclang.scale.config.config_loader { get_scale_config }
-        ms_cfg = get_scale_config().get_microservices_config();
-        if "route_refresh_seconds" in ms_cfg {
-            return float(ms_cfg["route_refresh_seconds"]);
+        gw_cfg = get_scale_config().get_gateway_config();
+        if "route_refresh_seconds" in gw_cfg {
+            return float(gw_cfg["route_refresh_seconds"]);
         }
     } except Exception {}
     return _DEFAULT_ROUTE_REFRESH_SECONDS;
@@ -96,9 +97,9 @@ def route_refresh_seconds -> float {
 def boot_health_timeout -> float {
     try {
         import from jaclang.scale.config.config_loader { get_scale_config }
-        ms_cfg = get_scale_config().get_microservices_config();
-        if "boot_health_timeout" in ms_cfg {
-            return float(ms_cfg["boot_health_timeout"]);
+        gw_cfg = get_scale_config().get_gateway_config();
+        if "boot_health_timeout" in gw_cfg {
+            return float(gw_cfg["boot_health_timeout"]);
         }
     } except Exception {}
     return _DEFAULT_BOOT_HEALTH_TIMEOUT;

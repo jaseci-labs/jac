@@ -1,4 +1,4 @@
-"""Must fence (E1406): dict literal with an owned heap value."""
+"""A dict literal with a fresh archetype value moves it into the dict (#8984 rule 3)."""
 obj Box {
     has tag: int = 0;
 }

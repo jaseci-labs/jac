@@ -1,5 +1,5 @@
 [project]
 name = "precompile-gate"
 
-[build]
-default_codespace = "server"
+[placement]
+default = "server"

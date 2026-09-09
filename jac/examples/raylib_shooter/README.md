@@ -28,7 +28,7 @@ accepted for libraries that need a pinned filename.
 
 Every declaration in that block becomes an `extern` symbol that the Jac native
 linker resolves out of the shared library. Notably, the linker is pure Python -
-there is **no `cc`/`ld` invocation**; `jac nacompile` emits the object code and
+there is **no `cc`/`ld` invocation**; `jac build --native` emits the object code and
 writes the ELF/Mach-O executable itself, recording the resolved library as a
 needed entry plus a `$ORIGIN`/`@loader_path` runpath so the sibling library
 resolves no matter where the binary is launched from.
@@ -43,7 +43,7 @@ resolves no matter where the binary is launched from.
 ```
 
 > **Run it in the browser too:** [`web/`](web/) compiles the _same_ rlgl source to
-> WebAssembly (`jac nacompile --target wasm32`) and renders it with WebGL - the
+> WebAssembly (`jac build --native --target wasm32`) and renders it with WebGL - the
 > `import from raylib` externs become the wasm module's imports. See
 > [`web/README.md`](web/README.md); run `cd web && ./demo.sh`.
 
@@ -54,7 +54,7 @@ resolves no matter where the binary is launched from.
 3. stage its shared library beside the script (`libraylib.so` on Linux,
    `libraylib.dylib` on macOS),
 4. build the shooter(s) it needs:
-   - `shooter.jac` with `jac nacompile` (no C compiler, no `cc`/`ld`),
+   - `shooter.jac` with `jac build --native` (no C compiler, no `cc`/`ld`),
      producing `./shooter`;
    - `shooter.zig` with the Zig toolchain against the staged library, producing
      `./shooter_zig`. If `zig` is not already on your `PATH`, the script
@@ -104,7 +104,7 @@ compiles headerless with **no collector and machine-checked zero reference
 counting**:
 
 ```bash
-jac nacompile shooter_headless.jac --enforce-nogc --gc none --assert-no-rc
+jac build --native shooter_headless.jac --memory nogc
 ```
 
 It runs the exact per-frame pipeline of `shooter.jac` -- input, fire

@@ -7,10 +7,12 @@ impl TypeEvaluator._is_mobui_module(nd: UniNode) -> bool {
         return False;
     }
     if mod_path not in self._mobui_module_cache {
-        import from jaclang.project.client_kind { mobui_enforced_for }
-        opts = self.program.options;
-        self._mobui_module_cache[mod_path] = mobui_enforced_for(
-            mod_path, opts.project_kind, opts.project_root
+        import from jaclang.project.mobui_scope { mobui_module_exempt }
+        mod = nd.find_parent_of_type(Module);
+        enforced_root = mod.mobui_enforced_root if mod is not None else None;
+        self._mobui_module_cache[mod_path] = (
+            enforced_root is not None
+            and not mobui_module_exempt(mod_path, enforced_root)
         );
     }
     return self._mobui_module_cache[mod_path];
@@ -85,11 +87,10 @@ impl TypeEvaluator._resolve_intrinsic_jsx_tag(part: Name, tag_name: str) -> None
     }
 }
 
-
 impl TypeEvaluator._validate_jsx_props(
     expr: JsxElement, expected_type: TypeBase | None = None
 ) -> None {
-    if not expr.name or not expr.attributes {
+    if not expr.name {
         return;
     }
     first_part = expr.name.parts[0] if expr.name.parts else None;
@@ -115,8 +116,10 @@ impl TypeEvaluator._validate_jsx_props(
 impl TypeEvaluator._validate_component_jsx_props(
     expr: JsxElement, component_name: str, func_type: FunctionType | None = None
 ) -> None {
-    func_type = func_type or self._resolve_jsx_component_type(expr.name);
-    if not func_type or not func_type.parameters {
+    if func_type is None and expr.name is not None {
+        func_type = self._resolve_jsx_component_type(expr.name);
+    }
+    if not func_type {
         return;
     }
 
@@ -127,6 +130,12 @@ impl TypeEvaluator._validate_component_jsx_props(
         }
     }
     matched_params: set[str] = set();
+
+    has_children = self._has_rendered_jsx_children(expr);
+    if has_children {
+        matched_params.add("children");
+        self._validate_jsx_children(expr, component_name, param_map);
+    }
 
     if len(param_map) == 1 and "props" in param_map {
         props_type = param_map["props"].param_type;
@@ -144,7 +153,7 @@ impl TypeEvaluator._validate_component_jsx_props(
             return;
         }
         if isinstance(props_type, ClassType) {
-            for attr in expr.attributes {
+            for attr in (expr.attributes or []) {
                 if not isinstance(attr, JsxNormalAttribute) {
                     continue;
                 }
@@ -187,7 +196,7 @@ impl TypeEvaluator._validate_component_jsx_props(
         return;
     }
 
-    for attr in expr.attributes {
+    for attr in (expr.attributes or []) {
         if isinstance(attr, JsxNormalAttribute) {
             attr_name = attr.name.value
                 if isinstance(attr.name, (Name, Token))
@@ -225,7 +234,7 @@ impl TypeEvaluator._validate_component_jsx_props(
                 if (
                     self.prefetch
                     and self.prefetch.dict_class
-                    and spread_type.shared == self.prefetch.dict_class.shared
+                    and spread_type.shared.same_class(self.prefetch.dict_class.shared)
                 ) {
                     for pname in param_map {
                         matched_params.add(pname);
@@ -243,15 +252,33 @@ impl TypeEvaluator._validate_component_jsx_props(
         }
     }
 
-    if expr.children {
-        matched_params.add("children");
-    }
-
     for (pname, p) in param_map.items() {
         if pname not in matched_params and not p.is_optional {
             self.emit_diag(E1102, expr, component=component_name, name=pname);
         }
     }
+}
+
+impl TypeEvaluator._has_rendered_jsx_children(expr: JsxElement) -> bool {
+    for child in (expr.children or []) {
+        if isinstance(child, JsxComment) {
+            continue;
+        }
+        if isinstance(child, JsxText) and not child.get_normalized_text() {
+            continue;
+        }
+        return True;
+    }
+    return False;
+}
+
+impl TypeEvaluator._validate_jsx_children(
+    expr: JsxElement, component_name: str, param_map: dict[str, Parameter]
+) -> None {
+    if "children" in param_map or "props" in param_map {
+        return;
+    }
+    self.emit_diag(W1053, expr.name or expr, component=component_name);
 }
 
 impl TypeEvaluator._validate_intrinsic_jsx_props(
@@ -261,7 +288,7 @@ impl TypeEvaluator._validate_intrinsic_jsx_props(
     if not props_class {
         return;
     }
-    for attr in expr.attributes {
+    for attr in (expr.attributes or []) {
         if isinstance(attr, JsxNormalAttribute) {
             attr_name = attr.name.value
                 if isinstance(attr.name, (Name, Token))
@@ -298,7 +325,7 @@ impl TypeEvaluator._validate_intrinsic_jsx_props(
                 and isinstance(spread_type, ClassType)
                 and self.prefetch
                 and self.prefetch.dict_class
-                and spread_type.shared != self.prefetch.dict_class.shared
+                and not spread_type.shared.same_class(self.prefetch.dict_class.shared)
             ) {
                 self.emit_diag(
                     E1104, attr, actual=str(spread_type), component=tag_name

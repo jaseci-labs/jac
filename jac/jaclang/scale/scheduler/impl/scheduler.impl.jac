@@ -386,7 +386,6 @@ impl JacScaleScheduler.setup(system_user_id: str, server: any | None = None) -> 
             "Enable the 'scheduler' capability and run 'jac install'."
         );
     }
-    self._start_jobs_listener();
 }
 
 impl JacScaleScheduler.start -> None {
@@ -398,6 +397,7 @@ impl JacScaleScheduler.start -> None {
             logger.error(f"Failed to start APScheduler: {e}");
         }
     }
+    self._start_jobs_listener();
 }
 
 impl JacScaleScheduler.stop(drain: bool = False) -> None {
@@ -413,53 +413,6 @@ impl JacScaleScheduler.stop(drain: bool = False) -> None {
         Scheduler.instance().stop();
     } except Exception as e {
         logger.debug(f"Error stopping base Scheduler: {e}");
-    }
-}
-
-impl JacScaleScheduler.register_static_tasks(
-    walkers: dict, functions: dict, server: any
-) -> None {
-    self._server = server;
-    base_scheduler = Scheduler.instance();
-
-    def _make_target(_name: str, _is_walker: bool) -> any {
-        def target {
-            self._execute_task(_name, self._system_user_id, _is_walker);
-        }
-        return target;
-    }
-
-    for (registry, is_walker) in [(walkers, True), (functions, False)] {
-        label = 'walker' if is_walker else 'function';
-        for item_name in registry {
-            item = registry[item_name];
-            spec = item.schedule_spec if item?.schedule_spec else None;
-            if spec is None {
-                continue;
-            }
-            if spec.trigger != ScheduleTrigger.STATIC {
-                logger.debug(
-                    f"'{item_name}' has DYNAMIC trigger — managed by APScheduler"
-                );
-                continue;
-            }
-            logger.debug(f"Registered static {label}: {item_name}");
-            base_scheduler.register(
-                name=item_name,
-                target=_make_target(item_name, is_walker),
-                spec=spec,
-                is_walker=is_walker
-            );
-        }
-    }
-
-    if base_scheduler._tasks {
-        base_scheduler.start();
-        logger.info(
-            f"Base Scheduler started with {len(base_scheduler._tasks)} static task(s)"
-        );
-    } else {
-        logger.info("No static scheduled tasks registered");
     }
 }
 
@@ -692,11 +645,12 @@ impl JacScaleScheduler._execute_task(
                     self._record_run(job_id, 'succeeded');
                 }
             } finally {
-                Jac.reset_request_context(ctx_token);
                 try {
                     ctx.mem.close();
                 } except Exception as ce {
                     logger.warning(f"Scheduled job context close failed: {ce}");
+                } finally {
+                    Jac.reset_request_context(ctx_token);
                 }
             }
         }

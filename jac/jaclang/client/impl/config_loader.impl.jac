@@ -1,3 +1,4 @@
+import from jaclang.project.config { JacConfig }
 import shutil;
 import os;
 import from jaclang.cli.console { console }
@@ -8,8 +9,7 @@ import from jaclang.client.npm_provider {
     CORE_RUNTIME_DEPS,
     LEGACY_META_PACKAGES,
     OPTIONAL_RUNTIME_DEPS,
-    resolve_client_target_name,
-    target_scoped_npm_deps
+    app_npm_deps
 }
 
 def _inject_missing(deps: dict, required: dict[str, str]) -> dict {
@@ -77,6 +77,7 @@ def _clear_node_modules(client_dir: Path | None) {
     }
 }
 
+
 impl JacClientConfig.get_plugin_name(self: JacClientConfig) -> str {
     return "client";
 }
@@ -97,6 +98,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, any]
         'configs': {},
         'paths': {},
         'routing': {'auth_redirect': '/login'},
+        'assets': {'dir': '', 'custom_extensions': []},
         'npm': {},
         'package': {
             'name': '',
@@ -109,18 +111,28 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, any]
 }
 
 impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
+    target_app = self.get_jac_config().app_for_target();
+    app_name = target_app.name if target_app is not None else '';
     cached = self._config;
-    if cached is not None {
+    if cached is not None and self._config_app == app_name {
         return cached;
     }
+    self._config_app = app_name;
     default_config = self.get_default_config();
     jac_config = self.get_jac_config();
 
-    client_config = jac_config.get_plugin_config('client');
-    target_name = resolve_client_target_name(jac_config);
+    client_config = self.effective_jac_config().get_plugin_config('client');
 
     npm_deps = jac_config.get_plugin_deps('npm');
-    target_scoped_deps = target_scoped_npm_deps(jac_config, target_name);
+    target_scoped_deps: dict[str, str] = {};
+    app_dev_deps: dict[str, str] = {};
+    for (dep_name, dep_version, _origin, dep_is_dev) in app_npm_deps(jac_config) {
+        if dep_is_dev {
+            app_dev_deps[dep_name] = dep_version;
+        } else {
+            target_scoped_deps[dep_name] = dep_version;
+        }
+    }
 
     npm_plugin_deps: dict = dict(jac_config.plugin_dependencies.get('npm', {}));
     dev_section = npm_plugin_deps.get('dev', {});
@@ -139,6 +151,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
         npm_deps, {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS}
     );
     npm_dev_deps = _inject_missing(npm_dev_deps, CORE_DEV_DEPS);
+    npm_dev_deps = {** npm_dev_deps, ** app_dev_deps};
     merged_npm_deps = {** npm_deps, ** target_scoped_deps};
 
     user_config: dict[str, any] = {
@@ -151,6 +164,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
         'routing': client_config.get('routing', {}),
         'npm': client_config.get('npm', {}),
         'pwa': client_config.get('pwa', {}),
+        'assets': client_config.get('assets', {}),
         'package': {
             'name': jac_config.project.name,
             'version': jac_config.project.version,
@@ -233,20 +247,40 @@ impl JacClientConfig.get_pwa_config(self: JacClientConfig) -> dict[str, any] {
     return config.get('pwa', {});
 }
 
+impl JacClientConfig.get_assets_config(self: JacClientConfig) -> dict[str, any] {
+    return self.load().get('assets', {});
+}
+
+impl JacClientConfig.get_asset_extensions(self: JacClientConfig) -> set[str] {
+    return set(self.get_assets_config().get('custom_extensions', []));
+}
+
+impl JacClientConfig.get_assets_dir(
+    self: JacClientConfig, entry_path: str = ""
+) -> Path {
+    import from jaclang.client.targets.registry { client_app_root }
+    project_dir = self.project_dir if self.project_dir is not None else Path.cwd();
+    configured = str(self.get_assets_config().get('dir') or '');
+    jac_config = self.effective_jac_config();
+    if configured {
+        anchor = (
+            jac_config.project_root
+                if jac_config.project_root is not None
+                else project_dir
+        );
+        return Path(anchor) / configured;
+    }
+    return client_app_root(jac_config, project_dir, entry_path) / 'assets';
+}
+
 impl JacClientConfig.is_pwa_enabled(self: JacClientConfig) -> bool {
     pwa_config = self.get_pwa_config();
 
     return len(pwa_config) > 0;
 }
 
-impl JacClientConfig.get_mobile_config(self: JacClientConfig) -> dict[str, any] {
-    client_config = self.get_jac_config().get_plugin_config("client");
-    section = client_config.get("mobile", {});
-    return section if isinstance(section, dict) else {};
-}
-
 impl JacClientConfig.get_react_native_config(self: JacClientConfig) -> dict[str, any] {
-    client_config = self.get_jac_config().get_plugin_config("client");
+    client_config = self.effective_jac_config().get_plugin_config("client");
     section = client_config.get("react_native", {});
     return section if isinstance(section, dict) else {};
 }

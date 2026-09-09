@@ -32,3 +32,12 @@ def assign_unpack_bare_generic_element -> str {
     (nm, off, ty) = ctx["slots"][-1];
     return str(nm) + str(off) + takes_type(ty);
 }
+
+def loop_unpack_explicit_any_iterable(cfg: any) -> str {
+    out = "";
+    for (name, app) in cfg.apps.items() {
+        out += str(name) + str(app.kind);
+    }
+    widths = [len(str(k)) + len(str(v)) for (k, v) in cfg.apps.items()];
+    return out + str(sum(widths));
+}

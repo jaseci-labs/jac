@@ -1,30 +1,33 @@
 [project]
 name = "{{name}}"
-version = "1.0.0"
-description = "Jac client application: {{name}}"
+version = "0.1.0"
+description = "A cross-platform mobUI app: {{name}}"
 entry-point = "main.jac"
 kind = "mobile"
 
 [dependencies]
 
 [dependencies.npm]
-jac-client-node = "1.0.7"
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-native-web = "^0.19.13"
+react-native-svg = "^15.13.0"
+lucide-react = "^0.469.0"
+lucide-react-native = "^0.469.0"
 
-[dependencies.npm.dev]
-"@jac-client/dev-deps" = "1.0.0"
+[dependencies.npm.native]
+react-native-svg = "^15.13.0"
+lucide-react-native = "^0.469.0"
 
 [dev-dependencies]
 watchdog = ">=3.0.0"
-
-[serve]
-base_route_app = "app"
 
 [client]
 
 [jacpack]
 name = "mobile"
-description = "Jac mobile client app (Capacitor + Vite)"
+description = "Cross-platform mobUI app (React Native + web from one Jac source)"
 jaclang = "0.9.8"
 
 [jacpack.options]
-directories = ["components", "assets", ".jac/client"]
+directories = ["screens", "components", "assets", ".jac/client"]

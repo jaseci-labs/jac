@@ -1,4 +1,4 @@
-"""Server endpoints reached only through the client's `sv import` (Path B).
+"""Server endpoints reached only through the client's bridged import (Path B).
 
 None of these are imported into the entry module. `cross_pub` / `cross_priv`
 are called by the client component; `cross_orphan` is not called by anyone, so

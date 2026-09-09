@@ -12,12 +12,11 @@ import from jaclang.scale.runtime.routing {
 
 def _install_ws_catchall(gw: MicroserviceGateway) {
     import from jaclang.scale.runtime.middleware.ws_forward { websocket_forward }
-    import from jaclang.scale.runtime.lifecycle.drain { is_draining }
     import from jaclang.scale.runtime.gateway.service_registry { ServiceStatus }
 
     async def ws_proxy(websocket: WebSocket) -> None {
         ws_path: str = websocket.path_params.get('ws_path', '');
-        if is_draining() {
+        if gw.drain.draining {
             await websocket.close(code=1012);
             return;
         }
@@ -29,8 +28,8 @@ def _install_ws_catchall(gw: MicroserviceGateway) {
         }
         page_base: str = "";
         if not matched {
-            matched = gw.registry.app_entry();
-            if matched is not None {
+            matched = gw.root_member();
+            if matched is not None and matched.owns_root() {
                 page_base = matched.page_url;
             }
         }
@@ -44,9 +43,10 @@ def _install_ws_catchall(gw: MicroserviceGateway) {
             await websocket.close(code=1013);
             return;
         }
-        remaining: str = full_path[len(matched.prefix):]
-            if full_path.startswith(matched.prefix)
-            else full_path;
+        remaining: str = full_path;
+        if not matched.is_root and full_path.startswith(matched.prefix) {
+            remaining = full_path[len(matched.prefix):];
+        }
         remaining = remaining or "/";
         query: str = str(websocket.url.query);
         target_http: str = f"{page_base or matched.url}{remaining}";
@@ -191,8 +191,8 @@ impl MicroserviceGateway.has_client_bundle -> bool {
     if (Path(self.client_dist_dir) / "index.html").is_file() {
         return True;
     }
-    app = self.app_service();
-    return app is not None and app.serves_client;
+    root_svc = self.root_member();
+    return root_svc is not None and root_svc.owns_root();
 }
 
 impl MicroserviceGateway.serve_spa_fallback -> Response | None {
@@ -208,7 +208,7 @@ impl MicroserviceGateway.bootstrap_admin_ui -> None {
         return;
     }
     logger.info(
-        "No staged admin console; the first request to /admin builds it from " "source."
+        "No staged admin console; the first request to /admin builds it from source."
     );
 }
 
@@ -300,8 +300,7 @@ impl MicroserviceGateway.handle_health_live -> Response {
 
 
 impl MicroserviceGateway.handle_health_ready -> Response {
-    import from jaclang.scale.runtime.lifecycle.drain { is_draining }
-    if is_draining() {
+    if self.drain.draining {
         return JSONResponse(
             status_code=503, content={"status": "draining", "ready": False}
         );
@@ -395,7 +394,7 @@ impl MicroserviceGateway.handle_builtin_passthrough(
 
     stripped: str = path.strip("/");
     first_seg: str = stripped.split("/")[0] if stripped else "";
-    app = self.app_service();
+    root_svc = self.root_member();
     if first_seg in _DISCOVERY_SEGMENTS {
         return await self.probe_services(request, path, self.eligible_services());
     }
@@ -413,7 +412,7 @@ impl MicroserviceGateway.handle_builtin_passthrough(
         if not self.route_table.is_learned(name)
     ];
     if not unknown {
-        if app is not None {
+        if root_svc is not None {
             return None;
         }
         import from jaclang.scale.runtime.context.errors { not_found }
@@ -430,41 +429,63 @@ impl MicroserviceGateway.eligible_services -> list[tuple[str, ServiceEntry]] {
     ];
 }
 
-impl MicroserviceGateway.app_service -> ServiceEntry | None {
-    return self.registry.app_entry();
+impl MicroserviceGateway.root_member -> ServiceEntry | None {
+    return self.registry.root_entry();
 }
 
-impl MicroserviceGateway.forward_to_app(
+impl MicroserviceGateway.shell_answers(request: Request, path: str) -> bool {
+    if request.method != "GET" {
+        return False;
+    }
+    if not (Path(self.client_dist_dir) / "index.html").is_file() {
+        return False;
+    }
+    return not path.lstrip("/") or "text/html" in request.headers.get("accept", "");
+}
+
+impl MicroserviceGateway.forward_to_root(
     request: Request, path: str
 ) -> Response | None {
-    app = self.app_service();
-    if app is None or not app.is_routable() {
+    root_svc = self.root_member();
+    if root_svc is None {
         return None;
     }
-    if app.page_url {
-        page_resp = await self.forward_root_path(request, app, path, app.page_url);
+    if not root_svc.is_routable() {
+        if self.shell_answers(request, path) {
+            return None;
+        }
+        import from jaclang.scale.runtime.context.errors { service_unavailable }
+        return service_unavailable(root_svc.name, "not accepting traffic");
+    }
+    if not root_svc.owns_root() {
+        return None;
+    }
+    if root_svc.page_url {
+        page_resp = await self.forward_root_path(
+            request, root_svc, path, root_svc.page_url
+        );
         if page_resp is not None and page_resp.status_code not in (502, 504) {
             return page_resp;
         }
         logger.warning(
-            f"client dev server at {app.page_url} did not answer {path}; "
-            f"falling back to {app.name}'s own page rendering"
+            f"client dev server at {root_svc.page_url} did not answer {path}; "
+            f"falling back to {root_svc.name}'s own page rendering"
         );
     }
-    return await self.forward_root_path(request, app, path);
+    return await self.forward_root_path(request, root_svc, path);
 }
 
-impl MicroserviceGateway.forward_static_to_app(
+impl MicroserviceGateway.forward_static_to_root(
     request: Request, path: str
 ) -> Response | None {
     if request.method != "GET" or not path.startswith("/static/") {
         return None;
     }
-    app = self.registry.fleet_app_entry();
-    if app is None or not app.is_routable() {
+    root_svc = self.root_member();
+    if root_svc is None or not root_svc.is_routable() {
         return None;
     }
-    return await self.forward_root_path(request, app, path);
+    return await self.forward_root_path(request, root_svc, path);
 }
 
 impl MicroserviceGateway.resolve_learned_owner(path: str) -> ServiceEntry | None {
@@ -534,7 +555,7 @@ impl MicroserviceGateway.probe_services(
     ordered: list[tuple[str, ServiceEntry]] = sorted(
         candidates,
         key=lambda (pair: tuple) { (
-            0 if pair[1].is_app else 1,
+            0 if pair[1].is_root else 1,
             0 if pair[1].status == ServiceStatus.HEALTHY else 1
         ); }
     );
@@ -671,9 +692,7 @@ impl MicroserviceGateway.handle_openapi -> Response {
 
 impl MicroserviceGateway.handle_docs -> Response {
     import from jaclang.server.serving.openapi { swagger_ui_html }
-    return HTMLResponse(
-        content=swagger_ui_html("/openapi.json", "Jac Microservice Gateway - API")
-    );
+    return HTMLResponse(content=swagger_ui_html("/openapi.json", "Jac Gateway - API"));
 }
 
 impl MicroserviceGateway.handle_metrics -> Response {
@@ -748,7 +767,7 @@ impl MicroserviceGateway.handle_spa_fallback(
 
 impl MicroserviceGateway.setup -> ServingApp {
     import time;
-    self.app = ServingApp(title="Jac Microservice Gateway");
+    self.app = ServingApp(title="Jac Gateway");
     gw = self;
 
     self.bootstrap_admin_ui();
@@ -788,7 +807,7 @@ impl MicroserviceGateway.setup -> ServingApp {
         start_server_span,
         end_span
     }
-    trc_cfg = get_scale_config().get_microservices_config().get("tracing", {});
+    trc_cfg = get_scale_config().get_gateway_config().get("tracing", {});
     install_tracing(
         enabled=trc_cfg.get("enabled", False),
         endpoint=trc_cfg.get("endpoint"),
@@ -849,7 +868,9 @@ impl MicroserviceGateway.setup -> ServingApp {
                 }
             } elif decision.kind == ROUTE_CLIENT_PAGE {
                 page_resp: Response | None = None;
-                if request.method == "GET" and gw.app_service() is None {
+                root_svc = gw.root_member();
+                if request.method == "GET"
+                    and (root_svc is None or not root_svc.owns_root()) {
                     page_resp = gw.serve_spa_fallback();
                     if page_resp is None {
                         import from jaclang.scale.runtime.context.errors { not_found }
@@ -911,19 +932,17 @@ impl MicroserviceGateway.setup -> ServingApp {
                 }
             }
             if resp is None {
-                served_by_app = await gw.forward_to_app(request, path);
-                if served_by_app is not None {
-                    app_svc = gw.app_service();
-                    svc_label = app_svc.name if app_svc is not None else "__app__";
-                    resp = served_by_app;
+                served_by_root = await gw.forward_to_root(request, path);
+                if served_by_root is not None {
+                    svc_label = gw.registry.root_app or "__root__";
+                    resp = served_by_root;
                 }
             }
             if resp is None {
-                static_from_app = await gw.forward_static_to_app(request, path);
-                if static_from_app is not None {
-                    fleet_app = gw.registry.fleet_app_entry();
-                    svc_label = fleet_app.name if fleet_app is not None else "__app__";
-                    resp = static_from_app;
+                static_from_root = await gw.forward_static_to_root(request, path);
+                if static_from_root is not None {
+                    svc_label = gw.registry.root_app or "__root__";
+                    resp = static_from_root;
                 }
             }
             if resp is None {
@@ -979,25 +998,27 @@ impl MicroserviceGateway.setup -> ServingApp {
     }
     registry = MiddlewareRegistry();
 
-    import from jaclang.scale.runtime.lifecycle.drain { build_drain_middleware }
+    import from jaclang.server.serving.drain { drain_middleware }
     registry.register(
-        Middleware(name="drain", priority=20, fn=build_drain_middleware("__gateway__"))
+        Middleware(
+            name="drain", priority=20, fn=drain_middleware(self.drain, "__gateway__")
+        )
     );
 
     import from jaclang.scale.config.config_loader { get_scale_config }
-    ms_cfg = get_scale_config().get_microservices_config();
+    gw_cfg = get_scale_config().get_gateway_config();
 
     import from jaclang.scale.runtime.middleware.rate_limit {
         build_rate_limit_middleware
     }
-    rl_mw = build_rate_limit_middleware(ms_cfg.get("rate_limit", {}));
+    rl_mw = build_rate_limit_middleware(gw_cfg.get("rate_limit", {}));
     if rl_mw is not None {
         registry.register(Middleware(name="rate_limit", priority=10, fn=rl_mw));
     }
 
     registry.install(self.app);
 
-    cors_cfg = ms_cfg.get("cors", {});
+    cors_cfg = gw_cfg.get("cors", {});
     if cors_cfg.get("allow_origins") {
         import from jaclang.server.serving.middleware { cors_middleware }
         self.app.add_middleware(
@@ -1022,20 +1043,19 @@ def _log_gateway_ready(host: str, bound: int) {
 
 
 impl MicroserviceGateway.start(on_ready: any = None) -> None {
-    import from jaclang.scale.runtime.lifecycle.drain { install_signal_drain }
-    import from jaclang.scale.config.config_loader { get_scale_config }
+    import from jaclang.server.net { PORT_RETRY_LIMIT }
+    import from jaclang.server.serving.server { ServingServer }
+    import from jaclang.server.settings { ServeSettings }
 
     if self.app is None {
         self.setup();
     }
-    ms_cfg = get_scale_config().get_microservices_config();
-    drain_timeout: float = float(ms_cfg.get("drain_timeout_seconds", 10));
-
-    import from jaclang.server.serving.server { ServingServer, PORT_RETRY_LIMIT }
-    serving = ServingServer(
-        app=self.app, host=self.host, port=self.port, drain_timeout=drain_timeout
+    settings = ServeSettings.load(
+        self.base_path,
+        {'host': self.host, 'port': self.port, 'strict_port': self.port_pinned}
     );
-    install_signal_drain(serving, timeout_s=drain_timeout);
+    self.drain.timeout = settings.timeouts.drain;
+    serving = ServingServer(app=self.app, settings=settings, drain=self.drain);
     import from functools { partial }
     ready: any = on_ready;
     if ready is None {
@@ -1047,14 +1067,29 @@ impl MicroserviceGateway.start(on_ready: any = None) -> None {
 }
 
 
+impl MicroserviceGateway.add_endpoint(ep: JEndPoint) -> None {
+    self.app.add_endpoint(ep);
+}
+
+impl MicroserviceGateway.identity -> UserManager {
+    if self.user_manager is None {
+        self.user_manager = UserManager(base_path=self.base_path);
+    }
+    return self.user_manager;
+}
+
+
 impl MicroserviceGateway._install_admin_api -> None {
-    import from jaclang.scale.server.native_server { NativeJServer }
-    import from jaclang.scale.identity.user_manager { JacScaleUserManager }
+    import from jaclang.server.endpoints.auth { register_auth_endpoints }
+    import from jaclang.server.middleware { jwt_middleware }
+    import from jaclang.server.identity.config { configure_identity }
+    import from jaclang.server.settings { ServeSettings }
 
-    self.server = NativeJServer(app=self.app, install_drain=False);
-
-    self.user_manager = JacScaleUserManager(base_path=self.base_path);
-    self.server.set_user_manager(self.user_manager);
+    settings = ServeSettings.load(self.base_path);
+    configure_identity(settings.auth, self.base_path);
+    self.server = self;
+    self.user_manager = self.identity();
+    self.app.add_middleware(jwt_middleware(self.user_manager));
 
     self.register_admin_endpoints();
     self.register_logs_endpoints();
@@ -1067,12 +1102,7 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.register_network_endpoints();
     self.register_podenv_endpoints();
 
-    self.register_register_endpoint();
-    self.register_login_endpoint();
-    self.register_refresh_token_endpoint();
-    self.register_update_password_endpoint();
-    self.register_me_endpoint();
-    self.register_update_me_endpoint();
+    register_auth_endpoints(self);
 
     logger.info(
         "Admin JSON API installed on gateway "

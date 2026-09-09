@@ -2,6 +2,7 @@ import from c { def malloc(n: int) -> int;  }
 import from c { def free(p: int) -> None;  }
 import from c { def __jac_region_tls_get -> int;  }
 import from c { def __jac_region_tls_set(v: int) -> None;  }
+import from c { def __jac_region_gbl_get -> int;  }
 import from c { def __jac_region_died_hook(rgn: int) -> None;  }
 
 glob HDR_ALLOC_ID_OFF: int = -32,
@@ -27,7 +28,10 @@ glob RGN_CHUNK: int = 0,
      RGN_RUNS: int = 80,
      RGN_FREEPG: int = 88,
      RGN_LOCK: int = 96,
+     RGN_ALLNEXT: int = 104,
      RGN_CTRL_SIZE: int = 112,
+     GBL_LOCK: int = 0,
+     GBL_HEAD: int = 8,
      CHUNK_PREV: int = 0,
      CHUNK_RGN: int = 8,
      CHUNK_SIZE: int = 16,
@@ -137,6 +141,60 @@ def _unlock(hdl: int) {
     __atomic_xchg_i64(hdl + RGN_LOCK, 0);
 }
 
+def _glock(g: int) {
+    while __atomic_xchg_i64(g + GBL_LOCK, 1) != 0 {}
+}
+
+def _gunlock(g: int) {
+    __atomic_xchg_i64(g + GBL_LOCK, 0);
+}
+
+def _registry_add(hdl: int) {
+    g = __jac_region_gbl_get();
+    _glock(g);
+    __mem_store_i64(hdl + RGN_ALLNEXT, __mem_load_i64(g + GBL_HEAD));
+    __mem_store_i64(g + GBL_HEAD, hdl);
+    _gunlock(g);
+}
+
+def _registry_remove(hdl: int) {
+    g = __jac_region_gbl_get();
+    _glock(g);
+    prev = 0;
+    cur = __mem_load_i64(g + GBL_HEAD);
+    while cur != 0 {
+        nxt = __mem_load_i64(cur + RGN_ALLNEXT);
+        if cur == hdl {
+            if prev == 0 {
+                __mem_store_i64(g + GBL_HEAD, nxt);
+            } else {
+                __mem_store_i64(prev + RGN_ALLNEXT, nxt);
+            }
+            break;
+        }
+        prev = cur;
+        cur = nxt;
+    }
+    __mem_store_i64(hdl + RGN_ALLNEXT, 0);
+    _gunlock(g);
+}
+
+def _registry_holds(ptr: int) -> int {
+    g = __jac_region_gbl_get();
+    _glock(g);
+    found = 0;
+    cur = __mem_load_i64(g + GBL_HEAD);
+    while cur != 0 {
+        if _region_holds(cur, ptr) != 0 {
+            found = 1;
+            break;
+        }
+        cur = __mem_load_i64(cur + RGN_ALLNEXT);
+    }
+    _gunlock(g);
+    return found;
+}
+
 def __jac_region_new -> int {
     raw = malloc(HDR_TOTAL + RGN_CTRL_SIZE);
     hdl = raw + HDR_TOTAL;
@@ -149,6 +207,7 @@ def __jac_region_new -> int {
         __mem_store_i64(hdl + i, 0);
         i += 8;
     }
+    _registry_add(hdl);
     return hdl;
 }
 
@@ -261,9 +320,12 @@ def _region_holds(hdl: int, ptr: int) -> int {
 }
 
 def __jac_region_owns(ptr: int) -> int {
-    blk = __jac_region_tls_get();
-    if blk == 0 or ptr == 0 {
+    if ptr == 0 {
         return 0;
+    }
+    blk = __jac_region_tls_get();
+    if blk == 0 {
+        return _registry_holds(ptr);
     }
     depth = __mem_load_i64(blk + TLS_DEPTH);
     stk = __mem_load_i64(blk + TLS_STACK);
@@ -275,7 +337,7 @@ def __jac_region_owns(ptr: int) -> int {
         }
         i -= 1;
     }
-    return 0;
+    return _registry_holds(ptr);
 }
 
 def _list_tail(head: int, link_off: int) -> int {
@@ -287,6 +349,7 @@ def _list_tail(head: int, link_off: int) -> int {
 }
 
 def _reabsorb(child: int, parent: int) {
+    _registry_remove(child);
     ch = __mem_load_i64(child + RGN_CHUNK);
     if ch != 0 {
         ph = __mem_load_i64(parent + RGN_CHUNK);
@@ -341,6 +404,7 @@ def _reabsorb(child: int, parent: int) {
 }
 
 def _teardown(hdl: int) {
+    _registry_remove(hdl);
     __jac_region_died_hook(hdl);
     cur = __mem_load_i64(hdl + RGN_DTL);
     while cur != 0 {

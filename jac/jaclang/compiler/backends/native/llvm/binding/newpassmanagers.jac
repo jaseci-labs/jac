@@ -2,14 +2,6 @@ import from ctypes { c_bool, c_int, c_size_t, POINTER, Structure, byref, c_char_
 import from enum { IntFlag }
 import from typing { NamedTuple }
 import from jaclang.compiler.backends.native.llvm.binding { ffi }
-def create_new_module_pass_manager -> object {
-    return ModulePassManager();
-}
-
-def create_new_function_pass_manager -> object {
-    return FunctionPassManager();
-}
-
 def create_pass_builder(tm: any, pto: any) -> PassBuilder {
     return PassBuilder(tm, pto);
 }
@@ -20,103 +12,6 @@ def create_pipeline_tuning_options(speed_level: any = 2) -> PipelineTuningOption
 
 """ Holds statistics from reference count pruning.
     """
-class PruneStats(NamedTuple) {
-    has basicblock: int,
-        diamond: int,
-        fanout: int,
-        fanout_raise: int;
-
-    def __add__(self: PruneStats, other: any) -> object {
-        if not isinstance(other, PruneStats) {
-            msg = 'PruneStats can only be added to another PruneStats, got {}.';
-            raise TypeError(msg.format(`type(other)));
-        }
-        return PruneStats(
-            (self.basicblock + other.basicblock),
-            (self.diamond + other.diamond),
-            (self.fanout + other.fanout),
-            (self.fanout_raise + other.fanout_raise)
-        );
-    }
-
-    def __sub__(self: PruneStats, other: any) -> object {
-        if not isinstance(other, PruneStats) {
-            msg = 'PruneStats can only be subtracted from another PruneStats, '
-            'got {}.';
-            raise TypeError(msg.format(`type(other)));
-        }
-        return PruneStats(
-            (self.basicblock - other.basicblock),
-            (self.diamond - other.diamond),
-            (self.fanout - other.fanout),
-            (self.fanout_raise - other.fanout_raise)
-        );
-    }
-}
-
-class _c_PruneStats(Structure) {
-    with entry {
-        _fields_ = [
-            ('basicblock', c_size_t),
-            ('diamond', c_size_t),
-            ('fanout', c_size_t),
-            ('fanout_raise', c_size_t)
-        ];
-    }
-}
-
-""" Returns a namedtuple containing the current values for the refop pruning
-    statistics. If kwarg `printout` is True the stats are printed to stderr,
-    default is False.
-    """
-def dump_refprune_stats(printout: any = False) -> object {
-    stats = _c_PruneStats(0, 0, 0, 0);
-    do_print = c_bool(printout);
-    ffi.lib.LLVMPY_DumpRefPruneStats(byref(stats), do_print);
-    return PruneStats(
-        stats.basicblock, stats.diamond, stats.fanout, stats.fanout_raise
-    );
-}
-
-"""Enable or disable the pass timers.
-
-    Parameters
-    ----------
-    enable : bool
-        Set to True to enable the pass timers.
-        Set to False to disable the pass timers.
-    """
-def set_time_passes(enable: any) -> object {
-    ffi.lib.LLVMPY_SetTimePasses(c_bool(enable));
-}
-
-"""Returns the pass timings report and resets the LLVM internal timers.
-
-    Pass timers are enabled by ``set_time_passes()``. If the timers are not
-    enabled, this function will return an empty string.
-
-    Returns
-    -------
-    res : str
-        LLVM generated timing report.
-    """
-def report_and_reset_timings -> object {
-    with ffi.OutputString() as buf {
-        ffi.lib.LLVMPY_ReportAndResetTimings(buf);
-        return str(buf);
-    }
-}
-
-class RefPruneSubpasses(IntFlag) {
-    with entry {
-        PER_BB = 1;
-        DIAMOND = 2;
-        FANOUT = 4;
-        FANOUT_RAISE = 8;
-        ALL = PER_BB | DIAMOND | FANOUT | FANOUT_RAISE;
-    }
-}
-
 class NewPassManager {
     def init(self: NewPassManager) -> object {
         if (`type(self) is NewPassManager) {
@@ -544,27 +439,6 @@ class ModulePassManager(ffi.ObjectRef, NewPassManager) {
     def add_post_order_function_attributes_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddPostOrderFunctionAttrsPass(self);
     }
-
-    """Add Numba specific Reference count pruning pass.
-
-        Parameters
-        ----------
-        subpasses_flags : RefPruneSubpasses
-            A bitmask to control the subpasses to be enabled.
-        subgraph_limit : int
-            Limit the fanout pruners to working on a subgraph no bigger than
-            this number of basic-blocks to avoid spending too much time in very
-            large graphs. Default is 1000. Subject to change in future
-            versions.
-        """
-    def add_refprune_pass(
-        self: ModulePassManager,
-        subpasses_flags: any = RefPruneSubpasses.ALL,
-        subgraph_limit: any = 1000
-    ) -> object {
-        iflags = RefPruneSubpasses(subpasses_flags);
-        ffi.lib.LLVMPY_AddRefPrunePass_module(self, iflags, subgraph_limit);
-    }
 }
 
 class FunctionPassManager(ffi.ObjectRef, NewPassManager) {
@@ -573,27 +447,6 @@ class FunctionPassManager(ffi.ObjectRef, NewPassManager) {
             ptr = ffi.lib.LLVMPY_CreateNewFunctionPassManager();
         }
         super.init(ptr);
-    }
-
-    """Add Numba specific Reference count pruning pass.
-
-        Parameters
-        ----------
-        subpasses_flags : RefPruneSubpasses
-            A bitmask to control the subpasses to be enabled.
-        subgraph_limit : int
-            Limit the fanout pruners to working on a subgraph no bigger than
-            this number of basic-blocks to avoid spending too much time in very
-            large graphs. Default is 1000. Subject to change in future
-            versions.
-        """
-    def add_refprune_pass(
-        self: FunctionPassManager,
-        subpasses_flags: any = RefPruneSubpasses.ALL,
-        subgraph_limit: any = 1000
-    ) -> object {
-        iflags = RefPruneSubpasses(subpasses_flags);
-        ffi.lib.LLVMPY_AddRefPrunePass_function(self, iflags, subgraph_limit);
     }
 }
 
@@ -672,26 +525,13 @@ class PipelineTuningOptions(ffi.ObjectRef) {
     }
 }
 
-class TimePassesHandler(ffi.ObjectRef) {
-    def init(self: TimePassesHandler) -> object {
-        super.init(ffi.lib.LLVMPY_CreateTimePassesHandler());
-    }
-
-    def _dispose(self: TimePassesHandler) -> object {
-        ffi.lib.LLVMPY_DisposeTimePassesHandler(self);
-    }
-}
-
 class PassBuilder(ffi.ObjectRef) {
-    with entry {
-        _time_passes_handler: (TimePassesHandler | None);
-    }
+    with entry {}
 
     def init(self: PassBuilder, tm: any, pto: any) -> object {
         super.init(ffi.lib.LLVMPY_CreatePassBuilder(tm, pto));
         self._pto = pto;
         self._tm = tm;
-        self._time_passes_handler = None;
     }
 
     def getModulePassManager(self: PassBuilder) -> ModulePassManager {
@@ -708,49 +548,12 @@ class PassBuilder(ffi.ObjectRef) {
         );
     }
 
-    """Enable the pass timers.
-
-        Raises
-        ------
-        RuntimeError
-            If pass timing is already enabled.
-        """
-    def start_pass_timing(self: PassBuilder) -> object {
-        if self._time_passes_handler {
-            raise RuntimeError("Pass timing can only be done once");
-        }
-        self._time_passes_handler = TimePassesHandler();
-        ffi.lib.LLVMPY_EnableTimePasses(self, self._time_passes_handler);
-    }
-
-    """Returns the pass timings report and disables the LLVM internal
-        timers. Pass timers are enabled by ``start_pass_timing()``. If the
-        timers are not enabled, this function will return an empty string.
-
-        Returns
-        -------
-        res : str
-            LLVM generated timing report.
-        """
-    def finish_pass_timing(self: PassBuilder) -> object {
-        if not self._time_passes_handler {
-            raise RuntimeError("Pass timing is not enabled");
-        }
-        with ffi.OutputString() as buf {
-            ffi.lib.LLVMPY_ReportAndDisableTimePasses(self._time_passes_handler, buf);
-            return str(buf);
-        }
-    }
-
     def _dispose(self: PassBuilder) -> object {
         ffi.lib.LLVMPY_DisposePassBuilder(self);
     }
 }
 
 with entry {
-    ffi.lib.LLVMPY_DumpRefPruneStats.argtypes = [POINTER(_c_PruneStats), c_bool];
-    ffi.lib.LLVMPY_SetTimePasses.argtypes = [c_bool];
-    ffi.lib.LLVMPY_ReportAndResetTimings.argtypes = [POINTER(c_char_p)];
     ffi.lib.LLVMPY_CreateNewModulePassManager.restype = ffi.LLVMModulePassManagerRef;
     ffi.lib.LLVMPY_RunNewModulePassManager.argtypes = [
         ffi.LLVMModulePassManagerRef,
@@ -868,11 +671,6 @@ with entry {
         ffi.LLVMModulePassManagerRef
     ];
     ffi.lib.LLVMPY_DisposeNewModulePassManger.argtypes = [ffi.LLVMModulePassManagerRef];
-    ffi.lib.LLVMPY_AddRefPrunePass_module.argtypes = [
-        ffi.LLVMModulePassManagerRef,
-        c_int,
-        c_size_t
-    ];
     ffi.lib.LLVMPY_CreateNewFunctionPassManager.restype = ffi.LLVMFunctionPassManagerRef;
     ffi.lib.LLVMPY_RunNewFunctionPassManager.argtypes = [
         ffi.LLVMFunctionPassManagerRef,
@@ -976,11 +774,6 @@ with entry {
     ffi.lib.LLVMPY_DisposeNewFunctionPassManger.argtypes = [
         ffi.LLVMFunctionPassManagerRef
     ];
-    ffi.lib.LLVMPY_AddRefPrunePass_function.argtypes = [
-        ffi.LLVMFunctionPassManagerRef,
-        c_int,
-        c_size_t
-    ];
     ffi.lib.LLVMPY_CreatePipelineTuningOptions.restype = ffi.LLVMPipelineTuningOptionsRef;
     ffi.lib.LLVMPY_PTOGetLoopInterleaving.restype = c_bool;
     ffi.lib.LLVMPY_PTOGetLoopInterleaving.argtypes = [ffi.LLVMPipelineTuningOptionsRef];
@@ -1022,16 +815,6 @@ with entry {
         ffi.LLVMPipelineTuningOptionsRef
     ];
     ffi.lib.LLVMPY_DisposePassBuilder.argtypes = [ffi.LLVMPassBuilderRef];
-    ffi.lib.LLVMPY_CreateTimePassesHandler.restype = ffi.LLVMTimePassesHandlerRef;
-    ffi.lib.LLVMPY_DisposeTimePassesHandler.argtypes = [ffi.LLVMTimePassesHandlerRef];
-    ffi.lib.LLVMPY_EnableTimePasses.argtypes = [
-        ffi.LLVMPassBuilderRef,
-        ffi.LLVMTimePassesHandlerRef
-    ];
-    ffi.lib.LLVMPY_ReportAndDisableTimePasses.argtypes = [
-        ffi.LLVMTimePassesHandlerRef,
-        POINTER(c_char_p)
-    ];
     ffi.lib.LLVMPY_buildPerModuleDefaultPipeline.restype = ffi.LLVMModulePassManagerRef;
     ffi.lib.LLVMPY_buildPerModuleDefaultPipeline.argtypes = [
         ffi.LLVMPassBuilderRef,

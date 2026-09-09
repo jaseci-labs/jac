@@ -1,27 +1,34 @@
-import shutil;
-import tempfile;
-import from pathlib { Path }
-import from jaclang.project.config { get_config }
 import from jaclang.scale.runtime.routing {
-    ensure_main_service,
-    guard_route_name,
-    is_reserved,
-    resolve_routes,
+    guard_route_prefix,
+    is_gateway_owned_segment,
     is_learnable_prefix,
     GATEWAY_API_SEGMENTS,
     GATEWAY_WELLKNOWN_SEGMENTS,
     GATEWAY_CLIENT_SEGMENT,
     GATEWAY_BUILTIN_PREFIXES,
     GATEWAY_DISCOVERY_SEGMENTS,
+    GATEWAY_LISTING_SEGMENTS,
     GATEWAY_REPLICATED_SEGMENTS,
     GATEWAY_SERVICE_OWNED_SEGMENTS
 }
 
 
-test "a service named cl is rejected instead of silently shadowed" {
+test "an app route under a gateway segment is rejected" {
+    caught = "";
+    try {
+        guard_route_prefix("myapp", "/admin");
+    } except ValueError as e {
+        caught = str(e);
+    }
+    assert "owned by the gateway" in caught , caught;
+    assert "[apps.myapp] route" in caught , caught;
+}
+
+
+test "a nested route under a gateway segment is rejected" {
     caught = False;
     try {
-        guard_route_name("cl");
+        guard_route_prefix("myapp", "/user/panel");
     } except ValueError {
         caught = True;
     }
@@ -29,94 +36,25 @@ test "a service named cl is rejected instead of silently shadowed" {
 }
 
 
-test "the _app suffix does not evade the reserved guard" {
-    caught = False;
-    try {
-        guard_route_name("cl_app");
-    } except ValueError {
-        caught = True;
+test "every gateway-owned segment refuses to be an app route" {
+    for seg in list(GATEWAY_API_SEGMENTS) + list(GATEWAY_WELLKNOWN_SEGMENTS) {
+        assert is_gateway_owned_segment(seg) , seg;
     }
-    assert caught;
+    assert is_gateway_owned_segment(GATEWAY_CLIENT_SEGMENT);
+    assert is_gateway_owned_segment("admin");
+    assert not is_gateway_owned_segment("api");
 }
 
 
-test "every gateway-owned segment is reserved as a route name" {
-    for seg in GATEWAY_API_SEGMENTS {
-        assert is_reserved(seg);
-    }
-    for seg in GATEWAY_WELLKNOWN_SEGMENTS {
-        assert is_reserved(seg);
-    }
-    assert is_reserved(GATEWAY_CLIENT_SEGMENT);
+test "the default /api/<name> route never shadows a builtin path" {
+    guard_route_prefix("orders", "/api/orders");
+    guard_route_prefix("cart", "/shop/cart");
 }
 
 
-test "a user-supplied prefix under a gateway segment is rejected" {
-    caught = False;
-    try {
-        resolve_routes({"routes": {"myapp": "/admin"}});
-    } except ValueError {
-        caught = True;
-    }
-    assert caught;
-}
-
-
-test "a nested prefix under a gateway segment is rejected" {
-    caught = False;
-    try {
-        resolve_routes({"routes": {"myapp": "user/panel"}});
-    } except ValueError {
-        caught = True;
-    }
-    assert caught;
-}
-
-
-test "two services resolving to the same prefix are rejected" {
-    caught = False;
-    try {
-        resolve_routes({"routes": {"a": "/shop", "b": "shop"}});
-    } except ValueError {
-        caught = True;
-    }
-    assert caught;
-}
-
-
-test "valid routes still resolve with derived and normalized prefixes" {
-    routes = resolve_routes({"routes": {"orders": "", "billing": "pay"}});
-    assert routes == {"orders": "/orders", "billing": "/pay"};
-}
-
-
-test "a prefix under a name-reserved but unowned segment is allowed" {
-    routes = resolve_routes({"routes": {"cart": "/api/cart"}});
-    assert routes == {"cart": "/api/cart"};
-}
-
-
-test "trailing slashes cannot evade the duplicate-prefix check" {
-    caught = False;
-    try {
-        resolve_routes({"routes": {"a": "/shop", "b": "/shop/"}});
-    } except ValueError {
-        caught = True;
-    }
-    assert caught;
-}
-
-
-test "a trailing slash is canonicalized off the stored prefix" {
-    routes = resolve_routes({"routes": {"shop": "/shop/"}});
-    assert routes == {"shop": "/shop"};
-}
-
-
-test "every builtin gateway prefix is reserved as a route name" {
-    assert "/cl/" in GATEWAY_BUILTIN_PREFIXES;
+test "every builtin gateway prefix is gateway-owned" {
     for prefix in GATEWAY_BUILTIN_PREFIXES {
-        assert is_reserved(prefix.strip("/"));
+        assert is_gateway_owned_segment(prefix.strip("/"));
     }
 }
 
@@ -133,6 +71,7 @@ test "builtin families partition the API segments the guard reserves" {
     for seg in ["walker", "function", "webhook"] {
         assert seg in owned;
     }
+    assert set(GATEWAY_LISTING_SEGMENTS) == {"walkers", "functions"};
 }
 
 
@@ -154,27 +93,7 @@ test "only concrete members of service-owned families are learnable" {
         "/admin/users"
     ] {
         assert not is_learnable_prefix(prefix) , (
-            f"{prefix} must never be handed to a single service"
+            f"{prefix} must never be handed to a single app"
         );
-    }
-}
-
-
-test "the main service takes its filename from the project entry point" {
-    project_dir = Path(tempfile.mkdtemp(prefix="jac-entrypoint-"));
-    (project_dir / "jac.toml").write_text(
-        '[project]\n' 'name = "entrypointread"\n' 'entry-point = "app.jac"\n',
-        encoding="utf-8"
-    );
-    (project_dir / "app.jac").write_text("with entry {}\n", encoding="utf-8");
-    routes: dict[str, str] = {"orders": "/orders"};
-    service_files: dict[str, str] = {"orders": "orders.jac"};
-    try {
-        get_config(start_path=project_dir, force_discover=True);
-        ensure_main_service(routes, service_files);
-        assert service_files["main"] == "app.jac";
-    } finally {
-        get_config(force_discover=True);
-        shutil.rmtree(project_dir, ignore_errors=True);
     }
 }

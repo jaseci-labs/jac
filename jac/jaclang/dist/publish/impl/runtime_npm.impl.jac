@@ -35,7 +35,7 @@ impl runtime_api_names(framework: str = "") -> set[str] {
     names: set[str] = set();
 
     for m in re.finditer(
-        r"(?m)^(?:async\s+)?(?:def|glob)(?::\w+)?\s+([A-Za-z_][A-Za-z0-9_]*)", text
+        r"(?m)^(?:async\s+)?(?:def|glob|obj)(?::\w+)?\s+([A-Za-z_][A-Za-z0-9_]*)", text
     ) {
         names.add(m.group(1));
     }

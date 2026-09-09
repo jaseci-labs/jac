@@ -12,7 +12,7 @@ import from jaclang.server.serving.authcrypt {
 import from datetime { UTC, datetime, timedelta }
 import from jaclang.server.transport { TransportResponse, Meta }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.persistence.pg { open_docs_store }
+import from jaclang.server.shared_store { open_docs_store }
 
 glob logger = logging.getLogger(__name__);
 

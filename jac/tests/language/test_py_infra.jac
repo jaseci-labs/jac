@@ -466,7 +466,7 @@ test "walker dynamic update" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        execution.run(filename=bar_file_path, entry_name="bar_walk", args=[]);
+        execution.run(target=bar_file_path, entry_name="bar_walk", args=[]);
     } finally {
         sys.stdout = old_stdout;
     }
@@ -507,7 +507,7 @@ test "walker dynamic update" {
         # Reset state for dynamic update test
         Jac.loaded_modules.clear();
         Jac.attach_program(JacProgram());
-        execution.run(filename=update_file_path);
+        execution.run(target=update_file_path);
         stdout_value2 = captured2.getvalue();
         expected_output2 = "bar_walk has been updated with new behavior!";
         assert expected_output2 in stdout_value2.split("\n");

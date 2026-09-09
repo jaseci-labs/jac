@@ -11,7 +11,7 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.cli.commands { project }
 import from jaclang.project.config { JacConfig }
-import from jaclang.project.kinds { plan_project_run }
+import from jaclang.project.kinds { plan_app_run }
 import from jaclang.project.template_registry { initialize_template_registry }
 
 glob _tmp_dirs: list[str] = [],
@@ -45,7 +45,10 @@ def _assert_kind(kind: str, action: str) {
     cfg = JacConfig.discover(start_path=proj);
     assert cfg is not None;
     assert cfg.project.kind == kind;
-    plan = plan_project_run(cfg, str(proj));
+    app = cfg.resolve_app("");
+    assert app.implicit;
+    assert app.kind == kind;
+    plan = plan_app_run(cfg, str(proj), app);
     assert plan is not None;
     assert plan.action == action , f"{kind}: expected {action}, got {plan.action}";
 }

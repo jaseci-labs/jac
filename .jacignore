@@ -14,37 +14,25 @@
 # this list is a debt, not a policy: the goal is an empty file.
 
 # llvmlite-bound native IR generation.
-# The NaIRGen* mixins reach llvmlite handles (ir.Function.args, .linkage,
-# IRBuilder.append_basic_block, Type.as_pointer) through the vendored
-# py2jac translation under passes/native/llvm/, whose ctypes-derived
-# values the checker sees as Unknown. Not annotatable without typing that
-# vendored surface.
-jac/jaclang/compiler/backends/native/na_ir_gen/calls.impl.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/calls.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/core.impl.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/core.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/debug.impl.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/debug.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/enums.impl.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/enums.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/expr.impl.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/expr.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/func.impl.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/func.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/generics.impl.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/generics.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/iterators.impl.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/iterators.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/objects.impl.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/objects.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/refcount.impl.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/refcount.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/stmt.impl.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/stmt.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/types.impl.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/types.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/vtable.impl.jac
-jac/jaclang/compiler/backends/native/na_ir_gen/vtable.jac
+# These NaIRGenPass body files reach llvmlite handles (ir.Function.args,
+# .linkage, IRBuilder.append_basic_block, Type.as_pointer) through the
+# vendored py2jac translation under backends/native/llvm/, whose
+# ctypes-derived values the checker sees as Unknown. Not annotatable
+# without typing that vendored surface. The declaration
+# (na_ir_gen_pass.jac) and the other 32 body files are checked.
+jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/calls.impl.jac
+jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/core.impl.jac
+jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/debug.impl.jac
+jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/enums.impl.jac
+jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/expr.impl.jac
+jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/func.impl.jac
+jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/generics.impl.jac
+jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/iterators.impl.jac
+jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/objects.impl.jac
+jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/refcount.impl.jac
+jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/stmt.impl.jac
+jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/types.impl.jac
+jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/vtable.impl.jac
 
 # byllm -- litellm/LLM-provider glue.
 jac/jaclang/byllm/llm.impl/basellm.impl.jac
@@ -58,36 +46,30 @@ jac/jaclang/byllm/telemetry.jac
 jac/jaclang/byllm/types.jac
 
 # jac-scale server surface.
-jac/jaclang/scale/server/impl/serve.auth.impl.jac
-jac/jaclang/scale/server/impl/serve.core.impl.jac
-jac/jaclang/scale/server/impl/serve.endpoints.impl.jac
-jac/jaclang/scale/server/impl/serve.identity.impl.jac
-jac/jaclang/scale/server/impl/serve.scheduler.impl.jac
-jac/jaclang/scale/server/impl/serve.static.impl.jac
-jac/jaclang/scale/server/serve.jac
 
 # jac-scale -- kubernetes / opentelemetry client glue.
 jac/jaclang/scale/deploy/autoscale/hpa_autoscaler.impl.jac
 jac/jaclang/scale/deploy/autoscale/hpa_autoscaler.jac
 jac/jaclang/scale/runtime/context/tracing.jac
 
-# Type evaluator internals.
-jac/jaclang/compiler/types/type_evaluator.impl/construct_types.impl.jac
-jac/jaclang/compiler/types/type_evaluator.impl/evaluator_util_methods.impl.jac
-jac/jaclang/compiler/types/type_evaluator.impl/imported.impl.jac
-jac/jaclang/compiler/types/type_evaluator.impl/jsx_type_check.impl.jac
-jac/jaclang/compiler/types/type_evaluator.impl/parameter_type_check.impl.jac
-jac/jaclang/compiler/types/type_evaluator.impl/ts_declarations.impl.jac
-jac/jaclang/compiler/types/type_evaluator.impl/type_evaluator.impl.jac
-jac/jaclang/compiler/types/type_evaluator.jac
-
 # Runtime library.
 jac/jaclang/client/targets/desktop/native/cef/cef_subprocess.jac
 
 # ECMAScript backend.
 jac/jaclang/compiler/backends/es/esast_gen_pass.jac
-jac/jaclang/compiler/backends/es/impl/esast_gen_pass.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/assign.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/calls.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/comptime.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/core.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/decls.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/dts.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/expr.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/imports.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/match.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/module.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/ops.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/osp.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/stmt.impl.jac
+jac/jaclang/compiler/backends/es/esast_gen_pass.impl/view.impl.jac
 
 # Example apps.
-jac/examples/mobui/hello/main.jac
-jac/examples/mobui/littlex/main.jac

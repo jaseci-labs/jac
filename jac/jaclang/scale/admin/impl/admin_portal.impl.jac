@@ -19,13 +19,13 @@ import from jaclang.server.serving.endpoint {
     ParameterType
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.identity.user_manager { UserRole, JacScaleUserManager }
+import from jaclang.server.identity.user_manager { UserRole, UserManager }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 import from jaclang.compiler.frontend.constant { Constants as Con }
 
 glob logger = logging.getLogger(__name__);
 
-impl JacAPIServerAdmin._require_user_manager -> JacScaleUserManager {
+impl JacAPIServerAdmin._require_user_manager -> UserManager {
     manager = self.user_manager;
     if manager is None {
         raise RuntimeError(
@@ -534,7 +534,14 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
 }
 
 impl JacAPIServerAdmin.bootstrap_admin -> None {
-    result = self._require_user_manager().bootstrap_admin_user();
+    admin_config = get_scale_config().get_admin_config();
+    if not admin_config.get('enabled', True) {
+        return;
+    }
+    result = self._require_user_manager().bootstrap_admin_user(
+        admin_username=str(admin_config.get('username', 'admin')),
+        default_password=str(admin_config.get('default_password', 'changeme'))
+    );
     if 'error' not in result {
         if 'created' in result.get('message', '').lower() {
             logger.warning(
@@ -1460,7 +1467,7 @@ impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
     logger.info("Building admin client from source...");
     try {
         result = subprocess.run(
-            ["jac", "build", "main.jac", "--client", "web"],
+            ["jac", "build", "--as", "client", "main.jac"],
             cwd=str(ui_dir),
             capture_output=True,
             text=True,

@@ -68,7 +68,7 @@ def _run_destroy(
             ) {
                 target = target_mod.KubernetesTarget(
                     config=KubernetesConfig(app_name=APP, namespace=NS),
-                    microservices_config={},
+                    gateway_config={},
                     logger=logger
                 );
                 target.destroy(APP, component=component);

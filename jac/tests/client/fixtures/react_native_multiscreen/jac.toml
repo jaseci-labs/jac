@@ -1,8 +1,9 @@
 [project]
 name = "react_native_multiscreen"
 version = "1.0.0"
-description = "React Native multi-screen fixture: login, list, detail"
+description = "Mobile (React Native) multi-screen fixture: login, list, detail"
 entry-point = "main.jac"
+kind = "mobile"
 
 [dependencies.npm]
 react = "^19.2.0"
@@ -21,8 +22,5 @@ typescript = "^5.3.3"
 
 [dev-dependencies]
 watchdog = ">=3.0.0"
-
-[serve]
-base_route_app = "app"
 
 [client]

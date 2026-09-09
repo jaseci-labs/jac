@@ -1,6 +1,6 @@
 """Walker-engine zero-RC factoring (#7870 item 5): the enforced build
 of a build-traverse-discard walker kernel over an owned region graph
-passes the --assert-no-rc audit, links, runs, and reproduces the
+passes the audit, links, runs, and reproduces the
 managed digest exactly -- the inherited acceptance from #7857. The OSP
 kernel compiles under the user module's memory mode (headerless when
 enforced); graph archetypes and the engine's own structs (WalkScope,
@@ -28,12 +28,11 @@ test "enforced walker kernel runs rc-free with the managed digest" {
                 sys.executable,
                 "-m",
                 "jaclang",
-                "nacompile",
+                "build",
+                "--native",
                 FIXTURE,
-                "--enforce-nogc",
-                "--gc",
-                "none",
-                "--assert-no-rc",
+                "--memory",
+                "nogc",
                 "-o",
                 out_bin
             ],
@@ -48,9 +47,10 @@ test "enforced walker kernel runs rc-free with the managed digest" {
                 sys.executable,
                 "-m",
                 "jaclang",
-                "nacompile",
+                "build",
+                "--native",
                 FIXTURE,
-                "--gc",
+                "--memory",
                 "rc",
                 "-o",
                 rc_bin
@@ -67,10 +67,11 @@ test "enforced walker kernel runs rc-free with the managed digest" {
                 sys.executable,
                 "-m",
                 "jaclang",
-                "nacompile",
+                "build",
+                "--native",
                 FIXTURE,
-                "--gc",
-                "cycles",
+                "--memory",
+                "managed",
                 "-o",
                 cy_bin
             ],

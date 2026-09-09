@@ -379,8 +379,12 @@ test "version-condition comparisons match the operator table they replaced" {
 # mapping beside the new one, so every CI platform proves the pair agrees.
 test "native_target_os agrees with the platform.system mapping it replaced" {
     import platform;
-    import from jaclang.compiler.frontend.codeinfo { native_target_os }
-    prior = os.environ.pop("JAC_NATIVE_TARGET", None);
+    import from jaclang.compiler.frontend.codeinfo {
+        native_target_os,
+        set_native_target_override,
+        _native_target_ctx
+    }
+    prior = set_native_target_override("");
     try {
         sysname = platform.system();
         legacy = "linux";
@@ -394,29 +398,28 @@ test "native_target_os agrees with the platform.system mapping it replaced" {
             f"native_target_os() said {native_target_os()!r}"
         );
     } finally {
-        if prior is not None {
-            os.environ["JAC_NATIVE_TARGET"] = prior;
-        }
+        _native_target_ctx.set(prior);
     }
 }
 
-test "native_target_os still honors the JAC_NATIVE_TARGET override" {
-    import from jaclang.compiler.frontend.codeinfo { native_target_os }
-    prior = os.environ.pop("JAC_NATIVE_TARGET", None);
+test "native_target_os honors the native target override" {
+    import from jaclang.compiler.frontend.codeinfo {
+        native_target_os,
+        set_native_target_override,
+        _native_target_ctx
+    }
+    prior = set_native_target_override("");
     try {
         for (raw, want) in [
             ("aarch64-apple-darwin", "darwin"),
             ("x86_64-windows-msvc", "windows"),
             ("x86_64-unknown-linux-gnu", "linux")
         ] {
-            os.environ["JAC_NATIVE_TARGET"] = raw;
+            set_native_target_override(raw);
             assert native_target_os() == want , f"{raw} mapped wrong";
         }
     } finally {
-        os.environ.pop("JAC_NATIVE_TARGET", None);
-        if prior is not None {
-            os.environ["JAC_NATIVE_TARGET"] = prior;
-        }
+        _native_target_ctx.set(prior);
     }
 }
 

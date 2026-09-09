@@ -1,4 +1,4 @@
-import from jaclang.compiler.backends.py.const_fold { fold_const }
+import from jaclang.compiler.frontend.const_fold { fold_const }
 import from jaclang.compiler.frontend.diagnostics { E1001 }
 import type from jaclang.compiler.types.type_evaluator {
     TypeEvaluator,
@@ -54,7 +54,7 @@ impl validate_enum_member_annotation(
     if (
         isinstance(annotation_type, ClassType)
         and isinstance(member_info.value_type, ClassType)
-        and annotation_type.shared != member_info.value_type.shared
+        and not annotation_type.shared.same_class(member_info.value_type.shared)
     ) {
         evaluator.emit_diag(
             E1001,
@@ -78,7 +78,7 @@ impl build_enum_members(
     int_type = evaluator.prefetch.int_class if evaluator.prefetch else None;
     auto_value = 1;
 
-    all_stmts: list = [
+    all_stmts: list[UniNode] = [
         sym.decl.parent if isinstance(sym.decl.parent, Assignment) else sym.decl
         for (name, sym) in enum_node.names_in_scope.items()
         if not is_excluded_enum_member_name(name)
@@ -95,7 +95,9 @@ impl build_enum_members(
                 if enum_value_type
                     and isinstance(enum_value_type, ClassType)
                     and isinstance(member_info.value_type, ClassType)
-                    and member_info.value_type.shared != enum_value_type.shared {
+                    and not member_info.value_type.shared.same_class(
+                        enum_value_type.shared
+                    ) {
                     evaluator.emit_diag(
                         E1001,
                         stmt,
@@ -134,18 +136,21 @@ impl get_special_enum_value_type_from_bases(
         return None;
     }
 
-    mro_shared_set: set = set();
+    has_enum = False;
+    has_int = False;
+    has_str = False;
     for base in base_classes {
         if isinstance(base, ClassType) {
             for mro_cls in base.shared.mro {
-                mro_shared_set.add(mro_cls.shared);
+                has_enum = has_enum
+                    or mro_cls.shared.same_class(prefetch.enum_class.shared);
+                has_int = has_int
+                    or mro_cls.shared.same_class(prefetch.int_class.shared);
+                has_str = has_str
+                    or mro_cls.shared.same_class(prefetch.str_class.shared);
             }
         }
     }
-
-    has_enum = prefetch.enum_class.shared in mro_shared_set;
-    has_int = prefetch.int_class.shared in mro_shared_set;
-    has_str = prefetch.str_class.shared in mro_shared_set;
 
     if has_enum {
         if has_str {

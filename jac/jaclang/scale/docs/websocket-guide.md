@@ -13,7 +13,7 @@ WebSockets allow persistent, full-duplex connections between a client and your J
 - **Connection limits**, per-message size caps, and per-connection rate limiting
 - **Heartbeat** with idle close, and a `refresh` control message for long-lived sessions
 - **Streaming** responses for generator targets
-- **Broadcast** fan-out across workers via an in-process or Redis backplane
+- **Broadcast** fan-out across workers via an in-process or Postgres backplane
 - **HMR support** in dev mode for live reloading
 
 ## 1. Creating WebSocket Targets
@@ -85,7 +85,7 @@ async walker : pub ChatRoom {
 }
 ```
 
-Broadcasts are delivered through a backplane, so with the Redis backplane they reach clients connected to *any* worker, not just the one that handled the message.
+Broadcasts are delivered through a backplane, so with the Postgres backplane they reach clients connected to *any* worker or pod, not just the one that handled the message.
 
 ### Streaming WebSocket Target
 
@@ -216,15 +216,19 @@ max_message_bytes = 65536           # message size cap, enforced during frame re
 messages_per_second = 20            # per-connection token-bucket rate limit
 target_timeout_seconds = 30         # per-message execution timeout
 backplane = "pg"                    # "memory" or "pg"
+
+[serve.websocket]
 allowed_origins = []                # cross-origin upgrade allowlist (see below)
+ping_interval = 20.0                # idle seconds before the server pings
+ping_timeout = 20.0                 # seconds to answer before the socket closes
 ```
 
-`allowed_origins` controls browser cross-origin upgrades: the default `[]` refuses any `Origin` that does not match the request's `Host` (non-browser clients, which send no Origin, always pass). List origins explicitly (`["https://app.example.com"]`) or use `["*"]` to allow any. `max_message_bytes` is enforced while fragments reassemble, before authentication, so an oversized message closes with `1009` without ever being buffered whole.
+`[serve.websocket] allowed_origins` controls browser cross-origin upgrades: the default `[]` refuses any `Origin` that does not match the request's `Host` (non-browser clients, which send no Origin, always pass). List origins explicitly (`["https://app.example.com"]`) or use `["*"]` to allow any. `max_message_bytes` is enforced while fragments reassemble, before authentication, so an oversized message closes with `1009` without ever being buffered whole. The transport pings an idle socket and closes it with `1011` when the pong never arrives, so a handler blocked in `receive` on a vanished peer is released.
 
 `backplane` selects broadcast fan-out:
 
-- **`memory`** keeps broadcasts inside one worker. Correct for a single-process deployment; with multiple workers, a client only sees broadcasts produced by the worker it happens to be connected to.
-- **`pg`** publishes broadcasts over Postgres `LISTEN`/`NOTIFY` so every worker delivers them to its own clients. Required for any multi-worker deployment that uses `broadcast=True`.
+- **`memory`** keeps broadcasts inside one process. Correct for a single-process deployment; with multiple workers or pods, a client only sees broadcasts produced by the process it happens to be connected to. The server refuses to start with `memory` when `[serve.workers] count > 1` and a WebSocket target exists.
+- **`pg`** publishes broadcasts over Postgres `LISTEN`/`NOTIFY` so every worker and pod delivers them to its own clients. Required for any multi-process deployment that uses `broadcast=True`.
 
 `messages_per_second` and `target_timeout_seconds` accept fractional values (`0.5`, `1.5`). Every limit must be **greater than zero**; none of them treat `0` as "unlimited", and a zero would wedge the connection rather than loosen it (a `messages_per_second` of `0` leaves the token bucket with nothing to refill it, so the socket is rate-limited forever after its first message). A non-positive or non-numeric value is rejected at startup. To effectively disable a limit, set it high.
 

@@ -1,6 +1,6 @@
 ---
 name: jac-has-fields
-description: Declaring typed fields on any stateful Jac archetype - types, defaults, ordering, postinit, static has, properties, inheritance defaults, access tags. Load before defining any type that carries state.
+description: Declare fields, defaults, constructors, properties, and post-initialization. Use when defining archetype state or fixing initialization errors.
 ---
 
 `has` declares typed fields on every Jac archetype (`obj`, `node`, `edge`, `walker` - only the keyword changes). Every field needs a type; defaults are optional. **All non-default fields must be declared before any defaulted field.** No `__init__` - the constructor is auto-generated from the `has` declarations; build instances with kwargs.

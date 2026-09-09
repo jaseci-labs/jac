@@ -1,6 +1,6 @@
 ---
 name: jac-walker-patterns
-description: Writing walkers that traverse the graph - the core of Object-Spatial Programming (OSP) in Jac. Entry points, visit/report, spawn results, disengage/skip, exit abilities, get-or-create `visit ... else`, lookup-base walker inheritance, walker API responses, when NOT to use a walker (no visit = def:pub function). Load when creating, editing, or debugging walker traversal or OSP code. Pair with `jac-node-edge-patterns` (the graph shape the walker moves through).
+description: Implement walker traversal, abilities, reports, and early exits. Use when computation follows graph relationships or traversal behavior needs debugging.
 ---
 
 A walker is a mobile procedure that enters nodes and runs type-matched entry points. Walker state lives on the walker via `has`; traversal is driven by `visit`; results come back via `report`. Entry points can live on **both** sides - the walker reacts to nodes it enters, and nodes can react to arriving walkers.
@@ -122,7 +122,7 @@ walker like_tweet(find_tweet) {       # inherits target_id + locate
 - **A walker that never `visit`s should be a `def:pub` function.** If the whole walker is one `can run with Root entry { ... report X; }`, that's RPC in walker costume: convert it - parameters replace the `has` fields, a typed `return` replaces `report`, callers drop the `result.reports[0]` unwrap, and `root` binds the same in both shapes. Walkers earn their keep by walking. Shape rule and trade-offs: `jac-sv-endpoints`.
 - `Root` in type annotations, bare `root` as a value. The call form `root()` was removed - it is a hard error (E0049). Always write `root`, `root ++> node`, `[root -->]`.
 - **`visit` is a statement, not a method.** `visit [-->]` queues the *nodes* reachable over outgoing edges (`[edge -->]` is the form that yields edge objects); `visit (node_expr)` queues one specific node. Variants: `[<--]` incoming, `[->:EdgeType:->]` typed - single arrows; `[-->:EdgeType:]` is a parse error. Do NOT write `self.visit(...)` - a walker has no `visit` attribute (fails E1030).
-- Walkers don't `return` - they `report X;` (appears in `result.reports`) or `disengage;`.
+- Use `report X;` to append to the spawn result's `.reports`. A bare `return;` ends the current ability; returning a value from an ability produces `W2014` and does not replace reporting. A walker's ordinary helper `def` can return a value. Use `disengage;` to stop the whole traversal.
 - Every entry needs a `with ... entry` clause - bare `can foo { ... }` (no `with`) is invalid (E0034).
 - **A walker's generic `with entry` is NOT a per-node catch-all.** It fires only at the spawn location, never on later visits (verified: spawn at root, visit children - only root runs it). For catch-all behavior, give your nodes a shared base archetype and write `with BaseNode entry`, or use a union entry. The *node* side is the opposite: `can x with entry` declared in a **node** fires for **every** walker that visits it.
 - Entry points are **`can`**, NOT `def`. Plain helper methods can still be `def`, but bodies that fire on node arrival must be `can`.

@@ -1,6 +1,6 @@
 """Client codegen never runs on a module whose checker facts were not derived.
 
-`jac build main.jac --client web` was clean on a cold cache and failed on the
+`jac build --as client main.jac` was clean on a cold cache and failed on the
 very next run with `E5101: Client codegen emitted 'init', which the module
 never binds`, and a served page threw `ReferenceError: enumerate is not
 defined` a dozen times over. The bundle showed the shape exactly:

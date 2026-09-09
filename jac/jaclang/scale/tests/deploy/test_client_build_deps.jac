@@ -28,7 +28,7 @@ glob APP_DEP: str = "toposort",
 def _builder(project_dir: str, dry_run: bool = False) -> ManifestBuilder {
     mb = ManifestBuilder(
         k8s_config=KubernetesConfig(app_name="shop", namespace="jb-shop"),
-        microservices_config={"client": {"entry": "main.jac"}},
+        client_entry="main.jac",
         dry_run=dry_run
     );
     mb.project_dir = project_dir;

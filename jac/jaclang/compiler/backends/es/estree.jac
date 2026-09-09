@@ -28,6 +28,11 @@ obj Identifier(Node) {
         `type: TypingLiteral['Identifier'] = 'Identifier';
 }
 
+obj RawCode(Node) {
+    has code: str = '',
+        `type: TypingLiteral['RawCode'] = 'RawCode';
+}
+
 obj PrivateIdentifier(Node) {
     has name: str = '',
         `type: TypingLiteral['PrivateIdentifier'] = 'PrivateIdentifier';
@@ -457,6 +462,7 @@ glob Statement = ExpressionStatement
          | ClassDeclaration,
      Expression = (
          Identifier
+         | RawCode
          | Literal
          | ThisExpression
          | ArrayExpression

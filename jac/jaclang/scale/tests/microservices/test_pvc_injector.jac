@@ -11,8 +11,8 @@ import from jaclang.scale.injector.pvc_injector {
     build_bundle_pvc,
     build_loader_pod,
     BUNDLE_MOUNT_PATH,
-    LOADER_UID,
-    LOADER_GID,
+    RUNTIME_UID,
+    RUNTIME_GID,
     build_pvc_init_container,
     bundle_keys_from_pod_spec
 }
@@ -141,8 +141,8 @@ test "the loader pod keeps fsGroup for storage that honors it (#7432)" {
     assert pod["kind"] == "Pod";
     assert pod["metadata"]["name"] == "orders-bundle-loader";
     spec = pod["spec"];
-    assert spec["securityContext"]["fsGroup"] == LOADER_GID;
-    assert spec["securityContext"]["runAsUser"] == LOADER_UID;
+    assert spec["securityContext"]["fsGroup"] == RUNTIME_GID;
+    assert spec["securityContext"]["runAsUser"] == RUNTIME_UID;
     claims = [
         v["persistentVolumeClaim"]["claimName"]
         for v in spec["volumes"]
@@ -176,7 +176,7 @@ test "the loader pod makes the bundle volume root writable without fsGroup (#743
     assert set(sc["capabilities"]["add"]) == {"CHOWN", "FOWNER", "DAC_OVERRIDE"};
     # And it must actually chown/chmod the bundle mount to the loader identity.
     script = perms["command"][-1];
-    assert f"{LOADER_UID}:{LOADER_GID}" in script;
+    assert f"{RUNTIME_UID}:{RUNTIME_GID}" in script;
     assert BUNDLE_MOUNT_PATH in script;
     assert "chown" in script;
     assert "chmod" in script;

@@ -121,7 +121,7 @@ def main() -> int:
         if getattr(manifest, "is_native_only_seed", None) and manifest.is_native_only_seed(
             os.path.relpath(src_path, JACLANG).replace(os.sep, "/")
         ):
-            continue  # native-tier unit: nacompile builds it, jac0 never does
+            continue  # native-tier unit: the native build makes it, jac0 never does
         with open(src_path, encoding="utf-8") as f:
             source = f.read()
         impl_sources = []

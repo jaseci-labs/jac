@@ -2,7 +2,7 @@
 give each instance its own fresh list, never a class-level shared default.
 
 The lambda helper hoists to the enclosing scope and the field uses a plain
-``field(factory=lambda: <expr>)`` so the factory re-runs on every instantiation.
+``field(default_factory=lambda: <expr>)`` so the factory re-runs on every instantiation.
 """
 
 obj B {

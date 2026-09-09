@@ -1,6 +1,6 @@
 """Regression tests for the headerless nogc container-element fence (E1406).
 
-Under `--enforce-nogc --gc none`, owned containers of *str* elements are
+Under `--memory nogc`, owned containers of *str* elements are
 supported: fresh values (f-strings, concats, str slices, call results) move
 into the container, while named bindings, string literals, and container-
 element reads are copied in at codegen, so the container always owns heap
@@ -9,10 +9,12 @@ storage the container must not free, so they stay fenced, as do non-str heap
 elements (archetypes, nested containers), whose element-drop monomorphization
 is still deferred. These tests pin both sides: every unsupported write is
 fenced, and the supported shapes (scalar containers, str containers, and a
-same-named method on a non-container user type) stay clean.
+same-named method on a non-container user type) stay clean. Archetype
+elements move into lists and dict values (fresh values and named own
+bindings alike); sets of archetypes stay fenced.
 
 Each fixture is compiled through the real type-check schedule with enforcement
-enabled via CompileOptions, matching `jac nacompile --enforce-nogc --gc none`.
+enabled via CompileOptions, matching `jac build --native --memory nogc`.
 """
 
 import os;
@@ -24,12 +26,26 @@ glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "nogc_containers"
      );
 
+"""Compile a fixture as a headerless nogc-enforced module; return its coded
+alerts in emission order."""
+def enforced_alerts(fixture: str) -> list {
+    path = os.path.join(FIXTURES, fixture);
+    prog = JacProgram();
+    opts = CompileOptions(aot_mode=True, memory_profile="nogc");
+    prog.compile(file_path=path, options=opts);
+    return [
+        a
+        for a in list(prog.errors_had)
+        if a.code is not None
+    ];
+}
+
 """Compile a fixture as a headerless nogc-enforced module; return its unique,
 sorted diagnostic codes."""
 def enforced_codes(fixture: str) -> list[str] {
     path = os.path.join(FIXTURES, fixture);
     prog = JacProgram();
-    opts = CompileOptions(aot_mode=True, na_gc_mode="none", nogc_enforce_all=True);
+    opts = CompileOptions(aot_mode=True, memory_profile="nogc");
     prog.compile(file_path=path, options=opts);
     codes: set[str] = set();
     for alert in list(prog.errors_had) {
@@ -53,16 +69,44 @@ test "E1406: appending an obj field read into a list" {
     assert enforced_codes("append_field_fenced.jac") == ["E1406"];
 }
 
-test "E1406: index-assigning an owned heap object as a dict value" {
-    assert enforced_codes("dict_heap_val.jac") == ["E1406"];
+test "a str method on a borrowed element yields a fresh str that moves in" {
+    assert enforced_codes("append_elem_method_ok.jac") == [];
+}
+
+test "`own p` copies a borrowed str element into an owned list" {
+    assert enforced_codes("append_own_copy_ok.jac") == [];
+}
+
+test "E1406 names the borrow, its owner, the container and the fix" {
+    alerts = enforced_alerts("append_loop_borrow_fenced.jac");
+    assert [a.code.code for a in alerts] == ["E1406"];
+    assert "'p', a borrow of 'parts', cannot enter 'out', which owns its elements"
+        in alerts[0].msg;
+    assert "out.append(own p)" in (alerts[0].help_text or "");
+    assert "for p in parts" in (alerts[0].help_text or "");
+}
+
+test "E1406 on an inferred imm local names the copy idiom" {
+    alerts = enforced_alerts("append_imm_local_fenced.jac");
+    assert [a.code.code for a in alerts] == ["E1406"];
+    assert "'lit', an `imm` value, cannot enter 'xs'" in alerts[0].msg;
+    assert "xs.append(own lit)" in (alerts[0].help_text or "");
+}
+
+test "a fresh archetype index-assigned as a dict value moves into the dict" {
+    assert enforced_codes("dict_heap_val.jac") == [];
 }
 
 test "E1406: adding an owned heap object to a set" {
     assert enforced_codes("set_add_obj.jac") == ["E1406"];
 }
 
-test "E1406: a dict literal with an owned heap value" {
-    assert enforced_codes("dict_literal_heap.jac") == ["E1406"];
+test "a dict literal with a fresh archetype value moves it into the dict" {
+    assert enforced_codes("dict_literal_heap.jac") == [];
+}
+
+test "E1306 + E1406: a borrowed heap object as a dict value" {
+    assert enforced_codes("dict_heap_val_borrow.jac") == ["E1306", "E1406"];
 }
 
 test "E1406: a set literal with an owned heap element" {

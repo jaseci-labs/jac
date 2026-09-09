@@ -2,7 +2,8 @@
 
 Production pattern from client_runtime (e.g. renderError): a helper may return
 None or JSX. Direct call sites must still wrap positional args into a props
-object when the annotated return type includes JsxElement.
+object when the annotated return type includes JsxElement. `JsxPage` and
+`JsxLayout` (what `pages/` modules return) lower the same way.
 """
 
 
@@ -15,4 +16,12 @@ def:pub ErrorBanner(error: any) -> JsxElement | None {
 
 def:pub direct_call -> any {
     return ErrorBanner({"message": "oops"});
+}
+
+def:pub PageComp(title: str) -> JsxPage {
+    return <div>{title}</div>;
+}
+
+def:pub LayoutComp(title: str) -> JsxLayout {
+    return <div>{title}</div>;
 }

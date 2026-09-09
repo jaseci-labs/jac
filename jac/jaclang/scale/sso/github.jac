@@ -11,7 +11,7 @@ obj GithubSSOProvider(OAuth2CodeProvider) {
     }
 
     def scope -> str {
-        return 'user:email';
+        return '';
     }
 
     async def _api_get(path: str, access_token: str) -> any {
@@ -34,29 +34,14 @@ obj GithubSSOProvider(OAuth2CodeProvider) {
         access_token: str, token_payload: dict[str, any]
     ) -> SSOUserInfo {
         info = await self._api_get('/user', access_token);
-        email = info.get('email');
-        if not email {
-            emails = await self._api_get('/user/emails', access_token);
-            if isinstance(emails, list) {
-                for `entry in emails {
-                    if isinstance(`entry, dict) and `entry.get('primary') {
-                        email = `entry.get('email');
-                        break;
-                    }
-                }
-                if not email and emails {
-                    first = emails[0];
-                    email = first.get('email') if isinstance(first, dict) else None;
-                }
-            }
-        }
         external_id = info.get('id');
-        if not email or external_id is None {
-            raise RuntimeError('GitHub user info is missing email or id');
+        if external_id is None or not info.get('login') {
+            raise RuntimeError('GitHub user info is missing login or id');
         }
         return SSOUserInfo(
-            email=str(email),
+            email='',
             external_id=str(external_id),
+            username=str(info['login']),
             display_name=info.get('name'),
             picture=info.get('avatar_url')
         );

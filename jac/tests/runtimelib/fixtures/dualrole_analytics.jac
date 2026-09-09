@@ -1,6 +1,6 @@
 """Standalone analytics microservice consumed by `dualrole_guestbook` (#6507).
 
-Reached only via a server->server `sv import`; spawned lazily on first call.
+Reached only via a server->server bridged import; spawned lazily on first call.
 """
 
 obj AnalyticsReport {

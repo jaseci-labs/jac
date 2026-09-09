@@ -599,7 +599,7 @@ impl HotReloader._recompile_client_code(
         program.drop_module_alerts(source_key);
 
         mark = len(program.errors_had);
-        mod = program.compile(source_key);
+        artifact = program.get_client_artifact(source_key);
 
         new_errors = program.errors_had[mark:];
         if new_errors {
@@ -615,9 +615,7 @@ impl HotReloader._recompile_client_code(
             }
             return;
         }
-
-        js_code = mod.gen.js or '';
-        if not js_code {
+        if artifact is None {
             if force {
                 console.warning(f"No client JS generated for {file_path}");
             }
@@ -625,10 +623,10 @@ impl HotReloader._recompile_client_code(
         }
 
         import from jaclang.client.client_surface { prepend_active_runtime_globals }
-        js_code = prepend_active_runtime_globals(js_code);
+        js_code = prepend_active_runtime_globals(artifact.js);
 
-        manifest = mod.gen.client_manifest if mod else None;
-        if manifest and manifest.imports {
+        manifest = artifact.manifest;
+        if manifest.imports {
             for (import_key, import_path) in manifest.imports.items() {
                 if import_key.startswith('@jac/') {
                     continue;

@@ -5,7 +5,7 @@ Usage:
       [--invocations N] [--sizes default|small] [--out results.json]
       [--skip-compile]
 
-Per (kernel, mode): compiles with jac nacompile, runs N process
+Per (kernel, mode): compiles with jac build --native, runs N process
 invocations, reports median wall-time (from the kernel's internal ns=
 line), max RSS (via /usr/bin/time -v), and a digest (stdout minus the ns=
 line). Fails loudly if digests differ across modes for the same
@@ -51,10 +51,10 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
 
      };
 
-"""nacompile flags for a memory mode."""
+"""Native build flags for a memory mode."""
 def mode_flags(mode: str) -> list[str] {
     if mode == "none" {
-        return ["--enforce-nogc", "--gc", "none", "--assert-no-rc"];
+        return ["--memory", "nogc"];
     }
     return ["--gc", mode];
 }
@@ -64,7 +64,7 @@ def compile_kernel(kernel: str, mode: str) -> Path {
     src = BENCH / "kernels" / f"{kernel}.jac";
     out = BENCH / "bin" / f"{kernel}_{mode}";
     out.parent.mkdir(exist_ok=True);
-    cmd = ["jac", "nacompile", str(src)] + mode_flags(mode) + ["-o", str(out)];
+    cmd = ["jac", "build", "--native", str(src)] + mode_flags(mode) + ["-o", str(out)];
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600);
     if r.returncode != 0 or not out.exists() {
         sys.`exit(f"compile failed: {' '.join(cmd)}\n{r.stdout}\n{r.stderr}");

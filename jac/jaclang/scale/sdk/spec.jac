@@ -19,8 +19,9 @@ obj DeploySpec {
         replicas: int = 1,
         resources: dict[str, str] = {},
         autoscaler: dict[str, any] = {},
-        client: dict[str, any] = {},
-        microservices: dict[str, any] = {},
+        gateway: dict[str, any] = {},
+        apps: dict[str, dict[str, any]] = {},
+        app: str = '',
         kube_context: str = '',
         labels: dict[str, str] = {},
         extra: dict[str, any] = {};
@@ -30,8 +31,8 @@ obj DeploySpec {
     ) -> DeploySpec {
         cfg = dict(config or {});
         cfg.setdefault('source', path);
-        import dataclasses;
-        known = {field.name for field in dataclasses.fields(DeploySpec)};
+        import from jaclang.runtime.object_model { fields }
+        known = {field.name for field in fields(DeploySpec)};
         unknown = sorted(set(cfg.keys()) - known);
         if unknown {
             raise ValueError(
@@ -52,11 +53,6 @@ obj DeploySpec {
 
     def resolved_target -> str {
         if self.target == 'auto' {
-            enabled = self.microservices.get('enabled', None);
-            has_routes = bool(dict(self.microservices.get('routes', {}) or {}));
-            if enabled is True or has_routes {
-                return 'kubernetes-microservice';
-            }
             return 'kubernetes';
         }
         if self.target in ('kubernetes', 'kubernetes-microservice') {
@@ -132,24 +128,19 @@ obj DeploySpec {
         return config;
     }
 
-    def to_microservices_config -> dict[str, any] {
-        ms = dict(self.microservices);
-        ms['routes'] = dict(ms.get('routes', {}));
-        if self.client {
-            merged_client = dict(ms.get('client', {}));
-            merged_client.update(dict(self.client));
-            ms['client'] = merged_client;
-        }
-        services = dict(ms.get('services', {}));
+    def to_gateway_config -> dict[str, any] {
+        gw = dict(self.gateway);
         if self.replicas != 1 {
-            import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-                GATEWAY_NAME
-            }
-            gateway_cfg = dict(services.get(GATEWAY_NAME, {}));
-            gateway_cfg.setdefault('replicas', self.replicas);
-            services[GATEWAY_NAME] = gateway_cfg;
+            gw.setdefault('replicas', self.replicas);
         }
-        ms['services'] = services;
-        return ms;
+        return gw;
+    }
+
+    def app_overrides -> dict[str, dict[str, any]] {
+        return {
+            str(name): dict(cfg)
+            for (name, cfg) in self.apps.items()
+            if isinstance(cfg, dict)
+        };
     }
 }

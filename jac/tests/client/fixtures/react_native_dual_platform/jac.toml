@@ -1,7 +1,7 @@
 [project]
 name = "react_native_dual_platform"
 version = "1.0.0"
-description = "Dual-platform fixture with paired .cl.jac and .native.cl.jac modules"
+description = "Dual-platform fixture with paired .jac and .native.jac client modules"
 entry-point = "main.jac"
 
 [dependencies.npm]
@@ -20,8 +20,5 @@ typescript = "^5.3.3"
 
 [dev-dependencies]
 watchdog = ">=3.0.0"
-
-[serve]
-base_route_app = "app"
 
 [client]

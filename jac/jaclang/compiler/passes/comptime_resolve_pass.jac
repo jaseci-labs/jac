@@ -1,6 +1,5 @@
 import from jaclang.runtime.osp_kernel { osp_skip_rest }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     AssertStmt,
@@ -78,12 +77,6 @@ walker ComptimeResolvePass(TypeCheckPass) {
     static has PROVIDES: tuple = ('comptime', ),
         HOST_PASS: bool = True;
 
-    def init(prog: JacProgram, **kwargs: any) {
-        self._keep = set();
-        self._armed = False;
-        super.init(prog, **kwargs);
-    }
-
     override def before_pass {
         self._keep = comptime_reach(self.ir_in);
         self._armed = bool(self._keep) and not self.ir_in.ct_resolved;
@@ -97,10 +90,6 @@ walker ComptimeResolvePass(TypeCheckPass) {
             return;
         }
         self.ir_in.ct_resolved = True;
-        self.evaluator.ct_quiet = self._prev_ct_quiet;
-        if self.evaluator._pass is self {
-            self.evaluator._pass = self._prev_eval_pass;
-        }
     }
 
     can enter_walk with UniNode entry {

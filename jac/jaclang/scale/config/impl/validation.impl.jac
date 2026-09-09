@@ -2,7 +2,10 @@ import from jaclang.project.config_schema {
     report_schema_findings,
     validate_against_schema
 }
-import from jaclang.scale.config.plugin_config { JacScalePluginConfig }
+import from jaclang.scale.config.plugin_config {
+    JacScalePluginConfig,
+    app_scale_schema
+}
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 
 impl known_deploy_targets -> list[str] {
@@ -31,6 +34,10 @@ impl validate_scale_config(raw: dict[str, any] | None) -> list[str] {
         findings.extend(_declared_target_findings(raw));
     }
     return findings;
+}
+
+impl validate_app_scale_config(raw: dict[str, any] | None, app_name: str) -> list[str] {
+    return validate_against_schema(raw, app_scale_schema(), f"apps.{app_name}.scale");
 }
 
 impl _declared_target_findings(raw: dict[str, any]) -> list[str] {

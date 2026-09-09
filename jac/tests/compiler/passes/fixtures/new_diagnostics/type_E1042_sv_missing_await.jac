@@ -1,9 +1,10 @@
-"""Client fixture reproducing issue #6236: missing `await` on an sv import.
+"""Client fixture reproducing issue #6236: missing `await` on a bridged call.
 
-`get_tasks` is a server `def:pub` imported via `sv import`; on the client it
-lowers to an async RPC stub returning a coroutine. Calling it without
-`await` silently assigns a coroutine to `tasks: list[Task]` and crashes at
-runtime (`tasks is not iterable`). The type checker must raise E1042 here.
+`get_tasks` is a server `def:pub`; imported into client context the import
+is a CLIENT_BRIDGE and the name lowers to an async RPC stub returning a
+coroutine. Calling it without `await` silently assigns a coroutine to
+`tasks: list[Task]` and crashes at runtime (`tasks is not iterable`). The
+type checker must raise E1042 here.
 """
 
 

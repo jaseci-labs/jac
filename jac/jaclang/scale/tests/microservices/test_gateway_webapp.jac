@@ -1,12 +1,12 @@
-"""The gateway in local microservice mode must still serve the web app.
+"""The gateway in a local fleet run must still serve the web app.
 
-A web-app project's entry module is a service like any other -- it just
-happens to be the one that answers at the project root: the landing page,
-`/cl/<page>`, `[serve] base_route_app`, the SPA shell for a client route, and
+The served app is a fleet member like any other -- it just happens to be
+the root member, the one that answers at the project root: the landing page,
+`/cl/<page>`, the SPA shell for a client route, and
 the generated `/static/client.js`. Before this, the gateway had no idea any
 service played that role: `/` and `/docs/...` 404'd, and `/cl/app` was raced
-across every service in registration order. These tests pin that the app
-service owns the project root, and that no page request fans out.
+across every service in registration order. These tests pin that the root
+member owns the project root, and that no page request fans out.
 """
 
 import shutil;
@@ -126,11 +126,11 @@ def _fleet(
         ServiceEntry(
             name="main",
             file="main.jac",
-            prefix="/__main__",
+            prefix="/",
             port=app_port,
             url=f"http://127.0.0.1:{app_port}",
             status=ServiceStatus.HEALTHY,
-            is_app=True,
+            is_root=True,
             serves_client=True
         )
     );
@@ -160,8 +160,7 @@ test "the landing page reaches the app service instead of 404ing" {
             f"got {resp.status_code}"
         );
         assert resp.text == "main /" , (
-            "the app service answers the project root (that is where "
-            f"[serve] base_route_app is honored); got {resp.text!r}"
+            f"the root app answers the project root; got {resp.text!r}"
         );
     } finally {
         fleet.close();
@@ -287,13 +286,13 @@ test "in dev the pages come from the client dev server, the API from the service
         ServiceEntry(
             name="main",
             file="main.jac",
-            prefix="/__main__",
+            prefix="/",
             port=api_port,
             page_port=page_port,
             url=f"http://127.0.0.1:{api_port}",
             page_url=f"http://127.0.0.1:{page_port}",
             status=ServiceStatus.HEALTHY,
-            is_app=True,
+            is_root=True,
             serves_client=True
         )
     );
@@ -335,7 +334,7 @@ test "in dev the pages come from the client dev server, the API from the service
 }
 
 
-test "a deployed gateway keeps its own shell: is_app alone does not own the root" {
+test "a deployed gateway keeps its own shell: is_root alone does not own the root" {
     app_seen: list[str] = [];
     (srv_stop, port) = _spawn_stub("main", ["/walker/ping"], app_seen, [True]);
     dist_dir: str = tempfile.mkdtemp();
@@ -347,11 +346,11 @@ test "a deployed gateway keeps its own shell: is_app alone does not own the root
         ServiceEntry(
             name="main",
             file="main.jac",
-            prefix="/__main__",
+            prefix="/",
             port=port,
             url=f"http://127.0.0.1:{port}",
             status=ServiceStatus.HEALTHY,
-            is_app=True,
+            is_root=True,
             serves_client=False
         )
     );
@@ -401,11 +400,11 @@ test "an app service that cannot take traffic falls back to the shell, not a 503
         ServiceEntry(
             name="main",
             file="main.jac",
-            prefix="/__main__",
+            prefix="/",
             port=1,
             url="http://127.0.0.1:1",
             status=ServiceStatus.UNHEALTHY,
-            is_app=True,
+            is_root=True,
             serves_client=True
         )
     );
@@ -441,11 +440,11 @@ test "a static miss on a deployed gateway reaches the app service" {
         ServiceEntry(
             name="main",
             file="main.jac",
-            prefix="/__main__",
+            prefix="/",
             port=port,
             url=f"http://127.0.0.1:{port}",
             status=ServiceStatus.HEALTHY,
-            is_app=True,
+            is_root=True,
             serves_client=False
         )
     );

@@ -131,14 +131,18 @@ def request_endpoint(
     );
 }
 
-"""Start `jac run --serve` on a project dir and wait for the port.
+"""Start `jac run --serve <app>` on a project dir and wait for the port.
 
-``extra_args`` is inserted after ``--serve`` (e.g. ``["--profile", "prod"]``).
-Every flag precedes the filename: `run` carries a REMAINDER for script args,
-so a flag written after `main.jac` would be handed to the script instead.
-Returns ``(server_process, port)``. Caller must ``stop_server`` it.
+``app`` is the workspace app to serve (the positional `run` target; default
+``"web"``). ``extra_args`` is inserted after ``--serve`` (e.g.
+``["--profile", "prod"]``). Every flag precedes the app name: `run` carries a
+REMAINDER for script args, so a flag written after the target would be handed
+to the app instead. Returns ``(server_process, port)``. Caller must
+``stop_server`` it.
 """
-def start_app_server(project_path: any, extra_args: list | None = None) -> tuple {
+def start_app_server(
+    project_path: any, extra_args: list | None = None, app: str = ""
+) -> tuple {
     import tempfile;
     port = get_free_port();
     jac_cmd = get_jac_command();
@@ -147,7 +151,10 @@ def start_app_server(project_path: any, extra_args: list | None = None) -> tuple
     if extra_args {
         args = [*args, *extra_args];
     }
-    args = [*args, "-p", str(port), "main.jac"];
+    args = [*args, "-p", str(port)];
+    if app {
+        args = [*args, app];
+    }
     # Capture the server's output so a boot failure surfaces as a diagnosis
     # instead of an opaque 120s port-wait timeout (a crashed server and a
     # hung one look identical from wait_for_port).

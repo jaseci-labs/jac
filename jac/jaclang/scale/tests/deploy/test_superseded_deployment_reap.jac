@@ -77,18 +77,12 @@ obj FakeAppsV1 {
 
 
 def _target(app: str = "standup", namespace: str = "standup") -> KubernetesTarget {
-    return KubernetesTarget(
-        config=KubernetesConfig(app_name=app, namespace=namespace),
-        microservices_config={}
-    );
+    return KubernetesTarget(config=KubernetesConfig(app_name=app, namespace=namespace));
 }
 
 
 def _bundle_for(app: str) -> dict[str, any] {
-    builder = ManifestBuilder(
-        k8s_config=KubernetesConfig(app_name=app, namespace=app),
-        microservices_config={}
-    );
+    builder = ManifestBuilder(k8s_config=KubernetesConfig(app_name=app, namespace=app));
     specs = builder.generate_service_pod_specs(
         AppConfig(code_folder=f"/apps/{app}", file_name="main.jac"), "img"
     );
@@ -248,16 +242,14 @@ obj _FleetApps {
 
 
 # ScaleClient hands every lifecycle call a bare DeploySpec, and
-# to_microservices_config() always returns a dict carrying a `routes` key, so
-# _ms_cfg short-circuits on it and never falls back to jac.toml. Deriving the
-# fleet from those empty routes resolved `{app}-deployment` plus the gateway --
+# the fleet it derives for a bare spec is the app alone, so deriving the
+# fleet from that resolved `{app}-deployment` plus the gateway --
 # a Deployment that does not exist for a microservice app, and one that is a
 # fraction of the set. rollback() refused every time and revisions() reported
 # the gateway alone.
 test "the fleet is read from the cluster, not from a route table" {
     target = KubernetesTarget(
-        config=KubernetesConfig(app_name="shop", namespace="shop"),
-        microservices_config={"routes": {}}
+        config=KubernetesConfig(app_name="shop", namespace="shop")
     );
     api = _FleetApps(
         names=["orders-app-deployment", "gateway-deployment", "cart-app-deployment"]
@@ -296,8 +288,7 @@ test "a fleet with no gateway is still ordered and complete" {
 
 test "an unreadable cluster resolves no fleet rather than a wrong one" {
     obj_target = KubernetesTarget(
-        config=KubernetesConfig(app_name="shop", namespace="shop"),
-        microservices_config={"routes": {}}
+        config=KubernetesConfig(app_name="shop", namespace="shop")
     );
 
     assert obj_target._fleet_deployment_names(_BrokenFleetApps(), "shop") == [];
@@ -804,8 +795,7 @@ def _rollback_with(api: any) -> any {
                 target_mod.KubernetesTarget, "_load_cluster_config", return_value=None
             ) {
                 t = target_mod.KubernetesTarget(
-                    config=KubernetesConfig(app_name="shop", namespace="shop"),
-                    microservices_config={"routes": {}}
+                    config=KubernetesConfig(app_name="shop", namespace="shop")
                 );
                 return t.rollback_to("shop", 1);
             }
@@ -900,8 +890,7 @@ test "the retention keep-set refuses to answer from an unreadable cluster" {
             target_mod.KubernetesTarget, "_load_cluster_config", return_value=None
         ) {
             t = target_mod.KubernetesTarget(
-                config=KubernetesConfig(app_name="shop", namespace="shop"),
-                microservices_config={"routes": {}}
+                config=KubernetesConfig(app_name="shop", namespace="shop")
             );
             try {
                 t.referenced_bundle_keys("shop");

@@ -1,7 +1,8 @@
 """Build the CEF dispatch shim + subprocess binary and audit the artifacts.
 
 The suite home of ci.yml's `test-cef-build` job: nacompile the dispatch
-shared object and helper the way `jac build --client cef` does, then hold
+shared object and helper the way `jac build` does for a desktop app with
+`[desktop] engine = "cef"`, then hold
 the .so to its ABI contract -- the three dispatch exports present, an
 $ORIGIN runpath so the bundle relocates, and no missing shared-library
 dependencies beyond the intentionally absent libcef stub. Compile-only

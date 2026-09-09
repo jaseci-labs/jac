@@ -481,7 +481,7 @@ assumed away.
 - **Not every demoted name can be waived.** The seal's load canary
   resolves every name the layout advertises. A demoted *method* ships as
   an `abort()` stub and resolves, and so does a demoted module-level
-  function of the root module itself -- `module_codegen_pass`'s waived
+  function of the root module itself -- `module_facts`'s waived
   `client_capability_violations` is the standing example. Two kinds get
   no stub and so are advertised and absent, which fails `dlopen`: a
   nested function inside a demoted method, and a module-level function of

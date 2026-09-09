@@ -18,6 +18,7 @@ glob logger = logging.getLogger(__name__),
      CONFIG_META_KEYS = frozenset({'extension'}),
      CLIENT_EVENT_PREFIX = '@@jac-client-event ',
      DEV_PROXY_PREFIXES: list[str] = [
+         '/api',
          '/walker',
          '/function',
          '/user',
@@ -56,6 +57,7 @@ class ViteBundler {
     );
 
     def _get_client_dir(self: ViteBundler) -> Path;
+    def _client_app_dir(self: ViteBundler) -> Path;
     def build(self: ViteBundler, entry_file: Optional[Path] = None) -> None;
     def find_bundle(self: ViteBundler) -> Optional[Path];
     def find_css(self: ViteBundler) -> Optional[Path];
@@ -70,9 +72,6 @@ class ViteBundler {
         api_base_url_override: str = "",
         is_dev: bool = False,
         api_port: int = 8000,
-        for_mobile_dev: bool = False,
-        mobile_hmr_host: str = "",
-        mobile_hmr_port: int = 0,
         for_desktop_dev: bool = False,
         desktop_broker_port: int = 0,
         api_paths: (list[str] | None) = None,
@@ -106,9 +105,6 @@ class ViteBundler {
         api_base_url: str,
         base_path: str,
         api_port: int = 8000,
-        for_mobile_dev: bool = False,
-        mobile_hmr_host: str = "",
-        mobile_hmr_port: int = 0,
         for_desktop_dev: bool = False,
         desktop_broker_port: int = 0,
         api_paths: (list[str] | None) = None,

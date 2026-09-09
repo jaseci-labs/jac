@@ -1,15 +1,46 @@
 [project]
 name = "jaclang_org"
-entry-point = "main.jac"
-kind = "web-app"
-jac-version = ">=0.37.3"
+default-app = "web"
+jac-version = "==0.37.10"
 
 # Makes this site scaffoldable as a template: `jac create <name> --awesome`
 # dumps it (the payload bundles this tree as awesome_template beside the
 # jaclang package). The section never reaches a scaffolded project's jac.toml.
 [jacpack]
 name = "awesome"
-description = "The full jaclang.org site: landing, live docs, leaderboard, socialize, and a wasm game in one Jac program"
+description = "The full jaclang.org workspace: a web app, a mobUI mobile app, and a CLI over one shared core, with live docs, the leaderboard, JacYac, and a wasm game"
+
+# The workspace. Anything under core/ belongs to no app and is shared; the
+# two file-rooted service apps own exactly their entry files. An app
+# boundary is structural (it always compiles and type-checks as a cut);
+# whether the service apps share the web server's process or run as their
+# own is a profile: `jac run --serve` colocates, `--fleet` splits.
+[apps.web]
+kind = "web-app"
+path = "web"
+
+[apps.mobile]
+kind = "mobile"
+path = "mobile"
+
+[apps.cli]
+kind = "cli"
+path = "cli"
+
+# The site as a desktop app: the same core/site UI in an OS webview. Its
+# backend is jaclang.org itself (see [apps.desktop.desktop] backend), so it is
+# a native window onto the live site, not a private copy of it.
+[apps.desktop]
+kind = "desktop"
+path = "desktop"
+
+[apps.social_graph]
+kind = "service"
+entry-point = "core/social_graph.jac"
+
+[apps.scoring]
+kind = "service"
+entry-point = "core/scoring_service.jac"
 
 [dev]
 jaclang_source = "../.."
@@ -17,23 +48,38 @@ jaclang_source = "../.."
 [precommit]
 typecheck = true
 
+[serve.auth]
+registration_challenge = true
+registration_attempts_per_hour = 5
+registration_challenges_per_10_minutes = 20
+
+[test]
+directories = ["core", "web", "mobile", "cli"]
+
+# `jac test cli` / `jac test mobile` run one app; a bare `jac test` targets the
+# default app (web) and so runs the workspace list above. The mobile app is a
+# shell over the phone UI in core/jacyac/native, so its tests live there.
+[apps.cli.test]
+directories = ["."]
+
+[apps.mobile.test]
+directories = ["core/jacyac"]
+
 [check.lint]
 select = ["all", "strip-comments", "strip-docstrings"]
 exclude = [
     ".jac/*",
-    "examples/*",
-    "source/FloatingSource.jac",
-    "landing/Reveal.jac",
-    "game/webgl_host.jac",
-    "shared/async_utils.jac",
-    "leaderboard/format.jac",
+    "core/site/examples/*",
+    "core/site/source/FloatingSource.jac",
+    "core/site/landing/Reveal.jac",
+    "core/site/game/webgl_host.jac",
+    "core/async_utils.jac",
+    "core/leaderboard/format.jac",
 ]
 
-[gc]
-default = "none"
-
-[gc.enforce]
-modules = ["arena*", "sim*", "gmath*", "platform_rl*"]
+[memory]
+profile = "managed"
+enforce = ["arena*", "sim*", "gmath*", "platform_rl*"]
 
 [jac-shadcn]
 style = "nova"
@@ -43,9 +89,17 @@ font = "geist"
 radius = "default"
 menuAccent = "subtle"
 menuColor = "default"
+components_dir = "core/site/ui"
+utils_path = "core/utils.jac"
 
 [dependencies]
+
+[byllm.model]
+default_model = "anthropic/claude-sonnet-5"
+
 [dependencies.npm]
+"@noble/hashes" = "^2.0.1"
+react-native-web = "^0.19.13"
 embla-carousel-react = "*"
 "@hugeicons/core-free-icons" = "*"
 "@hugeicons/react" = "*"
@@ -62,14 +116,36 @@ motion = "latest"
 mermaid = "^11"
 lucide-react = "^0.469.0"
 
+[apps.cli.check.lint]
+ignore = ["no-print"]
+
+[apps.desktop.desktop]
+name = "jaclang"
+identifier = "org.jaclang.desktop"
+backend = "https://jaclang.org"
+
+[apps.desktop.desktop.window]
+title = "jaclang.org"
+width = 1280
+height = 860
+min_width = 900
+min_height = 600
+
+[apps.mobile.dependencies.npm.native]
+"@noble/hashes" = "^2.0.1"
+expo-web-browser = "~15.0.0"
+expo-crypto = "~15.0.0"
+expo-font = "~14.0.0"
+lucide-react-native = "^0.469.0"
+react-native-svg = "^15.13.0"
+
+# Client configuration is workspace-wide; web and desktop share core/site.
 [client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
-[serve]
-base_route_app = "app"
-
 [client.assets]
+dir = "core/site/assets"
 custom_extensions = [
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico",
     ".woff", ".woff2", ".ttf", ".otf", ".eot", ".mp4", ".webm", ".mp3",
@@ -91,12 +167,3 @@ og_site_name = "jaclang.org"
 og_image = "https://jaclang.org/static/assets/og-card.png"
 twitter_card = "summary_large_image"
 twitter_image = "https://jaclang.org/static/assets/og-card.png"
-
-# The service cut: scoring runs as its own process, routed by the gateway,
-# and the socialize section's social graph is its own service the same way.
-[scale.microservices.routes]
-"scoring_service" = "/scoring_service"
-"social_graph" = "/social_graph"
-
-[scale.microservices.services.social_graph]
-file = "socialize/social_graph.jac"

@@ -1,6 +1,5 @@
 import os;
 import warnings;
-import from functools { cache }
 import from ctypes { c_int, c_char_p }
 import from jaclang.compiler.backends.native.llvm.binding { ffi }
 
@@ -90,48 +89,4 @@ def _llvm_assertions_state -> object {
     } except OSError {
         return "unknown";
     }
-}
-
-@cache
-def get_sysinfo -> object {
-    d = `dict();
-    d["ffi_lib_location"] = ffi.lib._name;
-    d["package_format"] = _package_format();
-    d["llvm_linkage_type"] = _build_llvm_linkage_type();
-    d["libstdcxx_linkage_type"] = _build_libstdcxx_linkage_type();
-    d["llvm_assertions_state"] = _llvm_assertions_state();
-    HAVE_LIEF = False;
-    try {
-        import lief;
-        HAVE_LIEF = True;
-    } except ImportError {
-        msg = "py-lief package not found, sysinfo is limited as a result";
-        warnings.warn(msg);
-    }
-    d["lief_probe_status"] = HAVE_LIEF;
-    d["linked_libraries"] = None;
-    d["canonicalised_linked_libraries"] = None;
-    """Canonicalises the representation of the binary::libraries as a
-        sequence of strings""";
-    def canonicalise_library_type(dso: any) -> list {
-        return [getattr(x, "name", x) for x in dso.libraries];
-    }
-    def canonicalise_library_spelling(libs: any) -> list {
-        fixes = [];
-        for lib in libs {
-            path_stripped = os.path.split(lib)[-1];
-            prefix_libname = path_stripped.split(".")[0];
-            linker_name = prefix_libname.replace("lib", "").replace("LIB", "");
-            fixes.append(linker_name.lower());
-        }
-        return fixes;
-    }
-    if HAVE_LIEF {
-        dso = lief.parse(d["ffi_lib_location"]);
-        link_libs = `tuple(canonicalise_library_type(dso));
-        d["linked_libraries"] = link_libs;
-        canonicalised_libs = canonicalise_library_spelling(link_libs);
-        d["canonicalised_linked_libraries"] = canonicalised_libs;
-    }
-    return d;
 }

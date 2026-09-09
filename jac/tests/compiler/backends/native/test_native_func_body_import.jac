@@ -136,7 +136,7 @@ test "an unsupported body-scoped import demotes its function, callers stay loud"
 # C library that module declares -- onto the native link line, so the artifact
 # fails to link anywhere that library is absent.
 test "nested imports are harvested only from native-context elements" {
-    import from jaclang.compiler.backends.py.module_codegen_pass { ModuleCodegenPass }
+    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     import from jaclang.compiler.frontend.constant { CodeContext }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     prog = JacProgram();
@@ -146,15 +146,15 @@ test "nested imports are harvested only from native-context elements" {
         file_path=os.path.join(FIXTURES, "clib_ctx_gated_lib.jac"),
         options=CompileOptions(no_cgen=True)
     );
-    _stmts: list = list(ModuleCodegenPass.iter_context_stmts(ir));
+    _stmts: list = list(ModuleFacts.iter_context_stmts(ir));
     placements = [stmt.code_context for stmt in _stmts];
     assert CodeContext.NATIVE not in placements , (
         f"fixture no longer exercises server placement: {placements}"
     );
-    assert len(ModuleCodegenPass.iter_nested_imports(ir)) == 1 , (
+    assert len(ModuleFacts.iter_nested_imports(ir)) == 1 , (
         "fixture should carry exactly one body-scoped import"
     );
-    assert ModuleCodegenPass.iter_nested_imports(ir, CodeContext.NATIVE) == [] , (
+    assert ModuleFacts.iter_nested_imports(ir, CodeContext.NATIVE) == [] , (
         "a body-scoped import under a server-placed element must not be "
         "harvested for native registration"
     );

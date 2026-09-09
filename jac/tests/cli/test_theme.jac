@@ -21,6 +21,10 @@ import from jaclang.cli.shadcn.shadcn_handler { resolve_single_component }
 obj MockConfig {
     has project_root: any = None,
         _raw_data: any = None;
+
+    def resolve_app(name: str = "") -> any {
+        raise ValueError("MockConfig declares no apps");
+    }
 }
 
 

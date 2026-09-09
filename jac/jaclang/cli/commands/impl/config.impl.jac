@@ -3,8 +3,10 @@ import from jaclang.cli.console { console }
 import from jaclang.project.tomlio { read_toml_with_encoding }
 import from jaclang.project.config { JacConfig }
 
-glob CONFIG_GROUPS = [
+glob APP_FIELDS: list[str] = ["kind", "path", "entry_point", "platform", "route"],
+     CONFIG_GROUPS = [
          "project",
+         "apps",
          "run",
          "build",
          "test",
@@ -115,11 +117,12 @@ def _config_path {
 def _config_groups {
     console.print("\nAvailable configuration groups:\n", style="info");
     group_descriptions = {
-        "project": "Project metadata (name, version, description, authors)",
+        "project": "Project metadata (name, version, description, authors, default_app)",
+        "apps": "Workspace apps: one [apps.<name>] table per app (kind, path, entry_point, platform, route)",
         "run": "Run command defaults (session, main, cache)",
         "build": "Build command defaults (typecheck, dir)",
         "test": "Test command defaults (directory, filter, verbose, fail_fast)",
-        "serve": "Serve command defaults (port, session, main, cl_route_prefix)",
+        "serve": "Serve command defaults (port, session, main, on_conflict)",
         "format": "Format command defaults (outfile, fix)",
         "check": "Check command defaults (print_errs)",
         "dot": "Dot/graph visualization defaults (depth, traverse, format)",
@@ -180,6 +183,27 @@ def _get_group_attr(group_name: str) -> str {
     return group_name;
 }
 
+def _app_settings(config: JacConfig, show_all: bool) -> dict[str, dict[str, object]] {
+    settings: dict[str, dict[str, object]] = {};
+    raw_apps = config._raw_data.get("apps", {}) if config._raw_data else {};
+    for (name, app) in config.apps.items() {
+        raw_app = raw_apps.get(name, {}) if isinstance(raw_apps, dict) else {};
+        for field in APP_FIELDS {
+            toml_key = field.replace("_", "-") if field == "entry_point" else field;
+            is_set = isinstance(raw_app, dict) and toml_key in raw_app;
+            if not show_all and not is_set {
+                continue;
+            }
+            settings[f"{name}.{field}"] = {
+                "value": getattr(app, field, ""),
+                "default": "",
+                "is_set": is_set
+            };
+        }
+    }
+    return settings;
+}
+
 def _get_group_values(config: JacConfig, group_name: str) -> dict[str, object] {
     attr_name = _get_group_attr(group_name);
     group_obj = getattr(config, attr_name, None);
@@ -232,6 +256,13 @@ def _config_list(
     all_settings: dict[str, dict[str, dict[str, object]]] = {};
 
     for grp in groups_to_show {
+        if grp == "apps" {
+            app_settings = _app_settings(config, show_all);
+            if app_settings {
+                all_settings[grp] = app_settings;
+            }
+            continue;
+        }
         defaults = _get_group_defaults(grp);
         current = _get_group_values(config, grp);
 
@@ -470,6 +501,10 @@ def _config_get(config: (JacConfig | None), key: str) -> int {
         return 1;
     }
 
+    if group_name == "apps" {
+        return _config_get_app(config, setting_name);
+    }
+
     current_values = _get_group_values(config, group_name);
     default_values = _get_group_defaults(group_name);
 
@@ -493,6 +528,42 @@ def _config_get(config: (JacConfig | None), key: str) -> int {
         console.print("  (default value)", style="muted");
     }
     return 0;
+}
+
+def _config_get_app(config: JacConfig, setting_name: str) -> int {
+    if '.' not in setting_name {
+        console.error("App keys are 'apps.<name>.<field>'.");
+        console.print("Example: jac config get apps.web.kind", style="muted");
+        return 1;
+    }
+    (app_name, field) = setting_name.split('.', 1);
+    app = config.app(app_name);
+    if app is None {
+        console.error(f"Unknown app '{app_name}'.");
+        console.print(f"Apps: {', '.join(config.apps.keys())}", style="muted");
+        return 1;
+    }
+    if field not in APP_FIELDS {
+        console.error(f"Unknown app field '{field}'.");
+        console.print(f"Available fields: {', '.join(APP_FIELDS)}", style="muted");
+        return 1;
+    }
+    console.print(_format_value(getattr(app, field, "")).strip('"'));
+    settings = _app_settings(config, True);
+    if settings.get(f"{app_name}.{field}", {}).get("is_set") {
+        console.print("  (explicitly set in jac.toml)", style="muted");
+    } else {
+        console.print("  (default value)", style="muted");
+    }
+    return 0;
+}
+
+def _refuse_app_edit(key: str) -> int {
+    console.error(
+        f"'{key}' lives in an [apps.<name>] table; edit jac.toml directly.",
+        hint="jac config set/unset covers flat groups only."
+    );
+    return 1;
 }
 
 def _config_set(config: (JacConfig | None), key: str, value: str) -> int {
@@ -525,6 +596,9 @@ def _config_set(config: (JacConfig | None), key: str, value: str) -> int {
         console.error(f"Unknown group '{group_name}'.");
         console.print(f"Available groups: {', '.join(CONFIG_GROUPS)}", style="muted");
         return 1;
+    }
+    if group_name == "apps" {
+        return _refuse_app_edit(key);
     }
 
     if config is None {
@@ -606,6 +680,9 @@ def _config_unset(config: (JacConfig | None), key: str) -> int {
         console.error(f"Unknown group '{group_name}'.");
         console.print(f"Available groups: {', '.join(CONFIG_GROUPS)}", style="muted");
         return 1;
+    }
+    if group_name == "apps" {
+        return _refuse_app_edit(key);
     }
 
     if not _is_explicitly_set(config, group_name, setting_name) {

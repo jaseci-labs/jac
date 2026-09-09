@@ -1,3 +1,4 @@
+import from jaclang.scale.tests.toolchain_http { mock_downloads }
 import os;
 import shutil;
 import tempfile;
@@ -23,6 +24,8 @@ test "an unchanged release is served from the local cache, not re-downloaded" {
     cache_dir = tempfile.mkdtemp();
     saved_env = os.environ.get("JAC_SCALE_CACHE_DIR");
     saved_http = binmod._http_get_bytes;
+    downloads = mock_downloads(lambda (url: str) { binmod._http_get_bytes(url); });
+    downloads.start();
     os.environ["JAC_SCALE_CACHE_DIR"] = cache_dir;
     binmod._http_get_bytes = _fake_http;
     try {
@@ -46,6 +49,7 @@ test "an unchanged release is served from the local cache, not re-downloaded" {
         )
             == 1;
     } finally {
+        downloads.stop();
         binmod._http_get_bytes = saved_http;
         if saved_env is None {
             os.environ.pop("JAC_SCALE_CACHE_DIR", None);
@@ -92,6 +96,8 @@ test "two pinned versions keep separate cache entries" {
     cache_dir = tempfile.mkdtemp();
     saved_env = os.environ.get("JAC_SCALE_CACHE_DIR");
     saved_http = binmod._http_get_bytes;
+    downloads = mock_downloads(lambda (url: str) { binmod._http_get_bytes(url); });
+    downloads.start();
     os.environ["JAC_SCALE_CACHE_DIR"] = cache_dir;
     binmod._http_get_bytes = _fake_stable_http;
     try {
@@ -102,6 +108,7 @@ test "two pinned versions keep separate cache entries" {
         assert binmod.download_release_binary("stable", "x86_64", "0.34.3") == first;
         assert len(list(Path(cache_dir).`glob("jac-stable-*-linux-x86_64"))) == 2;
     } finally {
+        downloads.stop();
         binmod._http_get_bytes = saved_http;
         if saved_env is None {
             os.environ.pop("JAC_SCALE_CACHE_DIR", None);
@@ -128,6 +135,8 @@ test "two pins downloading at once keep their own cache entries" {
     cache_dir = tempfile.mkdtemp();
     saved_env = os.environ.get("JAC_SCALE_CACHE_DIR");
     saved_http = binmod._http_get_bytes;
+    downloads = mock_downloads(lambda (url: str) { binmod._http_get_bytes(url); });
+    downloads.start();
     os.environ["JAC_SCALE_CACHE_DIR"] = cache_dir;
     binmod._http_get_bytes = _fake_stable_http;
     got: dict = {};
@@ -163,6 +172,7 @@ test "two pins downloading at once keep their own cache entries" {
             }
         }
     } finally {
+        downloads.stop();
         binmod._http_get_bytes = saved_http;
         if saved_env is None {
             os.environ.pop("JAC_SCALE_CACHE_DIR", None);

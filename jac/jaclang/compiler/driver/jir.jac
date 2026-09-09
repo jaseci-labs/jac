@@ -6,7 +6,7 @@ import zlib;
 import from pathlib { Path }
 
 glob MAGIC = b"JIR\x00",
-     FORMAT_VERSION: int = 24,
+     FORMAT_VERSION: int = 25,
      HEADER_SIZE: int = 32,
      HEADER_FMT: str = "<4sHHIIIIII",
      EXTERNAL_REF: int = 0xFFFFFF,
@@ -25,6 +25,7 @@ glob MAGIC = b"JIR\x00",
      SEC_IFACE: int = 0x0D,
      SEC_DEPS: int = 0x0E,
      SEC_DIAG: int = 0x0F,
+     SEC_CLIENT: int = 0x10,
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
      PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
@@ -133,7 +134,6 @@ def _related_files(source_path: str) -> list[tuple[str, str]] {
     return result;
 }
 
-glob _client_kind_probe: dict = {"active": False};
 
 def is_compiler_tree_path(source_path: str) -> bool {
     try {
@@ -172,22 +172,6 @@ def _module_codespace_mode(source_path: str) -> str {
         return effective_default_codespace();
     } except Exception {
         return "server";
-    }
-}
-
-def _module_client_kind(source_path: str) -> str {
-    if _client_kind_probe["active"] {
-        return "web";
-    }
-    _client_kind_probe["active"] = True;
-    try {
-        import from jaclang.project.client_kind { resolve_client_kind_context }
-        (kind, _) = resolve_client_kind_context(source_path);
-        return kind;
-    } except Exception {
-        return "web";
-    } finally {
-        _client_kind_probe["active"] = False;
     }
 }
 
@@ -366,22 +350,55 @@ def _toolchain_env_fingerprint -> str {
     return h.hexdigest();
 }
 
+def _config_for_module(resolved: Path) -> any {
+    config_mod = __import__("jaclang.project.config", fromlist=["get_config_for_path"]);
+    return config_mod.get_config_for_path(resolved.parent);
+}
+
+def _analysis_fingerprint_for(source_path: str) -> str {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    cfg: any = None;
+    try {
+        cfg = _config_for_module(Path(source_path).resolve());
+    } except Exception {
+        cfg = None;
+    }
+    import from jaclang.compiler.frontend.codeinfo { effective_native_target }
+    mem_cfg = cfg.memory if cfg is not None else None;
+    native_cfg = cfg.native if cfg is not None else None;
+    return CompileOptions(
+        memory_profile=(mem_cfg.profile if mem_cfg else "managed"),
+        memory_enforce=(list(mem_cfg.enforce) if mem_cfg else []),
+        memory_exempt=(list(mem_cfg.exempt) if mem_cfg else []),
+        native_target=(
+            effective_native_target() or (native_cfg.target if native_cfg else "")
+        )
+    ).analysis_fingerprint();
+}
+
 def _project_env_fingerprint(source_path: str) -> str {
     h = hashlib.sha256();
-    h.update(_module_client_kind(source_path).encode());
     h.update(_module_codespace_mode(source_path).encode());
     import from jaclang.compiler.placement.placement_pins {
         pins_digest,
         config_kind_space
     }
+    import from jaclang.compiler.placement.workspace {
+        app_fact_digest,
+        app_for_path,
+        workspace_for_path
+    }
     h.update(pins_digest(source_path).encode());
     h.update(config_kind_space(source_path).encode());
-    import from jaclang.compiler.placement.service_cut { cut_digest }
-    h.update(cut_digest(source_path).encode());
-    import from jaclang.compiler.driver.compile_options {
-        effective_analysis_fingerprint
+    h.update(app_fact_digest(app_for_path(source_path)).encode());
+    _ws = workspace_for_path(source_path);
+    h.update((_ws.digest if _ws is not None else '').encode());
+    if _ws is not None and _ws.explicit {
+        import from jaclang.compiler.placement.ownership { consumer_graph }
+        (_, ownership_digest) = consumer_graph(_ws);
+        h.update(ownership_digest.encode());
     }
-    h.update(effective_analysis_fingerprint().encode());
+    h.update(_analysis_fingerprint_for(source_path).encode());
     return h.hexdigest();
 }
 
@@ -392,20 +409,23 @@ def _full_env_fingerprint(source_path: str) -> str {
     return h.hexdigest();
 }
 
+def _env_fingerprint_for(source_path: str) -> str {
+    if is_stub_like_path(source_path) or is_compiler_source_path(source_path) {
+        return _toolchain_env_fingerprint();
+    }
+    return _full_env_fingerprint(source_path);
+}
+
 def module_env_fingerprint(source_path: str) -> str {
     h = hashlib.sha256();
-    if is_stub_like_path(source_path) {
-        h.update(_toolchain_env_fingerprint().encode());
-    } else {
-        h.update(_full_env_fingerprint(source_path).encode());
-    }
+    h.update(_env_fingerprint_for(source_path).encode());
     h.update(running_compiler_digest().encode());
     return h.hexdigest();
 }
 
 def compute_module_key(source_path: str) -> str {
     h = hashlib.sha256();
-    h.update(_full_env_fingerprint(source_path).encode());
+    h.update(_env_fingerprint_for(source_path).encode());
     h.update(compute_content_sha256(source_path).encode());
     for (rel, digest) in _related_files(source_path) {
         h.update(rel.encode());
@@ -563,7 +583,7 @@ def deps_section(rows: list[tuple[str, str, str]]) -> bytes {
     return "\n".join(lines).encode("utf-8");
 }
 
-def read_dep_rows(data: bytes) -> list[tuple[str, str, str]] {
+def read_dep_rows(data: bytes, base_dir: str = "") -> list[tuple[str, str, str]] {
     raw = _read_key_section(data, SEC_DEPS);
     out: list[tuple[str, str, str]] = [];
     if not raw {
@@ -576,14 +596,22 @@ def read_dep_rows(data: bytes) -> list[tuple[str, str, str]] {
         parts = line.split("\t");
         digest = parts[1] if len(parts) > 1 else "";
         flags = parts[2] if len(parts) > 2 else "";
-        out.append((parts[0], digest, flags, ));
+        out.append((_dep_row_path(parts[0], base_dir), digest, flags, ));
     }
     return out;
 }
 
-def read_dep_hashes(data: bytes) -> list[tuple[str, str]] {
+def _dep_row_path(stored: str, base_dir: str) -> str {
+    prefix = PRECOMPILE_SENTINEL + "/";
+    if base_dir and stored.startswith(prefix) {
+        return os.path.normpath(os.path.join(base_dir, stored[len(prefix):]));
+    }
+    return stored;
+}
+
+def read_dep_hashes(data: bytes, base_dir: str = "") -> list[tuple[str, str]] {
     out: list[tuple[str, str]] = [];
-    for (path, digest, _flags) in read_dep_rows(data) {
+    for (path, digest, _flags) in read_dep_rows(data, base_dir) {
         out.append((path, digest, ));
     }
     return out;
@@ -646,13 +674,14 @@ def compute_precompile_module_key(source_path: str, compiler_digest: str = "") -
 }
 
 def precompiled_jir_matches_source(
-    jir_data: bytes, source_path: str, compiler_digest: str = ""
+    jir_data: bytes, source_path: str, compiler_digest: str = "", package_root: str = ""
 ) -> bool {
     stored = read_modkey(jir_data);
     if stored is None {
         return False;
     }
-    return stored == compute_precompile_module_key(source_path, compiler_digest);
+    return stored == compute_precompile_module_key(source_path, compiler_digest)
+        and ct_deps_fresh(jir_data, package_root);
 }
 
 def jir_cacheable_source_path(source_path: str) -> bool {
@@ -684,8 +713,7 @@ def _module_cache_root(source_path: str) -> Path {
     } except ValueError {}
 
     try {
-        config_mod = __import__("jaclang.project.config", fromlist=["get_config"]);
-        cfg = config_mod.get_config();
+        cfg = _config_for_module(resolved);
         if cfg is not None and cfg.is_valid() and cfg.project_root is not None {
             try {
                 resolved.relative_to(cfg.project_root);

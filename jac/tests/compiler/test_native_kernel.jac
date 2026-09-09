@@ -29,7 +29,7 @@ def _shape_consulted_roles -> (set[str] | None) {
     }
     pat = re.compile(r"_role_shaped\(\s*(\w+)");
     found: set[str] = set();
-    for rel in ("unitree.impl/roles.impl.jac", "impl/unitree.impl.jac") {
+    for rel in ("unitree.impl/roles.impl.jac", "unitree.impl/nodes.impl.jac") {
         path = os.path.join(base, rel);
         if not os.path.isfile(path) {
             continue;
@@ -109,6 +109,9 @@ test "kernel parse materializes the store parser's tree" {
         (nat_mod, nat_err) = parse_woven(SNIPPET, "kernel_eq.jac", None, []);
         (py_mod, py_err) = parse(SNIPPET, "kernel_eq.jac");
         assert nat_err == py_err;
+        assert nat_mod._gen is None;
+        import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
+        assert isinstance(nat_mod.gen, CodeGenTarget);
         assert kernel.skipped() == 0 , (
             "kernel skipped objects during materialization"
         );

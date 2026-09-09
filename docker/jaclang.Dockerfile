@@ -63,7 +63,7 @@ RUN apt-get update \
     && jac --version \
     && ls /opt/jac/cache/jac/rt/*/.ok \
     && mkdir /tmp/seed \
-    && printf '[project]\nname = "seed"\nversion = "0.0.1"\nentry-point = "main.jac"\n\n[dependencies]\nsetuptools = ">=75"\n\n[serve]\nbase_route_app = "app"\n\n[scale.kubernetes]\nnamespace = "seed"\n' > /tmp/seed/jac.toml \
+    && printf '[project]\nname = "seed"\nversion = "0.0.1"\nentry-point = "main.jac"\n\n[dependencies]\nsetuptools = ">=75"\n\n[scale.kubernetes]\nnamespace = "seed"\n' > /tmp/seed/jac.toml \
     && printf 'with entry {}\n' > /tmp/seed/main.jac \
     && (cd /tmp/seed && jac install) \
     && rt_lib=$(ls -d /opt/jac/cache/jac/rt/*/python/lib/python3.*) \

@@ -20,7 +20,7 @@ import from jaclang.scale.runtime.orchestrator.process_manager { ServiceProcessM
 def _unbound_port -> int {
     sock = socket.socket();
     sock.bind(("127.0.0.1", 0));
-    port: int = sock.getsockname()[1];
+    port: int = int(sock.getsockname()[1]);
     sock.close();
     return port;
 }
@@ -36,7 +36,7 @@ def _manager(status: ServiceStatus) -> ServiceProcessManager {
             port=port,
             url=f"http://127.0.0.1:{port}",
             status=status,
-            is_app=True
+            is_root=True
         )
     );
     pm = ServiceProcessManager(registry=reg);

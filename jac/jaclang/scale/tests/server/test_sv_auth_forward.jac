@@ -679,85 +679,6 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
 }
 
 
-obj _K8sStubMsCfg {
-    has data: dict[str, any];
-
-    def get_microservices_config -> dict[str, any] {
-        return self.data;
-    }
-}
-
-test "ensure_sv_service registers DNS URL when in K8s mode" {
-    import os;
-    import jaclang.scale.config.config_loader as cfg_mod;
-    import from jaclang.scale.plugin { JacScalePlugin }
-
-    orig_k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST");
-    orig_ns = os.environ.get("POD_NAMESPACE");
-    original_cfg = getattr(cfg_mod, "get_scale_config");
-
-    os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";
-    os.environ["POD_NAMESPACE"] = "prod";
-    setattr(
-        cfg_mod,
-        "get_scale_config",
-        lambda { _K8sStubMsCfg(
-            data={"routes": {"k9_2_peer": "/api/peer"}, "gateway_port": 8000}
-        ); }
-    );
-
-    if "k9_2_peer" in sv_client._registry {
-        sv_client.unregister("k9_2_peer");
-    }
-
-    try {
-        JacScalePlugin.ensure_sv_service("k9_2_peer", ".");
-        url = sv_client._registry.get("k9_2_peer", "");
-        assert url == "http://k9-2-peer-service.prod.svc.cluster.local:8000" , (
-            f"expected DNS URL, got '{url}'"
-        );
-    } finally {
-        if "k9_2_peer" in sv_client._registry {
-            sv_client.unregister("k9_2_peer");
-        }
-        if orig_k8s_host is None {
-            del os.environ["KUBERNETES_SERVICE_HOST"];
-        } else {
-            os.environ["KUBERNETES_SERVICE_HOST"] = orig_k8s_host;
-        }
-        if orig_ns is None {
-            del os.environ["POD_NAMESPACE"];
-        } else {
-            os.environ["POD_NAMESPACE"] = orig_ns;
-        }
-        setattr(cfg_mod, "get_scale_config", original_cfg);
-    }
-}
-
-
-test "ensure_sv_service early-returns when peer already registered" {
-    import os;
-    import from jaclang.scale.plugin { JacScalePlugin }
-
-    orig_k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST");
-    os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";
-
-    sv_client.register("k9_2_already_registered", "http://prior-url.example.com:8000");
-
-    try {
-        JacScalePlugin.ensure_sv_service("k9_2_already_registered", ".");
-        assert sv_client._registry["k9_2_already_registered"]
-            == ("http://prior-url.example.com:8000");
-    } finally {
-        sv_client.unregister("k9_2_already_registered");
-        if orig_k8s_host is None {
-            del os.environ["KUBERNETES_SERVICE_HOST"];
-        } else {
-            os.environ["KUBERNETES_SERVICE_HOST"] = orig_k8s_host;
-        }
-    }
-}
-
 import socket;
 import threading;
 
@@ -895,5 +816,139 @@ test "service_call does not retry an HTTP 500" {
         sv_client.unregister(mod);
         _stop_counting_server(srv, held);
         _breaker_reset(mod);
+    }
+}
+
+
+"""Record the request line's path of every POST and answer it with `reply`."""
+def _start_capturing_server(paths: list[str], reply: bytes) -> tuple {
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
+    srv.bind(("127.0.0.1", 0));
+    srv.listen(8);
+    port = srv.getsockname()[1];
+    held: list = [];
+
+    def serve {
+        while True {
+            try {
+                (conn, _addr) = srv.accept();
+            } except OSError {
+                return;
+            }
+            held.append(conn);
+            try {
+                data = conn.recv(65536);
+            } except OSError {
+                continue;
+            }
+            if not data.startswith(b"POST ") {
+                continue;
+            }
+            paths.append(data.split(b" ")[1].decode("ascii"));
+            try {
+                conn.sendall(reply);
+                conn.close();
+            } except OSError {}
+        }
+    }
+    t = threading.Thread(target=serve, daemon=True);
+    t.start();
+    return (srv, held, port);
+}
+
+
+glob _WALKER_OK_BODY: bytes = b'{"ok": true, "data": {"result": {}, "reports": []}}',
+     _WALKER_OK_REPLY: bytes = (
+         b"HTTP/1.1 200 OK\r\n"
+         + b"Content-Type: application/json\r\n"
+         + b"Content-Length: "
+         + str(len(_WALKER_OK_BODY)).encode("ascii")
+         + b"\r\n"
+         + b"Connection: close\r\n\r\n"
+         + _WALKER_OK_BODY
+     );
+
+
+def _reset_peer(mod: str) {
+    sv_client.unregister(mod);
+    sv_client._consumer_providers.pop("route_consumer", None);
+    sv_client.set_consumer_app("");
+    _breaker_reset(mod);
+}
+
+
+test "a compiled consumer's declared route is not appended to a bare peer URL" {
+    paths: list[str] = [];
+    (srv, held, port) = _start_capturing_server(paths, _WALKER_OK_REPLY);
+    mod = "declared_route_peer";
+    _reset_peer(mod);
+    try {
+        sv_client._declare_consumer_provider("route_consumer", mod, "/api/peer");
+        sv_client.register(mod, f"http://127.0.0.1:{port}");
+        assert sv_client.provider_route(mod) == "/api/peer";
+        assert sv_client.registered_route(mod) == "";
+        assert sv_client.resolve_url(mod) == f"http://127.0.0.1:{port}";
+
+        JacScalePlugin.sv_walker_call(mod, "Ping", {}, None);
+        assert paths == ["/walker/Ping"] , paths;
+    } finally {
+        _reset_peer(mod);
+        _stop_counting_server(srv, held);
+    }
+}
+
+
+test "a route registered together with a URL is appended (gateway base)" {
+    paths: list[str] = [];
+    (srv, held, port) = _start_capturing_server(paths, _WALKER_OK_REPLY);
+    mod = "gateway_route_peer";
+    _reset_peer(mod);
+    try {
+        sv_client._declare_consumer_provider("route_consumer", mod, "/api/peer");
+        sv_client.register(mod, f"http://127.0.0.1:{port}/", "/api/peer");
+        assert sv_client.registered_route(mod) == "/api/peer";
+        assert sv_client.resolve_url(mod) == f"http://127.0.0.1:{port}/api/peer";
+
+        JacScalePlugin.sv_walker_call(mod, "Ping", {}, None);
+        assert paths == ["/api/peer/walker/Ping"] , paths;
+
+        sv_client.register(mod, f"http://127.0.0.1:{port}");
+        assert sv_client.registered_route(mod) == "";
+        JacScalePlugin.sv_walker_call(mod, "Ping", {}, None);
+        assert paths == ["/api/peer/walker/Ping", "/walker/Ping"] , paths;
+    } finally {
+        _reset_peer(mod);
+        _stop_counting_server(srv, held);
+    }
+}
+
+
+test "JAC_APP_<APP>_URL is used as given unless JAC_APP_<APP>_ROUTE is set too" {
+    import os;
+    mod = "env_route_peer";
+    url_key = sv_client.peer_url_env_key(mod);
+    route_key = sv_client.peer_route_env_key(mod);
+    saved_url = os.environ.get(url_key);
+    saved_route = os.environ.get(route_key);
+    _reset_peer(mod);
+    try {
+        sv_client._declare_consumer_provider("route_consumer", mod, "/api/peer");
+        os.environ[url_key] = "http://member.invalid:9001";
+        os.environ.pop(route_key, None);
+        assert sv_client.resolve_url(mod) == "http://member.invalid:9001";
+
+        sv_client.unregister(mod);
+        os.environ[route_key] = "/api/peer";
+        assert sv_client.resolve_url(mod) == "http://member.invalid:9001/api/peer";
+    } finally {
+        _reset_peer(mod);
+        for (k, v) in [(url_key, saved_url), (route_key, saved_route)] {
+            if v is None {
+                os.environ.pop(k, None);
+            } else {
+                os.environ[k] = v;
+            }
+        }
     }
 }

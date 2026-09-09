@@ -16,6 +16,7 @@ import from jaclang.server.serving.datatypes { JSONResponse }
 import from jaclang.server.serving.endpoint { HTTPMethod, JEndPoint, WSEndPoint }
 import from jaclang.server.serving.openapi { build_openapi }
 import from jaclang.server.serving.server { ServingServer }
+import from jaclang.server.settings { ServeSettings }
 import from jaclang.server.serving.ws {
     OP_CONT,
     OP_PING,
@@ -49,8 +50,19 @@ def _make_app -> ServingApp {
 }
 
 
-def _spawn(**server_kwargs: any) -> tuple {
-    server = ServingServer(app=_make_app(), host="127.0.0.1", port=0, **server_kwargs);
+def _spawn(
+    ws_allowed_origins: (list[str] | None) = None, ws_max_message_bytes: int = 0
+) -> tuple {
+    settings = ServeSettings();
+    if ws_allowed_origins is not None {
+        settings.websocket.allowed_origins = list(ws_allowed_origins);
+    }
+    if ws_max_message_bytes {
+        settings.websocket.max_message_bytes = ws_max_message_bytes;
+    }
+    server = ServingServer(
+        app=_make_app(), settings=settings, host="127.0.0.1", port=0
+    );
     stop = server.serve_background();
     return (stop, server);
 }

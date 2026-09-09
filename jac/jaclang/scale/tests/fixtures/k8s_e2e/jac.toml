@@ -1,8 +1,27 @@
 [project]
 name = "jac-shop"
 version = "0.1.0"
-description = "A small e-commerce app built as microservices"
+description = "A small e-commerce app built as a workspace of service apps"
+default-app = "web"
+
+[apps.web]
+kind = "web-app"
 entry-point = "main.jac"
+
+[apps.products_app]
+kind = "service"
+entry-point = "products_app.jac"
+route = "/products"
+
+[apps.orders_app]
+kind = "service"
+entry-point = "orders_app.jac"
+route = "/orders"
+
+[apps.cart_app]
+kind = "service"
+entry-point = "cart_app.jac"
+route = "/cart"
 
 [dependencies.npm]
 react = "^19.2.0"
@@ -24,31 +43,18 @@ humanize = ">=4.0.0"
 [dev-dependencies]
 watchdog = ">=3.0.0"
 
-[serve]
-base_route_app = "app"
-
 [client]
 
-# The routes table below is the authoritative service cut (#7772): each key
-# runs as its own service pod behind the gateway. Everything else
-# (database/client entry) stays derived; the e2e harness appends its
-# test-only opt-ins (ingress/logs/cors) at run time.
-
-[scale.microservices.routes]
-products_app = "/products"
-orders_app = "/orders"
-cart_app = "/cart"
-
 # --- e2e-harness overlay (appended by k8s_microservice_real_e2e.sh) ---
-[scale.microservices.logs]
+[scale.gateway.logs]
 enabled = true
 
-[scale.microservices.ingress]
+[scale.gateway.ingress]
 enabled = true
 host = "jac-shop.local"
 ingress_class_name = "nginx"
 
-[scale.microservices.cors]
+[scale.gateway.cors]
 allow_origins = ["http://app.example.com"]
 allow_methods = ["GET", "POST", "OPTIONS"]
 allow_headers = ["Authorization", "Content-Type"]

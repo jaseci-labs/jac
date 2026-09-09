@@ -60,14 +60,14 @@ The full Scale reference is organized into three pages:
 
 | Page | Covers |
 |------|--------|
-| **[HTTP API & Walkers](jac-scale-http.md)** | Starting a server, automatic API endpoint generation, the `@restspec` decorator, middleware walkers, authentication (identity model, registration/login, JWT, SSO, password reset, roles), the admin portal, permissions & access control, webhooks, WebSockets, microservice interop (sv-to-sv), the emailer, CLI commands, API documentation, and graph visualization. |
+| **[HTTP API & Walkers](jac-scale-http.md)** | Starting a server, automatic API endpoint generation, the `@restspec` decorator, middleware walkers, authentication (identity model, registration/login, JWT, SSO, password reset, roles), the admin portal, permissions & access control, webhooks, WebSockets, service apps (cross-app bridging, the `BridgeError` family, the outbox, colocation vs fleet), the emailer, CLI commands, API documentation, and graph visualization. |
 | **[Data & Storage](jac-scale-persistence.md)** | Object storage (`store()`, local & S3/GCS-compatible backends), the graph traversal API, async walkers, event streaming, the Postgres database (embedded, external, and Kubernetes-provisioned), and graph builtins. |
-| **[Kubernetes & Operations](jac-scale-kubernetes.md)** | Kubernetes deployment (modes, ingress, TLS, autoscaling, storage, images, version pinning, monitoring stack), health checks, Prometheus metrics, Kubernetes secrets, pre-bound ServiceAccount, cross-service shared volumes, microservice mode in Kubernetes, cluster setup, and troubleshooting. |
+| **[Kubernetes & Operations](jac-scale-kubernetes.md)** | Kubernetes deployment (modes, ingress, TLS, autoscaling, storage, images, version pinning, monitoring stack), health checks, Prometheus metrics, Kubernetes secrets, pre-bound ServiceAccount, cross-app shared volumes, service apps in Kubernetes (the deployed fleet), cluster setup, and troubleshooting. |
 
 For end-to-end walkthroughs rather than reference material, see the Deploy tutorials:
 
 - [Local API server](../../tutorials/production/local.md)
-- [Microservices](../../tutorials/production/microservices.md)
+- [Service Apps](../../tutorials/production/microservices.md)
 - [Kubernetes](../../tutorials/production/kubernetes.md)
 
 ---

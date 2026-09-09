@@ -11,6 +11,7 @@ be deploying. So these also cover which toolchain the host build steps run.
 
 These drive the real ManifestBuilder against real project folders (the broken
 build runs the actual `jac build` subprocess); no mocks."""
+import from jaclang.scale.tests.toolchain_http { mock_downloads }
 
 import hashlib;
 import json;
@@ -38,7 +39,7 @@ glob PINNED: str = "0.0.0";
 def _builder(project_dir: str) -> ManifestBuilder {
     mb = ManifestBuilder(
         k8s_config=KubernetesConfig(app_name="landing", namespace="jb-landing"),
-        microservices_config={"client": {"entry": "main.jac"}}
+        client_entry="main.jac"
     );
     mb.project_dir = project_dir;
     return mb;
@@ -203,8 +204,7 @@ test "the gateway pod command carries no client rebuild fallback" {
 test "an app without a client entry skips the build untouched" {
     project_dir = _project("with entry {}\n");
     mb = ManifestBuilder(
-        k8s_config=KubernetesConfig(app_name="api", namespace="jb-api"),
-        microservices_config={"client": {"entry": False}}
+        k8s_config=KubernetesConfig(app_name="api", namespace="jb-api"), client_entry=""
     );
     mb.project_dir = project_dir;
     try {
@@ -316,6 +316,8 @@ test "a pinned app builds its client on the pinned release, not the deploying ja
     saved_exec = os.environ.get("JAC_EXECUTABLE");
     saved_cache = os.environ.get("JAC_SCALE_CACHE_DIR");
     saved_http = binary_mod._http_get_bytes;
+    downloads = mock_downloads(lambda (url: str) { binary_mod._http_get_bytes(url); });
+    downloads.start();
     # Any step still reaching for the deploying jac lands on a path that is not
     # there, so a green run cannot be one that ignored the pin.
     os.environ["JAC_EXECUTABLE"] = os.path.join(tmp, "absent-jac");
@@ -330,6 +332,7 @@ test "a pinned app builds its client on the pinned release, not the deploying ja
         runnable = (Path(resolved).stat().st_mode & 0o111) != 0;
         under_cache = resolved.startswith(cache);
     } finally {
+        downloads.stop();
         binary_mod._http_get_bytes = saved_http;
         _restore("JAC_EXECUTABLE", saved_exec);
         _restore("JAC_SCALE_CACHE_DIR", saved_cache);
@@ -350,12 +353,15 @@ test "no pin, and a pin naming the running jac, download nothing" {
     matching = _project("with entry {}\n");
     _pin(matching, resolve_cli_version().strip());
     saved_http = binary_mod._http_get_bytes;
+    downloads = mock_downloads(lambda (url: str) { binary_mod._http_get_bytes(url); });
+    downloads.start();
     binary_mod._http_get_bytes = _no_release_api;
     try {
         # "" keeps the deploy on its own jac, which is already the pinned one.
         assert binary_mod.host_toolchain_path(unpinned) == "";
         assert binary_mod.host_toolchain_path(matching) == "";
     } finally {
+        downloads.stop();
         binary_mod._http_get_bytes = saved_http;
         shutil.rmtree(unpinned, ignore_errors=True);
         shutil.rmtree(matching, ignore_errors=True);

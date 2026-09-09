@@ -35,7 +35,7 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
 """Compile `src` under a gc mode; exit loudly on failure."""
 def compile_src(src: Path, mode: str, out: Path) -> Path {
     out.parent.mkdir(exist_ok=True);
-    cmd = ["jac", "nacompile", str(src), "--gc", mode, "-o", str(out)];
+    cmd = ["jac", "build", "--native", str(src), "--gc", mode, "-o", str(out)];
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600);
     if r.returncode != 0 or not out.exists() {
         sys.`exit(f"compile failed: {' '.join(cmd)}\n{r.stdout}\n{r.stderr}");

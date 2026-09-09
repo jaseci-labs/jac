@@ -4,17 +4,21 @@ Recovers functional coverage dropped in PR #6840, now carried by the
 jaclang.org site whose `/socialize` section embeds the littleX social app.
 Two layers:
 
-* Build / serve / HTTP (no browser) -- scaffold the site into a writable
-  temp dir, install its npm deps, then `jac run --serve` it and exercise the
-  HTTP surface (the served `/cl/app` page, the static JS + CSS bundles,
-  404s) plus a `--client pwa` build that emits a manifest + service worker.
+* Build / serve / HTTP (no browser) -- scaffold the workspace into a
+  writable temp dir, install its npm deps, then `jac run --serve web` it and
+  exercise the HTTP surface (the served `/` page, the static JS + CSS
+  bundles, 404s) plus a `jac build --as client web` build of a `[client.pwa]`
+  project that emits a manifest + service worker.
 * Browser auth/form flows (Playwright) -- drive the Socialize section's
   `AuthForm` signup / login / logout and confirm the section gates behind
   auth.
 
-The fixture is the in-tree app at `jac/examples/jaclang_org` (never
-modified -- it is copied into a `TemporaryDirectory`). Builds are slow, so
-timeouts are generous (`wait_for_port` up to 120s).
+The fixture is the in-tree workspace at `jac/examples/jaclang_org` (never
+modified -- the whole tree, `jac.toml` plus every app root and `core/`, is
+copied into a `TemporaryDirectory`). The site is the `web` app; the social
+graph it drives is the `social_graph` service app, colocated in the served
+process. Builds are slow, so timeouts are generous (`wait_for_port` up to
+600s).
 """
 
 import json;
@@ -60,10 +64,13 @@ def _site_source_dir -> str {
     return site_dir;
 }
 
-"""Copy the jaclang_org example into ``dest`` minus build artifacts.
+"""Copy the whole jaclang_org workspace into ``dest`` minus build artifacts.
 
-Excludes ``node_modules`` / ``.jac`` / ``dist`` / ``build`` so the copy is a
-clean source tree the temp project can build from scratch.
+Every top-level entry comes along -- ``jac.toml``, the shared ``core/``
+tree and each app root (``web/``, ``mobile/``, ``cli/``) -- so the temp
+project is a complete workspace, not one app. Excludes ``node_modules`` /
+``.jac`` / ``dist`` / ``build`` so the copy is a clean source tree the temp
+project can build from scratch.
 """
 def _copy_site_into(dest: any) {
     src = _site_source_dir();
@@ -112,8 +119,12 @@ def _setup_site_project(temp_dir: any) -> tuple {
     os.makedirs(project_dir, exist_ok=True);
     _copy_site_into(project_dir);
 
-    main_jac = os.path.join(project_dir, "main.jac");
-    assert os.path.isfile(main_jac) , "site main.jac missing after copy";
+    main_jac = os.path.join(project_dir, "web", "main.jac");
+    assert os.path.isfile(main_jac) , "site web/main.jac missing after copy";
+    social_graph = os.path.join(project_dir, "core", "social_graph.jac");
+    assert os.path.isfile(social_graph) , (
+        "core/social_graph.jac (the social_graph service app) missing after copy"
+    );
 
     toml_path = os.path.join(project_dir, "jac.toml");
     with open(toml_path) as f {
@@ -148,6 +159,27 @@ def _setup_site_project(temp_dir: any) -> tuple {
 }
 
 
+"""Client dist dir of a built workspace copy.
+
+In a workspace every app builds into its own ``.jac/client/<app>/dist``
+under the workspace root, so the web app's bundle is
+``.jac/client/web/dist``; the single-app layout (``.jac/client/dist``) is
+accepted as a fallback.
+"""
+def _client_dist(project_dir: str) -> str {
+    candidates = [
+        os.path.join(project_dir, ".jac", "client", "web", "dist"),
+        os.path.join(project_dir, ".jac", "client", "dist"),
+        os.path.join(project_dir, "web", ".jac", "client", "dist")
+    ];
+    for cand in candidates {
+        if os.path.isdir(cand) {
+            return cand;
+        }
+    }
+    return candidates[0];
+}
+
 """Skip the test unless Playwright + a Chromium build are installed."""
 def _require_playwright -> any {
     try {
@@ -159,7 +191,7 @@ def _require_playwright -> any {
 }
 
 # ---- Playwright auth-form drivers (selectors verified against
-#      jaclang_org/socialize/components/AuthForm.jac) ----
+#      jaclang_org/web/socialize/components/AuthForm.jac) ----
 # The Socialize section has NO /login or /signup routes: the page renders
 # <AuthForm> inline whenever the user is not logged in. The form fields are
 # id="lx-username" (type=text) and id="lx-password" (type=password); the
@@ -222,13 +254,13 @@ def _is_logged_in(page: any) -> bool {
 # ===========================================================================
 # Build / serve / HTTP (no browser)  -- maps to deleted test_it.jac
 # ===========================================================================
-"""The site builds and serves /cl/app with its static JS bundle.
+"""The site builds and serves / with its static JS bundle.
 
 Maps to test_it's "all in one app endpoints" / "default client app renders":
 the served page is HTML referencing /static/client.js, the JS bundle is real
 (not the "Static file not found" sentinel), and a bogus static path 404s.
 """
-test "site builds and serves /cl/app" {
+test "site builds and serves /" {
     with tempfile.TemporaryDirectory() as temp_dir {
         (project_dir, jac_cmd, env) = _setup_site_project(temp_dir);
         server: Popen | None = None;
@@ -236,11 +268,12 @@ test "site builds and serves /cl/app" {
             (server, port) = start_app_server(project_dir);
             base = f"http://127.0.0.1:{port}";
 
-            # /cl/app -- the site mounts its base_route_app at "app".
-            page_bytes = request_endpoint(f"{base}/cl/app");
+            # / -- the served app (web) sits at the root; other client-capable
+            # apps of the workspace would hang off /cl/<app-name>.
+            page_bytes = request_endpoint(f"{base}/");
             page_body = page_bytes.decode("utf-8", errors="ignore");
             assert "<html" in page_body.lower() , (
-                f"/cl/app should return HTML, got:\n{page_body[:500]}"
+                f"/ should return HTML, got:\n{page_body[:500]}"
             );
             assert "/static/client.js" in page_body , (
                 "served page should reference /static/client.js bundle"
@@ -279,29 +312,29 @@ test "site builds and serves /cl/app" {
 
 """The site serves its compiled Tailwind CSS bundle.
 
-Maps to recovering CSS-serving coverage: a `jac build --client web` emits
-`styles.css` into the client dist, which is served at `/static/styles.css`.
-The body is non-empty CSS carrying Tailwind/shadcn tokens (`:root`,
-`--background`).
+Maps to recovering CSS-serving coverage: a `jac build --as client web`
+emits `styles.css` into the client dist, which is served at
+`/static/styles.css`. The body is non-empty CSS carrying Tailwind/shadcn
+tokens (`:root`, `--background`).
 """
 test "site serves its CSS bundle" {
     with tempfile.TemporaryDirectory() as temp_dir {
         (project_dir, jac_cmd, env) = _setup_site_project(temp_dir);
         # A build is what emits dist/styles.css (the served CSS route reads
-        # from .jac/client/dist/styles.css).
+        # from the client dist's styles.css).
         build_result = run(
-            [*jac_cmd, "build", "--client", "web", "main.jac"],
+            [*jac_cmd, "build", "--as", "client", "web"],
             cwd=project_dir,
             capture_output=True,
             text=True,
             env=env,
         );
         assert build_result.returncode == 0 , (
-            f"jac build --client web failed\n"
+            f"jac build --as client web failed\n"
             f"STDOUT:\n{build_result.stdout[:2000]}\n"
             f"STDERR:\n{build_result.stderr[:2000]}\n"
         );
-        css_dist = os.path.join(project_dir, ".jac", "client", "dist", "styles.css");
+        css_dist = os.path.join(_client_dist(project_dir), "styles.css");
         assert os.path.isfile(css_dist) , (
             f"build should emit styles.css at {css_dist}"
         );
@@ -332,27 +365,32 @@ test "site serves its CSS bundle" {
 
 """The site's pwa build emits a manifest and service worker.
 
-Maps to test_it's "pwa build generates manifest and service worker": building
-with `--client pwa` writes `manifest.json` (display=standalone) and `sw.js`
-(install + fetch handlers) into the client dist, and `index.html` gains the
-manifest link + SW registration script.
+Maps to test_it's "pwa build generates manifest and service worker": a
+`[client.pwa]` table in jac.toml makes the web app's client build write
+`manifest.json` (display=standalone) and `sw.js` (install + fetch handlers)
+into the client dist, and `index.html` gains the manifest link + SW
+registration script. There is no separate PWA target or `--client pwa`.
 """
 test "site pwa build emits manifest and service worker" {
     with tempfile.TemporaryDirectory() as temp_dir {
         (project_dir, jac_cmd, env) = _setup_site_project(temp_dir);
+        toml_path = os.path.join(project_dir, "jac.toml");
+        with open(toml_path, "a") as f {
+            f.write('\n[client.pwa]\ntheme_color = "#000000"\n');
+        }
         build_result = run(
-            [*jac_cmd, "build", "--client", "pwa", "main.jac"],
+            [*jac_cmd, "build", "--as", "client", "web"],
             cwd=project_dir,
             capture_output=True,
             text=True,
             env=env,
         );
         assert build_result.returncode == 0 , (
-            f"jac build --client pwa failed\n"
+            f"jac build --as client web ([client.pwa]) failed\n"
             f"STDOUT:\n{build_result.stdout[:2000]}\n"
             f"STDERR:\n{build_result.stderr[:2000]}\n"
         );
-        dist_dir = os.path.join(project_dir, ".jac", "client", "dist");
+        dist_dir = _client_dist(project_dir);
         assert os.path.isdir(dist_dir) , f"dist dir not found at {dist_dir}";
         manifest_path = os.path.join(dist_dir, "manifest.json");
         sw_path = os.path.join(dist_dir, "sw.js");
@@ -407,7 +445,7 @@ test "visiting socialize without auth shows the auth screen" {
             (server, port) = start_app_server(project_dir);
             url = f"http://127.0.0.1:{port}";
             # Warm the page so the client bundle is built before the browser hits it.
-            request_endpoint(f"{url}/cl/app");
+            request_endpoint(f"{url}/");
 
             with sync_playwright() as p {
                 browser = p.chromium.launch(headless=True);
@@ -449,7 +487,7 @@ test "signup creates account and logs in" {
         try {
             (server, port) = start_app_server(project_dir);
             url = f"http://127.0.0.1:{port}";
-            request_endpoint(f"{url}/cl/app");
+            request_endpoint(f"{url}/");
 
             with sync_playwright() as p {
                 browser = p.chromium.launch(headless=True);
@@ -491,7 +529,7 @@ test "login valid and invalid" {
             (server, port) = start_app_server(project_dir);
             url = f"http://127.0.0.1:{port}";
             socialize_url = f"{url}{SOCIALIZE_PATH}";
-            request_endpoint(f"{url}/cl/app");
+            request_endpoint(f"{url}/");
 
             with sync_playwright() as p {
                 browser = p.chromium.launch(headless=True);
@@ -572,7 +610,7 @@ test "logout returns to auth" {
             (server, port) = start_app_server(project_dir);
             url = f"http://127.0.0.1:{port}";
             socialize_url = f"{url}{SOCIALIZE_PATH}";
-            request_endpoint(f"{url}/cl/app");
+            request_endpoint(f"{url}/");
 
             with sync_playwright() as p {
                 browser = p.chromium.launch(headless=True);

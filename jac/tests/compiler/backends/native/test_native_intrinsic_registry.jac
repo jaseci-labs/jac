@@ -98,10 +98,19 @@ def _probe_source(intr: any) -> str {
         return "def probe(x: int) -> int { " + intr.name + "(); return x + 7; }\n";
     }
     if intr.dispatch in (IntrinsicDispatch.MEM_LOAD, IntrinsicDispatch.MEM_STORE) {
+        spec = intr.result_spec
+            if intr.dispatch == IntrinsicDispatch.MEM_LOAD
+            else intr.param_specs[1];
         return (
             RAW_MEM_IMPORTS
-            + "def probe(x: int) -> int { p = malloc(8); __mem_store_i64(p, x + 7); "
-            "v = __mem_load_i64(p); free(p); return v; }\n"
+            + "def probe(x: int) -> int { p = malloc(8); __mem_store_"
+            + spec
+            + "(p, "
+            + spec
+            + "(x + 7)); "
+            + "v = __mem_load_"
+            + spec
+            + "(p); free(p); return int(v); }\n"
         );
     }
     if intr.dispatch == IntrinsicDispatch.ATOMIC_XCHG {
@@ -160,6 +169,23 @@ test "every registry intrinsic lowers through its registered emitter" {
             assert fn(35) == 42 , f"{intr.name}: probe did not execute cleanly";
         }
     }
+}
+
+test "32 bit memory operations preserve adjacent storage and signed values" {
+    (prog, ir_mod) = _compile_src(
+        RAW_MEM_IMPORTS
+            + "def probe(x: int) -> int { p = malloc(8); "
+            + "__mem_store_i32(p, 123); __mem_store_i32(p + 4, i32(x)); "
+            + "lo = int(__mem_load_i32(p)); hi = int(__mem_load_i32(p + 4)); "
+            + "free(p); return lo + hi; }\n"
+    );
+    assert not prog.errors_had , str(prog.errors_had);
+    eng = ir_mod.gen.native_engine;
+    assert eng is not None;
+    fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);
+    assert fn(-123) == 0;
+    assert fn(2147483647) == 2147483770;
+    assert fn(-2147483648) == -2147483525;
 }
 
 test "gc-gated intrinsic is a declared no-op outside its gc mode" {

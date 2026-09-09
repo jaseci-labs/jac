@@ -1,0 +1,4 @@
+# Outputs of build_libwebview.sh, built on the first desktop build.
+.build/
+libwebview.so
+.webkit_module

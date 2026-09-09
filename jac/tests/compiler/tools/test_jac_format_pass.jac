@@ -136,6 +136,14 @@ test "forever keyword preserved not rewritten" {
     assert "while" not in formatted;
 }
 
+test "awaiting fmt" {
+    compare_files(os.path.join(FIXTURES, "awaiting_fmt.jac"));
+}
+
+test "awaiting jsx fmt" {
+    compare_files(os.path.join(FIXTURES, "awaiting_jsx_fmt.jac"));
+}
+
 test "fstring comment not injected" {
     path = os.path.join(FIXTURES, "fstring_comment.jac");
     prog = JacProgram.jac_file_formatter(path, auto_lint=True);

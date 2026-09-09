@@ -1,4 +1,4 @@
-"""`__class__.__name__` under headerless `--gc none --enforce-nogc`.
+"""`__class__.__name__` under headerless `--memory nogc`.
 
 A headerless allocation is a bare `malloc` with no rc header in front of it,
 and nothing stamps a class name anywhere, so the header probe that resolves a

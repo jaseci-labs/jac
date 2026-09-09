@@ -1,7 +1,7 @@
-import from dataclasses { field }
+import from jaclang.runtime.object_model { field }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
-import from jaclang.compiler.backends.py.module_codegen_pass { ModuleCodegenPass }
+import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 
 
@@ -235,7 +235,7 @@ obj OspAnalysis {
     static def _uses_construct(
         module: uni.Module, context: (CodeContext | None)
     ) -> bool {
-        roots: list = list(ModuleCodegenPass.iter_context_stmts(module, context));
+        roots: list = list(ModuleFacts.iter_context_stmts(module, context));
         for stmt in roots {
             work: list = [stmt];
             while work {

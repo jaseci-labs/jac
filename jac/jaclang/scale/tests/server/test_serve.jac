@@ -13,7 +13,7 @@ import from jaclang.server.serving.authcrypt {
     jwt_decode as _jwt_decode,
     jwt_encode as _jwt_encode
 }
-import from jaclang.scale.identity.user_manager { jwt_secret }
+import from jaclang.server.identity.config { signing_secret as jwt_secret }
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
 import from jaclang.scale.tests.scale_test_client {
@@ -128,7 +128,7 @@ test "static and schema endpoints" {
 
         srv = client._server;
         assert srv is not None , "server must be running";
-        openapi_spec = srv.server.app.openapi();
+        openapi_spec = srv.app.openapi();
         paths = openapi_spec.get("paths", {});
 
         assert "/user/refresh-token" in paths;
@@ -1624,14 +1624,11 @@ test "dev mode named endpoints and HMR refresh" {
     }
 }
 
-import from jaclang.scale.server.serve { _get_network_ips }
 import from jaclang.server.net {
     find_available_port as _find_available_port,
     PortInUseError,
     PORT_RETRY_LIMIT,
-    ERRNO_ADDR_IN_USE_LINUX,
-    ERRNO_ADDR_IN_USE_MACOS,
-    ERRNO_ADDR_IN_USE_WINDOWS
+    ERRNO_ADDR_IN_USE
 }
 import from jaclang.cli.commands.execution { _find_free_port }
 
@@ -1802,23 +1799,11 @@ test "port fallback - raises error when no ports available" {
     }
 }
 
-test "network IPs - returns valid IP list" {
-    ips = _get_network_ips();
-    assert isinstance(ips, list) , "Expected list of IPs";
-
-    for ip in ips {
-        assert not ip.startswith('127.') , f"Localhost IP {ip} should be filtered";
-        assert ':' not in ip , f"IPv6 address {ip} should be filtered";
-    }
-
-    assert len(ips) == len(set(ips)) , "IP list should not contain duplicates";
-}
-
 test "port constants - values are correct" {
     assert PORT_RETRY_LIMIT == 10 , "PORT_RETRY_LIMIT should be 10";
-    assert ERRNO_ADDR_IN_USE_LINUX == 98 , "ERRNO_ADDR_IN_USE_LINUX should be 98";
-    assert ERRNO_ADDR_IN_USE_MACOS == 48 , "ERRNO_ADDR_IN_USE_MACOS should be 48";
-    assert ERRNO_ADDR_IN_USE_WINDOWS == 10048 , "ERRNO_ADDR_IN_USE_WINDOWS should be 10048";
+    assert 98 in ERRNO_ADDR_IN_USE , "Linux EADDRINUSE should be recognised";
+    assert 48 in ERRNO_ADDR_IN_USE , "macOS EADDRINUSE should be recognised";
+    assert 10048 in ERRNO_ADDR_IN_USE , "Windows WSAEADDRINUSE should be recognised";
 }
 
 test "server startup - a second server refuses an already-taken explicit port" {
@@ -1877,133 +1862,122 @@ test "server startup - a second server refuses an already-taken explicit port" {
     }
 }
 
-test "health check filter is disabled by default" {
+test "health check filter is off unless [serve.access_log] asks for it" {
     import logging;
-    import from jaclang.scale.config.config_loader {
-        get_scale_config,
-        reset_scale_config
+    import from jaclang.server.serving.accesslog {
+        HealthCheckFilter,
+        access_logger,
+        configure_access_logging
     }
-    import from jaclang.scale.server.native_server {
-        ConsoleLogHandler,
+    import from jaclang.server.settings { ServeSettings }
+
+    settings = ServeSettings();
+    assert not settings.access_log.suppress_health_checks , "suppress_health_checks should default to False";
+
+    configure_access_logging(enabled=True, format='text', suppress_health_checks=False);
+    handler = access_logger.handlers[0];
+    assert not any(isinstance(f, HealthCheckFilter) for f in handler.filters) , "HealthCheckFilter should not be attached when suppress_health_checks is false";
+
+    configure_access_logging(enabled=True, format='text', suppress_health_checks=True);
+    handler = access_logger.handlers[0];
+    assert any(isinstance(f, HealthCheckFilter) for f in handler.filters) , "HealthCheckFilter should be attached when suppress_health_checks is true";
+    configure_access_logging(enabled=True, format='text', suppress_health_checks=False);
+}
+
+test "health check filter suppresses probe records and keeps the rest" {
+    import logging;
+    import from jaclang.server.serving.accesslog {
+        ACCESS_LOGGER_NAME,
+        AccessRecord,
         HealthCheckFilter
     }
 
-    reset_scale_config();
-    cfg = get_scale_config();
-    server_cfg = cfg.get_server_config();
-
-    assert not server_cfg.get('suppress_health_check_logs', False) , "suppress_health_check_logs should default to False";
-
-    handler = ConsoleLogHandler();
-    handler.setFormatter(logging.Formatter("%(message)s"));
-    if server_cfg.get('suppress_health_check_logs', False) {
-        handler.addFilter(HealthCheckFilter());
-    }
-    assert not any(isinstance(f, HealthCheckFilter) for f in handler.filters) , "HealthCheckFilter should not be attached when suppress_health_check_logs is false";
-
-    reset_scale_config();
-}
-
-test "health check filter suppresses health endpoint log records" {
-    import logging;
-    import from jaclang.scale.server.native_server { HealthCheckFilter }
-    import from jaclang.server.serving.server { ACCESS_LOGGER_NAME }
-
-    def make_record(msg: str) -> logging.LogRecord {
-        return logging.LogRecord(
+    def make_record(path: str) -> logging.LogRecord {
+        rec = logging.LogRecord(
             name=ACCESS_LOGGER_NAME,
             level=logging.INFO,
             pathname="",
             lineno=0,
-            msg=msg,
+            msg=path,
             args=(),
             exc_info=None
         );
+        setattr(
+            rec,
+            'access',
+            AccessRecord(client='127.0.0.1', method='GET', path=path, status=200)
+        );
+        return rec;
     }
 
     f = HealthCheckFilter();
-
-    suppressed = [
-        '127.0.0.1:12345 - "GET /health HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /docs HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET / HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /openapi.json HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /healthz HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /healthz/ready HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /healthz/live HTTP/1.1" 200',
-
-    ];
-    for msg in suppressed {
-        assert not f.filter(make_record(msg)) , f"Expected suppressed: {msg}";
+    for path in ['/healthz', '/healthz/ready', '/healthz/live'] {
+        assert not f.filter(make_record(path)) , f"Expected suppressed: {path}";
     }
-
-    allowed = [
-        '127.0.0.1:12345 - "GET /walker/MyWalker HTTP/1.1" 200',
-        '127.0.0.1:12345 - "POST /user/login HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /graph HTTP/1.1" 200',
-        '127.0.0.1:12345 - "POST /function/add_numbers HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /health/extra HTTP/1.1" 200',
-
-    ];
-    for msg in allowed {
-        assert f.filter(make_record(msg)) , f"Expected allowed: {msg}";
+    for path in [
+        '/walker/MyWalker',
+        '/user/login',
+        '/graph',
+        '/function/add_numbers',
+        '/health/extra',
+        '/docs',
+        '/'
+    ] {
+        assert f.filter(make_record(path)) , f"Expected allowed: {path}";
     }
+    plain = logging.LogRecord(
+        name=ACCESS_LOGGER_NAME,
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="x",
+        args=(),
+        exc_info=None
+    );
+    assert f.filter(plain) , "records without an access payload pass through";
 }
 
-test "health check filter blocks records when attached to a handler" {
+test "json access log formatter emits one object per request" {
+    import json;
     import logging;
-    import from jaclang.scale.server.native_server { HealthCheckFilter }
-    import from jaclang.server.serving.server { ACCESS_LOGGER_NAME }
-
-    class _CapturingHandler(logging.Handler) {
-        has captured: list = [];
-
-        def emit(self: _CapturingHandler, record: logging.LogRecord) {
-            self.captured.append(record.getMessage());
-        }
+    import from jaclang.server.serving.accesslog {
+        ACCESS_LOGGER_NAME,
+        AccessJsonFormatter,
+        AccessRecord
     }
-
-    def make_record(msg: str) -> logging.LogRecord {
-        return logging.LogRecord(
-            name=ACCESS_LOGGER_NAME,
-            level=logging.INFO,
-            pathname="",
-            lineno=0,
-            msg=msg,
-            args=(),
-            exc_info=None
-        );
-    }
-
-    handler = _CapturingHandler();
-    handler.setFormatter(logging.Formatter("%(message)s"));
-    handler.addFilter(HealthCheckFilter());
-
-    records = [
-        ('127.0.0.1 - "GET /health HTTP/1.1" 200', False),
-        ('127.0.0.1 - "GET /docs HTTP/1.1" 200', False),
-        ('127.0.0.1 - "GET / HTTP/1.1" 200', False),
-        ('127.0.0.1 - "GET /openapi.json HTTP/1.1" 200', False),
-        ('127.0.0.1 - "GET /healthz HTTP/1.1" 200', False),
-        ('127.0.0.1 - "GET /healthz/ready HTTP/1.1" 200', False),
-        ('127.0.0.1 - "GET /healthz/live HTTP/1.1" 200', False),
-        ('127.0.0.1 - "POST /user/login HTTP/1.1" 200', True),
-        ('127.0.0.1 - "GET /walker/Foo HTTP/1.1" 200', True),
-
-    ];
-
-    for (msg, should_appear) in records {
-        handler.captured = [];
-        handler.handle(make_record(msg));
-        if should_appear {
-            assert len(handler.captured) == 1 , f"Expected handler to receive: {msg}";
-        } else {
-            assert len(handler.captured) == 0 , f"Expected handler to suppress: {msg}";
-        }
-    }
+    rec = logging.LogRecord(
+        name=ACCESS_LOGGER_NAME,
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="m",
+        args=(),
+        exc_info=None
+    );
+    setattr(
+        rec,
+        'access',
+        AccessRecord(
+            client='10.0.0.9',
+            method='POST',
+            path='/walker/Foo',
+            status=201,
+            bytes_sent=42,
+            duration_ms=3.5,
+            request_id='abc',
+            ts=1700000000.25
+        )
+    );
+    payload = json.loads(AccessJsonFormatter().format(rec));
+    assert payload['method'] == 'POST';
+    assert payload['path'] == '/walker/Foo';
+    assert payload['status'] == 201;
+    assert payload['bytes'] == 42;
+    assert payload['request_id'] == 'abc';
+    assert payload['ts'].endswith('Z');
 }
 
-test "pwa target uses jac-scale server" {
+test "pwa project uses jac-scale server" {
     import tempfile;
 
     port = get_free_port();
@@ -2022,17 +1996,10 @@ version = "1.0.0"
 theme_color = "#000000"
 '''
         );
+        # A [client.pwa] table is what makes this a PWA; there is no
+        # separate PWA client target or --client flag.
         server = subprocess.Popen(
-            [
-                jac_executable(),
-                "run",
-                "--serve",
-                "--client",
-                "pwa",
-                "-p",
-                str(port),
-                "main.jac"
-            ],
+            [jac_executable(), "run", "--serve", "-p", str(port), "main.jac"],
             cwd=temp_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

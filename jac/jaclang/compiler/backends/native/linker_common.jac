@@ -1,5 +1,18 @@
 def _align(value: int, alignment: int) -> int;
 
+def read_uleb128(b: bytes, o: int) -> tuple[int, int];
+
+def read_sleb128(b: bytes, o: int) -> tuple[int, int];
+
+def encode_uleb128(v: int) -> bytes;
+
+def encode_uleb128_padded5(v: int) -> bytes;
+
+def encode_sleb128(v: int) -> bytes;
+
+def read_leb_name(b: bytes, o: int) -> tuple[str, int];
+
+
 def _build_strtab(
     strings: list[str], initial_bytes: bytes = b"\x00"
 ) -> tuple[bytes, dict[str, int]];

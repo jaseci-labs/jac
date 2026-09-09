@@ -1,0 +1,6 @@
+# Jac build artifacts
+.jac/
+jac.local.toml
+
+# Python
+__pycache__/

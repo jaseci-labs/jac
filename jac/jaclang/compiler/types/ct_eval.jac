@@ -1,6 +1,5 @@
 import os;
 import math as _pymath;
-import operator as pyop;
 import platform as _platform;
 import sys;
 import from jaclang.compiler.frontend.unitree {
@@ -213,7 +212,7 @@ obj CtEvaluator {
         last_error: (str | None) = None,
         demand: bool = False,
         _failed: set[int] = set(),
-        _active: set[any] = set(),
+        _active: set[tuple[str, int]] = set(),
         _enum_cache: dict[int, list] = {},
         _ret: any = None,
         _ct_root: (Module | None) = None,
@@ -330,7 +329,7 @@ obj CtEvaluator {
 
     def try_eval(nd: Expr, demand: bool = False) -> (CtValue | None) {
         self.last_error = None;
-        key = id(nd);
+        key = ("node", id(nd));
         if key in self._active {
             return None;
         }
@@ -741,44 +740,8 @@ obj CtEvaluator {
         opn = self._tok_name(nd.op);
         l = self.eval(nd.left);
         r = self.eval(nd.right);
-        if opn == Tok.PLUS.value {
-            return l + r;
-        }
-        if opn == Tok.MINUS.value {
-            return l - r;
-        }
-        if opn == Tok.STAR_MUL.value {
-            return l * r;
-        }
-        if opn == Tok.DIV.value {
-            return l / r;
-        }
-        if opn == Tok.FLOOR_DIV.value {
-            return l // r;
-        }
-        if opn == Tok.MOD.value {
-            return l % r;
-        }
-        if opn == Tok.STAR_POW.value {
-            return l ** r;
-        }
-        if opn == Tok.BW_OR.value {
-            return l | r;
-        }
-        if opn == Tok.BW_AND.value {
-            return l & r;
-        }
-        if opn == Tok.BW_XOR.value {
-            return l ^ r;
-        }
-        if opn == Tok.LSHIFT.value {
-            return l << r;
-        }
-        if opn == Tok.RSHIFT.value {
-            return l >> r;
-        }
-        op_text = getattr(nd.op, "value", opn);
-        raise CtError(f"operator '{op_text}' is not supported in comptime code");
+        op_text = nd.op.value if isinstance(nd.op, Token) else opn;
+        return self._binop_by_name(opn, l, r, display_name=op_text);
     }
 
     def _cmp(opn: str, l: any, r: any) -> bool {
@@ -789,22 +752,22 @@ obj CtEvaluator {
             return l != r;
         }
         if opn == Tok.LT.value {
-            return pyop.lt(l, r);
+            return l < r;
         }
         if opn == Tok.LTE.value {
-            return pyop.le(l, r);
+            return l <= r;
         }
         if opn == Tok.GT.value {
-            return pyop.gt(l, r);
+            return l > r;
         }
         if opn == Tok.GTE.value {
-            return pyop.ge(l, r);
+            return l >= r;
         }
         if opn == Tok.KW_IN.value {
-            return pyop.contains(r, l);
+            return l in r;
         }
         if opn == Tok.KW_NIN.value {
-            return not pyop.contains(r, l);
+            return l not in r;
         }
         if opn == Tok.KW_IS.value {
             if isinstance(l, (CtType, CtEnumMember, CtFunc)) {
@@ -915,6 +878,41 @@ obj CtEvaluator {
         return path.endswith(".pyi");
     }
 
+    def _demand_tree(sym: Symbol) -> Symbol {
+        decl = sym.decl;
+        home = decl.find_parent_of_type(Module) if decl is not None else None;
+        if home is None or not hasattr(home, "cat_kids") {
+            return sym;
+        }
+        path = _norm_path(home.loc.mod_path if home.loc else "");
+        if not path.endswith(".jac") {
+            return sym;
+        }
+        chain: list[str] = [];
+        scope = sym.parent_tab;
+        while scope is not None and scope is not home {
+            chain.append(scope.scope_name);
+            scope = scope.parent_scope;
+        }
+        try {
+            real = self.evaluator.program.load_dependency_module(path, need_tree=True);
+        } except Exception {
+            return sym;
+        }
+        if real is None or hasattr(real, "cat_kids") {
+            return sym;
+        }
+        target: any = real;
+        for name in reversed(chain) {
+            target = target.find_scope(name);
+            if target is None {
+                return sym;
+            }
+        }
+        found = target.names_in_scope.get(sym.sym_name);
+        return found if found is not None else sym;
+    }
+
     def _eval_symbol(sym: Symbol, use: UniNode) -> any {
         skey = ("sym", id(sym));
         if skey in self._active {
@@ -925,6 +923,9 @@ obj CtEvaluator {
             sym = self._resolve_symbol_deep(sym);
         } finally {
             self._active.discard(skey);
+        }
+        if self.demand {
+            sym = self._demand_tree(sym);
         }
         decl = sym.decl;
         node_ = decl.name_of;
@@ -1096,7 +1097,7 @@ obj CtEvaluator {
             self._stamp_home(cv.v, asn);
             return cv.v;
         }
-        key = id(asn);
+        key = ("node", id(asn));
         if key in self._active {
             raise CtError("comptime binding depends on itself");
         }
@@ -1616,7 +1617,17 @@ obj CtEvaluator {
             return None;
         }
         sym = self._resolve_symbol_deep(sym);
-        node_ = sym.decl.name_of;
+        decl = sym.decl;
+        if decl is None {
+            return None;
+        }
+        if (
+            sym.sym_name in CT_INTRINSICS
+            and _is_comptime_module(decl.find_parent_of_type(Module))
+        ) {
+            return sym.sym_name;
+        }
+        node_ = decl.name_of;
         if (
             isinstance(node_, Ability)
             and node_.name_ref is not None
@@ -2271,7 +2282,9 @@ obj CtEvaluator {
         return 0;
     }
 
-    def _binop_by_name(opn: str, l: any, r: any) -> any {
+    def _binop_by_name(
+        opn: str, l: any, r: any, display_name: str | None = None
+    ) -> any {
         if opn == Tok.PLUS.value {
             return l + r;
         }
@@ -2305,7 +2318,14 @@ obj CtEvaluator {
         if opn == Tok.LSHIFT.value {
             return l << r;
         }
-        return l >> r;
+        if opn == Tok.RSHIFT.value {
+            return l >> r;
+        }
+        raise CtError(
+            f"operator '{display_name
+                if display_name is not None
+                else opn}' is not supported in comptime code"
+        );
     }
 
     def _exc_matches(handler_type: any, exc: Exception) -> bool {

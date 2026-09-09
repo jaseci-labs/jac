@@ -1,5 +1,5 @@
 import jaclang.compiler.backends.es.estree as es;
-import from jaclang.compiler.backends.es.backends.react { ReactBackend }
+import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
 import from jaclang.compiler.backends.es.reactive_intent {
     StateField,
     RefField,
@@ -10,7 +10,7 @@ import from jaclang.compiler.backends.es.reactive_intent {
 
 import type from jaclang.compiler.backends.es.view_ir { ViewElement, ViewChild }
 
-obj SolidBackend(ReactBackend) {
+obj SolidBackend(FrameworkBackend) {
     def name -> str;
     def lower_state_field(s: StateField) -> list[es.Statement];
     def lower_ref_field(r: RefField) -> list[es.Statement];

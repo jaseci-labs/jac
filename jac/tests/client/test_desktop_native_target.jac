@@ -1,30 +1,113 @@
-"""Tests for the Jac-native desktop target + config.
+"""Tests for the Jac desktop target + config.
 
 These exercise the direct target registration and config surface. The native
 webview binding has a dependency-free test alongside this one:
 `test_desktop_binding.jac`.
 """
 
-"""register_targets() registers the native + CEF desktop targets in the registry.
+"""register_targets() registers one desktop target in the registry.
 
-The desktop targets ship with core now and register directly via
+The desktop target ships with core and registers directly via
 `register_targets()` instead of a secondary `jac_client` pluggy plugin group.
+The renderer engine (native webview or CEF) is not a separate target: it is
+picked per project through `[desktop] engine`.
 """
-test "register_targets registers the desktop targets" {
+test "register_targets registers the desktop target" {
+    import from pathlib { Path }
     import from jaclang.client.targets.register { register_targets }
-    import from jaclang.client.targets.registry { get_target_registry }
+    import from jaclang.client.targets.registry {
+        KIND_TARGET,
+        get_target_registry,
+        target_for_kind
+    }
+    import from jaclang.client.targets.desktop.desktop_target { DesktopTarget }
+    import from jaclang.client.targets.web_target { WebTarget }
 
     register_targets();
     registry = get_target_registry();
     target = registry.get("desktop");
     assert target is not None , "desktop target should be registered";
     assert target.name == "desktop" , "target name should be 'desktop'";
+    assert isinstance(target, DesktopTarget);
+    assert isinstance(target, WebTarget) , "the desktop build wraps the web bundle";
     # The native target needs no scaffolding (unlike the old PyTauri target).
     assert target.requires_setup == False , "native desktop needs no setup step";
-    # The CEF renderer target registers alongside the native one.
-    cef = registry.get("cef");
-    assert cef is not None , "CEF desktop target should be registered";
-    assert cef.name == "cef" , "CEF target name should be 'cef'";
+    assert str(target.output_dir) == str(Path(".jac/client/desktop"));
+    # The desktop kind is what selects it.
+    assert KIND_TARGET["desktop"] == "desktop";
+    assert target_for_kind("desktop", Path(".")) is target;
+    # CEF is an engine of this one target, not a second registered target.
+    assert registry.get("cef") is None , "'cef' is not a client target any more";
+    assert registry.get("native-desktop") is None;
+}
+
+"""DesktopTarget.engine() reads `[desktop] engine` and dispatches on it: the
+default is the native webview, and `engine = "cef"` selects the CEF shell.
+The two shells are helper modules, not targets of their own."""
+test "desktop target dispatches on the configured engine" {
+    import tempfile;
+    import unittest.mock;
+    import from pathlib { Path }
+    import from jaclang.client.desktop_config { reset_desktop_config }
+    import from jaclang.client.targets.desktop.desktop_target { DesktopTarget }
+    import jaclang.client.targets.desktop.cef_shell as cef_shell;
+    import jaclang.client.targets.desktop.webview_shell as webview_shell;
+
+    target = DesktopTarget();
+    with tempfile.TemporaryDirectory() as d {
+        proj = Path(d);
+        reset_desktop_config();
+        (proj / "jac.toml").write_text(
+            '[project]\nname = "t"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
+            'kind = "desktop"\n'
+        );
+        assert target.engine(proj) == "native" , "engine defaults to the native webview";
+        reset_desktop_config();
+        (proj / "jac.toml").write_text(
+            '[project]\nname = "t"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
+            'kind = "desktop"\n\n[desktop]\nengine = "cef"\n'
+        );
+        assert target.engine(proj) == "cef" , "[desktop] engine = cef selects CEF";
+        # dev: the CEF shell has no dev loop; the native one does. Stub both
+        # shells so no bundle is built and no window opens.
+        calls: list[str] = [];
+        def _cef_dev_unsupported {
+            calls.append("cef_dev_unsupported");
+            raise RuntimeError("cef dev unsupported (stub)");
+        }
+        def _webview_dev(
+            entry_file: Path,
+            project_dir: Path,
+            out_dir: Path,
+            port: int = 8000,
+            api_port: int = 0
+        ) {
+            calls.append("webview_dev");
+        }
+        with unittest.mock.patch.object(
+            cef_shell, "cef_dev_unsupported", _cef_dev_unsupported
+        ), unittest.mock.patch.object(webview_shell, "webview_dev", _webview_dev) {
+            raised = False;
+            try {
+                target.dev(proj / "main.jac", proj);
+            } except RuntimeError as e {
+                raised = True;
+                assert "cef dev unsupported" in str(e);
+            }
+            assert raised , "under engine = cef, dev must refuse via cef_dev_unsupported";
+            assert calls == ["cef_dev_unsupported"];
+            reset_desktop_config();
+            (proj / "jac.toml").write_text(
+                '[project]\nname = "t"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
+                'kind = "desktop"\n'
+            );
+            target.dev(proj / "main.jac", proj);
+            assert calls == ["cef_dev_unsupported", "webview_dev"] , (
+                "under the native engine, dev runs the webview dev loop"
+            );
+        }
+        reset_desktop_config();
+    }
 }
 
 """Window geometry is read from [desktop.window]."""
@@ -220,41 +303,17 @@ test "desktop launch wires JAC_DESKTOP_DEPS from the project venv" {
     }
 }
 
-"""host_boot.runtime_payload is the single routing decision between the
-in-process Jac runtime and the plugin host. Pin the wire forms it must accept:
-raw payload dicts, and the webview bind form (a one-element argument array
-holding the payload as a JSON string). Plugin-style requests fall through."""
-test "host_boot routes runtime payloads and passes plugin requests through" {
-    import json;
-    import from jaclang.client.targets.desktop.native { host_boot }
-
-    walker_req = json.dumps({"kind": "walker", "name": "w", "fields": {}});
-    func_req = json.dumps({"kind": "function", "name": "f", "fields": {}});
-    # Raw dict payloads route to the runtime as-is.
-    assert host_boot.runtime_payload(walker_req) == walker_req;
-    assert host_boot.runtime_payload(func_req) == func_req;
-    # Webview bind form: one-element args array holding the payload string.
-    wrapped = json.dumps([walker_req]);
-    assert host_boot.runtime_payload(wrapped) == walker_req;
-    # Plugin wire forms fall through to the plugin host (None = not runtime).
-    assert host_boot.runtime_payload(json.dumps(["jac.fs", "read_file", {}])) is None;
-    assert host_boot.runtime_payload(json.dumps({"plugin": "jac.fs"})) is None;
-    # Garbage falls through too (the plugin host owns the error envelope).
-    assert host_boot.runtime_payload("not json") is None;
-    assert host_boot.runtime_payload(json.dumps(["not json either"])) is None;
-}
-
-"""Generated host source must call inprocess_dispatch.shutdown() after run_main_loop()
-and before Py_Finalize() so the dispatch worker and transport tear down cleanly."""
+"""Generated host source must stop the loopback server (_ctx.shutdown()) after
+run_main_loop() and before Py_Finalize() so the transport tears down cleanly."""
 test "generated host calls shutdown after run_main_loop()" {
     import from jaclang.client.targets.desktop._host_bootstrap { _generate_host_source }
 
     src = _generate_host_source("T", 800, 600, "test-app");
-    assert "inprocess_dispatch.shutdown()" in src , "host must tear down dispatch on exit";
-    assert src.index("run_main_loop()") < src.index("inprocess_dispatch.shutdown()") , "shutdown must run after the webview event loop exits";
+    assert "_ctx.shutdown()" in src , "host must stop the loopback server on exit";
+    assert src.index("run_main_loop()") < src.index("_ctx.shutdown()") , "shutdown must run after the webview event loop exits";
     # Match the entry-block call ("Py_Finalize();"), not the FFI decl
     # ("Py_Finalize() -> None;") above it.
-    assert src.index("inprocess_dispatch.shutdown()") < src.index("Py_Finalize();") , "shutdown must run before Py_Finalize()";
+    assert src.index("_ctx.shutdown()") < src.index("Py_Finalize();") , "shutdown must run before Py_Finalize()";
 }
 
 """na (LLVM) is first-class in the fused runtime a desktop app bundles.
@@ -262,7 +321,7 @@ test "generated host calls shutdown after run_main_loop()" {
 The desktop host appends the CLI's `[payload][trailer]` (desktop_build.
 _bundle_runtime), so an app materializes the SAME fused runtime the CLI uses --
 which carries the LLVMPY shim the native backend ctypes-loads AND the na compiler
-pass. So any app on this runtime can `jac nacompile` / run `na` exactly like the
+pass. So any app on this runtime can `jac build --native` / run `na` exactly like the
 CLI. This test runs in that runtime (the test interpreter), so locating the shim
 + the na pass here verifies na is first-class on desktop by construction."""
 test "na/LLVM backend is first-class in the desktop fused runtime" {
@@ -276,7 +335,7 @@ test "na/LLVM backend is first-class in the desktop fused runtime" {
     shim = _find_shim();
     assert os.path.isfile(shim) , f"LLVMPY shim missing from the fused runtime: {shim}";
     assert shim.endswith(_shim_name()) , "resolved shim must be the platform LLVMPY shim";
-    # The native compiler pass is importable, so `nacompile` is available to any
+    # The native compiler pass is importable, so `jac build --native` is available to any
     # app running on this fused runtime (the one the desktop host bundles).
     spec = importlib.util.find_spec("jaclang.compiler.backends.native.na_compile_pass");
     assert spec is not None , "na compiler pass must be importable in the desktop runtime";
@@ -284,14 +343,14 @@ test "na/LLVM backend is first-class in the desktop fused runtime" {
 
 """The desktop host imports its bootstrap modules from the fused runtime -- no
 transpiled .py staged beside the binary. Prove it by running host_boot's plugin
-bootstrap + the broker/dispatch imports in THIS runtime (the same fused runtime a
+bootstrap + the broker imports in THIS runtime (the same fused runtime a
 desktop app boots): the closest dependency-free proxy for the embedded host,
 catching an import-from-runtime regression without a display."""
 test "host bootstrap modules import + run from the fused runtime" {
     import from jaclang.client.targets.desktop.native {
+        broker_extension,
         host_boot,
-        oauth_broker,
-        inprocess_dispatch
+        oauth_broker
     }
 
     # The bootstrap inserts the runtime plugin dir on sys.path and imports the
@@ -306,10 +365,9 @@ test "host bootstrap modules import + run from the fused runtime" {
         # dispatch host (registry.bootstrap_plugins) in the fused runtime.
         _host = host_boot._bootstrap_plugin_host({"path": True});
         assert callable(_host.dispatch) , "plugin bootstrap must yield a dispatch callable from the runtime";
-        # oauth_broker + inprocess_dispatch resolve from the runtime too (no staging).
-        assert hasattr(oauth_broker, "make_handler") , "oauth_broker must import from the runtime";
-        assert hasattr(inprocess_dispatch, "boot")
-            and hasattr(inprocess_dispatch, "forward") , "inprocess_dispatch must import from the runtime";
+        # The broker pieces resolve from the runtime too (no staging).
+        assert hasattr(oauth_broker, "build_sso_login_url") , "oauth_broker must import from the runtime";
+        assert hasattr(broker_extension, "DesktopBrokerExtension") , "the broker extension must import from the runtime";
     } finally {
         sys.path[:] = _saved_path;
         for _k in list(sys.modules.keys()) {

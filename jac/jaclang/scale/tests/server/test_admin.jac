@@ -611,7 +611,7 @@ test "admin UI build emits admin based assets and keeps useEffect lambda" {
         shutil.rmtree(os.path.join(build_dir, ".jac"), ignore_errors=True);
 
         result = subprocess.run(
-            [jac_bin, "build", "main.jac", "--client", "web"],
+            [jac_bin, "build", "--as", "client", "main.jac"],
             cwd=build_dir,
             capture_output=True,
             text=True,

@@ -9,6 +9,7 @@ runtime, so the gate is gone -- but the invariant it protected still
 matters: a cross-service call must resolve on an install where httpx and
 aiohttp are both absent."""
 
+import asyncio;
 import json;
 import sys;
 import unittest.mock;
@@ -43,20 +44,20 @@ impl _StubResp.headers.getter -> any {
 obj _StubClient {
     has result: any;
 
-    def post(path: str, json: any = None) -> _StubResp {
+    def post(path: str, json: any = None, headers: any = None) -> _StubResp {
         return _StubResp(payload={"ok": True, "data": {"result": self.result}});
     }
 }
 
 
-test "sv_service_call resolves with no third-party HTTP library installed" {
+test "sv_client.call resolves with no third-party HTTP library installed" {
     sv_client.register_test_client("fallback_probe", _StubClient(result=99));
     try {
         no_http_libs: any = unittest.mock.patch.dict(
             sys.modules, {"httpx": None, "aiohttp": None}
         );
         with no_http_libs {
-            got = JacRuntime.sv_service_call("fallback_probe", "compute", {"x": 1});
+            got = asyncio.run(sv_client.call("fallback_probe", "compute", {"x": 1}));
         }
         assert got == 99 , (
             f"sv call must resolve on the native transport, got {got!r}"

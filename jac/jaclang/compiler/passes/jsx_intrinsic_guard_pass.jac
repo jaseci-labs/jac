@@ -8,7 +8,7 @@ import from jaclang.compiler.frontend.unitree {
 import from jaclang.compiler.frontend.diagnostics { E1105 }
 import from jaclang.compiler.passes.uni_pass { UniPass }
 import from jaclang.runtime.osp_kernel { osp_skip_rest }
-import from jaclang.project.client_kind_paths { mobui_module_exempt }
+import from jaclang.project.mobui_scope { mobui_module_exempt }
 
 glob _GENERIC_SUGGESTION: str = "an @jac/mobui component",
      _tag_suggestions: (dict[str, str] | None) = None;

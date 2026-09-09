@@ -1,4 +1,4 @@
-"""Must-fail under --enforce-nogc: implicit heap crossing into a managed module (E1403).
+"""Must-fail under --memory nogc: implicit heap crossing into a managed module (E1403).
 
 The `managed(...)` wrapped call is the sanctioned form and must NOT error.
 """

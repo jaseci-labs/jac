@@ -1,6 +1,8 @@
 import asyncio;
+import logging;
 import os;
 import struct;
+import time;
 import from base64 { b64encode }
 import from hashlib { sha1 }
 import from json { dumps, loads }
@@ -19,7 +21,8 @@ glob WS_GUID: str = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11',
      OP_CLOSE: int = 8,
      OP_PING: int = 9,
      OP_PONG: int = 10,
-     MAX_FRAME_BYTES: int = 67108864;
+     MAX_FRAME_BYTES: int = 67108864,
+     _logger: logging.Logger = logging.getLogger('jaclang.server.serving.ws');
 
 
 def _ws_json_default(o: any) -> str {
@@ -97,7 +100,57 @@ obj WebSocket {
         close_code: int = 1000,
         max_message_bytes: int = MAX_FRAME_BYTES,
         is_client_side: bool = False,
-        subprotocol: str = '';
+        subprotocol: str = '',
+        last_activity: float = 0.0,
+        _keepalive_task: any = None;
+
+    def start_keepalive(interval: float, timeout: float) {
+        if interval <= 0 or self._keepalive_task is not None {
+            return;
+        }
+        self.last_activity = time.monotonic();
+        self._keepalive_task = asyncio.ensure_future(
+            self._keepalive_loop(interval, timeout)
+        );
+    }
+
+    def stop_keepalive {
+        task = self._keepalive_task;
+        self._keepalive_task = None;
+        if task is not None and not task.done() {
+            task.cancel();
+        }
+    }
+
+    async def _keepalive_loop(interval: float, timeout: float) {
+        awaiting_since: float = 0.0;
+        try {
+            while not self.closed {
+                await asyncio.sleep(min(interval, max(0.5, timeout / 2.0)));
+                now = time.monotonic();
+                if awaiting_since {
+                    if self.last_activity >= awaiting_since {
+                        awaiting_since = 0.0;
+                    } elif now - awaiting_since >= timeout {
+                        _logger.info('websocket keepalive timed out; closing 1011');
+                        await self.close(1011, 'keepalive timeout');
+                        return;
+                    }
+                    continue;
+                }
+                if now - self.last_activity >= interval {
+                    try {
+                        await self._send_raw(OP_PING, b'');
+                    } except Exception {
+                        return;
+                    }
+                    awaiting_since = now;
+                }
+            }
+        } except asyncio.CancelledError {} except Exception {
+            _logger.debug('websocket keepalive loop ended', exc_info=True);
+        }
+    }
 
     async def accept(subprotocol: str = '') {
         if self.accepted or self.is_client_side {
@@ -124,6 +177,7 @@ obj WebSocket {
         if self.closed {
             return;
         }
+        self.stop_keepalive();
         if not self.accepted and not self.is_client_side and code != 1000 {
             try {
                 await self.accept();
@@ -201,6 +255,7 @@ obj WebSocket {
         cap = self.max_message_bytes or MAX_FRAME_BYTES;
         while True {
             frame = await read_frame(self.reader, require_mask=not self.is_client_side);
+            self.last_activity = time.monotonic();
             if frame.opcode == OP_PING {
                 await self._send_raw(OP_PONG, frame.payload);
                 continue;

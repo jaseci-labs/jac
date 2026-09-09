@@ -75,7 +75,7 @@ def show_from(cwd: str, filename: str, takeover: (bool | None) = None) -> str {
     reset_config();
     try {
         with redirect_stdout(buf), redirect_stderr(buf) {
-            execution_cmds.run(filename=filename, show=True, takeover=takeover);
+            execution_cmds.run(target=filename, show=True, takeover=takeover);
         }
     } finally {
         os.chdir(old);
@@ -95,7 +95,7 @@ test "a file outside the project does not inherit the project's serve plan" {
     }
     # The bug: the plan came back as the *project's* web-app serve plan, so
     # running the probe would have served it as the project's client entry.
-    assert "project kind : web-app" not in out , (
+    assert "kind         : web-app" not in out , (
         "a script outside the project must not resolve to the project's "
         f"web-app plan; got:\n{out}"
     );
@@ -133,7 +133,7 @@ test "--takeover runs an outside file as the surrounding project" {
     } finally {
         shutil.rmtree(world, ignore_errors=True);
     }
-    assert "project kind : web-app" in out , (
+    assert "kind         : web-app" in out , (
         f"--takeover must adopt the surrounding project's plan; got:\n{out}"
     );
 }
@@ -148,7 +148,7 @@ test "a file inside the project tree still runs as the project" {
     } finally {
         shutil.rmtree(world, ignore_errors=True);
     }
-    assert "project kind : web-app" in out , (
+    assert "kind         : web-app" in out , (
         f"a file inside the project must keep the project plan; got:\n{out}"
     );
 }
@@ -234,7 +234,7 @@ test "an in-tree file keeps its project when the shell is somewhere else" {
     } finally {
         shutil.rmtree(world, ignore_errors=True);
     }
-    assert "project kind : web-app" in out , (
+    assert "kind         : web-app" in out , (
         f"a file's own project follows it wherever the shell is; got:\n{out}"
     );
 }

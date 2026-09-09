@@ -94,7 +94,8 @@ obj RuntimeLease {
 
 obj ScratchState {
     has database: str,
-        base_path: str;
+        base_path: str,
+        owner_pid: int = 0;
 }
 
 
@@ -146,6 +147,7 @@ obj Session(Memory) {
     def read_scope_exit -> None;
     def flush(full: bool = False) -> None;
     def _flush_locked(full: bool) -> None;
+    def ensure_writable_txn -> None;
     def read_barrier -> None;
     def _recover_conflict -> None;
     def _ensure_txn -> None;

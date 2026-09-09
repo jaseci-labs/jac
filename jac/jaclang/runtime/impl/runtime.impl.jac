@@ -52,6 +52,11 @@ impl JacAccessValidation._check_access(
     return granted;
 }
 
+impl JacAccessValidation._is_shared_root(to: Anchor) -> bool {
+    shared_id = _shared_root_resolver[1];
+    return isinstance(shared_id, UUID) and to.id == shared_id;
+}
+
 impl JacAccessValidation.allow_root(
     archetype: Archetype, root_id: UUID, level: (AccessLevel | int | str | None) = None
 ) -> None {
@@ -60,6 +65,9 @@ impl JacAccessValidation.allow_root(
     }
     level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
+    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+        return;
+    }
     access = anchor.own_access().roots;
     _root_id = str(root_id);
     if (level != access.anchors.get(_root_id, AccessLevel.NO_ACCESS)) {
@@ -76,6 +84,9 @@ impl JacAccessValidation.allow_group(
     }
     level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
+    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+        return;
+    }
     access = anchor.own_access().groups;
     _group_id = str(group_id);
     if (level != access.anchors.get(_group_id, AccessLevel.NO_ACCESS)) {
@@ -86,6 +97,9 @@ impl JacAccessValidation.allow_group(
 
 impl JacAccessValidation.disallow_group(archetype: Archetype, group_id: UUID) -> None {
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
+    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+        return;
+    }
     anchor.own_access().groups.anchors.pop(str(group_id), None);
     jctx.mem.put(anchor);
 }
@@ -98,6 +112,9 @@ impl JacAccessValidation.disallow_root(
     }
     level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
+    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+        return;
+    }
     access = anchor.own_access().roots;
     access.anchors.pop(str(root_id), None);
     jctx.mem.put(anchor);
@@ -111,6 +128,9 @@ impl JacAccessValidation.perm_grant(
     }
     level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
+    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+        return;
+    }
     if (level != _all_grant(anchor)) {
         anchor.own_access().all = level;
         jctx.mem.put(anchor);
@@ -119,6 +139,9 @@ impl JacAccessValidation.perm_grant(
 
 impl JacAccessValidation.perm_revoke(archetype: Archetype) -> None {
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
+    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+        return;
+    }
     if (_all_grant(anchor).value > AccessLevel.NO_ACCESS.value) {
         anchor.own_access().all = AccessLevel.NO_ACCESS;
         jctx.mem.put(anchor);
@@ -166,6 +189,8 @@ impl JacAccessValidation.check_access_level(
     to_access = to.access;
     if to_access is not None and to_access.all.value > AccessLevel.NO_ACCESS.value {
         access_level = to_access.all;
+    } elif JacAccessValidation._is_shared_root(to) {
+        access_level = AccessLevel.CONNECT;
     }
     if (to.root and isinstance((to_root := jctx.mem.get(to.root)), Anchor)) {
         root_access = to_root.access;
@@ -344,7 +369,18 @@ impl JacWalker.`spawn(
         }
     }
     if warch.__jac_async__ {
-        return JacRuntimeInterface.async_spawn_call(`walker=`walker, nd=loc);
+        import asyncio;
+        import from typing { cast }
+        task = cast(
+            Coroutine[any, any, WalkerArchetype],
+            JacRuntimeInterface.async_spawn_call(`walker=`walker, nd=loc)
+        );
+        try {
+            asyncio.get_running_loop();
+        } except RuntimeError {
+            return asyncio.run(task);
+        }
+        return task;
     }
     return JacRuntimeInterface.spawn_call(`walker=`walker, nd=loc);
 }
@@ -608,68 +644,13 @@ impl JacArchetype.make_archetype(cls: type[Archetype]) -> type[Archetype] {
         setattr(
             cls,
             'reports',
-            dataclasses.field(
-                default_factory=`list, init=False, repr=False, compare=False
-            )
+            field(default_factory=`list, init=False, repr=False, compare=False)
         );
     }
-    _own_anns: dict[str, object] = cls.__dict__.get('__annotations__', {});
-    if _own_anns {
-        if not cls.__doc__ {
-            cls.__doc__ = cls.__name__;
-        }
-        _pre_attrs = dict(cls.__dict__);
-        try {
-            dataclass(eq=False)(cls);
-        } except TypeError {
-            for _rname in _own_anns {
-                if _rname in _pre_attrs and _rname not in cls.__dict__ {
-                    setattr(cls, _rname, _pre_attrs[_rname]);
-                }
-            }
-
-            _seen_default = False;
-            for _base in reversed(cls.__mro__[1:]) {
-                _base_fields: dict[str, dataclasses.Field] = getattr(
-                    _base, '__dataclass_fields__', {}
-                );
-                for _bf in _base_fields.values() {
-                    if _bf.`default is not dataclasses.MISSING
-                        or _bf.default_factory is not dataclasses.MISSING {
-                        _seen_default = True;
-                    }
-                }
-            }
-            for (_fname, _fann) in _own_anns.items() {
-                if "ClassVar" in str(_fann) or "InitVar" in str(_fann) {
-                    continue;
-                }
-                _own_val = _pre_attrs.get(_fname, dataclasses.MISSING);
-                _has_default = _own_val is not dataclasses.MISSING;
-                if _has_default
-                    and isinstance(_own_val, dataclasses.Field)
-                    and _own_val.`default is dataclasses.MISSING
-                    and _own_val.default_factory is dataclasses.MISSING {
-                    _has_default = False;
-                }
-                if _has_default {
-                    _seen_default = True;
-                } elif _seen_default {
-                    if isinstance(_own_val, dataclasses.Field) {
-                        if _own_val.init {
-                            _own_val.kw_only = True;
-                        }
-                    } else {
-                        setattr(cls, _fname, dataclasses.field(kw_only=True));
-                    }
-                }
-            }
-            dataclass(eq=False)(cls);
-        }
-    } else {
-        dataclass(eq=False, init=False)(cls);
+    if cls.__dict__.get('__annotations__') and not cls.__doc__ {
+        cls.__doc__ = cls.__name__;
     }
-    return cls;
+    return make_object(cls);
 }
 
 impl JacModule.impl_patch_filename(
@@ -985,16 +966,6 @@ impl JacTest.run_test(
     return ret_count;
 }
 
-impl JacArchetype.field(
-    factory: (Callable[([], T)] | None) = None, `init: bool = True
-) -> T {
-    if factory {
-        return field(default_factory=factory);
-    }
-    return field(`init=`init);
-}
-
-
 impl JacBuiltin.log_report(expr: any, custom: bool = False) -> None {
     import from jaclang.runtime.osp_kernel { osp_report, _current_scope }
     if custom {
@@ -1128,6 +1099,15 @@ impl JacGraph.connect(
     left = [left] if isinstance(left, NodeArchetype) else left;
     right_is_node = isinstance(right, NodeArchetype);
     right = [right] if isinstance(right, NodeArchetype) else right;
+    for operands in (left, right) {
+        for operand in operands {
+            if not isinstance(operand, NodeArchetype) {
+                raise TypeError(
+                    "connect operands must be nodes or flat collections of nodes"
+                );
+            }
+        }
+    }
     edges = [];
     for i in left {
         _left = i.__jac__;
@@ -1448,8 +1428,13 @@ impl JacPersistence._destroy_anchors(objs: any, strict: bool) -> list[Anchor] {
 }
 
 impl JacPersistence.destroy(objs: any, strict: bool = False) -> None {
+    anchors = JacPersistence._destroy_anchors(objs, strict);
+    if not anchors {
+        return;
+    }
     import from jaclang.runtime.osp_kernel { osp_forget }
-    for anchor in JacPersistence._destroy_anchors(objs, strict) {
+    import from jaclang.runtime.region { run_drop }
+    for anchor in anchors {
         if isinstance(anchor.archetype, Root) {
             raise RuntimeError("cannot destroy root");
         }
@@ -1465,6 +1450,7 @@ impl JacPersistence.destroy(objs: any, strict: bool = False) -> None {
                         `edge.detach();
                         `edge.destroyed = True;
                         _edge_handle: any = `edge.archetype;
+                        run_drop(_edge_handle);
                         osp_forget(_edge_handle);
                         if eid is not None {
                             JacRuntimeInterface.get_context().mem.delete(eid);
@@ -1484,6 +1470,7 @@ impl JacPersistence.destroy(objs: any, strict: bool = False) -> None {
             }
             anchor.destroyed = True;
             _handle: any = anchor.archetype;
+            run_drop(_handle);
             osp_forget(_handle);
         }
     }
@@ -1552,186 +1539,17 @@ impl JacBuiltin.get_console -> ConsoleImpl {
 }
 
 impl JacServe.get_api_server_class -> type {
-    import from jaclang.server.identity_owner {
-        SCALE_IDENTITY,
-        identity_owner,
-        scale_stack_unavailable
-    }
-    _served = JacRuntime.get_full_target_path() or JacRuntime.get_base_path_dir();
-    if identity_owner(_served) != SCALE_IDENTITY {
-        import from jaclang.server.server { JacAPIServer }
-        return JacAPIServer;
-    }
+    import from jaclang.server.server { JacAPIServer }
+    return JacAPIServer;
+}
+
+impl JacServe.get_server_extensions -> list[ServerExtension] {
     _sp = _scale_provider();
     if _sp is None {
-        raise scale_stack_unavailable('jaclang.scale.plugin', scale_provider_error());
+        return [];
     }
-    _scaled = _sp.get_api_server_class();
-    if _scaled is None {
-        raise RuntimeError(
-            'the scale plugin returned no API server class while the scale '
-            'identity owns /user/* for this project. Nothing falls back to the '
-            'core store from here: the two stacks keep credentials in '
-            'different databases, so serving the other one would answer for '
-            'accounts this project does not have.'
-        );
-    }
-    return _scaled;
+    return list(_sp.get_server_extensions());
 }
-
-impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
-    import from jaclang.server.identity_owner {
-        scale_stack_installed,
-        scale_stack_unavailable
-    }
-    _sp = _scale_provider();
-    if _sp is not None {
-        _sp.ensure_sv_service(module_name, base_path);
-        return;
-    }
-    if scale_stack_installed() {
-        raise scale_stack_unavailable('jaclang.scale.plugin', scale_provider_error());
-    }
-    import os;
-    import time;
-    import urllib.request;
-    import from http.client { HTTPResponse }
-    import from jaclang.server { sv_client }
-    import from jaclang.server.server { JacAPIServer as CoreJacAPIServer }
-    import from jaclang.server.serving.server { ServingServer }
-    if module_name in sv_client._registry {
-        return;
-    }
-    if module_name in sv_client._test_clients {
-        return;
-    }
-    base_port = 18000 + (hash(module_name) % 1000);
-
-    srv = CoreJacAPIServer(
-        module_name=module_name, port=0, base_path=base_path, is_sv_sibling=True
-    );
-    srv.load_module();
-    serving = ServingServer(app=srv.build_app(), host='127.0.0.1', port=base_port);
-    serving.serve_background(port_retries=100);
-    port = serving.bound_port;
-    srv.port = port;
-    srv.server = serving;
-    base_url = f"http://127.0.0.1:{port}";
-    deadline = time.time() + 10.0;
-    healthy = False;
-    while time.time() < deadline {
-        try {
-            probe: HTTPResponse = urllib.request.urlopen(
-                f"{base_url}/functions", timeout=1
-            );
-            with probe as resp {
-                if resp.status < 500 {
-                    healthy = True;
-                    break;
-                }
-            }
-        } except Exception {
-            time.sleep(0.05);
-        }
-    }
-    if not healthy {
-        raise RuntimeError(
-            f"sv-to-sv service '{module_name}' did not become healthy at {base_url}"
-        );
-    }
-    sv_client.register(module_name, base_url);
-}
-
-impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> any {
-    _sp = _scale_provider();
-    if _sp is not None and _sp.sv_transport_available() {
-        return _sp.sv_service_call(module_name, func_name, args);
-    }
-    import from jaclang.server { sv_client }
-    import from jaclang.server.serving.client { post_stream_aware_sync }
-    import from jaclang.server.serving.sse { consume_sse_events }
-
-    func_label = f"{module_name}.{func_name}";
-
-    if module_name in sv_client._test_clients {
-        client = sv_client._test_clients[module_name];
-        resp = client.post(f"/function/{func_name}", json=args);
-        ct = str(resp.headers.get("Content-Type") or "");
-        if ct.startswith("text/event-stream") {
-            return consume_sse_events(str(resp.text).splitlines(), func_label);
-        }
-        data = resp.json();
-    } else {
-        url = sv_client.resolve_url(module_name);
-        (kind, payload) = post_stream_aware_sync(
-            f"{url}/function/{func_name}", json_body=args, label=func_label
-        );
-        if kind == 'sse' {
-            return payload;
-        }
-        data = payload;
-    }
-
-    if isinstance(data, dict) and data.get("ok") {
-        result_envelope = data.get("data");
-        if isinstance(result_envelope, dict) and ("result" in result_envelope) {
-            return result_envelope["result"];
-        }
-        return result_envelope;
-    }
-
-    err = (data.get("error") if isinstance(data, dict) else None) or {};
-    msg = err.get("message") if isinstance(err, dict) else str(err);
-    raise RuntimeError(
-        f"sv-to-sv RPC '{module_name}.{func_name}' failed: {msg or 'unknown error'}"
-    );
-}
-
-impl JacServe.sv_walker_call(
-    module_name: str, walker_name: str, args: dict, stub_cls: any
-) -> any {
-    _sp = _scale_provider();
-    if _sp is not None and _sp.sv_transport_available() {
-        return _sp.sv_walker_call(module_name, walker_name, args, stub_cls);
-    }
-    import from jaclang.server { sv_client }
-    import from jaclang.server.serving.client { request_sync }
-
-    label = f"{module_name}.{walker_name}";
-
-    if module_name in sv_client._test_clients {
-        client = sv_client._test_clients[module_name];
-        resp = client.post(f"/walker/{walker_name}", json=args);
-        data = resp.json();
-    } else {
-        url = sv_client.resolve_url(module_name);
-        data = request_sync(
-            'POST', f"{url}/walker/{walker_name}", json_body=args
-        ).json();
-    }
-
-    if isinstance(data, dict) and data.get("ok") {
-        envelope = data.get("data") or {};
-        result_dict = envelope.get("result") if isinstance(envelope, dict) else None;
-        reports = envelope.get("reports") if isinstance(envelope, dict) else None;
-        instance = stub_cls._from_wire(result_dict)
-            if (stub_cls is not None and result_dict is not None)
-            else result_dict;
-        if instance is not None and reports is not None {
-            try {
-                instance.reports = reports;
-            } except Exception {}
-        }
-        return instance;
-    }
-
-    err = (data.get("error") if isinstance(data, dict) else None) or {};
-    msg = err.get("message") if isinstance(err, dict) else str(err);
-    raise RuntimeError(
-        f"sv-to-sv walker spawn '{label}' failed: {msg or 'unknown error'}"
-    );
-}
-
 
 impl JacServe.get_sv_registry -> dict[str, str] {
     _sp = _scale_provider();
@@ -2135,14 +1953,7 @@ impl JacConfig.validate_config(config: dict[(str, any)]) -> list[str] {
 }
 
 impl JacPersistence.get_user_manager(base_path: str) -> UserManager {
-    _sp = _scale_provider();
-    if _sp is not None {
-        _scaled = _sp.get_user_manager(base_path);
-        if _scaled is not None {
-            return _scaled;
-        }
-    }
-    import from jaclang.server.server { UserManager }
+    import from jaclang.server.identity.user_manager { UserManager }
     return UserManager(base_path=base_path);
 }
 
@@ -2228,32 +2039,41 @@ impl JacRuntime.get_selfhost(cls: any) -> SelfHostCache {
     return cls.selfhost;
 }
 
-impl JacRuntime.get_shared_root -> Root {
+impl JacRuntime.shared_root_id -> (UUID | None) {
     resolver = _shared_root_resolver[0];
     if resolver is None {
+        return None;
+    }
+    cached = _shared_root_resolver[1];
+    if isinstance(cached, UUID) {
+        return cached;
+    }
+    resolved = resolver();
+    if not isinstance(resolved, str) {
+        return None;
+    }
+    root_id = UUID(resolved);
+    _shared_root_resolver[1] = root_id;
+    return root_id;
+}
+
+impl JacRuntime.get_shared_root -> Root {
+    if _shared_root_resolver[0] is None {
         return JacRuntimeInterface.get_context().get_root();
     }
-    root_id = _shared_root_resolver[1];
-    if not isinstance(root_id, str) {
-        root_id = resolver();
-        if not isinstance(root_id, str) {
-            raise RuntimeError(
-                "Shared root unavailable: the registered shared-root resolver "
-                "returned no root id."
-            );
-        }
-        _shared_root_resolver[1] = root_id;
+    root_id = JacRuntime.shared_root_id();
+    if root_id is None {
+        raise RuntimeError(
+            "Shared root unavailable: the registered shared-root resolver "
+            "returned no root id."
+        );
     }
-    shared_anchor = JacRuntimeInterface.get_context().mem.get(UUID(root_id));
+    shared_anchor = JacRuntimeInterface.get_context().mem.get(root_id);
     shared = shared_anchor.archetype if shared_anchor else None;
     if not isinstance(shared, Root) {
         raise RuntimeError(
             f"Shared root unavailable: id {root_id} did not resolve to a Root node."
         );
-    }
-
-    if _all_grant(shared.__jac__) == AccessLevel.NO_ACCESS {
-        JacRuntimeInterface.perm_grant(shared, AccessLevel.CONNECT);
     }
     return shared;
 }
@@ -2297,4 +2117,29 @@ impl JacRuntime.push_request_context(context: ExecutionContext) -> any {
 
 impl JacRuntime.reset_request_context(token: any) -> None {
     _request_context.reset(token);
+}
+
+impl JacRuntime.after_fork_in_child -> None {
+    import from concurrent.futures { ThreadPoolExecutor }
+    import from jaclang.data.pgpool { detach }
+    ctx = JacRuntime.exec_ctx;
+    JacRuntime.exec_ctx = None;
+    if ctx is not None {
+        store = ctx.mem?.store;
+        if store is not None {
+            for attr in ('_conn', '_side_conn') {
+                detach(getattr(store, attr, None));
+                try {
+                    setattr(store, attr, None);
+                } except Exception {}
+            }
+            try {
+                store._listen_thread = None;
+                store._listen_stop = None;
+                store._side_listened = False;
+            } except Exception {}
+        }
+    }
+    _shared_root_resolver[1] = None;
+    JacRuntime.pool = ThreadPoolExecutor();
 }

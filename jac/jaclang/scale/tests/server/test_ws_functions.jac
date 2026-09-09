@@ -6,15 +6,10 @@ so it exercises the jac-native serving WebSocket routes directly.
 import from jaclang.scale.tests.scale_test_client { make_client }
 
 
-"""Build a test client and register WebSocket routes on its app.
-
-The "test" endpoint profile does not register WebSocket routes, so opt in
-explicitly against the already-built app.
-"""
+"""A test client whose app carries the WebSocket routes (the scale
+extensions register them as part of the one assembly)."""
 def _ws_client -> any {
-    client = make_client("test_api.jac");
-    client.server.register_websocket_endpoints();
-    return client;
+    return make_client("test_api.jac");
 }
 
 

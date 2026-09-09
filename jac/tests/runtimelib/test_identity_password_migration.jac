@@ -1,14 +1,15 @@
-"""Regression tests for issue 12(b): the core identity's password format.
+"""Regression tests for issue 12(b): the identity store's password format.
 
-The core server used to write unsalted sha256 hashes, a format the scale
-verifier can never accept, so any move between the two stacks stranded every
-account. New signups must produce scrypt, and a legacy sha256 row must verify
-once and be rehashed in place on that login.
+The old core server wrote unsalted sha256 hashes, a format the scrypt verifier
+would never accept, so any account moved between stacks was stranded. New
+signups must produce scrypt, and a legacy sha256 row must verify once and be
+rehashed in place on that login. These drive the real user manager against the
+embedded Postgres.
 """
 
 import hashlib;
 import from tempfile { TemporaryDirectory }
-import from jaclang.server.server { UserManager }
+import from jaclang.server.identity.user_manager { UserManager }
 import from jaclang.server.serving.authcrypt {
     hash_password,
     is_legacy_sha256_hash,
@@ -18,30 +19,40 @@ import from jaclang.server.serving.authcrypt {
 
 """The password hash currently stored for `username`, or '' when absent."""
 def _stored_hash(manager: UserManager, username: str) -> str {
-    manager._ensure_connection();
-    assert manager._conn is not None;
-    cursor = manager._conn.execute(
-        "SELECT password_hash FROM users WHERE username = ?", (username, )
-    );
-    row = cursor.fetchone();
-    return str(row[0]) if row else "";
+    user = manager.find_user_by_identity(username);
+    if user is None {
+        return "";
+    }
+    for cred in manager._identity_storage._get_credentials(str(user["user_id"])) {
+        if cred.get("type") == "password" {
+            return str(cred.get("password_hash") or "");
+        }
+    }
+    return "";
 }
 
 
-"""Rewrite `username`'s row the way the pre-scrypt core server wrote it."""
+"""Rewrite `username`'s credential the way the pre-scrypt core server wrote it."""
 def _write_legacy_hash(manager: UserManager, username: str, password: str) -> str {
     legacy = hashlib.sha256(password.encode()).hexdigest();
-    manager._ensure_connection();
-    assert manager._conn is not None;
-    manager._conn.execute(
-        "UPDATE users SET password_hash = ? WHERE username = ?", (legacy, username)
+    user = manager.find_user_by_identity(username);
+    assert user is not None;
+    user_id = str(user["user_id"]);
+    manager._identity_storage._update_credentials(
+        user_id, [{"type": "password", "password_hash": legacy}]
     );
-    manager._conn.commit();
     return legacy;
 }
 
 
-test "a new core signup stores a scrypt hash" {
+def _user_id(manager: UserManager, username: str) -> str {
+    user = manager.find_user_by_identity(username);
+    assert user is not None;
+    return str(user["user_id"]);
+}
+
+
+test "a new signup stores a scrypt hash" {
     with TemporaryDirectory() as tmpdir {
         manager = UserManager(base_path=tmpdir);
         manager.create_user("alice", "hunter2");
@@ -80,9 +91,10 @@ test "changing a password from a legacy row stores scrypt" {
         manager = UserManager(base_path=tmpdir);
         manager.create_user("carol", "old-pass");
         _write_legacy_hash(manager, "carol", "old-pass");
-        failed = manager.update_password("carol", "not-it", "new-pass");
+        carol = _user_id(manager, "carol");
+        failed = manager.update_password(carol, "not-it", "new-pass");
         assert "error" in failed;
-        changed = manager.update_password("carol", "old-pass", "new-pass");
+        changed = manager.update_password(carol, "old-pass", "new-pass");
         assert "error" not in changed;
         assert _stored_hash(manager, "carol").startswith("scrypt$");
         assert manager.authenticate("carol", "new-pass") is not None;

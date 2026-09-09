@@ -48,7 +48,7 @@ test "fullstack client importing @jac/wasm_host builds" {
             );
         }
         build_result = run(
-            [*jac_cmd, "build", "--client", "web", "main.jac"],
+            [*jac_cmd, "build", "--as", "client", "main.jac"],
             cwd=project_dir,
             capture_output=True,
             text=True,

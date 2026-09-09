@@ -111,9 +111,11 @@ test "a nested function does not capture through a keyword key" {
 
 test "the native nested function takes no phantom capture" {
     prog = JacProgram();
+    options = native_force_opts();
+    options.no_ir_cache = True;
+    options.skip_native_engine = True;
     ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "kwarg_key_slot.jac"),
-        options=native_force_opts()
+        file_path=os.path.join(FIXTURES, "kwarg_key_slot.jac"), options=options
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     defs = [

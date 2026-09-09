@@ -9,7 +9,7 @@ targets, called **codespaces**:
 |-----------|----------|----------------|---------|
 | **Server** | Inferred; the default, anchored by python imports, graph archetypes, `::py::` blocks, and typed context blocks; `[placement.pins]` override | Python AST → CPython bytecode | CPython |
 | **Client** | **Inferred** from client-only syntax (JSX, browser globals, string-path npm imports) and symbol references; `[placement.pins]` override or a `.jac` implementation-variant file | ESTree → JavaScript | Browsers / Node |
-| **Native** | **Inferred** -- whole modules by the placement solver's verdict under the native default codespace, elements from extern-decl (C-ABI FFI) imports and their users; `[placement.pins]` override, or forced module-wide by `jac nacompile` / `jac build --as native` / `CompileOptions(force_codespace='native')` | LLVM IR → object code → executable | Bare machine (Linux / macOS, x86_64 / arm64) |
+| **Native** | **Inferred** -- whole modules by the placement solver's verdict under the native default codespace, elements from extern-decl (C-ABI FFI) imports and their users; `[placement.pins]` override, or forced module-wide by `jac build <file> --native` / `CompileOptions(force_codespace='native')` | LLVM IR → object code → executable | Bare machine (Linux / macOS, x86_64 / arm64) |
 
 A single `.jac` file can mix all three codespaces; there is no placement
 syntax (the old `sv`/`cl`/`na` markers were deleted -- `jac fix placement`
@@ -222,7 +222,7 @@ and two wrappers around it:
 | Helper | Triggered by | What it does |
 |--------|--------------|--------------|
 | `_coerce_client_module` | `.jac` extension | Marks the module's nodes `CodeContext.CLIENT` |
-| `_coerce_native_module` | Forced placement (`CompileOptions(force_codespace='native')` -- set by `jac nacompile` / `jac build --as native` -- or an AOT build under the native default codespace), else a passing placement-solver verdict | Marks the module's nodes `CodeContext.NATIVE` |
+| `_coerce_native_module` | Forced placement (`CompileOptions(force_codespace='native')` -- set by `jac build <file> --native` -- or an AOT build under the native default codespace), else a passing placement-solver verdict | Marks the module's nodes `CodeContext.NATIVE` |
 
 From this point on, every declaration carries a `CodeContext` enum value that
 downstream passes use to dispatch to the correct backend.
@@ -430,7 +430,7 @@ Two design decisions bound what "fully stamped" means:
   single lowering routines. A central table for them would mirror
   emission order rather than describe the program; the invariant
   (every value-consumption seam releases its owned temps) is enforced by
-  the leak-check gates (chess fixture under JAC_RC_DEBUG_CODEGEN, the GC
+  the leak-check gates (chess fixture under `[native] debug`, the GC
   suite) rather than by a second bookkeeping layer.
 
 ---
@@ -444,25 +444,37 @@ runs once *before* code generation. It walks every call site and records:
 2. Type information on each parameter and return value at the boundary.
 3. Imports that cross from a Python module into a native-placed module (for
    native↔native linking).
-4. Server-to-server calls that resolve to a different microservice (the
-   target module is in `[scale.microservices.routes]` or pinned `"server"`
-   at module level).
+4. Server-to-server calls that cross an **app boundary** (the imported
+   element's `owner_app` differs from the importing module's).
+
+Every cross-module import is classified once, by
+`classify_cross_app_import` in `compiler/driver/boundary_classify.jac`, into
+one of four kinds from the *app facts* the driver stamps before any pass runs
+(`app`, `app_root`, `app_kind`, `owner_app` on `uni.Module`): `LOCAL` (a plain
+import), `CLIENT_BRIDGE` (client context importing server-placed elements),
+`SERVICE_BRIDGE` (server or native context importing server-placed elements
+owned by another app), or `NATIVE_BIND` (the wasm/ctypes edge). The pass also
+records each `consumer app → provider app` edge into the manifest; the driver
+rejects cycles (`E5104`) and non-`pub` bridge targets (`E5106`).
 
 The result is attached to the module as an `InteropManifest` of
 `InteropBinding` entries (defined in
 [`compiler/frontend/codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/codeinfo.jac)).
 Each backend reads this manifest and generates the appropriate bridge
-stub: an HTTP fetch for `cl → sv`, a ctypes call for `sv → na`, or a
-direct native symbol reference for `na → na`.
+stub: an HTTP fetch for `cl → sv`, a typed-async `__jac_sv_client` stub for
+`sv → sv` across apps, a ctypes call for `sv → na`, or a direct native symbol
+reference for `na → na`.
 
 ---
 
 ## Stage 5: Backend Code Generation
 
-`get_py_code_gen` returns the codegen schedule. All three backends share a
-common base class -- [`ModuleCodegenPass`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/module_codegen_pass.jac)
-(or `BaseAstGenPass` for AST-emitting passes) -- and **each pass only emits
-nodes whose `code_context` matches its target**. A node tagged `CLIENT` is
+`get_py_code_gen` returns the codegen schedule. All three backends read the
+same module facts -- [`ModuleFacts`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/module_facts.jac)
+(context-tagged statements, woven annex segments, erased type declarations)
+-- and the AST-emitting passes share
+[`BaseAstGenPass`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/common/ast_gen_base.jac).
+**Each pass only emits nodes whose `code_context` matches its target**. A node tagged `CLIENT` is
 invisible to the Python codegen and vice versa.
 
 ### Server backend
@@ -499,7 +511,7 @@ The primitive type contract for this backend lives in
 
 | Pass | Source | Output |
 |------|--------|--------|
-| `EsastGenPass` | [`compiler/backends/es/esast_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/esast_gen_pass.jac) (+ [impl](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/impl/esast_gen_pass.impl.jac)) | ESTree AST + serialised JS (`module.gen.js`) |
+| `EsastGenPass` | [`compiler/backends/es/esast_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/esast_gen_pass.jac) (+ [impl by concern](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/compiler/backends/es/esast_gen_pass.impl)) | ESTree AST + serialised JS (`module.gen.js`) |
 
 `EsastGenPass` derives from `BaseAstGenPass` (shared with `JcirGenPass`)
 so the same traversal infrastructure visits the tree but emits ESTree
@@ -515,7 +527,7 @@ Key components of the client backend:
   is the small JS runtime that ships with every client bundle (signals,
   reactive state, JSX renderer, hash router, fetch helpers).
 - **JSX lowering** -- `EsJsxProcessor` in
-  [`compiler/passes/ast_gen/jsx_processor.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ast_gen/jsx_processor.jac)
+  [`compiler/backends/es/jsx_processor.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/jsx_processor.jac)
   lowers JSX tags for the client lane. The server lane lowers the same tags
   itself, straight into `jaclib` JSX calls, so a tag compiles consistently
   regardless of where it appears.
@@ -560,7 +572,7 @@ flow through the interop bridge generated from `BoundaryAnalysisPass`.
 
 The two lowering backends (ECMAScript and native) implement the same
 abstract emitter interface, defined in
-[`compiler/primitives.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/primitives.jac).
+[`compiler/backends/common/primitives.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/common/primitives.jac).
 The server backend needs no emitters: it compiles to Python bytecode, so
 CPython itself provides the reference semantics the other backends must
 match. This is what makes "`'hello'.upper()` works in all three codespaces"
@@ -568,7 +580,7 @@ a guarantee rather than a convention.
 
 ```mermaid
 graph TD
-    subgraph "Abstract (compiler/primitives.jac)"
+    subgraph "Abstract (compiler/backends/common/primitives.jac)"
         INT[IntEmitter]
         STR[StrEmitter]
         LIST[ListEmitter]
@@ -618,10 +630,10 @@ user-facing reference, [Primitives & Codespace Semantics](../reference/language/
 |-----------|--------|--------------|
 | `cl → sv` | HTTP `POST` to the walker / function endpoint exposed by `jac run` | `EsastGenPass` emits `fetch(...)` against the URL recorded in the binding |
 | `sv → cl` | None at runtime -- the client mounts its own DOM. The server only ships the bootstrap payload | `JcirGenPass` emits the static-file route for the bundle |
-| `sv → na` | In-process `ctypes.CFUNCTYPE` over the JIT'd function address (MCJIT); an AOT `--shared` build is loaded across the process boundary instead | `JcirGenPass` emits the ctypes stub; `NaIRGenPass` exposes the function with C ABI |
+| `sv → na` | In-process `ctypes.CFUNCTYPE` over the JIT'd function address (MCJIT); an AOT `--lib` build is loaded across the process boundary instead | `JcirGenPass` emits the ctypes stub; `NaIRGenPass` exposes the function with C ABI |
 | `na → sv` | Python callback wrapped in a `ctypes.CFUNCTYPE` and registered as a JIT symbol (`llvm.add_symbol`), so MCJIT resolves the native call back into CPython | `interop_bridge.register_py_callbacks`, alongside the `sv → na` stub |
 | `na → na` | Direct symbol reference resolved by the in-tree linker | `BoundaryAnalysisPass` records the import; `NativeCompilePass` emits the relocation |
-| `sv → sv` (microservice) | HTTP between processes when an import of a `[scale.microservices.routes]` module resolves to a different deployment | `JcirGenPass` emits a generated `__jac_sv_client` RPC stub; the manifest is consumed by the built-in `scale` subsystem |
+| `sv → sv` (cross-app) | A typed-async stub keyed by the provider **app name** when an import's target is owned by a different app; in-process when the provider app is colocated, HTTP `POST` when it runs as its own process | `JcirGenPass` emits a generated `async` `__jac_sv_client` stub (`call` / `spawn_walker`; un-awaited statement spawns become `_deferred`, the outbox); the manifest's app edges drive the built-in `scale` subsystem's boot order |
 
 Boundary types are serialised through the schemas in
 [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/codeinfo.jac).
@@ -767,7 +779,7 @@ A short index, organised by the role each file plays in the pipeline.
 - [`compiler/backends/es/primitives_es.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/primitives_es.jac)
 - [`compiler/backends/es/jac_runtime_js.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/jac_runtime_js.jac)
   -- in-browser runtime
-- [`compiler/passes/ast_gen/jsx_processor.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ast_gen/jsx_processor.jac)
+- [`compiler/backends/es/jsx_processor.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/jsx_processor.jac)
   -- JSX lowering
 
 **Native backend**

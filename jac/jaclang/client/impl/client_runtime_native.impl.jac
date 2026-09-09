@@ -187,7 +187,7 @@ impl _adaptImageProps(props: dict) -> dict {
                     console.warn(
                         "[jac-native-runtime] Missing Metro asset mapping for token "
                             + str(uri)
-                            + ". Re-run jac build --client react-native."
+                            + ". Re-run jac build <app>."
                     );
                 }
                 out["source"] = {"uri": uri};
@@ -691,7 +691,7 @@ impl __getApiBaseUrl -> str {
         globalThis.__jacWarnedMissingApiBaseUrl__ = True;
         console.warn(
             "[jac-native-runtime] Missing API base URL. Set expo.extra.apiBaseUrl "
-            "or run jac run --client react-native --dev so it is injected."
+            "or run jac run --dev <app> so it is injected."
         );
     }
     return "";

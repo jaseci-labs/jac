@@ -32,7 +32,7 @@ test "circle jac test" {
     prev_jobs = os.environ.get("JAC_TEST_JOBS");
     os.environ["JAC_TEST_JOBS"] = "0";
     try {
-        analysis.`test([os.path.join(FIXTURES, "circle.jac")]);
+        analysis.`test(paths=[os.path.join(FIXTURES, "circle.jac")]);
     } finally {
         if prev_jobs is None {
             del os.environ["JAC_TEST_JOBS"];
@@ -86,7 +86,7 @@ test "clean circle jac test" {
     os.environ["JAC_TEST_JOBS"] = "0";
     try {
         with suppress(SystemExit) {
-            analysis.`test([os.path.join(FIXTURES, "circle_clean_tests.jac")]);
+            analysis.`test(paths=[os.path.join(FIXTURES, "circle_clean_tests.jac")]);
         }
     } finally {
         if prev_jobs is None {
@@ -108,7 +108,7 @@ test "pure circle jac test" {
     os.environ["JAC_TEST_JOBS"] = "0";
     try {
         with suppress(SystemExit) {
-            analysis.`test([os.path.join(FIXTURES, "circle_pure.test.jac")]);
+            analysis.`test(paths=[os.path.join(FIXTURES, "circle_pure.test.jac")]);
         }
     } finally {
         if prev_jobs is None {

@@ -14,38 +14,52 @@ import from tests.support { TESTS_DIR }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "nogc_abort_drops.jac"
+     ),
+     HANDLED = os.path.join(
+         TESTS_DIR, "compiler", "backends", "native", "fixtures", "nogc_raise_drops.jac"
      );
 
-test "enforced raise runs frame drops exactly once, then aborts" {
+def _build(src: str, out_bin: str) -> subprocess.CompletedProcess {
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "jaclang",
+            "build",
+            "--native",
+            src,
+            "--memory",
+            "nogc",
+            "-o",
+            out_bin
+        ],
+        capture_output=True,
+        text=True
+    );
+}
+
+test "an entry block that does not handle a raising call is E1407" {
     with tempfile.TemporaryDirectory() as tmp {
-        out_bin = os.path.join(tmp, "abortdrops");
-        res = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "nacompile",
-                FIXTURE,
-                "--enforce-nogc",
-                "--gc",
-                "none",
-                "--assert-no-rc",
-                "-o",
-                out_bin
-            ],
-            capture_output=True,
-            text=True
-        );
+        res = _build(FIXTURE, os.path.join(tmp, "abortdrops"));
+        assert res.returncode != 0 , res.stdout;
+        assert "E1407" in res.stderr + res.stdout , res.stderr + res.stdout;
+    }
+}
+
+test "a handled raise runs frame drops exactly once before the handler" {
+    with tempfile.TemporaryDirectory() as tmp {
+        out_bin = os.path.join(tmp, "raisedrops");
+        res = _build(HANDLED, out_bin);
         assert res.returncode == 0 , res.stderr;
         ran = subprocess.run([out_bin], capture_output=True, text=True);
-        assert ran.returncode != 0 , "abort must terminate non-zero";
+        assert ran.returncode == 0 , ran.stderr;
         out = ran.stdout;
         assert "before" in out , out;
         assert out.count("drop 1") == 1 , out;
         assert out.count("drop 2") == 1 , out;
         assert "never" not in out , out;
-        _banner = out.find("unhandled exception");
-        assert _banner >= 0 , out;
-        assert out.find("drop 1") < _banner and out.find("drop 2") < _banner , out;
+        _handled = out.find("handled");
+        assert _handled >= 0 , out;
+        assert out.find("drop 1") < _handled and out.find("drop 2") < _handled , out;
     }
 }

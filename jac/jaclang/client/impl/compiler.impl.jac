@@ -1,10 +1,10 @@
 import from jaclang.cli.console { console }
 
 impl ViteCompiler.compile(
-    self: ViteCompiler, module: ModuleType, module_path: Path
+    self: ViteCompiler, module: (ModuleType | None), module_path: Path
 ) -> tuple[list[str], list[str]] {
     (client_exports, client_globals) = self.jac_client_compiler.compile(
-        module, module_path, target_name="web"
+        module, module_path
     );
     self._has_pages = self.jac_client_compiler._has_pages;
 
@@ -85,7 +85,7 @@ impl ViteCompiler._emit_wasm_module(self: ViteCompiler, module_path: Path) -> bo
         return False;
     }
     stem = native_wasm_stem(str(module_path));
-    dist = self.jac_client_compiler._get_client_dir() / 'dist';
+    dist = self.vite_bundler.output_dir;
     dist.mkdir(parents=True, exist_ok=True);
     out_path = dist / f"{stem}.wasm";
     out_path.write_bytes(wasm);
@@ -129,7 +129,9 @@ impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> No
     if self._has_pages {
         entry_content = self._create_pages_entry_content(module_path);
     } else {
-        entry_content = backend.build_entry_script(module_path.stem);
+        entry_content = backend.build_entry_script(
+            self._entry_module_name(module_path)
+        );
     }
     entry_file.parent.mkdir(parents=True, exist_ok=True);
 
@@ -162,13 +164,23 @@ impl ViteCompiler._create_pages_entry_content(
         );
     }
 
-    app_module = self.compiled_dir / f"{module_path.stem}.js";
-    has_app_wrapper = app_module.exists();
+    entry_module = self._entry_module_name(module_path);
+    has_app_wrapper = (self.compiled_dir / f"{entry_module}.js").exists();
 
     backend = resolve_active_backend();
     return backend.build_pages_entry_script(
-        module_path.stem, auth_redirect, has_app_wrapper
+        entry_module, auth_redirect, has_app_wrapper
     );
+}
+
+impl ViteCompiler._entry_module_name(self: ViteCompiler, module_path: Path) -> str {
+    app_js = self.jac_client_compiler._output_path_for(module_path, self.project_dir);
+    try {
+        rel = app_js.relative_to(self.compiled_dir).as_posix();
+    } except ValueError {
+        rel = app_js.name;
+    }
+    return rel[:-3] if rel.endswith('.js') else rel;
 }
 
 impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[str]] {
@@ -176,15 +188,11 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
         raise ClientBundleError('Runtime path not set');
     }
     import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
-    import from jaclang.client.client_surface { prepend_active_runtime_globals }
     runtime_utils_path = Path(resolve_client_runtime_cl_path());
-    (runtimeutils_js, mod, runtimeutils_manifest) = self.jac_compiler.compile_module(
-        runtime_utils_path
-    );
-    runtimeutils_exports_list = self.jac_compiler.extract_exports(
-        runtimeutils_manifest
-    );
-    glob_names = list(runtimeutils_manifest.globals) if runtimeutils_manifest else [];
+    runtime = self.jac_compiler.compile_module(runtime_utils_path);
+    runtimeutils_js = runtime.js;
+    runtimeutils_exports_list = self.jac_compiler.extract_exports(runtime.manifest);
+    glob_names = list(runtime.manifest.globals);
     all_exports = sorted(
         set(
             runtimeutils_exports_list
@@ -194,29 +202,22 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
     );
     self.compiled_dir.mkdir(parents=True, exist_ok=True);
 
-    core_path = runtime_utils_path.parent / 'client_runtime_core.jac';
-    if core_path.exists() {
-        import re;
-        core_match = re.search(
-            r'from\s+[\'\"]([^\'\"]*client_runtime_core\.js)[\'\"]', runtimeutils_js
-        );
-        if core_match {
-            (core_js, core_mod, _) = self.jac_compiler.compile_module(core_path);
-            core_js = prepend_active_runtime_globals(core_js);
-            runtimeutils_js = runtimeutils_js.replace(
-                core_match.group(1), './client_runtime_core.js'
-            );
-            core_out = self.compiled_dir / 'client_runtime_core.js';
-            core_out.write_text(core_js, encoding='utf-8');
-            self.jac_client_compiler._write_source_map(
-                core_mod, str(core_path), core_out, core_js
+    visited: set[Path] = {runtime_utils_path.resolve()};
+    for (name, dependency) in runtime.manifest.imports.items() {
+        if name in self.jac_client_compiler.SELF_COMPILED_VIRTUAL_MODULES {
+            continue;
+        }
+        dependency_path = Path(str(dependency)).resolve();
+        if dependency_path.suffix == '.jac' {
+            self.jac_client_compiler.compile_dependencies_recursively(
+                dependency_path, visited=visited, source_root=runtime_utils_path.parent
             );
         }
     }
     runtime_out = self.compiled_dir / 'client_runtime.js';
     runtime_out.write_text(runtimeutils_js, encoding='utf-8');
     self.jac_client_compiler._write_source_map(
-        mod, str(runtime_utils_path), runtime_out, runtimeutils_js
+        runtime, str(runtime_utils_path), runtime_out, runtimeutils_js
     );
 
     self.jac_client_compiler.compile_mobui_utils();
@@ -233,18 +234,14 @@ impl ViteCompiler.compile_desktop_sdk(self: ViteCompiler) {
     if not desktop_path.exists() {
         return;
     }
-    (desktop_js, mod, desktop_manifest) = self.jac_compiler.compile_module(
-        desktop_path
-    );
-    if not desktop_js or not desktop_js.strip() {
+    desktop = self.jac_compiler.compile_module(desktop_path);
+    desktop_js = desktop.js;
+    if not desktop_js.strip() {
         return;
     }
 
-    desktop_exports = self.jac_compiler.extract_exports(desktop_manifest);
-    desktop_globals: dict[str, any] = {};
-    if mod is not None {
-        desktop_globals = self.jac_compiler.extract_globals(desktop_manifest, mod);
-    }
+    desktop_exports = self.jac_compiler.extract_exports(desktop.manifest);
+    desktop_globals = self.jac_compiler.extract_globals(desktop.manifest, None);
     all_names = sorted(set(desktop_exports + list(desktop_globals.keys())));
 
     if not all_names {
@@ -260,7 +257,7 @@ impl ViteCompiler.compile_desktop_sdk(self: ViteCompiler) {
     desktop_out = self.compiled_dir / 'desktop_api.js';
     desktop_out.write_text(desktop_js, encoding='utf-8');
     self.jac_client_compiler._write_source_map(
-        mod, str(desktop_path), desktop_out, desktop_js
+        desktop, str(desktop_path), desktop_out, desktop_js
     );
 }
 
@@ -270,9 +267,10 @@ impl ViteCompiler.init(
     vite_output_dir: (Path | None) = None,
     vite_minify: bool = False,
     runtime_path: (Path | None) = None,
-    compile_to_js_func: Callable[([Path], tuple[(str, (ModuleType | None))])],
-    extract_exports_func: Callable[([any], list[str])],
-    extract_globals_func: Callable[([any, ModuleType], dict[(str, any)])]
+    compile_to_js_func: Callable[[Path], ClientArtifact],
+    extract_exports_func: Callable[[ClientManifest | None], list[str]],
+    extract_globals_func:
+        Callable[[ClientManifest | None, ModuleType | None], dict[str, any]]
 ) {
     if (not vite_package_json or not vite_package_json.exists()) {
         raise ClientBundleError(
@@ -305,9 +303,7 @@ impl ViteCompiler.init(
         raise ClientBundleError('Client compiled directory could not be resolved');
     }
     self.compiled_dir = compiled_dir;
-    self.jac_compiler = JacToJSCompiler(
-        compile_to_js_func, extract_exports_func, extract_globals_func
-    );
+    self.jac_compiler = self.jac_client_compiler.jac_compiler;
     self.vite_bundler = ViteBundler(self.project_dir, vite_output_dir, vite_minify);
     self._has_pages = False;
 }

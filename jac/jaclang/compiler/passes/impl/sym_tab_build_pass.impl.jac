@@ -393,14 +393,14 @@ impl SymTabBuildPass.exit_open_stmt with OpenStmt exit {
 }
 
 impl SymTabBuildPass.enter_if_stmt with IfStmt entry {
-    if here.__class__ is not IfStmt {
+    if type(here) is not IfStmt {
         return;
     }
     self.push_scope_and_link(here);
 }
 
 impl SymTabBuildPass.exit_if_stmt with IfStmt exit {
-    if here.__class__ is not IfStmt {
+    if type(here) is not IfStmt {
         return;
     }
     self.pop_scope();
@@ -505,7 +505,7 @@ impl SymTabBuildPass.exit_lambda_expr with LambdaExpr exit {
 }
 
 impl SymTabBuildPass.enter_list_compr with ListCompr entry {
-    if here.__class__ is not ListCompr {
+    if type(here) is not ListCompr {
         return;
     }
     self.push_scope_and_link(here);
@@ -515,7 +515,7 @@ impl SymTabBuildPass.enter_list_compr with ListCompr entry {
 }
 
 impl SymTabBuildPass.exit_list_compr with ListCompr exit {
-    if here.__class__ is not ListCompr {
+    if type(here) is not ListCompr {
         return;
     }
     self.pop_scope();
