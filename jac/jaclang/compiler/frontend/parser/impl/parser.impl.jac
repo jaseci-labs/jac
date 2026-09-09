@@ -487,39 +487,31 @@ impl Parser.parse_module -> Module {
     return module;
 }
 
-impl Parser.parse_expression(
-    allow_cast: bool = True, allow_graph: bool = True
-) -> Expr {
-    previous_graph_context = self._allow_graph_literal;
-    self._allow_graph_literal = allow_graph;
-    try {
-        if self.check(TokenKind.KW_LAMBDA) {
-            return self.parse_lambda_expr();
-        }
-
-        expr = self.parse_concurrent_expr(allow_cast);
-        if self._check_js_arrow_fault() {
-            expr = self._recover_js_arrow_fault(expr);
-        }
-        if self.match_tok(TokenKind.KW_IF) {
-            if_uni = self.make_uni_token(self.previous());
-            condition = self.parse_expression(allow_cast, allow_graph=allow_graph);
-            else_uni = self.consume_uni(TokenKind.KW_ELSE);
-            else_value = self.parse_expression(allow_cast, allow_graph=allow_graph);
-            cond_cfg = CfgExpr(expr=condition, kid=[condition]);
-            val_cfg = CfgExpr(expr=expr, kid=[expr]);
-            else_cfg = CfgExpr(expr=else_value, kid=[else_value]);
-            return IfElseExpr(
-                condition=cond_cfg,
-                value=val_cfg,
-                else_value=else_cfg,
-                kid=[val_cfg, if_uni, cond_cfg, else_uni, else_cfg]
-            );
-        }
-        return expr;
-    } finally {
-        self._allow_graph_literal = previous_graph_context;
+impl Parser.parse_expression(allow_cast: bool = True) -> Expr {
+    if self.check(TokenKind.KW_LAMBDA) {
+        return self.parse_lambda_expr();
     }
+
+    expr = self.parse_concurrent_expr(allow_cast);
+    if self._check_js_arrow_fault() {
+        expr = self._recover_js_arrow_fault(expr);
+    }
+    if self.match_tok(TokenKind.KW_IF) {
+        if_uni = self.make_uni_token(self.previous());
+        condition = self.parse_expression(allow_cast);
+        else_uni = self.consume_uni(TokenKind.KW_ELSE);
+        else_value = self.parse_expression(allow_cast);
+        cond_cfg = CfgExpr(expr=condition, kid=[condition]);
+        val_cfg = CfgExpr(expr=expr, kid=[expr]);
+        else_cfg = CfgExpr(expr=else_value, kid=[else_value]);
+        return IfElseExpr(
+            condition=cond_cfg,
+            value=val_cfg,
+            else_value=else_cfg,
+            kid=[val_cfg, if_uni, cond_cfg, else_uni, else_cfg]
+        );
+    }
+    return expr;
 }
 
 impl Parser._check_js_arrow_fault -> bool {
@@ -1823,10 +1815,7 @@ impl Parser.parse_special_ref -> Expr | None {
 }
 
 impl Parser.parse_atom -> Expr {
-    if self._allow_graph_literal
-        and self.check(TokenKind.NAME)
-        and self.current().value == "graph"
-        and self.check_peek(TokenKind.LBRACE) {
+    if self.check(TokenKind.KW_GRAPH) {
         return self.parse_graph_expr();
     }
     if self.check_any(
@@ -1948,7 +1937,7 @@ impl Parser.parse_atom -> Expr {
 
 impl Parser.parse_graph_expr -> GraphExpr {
     kid: list[UniNode] = [
-        self.consume_uni(TokenKind.NAME, "graph"),
+        self.consume_uni(TokenKind.KW_GRAPH),
         self.consume_uni(TokenKind.LBRACE)
     ];
     exprs: list[Expr] = [];
@@ -3917,7 +3906,7 @@ impl Parser.parse_if_stmt -> IfStmt {
         ct_uni = self.make_uni_token(self.previous());
     }
     if_uni = self.consume_uni(TokenKind.KW_IF);
-    condition = self.parse_expression(allow_graph=False);
+    condition = self.parse_expression();
     lb_uni = self.consume_uni(TokenKind.LBRACE);
     body = self.parse_code_block_stmts();
     rb_uni = self.consume_uni(TokenKind.RBRACE);
@@ -3955,7 +3944,7 @@ impl Parser.parse_if_stmt -> IfStmt {
 
 impl Parser.parse_elif_stmt -> ElseIf {
     elif_uni = self.consume_uni(TokenKind.KW_ELIF);
-    condition = self.parse_expression(allow_graph=False);
+    condition = self.parse_expression();
     lb_uni = self.consume_uni(TokenKind.LBRACE);
     body = self.parse_code_block_stmts();
     rb_uni = self.consume_uni(TokenKind.RBRACE);
@@ -3987,7 +3976,7 @@ impl Parser.parse_else_stmt -> ElseStmt {
 
 impl Parser.parse_while_stmt -> WhileStmt {
     while_uni = self.consume_uni(TokenKind.KW_WHILE);
-    condition = self.parse_expression(allow_graph=False);
+    condition = self.parse_expression();
     lb_uni = self.consume_uni(TokenKind.LBRACE);
     body = self.parse_code_block_stmts();
     rb_uni = self.consume_uni(TokenKind.RBRACE);
@@ -4006,7 +3995,7 @@ impl Parser.parse_while_stmt -> WhileStmt {
 
 impl Parser.parse_open_stmt -> OpenStmt {
     in_uni = self.consume_uni(TokenKind.KW_IN);
-    target = self.parse_expression(allow_graph=False);
+    target = self.parse_expression();
     if not self.check(TokenKind.LBRACE) {
         self.error("expected '{' to open the region body after `in <handle>`");
     }
@@ -4132,7 +4121,7 @@ impl Parser.parse_for_stmt -> IterForStmt | InForStmt {
     }
 
     in_uni = self.consume_uni(TokenKind.KW_IN);
-    iter_expr = self.parse_expression(allow_graph=False);
+    iter_expr = self.parse_expression();
     lb_uni = self.consume_uni(TokenKind.LBRACE);
     body = self.parse_code_block_stmts();
     rb_uni = self.consume_uni(TokenKind.RBRACE);
@@ -4230,7 +4219,7 @@ impl Parser.parse_try_stmt -> TryStmt {
 impl Parser.parse_except_handler -> Except {
     except_uni = self.consume_uni(TokenKind.KW_EXCEPT);
 
-    exc_type = self.parse_expression(allow_cast=False, allow_graph=False);
+    exc_type = self.parse_expression(allow_cast=False);
     name = None;
     as_uni = None;
     if self.match_tok(TokenKind.KW_AS) {
@@ -4262,12 +4251,12 @@ impl Parser.parse_with_stmt -> WithStmt {
     with_uni = self.consume_uni(TokenKind.KW_WITH);
     exprs: list[ExprAsItem] = [];
 
-    expr = self.parse_expression(allow_cast=False, allow_graph=False);
+    expr = self.parse_expression(allow_cast=False);
     alias = None;
     as_uni = None;
     if self.match_tok(TokenKind.KW_AS) {
         as_uni = self.make_uni_token(self.previous());
-        alias = self.parse_expression(allow_graph=False);
+        alias = self.parse_expression();
     }
     exprs.append(
         ExprAsItem(
@@ -4277,12 +4266,12 @@ impl Parser.parse_with_stmt -> WithStmt {
     comma_unis: list[Token] = [];
     while self.match_tok(TokenKind.COMMA) {
         comma_unis.append(self.make_uni_token(self.previous()));
-        expr = self.parse_expression(allow_cast=False, allow_graph=False);
+        expr = self.parse_expression(allow_cast=False);
         alias = None;
         as_uni = None;
         if self.match_tok(TokenKind.KW_AS) {
             as_uni = self.make_uni_token(self.previous());
-            alias = self.parse_expression(allow_graph=False);
+            alias = self.parse_expression();
         }
         exprs.append(
             ExprAsItem(
@@ -4314,7 +4303,7 @@ impl Parser.parse_with_stmt -> WithStmt {
 
 impl Parser.parse_match_stmt -> MatchStmt {
     match_uni = self.consume_uni(TokenKind.KW_MATCH);
-    expr = self.parse_expression(allow_graph=False);
+    expr = self.parse_expression();
     lb_uni = self.consume_uni(TokenKind.LBRACE);
     cases: list[MatchCase] = [];
     while self.check(TokenKind.KW_CASE) {
@@ -4916,7 +4905,7 @@ impl Parser.parse_assignment_with_target(
         if self.check(TokenKind.KW_YIELD) {
             value = self.parse_yield_stmt();
         } else {
-            value = self.parse_expression(allow_graph=require_semi);
+            value = self.parse_expression();
         }
 
         while self.check(TokenKind.EQ)
@@ -4929,7 +4918,7 @@ impl Parser.parse_assignment_with_target(
             if self.check(TokenKind.KW_YIELD) {
                 value = self.parse_yield_stmt();
             } else {
-                value = self.parse_expression(allow_graph=require_semi);
+                value = self.parse_expression();
             }
         }
     } elif self.check_any(
@@ -4966,7 +4955,7 @@ impl Parser.parse_assignment_with_target(
         if self.check(TokenKind.KW_YIELD) {
             value = self.parse_yield_stmt();
         } else {
-            value = self.parse_expression(allow_graph=require_semi);
+            value = self.parse_expression();
         }
     }
 
@@ -6434,7 +6423,7 @@ impl Parser.parse_test -> Test {
 
 impl Parser.parse_switch_stmt -> SwitchStmt {
     switch_uni = self.consume_uni(TokenKind.KW_SWITCH);
-    target = self.parse_expression(allow_graph=False);
+    target = self.parse_expression();
     lb_uni = self.consume_uni(TokenKind.LBRACE);
     cases: list[SwitchCase] = [];
     while self.check_any(TokenKind.KW_CASE, TokenKind.KW_DEFAULT) {

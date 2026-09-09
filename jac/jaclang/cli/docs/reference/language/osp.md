@@ -765,9 +765,9 @@ Use `graph { ... }` to build and capture a structure. Ordinary `++>` expressions
 keep their existing result semantics. Inside construction, a nested child
 attaches by its roots and a following connection continues from every tip.
 
-`graph` remains usable as an identifier. Immediately before a statement block,
-as in `if graph { ... }`, it names a variable. Parenthesize a construction
-expression used in that position: `(graph { ... })`.
+`graph` is a reserved keyword. To use that spelling as an identifier, prefix
+it with a backtick: `` `graph ``. Construction expressions can appear directly
+in block heads, for example `if graph { a; }.root { ... }`.
 
 ```jac
 node Part { has name: str; }

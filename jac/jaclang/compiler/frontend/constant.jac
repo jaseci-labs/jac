@@ -496,6 +496,7 @@ class Tokens(StrEnum) {
         KW_PROT = 'KW_PROT';
         KW_HAS = 'KW_HAS';
         KW_GLOBAL = 'KW_GLOBAL';
+        KW_GRAPH = 'KW_GRAPH';
         COMMA = 'COMMA';
         KW_CAN = 'KW_CAN';
         KW_DEF = 'KW_DEF';
@@ -683,6 +684,7 @@ glob TOKEN_MAP: dict[str, str] = {
          'KW_FOREVER': 'forever',
          'KW_FROM': 'from',
          'KW_GLOBAL': 'glob',
+         'KW_GRAPH': 'graph',
          'KW_HAS': 'has',
          'KW_HERE': 'here',
          'KW_IF': 'if',

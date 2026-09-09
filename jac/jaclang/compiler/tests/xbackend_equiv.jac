@@ -138,7 +138,7 @@ def run_js_module_fixture(fixture: str, func_name: str) -> dict {
     import from jaclang.client.jac_client_compiler { JacClientCompiler }
     import from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
     prog = JacProgram();
-    source = Path(_fixture_shadow_dir()) / fixture;
+    source = (Path(_fixture_shadow_dir()) / fixture).resolve();
     prog.compile(str(source), no_cgen=True);
     assert not prog.errors_had , "\n".join(str(e) for e in prog.errors_had);
 
@@ -165,7 +165,7 @@ def run_js_module_fixture(fixture: str, func_name: str) -> dict {
         source_root = Path(source.anchor);
         compiler.compile_dependencies_recursively(source, source_root=source_root);
         (output / "package.json").write_text('{"type":"module"}');
-        js_entry = output / source.relative_to(source_root).with_suffix(".js");
+        js_entry = compiler._output_path_for(source, source_root);
         with js_entry.open("a") as stream {
             stream.write("\nconsole.log(JSON.stringify(" + func_name + "()));\n");
         }

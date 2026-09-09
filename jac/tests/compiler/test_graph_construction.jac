@@ -5,9 +5,9 @@ import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.passes.graph_lowering_pass { GraphLoweringPass }
 import from jaclang.compiler.tools.unparse_pass { UnparsePass }
 
-test "graph is a contextual keyword" {
+test "graph keyword supports escaped identifiers" {
     (module, errors) = rd_parse(
-        "def graph(x: int) -> int { return x; } with entry { y = graph(1); f = graph { a ++> b; }; }",
+        "def `graph(x: int) -> int { return x; } with entry { y = `graph(1); f = graph { a ++> b; }; }",
         "graph_keyword.jac"
     );
     assert not errors;
@@ -170,13 +170,20 @@ test "graph rejects suspension before backend lowering" {
     assert any(e.code?.code == "E0085" for e in lowered.errors_had);
 }
 
-test "graph remains an identifier before statement blocks" {
+test "graph is reserved in declarations" {
+    for source in ["def graph {}", "obj X { has graph: int; }"] {
+        (_, errors) = rd_parse(source, "graph_reserved.jac");
+        assert errors;
+    }
+}
+
+test "graph expressions work directly in block heads" {
     (module, errors) = rd_parse(
-        "with entry { graph = True; if graph { graph = False; } elif graph { graph = False; } while graph { break; } for item in graph {} with graph {} for i = 0 while i < 3 with i += graph {} }",
+        "with entry { if graph { a; }.root {} while graph { a; }.root { break; } for item in graph { a; }.nodes {} }",
         "graph_block_head.jac"
     );
     assert not errors;
-    assert not module.get_all_sub_nodes(uni.GraphExpr);
+    assert len(module.get_all_sub_nodes(uni.GraphExpr)) == 3;
 }
 
 test "graph expressions nested in block heads remain available" {

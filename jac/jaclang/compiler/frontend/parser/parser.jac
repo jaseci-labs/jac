@@ -388,7 +388,6 @@ obj Parser {
         source: Source postinit,
         diags: list[SrcDiag] = [],
         _view_body_depth: int = 0,
-        _allow_graph_literal: bool = True,
         _gen_test_idx: int = 0;
 
     def postinit;
@@ -436,7 +435,7 @@ obj Parser {
     def synchronize;
     def parse -> Module;
     def parse_module -> Module;
-    def parse_expression(allow_cast: bool = True, allow_graph: bool = True) -> Expr;
+    def parse_expression(allow_cast: bool = True) -> Expr;
     def _check_js_arrow_fault -> bool;
     def _recover_js_arrow_fault(left: Expr) -> Expr;
     def _recover_removed_marker -> ElementStmt | EmptyToken | None;
