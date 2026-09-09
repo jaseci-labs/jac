@@ -5,11 +5,10 @@ impl DeclImplMatchPass._run_impl(ir_in: Module) -> Module {
 
     self.connect_impls(ir_in.sym_tab, ir_in.sym_tab);
 
-    self._resolve_symbols_in_subtree(ir_in);
-
     for arch in ir_in.get_all_sub_nodes(Archetype) {
         self._populate_inline_init_symbols(arch);
     }
+    self._resolve_symbols_in_subtree(ir_in);
     return ir_in;
 }
 
@@ -177,7 +176,6 @@ impl DeclImplMatchPass._connect_one_impl(
         }
         bind_assignment_targets(assignment);
     }
-    self._resolve_symbols_in_subtree(impl_node);
 
     if (
         len(name_of_links) >= 1
@@ -354,9 +352,6 @@ impl DeclImplMatchPass._populate_inline_init_symbols(archetype: Archetype) -> No
         }
         ability: Ability = method_sym.decl.name_of;
 
-        body_node = ability.body
-            if not isinstance(ability.body, ImplDef)
-            else ability.body;
         for trailer_node in ability.get_all_sub_nodes(AtomTrailer) {
             if not (
                 trailer_node.parent and isinstance(trailer_node.parent, Assignment)
