@@ -22,6 +22,8 @@ before preparation reads their artifacts. Package initializers are prepared with
 the entry module. Initialization uses the manifest's module identities, and the
 server receives the initialized entry's identity, so an entry such as `app.jac`
 cannot be confused with its enclosing sealed package named `app`.
+Static assets also resolve relative to the sealed image, including configured
+asset directories outside its client distribution.
 
 The coordinator, executable-import discovery, and runtime revision record are
 Jac modules. The Python import hook reads the revision registry only after that
