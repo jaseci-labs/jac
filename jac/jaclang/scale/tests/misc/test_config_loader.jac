@@ -76,6 +76,26 @@ test "get_gateway_config preserves all sections (regression guard)" {
 }
 
 
+test "the gateway rate limiter asks for shared state by default" {
+    cfg = JacScaleConfig();
+    cfg._config = {"gateway": {"rate_limit": {"enabled": True, "per_ip_rpm": 10}}};
+    rl = cfg.get_gateway_config()["rate_limit"];
+    assert rl["shared"] is True , (
+        "a replica that keeps its own buckets multiplies the configured limit "
+        f"by the replica count: {rl!r}"
+    );
+    cfg._config = {"gateway": {}};
+    assert cfg.get_gateway_config()["rate_limit"]["shared"] is True;
+}
+
+
+test "an explicit rate_limit shared = false round-trips" {
+    cfg = JacScaleConfig();
+    cfg._config = {"gateway": {"rate_limit": {"enabled": True, "shared": False}}};
+    assert cfg.get_gateway_config()["rate_limit"]["shared"] is False;
+}
+
+
 test "get_gateway_config logs block defaults to {} when absent" {
     cfg = JacScaleConfig();
     cfg._config = {"gateway": {}};
