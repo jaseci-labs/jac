@@ -600,12 +600,13 @@ def _github_headers(
     secret: str = gh_secret,
     event: str = "issues",
     delivery: str = "delivery-1",
-    prefixed: bool = True
+    prefixed: bool = True,
+    header: str = "X-Hub-Signature-256"
 ) -> dict[str, str] {
     sig = _generate_webhook_signature(payload, secret);
     return {
         "Content-Type": "application/json",
-        "X-Hub-Signature-256": ("sha256=" + sig) if prefixed else sig,
+        header: ("sha256=" + sig) if prefixed else sig,
         "X-GitHub-Event": event,
         "X-GitHub-Delivery": delivery
     };
@@ -620,7 +621,9 @@ walker SchemeProbe {
 """Boot the github fixture app. The scale config singleton is bound to the
 copied fixture directory first, because `register` reads the secret through
 it and the harness never points it at a fixture on its own."""
-def _github_client(with_secret: bool = True) -> ScaleTestClient {
+def _github_client(
+    with_secret: bool = True, signature_header: str = ""
+) -> ScaleTestClient {
     tmp = tempfile.mkdtemp();
     for f in `glob.`glob(str(wh_fixtures_dir / "*")) {
         if Path(f).is_file() {
@@ -631,8 +634,15 @@ def _github_client(with_secret: bool = True) -> ScaleTestClient {
     toml = toml_path.read_text();
     assert "[scale.webhook]" in toml , "fixture jac.toml lost its webhook block";
     if not with_secret {
-        toml_path.write_text(toml.split("[scale.webhook]")[0]);
+        toml = toml.split("[scale.webhook]")[0];
     }
+    if signature_header {
+        # The block is the last table in the fixture file, so an appended
+        # key lands inside [scale.webhook].
+        toml = toml.rstrip("\n")
+            + f'\ngithub_signature_header = "{signature_header}"\n';
+    }
+    toml_path.write_text(toml);
     reset_scale_config();
     get_scale_config(project_dir=Path(tmp));
     client = ScaleTestClient.from_file(
@@ -863,6 +873,41 @@ test "restspec - scheme requires the webhook protocol" {
         assert False , "scheme on an HTTP walker should have raised";
     } except ValueError as e {
         assert "protocol=WEBHOOK" in str(e) , f"unexpected message: {e}";
+    }
+}
+
+test "github scheme - the configured signature header is the one required" {
+    client = _github_client(signature_header="X-Custom-GitHub-Signature");
+    try {
+        payload = json.dumps({"action": "opened"});
+        body = payload.encode("utf-8");
+        custom_only = client.post(
+            "/webhook/GithubEvent",
+            content=payload,
+            headers=_github_headers(body, header="X-Custom-GitHub-Signature")
+        );
+        assert custom_only.status_code == 200 , (
+            f"Expected 200 with only the configured header, got {custom_only.status_code}: {custom_only.text}"
+        );
+        rpt = extract_data(custom_only.json())["reports"][0];
+        assert rpt["action"] == "opened" , f"walker did not run: {rpt}";
+        default_only = client.post(
+            "/webhook/GithubEvent", content=payload, headers=_github_headers(body)
+        );
+        assert default_only.status_code in (401, 422) , (
+            f"Expected the default header to be refused, got {default_only.status_code}: {default_only.text}"
+        );
+        srv = client._server;
+        assert srv is not None , "server must be running";
+        paths = srv.app.openapi().get("paths", {});
+        names = [
+            p.get("name")
+            for p in paths["/webhook/GithubEvent"]["post"].get("parameters", [])
+        ];
+        assert "x_custom_github_signature" in names , f"configured header not declared: {names}";
+        assert "x_hub_signature_256" not in names , f"default header still declared: {names}";
+    } finally {
+        _close_github(client);
     }
 }
 

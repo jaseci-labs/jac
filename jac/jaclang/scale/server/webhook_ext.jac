@@ -40,6 +40,16 @@ def walker_scheme(server: JacAPIServer, walker_name: str) -> str {
 }
 
 
+def github_signature_header(cfg: dict[str, any]) -> str {
+    return str(cfg.get('github_signature_header') or 'X-Hub-Signature-256').strip();
+}
+
+
+def header_param_name(header: str) -> str {
+    return header.lower().replace('-', '_');
+}
+
+
 obj WebhookExtension(ServerExtension) {
     has manager: (ApiKeyManager | None) = None,
         _scheme_rate: dict = {};
@@ -73,12 +83,13 @@ obj WebhookExtension(ServerExtension) {
     ) -> list[APIParameter] {
         parameters: list[APIParameter] = [];
         if walker_scheme(server, walker_name) == GITHUB_SCHEME {
+            header = github_signature_header(get_scale_config().get_webhook_config());
             parameters = [
                 APIParameter(
-                    name='x_hub_signature_256',
+                    name=header_param_name(header),
                     data_type='string',
                     required=True,
-                    description='sha256= plus HMAC-SHA256 of the raw body, keyed by [scale.webhook].github_secret (X-Hub-Signature-256 header)',
+                    description=f"sha256= plus HMAC-SHA256 of the raw body, keyed by [scale.webhook].github_secret ({header} header, the name set by [scale.webhook].github_signature_header)",
                     kind=ParameterType.HEADER
                 ),
                 APIParameter(
@@ -149,7 +160,7 @@ obj WebhookExtension(ServerExtension) {
         if not secret {
             return _fail('UNAUTHORIZED', 'Webhook secret is not configured', 401);
         }
-        header = str(cfg.get('github_signature_header') or 'X-Hub-Signature-256');
+        header = github_signature_header(cfg);
         signature = request.headers.get(header);
         if not signature {
             return _fail('UNAUTHORIZED', f"Missing {header} header", 401);
