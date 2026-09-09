@@ -1,38 +1,23 @@
 import os;
 
-obj NativeScopeEntry {
-    has module: str,
-        strict: bool = False;
-}
-
-glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
-         NativeScopeEntry(module="jaclang.runtime.osp_tag", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.frontend.constant", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.frontend.srcloc", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.frontend.roles", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.frontend.relations", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.frontend.unitree", strict=True),
-         NativeScopeEntry(
-             module="jaclang.compiler.frontend.parser.tokens", strict=True
-         ),
-         NativeScopeEntry(module="jaclang.compiler.frontend.parser.lexer", strict=True),
-         NativeScopeEntry(
-             module="jaclang.compiler.frontend.parser.parser", strict=True
-         ),
-         NativeScopeEntry(module="jaclang.compiler.jc_materialize", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.jc_unit", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.frontend.diagnostics", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.passes.transform", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.passes.uni_pass", strict=True),
-         NativeScopeEntry(
-             module="jaclang.compiler.passes.ast_validation_pass", strict=True
-         ),
-         NativeScopeEntry(
-             module="jaclang.compiler.passes.sym_tab_build_pass", strict=True
-         ),
-         NativeScopeEntry(
-             module="jaclang.compiler.passes.decl_impl_match_pass", strict=True
-         ),
+glob NATIVE_SCOPE: tuple[str, ...] = (
+         "jaclang.runtime.osp_tag",
+         "jaclang.compiler.frontend.constant",
+         "jaclang.compiler.frontend.srcloc",
+         "jaclang.compiler.frontend.roles",
+         "jaclang.compiler.frontend.relations",
+         "jaclang.compiler.frontend.unitree",
+         "jaclang.compiler.frontend.parser.tokens",
+         "jaclang.compiler.frontend.parser.lexer",
+         "jaclang.compiler.frontend.parser.parser",
+         "jaclang.compiler.jc_materialize",
+         "jaclang.compiler.jc_unit",
+         "jaclang.compiler.frontend.diagnostics",
+         "jaclang.compiler.passes.transform",
+         "jaclang.compiler.passes.uni_pass",
+         "jaclang.compiler.passes.ast_validation_pass",
+         "jaclang.compiler.passes.sym_tab_build_pass",
+         "jaclang.compiler.passes.decl_impl_match_pass",
 
      );
 
@@ -108,8 +93,8 @@ def deactivate_scope_lowering {
 
 def native_scope_path_suffixes -> list[str] {
     if not _SCOPE_SUFFIX_CACHE {
-        for e in NATIVE_SCOPE {
-            rel = e.module.replace("jaclang.", "", 1).replace(".", "/") + ".jac";
+        for module in NATIVE_SCOPE {
+            rel = module.replace("jaclang.", "", 1).replace(".", "/") + ".jac";
             _SCOPE_SUFFIX_CACHE.append("jaclang/" + rel);
         }
     }

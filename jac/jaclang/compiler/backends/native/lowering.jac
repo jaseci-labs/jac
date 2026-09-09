@@ -9,9 +9,6 @@ import type from jaclang.compiler.backends.native.llvm.binding {
 
 enum NativeLoweringKind { CALLABLE = "callable", FIELD = "field" }
 
-# Use LLVM's dependency traversal, including function addresses in global tables.
-# Only removal of an actual definition proves a recorded failure unreachable.
-# Check before optimization can inline a demoted body and erase that evidence.
 def prepare_native_library(
     module: ModuleRef, target: TargetMachine, exports: set[str]
 ) {
@@ -49,7 +46,8 @@ def prepare_native_library(
             candidates[actual] = symbol;
         }
     }
-    for name in defined {
+    for member in members {
+        name = str(member.name);
         if name.endswith(".__jac_demoted") {
             candidates[name] = name[:-len(".__jac_demoted")];
         }

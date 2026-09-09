@@ -65,6 +65,17 @@ test "library closure checks exports and indirect dependencies before optimizati
             assert "define internal i64 @unsupported" not in text;
         }
     }
+    legacy = llvm.parse_assembly(
+        'declare i64 @lost.__jac_demoted()\n'
+        'define i64 @entry() { %v = call i64 @lost.__jac_demoted()\nret i64 %v }'
+    );
+    caught = False;
+    try {
+        prepare_native_library(legacy, machine, {"entry"});
+    } except ValueError {
+        caught = True;
+    }
+    assert caught , "a referenced legacy demotion declaration must be rejected";
 }
 
 test "method demotion is visible without changing the method ABI name" {
