@@ -410,8 +410,7 @@ impl _capture_begin -> dict[(str, any)] {
 impl _capture_end(state: dict[(str, any)]) -> str {
     import sys;
     import logging;
-    # Handlers installed by a test may outlive that test's capture streams.
-    # Rebind only those streams, preserving explicit file/StringIO handlers.
+
     loggers = [logging.getLogger(), *logging.Logger.manager.loggerDict.values()];
     for logger in loggers {
         if not isinstance(logger, logging.Logger) {

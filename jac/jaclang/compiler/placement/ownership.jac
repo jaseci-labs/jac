@@ -29,7 +29,7 @@ def workspace_snapshot -> Iterator[None] {
 }
 
 
-def seed_workspace_snapshot(project_root: str, files: dict) -> None {
+def seed_workspace_snapshot(project_root: str, files: dict) {
     snapshots = _snapshots.get();
     if snapshots is None {
         raise RuntimeError("Workspace inventory requires an active snapshot.");
@@ -59,11 +59,18 @@ def _reconcile_graph(ws: WorkspaceSpec) -> tuple[dict[str, set[str]], str] {
     files: dict[str, tuple] = {};
     snapshots = _snapshots.get();
     inventory = snapshots.get(('files', os.path.realpath(ws.project_root)))
-        if snapshots is not None else None;
+        if snapshots is not None
+        else None;
     if inventory is not None {
-        files = {p: st for (p, st) in inventory.items() if p.endswith('.jac')};
+        files = {
+            p: st
+            for (p, st) in inventory.items()
+            if p.endswith('.jac')
+        };
     }
-    for (directory, dirs, names) in os.walk(ws.project_root) if inventory is None else [] {
+    for (directory, dirs, names) in os.walk(ws.project_root)
+        if inventory is None
+        else [] {
         dirs[:] = sorted(
             d
             for d in dirs
@@ -120,7 +127,8 @@ def _reconcile_graph(ws: WorkspaceSpec) -> tuple[dict[str, set[str]], str] {
             edges[path] = set(old[1]);
             continue;
         }
-        if same_structure and disk['files'].get(path) == list(file_stamp)
+        if same_structure
+            and disk['files'].get(path) == list(file_stamp)
             and path in disk.get('imports', {}) {
             deps = set(disk['imports'][path]);
             edges[path] = deps;
@@ -222,12 +230,18 @@ def _reconcile_graph(ws: WorkspaceSpec) -> tuple[dict[str, set[str]], str] {
         with tempfile.NamedTemporaryFile(
             mode='w', dir=str(disk_path.parent), delete=False, encoding='utf-8'
         ) as tmp {
-            json.dump({
-                'format': 1, 'workspace': ws.digest, 'toolchain': toolchain,
-                'files': file_record, 'imports': import_edges,
-                'consumers': {p: sorted(names) for (p, names) in consumers.items()},
-                'digest': digest
-            }, tmp);
+            json.dump(
+                {
+                    'format': 1,
+                    'workspace': ws.digest,
+                    'toolchain': toolchain,
+                    'files': file_record,
+                    'imports': import_edges,
+                    'consumers': {p: sorted(names) for (p, names) in consumers.items()},
+                    'digest': digest
+                },
+                tmp
+            );
             tmp_path = tmp.name;
         }
         os.replace(tmp_path, str(disk_path));

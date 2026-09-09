@@ -1,9 +1,3 @@
-"""Static Jac dependencies of emitted Python code, after placement and erasure.
-
-Reading the emitted import instructions avoids keeping annotation-only and
-browser-only source imports in the server's executable closure. Resolution only
-inspects files: importing parent packages here would execute application code.
-"""
 import dis;
 import os;
 import types;

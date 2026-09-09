@@ -1,8 +1,3 @@
-"""Prepare source applications before executing their modules.
-
-The revision cache contains executable code, compiler restoration sections and
-serving metadata. Runtime consumers never reconstruct these from source.
-"""
 import hashlib;
 import marshal;
 import os;
@@ -10,11 +5,11 @@ import sys;
 import tempfile;
 import time;
 import from pathlib { Path }
-import from jaclang.runtime.prepared { PreparedApplication, publish }
+import type from jaclang.runtime.prepared { PreparedApplication }
 glob _FORMAT: int = 1,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
-def _inventory(`root: any) -> dict {
+def _inventory(`root: any, inputs: bool = False) -> dict {
     result = {};
     for (directory, dirs, files) in os.walk(`root) {
         dirs[:] = sorted(
@@ -23,6 +18,12 @@ def _inventory(`root: any) -> dict {
             if ((d not in _SKIP) and not d.startswith('.'))
         );
         for name in sorted(files) {
+            if inputs
+                and name.endswith(
+                    ('.log', '.db', '.db-wal', '.db-shm', '.sqlite', '.sqlite3')
+                ) {
+                continue;
+            }
             path = os.path.join(directory, name);
             stat = os.stat(path);
             result[path] = (stat.st_mtime_ns, stat.st_size);
@@ -35,7 +36,7 @@ def _inventory(`root: any) -> dict {
     return result;
 }
 
-def _identity() -> tuple {
+def _identity -> tuple {
     import from jaclang.compiler.driver.jir { compiler_generation }
     return (
         compiler_generation(),
@@ -44,7 +45,7 @@ def _identity() -> tuple {
     );
 }
 
-def _write(path: any, value: any) -> None {
+def _write(path: any, value: any) {
     path.parent.mkdir(parents=True, exist_ok=True);
     tmp: str = "";
     try {
@@ -138,7 +139,7 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict {
             if (not src or not os.path.realpath(src).startswith((`root + os.sep))) {
                 continue;
             }
-            access = getattr(`node, 'access', None);
+            access = `node?.access;
             auth = not ((access is not None) and (access.tag.name == Tok.KW_PUB));
             seen.add((binding.name, binding.kind));
             cross.append(
@@ -170,18 +171,86 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict {
     );
 }
 
-def _check(program: any, before: any) -> None {
+def _check(program: any, before: any) {
     errors = program.errors_had[before:];
     if errors {
         raise RuntimeError('\n'.join(e.pretty_print() for e in errors));
     }
 }
 
-"""Build or restore an application without executing application modules.
+def _prepare_sealed(
+    `entry: str, program: any, image_root: str, entries: list
+) -> PreparedApplication {
+    import json;
+    import from jaclang.runtime.prepared { PreparedApplication, publish }
+    import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL, CLIENT_DIST_REL }
+    import from jaclang.compiler.driver.jir {
+        HEADER_SIZE,
+        SECTIONS_MAGIC,
+        PRECOMPILE_SENTINEL,
+        read_sections,
+        read_bytecode_only,
+        patch_co_filenames_bytes
+    }
+    import from jaclang.compiler.backends.py.artifact_imports { runtime_sources }
+    manifest = json.loads((Path(image_root) / SERVE_MANIFEST_REL).read_text());
+    manifest['root'] = image_root;
+    revision = PreparedApplication(
+        image_root, `entry, services=tuple(entries[1:]), dev=False
+    );
+    dist = Path(image_root) / CLIENT_DIST_REL;
+    if dist.is_dir() {
+        revision.client_dist = str(dist);
+        revision.client_enabled = True;
+    }
+    for path in entries {
+        revision.manifests[path] = manifest;
+    }
+    pending = set(entries);
+    pending.update(
+        os.path.realpath(os.path.join(image_root, binding['src']))
+        for binding in manifest.get('cross_bindings', [])
+    );
+    compiler = program._get_compiler();
+    while pending {
+        path = pending.pop();
+        if path in revision.code {
+            continue;
+        }
+        sealed = compiler._sealed_jir_data(path);
+        if sealed is None {
+            raise RuntimeError(
+                f'Sealed application is missing executable artifact: {path}'
+            );
+        }
+        (data, artifact_root) = sealed;
+        bytecode = read_bytecode_only(data);
+        if bytecode is None {
+            raise RuntimeError(
+                f'Sealed application has no executable bytecode: {path}'
+            );
+        }
+        revision.code[path] = marshal.loads(
+            patch_co_filenames_bytes(bytecode, PRECOMPILE_SENTINEL, artifact_root)
+        );
+        pos = data.find(SECTIONS_MAGIC, HEADER_SIZE);
+        if pos >= 0 {
+            compiler._restore_sections(
+                path,
+                compiler.selfhost.resolve(path, program),
+                read_sections(data, pos + len(SECTIONS_MAGIC))
+            );
+        }
+        revision.native[path] = compiler.get_native_interop_setup(path, program);
+        pending.update(
+            runtime_sources(revision.code[path], path, image_root)
+                - revision.code.keys()
+        );
+    }
+    publish(revision);
+    return revision;
+}
 
-    Each call establishes a new filesystem snapshot. Publish happens only after
-    every required artifact has been prepared successfully.
-    """
 def prepare_application(
     `entry: str,
     program: any,
@@ -195,20 +264,26 @@ def prepare_application(
     `entry = os.path.realpath(`entry);
     `root = os.path.realpath((`root or os.path.dirname(`entry)));
     entries = `list(`dict.fromkeys([`entry, *(os.path.realpath(p) for p in services)]));
+    import from jaclang.server.sealed_serve { sealed_root_for }
+    image_root = sealed_root_for(`entry);
+    if image_root is not None {
+        console.print('  Loading sealed application artifacts');
+        return _prepare_sealed(`entry, program, image_root, entries);
+    }
     import from jaclang.compiler.driver.pass_driver { compile_progress }
     started = time.monotonic();
     active = [];
     completed: list[int] = [0];
-    def begin(path: any) -> None {
+    def begin(path: any) {
         active.append(path);
     }
-    def finish(path: any) -> None {
+    def finish(path: any) {
         if (path in active) {
             active.remove(path);
         }
         completed[0] += 1;
     }
-    def progress() -> str {
+    def progress -> str {
         current = ' · ' + os.path.relpath(active[-1], `root) if active else '';
         return f'Preparing application: {completed[0]} modules · {(
             time.monotonic() - started
@@ -241,7 +316,8 @@ def _prepare(
     dev: any,
     console: any
 ) -> PreparedApplication {
-    inventory = _inventory(`root);
+    import from jaclang.runtime.prepared { PreparedApplication, publish }
+    inventory = _inventory(`root, inputs=True);
     import from jaclang.compiler.placement.ownership { seed_workspace_snapshot }
     seed_workspace_snapshot(`root, inventory);
     key = (_FORMAT, _identity(), inventory, entries, client, dev);
@@ -300,19 +376,22 @@ def _prepare(
     console.print('  Compiling server modules and placement metadata...');
     before = len(program.errors_had);
     for path in entries {
+        actual = compiler.selfhost.resolve(path, program);
+        actual_before = len(actual.errors_had);
         program.compile(path);
+        _check(actual, actual_before);
         _check(program, before);
     }
     if client {
         console.print('  Compiling client and native artifacts...');
         revision.client_compiler.compile(None, Path(`entry));
-        revision.client_compiler._emit_na_wasm(Path(`entry));
         if not dev {
             bundler = revision.client_compiler.vite_bundler;
             bundler.build(
                 entry_file=(revision.client_compiler.compiled_dir / '_entry.js')
             );
         }
+        revision.client_compiler._emit_na_wasm(Path(`entry));
         _check(program, before);
     }
     import from jaclang.compiler.frontend { unitree as uni }
@@ -354,6 +433,16 @@ def _prepare(
         code = compiler.get_bytecode(path, program);
         _check(program, before);
         if (code is None) {
+            import from jaclang.compiler.driver.source_failures {
+                module_scoped_failure_details,
+                bootstrap_tier_failure_details
+            }
+            actual = compiler.selfhost.resolve(path, program);
+            details = module_scoped_failure_details(path, actual)
+                or bootstrap_tier_failure_details(path);
+            if details {
+                raise RuntimeError(details);
+            }
             raise RuntimeError(f'No executable artifact produced for {path}');
         }
         revision.code[path] = code;
@@ -415,7 +504,6 @@ def _prepare(
     return revision;
 }
 
-"""Resolve the route table during preparation, including metadata-only builds."""
 def prepare_route_metadata(`root: str) -> (list[str] | None) {
     if not (Path(`root) / 'pages').is_dir() {
         return None;

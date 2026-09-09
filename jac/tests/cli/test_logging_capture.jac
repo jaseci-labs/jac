@@ -12,12 +12,10 @@ test "capture restores surviving log handlers without redirecting explicit sinks
     external = io.StringIO();
     explicit = logging.StreamHandler(external);
     logger.addHandler(explicit);
-    output = None;
-    errors = None;
     state = _capture_begin();
+    output = logging.StreamHandler(sys.stdout);
+    errors = logging.StreamHandler(sys.stderr);
     try {
-        output = logging.StreamHandler(sys.stdout);
-        errors = logging.StreamHandler(sys.stderr);
         logger.addHandler(output);
         logger.addHandler(errors);
         logger.info('during capture');

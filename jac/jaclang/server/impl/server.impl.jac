@@ -7,10 +7,7 @@ import os;
 import from inspect { iscoroutine }
 import from typing { get_type_hints }
 import from jaclang.data.serializer { Serializer }
-import from jaclang.client.client_bundle {
-    ClientBundleError,
-    MissingBunError
-}
+import from jaclang.client.client_bundle { ClientBundleError, MissingBunError }
 import from jaclang.runtime.exceptions { ReadOnlyRetry, WriteConflict }
 import from jaclang.compiler.frontend.constant { Constants as Con }
 import from jaclang.server.net { PORT_RETRY_LIMIT }
@@ -912,8 +909,9 @@ impl ModuleIntrospector.spa_fallback_status(url_path: str) -> int {
 
 impl ModuleIntrospector._load_spa_routes -> (list[str] | None) {
     import from jaclang.server.sealed_serve { serve_manifest_for }
-    path: str = getattr(self._module, '__file__', '') if self._module
-        else str(Path(self.base_path) / (self.module_name + '.jac'));
+    path: str = getattr(self._module, '__file__', '')
+        if self._module
+        else str(Path(self.base_path or '.') / (self.module_name + '.jac'));
     manifest = serve_manifest_for(path) if path else None;
     return manifest.get('spa_routes') if manifest is not None else None;
 }

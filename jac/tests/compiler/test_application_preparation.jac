@@ -108,6 +108,92 @@ test "source changes invalidate a prepared revision and replace its access metad
     }
 }
 
+test "runtime logs and toolchain directories do not become application inputs" {
+    import jaclang.compiler.driver.application as preparation;
+    import from jaclang.runtime.prepared { containing_application }
+    with tempfile.TemporaryDirectory(prefix='jac-prepared-log-') as tmp {
+        base = Path(tmp);
+        path = base / 'main.jac';
+        log = base / 'server.log';
+        path.write_text("def:pub hello -> str { return 'hello'; }\n");
+        log.write_text('starting');
+        original = preparation._manifest;
+        def logging_manifest(*args: any, **kwargs: any) -> dict {
+            log.write_text(log.read_text() + '\ncompiling');
+            return original(*args, **kwargs);
+        }
+        try {
+            with patch.object(preparation, '_manifest', side_effect=logging_manifest) {
+                prepare_application(str(path), JacProgram(), tmp);
+            }
+            log.write_text('still running');
+            with patch.object(
+                JacCompiler,
+                '_compile_pipeline',
+                side_effect=AssertionError('log invalidated revision')
+            ) {
+                prepare_application(str(path), JacProgram(), tmp);
+            }
+            assert containing_application(str(base / 'dynamic.jac')) is not None;
+            assert containing_application(str(base / '.jachome' / 'runtime.jac'))
+                is None;
+            assert containing_application(str(base / 'node_modules' / 'package.jac'))
+                is None;
+        } finally {
+            forget(str(path));
+        }
+    }
+}
+
+test "sealed preparation consumes baked artifacts without compiling retained source" {
+    import json;
+    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.server.sealed_serve { client_dist_for }
+    with tempfile.TemporaryDirectory(prefix='jac-prepared-sealed-') as tmp {
+        base = Path(tmp);
+        path = base / 'sealed_app.jac';
+        path.write_text("def:pub hello -> str { return 'sealed'; }\n");
+        try {
+            first = prepare_application(str(path), JacProgram(), tmp);
+            data = get_module_cache_path(str(path)).read_bytes();
+            forget(str(path));
+            (base / '_precompiled').mkdir();
+            (base / '_precompiled' / 'MANIFEST.json').write_text(
+                json.dumps({'modules': {'sealed_app.jac': {}}})
+            );
+            (base / '.jac' / 'serve_manifest.json').write_text(
+                json.dumps(first.manifests[str(path)])
+            );
+            dist = base / '.jac' / 'client' / 'dist';
+            dist.mkdir(parents=True);
+            (dist / 'arena.wasm').write_bytes(b'baked wasm');
+            path.write_text('retained source must never be analyzed');
+            with patch.object(
+                JacCompiler, '_sealed_jir_data', return_value=(data, tmp)
+            ), patch.object(
+                JacCompiler,
+                '_compile_pipeline',
+                side_effect=AssertionError('sealed source was compiled')
+            ), patch.object(
+                JacCompiler,
+                'get_bytecode',
+                side_effect=AssertionError('sealed startup used source loader')
+            ) {
+                prepared = prepare_application(
+                    str(path), JacProgram(), tmp, client=True, dev=False
+                );
+                module: any = initialize_application(prepared);
+            }
+            assert module.hello() == 'sealed';
+            assert prepared.client_compiler is None;
+            assert client_dist_for(str(path)) == dist;
+            assert (dist / 'arena.wasm').read_bytes() == b'baked wasm';
+        } finally {
+            forget(str(path));
+        }
+    }
+}
+
 
 test "failed preparation does not replace the last working revision" {
     tmp = tempfile.mkdtemp(prefix="jac-prepared-fail-");

@@ -442,12 +442,12 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
                 self.client_compiler = prepared.client_compiler;
             }
         }
-        # Keep the live revision available until compilation has succeeded.
+
         sys.modules.pop(self.module_name, None);
         Jac.loaded_modules.pop(self.module_name, None);
         if previous is not None {
             for (name, loaded) in list(sys.modules.items()) {
-                source = getattr(loaded, '__file__', None);
+                source = loaded?.__file__;
                 if source and os.path.realpath(source) in previous.code {
                     sys.modules.pop(name, None);
                     Jac.loaded_modules.pop(name, None);

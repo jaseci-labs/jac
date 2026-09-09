@@ -96,7 +96,9 @@ def prepare_inprocess_runtime(
         project_root = str(cfg.project_root) if cfg and cfg.project_root else base;
         services = service_apps(cfg, served) if cfg and served else [];
         prepared = prepare_application(
-            jac_file, Jac.get_program(), project_root,
+            jac_file,
+            Jac.get_program(),
+            project_root,
             [svc.entry_path(project_root) for svc in services]
         );
         initialize_application(prepared, cfg, served);

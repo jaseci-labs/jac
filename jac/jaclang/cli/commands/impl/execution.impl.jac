@@ -1259,10 +1259,11 @@ impl serve(
         project_root = str(cfg.project_root) if cfg and cfg.project_root else base;
         services = service_apps(cfg, served) if cfg and served else [];
         prepared = prepare_application(
-            filename, Jac.get_program(), project_root,
+            filename,
+            Jac.get_program(),
+            project_root,
             [svc.entry_path(project_root) for svc in services],
-            not no_client and not faux
-                and (served is None or served.kind == "web-app"),
+            not no_client and not faux and (served is None or served.kind == "web-app"),
             dev
         );
         console.print("Initializing application...", style="bold");
@@ -1388,7 +1389,6 @@ impl serve(
         } except Exception as e {
             console.warning(f"HMR initialization failed: {e}");
         }
-
     }
 
     def _announce_ready(actual_port: int) {

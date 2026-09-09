@@ -12,7 +12,9 @@ publishes it only after all required artifacts succeed. The runtime entry point
 is `jaclang.runtime.prepared.initialize_application(prepared, config, served)`.
 Programmatic servers must prepare their source application before loading it.
 `JacTestClient` and the in-process scale host perform preparation themselves.
-Sealed applications continue to supply their prebuilt serving manifests.
+Sealed applications load their executable closure, native sections, serving
+manifest, and client distribution directly from the image. They never enter
+source analysis or rebuild their client bundle at startup.
 
 The coordinator, executable-import discovery, and runtime revision record are
 Jac modules. The Python import hook reads the revision registry only after that
@@ -23,7 +25,8 @@ The revision holds server bytecode, compiler restoration sections, endpoint
 access and boundary metadata, client output and native output. The runtime
 import hook consumes prepared bytecode and native bindings. A dynamic import
 outside the prepared closure explicitly requests additional preparation and
-prints the module responsible.
+prints the module responsible. Hidden runtime directories, virtual environments,
+and installed dependency directories do not belong to this source boundary.
 
 The revision cache lives in `.jac/cache/applications`. Its identity includes the
 compiler generation, selected roots and targets, active profile, source inventory,
@@ -32,6 +35,9 @@ restores without frontend analysis or rebuilding its client/native outputs.
 Missing outputs, changed inputs, unreadable revision records, and `JAC_REBUILD`
 trigger preparation. The Python bytecode ABI is part of the revision identity.
 A failed revision does not replace the previously published revision.
+Runtime logs and database files do not invalidate the source inventory.
+Production client builds finish before initialization; a failed build aborts
+startup and a corrected application can be prepared on the next run.
 
 Workspace ownership has a separate persistent index in `.jac/cache/ownership.json`.
 A preparation transaction supplies its inventory to the ownership consumer.

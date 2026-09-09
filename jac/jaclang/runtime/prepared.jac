@@ -1,8 +1,3 @@
-"""Executable application revisions. This module must not import the compiler.
-
-Preparation publishes a complete revision before module initialization begins.
-The import hook and serving layer only read the published artifacts.
-"""
 import os;
 import types;
 import from jaclang.runtime.object_model { field }
@@ -22,7 +17,7 @@ obj PreparedApplication {
 
 glob _applications: dict[str, PreparedApplication] = {};
 
-def publish(application: PreparedApplication) -> None {
+def publish(application: PreparedApplication) {
     _applications[os.path.realpath(application.entry)] = application;
 }
 
@@ -46,7 +41,7 @@ def prepared_manifest(path: str) -> (dict | None) {
     return application.manifests.get(os.path.realpath(path)) if application else None;
 }
 
-def forget(`entry: str) -> None {
+def forget(`entry: str) {
     _applications.pop(os.path.realpath(`entry), None);
 }
 
@@ -56,6 +51,10 @@ def containing_application(path: str) -> (PreparedApplication | None) {
         a
         for a in _applications.values()
         if resolved.startswith((a.root + os.sep))
+            and not any(
+                part.startswith('.') or part in ('node_modules', 'venv', '__pycache__')
+                for part in os.path.relpath(resolved, a.root).split(os.sep)
+            )
     ];
     return max(candidates, key=lambda (a: any) { len(a.root); }, `default=None);
 }
@@ -95,6 +94,6 @@ def initialize_application(
     return module;
 }
 
-def clear() -> None {
+def clear {
     _applications.clear();
 }

@@ -14,8 +14,8 @@ test "ownership cache survives a new process state without parsing" {
         base = Path(tmp);
         (base / 'jac.toml').write_text(
             '[project]\nname="snapshot"\ndefault-app="a"\n'
-            + '[apps.a]\nkind="service"\npath="a"\n'
-            + '[apps.b]\nkind="service"\npath="b"\n'
+                + '[apps.a]\nkind="service"\npath="a"\n'
+                + '[apps.b]\nkind="service"\npath="b"\n'
         );
         for name in ['a', 'b'] {
             (base / name).mkdir();
@@ -35,7 +35,9 @@ test "ownership cache survives a new process state without parsing" {
         ownership._graphs.clear();
         ownership._imports.clear();
         with patch.object(
-            ownership, 'parse', side_effect=AssertionError('ownership reparsed unchanged source')
+            ownership,
+            'parse',
+            side_effect=AssertionError('ownership reparsed unchanged source')
         ) {
             with ownership.workspace_snapshot() {
                 assert ownership.consumer_graph(ws) == first;

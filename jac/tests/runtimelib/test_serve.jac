@@ -312,6 +312,8 @@ lazily at start() so test-mode servers (port=0) stay socket-free and the app
 can be built and dispatched fully in-process."""
 test "api server construction is socket-free and builds a serving app" {
     import from jaclang.server.serving.app { ServingApp }
+    import from jaclang.compiler.driver.application { prepare_application }
+    prepare_application(fixture_abs_path('serve_api.jac'), Jac.get_program(), FIXTURES);
     with TemporaryDirectory() as tmpdir {
         port = get_free_port();
         Jac.set_base_path(tmpdir);
