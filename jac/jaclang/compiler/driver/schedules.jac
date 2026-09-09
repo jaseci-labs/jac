@@ -3,6 +3,7 @@ import from contextvars { ContextVar }
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
+import from jaclang.compiler.passes.graph_lowering_pass { GraphLoweringPass }
 import from jaclang.compiler.passes.boundary_analysis_pass { BoundaryAnalysisPass }
 import from jaclang.compiler.passes.decl_impl_match_pass { DeclImplMatchPass }
 import from jaclang.compiler.passes.endpoint_effect_pass { EndpointEffectPass }
@@ -24,7 +25,13 @@ def get_symtab_ir_sched -> list[type[Transform]] {
         }
     }
     return validate_schedule(
-        [ASTValidationPass, SymTabBuildPass, DeclImplMatchPass, PlacementApplyPass],
+        [
+            GraphLoweringPass,
+            ASTValidationPass,
+            SymTabBuildPass,
+            DeclImplMatchPass,
+            PlacementApplyPass
+        ],
         origin='symtab-ir schedule'
     );
 }
@@ -180,7 +187,13 @@ def get_boundary_analysis_sched -> list[type[Transform]] {
 
 def get_bootstrap_ir_sched -> list[type[Transform]] {
     return validate_schedule(
-        [ASTValidationPass, SymTabBuildPass, DeclImplMatchPass, SemanticAnalysisPass],
+        [
+            GraphLoweringPass,
+            ASTValidationPass,
+            SymTabBuildPass,
+            DeclImplMatchPass,
+            SemanticAnalysisPass
+        ],
         origin='bootstrap-ir schedule'
     );
 }
@@ -201,6 +214,7 @@ def get_ir_gen_sched(
         }
 
         passes: list[type[Transform]] = [
+            GraphLoweringPass,
             ASTValidationPass,
             SymTabBuildPass,
             DeclImplMatchPass,

@@ -212,7 +212,7 @@ needed: `sys.exit(0)` and `re.match(...)` are attribute reads and always parse.
 ```text
 abst and any as assert async await awaiting bool break by bytes can case class comptime
 continue def default del deleter dict disengage edge elif else entry enum except exit f32 f64
-finally float flow for forever from getter glob has here i16 i32 i64 i8 if imm
+finally float flow for forever from getter glob graph has here i16 i32 i64 i8 if imm
 impl import in include init int is lambda lin list match mut node not obj or
 override own postinit priv props protect pub raise report return root self sem set setter skip
 spawn static str super switch test try tuple type u16 u32 u64 u8 visit visitor wait

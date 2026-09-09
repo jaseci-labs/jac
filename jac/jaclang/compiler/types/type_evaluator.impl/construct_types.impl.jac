@@ -203,8 +203,34 @@ impl TypeEvaluator._tuple_literal_index_type(
     return self._extract_tuple_element_type(cls, real_idx);
 }
 
+impl TypeEvaluator._container_value_type(value_type: TypeBase, at: Expr) -> TypeBase {
+    import from jaclang.compiler.frontend.unitree { in_type_position }
+    if in_type_position(at, include_subscripts=False) {
+        return value_type;
+    }
+    if isinstance(value_type, UnionType) {
+        return self._union_narrowed_types(
+            [self._container_value_type(member, at) for member in value_type.types]
+        );
+    }
+    if isinstance(value_type, ClassType)
+        and value_type.is_instantiable_class()
+        and not value_type.is_class_instance()
+        and not value_type.is_any_instance()
+        and not self.is_any_type(value_type)
+        and self.prefetch is not None
+        and self.prefetch.type_class is not None {
+        wrapped = self.prefetch.type_class.clone_as_instance();
+        wrapped.private.type_args = [self._convert_to_instance(value_type)];
+        return wrapped;
+    }
+    return value_type;
+}
+
 impl TypeEvaluator._get_iterable_element_type(
-    iterable_type: TypeBase, node_for_error: UniNode | None = None
+    iterable_type: TypeBase,
+    node_for_error: UniNode | None = None,
+    is_async: bool = False
 ) -> TypeBase | None {
     if iterable_type.is_any_instance() {
         return iterable_type;
@@ -219,7 +245,7 @@ impl TypeEvaluator._get_iterable_element_type(
             is_incomplete=iterable_type.is_incomplete
         );
     }
-    if isinstance(iterable_type, ClassType) {
+    if isinstance(iterable_type, ClassType) and not is_async {
         members: list[TypeBase] = [];
         if iterable_type.is_namedtuple() {
             scope = iterable_type.shared.symbol_table;
@@ -249,14 +275,17 @@ impl TypeEvaluator._get_iterable_element_type(
         }
     }
     iter_type = self.get_type_of_magic_method_call(
-        iterable_type, "__iter__", [], node_for_error
+        iterable_type, "__aiter__" if is_async else "__iter__", [], node_for_error
     );
     if not isinstance(iter_type, ClassType) {
         return None;
     }
     next_type = self.get_type_of_magic_method_call(
-        iter_type, "__next__", [], node_for_error
+        iter_type, "__anext__" if is_async else "__next__", [], node_for_error
     );
+    if is_async and next_type is not None and node_for_error is not None {
+        next_type = self._unwrap_awaitable_type(next_type, node_for_error);
+    }
     if next_type and not isinstance(next_type, UnknownType) {
         return self._convert_to_instance(next_type);
     }
@@ -340,22 +369,23 @@ impl TypeEvaluator.get_type_of_int(nd: Int) -> TypeBase {
 }
 
 impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
+    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     if node_.name_spec.type is not None {
         return node_.name_spec.type;
     }
     func_type_params: list[TypeVarType] | None = None;
     if node_.type_params {
         func_type_params = [
-            TypeVarType(
-                name=tp.sym_name,
-                bound=self._convert_to_instance(self.get_type_of_expression(tp.bound))
-                    if tp.bound
-                    else None
-            ) for tp in node_.type_params
+            self._type_var_from_param(tp)
+            for tp in node_.type_params
+            if not tp.is_comptime
         ];
     }
     if not isinstance(node_.signature, FuncSignature) {
         flags = FunctionTypeFlags.Null;
+        if ModuleFacts.ability_is_generator(node_) {
+            flags = flags | FunctionTypeFlags.Generator;
+        }
         if node_.is_static {
             flags = flags | FunctionTypeFlags.StaticMethod;
         }
@@ -492,6 +522,9 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
     }
 
     flags = FunctionTypeFlags.Null;
+    if ModuleFacts.ability_is_generator(node_) {
+        flags = flags | FunctionTypeFlags.Generator;
+    }
     if self._is_ability_staticmethod(node_) {
         flags = flags | FunctionTypeFlags.StaticMethod;
     }
@@ -586,6 +619,12 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
             and not (is_builtin_class and node_.name_spec.sym_name == "Node")
         ) {
             base_classes.append(self.prefetch.node_class);
+        } elif (
+            node_.sym_category == SymbolType.EDGE_ARCH
+            and self.prefetch.edge_class
+            and not (is_builtin_class and node_.name_spec.sym_name == "Edge")
+        ) {
+            base_classes.append(self.prefetch.edge_class);
         }
     }
 

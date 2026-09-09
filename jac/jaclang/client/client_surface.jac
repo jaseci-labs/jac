@@ -72,13 +72,14 @@ def with_runtime_globals(
     missing = [
         name
         for name in names
-        if re.search(
-            r"(?m)^(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+"
-                + re.escape(name)
-                + r"\b",
-            js_code
-        )
-            is None
+        if re.search(r"\b" + re.escape(name) + r"\b", js_code) is not None
+            and re.search(
+                r"(?m)^(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+"
+                    + re.escape(name)
+                    + r"\b",
+                js_code
+            )
+                is None
     ];
     if not missing {
         return js_code;

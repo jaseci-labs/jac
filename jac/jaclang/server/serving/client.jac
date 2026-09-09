@@ -56,7 +56,7 @@ obj ClientResponse {
         return 200 <= self.status_code < 400;
     }
 
-    async def aiter_raw -> any {
+    async def aiter_raw -> AsyncIterator[bytes] {
         if self.reader is None {
             if self.body {
                 yield self.body;
@@ -107,7 +107,7 @@ obj ClientResponse {
         }
     }
 
-    async def aiter_lines -> any {
+    async def aiter_lines -> AsyncIterator[bytes] {
         buffer = b'';
         async for block in self.aiter_raw() {
             buffer += block;

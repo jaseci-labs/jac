@@ -35,6 +35,15 @@ test "a compiler module still resolves into the self-host program" {
     assert cache.resolve(log_mod, prog, force=True) is prog;
 }
 
+test "shared construction runtime resolves into its consumer program" {
+    prog = JacProgram();
+    cache = prog._get_compiler().selfhost;
+    fragment = _pkg_path("runtime/graph_fragment.jac");
+    assert cache.owns(fragment);
+    assert cache.resolve(fragment, prog) is prog;
+    assert cache.resolve(fragment, cache.program) is cache.program;
+}
+
 
 test "the self-host program keeps its own native stdlib imports" {
     prog = JacProgram();

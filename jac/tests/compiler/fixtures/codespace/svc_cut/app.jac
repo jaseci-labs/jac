@@ -15,7 +15,7 @@ async def local_report -> int {
     return len(await fetch_items("all"));
 }
 
-def:pub app -> JsxElement {
+async def:pub app -> JsxElement {
     items = await fetch_items("web");
     return <ul>{items}</ul>;
 }

@@ -74,7 +74,10 @@ impl scratch_requested(base_path: (str | None)) -> bool {
         not in ('', '0', 'false', 'no') {
         return True;
     }
-    return bool(base_path) and os.path.abspath(base_path) in _scratch_bases;
+    if not base_path {
+        return False;
+    }
+    return os.path.abspath(base_path) in _scratch_bases;
 }
 
 

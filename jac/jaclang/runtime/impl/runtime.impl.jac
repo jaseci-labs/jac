@@ -369,7 +369,18 @@ impl JacWalker.`spawn(
         }
     }
     if warch.__jac_async__ {
-        return JacRuntimeInterface.async_spawn_call(`walker=`walker, nd=loc);
+        import asyncio;
+        import from typing { cast }
+        task = cast(
+            Coroutine[any, any, WalkerArchetype],
+            JacRuntimeInterface.async_spawn_call(`walker=`walker, nd=loc)
+        );
+        try {
+            asyncio.get_running_loop();
+        } except RuntimeError {
+            return asyncio.run(task);
+        }
+        return task;
     }
     return JacRuntimeInterface.spawn_call(`walker=`walker, nd=loc);
 }
@@ -1088,6 +1099,15 @@ impl JacGraph.connect(
     left = [left] if isinstance(left, NodeArchetype) else left;
     right_is_node = isinstance(right, NodeArchetype);
     right = [right] if isinstance(right, NodeArchetype) else right;
+    for operands in (left, right) {
+        for operand in operands {
+            if not isinstance(operand, NodeArchetype) {
+                raise TypeError(
+                    "connect operands must be nodes or flat collections of nodes"
+                );
+            }
+        }
+    }
     edges = [];
     for i in left {
         _left = i.__jac__;

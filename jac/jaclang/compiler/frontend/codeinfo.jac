@@ -398,7 +398,11 @@ def bundled_stdlib_module_of(file_path: str) -> (str | None) {
     return None;
 }
 
-glob CLIENT_RUNTIME_SOURCE_PATHS: list[str] = [
+glob SHARED_RUNTIME_MODULES: tuple[str, ...] = (
+         "jaclang.runtime.graph_fragment",
+
+     ),
+     CLIENT_RUNTIME_SOURCE_PATHS: list[str] = [
          "client/client_runtime.jac",
          "client/client_runtime_core.jac",
          "client/solid_runtime.jac",
@@ -428,6 +432,20 @@ def is_client_by_location(file_path: str) -> bool {
         }
     }
     return False;
+}
+
+def is_shared_runtime_module(file_path: str) -> bool {
+    import os;
+    import jaclang;
+    if not file_path or not jaclang?.__file__ {
+        return False;
+    }
+    package = os.path.dirname(os.path.realpath(str(jaclang.__file__)));
+    path = os.path.realpath(file_path);
+    return any(
+        path == os.path.join(package, *module.split('.')[1:]) + '.jac'
+        for module in SHARED_RUNTIME_MODULES
+    );
 }
 
 def is_bundled_native_module(module_name: str) -> bool {
@@ -519,7 +537,7 @@ def resolve_native_module(
             _native_variant_path(os.path.join(base_dir, clean))
         );
         if local is not None {
-            return (f"{clean}.jac", local);
+            return (str(os.path.relpath(local, os.path.abspath(base_dir))), local);
         }
         if path_name != clean {
             search = os.path.abspath(base_dir);
@@ -541,18 +559,21 @@ def resolve_native_module(
     }
 
     if clean.startswith('jaclang.') {
+        import jaclang as _jl;
+        _pkg = os.path.dirname(os.path.abspath(_jl.__file__));
+        _parts = clean.split('.')[1:];
+        _cand = os.path.join(_pkg, *_parts) + '.jac';
         import from jaclang.compiler.native_scope {
             in_native_scope_path,
             scope_lowering_active
         }
         if scope_lowering_active() {
-            import jaclang as _jl;
-            _pkg = os.path.dirname(os.path.abspath(_jl.__file__));
-            _parts = clean.split('.')[1:];
-            _cand = os.path.join(_pkg, *_parts) + '.jac';
             if in_native_scope_path(_cand) and os.path.isfile(_cand) {
                 return (path_name, _cand);
             }
+        }
+        if clean in SHARED_RUNTIME_MODULES and os.path.isfile(_cand) {
+            return (path_name, _cand);
         }
     }
 

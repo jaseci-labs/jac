@@ -66,6 +66,25 @@ test "closure: nested def reads an enclosing param" {
     assert f(0, 9) == 0;
 }
 
+test "closure: immediately invoked lambdas infer reference returns" {
+    (prog, module) = compile_na_inline_ir(
+        "immediate_reference",
+        """
+obj Box { has value: int; }
+def compute(value: int) -> int {
+    item = (lambda { result = Box(value); return result; })();
+    return item.value;
+}
+"""
+    );
+    assert not prog.errors_had , "\n".join(str(e) for e in prog.errors_had);
+    assert module.gen.native_engine is not None;
+    call = get_func(
+        module.gen.native_engine, "compute", ctypes.c_int64, ctypes.c_int64
+    );
+    assert call(37) == 37;
+}
+
 test "closure: nested method helpers retain the receiver and outer parameters" {
     (prog, module) = compile_na_inline_ir(
         "method_receiver",

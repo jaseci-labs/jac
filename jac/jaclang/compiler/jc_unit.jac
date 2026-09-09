@@ -13,7 +13,7 @@ import from jaclang.compiler.jc_materialize {
 
 import from jaclang.compiler.frontend.parser.parser { parse_program }
 import from jaclang.compiler.frontend.parser.tokens { SrcDiag, CommentData }
-import from jaclang.compiler.frontend.unitree { Module, UniNode }
+import from jaclang.compiler.frontend.unitree { GraphExpr, Module, UniNode }
 import from jaclang.compiler.frontend.roles { AccessorsRole, BodyRole, SpecRole }
 import from jaclang.compiler.frontend.constant { CodeContext }
 import from jaclang.compiler.frontend.unitree { Import }
@@ -173,7 +173,11 @@ def _finish_unit(
 ) -> int {
     validation: (ASTValidationPass | None) = None;
     symbols: (SymTabBuildPass | None) = None;
-    if _JC.early_context != 0 and _JC.p_errs == 0 and _JC.lex_errs == 0 {
+
+    if _JC.early_context != 0
+        and _JC.p_errs == 0
+        and _JC.lex_errs == 0
+        and not mod.get_all_sub_nodes(GraphExpr) {
         if _JC.early_context == 2 {
             mod.set_code_context(CodeContext.CLIENT);
         } elif _JC.early_context == 3 {

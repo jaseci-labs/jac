@@ -1273,6 +1273,19 @@ impl NormalizePass.enter_atom_unit with uni.AtomUnit entry {
     here.set_kids(nodes=new_kid);
 }
 
+impl NormalizePass.enter_graph_expr with uni.GraphExpr entry {
+    kids: list[uni.UniNode] = [
+        here.gen_token(Tok.NAME, "graph"),
+        here.gen_token(Tok.LBRACE)
+    ];
+    for expr in here.exprs {
+        kids.append(expr);
+        kids.append(here.gen_token(Tok.SEMI));
+    }
+    kids.append(here.gen_token(Tok.RBRACE));
+    here.set_kids(nodes=kids);
+}
+
 impl NormalizePass.enter_yield_expr with uni.YieldExpr entry {
     new_kid: list[uni.UniNode] = [here.gen_token(Tok.KW_YIELD)];
     if here.with_from {

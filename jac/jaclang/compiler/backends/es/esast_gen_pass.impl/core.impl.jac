@@ -1,4 +1,4 @@
-impl EsastGenPass._ensure_backend -> None {
+impl EsastGenPass._ensure_backend -> FrameworkBackend {
     if self.backend is None {
         import from jaclang.compiler.backends.es.backends.registry {
             resolve_active_backend
@@ -15,6 +15,8 @@ impl EsastGenPass._ensure_backend -> None {
             self.backend = ReactBackend();
         }
     }
+    assert self.backend is not None;
+    return self.backend;
 }
 
 impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) {
@@ -498,6 +500,9 @@ impl EsastGenPass.enter_walk with uni.UniNode entry {
 }
 
 impl EsastGenPass.before_pass -> None {
+    for nd in self.ir_in.flatten() {
+        nd.gen.es_ast = None;
+    }
     import from jaclang.compiler.frontend.codeinfo { ClientManifest }
 
     import from jaclang.compiler.frontend.module_facts { client_capability_violations }

@@ -7,6 +7,35 @@ import from jaclang.compiler.frontend.unitree { Module, UniScopeNode }
 import from jaclang.compiler.native_compiler { ensure_loaded }
 import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+import from jaclang.compiler.passes.graph_lowering_pass { GraphLoweringPass }
+
+test "native early symbols wait for construction lowering" {
+    kernel = ensure_loaded();
+    if kernel is not None {
+        prog = JacProgram();
+        (mod, failed) = parse_woven(
+            "node N {} def build { return graph { N() ++> N(); }; }",
+            "early_construction.jac",
+            prog,
+            [],
+            early_context="client"
+        );
+        assert not failed;
+        assert id(mod) not in prog.analysis.early_passes;
+        run_pass(GraphLoweringPass, mod, prog);
+        run_pass(ASTValidationPass, mod, prog);
+        run_pass(SymTabBuildPass, mod, prog);
+        assert not prog.errors_had;
+        imports = [
+            name
+            for scope in mod.flatten()
+            if isinstance(scope, UniScopeNode)
+            for (name, symbol) in scope.names_in_scope.items()
+            if symbol.imported
+        ];
+        assert any(name.startswith("__jac_graph_builder_type_") for name in imports);
+    }
+}
 
 test "native validation preserves client code context" {
     kernel = ensure_loaded();

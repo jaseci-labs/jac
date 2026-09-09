@@ -335,6 +335,7 @@ obj JacConfig {
     ) -> bool;
 
     def merge_from_toml_file(toml_path: Path) -> None;
+    def merge_apps_table(apps_table: dict[str, any]) -> None;
     def app(name: str) -> AppConfig | None;
     def resolve_app(name: str = "") -> AppConfig;
     def resolved_kind(app: AppConfig) -> str;

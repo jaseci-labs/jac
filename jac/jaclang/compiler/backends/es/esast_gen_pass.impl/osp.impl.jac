@@ -595,37 +595,11 @@ impl EsastGenPass._build_edge_ref(nd: uni.EdgeRefTrailer) -> es.Expression {
             jac_node=nd
         );
         if _step_filter is not None {
-            pred = self._build_osp_filter_pred(nd, _step_filter);
-            if pred is None {
+            filtered = self._build_osp_filter(nd, result, _step_filter);
+            if filtered is None {
                 return fail;
             }
-            result = self.sync_loc(
-                es.CallExpression(
-                    callee=self.sync_loc(
-                        es.MemberExpression(
-                            object=result,
-                            property=self.sync_loc(
-                                es.Identifier(name='filter'), jac_node=nd
-                            ),
-                            computed=False
-                        ),
-                        jac_node=nd
-                    ),
-                    arguments=[
-                        self.sync_loc(
-                            es.ArrowFunctionExpression(
-                                params=[
-                                    self.sync_loc(es.Identifier(name='x'), jac_node=nd)
-                                ],
-                                body=pred,
-                                expression=True
-                            ),
-                            jac_node=nd
-                        )
-                    ]
-                ),
-                jac_node=nd
-            );
+            result = filtered;
         }
         cur = result;
     }
@@ -634,6 +608,38 @@ impl EsastGenPass._build_edge_ref(nd: uni.EdgeRefTrailer) -> es.Expression {
         return fail;
     }
     return cur;
+}
+
+impl EsastGenPass._build_osp_filter(
+    nd: uni.UniNode, target: es.Expression, filt: uni.FilterCompr
+) -> (es.Expression | None) {
+    pred = self._build_osp_filter_pred(nd, filt);
+    if pred is None {
+        return None;
+    }
+    return self.sync_loc(
+        es.CallExpression(
+            callee=self.sync_loc(
+                es.MemberExpression(
+                    object=target,
+                    property=self.sync_loc(es.Identifier(name='filter'), jac_node=nd),
+                    computed=False
+                ),
+                jac_node=nd
+            ),
+            arguments=[
+                self.sync_loc(
+                    es.ArrowFunctionExpression(
+                        params=[self.sync_loc(es.Identifier(name='x'), jac_node=nd)],
+                        body=pred,
+                        expression=True
+                    ),
+                    jac_node=nd
+                )
+            ]
+        ),
+        jac_node=nd
+    );
 }
 
 impl EsastGenPass._build_osp_filter_pred(
@@ -846,7 +852,8 @@ impl EsastGenPass._build_osp_graph_call(
                 tgt,
                 make_edge,
                 self.sync_loc(es.Literal(value=undirected), jac_node=nd),
-                self.sync_loc(es.Literal(value=edge_tag), jac_node=nd)
+                self.sync_loc(es.Literal(value=edge_tag), jac_node=nd),
+                self.sync_loc(es.Literal(value=co.capture_edges), jac_node=nd)
             ]
         ),
         jac_node=nd

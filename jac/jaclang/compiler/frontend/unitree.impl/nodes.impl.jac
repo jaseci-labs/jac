@@ -1949,7 +1949,8 @@ impl ContextAwareNode.code_context.getter -> CodeContext {
         target: Codespace = found[0];
         return CodeContext(target.kind);
     }
-    return CodeContext.SERVER;
+    enclosing = self.find_parent_of_type(ContextAwareNode);
+    return enclosing.code_context if enclosing is not None else CodeContext.SERVER;
 }
 
 impl ContextAwareNode.code_context.setter(code_context: CodeContext) {
@@ -3137,8 +3138,36 @@ impl DeleteStmt.is_location(target: Expr) -> bool {
 }
 
 
+impl DeleteStmt.type_has_graph_member(t: (TypeBase | None)) -> bool {
+    import from jaclang.compiler.types.types { ClassType, TypeVarType, UnionType }
+    if isinstance(t, TypeVarType) {
+        return DeleteStmt.type_has_graph_member(t.bound);
+    }
+    if isinstance(t, UnionType) {
+        return any(DeleteStmt.type_has_graph_member(member) for member in t.types);
+    }
+    if isinstance(t, ClassType) {
+        if t.is_node_type() or t.is_edge_type() or t.is_walker_type() {
+            return True;
+        }
+        if t.is_builtin(["list", "tuple", "set", "frozenset"]) {
+            return any(
+                DeleteStmt.type_has_graph_member(item)
+                for item in (t.private.type_args or [])
+            );
+        }
+        if t.is_builtin("dict") and len(t.private.type_args or []) == 2 {
+            return DeleteStmt.type_has_graph_member(t.private.type_args[1]);
+        }
+    }
+    return False;
+}
+
 impl DeleteStmt.type_may_hold_graph(t: (TypeBase | None)) -> bool {
     import from jaclang.compiler.types.types { ClassType, UnionType }
+    if DeleteStmt.type_has_graph_member(t) {
+        return True;
+    }
 
     def never_graph(ty: any) -> bool {
         if isinstance(ty, UnionType) {
@@ -3147,11 +3176,7 @@ impl DeleteStmt.type_may_hold_graph(t: (TypeBase | None)) -> bool {
         if not isinstance(ty, ClassType) {
             return False;
         }
-        if ty.is_any_type()
-            or ty.is_node_type()
-            or ty.is_edge_type()
-            or ty.is_walker_type()
-            or not ty.is_builtin() {
+        if ty.is_any_type() or not ty.is_builtin() {
             return False;
         }
         class_name = ty.shared.class_name;
@@ -3446,6 +3471,11 @@ impl AtomTrailer.as_attr_list.getter -> list[AstSymbolNode] {
 }
 
 impl AtomUnit.postinit -> None {
+    UniNode.postinit(self);
+    Expr.postinit(self);
+}
+
+impl GraphExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
 }
@@ -4304,11 +4334,12 @@ impl type_only_import_of(nd: NameAtom) -> (ModuleItem | None) {
     return found;
 }
 
-impl in_type_position(nd: UniNode) -> bool {
+impl in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool {
     cur: UniNode = nd;
     parent = cur.parent;
     while parent is not None {
-        if isinstance(parent, (SubTag, TypeAlias, TypeParam, IndexSlice)) {
+        if isinstance(parent, (SubTag, TypeAlias, TypeParam))
+            or (include_subscripts and isinstance(parent, IndexSlice)) {
             return True;
         }
         if isinstance(parent, CastExpr) and parent.cast_type is cur {

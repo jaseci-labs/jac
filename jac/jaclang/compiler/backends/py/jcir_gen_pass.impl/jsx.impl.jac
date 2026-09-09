@@ -107,7 +107,9 @@ impl JcirGenPass.exit_jsx_normal_attribute with JsxNormalAttribute exit {
     value_ast: CgNode;
     if (here.value and isinstance(here.value, String)) {
         import from html { unescape }
-        value_ast = self.const_of(unescape(here.value.lit_value), jac_node=here.value);
+        literal = literal_string_value(here.value);
+        assert literal is not None;
+        value_ast = self.const_of(unescape(literal), jac_node=here.value);
     } elif (here.value and self.outs(here.value)) {
         value_ast = self.val(here.value);
     } else {
