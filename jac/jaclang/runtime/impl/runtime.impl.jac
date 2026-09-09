@@ -369,7 +369,18 @@ impl JacWalker.`spawn(
         }
     }
     if warch.__jac_async__ {
-        return JacRuntimeInterface.async_spawn_call(`walker=`walker, nd=loc);
+        import asyncio;
+        import from typing { cast }
+        task = cast(
+            Coroutine[any, any, WalkerArchetype],
+            JacRuntimeInterface.async_spawn_call(`walker=`walker, nd=loc)
+        );
+        try {
+            asyncio.get_running_loop();
+        } except RuntimeError {
+            return asyncio.run(task);
+        }
+        return task;
     }
     return JacRuntimeInterface.spawn_call(`walker=`walker, nd=loc);
 }

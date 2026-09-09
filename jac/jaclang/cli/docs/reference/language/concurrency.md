@@ -86,6 +86,8 @@ async walker DataFetcher {
 }
 ```
 
+A plain `walker` with an `async can` entry or exit ability also uses async traversal, including when the ability is inherited. From a synchronous caller with no running event loop, `spawn` completes the traversal before returning. Inside a running event loop, it returns a coroutine: use `await (w spawn node)` or pass the coroutine to `asyncio.gather()`. Exceptions from abilities propagate to the caller.
+
 ### 3 Async For Loops
 
 Use `async for` to iterate over async iterators -- objects that produce values asynchronously, such as streaming responses from an API, reading chunks from a file, or consuming messages from a queue. Each iteration may `await` internally, so the loop yields to the event loop between items.

@@ -79,7 +79,13 @@ impl JcirGenPass.exit_archetype with Archetype exit {
         insert_at = 1 if here.doc else 0;
         body[insert_at:insert_at] = ct_fields;
     }
-    if here.is_async {
+    async_walker = here.arch_kind == 'walker'
+        and any(
+            isinstance(stmt, Ability)
+                and stmt.is_async
+                and isinstance(stmt.signature, EventSignature) for stmt in (inner or [])
+        );
+    if here.is_async or async_walker {
         body.insert(
             0,
             self.nod(
@@ -93,7 +99,7 @@ impl JcirGenPass.exit_archetype with Archetype exit {
                             ['__jac_async__', self.nod('Store', [], [])]
                         )
                     ],
-                    self.const_of(here.is_async)
+                    self.const_of(True)
                 ]
             )
         );

@@ -290,3 +290,60 @@ test "a base app's interpolated value survives a profile that retunes it" {
         shutil.rmtree(d, ignore_errors=True);
     }
 }
+
+
+test "profile and local app overlays preserve nested pod settings" {
+    d = _project();
+    try {
+        cfg = JacConfig.load(Path(d) / "jac.toml");
+        cfg.environments["preview"] = {
+            "apps": {
+                "orders": {
+                    "scale": {
+                        "replicas": 1,
+                        "deployment_overlay": {
+                            "spec": {
+                                "template": {
+                                    "spec": {
+                                        "initContainers": [
+                                            {
+                                                "name": "install-kubectl",
+                                                "image": "tools"
+                                            }
+                                        ],
+                                        "volumes": [
+                                            {
+                                                "name": "key",
+                                                "secret": {
+                                                    "secretName": "github-app-key"
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        cfg.apply_profile("preview");
+        Path(d, "jac.local.toml").write_text(
+            '[apps.orders.scale]\ncpu_limit = "250m"\n'
+        );
+        cfg.merge_from_toml_file(Path(d, "jac.local.toml"));
+        scale = cfg.apps["orders"].overlays["scale"];
+        assert scale["replicas"] == 1;
+        assert scale["cpu_limit"] == "250m";
+        pod = scale["deployment_overlay"]["spec"]["template"]["spec"];
+        assert pod["initContainers"][0]["name"] == "install-kubectl";
+        assert pod["volumes"][0]["secret"]["secretName"] == "github-app-key";
+        effective = cfg.effective_for_app("orders");
+        assert effective.plugins["scale"]["deployment_overlay"]["spec"]["template"][
+            "spec"
+        ]
+            == pod;
+    } finally {
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
