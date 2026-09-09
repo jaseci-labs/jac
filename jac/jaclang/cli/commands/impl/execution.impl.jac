@@ -1270,6 +1270,7 @@ impl serve(
     lng = filename.split('.')[-1];
 
     try {
+        console.print("Jac is analyzing your project. Please be patient...");
         Jac.jac_import(target=mod, base_path=base, lng=lng);
         if Jac.get_program().errors_had {
             for error in Jac.get_program().errors_had {
