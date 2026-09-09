@@ -14,6 +14,9 @@ test "client module fixtures run through symlinked directories" {
         actual.mkdir();
         alias = base / "alias";
         alias.symlink_to(actual, target_is_directory=True);
+        (actual / "jac.toml").write_text(
+            '[placement.pins]\n"fixture.result" = "client"\n'
+        );
         (actual / "fixture.jac").write_text(
             'def result -> dict[str, int] { return {"value": 42}; }'
         );
