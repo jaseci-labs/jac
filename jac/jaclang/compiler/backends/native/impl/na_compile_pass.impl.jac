@@ -67,13 +67,31 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
     }
     options = self.prog.options;
     try {
-        mod = llvm.parse_assembly(str(module.gen.llvm_ir));
-        mod.verify();
-
+        registry = self.prog.native_units();
+        cached = None
+            if options.no_ir_cache
+            else registry.ensure(
+                module.loc.mod_path, compile_on_miss=False, options=options
+            );
         native_debug = bool(options.native_debug);
-        target_machine = create_unit_target_machine(options, jit=not options.aot_mode);
-        opt_level = 0 if native_debug else int(options.opt_level or 0);
-        optimize_unit(mod, target_machine, opt_level);
+        target_machine = create_unit_target_machine(options);
+        if cached is not None and cached.bitcode is not None {
+            mod = llvm.parse_bitcode(cached.bitcode);
+            module.gen.native_bitcode = cached.bitcode;
+            module.gen.native_object = cached.object_bytes;
+        } else {
+            mod = llvm.parse_assembly(str(module.gen.llvm_ir));
+            mod.verify();
+            opt_level = 0 if native_debug else int(options.opt_level or 0);
+            optimize_unit(mod, target_machine, opt_level);
+            module.gen.native_bitcode = module_bitcode(mod);
+            if native_debug {
+                obj_bytes = target_machine.emit_object(mod);
+                assert isinstance(obj_bytes, bytes);
+                module.gen.native_object = obj_bytes;
+            }
+            registry.note_codegen(module.loc.mod_path, native_debug);
+        }
 
         dump_path = options.dump_ir_path or "";
         if dump_path {
@@ -81,14 +99,6 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
                 f.write(str(mod));
             }
         }
-
-        module.gen.native_bitcode = module_bitcode(mod);
-        if native_debug {
-            obj_bytes = target_machine.emit_object(mod);
-            assert isinstance(obj_bytes, bytes);
-            module.gen.native_object = obj_bytes;
-        }
-        self.prog.native_units().note_codegen(module.loc.mod_path, native_debug);
 
         debug_obj_path = "";
         if native_debug {

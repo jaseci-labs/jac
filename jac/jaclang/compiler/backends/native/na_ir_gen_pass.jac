@@ -1,3 +1,4 @@
+import from jaclang.compiler.driver.native_iface { NativeIface, NativeExport }
 import jaclang.compiler.frontend.unitree as uni;
 import os;
 import sys;
@@ -271,7 +272,7 @@ walker NaIRGenPass(Transform) {
         _typed_only_imports: set[str] = set(),
         _full_ast_cache: dict[str, uni.Module] = {},
         _pub_symbols: set[str] = set(),
-        _unit_exports: dict[str, tuple] = {},
+        _unit_exports: dict[str, NativeExport] = {},
         _demoted_names: set[str] = set(),
         tuple_types: dict[str, ir.LiteralStructType] = {},
         global_vars: dict[str, ir.GlobalVariable] = {},
@@ -933,7 +934,7 @@ walker NaIRGenPass(Transform) {
     def _note_native_dep(path: str) -> None;
     def _is_catalog_module(mod: uni.Module) -> bool;
     def _full_ast_of(full_path: str) -> (uni.Module | None);
-    def _dep_iface(imported_mod: uni.Module) -> any;
+    def _dep_iface(imported_mod: uni.Module) -> (NativeIface | None);
     def _load_native_unit_module(path: str) -> (uni.Module | None);
     def _is_kernel_unit -> bool;
     def _export_native_iface -> None;

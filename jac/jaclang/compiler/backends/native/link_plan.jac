@@ -255,7 +255,14 @@ obj LinkPlan {
 
     def glue_spec(kind: ArtifactKind, platform: str, static_musl: bool) -> GlueSpec {
         units: list[GlueUnit] = [];
-        str_new_supplied = any(STR_NEW_SYMBOL in u.iface.exports for u in self.units);
+        str_new_symbol = "";
+        for unit in [self.root_unit()] + self.units {
+            constructor = unit.iface.exports.get(STR_NEW_SYMBOL);
+            if constructor is not None {
+                str_new_symbol = constructor.symbol;
+                break;
+            }
+        }
         hook_supplied = any(REGION_DIED_HOOK in u.iface.exports for u in self.units);
         for u in self.units {
             exports = u.iface.exports;
@@ -268,7 +275,7 @@ obj LinkPlan {
                     probe=probe.symbol if probe is not None else "",
                     retain="jac_retain" in exports,
                     release="jac_release" in exports,
-                    str_new=str_new_supplied
+                    str_new=str_new_symbol
                 )
             );
         }
@@ -610,13 +617,7 @@ def unit_objects(
 ) -> tuple[list[bytes], list[str]] {
     registry = plan.prog.native_units();
     objs: list[bytes] = [];
-    root_u = plan.root_unit();
-    ordered = [root_u]
-        + [
-            u
-            for u in plan.units
-            if u is not root_u
-        ];
+    ordered = plan.units;
     for u in ordered {
         object_bytes = registry.object_for(u.path, plan.options);
         if object_bytes is None {
@@ -815,6 +816,16 @@ def link_artifact(
     log: any = None,
     app_imports: (set | None) = None
 ) -> LinkResult {
+    if kind == ArtifactKind.SHARED {
+        for unit in plan.units {
+            if unit.iface.python_imports {
+                raise LinkPlanError(
+                    f"Cannot link shared native unit {unit.path}: Python imports "
+                    f"require the JIT bridge ({', '.join(unit.iface.python_imports)})"
+                );
+            }
+        }
+    }
     if kind == ArtifactKind.WASM {
         return link_wasm(plan, output_path, app_imports);
     }

@@ -1308,7 +1308,11 @@ def write_module_cache(
             atomic_write(cache_path, jir_bytes);
             return True;
         }
-    } except Exception {
+    } except Exception as exc {
+        import logging;
+        logging.getLogger(__name__).warning(
+            f"Could not write module cache for {resolved_path}: {exc}", exc_info=True
+        );
         return False;
     }
 }

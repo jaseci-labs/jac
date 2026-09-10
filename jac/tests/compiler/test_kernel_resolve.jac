@@ -8,6 +8,7 @@ is rebuilt; nothing raises about a missing kernel a build could make.
 """
 
 import json;
+import hashlib;
 import os;
 import tempfile;
 import from pathlib { Path }
@@ -62,28 +63,30 @@ test "the catalog build never loads a kernel" {
 }
 
 test "an explicit path must carry its sidecar" {
-    tmp = tempfile.mkdtemp(prefix="jac-kernel-");
-    bogus = os.path.join(tmp, "libjac_compiler.so");
-    Path(bogus).write_bytes(b"not a library");
-    raised = False;
-    try {
-        _with_env(KERNEL_LIB_ENV, bogus, lambda() { resolve_kernel(); });
-    } except KernelUnavailable {
-        raised = True;
+    with tempfile.TemporaryDirectory(prefix="jac-kernel-") as tmp {
+        bogus = os.path.join(tmp, "libjac_compiler.so");
+        Path(bogus).write_bytes(b"not a library");
+        raised = False;
+        try {
+            _with_env(KERNEL_LIB_ENV, bogus, lambda() { resolve_kernel(); });
+        } except KernelUnavailable {
+            raised = True;
+        }
+        assert raised , "a kernel path without its .layout.json sidecar is refused";
     }
-    assert raised , "a kernel path without its .layout.json sidecar is refused";
 }
 
 test "the sidecar reader wants a classes map" {
-    tmp = tempfile.mkdtemp(prefix="jac-kernel-");
-    lib = os.path.join(tmp, "libjac_compiler.so");
-    Path(lib + ".layout.json").write_text(json.dumps({"plan_digest": "x"}));
-    assert read_sidecar(lib) is None;
-    Path(lib + ".layout.json").write_text(
-        json.dumps({"classes": {}, "plan_digest": "x", "layout_digest": "y"})
-    );
-    found = read_sidecar(lib);
-    assert found is not None and found["plan_digest"] == "x";
+    with tempfile.TemporaryDirectory(prefix="jac-kernel-") as tmp {
+        lib = os.path.join(tmp, "libjac_compiler.so");
+        Path(lib + ".layout.json").write_text(json.dumps({"plan_digest": "x"}));
+        assert read_sidecar(lib) is None;
+        Path(lib + ".layout.json").write_text(
+            json.dumps({"classes": {}, "plan_digest": "x", "layout_digest": "y"})
+        );
+        found = read_sidecar(lib);
+        assert found is not None and found["plan_digest"] == "x";
+    }
 }
 
 test "the source-tree kernel lives beside the loader" {
@@ -93,31 +96,31 @@ test "the source-tree kernel lives beside the loader" {
 }
 
 test "an in-tree kernel is accepted by source key, without a plan" {
-    tmp = tempfile.mkdtemp(prefix="jac-kernel-");
-    unit = os.path.join(tmp, "unit.jac");
-    Path(unit).write_text("def one -> int {\n    return 1;\n}\n");
-    lib = os.path.join(tmp, "libjac_compiler.dylib");
-    Path(lib).write_bytes(b"not a real kernel");
-    key = units_source_key([unit], kernel_options());
-    sidecar = {
-        "classes": {},
-        "plan_digest": "p",
-        "layout_digest": "l",
-        "units": [unit],
-        "source_key": key
-    };
-    Path(lib + ".layout.json").write_text(json.dumps(sidecar));
-    found = _accept_in_tree(lib);
-    assert found is not None , "a matching source key accepts the kernel";
-    assert found.source == "tree" and found.plan_digest == "p";
-
-    Path(unit).write_text("def one -> int {\n    return 2;\n}\n");
-    assert _accept_in_tree(lib) is None , "an edited unit moves the source key";
-
-    stale = dict(sidecar);
-    stale.pop("source_key");
-    Path(lib + ".layout.json").write_text(json.dumps(stale));
-    assert _accept_in_tree(lib) is None , "a sidecar without a source key is never accepted";
+    with tempfile.TemporaryDirectory(prefix="jac-kernel-") as tmp {
+        unit = os.path.join(tmp, "unit.jac");
+        Path(unit).write_text("def one -> int {\n    return 1;\n}\n");
+        lib = os.path.join(tmp, "libjac_compiler.dylib");
+        Path(lib).write_bytes(b"not a real kernel");
+        key = units_source_key([unit], kernel_options());
+        sidecar = {
+            "classes": {},
+            "artifact_sha256": hashlib.sha256(Path(lib).read_bytes()).hexdigest(),
+            "plan_digest": "p",
+            "layout_digest": "l",
+            "units": [unit],
+            "source_key": key
+        };
+        Path(lib + ".layout.json").write_text(json.dumps(sidecar));
+        found = _accept_in_tree(lib);
+        assert found is not None , "a matching source key accepts the kernel";
+        assert found.source == "tree" and found.plan_digest == "p";
+        Path(unit).write_text("def one -> int {\n    return 2;\n}\n");
+        assert _accept_in_tree(lib) is None , "an edited unit moves the source key";
+        stale = dict(sidecar);
+        stale.pop("source_key");
+        Path(lib + ".layout.json").write_text(json.dumps(stale));
+        assert _accept_in_tree(lib) is None , "a sidecar without a source key is never accepted";
+    }
 }
 
 
@@ -138,22 +141,24 @@ test "a kernel built elsewhere is accepted by its units' package identity" {
         "a unit recorded at the build's path is found where this jaclang lives"
     );
     key_here = units_source_key([unit], kernel_options());
-    tmp = tempfile.mkdtemp(prefix="jac-kernel-");
-    lib = os.path.join(tmp, "libjac_compiler.dylib");
-    Path(lib).write_bytes(b"not a real kernel");
-    sidecar = {
-        "classes": {},
-        "plan_digest": "p",
-        "layout_digest": "l",
-        "units": [elsewhere],
-        "unit_ids": [ident],
-        "source_key": key_here
-    };
-    Path(lib + ".layout.json").write_text(json.dumps(sidecar));
-    found = _accept_in_tree(lib);
-    assert found is not None , (
-        "the source key is keyed on package identity, not on the build's paths"
-    );
+    with tempfile.TemporaryDirectory(prefix="jac-kernel-") as tmp {
+        lib = os.path.join(tmp, "libjac_compiler.dylib");
+        Path(lib).write_bytes(b"not a real kernel");
+        sidecar = {
+            "classes": {},
+            "artifact_sha256": hashlib.sha256(Path(lib).read_bytes()).hexdigest(),
+            "plan_digest": "p",
+            "layout_digest": "l",
+            "units": [elsewhere],
+            "unit_ids": [ident],
+            "source_key": key_here
+        };
+        Path(lib + ".layout.json").write_text(json.dumps(sidecar));
+        found = _accept_in_tree(lib);
+        assert found is not None , (
+            "the source key is keyed on package identity, not on the build's paths"
+        );
+    }
 }
 
 test "application configuration does not change the compiler kernel" {
@@ -185,5 +190,40 @@ test "application configuration does not change the compiler kernel" {
         }
     } finally {
         pop_native_target(prev);
+    }
+}
+
+
+test "kernel publication never accepts mismatched library and sidecar images" {
+    import from unittest.mock { patch }
+    import jaclang.compiler.backends.native.kernel_resolve as resolver;
+    import from jaclang.jac0core.cache_paths { atomic_write }
+    with tempfile.TemporaryDirectory() as directory {
+        source = Path(directory) / "new.so";
+        target = Path(directory) / "kernel.so";
+        source.write_bytes(b"new kernel");
+        target.write_bytes(b"old kernel");
+        for path in [source, target] {
+            Path(str(path) + ".layout.json").write_text(
+                json.dumps(
+                    {
+                        "classes": {},
+                        "artifact_sha256": hashlib.sha256(path.read_bytes()).hexdigest()
+                    }
+                )
+            );
+        }
+        observed: list[bool] = [];
+        def publish(path: str, data: bytes, mode: (int | None) = None) {
+            atomic_write(path, data, mode);
+            observed.append(_accept_in_tree(str(target)) is not None);
+        }
+        with patch.object(resolver, "_sidecar_matches_sources", return_value=True) {
+            assert _accept_in_tree(str(target)) is not None;
+            with patch.object(resolver, "atomic_write", side_effect=publish) {
+                resolver._publish_kernel(str(source), str(target));
+            }
+        }
+        assert observed == [False, True];
     }
 }

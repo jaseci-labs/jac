@@ -13,7 +13,6 @@ impl NaIRGenPass._register_osp_kernel_module -> None {
         return;
     }
     for unit in (kernel_mod, graph_mod) {
-        unit.gen.nogc_enforced = getattr(self.ir_in.gen, "nogc_enforced", False);
         self._walk_imported_module_type_names(unit);
     }
     for unit in (kernel_mod, graph_mod) {

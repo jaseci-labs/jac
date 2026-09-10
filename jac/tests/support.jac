@@ -309,15 +309,10 @@ def names_global(text: str, name: str) -> bool {
         or ("." + name + '"') in text;
 }
 
-"""The address of a Jac-level name in the engine: the qualified symbol
-first, the bare spelling second."""
+"""Resolve exactly the symbol selected by the native interface or mangling rule."""
 def native_address(eng: any, name: str) -> int {
     symbol = native_symbol(eng, name);
-    addr = eng.get_function_address(symbol);
-    if addr == 0 and symbol != name {
-        addr = eng.get_function_address(name);
-    }
-    return addr;
+    return eng.get_function_address(symbol);
 }
 
 """Inspect fresh lowering output before LLVM optimization removes layout types."""

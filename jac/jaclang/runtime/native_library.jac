@@ -7,7 +7,7 @@ glob SHARED_INIT_SYMBOL: str = "__jac_shared_init",
 
 class SharedNativeEngine {
     def init(self: SharedNativeEngine, lib_path: str, record: dict) {
-        mode = ctypes?.RTLD_GLOBAL or 0;
+        mode = ctypes?.RTLD_LOCAL or 0;
         self.lib_path = lib_path;
         self.record = dict(record);
         self.lib = ctypes.CDLL(lib_path, mode=mode);

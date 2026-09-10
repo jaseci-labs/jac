@@ -115,3 +115,7 @@ libjac_*.dylib.layout.json
 libjacpyembed.so
 libjacpyembed.dylib
 jacpyembed.dll
+
+# Persistent kernel locks must keep their inode while waiters exist.
+libjac_*.lock
+jac_compiler.dll.lock

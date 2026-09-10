@@ -170,10 +170,6 @@ obj JacCompiler {
         full_target: str, result: uni.Module, actual_program: JacProgram
     ) -> None;
 
-    def _native_sections(
-        full_target: str, result: uni.Module, actual_program: JacProgram
-    ) -> dict[int, bytes];
-
     def _persist_native_unit(
         full_target: str, result: uni.Module, actual_program: JacProgram
     ) -> None;

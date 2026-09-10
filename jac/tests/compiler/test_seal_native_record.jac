@@ -60,36 +60,46 @@ def _app(tmp: str) -> str {
 test "the seal records the native unit and its artifact" {
     (ok, why) = native_pipeline_available();
     if not ok {
-        assert True;
+        import pytest;
+        pytest.skip(why);
     } else {
-        tmp = tempfile.mkdtemp(prefix="jac-seal-native-");
-        src_root = _app(tmp);
-        (code, out) = _seal(src_root);
-        assert code == 0 , out;
-        pkg = os.path.join(src_root, "natapp");
-        manifest = json.loads(Path(pkg, "_precompiled", "MANIFEST.json").read_text());
-        assert manifest["format"] == MANIFEST_FORMAT;
-        native = manifest.get("native");
-        assert native , "an app with a native pin must seal a native record";
-        assert "fast.jac" in native["units"] , native["units"].keys();
-        unit = native["units"]["fast.jac"];
-        assert unit["jir"] == "fast.jir" and len(unit["iface_digest"]) == 64;
-        artifact = native["artifact"];
-        lib = Path(pkg, artifact["path"]);
-        assert lib.is_file() , f"missing artifact {lib}";
-        assert artifact["sha256"] == hashlib.sha256(lib.read_bytes()).hexdigest();
-        sidecar = json.loads(Path(str(lib) + ".layout.json").read_text());
-        assert sidecar["plan_digest"] == artifact["plan_digest"];
-        assert sidecar["layout_digest"] == artifact["layout_digest"];
-        image = load_image(os.path.join(pkg, "_precompiled"));
-        assert image is not None;
-        image.verify_native();
-        assert image.native_artifact()["path"] == artifact["path"];
-        assert set(image.native_units().keys()) == {"fast.jac"};
-        import ctypes;
-        loaded = ctypes.CDLL(str(lib));
-        assert loaded.triple(2) == 6 , "the :pub export is the C ABI";
-        assert hasattr(loaded, "__jac_shared_init");
+        with tempfile.TemporaryDirectory(prefix="jac-seal-native-") as tmp {
+            src_root = _app(tmp);
+            (code, out) = _seal(src_root);
+            assert code == 0 , out;
+            pkg = os.path.join(src_root, "natapp");
+            manifest = json.loads(
+                Path(pkg, "_precompiled", "MANIFEST.json").read_text()
+            );
+            assert manifest["format"] == MANIFEST_FORMAT;
+            native = manifest.get("native");
+            assert native , "an app with a native pin must seal a native record";
+            assert "fast.jac" in native["units"] , native["units"].keys();
+            unit = native["units"]["fast.jac"];
+            assert unit["jir"] == "fast.jir" and len(unit["iface_digest"]) == 64;
+            artifact = native["artifact"];
+            lib = Path(pkg, artifact["path"]);
+            assert lib.is_file() , f"missing artifact {lib}";
+            assert artifact["sha256"] == hashlib.sha256(lib.read_bytes()).hexdigest();
+            sidecar = json.loads(Path(str(lib) + ".layout.json").read_text());
+            assert sidecar["plan_digest"] == artifact["plan_digest"];
+            assert sidecar["layout_digest"] == artifact["layout_digest"];
+            image = load_image(os.path.join(pkg, "_precompiled"));
+            assert image is not None;
+            image.verify_native();
+            assert image.native_artifact()["path"] == artifact["path"];
+            assert set(image.native_units().keys()) == {"fast.jac"};
+            import ctypes;
+            import from jaclang.runtime.native_library { shared_engine_for }
+            loaded = shared_engine_for(str(lib), artifact);
+            assert shared_engine_for(str(lib), artifact) is loaded;
+            address = loaded.get_function_address("triple");
+            assert address;
+            assert ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address)(2) == 6;
+            assert loaded._initialized;
+            assert loaded.get_function_address("missing_export") == 0;
+            assert not loaded.static_init_symbols;
+        }
     }
 }
 
@@ -97,24 +107,28 @@ test "the seal records the native unit and its artifact" {
 test "a tampered artifact is refused at load" {
     (ok, why) = native_pipeline_available();
     if not ok {
-        assert True;
+        import pytest;
+        pytest.skip(why);
     } else {
-        tmp = tempfile.mkdtemp(prefix="jac-seal-native-");
-        src_root = _app(tmp);
-        (code, out) = _seal(src_root);
-        assert code == 0 , out;
-        pkg = os.path.join(src_root, "natapp");
-        manifest = json.loads(Path(pkg, "_precompiled", "MANIFEST.json").read_text());
-        lib = Path(pkg, manifest["native"]["artifact"]["path"]);
-        lib.write_bytes(lib.read_bytes() + b"\0");
-        image = load_image(os.path.join(pkg, "_precompiled"));
-        assert image is not None;
-        raised = False;
-        try {
-            image.verify_native();
-        } except RuntimeError {
-            raised = True;
+        with tempfile.TemporaryDirectory(prefix="jac-seal-native-") as tmp {
+            src_root = _app(tmp);
+            (code, out) = _seal(src_root);
+            assert code == 0 , out;
+            pkg = os.path.join(src_root, "natapp");
+            manifest = json.loads(
+                Path(pkg, "_precompiled", "MANIFEST.json").read_text()
+            );
+            lib = Path(pkg, manifest["native"]["artifact"]["path"]);
+            lib.write_bytes(lib.read_bytes() + b"\0");
+            image = load_image(os.path.join(pkg, "_precompiled"));
+            assert image is not None;
+            raised = False;
+            try {
+                image.verify_native();
+            } except RuntimeError {
+                raised = True;
+            }
+            assert raised , "a native artifact that no longer hashes to its record must be refused";
         }
-        assert raised , "a native artifact that no longer hashes to its record must be refused";
     }
 }

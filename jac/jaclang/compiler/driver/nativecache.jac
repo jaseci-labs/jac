@@ -364,9 +364,7 @@ obj NativeUnitRegistry {
         return sorted(set(out));
     }
 
-    def _product_sections(
-        path: str, options: (CompileOptions | None) = None
-    ) -> dict[int, bytes] {
+    def product_sections(path: str) -> dict[int, bytes] {
         resolved = os.path.realpath(path);
         ent = self.entries.get(resolved);
         if ent is None {
@@ -377,7 +375,7 @@ obj NativeUnitRegistry {
             native_deps_section,
             absolutize_ct_deps_section
         }
-        stamp = self.stamp_for(options);
+        stamp = ent.stamp;
         sections: dict[int, bytes] = {
             SEC_NCTDEPS: stamp.pack(
                 absolutize_ct_deps_section(ent.compile_deps, ent.compile_deps_base)
@@ -489,9 +487,7 @@ obj NativeUnitRegistry {
                 ent.object_bytes = emit_unit_object(ent.bitcode, opts);
                 self._event("native_object_emit");
                 write_module_cache(
-                    ent.path,
-                    None,
-                    extra_sections=self._product_sections(ent.path, opts)
+                    ent.path, None, extra_sections=self.product_sections(ent.path)
                 );
             }
         }
@@ -632,8 +628,14 @@ obj NativeBuildSession {
             ent = self.registry.record_module(mod, opts);
             self.registry._stash_products(resolved, mod.gen);
             return ent;
-        } except Exception as exc {
-            self.registry.failures[resolved] = f"{type(exc).__name__}: {exc}";
+        } except Exception {
+            import traceback;
+            self.registry.failures[resolved] = traceback.format_exc();
+            import from jaclang.compiler.driver.compile_options { env_na_debug }
+            if env_na_debug() {
+                import sys;
+                sys.stderr.write(self.registry.failures[resolved]);
+            }
             return None;
         } finally {
             if len(self.prog.errors_had) > errors_before {

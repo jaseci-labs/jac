@@ -392,6 +392,8 @@ walker TypeEvaluator {
         js_globals_module: Module postinit;
 
     def postinit -> None;
+    def release_check_caches -> None;
+    def release_compile_caches -> None;
     def ct_demand(nd: Expr) -> (CtValue | None);
     def ct_site_error(
         nd: Expr, what: str, cv: (CtValue | None), allow_deferred: bool = True

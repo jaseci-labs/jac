@@ -11,7 +11,7 @@ obj GlueUnit {
         probe: str = "",
         retain: bool = False,
         release: bool = False,
-        str_new: bool = False;
+        str_new: str = "";
 }
 
 obj GlueSpec {
@@ -101,9 +101,9 @@ def rc_wrapper_ir(spec: GlueSpec) -> tuple[str, list[str]] {
     }
     if root_unit.str_new {
         parts.append(
-            f"declare ptr @{STR_NEW_SYMBOL}(ptr, i64)\n"
+            f'declare ptr @"{root_unit.str_new}"(ptr, i64)\n'
             "define ptr @jac_str_new(ptr %d, i64 %n) {\nentry:\n"
-            f"  %r = call ptr @{STR_NEW_SYMBOL}(ptr %d, i64 %n)\n"
+            f'  %r = call ptr @"{root_unit.str_new}"(ptr %d, i64 %n)\n'
             "  ret ptr %r\n}\n"
         );
         exports.append("jac_str_new");

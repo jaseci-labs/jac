@@ -196,3 +196,25 @@ test "compiler execution retains its own analysis until the outer import complet
     gc.collect();
     assert mod_ref() is None and kid_ref() is None and anchor_ref() is None;
 }
+
+test "closure release drops native products while retaining execution carriers" {
+    import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
+    import from jaclang.compiler.driver.native_iface { NativeIface }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    program = JacProgram();
+    registry = program.native_units();
+    iface = NativeIface(module="release", prefix="release");
+    product = registry.record("release.jac", iface, CompileOptions());
+    product.object_bytes = b"object";
+    product.bitcode = b"bitcode";
+    carrier = CodeGenTarget();
+    carrier.native_iface = iface;
+    carrier.native_object = product.object_bytes;
+    carrier.native_bitcode = product.bitcode;
+    program.hub.artifacts[product.path] = carrier;
+    program.release_compile_closure(collect=False);
+    assert not registry.entries;
+    assert program.hub.artifacts[product.path] is carrier;
+    assert carrier.native_object is None and carrier.native_bitcode is None;
+    assert carrier.native_iface is iface;
+}

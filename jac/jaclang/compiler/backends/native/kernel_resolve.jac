@@ -1,4 +1,4 @@
-import from jaclang.jac0core.cache_paths { FileLock }
+import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
 import json;
 import os;
 import sys;
@@ -232,6 +232,14 @@ def _accept_in_tree(lib_path: str) -> (ResolvedKernel | None) {
     if sidecar is None or not os.path.isfile(lib_path) {
         return None;
     }
+    import from jaclang.compiler.backends.native.link_plan { _sha256_of }
+    try {
+        if sidecar.get("artifact_sha256") != _sha256_of(lib_path) {
+            return None;
+        }
+    } except OSError {
+        return None;
+    }
     if not _sidecar_matches_sources(sidecar) {
         return None;
     }
@@ -277,7 +285,6 @@ def _adopt_bundled(lib_path: str) -> (ResolvedKernel | None) {
     the kit's kernel instead of deriving its own: the sidecar's source key
     is the same compiler digest and unit keys the derivation would settle
     on. The copy lands beside the loader so later runs accept it in place.""";
-    import shutil;
     bundled = _bundled_kernel_path();
     if bundled is None {
         return None;
@@ -288,20 +295,23 @@ def _adopt_bundled(lib_path: str) -> (ResolvedKernel | None) {
     }
     try {
         os.makedirs(os.path.dirname(lib_path) or ".", exist_ok=True);
-        shutil.copyfile(bundled, lib_path + ".adopt");
-        shutil.copyfile(
-            bundled + LAYOUT_SIDECAR_SUFFIX, lib_path + LAYOUT_SIDECAR_SUFFIX + ".adopt"
-        );
-        os.replace(
-            lib_path + LAYOUT_SIDECAR_SUFFIX + ".adopt",
-            lib_path + LAYOUT_SIDECAR_SUFFIX
-        );
-        os.replace(lib_path + ".adopt", lib_path);
-        shutil.copymode(bundled, lib_path);
+        _publish_kernel(bundled, lib_path);
     } except OSError {
         return None;
     }
     return _accept_in_tree(lib_path);
+}
+
+def _publish_kernel(source: str, destination: str) {
+    """Publish the library before its hash-bearing sidecar; readers fail closed
+    until both images agree. The caller holds the destination's build lock.""";
+    import from pathlib { Path }
+    atomic_write(destination, Path(source).read_bytes(), mode=0o755);
+    atomic_write(
+        destination + LAYOUT_SIDECAR_SUFFIX,
+        Path(source + LAYOUT_SIDECAR_SUFFIX).read_bytes(),
+        mode=0o644
+    );
 }
 
 def _build_kernel_in_child(dst: str) {
@@ -336,8 +346,7 @@ def _derive_in_tree(lib_path: str) -> (ResolvedKernel | None) {
         tmp = f"{lib_path}.{os.getpid()}.tmp";
         try {
             _build_kernel_in_child(tmp);
-            os.replace(tmp + LAYOUT_SIDECAR_SUFFIX, lib_path + LAYOUT_SIDECAR_SUFFIX);
-            os.replace(tmp, lib_path);
+            _publish_kernel(tmp, lib_path);
         } finally {
             for leftover in (tmp, tmp + LAYOUT_SIDECAR_SUFFIX) {
                 try {

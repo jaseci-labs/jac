@@ -951,9 +951,8 @@ impl NaIRGenPass._emit_str_stamp_and_new -> None {
 
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
     new_fn = self._define_function(
-        "__jac_str_new", ir.FunctionType(i8_ptr, [i8_ptr, i64])
+        self._symbol_for("__jac_str_new"), ir.FunctionType(i8_ptr, [i8_ptr, i64])
     );
-    new_fn.linkage = "weak_odr";
     self._record_export("__jac_str_new", new_fn.name, "abi");
     new_fn.args[0].name = "data";
     new_fn.args[1].name = "n";

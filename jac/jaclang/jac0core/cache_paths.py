@@ -22,7 +22,7 @@ Platform roots:
 import errno
 import os
 import time
-import tempfile
+import secrets
 import sys
 from pathlib import Path
 
@@ -110,17 +110,23 @@ def atomic_write(path: str | Path, data: bytes, mode: int | None = None) -> None
 
     Callers that merge existing contents must hold FileLock across their read
     and this replacement. Existing permissions are preserved unless mode is
-    explicit; new cache files retain tempfile's private permissions.
+    explicit; new files use ordinary 0666 permissions filtered by the umask.
     """
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
     try:
-        with tempfile.NamedTemporaryFile(
-            dir=destination.parent, prefix=f".{destination.name}.", suffix=".tmp",
-            delete=False,
-        ) as output:
-            temporary = Path(output.name)
+        # O_EXCL protects the randomly named staging file; os.open applies the
+        # process umask without reading/changing that process-global setting.
+        while True:
+            candidate = destination.parent / f".{destination.name}.{secrets.token_hex(16)}.tmp"
+            try:
+                handle = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+                temporary = candidate
+                break
+            except FileExistsError:
+                continue
+        with os.fdopen(handle, "wb") as output:
             output.write(data)
         if mode is None:
             try:

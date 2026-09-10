@@ -501,8 +501,8 @@ jobs:
             paths: jaclang/compiler/tests
             sealed: ""
             iface_verify: "1"
-            # Exercise four workers with recycling and per-file RSS logging.
-            jobs: "4"
+            # Leave room for native analysis and ES child processes.
+            jobs: "2"
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/jac-kit

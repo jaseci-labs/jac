@@ -948,7 +948,7 @@ are keyed by the module's content key plus a stamp of the compiler digest,
 codegen identity and target triple in their own header, so a module the
 compiler runs as bytecode and the kernel links as a native unit keeps both
 products in one entry. Dependents record each native dependency's interface
-digest in `SEC_DEPS`; a body edit rebuilds one object, an interface edit
+digest in `SEC_NDEPS`; a body edit rebuilds one object, an interface edit
 rebuilds the dependents.
 
 Symbols are module-qualified: every external symbol that is not `:pub` is
@@ -958,15 +958,18 @@ bare names, the C ABI a library promises. Two modules defining the same Jac
 name therefore never collide at link time; `E5026` remains for two `:pub`
 exports of one name in one link.
 
+Bundled `na_stdlib` shims retain qualified symbols even for their public
+Jac APIs. Their public names (for example `hashlib.new` and `hmac.new`)
+belong to separate library modules and are not bare C ABI exports.
+
 Every native artifact is produced by one link plan
 (`compiler/backends/native/link_plan.jac`; the design and its reasons are
 recorded in the [Native Units](../../internals/native-units.md) internals
 page). It resolves roots (an entry
 module, the kernel root `jc_unit`, or every native unit of a sealed
 package), walks the native edges recorded in `SEC_NDEPS` dependencies
-first, compiles each stale unit in a child `jac` process (so a plan over
-many units keeps the parent's memory flat and an import cycle nests only
-inside the child that meets it), checks that every unit's recorded
+first, analyzes stale units in an owned compiler session and reuses those
+analyzed trees while settling cycles, checks that every unit's recorded
 dependency digests agree with the plan and recompiles affected strongly connected
 components until their interfaces settle, rejecting repeated inconsistent states, orders initializers topologically, synthesizes one
 glue object holding `jac_entry` / `__jac_shared_init`, the platform entry

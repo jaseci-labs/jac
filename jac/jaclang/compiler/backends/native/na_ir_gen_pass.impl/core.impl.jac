@@ -221,7 +221,6 @@ impl NaIRGenPass._export_native_iface -> None {
     import os as _ni_os;
     import from jaclang.compiler.driver.native_iface {
         NativeClassLayout,
-        NativeExport,
         NativeFieldSlot,
         NativeIface
     }
@@ -236,8 +235,7 @@ impl NaIRGenPass._export_native_iface -> None {
     );
     layout = self.ir_in.gen.native_layout;
     iface.layout = layout;
-    for (name, (symbol, kind, is_pub)) in self._unit_exports.items() {
-        ex = NativeExport(name=name, symbol=symbol, kind=kind, is_pub=is_pub);
+    for (name, ex) in self._unit_exports.items() {
         sig: any = None;
         if layout is not None {
             sig = layout.functions.get(name) or layout.methods.get(name);
@@ -298,10 +296,12 @@ impl NaIRGenPass._export_native_iface -> None {
     if entry_fn is not None {
         iface.entry_symbol = str(entry_fn.name);
     }
-    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
     iface.demoted = sorted(
         self._demoted_names
-            | {issue.symbol for issue in native_lowering_issues(str(self.llvm_module))}
+            | {
+                f"{arch}.{name}" for (arch, fields) in self.struct_field_opaque.items()
+                for name in fields
+            }
     );
     iface.clib_paths = list(self.ir_in.gen._clib_paths or []);
     iface.python_imports = [
@@ -320,11 +320,7 @@ impl NaIRGenPass._export_native_iface -> None {
 }
 
 impl NaIRGenPass._build_class_layouts -> dict {
-    try {
-        return dict(self._build_jc_layout().get("classes", {}));
-    } except Exception {
-        return {};
-    }
+    return dict(self._build_jc_layout().get("classes", {}));
 }
 
 impl NaIRGenPass._own_prefix -> str {
@@ -370,7 +366,9 @@ impl NaIRGenPass._symbol_for(
 impl NaIRGenPass._record_export(
     name: str, symbol: str, kind: str, is_pub: bool = False
 ) -> None {
-    self._unit_exports[name] = (symbol, kind, is_pub, );
+    self._unit_exports[name] = NativeExport(
+        name=name, symbol=symbol, kind=kind, is_pub=is_pub
+    );
     if is_pub {
         self._pub_symbols.add(symbol);
     }
@@ -423,21 +421,14 @@ impl NaIRGenPass._full_ast_of(full_path: str) -> (uni.Module | None) {
     return mod;
 }
 
-impl NaIRGenPass._dep_iface(imported_mod: uni.Module) -> any {
+impl NaIRGenPass._dep_iface(imported_mod: uni.Module) -> (NativeIface | None) {
     if not (imported_mod?.loc and imported_mod.loc.mod_path) {
         return None;
     }
     opts = self.prog.options;
-    try {
-        ent = self.prog.native_units().ensure(
-            imported_mod.loc.mod_path,
-            compile_on_miss=True,
-            options=opts,
-            check_deps=False
-        );
-    } except Exception {
-        return None;
-    }
+    ent = self.prog.native_units().ensure(
+        imported_mod.loc.mod_path, compile_on_miss=True, options=opts, check_deps=False
+    );
     return ent.iface if ent is not None else None;
 }
 
@@ -465,8 +456,6 @@ impl NaIRGenPass._load_native_unit_module(path: str) -> (uni.Module | None) {
                 native_unit=True
             )
         );
-    } except Exception {
-        return None;
     } finally {
         self.prog.options = saved;
     }
@@ -838,7 +827,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     for _nested_imp in _nested_native {
         _native_ids.add(id(_nested_imp));
     }
-    wq: list[tuple[str, str, str | None]] = [];
+    wq: list[tuple[str, str, str | None, bool]] = [];
     for imp in ModuleFacts.iter_module_imports(self.ir_in) + _nested_native {
         mod_name = self._extract_import_module_name(imp);
         if not mod_name {
@@ -1518,7 +1507,10 @@ impl NaIRGenPass._ensure_dep_inference(dep_mod: uni.Module) -> None {
             _provided.add('CfgSucc');
         }
         run_pass(TypeCheckPass, dep_mod, self.prog);
-    } except Exception {}
+    } except Exception {
+        _provided.discard('TypeOf');
+        raise;
+    }
 }
 
 impl NaIRGenPass._imported_function_demotions(
@@ -1530,15 +1522,6 @@ impl NaIRGenPass._imported_function_demotions(
     iface = self._dep_iface(imported_mod);
     if iface is not None {
         return set(iface.demoted);
-    }
-    if imported_mod.gen.llvm_ir is not None {
-        demoted: set = set();
-        for _fd_gname in list(imported_mod.gen.llvm_ir.globals) {
-            if _fd_gname.endswith(".__jac_demoted") {
-                demoted.add(_fd_gname[:-len(".__jac_demoted")]);
-            }
-        }
-        return demoted;
     }
     return None;
 }
@@ -1901,6 +1884,12 @@ impl NaIRGenPass._ct_ctor_slots(target: uni.UniNode) -> list[tuple[str, uni.UniN
 impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     self.ir_out = ir_in;
     ir_in spawn self;
+    if self.errors_had {
+        raise RuntimeError(
+            "Native module lowering failed:\n"
+                + "\n".join(alert.pretty_print() for alert in self.errors_had)
+        );
+    }
     out = self.ir_out;
     assert isinstance(out, uni.Module);
     return out;

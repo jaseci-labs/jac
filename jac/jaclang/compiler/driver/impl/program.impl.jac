@@ -315,13 +315,7 @@ impl JacProgram.release_check_caches(self: JacProgram) -> None {
     if ev is None {
         return;
     }
-    ev._flow_node_type_cache.clear();
-    ev._flow_key_type_cache.clear();
-    ev._and_narrowing_overrides.clear();
-    ev._strict_site_cache.clear();
-    ev._sv_async_syms_cache.clear();
-    ev._loop_written_keys_cache.clear();
-    ev._type_guard_probes.clear();
+    ev.release_check_caches();
 }
 
 impl JacProgram.release_compile_closure(
@@ -342,17 +336,16 @@ impl JacProgram.release_compile_closure(
     self.hub.reset();
     self.mod = self.hub.mod;
     self.deps.clear();
+    if self._natives is not None and self._natives.session is None {
+        self._natives.clear();
+    }
+    for gen in self.hub.artifacts.values() {
+        gen.native_object = None;
+        gen.native_bitcode = None;
+    }
     ev = self.type_evaluator;
     if ev is not None {
-        self.release_check_caches();
-        ev._module_type_cache.clear();
-        ev._mobui_module_cache.clear();
-        ev._ts_decl_cache.clear();
-        ev._ts_decl_path_cache.clear();
-        ev._ts_synth_class_cache.clear();
-        ev._untyped_external_cfg_cache.clear();
-        ev._shared_intern.clear();
-        ev.symbol_resolution_stack.clear();
+        ev.release_compile_caches();
     }
     self.type_evaluator = None;
     ev = None;

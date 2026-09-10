@@ -198,14 +198,11 @@ impl JacCompiler.get_bytecode(
                         f"not be restored; recompiling."
                     );
 
-                    cache_path.unlink(missing_ok=True);
+                    actual_program.invalidate_module(full_target);
                 } else {
                     return marshal.loads(bc);
                 }
             } else {
-                if SEC_IFACE not in secs and SEC_CLIENT not in secs {
-                    cache_path.unlink(missing_ok=True);
-                }
                 actual_program.invalidate_module(full_target);
                 symtab_only_recovery = True;
             }
@@ -1381,7 +1378,10 @@ impl JacCompiler._persist_module_cache(
             );
         }
 
-        sections.update(self._native_sections(full_target, result, actual_program));
+        registry = actual_program.native_units();
+        if registry.record_module(result, actual_program.options) is not None {
+            sections.update(registry.product_sections(full_target));
+        }
         interop_dict = self._build_interop_dict(result);
         if interop_dict {
             sections[SEC_INTEROP] = json.dumps(interop_dict).encode('utf-8');
@@ -1415,39 +1415,6 @@ impl JacCompiler._persist_module_cache(
     } except Exception {}
 }
 
-impl JacCompiler._native_sections(
-    full_target: str, result: uni.Module, actual_program: JacProgram
-) -> dict[int, bytes] {
-    sections: dict[int, bytes] = {};
-    gen = result.gen;
-    if gen.native_iface is None {
-        return sections;
-    }
-    import from jaclang.compiler.driver.jir { SEC_NDEPS, native_deps_section }
-    registry = actual_program.native_units();
-    stamp = registry.stamp_for(actual_program.options);
-    sections[SEC_NIFACE] = stamp.pack(gen.native_iface.to_bytes());
-    if gen.native_object is not None {
-        sections[SEC_NOBJ] = stamp.pack(gen.native_object);
-    }
-    if gen.native_bitcode is not None {
-        sections[SEC_NBITCODE] = stamp.pack(gen.native_bitcode);
-    }
-    dep_digests = registry.dep_digests(list(gen.native_deps or []));
-    sections[SEC_NDEPS] = stamp.pack(native_deps_section(dep_digests));
-    import from jaclang.compiler.driver.jir { SEC_NCTDEPS, ct_deps_section }
-    compile_deps = ct_deps_section(result.ct_file_deps, result.ct_body_deps);
-    sections[SEC_NCTDEPS] = stamp.pack(compile_deps);
-    registry.record(
-        full_target,
-        gen.native_iface,
-        actual_program.options,
-        dep_digests,
-        compile_deps=compile_deps
-    );
-    return sections;
-}
-
 impl JacCompiler._persist_native_unit(
     full_target: str, result: uni.Module, actual_program: JacProgram
 ) -> None {
@@ -1458,7 +1425,9 @@ impl JacCompiler._persist_native_unit(
         return;
     }
     try {
-        sections = self._native_sections(full_target, result, actual_program);
+        registry = actual_program.native_units();
+        registry.record_module(result, actual_program.options);
+        sections = registry.product_sections(full_target);
         interop_dict = self._build_interop_dict(result);
         if interop_dict {
             import json;
@@ -1474,7 +1443,12 @@ impl JacCompiler._persist_native_unit(
             );
         } except Exception {}
         write_module_cache(full_target, None, extra_sections=sections);
-    } except Exception {}
+    } except Exception as exc {
+        import logging;
+        logging.getLogger(__name__).warning(
+            f"Could not persist native products for {full_target}: {exc}", exc_info=True
+        );
+    }
 }
 
 impl JacCompiler._release_compile_scratch(target_program: JacProgram) -> None {
@@ -1489,6 +1463,11 @@ impl JacCompiler._compile_once(
     use_str: (str | None) = None,
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
+    if use_str is not None and not options.no_ir_cache {
+        import copy;
+        options = copy.copy(options);
+        options.no_ir_cache = True;
+    }
     import from jaclang.jac0core.ext_registry { is_annex }
     if (use_str is None and options.resolve_annex_parent and is_annex(file_path)) {
         import from jaclang.compiler.driver.bccache { discover_base_file }

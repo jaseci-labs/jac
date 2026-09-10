@@ -54,6 +54,11 @@ the digest: the stamp carries them.
 Symbols that are not `:pub` are module-qualified, `<prefix>.<name>`, where
 the prefix is the native-safe form of the module key; `:pub` symbols keep
 bare names, and only two `:pub` exports of one name in one link collide.
+
+Bundled `na_stdlib` shims retain qualified symbols even for their public
+Jac APIs. Their public names (for example `hashlib.new` and `hmac.new`)
+belong to separate library modules and are not bare C ABI exports.
+
 The prefix is keyed on the module's identity within its package, not on its
 absolute path: a module under a sealed package (a directory holding
 `_precompiled`), a `jac.toml` project, or the jaclang package itself is
