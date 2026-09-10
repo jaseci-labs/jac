@@ -44,9 +44,7 @@ walker DeclImplMatchPass(Transform) {
     can run_walk with Module entry;
     def defn_lookup(lookup: Symbol) -> (NameAtom | None);
     def _find_archetype_defn(lookup: Symbol) -> (NameAtom | None);
-    def connect_impls(
-        source_sym_tab: UniScopeNode, target_sym_tab: UniScopeNode
-    ) -> None;
+    def connect_impls(root_scope: UniScopeNode) -> None;
 
     def _connect_one_impl(
         impl_node: ImplDef, sym_name: str, target_sym_tab: UniScopeNode

@@ -41,7 +41,7 @@ test "native early symbols wait for construction lowering" {
 test "native validation preserves client code context" {
     kernel = ensure_loaded();
     if kernel is not None {
-        assert kernel.supports_early;
+        assert kernel.result_abi == 2;
         for (context, expected) in [("client", 0), ("server", 1)] {
             prog = JacProgram();
             (mod, failed) = parse_woven(
@@ -125,7 +125,7 @@ def scope_profile(mod: Module) -> list {
 test "native early passes preserve the store parser's symbol graph" {
     kernel = ensure_loaded();
     if kernel is not None {
-        assert kernel.supports_early , "rebuild the compiler kernel for early analysis";
+        assert kernel.result_abi == 2 , "rebuild the compiler kernel for early analysis";
         native = JacProgram();
         (nat_mod, failed) = parse_woven(
             SOURCE, "early_scopes.jac", native, [], early_context="server"
@@ -155,7 +155,7 @@ test "native early passes preserve the store parser's symbol graph" {
 test "native validation diagnostics retain inline suppression" {
     kernel = ensure_loaded();
     if kernel is not None {
-        assert kernel.supports_early;
+        assert kernel.result_abi == 2;
         for (suffix, expected) in [("", 1), (" # jac:ignore[E0052]", 0)] {
             prog = JacProgram();
             source = "def missing(value) -> int { return 1; }" + suffix;

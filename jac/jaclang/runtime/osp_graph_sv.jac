@@ -320,7 +320,8 @@ def sv_store_closed(mem: any) -> int {
         n = _graph.osp_region_died(st.region);
     }
     for h in set(st.h_of_key.values()) {
-        if h > 0 and h < len(_obj_of_h) and _obj_of_h[h] is not None {
+        reference = _obj_of_h[h] if h > 0 and h < len(_obj_of_h) else None;
+        if reference is not None {
             _obj_of_h[h] = None;
             _h_free.append(h);
         }

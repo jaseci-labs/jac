@@ -1,29 +1,77 @@
 import from jaclang.compiler.frontend.diagnostics { E1309 }
 
+impl OwnershipCheckPass._projection_sources(expr: Expr | None) -> list[SymId] {
+    # Follow reference-producing projections, not arbitrary expression reads.
+    # Predicates and ordinary call arguments do not identify a result's owner.
+    if expr is None {
+        return [];
+    }
+    if isinstance(expr, Name) {
+        sid = self._sym_id(expr);
+        return [sid] if sid is not None else [];
+    }
+    if isinstance(expr, AtomTrailer) {
+        return self._projection_sources(expr.target);
+    }
+    if isinstance(expr, CfgExpr) {
+        return self._projection_sources(expr.expr);
+    }
+    if isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
+        return self._projection_sources(expr.value);
+    }
+    if isinstance(expr, UnaryExpr)
+        and (is_borrow_kind(expr.ownership) or expr.ownership == OwnershipKind.IMM) {
+        return self._projection_sources(expr.operand);
+    }
+    if isinstance(expr, IfElseExpr) {
+        return self._projection_sources(expr.value)
+            + self._projection_sources(expr.else_value);
+    }
+    if isinstance(expr, EdgeRefTrailer) and expr.chain {
+        origin = expr.chain[0];
+        if not isinstance(origin, EdgeOpRef) {
+            return self._projection_sources(origin);
+        }
+    }
+    if isinstance(expr, FuncCall) {
+        owner = self._view_call_owner(expr);
+        return [owner] if owner is not None else [];
+    }
+    return [];
+}
+
 impl OwnershipCheckPass._stamp_immutable_aliases -> None {
     if not self.imm_decl {
         return;
     }
-    dependents: dict[SymId, list[Name]] = {};
+    links: list[tuple[Name, Expr]] = [];
     for assignment in self.idx_assignments {
-        if assignment.aug_op is not None
-            or len(assignment.target) != 1
-            or not isinstance(assignment.target[0], Name)
-            or self._expr_scalar_typed(assignment.value) {
+        if assignment.aug_op is None
+            and len(assignment.target) == 1
+            and isinstance(assignment.target[0], Name)
+            and assignment.value is not None {
+            links.append((assignment.target[0], assignment.value));
+        }
+    }
+    for loop in self.ir_in.get_all_sub_nodes(InForStmt) {
+        targets: list[Name] = [loop.target]
+            if isinstance(loop.target, Name)
+            else loop.target.get_all_sub_nodes(Name);
+        for target in targets {
+            links.append((target, loop.collection));
+        }
+    }
+    dependents: dict[SymId, list[Name]] = {};
+    for (target, value) in links {
+        if target.sym is None or self._expr_scalar_typed(target) {
             continue;
         }
-        source = assignment.value;
-        while isinstance(source, AtomTrailer) {
-            source = source.target;
+        for source in self._projection_sources(value) {
+            if source not in dependents {
+                dependents[source] = [];
+            }
+            dependents[source].append(target);
         }
-        if not isinstance(source, Name) or source.sym is None {
-            continue;
-        }
-        sid = self._name_sym_id(source);
-        if sid not in dependents {
-            dependents[sid] = [];
-        }
-        dependents[sid].append(assignment.target[0]);
     }
     pending = list(self.imm_decl);
     while pending {
@@ -56,29 +104,35 @@ impl OwnershipCheckPass._emit_marker_diagnostics -> None {
             continue;
         }
         for tgt in nd.target {
-            base: Expr = tgt;
-            while isinstance(base, AtomTrailer) {
-                base = base.target;
-            }
-            root_sid = self._sym_id(base);
-            if root_sid is not None
-                and root_sid in self.imm_decl
-                and self.imm_decl.get(root_sid) is not tgt {
-                self._emit_imm_mutation(root_sid, tgt, self.imm_decl.get(root_sid));
+            base = tgt.target if isinstance(tgt, AtomTrailer) else tgt;
+            for root_sid in set(self._projection_sources(base)) {
+                if root_sid in self.imm_decl
+                    and self.imm_decl.get(root_sid) is not tgt {
+                    self._emit_imm_mutation(root_sid, tgt, self.imm_decl.get(root_sid));
+                }
             }
         }
     }
 
-    for sid in self.imm_decl {
-        for nm in self.name_uses_by_sym.get(sid, []) {
-            cur: UniNode = nm;
-            p = cur.parent;
-            while isinstance(p, AtomTrailer) and p.target is cur {
-                cur = p;
-                p = cur.parent;
+    for borrow in self.ir_in.get_all_sub_nodes(UnaryExpr) {
+        if not is_mut_kind(borrow.ownership) {
+            continue;
+        }
+        for sid in set(self._projection_sources(borrow.operand)) {
+            if sid in self.imm_decl {
+                self._emit_imm_mutation(sid, borrow, self.imm_decl.get(sid));
             }
-            if isinstance(p, UnaryExpr) and is_mut_kind(p.ownership) {
-                self._emit_imm_mutation(sid, nm, self.imm_decl.get(sid));
+        }
+    }
+    for deletion in self.ir_in.get_all_sub_nodes(DeleteStmt) {
+        for target in deletion.leaf_targets() {
+            if not isinstance(target, AtomTrailer) {
+                continue;
+            }
+            for sid in set(self._projection_sources(target.target)) {
+                if sid in self.imm_decl {
+                    self._emit_imm_mutation(sid, target, self.imm_decl.get(sid));
+                }
             }
         }
     }

@@ -852,6 +852,7 @@ walker NaIRGenPass(Transform) {
         b: ir.IRBuilder, container_ptr_type: ir.Type, layout: dict, initial_cap: int = 8
     ) -> tuple;
 
+    def _array_storage_release -> ir.Function;
     def _emit_grow_array(
         b: ir.IRBuilder,
         arr_ptr: ir.Value,
@@ -2039,7 +2040,8 @@ walker NaIRGenPass(Transform) {
     def _sizeof_llvm(ty: ir.Type) -> ir.Value;
     def _box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value;
     def _rc_slot_ref(val: ir.Value) -> (ir.Value | None);
-    def _tuple_managed_fields(struct_type: ir.LiteralStructType) -> list;
+    def _value_reference_paths(value_type: ir.Type) -> list[list[int]];
+    def _struct_reference_paths(arch_name: str) -> list[list[int]];
     def _coerce_tuple_to_struct(val: ir.Value, target_struct: ir.Type) -> ir.Value;
     def _jac_optional_type(payload: ir.Type) -> ir.Type;
     def _opt_payload_of(t: ir.Type) -> (ir.Type | None);
@@ -2207,7 +2209,8 @@ walker NaIRGenPass(Transform) {
     ) -> (ir.Value | None);
 
     def _codegen_virtual_call(
-        obj_val: ir.Value, method_name: str, args: list[ir.Value], obj_type_name: str
+        obj_val: ir.Value, method_name: str, args: list[ir.Value], obj_type_name: str,
+        release_args: list[ir.Value] | None = None
     ) -> (ir.Value | None);
 
     def _generate_inherited_method_wrappers -> None;
@@ -2215,7 +2218,7 @@ walker NaIRGenPass(Transform) {
     def _emit_swap(nd: uni.FuncCall) -> (ir.Value | None);
     def _callee_ability_of(nd: uni.FuncCall) -> (uni.Ability | None);
     def _transfer_own_args(
-        nd: uni.FuncCall,
+        nd: uni.FuncCall | None,
         func: (ir.Function | None),
         args: list,
         release_args: list,
@@ -2245,7 +2248,7 @@ walker NaIRGenPass(Transform) {
     ) -> tuple[ir.Value, ir.Value];
 
     def _exception_values(state: ir.Value) -> tuple[ir.Value, ir.Value, ir.Value];
-    def _nogc_owned_param(p: uni.ParamVar) -> bool;
+    def _owned_param(p: uni.ParamVar) -> bool;
     def _emit_rc_gc_env_off_fn -> ir.Function;
     def _aos_elem_struct(type_key: str) -> (ir.Type | None);
     def _container_is_view(nd: uni.UniNode) -> bool;

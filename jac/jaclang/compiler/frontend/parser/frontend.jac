@@ -131,39 +131,47 @@ def _native_parse_woven(
     source_str: str,
     file_path: str,
     prog: (JacProgram | None),
-    annexes: list,
+    annexes: list[tuple[str, str]],
     early_context: str = ""
-) -> (tuple | None) {
+) -> (tuple[Module, bool] | None) {
     import jaclang.compiler.native_compiler as _jc;
     kernel = _jc.ensure_loaded();
     if kernel is None {
         return None;
     }
-    kernel.prepare_early(early_context if prog is not None else "");
-    for (a_src, a_path) in annexes {
-        kernel.annex(a_src, a_path);
-    }
-    if kernel.run(source_str, file_path) != 0 {
-        return None;
-    }
-    module = kernel.take_module();
-    if module is None {
-        return None;
-    }
-    p_errs = kernel.err_count();
-    lex_errs = kernel.lex_errs();
-    p_diags = kernel.take_diags();
-    lex_diags = kernel.take_lexdiags();
-    comments = kernel.take_comments();
-    had_error = _finish_parse(
-        module, p_errs, p_diags, comments, lex_diags, lex_errs, prog
+    result = kernel.run(
+        source_str, file_path, annexes, early_context if prog is not None else ""
     );
+    if result is None {
+        raise RuntimeError(f"Native frontend could not materialize {file_path}");
+    }
+    module = result.module;
+    had_error = _finish_parse(
+        module,
+        result.parse_errors,
+        result.diagnostics,
+        result.comments,
+        result.lex_diagnostics,
+        result.lex_errors,
+        prog
+    );
+    for annex in result.annexes {
+        annex_error = _finish_parse(
+            annex.module,
+            annex.parse_errors,
+            annex.diagnostics,
+            annex.comments,
+            annex.lex_diagnostics,
+            annex.lex_errors,
+            prog
+        );
+        had_error = had_error or annex_error;
+    }
     if prog is not None {
-        results = kernel.take_pass_results();
+        results = kernel.pass_results(result);
         if results {
             prog.analysis.record_early(module, results);
         }
-    }
     return (module, had_error);
 }
 
@@ -171,9 +179,9 @@ def parse_woven(
     source_str: str,
     file_path: str,
     prog: (JacProgram | None),
-    annexes: list,
+    annexes: list[tuple[str, str]],
     early_context: str = ""
-) -> tuple {
+) -> tuple[Module, bool] {
     nat = _native_parse_woven(source_str, file_path, prog, annexes, early_context);
     if nat is not None {
         return nat;
@@ -184,8 +192,11 @@ def parse_woven(
     }
     import from jaclang.compiler.passes.annex_weave { merge_annex_into }
     for (a_src, a_path) in annexes {
-        (a_mod, _a_err) = parse(a_src, a_path, prog=prog);
-        merge_annex_into(module, a_mod);
+        (a_mod, a_err) = parse(a_src, a_path, prog=prog);
+        had_error = had_error or a_err;
+        if not a_err {
+            merge_annex_into(module, a_mod);
+        }
     }
     return (module, had_error);
 }

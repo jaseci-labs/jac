@@ -6,6 +6,7 @@ import from jaclang.compiler.frontend.unitree {
     Archetype,
     Assignment,
     AtomTrailer,
+    AtomUnit,
     BinaryExpr,
     CfgExpr,
     ConcurrentExpr,
@@ -14,6 +15,8 @@ import from jaclang.compiler.frontend.unitree {
     DeleteStmt,
     DictVal,
     DisengageStmt,
+    EdgeOpRef,
+    EdgeRefTrailer,
     Enum as UniEnum,
     Expr,
     FString,
@@ -191,6 +194,7 @@ walker OwnershipCheckPass(Transform) {
     def _build_index(tree: UniNode) -> None;
     def _stamp_ownership -> None;
     def _stamp_immutable_aliases -> None;
+    def _projection_sources(expr: Expr | None) -> list[SymId];
     def _stamp_overwrite_consumed -> None;
     def _stamp_move_sites -> None;
     def _receiver_mode(ability: Ability | None) -> OwnershipKind;

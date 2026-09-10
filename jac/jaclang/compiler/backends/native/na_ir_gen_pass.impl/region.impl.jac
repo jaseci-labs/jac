@@ -303,20 +303,9 @@ impl NaIRGenPass._emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | N
         return None;
     }
     _hook = self._drop_hook_for(type_name);
-    field_types = self.struct_field_types.get(type_name, {});
-    field_indices = self.struct_field_indices.get(type_name, {});
-    foreign_fields = self.struct_field_foreign.get(type_name, set());
-    _ptr_fields = [
-        (fname, ftype)
-        for (fname, ftype) in field_types.items()
-        if fname not in foreign_fields
-            and (
-                isinstance(ftype, ir.PointerType)
-                or self._opt_ptr_payload_of(ftype) is not None
-            )
-            and field_indices.get(fname, -1) >= 0
-    ];
-    if _hook is None and not _ptr_fields {
+    reference_paths = self._struct_reference_paths(type_name);
+    if _hook is None and not reference_paths
+        and not self.struct_field_inline.get(type_name) {
         return None;
     }
     _headerless = self._nogc_headerless();
@@ -353,32 +342,14 @@ impl NaIRGenPass._emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | N
         self.struct_drop_hooks[type_name] = _hook;
         b.call(_hook, [b.bitcast(_dobj, _hook.args[0].type)]);
     }
-    for (fname, ftype) in _ptr_fields {
-        idx = field_indices.get(fname, -1);
-        fp = b.gep(
-            _dobj, [ir.Constant(i32, 0), ir.Constant(i32, idx)], name=f"dropf.{fname}.p"
+    for path in reference_paths {
+        pointer = b.gep(
+            _dobj,
+            [ir.Constant(i32, index) for index in [0] + path],
+            name="dropf.field.ptr"
         );
-        if self._opt_ptr_payload_of(ftype) is not None {
-            fp = b.gep(
-                fp,
-                [ir.Constant(i32, 0), ir.Constant(i32, 1)],
-                name=f"dropf.{fname}.pvp"
-            );
-            fv = b.load(fp, name=f"dropf.{fname}.pv");
-            b.call(
-                self.rc_release_simple_fn,
-                [b.bitcast(fv, i8p, name=f"dropf.{fname}.pv.i8")]
-            );
-            continue;
-        }
-        fv = b.load(fp, name=f"dropf.{fname}");
-        _fv_ty = fv.type;
-        if isinstance(_fv_ty, ir.PointerType)
-            and isinstance(_fv_ty.pointee, ir.FunctionType) {
-            continue;
-        }
-        fv_i8 = b.bitcast(fv, i8p, name=f"dropf.{fname}.i8");
-        b.call(self.rc_release_simple_fn, [fv_i8]);
+        value = b.load(pointer, name="dropf.field");
+        self._emit_elem_release(b, value.type, value);
     }
     b.branch(done_bb);
 

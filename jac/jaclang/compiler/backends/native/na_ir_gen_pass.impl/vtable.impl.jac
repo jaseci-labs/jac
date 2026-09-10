@@ -243,7 +243,8 @@ impl NaIRGenPass._isinstance_class_name_hit(
 }
 
 impl NaIRGenPass._codegen_virtual_call(
-    obj_val: ir.Value, method_name: str, args: list[ir.Value], obj_type_name: str
+    obj_val: ir.Value, method_name: str, args: list[ir.Value], obj_type_name: str,
+    release_args: list[ir.Value] | None = None
 ) -> (ir.Value | None) {
     _vc_struct = self.struct_types.get(obj_type_name);
     if _vc_struct is not None and obj_val.type != _vc_struct.as_pointer() {
@@ -285,11 +286,16 @@ impl NaIRGenPass._codegen_virtual_call(
         }
     }
 
+    if release_args is None {
+        release_args = self._transfer_own_args(
+            None, func, coerced, list(coerced), offset=1
+        );
+    }
     non_overridden = self._non_overridden_methods.get(obj_type_name);
     if non_overridden is not None and method_name in non_overridden {
         _dv_res = self.builder.call(func, coerced, name=f"call.{method_name}");
 
-        self._release_owned_args(coerced, op="mcall_arg");
+        self._release_owned_args(release_args, op="mcall_arg");
         return _dv_res;
     }
 
@@ -368,14 +374,14 @@ impl NaIRGenPass._codegen_virtual_call(
         self.builder.position_at_end(_vd_done);
         _vd_ret_t = fn_type.return_type;
         if isinstance(_vd_ret_t, ir.VoidType) {
-            self._release_owned_args(coerced, op="vcall_arg");
+            self._release_owned_args(release_args, op="vcall_arg");
             return _vd_fb;
         }
         _vd_phi = self.builder.phi(_vd_ret_t, name=f"vd.{method_name}.res");
         for (_vr, _vb) in _vd_incoming {
             _vd_phi.add_incoming(_vr, _vb);
         }
-        self._release_owned_args(coerced, op="vcall_arg");
+        self._release_owned_args(release_args, op="vcall_arg");
         return _vd_phi;
     }
 
@@ -418,7 +424,7 @@ impl NaIRGenPass._codegen_virtual_call(
     );
     _vt_res = self.builder.call(typed_fn, coerced, name=f"vcall.{method_name}");
 
-    self._release_owned_args(coerced, op="vcall_arg");
+    self._release_owned_args(release_args, op="vcall_arg");
     return _vt_res;
 }
 

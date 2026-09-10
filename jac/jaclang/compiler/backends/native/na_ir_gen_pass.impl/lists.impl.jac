@@ -55,7 +55,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     l_arg = append_fn.args[0];
     value_slot = b.alloca(elem_type, name="value.slot");
     b.store(append_fn.args[1], value_slot);
-    retain_address = ir.Constant(i64, 0);
+    retain_address: ir.Value = ir.Constant(i64, 0);
     if self._elem_kind(elem_type) != "raw" and not self._nogc_headerless() {
         retain = ir.Function(
             self.llvm_module,
@@ -70,13 +70,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
         retain_address = b.ptrtoint(retain, i64);
     }
     i8p = ir.IntType(8).as_pointer();
-    release = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
-    if not self._nogc_headerless() {
-        if self.rc_safe_free_fn is None {
-            self._emit_rc_helpers();
-        }
-        release = self.rc_safe_free_fn;
-    }
+    release = self._array_storage_release();
     append = self._get_or_declare_extern(
         "__jac_array_append", ir.VoidType(), [i64 for _ in range(7)]
     );

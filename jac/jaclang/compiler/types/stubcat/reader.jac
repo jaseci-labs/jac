@@ -584,16 +584,13 @@ obj StubCatalog {
             }
         }
         if rec.overloads {
-            overload_index = scope._overload_index;
             for (name, ids) in rec.overloads {
-                extra: list[Symbol] = [];
                 for sym_id in ids {
                     sym = self.symbol_of(sym_id);
                     if sym is not None {
-                        extra.append(sym);
+                        scope.adopt_overload(sym, alias=name);
                     }
                 }
-                overload_index[name] = extra;
             }
         }
     }

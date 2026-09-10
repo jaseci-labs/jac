@@ -1059,7 +1059,7 @@ impl NaIRGenPass._codegen_method(
             _body_params = _body_params[1:];
         }
         self._self_owned = _self_param is not None
-            and self._nogc_owned_param(_self_param);
+            and self._owned_param(_self_param);
         if not _is_static {
             self._bind_function_parameter(
                 "self", func.args[0], borrowed=not self._self_owned
@@ -1075,19 +1075,21 @@ impl NaIRGenPass._codegen_method(
             _body_params = _body_params[1:];
         }
 
-        _bound_params: list[tuple[(str, bool)]] = [
+        _bound_params: list[tuple[str, bool, bool]] = [
             (
                 (p.name.value if p.name else f"arg{i}"),
                 bool(p.name?.sym?.param_rebound),
-
+                self._owned_param(p)
             ) for (i, p) in enumerate(_body_params)
         ];
         if sig is None and len(func.args) > _base + len(_bound_params) {
-            _bound_params.append(("value", False, ));
+            _bound_params.append(("value", False, False));
         }
-        for (i, (param_name, _p_rebound)) in enumerate(_bound_params) {
+        for (i, (param_name, _p_rebound, _p_owned)) in enumerate(_bound_params) {
             arg_val = func.args[i + _base];
-            self._bind_function_parameter(param_name, arg_val, rebound=_p_rebound);
+            self._bind_function_parameter(
+                param_name, arg_val, borrowed=not _p_owned, rebound=_p_rebound
+            );
         }
 
         _is_virtual = method_name in self.vtable_method_indices.get(arch_name, {});
@@ -2091,7 +2093,8 @@ impl NaIRGenPass._codegen_instantiation(
             val = self._coerce_type(val, ftype);
         }
 
-        if not _vt_struct {
+        if not _vt_struct
+            and key_name not in self.struct_field_borrow.get(type_name, set()) {
             self._emit_take_ref(
                 val,
                 op="ctor_field",
@@ -2106,7 +2109,9 @@ impl NaIRGenPass._codegen_instantiation(
             name=f"field.{key_name}"
         );
         self.builder.store(val, field_ptr);
-        self._nogc_consume_local(init_expr);
+        if key_name not in self.struct_field_borrow.get(type_name, set()) {
+            self._nogc_consume_local(init_expr);
+        }
         set_fields.add(key_name);
     }
 
@@ -2148,7 +2153,8 @@ impl NaIRGenPass._codegen_instantiation(
                     val = self._coerce_type(val, ftype);
                 }
 
-                if not _vt_struct {
+                if not _vt_struct
+                    and fname not in self.struct_field_borrow.get(type_name, set()) {
                     self._emit_take_ref(
                         val,
                         op="ctor_field",
@@ -3106,17 +3112,6 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     args: list[ir.Value] = [obj_val]
         + self._codegen_bound_args(nd, func, self_offset=1);
 
-    if self._arch_has_vtable(type_name) and not _is_mono_method {
-        result = self._codegen_virtual_call(obj_val, method_name, args, type_name);
-        if result is not None {
-            if isinstance(func.return_value.type, ir.VoidType) {
-                return ir.Constant(ir.IntType(64), 0);
-            }
-
-            return result;
-        }
-    }
-
     coerced: list[ir.Value] = [];
     for (i, arg) in enumerate(args) {
         if i < len(func.args) {
@@ -3126,8 +3121,21 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         }
     }
     _release = self._transfer_own_args(
-        nd, func, coerced, list(coerced), offset=len(coerced) - len(nd.params or [])
+        nd, func, coerced, list(coerced), offset=1
     );
+    if self._arch_has_vtable(type_name) and not _is_mono_method {
+        result = self._codegen_virtual_call(
+            obj_val, method_name, coerced, type_name, release_args=_release
+        );
+        if result is not None {
+            if isinstance(func.return_value.type, ir.VoidType) {
+                return ir.Constant(ir.IntType(64), 0);
+            }
+
+            return result;
+        }
+    }
+
     result = self.builder.call(func, coerced, name=f"call.{method_name}");
 
     self._release_owned_args(_release, op="call_arg");
@@ -4122,7 +4130,9 @@ impl NaIRGenPass._codegen_field_assign(
         self._emit_rc_release_simple(_fs_old_pv, op="field_set", loc=_fs_loc);
     }
     self.builder.store(value, field_ptr);
-    self._nogc_consume_local(value_node);
+    if not _borrow_field {
+        self._nogc_consume_local(value_node);
+    }
 }
 
 impl NaIRGenPass._receiver_routed_method_fn(

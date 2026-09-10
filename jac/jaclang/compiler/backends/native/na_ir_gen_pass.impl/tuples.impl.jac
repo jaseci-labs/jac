@@ -212,43 +212,24 @@ impl NaIRGenPass._rc_slot_ref(val: ir.Value) -> (ir.Value | None) {
     return None;
 }
 
-impl NaIRGenPass._tuple_managed_fields(struct_type: ir.LiteralStructType) -> list {
-    out: list = [];
-    for (i, ety) in enumerate(struct_type.elements) {
-        if self?.jacval_type and ety == self.jacval_type {
-            continue;
-        }
-        if isinstance(ety, ir.PointerType) {
-            if not isinstance(ety.pointee, ir.FunctionType) {
-                out.append((i, False));
-            }
-        } elif self._opt_ptr_payload_of(ety) is not None {
-            out.append((i, True));
-        }
-    }
-    return out;
-}
 
 impl NaIRGenPass._box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value {
     if not isinstance(val.type, ir.LiteralStructType) {
         return val;
     }
 
-    _managed = self._tuple_managed_fields(val.type);
+    _managed = self._value_reference_paths(val.type);
     _rc_box = (
         bool(_managed) and not self._nogc_headerless() and self._gc_mode() != "none"
     );
     if _rc_box {
         _owned = val?.na_tuple_owned;
-        for (_bi, _b_opt) in _managed {
-            if _owned is not None and _bi < len(_owned) and _owned[_bi] {
+        for path in _managed {
+            if _owned is not None and path[0] < len(_owned) and _owned[path[0]] {
                 continue;
             }
-            _bfv = self.builder.extract_value(val, _bi, name=f"box.f{_bi}");
-            if _b_opt {
-                _bfv = self.builder.extract_value(_bfv, 1, name=f"box.f{_bi}.pv");
-            }
-            self._emit_rc_retain(_bfv, op="box_field", loc=loc);
+            field = self.builder.extract_value(val, path, name="box.field");
+            self._emit_elem_retain(self.builder, field.type, field);
         }
     }
 

@@ -49,6 +49,19 @@ OSP runtime. Linked declarations and implementations use one primary scope.
 Keep pass algorithms in `passes/`, and extend this shared boundary when another
 pass moves into the kernel.
 
+The frontend ABI uses an owned request for each invocation. `jc_request` creates
+it, `jc_annex` borrows it while adding inputs, and `jc_run` consumes it. A request
+that cannot be prepared is consumed by `jc_discard`. Results and pending inputs
+are not kept in global compiler slots. The host checks the frontend ABI version
+before calling the kernel.
+
+One `FrontendResult` carries the module, per-source annex diagnostics, and named
+`PassResult` records through a single materialization. Floating-point fields use
+the same native layout metadata as other primitive fields, including pass timing.
+Annex syntax errors remain native results; a materialization failure is an error,
+not a request to silently repeat the compilation on the host. Successful annexes
+use the same weaving helper in both execution paths.
+
 The internal compiler library is linked with `native_build(..., lib=True,
 closed_world=True)`: its exported C entry points do not expose a Jac virtual-call
 ABI. All calls through Jac vtables, including calls through base classes, must

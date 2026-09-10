@@ -1581,9 +1581,21 @@ impl OwnershipCheckPass._emit_receiver_diagnostics -> None {
         if self._method_call_mode(call) != OwnershipKind.MUT_BORROW {
             continue;
         }
-        recv = self._method_call_receiver(call);
         trailer = call.target;
-        if recv is None or recv.sym is None or not isinstance(trailer, AtomTrailer) {
+        if not isinstance(trailer, AtomTrailer) {
+            continue;
+        }
+        immutable_sources = set(self._projection_sources(trailer.target)).intersection(
+            self.imm_decl
+        );
+        if immutable_sources {
+            for sid in immutable_sources {
+                self._emit_imm_mutation(sid, call, self.imm_decl.get(sid));
+            }
+            continue;
+        }
+        recv = self._method_call_receiver(call);
+        if recv is None or recv.sym is None {
             continue;
         }
         method = trailer.right.sym_name if isinstance(trailer.right, Name) else "";

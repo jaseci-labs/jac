@@ -33,8 +33,11 @@ impl NaIRGenPass._apply_ownership_param_attrs(
     }
 }
 
-impl NaIRGenPass._nogc_owned_param(p: uni.ParamVar) -> bool {
-    if not self._nogc_owned_world() or p.type_tag is None {
+impl NaIRGenPass._owned_param(p: uni.ParamVar) -> bool {
+    if self._nogc_headerless() and not self._nogc_owned_world() {
+        return False;
+    }
+    if p.type_tag is None {
         return False;
     }
     return p.type_tag.ownership == OwnershipKind.OWN;
@@ -464,7 +467,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         for (i, p) in enumerate(sig.get_parameters()) {
             param_name = p.name.value if p.name else f"arg{i}";
             arg_val = func.args[i];
-            borrowed = not self._nogc_owned_param(p);
+            borrowed = not self._owned_param(p);
             self._bind_function_parameter(
                 param_name,
                 arg_val,
@@ -715,7 +718,11 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         }
         for (i, arg) in enumerate(fn.args) {
             if i < len(param_names) {
-                self._bind_function_parameter(param_names[i], arg);
+                self._bind_function_parameter(
+                    param_names[i], arg,
+                    borrowed=not self._owned_param(sig_params[i]),
+                    rebound=bool(sig_params[i].name?.sym?.param_rebound)
+                );
                 continue;
             }
             (cap_name, cap_mode, _cap_type) = captures[i - len(param_names)];
@@ -732,14 +739,15 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
             self._codegen_body(body);
         }
 
-        for bb in fn.basic_blocks {
-            if not bb.is_terminated {
-                tb = ir.IRBuilder(bb);
-                if isinstance(ret_type, ir.VoidType) {
-                    tb.ret_void();
-                } else {
-                    tb.ret(self._zero_const(ret_type));
-                }
+        if not self.builder.block.is_terminated {
+            self._emit_scope_cleanup(
+                skip_var=None,
+                loc=f"{self.ir_in.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}"
+            );
+            if isinstance(ret_type, ir.VoidType) {
+                self.builder.ret_void();
+            } else {
+                self.builder.ret(self._zero_const(ret_type));
             }
         }
     } finally {

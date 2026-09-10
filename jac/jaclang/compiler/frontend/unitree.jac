@@ -184,7 +184,6 @@ node UniNode {
     def _children -> list[UniNode];
     def _role_shaped(role: type[Role], found: list[UniNode]) -> any;
     def _role_set(role: type[Role], value: any) -> None;
-    def link_impl(impl_node: UniNode) -> None;
     def _construct_sub_node_tab -> None;
     def _invalidate_sub_node_tab -> None;
 
@@ -348,7 +347,9 @@ node UniScopeNode(UniNode) {
 
     def find_scope(name: str) -> (UniScopeNode | None);
     def set_primary_names(syms: dict[(str, Symbol)]) -> None;
+    def set_overload_names(syms: dict[str, list[Symbol]]) -> None;
     def adopt_primary(sym: Symbol, alias: str = "") -> None;
+    def adopt_overload(sym: Symbol, alias: str = "") -> None;
     def _drop_primary(name: str) -> None;
     def get_enclosing_captures -> list[Symbol];
     def link_kid_scope(key_node: UniScopeNode) -> UniScopeNode;
@@ -561,6 +562,7 @@ node CodeBlockStmt(UniCFGNode) {
 }
 
 node AstImplNeedingNode(AstSymbolNode) {
+    def link_impl(impl_node: ImplDef) -> None;
     has body: (Sequence[UniNode] | UniNode | None) { getter; }
     has needs_impl: bool { getter; }
 
@@ -699,7 +701,6 @@ node Module(AstDocNode, UniScopeNode) {
     has annexable_by: (str | None) { getter; }
 
     def declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool;
-    def absorb_annex_body(stmts: Sequence[UniNode]) -> None;
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
     ) -> Module {

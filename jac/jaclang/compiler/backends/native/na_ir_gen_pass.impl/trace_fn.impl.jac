@@ -22,20 +22,7 @@ impl NaIRGenPass._require_trace_fn(
 }
 
 impl NaIRGenPass._struct_has_ref_fields(arch_name: str) -> bool {
-    field_types = self.struct_field_types.get(arch_name, {});
-    field_indices = self.struct_field_indices.get(arch_name, {});
-    foreign_fields = self.struct_field_foreign.get(arch_name, set());
-    for (fname, ftype) in field_types.items() {
-        if (
-            self._elem_kind(ftype) != "raw"
-            or self._opt_ptr_payload_of(ftype) is not None
-        )
-            and fname not in foreign_fields
-            and field_indices.get(fname, -1) >= 0 {
-            return True;
-        }
-    }
-    return False;
+    return bool(self._struct_reference_paths(arch_name));
 }
 
 impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
@@ -53,26 +40,8 @@ impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
     if struct_type is None {
         return;
     }
-    field_types = self.struct_field_types.get(arch_name, {});
-    field_indices = self.struct_field_indices.get(arch_name, {});
-    foreign_fields = self.struct_field_foreign.get(arch_name, set());
-
-    ptr_fields = [];
-    for (fname, ftype) in field_types.items() {
-        if fname in foreign_fields {
-            continue;
-        }
-        idx = field_indices.get(fname, -1);
-        if idx < 0 {
-            continue;
-        }
-        if self._elem_kind(ftype) != "raw" {
-            ptr_fields.append((fname, idx, False));
-        } elif self._opt_ptr_payload_of(ftype) is not None {
-            ptr_fields.append((fname, idx, True));
-        }
-    }
-    if not ptr_fields {
+    reference_paths = self._struct_reference_paths(arch_name);
+    if not reference_paths {
         return;
     }
 
@@ -102,19 +71,14 @@ impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
 
     _obj = b.bitcast(trace_fn.args[0], struct_ptype, name="obj.typed");
 
-    for (fname, fidx, f_is_opt) in ptr_fields {
-        _fptr = b.gep(
-            _obj, [ir.Constant(i32, 0), ir.Constant(i32, fidx)], name=f"fptr.{fname}"
+    for path in reference_paths {
+        pointer = b.gep(
+            _obj,
+            [ir.Constant(i32, index) for index in [0] + path],
+            name="trace.field.ptr"
         );
-        if f_is_opt {
-            _fptr = b.gep(
-                _fptr,
-                [ir.Constant(i32, 0), ir.Constant(i32, 1)],
-                name=f"fptr.{fname}.pv"
-            );
-        }
-        _fval = b.load(_fptr, name=f"fval.{fname}");
-        b = self._emit_elem_trace(b, _fval, _vis);
+        value = b.load(pointer, name="trace.field");
+        b = self._emit_elem_trace(b, value, _vis);
     }
     b.branch(done_bb);
 

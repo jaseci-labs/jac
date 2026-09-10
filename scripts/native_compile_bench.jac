@@ -62,7 +62,7 @@ def main -> None {
             {
                 "source": str(args.source),
                 "kernel": os.environ.get("JAC_COMPILER_LIB", "auto"),
-                "early_passes": kernel.supports_early,
+                "frontend_abi": kernel.result_abi,
                 "seconds": times,
                 "median_seconds": statistics.median(times),
                 "min_seconds": min(times),

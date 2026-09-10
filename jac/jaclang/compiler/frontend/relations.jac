@@ -18,7 +18,9 @@ edge ScopePrimary: UniScopeNode --> Symbol {
     has name: str;
 }
 
-edge ScopeOverload: UniScopeNode --> Symbol {}
+edge ScopeOverload: UniScopeNode --> Symbol {
+    has name: str;
+}
 
 edge ScopeChild: UniScopeNode --> UniScopeNode {}
 
