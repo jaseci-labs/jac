@@ -1,4 +1,5 @@
 import os;
+import from jaclang.jac0core.ext_registry { base_stem }
 import from jaclang.project.apps { AppConfig, implicit_app }
 import from jaclang.project.config { JacConfig }
 
@@ -139,7 +140,7 @@ def plan_app_run(
     flags = dict(spec.flags);
     output = "";
     if spec.output_dir {
-        stem = _entry_stem(entry_path) if entry_path else app.name;
+        stem = base_stem(entry_path) if entry_path else app.name;
         out_dir = (
             os.path.join(project_root, spec.output_dir)
                 if app.implicit

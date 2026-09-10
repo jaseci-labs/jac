@@ -124,9 +124,7 @@ test "serve plan forwards a custom [serve] port from jac.toml" {
 }
 
 test "kind service-mesh -> serve consumer" {
-    p = _plan(
-        "kind = \"service-mesh\"\nentry-point = \"consumer.sv\"\n", "consumer.sv.jac"
-    );
+    p = _plan("kind = \"service-mesh\"\nentry-point = \"consumer\"\n", "consumer.jac");
     assert p.action == "serve";
     assert p.verb == "run";
 }
