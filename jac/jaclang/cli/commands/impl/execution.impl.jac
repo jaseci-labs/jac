@@ -1372,7 +1372,7 @@ impl serve(
             hot_reloader = HotReloader(
                 base_path=base,
                 module_name=mod,
-                entry_path=prepared.entry,
+                entry_path=os.path.realpath(filename),
                 watcher=watcher,
                 client_compiler=client_compiler
             );

@@ -1163,7 +1163,7 @@ impl JacCompiler.stamp_boundary_facts(
                     and not cl_na_edge
                     and is_client_boundary_import(nd)
                 ) {
-                    linked_mod = symbol_linked_source_module(nd);
+                    linked_mod = source_mod_for(facts.from_loc_resolved);
                     if linked_mod is not None {
                         for item in nd.items {
                             if not isinstance(item, uni.ModuleItem) {
@@ -1232,11 +1232,6 @@ impl JacCompiler.compile(
         context_program
     }
     caller_program = target_program;
-    if self._reentrant_depth == 0 and not options.entry_point {
-        import copy;
-        options = copy.copy(options);
-        options.entry_point = os.path.realpath(file_path);
-    }
     resolved_program = self.selfhost.resolve(file_path, target_program)
         if not options.force_target_program
         else target_program;

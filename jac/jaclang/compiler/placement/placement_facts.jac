@@ -90,9 +90,8 @@ def discover_spaces(paths: list[str], prog: any = None) -> dict[str, set[str]] {
         mod = hub_module_for_path(ap, target);
         if mod is None {
             try {
-                target.compile(file_path=ap, no_cgen=True);
+                mod = target.compile(file_path=ap, no_cgen=True);
             } except Exception {}
-            mod = hub_module_for_path(ap, target);
         }
         spaces = set(module_spaces(mod));
         if _errors_for_path(target, ap) > 0 {

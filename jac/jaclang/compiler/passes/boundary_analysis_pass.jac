@@ -1,3 +1,4 @@
+import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.unitree {
     Ability,
@@ -51,6 +52,8 @@ import from jaclang.compiler.frontend.codeinfo {
 import from jaclang.compiler.passes.uni_pass { UniPass }
 
 walker BoundaryAnalysisPass(UniPass) {
+    has prog: JacProgram;
+    static has HOST_PASS: bool = True;
     has _func_defs: dict[(str, tuple[(InteropContext, Ability)])] = field(
         default_factory=`dict
     ),
@@ -107,7 +110,3 @@ walker BoundaryAnalysisPass(UniPass) {
     def after_pass -> None;
     def _record_access_levels(manifest: any) -> None;
 }
-
-glob _type_parse_memo: dict[str, tuple[float, Module | None]] = {};
-
-def _parse_module_for_types(file_path: str) -> (Module | None);

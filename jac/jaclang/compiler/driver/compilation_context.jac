@@ -117,7 +117,7 @@ def bind_options(
             bound.target_app = implicit.name;
             bound.app_kind = implicit.kind;
             bound.ui = bound.ui or implicit.ui;
-            bound.project_root = workspace.project_root;
+            bound.project_root = bound.project_root or workspace.project_root;
         }
     }
     if declared is not None {

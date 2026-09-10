@@ -66,6 +66,10 @@ obj SelfHostCache {
         if os.environ.get("JAC_NO_UNIT_EVICT") {
             return;
         }
+
+        if self.program.scratch.compile_depth > 0 {
+            return;
+        }
         if result is not None and result.gen.native_engine is not None {
             import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
             slim = CodeGenTarget();

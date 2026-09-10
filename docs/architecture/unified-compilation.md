@@ -20,7 +20,9 @@ entry-point = "core/api.jac"
 An app declaration identifies an entry module, not a directory. CLI selection
 establishes the compilation context. Ordinary imports inherit that context;
 another app's declared entry establishes a boundary. `default-app` chooses the
-CLI default and does not give shared modules a global owner. App-level placement
+CLI default and does not give shared modules a global owner. A program retains
+its entry context across dependency requests; callers select a new entry
+explicitly. App-level placement
 pins choose codespaces and do not establish ownership.
 
 A private implementation file imported directly participates in the importing
@@ -55,6 +57,9 @@ The executor validates requirements before running a pass list, records complete
 passes and timings, and observes cancellation. Backend consumers request the
 products they need. Client dependency traversal belongs to the compiler driver;
 the client emitter writes the returned artifacts and copies their assets.
+Boundary analysis is a host pass: requests for provider declarations, boundary
+types, and WASM host contracts use the driver's dependency loader. There is no
+separate parser or global syntax memo for boundary types.
 
 `compile_application` owns the application import worklist for both preparation
 and workspace checking. It starts at declared entries, includes package
@@ -69,7 +74,9 @@ silently schedule analysis.
 Bootstrap remains an explicit constraint: compiler modules needed to construct a
 schedule must load before that schedule executes. The seed manifest and bootstrap
 dependency declarations keep the compiler from recursively compiling itself with
-an unavailable pass. These are compiler-loading constraints, not app discovery.
+an unavailable pass. A compiler module finishing its loader import cannot evict
+analysis data owned by an enclosing compilation. These are compiler-loading
+constraints, not app discovery.
 
 ## Source reuse and artifact identity
 

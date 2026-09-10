@@ -433,7 +433,7 @@ impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
         }
         contract = function_contract(decl);
         manifest.native_host_imports[stem] = host_contracts(
-            decl.find_parent_of_type(Module)
+            decl.find_parent_of_type(Module), self.prog
         );
         (ret_type, param_types, param_names) = self._signature_of_decl(decl);
         manifest.bindings[local_name] = InteropBinding(
@@ -525,7 +525,7 @@ impl BoundaryAnalysisPass._provider_module_of(nd: Import) -> (Module | None) {
     if resolved is None {
         return None;
     }
-    return _parse_module_for_types(resolved);
+    return self.prog.load_dependency_module(resolved, need_tree=True);
 }
 
 impl BoundaryAnalysisPass._record_app_edge(nd: Import) -> None {
@@ -592,7 +592,7 @@ impl BoundaryAnalysisPass._check_app_cycle(
         visited.add(path);
         mod = self._provider_module_of(nd) if path == start else None;
         if mod is None {
-            mod = _parse_module_for_types(path);
+            mod = self.prog.load_dependency_module(path, need_tree=True);
         }
         if mod is None {
             continue;
@@ -626,7 +626,7 @@ impl BoundaryAnalysisPass._parsed_provider_of(nd: Import) -> (Module | None) {
     if not target or not os.path.isfile(str(target)) {
         return None;
     }
-    return _parse_module_for_types(str(target));
+    return self.prog.load_dependency_module(str(target), need_tree=True);
 }
 
 impl BoundaryAnalysisPass._reject_owned_type_import(
@@ -722,33 +722,6 @@ impl BoundaryAnalysisPass._extract_walker_has_fields(
     return (names, types);
 }
 
-impl _parse_module_for_types(file_path: str) -> (Module | None) {
-    import os;
-    try {
-        stamp = os.path.getmtime(file_path);
-    } except OSError {
-        return None;
-    }
-    cached = _type_parse_memo.get(file_path);
-    if cached is not None and cached[0] == stamp {
-        return cached[1];
-    }
-    parsed: (Module | None) = None;
-    try {
-        import from jaclang.compiler.driver.compiler { JacCompiler }
-        import from jaclang.compiler.driver.program { JacProgram }
-        import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
-        src_text = read_file_with_encoding(file_path);
-        parsed = JacCompiler().parse_str(
-            source_str=src_text, file_path=file_path, target_program=JacProgram()
-        );
-    } except Exception {
-        parsed = None;
-    }
-    _type_parse_memo[file_path] = (stamp, parsed);
-    return parsed;
-}
-
 impl BoundaryAnalysisPass._parse_imported_archetype(
     type_name: str, search_mods: list[Module]
 ) -> (Archetype | Enum | None) {
@@ -771,7 +744,7 @@ impl BoundaryAnalysisPass._parse_imported_archetype(
                 if not target or not os.path.isfile(str(target)) {
                     continue;
                 }
-                parsed = _parse_module_for_types(str(target));
+                parsed = self.prog.load_dependency_module(str(target), need_tree=True);
                 if parsed is None {
                     continue;
                 }
@@ -825,7 +798,7 @@ impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
         import from jaclang.compiler.passes.wasm_contract { check_host_call }
         import from jaclang.compiler.frontend.diagnostics { E5110 }
         try {
-            check_host_call(here);
+            check_host_call(here, self.prog);
         } except ValueError as e {
             self.emit(E5110, node_override=here, details=str(e));
         }

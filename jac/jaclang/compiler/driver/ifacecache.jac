@@ -173,6 +173,7 @@ obj IfaceRegistry {
         frames: list[str] postinit,
         direct_deps: dict[str, dict[str, str]] = {},
         _iface_bytes: dict[str, tuple[str, bytes, str]] = {},
+        _incoherent: set[str] = set(),
         verifying: bool = False,
         closure_token: int = 0,
         _pkg_dir_memo: str = "";
@@ -226,6 +227,7 @@ obj IfaceRegistry {
 
     def forget(resolved_path: str) {
         real = os.path.realpath(resolved_path);
+        self._incoherent.discard(real);
         if real in self.entries {
             del self.entries[real];
         }
@@ -238,6 +240,7 @@ obj IfaceRegistry {
     }
 
     def clear {
+        self._incoherent.clear();
         self.entries.clear();
         self.direct_deps.clear();
         self._iface_bytes.clear();
@@ -857,8 +860,10 @@ obj IfaceRegistry {
         }
         encoded = self._encode_iface(codec, mod);
         if encoded is None {
+            self._incoherent.add(resolved);
             return False;
         }
+        self._incoherent.discard(resolved);
         self._iface_bytes[resolved] = (
             key,
             encoded,
@@ -872,7 +877,7 @@ obj IfaceRegistry {
     ) -> None {
         import json;
 
-        if mod is None or mod.parse_failed {
+        if mod is None or mod.parse_failed or resolved in self._incoherent {
             return;
         }
         codec = iface_codec();
