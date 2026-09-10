@@ -132,9 +132,11 @@ obj DepGraph {
         self.imports[path] = [
             ImportEdge(
                 target,
-                target.endswith('.jac'),
+                'j' in flags,
                 'k' in flags,
-                CodeContext.CLIENT if 'c' in flags else CodeContext.SERVER,
+                CodeContext.CLIENT
+                    if 'c' in flags
+                    else (CodeContext.NATIVE if 'n' in flags else CodeContext.SERVER),
                 't' in flags,
                 'm' in flags
             ) for (target, digest, flags) in rows

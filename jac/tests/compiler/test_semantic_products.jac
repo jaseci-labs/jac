@@ -153,3 +153,39 @@ test "an uncacheable interface does not become a successful product" {
         assert not program.errors_had;
     }
 }
+
+
+test "cached import edges retain distinct roles for the same provider" {
+    import from jaclang.compiler.driver.semantic_facts { ImportEdge }
+    import from jaclang.compiler.driver.jir {
+        deps_section,
+        read_dep_rows,
+        write_precompiled_jir,
+        SEC_DEPS
+    }
+    program = JacProgram();
+    module = '/project/main.jac';
+    provider = '/project/helper.jac';
+    program.deps.imports[module] = [
+        ImportEdge(provider, True, False, CodeContext.SERVER, True, False),
+        ImportEdge(provider, True, False, CodeContext.CLIENT, False, True),
+        ImportEdge(provider, True, True, CodeContext.NATIVE, False, True)
+    ];
+    registry = program.iface_registry();
+    registry.direct_deps[module] = {provider: 'digest'};
+    rows = registry.dep_rows(module, None);
+    cached = write_precompiled_jir(None, extra_sections={SEC_DEPS: deps_section(rows)});
+    restored = JacProgram();
+    restored.deps.restore_imports(module, read_dep_rows(cached));
+    edges = restored.deps.imports[module];
+    assert len(edges) == 3;
+    assert not any(edge.top_level and edge.from_import for edge in edges);
+    assert any(
+        edge.context == CodeContext.NATIVE and edge.is_comptime for edge in edges
+    );
+    assert any(
+        edge.context == CodeContext.CLIENT and edge.from_import for edge in edges
+    );
+    assert all(edge.jac for edge in edges);
+    assert module in restored.transitive_dependents(provider);
+}

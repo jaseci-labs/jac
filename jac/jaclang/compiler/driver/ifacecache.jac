@@ -293,17 +293,22 @@ obj IfaceRegistry {
     def dep_rows(resolved_path: str, mod: any) -> list[tuple[str, str, str]] {
         bucket = self.direct_deps.get(resolved_path, {});
         import from jaclang.compiler.frontend.constant { CodeContext }
-        flags: dict[str, str] = {};
+        flags: dict[str, set[str]] = {};
         for edge in self.prog.deps.imports.get(resolved_path, []) {
-            flags[edge.target] = flags.get(edge.target, '')
-                + ('c' if edge.context == CodeContext.CLIENT else '')
-                + ('t' if edge.top_level else '')
-                + ('k' if edge.is_comptime else '')
-                + ('m' if edge.from_import else '');
+            flags.setdefault(edge.target, set()).add(
+                ('c' if edge.context == CodeContext.CLIENT else '')
+                    + ('n' if edge.context == CodeContext.NATIVE else '')
+                    + ('j' if edge.jac else '')
+                    + ('t' if edge.top_level else '')
+                    + ('k' if edge.is_comptime else '')
+                    + ('m' if edge.from_import else '')
+            );
         }
         out: list[tuple[str, str, str]] = [];
         for (path, digest) in bucket.items() {
-            out.append((path, digest, flags.get(path, ""), ));
+            for role in sorted(flags.get(path, {''})) {
+                out.append((path, digest, role));
+            }
         }
         return out;
     }
