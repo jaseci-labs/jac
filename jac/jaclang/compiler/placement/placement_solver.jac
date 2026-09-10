@@ -666,19 +666,6 @@ def solve_program_placement(entry_mod: uni.Module, prog: any) {
     work.drain(prog);
 }
 
-def invalidate_importers_es(prog: any, mod_path: str) -> list[uni.Module] {
-    import from jaclang.compiler.driver.pipeline { invalidate_client_product }
-    cleared: list[uni.Module] = [];
-    for path in prog.deps.dependents.get(os.path.realpath(mod_path), set()) {
-        module = prog.find_module(path);
-        if module is not None {
-            invalidate_client_product(prog, module);
-            cleared.append(module);
-        }
-    }
-    return cleared;
-}
-
 walker PlacementApplyPass(Transform) {
     has prog: JacProgram,
         ir_in: uni.Module,

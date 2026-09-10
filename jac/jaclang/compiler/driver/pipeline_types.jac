@@ -1,6 +1,7 @@
 import from enum { StrEnum }
 
 enum PassIdentity(StrEnum) {
+    NativeDemotionPass = "NativeDemotionPass",
     PlacementReportPass = "PlacementReportPass",
     ASTValidationPass = "ASTValidationPass",
     AbsorbImportsPass = "AbsorbImportsPass",

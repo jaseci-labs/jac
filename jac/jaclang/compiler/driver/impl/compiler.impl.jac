@@ -1289,12 +1289,10 @@ impl JacCompiler.compile(
                     _wrap_prog.invalidate_module(_resolved);
                 } except Exception {}
                 try {
-                    import from jaclang.compiler.placement.placement_solver {
-                        invalidate_importers_es
+                    import from jaclang.compiler.driver.pipeline {
+                        invalidate_native_importers
                     }
-                    for _stale_mod in invalidate_importers_es(_wrap_prog, _resolved) {
-                        _drop_demoted_native_bindings(_stale_mod, _resolved);
-                    }
+                    invalidate_native_importers(_wrap_prog, _resolved);
                 } except Exception as _reset_exc {
                     import logging as _reset_log;
                     _reset_log.getLogger(__name__).warning(

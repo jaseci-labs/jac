@@ -1,6 +1,6 @@
 import type from jaclang.compiler.types.types { TypeBase }
 import os;
-import from jaclang.compiler.passes.transform { Transform }
+import from jaclang.compiler.driver.context_passes { ProgramTransform }
 import from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.semantic_facts {
@@ -12,10 +12,7 @@ import from jaclang.compiler.driver.semantic_facts {
 }
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 
-walker DependencyFactsPass(Transform) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
-
+walker DependencyFactsPass(ProgramTransform) {
     def transform(ir_in: uni.Module) -> uni.Module {
         if ir_in.stub_only
             and os.path.realpath(ir_in.loc.mod_path) in self.prog.deps.imports {
@@ -49,7 +46,8 @@ walker DependencyFactsPass(Transform) {
                         imp.is_jac,
                         imp.is_comptime,
                         imp.code_context,
-                        imp in ir_in.body
+                        imp.parent is ir_in,
+                        imp.from_loc is not None
                     )
                 );
                 self.prog.record_dependency(ir_in.loc.mod_path, target);
@@ -60,10 +58,7 @@ walker DependencyFactsPass(Transform) {
     }
 }
 
-walker ComptimeImportsPass(Transform) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
-
+walker ComptimeImportsPass(ProgramTransform) {
     def transform(ir_in: uni.Module) -> uni.Module {
         if self.prog._get_compiler().selfhost.is_selfhost(self.prog) {
             return ir_in;
@@ -88,10 +83,7 @@ walker ComptimeImportsPass(Transform) {
     }
 }
 
-walker PlacementSummaryPass(Transform) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
-
+walker PlacementSummaryPass(ProgramTransform) {
     def transform(ir_in: uni.Module) -> uni.Module {
         import from jaclang.compiler.placement.placement { summarize_module }
         key = os.path.abspath(ir_in.loc.mod_path)
@@ -102,10 +94,7 @@ walker PlacementSummaryPass(Transform) {
     }
 }
 
-walker ProgramPlacementPass(Transform) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
-
+walker ProgramPlacementPass(ProgramTransform) {
     def transform(ir_in: uni.Module) -> uni.Module {
         import from jaclang.compiler.placement.placement_solver {
             refresh_placement_module,
@@ -117,10 +106,7 @@ walker ProgramPlacementPass(Transform) {
     }
 }
 
-walker ClientDependenciesPass(Transform) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
-
+walker ClientDependenciesPass(ProgramTransform) {
     def transform(ir_in: uni.Module) -> uni.Module {
         import from jaclang.compiler.driver.pipeline {
             require_product,
@@ -175,10 +161,7 @@ walker ClientDependenciesPass(Transform) {
     }
 }
 
-walker ServingFactsPass(Transform) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
-
+walker ServingFactsPass(ProgramTransform) {
     def transform(ir_in: uni.Module) -> uni.Module {
         facts = ServingFacts();
         manifest = ir_in.gen.interop_manifest;
@@ -207,10 +190,7 @@ walker ServingFactsPass(Transform) {
     }
 }
 
-walker InterfaceFactsPass(Transform) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
-
+walker InterfaceFactsPass(ProgramTransform) {
     def transform(ir_in: uni.Module) -> uni.Module {
         self.prog.iface_registry().prepare_interface(
             os.path.realpath(ir_in.loc.mod_path), ir_in
@@ -219,10 +199,7 @@ walker InterfaceFactsPass(Transform) {
     }
 }
 
-walker PlacementSpacesPass(Transform) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
-
+walker PlacementSpacesPass(ProgramTransform) {
     def transform(ir_in: uni.Module) -> uni.Module {
         import from jaclang.compiler.frontend.module_facts { ModuleFacts }
         facts = PlacementSpaces();
@@ -243,12 +220,9 @@ walker PlacementSpacesPass(Transform) {
     }
 }
 
-walker NativeEligibilityPass(Transform) {
-    has prog: JacProgram,
-        hold_exempt: bool = False,
+walker NativeEligibilityPass(ProgramTransform) {
+    has hold_exempt: bool = False,
         result: NativeEligibility = NativeEligibility();
-
-    static has HOST_PASS: bool = True;
 
     def transform(ir_in: uni.Module) -> uni.Module {
         import from jaclang.compiler.placement.placement { scan_native_blockers }
@@ -263,13 +237,10 @@ walker NativeEligibilityPass(Transform) {
     }
 }
 
-walker NativeClosurePass(Transform) {
-    has prog: JacProgram,
-        dependencies: list[str],
+walker NativeClosurePass(ProgramTransform) {
+    has dependencies: list[str],
         hold_exempt: bool = False,
         eligible: bool = True;
-
-    static has HOST_PASS: bool = True;
 
     def transform(ir_in: uni.Module) -> uni.Module {
         import from jaclang.compiler.frontend.codeinfo { effective_native_closure_cap }
@@ -309,12 +280,9 @@ walker NativeClosurePass(Transform) {
     }
 }
 
-walker TypeQueryPass(Transform) {
-    has prog: JacProgram,
-        query: uni.Expr | uni.Symbol,
+walker TypeQueryPass(ProgramTransform) {
+    has query: uni.Expr | uni.Symbol,
         result: TypeBase | None = None;
-
-    static has HOST_PASS: bool = True;
 
     def transform(ir_in: uni.Module) -> uni.Module {
         evaluator = self.prog.get_type_evaluator();
@@ -330,14 +298,33 @@ walker TypeQueryPass(Transform) {
     }
 }
 
-walker PlacementReportPass(Transform) {
-    has prog: JacProgram,
-        rows: dict = {};
-    static has HOST_PASS: bool = True;
+walker PlacementReportPass(ProgramTransform) {
+    has rows: dict = {};
 
     def transform(ir_in: uni.Module) -> uni.Module {
         import from jaclang.compiler.placement.placement { _collect_placement_rows }
         self.rows = _collect_placement_rows(self.prog);
+        return ir_in;
+    }
+}
+
+walker NativeDemotionPass(ProgramTransform) {
+    has path: str;
+
+    def transform(ir_in: uni.Module) -> uni.Module {
+        import from jaclang.compiler.driver.pipeline { invalidate_client_product }
+        import from jaclang.compiler.driver.na_coverage {
+            _drop_demoted_native_bindings
+        }
+        for importer in self.prog.deps.dependents.get(
+            os.path.realpath(self.path), set()
+        ) {
+            module = self.prog.find_module(importer);
+            if module is not None {
+                invalidate_client_product(self.prog, module);
+                _drop_demoted_native_bindings(module, self.path);
+            }
+        }
         return ir_in;
     }
 }

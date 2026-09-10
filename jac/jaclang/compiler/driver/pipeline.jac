@@ -371,7 +371,8 @@ def get_symtab_ir_sched -> list[type[Transform]] {
             AbsorbImportsPass,
             SymTabBuildPass,
             DeclImplMatchPass,
-            PlacementApplyPass
+            PlacementApplyPass,
+            DependencyFactsPass
         ],
         origin='symtab-ir schedule'
     );
@@ -1052,4 +1053,11 @@ def placement_report(program: JacProgram) -> dict {
     import from jaclang.compiler.driver.pass_driver { run_pass }
     import from jaclang.compiler.driver.semantic_passes { PlacementReportPass }
     return run_pass(PlacementReportPass, program.mod.main, program).rows;
+}
+
+
+def invalidate_native_importers(program: JacProgram, path: str) {
+    import from jaclang.compiler.driver.pass_driver { run_pass }
+    import from jaclang.compiler.driver.semantic_passes { NativeDemotionPass }
+    run_pass(NativeDemotionPass, program.mod.main, program, path=path);
 }

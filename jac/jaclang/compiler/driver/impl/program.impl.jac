@@ -42,6 +42,7 @@ impl JacProgram.install_module(
     if displaced is None {
         return;
     }
+    self.deps.forget(resolved_path);
     work = self.analysis.placement_state.get('work');
     if work is not None {
         work.forget(displaced);

@@ -789,7 +789,7 @@ test "dependency compiled when imported file recompiled" {
         # Button component in components/
         btn_file = unique_dir / "Button.jac";
         btn_file.write_text(
-            "    def Button() -> any {\n"
+            "    def:pub Button() -> any {\n"
             "        return <button>Click</button>;\n"
             "    }\n"
         );
@@ -1131,5 +1131,26 @@ test "failed preparation keeps the live module and recovers on the next edit" {
         } finally {
             client.close();
         }
+    }
+}
+
+
+test "standalone HMR rejects private client runtime imports" {
+    with TemporaryDirectory() as tmpdir {
+        base = Path(tmpdir);
+        (base / 'Button.jac').write_text(
+            'def Button -> JsxElement { return <button>private</button>; }'
+        );
+        app = base / 'app.jac';
+        app.write_text(
+            'import from .Button { Button }\n'
+                + 'def App -> JsxElement { return <Button />; }'
+        );
+        watcher = JacFileWatcher(watch_paths=[str(base)]);
+        reloader = HotReloader(base_path=str(base), module_name='app', watcher=watcher);
+        reloader._recompile_client_code(str(app));
+        diagnostics = str(reloader.diagnostics());
+        assert 'not exported' in diagnostics , diagnostics;
+        assert not (base / '.jac/client/compiled/app.js').exists();
     }
 }

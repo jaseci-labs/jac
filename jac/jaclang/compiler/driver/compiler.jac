@@ -37,62 +37,41 @@ import type from jaclang.compiler.frontend.codeinfo {
     NativeModuleLayout
 }
 import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
-import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
+import from jaclang.compiler.frontend.constant { CodeContext }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
-import from jaclang.compiler.passes.boundary_analysis_pass { BoundaryAnalysisPass }
-import from jaclang.compiler.passes.semantic_analysis_pass { SemanticAnalysisPass }
-import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.selfhost { SelfHostCache }
 import from jaclang.compiler.driver.pass_driver {
-    build_diagnostic_policy,
     compile_progress,
     deliver_alerts,
-    run_pass,
     setup_progress
 }
 import from jaclang.compiler.driver.pipeline {
     run_utility,
     UtilityProduct,
-    get_analysis_sched,
-    get_boundary_analysis_sched,
     get_format_sched,
-    get_ir_gen_sched,
     get_lint_sched,
-    get_py_code_gen,
-    get_symtab_ir_sched,
     native_pipeline_available,
     native_schedule_failure,
-    providers_of,
-    pass_provides,
-    validate_schedule
 }
 import from jaclang.compiler.driver.source_failures {
     CompilerSourceError,
     import_error_re_enters,
-    module_import_in_flight,
     module_scoped_failure_details,
     bootstrap_tier_failure_details,
     note_compiler_source_failure
 }
 import from jaclang.compiler.driver.boundary_classify {
     ClientImportVerdict,
-    _coerce_client_module,
-    _coerce_native_module,
     _default_codespace_for,
     classify_client_import_item,
     import_declares_native_target,
     is_client_boundary_import,
     is_client_native_edge_import,
     native_only_import_target,
-    symbol_linked_source_module
 }
-import from jaclang.compiler.driver.na_coverage {
-    _drop_demoted_native_bindings,
-    na_coverage_record,
-    na_demotion_note
-}
+import from jaclang.compiler.driver.na_coverage { na_coverage_record, na_demotion_note }
 
 glob COMPILE_GC_THRESHOLDS: tuple[int, int, int] = (100000, 50, 100);
 

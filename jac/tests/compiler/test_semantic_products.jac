@@ -80,3 +80,33 @@ test "serving access is a reusable scheduled product" {
         assert program.analysis.pass_runs['ServingFactsPass'] == count;
     }
 }
+
+
+test "serving metadata exposes members only for from imports" {
+    import from jaclang.compiler.driver.application { _manifest }
+    import from jaclang.compiler.driver.pipeline { compile_application }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        path = base / 'main.jac';
+        (base / 'helper.jac').write_text('def:pub value -> int { return 1; }');
+        options = CompileOptions(
+            no_cgen=True, default_codespace='server', project_root=tmp
+        );
+        for (source, exposed) in [
+            ('import helper;\ndef:pub ping -> int { return helper.value(); }', False),
+            (
+                'import from helper { value }\ndef:pub ping -> int { return value(); }',
+                True
+            )
+        ] {
+            path.write_text(source);
+            program = JacProgram();
+            module = compile_application(program, str(path), options);
+            assert not program.errors_had , [str(e) for e in program.errors_had];
+            manifest = _manifest(program, str(path), tmp, module);
+            assert 'ping' in manifest['func_access'];
+            assert ('value' in manifest['func_access']) == exposed , manifest;
+        }
+    }
+}

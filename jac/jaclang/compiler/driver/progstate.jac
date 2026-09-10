@@ -37,11 +37,6 @@ obj ModuleHub {
     }
 
     def is_fresh(resolved_path: str) -> bool {
-        import from jaclang.compiler.driver.semantic_facts {
-            ImportEdge,
-            ServingFacts,
-            PlacementSpaces
-        }
         import os;
         import from jaclang.compiler.driver.bccache { discover_annex_files }
         cached_at = self.stamps.get(resolved_path);
@@ -140,7 +135,8 @@ obj DepGraph {
                 target.endswith('.jac'),
                 'k' in flags,
                 CodeContext.CLIENT if 'c' in flags else CodeContext.SERVER,
-                't' in flags
+                't' in flags,
+                'm' in flags
             ) for (target, digest, flags) in rows
         ];
         for edge in self.imports[path] {
@@ -215,11 +211,6 @@ obj DiagLedger {
     }
 
     def _owned(alert: Alert, path: str) -> bool {
-        import from jaclang.compiler.driver.semantic_facts {
-            ImportEdge,
-            ServingFacts,
-            PlacementSpaces
-        }
         import os;
         import from jaclang.jac0core.ext_registry { is_annex_path_of }
         try {

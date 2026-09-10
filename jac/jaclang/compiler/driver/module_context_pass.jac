@@ -1,5 +1,5 @@
 import os;
-import from jaclang.compiler.passes.transform { Transform }
+import from jaclang.compiler.driver.context_passes { ProgramTransform }
 import from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext }
@@ -10,130 +10,86 @@ import from jaclang.compiler.driver.boundary_classify {
 }
 import from jaclang.compiler.driver.na_coverage { na_coverage_record }
 
-walker ModuleContextPass(Transform) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
-
+walker ModuleContextPass(ProgramTransform) {
     def transform(ir_in: uni.Module) -> uni.Module {
         if ir_in.is_raised_from_py or ir_in.stub_only {
             return ir_in;
         }
-        compiler = self.prog._get_compiler();
-        target_program = self.prog;
-        file_path = ir_in.loc.mod_path;
-        mod = ir_in;
-        run_codespace_infer = False;
-        codespace = '';
         import from jaclang.compiler.frontend.codeinfo {
-            is_client_by_location as _cbl,
-            is_native_by_location as _nbl
+            is_client_by_location,
+            is_native_by_location
         }
-        if _nbl(file_path) {
-            codespace = 'native';
+        import from jaclang.compiler.placement.placement_pins {
+            effective_module_pin,
+            config_kind_space,
+            _demoted_native_code
         }
-        if not codespace and _cbl(file_path) {
-            codespace = 'client';
+        import from jaclang.compiler.native_scope {
+            in_native_scope_path,
+            scope_lowering_active
         }
-        if not codespace {
-            import from jaclang.compiler.placement.placement_pins {
-                effective_module_pin as _mod_pin
-            }
-            _pinned_space = _mod_pin(file_path);
-            if _pinned_space in ('client', 'native') {
-                codespace = _pinned_space;
-            }
-        }
-        if not codespace {
-            import from jaclang.compiler.native_scope {
-                in_native_scope_path as _in_scope,
-                scope_lowering_active as _scope_on
-            }
-            if _scope_on() and _in_scope(file_path) {
-                codespace = 'native';
-            }
-        }
-        if not codespace {
-            _p_opts = target_program.options;
-            _forced_pre = _p_opts.force_codespace if _p_opts is not None else '';
-            if (
-                not _forced_pre
-                and _p_opts is not None
-                and _p_opts.aot_mode
-                and not compiler.selfhost.is_selfhost(target_program)
-                and _default_codespace_for(target_program) == 'native'
-            ) {
-                _forced_pre = 'native';
-            }
-            if _forced_pre and not compiler.selfhost.is_selfhost(target_program) {
-                codespace = _forced_pre;
-            }
-        }
-        if not codespace and not compiler.selfhost.is_selfhost(target_program) {
-            import from jaclang.compiler.placement.placement_pins {
-                config_kind_space as _kind_space_of
-            }
-            _k_opts = target_program.options;
-            _kind_space = _kind_space_of(
-                file_path, _k_opts.app_kind if _k_opts is not None else ''
+        options = self.prog.options;
+        path = ir_in.loc.mod_path;
+        internal = self.prog._get_compiler().selfhost.is_selfhost(self.prog);
+        space = 'native'
+            if is_native_by_location(path)
+            else (
+                'client' if is_client_by_location(path) else effective_module_pin(path)
             );
-            if _kind_space in ('client', 'native') {
-                codespace = _kind_space;
-            }
+        if space not in ('native', 'client') {
+            space = '';
         }
-        if (codespace == 'client') {
-            _coerce_client_module(mod);
-        } elif (codespace == 'native') {
-            _coerce_native_module(mod);
-            na_coverage_record(mod.loc.mod_path, 'native');
-        } elif codespace == 'server' {
-            mod.set_code_context(CodeContext.SERVER);
-        } else {
-            run_codespace_infer = True;
+        if not space and scope_lowering_active() and in_native_scope_path(path) {
+            space = 'native';
         }
-        if run_codespace_infer {
-            _opts = target_program.options;
-            _analysis_only = _opts is not None and _opts.no_cgen;
-            import from jaclang.compiler.native_scope {
-                in_native_scope_path,
-                scope_lowering_active
+        if not space and not internal {
+            space = options.force_codespace;
+            if not space
+                and options.aot_mode
+                and _default_codespace_for(self.prog) == 'native' {
+                space = 'native';
             }
-            _scope_native = (
-                scope_lowering_active() and in_native_scope_path(mod.loc.mod_path or '')
-            );
-            _native_eligible = (
-                not _analysis_only
-                and (
-                    _scope_native
-                    or (
-                        not compiler.selfhost.is_selfhost(target_program)
-                        and _default_codespace_for(target_program) == 'native'
-                    )
-                )
-            );
-            if _native_eligible {
-                (_na_ok, _na_why) = native_default_verdict(mod, target_program);
-                if _na_ok {
-                    _coerce_native_module(mod);
-                    mod.codespace_inferred = True;
-                    na_coverage_record(mod.loc.mod_path, 'native');
-                } elif _na_why == 'previously-demoted' {
-                    import from jaclang.compiler.placement.placement_pins {
-                        _demoted_native_code
-                    }
-                    na_coverage_record(
-                        mod.loc.mod_path,
-                        'demoted',
-                        _demoted_native_code(os.path.realpath(mod.loc.mod_path)),
-                        _na_why
-                    );
-                } else {
-                    na_coverage_record(mod.loc.mod_path, 'server', '', _na_why);
+            if not space {
+                kind_space = config_kind_space(path, options.app_kind);
+                if kind_space in ('native', 'client') {
+                    space = kind_space;
                 }
             }
+        }
+        if space == 'client' {
+            _coerce_client_module(ir_in);
+            return ir_in;
+        }
+        if space == 'native' {
+            _coerce_native_module(ir_in);
+            na_coverage_record(path, 'native');
+            return ir_in;
+        }
+        if space == 'server' {
+            ir_in.set_code_context(CodeContext.SERVER);
+            return ir_in;
+        }
+        if internal
+            or options.no_cgen
+            or _default_codespace_for(self.prog) != 'native' {
+            return ir_in;
+        }
+        (eligible, reason) = native_default_verdict(ir_in, self.prog);
+        if eligible {
+            _coerce_native_module(ir_in);
+            ir_in.codespace_inferred = True;
+            na_coverage_record(path, 'native');
+        } elif reason == 'previously-demoted' {
+            na_coverage_record(
+                path, 'demoted', _demoted_native_code(os.path.realpath(path)), reason
+            );
+        } else {
+            na_coverage_record(path, 'server', '', reason);
         }
         return ir_in;
     }
 }
+
 
 def native_default_verdict(module: uni.Module, prog: JacProgram) -> tuple[bool, str] {
     import from jaclang.compiler.driver.pipeline { native_pipeline_available }

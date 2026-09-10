@@ -108,13 +108,22 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict {
     sources.update(
         edge.target
         for edge in program.deps.imports.get(os.path.realpath(path), [])
-        if edge.jac and edge.top_level
+        if edge.jac and edge.top_level and edge.from_import
     );
     (funcs, walkers, effects) = ({}, {}, {});
     (cross, seen) = ([], `set());
-    for (source_path, source) in _project_modules(program, `root).items() {
-        require_product(program, source, CompilationProduct.SERVING);
-        facts = program.analysis.serving_facts[source_path];
+    project_modules = _project_modules(program, `root);
+    sources_by_path = dict(project_modules);
+    for source_path in sources {
+        source = program.find_module(source_path);
+        if source is not None {
+            sources_by_path[source_path] = source;
+        }
+    }
+    for (source_path, source) in sources_by_path.items() {
+        actual = program._get_compiler().selfhost.resolve(source_path, program);
+        require_product(actual, source, CompilationProduct.SERVING);
+        facts = actual.analysis.serving_facts[source_path];
         if source_path in sources {
             for (name, access) in facts.func_access.items() {
                 funcs.setdefault(name, access);
@@ -122,6 +131,9 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict {
             for (name, access) in facts.walker_access.items() {
                 walkers.setdefault(name, access);
             }
+        }
+        if source_path not in project_modules {
+            continue;
         }
         effects.update(facts.effects);
         for binding in facts.cross_bindings {

@@ -5,7 +5,8 @@ obj ImportEdge {
         jac: bool,
         is_comptime: bool,
         context: CodeContext,
-        top_level: bool;
+        top_level: bool,
+        from_import: bool = False;
 }
 
 obj PlacementSpaces {

@@ -298,7 +298,8 @@ obj IfaceRegistry {
             flags[edge.target] = flags.get(edge.target, '')
                 + ('c' if edge.context == CodeContext.CLIENT else '')
                 + ('t' if edge.top_level else '')
-                + ('k' if edge.is_comptime else '');
+                + ('k' if edge.is_comptime else '')
+                + ('m' if edge.from_import else '');
         }
         out: list[tuple[str, str, str]] = [];
         for (path, digest) in bucket.items() {
