@@ -142,3 +142,14 @@ test "variadic tuple annotations resolve ellipsis on cold and warm checks" {
         assert warm == cold;
     }
 }
+
+
+test "bundled app dependencies retain their compilation context" {
+    compiler = JacRuntime.get_compiler();
+    program = JacProgram();
+    app_source = _tree_path('scale/admin/ui/constants/users.jac');
+    assert compiler.selfhost.resolve(app_source, program) is program;
+    compiler_source = _tree_path('compiler/driver/pipeline.jac');
+    assert compiler.selfhost.resolve(compiler_source, program)
+        is compiler.selfhost.program;
+}

@@ -161,7 +161,9 @@ def _application_sources(package_dir: str, app: str) -> list[str] | None {
     try {
         compile_application(program, selected.entry, options);
         if program.errors_had {
-            _emit_unit_diagnostics(selected.entry, [program]);
+            for diagnostic in program.errors_had {
+                console.error(diagnostic.pretty_print());
+            }
             raise RuntimeError(f'Application analysis failed: {selected.entry}');
         }
         key = (os.path.abspath(package_dir), app);

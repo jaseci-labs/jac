@@ -82,6 +82,8 @@ dependency declarations keep the compiler from recursively compiling itself with
 an unavailable pass. A compiler module finishing its loader import cannot evict
 analysis data owned by an enclosing compilation. These are compiler-loading
 constraints, not app discovery.
+Nested projects shipped inside `jaclang`, such as the admin UI, retain their app
+context instead of sharing the compiler's internal program.
 
 ## Source reuse and artifact identity
 
