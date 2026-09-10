@@ -66,6 +66,17 @@ obj SelfHostCache {
         if os.environ.get("JAC_NO_UNIT_EVICT") {
             return;
         }
+        if os.environ.get("JAC_XREF_PROBE", "") {
+            import sys;
+            try {
+                sys.stderr.write(
+                    f"[EVICT] pid={os.getpid()} target={full_target} "
+                    f"selfhost_hub={len(self.program.mod.hub)} "
+                    f"selfhost_depth={self.program.scratch.compile_depth}"
+                        + "\n"
+                );
+            } except Exception {}
+        }
         if result is not None and result.gen.native_engine is not None {
             import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
             slim = CodeGenTarget();

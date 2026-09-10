@@ -209,6 +209,10 @@ jobs:
     env:
       JAC_NO_DEV_SOURCE: ""
       JAC_XREF_PROBE: "1"
+      # Legs 7 and 8 run the sweep serially in one process: retained state
+      # accumulates over all 1049 files in sorted order, so if the flake is
+      # retained-state it should reproduce deterministically there.
+      JAC_CHECK_JOBS: ${{ matrix.rep >= 7 && '0' || '' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -244,6 +248,7 @@ jobs:
           for SWEEP in 1 2; do
             TAG="${{ matrix.rep }}-$SWEEP"
             echo "::group::sweep $TAG"
+            echo "jobs=${JAC_CHECK_JOBS:-auto}"
             SECONDS=0
             jac check . --ignore $IGNORE_ARGS --nowarn > "out-$TAG.log" 2> "probe-$TAG.err"
             RC=$?

@@ -964,7 +964,8 @@ obj StubCatalog {
                     resolved = None;
                 }
             }
-            if os.environ.get("JAC_XREF_PROBE", "") {
+            _lvl = os.environ.get("JAC_XREF_PROBE", "");
+            if _lvl and (resolved is None or _lvl == "2") {
                 import sys;
                 tag = "XREF-ORPHAN" if resolved is None else "XREF-OK";
                 sys.stderr.write(

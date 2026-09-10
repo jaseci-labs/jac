@@ -125,6 +125,19 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     opts = _wire_dict(request.get("opts"));
     file_path = str(request["path"]);
+    if os.environ.get("JAC_XREF_PROBE", "") {
+        import sys;
+        try {
+            import from jaclang.runtime.runtime { JacRuntime }
+            _sh = JacRuntime.get_compiler().selfhost.program;
+            _te = "set" if _sh.type_evaluator is not None else "none";
+            sys.stderr.write(
+                f"[WORKER] pid={os.getpid()} selfhost_hub={len(_sh.mod.hub)} "
+                f"selfhost_te={_te} file={file_path}"
+                    + "\n"
+            );
+        } except Exception {}
+    }
     result: dict[(str, any)] = {
         'path': file_path,
         'success': False,

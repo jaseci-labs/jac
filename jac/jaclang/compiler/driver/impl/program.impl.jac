@@ -62,6 +62,17 @@ impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set
 }
 
 impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None {
+    import os;
+    if os.environ.get("JAC_XREF_PROBE", "") {
+        import sys;
+        try {
+            sys.stderr.write(
+                f"[INVALIDATE] pid={os.getpid()} path={resolved_path} "
+                f"hub={len(self.mod.hub)} depth={self.scratch.compile_depth}"
+                    + "\n"
+            );
+        } except Exception {}
+    }
     work = self.analysis.placement_state.get('work');
     if work is not None {
         work.forget_path(resolved_path);
