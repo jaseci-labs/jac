@@ -464,6 +464,12 @@ obj IfaceRegistry {
         self.building.add(resolved);
         try {
             self._event("dep_miss_compile");
+            if os.environ.get("JAC_XREF_PROBE", "") {
+                import sys;
+                sys.stderr.write(
+                    f"[DEP-MISS-COMPILE] pid={os.getpid()} path={resolved}" + "\n"
+                );
+            }
             import from jaclang.compiler.driver.compile_options { CompileOptions }
             self.prog.compile(
                 resolved,
@@ -639,6 +645,12 @@ obj IfaceRegistry {
             ent.replayed_token = self.closure_token;
         }
         self._event("dep_hydrate");
+        if os.environ.get("JAC_XREF_PROBE", "") {
+            import sys;
+            sys.stderr.write(
+                f"[IFACE-SERVE] pid={os.getpid()} kind=symtab path={resolved}" + "\n"
+            );
+        }
         if self.verifying is False and iface_verify_enabled() {
             self._verify_iface(resolved, ent);
         }
@@ -698,6 +710,12 @@ obj IfaceRegistry {
         self._replay_records(prof, err0, warn0);
         ent.replayed_token = self.closure_token;
         self._event("analysis_replay");
+        if os.environ.get("JAC_XREF_PROBE", "") {
+            import sys;
+            sys.stderr.write(
+                f"[IFACE-SERVE] pid={os.getpid()} kind=analysis path={resolved}" + "\n"
+            );
+        }
         if self.verifying is False and iface_verify_enabled() {
             self._verify_analysis(resolved, options, prof);
         }

@@ -57,7 +57,9 @@ def _state(prog: any, selfhost_prog: any, m: any) -> str {
     }
     in_t = "y" if mp in prog.mod.hub else "n";
     in_s = "y" if mp in selfhost_prog.mod.hub else "n";
-    return f"{state}[t={in_t},s={in_s}]";
+    kind = "cat" if m?.cat_kids is not None else "tree";
+    stub = ",stub" if getattr(m, "stub_only", False) else "";
+    return f"{state}[t={in_t},s={in_s},{kind}{stub}]";
 }
 
 def _rec(prog: any, selfhost_prog: any, t: any) -> str {
