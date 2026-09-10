@@ -2,7 +2,7 @@
 name = "{{name}}"
 version = "0.1.0"
 description = "A Jac desktop application: {{name}}"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "desktop"
 
 [dependencies]

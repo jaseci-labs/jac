@@ -35,9 +35,7 @@ test "annotation imports disappear but values and module effects survive" {
             '}\n'
         );
         try {
-            compiler.compile_dependencies_recursively(
-                project / "main.jac", source_root=project
-            );
+            compiler.emit_dependencies(project / "main.jac", source_root=project);
             js = (project / "compiled" / "main.js").read_text();
             imports = "\n".join(
                 line
@@ -48,9 +46,7 @@ test "annotation imports disappear but values and module effects survive" {
             assert "Value as Item" in imports , imports;
             assert "session" in imports , imports;
             # The same checks must apply when compiler artifacts come from cache.
-            compiler.compile_dependencies_recursively(
-                project / "main.jac", source_root=project
-            );
+            compiler.emit_dependencies(project / "main.jac", source_root=project);
         } finally {
             set_config(None);
         }
@@ -70,9 +66,7 @@ test "missing runtime exports fail before either client bundler starts" {
         try {
             failed = False;
             try {
-                compiler.compile_dependencies_recursively(
-                    project / "main.jac", source_root=project
-                );
+                compiler.emit_dependencies(project / "main.jac", source_root=project);
             } except ClientBundleError as error {
                 failed = True;
                 assert "runtime import(s)" in str(error) , str(error);
@@ -102,9 +96,7 @@ test "an annotation-only binding preserves module evaluation" {
             'def:pub app(value: Session) -> any { return <div>{value.name}</div>; }\n'
         );
         try {
-            compiler.compile_dependencies_recursively(
-                project / "main.jac", source_root=project
-            );
+            compiler.emit_dependencies(project / "main.jac", source_root=project);
             js = (project / "compiled" / "main.js").read_text();
             assert 'import "./provider.js";' in js , js;
             assert (project / "compiled" / "provider.js").is_file();
@@ -141,9 +133,7 @@ test "jsx references and shadowed names retain their runtime imports" {
             'def:pub app -> any { assert value() == 1; return <Button />; }\n'
         );
         try {
-            compiler.compile_dependencies_recursively(
-                project / "main.jac", source_root=project
-            );
+            compiler.emit_dependencies(project / "main.jac", source_root=project);
             js = (project / "compiled" / "main.js").read_text();
             imports = "\n".join(
                 line

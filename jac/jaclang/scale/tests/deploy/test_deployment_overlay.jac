@@ -269,7 +269,7 @@ test "JAC_PROFILE overlay file reaches the scale plugin config" {
     tmp = tempfile.mkdtemp();
     with open(os.path.join(tmp, "jac.toml"), "w") as f {
         f.write(
-            '[project]\nname = "t"\nversion = "0.0.1"\nentry-point = "main.jac"\n\n'
+            '[project]\nname = "t"\nversion = "0.0.1"\nentry-point = "main"\n\n'
                 + '[scale.kubernetes]\nnamespace = "prod-ns"\nmin_replicas = 3\n'
         );
     }
@@ -296,7 +296,7 @@ test "without JAC_PROFILE the base config is unchanged" {
     tmp = tempfile.mkdtemp();
     with open(os.path.join(tmp, "jac.toml"), "w") as f {
         f.write(
-            '[project]\nname = "t"\nversion = "0.0.1"\nentry-point = "main.jac"\n\n'
+            '[project]\nname = "t"\nversion = "0.0.1"\nentry-point = "main"\n\n'
                 + '[scale.kubernetes]\nmin_replicas = 3\n'
         );
     }

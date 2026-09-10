@@ -1,10 +1,10 @@
+import from jaclang.compiler.driver.compilation_context { context_app }
 import fnmatch;
 import json;
 import os;
 import from jaclang.compiler.driver.modresolver { find_jac_project_root }
 import from jaclang.compiler.placement.workspace {
     app_fact_digest,
-    app_for_path,
     kind_codespace,
     workspace_for_path
 }
@@ -46,7 +46,7 @@ def config_pins_for(source_path: str) -> dict[str, str] {
     if ws is None {
         return {};
     }
-    app = ws.app_for_path(source_path);
+    app = context_app(source_path);
     pins = app.pins if app is not None else ws.base_pins;
     return _validated_pins(pins, ws.toml_path);
 }
@@ -225,7 +225,7 @@ def config_project_kind(source_path: str) -> str {
     if not source_path {
         return '';
     }
-    app = app_for_path(source_path);
+    app = context_app(source_path);
     return app.kind if app is not None else '';
 }
 
@@ -238,7 +238,7 @@ def config_kind_space(source_path: str, fallback_kind: str = '') -> str {
 
 def pins_digest(source_path: str) -> str {
     pins = config_pins_for(source_path);
-    facts = app_fact_digest(app_for_path(source_path)) if source_path else '';
+    facts = app_fact_digest(context_app(source_path)) if source_path else '';
     if not pins and not facts {
         return '';
     }
@@ -254,7 +254,7 @@ def npm_dependency_names(source_path: str) -> set[str] {
     if ws is None {
         return set();
     }
-    app = ws.app_for_path(source_path);
+    app = context_app(source_path);
     return set(app.npm_names) if app is not None else set(ws.base_npm_names);
 }
 

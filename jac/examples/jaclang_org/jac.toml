@@ -1,7 +1,7 @@
 [project]
 name = "jaclang_org"
 default-app = "web"
-jac-version = "==0.37.11"
+jac-version = "==0.37.12"
 
 # Makes this site scaffoldable as a template: `jac create <name> --awesome`
 # dumps it (the payload bundles this tree as awesome_template beside the
@@ -10,37 +10,36 @@ jac-version = "==0.37.11"
 name = "awesome"
 description = "The full jaclang.org workspace: a web app, a mobUI mobile app, and a CLI over one shared core, with live docs, the leaderboard, JacYac, and a wasm game"
 
-# The workspace. Anything under core/ belongs to no app and is shared; the
-# two file-rooted service apps own exactly their entry files. An app
-# boundary is structural (it always compiles and type-checks as a cut);
-# whether the service apps share the web server's process or run as their
-# own is a profile: `jac run --serve` colocates, `--fleet` splits.
+# App entry modules establish compilation boundaries. Ordinary imports of
+# core helpers inherit the selected app's context. Imports through a service
+# entry use that service's contract. `jac run --serve` colocates services;
+# `--fleet` places them in separate processes.
 [apps.web]
 kind = "web-app"
-path = "web"
+entry-point = "web.main"
 
 [apps.mobile]
 kind = "mobile"
-path = "mobile"
+entry-point = "mobile.main"
 
 [apps.cli]
 kind = "cli"
-path = "cli"
+entry-point = "cli.main"
 
 # The site as a desktop app: the same core/site UI in an OS webview. Its
 # backend is jaclang.org itself (see [apps.desktop.desktop] backend), so it is
 # a native window onto the live site, not a private copy of it.
 [apps.desktop]
 kind = "desktop"
-path = "desktop"
+entry-point = "desktop.main"
 
 [apps.social_graph]
 kind = "service"
-entry-point = "core/social_graph.jac"
+entry-point = "core.social_graph"
 
 [apps.scoring]
 kind = "service"
-entry-point = "core/scoring_service.jac"
+entry-point = "core.scoring_service"
 
 [dev]
 jaclang_source = "../.."

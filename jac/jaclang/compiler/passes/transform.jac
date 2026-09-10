@@ -82,9 +82,7 @@ walker Transform(BaseTransform) {
     has cur_node: UniNode postinit,
         policy: (DiagnosticPolicy | None) = None;
 
-    static has PROVIDES: tuple = (),
-        REQUIRES: tuple = (),
-        HOST_PASS: bool = False;
+    static has HOST_PASS: bool = False;
 
     def postinit -> None;
     def emit(

@@ -44,11 +44,11 @@ default-app = "web"
 
 [apps.web]
 kind = "web-app"
-entry-point = "main.jac"
+entry-point = "main"
 
 [apps.my_service]
 kind = "service"
-entry-point = "my_service.jac"      # route defaults to /api/my_service
+entry-point = "my_service"      # route defaults to /api/my_service
 ```
 
 `my_service.jac` is a plain server module whose `def:pub` functions and

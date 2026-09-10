@@ -3759,7 +3759,14 @@ impl TypeEvaluator.get_type_of_expression(
             and node_.value == '_'
             and node_.find_parent_of_type(MatchPattern) is not None
         );
-        if (mod is None or not mod.is_raised_from_py) and not is_pattern_wildcard {
+        is_annotation_ellipsis = isinstance(node_, Ellipsis)
+            and (
+                node_.find_parent_of_type(SubTag) is not None
+                or node_.find_parent_of_type(FuncSignature) is not None
+            );
+        if (mod is None or not mod.is_raised_from_py)
+            and not is_pattern_wildcard
+            and not is_annotation_ellipsis {
             self.emit_diag(W1051, node_);
         }
     }

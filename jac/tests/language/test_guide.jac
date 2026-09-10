@@ -241,7 +241,7 @@ test "every mapped diagnostic code resolves to a bundled guide" {
     }
     # The workspace-apps laws point at their own guide, not the generic
     # diagnostics page.
-    for code in ["E5104", "E5105", "E5106", "E5107", "E5108", "E2039", "E2040"] {
+    for code in ["E5104", "E5105", "E5106", "E5108", "E2039"] {
         assert guide_for_diagnostic(code) == "jac-apps" , code;
     }
     assert guide_for_diagnostic("E1042") == "jac-sv-microservices";

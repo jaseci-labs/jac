@@ -266,9 +266,10 @@ jobs:
             echo "e1032 dumps: $(grep -c '^\[E1032-DUMP\] pid' "probe-$TAG.err")"
             echo "e1053 unknown-arg dumps: $(grep -c '^\[E1053-UNKNOWN\] pid' "probe-$TAG.err")"
             echo "cat-unknown: $(grep -c '^\[CAT-UNKNOWN\]' "probe-$TAG.err")  cat-noshared: $(grep -c '^\[CAT-NOSHARED\]' "probe-$TAG.err")"
-          echo "foreign-results: $(grep -c '^\[FOREIGN-RESULT\]' "probe-$TAG.err")  iface-persist: $(grep -c '^\[IFACE-PERSIST\]' "probe-$TAG.err")  incoherent: $(grep -c 'payload=incoherent' "probe-$TAG.err")"
-          grep -oE '\[FOREIGN-RESULT\].*kind=[a-z]+ typed=[A-Za-z]+ in_self_hub=[A-Za-z]+ same_as_foreign=[A-Za-z]+' "probe-$TAG.err" | sed 's/pid=[0-9]* //; s/path=[^ ]* //' | sort | uniq -c | sort -rn | head -8
-          grep -oE '\[IFACE-PERSIST\].*mode=[a-z]+ .*payload=[a-z]+' "probe-$TAG.err" | sed 's/pid=[0-9]* //; s/path=[^ ]* //; s/hub=[0-9]*//' | sort | uniq -c | sort -rn | head -8
+          echo "dep-loads: $(grep -c '^\[DEP-LOAD\]' "probe-$TAG.err")  iface-encode: $(grep -c '^\[IFACE-ENCODE\]' "probe-$TAG.err")  incoherent: $(grep -c 'result=incoherent' "probe-$TAG.err")  iface-persist: $(grep -c '^\[IFACE-PERSIST\]' "probe-$TAG.err")"
+          grep -oE 'src=[a-z]+ kind=[a-z]+ typed_self=[A-Za-z]+ typed_target=[A-Za-z]+ foreign=[A-Za-z]+ need_tree=[A-Za-z]+' "probe-$TAG.err" | sort | uniq -c | sort -rn | head -10
+          grep -oE '\[IFACE-ENCODE\].*result=[a-z]+ typed=[A-Za-z]+' "probe-$TAG.err" | sed 's/pid=[0-9]* //; s/path=[^ ]* //' | sort | uniq -c | sort -rn | head -6
+          grep -oE 'mode=[a-z]+ inferred=[A-Za-z]+ symtab_only=[A-Za-z]+ no_cgen=[A-Za-z]+ digest=[a-z]+' "probe-$TAG.err" | sort | uniq -c | sort -rn | head -6
             grep -E '^\[(CAT-UNKNOWN|CAT-NOSHARED)\]' "probe-$TAG.err" | sed 's/pid=[0-9]* //' | sort | uniq -c | sort -rn | head -30
             echo "-- E1032 / E1053-UNKNOWN dumps (first 60 lines) --"
             grep -E '^\[(E1032-DUMP|E1053-UNKNOWN)\]' "probe-$TAG.err" | head -120
@@ -296,6 +297,8 @@ jobs:
     env:
       # Reroute lane: see the jac check step below.
       JAC_NO_DEV_SOURCE: ""
+      # Leave memory for the driver and self-hosted compiler on the 16 GB runner.
+      JAC_CHECK_JOBS: "2"
     permissions:
       contents: write
     steps:
@@ -583,9 +586,12 @@ jobs:
           - chunk: toplevel
             paths: tests/compiler/test_*.jac
             sealed: "1"
+            jobs: "2"
           - chunk: passes-native
             paths: tests/compiler/backends/native tests/compiler/tools
             sealed: "1"
+            # Native workers retain LLVM state; keep headroom on the 16 GB runner.
+            jobs: "2"
           # The equivalence suite builds fixture paths from jaclang.__file__,
           # which only resolve in the checkout: it runs through the reroute,
           # over the kit's shim and floors ("" clears JAC_NO_DEV_SOURCE).

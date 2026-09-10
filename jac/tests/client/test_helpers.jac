@@ -53,9 +53,14 @@ def get_env_with_bun -> dict[str, str] {
 glob get_env_with_npm = get_env_with_bun;
 
 """Block until a TCP port is accepting connections or timeout."""
-def wait_for_port(host: str, port: int, timeout: float = 60.0) -> None {
+def wait_for_port(
+    host: str, port: int, timeout: float = 60.0, server: (Popen | None) = None
+) -> None {
     deadline = time.time() + timeout;
     while time.time() < deadline {
+        if server is not None and server.poll() is not None {
+            raise RuntimeError(f"Server exited with status {server.returncode}");
+        }
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock {
             sock.settimeout(0.5);
             try {
@@ -166,8 +171,8 @@ def start_app_server(
         # The jaclang_org app is a full site: cold-compiling it plus its
         # client bundle takes minutes on a small CI runner, not the seconds
         # the littleX-era 120s budget assumed.
-        wait_for_port("127.0.0.1", port, timeout=600.0);
-    } except TimeoutError as exc {
+        wait_for_port("127.0.0.1", port, timeout=600.0, server=server);
+    } except (TimeoutError, RuntimeError) as exc {
         stop_server(server);
         log_f.flush();
         tail = "";
@@ -178,7 +183,7 @@ def start_app_server(
         } except Exception {
             tail = "(server log unreadable)";
         }
-        raise TimeoutError(f"{exc}\n---- server output (tail) ----\n{tail}") from exc;
+        raise RuntimeError(f"{exc}\n---- server output (tail) ----\n{tail}") from exc;
     }
     return (server, port);
 }

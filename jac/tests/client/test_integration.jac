@@ -1172,7 +1172,7 @@ test "plugin configs from toml control registration" {
         reset_desktop_config();
         toml_path = Path(d) / "jac.toml";
         toml_path.write_text(
-            '[project]\nname = "test"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
+            '[project]\nname = "test"\nversion = "1.0.0"\nentry-point = "main"\n'
             '[desktop]\nname = "Test"\n'
             '[desktop.plugins]\n'
             'path = true\n'
@@ -1208,7 +1208,7 @@ test "plugin configs empty when no plugins section" {
         reset_desktop_config();
         toml_path = Path(d) / "jac.toml";
         toml_path.write_text(
-            '[project]\nname = "test"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
+            '[project]\nname = "test"\nversion = "1.0.0"\nentry-point = "main"\n'
             '[desktop]\nname = "Test"\n'
         );
         cfg = get_desktop_config(project_dir=Path(d));

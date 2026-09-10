@@ -25,12 +25,7 @@ import from jaclang.compiler.frontend.unitree { Import, ModuleItem }
 
 
 glob _TOML: str = (
-         "[project]\n"
-         "name = \"phone_ws\"\n"
-         "\n"
-         "[apps.mobile]\n"
-         "kind = \"mobile\"\n"
-         "path = \"mobile\"\n"
+         '[project]\nname = "phone_ws"\n\n[apps.mobile]\nkind = "mobile"\nentry-point = "mobile.main"\n'
      ),
      _SHARED_SRC: str = (
          "import from \"@jac/mobui\" { View, Text, StyleSheet }\n"

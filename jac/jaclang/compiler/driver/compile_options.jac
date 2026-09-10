@@ -49,6 +49,7 @@ obj CompileOptions {
         default_codespace: str = "",
         app_kind: str = "",
         target_app: str = "",
+        entry_point: str = "",
         ui: str = "",
         project_root: (str | None) = None,
         native_module_walk_order: (str | None) = None,
@@ -153,6 +154,18 @@ obj CompileOptions {
     def analysis_fingerprint -> str {
         import hashlib;
         return hashlib.sha256(self.analysis_identity().encode()).hexdigest()[:12];
+    }
+
+    def for_symbols(need_tree: bool = False) -> CompileOptions {
+        import copy;
+        result = copy.copy(self);
+        result.no_cgen = True;
+        result.symtab_ir_only = True;
+        result.iface_ok = not need_tree;
+        result.need_full_ast = need_tree;
+        result.native_parity = False;
+        result.force_target_program = False;
+        return result;
     }
 
     def clone_for_native_import -> CompileOptions {

@@ -1898,8 +1898,11 @@ def build_osp_core_js -> str {
         file_path=cl_copy,
         options=CompileOptions(force_codespace='client', no_cgen=True)
     );
-    import from jaclang.compiler.driver.pass_driver { run_pass }
-    program = run_pass(EsastGenPass, ir, prog).ir_out.gen.es_ast;
+    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
+    if not require_product(prog, ir, CompilationProduct.CLIENT) {
+        raise RuntimeError("Could not compile OSP client runtime");
+    }
+    program = ir.gen.es_ast;
     kept: list = [];
     if isinstance(program, es.Program) {
         for stmt in program.body {

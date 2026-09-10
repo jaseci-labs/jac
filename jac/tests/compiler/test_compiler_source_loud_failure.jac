@@ -1,6 +1,6 @@
 """A broken file in the compiler's own sources is never degraded around.
 
-Every schedule builder in `compiler.driver.schedules` degrades on `ImportError` so the
+Every schedule builder in `compiler.driver.pipeline` degrades on `ImportError` so the
 compiler can bootstrap itself and so an install missing an optional backend
 still compiles. Both of those are *absence*. When #8215 dropped a comma from
 `esast_gen_pass.jac`'s import list the file was present and simply would not
@@ -30,7 +30,7 @@ import from jaclang.meta_importer { JacSourceCompileError }
 import from jaclang.compiler.driver.source_failures { CompilerSourceError }
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
-import from jaclang.compiler.driver.schedules { get_py_code_gen }
+import from jaclang.compiler.driver.pipeline { get_py_code_gen }
 import from jaclang.compiler.passes { Transform }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 
@@ -177,10 +177,12 @@ test "a broken compiler source fails loudly instead of dropping backends" {
 
 test "an absent backend still degrades to the bytecode-only fallback" {
     sched = _codegen_with(_absent_backend());
-    assert sched == [JcirGenPass, JcirBytecodeGenPass];
+    assert [p.__name__ for p in sched]
+        == ["NativeImportFactsPass", "JcirGenPass", "JcirBytecodeGenPass"];
 }
 
 test "a broken module outside the compiler tree still degrades" {
     sched = _codegen_with(_broken_backend(USER_SRC));
-    assert sched == [JcirGenPass, JcirBytecodeGenPass];
+    assert [p.__name__ for p in sched]
+        == ["NativeImportFactsPass", "JcirGenPass", "JcirBytecodeGenPass"];
 }

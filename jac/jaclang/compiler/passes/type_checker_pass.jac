@@ -150,8 +150,7 @@ walker TypeCheckPass(UniPass) {
 
     def postinit -> None;
 
-    static has PROVIDES: tuple = ('TypeOf', ),
-        HOST_PASS: bool = True;
+    static has HOST_PASS: bool = True;
 
     def transform(ir_in: Module) -> Module;
     def before_pass -> None;

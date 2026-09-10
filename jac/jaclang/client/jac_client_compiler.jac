@@ -60,15 +60,14 @@ class JacClientCompiler {
 
     def compile_pwa_runtime(self: JacClientCompiler) -> tuple[str, list[str]];
     def compile_mobui_utils(self: JacClientCompiler) -> tuple[str, list[str]];
-    def compile_dependencies_recursively(
+    def emit_dependencies(
         self: JacClientCompiler,
         module_path: Path,
         visited: (set[Path] | None) = None,
         collected_exports: (set[str] | None) = None,
         collected_globals: (dict[(str, any)] | None) = None,
         source_root: (Path | None) = None,
-        native: bool = False,
-        skip_existing: bool = False
+        native: bool = False
     ) -> None;
 
     def _output_path_for(

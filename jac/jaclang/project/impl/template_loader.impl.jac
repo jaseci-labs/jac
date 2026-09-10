@@ -277,18 +277,6 @@ impl scaffold_app(
     if name in apps_table {
         raise ValueError(f"App '{name}' already exists in {toml_path}");
     }
-    for (other, table) in apps_table.items() {
-        other_path = (
-            str(table.get("path", "")).strip().strip("/")
-                if isinstance(table, dict)
-                else ""
-        );
-        if other_path and os.path.normpath(other_path) == os.path.normpath(app_path) {
-            raise ValueError(
-                f"Path '{app_path}' is already the root_path of app '{other}'"
-            );
-        }
-    }
     lines: list[str] = text.split("\n");
     if not apps_table {
         base = JacConfig.load(toml_path);
@@ -300,14 +288,14 @@ impl scaffold_app(
         }
         migrate_implicit_app(lines, base);
     }
-    table: dict[str, any] = {"kind": kind, "path": app_path};
+    table: dict[str, any] = {"kind": kind};
     tmpl_app = template_app_table(template);
     tmpl_entry = str(
         tmpl_app.get("entry-point", tmpl_app.get("entry_point", "")) or ""
     );
-    if tmpl_entry and tmpl_entry != kind_entry(kind) {
-        table["entry-point"] = tmpl_entry;
-    }
+    table["entry-point"] = app_path.replace("/", ".").replace("\\", ".")
+        + "."
+        + (tmpl_entry or kind_entry(kind));
     for (key, value) in tmpl_app.items() {
         attr = str(key).replace("-", "_");
         if attr in ("kind", "path", "entry_point") or attr not in APP_TABLE_KEYS {

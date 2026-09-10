@@ -665,7 +665,7 @@ def _k8s_config_for_toml(toml_content: str) -> dict {
 
 test "unconfigured app_name derives from [project].name; namespace stays default" {
     cfg = _k8s_config_for_toml(
-        "[project]\nname = \"My App\"\nentry-point = \"main.jac\"\n"
+        "[project]\nname = \"My App\"\nentry-point = \"main\"\n"
     );
     assert cfg["app_name"] == "my-app" , f"got {cfg['app_name']!r}";
     assert cfg["namespace"] == "default" , f"got {cfg['namespace']!r}";
@@ -680,7 +680,7 @@ test "explicit app_name wins over the derived default" {
 
 test "no usable project name falls back to legacy app_name 'jaseci'" {
     for toml in [
-        "[project]\nentry-point = \"main.jac\"\n",
+        "[project]\nentry-point = \"main\"\n",
         "[project]\nname = \"---\"\n",
         "[project]\nname = \"   \"\n"
     ] {

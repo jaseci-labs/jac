@@ -69,6 +69,8 @@ test "public endpoints of a jaclang-bundled app do not require auth" {
         'def guarded_ep() -> int { return 2; }\n'
     );
     try {
+        import from jaclang.compiler.driver.application { prepare_application }
+        prepare_application(str(f), Jac.get_program(), str(d));
         intro = ModuleIntrospector("bundled_app", str(d));
         intro.load();
         # `def:pub` -> public (no auth); a bare `def` -> secure by default. Before

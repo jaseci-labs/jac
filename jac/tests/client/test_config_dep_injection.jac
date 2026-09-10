@@ -36,7 +36,7 @@ test "no client table project gets deps injected without jac toml mutation" {
             (config_path, original_bytes) = _write_toml(
                 temp_dir,
                 '[project]\nname = "backend-app"\nversion = "1.0.0"\n'
-                'entry-point = "main.jac"\n'
+                'entry-point = "main"\n'
             );
 
             config = JacClientConfig(Path(temp_dir));
@@ -87,7 +87,7 @@ test "client project gets dependencies injected on load" {
             (config_path, original_bytes) = _write_toml(
                 temp_dir,
                 '[project]\nname = "client-app"\nversion = "1.0.0"\n'
-                'entry-point = "main.jac"\n\n[client]\n'
+                'entry-point = "main"\n\n[client]\n'
             );
 
             config = JacClientConfig(Path(temp_dir));
@@ -122,7 +122,7 @@ test "npm provider plan carries self-heal origins for client projects" {
         (config_path, _) = _write_toml(
             temp_dir,
             '[project]\nname = "client-app"\nversion = "1.0.0"\n'
-            'entry-point = "main.jac"\n\n[dependencies.npm]\nlodash = "^4.17.0"\n\n'
+            'entry-point = "main"\n\n[dependencies.npm]\nlodash = "^4.17.0"\n\n'
             '[client]\n'
         );
         config = JacConfig.load(config_path);
@@ -136,7 +136,7 @@ test "npm provider plan carries self-heal origins for client projects" {
         (backend_path, _) = _write_toml(
             temp_dir,
             '[project]\nname = "backend-app"\nversion = "1.0.0"\n'
-            'entry-point = "main.jac"\n'
+            'entry-point = "main"\n'
         );
         backend_config = JacConfig.load(backend_path);
         backend_resolved = NpmProvider().resolve(backend_config);
@@ -158,7 +158,7 @@ test "npm provider rolls back the manifest when the install fails" {
         (config_path, original_bytes) = _write_toml(
             temp_dir,
             '[project]\nname = "client-app"\nversion = "1.0.0"\n'
-            'entry-point = "main.jac"\n\n[dependencies.npm]\nlodash = "^4.17.0"\n'
+            'entry-point = "main"\n\n[dependencies.npm]\nlodash = "^4.17.0"\n'
         );
         provider = NpmProvider();
         ctx = InstallContext();

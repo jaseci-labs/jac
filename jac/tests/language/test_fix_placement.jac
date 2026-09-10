@@ -97,21 +97,22 @@ test "app table append declares the service once and keeps the file intact" {
         }
         table = {
             "kind": "service",
-            "entry-point": "svc/analytics.jac",
+            "entry-point": "svc.analytics",
             "route": "/analytics"
         };
         added = _append_app_table(toml_path, "analytics", table, False);
         assert added
             == [
                 'kind = "service"',
-                'entry-point = "svc/analytics.jac"',
+                'entry-point = "svc.analytics"',
                 'route = "/analytics"'
             ] , added;
         with open(toml_path) as f {
             text = f.read();
         }
         assert text.startswith("[project]\nname = \"x\"\n") , text;
-        assert "\n[apps.analytics]\nkind = \"service\"\n" in text , text;
+        assert '\n[apps.analytics]\nkind = "service"\nentry-point = "svc.analytics"\n'
+            in text , text;
         again = _append_app_table(toml_path, "analytics", table, False);
         assert again == [] , "an app already declared must not be appended twice";
         preview = _append_app_table(toml_path, "billing", {"kind": "service"}, True);
@@ -130,7 +131,7 @@ test "fix placement migrates a template-shaped [project] into [apps] before addi
         root_path = Path(tmpdir);
         (root_path / "jac.toml").write_text(
             '[project]\nname = "shop"\nversion = "0.1.0"\nkind = "web-app"\n'
-            'entry-point = "main.jac"\n\n[dependencies]\nrequests = ">=2"\n'
+            'entry-point = "main"\n\n[dependencies]\nrequests = ">=2"\n'
         );
         (root_path / "main.jac").write_text(
             "sv import from analytics { Track }\n\n"
@@ -150,10 +151,10 @@ test "fix placement migrates a template-shaped [project] into [apps] before addi
         assert cfg.project.kind == "" , "[project] kind is gone";
         base = cfg.apps["shop"];
         assert base.kind == "web-app" , base.kind;
-        assert base.entry_point == "main.jac" , base.entry_point;
+        assert base.entry_point == "main" , base.entry_point;
         svc = cfg.apps["analytics"];
         assert svc.kind == "service" , svc.kind;
-        assert svc.entry_point == "analytics.jac" , svc.entry_point;
+        assert svc.entry_point == "analytics" , svc.entry_point;
         assert svc.effective_route() == "/analytics" , svc.effective_route();
         assert cfg.resolve_app("").name == "shop";
         assert "sv import" not in (root_path / "main.jac").read_text();
@@ -177,7 +178,7 @@ test "fix placement --dry-run leaves a template-shaped jac.toml untouched" {
     with tempfile.TemporaryDirectory() as tmpdir {
         root_path = Path(tmpdir);
         toml_text = (
-            '[project]\nname = "shop"\nkind = "web-app"\nentry-point = "main.jac"\n'
+            '[project]\nname = "shop"\nkind = "web-app"\nentry-point = "main"\n'
         );
         (root_path / "jac.toml").write_text(toml_text);
         (root_path / "main.jac").write_text("sv import from analytics { Track }\n");

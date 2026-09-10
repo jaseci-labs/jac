@@ -2,7 +2,7 @@
 name = "scale-feats"
 version = "1.0.0"
 description = "Jac client application: scale-feats"
-entry-point = "main.jac"
+entry-point = "main"
 
 [dependencies.npm]
 react = "^19.2.0"

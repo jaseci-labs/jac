@@ -423,7 +423,7 @@ impl EsastGenPass._extract_return_type(
 impl EsastGenPass._wrap_return_with_boundary(
     call_expr: es.Expression,
     ret_type: str,
-    boundary_types: dict[(str, any)],
+    boundary_types: dict[str, BoundaryTypeInfo],
     jac_node: uni.UniNode,
     pre_awaited: bool
 ) -> es.Expression {
@@ -435,7 +435,9 @@ impl EsastGenPass._wrap_return_with_boundary(
         return self.sync_loc(
             es.CallExpression(
                 callee=es.MemberExpression(
-                    object=es.Identifier(name=ret_type),
+                    object=es.Identifier(
+                        name=self._boundary_type_name(boundary_types[ret_type])
+                    ),
                     property=es.Identifier(name='__from_wire'),
                     computed=False
                 ),
@@ -460,7 +462,11 @@ impl EsastGenPass._wrap_return_with_boundary(
                             params=[es.Identifier(name='x')],
                             body=es.CallExpression(
                                 callee=es.MemberExpression(
-                                    object=es.Identifier(name=inner),
+                                    object=es.Identifier(
+                                        name=self._boundary_type_name(
+                                            boundary_types[inner]
+                                        )
+                                    ),
                                     property=es.Identifier(name='__from_wire'),
                                     computed=False
                                 ),
@@ -513,7 +519,11 @@ impl EsastGenPass._wrap_return_with_boundary(
                                     es.Identifier(name='k'),
                                     es.CallExpression(
                                         callee=es.MemberExpression(
-                                            object=es.Identifier(name=val_type),
+                                            object=es.Identifier(
+                                                name=self._boundary_type_name(
+                                                    boundary_types[val_type]
+                                                )
+                                            ),
                                             property=es.Identifier(name='__from_wire'),
                                             computed=False
                                         ),
@@ -547,7 +557,7 @@ impl EsastGenPass._wrap_return_with_boundary(
 impl EsastGenPass._wrap_to_wire_if_boundary(
     expr: es.Expression,
     type_name: str,
-    boundary_types: dict[(str, any)],
+    boundary_types: dict[str, BoundaryTypeInfo],
     jac_node: uni.UniNode
 ) -> es.Expression {
     if (type_name in boundary_types and boundary_types[type_name].kind != "enum") {
@@ -798,7 +808,9 @@ impl EsastGenPass._try_lower_server_rpc_call(
     inline_ret_type: str = self._extract_return_type(
         ability_node, func_name, self.ir_in.gen.interop_manifest
     );
-    inline_boundary = self.ir_in.gen.interop_manifest.boundary_types
+    inline_boundary = self.ir_in.gen.interop_manifest.boundary_types_for(
+        (ability_node.find_parent_of_type(uni.Module) or self.ir_in).loc.mod_path
+    )
         if self.ir_in.gen.interop_manifest
         else {};
     (spread_arg, spread_read_source) = self._make_kwargs_spread_context(props, nd);
@@ -914,7 +926,9 @@ impl EsastGenPass._build_server_forwarder(
     ability_node: uni.Ability, func_name: str, jac_node: uni.UniNode
 ) -> es.FunctionDeclaration {
     self._warn_rpc_callable_params(ability_node, func_name, jac_node);
-    boundary = self.ir_in.gen.interop_manifest.boundary_types
+    boundary = self.ir_in.gen.interop_manifest.boundary_types_for(
+        (ability_node.find_parent_of_type(uni.Module) or self.ir_in).loc.mod_path
+    )
         if self.ir_in.gen.interop_manifest
         else {};
     param_types = self._param_type_map_from_ability(ability_node);

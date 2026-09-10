@@ -179,65 +179,9 @@ impl RouteScanner._detect_collisions(routes: list[RouteEntry]) -> None {
 }
 
 impl resolve_route_exports(module_path: Path) -> tuple[((str | None), (str | None))] {
-    import from jaclang { JacRuntime as Jac }
-    program = Jac.program;
-    if program is None {
-        return (None, None);
-    }
-    resolved = str(module_path.resolve());
-    try {
-        artifact = program.get_client_artifact(resolved);
-    } except Exception {
-        artifact = None;
-    }
-    if artifact is not None
-        and (
-            artifact.manifest.page_export is not None
-            or artifact.manifest.layout_export is not None
-        ) {
-        return (artifact.manifest.page_export, artifact.manifest.layout_export);
-    }
-    try {
-        mod = program.compile(resolved);
-    } except Exception {
-        return (None, None);
-    }
-    if mod is None {
-        return (None, None);
-    }
-    manifest = mod.gen.client_manifest;
-    page_name = manifest.page_export if manifest else None;
-    layout_name = manifest.layout_export if manifest else None;
-    if page_name is None and layout_name is None {
-        (page_name, layout_name) = _route_exports_from_ast(mod);
-    }
-    return (page_name, layout_name);
-}
-
-impl _route_exports_from_ast(mod: any) -> tuple[((str | None), (str | None))] {
-    import jaclang.compiler.frontend.unitree as uni;
-    page_name: (str | None) = None;
-    layout_name: (str | None) = None;
-    try {
-        abilities = mod.get_all_sub_nodes(uni.Ability);
-    } except Exception {
-        return (None, None);
-    }
-    for nd in abilities {
-        if nd.is_method or not isinstance(nd.signature, uni.FuncSignature) {
-            continue;
-        }
-        rt = nd.signature.return_type;
-        if not isinstance(rt, uni.Name) or nd.name_ref is None {
-            continue;
-        }
-        if rt.value == 'JsxPage' and page_name is None {
-            page_name = nd.name_ref.sym_name;
-        } elif rt.value == 'JsxLayout' and layout_name is None {
-            layout_name = nd.name_ref.sym_name;
-        }
-    }
-    return (page_name, layout_name);
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.compiler.driver.pipeline { route_exports }
+    return route_exports(Jac.get_program(), str(module_path));
 }
 
 impl entry_drops_route_children(manifest: any) -> bool {

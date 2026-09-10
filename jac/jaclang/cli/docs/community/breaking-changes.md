@@ -7,6 +7,30 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Apps use entry modules and compilation contexts (#9088)
+
+Every explicit `[apps.<name>]` table now requires `kind` and `entry-point`.
+Replace `path = "web"` plus an optional local entry with
+`entry-point = "web.main"`, relative to the project root. Duplicate entries
+and the removed `path` key are configuration errors. Single implicit apps also use dotted module names: change
+`[project] entry-point = "main.jac"` to `entry-point = "main"`. File paths and
+extensions are rejected; CLI file arguments such as `jac run main.jac` remain valid.
+
+Ordinary imports inherit the app selected by `run`, `build`, or `check`.
+Another declared entry forms an app boundary. Shared source is compiled in each
+consumer context; directories, `default-app`, and placement pins no longer
+assign it a global app context. Declare a service entry when several apps must call
+one provider. The shared-layer diagnostics `E2040`/`W2040` and ambiguous-owner
+diagnostic `E5107` are removed; private cross-entry access still uses `E2039`.
+
+A workspace check follows each entry's imports and conventional page roots.
+Name unreachable files explicitly to check them. `jac test <app>` uses its
+configured test directories, or its entry module when none are configured.
+Compilation and artifact preparation happen before application initialization;
+web builds no longer execute the app entry to discover its client output.
+
+---
+
 ### Memory profile: `[memory]`, `jac build --native`, and `jac explain` replace `jac nacompile`, `--gc`, `[gc]`, `[build.native]` and the compile-time `JAC_*` variables
 
 The memory axis is one declaration of intent. `[memory] profile = "managed" | "rc" | "nogc"` replaces `[gc] default`; `[memory] enforce` / `exempt` replace `[gc.enforce] modules` / `grandfathered`; `[native] target / opt / debug / threads` replace `[build.native]`; `[placement] default` replaces `[build] default_codespace`. `jac nacompile` is gone: `jac build <file> --native` compiles one self-contained artifact (a binary when the module has `with entry`, a C-ABI library otherwise; `--lib` forces the library), with `--memory`, `--target-triple` and `--debug` as its only knobs. Invariants are no longer flags: `--assert-no-rc` is always on under `nogc`, `--strict` is a property of every native artifact, `--scrub` is `jac clean --cache`. No compile-time environment variable sets behavior; a built binary reads only `JAC_GC=off` and `JAC_THREADS`, and the cycle collector runs by default under `managed`. `jac explain memory | placement | ir` replaces `JAC_RC_STATS`, `JAC_NOGC_DEBUG`, `JAC_NA_DEBUG`-style output, `jac check --placements`, and `JAC_DUMP_IR` / `JAC_DEBUG_IR` / `JAC_SYMMAP`.
@@ -32,7 +56,7 @@ The memory axis is one declaration of intent. `[memory] profile = "managed" | "r
 
 ### Workspaces: `[apps]` replaces `[scale.microservices]`, `client` / `client_kind`, `base_route_app`, `--client` and `JAC_ENV`; Capacitor is deleted ([#8823](https://github.com/jaseci-labs/jac/issues/8823), unreleased)
 
-A project is now a set of **apps** over shared code. Each app is an `[apps.<name>]` table in `jac.toml` with a `kind`, an optional directory `path` (or a file `entry-point` for a file-rooted app), a `platform` and a `route`; everything under no app root is shared. The kind decides the client: `web-app`, `web-static` and `desktop` render the DOM, `mobile` is a React Native mobUI app, and `--platform` is the only per-run override. The app boundary is structural -- it always compiles and type-checks as a cut -- and where the apps run is profile: `jac run <app>` colocates the workspace's service apps in one process, `--fleet` (or `[scale.gateway] colocate = false`) runs them as separate local processes, and `jac scale deploy` always deploys a fleet. A project with no `[apps]` table is one implicit app and its `jac.toml` is unchanged, except that the `mobile` kind names the React Native mobUI app and the Capacitor web-view shell no longer exists. Full reference: [Workspaces & Apps](../reference/apps.md).
+A project is now a set of **apps** over shared code. Each app is an `[apps.<name>]` table in `jac.toml` with a `kind` and a required module `entry-point`, with optional platform and route settings. Ordinary imports compile in the selected app context; importing another declared entry crosses an app boundary. Directory `path` declarations are rejected. The kind decides the client: `web-app`, `web-static` and `desktop` render the DOM, `mobile` is a React Native mobUI app, and `--platform` is the only per-run override. The app boundary is structural -- it always compiles and type-checks as a cut -- and where the apps run is profile: `jac run <app>` colocates the workspace's service apps in one process, `--fleet` (or `[scale.gateway] colocate = false`) runs them as separate local processes, and `jac scale deploy` always deploys a fleet. A project with no `[apps]` table is one implicit app and its `jac.toml` is unchanged, except that the `mobile` kind names the React Native mobUI app and the Capacitor web-view shell no longer exists. Full reference: [Workspaces & Apps](../reference/apps.md).
 
 The whole old service and client-target surface is gone, not deprecated:
 
@@ -61,14 +85,14 @@ The whole old service and client-target surface is gone, not deprecated:
 | legacy `[plugins.<name>]` tables, `discover_config_files` | gone -- capability tables are top-level (`[byllm]`, `[scale]`, `[client]`, `[mcp]`, `[desktop]`) |
 | `plan_project_run`, `resolve_project_kind`, `CompileOptions.project_kind` | `plan_app_run` / `plan_workspace`, `resolve_app_kind`, `CompileOptions.app_kind` + `target_app` |
 | `jac run [file]`, `jac build [file]`, `jac test [file]`, `jac setup <target>` | the positional is an **app name or a path**: `jac run web`, `jac build --all`, `jac test mobile`, `jac setup mobile`; no target = `[project] default-app` or the sole app |
-| `jac check` on the project root | with no paths: one program per app + an orphan sweep, diagnostics prefixed `[<app>]`; `--app <name>` for one app |
+| `jac check` on the project root | with no paths: one compilation context per app, following its imports, diagnostics prefixed `[<app>]`; `--app <name>` for one app |
 | `examples/mobui/hello`, `examples/mobui/littlex` | deleted; the mobUI example is the flagship's `jac/examples/jaclang_org/mobile` (`jac create <name> --awesome`) |
 | `[project] kind = "mobile"` as the Capacitor web-view shell | `mobile` is the React Native mobUI app, with `--platform android`, `ios`, or `web` |
 | the enclosing-project kind chain (`_project_kind_chain` in `placement_facts`: a nested `jac.toml` with no `kind` walked every ancestor `jac.toml` for one) | gone -- an app's kind is its `[apps.<name>] kind`, the implicit app's `[project] kind`, or entry-point inference; a nested `jac.toml` under a workspace is its own project and inherits nothing |
 | `JacServe.ensure_sv_service(module, base_path)`, `JacServe.sv_service_call(module, fn, args)`, `JacServe.sv_walker_call(module, walker, args, stub_cls)` | removed from the runtime interface -- `jaclang.server.sv_client` (`call`, `spawn_walker`, keyed by provider app name) dispatches to the registered scale transport (`JacScalePlugin.sv_service_call` / `sv_walker_call`, app-keyed) or its own HTTP client |
 | `E5087` "Project kind ... has no server" | `E5087` "App kind ... has no server" |
 
-New diagnostics: `E2039`/`W2039` (an app using another app's declaration outside its bridge surface), `E2040`/`W2040` (shared code importing from an app), `E5107` (a server-placed shared module with no single owner), `E5104` (an app dependency cycle), `E5105` (a `.native.jac` variant disagreeing with its base module), `E5106` (bridging to a non-`pub` element). `[project] kind` / `entry-point` alongside `[apps]` is a hard config error (exit 2).
+New diagnostics: `E2039`/`W2039` (an app using another app's declaration outside its bridge surface), `E5104` (an app dependency cycle), `E5105` (a `.native.jac` variant disagreeing with its base module), `E5106` (bridging to a non-`pub` element). `[project] kind` / `entry-point` alongside `[apps]` is a hard config error (exit 2).
 
 **Impact:** replace every `[scale.microservices.*]` table with `[apps.<name>]` tables and `[scale.gateway]`; add `await` to every server-to-server call across an app boundary (and `async` to the enclosing function); rename `JAC_SV_*` env vars to `JAC_APP_*`; delete `client` and `client_kind` from every app table (a mobile app is `kind = "mobile"` and nothing else); replace `--client web` with `--as client`, `--client pwa` with a `[client.pwa]` table, `--client cef` with `[desktop] engine = "cef"`, and `--client web` on a mobile app with `--platform web`; drop `base_route_app` / `cl_route_prefix` / `[client] target` / `JAC_ENV` from configs and scripts; pass an app name instead of a filename to `run`/`build`/`test`/`setup` in a workspace. Config keys that no longer exist are hard errors, not warnings.
 

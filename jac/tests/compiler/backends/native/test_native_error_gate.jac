@@ -10,6 +10,7 @@ Before the gate landed, the first compile printed the errors but cached
 the poisoned artifact anyway, so every later run executed silently with
 holes in the code (exit 0, zero diagnostics).
 """
+import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
 
 import from tests.support { native_force_opts }
 import os;
@@ -147,7 +148,7 @@ test "clean na module still publishes artifacts and caches" {
     assert mod.gen.llvm_ir is not None , ("clean na module must still publish llvm ir");
     bc = JacProgram().get_bytecode(src);
     assert bc is not None , "clean na module must still produce bytecode";
-    assert os.path.exists(get_module_cache_path(src)) , (
+    assert os.path.exists(artifact_cache_path(src, JacProgram())) , (
         "clean na module must still be written to the jir cache"
     );
 }

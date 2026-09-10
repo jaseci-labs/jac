@@ -409,6 +409,27 @@ impl _capture_begin -> dict[(str, any)] {
 
 impl _capture_end(state: dict[(str, any)]) -> str {
     import sys;
+    import logging;
+
+    loggers = [logging.getLogger(), *logging.Logger.manager.loggerDict.values()];
+    for logger in loggers {
+        if not isinstance(logger, logging.Logger) {
+            continue;
+        }
+        for handler in logger.handlers {
+            if not isinstance(handler, logging.StreamHandler) {
+                continue;
+            }
+            for (captured, original) in [
+                (state["made_out"], state["sys_out"]),
+                (state["made_err"], state["sys_err"])
+            ] {
+                if handler.stream is captured {
+                    handler.setStream(original);
+                }
+            }
+        }
+    }
     for stream in (state["made_out"], state["made_err"]) {
         try {
             stream.flush();

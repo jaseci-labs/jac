@@ -144,14 +144,14 @@ test "sv-to-sv: typed archetype return is rehydrated, not a raw dict (#6710)" {
     # The function stub must wrap the remote call in the return type's
     # `_from_wire`, not hand the wire dict straight back.
     assert (
-        "AnalyticsReport._from_wire(await __jac_sv_client.call('sv_relative_provider', "
+        "_jac_boundary_AnalyticsReport._from_wire(await __jac_sv_client.call('sv_relative_provider', "
         "'analyze'"
     )
         in py , "sv->sv typed return must be rehydrated via <RetType>._from_wire(...)";
     assert "async def analyze(" in py , "sv->sv function stubs are typed-async";
     # The imported archetype must lower to a boundary stub *class* (carrying
     # `_from_wire`), never a function stub that would RPC the type name itself.
-    assert "class AnalyticsReport:" in py , (
+    assert "AnalyticsReport = _jac_boundary_AnalyticsReport" in py , (
         "an sv-imported archetype must become a boundary stub class"
     );
     assert "def AnalyticsReport(" not in py , (
@@ -473,7 +473,7 @@ test "gap: dict return type wraps values with __from_wire" {
 # ---------------------------------------------------------------------------
 test "gap: nested_types field populated in manifest" {
     mod = compile_fixture("typed_return_nested.jac");
-    bt = mod.gen.interop_manifest.boundary_types;
+    bt = mod.gen.interop_manifest.boundary_types_for(mod.loc.mod_path);
     assert "Person" in bt , "Person should be a boundary type";
     assert "Address" in bt , "Address should be a boundary type";
     # nested_types tracks transitive dependencies

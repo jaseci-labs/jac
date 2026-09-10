@@ -857,7 +857,12 @@ obj ManifestBuilder {
         }
         if cfg is not None {
             entry_point = str(cfg.project.entry_point or "").strip();
-            return entry_point or "main.jac";
+            import os;
+            import from jaclang.project.apps { resolve_entry_path }
+            return os.path.relpath(
+                resolve_entry_path(entry_point or "main", self.project_dir),
+                self.project_dir
+            );
         }
         root_member = self.fleet.root_member() if self.fleet is not None else None;
         if root_member is not None and root_member.file {

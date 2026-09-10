@@ -1,63 +1,44 @@
 ---
 name: jac-apps
-description: Configure workspace app membership, shared modules, and cross-app boundaries. Use for multi-app projects or E2039/E2040 and E5104–E5108 diagnostics.
+description: Configure workspace app membership, shared modules, and cross-app boundaries. Use for multi-app projects or E2039, E5104–E5106, and E5108 diagnostics.
 ---
 
-A Jac project is a set of **apps** over one body of **shared code**. Each app is a table in `jac.toml` with a *kind* (what it builds) and a root (which files are its). Everything under no app's root is shared: any app may import it, none owns it. A project with no `[apps]` table is the simplest case, one **implicit app** named after `[project] name`, and nothing about that `jac.toml` changed.
+An app is a declared entry module plus a build kind. CLI `run`, `build`, or
+`check --app` selects its compilation context. Ordinary imports inherit that
+context; imports through another declared entry cross an app boundary.
 
-```
+```toml
 [project]
 name = "acme"
-default-app = "web"          # a bare `jac run` / `jac build` / `jac test` uses it
+default-app = "web"
 
-[apps.web]                   # dir-rooted: every module under web/ is the web app's
-kind = "web-app"             # required: any project kind
-path = "web"                 # optional dir root; omit for a file-rooted app
-entry-point = "main.jac"     # optional, relative to path; default is the kind's entry
-route = "/api/web"           # optional; default /api/<name>; serving kinds only
+[apps.web]
+kind = "web-app"
+entry-point = "web.main"
 
 [apps.mobile]
-kind = "mobile"              # mobUI (React Native) client; E1105 guards host tags
-path = "mobile"
-platform = "android"         # default platform for run/build; --platform overrides
+kind = "mobile"
+entry-point = "mobile.main"
+platform = "android"
 
-[apps.social_graph]          # file-rooted service app: it owns exactly this file
+[apps.social_graph]
 kind = "service"
-entry-point = "core/social_graph.jac"
+entry-point = "core.social_graph"
 ```
 
-**The five keys are the whole table.** `client`, `client_kind`, or any other key under `[apps.<name>]` is a hard config error naming the accepted keys; the kind decides the client (`web-app`, `web-static`, `desktop`, `js-package` render React DOM; `mobile` renders native views). `[project] kind` / `entry-point` cannot appear next to `[apps]`: move them onto an app. App names cannot contain `/` or `\` or end in `.jac`, so a target is always either an app name or a path.
+Every explicit app requires `kind` and `entry-point`. Entries are relative to the
+project root and must be distinct. The former directory `path` key is rejected.
+A project without `[apps]` retains its implicit app configuration.
 
-## Membership: who owns a file
+Shared source can participate in several app contexts. Its syntax is reused,
+while semantic facts, artifacts, and runtime module globals remain app specific.
+Neither directory containment, `default-app`, nor placement pins assign global
+ownership. To share a server's state through an API, declare a service entry and
+import its public walkers or `def:pub` functions. Direct helper imports are local
+to the selected app context.
 
-- **Dir-rooted** (`path`): every module under the directory, innermost root wins when roots nest.
-- **File-rooted** (`entry-point` only): exactly that file, not its siblings.
-- **Shared**: under no root. Shared code is the only thing two apps may both load in-process, and it never imports from an app.
-
-```
-acme/
-  jac.toml
-  core/                 shared; no app claims this directory...
-    social_graph.jac    ...except this file, which [apps.social_graph] claims
-    scoring.jac
-  web/  mobile/  cli/   one app each
-```
-
-Two laws follow `[check] enforce_access` (errors when enforced, else warnings):
-
-- **E2039 app isolation**: app A may not use a symbol of app B except through B's **bridge surface**, its walkers and `def:pub` functions, which compile to a call across the boundary.
-- **E2040 shared layering**: a shared module may not import from any app. Dependencies point from apps toward shared code, never back.
-
-## Ownership of server-placed shared code
-
-A shared module with walkers or persisted `node`/`edge` archetypes runs on exactly **one** app's server so every other app bridges to the same place. The owner is decided in this order:
-
-1. a **file-rooted service app** whose `entry-point` is the module (explicit);
-2. the **only serving app**, when there is one (a `web` + `mobile` + `cli` workspace needs no service tables: `web` owns the server side);
-3. `[project] default-app` when several apps serve;
-4. otherwise **E5107**: give the module its own `[apps.<name>] kind = "service"` table, or pin it with `[apps.<owner>.placement.pins] "<module>" = "server"`.
-
-Client apps (`mobile`, `web-static`, `cli`) are consumers: they bridge to the owner and never touch another app's store. Store-touching admin commands are entry actions of the owning app.
+`E2039`/`W2039` report access to private declarations through another app's entry;
+`[check] enforce_access` selects errors instead of warnings.
 
 ## The bridge surface and its laws
 

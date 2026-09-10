@@ -33,7 +33,7 @@ project and registers it as `[apps.mobile]`.
 
 ```toml
 [project]
-entry-point = "main.jac"
+entry-point = "main"
 kind = "mobile"              # React Native (Expo + Metro) with the mobUI vocabulary
 ```
 
