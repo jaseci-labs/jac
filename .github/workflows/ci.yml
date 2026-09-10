@@ -265,6 +265,8 @@ jobs:
             echo "e1053 dumps: $(grep -c '^\[E1053-DUMP\] pid' "probe-$TAG.err")"
             echo "e1032 dumps: $(grep -c '^\[E1032-DUMP\] pid' "probe-$TAG.err")"
             echo "e1053 unknown-arg dumps: $(grep -c '^\[E1053-UNKNOWN\] pid' "probe-$TAG.err")"
+            echo "cat-unknown: $(grep -c '^\[CAT-UNKNOWN\]' "probe-$TAG.err")  cat-noshared: $(grep -c '^\[CAT-NOSHARED\]' "probe-$TAG.err")"
+            grep -E '^\[(CAT-UNKNOWN|CAT-NOSHARED)\]' "probe-$TAG.err" | sed 's/pid=[0-9]* //' | sort | uniq -c | sort -rn | head -30
             echo "-- E1032 / E1053-UNKNOWN dumps (first 60 lines) --"
             grep -E '^\[(E1032-DUMP|E1053-UNKNOWN)\] pid' "probe-$TAG.err" | head -60
             echo "-- E1053 / MRO-TRUNC dumps (first 40 lines) --"

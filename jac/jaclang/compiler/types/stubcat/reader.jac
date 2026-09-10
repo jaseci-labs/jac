@@ -103,6 +103,27 @@ obj CatProvider(SymbolProvider) {
             resolved = (
                 self.cat.type_of(self.type_id) if self.type_id >= 0 else UnknownType()
             );
+            if os.environ.get("JAC_XREF_PROBE", "") {
+                reason = "";
+                if self.type_id < 0 {
+                    reason = "no_type_id";
+                } elif resolved is None {
+                    reason = "type_of_none";
+                } elif isinstance(resolved, UnknownType) {
+                    reason = f"stored_unknown[diag={resolved.is_diagnosed},inc={resolved.is_incomplete}]";
+                } elif isinstance(resolved, ClassType) and resolved._shared is None {
+                    reason = "class_without_record";
+                }
+                if reason {
+                    import sys;
+                    scope_name = symbol.parent_tab?.cat_name;
+                    sys.stderr.write(
+                        f"[CAT-UNKNOWN] pid={os.getpid()} sym={symbol.name} scope={scope_name} "
+                        f"type_id={self.type_id} reason={reason}"
+                            + "\n"
+                    );
+                }
+            }
             if resolved is None {
                 resolved = UnknownType();
             }
@@ -759,6 +780,13 @@ obj StubCatalog {
             cls = ClassType(_shared=None, private=private, flags=flags);
             self._type_memo[tid] = cls;
             cls._shared = self.shared_of(shared_id);
+            if cls._shared is None and os.environ.get("JAC_XREF_PROBE", "") {
+                import sys;
+                sys.stderr.write(
+                    f"[CAT-NOSHARED] pid={os.getpid()} tid={tid} shared_id={shared_id}"
+                        + "\n"
+                );
+            }
             if type_args {
                 cls.private.type_args = self._types(type_args);
             }
