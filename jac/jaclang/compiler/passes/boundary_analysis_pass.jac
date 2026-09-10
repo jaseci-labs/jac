@@ -102,7 +102,10 @@ walker BoundaryAnalysisPass(UniPass) {
     def _extract_subscript_inner(expr: (UniNode | None)) -> str;
     def _extract_all_subscript_types(expr: (UniNode | None)) -> list[str];
     def _extract_all_type_names(expr: (UniNode | None)) -> list[str];
-    def _collect_boundary_type(type_name: str, source_mod: (Module | None)) -> None;
+    def _collect_boundary_type(
+        type_name: str, source_mod: (Module | None)
+    ) -> (BoundaryTypeInfo | None);
+
     def _literal_default(expr: (UniNode | None)) -> tuple[(bool, any)];
     def after_pass -> None;
     def _record_access_levels(manifest: any) -> None;

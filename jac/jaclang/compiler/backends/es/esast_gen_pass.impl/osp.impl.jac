@@ -1063,7 +1063,7 @@ impl EsastGenPass._build_spawn_arg_object(
             }
         }
     }
-    boundary_types = self.ir_in.gen.interop_manifest.boundary_types
+    boundary_types = self.ir_in.gen.interop_manifest.boundary_types_for()
         if self.ir_in.gen.interop_manifest
         else {};
     properties: list[(es.Property | es.SpreadElement)] = [];

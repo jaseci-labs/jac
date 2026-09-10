@@ -446,7 +446,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def _native_test_shim_stmts(nd: Test) -> list;
     def _generate_sv_to_sv_stubs(nd: Import) -> bool;
     def _gen_py_sv_boundary_types -> None;
-    def _gen_py_from_wire -> list[str];
+    def _gen_py_wire_methods -> list[str];
     def _sv_consumer_app_expr -> str;
     def _sv_endpoint_effects(binding: InteropBinding, key: str) -> list[str];
     def _sv_bridge_walker_call(expr: Expr) -> (FuncCall | None);

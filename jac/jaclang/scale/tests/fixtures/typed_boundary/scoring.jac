@@ -1,5 +1,18 @@
 import os;
 import from models { RepoMeta, RepoMeta as Metadata }
+import from other_models { RepoMeta as OtherMeta }
+
+obj OtherPayload {
+    has meta: OtherMeta = OtherMeta();
+}
+
+def:pub other_score -> OtherPayload {
+    return OtherPayload();
+}
+
+def:pub forward_inherited(payload: DerivedPayload) -> str {
+    return payload.inherited.owner;
+}
 
 obj HiddenPayload {
     has meta: RepoMeta = RepoMeta();
@@ -69,4 +82,8 @@ def:pub hidden_score -> HiddenPayload {
 
 def:pub inherited_score -> DerivedPayload {
     return DerivedPayload();
+}
+
+def:pub walker_value -> ScoreWalker {
+    return ScoreWalker(payload=fetch_score());
 }

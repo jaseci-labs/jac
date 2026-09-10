@@ -208,12 +208,16 @@ impl Serializer._serialize_value(
                     if isinstance(val, NodeArchetype)
                     else 'walker' if isinstance(val, WalkerArchetype) else 'archetype'
             };
+            type_id = val?.__jac_type_id__;
+            if isinstance(type_id, str) {
+                result['_jac_type_id'] = type_id;
+            }
         }
         return result
             | Serializer._serialize_attrs(val, include_type, api_mode, ref_mode, _seen);
     }
 
-    if val?.__dict__ {
+    if hasattr(val, '__dict__') {
         if _seen is not None {
             (_, obj_ids) = _seen;
             obj_identity = id(val);
@@ -227,7 +231,11 @@ impl Serializer._serialize_value(
             api_type = val?._jac_type;
             if isinstance(api_type, str) {
                 result['_jac_type'] = api_type;
-                for key in ('_jac_id', '_jac_archetype') {
+                type_id = val?.__jac_type_id__;
+                if isinstance(type_id, str) {
+                    result['_jac_type_id'] = type_id;
+                }
+                for key in ('_jac_type_id', '_jac_id', '_jac_archetype') {
                     if hasattr(val, key) {
                         result[key] = getattr(val, key);
                     }
@@ -363,7 +371,7 @@ impl Serializer.deserialize_api(
     if not isinstance(value, dict) {
         return value;
     }
-    tag = value.get('_jac_type');
+    tag = value.get('_jac_type_id', value.get('_jac_type'));
     cls = boundary_types.get(tag, target) if isinstance(tag, str) else target;
     decoded = {
         k: Serializer.deserialize_api(v, boundary_types) for (k, v) in value.items()

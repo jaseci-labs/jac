@@ -1,8 +1,19 @@
 import os;
 import sys;
+import from other_service {
+    ScoredPayload as OtherScoredPayload,
+    RepoMeta as ForeignMeta,
+    fetch_score as fetch_other
+}
 import from scoring { fetch_score, hidden_score, ScoredPayload, RepoMeta }
 import from scoring { RepoMeta as Meta, ScoredPayload as Payload }
-import from scoring { Metadata, inherited_score }
+import from scoring {
+    Metadata,
+    inherited_score,
+    forward_inherited,
+    other_score,
+    OtherMeta
+}
 import from scoring {
     score_list,
     score_lookup,
@@ -10,6 +21,7 @@ import from scoring {
     score_or_meta,
     ScoreWalker
 }
+import from scoring { ScoreWalker as AliasedWalker, walker_value }
 
 async def:pub check_score -> dict {
     payload = await fetch_score();
@@ -65,6 +77,27 @@ async def:pub check_provider_alias -> bool {
 async def:pub check_inherited -> bool {
     payload = await inherited_score();
     assert payload.inherited.owner == "inherited";
+    payload.inherited.owner = "forwarded";
+    assert await forward_inherited(payload) == "forwarded" , "inherited fields lost in typed forwarding";
+    return True;
+}
+
+async def:pub check_distinct_types -> bool {
+    assert OtherMeta is not Meta , "unrelated same-named archetypes must stay distinct";
+    other = await other_score();
+    payload = await fetch_score();
+    assert isinstance(other.meta, OtherMeta);
+    assert not isinstance(other.meta, Meta);
+    assert isinstance(payload.meta, Meta);
+    assert not isinstance(payload.meta, OtherMeta);
+    assert other.meta.owner == "other";
+    assert ForeignMeta is OtherMeta;
+    assert OtherScoredPayload is not ScoredPayload;
+    foreign = await fetch_other();
+    assert isinstance(foreign, OtherScoredPayload);
+    assert not isinstance(foreign, ScoredPayload);
+    assert isinstance(foreign.meta, ForeignMeta);
+    assert foreign.meta.owner == "other";
     return True;
 }
 
@@ -73,6 +106,10 @@ async def:pub forward_score -> ScoredPayload {
 }
 
 async def:pub check_walker -> bool {
+    assert AliasedWalker is ScoreWalker , "walker aliases must retain type identity";
+    value = await walker_value();
+    assert isinstance(value, ScoreWalker) , "returned walkers must share the imported walker type";
+    assert value.payload.meta.owner == "jaseci-labs";
     walked = await ScoreWalker();
     assert isinstance(walked, ScoreWalker);
     assert isinstance(walked.payload, Payload);

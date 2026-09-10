@@ -16,6 +16,24 @@ class WireRecord {
     }
 }
 
+class OtherWireRecord(WireRecord) {}
+
+test "qualified API identities disambiguate same-named declarations and survive forwarding" {
+    types = {"alpha.Record": WireRecord, "beta.Record": OtherWireRecord};
+    wire = [
+        {"_jac_type": "Record", "_jac_type_id": "alpha.Record", "value": 1},
+        {"_jac_type": "Record", "_jac_type_id": "beta.Record", "value": 2}
+    ];
+    result: any = Serializer.deserialize_api(wire, types);
+    assert type(result[0]) is WireRecord;
+    assert type(result[1]) is OtherWireRecord;
+    assert Serializer.serialize(result, api_mode=True) == wire;
+    empty = object.__new__(WireRecord);
+    serialized: any = Serializer.serialize(empty, api_mode=True);
+    assert isinstance(serialized, dict);
+    assert serialized["__type__"] == "WireRecord";
+}
+
 test "API values recursively decode without mutating the wire payload" {
     leaf = {"_jac_type": "Leaf", "_jac_id": "abc", "value": 42};
     wire = {

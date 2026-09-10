@@ -245,7 +245,7 @@ impl EsastGenPass._generate_sv_import_stubs(
     nd: uni.Import, items: (Sequence[uni.ModuleItem] | None) = None
 ) -> None {
     manifest = self.ir_in.gen.interop_manifest;
-    boundary_types = manifest.boundary_types;
+    boundary_types = manifest.boundary_types_for();
     stubs: list[es.Statement] = [];
     for item in (items if items is not None else nd.items) {
         if not isinstance(item, uni.ModuleItem)
@@ -493,7 +493,7 @@ impl EsastGenPass._sv_import_item_is_type(
     if sym and sym.binding_kind.denotes_type() {
         return True;
     }
-    return item.name.sym_name in self.ir_in.gen.interop_manifest.boundary_types;
+    return item.name.sym_name in self.ir_in.gen.interop_manifest.boundary_types_for();
 }
 
 impl EsastGenPass.exit_sub_tag with uni.SubTag exit {

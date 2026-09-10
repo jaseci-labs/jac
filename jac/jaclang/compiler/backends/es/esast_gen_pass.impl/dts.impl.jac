@@ -1,6 +1,7 @@
 impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement] {
     manifest = nd.gen.interop_manifest;
-    if not manifest.boundary_types {
+    boundary_types = manifest.boundary_types_for();
+    if not boundary_types {
         return [];
     }
     stubs: list[es.Statement] = [];
@@ -15,7 +16,7 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
             osp_class_map[item.name.sym_name] = item.gen.es_ast;
         }
     }
-    for (type_name, info) in manifest.boundary_types.items() {
+    for (type_name, info) in boundary_types.items() {
         if info.kind == "enum" {
             enum_props: list[es.Property] = [];
             for (member_name, member_val) in info.enum_members {
@@ -164,8 +165,7 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
             nested_set = {
                 t
                 for t in info.nested_types
-                if t in manifest.boundary_types
-                    and manifest.boundary_types[t].kind != "enum"
+                if t in boundary_types and boundary_types[t].kind != "enum"
             };
             for fname in field_names {
                 ftype = field_types[fname];

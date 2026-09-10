@@ -1657,11 +1657,14 @@ What works:
 - **Bidirectional** -- typed function arguments are wrapped on the way out and unwrapped on the way in.
 - **walkers** -- when imported by name. The consumer-side stub mirrors the provider's `has` fields, and the round-trip rehydrates the walker into a real instance with `reports` populated. See [Walker Imports](#walker-imports).
 
-Reconstruction uses the `_jac_type` markers in API responses and the boundary
-types collected by the compiler. It applies to function results, walker fields,
+Reconstruction uses the `_jac_type_id` identity in API responses and the boundary
+types collected by the compiler. Identities include the declaring app and module,
+so unrelated types with the same name remain distinct while aliases of one
+declaration share a consumer-side type. It applies to function results, walker fields,
 and reports, including when services run in separate processes. Ordinary
 dictionaries stay dictionaries. Forwarding a reconstructed value preserves its
-nested type markers. Reconstruction only uses the declared boundary types; it
+nested type markers and inherited fields, including when passed to a typed
+service parameter. Reconstruction only uses the declared boundary types; it
 does not import or execute the provider module.
 
 What doesn't:

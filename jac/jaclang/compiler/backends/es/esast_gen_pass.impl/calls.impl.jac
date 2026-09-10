@@ -798,7 +798,7 @@ impl EsastGenPass._try_lower_server_rpc_call(
     inline_ret_type: str = self._extract_return_type(
         ability_node, func_name, self.ir_in.gen.interop_manifest
     );
-    inline_boundary = self.ir_in.gen.interop_manifest.boundary_types
+    inline_boundary = self.ir_in.gen.interop_manifest.boundary_types_for()
         if self.ir_in.gen.interop_manifest
         else {};
     (spread_arg, spread_read_source) = self._make_kwargs_spread_context(props, nd);
@@ -914,7 +914,7 @@ impl EsastGenPass._build_server_forwarder(
     ability_node: uni.Ability, func_name: str, jac_node: uni.UniNode
 ) -> es.FunctionDeclaration {
     self._warn_rpc_callable_params(ability_node, func_name, jac_node);
-    boundary = self.ir_in.gen.interop_manifest.boundary_types
+    boundary = self.ir_in.gen.interop_manifest.boundary_types_for()
         if self.ir_in.gen.interop_manifest
         else {};
     param_types = self._param_type_map_from_ability(ability_node);

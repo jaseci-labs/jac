@@ -24,11 +24,19 @@ test "split services recursively reconstruct returned archetypes" {
         }
         provider_port = get_free_port();
         consumer_port = get_free_port();
+        other_port = get_free_port();
         provider = None;
         consumer = None;
+        other = None;
         try {
             provider = start_server(
                 project, project / "scoring.jac", provider_port, {"JAC_SV_SIBLING": "1"}
+            );
+            other = start_server(
+                project,
+                project / "other_service.jac",
+                other_port,
+                {"JAC_SV_SIBLING": "1"}
             );
             consumer = start_server(
                 project,
@@ -36,7 +44,8 @@ test "split services recursively reconstruct returned archetypes" {
                 consumer_port,
                 {
                     "JAC_SV_SIBLING": "1",
-                    "JAC_APP_SCORING_URL": f"http://127.0.0.1:{provider_port}"
+                    "JAC_APP_SCORING_URL": f"http://127.0.0.1:{provider_port}",
+                    "JAC_APP_OTHER_URL": f"http://127.0.0.1:{other_port}"
                 }
             );
             response = requests.post(
@@ -53,20 +62,26 @@ test "split services recursively reconstruct returned archetypes" {
             assert result["consumer_pid"] == consumer.pid;
             assert provider.pid != consumer.pid;
             assert result["provider_loaded"] is False;
+            errors: list[str] = [];
             for endpoint in [
                 "check_collections",
                 "check_walker",
                 "check_provider_alias",
-                "check_inherited"
+                "check_inherited",
+                "check_distinct_types"
             ] {
                 response = requests.post(
                     f"http://127.0.0.1:{consumer_port}/function/{endpoint}",
                     json={},
                     timeout=30
                 );
-                assert response.status_code == 200 , f"{endpoint}: {response.text}";
-                assert response.json()["data"]["result"] is True , response.text;
+                if response.status_code != 200 {
+                    errors.append(f"{endpoint}: {response.text}");
+                } else {
+                    assert response.json()["data"]["result"] is True , response.text;
+                }
             }
+            assert not errors , "\n".join(errors);
             response = requests.post(
                 f"http://127.0.0.1:{consumer_port}/function/forward_score",
                 json={},
@@ -80,7 +95,8 @@ test "split services recursively reconstruct returned archetypes" {
         } finally {
             stop_server(consumer);
             stop_server(provider);
-            for server in [consumer, provider] {
+            stop_server(other);
+            for server in [consumer, provider, other] {
                 if server is not None {
                     (stdout, stderr) = server.communicate();
                     print(stdout + stderr);
