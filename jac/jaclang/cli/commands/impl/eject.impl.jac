@@ -35,8 +35,9 @@ def load_eject_project_metadata(src: Path) -> dict {
     } else {
         project_name = raw_name;
     }
-    entry_point = project_section.get("entry-point", "main.jac");
-    entry_module = _strip_jac_suffix(Path(entry_point).name);
+    entry_point = project_section.get("entry-point", "main");
+    import from jaclang.project.apps { validate_entry_point }
+    entry_module = validate_entry_point(entry_point);
     return {
         "project_name": project_name,
         "entry_point": entry_point,

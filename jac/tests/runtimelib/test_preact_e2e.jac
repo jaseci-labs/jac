@@ -54,7 +54,7 @@ def _write_preact_project(dest: Path) {
     (dest / "jac.toml").write_text(
         '[project]\n'
         'name = "preact-e2e"\n'
-        'entry-point = "main.jac"\n'
+        'entry-point = "main"\n'
         '\n'
         '[client]\n'
         'framework = "preact"\n'

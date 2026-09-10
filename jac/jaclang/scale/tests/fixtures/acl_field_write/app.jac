@@ -19,7 +19,7 @@ def make_doc -> dict {
 
 def share_read(id: str, to_root: str) -> dict {
     o = jobj(id);
-    Jac.allow_root(o, UUID(to_root), AccessLevel.READ);
+    Jac.allow_root(o as Doc, UUID(to_root), 'READ');
     return {"ok": True};
 }
 

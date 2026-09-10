@@ -1,8 +1,9 @@
 [project]
+kind = "web-app"
 name = "fullstack"
 version = "1.0.0"
 description = "Jac fullstack application: fullstack"
-entry-point = "main.jac"
+entry-point = "main"
 
 [dependencies.npm]
 react = "^19.2.0"

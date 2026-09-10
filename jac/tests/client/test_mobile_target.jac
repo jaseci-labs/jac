@@ -125,12 +125,7 @@ test "target_for_app reads the app's kind" {
 
     _register_client_targets();
     cfg = JacConfig.from_toml_str(
-        '[project]\nname = "acme"\n\n'
-        '[apps.phone]\nkind = "mobile"\npath = "phone"\n\n'
-        '[apps.site]\nkind = "web-app"\npath = "site"\n\n'
-        '[apps.page]\nkind = "web-static"\npath = "page"\n\n'
-        '[apps.shell]\nkind = "desktop"\npath = "shell"\n\n'
-        '[apps.api]\nkind = "service"\npath = "api"\n'
+        '[project]\nname = "acme"\n\n[apps.phone]\nkind = "mobile"\nentry-point = "phone.main"\n\n[apps.site]\nkind = "web-app"\nentry-point = "site.main"\n\n[apps.page]\nkind = "web-static"\nentry-point = "page.main"\n\n[apps.shell]\nkind = "desktop"\nentry-point = "shell.main"\n\n[apps.api]\nkind = "service"\nentry-point = "api.main"\n'
     );
     expected = {"phone": "mobile", "site": "web", "page": "static", "shell": "desktop"};
     for (name, target_name) in expected.items() {
@@ -1105,7 +1100,7 @@ test "client config scopes npm deps by the kind's target: [dependencies.npm.mobi
             "[project]\n"
             "name = \"rn-target-deps\"\n"
             "version = \"1.0.0\"\n"
-            "entry-point = \"main.jac\"\n"
+            "entry-point = \"main\"\n"
             "kind = \"mobile\"\n\n"
             "[dependencies.npm]\n"
             "react = \"^19.2.0\"\n\n"
@@ -1145,7 +1140,7 @@ test "a web-app does not pick up the mobile npm scope" {
             "[project]\n"
             "name = \"web-deps\"\n"
             "version = \"1.0.0\"\n"
-            "entry-point = \"main.jac\"\n"
+            "entry-point = \"main\"\n"
             "kind = \"web-app\"\n\n"
             "[dependencies.npm]\n"
             "react = \"^19.2.0\"\n\n"
@@ -1195,7 +1190,7 @@ test "client config exposes the react_native table and no Capacitor table" {
             "[project]\n"
             "name = \"cfg-getters\"\n"
             "version = \"1.0.0\"\n"
-            "entry-point = \"main.jac\"\n\n"
+            "entry-point = \"main\"\n\n"
             "[client.react_native]\n"
             "project_dir = \"mobile-rn-alt\"\n"
             "default_platform = \"ios\"\n"
@@ -1234,7 +1229,7 @@ test "mobile start honors JAC_MOBILE_PLATFORM over the configured default" {
         project_dir = Path(tmp);
         (project_dir / "jac.toml").write_text(
             "[project]\nname = \"t\"\nversion = \"1.0\"\nkind = \"mobile\"\n"
-            "entry-point = \"main.jac\"\n\n"
+            "entry-point = \"main\"\n\n"
             "[client.react_native]\ndefault_platform = \"ios\"\n",
             encoding="utf-8"
         );
@@ -1809,7 +1804,7 @@ test "resolve_rn_project_dir honors project_dir config override" {
         # Custom relative path.
         toml_content = (
             "[project]\nname = \"test\"\nversion = \"1.0\"\n"
-            "entry-point = \"main.jac\"\n\n"
+            "entry-point = \"main\"\n\n"
             "[client.react_native]\n"
             'project_dir = "native-app"\n'
         );
@@ -1822,7 +1817,7 @@ test "resolve_rn_project_dir honors project_dir config override" {
         abs_path = Path(tmp) / "abs-native";
         toml_abs = (
             "[project]\nname = \"test\"\nversion = \"1.0\"\n"
-            "entry-point = \"main.jac\"\n\n"
+            "entry-point = \"main\"\n\n"
             "[client.react_native]\n"
             f'project_dir = "{abs_path}"\n'
         );
@@ -1908,7 +1903,7 @@ test "config helpers support ios_builder and release" {
         # With config overrides.
         toml_content = (
             "[project]\nname = \"test\"\nversion = \"1.0\"\n"
-            "entry-point = \"main.jac\"\n\n"
+            "entry-point = \"main\"\n\n"
             "[client.react_native]\n"
             "release = true\n"
             'ios_builder = "eas"\n'

@@ -33,7 +33,7 @@ A `mobile` app compiles your `cl` UI to **platform-native views** via React Nati
 ```toml
 [apps.mobile]
 kind = "mobile"              # native views via Expo/Metro; raw HTML tags in this app's modules become E1105
-path = "mobile"
+entry-point = "mobile.main"
 ```
 
 The mobUI guard covers only this app's modules -- your HTML-based `web` app next door is untouched. Then:

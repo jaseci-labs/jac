@@ -1421,7 +1421,7 @@ node Secret { has value: str; }
 #   path = "web"
 #   [apps.orders]                 # a file-rooted service app: owns
 #   kind = "service"              #   exactly its entry file; imports of
-#   entry-point = "core/orders.jac"   # its walkers from other apps lower
+#   entry-point = "core.orders"   # its walkers from other apps lower
 #                                 #   to typed-async bridge stubs (await)
 #   (scaffold with `jac create --app orders --kind service`)
 

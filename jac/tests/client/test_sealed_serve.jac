@@ -50,7 +50,15 @@ def _sealed_root(tmp: str, manifest: (dict | None) = None) -> str {
     with open(
         os.path.join(img_root, ".jac", "serve_manifest.json"), "w", encoding="utf-8"
     ) as f {
-        f.write('{"client": {"exports": [], "globals": []}}');
+        f.write(
+            json.dumps(
+                {
+                    'module_manifests': {
+                        'main.jac': {'client': {'exports': [], 'globals': []}}
+                    }
+                }
+            )
+        );
     }
     return img_root;
 }
@@ -174,6 +182,12 @@ test "sealed static endpoints use the image even with an unrelated runtime base"
         );
         (dist / "arena.wasm").write_bytes(wasm);
         (dist / "arena.wasm.imports.json").write_text('{"imports":{}}');
+        (Path(img_root) / "jac.toml").write_text(
+            '[project]\nname="sealed-assets"\n[client.assets]\ndir="brand"\n'
+        );
+        assets = Path(img_root) / "brand";
+        assets.mkdir();
+        (assets / "logo.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"/>');
         unrelated = Path(tmp) / "elsewhere";
         unrelated.mkdir();
         server: any = MagicMock(spec=JacAPIServer);
@@ -182,8 +196,9 @@ test "sealed static endpoints use the image even with an unrelated runtime base"
         server.introspector.resolve_root_app.return_value = "app";
         server.resolved_settings.return_value = SimpleNamespace(client_dist="");
         with patch("jaclang.server.endpoints.pages.get_config", return_value=None), patch(
-            "jaclang.server.endpoints.pages._static_base", return_value=str(unrelated)
-        ) {
+            "jaclang.server.endpoints.pages.Jac.get_context",
+            return_value=SimpleNamespace(base_path_dir=str(unrelated))
+        ), patch("jaclang.project.config.get_explicit_config", return_value=None) {
             register_page_endpoints(server);
             routes = {
                 call.args[0].path: call.args[0].callback
@@ -209,6 +224,12 @@ test "sealed static endpoints use the image even with an unrelated runtime base"
             );
             assert response.status_code == 200;
             assert json.loads(response.body) == {"imports": {}};
+            response = routes["/static/{file_path:path}"](request, "assets/logo.svg");
+            assert response.status_code == 200;
+            assert response.body == (assets / "logo.svg").read_bytes();
+            response = routes["/{file_path:path}"](request, "logo.svg");
+            assert response.status_code == 200;
+            assert response.body == (assets / "logo.svg").read_bytes();
         }
     }
 }

@@ -39,7 +39,7 @@ def _write_project(base: str, files: dict[str, str], npm_deps: str = "") -> Path
     proj.mkdir(parents=True, exist_ok=True);
     (proj / "jac.toml").write_text(
         '[project]\nname = "universe"\nversion = "0.1.0"\n'
-        'entry-point = "main.jac"\n\n[dependencies.npm]\n'
+        'entry-point = "main"\n\n[dependencies.npm]\n'
             + npm_deps
     );
     for (rel, content) in files.items() {

@@ -15,7 +15,9 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
             osp_class_map[item.name.sym_name] = item.gen.es_ast;
         }
     }
-    for (type_name, info) in manifest.boundary_types.items() {
+    for info in manifest.boundary_types.values() {
+        type_name = self._boundary_type_name(info);
+        boundary_types = manifest.boundary_types_for(info.type_scope);
         if info.kind == "enum" {
             enum_props: list[es.Property] = [];
             for (member_name, member_val) in info.enum_members {
@@ -164,8 +166,7 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
             nested_set = {
                 t
                 for t in info.nested_types
-                if t in manifest.boundary_types
-                    and manifest.boundary_types[t].kind != "enum"
+                if t in boundary_types and boundary_types[t].kind != "enum"
             };
             for fname in field_names {
                 ftype = field_types[fname];
@@ -230,7 +231,9 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                                             es.CallExpression(
                                                 callee=es.MemberExpression(
                                                     object=es.Identifier(
-                                                        name=inner_type
+                                                        name=self._boundary_type_name(
+                                                            boundary_types[inner_type]
+                                                        )
                                                     ),
                                                     property=es.Identifier(
                                                         name='__from_wire'
@@ -307,7 +310,11 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                                                     body=es.CallExpression(
                                                         callee=es.MemberExpression(
                                                             object=es.Identifier(
-                                                                name=inner_type
+                                                                name=self._boundary_type_name(
+                                                                    boundary_types[
+                                                                        inner_type
+                                                                    ]
+                                                                )
                                                             ),
                                                             property=es.Identifier(
                                                                 name='__from_wire'
@@ -346,7 +353,11 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                                         ),
                                         right=es.CallExpression(
                                             callee=es.MemberExpression(
-                                                object=es.Identifier(name=inner_type),
+                                                object=es.Identifier(
+                                                    name=self._boundary_type_name(
+                                                        boundary_types[inner_type]
+                                                    )
+                                                ),
                                                 property=es.Identifier(
                                                     name='__from_wire'
                                                 ),
@@ -394,7 +405,17 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
             to_wire_props.append(
                 es.Property(
                     key=es.Literal(value='__type__'),
-                    value=es.Literal(value=type_name),
+                    value=es.Literal(value=info.name),
+                    kind='init',
+                    method=False,
+                    shorthand=False,
+                    computed=False
+                )
+            );
+            to_wire_props.append(
+                es.Property(
+                    key=es.Literal(value='_jac_type_id'),
+                    value=es.Literal(value=info.type_id),
                     kind='init',
                     method=False,
                     shorthand=False,
@@ -587,7 +608,9 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                 `static=False,
                 computed=False
             );
-            osp_class = osp_class_map.get(type_name);
+            osp_class = osp_class_map.get(info.name)
+                if info.type_scope == nd.loc.mod_path
+                else None;
             if osp_class is not None {
                 if info.kind == "node" {
                     for member in osp_class.body.body {
@@ -640,5 +663,49 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
             }
         }
     }
+    for (local_name, binding) in manifest.bindings.items() {
+        if binding.kind != 'type' {
+            continue;
+        }
+        info = manifest.boundary_types_for(binding.type_scope).get(binding.ret_type);
+        if info is None {
+            continue;
+        }
+        type_name = self._boundary_type_name(info);
+        if local_name != type_name {
+            stubs.append(
+                es.VariableDeclaration(
+                    declarations=[
+                        es.VariableDeclarator(
+                            id=es.Identifier(name=local_name),
+                            init=es.Identifier(name=type_name)
+                        )
+                    ],
+                    kind='const'
+                )
+            );
+        }
+    }
     return stubs;
+}
+
+impl EsastGenPass._boundary_type_name(info: BoundaryTypeInfo) -> str {
+    manifest = self.ir_in.gen.interop_manifest;
+    if info.type_scope == self.ir_in.loc.mod_path {
+        return info.name;
+    }
+    matches = [
+        t
+        for t in manifest.boundary_types.values()
+        if t.name == info.name
+    ];
+    binding = manifest.bindings.get(info.name);
+    bound_type = manifest.boundary_types_for(binding.type_scope).get(binding.ret_type)
+        if binding is not None and binding.kind == 'type'
+        else None;
+    if len(matches) == 1 and (binding is None or bound_type == info) {
+        return info.name;
+    }
+    index = list(manifest.boundary_types).index(info.type_id);
+    return f"__jac_boundary_{index}_{info.name}";
 }

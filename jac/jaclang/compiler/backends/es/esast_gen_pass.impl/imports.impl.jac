@@ -217,6 +217,14 @@ impl EsastGenPass._partition_client_import_items(
     kept: list = [];
     bridged: list = [];
     for item in nd.items {
+        if isinstance(item, uni.ModuleItem) {
+            local_name = item.alias.sym_name if item.alias else item.name.value;
+            binding = self.ir_in.gen.interop_manifest.bindings.get(local_name);
+            if binding is not None and binding.kind == 'type' {
+                bridged.append(item);
+                continue;
+            }
+        }
         verdict = classify_client_import_item(source_mod, item);
         if pinned_server and verdict != ClientImportVerdict.DEAD {
             bridged.append(item);
@@ -245,7 +253,6 @@ impl EsastGenPass._generate_sv_import_stubs(
     nd: uni.Import, items: (Sequence[uni.ModuleItem] | None) = None
 ) -> None {
     manifest = self.ir_in.gen.interop_manifest;
-    boundary_types = manifest.boundary_types;
     stubs: list[es.Statement] = [];
     for item in (items if items is not None else nd.items) {
         if not isinstance(item, uni.ModuleItem)
@@ -263,6 +270,9 @@ impl EsastGenPass._generate_sv_import_stubs(
         if binding is not None and binding.kind != 'function' {
             continue;
         }
+        boundary_types = manifest.boundary_types_for(
+            binding.type_scope if binding is not None else self.ir_in.loc.mod_path
+        );
         param_names: list[str] = [];
         param_type_map: dict[str, str] = {};
         ret_type_name: str = '';
@@ -493,7 +503,9 @@ impl EsastGenPass._sv_import_item_is_type(
     if sym and sym.binding_kind.denotes_type() {
         return True;
     }
-    return item.name.sym_name in self.ir_in.gen.interop_manifest.boundary_types;
+    local_name = item.alias.sym_name if item.alias else item.name.sym_name;
+    binding = self.ir_in.gen.interop_manifest.bindings.get(local_name);
+    return binding is not None and binding.kind == 'type';
 }
 
 impl EsastGenPass.exit_sub_tag with uni.SubTag exit {

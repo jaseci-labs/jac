@@ -24,8 +24,6 @@ import from jaclang.compiler.frontend.diagnostics {
     W2038,
     E2039,
     W2039,
-    E2040,
-    W2040
 }
 
 walker AccessCheckPass(Transform) {
@@ -34,8 +32,6 @@ walker AccessCheckPass(Transform) {
         _enforce: bool = False,
         _bridged_syms: set[int] = set(),
         _bridged_mods: set[str] = set();
-
-    static has PROVIDES: tuple = ('access-checks', );
 
     def postinit -> None;
     def transform(ir_in: Module) -> Module;

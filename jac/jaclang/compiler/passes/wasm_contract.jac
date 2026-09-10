@@ -1,3 +1,4 @@
+import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree { Ability, FuncSignature, UnaryExpr }
 import from jaclang.compiler.frontend.constant { OwnershipKind }
 
@@ -72,13 +73,10 @@ def function_contract(decl: Ability, host: bool = False) -> dict {
 }
 
 
-def host_contracts(module: any) -> dict {
+def host_contracts(module: any, program: JacProgram) -> dict {
     import from jaclang.compiler.frontend.unitree { Import }
     import from jaclang.compiler.driver.boundary_classify {
         symbol_linked_source_module
-    }
-    import from jaclang.compiler.passes.boundary_analysis_pass {
-        _parse_module_for_types
     }
     visited: set[str] = set();
     todo = [module];
@@ -99,7 +97,7 @@ def host_contracts(module: any) -> dict {
                 if linked is None {
                     path = imp.from_loc.resolve_relative_path();
                     if path.endswith(".jac") {
-                        linked = _parse_module_for_types(path);
+                        linked = program.load_dependency_module(path, need_tree=True);
                     }
                 }
                 if linked is not None {
@@ -120,7 +118,7 @@ def _host_type(name: str) -> str {
     return name;
 }
 
-def check_host_call(call: any) -> None {
+def check_host_call(call: any, program: JacProgram) -> None {
     import from jaclang.compiler.frontend.unitree {
         Name,
         Module,
@@ -175,7 +173,7 @@ def check_host_call(call: any) -> None {
         }
     }
     for (name, required) in host_contracts(
-        provider.find_parent_of_type(Module)
+        provider.find_parent_of_type(Module), program
     ).items() {
         if name not in methods {
             raise ValueError(f"Host is missing native import '{name}'");

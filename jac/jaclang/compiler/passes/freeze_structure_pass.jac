@@ -2,8 +2,6 @@ import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.passes { Transform }
 
 walker FreezeStructurePass(Transform) {
-    static has PROVIDES: tuple = ('frozen', );
-
     def transform(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
 }

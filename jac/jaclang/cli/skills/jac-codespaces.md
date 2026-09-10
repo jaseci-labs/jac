@@ -92,17 +92,22 @@ Pins feed the solver exactly like the old markers did: a pinned element is immov
 Declaring that a module runs as its own service happens ONLY in `jac.toml`, as an **app**:
 
 ```toml
-[apps.math]                          # file-rooted service app: owns exactly this file
+[apps.math]                          # service entry
 kind = "service"
-entry-point = "core/math.jac"
+entry-point = "core.math"
 
-[apps.orders]                        # dir-rooted: owns everything under orders/
+[apps.orders]                        # service entry
 kind = "service"
-path = "orders"
+entry-point = "orders.main"
 route = "/api/orders"                # default would be /api/orders anyway
 ```
 
-Every module carries stamped **app facts** (`app`, `app_root`, `app_kind`, `owner_app`); modules under no app root are shared. A service app's elements are server-anchored by definition and owned by it; plain imports of its walkers / `def:pub` functions from any other app lower to bridge stubs automatically - typed-async Python stubs server-to-server (`await`), async JS stubs client-to-server. Two laws ride on the same facts: an app may use another app's declarations only through that bridge surface (`E2039`), and shared code may never import from an app (`E2040`). `jac create --app <name> --kind service` writes the table. There is no auto-discovery from source. See `jac-sv-microservices`.
+`AppContextPass` stamps app facts during compilation. Helpers inherit the
+selected app context; another declared entry establishes a boundary. Public
+functions and walkers reached through a service entry lower to awaited bridge
+calls. `E2039` diagnoses access outside that public surface. `jac create --app
+<name> --kind service` writes an explicit entry declaration. See
+`jac-sv-microservices`.
 
 ## Native inference - extern C declarations are the seed
 

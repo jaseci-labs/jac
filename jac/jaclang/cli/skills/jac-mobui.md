@@ -7,7 +7,7 @@ MobUI is Jac's cross-platform UI model: **one source compiles to both native Rea
 
 MobUI is real React Native components, not a web page in a webview. The in-repo example is the flagship workspace's mobile app, `jac/examples/jaclang_org/mobile/` (`jac create <name> --awesome` scaffolds the whole workspace) - a React Native client for the same social graph the site serves, with typed theme tokens, `.native.jac` icon variants, and `BridgeError` handling; the product-scale reference is `jachammer` (a mobile clone of jacBuilder) in the jacBuilder repo under `apps/mobile/` - copy their patterns.
 
-A MobUI app is a **client app** of its workspace: it has no server of its own. Its screens import walkers / `def:pub` functions from shared `core/` code that a serving app (the `web-app`, or a file-rooted `service` app) owns, and every `root spawn` / call bridges to that owner - in the flagship, `core/social_graph.jac` is `[apps.social_graph]`'s entry file and `mobile/` is one of its clients. All of `jac-walker-patterns`, `jac-sv-endpoints`, `jac-sv-persistence` apply to that backend unchanged; `jac-sv-microservices` covers the bridge and the `BridgeError` family.
+A MobUI app is a **client app** of its workspace: it has no server of its own. Its screens import walkers / `def:pub` functions from shared `core/` code that a serving app (the `web-app`, or a declared `service` entry) serves, and every `root spawn` / call bridges to that provider - in the flagship, `core/social_graph.jac` is `[apps.social_graph]`'s entry file and `mobile/` is one of its clients. All of `jac-walker-patterns`, `jac-sv-endpoints`, `jac-sv-persistence` apply to that backend unchanged; `jac-sv-microservices` covers the bridge and the `BridgeError` family.
 
 ## The one hard rule: NO raw HTML (E1105)
 
@@ -80,7 +80,7 @@ Handlers are usually inline `lambda`; close over row data: `onPress={lambda { op
 **Lists** - comprehension in a JSX slot with a `key`: `{[<Card key={p["id"]} p={p}/> for p in items]}`.
 **Conditionals** - Jac ternary; empty branch is `<View/>`: `{(<Progress/>) if busy else <View/>}`.
 **Components** declare props as typed params: `def Card(p: dict) -> JsxElement {...}`, called `<Card p={p}/>`.
-**Backend** - call walkers as usual: `result = root spawn create(name=txt); fresh = result.reports[0];` or import the server function + `await fn(arg)` (positional). Both bridge to the owning app; wrap them in `try { ... } except BridgeError as e { ... }` (`import from "@jac/runtime" { BridgeError, BridgeUnavailable, BridgeTimeout, BridgeRejected }`) and show a retry banner rather than a blank screen - the flagship's `components/BridgeBanner.jac` is the pattern. Auth: `import from "@jac/runtime" { jacLogin, jacSignup, jacLogout }` (backed by `expo-secure-store` on native).
+**Backend** - call walkers as usual: `result = root spawn create(name=txt); fresh = result.reports[0];` or import the server function + `await fn(arg)` (positional). Both bridge to the provider app; wrap them in `try { ... } except BridgeError as e { ... }` (`import from "@jac/runtime" { BridgeError, BridgeUnavailable, BridgeTimeout, BridgeRejected }`) and show a retry banner rather than a blank screen - the flagship's `components/BridgeBanner.jac` is the pattern. Auth: `import from "@jac/runtime" { jacLogin, jacSignup, jacLogout }` (backed by `expo-secure-store` on native).
 
 ## Styling - React Native `StyleSheet` only
 
@@ -132,7 +132,7 @@ default-app = "mobile"
 
 [apps.mobile]
 kind = "mobile"                # THE switch: native views via Expo/Metro, @jac/mobui only (HTML is E1105)
-path = "mobile"                # dir-rooted; omit in a single-app project (root = project root)
+entry-point = "mobile.main" # relative to the project root
 platform = "android"           # optional default for `jac run mobile` / `jac build mobile`
 
 [dependencies.npm]
@@ -197,7 +197,7 @@ def kbBehavior() -> str { return "padding" if Platform.OS == "ios" else "height"
 ## Scaffolding checklist (new MobUI app)
 
 1. `jac create --app mobile --kind mobile` (or `--kind mobile` on a new project): an `[apps.mobile]` table with `kind = "mobile"` + the npm deps above.
-2. `main.jac` - `def:pub app -> JsxElement` (auth gate, state, screen switch); the backend it bridges to lives in shared `core/` and is owned by a serving app - NOT inside the mobile app.
+2. `main.jac` - `def:pub app -> JsxElement` (auth gate, state, screen switch); the backend it bridges to lives in shared `core/` and is compiled in a serving app context - NOT inside the mobile app.
 3. `theme.jac` - token `obj`s + one `StyleSheet`.
 4. `screens/` + `components/` in primitives only; `icon.jac` + `icon.native.jac` if icons are needed.
 5. `jac install`, then `jac run --dev --platform web mobile` and validate; `jac check` gates the whole workspace (E1105, E5105, E2039).
@@ -208,5 +208,5 @@ def kbBehavior() -> str { return "padding" if Platform.OS == "ios" else "height"
 - `jac-mobile-app` - the toolchain side: Expo scaffold, `[client.react_native]` builders, EAS Build / Update, devices
 - `jac-fullstack-patterns`, `jac-walker-patterns`, `jac-sv-endpoints` - the backend the UI calls
 - `jac-project-kinds` - target comparison
-- `jac-sv-microservices` - the bridge the screens call through, the `BridgeError` family, ownership of the shared `core/`
+- `jac-sv-microservices` - the bridge the screens call through, the `BridgeError` family, app contexts for shared `core/`
 - Example: the flagship workspace's `jac/examples/jaclang_org/mobile/` (`jac create <name> --awesome`); product-scale reference: `jachammer` in the jacBuilder repo (`apps/mobile/`)

@@ -14,6 +14,7 @@ obj HotReloader {
     has base_path: str,
         module_name: str,
         watcher: any,
+        entry_path: str = "",
         client_compiler: any = None,
         _client_output_dir: str = ".jac/client/compiled",
         _running: bool = False,

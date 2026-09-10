@@ -1,6 +1,7 @@
 import from jaclang.compiler.tools.unparse_pass { unparse_node }
 
 impl JacAutoLintPass.postinit -> None {
+    import from jaclang.compiler.driver.compilation_context { context_app }
     import from jaclang.compiler.driver.pass_driver { diagnostic_policy_for }
     import from jaclang.project.config {
         JacConfig,
@@ -15,7 +16,7 @@ impl JacAutoLintPass.postinit -> None {
     )
         or JacConfig();
     if mod_path {
-        _app = config.app_for_path(str(Path(mod_path).resolve()));
+        _app = context_app(str(Path(mod_path).resolve()));
         if _app is not None and not _app.implicit and _app.name in config.apps {
             config = config.effective_for_app(_app.name);
         }

@@ -476,7 +476,7 @@ def _project_entry_stem(toml_path: str) -> str {
         if entry_point.endswith('.jac') {
             entry_point = entry_point[:-4];
         }
-        return os.path.basename(entry_point);
+        return entry_point.rsplit('.', 1)[-1];
     } except Exception {
         return '';
     }
@@ -704,7 +704,9 @@ impl fix(
             }
             table: dict[str, str] = {
                 'kind': 'service',
-                'entry-point': os.path.relpath(service_file, app_root)
+                'entry-point': os.path.relpath(service_file, app_root)[:-4].replace(
+                    os.sep, '.'
+                )
             };
             slug = stem[:-4] if stem.endswith('_app') else stem;
             old_route = f"/{slug}";

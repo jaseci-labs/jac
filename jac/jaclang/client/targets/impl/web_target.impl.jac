@@ -87,32 +87,9 @@ impl WebTarget.dev(
 impl WebTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
-    import from jaclang.cli.console { console }
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-
-    bundler = ViteBundler(project_dir=project_dir);
-    console.print("\n🌐 Building web bundle for production preview...", style="bold");
-    self.build(entry_file, project_dir, None);
-
-    dist_dir = bundler.output_dir;
-    if not dist_dir or not dist_dir.exists() {
-        raise RuntimeError(f"Build output not found: {dist_dir}");
-    }
-
-    (base, mod) = _parse_entry_file(entry_file);
-
-    ServerClass = Jac.get_api_server_class();
-    server = ServerClass(module_name=mod, port=api_port, base_path=base);
-
-    console.print(
-        f"\n🚀 Starting server at http://localhost:{api_port}/", style="bold green"
-    );
-    console.print("  Press Ctrl+C to stop\n", style="muted");
-
-    try {
-        server.start(dev=False, no_client=False);
-    } except KeyboardInterrupt {
-        console.print("\n  Stopping server...", style="muted");
+    import from jaclang.cli.commands.execution { serve }
+    if serve(filename=str(entry_file.resolve()), port=api_port, dev=False) {
+        raise RuntimeError(f'Could not start web application: {entry_file}');
     }
 }
 
@@ -133,21 +110,15 @@ impl WebTarget.build(
         dist_dir.mkdir(parents=True, exist_ok=True);
     }
 
-    (base, mod) = _parse_entry_file(entry_file);
-
-    Jac.jac_import(target=mod, base_path=base, lng=JAC_LANG_ID);
     program = Jac.get_program();
-    if program.errors_had {
-        errors = '\n'.join(str(e) for e in program.errors_had);
+    before = len(program.errors_had);
+    program.compile(str(entry_file.resolve()));
+    if len(program.errors_had) > before {
+        errors = '\n'.join(str(e) for e in program.errors_had[before:]);
         raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
     }
-    loaded_mod = Jac.loaded_modules.get(mod);
-    if not loaded_mod {
-        raise RuntimeError(f"Module '{mod}' not found after import");
-    }
-    if not isinstance(loaded_mod, types.ModuleType) {
-        raise RuntimeError(f"Module '{mod}' is not a valid module type");
-    }
+    loaded_mod = types.ModuleType(entry_file.stem);
+    loaded_mod.__file__ = str(entry_file.resolve());
     builder = make_client_bundle_builder(project_dir);
     builder.build(loaded_mod, force=True);
     bundle_path = bundler.find_bundle();

@@ -290,7 +290,7 @@ def _compiled_app_edges(
 ) -> list[tuple[str, str]] {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.driver.schedules { get_boundary_analysis_sched }
+    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
     prog = JacProgram();
     prog.compile(
         entry_path,
@@ -332,7 +332,7 @@ def _compiled_app_edges(
             }
             if not man.app_edges and not (man.walker_access or man.func_access) {
                 try {
-                    prog.run_schedule(mod, get_boundary_analysis_sched());
+                    require_product(prog, mod, CompilationProduct.BOUNDARIES);
                     man = mod.gen.interop_manifest;
                 } except Exception {
                     continue;

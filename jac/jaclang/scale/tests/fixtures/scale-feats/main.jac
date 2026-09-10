@@ -9,7 +9,7 @@ import from jaclang.server.serving.datatypes { UploadFile }
 import from uuid { uuid4 }
 
 # Initialize storage with custom base path
-glob storage = store(base_path="./uploads");
+glob storage: any = store(base_path="./uploads");
 
 # ============================================================================
 # Storage API Walkers
@@ -21,8 +21,9 @@ walker:pub upload_file {
 
     can process with Root entry {
         # Generate unique filename
-        ext = self.file.filename.rsplit(".", 1)[-1]
-            if "." in self.file.filename
+        filename = self.file.filename or '';
+        ext = filename.rsplit(".", 1)[-1]
+            if "." in filename
             else "";
         unique_name = f"{uuid4()}.{ext}" if ext else str(uuid4());
         path = f"{self.folder}/{unique_name}";

@@ -14,6 +14,11 @@ impl JacProgram.init(
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
     self._iface: any = None;
+    import from jaclang.compiler.driver.compilation_context { SourceStore }
+    self.source_store = SourceStore();
+    self.context_root = None;
+    self.context_key = "";
+    self.contexts = {};
 }
 
 impl JacProgram.iface_registry(self: JacProgram) -> any {
@@ -62,6 +67,17 @@ impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set
 }
 
 impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None {
+    if self.context_root is None {
+        for context in list(self.contexts.values()) {
+            if context is not self {
+                context.invalidate_module(resolved_path);
+            }
+        }
+    }
+    old_module = self.mod.hub.get(resolved_path);
+    if old_module is not None {
+        self.analysis.drop_tasks(id(old_module));
+    }
     work = self.analysis.placement_state.get('work');
     if work is not None {
         work.forget_path(resolved_path);
@@ -142,7 +158,8 @@ impl JacProgram.load_dependency_module(
         }
     }
     compiler = self._get_compiler();
-    target_program = compiler.selfhost.resolve(resolved_path, self);
+    import from jaclang.compiler.driver.compilation_context { program_for }
+    target_program = program_for(resolved_path, self);
     target_hub = target_program.mod.hub;
 
     if (resolved_path in self.mod.hub and not self.is_hub_entry_fresh(resolved_path)) {
@@ -157,60 +174,42 @@ impl JacProgram.load_dependency_module(
     }
 
     mod: uni.Module;
-    foreign_untyped = (
-        resolved_path in target_hub
-        and target_program is not self
-        and not resolved_path.endswith('.pyi')
-        and not target_hub[resolved_path].stub_only
-        and not target_program.analysis.analyses_run.provides(
-            target_hub[resolved_path], 'TypeOf'
-        )
-    );
-    if resolved_path in self.mod.hub {
+    if resolved_path in self.mod.hub
+        and not (need_tree and self.mod.hub[resolved_path].stub_only) {
         mod = self.mod.hub[resolved_path];
-    } elif resolved_path in target_hub and not foreign_untyped {
+    } elif resolved_path in target_hub
+        and not (need_tree and target_hub[resolved_path].stub_only) {
         mod = target_hub[resolved_path];
     } else {
-        if foreign_untyped {
-            events = self.analysis.cache_events;
-            events["untyped_foreign_tree_skipped"] = (
-                events.get("untyped_foreign_tree_skipped", 0) + 1
-            );
-        }
         if resolved_path.endswith('.pyi') {
             import ast as py_ast;
             import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-            import from jaclang.compiler.driver.pass_driver { run_pass }
+            import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
             import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
             import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
             src = use_str or read_file_with_encoding(source_path);
             uni_source = uni.Source(src, source_path);
-            mod = run_pass(
-                PyastBuildPass,
+            converted = run_utility(
+                UtilityProduct.PYTHON_AST,
                 uni.PythonModuleAst(py_ast.parse(src), orig_src=uni_source,),
                 self
             ).ir_out;
+            assert isinstance(converted, uni.Module);
+            mod = converted;
             mod.stub_only = True;
 
             target_program.install_module(resolved_path, mod);
             compiler.note_stub_tree_served(resolved_path, self);
             compiler.resolve_absorb_imports(mod, self);
-            run_pass(SymTabBuildPass, mod, self);
+            run_utility(UtilityProduct.PYTHON_SYMBOLS, mod, self);
         } else {
-            import from jaclang.compiler.driver.compile_options {
-                CompileOptions as _DepOpts
-            }
             mod = self.compile(
                 source_path,
                 use_str=use_str,
-                options=(
-                    _DepOpts(no_cgen=True, symtab_ir_only=True, need_full_ast=True)
-                        if need_tree
-                        else _DepOpts(no_cgen=True, symtab_ir_only=True, iface_ok=True)
-                )
+                options=self.options.for_symbols(need_tree)
             );
         }
-        if not hasattr(mod, "cat_kids") and not foreign_untyped {
+        if not hasattr(mod, "cat_kids") {
             target_program.install_module(resolved_path, mod);
         }
     }
@@ -354,6 +353,17 @@ impl JacProgram.release_compile_closure(
         return;
     }
 
+    if self.context_root is None {
+        for context in list(self.contexts.values()) {
+            if context is not self {
+                context.release_compile_closure(collect=False);
+            }
+        }
+        self.contexts.clear();
+        self.context_key = '';
+        self.source_store.units.clear();
+        self.source_store.revisions.clear();
+    }
     self.release_native_dep_units();
     self.hub.reset();
     self.mod = self.hub.mod;
@@ -364,6 +374,9 @@ impl JacProgram.release_compile_closure(
     self.analysis.analyses_run.clear();
     self.analysis.placement_state.pop('work', None);
     self.analysis.early_passes.clear();
+    self.analysis.product_tasks.clear();
+    self.analysis.completed_passes.clear();
+    self.analysis.task_owners.clear();
     if self._iface is not None {
         self._iface.on_closure_release();
     }
@@ -400,6 +413,14 @@ impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) 
         for hub in hubs {
             if keyed in hub {
                 return hub[keyed];
+            }
+        }
+    }
+
+    if self.context_root is None {
+        for context in self.contexts.values() {
+            if context is not self and context.options.entry_point == keyed {
+                return context.find_module(keyed);
             }
         }
     }

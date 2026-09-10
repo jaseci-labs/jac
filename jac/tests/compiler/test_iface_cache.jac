@@ -28,7 +28,6 @@ import from jaclang.compiler.driver.jir {
     SEC_IFACE,
     SECTIONS_MAGIC,
     compiler_source_digest,
-    get_module_cache_path,
     parse_header,
     read_section_bytes,
     read_sections,
@@ -42,6 +41,22 @@ glob DEP_V1: str = "def f() -> int { return 1; }\n",
      DEP_V1_BODY_EDIT: str = "def f() -> int { return 2; }\n",
      DEP_V2_SIGNATURE: str = "def f(x: int) -> int { return x; }\n",
      MAIN_SRC: str = "import from depmod { f }\n\nwith entry { print(f()); }\n";
+
+def _context(entry_path: str) -> JacProgram {
+    import from jaclang.compiler.driver.compilation_context {
+        bind_options,
+        context_program
+    }
+    program = JacProgram();
+    options = _check_opts();
+    options.entry_point = entry_path;
+    return context_program(program, bind_options(entry_path, program, options));
+}
+
+def _cache_path(path: str, entry_path: str = '') -> Path {
+    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    return artifact_cache_path(path, _context(entry_path or path));
+}
 
 def _project(dep_body: str = "") -> tuple[str, str] {
     tmp = tempfile.mkdtemp();
@@ -84,8 +99,8 @@ def _rewrite(path: str, content: str) {
 test "a checked module persists interface, deps, and diagnostics sections" {
     (main, dep) = _project();
     (prog, _diags) = _check(main);
-    main_jir = get_module_cache_path(main);
-    dep_jir = get_module_cache_path(dep);
+    main_jir = _cache_path(main);
+    dep_jir = _cache_path(dep, main);
     assert main_jir.exists() , "the checked module wrote no cache JIR";
     assert dep_jir.exists() , "the dependency wrote no cache JIR";
     main_data = main_jir.read_bytes();
@@ -116,7 +131,7 @@ test "a warm no-edit check replays diagnostics and runs zero passes" {
 test "dependency ingestion hydrates from the interface, not the source" {
     (main, dep) = _project();
     _check(main);
-    prog = JacProgram();
+    prog = _context(main);
     mod = prog.load_dependency_module(dep);
     events = prog.analysis.cache_events;
     assert events.get("dep_hydrate", 0) == 1 , (
@@ -194,9 +209,13 @@ test "JAC_REBUILD recomputes, rewrites, and matches the cold results" {
 test "bytecode and analysis sections share one merged cache JIR" {
     (main, _dep) = _project();
     _check(main);
-    wrote = write_module_cache(main, b"fake-bytecode");
+    import from jaclang.compiler.driver.compilation_context { cache_scope }
+    context = _context(main);
+    with cache_scope(context.context_key, context.options) {
+        wrote = write_module_cache(main, b"fake-bytecode");
+    }
     assert wrote , "the merge write was refused";
-    data = get_module_cache_path(main).read_bytes();
+    data = _cache_path(main).read_bytes();
     assert read_section_bytes(data, SEC_BYTECODE) == b"fake-bytecode";
     assert read_section_bytes(data, SEC_IFACE) is not None , (
         "writing bytecode dropped the analysis sections"
@@ -217,7 +236,7 @@ test "verify mode accepts an honest cache and rejects a corrupted one" {
             "verify mode must still serve from the cache"
         );
 
-        cache_path = get_module_cache_path(main);
+        cache_path = _cache_path(main);
         data = cache_path.read_bytes();
         header = parse_header(data[:HEADER_SIZE]);
         assert header is not None;
@@ -316,7 +335,7 @@ test "a third-party Python dependency is fingerprinted, never compiled as a targ
         );
         for name in ("__init__.py", "sub.py", "deep.py") {
             leaf = os.path.realpath(os.path.join(pkg, name));
-            assert not get_module_cache_path(leaf).exists() , (
+            assert not _cache_path(leaf).exists() , (
                 f"{name} got its own cache entry; third-party Python must stay opaque"
             );
         }
@@ -327,7 +346,7 @@ test "a third-party Python dependency is fingerprinted, never compiled as a targ
         assert reg.ensure(init_py) is None , "ensure() must not manufacture an entry for third-party Python";
         assert reg.prog.analysis.cache_events.get("dep_miss_compile", 0)
             == before.get("dep_miss_compile", 0) , "ensure() compiled a site-packages module on a miss";
-        assert not get_module_cache_path(init_py).exists() , "ensure() wrote a cache entry for third-party Python";
+        assert not _cache_path(init_py).exists() , "ensure() wrote a cache entry for third-party Python";
         reg.frame_push(main);
         try {
             reg.note_dep(init_py);
@@ -372,12 +391,12 @@ test "a compile acting on an inferred native verdict persists no interface" {
     ana = JacProgram();
     ana.compile(dep, options=_check_opts());
     before = read_iface_hash(
-        read_section_bytes(get_module_cache_path(dep).read_bytes(), SEC_IFACE)
+        read_section_bytes(_cache_path(dep).read_bytes(), SEC_IFACE)
     );
     gen = JacProgram();
     gen.compile(dep);
     after = read_iface_hash(
-        read_section_bytes(get_module_cache_path(dep).read_bytes(), SEC_IFACE)
+        read_section_bytes(_cache_path(dep).read_bytes(), SEC_IFACE)
     );
     mod = gen.mod.hub.get(dep);
     assert mod is not None , "the codegen compile left no module in the hub";
@@ -396,20 +415,16 @@ test "a compile acting on an inferred native verdict persists no interface" {
     mod.codespace_inferred = True;
     reg.persist_after_compile(dep, mod, CompileOptions(), 0, 0);
     assert reg.prog.analysis.cache_events.get("iface_encode", 0) == encodes , "an inferred verdict was encoded into an interface";
-    assert read_iface_hash(
-        read_section_bytes(get_module_cache_path(dep).read_bytes(), SEC_IFACE)
-    )
+    assert read_iface_hash(read_section_bytes(_cache_path(dep).read_bytes(), SEC_IFACE))
         == before , "an inferred verdict overwrote the persisted interface";
     mod.codespace_inferred = False;
     reg.persist_after_compile(dep, mod, CompileOptions(), 0, 0);
-    assert read_iface_hash(
-        read_section_bytes(get_module_cache_path(dep).read_bytes(), SEC_IFACE)
-    )
+    assert read_iface_hash(read_section_bytes(_cache_path(dep).read_bytes(), SEC_IFACE))
         == before , "a codegen persist of a declared placement encoded an interface";
+    reg.forget(dep);
+    reg.prepare_interface(dep, mod);
     reg.persist_after_compile(dep, mod, _check_opts(), 0, 0);
-    assert read_iface_hash(
-        read_section_bytes(get_module_cache_path(dep).read_bytes(), SEC_IFACE)
-    )
+    assert read_iface_hash(read_section_bytes(_cache_path(dep).read_bytes(), SEC_IFACE))
         != before , "a declared native placement must reach the interface";
 }
 
@@ -501,7 +516,7 @@ test "a module-level comprehension variable is not part of the interface" {
         "glob NAMES: set = {v for v in ['a', 'b']};\ndef f() -> int { return 1; }\n"
     );
     _check(main);
-    prog = JacProgram();
+    prog = _context(main);
     mod = prog.load_dependency_module(dep);
     assert prog.analysis.cache_events.get("dep_hydrate", 0) == 1 , "the dependency was not hydrated";
     names = set(mod.names_in_scope.keys());
@@ -715,13 +730,14 @@ test "an interface that cannot place a class is not persisted" {
         assert any("Cfg" in o for o in exc.orphans) , f"the refusal does not name the unplaceable class: {exc.orphans}";
     }
     assert refused , "an interface with an unplaceable class was built";
-    cache_path = get_module_cache_path(paths["provider"]);
+    cache_path = _cache_path(paths["provider"]);
     before = cache_path.read_bytes() if cache_path.exists() else b"";
     reg = prog.iface_registry();
     reg.forget(paths["provider"]);
+    reg.prepare_interface(paths["provider"], provider);
     reg.persist_after_compile(paths["provider"], provider, prog.options, 0, 0);
     assert prog.analysis.cache_events.get("iface_incoherent", 0) == 1 , (
-        f"the persist step did not record the refusal (events: {prog.analysis.cache_events})"
+        f"interface construction did not record the refusal (events: {prog.analysis.cache_events})"
     );
     after = cache_path.read_bytes() if cache_path.exists() else b"";
     assert after == before , "an incoherent interface was written to the cache";
@@ -748,7 +764,7 @@ test "a codegen compile records dependency rows but encodes no interface" {
     (main, dep) = _project();
     prog = JacProgram();
     prog.compile(main, options=CompileOptions(force_target_program=True));
-    data = get_module_cache_path(main).read_bytes();
+    data = _cache_path(main).read_bytes();
     assert read_section_bytes(data, SEC_DEPS) is not None , "no SEC_DEPS after codegen";
     assert read_section_bytes(data, SEC_IFACE) is None , (
         "a codegen compile encoded an interface; encoding belongs to the frontier"
@@ -757,7 +773,7 @@ test "a codegen compile records dependency rows but encodes no interface" {
         f"codegen compile encoded (events: {prog.analysis.cache_events})"
     );
     _check(main);
-    data = get_module_cache_path(main).read_bytes();
+    data = _cache_path(main).read_bytes();
     assert read_section_bytes(data, SEC_IFACE) is not None , (
         "the frontier compile did not add the interface to the merged JIR"
     );

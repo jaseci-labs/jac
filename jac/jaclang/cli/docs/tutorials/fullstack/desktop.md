@@ -38,7 +38,7 @@ client, so every `jac run` / `jac build` of this app builds the native shell
 [project]
 name = "my-app"
 kind = "desktop"
-entry-point = "main.jac"
+entry-point = "main"
 ```
 
 Then add a `[desktop]` section to your `jac.toml` (all fields optional):

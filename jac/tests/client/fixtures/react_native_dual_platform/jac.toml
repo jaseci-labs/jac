@@ -2,7 +2,7 @@
 name = "react_native_dual_platform"
 version = "1.0.0"
 description = "Dual-platform fixture with paired .jac and .native.jac client modules"
-entry-point = "main.jac"
+entry-point = "main"
 
 [dependencies.npm]
 react = "^19.2.0"

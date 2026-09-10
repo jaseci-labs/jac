@@ -6,6 +6,7 @@ import glob;
 import tempfile;
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
+import from jaclang.compiler.driver.application { prepare_application }
 import from jaclang.compiler.frontend.constant { Constants as Con }
 import from jaclang.server { sv_client as __jac_sv }
 import from jaclang.testing.testkit { ServingTestClient as TestClient }
@@ -20,6 +21,7 @@ def build_service(mod: str, tmp: str) -> tuple[TestClient, JacAPIServer] {
     if mod in sys.modules {
         del sys.modules[mod];
     }
+    prepare_application(str(Path(tmp) / (mod + '.jac')), Jac.get_program(), tmp);
     Jac.jac_import(target=mod, base_path=tmp, lng="jac");
     srv = JacAPIServer(module_name=mod, port=0, base_path=tmp, extensions=[]);
     srv.load_module();
@@ -397,29 +399,31 @@ test "sv boundary: private walker accepts valid token (200)" {
     }
 }
 
-test "sv boundary: unauthenticated cross-service call is rejected downstream" {
+test "sv boundary: a private cross-service import is rejected during preparation" {
     tmp = setup_env();
     try {
         write_service(tmp, "secure_service", _SECURE_PROVIDER_SRC);
         write_service(tmp, "secure_consumer", _SECURE_CONSUMER_SRC);
-        # Declare both sides as file-rooted service apps so the import lowers to a
-        # typed-async RPC stub (#7772, #8823), making the call cross-service and
-        # subject to the real downstream auth enforcement.
+        # A private function is not part of an app's bridge surface. Explicit
+        # preparation rejects this source before a consumer can start serving.
         toml_path = Path(tmp) / "jac.toml";
         toml_path.write_text(
             toml_path.read_text()
                 + '\n[apps.secure_service]\nkind = "service"\n'
-                + 'entry-point = "secure_service.jac"\nroute = "/secure"\n'
+                + 'entry-point = "secure_service"\nroute = "/secure"\n'
                 + '\n[apps.secure_consumer]\nkind = "service"\n'
-                + 'entry-point = "secure_consumer.jac"\nroute = "/secure-consumer"\n'
+                + 'entry-point = "secure_consumer"\nroute = "/secure-consumer"\n'
         );
-        prov = make_server("secure_service", tmp);
-        cons = make_server("secure_consumer", tmp);
-
-        resp = cons.post("/function/proxy_status", json={"actor": "anon"});
-        body = resp.json();
-        assert body["ok"] is False;
-        assert "Unauthorized" in json.dumps(body.get("error") or {});
+        make_server("secure_service", tmp);
+        rejected = False;
+        try {
+            make_server("secure_consumer", tmp);
+        } except RuntimeError as error {
+            assert "E5106" in str(error);
+            rejected = True;
+        }
+        assert rejected;
+        assert "secure_consumer" not in Jac.loaded_modules;
     } finally {
         done(tmp);
     }

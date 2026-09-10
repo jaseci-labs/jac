@@ -10,14 +10,15 @@ def check_endpoint_contract(
     if not identity {
         return None;
     }
-    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    import from jaclang.runtime.prepared { application_for }
     module = sys.modules.get(target.__module__);
     path = getattr(module, "__file__", "");
-    import from jaclang.compiler.driver.boundary_classify { owner_app_name_for_path }
-    owner = owner_app_name_for_path(path) if path else None;
-    workspace = workspace_for_path(path) if path else None;
-    source = os.path.relpath(path, workspace.project_root).replace(os.sep, "/")
-        if workspace
+    application = application_for(path, target.__module__) if path else None;
+    if application is not None {
+        app = application.manifests.get(os.path.realpath(path), {}).get('app', app);
+    }
+    source = os.path.relpath(path, application.root).replace(os.sep, "/")
+        if application is not None
         else getattr(module, "__name__", "");
     try {
         parts = json.loads(identity);
@@ -26,7 +27,7 @@ def check_endpoint_contract(
             and parts[2] == kind
             and parts[3] == name
             and parts[1] == source
-            and (not parts[0] or parts[0] == (owner or app)) {
+            and (not parts[0] or parts[0] == app) {
             return None;
         }
     } except (ValueError, TypeError) {}

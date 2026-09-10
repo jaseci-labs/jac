@@ -39,7 +39,11 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       inputs.action == 'create-pr'
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 40
+    timeout-minutes: 10
+    env:
+      # Run the release scripts with the published compiler. The root jac.toml
+      # otherwise reroutes the installed binary to this checkout's jaclang.
+      JAC_NO_DEV_SOURCE: "1"
     permissions:
       contents: write
       pull-requests: write
@@ -50,12 +54,16 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
-          submodules: true
 
-      - name: Set up jac (build the binary)
-        uses: ./.github/actions/setup-jac
+      # PR preparation only needs a released Jac runtime, not a source build.
+      - name: Install released jac binary
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/install.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Validate versions against PyPI
+      - name: Validate version bump
         run: |
           jac run scripts/validate_release.jac \
             --jaclang "${{ inputs.jaclang }}"
