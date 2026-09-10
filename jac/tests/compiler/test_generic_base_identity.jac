@@ -147,4 +147,19 @@ test "an ancestry computed against a base still being populated heals on use" {
     assert [c.shared.class_name for c in leaf.shared.mro] == ["Leaf", "Mid", "Root"];
     assert not ensure_mro_fresh(leaf);
     assert leaf.lookup_member_symbol("nothing") is None;
+    deep = ClassType(
+        _shared=ClassDetailsShared(
+            class_name="Deep",
+            symbol_table=scope,
+            _identity_key=("ancestry_heal.jac", 0, 0, "Deep")
+        )
+    );
+    deep.shared.mro = [deep];
+    top.shared.base_classes = [deep];
+    top.shared.mro = [top, deep];
+    assert ensure_mro_fresh(leaf);
+    assert [c.shared.class_name for c in mid.shared.mro] == ["Mid", "Root", "Deep"];
+    assert [c.shared.class_name for c in leaf.shared.mro]
+        == ["Leaf", "Mid", "Root", "Deep"];
+    assert not ensure_mro_fresh(leaf);
 }

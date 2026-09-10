@@ -632,8 +632,21 @@ impl mro_signature(cls: ClassType) -> tuple {
     return tuple(sig);
 }
 
-impl ensure_mro_fresh(cls: ClassType) -> bool {
+impl ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bool {
     shared = cls.shared;
+    if _visiting is None {
+        _visiting = set();
+    }
+    key = id(shared);
+    if key in _visiting {
+        return False;
+    }
+    _visiting.add(key);
+    for base in shared.base_classes or [] {
+        if isinstance(base, ClassType) {
+            ensure_mro_fresh(base, _visiting);
+        }
+    }
     if not shared.mro {
         compute_mro_linearization(cls);
         return True;

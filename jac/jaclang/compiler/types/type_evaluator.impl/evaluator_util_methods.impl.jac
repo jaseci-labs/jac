@@ -434,9 +434,7 @@ impl TypeEvaluator._lookup_class_member(
     base_type: ClassType, member: str
 ) -> ClassMember | None {
     import from jaclang.compiler.types.type_utils { ensure_mro_fresh }
-    if base_type.shared._provisional {
-        self._heal_class_bases(base_type);
-    }
+    self._heal_ancestry(base_type);
     ensure_mro_fresh(base_type);
     for cls in base_type.shared.mro {
         overloaded_syms: list[Symbol] = [];

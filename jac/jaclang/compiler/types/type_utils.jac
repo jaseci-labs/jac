@@ -58,7 +58,7 @@ def linearize_mro(
 
 def mro_signature(cls: ClassType) -> tuple;
 
-def ensure_mro_fresh(cls: ClassType) -> bool;
+def ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bool;
 
 def primitive_type_name_of(ty: (TypeBase | None)) -> (str | None);
 

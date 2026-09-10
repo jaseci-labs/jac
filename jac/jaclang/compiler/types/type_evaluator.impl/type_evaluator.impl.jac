@@ -3000,9 +3000,7 @@ impl TypeEvaluator._solve_protocol_type_args(
 
 impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> bool {
     import from jaclang.compiler.types.type_utils { ensure_mro_fresh }
-    if sub_cls.shared._provisional {
-        self._heal_class_bases(sub_cls);
-    }
+    self._heal_ancestry(sub_cls);
     ensure_mro_fresh(sub_cls);
     for cls in sub_cls.shared.mro {
         if cls.shared.same_class(super_cls.shared) {
@@ -3010,6 +3008,17 @@ impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> boo
         }
     }
     return False;
+}
+
+impl TypeEvaluator._heal_ancestry(cls: ClassType) -> None {
+    if cls.shared._provisional {
+        self._heal_class_bases(cls);
+    }
+    for ancestor in list(cls.shared.mro or []) {
+        if ancestor.shared._provisional {
+            self._heal_class_bases(ancestor);
+        }
+    }
 }
 
 impl TypeEvaluator._heal_class_bases(cls: ClassType) -> None {
@@ -3041,6 +3050,7 @@ impl TypeEvaluator._heal_class_bases(cls: ClassType) -> None {
     }
     if unresolved {
         shared._provisional = True;
+        shared._heal_stamp = 0;
         return;
     }
     if not [
