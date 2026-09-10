@@ -205,7 +205,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rep: [1, 2, 3, 4, 5, 6, 7, 8]
+        rep: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     env:
       JAC_NO_DEV_SOURCE: ""
     steps:
@@ -245,11 +245,11 @@ jobs:
           # Legs 7 and 8 run the sweep serially in one process: retained
           # state accumulates over all 1049 files in sorted order, so if the
           # flake is retained-state it should reproduce deterministically.
-          JAC_CHECK_JOBS: ${{ matrix.rep >= 7 && '0' || '' }}
+          JAC_CHECK_JOBS: ${{ matrix.rep >= 11 && '0' || '' }}
         run: |
           set +e
           IGNORE_ARGS="tests checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ')"
-          for SWEEP in 1 2; do
+          for SWEEP in 1 2 3; do
             TAG="${{ matrix.rep }}-$SWEEP"
             echo "::group::sweep $TAG"
             echo "jobs=${JAC_CHECK_JOBS:-auto}"
@@ -264,8 +264,14 @@ jobs:
             echo "xref fails: $(grep -c 'XREF-FAIL' "probe-$TAG.err")"
             echo "cycle stubs: $(grep -c 'CYCLE-STUB' "probe-$TAG.err")"
             echo "-- orphan/fail/cycle detail (top 60) --"
+            echo "foreign recompiles: $(grep -c 'FOREIGN-RECOMPILE' "probe-$TAG.err")"
+            echo "mro-trunc dumps: $(grep -c '^\[MRO-TRUNC\] pid' "probe-$TAG.err")"
+            echo "e1053 dumps: $(grep -c '^\[E1053-DUMP\] pid' "probe-$TAG.err")"
+            echo "-- E1053 / MRO-TRUNC dumps (first 80 lines) --"
+            grep -E '^\[(E1053-DUMP|MRO-TRUNC)\]' "probe-$TAG.err" | head -80
+            echo "-- orphan/fail/cycle detail (top 20) --"
             grep -oE '\[(XREF-ORPHAN|XREF-FAIL|CYCLE-STUB)\].*' "probe-$TAG.err" \
-              | sort | uniq -c | sort -rn | head -60
+              | sort | uniq -c | sort -rn | head -20
             echo "::endgroup::"
           done
 

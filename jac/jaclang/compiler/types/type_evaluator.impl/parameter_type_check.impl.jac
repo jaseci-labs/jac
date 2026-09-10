@@ -70,6 +70,11 @@ impl TypeEvaluator.validate_arg_types(
         if not verdict.ok {
             has_errors = True;
             if not checking_overload and not verdict.diagnosed {
+                import os;
+                if os.environ.get("JAC_XREF_PROBE", "") {
+                    import from jaclang.compiler.types.probe_dump { dump_assign_fail }
+                    dump_assign_fail(self, arg_type, expected, "E1053-DUMP");
+                }
                 self.emit_diag(
                     E1053,
                     arg,

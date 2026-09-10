@@ -2918,85 +2918,12 @@ impl TypeEvaluator._assign_class(
     }
     import os;
     if os.environ.get("JAC_XREF_PROBE", "") {
-        import sys;
-        try {
-            import from jaclang.compiler.frontend.unitree { Module as _ProbeModule }
-            prog = self.program;
-            selfhost_prog = prog._get_compiler().selfhost.program;
-
-            def _mod_of(t: any) -> any {
-                cur = t.shared.symbol_table if t._shared is not None else None;
-                while cur is not None and not isinstance(cur, _ProbeModule) {
-                    cur = cur.parent_scope;
-                }
-                return cur;
-            }
-
-            def _rec(t: any) -> str {
-                if not isinstance(t, ClassType) or t._shared is None {
-                    return f"<{type(t).__name__}>";
-                }
-                key = t.shared.canonical_key();
-                site = "<nokey>";
-                if key is not None {
-                    site = f"{os.path.basename(key[0])}:{key[1]}:{key[2]}";
-                }
-                m = _mod_of(t);
-                state = "nomod";
-                if m is not None {
-                    mp = m.loc.mod_path if m.loc is not None else "";
-                    found = prog.find_module(mp) if mp else None;
-                    if found is m {
-                        state = "live";
-                    } elif found is not None {
-                        state = "stale";
-                    } else {
-                        state = "gone";
-                    }
-                    in_t = "y" if mp in prog.mod.hub else "n";
-                    in_s = "y" if mp in selfhost_prog.mod.hub else "n";
-                    state = f"{state}[t={in_t},s={in_s}]";
-                }
-                mro_names = ",".join(
-                    [c.shared.class_name for c in (t.shared.mro or [])]
-                );
-                base_names = ",".join(
-                    [
-                        (
-                            b.shared.class_name
-                                if isinstance(b, ClassType) and b._shared is not None
-                                else type(b).__name__
-                        ) for b in (t.shared.base_classes or [])
-                    ]
-                );
-                return (
-                    f"{t.shared.class_name}@{site} id={id(t.shared)} {state} "
-                    f"mro=[{mro_names}] bases=[{base_names}]"
-                );
-            }
-
-            lines = [
-                f"[ASSIGN-FAIL] pid={os.getpid()} src={_rec(src_type)}",
-                f"[ASSIGN-FAIL]   dest={_rec(dest_type)}"
-            ];
-            for b in (src_type.shared.base_classes or []) {
-                lines.append(f"[ASSIGN-FAIL]   src.base={_rec(b)}");
-                if isinstance(b, ClassType) and b._shared is not None {
-                    for bb in (b.shared.base_classes or []) {
-                        lines.append(f"[ASSIGN-FAIL]     src.base.base={_rec(bb)}");
-                    }
-                }
-            }
-            te_state = "set" if selfhost_prog.type_evaluator is not None else "none";
-            lines.append(
-                f"[ASSIGN-FAIL]   selfhost_te={te_state} "
-                f"selfhost_hub={len(selfhost_prog.mod.hub)} "
-                f"target_hub={len(prog.mod.hub)} "
-                f"depth={prog.scratch.compile_depth}/{selfhost_prog.scratch.compile_depth}"
-            );
-            sys.stderr.write("\n".join(lines) + "\n");
-        } except Exception as e {
-            sys.stderr.write(f"[ASSIGN-FAIL-PROBE-ERR] {e!r}" + "\n");
+        import from jaclang.compiler.types.probe_dump {
+            dump_assign_fail,
+            truncated_mro
+        }
+        if truncated_mro(src_type) {
+            dump_assign_fail(self, src_type, dest_type, "MRO-TRUNC");
         }
     }
     return False;

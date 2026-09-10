@@ -187,6 +187,18 @@ impl JacProgram.load_dependency_module(
             events["untyped_foreign_tree_skipped"] = (
                 events.get("untyped_foreign_tree_skipped", 0) + 1
             );
+            import os;
+            if os.environ.get("JAC_XREF_PROBE", "") {
+                import sys;
+                try {
+                    sys.stderr.write(
+                        f"[FOREIGN-RECOMPILE] pid={os.getpid()} path={resolved_path} "
+                        f"importer={importer_path} self_hub={len(self.mod.hub)} "
+                        f"target_hub={len(target_hub)} depth={self.scratch.compile_depth}"
+                            + "\n"
+                    );
+                } except Exception {}
+            }
         }
         if resolved_path.endswith('.pyi') {
             import ast as py_ast;
