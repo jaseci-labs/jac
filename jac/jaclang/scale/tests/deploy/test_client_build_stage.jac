@@ -711,3 +711,16 @@ test "workspace served web app declares its client even without root client hint
         shutil.rmtree(project_dir, ignore_errors=True);
     }
 }
+
+test "implicit deployment resolves a dotted client entry to a source path" {
+    with tempfile.TemporaryDirectory() as directory {
+        base = Path(directory);
+        (base / 'web').mkdir();
+        (base / 'web' / 'main.jac').write_text('with entry {}\n');
+        (base / 'jac.toml').write_text(
+            '[project]\nname="nested"\nkind="web-app"\nentry-point="web.main"\n'
+        );
+        builder = _builder(directory, client_entry=None);
+        assert builder._client_entry() == os.path.join('web', 'main.jac');
+    }
+}

@@ -857,6 +857,7 @@ obj ManifestBuilder {
         }
         if cfg is not None {
             entry_point = str(cfg.project.entry_point or "").strip();
+            import os;
             import from jaclang.project.apps { resolve_entry_path }
             return os.path.relpath(
                 resolve_entry_path(entry_point or "main", self.project_dir),
