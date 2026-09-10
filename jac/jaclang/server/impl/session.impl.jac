@@ -752,11 +752,7 @@ impl Session._flush_locked(full: bool) -> None {
             pending.append((anchor, h));
         }
         if rows or self._deleted {
-            if self.store.txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY {
-                self.ensure_writable_txn();
-            } else {
-                self._ensure_txn();
-            }
+            self.ensure_writable_txn();
         }
         if rows {
             self.store.upsert(rows);
