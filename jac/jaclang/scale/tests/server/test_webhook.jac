@@ -589,8 +589,10 @@ test "webhook - api key rejected as user session token" {
 # =========================================================================
 import shutil;
 import tempfile;
+import unittest.mock;
 import from jaclang.runtime.builtin { restspec, APIProtocol }
 import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
+import from jaclang.server.identity.user_manager { SYSTEM_USER, UserManager }
 
 glob gh_secret: str = "test-github-webhook-secret";
 
@@ -618,9 +620,13 @@ walker SchemeProbe {
     }
 }
 
-"""Boot the github fixture app. The scale config singleton is bound to the
-copied fixture directory first, because `register` reads the secret through
-it and the harness never points it at a fixture on its own."""
+"""Boot the github fixture app from a scratch copy of the fixture directory.
+The scale config singleton is bound to the copy first, because `register`
+reads the secret through it and the harness never points it at a fixture on
+its own. The copy also caps bodies at 64 KiB so the oversize test stays cheap
+without that cap reaching the servers other tests boot from the shared dir;
+the [scale.webhook] block is the last table in the file, so appended keys land
+inside it."""
 def _github_client(
     with_secret: bool = True, signature_header: str = ""
 ) -> ScaleTestClient {
@@ -633,14 +639,14 @@ def _github_client(
     toml_path = Path(tmp) / "jac.toml";
     toml = toml_path.read_text();
     assert "[scale.webhook]" in toml , "fixture jac.toml lost its webhook block";
-    if not with_secret {
+    if with_secret {
+        extra = ["max_body_bytes = 65536"];
+        if signature_header {
+            extra.append(f'github_signature_header = "{signature_header}"');
+        }
+        toml = toml.rstrip("\n") + "\n" + "\n".join(extra) + "\n";
+    } else {
         toml = toml.split("[scale.webhook]")[0];
-    }
-    if signature_header {
-        # The block is the last table in the fixture file, so an appended
-        # key lands inside [scale.webhook].
-        toml = toml.rstrip("\n")
-            + f'\ngithub_signature_header = "{signature_header}"\n';
     }
     toml_path.write_text(toml);
     reset_scale_config();
@@ -775,8 +781,6 @@ test "github scheme - api-key headers do not substitute for the signature" {
 test "github scheme - oversize body rejected before any signature work" {
     client = _github_client();
     try {
-        # The fixture caps bodies at 64 KiB; the signature is deliberately
-        # wrong so a 413 proves the size check ran first.
         payload = json.dumps({"action": "opened", "pad": "x" * 70000});
         response = client.post(
             "/webhook/GithubEvent",
@@ -810,6 +814,29 @@ test "github scheme - provider headers win over same-named body keys" {
         rpt = extract_data(response.json())["reports"][0];
         assert rpt["event"] == "pull_request" , f"body key overrode the header: {rpt}";
         assert rpt["delivery"] == "uuid-2" , f"body key overrode the header: {rpt}";
+    } finally {
+        _close_github(client);
+    }
+}
+
+test "github scheme - a missing provider header clears a same-named body key" {
+    client = _github_client();
+    try {
+        payload = json.dumps(
+            {"action": "opened", "event": "spoofed", "delivery": "spoofed"}
+        );
+        headers = _github_headers(payload.encode("utf-8"));
+        headers.pop("X-GitHub-Event");
+        headers.pop("X-GitHub-Delivery");
+        response = client.post(
+            "/webhook/GithubEvent", content=payload, headers=headers
+        );
+        assert response.status_code == 200 , (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        );
+        rpt = extract_data(response.json())["reports"][0];
+        assert rpt["event"] == "" , f"body key survived a missing header: {rpt}";
+        assert rpt["delivery"] == "" , f"body key survived a missing header: {rpt}";
     } finally {
         _close_github(client);
     }
@@ -923,4 +950,35 @@ test "github scheme - boot fails without a secret" {
         reset_scale_config();
     }
     assert not booted , "a github-scheme walker booted with an empty secret";
+}
+
+glob _ensure_internal_user = UserManager.ensure_internal_user;
+
+"""Leave the system identity uncreated, the way a failed boot-time
+`ensure_internal_user` leaves it, so `register` has nothing to resolve."""
+def _skip_system_user(
+    users: UserManager, username: str, password: str, role: str = "user"
+) -> dict[str, any] {
+    if username == SYSTEM_USER {
+        return {};
+    }
+    return _ensure_internal_user(users, username, password, role);
+}
+
+test "github scheme - boot fails without the system identity" {
+    booted = False;
+    try {
+        with unittest.mock.patch.object(
+            UserManager, "ensure_internal_user", _skip_system_user
+        ) {
+            client = _github_client();
+        }
+        booted = True;
+        client.close();
+    } except ValueError as e {
+        assert SYSTEM_USER in str(e) , f"unexpected boot error: {e}";
+    } finally {
+        reset_scale_config();
+    }
+    assert not booted , "a github-scheme walker booted without the system identity";
 }

@@ -1,7 +1,6 @@
 import json;
 import logging;
 import time;
-import from datetime { UTC, datetime }
 import from jaclang.runtime.builtin { APIProtocol }
 import from jaclang.server.identity.user_manager { SYSTEM_USER }
 import from jaclang.server.server {
@@ -19,7 +18,11 @@ import from jaclang.server.serving.endpoint {
 }
 import from jaclang.server.transport { Meta, TransportResponse }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.webhook.webhook { ApiKeyManager, WebhookUtils }
+import from jaclang.scale.webhook.webhook {
+    ApiKeyManager,
+    WebhookUtils,
+    rate_window_ok
+}
 
 glob logger: logging.Logger = logging.getLogger(__name__),
      GITHUB_SCHEME: str = 'github',
@@ -52,30 +55,14 @@ def header_param_name(header: str) -> str {
 
 obj WebhookExtension(ServerExtension) {
     has manager: (ApiKeyManager | None) = None,
-        _scheme_rate: dict = {};
+        _scheme_rate: dict = {},
+        _system_user_id: str = '';
 
     def api_keys -> ApiKeyManager {
         if self.manager is None {
             self.manager = ApiKeyManager();
         }
         return self.manager;
-    }
-
-    def scheme_rate_ok(rate_key: str, limit_per_minute: int) -> bool {
-        if limit_per_minute <= 0 {
-            return True;
-        }
-        window_id = int(datetime.now(UTC).timestamp() // 60);
-        slot = self._scheme_rate.get(rate_key);
-        if not slot or slot[0] != window_id {
-            self._scheme_rate[rate_key] = [window_id, 1];
-            return True;
-        }
-        if slot[1] >= limit_per_minute {
-            return False;
-        }
-        slot[1] += 1;
-        return True;
     }
 
     def webhook_parameters(
@@ -173,11 +160,6 @@ obj WebhookExtension(ServerExtension) {
         return None;
     }
 
-    def system_user_id(server: JacAPIServer) -> str {
-        found = server.user_manager.find_user_by_identity(SYSTEM_USER);
-        return str(found.get('user_id', SYSTEM_USER)) if found else SYSTEM_USER;
-    }
-
     async def run_walker(
         server: JacAPIServer,
         walker_name: str,
@@ -202,7 +184,7 @@ obj WebhookExtension(ServerExtension) {
             }
         }
         for (field_name, value) in header_fields.items() {
-            if field_name in fields and value {
+            if field_name in fields {
                 walker_kwargs[field_name] = value;
             }
         }
@@ -235,7 +217,9 @@ obj WebhookExtension(ServerExtension) {
         if refused is not None {
             return refused;
         }
-        if not self.scheme_rate_ok(f"{GITHUB_SCHEME}:{walker_name}", rate_limit) {
+        if not rate_window_ok(
+            self._scheme_rate, f"{GITHUB_SCHEME}:{walker_name}", rate_limit
+        ) {
             return _fail('RATE_LIMITED', 'Rate limit exceeded', 429);
         }
         header_fields = {
@@ -243,7 +227,7 @@ obj WebhookExtension(ServerExtension) {
             'delivery': str(request.headers.get(GITHUB_DELIVERY_HEADER) or '')
         };
         return await self.run_walker(
-            server, walker_name, raw_body, self.system_user_id(server), header_fields
+            server, walker_name, raw_body, self._system_user_id, header_fields
         );
     }
 
@@ -352,7 +336,7 @@ obj WebhookExtension(ServerExtension) {
         return callback;
     }
 
-    def require_github_secret(walker_name: str) {
+    def github_prerequisites(server: JacAPIServer, walker_name: str) -> str {
         secret = str(
             get_scale_config().get_webhook_config().get('github_secret') or ''
         );
@@ -364,6 +348,17 @@ obj WebhookExtension(ServerExtension) {
                 "\"${GITHUB_APP_WEBHOOK_SECRET}\" keeps it out of the file)."
             );
         }
+        found = server.user_manager.find_user_by_identity(SYSTEM_USER);
+        user_id = str(found.get('user_id') or '') if found else '';
+        if not user_id {
+            raise ValueError(
+                f"webhook walker '{walker_name}' declares scheme=\"github\" but "
+                f"the system identity '{SYSTEM_USER}' is missing from the users "
+                "store; its deliveries run as that user, which the server creates "
+                "at boot, so check the identity database before serving."
+            );
+        }
+        return user_id;
     }
 
     def register(server: JacAPIServer) {
@@ -375,7 +370,7 @@ obj WebhookExtension(ServerExtension) {
             }
             scheme = walker_scheme(server, walker_name);
             if scheme == GITHUB_SCHEME {
-                self.require_github_secret(walker_name);
+                self._system_user_id = self.github_prerequisites(server, walker_name);
                 description = f"Webhook for {walker_name}: X-Hub-Signature-256 over the raw body, no API key.";
             } else {
                 needs_keys = True;

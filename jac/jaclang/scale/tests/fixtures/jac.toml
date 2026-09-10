@@ -8,8 +8,7 @@ X-Custom-Test-Header = "test-value"
 Cross-Origin-Opener-Policy = "same-origin"
 Cross-Origin-Embedder-Policy = "require-corp"
 
-# GitHub-scheme webhook walkers (GithubEvent in test_api.jac) verify against
-# this secret; the body cap is small so the oversize test stays cheap.
+# GithubEvent in github_webhook.jac verifies X-Hub-Signature-256 against this
+# secret; the api-key walkers in test_api.jac never read it.
 [scale.webhook]
 github_secret = "test-github-webhook-secret"
-max_body_bytes = 65536

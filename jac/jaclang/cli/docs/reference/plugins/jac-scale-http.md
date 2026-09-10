@@ -1523,7 +1523,7 @@ walker GithubEvent {
 
 - No `X-API-Key`. The runtime verifies `X-Hub-Signature-256` (`sha256=` plus HMAC-SHA256 of the raw body, keyed by `[scale.webhook].github_secret`; the prefix is optional).
 - No timestamp window: GitHub sends none. Dedupe on `X-GitHub-Delivery` inside the walker.
-- The walker runs as the system identity and resolves its own tenant from the payload.
+- The walker runs as the system identity (the user the scheduler runs jobs as, created at boot) and resolves its own tenant from the payload. Boot fails when `[scale.webhook].github_secret` is empty or that identity is missing.
 - `X-GitHub-Event` and `X-GitHub-Delivery` are copied into `event` and `delivery` when the walker declares them, and win over same-named body keys.
 - The body size cap and the per-minute rate limit apply; the rate limit is keyed by walker name.
 - The default scheme (`scheme` omitted or `"jac"`) is unchanged, and both kinds of walker can coexist in one app.

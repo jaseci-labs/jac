@@ -28,6 +28,9 @@ obj WebhookUtils {
     static def extract_signature(header_value: str) -> str;
 }
 
+def rate_window_ok(state: dict, key: str, limit_per_minute: int) -> bool;
+
+
 def _create_api_key_db -> any | None {
     try {
         return open_docs_store();
