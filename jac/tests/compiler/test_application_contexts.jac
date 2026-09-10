@@ -14,14 +14,14 @@ import from jaclang.runtime.prepared {
 }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 
-test "sealed service contracts retain the route app identity" {
+test "sealed service contracts use the target module app identity" {
     import json;
     import from jaclang.server.endpoint_contract { check_endpoint_contract }
     with TemporaryDirectory() as td {
         entry_path = str(Path(td) / 'main.jac');
         service = str(Path(td) / 'service.jac');
         app = PreparedApplication(td, entry_path);
-        app.manifests = {entry_path: {'app': 'web'}, service: {'app': 'web'}};
+        app.manifests = {entry_path: {'app': 'web'}, service: {'app': 'service'}};
         module_name = 'prepared_service_contract_fixture';
         target = SimpleNamespace(__module__=module_name);
         module = SimpleNamespace(__file__=service);
@@ -37,7 +37,7 @@ test "sealed service contracts retain the route app identity" {
                         }
                     );
                     mismatch = check_endpoint_contract(
-                        request, target, 'walker', 'Ping', 'service'
+                        request, target, 'walker', 'Ping', 'web'
                     );
                     assert (mismatch is None) == expected;
                     if mismatch is not None {

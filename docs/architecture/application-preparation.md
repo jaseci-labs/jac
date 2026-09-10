@@ -22,7 +22,7 @@ before preparation reads their artifacts. Package initializers are prepared with
 the entry module. The serving payload stores a `module_manifests` table keyed by
 project-relative source paths, including colocated service entries. Each module
 retains its app identity and public/private endpoint metadata. Endpoint contract
-validation uses the app identity of the registered route. Rebuild older sealed
+validation uses the target module's app identity. Rebuild older sealed
 applications to produce this serving payload.
 Initialization uses the manifest's module identities, and the
 server receives the initialized entry's identity, so an entry such as `app.jac`

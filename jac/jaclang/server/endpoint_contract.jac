@@ -14,6 +14,9 @@ def check_endpoint_contract(
     module = sys.modules.get(target.__module__);
     path = getattr(module, "__file__", "");
     application = application_for(path, target.__module__) if path else None;
+    if application is not None {
+        app = application.manifests.get(os.path.realpath(path), {}).get('app', app);
+    }
     source = os.path.relpath(path, application.root).replace(os.sep, "/")
         if application is not None
         else getattr(module, "__name__", "");
