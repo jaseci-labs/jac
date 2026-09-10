@@ -3012,15 +3012,18 @@ impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> boo
 
 impl TypeEvaluator._heal_ancestry(cls: ClassType) -> None {
     import from jaclang.compiler.types.type_utils { ensure_mro_fresh }
-    for _round in range(8) {
+    attempted: set[int] = set();
+    while True {
         healed = False;
-        if cls.shared._provisional {
+        if cls.shared._provisional and id(cls.shared) not in attempted {
+            attempted.add(id(cls.shared));
             self._heal_class_bases(cls);
             healed = True;
         }
         ensure_mro_fresh(cls);
         for ancestor in list(cls.shared.mro or []) {
-            if ancestor.shared._provisional {
+            if ancestor.shared._provisional and id(ancestor.shared) not in attempted {
+                attempted.add(id(ancestor.shared));
                 self._heal_class_bases(ancestor);
                 healed = True;
             }
