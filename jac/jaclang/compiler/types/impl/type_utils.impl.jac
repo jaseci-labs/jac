@@ -647,8 +647,9 @@ impl ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bo
             ensure_mro_fresh(base, _visiting);
         }
     }
+    _visiting.discard(key);
     if not shared.mro {
-        compute_mro_linearization(cls);
+        compute_mro_linearization(cls, _visiting);
         return True;
     }
     sig = mro_signature(cls);
@@ -659,7 +660,7 @@ impl ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bo
     if shared._mro_sig == sig {
         return False;
     }
-    rebuilt = linearize_mro(cls);
+    rebuilt = linearize_mro(cls, _visiting);
     if len(rebuilt) > len(shared.mro) {
         shared.mro = rebuilt;
         shared._mro_sig = sig;
