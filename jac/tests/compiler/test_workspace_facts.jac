@@ -15,7 +15,7 @@ import from jaclang.compiler.placement.workspace {
     app_fact_digest
 }
 
-glob CONFIG: str = '[project]\nname="contexts"\ndefault-app="web"\n[apps.web]\nkind="web-app"\nentry-point="web.jac"\n[apps.api]\nkind="service"\nentry-point="api.jac"\n';
+glob CONFIG: str = '[project]\nname="contexts"\ndefault-app="web"\n[apps.web]\nkind="web-app"\nentry-point="web"\n[apps.api]\nkind="service"\nentry-point="api"\n';
 
 def workspace(base: Path) {
     (base / 'jac.toml').write_text(CONFIG);
@@ -86,8 +86,8 @@ test "shared syntax produces distinct app facts in either request order" {
                 str(e) for e in program.errors_had
             );
             assert modules[0] is not modules[1];
-            assert modules[0].owner_app == names[0];
-            assert modules[1].owner_app == names[1];
+            assert modules[0].app == names[0];
+            assert modules[1].app == names[1];
             assert program.source_store.hits > 0;
         }
     }

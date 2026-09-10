@@ -16,30 +16,30 @@ description = "The full jaclang.org workspace: a web app, a mobUI mobile app, an
 # `--fleet` places them in separate processes.
 [apps.web]
 kind = "web-app"
-entry-point = "web/main.jac"
+entry-point = "web.main"
 
 [apps.mobile]
 kind = "mobile"
-entry-point = "mobile/main.jac"
+entry-point = "mobile.main"
 
 [apps.cli]
 kind = "cli"
-entry-point = "cli/main.jac"
+entry-point = "cli.main"
 
 # The site as a desktop app: the same core/site UI in an OS webview. Its
 # backend is jaclang.org itself (see [apps.desktop.desktop] backend), so it is
 # a native window onto the live site, not a private copy of it.
 [apps.desktop]
 kind = "desktop"
-entry-point = "desktop/main.jac"
+entry-point = "desktop.main"
 
 [apps.social_graph]
 kind = "service"
-entry-point = "core/social_graph.jac"
+entry-point = "core.social_graph"
 
 [apps.scoring]
 kind = "service"
-entry-point = "core/scoring_service.jac"
+entry-point = "core.scoring_service"
 
 [dev]
 jaclang_source = "../.."

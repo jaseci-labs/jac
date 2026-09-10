@@ -277,15 +277,15 @@ def is_service_app_entry(path: str) -> bool {
     return app is not None and app.has_server;
 }
 
-def consumer_owner_app(module: (uni.Module | None)) -> (str | None) {
+def module_app(module: (uni.Module | None)) -> (str | None) {
     if module is None {
         return None;
     }
-    return module.owner_app;
+    return module.app;
 }
 
 def import_consumer_app(nd: uni.Import) -> (str | None) {
-    return consumer_owner_app(nd.find_parent_of_type(uni.Module));
+    return module_app(nd.find_parent_of_type(uni.Module));
 }
 
 def same_workspace(consumer_path: str, provider_path: str) -> bool {
@@ -306,15 +306,15 @@ def import_provider_spec(nd: uni.Import) -> (AppSpec | None) {
     if not consumer_path or not same_workspace(consumer_path, resolved) {
         return None;
     }
-    owner = app_for_path(resolved);
-    if owner is None or not owner.has_server {
+    provider_app = app_for_path(resolved);
+    if provider_app is None or not provider_app.has_server {
         return None;
     }
     consumer_mod = nd.find_parent_of_type(uni.Module);
-    if consumer_owner_app(consumer_mod) == owner.name {
+    if module_app(consumer_mod) == provider_app.name {
         return None;
     }
-    return owner;
+    return provider_app;
 }
 
 def import_provider_app(nd: uni.Import) -> (str | None) {
@@ -390,7 +390,7 @@ def symbol_linked_source_module(nd: uni.Import) -> (uni.Module | None) {
     return None;
 }
 
-def _import_item_owner_decl(
+def _import_item_declaration(
     source_mod: uni.Module, item: uni.ModuleItem
 ) -> (uni.ContextAwareNode | None) {
     if not isinstance(item.name, uni.Name) {
@@ -426,7 +426,7 @@ def classify_client_import_item(
     if not isinstance(item, uni.ModuleItem) {
         return ClientImportVerdict.UNKNOWN;
     }
-    owner = _import_item_owner_decl(source_mod, item);
+    owner = _import_item_declaration(source_mod, item);
     if owner is None or isinstance(owner, uni.Import) {
         return ClientImportVerdict.UNKNOWN;
     }
@@ -435,13 +435,13 @@ def classify_client_import_item(
     }
     if isinstance(owner, uni.Ability) {
         consumer = item.find_parent_of_type(uni.Module);
-        provider_app = consumer_owner_app(source_mod);
+        provider_app = module_app(source_mod);
         authenticated_endpoint = (
             owner.access is not None
             and owner.access.tag.name in (Tok.KW_PRIV, Tok.KW_PROT)
             and consumer is not None
             and bool(provider_app)
-            and consumer_owner_app(consumer) == provider_app
+            and module_app(consumer) == provider_app
             and same_workspace(consumer.loc.mod_path, source_mod.loc.mod_path)
         );
         if (

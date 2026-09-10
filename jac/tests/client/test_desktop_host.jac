@@ -186,3 +186,44 @@ test "boot serves a source entry in dev and a remote backend serves no program" 
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+test "sealed remote desktop does not prepare or initialize workspace services" {
+    os.environ["JAC_SCALE_RUNTIME"] = "1";
+    proj = _project();
+    tmp = os.path.dirname(proj);
+    ctx: any = None;
+    try {
+        import from jaclang.dist.seal { build_jab }
+        (Path(proj) / 'jac.toml').write_text(
+            '[project]\nname="hostapp"\ndefault-app="desktop"\n'
+                + '[apps.desktop]\nkind="desktop"\nentry-point="main"\n'
+                + '[apps.api]\nkind="service"\nentry-point="api"\n'
+        );
+        (Path(proj) / 'main.jac').write_text('with entry {}\n');
+        (Path(proj) / 'api.jac').write_text('this service must not be compiled');
+        app_dir = _app_dir(tmp);
+        config = JacConfig.load(Path(proj) / 'jac.toml');
+        jab = build_jab(
+            config, Path(app_dir) / 'app.jab', app='desktop', bake_client=False
+        );
+        set_config(None);
+        os.environ['JAC_DATA_PATH'] = os.path.join(tmp, 'data');
+        ctx = host_boot.boot(
+            _config(app_dir, {'jab': str(jab)}, backend='https://example.invalid')
+        );
+        origin = f'http://127.0.0.1:{ctx.port}';
+        (code, body) = _get(f'{origin}/__jac/health');
+        assert code == 200 , (code, body);
+        (code, body) = _get(f'{origin}/');
+        assert code == 200 and 'hostapp' in body , (code, body);
+        (code, body) = _post(f'{origin}/walker/greet', {});
+        assert code in (404, 405) , (code, body);
+    } finally {
+        if ctx is not None {
+            ctx.shutdown();
+        }
+        os.environ.pop('JAC_DATA_PATH', None);
+        set_config(None);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}

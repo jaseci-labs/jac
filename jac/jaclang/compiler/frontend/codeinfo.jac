@@ -785,7 +785,7 @@ def endpoint_descriptor(module: any, kind: str, name: str) -> dict {
     import from jaclang.compiler.placement.workspace { workspace_for_path }
     path = module.loc.mod_path;
     workspace = workspace_for_path(path);
-    app = module.owner_app or "";
+    app = module.app or "";
     source = os.path.relpath(path, workspace.project_root)
         if workspace
         else module.name;

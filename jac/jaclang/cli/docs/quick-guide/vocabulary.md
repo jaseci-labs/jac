@@ -49,9 +49,9 @@ Use this glossary when a design term appears in the documentation. The linked re
 | [**Workspace**](../reference/apps.md) | One project holding several apps over one body of shared code, type-checked as a single program; a project with no `[apps]` table is the degenerate case of one implicit app. |
 | [**App**](../reference/apps.md#the-appsname-table) | An `[apps.<name>]` table in `jac.toml`: a project kind plus a root (a directory, or a single entry file) that says what it builds and which modules are its. |
 | [**Shared code**](../reference/apps.md#entry-modules-and-shared-source) | An ordinary module that can be compiled in each importing app's context. |
-| [**Owner**](../reference/apps.md#ownership-follows-compilation-context) | The app context in which a module is compiled. Ordinary imports inherit it; another declared app entry establishes a boundary. |
+| [**App context**](../reference/apps.md#entry-modules-and-shared-source) | The app context in which a module is compiled. Ordinary imports inherit it; another declared app entry establishes a boundary. |
 | [**Bridge surface**](../reference/apps.md#the-app-dependency-graph) | The walkers and `def:pub` functions of an app: the only things another app may call, compiled as a call across the boundary rather than an in-process reference. |
-| [**App facts**](../reference/placement.md#app-facts) | What the driver stamps onto every module from `jac.toml` (its app, root, kind, owner) so that no compiler pass reads configuration. |
+| [**App facts**](../reference/placement.md#app-facts) | What the driver stamps onto every module from `jac.toml` (its app, root and kind) so that no compiler pass reads configuration. |
 
 The peer-reviewed foundations behind these terms are collected on
 [Research & Papers](../community/research.md).

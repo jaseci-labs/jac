@@ -94,14 +94,19 @@ def prepare_inprocess_runtime(
             if cfg is not None
             else None;
         project_root = str(cfg.project_root) if cfg and cfg.project_root else base;
-        services = service_apps(cfg, served) if cfg and served else [];
+        static_only = bool((overrides or {}).get('static_only', False));
+        services = service_apps(cfg, served)
+            if cfg and served and not static_only
+            else [];
         prepared = prepare_application(
             jac_file,
             Jac.get_program(),
             project_root,
             [svc.entry_path(project_root) for svc in services]
         );
-        mod = initialize_application(prepared, cfg, served).__name__;
+        mod = initialize_application(
+            prepared, cfg, None if static_only else served
+        ).__name__;
 
         serve_overrides: dict[str, any] = {'no_client': True};
         serve_overrides.update(overrides or {});

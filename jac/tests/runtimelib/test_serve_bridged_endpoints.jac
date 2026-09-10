@@ -11,7 +11,7 @@ import from jaclang.testing.testing { JacTestClient }
 def _proj -> str {
     d = tempfile.mkdtemp(prefix="jacbridge_");
     with open(os.path.join(d, "jac.toml"), "w") as f {
-        f.write('[project]\nname = "t"\nentry-point = "main.jac"\n');
+        f.write('[project]\nname = "t"\nentry-point = "main"\n');
     }
     with open(os.path.join(d, "storage.jac"), "w") as f {
         f.write(

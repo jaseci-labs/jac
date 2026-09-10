@@ -3,7 +3,7 @@ kind = "web-app"
 name = "multi_segment_app"
 version = "1.0.0"
 description = "Jac client application: multi_segment_app"
-entry-point = "main.jac"
+entry-point = "main"
 
 [dependencies.npm]
 react = "^19.2.0"

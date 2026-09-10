@@ -23,8 +23,8 @@ the bytecode. The solver consumes summaries and owns every decision:
 | Python imports not covered by the portability table | server |
 | extern C declarations (clib imports) | native |
 | `def:pub` in a server-anchored module, **in an app whose kind has a server** | server (as an endpoint contract) |
-| A `[placement.pins]` entry (base table or the owning app's `[apps.<name>.placement.pins]` overlay) | its pinned space (immovable) |
-| The entry file of a declared `service` app | server (the module is owned by that app) |
+| A `[placement.pins]` entry (base table or the selected app's `[apps.<name>.placement.pins]` overlay) | its pinned space (immovable) |
+| The entry file of a declared `service` app | server (the module is compiled in that app context) |
 
 `def:pub` is the one row that depends on the **app kind**, because `pub` means
 *export* client-side and *endpoint* server-side: it has no settled meaning until
@@ -35,19 +35,17 @@ endpoint. In a kind with no server (`js-package`, whose codespace is `client`;
 `web-static`, `mobile`, `desktop`, `cli`) there is no server for it to mean,
 so it is not evidence at all: everything lands client, `pub` means export, and
 code carrying genuine server evidence is `E5087` rather than a server
-placement that could only fail at runtime. The kind comes from the app that
-claims the module (`[apps.<name>] kind`, or `[project] kind` for the implicit
-app); a module outside every app root is shared and takes the facts of the
-program being compiled.
+placement that could only fail at runtime. The kind comes from the selected app context (`[apps.<name>] kind`, or
+`[project] kind` for the implicit app). Ordinary imports inherit that context.
 
 ## App facts
 
 Placement is computed in the selected app's compilation context.
-`AppContextPass` stamps `app`, `app_root` (the project root), `app_kind`, and
-`owner_app` before semantic passes. Ordinary imports inherit the selected app;
+`AppContextPass` stamps `app`, `app_root` (the project root), and `app_kind`
+before semantic passes. Ordinary imports inherit the selected app;
 another declared entry establishes a boundary. A shared helper can therefore
 have different placements in a web, mobile, or CLI context without acquiring a
-global owner.
+global app context.
 
 Context-specific cache slots include the app entry, target, UI, memory, and
 codespace settings. Project and app configuration fingerprints invalidate
@@ -56,7 +54,7 @@ artifacts when relevant declarations or pins change.
 `E2039`/`W2039` check access through declared app entries: another app's private
 declarations are unavailable outside its public bridge surface. Whether a
 cross-module import is a plain in-process import, a client bridge, a
-**service bridge** (server code importing server-placed elements owned by a
+**service bridge** (server code importing server-placed elements compiled in a
 different app), or a native binding is decided by one classifier over the same
 facts; see [Cross-Codespace Interop](../internals/interop.md#one-cross-app-import-rule).
 
@@ -131,7 +129,7 @@ collected -- the trust-boundary shape.
 Declaring that a module runs as its own **service** is a different fact with
 a different home: an `[apps.<name>]` table with `kind = "service"` and the
 module as its `entry-point` (see [Workspaces & Apps](apps.md)). Its
-elements are server-anchored by definition and owned by that app; imports of
+elements are server-anchored by definition and compiled in that app context; imports of
 them from any other app lower to typed-async bridge stubs.
 
 ## Seeing and reviewing placements
@@ -161,7 +159,7 @@ its verdict. The single query surface is
   `_precompiled/MANIFEST.json`, which persists the per-module verdict at seal
   time (manifest format 5), so post-build tools never re-derive placement.
 - `pinned_module_space(path)` exposes the raw `[placement.pins]` *input*
-  (base table merged with the owning app's overlay) for the few places that
+  (base table merged with the selected app's overlay) for the few places that
   need explicit user intent rather than the solved verdict (app-kind
   inference, trust-boundary import handling).
 - `compiler/placement/workspace.jac` is the compiler-side workspace reader:

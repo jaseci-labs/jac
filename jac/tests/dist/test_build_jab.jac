@@ -19,7 +19,7 @@ import from jaclang.project.config { JacConfig, set_config }
 
 
 glob _TOML: str = (
-         '[project]\nname = "sealed_ws"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web/main.jac"\n\n[apps.cli]\nkind = "cli"\nentry-point = "cli_app.jac"\n'
+         '[project]\nname = "sealed_ws"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.cli]\nkind = "cli"\nentry-point = "cli_app"\n'
      ),
      _WEB_SRC: str = (
          "import from core.helper { label }\n"

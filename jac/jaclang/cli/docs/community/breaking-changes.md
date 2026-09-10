@@ -11,14 +11,15 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 Every explicit `[apps.<name>]` table now requires `kind` and `entry-point`.
 Replace `path = "web"` plus an optional local entry with
-`entry-point = "web/main.jac"`, relative to the project root. Duplicate entries
-and the removed `path` key are configuration errors. Single implicit apps keep
-their existing configuration.
+`entry-point = "web.main"`, relative to the project root. Duplicate entries
+and the removed `path` key are configuration errors. Single implicit apps also use dotted module names: change
+`[project] entry-point = "main.jac"` to `entry-point = "main"`. File paths and
+extensions are rejected; CLI file arguments such as `jac run main.jac` remain valid.
 
 Ordinary imports inherit the app selected by `run`, `build`, or `check`.
 Another declared entry forms an app boundary. Shared source is compiled in each
 consumer context; directories, `default-app`, and placement pins no longer
-assign it a global owner. Declare a service entry when several apps must call
+assign it a global app context. Declare a service entry when several apps must call
 one provider. The shared-layer diagnostics `E2040`/`W2040` and ambiguous-owner
 diagnostic `E5107` are removed; private cross-entry access still uses `E2039`.
 

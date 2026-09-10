@@ -2,7 +2,7 @@
 name = "todo-app"
 version = "0.1.0"
 description = "Jac desktop todo example"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "desktop"
 
 [dependencies.npm]

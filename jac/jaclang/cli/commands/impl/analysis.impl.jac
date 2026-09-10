@@ -314,7 +314,7 @@ impl check(
         ];
         for f in explicit_files {
             f_ws = workspace_for_path(f);
-            owner: any = None;
+            selected_app: any = None;
             if f_ws is not None
                 and f_ws.explicit
                 and os.path.realpath(f) not in named_files
@@ -344,17 +344,17 @@ impl check(
                 continue;
             }
             if f_ws is not None {
-                owner = f_ws.app(app) if app else f_ws.app_for_path(f);
-                if owner is None and not f_ws.explicit {
-                    owner = next(iter(f_ws.apps.values()), None);
+                selected_app = f_ws.app(app) if app else f_ws.app_for_path(f);
+                if selected_app is None and not f_ws.explicit {
+                    selected_app = next(iter(f_ws.apps.values()), None);
                 }
             }
             units.append(
                 _check_unit(
                     f,
-                    owner.name if owner is not None else '',
-                    owner.kind if owner is not None else '',
-                    owner.name if owner is not None else '',
+                    selected_app.name if selected_app is not None else '',
+                    selected_app.kind if selected_app is not None else '',
+                    selected_app.name if selected_app is not None else '',
                     f_ws.project_root if f_ws is not None else ''
                 )
             );

@@ -156,27 +156,29 @@ def context_identity(options: CompileOptions) -> str {
 
 def context_program(program: JacProgram, options: CompileOptions) -> JacProgram {
     import from jaclang.compiler.driver.program { JacProgram }
-    owner = program.context_root if program.context_root is not None else program;
+    context_root = program.context_root
+        if program.context_root is not None
+        else program;
     identity = context_identity(options);
     if identity == program.context_key {
         return program;
     }
-    existing = owner.contexts.get(identity);
+    existing = context_root.contexts.get(identity);
     if existing is not None {
         return existing;
     }
-    if not owner.context_key {
-        selected = owner;
+    if not context_root.context_key {
+        selected = context_root;
     } else {
         selected = JacProgram();
-        selected.context_root = owner;
-        selected._compiler = owner._get_compiler();
-        selected.source_store = owner.source_store;
+        selected.context_root = context_root;
+        selected._compiler = context_root._get_compiler();
+        selected.source_store = context_root.source_store;
         selected.options = options;
     }
     selected.options = options;
     selected.context_key = identity;
-    owner.contexts[identity] = selected;
+    context_root.contexts[identity] = selected;
     return selected;
 }
 

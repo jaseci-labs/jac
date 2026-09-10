@@ -114,7 +114,7 @@ def make_mermaid_project(proj_dir: Path) -> Path {
 def write_client_project(proj_root: Path) -> Path {
     (proj_root / "jac.toml").write_text(
         '[project]\nname = "typeonly"\nversion = "0.1.0"\n'
-        'kind = "js-package"\nentry-point = "app.jac"\n'
+        'kind = "js-package"\nentry-point = "app"\n'
     );
     return proj_root;
 }
@@ -418,7 +418,7 @@ test "value uses of an import-type binding are refused in a server module" {
         proj_root = Path(cast(str, td));
         (proj_root / "jac.toml").write_text(
             '[project]\nname = "typeonlysv"\nversion = "0.1.0"\n'
-            'entry-point = "uses.jac"\n'
+            'entry-point = "uses"\n'
         );
         (proj_root / "point.jac").write_text(POINT_SRC);
         f = proj_root / "uses.jac";
@@ -437,7 +437,7 @@ test "type uses of an import-type binding are accepted in a server module" {
         proj_root = Path(cast(str, td));
         (proj_root / "jac.toml").write_text(
             '[project]\nname = "typeonlysv"\nversion = "0.1.0"\n'
-            'entry-point = "typeuses.jac"\n'
+            'entry-point = "typeuses"\n'
         );
         (proj_root / "point.jac").write_text(POINT_SRC);
         f = proj_root / "typeuses.jac";
@@ -463,7 +463,7 @@ test "bridged import stubs skip archetype items and keep function items" {
         proj_root = Path(cast(str, td));
         (proj_root / "jac.toml").write_text(
             '[project]\nname = "svstub"\nversion = "0.1.0"\n'
-            'entry-point = "page.jac"\n\n'
+            'entry-point = "page"\n\n'
             '[placement.pins]\napi = "server"\n'
         );
         (proj_root / "api.jac").write_text(

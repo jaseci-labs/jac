@@ -410,9 +410,9 @@ test "sv boundary: a private cross-service import is rejected during preparation
         toml_path.write_text(
             toml_path.read_text()
                 + '\n[apps.secure_service]\nkind = "service"\n'
-                + 'entry-point = "secure_service.jac"\nroute = "/secure"\n'
+                + 'entry-point = "secure_service"\nroute = "/secure"\n'
                 + '\n[apps.secure_consumer]\nkind = "service"\n'
-                + 'entry-point = "secure_consumer.jac"\nroute = "/secure-consumer"\n'
+                + 'entry-point = "secure_consumer"\nroute = "/secure-consumer"\n'
         );
         make_server("secure_service", tmp);
         rejected = False;

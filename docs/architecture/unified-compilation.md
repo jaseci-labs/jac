@@ -10,25 +10,31 @@ live in `pipeline_runner.jac`, and the shared enums and contracts live in
 ```toml
 [apps.web]
 kind = "web-app"
-entry-point = "web/main.jac"
+entry-point = "web.main"
 
 [apps.api]
 kind = "service"
-entry-point = "core/api.jac"
+entry-point = "core.api"
 ```
 
 An app declaration identifies an entry module, not a directory. CLI selection
 establishes the compilation context. Ordinary imports inherit that context;
 another app's declared entry establishes a boundary. `default-app` chooses the
-CLI default and does not give shared modules a global owner. A program retains
+CLI default and does not give shared modules a global app context. A program retains
 its entry context across dependency requests; callers select a new entry
 explicitly. Imports outside the project's directory retain that context too;
 their location does not select a different application. App-level placement
-pins choose codespaces and do not establish ownership.
+pins choose codespaces and do not establish app context.
 
 A private implementation file imported directly participates in the importing
 app's compilation. Use the declared entry as the cross-app contract. The compiler
 cannot infer an undeclared private boundary from an entry alone.
+
+The terminology is explicit: **app context** identifies the application a module
+is compiled for; **placement** identifies its server, client, or native codespace;
+**ownership** refers to memory ownership and borrowing. `Module.app` is the sole
+app identity stamp. Entry points are dotted module names resolved locally through
+the compiler resolver; no source is executed during resolution.
 
 ## Pipeline
 
@@ -80,7 +86,7 @@ Bootstrap remains an explicit constraint: compiler modules needed to construct a
 schedule must load before that schedule executes. The seed manifest and bootstrap
 dependency declarations keep the compiler from recursively compiling itself with
 an unavailable pass. A compiler module finishing its loader import cannot evict
-analysis data owned by an enclosing compilation. These are compiler-loading
+analysis data compiled in an enclosing compilation. These are compiler-loading
 constraints, not app discovery.
 Nested projects shipped inside `jaclang`, such as the admin UI, retain their app
 context instead of sharing the compiler's internal program.
@@ -114,14 +120,14 @@ Sealed images retain their manifest module identities.
 
 The application revision cache retains its source inventory and dependency/output
 stamps. This inventory detects added routes, assets, and dynamic roots; it does
-not parse files to infer ownership. A failed preparation leaves the published
+not parse files to infer app context. A failed preparation leaves the published
 revision intact. Startup progress begins before source compilation.
 
 ## Removed infrastructure
 
-- Directory-rooted app declarations and ownership containment rules.
+- Directory-rooted app declarations and directory containment rules.
 - Workspace consumer-graph parsing and `ownership.json` snapshots.
-- Default-app ownership inference and E5107 workspace-owner validation.
+- Default-app context inference and E5107 workspace-app validation.
 - Pass-class string contracts scattered among individual pass implementations.
 - Hidden pass selection in native inference, interface flow recovery, layout,
   client code generation, and compiler tools.

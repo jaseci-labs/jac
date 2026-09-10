@@ -182,13 +182,12 @@ impl _build_workspace(root_dir: str, toml_path: str, doc: dict) -> WorkspaceSpec
     } else {
         name = str(project.get('name', '') or 'main');
         kind = _implicit_kind(root_dir, project);
-        entry_rel = str(project.get('entry-point', '') or '');
+        import from jaclang.project.apps { resolve_entry_path }
+        entry_module = str(project.get('entry-point', '') or '');
         apps[name] = AppSpec(
             name=name,
             kind=kind,
-            `entry=os.path.normpath(
-                os.path.join(root_dir, entry_rel or kind_entry(kind))
-            ),
+            `entry=resolve_entry_path(entry_module or kind_entry(kind), root_dir),
             ui=kind_ui(kind),
             pins=dict(base_pins),
             npm_names=set(base_npm),

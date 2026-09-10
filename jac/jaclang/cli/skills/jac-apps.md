@@ -14,16 +14,16 @@ default-app = "web"
 
 [apps.web]
 kind = "web-app"
-entry-point = "web/main.jac"
+entry-point = "web.main"
 
 [apps.mobile]
 kind = "mobile"
-entry-point = "mobile/main.jac"
+entry-point = "mobile.main"
 platform = "android"
 
 [apps.social_graph]
 kind = "service"
-entry-point = "core/social_graph.jac"
+entry-point = "core.social_graph"
 ```
 
 Every explicit app requires `kind` and `entry-point`. Entries are relative to the

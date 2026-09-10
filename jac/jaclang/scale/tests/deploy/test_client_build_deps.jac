@@ -42,7 +42,7 @@ def _project(dependencies: str, server_import: str) -> str {
     tmp = tempfile.mkdtemp(prefix="client-build-deps-");
     files = {
         "jac.toml": (
-            '[project]\nname = "shop"\nentry-point = "main.jac"\n\n'
+            '[project]\nname = "shop"\nentry-point = "main"\n\n'
             f"[dependencies]\n{dependencies}\n\n"
             '[dependencies.npm]\nreact = "^19.2.0"\nreact-dom = "^19.2.0"\n'
         ),

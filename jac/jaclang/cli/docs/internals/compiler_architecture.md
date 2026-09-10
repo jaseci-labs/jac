@@ -445,12 +445,12 @@ runs once *before* code generation. It walks every call site and records:
 3. Imports that cross from a Python module into a native-placed module (for
    native↔native linking).
 4. Server-to-server calls that cross an **app boundary** (the imported
-   element's `owner_app` differs from the importing module's).
+   element's `app` differs from the importing module's).
 
 Every cross-module import is classified once, by
 `classify_cross_app_import` in `compiler/driver/boundary_classify.jac`, into
 one of four kinds from the *app facts* the driver stamps before any pass runs
-(`app`, `app_root`, `app_kind`, `owner_app` on `uni.Module`): `LOCAL` (a plain
+(`app`, `app_root`, `app_kind` on `uni.Module`): `LOCAL` (a plain
 import), `CLIENT_BRIDGE` (client context importing server-placed elements),
 `SERVICE_BRIDGE` (server or native context importing server-placed elements
 owned by another app), or `NATIVE_BIND` (the wasm/ctypes edge). The pass also
@@ -633,7 +633,7 @@ user-facing reference, [Primitives & Codespace Semantics](../reference/language/
 | `sv → na` | In-process `ctypes.CFUNCTYPE` over the JIT'd function address (MCJIT); an AOT `--lib` build is loaded across the process boundary instead | `JcirGenPass` emits the ctypes stub; `NaIRGenPass` exposes the function with C ABI |
 | `na → sv` | Python callback wrapped in a `ctypes.CFUNCTYPE` and registered as a JIT symbol (`llvm.add_symbol`), so MCJIT resolves the native call back into CPython | `interop_bridge.register_py_callbacks`, alongside the `sv → na` stub |
 | `na → na` | Direct symbol reference resolved by the in-tree linker | `BoundaryAnalysisPass` records the import; `NativeCompilePass` emits the relocation |
-| `sv → sv` (cross-app) | A typed-async stub keyed by the provider **app name** when an import's target is owned by a different app; in-process when the provider app is colocated, HTTP `POST` when it runs as its own process | `JcirGenPass` emits a generated `async` `__jac_sv_client` stub (`call` / `spawn_walker`; un-awaited statement spawns become `_deferred`, the outbox); the manifest's app edges drive the built-in `scale` subsystem's boot order |
+| `sv → sv` (cross-app) | A typed-async stub keyed by the provider **app name** when an import's target is compiled in a different app context; in-process when the provider app is colocated, HTTP `POST` when it runs as its own process | `JcirGenPass` emits a generated `async` `__jac_sv_client` stub (`call` / `spawn_walker`; un-awaited statement spawns become `_deferred`, the outbox); the manifest's app edges drive the built-in `scale` subsystem's boot order |
 
 Boundary types are serialised through the schemas in
 [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/codeinfo.jac).

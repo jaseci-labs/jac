@@ -19,7 +19,7 @@ glob KIND_SPECS: dict[str, KindSpec] = {
              KindSpec(
                  name="cli",
                  description="Command-line Jac project",
-                 `entry="main.jac",
+                 `entry="main",
                  action="execute",
                  verb="run",
                  summary="Execute {kind} entry-point {entry}"
@@ -27,7 +27,7 @@ glob KIND_SPECS: dict[str, KindSpec] = {
              KindSpec(
                  name="cli-native",
                  description="Natively-compiled Jac program (compiled and run)",
-                 `entry="main.jac",
+                 `entry="main",
                  action="execute",
                  verb="run",
                  summary="Execute {kind} entry-point {entry}"
@@ -35,7 +35,7 @@ glob KIND_SPECS: dict[str, KindSpec] = {
              KindSpec(
                  name="native-binary",
                  description="Natively-compiled standalone binary (built into dist/)",
-                 `entry="main.jac",
+                 `entry="main",
                  action="build",
                  verb="native",
                  summary="Build native binary -> {output}",
@@ -44,7 +44,7 @@ glob KIND_SPECS: dict[str, KindSpec] = {
              KindSpec(
                  name="native-lib",
                  description="Natively-compiled shared library (.so / .dylib / .dll)",
-                 `entry="main.jac",
+                 `entry="main",
                  action="build",
                  verb="native",
                  summary="Build shared library (.so / .dylib / .dll)",
@@ -53,7 +53,7 @@ glob KIND_SPECS: dict[str, KindSpec] = {
              KindSpec(
                  name="service",
                  description="Headless Jac API service (server walkers, no client)",
-                 `entry="main.jac",
+                 `entry="main",
                  action="serve",
                  verb="run",
                  summary="Serve headless API service",
@@ -63,7 +63,7 @@ glob KIND_SPECS: dict[str, KindSpec] = {
              KindSpec(
                  name="service-mesh",
                  description="Jac microservice (server walkers; colocates its service apps)",
-                 `entry="main.jac",
+                 `entry="main",
                  action="serve",
                  verb="run",
                  summary="Serve microservice consumer (colocates its service apps)",
@@ -72,7 +72,7 @@ glob KIND_SPECS: dict[str, KindSpec] = {
              KindSpec(
                  name="py-package",
                  description="Distributable Python package (built into a wheel)",
-                 `entry="lib.jac",
+                 `entry="lib",
                  action="build",
                  verb="build",
                  summary="Build PyPI wheel into dist/",
@@ -82,7 +82,7 @@ glob KIND_SPECS: dict[str, KindSpec] = {
              KindSpec(
                  name="js-package",
                  description="Distributable npm package (built into a tarball)",
-                 `entry="lib.jac",
+                 `entry="lib",
                  action="build",
                  verb="build",
                  summary="Build npm package into dist/",
@@ -94,7 +94,7 @@ glob KIND_SPECS: dict[str, KindSpec] = {
              KindSpec(
                  name="web-app",
                  description="Minimal full-stack Jac app (server walkers + client UI)",
-                 `entry="main.jac",
+                 `entry="main",
                  action="serve",
                  verb="run",
                  summary="Serve full-stack app with client (dev mode)",
@@ -105,7 +105,7 @@ glob KIND_SPECS: dict[str, KindSpec] = {
              KindSpec(
                  name="web-static",
                  description="Client-only Jac app (runs in the browser, no backend)",
-                 `entry="main.jac",
+                 `entry="main",
                  action="serve",
                  verb="run",
                  summary="Serve client-only app as a static page (no backend)",
@@ -114,7 +114,7 @@ glob KIND_SPECS: dict[str, KindSpec] = {
              KindSpec(
                  name="desktop",
                  description="Jac desktop app (OS webview + native build)",
-                 `entry="main.jac",
+                 `entry="main",
                  action="serve",
                  verb="run",
                  summary="Run desktop app (OS webview)",
@@ -123,7 +123,7 @@ glob KIND_SPECS: dict[str, KindSpec] = {
              KindSpec(
                  name="mobile",
                  description="Jac mobile app (mobUI over React Native)",
-                 `entry="main.jac",
+                 `entry="main",
                  action="build",
                  verb="build",
                  summary="Build mobile app bundle",
@@ -142,7 +142,7 @@ def kind_spec(kind: str) -> KindSpec | None {
 
 def kind_entry(kind: str) -> str {
     spec = KIND_SPECS.get(kind);
-    return spec.`entry if spec else "main.jac";
+    return spec.`entry if spec else "main";
 }
 
 def is_valid_kind(kind: str) -> bool {

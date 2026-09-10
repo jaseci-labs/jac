@@ -17,7 +17,7 @@ import from jaclang.client.desktop_config { get_desktop_config, reset_desktop_co
 
 
 glob _TOML: str = (
-         '[project]\nname = "kiosk_ws"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web/main.jac"\n\n[apps.shell]\nkind = "desktop"\nentry-point = "shell/main.jac"\n\n[apps.kiosk]\nkind = "desktop"\nentry-point = "kiosk/main.jac"\n\n[desktop]\nname = "root-app"\n\n[desktop.window]\ntitle = "Root"\nwidth = 1000\n\n[apps.shell.desktop]\nname = "shell-app"\n\n[apps.shell.desktop.window]\ntitle = "Shell"\n'
+         '[project]\nname = "kiosk_ws"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.shell]\nkind = "desktop"\nentry-point = "shell.main"\n\n[apps.kiosk]\nkind = "desktop"\nentry-point = "kiosk.main"\n\n[desktop]\nname = "root-app"\n\n[desktop.window]\ntitle = "Root"\nwidth = 1000\n\n[apps.shell.desktop]\nname = "shell-app"\n\n[apps.shell.desktop.window]\ntitle = "Shell"\n'
      );
 
 

@@ -530,14 +530,14 @@ impl BoundaryAnalysisPass._provider_module_of(nd: Import) -> (Module | None) {
 
 impl BoundaryAnalysisPass._record_app_edge(nd: Import) -> None {
     import from jaclang.compiler.driver.boundary_classify {
-        consumer_owner_app,
+        module_app,
         import_provider_app
     }
     provider_app = import_provider_app(nd);
     if provider_app is None {
         return;
     }
-    consumer_app = consumer_owner_app(self.ir_in) or '';
+    consumer_app = module_app(self.ir_in) or '';
     if provider_app == consumer_app {
         return;
     }
@@ -554,14 +554,14 @@ impl BoundaryAnalysisPass._record_app_edge(nd: Import) -> None {
 impl BoundaryAnalysisPass._bridge_targets(mod: Module) -> list[tuple[(str, str)]] {
     import from jaclang.compiler.driver.boundary_classify {
         bridgeable_import_target,
-        consumer_owner_app,
+        module_app,
         import_provider_app
     }
-    own_app = consumer_owner_app(mod) or '';
+    consumer_app = module_app(mod) or '';
     targets: list[tuple[(str, str)]] = [];
     for imp in mod.get_all_sub_nodes(Import) {
         provider_app = import_provider_app(imp);
-        if provider_app is None or provider_app == own_app {
+        if provider_app is None or provider_app == consumer_app {
             continue;
         }
         resolved = bridgeable_import_target(imp);
@@ -633,11 +633,11 @@ impl BoundaryAnalysisPass._reject_owned_type_import(
     nd: Import, item: ModuleItem, kind: str
 ) -> None {
     import from jaclang.compiler.driver.boundary_classify {
-        consumer_owner_app,
+        module_app,
         import_provider_app
     }
     import from jaclang.compiler.frontend.diagnostics { E5108 }
-    consumer = consumer_owner_app(self.ir_in) or self.ir_in.name;
+    consumer = module_app(self.ir_in) or self.ir_in.name;
     self.emit(
         E5108,
         node_override=item,
@@ -652,7 +652,7 @@ impl BoundaryAnalysisPass._check_provider_pub(nd: Import, item: ModuleItem) -> N
     import from jaclang.compiler.driver.boundary_classify {
         ClientImportVerdict,
         classify_client_import_item,
-        consumer_owner_app,
+        module_app,
         import_provider_app
     }
     import from jaclang.compiler.symbol_utils {
@@ -677,7 +677,7 @@ impl BoundaryAnalysisPass._check_provider_pub(nd: Import, item: ModuleItem) -> N
     if import_target_pinned_server(nd) and decl_has_access(provider_mod, item) {
         return;
     }
-    consumer = consumer_owner_app(self.ir_in) or self.ir_in.name;
+    consumer = module_app(self.ir_in) or self.ir_in.name;
     self.emit(
         E5106,
         node_override=item,

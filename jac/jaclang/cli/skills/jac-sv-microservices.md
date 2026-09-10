@@ -18,11 +18,11 @@ default-app = "calculator"
 
 [apps.calculator]
 kind = "service"
-entry-point = "calculator_service.jac"
+entry-point = "calculator_service"
 
 [apps.math]                     # service entry: math_service.jac
 kind = "service"
-entry-point = "math_service.jac"
+entry-point = "math_service"
 
 # math_service.jac (provider - owned by the math app)
 obj DivResult {

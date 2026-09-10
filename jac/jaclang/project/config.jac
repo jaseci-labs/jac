@@ -34,7 +34,7 @@ obj ProjectConfig {
         classifiers: list[str] = [],
         requires_python: str = "",
         jac_version: str = "",
-        entry_point: str = "main.jac",
+        entry_point: str = "main",
         kind: str = "",
         default_app: str = "",
         urls: dict[str, str] = {},

@@ -133,8 +133,8 @@ def _resolve_deploy_target(target: str) -> tuple[str, str, str] {
     cfg = get_config(start_path=Path.cwd(), force_discover=True);
     if target and target.endswith(".jac") {
         abs_path = os.path.abspath(target);
-        owner = cfg.app_for_path(abs_path) if cfg is not None else None;
-        return (abs_path, owner.name if owner is not None else "", "");
+        selected_app = cfg.app_for_path(abs_path) if cfg is not None else None;
+        return (abs_path, selected_app.name if selected_app is not None else "", "");
     }
     if cfg is None or cfg.project_root is None {
         return (

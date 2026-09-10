@@ -435,8 +435,8 @@ impl JcirGenPass._sv_endpoint_effects(binding: InteropBinding, key: str) -> list
 }
 
 impl JcirGenPass._sv_consumer_app_expr -> str {
-    import from jaclang.compiler.driver.boundary_classify { consumer_owner_app }
-    consumer = consumer_owner_app(self.ir_in);
+    import from jaclang.compiler.driver.boundary_classify { module_app }
+    consumer = module_app(self.ir_in);
     if consumer {
         return "'" + consumer + "'";
     }

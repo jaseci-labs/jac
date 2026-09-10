@@ -205,7 +205,11 @@ def _entry_module_spec(project_dir: str) -> (tuple[Path, Path] | None) {
     if not config.project.entry_point {
         return None;
     }
-    return (proj_root.resolve(), Path(config.project.entry_point));
+    import from jaclang.project.apps { resolve_entry_path }
+    return (
+        proj_root.resolve(),
+        Path(resolve_entry_path(config.project.entry_point, str(proj_root)))
+    );
 }
 
 

@@ -7,7 +7,7 @@ glob APP_TABLE_KEYS: tuple[str, ...] = (
          "route"
      ),
      REMOVED_APP_KEYS: dict[str, str] = {
-         "path": "apps are identified by entry-point; use entry-point = \"directory/main.jac\"",
+         "path": "apps are identified by entry-point; use entry-point = \"directory.main\"",
          "client": (
              "the kind decides the client (web-app and web-static render the DOM, "
              "desktop wraps it in a webview, mobile is React Native); "
@@ -32,6 +32,10 @@ obj AppConfig {
 }
 
 def validate_app_name(name: str) -> None;
+
+def validate_entry_point(module: str) -> str;
+
+def resolve_entry_path(module: str, project_root: str) -> str;
 
 def parse_apps(project_data: dict, apps_data: dict) -> dict[str, AppConfig];
 

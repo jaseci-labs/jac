@@ -4,12 +4,33 @@ impl _norm_path(path: str) -> str {
 
 impl AppConfig.entry_path(project_root: str) -> str {
     import from jaclang.project.app_kinds { kind_entry }
-    ep = self.entry_point or kind_entry(self.kind);
-    if os.path.isabs(ep) {
-        return os.path.abspath(ep);
+    return resolve_entry_path(self.entry_point or kind_entry(self.kind), project_root);
+}
+
+impl validate_entry_point(module: str) -> str {
+    if not isinstance(module, str)
+        or not module
+        or module.endswith(('.jac', '.py'))
+        or not all(part.isidentifier() for part in module.split('.')) {
+        raise ValueError(
+            f"Invalid entry-point '{module}': expected a dotted module name "
+            'such as "core.social_graph" or "desktop.main", without a file extension or path separators'
+        );
     }
+    return module;
+}
+
+impl resolve_entry_path(module: str, project_root: str) -> str {
+    import from jaclang.compiler.driver.modresolver { resolve_local_module }
+    validate_entry_point(module);
     base = os.path.abspath(project_root);
-    return os.path.abspath(os.path.join(base, ep));
+    parts = module.split('.');
+    candidate = resolve_local_module(base, parts);
+    if candidate is not None and candidate[1] in ('jac', 'py') {
+        return os.path.abspath(candidate[0]);
+    }
+
+    return os.path.join(base, *parts) + '.jac';
 }
 
 impl AppConfig.effective_route -> str {
@@ -93,6 +114,7 @@ impl parse_apps(project_data: dict, apps_data: dict) -> dict[str, AppConfig] {
         if not entry_point {
             raise ValueError(f"[apps.{name}] requires an explicit entry-point module");
         }
+        validate_entry_point(entry_point);
         platform = str(fields.get("platform", "")).strip();
         route = str(fields.get("route", "")).strip();
         if route and not route.startswith("/") {
@@ -109,7 +131,7 @@ impl parse_apps(project_data: dict, apps_data: dict) -> dict[str, AppConfig] {
     }
     entries: dict[str, str] = {};
     for app in apps.values() {
-        identity = os.path.normcase(os.path.normpath(app.entry_point));
+        identity = app.entry_point;
         if identity in entries {
             raise ValueError(
                 f"[apps.{app.name}] entry-point already declared by '{entries[

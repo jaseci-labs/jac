@@ -293,7 +293,9 @@ impl scaffold_app(
     tmpl_entry = str(
         tmpl_app.get("entry-point", tmpl_app.get("entry_point", "")) or ""
     );
-    table["entry-point"] = app_path + "/" + (tmpl_entry or kind_entry(kind));
+    table["entry-point"] = app_path.replace("/", ".").replace("\\", ".")
+        + "."
+        + (tmpl_entry or kind_entry(kind));
     for (key, value) in tmpl_app.items() {
         attr = str(key).replace("-", "_");
         if attr in ("kind", "path", "entry_point") or attr not in APP_TABLE_KEYS {

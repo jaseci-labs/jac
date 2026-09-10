@@ -1,7 +1,6 @@
 import os;
 import from jaclang.project.apps { AppConfig, implicit_app }
 import from jaclang.project.config { JacConfig }
-import from jaclang.jac0core.ext_registry { base_stem, MODULE_SUFFIXES }
 
 import from jaclang.project.app_kinds {
     KindSpec,
@@ -67,10 +66,6 @@ obj RunPlan {
     }
 }
 
-def _entry_stem(path: str) -> str {
-    return base_stem(path);
-}
-
 def _has_client(config: JacConfig) -> bool {
     if "jac-client" in config.dependencies {
         return True;
@@ -84,26 +79,8 @@ def _has_client(config: JacConfig) -> bool {
 }
 
 def resolve_entry(config: JacConfig, project_root: str, app: AppConfig) -> str {
-    ep = (
-        app.entry_point
-        or (config.project.entry_point if app.implicit else "")
-        or kind_entry(app.kind)
-    );
-    base_dir = os.path.abspath(project_root);
-    direct = ep if os.path.isabs(ep) else os.path.join(base_dir, ep);
-    if os.path.isfile(direct) {
-        return os.path.abspath(direct);
-    }
-    stem = _entry_stem(ep);
-
-    base = os.path.join(base_dir, os.path.dirname(ep), stem);
-    for suf in list(MODULE_SUFFIXES) + [".py"] {
-        cand = base + suf;
-        if os.path.isfile(cand) {
-            return os.path.abspath(cand);
-        }
-    }
-    return "";
+    path = app.entry_path(project_root);
+    return path if os.path.isfile(path) else "";
 }
 
 def resolve_app_kind(config: JacConfig, app: AppConfig, entry_path: str) -> str {

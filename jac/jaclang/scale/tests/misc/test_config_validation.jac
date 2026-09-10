@@ -299,7 +299,7 @@ test "a leftover [scale.microservices] table is a hard config error" {
     }
     d = tempfile.mkdtemp();
     (Path(d) / "jac.toml").write_text(
-        "[project]\nname = \"demo\"\nentry-point = \"main.jac\"\n\n"
+        "[project]\nname = \"demo\"\nentry-point = \"main\"\n\n"
         "[scale.microservices.routes]\nadmin = \"\"\n"
     );
     (Path(d) / "main.jac").write_text("with entry {}\n");

@@ -1031,6 +1031,7 @@ impl _parse_toml_data(
         config.project_root = toml_path.parent;
     }
     if "project" in data {
+        import from jaclang.project.apps { validate_entry_point }
         proj = data["project"];
         config.project = ProjectConfig(
             name=proj.get("name", ""),
@@ -1044,7 +1045,7 @@ impl _parse_toml_data(
             classifiers=proj.get("classifiers", []),
             requires_python=proj.get("requires-python", ""),
             jac_version=proj.get("jac-version", ""),
-            entry_point=proj.get("entry-point", "main.jac"),
+            entry_point=validate_entry_point(proj.get("entry-point", "main")),
             kind=proj.get("kind", ""),
             default_app=str(
                 proj.get("default-app", proj.get("default_app", "")) or ""

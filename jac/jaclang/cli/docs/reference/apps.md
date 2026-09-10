@@ -15,7 +15,7 @@ Four principles hold the model together:
   against one app is one transaction. Anything that crosses an app boundary
   is a message.
 - **No pass reads `jac.toml`.** The driver stamps *app facts* onto every
-  module (selected app, project root, kind and owner); the compiler's laws
+  module (selected app, project root, kind); the compiler's laws
   consume the stamps.
 - **The platform is a stamped decision, never a filename property.** A
   `.native.jac` variant is selected for a mobile app's native platforms, not
@@ -30,21 +30,35 @@ default-app = "web"          # optional; a bare `jac run` uses it
 
 [apps.web]                   # one table per app
 kind = "web-app"             # required: a project kind
-entry-point = "web/main.jac"
+entry-point = "web.main"
 platform = "android"         # optional default platform (mobile: android | ios | web; desktop: windows | macos | linux)
 route = "/api/web"           # optional; default "/api/<name>" (apps with a server only)
 
 [apps.social_graph]          # a declared service entry
 kind = "service"
-entry-point = "core/social_graph.jac"
+entry-point = "core.social_graph"
 ```
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `kind` | string | **Required.** One of the [project kinds](../quick-guide/project-kinds.md): `cli`, `cli-native`, `native-binary`, `native-lib`, `service`, `service-mesh`, `py-package`, `js-package`, `web-app`, `web-static`, `desktop`, `mobile`. The kind decides the default entry, the action a bare `jac run <app>` takes, what the client renders (`web-app`, `web-static`, `desktop` and `js-package` render React DOM; `mobile` renders native views through [`@jac/mobui`](plugins/jac-client.md#the-jacmobui-vocabulary), with the `E1105` host-tag guard on every module the app claims), and whether the app has a server. |
-| `entry-point` | string | **Required.** Entry module relative to the project root. |
+| `kind` | string | **Required.** One of the [project kinds](../quick-guide/project-kinds.md): `cli`, `cli-native`, `native-binary`, `native-lib`, `service`, `service-mesh`, `py-package`, `js-package`, `web-app`, `web-static`, `desktop`, `mobile`. The kind decides the default entry, the action a bare `jac run <app>` takes, what the client renders (`web-app`, `web-static`, `desktop` and `js-package` render React DOM; `mobile` renders native views through [`@jac/mobui`](plugins/jac-client.md#the-jacmobui-vocabulary), with the `E1105` host-tag guard on every module compiled in the app context), and whether the app has a server. |
+| `entry-point` | string | **Required.** Dotted module name relative to the project root, such as `core.api`. File paths and extensions are rejected. |
 | `platform` | string | Default platform: `android`, `ios` or `web` for a `mobile` app; `windows`, `macos` or `linux` for a `desktop` app. `--platform` on `jac run` / `jac build` overrides it for one invocation. |
 | `route` | string | The app's public route prefix, for apps whose kind has a server. Must start with `/`. Defaults to `/api/<name>`. |
+
+Entry points use the compiler's local module resolution without executing code.
+`core.api` resolves `core/api.jac` (or its Python implementation); `core` can
+resolve a package initializer. A missing module produces an entry-point diagnostic.
+Placement pins use the same dotted naming style but also allow patterns:
+
+```toml
+[placement.pins]
+"core.api" = "server"
+"desktop.*" = "client"
+```
+
+Quote pin keys so TOML preserves each dotted name as one literal key. An entry
+point must name one module and cannot contain a wildcard.
 
 Any key other than these is a hard config error naming the accepted keys. App
 names cannot contain `/` or `\` and cannot end in `.jac`, so that `jac run
@@ -59,7 +73,7 @@ A nested table under an app -- `[apps.web.serve]`, `[apps.mobile.dependencies.np
 App declarations identify entry modules. They do not claim directories. A helper
 imported by two apps is compiled in each app's context, with shared parsed syntax
 and distinct semantic facts and runtime module state. File location and
-`default-app` do not select a global owner.
+`default-app` do not select a global app context.
 
 Imports through a declared service entry use its bridge surface: public functions
 and walkers retain the provider's identity. A direct import of an ordinary
@@ -71,20 +85,20 @@ declared entries.
 surface. `[check] enforce_access` selects errors instead of warnings.
 
 The removed `path` key is a configuration error. Migrate
-`path = "web"` plus `entry-point = "main.jac"` to
-`entry-point = "web/main.jac"`.
+`path = "web"` plus `entry-point = "main"` to
+`entry-point = "web.main"`.
 
 ## The implicit single app
 
 With no `[apps]` table the project is one app. Its name is `[project] name`
 (or `"main"`), its kind is `[project] kind` (or inferred from the entry-point,
 exactly as before), its entry is `[project] entry-point`, and its root is the
-project root. Nothing about a single-app `jac.toml` changed:
+project root. Single-app entry points use the same dotted module syntax:
 
 ```toml
 [project]
 name = "hello"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "web-app"
 ```
 
@@ -141,15 +155,15 @@ workspace with several and no default errors, listing the apps.
 
 ## Ownership follows compilation context
 
-Ordinary imported modules carry the selected app's owner identity, including their
+Ordinary imported modules carry the selected app's identity, including their
 walkers and persisted node/edge declarations. A service entry establishes a
 separate provider context. Import that entry when multiple apps need the same
 service or store. Colocated apps load distinct copies of ordinary shared-source
 modules, so module globals are app-local.
 
-No workspace consumer scan or ownership cache is needed. `default-app` chooses a
+No workspace consumer scan or app context cache is needed. `default-app` chooses a
 CLI default; placement pins choose codespaces. Neither assigns shared code to a
-global owner, and the former E5107 ambiguity gate has been removed.
+global app context, and the former E5107 ambiguity gate has been removed.
 
 ## The app dependency graph
 
@@ -230,23 +244,23 @@ default-app = "web"
 
 [apps.web]                     # the site: landing, docs, leaderboard, socialize, wasm game
 kind = "web-app"
-entry-point = "web/main.jac"
+entry-point = "web.main"
 
 [apps.mobile]                  # a mobUI (React Native) client for the same social graph
 kind = "mobile"
-entry-point = "mobile/main.jac"
+entry-point = "mobile.main"
 
 [apps.cli]                     # a command-line client: offline scorer + docs/feed over the wire
 kind = "cli"
-entry-point = "cli/main.jac"
+entry-point = "cli.main"
 
 [apps.social_graph]            # file-rooted service app: owns the socialize walkers
 kind = "service"
-entry-point = "core/social_graph.jac"
+entry-point = "core.social_graph"
 
 [apps.scoring]                 # file-rooted service app: owns the leaderboard scorer
 kind = "service"
-entry-point = "core/scoring_service.jac"
+entry-point = "core.scoring_service"
 
 [test]
 directories = ["core", "web", "cli"]
@@ -271,9 +285,9 @@ walkers of the social app -- one file, no routes, no serializers. The `web`
 app's `socialize/` pages, the `mobile` app's screens, and the `cli` app's
 `feed`/`post` commands all `import from core.social_graph { load_feed,
 create_tweet, ... }` with a plain import. The compiler classifies each import
-by the owner of what is imported: the `web` app's client code bridges over
+by the provider of what is imported: the `web` app's client code bridges over
 HTTP as it always did; the `mobile` app's screens do the same from React
-Native; the `cli` app -- server-side Python, but not the owner -- gets a
+Native; the `cli` app -- server-side Python, but not the provider -- gets a
 **typed-async stub** and `await`s the call. Nothing in the source says which
 is which.
 
@@ -288,8 +302,8 @@ because nothing server-placed is involved.
 single-app server does today.
 
 **Across apps, consistency is eventual, and the write path is single-writer.**
-A consumer never writes another app's store; it *ships a walker* to the owner
-and the owner writes. Two shapes of shipping exist, chosen by whether you wait:
+A consumer never writes another app's store; it *ships a walker* to the provider
+and the provider writes. Two shapes of shipping exist, chosen by whether you wait:
 
 ```jac
 import from core.social_graph { create_tweet, load_feed }
@@ -323,14 +337,14 @@ walker:pub fire_and_forget {
   contract: catch at the boundary where you want graceful degradation.
 - **Un-awaited** cross-app walker spawns in statement position never raise at
   the call site. The spawn is written to an **outbox** inside the caller's
-  request, then delivered to the owner by a background worker with
+  request, then delivered to the provider by a background worker with
   exponential backoff (up to 8 attempts, then dead-lettered). Every entry
   carries an idempotency key (default: a hash of app, walker and arguments;
   pass your own when the arguments alone are not identity), sent as
   `X-Jac-Idempotency-Key`; the receiving app dedupes by key, so delivery is
   **at-least-once with idempotent receipt**. The outbox lives in the project's
   Postgres store when one is configured, else in `.jac/data/outbox.sqlite`.
-- **Reads go to the owner** by default (owner-read). An app may opt into an
+- **Reads go to the provider** by default (provider-read). An app may opt into an
   in-process read cache for effect-free provider endpoints with
   `[apps.<consumer>.scale] read_cache = true`; the cache is invalidated when an
   effectful call to the same provider app goes through.

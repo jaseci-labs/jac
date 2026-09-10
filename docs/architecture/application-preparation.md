@@ -52,8 +52,8 @@ Runtime logs and database files do not invalidate the source inventory.
 Production client builds finish before initialization; a failed build aborts
 startup and a corrected application can be prepared on the next run.
 
-Apps declare `entry-point` modules. Directory ownership, the source consumer scan,
-`ownership.json`, and default-owner inference have been removed. The declaration
+Apps declare `entry-point` modules. Directory-based app inference, the source consumer scan,
+`ownership.json`, and default-app inference have been removed. The declaration
 reader reads configuration only. The selected entry establishes an app compilation
 context; ordinary imports inherit it, while another declared entry establishes a
 boundary. `default-app` selects a CLI default and does not assign shared modules.

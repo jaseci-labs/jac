@@ -15,7 +15,7 @@ test "a failed production client build prevents initialization and a corrected r
     with TemporaryDirectory(prefix='jac-bundle-preparation-') as tmp {
         project = Path(tmp);
         (project / 'jac.toml').write_text(
-            '[project]\nname="bundleretry"\nkind="web-app"\nentry-point="main.jac"\n'
+            '[project]\nname="bundleretry"\nkind="web-app"\nentry-point="main"\n'
         );
         source = project / 'main.jac';
         source.write_text(

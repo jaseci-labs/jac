@@ -37,7 +37,7 @@ glob _WEB_SRC: str = (
          "}\n"
      ),
      _TOML: str = (
-         '[project]\nname = "routed"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web/main.jac"\n\n[apps.shell]\nkind = "desktop"\nentry-point = "shell/main.jac"\n'
+         '[project]\nname = "routed"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.shell]\nkind = "desktop"\nentry-point = "shell.main"\n'
      );
 
 

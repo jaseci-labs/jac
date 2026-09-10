@@ -94,11 +94,11 @@ Declaring that a module runs as its own service happens ONLY in `jac.toml`, as a
 ```toml
 [apps.math]                          # service entry
 kind = "service"
-entry-point = "core/math.jac"
+entry-point = "core.math"
 
 [apps.orders]                        # service entry
 kind = "service"
-entry-point = "orders/main.jac"
+entry-point = "orders.main"
 route = "/api/orders"                # default would be /api/orders anyway
 ```
 

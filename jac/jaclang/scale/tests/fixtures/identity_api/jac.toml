@@ -2,7 +2,7 @@
 name = "identity-api-test"
 version = "1.0.0"
 description = "Fixture app for identity API e2e tests"
-entry-point = "test_api.jac"
+entry-point = "test_api"
 
 # Custom in-process fake emailer so verification/reset flows have a working
 # sender during tests. Loaded from test_emailer_fake.jac (on PYTHONPATH).

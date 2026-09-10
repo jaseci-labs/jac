@@ -269,7 +269,7 @@ test "a real pod binary seals and serves an entry named app" {
     import json;
     base = Path(_mini_app());
     (base / "jac.toml").write_text(
-        '[project]\nname="mini"\nkind="service"\nentry-point="app.jac"\n'
+        '[project]\nname="mini"\nkind="service"\nentry-point="app"\n'
     );
     (base / "app.jac").write_text(
         'import from svc { ping }\n'
@@ -323,7 +323,7 @@ test "sealing includes bytecode imports and serving exports despite client place
         base = Path(tmp) / "app";
         base.mkdir();
         (base / "jac.toml").write_text(
-            '[project]\nname="closure"\nkind="service"\nentry-point="main.jac"\n'
+            '[project]\nname="closure"\nkind="service"\nentry-point="main"\n'
         );
         main = base / "main.jac";
         shared = base / "shared.jac";
@@ -386,8 +386,8 @@ test "an explicit app seal follows its entry and excludes unrelated apps" {
         base = Path(td);
         (base / 'jac.toml').write_text(
             '[project]\nname = "selected"\ndefault-app = "web"\n'
-                + '[apps.web]\nkind = "service"\nentry-point = "web.jac"\n'
-                + '[apps.cli]\nkind = "cli"\nentry-point = "cli.jac"\n'
+                + '[apps.web]\nkind = "service"\nentry-point = "web"\n'
+                + '[apps.cli]\nkind = "cli"\nentry-point = "cli"\n'
         );
         (base / 'web.jac').write_text(
             'import from helper { value }\ndef:pub read -> int { return value(); }\n'

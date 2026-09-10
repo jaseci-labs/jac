@@ -948,7 +948,6 @@ impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) ->
     }
     mod.app = app.name if app is not None else None;
     mod.app_root = ws.project_root if (app is not None and ws is not None) else None;
-    mod.owner_app = mod.app;
     target_kind = opts.app_kind if (opts is not None and opts.app_kind) else '';
     if app is not None {
         mod.app_kind = app.kind;

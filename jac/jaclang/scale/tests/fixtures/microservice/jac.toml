@@ -9,55 +9,55 @@ default-app = "order_service"
 
 [apps.calculator_service]
 kind = "service"
-entry-point = "calculator_service.jac"
+entry-point = "calculator_service"
 route = "/calculator"
 
 [apps.dispatcher_service]
 kind = "service"
-entry-point = "dispatcher_service.jac"
+entry-point = "dispatcher_service"
 route = "/dispatcher"
 
 [apps.inventory_service]
 kind = "service"
-entry-point = "inventory_service.jac"
+entry-point = "inventory_service"
 route = "/inventory"
 
 [apps.math_service]
 kind = "service"
-entry-point = "math_service.jac"
+entry-point = "math_service"
 route = "/math"
 
 [apps.notify_service]
 kind = "service"
-entry-point = "notify_service.jac"
+entry-point = "notify_service"
 route = "/notify"
 
 [apps.order_service]
 kind = "service"
-entry-point = "order_service.jac"
+entry-point = "order_service"
 route = "/order"
 
 [apps.level_a]
 kind = "service"
-entry-point = "level_a.jac"
+entry-point = "level_a"
 route = "/level-a"
 
 [apps.level_b]
 kind = "service"
-entry-point = "level_b.jac"
+entry-point = "level_b"
 route = "/level-b"
 
 [apps.level_c]
 kind = "service"
-entry-point = "level_c.jac"
+entry-point = "level_c"
 route = "/level-c"
 
 [apps.narrator_service]
 kind = "service"
-entry-point = "narrator_service.jac"
+entry-point = "narrator_service"
 route = "/narrator"
 
 [apps.story_service]
 kind = "service"
-entry-point = "story_service.jac"
+entry-point = "story_service"
 route = "/story"
