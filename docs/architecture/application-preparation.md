@@ -19,7 +19,12 @@ bytecode imports and serving exports so shared server dependencies are included
 even when placement also assigns them to the client. Deployment bundles bake
 the serving manifest before sealing; extracted images are registered and verified
 before preparation reads their artifacts. Package initializers are prepared with
-the entry module. Initialization uses the manifest's module identities, and the
+the entry module. The serving payload stores a `module_manifests` table keyed by
+project-relative source paths, including colocated service entries. Each module
+retains its app identity and public/private endpoint metadata. Endpoint contract
+validation uses the app identity of the registered route. Rebuild older sealed
+applications to produce this serving payload.
+Initialization uses the manifest's module identities, and the
 server receives the initialized entry's identity, so an entry such as `app.jac`
 cannot be confused with its enclosing sealed package named `app`.
 When an image's package name is already occupied by another module (for example,

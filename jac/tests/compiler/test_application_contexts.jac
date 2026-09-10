@@ -14,6 +14,43 @@ import from jaclang.runtime.prepared {
 }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 
+test "sealed service contracts retain the route app identity" {
+    import json;
+    import from jaclang.server.endpoint_contract { check_endpoint_contract }
+    with TemporaryDirectory() as td {
+        entry_path = str(Path(td) / 'main.jac');
+        service = str(Path(td) / 'service.jac');
+        app = PreparedApplication(td, entry_path);
+        app.manifests = {entry_path: {'app': 'web'}, service: {'app': 'web'}};
+        module_name = 'prepared_service_contract_fixture';
+        target = SimpleNamespace(__module__=module_name);
+        module = SimpleNamespace(__file__=service);
+        publish(app);
+        try {
+            with patch.dict(sys.modules, {module_name: module}) {
+                for (identity, expected) in [('service', True), ('web', False)] {
+                    request = SimpleNamespace(
+                        headers={
+                            'X-Jac-Endpoint': json.dumps(
+                                [identity, 'service.jac', 'walker', 'Ping']
+                            )
+                        }
+                    );
+                    mismatch = check_endpoint_contract(
+                        request, target, 'walker', 'Ping', 'service'
+                    );
+                    assert (mismatch is None) == expected;
+                    if mismatch is not None {
+                        assert mismatch.error.code == 'ENDPOINT_CONTRACT_MISMATCH';
+                    }
+                }
+            }
+        } finally {
+            clear();
+        }
+    }
+}
+
 test "a sealed entry loads without a package initializer" {
     import jaclang.jac0core.sealed as sealed;
     with TemporaryDirectory() as td {

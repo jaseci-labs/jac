@@ -14,6 +14,35 @@ import from jaclang.runtime.prepared {
     initialize_application
 }
 
+test "sealing retains each colocated service's access metadata" {
+    import from jaclang.dist.seal { build_serve_manifest }
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        (base / 'jac.toml').write_text(
+            '[project]\nname="contracts"\ndefault-app="web"\n'
+                + '[apps.web]\nkind="web-app"\nentry-point="main"\n'
+                + '[apps.scoring]\nkind="service"\nentry-point="scoring"\n'
+        );
+        path = base / 'main.jac';
+        path.write_text('def:pub ping -> int { return 1; }\n');
+        (base / 'scoring.jac').write_text(
+            'walker:pub Score { can run with Root entry { report 42; } }\n'
+                + 'def private_score -> int { return 42; }\n'
+        );
+        try {
+            manifest = build_serve_manifest(path, base);
+            assert manifest is not None;
+            modules = manifest['module_manifests'];
+            assert modules['main.jac']['app'] == 'web';
+            assert modules['scoring.jac']['app'] == 'scoring';
+            assert modules['scoring.jac']['walker_access']['Score'] is False;
+            assert modules['scoring.jac']['func_access']['private_score'] is True;
+        } finally {
+            forget(str(path));
+        }
+    }
+}
+
 test "server entries do not build a browser app during cold or warm preparation" {
     import from jaclang.client.compiler { ViteCompiler }
     with tempfile.TemporaryDirectory() as tmp {
@@ -231,7 +260,16 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                     )
                 );
                 (base / '.jac' / 'serve_manifest.json').write_text(
-                    json.dumps(first.manifests[str(path)])
+                    json.dumps(
+                        {
+                            ** first.manifests[str(path)],
+                            'module_manifests': {
+                                os.path.relpath(source, tmp): metadata
+                                for application in [first, *first.applications]
+                                for (source, metadata) in application.manifests.items()
+                            }
+                        }
+                    )
                 );
                 dist = base / '.jac' / 'client' / 'dist';
                 dist.mkdir(parents=True);

@@ -50,7 +50,15 @@ def _sealed_root(tmp: str, manifest: (dict | None) = None) -> str {
     with open(
         os.path.join(img_root, ".jac", "serve_manifest.json"), "w", encoding="utf-8"
     ) as f {
-        f.write('{"client": {"exports": [], "globals": []}}');
+        f.write(
+            json.dumps(
+                {
+                    'module_manifests': {
+                        'main.jac': {'client': {'exports': [], 'globals': []}}
+                    }
+                }
+            )
+        );
     }
     return img_root;
 }

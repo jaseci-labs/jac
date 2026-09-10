@@ -223,8 +223,18 @@ def _prepare_sealed(
         revision.client_dist = str(dist);
         revision.client_enabled = True;
     }
+    for (source, metadata) in manifest['module_manifests'].items() {
+        revision.manifests[os.path.realpath(os.path.join(image_root, source))] = {
+            ** metadata,
+            'root': image_root
+        };
+    }
     for path in entries {
-        revision.manifests[path] = manifest;
+        if path not in revision.manifests {
+            raise RuntimeError(
+                f'Sealed application is missing serving metadata: {path}'
+            );
+        }
     }
     pending = set(entries);
     pending.update(

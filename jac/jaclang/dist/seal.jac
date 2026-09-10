@@ -69,11 +69,32 @@ def resolve_entry_file(config: any, app: str = "") -> (Path | None) {
 def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict | None) {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.project.config { get_config_for_path }
+    import from jaclang.project.app_kinds { kind_has_server }
+    import from jaclang.server.assembly { service_apps }
     try {
+        config = get_config_for_path(proj_root);
+        services = [];
+        if config is not None {
+            selected = config.app_for_path(str(entry_file.resolve()));
+            if selected is not None
+                and kind_has_server(config.resolved_kind(selected)) {
+                services = service_apps(config, selected);
+            }
+        }
         prepared = prepare_application(
-            str(entry_file.resolve()), Jac.get_program(), str(proj_root.resolve())
+            str(entry_file.resolve()),
+            Jac.get_program(),
+            str(proj_root.resolve()),
+            services=[svc.entry_path(str(proj_root.resolve())) for svc in services]
         );
-        return prepared.manifests[str(entry_file.resolve())];
+        result = dict(prepared.manifests[str(entry_file.resolve())]);
+        result['module_manifests'] = {
+            os.path.relpath(path, prepared.root).replace(os.sep, '/'): manifest
+            for application in [prepared, *prepared.applications]
+            for (path, manifest) in application.manifests.items()
+        };
+        return result;
     } except Exception as e {
         console.error(f"Seal aborted: application preparation failed: {e}");
         return None;
