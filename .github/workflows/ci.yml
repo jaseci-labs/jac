@@ -208,11 +208,6 @@ jobs:
         rep: [1, 2, 3, 4, 5, 6, 7, 8]
     env:
       JAC_NO_DEV_SOURCE: ""
-      JAC_XREF_PROBE: "1"
-      # Legs 7 and 8 run the sweep serially in one process: retained state
-      # accumulates over all 1049 files in sorted order, so if the flake is
-      # retained-state it should reproduce deterministically there.
-      JAC_CHECK_JOBS: ${{ matrix.rep >= 7 && '0' || '' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -241,7 +236,16 @@ jobs:
       # Two sweeps per leg: the first is cold (this job restores no cache),
       # the second reuses what the first wrote. Real CI fails both ways, so
       # both are samples, and the second costs a fraction of the first.
+      # Probe env is step-scoped: at job level it leaks into jac-kit's warm-up
+      # smoke test, whose `echo "$out" | grep -q 42` under pipefail breaks on
+      # the extra stderr (round 2 attempt 1 died there on every leg).
       - name: Run jac check with the XREF probe
+        env:
+          JAC_XREF_PROBE: "1"
+          # Legs 7 and 8 run the sweep serially in one process: retained
+          # state accumulates over all 1049 files in sorted order, so if the
+          # flake is retained-state it should reproduce deterministically.
+          JAC_CHECK_JOBS: ${{ matrix.rep >= 7 && '0' || '' }}
         run: |
           set +e
           IGNORE_ARGS="tests checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ')"
