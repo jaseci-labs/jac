@@ -569,6 +569,7 @@ def _cached_pins(jir_bytes: bytes) -> dict[str, str] {
 
 test "editing placement pins in jac.toml invalidates the module cache" {
     import from jaclang.compiler.driver.jir { is_module_cache_valid }
+    import from jaclang.compiler.driver.compilation_context { cache_scope, program_for }
     with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as proj {
         toml_path = os.path.join(proj, "jac.toml");
         jac_file = os.path.join(proj, "m.jac");
@@ -584,36 +585,38 @@ test "editing placement pins in jac.toml invalidates the module cache" {
         compiler = JacCompiler();
         assert compiler.get_bytecode(jac_file, JacProgram()) is not None;
         cache_path = artifact_cache_path(jac_file, JacProgram());
+        cache_program = program_for(jac_file, JacProgram());
         try {
-            assert cache_path.exists() , "JIR cache was not written";
-            assert os.path.getmtime(cache_path) > os.path.getmtime(jac_file) , (
-                "cache must be newer than source for the mtime fast path to apply"
-            );
-            assert is_module_cache_valid(jac_file, cache_path) , (
-                "fresh cache should be valid"
-            );
-
-            stale = cache_path.read_bytes();
-            assert _cached_pins(stale).get("helper_fn", "") == "" , (
-                "the pre-edit placement summary should carry no pin"
-            );
-            with open(toml_path, "a") as f {
-                f.write('\n[placement.pins]\n"m.helper_fn" = "server"\n');
+            with cache_scope(cache_program.context_key, cache_program.options) {
+                assert cache_path.exists() , "JIR cache was not written";
+                assert os.path.getmtime(cache_path) > os.path.getmtime(jac_file) , (
+                    "cache must be newer than source for the mtime fast path to apply"
+                );
+                assert is_module_cache_valid(jac_file, cache_path) , (
+                    "fresh cache should be valid"
+                );
+                stale = cache_path.read_bytes();
+                assert _cached_pins(stale).get("helper_fn", "") == "" , (
+                    "the pre-edit placement summary should carry no pin"
+                );
+                with open(toml_path, "a") as f {
+                    f.write('\n[placement.pins]\n"m.helper_fn" = "server"\n');
+                }
+                assert not is_module_cache_valid(jac_file, cache_path) , (
+                    "a jac.toml pins edit must invalidate the module cache"
+                );
+                assert compiler.get_bytecode(jac_file, JacProgram()) is not None;
+                assert cache_path.read_bytes() != stale , (
+                    "a recompile must overwrite the stale cache entry"
+                );
+                assert is_module_cache_valid(jac_file, cache_path) , (
+                    "the rewritten cache must be valid under the new pins"
+                );
+                assert _cached_pins(cache_path.read_bytes()).get("helper_fn")
+                    == "server" , (
+                    "the recompiled placement summary must honor the new pin"
+                );
             }
-            assert not is_module_cache_valid(jac_file, cache_path) , (
-                "a jac.toml pins edit must invalidate the module cache"
-            );
-
-            assert compiler.get_bytecode(jac_file, JacProgram()) is not None;
-            assert cache_path.read_bytes() != stale , (
-                "a recompile must overwrite the stale cache entry"
-            );
-            assert is_module_cache_valid(jac_file, cache_path) , (
-                "the rewritten cache must be valid under the new pins"
-            );
-            assert _cached_pins(cache_path.read_bytes()).get("helper_fn") == "server" , (
-                "the recompiled placement summary must honor the new pin"
-            );
         } finally {
             if cache_path.exists() {
                 cache_path.unlink();

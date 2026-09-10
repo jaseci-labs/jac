@@ -121,3 +121,24 @@ test "a verdict served warm is the verdict a cold analysis computes, across the 
         );
     }
 }
+
+
+test "variadic tuple annotations resolve ellipsis on cold and warm checks" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    with TemporaryDirectory() as td {
+        (Path(td) / 'values.jac').write_text(
+            'def:pub values -> tuple[int, ...] { return (1, 2); }\n'
+        );
+        source = Path(td) / 'main.jac';
+        source.write_text(
+            'import from values { values }\ndef:pub first -> int { return values()[0]; }\n'
+        );
+        cold = _check_recomputed(str(source));
+        warm = _check(str(source));
+        assert not any(
+            'error[' in diagnostic or 'W1051' in diagnostic for diagnostic in cold
+        ) , cold;
+        assert warm == cold;
+    }
+}

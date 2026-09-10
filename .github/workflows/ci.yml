@@ -491,6 +491,8 @@ jobs:
           - chunk: passes-native
             paths: tests/compiler/backends/native tests/compiler/tools
             sealed: "1"
+            # Native workers retain LLVM state; keep headroom on the 16 GB runner.
+            jobs: "2"
           # The equivalence suite builds fixture paths from jaclang.__file__,
           # which only resolve in the checkout: it runs through the reroute,
           # over the kit's shim and floors ("" clears JAC_NO_DEV_SOURCE).

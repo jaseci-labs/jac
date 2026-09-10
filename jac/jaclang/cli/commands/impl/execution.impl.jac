@@ -1239,7 +1239,6 @@ impl serve(
     }
 
     if takeover {
-        import os;
         import from jaclang.server.session { takeover_project }
         tk_base = Jac.get_base_path_dir() or (os.path.split(filename)[0] or './');
         tk_target = Jac.get_full_target_path() or filename;

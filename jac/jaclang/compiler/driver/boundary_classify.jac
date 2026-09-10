@@ -261,6 +261,10 @@ def bridgeable_import_target(nd: uni.Import) -> (str | None) {
     if not isinstance(resolved, str) or not resolved.endswith('.jac') {
         return None;
     }
+    import from jaclang.compiler.frontend.codeinfo { is_shared_runtime_module }
+    if is_shared_runtime_module(resolved) {
+        return None;
+    }
     return resolved;
 }
 

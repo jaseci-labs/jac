@@ -103,6 +103,11 @@ def bind_options(
     if not new_entry and not bound.project_root {
         bound.project_root = program.options.project_root;
     }
+    if not new_entry {
+        bound.target_app = bound.target_app or program.options.target_app;
+        bound.app_kind = bound.app_kind or program.options.app_kind;
+        bound.ui = bound.ui or program.options.ui;
+    }
     bound.entry_point = bound.entry_point
         or program.options.entry_point
         or os.path.realpath(path);
@@ -128,14 +133,6 @@ def bind_options(
             else declared.ui;
         bound.project_root = workspace.project_root;
         bound.entry_point = declared.`entry;
-    } elif not new_entry
-        and not bound.target_app
-        and program.options.target_app
-        and program.options.project_root == workspace.project_root {
-        bound.target_app = program.options.target_app;
-        bound.app_kind = program.options.app_kind;
-        bound.ui = program.options.ui;
-        bound.project_root = program.options.project_root;
     }
     return bound;
 }

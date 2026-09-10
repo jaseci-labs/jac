@@ -355,11 +355,13 @@ test "sealing includes bytecode imports and serving exports despite client place
                 }
             )
         );
-        with patch.object(precompiler, "_sealable_cache", {str(base): [str(main)]}), patch.object(
+        with patch.object(
+            precompiler, "_sealable_cache", {(str(base), ""): [str(main)]}
+        ), patch.object(
             precompiler,
             "_placement_cache",
             {
-                str(base): {
+                (str(base), ""): {
                     str(main): {"server"},
                     str(shared): {"client"},
                     str(exported): {"client"},
@@ -371,8 +373,30 @@ test "sealing includes bytecode imports and serving exports despite client place
             assert (out / "shared.jir").is_file();
             assert (out / "exported.jir").is_file();
             assert not (out / "unused.jir").exists();
-            assert precompiler._placement_cache[str(base)][str(shared)]
+            assert precompiler._placement_cache[(str(base), "")][str(shared)]
                 == {"client", "server"};
         }
+    }
+}
+
+
+test "an explicit app seal follows its entry and excludes unrelated apps" {
+    import from jaclang.dist.precompile_bytecode { sealable_sources }
+    with tempfile.TemporaryDirectory() as td {
+        base = Path(td);
+        (base / 'jac.toml').write_text(
+            '[project]\nname = "selected"\ndefault-app = "web"\n'
+                + '[apps.web]\nkind = "service"\nentry-point = "web.jac"\n'
+                + '[apps.cli]\nkind = "cli"\nentry-point = "cli.jac"\n'
+        );
+        (base / 'web.jac').write_text(
+            'import from helper { value }\ndef:pub read -> int { return value(); }\n'
+        );
+        (base / 'helper.jac').write_text('def:pub value -> int { return 7; }\n');
+        (base / 'cli.jac').write_text('this is deliberately invalid Jac');
+        sources = {Path(p).name for p in sealable_sources(td)};
+        assert sources == {'web.jac', 'helper.jac'} , sources;
+        (base / 'cli.jac').write_text('def:pub main -> int { return 3; }\n');
+        assert {Path(p).name for p in sealable_sources(td, 'cli')} == {'cli.jac'};
     }
 }

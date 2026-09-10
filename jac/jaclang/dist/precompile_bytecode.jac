@@ -130,14 +130,77 @@ def find_jac_files(package_dir: str) -> list[str] {
     return result;
 }
 
-glob _sealable_cache: dict[str, list[str]] = {},
-     _placement_cache: dict[str, dict[str, set[str]]] = {};
+glob _sealable_cache: dict[tuple[str, str], list[str]] = {},
+     _placement_cache: dict[tuple[str, str], dict[str, set[str]]] = {},
+     _source_apps: dict[tuple[str, str], dict[str, str]] = {};
 
-def sealable_sources(package_dir: str) -> list[str] {
-    key = os.path.abspath(package_dir);
+def _application_sources(package_dir: str, app: str) -> list[str] | None {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    import from jaclang.compiler.driver.compilation_context { bind_options }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.pipeline { compile_application }
+    import from jaclang.compiler.placement.placement_facts {
+        module_spaces,
+        spaces_are_client_only
+    }
+    workspace = workspace_for_path(os.path.join(package_dir, '__init__.jac'));
+    if workspace is None or not workspace.explicit {
+        return None;
+    }
+    selected = workspace.app(app or workspace.default_app);
+    if selected is None {
+        raise ValueError(f'Unknown app: {app}');
+    }
+    program = JacProgram();
+    options = bind_options(
+        selected.entry,
+        program,
+        CompileOptions(entry_point=selected.entry, project_root=package_dir)
+    );
+    try {
+        compile_application(program, selected.entry, options);
+        if program.errors_had {
+            _emit_unit_diagnostics(selected.entry, [program]);
+            raise RuntimeError(f'Application analysis failed: {selected.entry}');
+        }
+        key = (os.path.abspath(package_dir), app);
+        facts: dict[str, set[str]] = {};
+        source_apps: dict[str, str] = {};
+        for context in [program] + list(program.contexts.values()) {
+            for (path, module) in context.mod.hub.items() {
+                path = os.path.realpath(path);
+                if not path.startswith(key[0] + os.sep) or not os.path.isfile(path) {
+                    continue;
+                }
+                facts.setdefault(path, set()).update(module_spaces(module));
+                source_apps.setdefault(path, context.options.target_app);
+            }
+        }
+        _placement_cache[key] = facts;
+        _source_apps[key] = source_apps;
+        return sorted(
+            path
+            for (path, spaces) in facts.items()
+            if not spaces_are_client_only(spaces)
+        );
+    } finally {
+        program.release_compile_closure();
+    }
+}
+
+def sealable_sources(package_dir: str, app: str = "") -> list[str] {
+    key = (os.path.abspath(package_dir), app);
     cached = _sealable_cache.get(key);
     if cached is not None {
         return cached;
+    }
+    if Path(package_dir).name != "jaclang" {
+        application = _application_sources(package_dir, app);
+        if application is not None {
+            _sealable_cache[key] = application;
+            return application;
+        }
     }
     import from jaclang.bootstrap_manifest { is_seed_source }
     base = os.path.abspath(package_dir);
@@ -186,7 +249,7 @@ def sealable_sources(package_dir: str) -> list[str] {
             ];
             if skipped {
                 names = ", ".join(
-                    str(Path(p).relative_to(Path(key))) for p in skipped[:8]
+                    str(Path(p).relative_to(Path(key[0]))) for p in skipped[:8]
                 );
                 console.print(
                     f"  Skipping {len(skipped)} client-only module(s): {names}"
@@ -199,16 +262,16 @@ def sealable_sources(package_dir: str) -> list[str] {
     return result;
 }
 
-def placement_facts_map(package_dir: str) -> dict[str, list[str]] {
-    key = os.path.abspath(package_dir);
-    sealable_sources(package_dir);
+def placement_facts_map(package_dir: str, app: str = "") -> dict[str, list[str]] {
+    key = (os.path.abspath(package_dir), app);
+    sealable_sources(package_dir, app);
     facts = _placement_cache.get(key);
     if not facts {
         return {};
     }
     out: dict[str, list[str]] = {};
     for (ap, spaces) in facts.items() {
-        rel = Path(ap).relative_to(Path(key)).as_posix();
+        rel = Path(ap).relative_to(Path(key[0])).as_posix();
         out[rel] = sorted(spaces);
     }
     return out;
@@ -335,7 +398,10 @@ def precompile_unit(
     }
     program = _unit_program[0];
     compiler = program._get_compiler();
-    selected = precompile_context(jac_path, pkg_root, program, app);
+    source_app = _source_apps.get((os.path.abspath(pkg_root), app), {}).get(
+        os.path.realpath(jac_path), app
+    );
+    selected = precompile_context(jac_path, pkg_root, program, source_app);
     identity = '' if compiler.selfhost.is_selfhost(selected) else selected.context_key;
     with cache_scope(identity, selected.options) {
         return _precompile_unit(jac_path, pkg_root, selected, embed_src, collect);
@@ -615,11 +681,13 @@ def collect_payloads(pkg_path: Path) -> dict[str, str] {
     return payloads;
 }
 
-def seal_runtime_closure(pkg_path: Path, out_dir: Path, embed_src: bool) -> bool {
+def seal_runtime_closure(
+    pkg_path: Path, out_dir: Path, embed_src: bool, app: str = ""
+) -> bool {
     import from jaclang.compiler.backends.py.artifact_imports { runtime_sources }
     import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
     base = str(pkg_path.resolve());
-    sources = sealable_sources(base);
+    sources = sealable_sources(base, app);
     pending = list(out_dir.rglob("*.jir"));
     visited: set[str] = set();
 
@@ -628,7 +696,7 @@ def seal_runtime_closure(pkg_path: Path, out_dir: Path, embed_src: bool) -> bool
         target = out_dir / relative.with_suffix(".jir");
         if not target.is_file() {
             console.print(f"  Sealing runtime dependency: {relative}");
-            data = precompile_unit(dependency, base, embed_src);
+            data = precompile_unit(dependency, base, embed_src, app=app);
             if data is None {
                 console.error(f"Seal aborted: runtime dependency failed: {dependency}");
                 return False;
@@ -639,7 +707,7 @@ def seal_runtime_closure(pkg_path: Path, out_dir: Path, embed_src: bool) -> bool
         if dependency not in sources {
             sources.append(dependency);
         }
-        _placement_cache.setdefault(base, {}).setdefault(dependency, set()).add(
+        _placement_cache.setdefault((base, app), {}).setdefault(dependency, set()).add(
             "server"
         );
         if dependency not in visited {
@@ -711,13 +779,15 @@ def seal_finalize(
     }
 
     if pkg_name != "jaclang"
-        and not seal_runtime_closure(pkg_path, precompiled_dir / pyver, embed_src) {
+        and not seal_runtime_closure(
+            pkg_path, precompiled_dir / pyver, embed_src, app
+        ) {
         return 1;
     }
 
     missing = [
         str(Path(p).relative_to(pkg_path))
-        for p in sealable_sources(str(pkg_path))
+        for p in sealable_sources(str(pkg_path), app)
         if not (
             precompiled_dir / pyver / Path(p).relative_to(pkg_path).with_suffix(".jir")
         ).is_file()
@@ -732,7 +802,7 @@ def seal_finalize(
 
     identity = compiler_identity();
     foreign: list[str] = [];
-    for p in sealable_sources(str(pkg_path)) {
+    for p in sealable_sources(str(pkg_path), app) {
         rel = Path(p).relative_to(pkg_path);
         jir = precompiled_dir / pyver / rel.with_suffix(".jir");
         if not precompiled_jir_matches_source(
@@ -796,7 +866,9 @@ def seal_finalize(
             f"  App: kind={app_meta.get('kind')} caps={app_meta.get('capabilities')}"
         );
     }
-    placement = placement_facts_map(str(pkg_path)) if pkg_name != "jaclang" else {};
+    placement = placement_facts_map(str(pkg_path), app)
+        if pkg_name != "jaclang"
+        else {};
     if placement {
         console.print(f"  Placement facts: {len(placement)} modules");
         app_meta = dict(app_meta);
@@ -977,7 +1049,9 @@ def run_precompile(
     console.print(f"  Compiler identity: {compiler_identity()}");
 
     jac_files = (
-        sealable_sources(package_dir) if exclude_seed else find_jac_files(package_dir)
+        sealable_sources(package_dir, app)
+            if exclude_seed
+            else find_jac_files(package_dir)
     );
     console.print(f"  Found {len(jac_files)} .jac files");
 

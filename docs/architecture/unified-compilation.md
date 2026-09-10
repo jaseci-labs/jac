@@ -22,7 +22,8 @@ establishes the compilation context. Ordinary imports inherit that context;
 another app's declared entry establishes a boundary. `default-app` chooses the
 CLI default and does not give shared modules a global owner. A program retains
 its entry context across dependency requests; callers select a new entry
-explicitly. App-level placement
+explicitly. Imports outside the project's directory retain that context too;
+their location does not select a different application. App-level placement
 pins choose codespaces and do not establish ownership.
 
 A private implementation file imported directly participates in the importing
@@ -65,6 +66,10 @@ separate parser or global syntax memo for boundary types.
 and workspace checking. It starts at declared entries, includes package
 initializers and conventional page roots, and advances imported modules in their
 selected contexts. Checking does not start a second compiler for every helper.
+Sealing an explicitly declared app uses this same compilation closure and its
+placement facts. It excludes unrelated apps, retains each dependency's selected
+app context, and packages the resulting bytecode. Toolchain and implicit package
+seals retain package-wide source enumeration.
 
 An interface is an explicit product. Symbol-only dependency loading stops before
 body checking; interface preparation requests the flow facts needed to encode
@@ -89,7 +94,9 @@ Context identity includes the selected entry and app, UI and codespace settings,
 and analysis/code-generation options. In-memory programs and disk artifact slots
 use that identity. Imported symbol trees can progress through remaining passes
 without repeating completed stages. Changed source invalidates the affected
-module's products.
+module's products. Placement changes and native fallback invalidate the client
+product through the scheduler, clearing its completion record, generated output,
+and cached artifact together so emission and diagnostics can run again.
 
 Host and WASM still require different target products. A unified pipeline removes
 independent frontends and scheduling; it does not make different ABIs equivalent.
