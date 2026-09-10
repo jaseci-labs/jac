@@ -17,11 +17,7 @@ def aot_native_errors(name: str) -> list {
     prog.compile(
         file_path=os.path.join(FIXTURES, name),
         options=CompileOptions(
-            aot_mode=True,
-            force_codespace="native",
-            force_target_program=True,
-            memory_profile="managed",
-            no_ir_cache=True
+            aot_mode=True, force_codespace="native", na_gc_mode="cycles"
         )
     );
     return prog.errors_had;

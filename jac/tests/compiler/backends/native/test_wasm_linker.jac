@@ -25,7 +25,6 @@ import from tests.support { TESTS_DIR }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.backends.native.na_compile_pass { native_linked_ir_text }
 import from jaclang.compiler.backends.native.wasm_linker { WasmLinker, _u32le }
 import from jaclang.compiler.backends.native.linker_common {
     encode_sleb128,
@@ -55,9 +54,16 @@ def emit_wasm_object(fixture: str) -> bytes {
         assert not prog.errors_had , f"compile errors: {[
             str(e) for e in prog.errors_had
         ]}";
+        # The program the emitter sees: the unit merged with what it links
+        # and the glue that gives the host `__jac_glob_init` and bare names.
+        import from jaclang.compiler.backends.native.link_plan {
+            build_link_plan,
+            wasm_program_ir
+        }
+        plan = build_link_plan(prog, [ir.loc.mod_path], prog.options);
         llvm.initialize_all_targets();
         llvm.initialize_all_asmprinters();
-        mod = llvm.parse_assembly(native_linked_ir_text(ir));
+        mod = llvm.parse_assembly(wasm_program_ir(plan));
         mod.verify();
         tm = llvm.Target.from_triple(WASM_TRIPLE).create_target_machine(opt=2);
         pto = llvm.create_pipeline_tuning_options(speed_level=2);
@@ -167,7 +173,7 @@ test "LEB and fixed-width byte encoders round-trip" {
 }
 
 test "linker emits a well-formed module with synthesized memory/globals/exports" {
-    mod = WasmLinker.link(emit_wasm_object(FIXTURE), [], 256);
+    mod = WasmLinker.link([emit_wasm_object(FIXTURE)], [], 256);
 
     # valid wasm header
     assert mod[0:4] == b"\x00asm";
@@ -207,7 +213,7 @@ test "linker emits a well-formed module with synthesized memory/globals/exports"
 
 test "linking is deterministic" {
     relobj = emit_wasm_object(FIXTURE);
-    assert WasmLinker.link(relobj, [], 256) == WasmLinker.link(relobj, [], 256);
+    assert WasmLinker.link([relobj], [], 256) == WasmLinker.link([relobj], [], 256);
 }
 
 test "nacompile --target wasm32 writes a valid module via the CLI" {
@@ -219,7 +225,7 @@ test "nacompile --target wasm32 writes a valid module via the CLI" {
             "jaclang",
             "build",
             "--native",
-            "--target",
+            "--target-triple",
             "wasm32",
             os.path.join(FIXTURES, FIXTURE),
             "-o",
@@ -241,7 +247,7 @@ test "linked module instantiates and runs under node" {
     if not node_bin {
         testskip("node not available");
     }
-    mod = WasmLinker.link(emit_wasm_object(FIXTURE), [], 256);
+    mod = WasmLinker.link([emit_wasm_object(FIXTURE)], [], 256);
     d = tempfile.mkdtemp();
     wpath = os.path.join(d, "m.wasm");
     Path(wpath).write_bytes(mod);

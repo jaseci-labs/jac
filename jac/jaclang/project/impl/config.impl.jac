@@ -1630,6 +1630,11 @@ def _apply_memory_native_placement(cfg: JacConfig, data: dict) {
     }
     if "native" in data and isinstance(data["native"], dict) {
         nat = data["native"];
+        _link_mode = str(nat.get("link_mode", cfg.native.link_mode));
+        if _link_mode not in ("objects", "bitcode") {
+            raise ValueError("[native] link_mode must be objects or bitcode");
+        }
+        cfg.native.link_mode = _link_mode;
         cfg.native.target = str(nat.get("target", cfg.native.target));
         try {
             cfg.native.opt = int(nat.get("opt", cfg.native.opt));

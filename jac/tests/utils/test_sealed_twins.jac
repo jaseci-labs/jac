@@ -19,6 +19,8 @@ import from jaclang.compiler.driver.jir {
     SECTIONS_MAGIC,
     SEC_BYTECODE,
     SEC_DEBUG_SRC,
+    SEC_NIFACE,
+    SEC_NOBJ,
     SEC_TERMINATOR,
     PRECOMPILE_SENTINEL,
     FLAG_PRECOMPILED,
@@ -32,6 +34,8 @@ test "sealed.py container constants match jir.jac" {
     assert sealed.SECTIONS_MAGIC == SECTIONS_MAGIC;
     assert sealed.SEC_BYTECODE == SEC_BYTECODE;
     assert sealed.SEC_DEBUG_SRC == SEC_DEBUG_SRC;
+    assert sealed.SEC_NIFACE == SEC_NIFACE;
+    assert sealed.SEC_NOBJ == SEC_NOBJ;
     assert sealed.SEC_TERMINATOR == SEC_TERMINATOR;
     assert sealed.PRECOMPILE_SENTINEL == PRECOMPILE_SENTINEL;
 }
@@ -138,6 +142,82 @@ test "register_image hash-verifies its JIRs (fail-closed)" {
         with testraises(RuntimeError) {
             sealed.register_image(pre);
         }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+"""A manifest for a throwaway sealed package, with or without a native record."""
+def _twin_manifest(native: (dict | None)) -> dict {
+    manifest: dict = {
+        "format": sealed.MANIFEST_FORMAT,
+        "package": "sealed_twin_native_pkg",
+        "python_tag": sealed.python_tag(),
+        "jir_format_version": sealed.JIR_FORMAT_VERSION,
+        "modules": {
+            "mod.jac": {
+                "module": "sealed_twin_native_pkg.mod",
+                "jir": "mod.jir",
+                "package": False,
+                "sha256": "0" * 64
+            }
+        }
+    };
+    if native is not None {
+        manifest["native"] = native;
+    }
+    return manifest;
+}
+
+test "verify_native refuses a native artifact record whose file is missing" {
+    import shutil;
+    import tempfile;
+    import from pathlib { Path }
+
+    tmp = Path(tempfile.mkdtemp(prefix="sealed-twin-native-"));
+    try {
+        pre = tmp / "_precompiled";
+        pre.mkdir(parents=True);
+        native = {
+            "units": {"mod.jac": {"jir": "mod.jir", "iface_digest": "f" * 64}},
+            "artifact": {
+                "path": "native/libsealed_twin_native_pkg.so",
+                "sha256": "0" * 64,
+                "layout_digest": "1" * 64,
+                "plan_digest": "2" * 64
+            }
+        };
+        img = sealed.SealedImage(pre, _twin_manifest(native));
+        assert img.native_artifact() is not None , "the artifact record must be exposed";
+        assert set(img.native_units().keys()) == {"mod.jac"};
+        with testraises(RuntimeError) {
+            img.verify_native();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "verify_native passes an image with no native record" {
+    import shutil;
+    import tempfile;
+    import from pathlib { Path }
+
+    tmp = Path(tempfile.mkdtemp(prefix="sealed-twin-nonative-"));
+    try {
+        pre = tmp / "_precompiled";
+        pre.mkdir(parents=True);
+        img = sealed.SealedImage(pre, _twin_manifest(None));
+        assert img.native == {};
+        assert img.native_artifact() is None;
+        assert img.native_units() == {};
+        img.verify_native();
+        # A native record naming units but no artifact is not an artifact
+        # record either; nothing to verify against.
+        bare = sealed.SealedImage(pre, _twin_manifest({"units": {}}));
+        assert bare.native_artifact() is None;
+        bare.verify_native();
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
     }

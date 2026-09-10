@@ -396,6 +396,21 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 and self._gc_mode() != "none" {
                 self._emit_rc_retain(val, op="ret_borrowed", loc="");
                 self._mark_owned(val);
+            } elif _ret_root_local
+                and self._nogc_headerless()
+                and self._str_desc_ty is not None
+                and val.type == self._str_desc_ty
+                and not self._is_owned(val) {
+                if self.str_new_fn is None {
+                    self._emit_str_len_helpers();
+                }
+                _ret_data = self.builder.extract_value(val, 0, name="ret.borrow.data");
+                _ret_len = self.builder.extract_value(val, 1, name="ret.borrow.len");
+                _ret_copy = self.builder.call(
+                    self.str_new_fn, [_ret_data, _ret_len], name="ret.borrow.copy"
+                );
+                val = self.builder.insert_value(val, _ret_copy, 0, name="ret.owned");
+                self._mark_owned(val);
             }
 
             skip_var: (str | None) = None;
@@ -2530,9 +2545,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     [self._region_i64(_old_opt_hdl, name=f"{var_name}.old.i64")]
                 );
             } elif self._opt_ptr_payload_of(alloca.pointee_type) is not None
-                and not self._nogc_headerless()
                 and not is_inplace_set_op
                 and not _is_raw_int_ptr {
+                if self._nogc_borrow_local_assign(nd) {
+                    self.nogc_no_free_vars.add(var_name);
+                }
                 _opt_re_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
                     if nd.loc
                     else 0}";
@@ -2545,13 +2562,16 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } else {
                     self.rc_ops_elided += 1;
                 }
-                _opt_re_old = self.builder.load(alloca, name=f"{var_name}.opt.old");
-                _opt_re_old_pv = self.builder.extract_value(
-                    _opt_re_old, 1, name=f"{var_name}.opt.oldpv"
-                );
-                self._emit_rc_release_simple(
-                    _opt_re_old_pv, op="overwrite", loc=_opt_re_loc
-                );
+                if not (self._nogc_headerless() and nd.na_overwrite_consumed)
+                    and var_name not in self.nogc_no_free_vars {
+                    _opt_re_old = self.builder.load(alloca, name=f"{var_name}.opt.old");
+                    _opt_re_old_pv = self.builder.extract_value(
+                        _opt_re_old, 1, name=f"{var_name}.opt.oldpv"
+                    );
+                    self._emit_rc_release_simple(
+                        _opt_re_old_pv, op="overwrite", loc=_opt_re_loc
+                    );
+                }
             }
             self.builder.store(coerced, alloca);
         } elif var_name in self.global_vars
@@ -3007,8 +3027,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } elif self._is_owned(_pre_box_val) {
                     self.rc_ops_elided += 1;
                 }
-            } elif self._opt_ptr_payload_of(var_type) is not None
-                and not self._nogc_headerless() {
+            } elif self._opt_ptr_payload_of(var_type) is not None {
+                if self._nogc_borrow_local_assign(nd) {
+                    self.nogc_no_free_vars.add(var_name);
+                }
                 _opt_asg_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
                     if nd.loc
                     else 0}";
@@ -3021,7 +3043,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } else {
                     self.rc_ops_elided += 1;
                 }
-                if not _mk_cell and not _in_gen_frame {
+                if not _mk_cell
+                    and not _in_gen_frame
+                    and not (self._nogc_headerless() and nd.na_overwrite_consumed)
+                    and var_name not in self.nogc_no_free_vars {
                     _opt_old = self.builder.load(alloca, name=f"{var_name}.opt.old");
                     _opt_old_pv = self.builder.extract_value(
                         _opt_old, 1, name=f"{var_name}.opt.oldpv"

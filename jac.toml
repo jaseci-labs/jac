@@ -30,14 +30,6 @@ Documentation = "https://www.jaclang.org/docs"
 [dev]
 jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to this file
 
-# `jac test` worker count. The generic default is sized from MemAvailable
-# assuming ~2 GB per worker, which suits an ordinary project. This repo's
-# compiler suite is far heavier: workers running the native/LLVM tests were
-# measured at ~4.9 GB PSS average and 7.1 GB peak (they fork `jac build --native`
-# subprocesses), so the generic default over-subscribes here. Pin it.
-# JAC_TEST_JOBS overrides this; "0" or "1" runs everything in one process.
-test_jobs = "8"
-
 # `jac test` discovers the suite here (mirrors pytest's testpaths); relative to
 # this file, so a bare `jac test` works from any directory in the repo. The
 # in-package suites are part of the standard plan on purpose: enumerating them

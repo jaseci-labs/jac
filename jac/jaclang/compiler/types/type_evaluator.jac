@@ -37,6 +37,7 @@ import from jaclang.compiler.frontend.unitree {
     EventSignature,
     Except,
     Expr,
+    ExprAsItem,
     ExprStmt,
     FString,
     FilterCompr,
@@ -391,6 +392,8 @@ walker TypeEvaluator {
         js_globals_module: Module postinit;
 
     def postinit -> None;
+    def release_check_caches -> None;
+    def release_compile_caches -> None;
     def ct_demand(nd: Expr) -> (CtValue | None);
     def ct_site_error(
         nd: Expr, what: str, cv: (CtValue | None), allow_deferred: bool = True
@@ -403,6 +406,10 @@ walker TypeEvaluator {
     def _get_class_from_module(module: Module | None, name: str) -> ClassType | None;
     def _prefetch_types;
     def get_none_type -> TypeBase;
+    def get_type_of_context_binding(
+        item: ExprAsItem, is_async: bool = False
+    ) -> TypeBase;
+
     def emit_diag(diag: DiagnosticInfo, nd: UniNode, **kwargs: object) -> None;
     def _invalidate_expr_type_cache(node_: UniNode) -> None;
     def get_index_of_symbol_resolution(symbol: Symbol) -> int | None;

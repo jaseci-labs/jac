@@ -185,7 +185,6 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 options=CompileOptions(
                     no_cgen=not bool(opts.get("native_coverage")),
                     native_parity=True,
-                    force_target_program=True,
                     iface_ok=True,
                     suppress_codes=list(opts.get("suppress_codes") or []),
                     target_app=str(opts.get("target_app") or ""),
@@ -1830,12 +1829,7 @@ impl grammar(output: str = "", strict: bool = False) -> int {
     prog = JacProgram();
     mod = prog.compile(
         parser_path,
-        options=CompileOptions(
-            symtab_ir_only=True,
-            no_cgen=True,
-            need_full_ast=True,
-            force_target_program=True
-        )
+        options=CompileOptions(symtab_ir_only=True, no_cgen=True, need_full_ast=True)
     );
     if prog.errors_had {
         console.error("Failed to compile parser module.");
@@ -2040,9 +2034,7 @@ impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> i
     }
     mod = prog.compile(
         file_path=path,
-        options=CompileOptions(
-            aot_mode=True, default_codespace="native", force_target_program=True
-        )
+        options=CompileOptions(aot_mode=True, default_codespace="native")
     );
     for err in prog.errors_had {
         console.print(err.pretty_print());

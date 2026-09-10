@@ -1,4 +1,4 @@
-import from tests.support { native_force_opts }
+import from tests.support { native_address, native_force_opts }
 import ctypes;
 import os;
 import from pathlib { Path }
@@ -17,7 +17,7 @@ def _compile(fixture: str) -> tuple {
 
 """ctypes-callable JIT function by name."""
 def _getf(eng: any, name: str, restype: any, *argtypes: any) -> any {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(restype, *argtypes)(addr);
 }

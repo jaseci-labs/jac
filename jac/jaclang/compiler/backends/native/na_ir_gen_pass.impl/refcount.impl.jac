@@ -313,7 +313,12 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     );
 
     gc_dis_check_bb = retain_fn.append_basic_block("gc_dis_check");
-    b.cbranch(is_null, done_bb, gc_dis_check_bb);
+
+    if self._gc_mode() == "none" {
+        b.branch(done_bb);
+    } else {
+        b.cbranch(is_null, done_bb, gc_dis_check_bb);
+    }
 
     b = ir.IRBuilder(gc_dis_check_bb);
     gc_dis_flag_r = b.load(self.rc_gc_disabled_gv, name="gc.dis.r");
@@ -373,7 +378,11 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         "==", release_fn.args[0], ir.Constant(i8_ptr, None), name="is.null"
     );
     gc_dis_check_bb_rel = release_fn.append_basic_block("gc_dis_check");
-    b.cbranch(is_null, done_bb, gc_dis_check_bb_rel);
+    if self._gc_mode() == "none" {
+        b.branch(done_bb);
+    } else {
+        b.cbranch(is_null, done_bb, gc_dis_check_bb_rel);
+    }
     b = ir.IRBuilder(gc_dis_check_bb_rel);
     gc_dis_flag_rel = b.load(self.rc_gc_disabled_gv, name="gc.dis.rel");
     magic_check_bb_rel = release_fn.append_basic_block("magic_check");
@@ -581,6 +590,17 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _pub_b.call(release_fn, [_pub_fn.args[0], ir.Constant(ir.IntType(1), 1)]);
     _pub_b.ret_void();
     self.rc_release_simple_fn = _pub_fn;
+
+    for (_abi_name, _target) in (("jac_retain", retain_fn), ("jac_release", _pub_fn)) {
+        _shim = ir.Function(
+            self.llvm_module, _pub_fnty, name=self._symbol_for(_abi_name)
+        );
+        _shim.args[0].name = "ptr";
+        _shim_b = ir.IRBuilder(_shim.append_basic_block("entry"));
+        _shim_b.call(_target, [_shim.args[0]]);
+        _shim_b.ret_void();
+        self._record_export(_abi_name, _shim.name, "abi");
+    }
 }
 
 impl NaIRGenPass._rc_call_with_ctx(
@@ -623,7 +643,14 @@ impl NaIRGenPass._opt_result_owned(val: ir.Value, expr: object) -> bool {
 }
 
 impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
-    if not isinstance(nd, uni.Assignment) or not nd.na_move_lowerable {
+    if not isinstance(nd, uni.Assignment) {
+        return False;
+    }
+    if self._nogc_consume_local(nd.value) {
+        self.rc_ops_elided += 1;
+        return True;
+    }
+    if not nd.na_move_lowerable {
         return False;
     }
     rhs = nd.value;
@@ -924,9 +951,9 @@ impl NaIRGenPass._emit_str_stamp_and_new -> None {
 
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
     new_fn = self._define_function(
-        "__jac_str_new", ir.FunctionType(i8_ptr, [i8_ptr, i64])
+        self._symbol_for("__jac_str_new"), ir.FunctionType(i8_ptr, [i8_ptr, i64])
     );
-    new_fn.linkage = "weak_odr";
+    self._record_export("__jac_str_new", new_fn.name, "abi");
     new_fn.args[0].name = "data";
     new_fn.args[1].name = "n";
     _n_entry = new_fn.append_basic_block("entry");
@@ -1365,9 +1392,6 @@ impl NaIRGenPass._nogc_owned_world -> bool {
         return False;
     }
     _opts = self.prog.options;
-    if bool(getattr(_opts, "kernel_unit", False)) {
-        return False;
-    }
     try {
         return bool(_opts.nogc_enforced_for(self.ir_in.name));
     } except Exception {

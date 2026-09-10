@@ -201,9 +201,11 @@ light edge works on a view (`light_edge_view`).
 
 Every module parses through the staged front end: the lexer and parser in
 `compiler/frontend/parser/`, then the ir-gen schedule pass by pass. The
-native scope (`compiler/native_scope.jac`) names the compiler modules
-served from `libjac_compiler`; it is empty until a native pass can share
-the tree with a bytecode pass.
+native scope (`compiler/native_scope.jac`) names the compiler modules the
+kernel links; each is a native unit whose interface (`SEC_NIFACE`) and
+object (`SEC_NOBJ`, materialized on demand) live in its module JIR, and `libjac_compiler` is the
+link plan's artifact over them (`compiler/backends/native/link_plan.jac`),
+resolved at parse time by `kernel_resolve.jac`.
 
 ---
 
@@ -672,8 +674,10 @@ Each cache entry is a **JIR file** (Jac IR) with named sections defined in
 |---------|----------|
 | `SEC_BYTECODE` | Marshalled Python `CodeType` (server backend) |
 | `SEC_MTIR` | Meaning-Typed IR for `by llm` calls |
-| `SEC_LLVM_IR` | LLVM IR text (native backend) |
-| `SEC_NATIVE_OBJ` | Compiled bitcode with target triple (native backend) |
+| `SEC_NBITCODE` | The unit's LLVM bitcode under its native stamp (whole-program and JIT link modes) |
+| `SEC_NIFACE` | The unit's native interface: link symbols, class layouts, initializer, demoted symbols, C library needs; digest-prefixed |
+| `SEC_NOBJ` | The unit's relocatable object, materialized on demand from bitcode under its native stamp (incremental link mode) |
+| `SEC_NCTDEPS` | Native compile-time inputs, using the shared CTDEPS codec under a native stamp |
 | `SEC_INTEROP` | Serialised `InteropManifest` |
 | `SEC_MODKEY` / `SEC_ENVKEY` | Content key and environment fingerprint that gate every read |
 | `SEC_DEBUG_SRC` | Compressed source for traceback rendering |

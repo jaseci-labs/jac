@@ -31,6 +31,69 @@ test "clib sext: negative C int return stays negative through int and any" {
     assert h() > 0 , "positive strcmp result unchanged";
 }
 
+test "JIT C imports bind to their declared library despite a process symbol collision" {
+    import jaclang.compiler.backends.native.llvm.binding as llvm;
+    cc = shutil.which("cc") or shutil.which("gcc");
+    assert cc is not None , "a C compiler is required for the foreign library fixture";
+    with tempfile.TemporaryDirectory() as tmpdir {
+        symbol = "jac_declared_library_value";
+        csrc = os.path.join(tmpdir, "value.c");
+        libpath = os.path.join(
+            tmpdir, "libvalue.dylib" if sys.platform == "darwin" else "libvalue.so"
+        );
+        with open(csrc, "w") as f {
+            f.write(
+                "long long jac_declared_library_value(long long x) { return x + 3; }\n"
+            );
+        }
+        cp = subprocess.run(
+            [cc, "-shared", "-fPIC", csrc, "-o", libpath],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+        assert cp.returncode == 0 , cp.stderr;
+        wrong = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(
+            lambda (x: int) { -100; }
+        );
+        llvm.add_symbol(symbol, ctypes.cast(wrong, ctypes.c_void_p).value);
+        try {
+            code = f'import from "{libpath}" {{ def {symbol}(x: i64) -> i64; }}\n'
+                + f'def value(x: int) -> int {{ return {symbol}(x); }}';
+            prog = JacProgram();
+            ir = prog.compile(
+                file_path=os.path.join(tmpdir, "main.jac"),
+                use_str=code,
+                options=native_force_opts()
+            );
+            assert not prog.errors_had , [str(e) for e in prog.errors_had];
+            eng = ir.gen.native_engine;
+            assert eng is not None;
+            assert get_func(eng, "value", ctypes.c_int64, ctypes.c_int64)(39) == 42;
+        } finally {
+            llvm.add_symbol(symbol, 0);
+        }
+    }
+}
+
+test "JIT reports a missing C library before exposing an executable engine" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        libpath = os.path.join(tmpdir, "libmissing.so");
+        code = f'import from "{libpath}" {{ def jac_missing_library_value -> i64; }}\n'
+            + 'def value -> int { return jac_missing_library_value(); }';
+        prog = JacProgram();
+        ir = prog.compile(
+            file_path=os.path.join(tmpdir, "main.jac"),
+            use_str=code,
+            options=native_force_opts()
+        );
+        assert ir.gen.native_engine is None;
+        assert any("C library not found for JIT" in str(e) for e in prog.errors_had) , [
+            str(e) for e in prog.errors_had
+        ];
+    }
+}
+
 test "clib SysV: by-value float structs pass and return in SSE registers" {
     cc = shutil.which("cc") or shutil.which("gcc");
     if not cc {

@@ -1373,7 +1373,7 @@ test "bundled app: cross-boundary def:pub endpoint registers for jaclang-bundled
     # Regression for `jac ai --ui`: when the app lives under the jaclang package
     # root, its modules route to the self-host program, so the
     # cross-boundary bindings land there -- not in `Jac.program.mod.hub`. The
-    # serve collector must span both hubs (`_search_hubs`); before the fix it
+    # serve collector must span both hubs (`execution_hubs`); before the fix it
     # scanned only `Jac.program.mod.hub` (empty for a bundled app), so cross_pub
     # went unregistered and the client got a 404/405 instead of "pub-ok".
     bundled = make_bundled_crossboundary_client();

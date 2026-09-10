@@ -298,6 +298,15 @@ obj StubCatalog {
         _mod_recs: list[tuple[str, str, int, int, str]] postinit,
         _base_dir: str postinit;
 
+    def for_session -> StubCatalog {
+        """Share the immutable catalog bytes, never hydrated semantic objects.
+        Types, symbols and declaration nodes are mutable during analysis and
+        can retain an evaluator. Their lifetime belongs to one program.""";
+        return StubCatalog(
+            buf=self.buf, pkg_dir=self.pkg_dir, keepalive=self.keepalive
+        );
+    }
+
     def postinit {
         hdr = unpack_header(self.buf);
         if hdr is None {

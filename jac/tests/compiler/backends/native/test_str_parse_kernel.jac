@@ -8,6 +8,7 @@ import os;
 import re;
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { unit_symbol }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob KERNEL = str(
@@ -28,7 +29,8 @@ def _tokenize_ir(gc_mode: str, enforce: bool) -> str {
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
     text = str(ir.gen.llvm_ir);
-    m = re.search(r'define[^\n]*@"?tokenize"?\([^\n]*\n(.*?)\n\}', text, re.DOTALL);
+    sym = re.escape(unit_symbol(ir, "tokenize"));
+    m = re.search(r'define[^\n]*@"?' + sym + r'"?\([^\n]*\n(.*?)\n\}', text, re.DOTALL);
     assert m , "tokenize fn not found in IR";
     return m.group(1);
 }

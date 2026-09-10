@@ -1,6 +1,5 @@
-"""Native LLVM IR compilation passes for na {} blocks."""
+"""Native compilation, runtime resolution, and artifact linkers.
 
-from jaclang.compiler.backends.native.na_compile_pass import (
-    NativeCompilePass,  # noqa: F401
-)
-from jaclang.compiler.backends.native.na_ir_gen_pass import NaIRGenPass  # noqa: F401
+Import passes from their defining modules. Loading this package for the parser
+or runtime resolver must not initialize the code-generation dependency graph.
+"""

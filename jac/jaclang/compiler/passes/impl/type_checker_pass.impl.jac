@@ -1,4 +1,8 @@
 impl TypeCheckPass.exit_special_var_ref with SpecialVarRef exit {
+    if here.name_of is not here
+        or (isinstance(here.parent, AtomTrailer) and here.parent.right is here) {
+        return;
+    }
     self.evaluator.get_type_of_expression(here);
 }
 
@@ -1580,28 +1584,12 @@ impl TypeCheckPass.exit_raise_stmt with RaiseStmt exit {
 }
 
 impl TypeCheckPass.enter_with_stmt with WithStmt entry {
-    enter_method = "__aenter__" if here.is_async else "__enter__";
     for item in here.exprs {
         ctx_item: ExprAsItem = item;
-        expr_type = self.evaluator.get_type_of_expression(ctx_item.expr);
-        if ctx_item.alias is None
-            or not isinstance(ctx_item.alias, Name)
-            or isinstance(expr_type, UnknownType) {
-            continue;
-        }
-
-        enter_ret = self.evaluator.get_type_of_magic_method_call(
-            expr_type, enter_method, [], ctx_item.expr
-        );
-        if enter_ret is not None {
-            if here.is_async {
-                enter_ret = self.evaluator._unwrap_awaitable_type(
-                    enter_ret, ctx_item.expr
-                );
-            }
-            ctx_item.alias.type = enter_ret;
-        } else {
-            ctx_item.alias.type = expr_type;
+        if isinstance(ctx_item.alias, Name) {
+            ctx_item.alias.type = self.evaluator.get_type_of_context_binding(
+                ctx_item, here.is_async
+            );
         }
     }
 }

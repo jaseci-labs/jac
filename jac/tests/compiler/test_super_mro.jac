@@ -51,3 +51,57 @@ test "super init picks the next class that declares it" {
     errs = check_src(src);
     assert not errs , f"super init resolved to the wrong class: {errs}";
 }
+
+test "C3 compares class identity across independently hydrated type wrappers" {
+    import from jaclang.compiler.types.types { ClassDetailsShared, ClassType }
+    import from jaclang.compiler.types.type_utils { compute_mro_linearization }
+    scope = JacProgram().compile(
+        "hydrated_mro.jac",
+        use_str="with entry {}",
+        options=CompileOptions(no_cgen=True, symtab_ir_only=True)
+    );
+    ancestor = ClassType(
+        _shared=ClassDetailsShared(class_name="Root", symbol_table=scope)
+    );
+    left = ClassType(
+        _shared=ClassDetailsShared(
+            class_name="Left",
+            symbol_table=scope,
+            base_classes=[ClassType(_shared=ancestor.shared)]
+        )
+    );
+    right = ClassType(
+        _shared=ClassDetailsShared(
+            class_name="Right",
+            symbol_table=scope,
+            base_classes=[ClassType(_shared=ancestor.shared)]
+        )
+    );
+    value = ClassType(
+        _shared=ClassDetailsShared(
+            class_name="Value",
+            symbol_table=scope,
+            base_classes=[ClassType(_shared=ancestor.shared)]
+        )
+    );
+    named = ClassType(
+        _shared=ClassDetailsShared(
+            class_name="Named", symbol_table=scope, base_classes=[left, right, value]
+        )
+    );
+    child = ClassType(
+        _shared=ClassDetailsShared(
+            class_name="Child",
+            symbol_table=scope,
+            base_classes=[
+                ClassType(_shared=named.shared),
+                ClassType(_shared=ancestor.shared)
+            ]
+        )
+    );
+    compute_mro_linearization(child);
+    assert [t.shared.class_name for t in named.shared.mro]
+        == ["Named", "Left", "Right", "Value", "Root"];
+    assert [t.shared.class_name for t in child.shared.mro]
+        == ["Child", "Named", "Left", "Right", "Value", "Root"];
+}

@@ -28,10 +28,7 @@ glob _WARNING_IGNORES: list[tuple[str, str, str]] = [
          ("", "DeprecationWarning", "cattrs")
      ];
 
-glob _WORKER_MEM_BYTES: int = 2 * 1024 * 1024 * 1024,
-     _MEM_HEADROOM: float = 0.6,
-     _MAX_AUTO_JOBS: int = 12,
-     _PROGRESS_WIDTH: int = 72;
+glob _PROGRESS_WIDTH: int = 72;
 
 glob _CRASH_LOG: list[str] = [""],
      _TEST_BASES: list[str] = [],

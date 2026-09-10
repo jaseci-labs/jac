@@ -1,17 +1,6 @@
-"""Behavioral tests for circular native imports (issue #7593 item 11).
-
-A two-module import cycle must compile and link: the entry module's
-NaIRGenPass never treats itself as its own foreign import, dep definitions
-arrive via NativeCompilePass link_in, and the back-edge import resolves
-against the entry module's own definitions instead of recompiling it as a
-dependency. Module-level glob initializers run dependencies-first
-(topological order over native_transitive_sources) behind a once-guard, so
-cyclic modules initialize exactly once without crashing.
-"""
-
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
+import from tests.support { TESTS_DIR, compile_native, get_func }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"

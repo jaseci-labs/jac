@@ -45,12 +45,7 @@ def _compile(fixture: str) -> tuple {
     try {
         ir = prog.compile(
             file_path=os.path.join(FIXTURES, fixture),
-            options=CompileOptions(
-                force_codespace='native',
-                force_target_program=True,
-                no_ir_cache=True,
-                aot_mode=True
-            )
+            options=CompileOptions(force_codespace='native', aot_mode=True)
         );
     } finally {
         coverage = na_coverage_end();

@@ -21,6 +21,33 @@ import from jaclang.runtime.context { ExecutionContext }
 import from jaclang.server.session { Session }
 import from jaclang.runtime.runtime { JacRuntime }
 
+node RequestValue {
+    has value: int = 1;
+}
+
+test "persistent field writes mark the active request memory dirty" {
+    import from jaclang.runtime.memory { Memory }
+    original = JacRuntime.exec_ctx;
+    outer = ExecutionContext(_parent=JacRuntime.get_context());
+    outer.mem = Memory();
+    request = ExecutionContext(_parent=outer);
+    request.mem = Memory();
+    JacRuntime.exec_ctx = outer;
+    token = JacRuntime.push_request_context(request);
+    try {
+        item = RequestValue();
+        JacRuntime.save(item);
+        request.mem.commit();
+        item.value = 2;
+        assert item.value == 2;
+        assert item.__jac__.id in request.mem._dirty;
+        assert not outer.mem._dirty;
+    } finally {
+        JacRuntime.reset_request_context(token);
+        JacRuntime.exec_ctx = original;
+    }
+}
+
 
 test "ExecutionContext uses explicit per-context target_path, ignoring stale seed state" {
     # Standalone .jac files (no jac.toml in their directory) — `get_name`

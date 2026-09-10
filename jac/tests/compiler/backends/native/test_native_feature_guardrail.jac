@@ -20,7 +20,7 @@ class of bug this guardrail exists to prevent.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -81,10 +81,7 @@ def check_na_inline(label: str, code: str) -> JacProgram {
         file_path=path,
         use_str=code,
         options=CompileOptions(
-            no_cgen=True,
-            native_parity=True,
-            force_codespace="native",
-            force_target_program=True
+            no_cgen=True, native_parity=True, force_codespace="native",
         )
     );
     return prog;
@@ -95,7 +92,7 @@ engine. A guardrail that has become a lowering pin needs the native lane's
 answer, not just its layout membership."""
 def native_answer(eng: any, name: str) -> int {
     assert eng is not None , f"no native engine produced for {name}";
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"'{name}' not found in the JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
 }
@@ -229,7 +226,9 @@ test "guardrail: field access on an untyped (any) node-ref element demotes the a
         prog
     )}";
     layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
+    assert layout is not None , f"whole-module native compile aborted: {fmt_errors(
+        prog
+    )}\n{log}";
     assert "W.go" not in layout.methods , (
         "the violating ability must be demoted out of the native layout"
     );

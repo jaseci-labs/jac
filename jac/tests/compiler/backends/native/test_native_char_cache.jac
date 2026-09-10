@@ -11,7 +11,13 @@ concatenate correctly, and a cached character still reports length 1).
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts, native_str_func }
+import from tests.support {
+    TESTS_DIR,
+    names_function,
+    native_address,
+    native_force_opts,
+    native_str_func
+}
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -34,7 +40,7 @@ def _compile(fixture: str) -> tuple {
 
 
 def _get(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(restype, *argtypes)(addr);
 }
@@ -83,7 +89,6 @@ test "cached characters behave as real strings at runtime" {
 
 """Return the LLVM IR text of a single `define ... @name(` function body."""
 def _fn_body(txt: str, name: str) -> str {
-    marker = "@\"" + name + "\"(";
     start = txt.find("define ");
     while start != -1 {
         end = txt.find("\n}", start);
@@ -93,7 +98,7 @@ def _fn_body(txt: str, name: str) -> str {
         block = txt[start:end + 2];
         header_end = block.find("\n");
         header = block[:header_end] if header_end != -1 else block;
-        if marker in header {
+        if names_function(header, name) {
             return block;
         }
         start = txt.find("define ", end);

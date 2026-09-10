@@ -44,9 +44,7 @@ glob VIRTUAL_PATH: str = os.path.join(
 def compile_once -> JacProgram {
     prog = JacProgram();
     prog.compile(
-        file_path=VIRTUAL_PATH,
-        use_str=SOURCE,
-        options=CompileOptions(no_cgen=True, force_target_program=True)
+        file_path=VIRTUAL_PATH, use_str=SOURCE, options=CompileOptions(no_cgen=True)
     );
     return prog;
 }

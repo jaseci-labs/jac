@@ -4,12 +4,12 @@ import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
 import from jaclang.compiler.passes.transform { Alert, PassResult }
 import type from jaclang.compiler.driver.mtp { Info }
-import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
+import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, CodeGenTarget }
 
 obj ModuleHub {
     has mod: uni.ProgramModule,
         stamps: dict[str, float] = {},
-        artifacts: dict[str, any] = {},
+        artifacts: dict[str, CodeGenTarget] = {},
         client_artifacts: dict[str, ClientArtifact] = {};
 
     def stamp(resolved_path: str) {
@@ -73,19 +73,7 @@ obj ModuleHub {
     }
 
     def reset {
-        retained_mods: dict[str, uni.Module] = {};
-        retained_stamps: dict[str, float] = {};
-        dropped: list[uni.Module] = [];
-        for (path, mod) in self.mod.hub.items() {
-            if path.endswith(".pyi") {
-                retained_mods[path] = mod;
-                if path in self.stamps {
-                    retained_stamps[path] = self.stamps[path];
-                }
-            } else {
-                dropped.append(mod);
-            }
-        }
+        dropped = list(self.mod.hub.values());
         dropped_ids: set[int] = set(id(m) for m in dropped);
         prog_root = self.mod;
         main = prog_root.main_mod;
@@ -104,9 +92,7 @@ obj ModuleHub {
             del [edge mod<-:ScopeChild:<-];
         }
         prog_root.hub.clear();
-        prog_root.hub.update(retained_mods);
         self.stamps.clear();
-        self.stamps.update(retained_stamps);
         self.client_artifacts.clear();
     }
 }
@@ -202,6 +188,14 @@ obj DiagLedger {
         ];
     }
 
+    def owned_warnings(path: str) -> list[Alert] {
+        return [
+            a
+            for a in self.warnings
+            if self._owned(a, path)
+        ];
+    }
+
     def drop_module(resolved_path: str) {
         self.errors[:] = [
             a
@@ -233,25 +227,10 @@ obj DiagLedger {
 }
 
 obj BuildScratch {
-    has na_dep_units: dict[str, (uni.Module | str)] = {},
-        na_dep_inflight: set[str] postinit,
-        na_verdict_resolving: set[str] postinit,
-        na_unverified_live: dict[str, dict] = {},
-        na_verdict_misses: int = 0,
-        boundary_parse_memo: dict[str, any] = {},
+    has boundary_parse_memo: dict[str, any] = {},
         compile_depth: int = 0;
 
-    def postinit {
-        self.na_dep_inflight = set();
-        self.na_verdict_resolving = set();
-    }
-
     def clear {
-        self.na_dep_units.clear();
-        self.na_dep_inflight.clear();
-        self.na_verdict_resolving.clear();
-        self.na_unverified_live.clear();
-        self.na_verdict_misses = 0;
         self.boundary_parse_memo.clear();
         self.compile_depth = 0;
     }
@@ -315,6 +294,7 @@ obj PendingPassResults {
 class AnalysisCaches {
     has placement_summaries: dict[str, any],
         placement_state: dict[str, any],
+        native_verdict_notes: dict[str, tuple[str, str]],
         analyses_run: AnalysisLedger,
         mtir_map: dict[(str, Info)],
         pass_runs: dict[str, int],
@@ -325,6 +305,7 @@ class AnalysisCaches {
     def init(self: AnalysisCaches) {
         self.placement_summaries: dict[str, any] = {};
         self.placement_state: dict[str, any] = {};
+        self.native_verdict_notes: dict[str, tuple[str, str]] = {};
         self.analyses_run: AnalysisLedger = AnalysisLedger();
         self.mtir_map: dict[(str, Info)] = {};
         self.pass_runs: dict[str, int] = {};
@@ -386,8 +367,8 @@ obj UnitCollectBudget {
     has releases: int = 0,
         last_peak_mb: int = 0;
 
-    def due -> bool {
-        self.releases += 1;
+    def due(units: int = 1) -> bool {
+        self.releases += units;
         every = _env_int("JAC_UNIT_COLLECT_EVERY", UNIT_COLLECT_EVERY);
         growth = _env_int("JAC_UNIT_COLLECT_GROWTH_MB", UNIT_COLLECT_GROWTH_MB);
         peak = _peak_rss_mb();

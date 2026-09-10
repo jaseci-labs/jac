@@ -22,11 +22,29 @@ import from jaclang.compiler.driver.schedules {
     providers_of
 }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.backends.native { NaIRGenPass, NativeCompilePass }
+import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+import from jaclang.compiler.backends.native.na_compile_pass { NativeCompilePass }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
+
+test "importing the native package does not initialize code generation" {
+    import subprocess;
+    import sys;
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import jaclang.compiler.backends.native; "
+            "assert 'jaclang.compiler.backends.native.na_compile_pass' not in sys.modules; "
+            "assert 'jaclang.compiler.backends.native.na_ir_gen_pass' not in sys.modules"
+        ],
+        capture_output=True,
+        text=True
+    );
+    assert result.returncode == 0 , result.stderr;
+}
 
 
 test "get_py_code_gen omits the native passes when native=False" {

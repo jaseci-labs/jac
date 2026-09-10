@@ -491,6 +491,9 @@ jobs:
           - chunk: passes-native
             paths: tests/compiler/backends/native tests/compiler/tools
             sealed: "1"
+            # Native builds spawn compiler children; four workers can exhaust
+            # the runner's memory and stall the arena subprocess timeout.
+            jobs: "2"
           # The equivalence suite builds fixture paths from jaclang.__file__,
           # which only resolve in the checkout: it runs through the reroute,
           # over the kit's shim and floors ("" clears JAC_NO_DEV_SOURCE).
@@ -501,8 +504,7 @@ jobs:
             paths: jaclang/compiler/tests
             sealed: ""
             iface_verify: "1"
-            # Source compiler workers peak above 4 GB; four can exhaust this
-            # 16 GB runner before the pool's per-file recycling can intervene.
+            # Leave room for native analysis and ES child processes.
             jobs: "2"
     steps:
       - uses: actions/checkout@v5
@@ -511,6 +513,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Set up Zig for compiler runtime and ELF fixtures
+        if: matrix.chunk == 'passes-native'
+        uses: mlugg/setup-zig@v2
+        with:
+          version: "0.16.0"
+          use-cache: false
       - name: Run ${{ matrix.chunk }} chunk
         working-directory: jac
         env:
@@ -913,6 +921,58 @@ jobs:
       - name: Bootstrap unit tests (zig build test)
         working-directory: jac
         run: zig build test --summary all
+
+  # The dev loop (#8943): a checkout with NO kernel beside
+  # native_compiler.jac must parse a new file on the first `jac run`. The
+  # kit it runs on was built from these very sources, so that first run
+  # adopts the kit's kernel by source key (a checkout whose compiler differs
+  # derives one through the link plan instead), and a second run must accept
+  # the kernel beside the loader without relinking.
+  test-dev-loop:
+    needs: [changes, build-kit]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      # Reroute lane: this checkout's compiler, the kit's shim and floors.
+      JAC_NO_DEV_SOURCE: ""
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      # The rerouted checkout finds the LLVM shim in the kit's runtime site
+      # (the shim locator walks sys.path), so no shim is restored here: a
+      # cache keyed on build inputs would miss on any PR that touches them.
+      - uses: ./.github/actions/jac-kit
+      - name: Delete any kernel beside the loader
+        run: rm -f jac/jaclang/compiler/libjac_compiler.* jac/jaclang/compiler/libjac_compiler.*.layout.json
+      - name: First run puts a kernel beside the loader
+        run: |
+          set -euo pipefail
+          WORK="$(mktemp -d)"
+          printf 'with entry { print(6*7); }\n' > "$WORK/first.jac"
+          out="$(jac run "$WORK/first.jac" 2>&1)" || { echo "$out"; exit 1; }
+          tail -5 <<<"$out"
+          grep -q 42 <<<"$out"
+          test -f jac/jaclang/compiler/libjac_compiler.so
+          test -f jac/jaclang/compiler/libjac_compiler.so.layout.json
+          python3 -c "import json,sys; d=json.load(open('jac/jaclang/compiler/libjac_compiler.so.layout.json')); assert d['plan_digest'] and d['classes'], d.keys()"
+          cp jac/jaclang/compiler/libjac_compiler.so "$WORK/kernel.first"
+      - name: Second run keeps that kernel
+        run: |
+          set -euo pipefail
+          WORK="$(mktemp -d)"
+          printf 'with entry { print(7*7); }\n' > "$WORK/second.jac"
+          out="$(jac run "$WORK/second.jac" 2>&1)" || { echo "$out"; exit 1; }
+          grep -q 49 <<<"$out"
+          if grep -q "Linking the native compiler kernel" <<<"$out"; then
+            echo "::error::the second run relinked a kernel whose plan digest had not moved"
+            exit 1
+          fi
+      - name: Kernel resolver and link plan tests
+        run: |
+          jac test jac/tests/compiler/test_kernel_resolve.jac
+          jac test jac/tests/compiler/backends/native/test_native_iface.jac
+          jac test jac/tests/compiler/backends/native/test_link_plan.jac
 
   # The CEF dispatch build + export/runpath/deps audit lives in the suite
   # (tests/client/test_cef_dispatch_build.jac, in test-client's lane).
@@ -1445,6 +1505,7 @@ jobs:
       - test-scale-k8s
       - test-native-aarch64
       - test-bootstrap
+      - test-dev-loop
       - test-jac-pack-smoke
       - installer-test
     runs-on: ubuntu-latest

@@ -324,3 +324,33 @@ test "a probe failure in the probed source still answers server" {
         _COLOR_CACHE.pop(os.path.abspath(fake), None);
     }
 }
+
+
+test "a bootstrap frontend retains its codegen tier after imports finish" {
+    import marshal;
+    import tempfile;
+    import from pathlib { Path }
+    import from unittest.mock { patch }
+    import jaclang.compiler.driver.compiler as compiler_mod;
+    import from jaclang.compiler.driver.schedules { get_bootstrap_ir_sched }
+    with tempfile.TemporaryDirectory() as directory {
+        source = str(Path(directory) / "bootstrap_tier.jac");
+        prog = JacProgram();
+        assert schedule_tier_reason() == "";
+        with patch.object(
+            compiler_mod, "get_ir_gen_sched", return_value=get_bootstrap_ir_sched()
+        ) {
+            mod = prog.compile(
+                source,
+                use_str="glob answer: int = 42;\n",
+                options=CompileOptions(force_codespace="server")
+            );
+        }
+        assert not prog.errors_had , [str(error) for error in prog.errors_had];
+        assert mod.gen.py_bytecode is not None;
+        namespace: dict = {"__name__": "bootstrap_tier", "__file__": source};
+        exec(marshal.loads(mod.gen.py_bytecode), namespace);
+        assert namespace["answer"] == 42;
+        assert "RcFactsPass" not in prog.analysis.pass_runs;
+    }
+}

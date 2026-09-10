@@ -12,7 +12,7 @@ import from http.client { HTTPResponse }
 import from urllib.request { Request, urlopen }
 import from urllib.parse { urlsplit }
 import from jaclang.cli.console { console }
-import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
+import from jaclang.jac0core.cache_paths { FileLock, get_jir_cache_dir }
 
 obj Artifact {
     has name: str,
@@ -51,58 +51,6 @@ def offline -> bool {
     return os.environ.get("JAC_OFFLINE", "").lower() in ["1", "true", "yes"];
 }
 
-obj InstallLock {
-    has path: Path,
-        handle: int = -1;
-
-    def __enter__ -> InstallLock {
-        self.path.parent.mkdir(parents=True, exist_ok=True);
-        self.handle = os.open(str(self.path), os.O_CREAT | os.O_RDWR, 0o600);
-        try {
-            if os.name == "nt" and os.fstat(self.handle).st_size == 0 {
-                os.write(self.handle, b"0");
-            }
-            start = time.monotonic();
-            announced = False;
-            while True {
-                try {
-                    if os.name == "nt" {
-                        import msvcrt;
-                        os.lseek(self.handle, 0, 0);
-                        msvcrt.locking(self.handle, msvcrt.LK_NBLCK, 1);
-                    } else {
-                        import fcntl;
-                        fcntl.flock(self.handle, fcntl.LOCK_EX | fcntl.LOCK_NB);
-                    }
-                    break;
-                } except OSError {
-                    if not announced {
-                        console.print(
-                            f"Waiting for another build to finish using {self.path.name}",
-                            style="muted"
-                        );
-                        announced = True;
-                    }
-                    if time.monotonic() - start > 1800 {
-                        raise TimeoutError(f"Timed out waiting for {self.path}");
-                    }
-                    time.sleep(0.1);
-                }
-            }
-        } except Exception {
-            os.close(self.handle);
-            self.handle = -1;
-            raise;
-        }
-        return self;
-    }
-
-    def __exit__(_exc_type: object, _exc_value: object, _traceback: object) {
-        os.close(self.handle);
-        self.handle = -1;
-    }
-}
-
 def file_digest(path: Path, algorithm: str = "sha256") -> str {
     digest = hashlib.new(algorithm);
     with path.open("rb") as source {
@@ -120,7 +68,7 @@ def fetch(artifact: Artifact, destination: Path | None = None) -> Path {
             / "downloads"
             / f"{artifact.algorithm}-{artifact.digest}";
     }
-    with InstallLock(destination.with_suffix(".lock")) {
+    with FileLock(destination.with_suffix(".lock")) {
         if destination.is_file()
             and file_digest(destination, artifact.algorithm) == artifact.digest {
             console.print(
@@ -247,7 +195,7 @@ def install(artifact: Artifact, required: str) -> Path {
     if Path(required).is_absolute() or ".." in Path(required).parts {
         raise ValueError("Installation marker must be a relative path");
     }
-    with InstallLock(destination.with_suffix(".lock")) {
+    with FileLock(destination.with_suffix(".lock")) {
         if (destination / ".jac-install.json").is_file()
             and (destination / required).exists() {
             console.print(

@@ -24,7 +24,12 @@ import tempfile;
 import from compression.zstd { ZstdCompressor, CompressionParameter }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.tests.xbackend_equiv { FIXTURES, run_py_fixture, get_func }
+import from jaclang.compiler.tests.xbackend_equiv {
+    FIXTURES,
+    run_py_fixture,
+    get_func,
+    remember_engine_unit
+}
 
 
 """Build a deterministic PAX tar archive as bytes."""
@@ -108,12 +113,13 @@ def _tree(base: str) -> list {
 
 def _compile_native_forced(fixture: str) -> tuple {
     prog = JacProgram();
-    opts = CompileOptions(default_codespace="native", force_target_program=True);
+    opts = CompileOptions(default_codespace="native");
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
+    remember_engine_unit(eng, ir);
     return (eng, ir);
 }
 

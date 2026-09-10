@@ -13,15 +13,28 @@ impl JacProgram.init(
     self.mtir_map: dict[(str, Info)] = self.analysis.mtir_map;
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
-    self._iface: any = None;
+    self._stub_catalog = None;
+    self._stub_trees_served = False;
+    self._iface = None;
+    self._natives = None;
 }
 
-impl JacProgram.iface_registry(self: JacProgram) -> any {
+impl JacProgram.iface_registry(self: JacProgram) -> IfaceRegistry {
     reg = self._iface;
     if reg is None {
         import from jaclang.compiler.driver.ifacecache { IfaceRegistry }
         reg = IfaceRegistry(prog=self);
         self._iface = reg;
+    }
+    return reg;
+}
+
+impl JacProgram.native_units(self: JacProgram) -> NativeUnitRegistry {
+    reg = self._natives;
+    if reg is None {
+        import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+        reg = NativeUnitRegistry(prog=self);
+        self._natives = reg;
     }
     return reg;
 }
@@ -80,6 +93,9 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
         }
     }
 
+    if self._natives is not None {
+        self._natives.forget(resolved_path);
+    }
     if self._iface is not None {
         self._iface.forget(resolved_path);
     }
@@ -142,41 +158,14 @@ impl JacProgram.load_dependency_module(
         }
     }
     compiler = self._get_compiler();
-    target_program = compiler.selfhost.resolve(resolved_path, self);
-    target_hub = target_program.mod.hub;
-
-    if (resolved_path in self.mod.hub and not self.is_hub_entry_fresh(resolved_path)) {
+    if resolved_path in self.mod.hub and not self.is_hub_entry_fresh(resolved_path) {
         self.invalidate_module(resolved_path);
     }
-    if (
-        resolved_path in target_hub
-        and target_program is not self
-        and not target_program.is_hub_entry_fresh(resolved_path)
-    ) {
-        target_program.invalidate_module(resolved_path);
-    }
-
     mod: uni.Module;
-    foreign_untyped = (
-        resolved_path in target_hub
-        and target_program is not self
-        and not resolved_path.endswith('.pyi')
-        and not target_hub[resolved_path].stub_only
-        and not target_program.analysis.analyses_run.provides(
-            target_hub[resolved_path], 'TypeOf'
-        )
-    );
-    if resolved_path in self.mod.hub {
-        mod = self.mod.hub[resolved_path];
-    } elif resolved_path in target_hub and not foreign_untyped {
-        mod = target_hub[resolved_path];
+    found = self.mod.hub.get(resolved_path);
+    if found is not None and not (need_tree and hasattr(found, "cat_kids")) {
+        mod = found;
     } else {
-        if foreign_untyped {
-            events = self.analysis.cache_events;
-            events["untyped_foreign_tree_skipped"] = (
-                events.get("untyped_foreign_tree_skipped", 0) + 1
-            );
-        }
         if resolved_path.endswith('.pyi') {
             import ast as py_ast;
             import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
@@ -192,26 +181,35 @@ impl JacProgram.load_dependency_module(
             ).ir_out;
             mod.stub_only = True;
 
-            target_program.install_module(resolved_path, mod);
+            self.install_module(resolved_path, mod);
             compiler.note_stub_tree_served(resolved_path, self);
             compiler.resolve_absorb_imports(mod, self);
             run_pass(SymTabBuildPass, mod, self);
+            events = self.analysis.cache_events;
+            events["stub_ingest"] = events.get("stub_ingest", 0) + 1;
         } else {
             import from jaclang.compiler.driver.compile_options {
                 CompileOptions as _DepOpts
             }
-            mod = self.compile(
-                source_path,
-                use_str=use_str,
-                options=(
-                    _DepOpts(no_cgen=True, symtab_ir_only=True, need_full_ast=True)
-                        if need_tree
-                        else _DepOpts(no_cgen=True, symtab_ir_only=True, iface_ok=True)
-                )
-            );
+            saved_options = self.options;
+            try {
+                mod = self.compile(
+                    source_path,
+                    use_str=use_str,
+                    options=(
+                        _DepOpts(no_cgen=True, symtab_ir_only=True, need_full_ast=True)
+                            if need_tree
+                            else _DepOpts(
+                                no_cgen=True, symtab_ir_only=True, iface_ok=True
+                            )
+                    )
+                );
+            } finally {
+                self.options = saved_options;
+            }
         }
-        if not hasattr(mod, "cat_kids") and not foreign_untyped {
-            target_program.install_module(resolved_path, mod);
+        if not hasattr(mod, "cat_kids") {
+            self.install_module(resolved_path, mod);
         }
     }
 
@@ -219,8 +217,8 @@ impl JacProgram.load_dependency_module(
         self.record_dependency(importer_path, resolved_path);
         if need_tree {
             importer = self.find_module(JacProgram.hub_key(importer_path));
-            if importer is not None and resolved_path not in importer.ct_file_deps {
-                importer.ct_file_deps.append(resolved_path);
+            if importer is not None {
+                importer.record_comptime_dependency(resolved_path);
             }
         }
     }
@@ -260,8 +258,17 @@ impl JacProgram._get_compiler(self: JacProgram) -> JacCompiler {
     return self._compiler;
 }
 
-impl JacProgram.stub_catalog(self: JacProgram) -> StubCatalog | None {
-    return self._get_compiler().stub_catalog();
+impl JacProgram.stub_catalog(self: JacProgram) -> (StubCatalog | None) {
+    if self._stub_trees_served {
+        return None;
+    }
+    if self._stub_catalog is None {
+        catalog = self._get_compiler().stub_catalog();
+        if catalog is not None {
+            self._stub_catalog = catalog.for_session();
+        }
+    }
+    return self._stub_catalog;
 }
 
 impl JacProgram.get_type_evaluator(self: JacProgram) -> TypeEvaluator {
@@ -279,7 +286,10 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
         self.mod.hub.clear();
         return;
     }
+    self.scrub_hub_types();
+}
 
+impl JacProgram.scrub_hub_types(self: JacProgram) -> None {
     for mod in self.mod.hub.values() {
         if mod.stub_only {
             continue;
@@ -291,6 +301,7 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
                 nd.type = None;
                 nd.narrowed_type = None;
                 nd.coerce_to = None;
+                nd.ct_value = None;
             }
             for kid in nd.kid {
                 stack.append(kid);
@@ -299,51 +310,12 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
     }
 }
 
-impl JacProgram.release_native_dep_units(self: JacProgram) -> None {
-    for (path, unit) in self.scratch.na_dep_units.items() {
-        if isinstance(unit, str) {
-            continue;
-        }
-        try {
-            keyed = JacProgram.hub_key(path);
-        } except Exception {
-            keyed = path;
-        }
-        probes: list[str] = [keyed];
-        if path != keyed {
-            probes.append(path);
-        }
-        for probe in probes {
-            if self.mod.hub.get(probe) is unit {
-                self.invalidate_module(probe);
-            }
-        }
-        try {
-            gen = unit.gen;
-        } except Exception {
-            continue;
-        }
-        gen.native_engine = None;
-        gen.llvm_ir = None;
-        gen.native_bitcode = None;
-    }
-    self.scratch.na_dep_units.clear();
-    self.scratch.na_unverified_live.clear();
-    self.scratch.na_verdict_resolving.clear();
-}
-
 impl JacProgram.release_check_caches(self: JacProgram) -> None {
     ev = self.type_evaluator;
     if ev is None {
         return;
     }
-    ev._flow_node_type_cache.clear();
-    ev._flow_key_type_cache.clear();
-    ev._and_narrowing_overrides.clear();
-    ev._strict_site_cache.clear();
-    ev._sv_async_syms_cache.clear();
-    ev._loop_written_keys_cache.clear();
-    ev._type_guard_probes.clear();
+    ev.release_check_caches();
 }
 
 impl JacProgram.release_compile_closure(
@@ -354,11 +326,31 @@ impl JacProgram.release_compile_closure(
         return;
     }
 
-    self.release_native_dep_units();
+    units = len(
+        {
+            id(mod)
+            for mod in self.mod.hub.values()
+            if not mod.is_raised_from_py
+        }
+    );
     self.hub.reset();
     self.mod = self.hub.mod;
     self.deps.clear();
+    if self._natives is not None and self._natives.session is None {
+        self._natives.clear();
+    }
+    for gen in self.hub.artifacts.values() {
+        gen.native_object = None;
+        gen.native_bitcode = None;
+    }
+    ev = self.type_evaluator;
+    if ev is not None {
+        ev.release_compile_caches();
+    }
     self.type_evaluator = None;
+    ev = None;
+    self._stub_catalog = None;
+    self._stub_trees_served = False;
     self.diags.clear();
     self.scratch.clear();
     self.analysis.analyses_run.clear();
@@ -367,52 +359,31 @@ impl JacProgram.release_compile_closure(
     if self._iface is not None {
         self._iface.on_closure_release();
     }
-    if collect and unit_collect_budget.due() {
+    events = self.analysis.cache_events;
+    events["unit_release"] = events.get("unit_release", 0) + units;
+    if collect and unit_collect_budget.due(units) {
+        events["unit_collect"] = events.get("unit_collect", 0) + 1;
         import gc;
         gc.collect();
     }
 }
 
-impl JacProgram._search_hubs(self: JacProgram) -> list[dict[(str, uni.Module)]] {
-    hubs: list[dict[(str, uni.Module)]] = [self.mod.hub];
-    internal = self._get_compiler().selfhost.program;
-    if internal is not self {
+impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) {
+    found = self.mod.hub.get(path);
+    if found is not None {
+        return found;
+    }
+    return self.mod.hub.get(JacProgram.hub_key(path));
+}
+
+impl JacProgram.execution_hubs(self: JacProgram) -> list[dict[str, uni.Module]] {
+    """Enumerate loaded runtime metadata; source analysis uses only its own hub.""";
+    hubs: list[dict[str, uni.Module]] = [self.mod.hub];
+    internal = self._get_compiler().selfhost.peek_program();
+    if internal is not None and internal is not self {
         hubs.append(internal.mod.hub);
     }
     return hubs;
-}
-
-impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) {
-    import os;
-    hubs = self._search_hubs();
-    for hub in hubs {
-        if path in hub {
-            return hub[path];
-        }
-    }
-
-    try {
-        keyed = JacProgram.hub_key(path);
-    } except Exception {
-        keyed = path;
-    }
-    if keyed != path {
-        for hub in hubs {
-            if keyed in hub {
-                return hub[keyed];
-            }
-        }
-    }
-
-    normalized = os.path.normcase(path);
-    for hub in hubs {
-        for (hub_path, mod) in hub.items() {
-            if os.path.normcase(hub_path) == normalized {
-                return mod;
-            }
-        }
-    }
-    return None;
 }
 
 impl JacProgram.get_bytecode(

@@ -65,11 +65,10 @@ def _enum_table(cls: any) -> (dict | None) {
 
 
 class NativeCompiler {
-    def init(self: NativeCompiler, lib_path: str) {
+    def init(self: NativeCompiler, lib_path: str, layout: dict) {
         self.lib = ctypes.PyDLL(lib_path);
-        with open(lib_path + ".layout.json") as f {
-            self.layout = json.load(f)["classes"];
-        }
+        self.lib_path = lib_path;
+        self.layout = layout;
         self._keep = [];
         self.classes = {};
         self._value_rows: dict[str, int] = {};
@@ -460,7 +459,11 @@ class NativeCompiler {
         }
         boxed = cast(ptr, py_object);
         out = boxed.value;
-        ctypes.pythonapi.Py_DecRef(boxed);
+        """The reference the kernel handed over is dropped through a raw
+        pointer: `ctypes.pythonapi` is one shared handle whose prototypes any
+        code in the process may set, and a `py_object` argument is refused
+        once `Py_DecRef.argtypes` names `c_void_p`.""";
+        ctypes.pythonapi.Py_DecRef(c_void_p(ptr));
         return out;
     }
 
@@ -495,97 +498,34 @@ class NativeCompiler {
 
 
 glob _KERNEL_CELL: list = [],
-     _RESOLVED: list = [];
-
-
-def _lib_name -> str {
-    if sys.platform == "darwin" {
-        return "libjac_compiler.dylib";
-    }
-    return "libjac_compiler.so";
-}
-
-
-def _kit_site_present -> bool {
-    shim = "libjacllvm.dylib" if sys.platform == "darwin" else "libjacllvm.so";
-    here = os.path.dirname(os.path.abspath(__file__));
-    if os.path.isfile(os.path.join(here, "backends", "native", "llvm", shim)) {
-        return True;
-    }
-    for p in sys.path {
-        if p
-            and os.path.isfile(
-                os.path.join(
-                    p, "jaclang", "compiler", "backends", "native", "llvm", shim
-                )
-            ) {
-            return True;
-        }
-    }
-    return False;
-}
-
-
-def _find_lib -> (str | None) {
-    if os.environ.get("JAC_STUBCAT_BUILDING") {
-        return None;
-    }
-    ov = os.environ.get("JAC_COMPILER_LIB", "");
-    if ov.strip().lower() in ("none", "off", "disabled", "0") {
-        return None;
-    }
-    if ov {
-        if os.path.isfile(ov) and os.path.isfile(ov + ".layout.json") {
-            return ov;
-        }
-        raise OSError(
-            f"JAC_COMPILER_LIB={ov} does not name a kernel lib with its "
-            ".layout.json sidecar"
-        );
-    }
-    name = _lib_name();
-    here = os.path.dirname(os.path.abspath(__file__));
-    cand = os.path.join(here, name);
-    if os.path.isfile(cand) and os.path.isfile(cand + ".layout.json") {
-        return cand;
-    }
-    if os.environ.get("JAC_DEV_SOURCE") {
-        return None;
-    }
-    for p in sys.path {
-        if not p {
-            continue;
-        }
-        alt = os.path.join(p, "jaclang", "compiler", name);
-        if os.path.isfile(alt) and os.path.isfile(alt + ".layout.json") {
-            return alt;
-        }
-    }
-    if _kit_site_present() {
-        raise OSError(
-            f"This jac build is missing its native compiler kernel ('{name}' "
-            "+ .layout.json under jaclang/compiler/). Every fully built jac "
-            "binary parses natively; rebuild the kit (zig build), or set "
-            "JAC_COMPILER_LIB=off to run the store parser explicitly."
-        );
-    }
-    return None;
-}
-
+     _RESOLVED: list = [],
+     _RESOLVING: list = [];
 
 def ensure_loaded -> (NativeCompiler | None) {
     if _KERNEL_CELL {
         return _KERNEL_CELL[0];
     }
-    if _RESOLVED {
+    if _RESOLVED or _RESOLVING {
         return None;
     }
-    path = _find_lib();
-    if path is None {
+    _RESOLVING.append(1);
+    try {
+        import from jaclang.compiler.backends.native.kernel_resolve { resolve_kernel }
+        found = resolve_kernel();
+    } finally {
+        _RESOLVING.clear();
+    }
+    if found is None {
         _RESOLVED.append(None);
         return None;
     }
-    k = NativeCompiler(path);
+    k = NativeCompiler(found.lib_path, found.layout);
     _KERNEL_CELL.append(k);
     return k;
+}
+
+def reset_loaded {
+    _KERNEL_CELL.clear();
+    _RESOLVED.clear();
+    _RESOLVING.clear();
 }

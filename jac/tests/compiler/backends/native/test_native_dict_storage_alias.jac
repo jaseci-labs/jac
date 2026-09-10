@@ -12,11 +12,12 @@ became `SymbolType.MODULE` in the kit (E1096/E1097/E1114 on every OSP
 program). Red-first: the fixture emits a bool dict, then an enum dict and
 an int dict, and reads the members back.
 """
+import from tests.support { unit_symbol }
 
 import os;
 import ctypes;
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -32,7 +33,7 @@ test "a bool-valued dict does not alias an int or enum-valued dict's storage" {
     assert not errs , f"errors: {errs}";
     eng = ir.gen.native_engine;
     assert eng is not None , "no native engine";
-    addr = eng.get_function_address("probe");
+    addr = native_address(eng, "probe");
     assert addr != 0 , "probe not in JIT engine";
     fn = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
     got = [fn(i) for i in range(4)];
@@ -72,7 +73,9 @@ def probe -> int {
     assert not issues , "\n".join(issue.detail for issue in issues);
     engine = module.gen.native_engine;
     assert engine is not None;
-    probe = ctypes.CFUNCTYPE(ctypes.c_int64)(engine.get_function_address("probe"));
+    probe = ctypes.CFUNCTYPE(ctypes.c_int64)(
+        engine.get_function_address(unit_symbol(module, "probe"))
+    );
     assert probe() == 311;
 }
 

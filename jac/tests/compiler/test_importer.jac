@@ -21,7 +21,6 @@ import from jaclang.compiler.driver.compiler { JacCompiler }
 import from jaclang.compiler.driver.jir {
     get_module_cache_path,
     read_bytecode_only,
-    SEC_LLVM_IR,
     SEC_PLACEMENT,
     SECTIONS_MAGIC,
     HEADER_SIZE,
@@ -391,6 +390,55 @@ test "pyi loads build via PyastBuildPass and never compile" {
     } finally {
         JacProgram.compile = orig_compile;
         os.unlink(stub_file);
+    }
+}
+
+test "Python star imports load dependency scopes once without checking implementation bodies" {
+    import from unittest.mock { patch }
+    with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as tmpdir {
+        first = os.path.join(tmpdir, "star_first.py");
+        second = os.path.join(tmpdir, "star_second.py");
+        with open(first, "w") as f {
+            f.write("from star_second import *\nclass First: pass\n");
+        }
+        with open(second, "w") as f {
+            f.write("from star_first import *\nclass Second: pass\n");
+        }
+        calls: list[tuple[str, bool]] = [];
+        original: any = JacProgram.compile;
+        def observe(
+            self: JacProgram,
+            file_path: str,
+            use_str: (str | None) = None,
+            no_cgen: bool = False,
+            symtab_ir_only: bool = False,
+            cancel_token: any = None,
+            options: any = None
+        ) -> any {
+            if file_path.startswith(tmpdir) {
+                calls.append((file_path, bool(options and options.symtab_ir_only)));
+            }
+            return original(
+                self,
+                file_path,
+                use_str=use_str,
+                no_cgen=no_cgen,
+                symtab_ir_only=symtab_ir_only,
+                cancel_token=cancel_token,
+                options=options
+            );
+        }
+        prog = JacProgram();
+        with patch.object(JacProgram, "compile", observe) {
+            module = prog.load_dependency_module(first);
+        }
+        assert module.sym_tab.lookup("First") is not None;
+        assert module.sym_tab.lookup("Second") is not None;
+        assert sorted(calls) == sorted([(first, True), (second, True)]) , (
+            len(calls),
+            calls[:6]
+        );
+        assert first in prog.deps.dependents[os.path.realpath(second)];
     }
 }
 
@@ -775,7 +823,7 @@ test "check preserves caller GC state" {
     }
 }
 
-test "release compile closure clears ASTs and evaluator but keeps stubs" {
+test "release compile closure clears source trees, stubs and evaluator" {
     with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as d {
         source_path = os.path.join(d, "source.jac");
         stub_path = os.path.join(d, "types.pyi");
@@ -790,12 +838,8 @@ test "release compile closure clears ASTs and evaluator but keeps stubs" {
         prog.release_compile_closure();
         gc.collect();
         assert ast_ref() is None , "released AST is still strongly referenced";
-        # The hub is keyed by the resolved path (JacProgram.hub_key), and
-        # find_module is the accessor that normalizes for you. Typeshed lives
-        # in the stub catalog and never enters the hub; a project .pyi loaded
-        # from source is retained across a release like any stub tree.
         assert prog.find_module(source_path) is None;
-        assert prog.find_module(stub_path) is not None;
+        assert prog.find_module(stub_path) is None;
         assert prog.type_evaluator is None;
     }
 }
@@ -820,26 +864,18 @@ test "release compile closure honors no unit eviction" {
     }
 }
 
-test "release compile closure keeps synthesized type identity stable" {
-    # `jac check`/`jac lint` release each file's compile closure between files,
-    # which drops and recreates the type evaluator. LiteralString is synthesized
-    # (not a real stub class), so re-minting it per evaluator gave it a fresh
-    # identity every file while the stub AST it derives from (str) survives with
-    # the prior instance cached on it -- breaking `Literal[...] <: LiteralString`
-    # and surfacing spurious E1001s on every checked file after the first. The
-    # synthesized type must be memoized on the (stable) str class so it survives
-    # evaluator churn.
+test "release compile closure recreates synthesized types with their catalog" {
     prog = JacProgram();
     ev1 = prog.get_type_evaluator();
     ls1 = ev1.prefetch.literal_string_class;
-    assert ls1 is not None , "LiteralString was not prefetched";
+    assert ls1 is not None;
     prog.release_compile_closure();
     assert prog.type_evaluator is None;
     ev2 = prog.get_type_evaluator();
     ls2 = ev2.prefetch.literal_string_class;
     assert ls2 is not None;
-    assert ev1 is not ev2 , "evaluator was not recreated";
-    assert ls1.shared is ls2.shared , "LiteralString identity changed across evaluator recreation";
+    assert ev1 is not ev2;
+    assert ls1.shared is not ls2.shared;
 }
 
 test "internal get_bytecode evicts unit AST after compile" {

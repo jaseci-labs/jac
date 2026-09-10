@@ -1,7 +1,7 @@
 """Compile-options identity and boundary tests (#7871 workstream G).
 
 CompileOptions is the single authority for codegen-affecting build options:
-env vars are read once at options construction, the codegen fingerprint is
+project settings are read once at options construction, the codegen fingerprint is
 part of artifact identity (folded into the JIR module key), and no compiler
 pass reads os.environ directly (source-scan gate below).
 """
@@ -47,10 +47,7 @@ test "forced server compilation retains Python standard-library imports" {
             + "def bind_local { sock = socket.socket(); "
             + "sock.bind(('127.0.0.1', 0)); sock.close(); }\n",
         options=CompileOptions(
-            default_codespace="native",
-            force_codespace="server",
-            force_target_program=True,
-            need_full_ast=True
+            default_codespace="native", force_codespace="server", need_full_ast=True
         )
     );
     assert not program.errors_had , str(program.errors_had);
@@ -69,7 +66,8 @@ test "every codegen option flip changes the fingerprint" {
         _pinned_opts(rc_debug_codegen=True),
         _pinned_opts(native_target="wasm32-unknown-unknown"),
         _pinned_opts(native_debug=True),
-        _pinned_opts(opt_level=0)
+        _pinned_opts(opt_level=0),
+        _pinned_opts(native_threads=7)
     ];
     seen: set = {base_fp};
     for flipped in flips {
@@ -103,11 +101,6 @@ test "JAC_NA_DEBUG enters the options object at construction" {
         assert CompileOptions().na_debug == True;
         assert CompileOptions(na_debug=False).na_debug == False;
         assert CompileOptions().clone_for_native_import().na_debug == True;
-        assert CompileOptions(no_ir_cache=True).clone_for_native_import().no_ir_cache , (
-            "a cache-bypassing compile must bypass it for nested native imports "
-            "too, or a dep-of-a-dep is still served from a stale IR cache"
-        );
-        assert not CompileOptions().clone_for_native_import().no_ir_cache;
         os.environ["JAC_NA_DEBUG"] = "0";
         assert CompileOptions().na_debug == False;
     } finally {
@@ -709,4 +702,40 @@ test "no consumer-site NULL guards on string operands" {
         "optional unwrap must be emitted by exactly one site "
         f"(_coerce_type_inner in types.impl.jac); found: {unwrap_sites}"
     );
+}
+
+
+test "native import handoff preserves memory policy and generated thread defaults" {
+    parent = CompileOptions(
+        memory_profile="nogc",
+        memory_enforce=["app.*"],
+        memory_exempt=["app.legacy"],
+        native_threads=7,
+        native_link_mode="bitcode",
+        native_target="aarch64-unknown-linux-gnu"
+    );
+    for child in [parent.clone_for_native_import()] {
+        assert child.codegen_identity() == parent.codegen_identity();
+        assert child.analysis_identity() == parent.analysis_identity();
+        assert child.memory_profile == "nogc" and child.nogc_enforce_all;
+        assert child.native_threads == 7;
+        assert child.native_link_mode == "bitcode";
+        assert child.memory_enforce == ["app.*"];
+        assert child.memory_exempt == ["app.legacy"];
+    }
+}
+
+test "native link mode uses project configuration without changing unit codegen" {
+    import from unittest.mock { patch }
+    import from jaclang.project.config { JacConfig }
+    cfg = JacConfig.from_toml_str('[native]\nlink_mode = "bitcode"\n');
+    with patch(
+        "jaclang.compiler.driver.compile_options._project_config", return_value=cfg
+    ) {
+        configured = CompileOptions();
+        explicit = CompileOptions(native_link_mode="objects");
+        assert configured.native_link_mode == "bitcode";
+        assert explicit.native_link_mode == "objects";
+        assert configured.codegen_identity() == explicit.codegen_identity();
+    }
 }

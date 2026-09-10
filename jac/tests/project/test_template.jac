@@ -356,7 +356,7 @@ test "template dir with an invalid [apps] table is rejected" {
 
 test "scaffold_app appends an [apps] table and copies the template" {
     with TemporaryDirectory() as tmpdir {
-        root_path = Path(tmpdir) / "proj";
+        root_path = Path(tmpdir).resolve() / "proj";
         (root_path / "web").mkdir(parents=True);
         (root_path / "jac.toml").write_text(
             '[project]\nname = "acme"\nversion = "0.1.0"\n\n'
@@ -407,7 +407,7 @@ def _mobile_template -> ProjectTemplate {
 
 test "scaffold_app copies the sole app's keys and npm deps as overlays" {
     with TemporaryDirectory() as tmpdir {
-        root_path = Path(tmpdir) / "proj";
+        root_path = Path(tmpdir).resolve() / "proj";
         (root_path / "web").mkdir(parents=True);
         (root_path / "jac.toml").write_text(
             '[project]\nname = "acme"\n\n'
@@ -519,7 +519,7 @@ def _entry_template -> ProjectTemplate {
 
 test "scaffold_app honors a template entry-point other than the kind default" {
     with TemporaryDirectory() as tmpdir {
-        root_path = Path(tmpdir) / "proj";
+        root_path = Path(tmpdir).resolve() / "proj";
         (root_path / "web").mkdir(parents=True);
         (root_path / "jac.toml").write_text(
             '[project]\nname = "acme"\n\n[apps.web]\nkind = "web-app"\npath = "web"\n'

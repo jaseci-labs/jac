@@ -1,4 +1,4 @@
-"""Emit a real aarch64-linux object out of the executable path's finalized IR.
+"""Emit a real aarch64-linux object out of the link plan's glue IR.
 
 Run as a subprocess by test_aarch64_outline_atomics.jac: the failure this pins
 is an LLVM `report_fatal_error`, which aborts the process rather than raising,
@@ -15,8 +15,12 @@ property only aarch64 CI could check into one every run checks.
 """
 
 import jaclang.compiler.backends.native.llvm.binding as llvm;
-import from jaclang.compiler.backends.native.shared_emit { init_object_codegen }
-import from jaclang.cli.commands.native_build { _finalize_native_ir }
+import from jaclang.compiler.backends.native.link_glue {
+    GlueSpec,
+    GlueUnit,
+    init_object_codegen,
+    link_glue_ir
+}
 
 glob TRIPLE = "aarch64-unknown-linux-gnu",
      EM_AARCH64 = 183;
@@ -38,17 +42,21 @@ def abi_family -> list[str] {
 
 with entry {
     init_object_codegen();
-    (ir, _exports) = _finalize_native_ir(
-        llvm_ir_str='define void @"jac_entry"() {\nentry:\n  ret void\n}\n',
-        triple=TRIPLE,
-        clib_paths=["libz.so"],
-        manifest=None,
-        shared=False,
-        is_windows=False,
-        is_macos=False,
-        static_musl=False
+    # The glue module the link plan synthesizes for an aarch64 ELF executable
+    # linking a C floor archive: one stub root unit, and the outline-atomics
+    # family appended for the target. The text carries its own triple line.
+    (ir, _exports) = link_glue_ir(
+        GlueSpec(
+            units=[GlueUnit(prefix="stub_root")],
+            root_index=0,
+            shared=False,
+            platform="elf",
+            static_musl=False,
+            triple=TRIPLE,
+            clib_paths=["libz.so"]
+        )
     );
-    mod = llvm.parse_assembly(f'target triple = "{TRIPLE}"\n' + ir);
+    mod = llvm.parse_assembly(ir);
     mod.verify();
     tm = llvm.Target.from_triple(TRIPLE).create_target_machine(
         opt=2, reloc="pic", codemodel="small"

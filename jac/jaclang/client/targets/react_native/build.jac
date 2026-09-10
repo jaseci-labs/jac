@@ -511,7 +511,8 @@ def run_expo_prebuild(rn_dir: Path, platform: str = "android") {
 def run_gradle_assemble(rn_dir: Path, release: bool = False) -> Path {
     import from jaclang.toolchains.android { ensure_android }
     import from jaclang.toolchains.javascript { build_environment }
-    import from jaclang.toolchains.store { InstallLock, offline }
+    import from jaclang.jac0core.cache_paths { FileLock }
+    import from jaclang.toolchains.store { offline }
     environment = build_environment(ensure_android().env());
     environment.setdefault("NODE_ENV", "production" if release else "development");
     android_dir = rn_dir / "android";
@@ -545,7 +546,7 @@ def run_gradle_assemble(rn_dir: Path, release: bool = False) -> Path {
         "can take 5–10 minutes.)",
         style="muted"
     );
-    with InstallLock(Path(environment["ANDROID_HOME"]) / ".jac-sdk.lock") {
+    with FileLock(Path(environment["ANDROID_HOME"]) / ".jac-sdk.lock") {
         subprocess.run(
             cmd,
             env=environment,

@@ -10,7 +10,7 @@ fixed-width i32 kernel, float power, and the zero-base ZeroDivisionError.
 
 import ctypes;
 import os;
-import from tests.support { JAC_ROOT, TESTS_DIR, native_force_opts }
+import from tests.support { JAC_ROOT, TESTS_DIR, native_address, native_force_opts }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
@@ -52,7 +52,7 @@ def pow_semantics_engine -> tuple[ExecutionEngine, uni.Module] {
 def get_func(
     eng: ExecutionEngine, name: str, restype: type | None, *argtypes: type
 ) -> object {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     functype = ctypes.CFUNCTYPE(restype, *argtypes);
     return functype(addr);

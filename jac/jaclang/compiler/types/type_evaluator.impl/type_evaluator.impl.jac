@@ -2432,6 +2432,16 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                 return node_.type;
             }
 
+            context_item = node_.parent;
+            if isinstance(context_item, ExprAsItem) and context_item.alias is node_ {
+                context_stmt = context_item.parent;
+                if isinstance(context_stmt, WithStmt) {
+                    return self.get_type_of_context_binding(
+                        context_item, context_stmt.is_async
+                    );
+                }
+            }
+
             if enum_member_type := self._get_enum_member_type_for_decl(node_) {
                 return enum_member_type;
             }
@@ -3985,19 +3995,8 @@ impl TypeEvaluator._load_stub_module(path: str) -> Module {
     }
 
     resolved_path = str(Path(path).resolve());
-    compiler = self.program._get_compiler();
-    target_program = compiler.selfhost.resolve(resolved_path, self.program);
-    target_hub = target_program.mod.hub;
-
     if resolved_path in self.program.mod.hub {
         mod = self.program.mod.hub[resolved_path];
-        if mod.parent_scope is None and mod is not self.builtins_module {
-            mod.parent_scope = self.builtins_module;
-        }
-        return mod;
-    }
-    if resolved_path in target_hub {
-        mod = target_hub[resolved_path];
         if mod.parent_scope is None and mod is not self.builtins_module {
             mod.parent_scope = self.builtins_module;
         }

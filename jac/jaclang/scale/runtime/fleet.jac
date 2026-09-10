@@ -311,7 +311,7 @@ def _compiled_app_edges(
     seen: set[int] = set();
     while True {
         fresh: list[any] = [];
-        for hub in list(prog._search_hubs()) {
+        for hub in list(prog.execution_hubs()) {
             for mod in list(hub.values()) {
                 if id(mod) not in seen {
                     seen.add(id(mod));

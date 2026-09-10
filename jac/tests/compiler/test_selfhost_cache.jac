@@ -1,6 +1,6 @@
 """The compiler's own tree is an ordinary citizen of the analysis cache.
 
-Two properties, asserted through the self-host program's counters rather than
+Two properties, asserted through each analysis program's counters rather than
 timing: a compiler-tree dependency hydrates from its persisted interface for
 every later analysis instead of being re-ingested as a tree, and a verdict
 served warm is byte-for-byte the verdict a cold analysis computes. The second
@@ -48,25 +48,21 @@ def _forget_verdict(path: str) {
     } except OSError {}
 }
 
-def _check(path: str) -> list[str] {
-    prog = JacProgram();
+def _check(path: str, prog: JacProgram) -> list[str] {
     prog.compile(
-        path,
-        options=CompileOptions(
-            no_cgen=True, native_parity=True, force_target_program=True, iface_ok=True
-        )
+        path, options=CompileOptions(no_cgen=True, native_parity=True, iface_ok=True)
     );
     return sorted(
-        [a.pretty_print() for a in prog.errors_had]
-            + [a.pretty_print() for a in prog.warnings_had]
+        [a.pretty_print() for a in prog.diags.owned_errors(path)]
+            + [a.pretty_print() for a in prog.diags.owned_warnings(path)]
     );
 }
 
-def _check_recomputed(path: str) -> list[str] {
+def _check_recomputed(path: str, prog: JacProgram) -> list[str] {
     saved = os.environ.get("JAC_REBUILD");
     os.environ["JAC_REBUILD"] = "1";
     try {
-        return _check(path);
+        return _check(path, prog);
     } finally {
         if saved is None {
             del os.environ["JAC_REBUILD"];
@@ -79,16 +75,18 @@ def _check_recomputed(path: str) -> list[str] {
 test "a compiler-tree analysis hydrates its dependencies instead of re-ingesting them" {
     target = _tree_path(HYDRATION_TARGET);
     _reset_selfhost();
-    _check_recomputed(target);
-    cold = _selfhost().analysis.pass_runs.get("SymTabBuildPass", 0);
+    cold_prog = JacProgram();
+    _check_recomputed(target, cold_prog);
+    cold = cold_prog.analysis.pass_runs.get("SymTabBuildPass", 0);
     assert cold >= 8 , (
         f"the cold analysis ingested only {cold} dependency trees, too few to measure"
     );
     _reset_selfhost();
     _forget_verdict(target);
-    _check(target);
-    events = dict(_selfhost().analysis.cache_events);
-    warm = _selfhost().analysis.pass_runs.get("SymTabBuildPass", 0);
+    warm_prog = JacProgram();
+    _check(target, warm_prog);
+    events = dict(warm_prog.analysis.cache_events);
+    warm = warm_prog.analysis.pass_runs.get("SymTabBuildPass", 0);
     assert events.get("dep_hydrate", 0) >= 1 , (
         f"the warm analysis hydrated no compiler-tree dependency (events: {events})"
     );
@@ -102,16 +100,19 @@ test "a verdict served warm is the verdict a cold analysis computes, across the 
     for rel in ORACLE_SAMPLE {
         target = _tree_path(rel);
         _reset_selfhost();
-        _check(target);
+        warm_prog = JacProgram();
+        _check(target, warm_prog);
         _reset_selfhost();
         _forget_verdict(target);
-        hydrated = _check(target);
-        events = dict(_selfhost().analysis.cache_events);
+        warm_prog = JacProgram();
+        hydrated = _check(target, warm_prog);
+        events = dict(warm_prog.analysis.cache_events);
         assert events.get("dep_hydrate", 0) >= 1 , (
             f"{rel}: nothing hydrated, so the comparison is vacuous (events: {events})"
         );
         _reset_selfhost();
-        recomputed = _check_recomputed(target);
+        cold_prog = JacProgram();
+        recomputed = _check_recomputed(target, cold_prog);
         assert hydrated == recomputed , (
             f"{rel}: the warm verdict differs from the cold one\n"
             f"hydrated ({len(hydrated)}):\n"

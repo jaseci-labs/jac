@@ -48,7 +48,7 @@ test "releasing a compile closure forgets every claim" {
     prog.compile(
         use_str="with entry { print(1); }",
         file_path="ledger_probe.jac",
-        options=CompileOptions(no_cgen=True, no_ir_cache=True)
+        options=CompileOptions(no_cgen=True)
     );
     assert len(prog.analysis.analyses_run) >= 1;
     prog.release_compile_closure();

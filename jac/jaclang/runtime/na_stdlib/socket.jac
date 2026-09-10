@@ -7,11 +7,12 @@ import from _socket_native {
     sock_recv,
     sock_close
 }
+import from _socket_abi { IPV6_FAMILY, address_family }
 import from _errno_native { errno_message }
 
 glob AF_UNSPEC: int = 0,
      AF_INET: int = 2,
-     AF_INET6: int = 10;
+     AF_INET6: int = IPV6_FAMILY;
 
 glob SOCK_STREAM: int = 1,
      SOCK_DGRAM: int = 2;
@@ -56,7 +57,7 @@ obj:pub socket {
             );
         }
         for sa in addrs {
-            fam = sa[0] + sa[1] * 256;
+            fam = address_family(sa);
             if fam == self.family and self._connect_sa(sa) {
                 return;
             }
@@ -113,7 +114,7 @@ def:pub create_connection(address: tuple[(str, int)]) -> socket {
         );
     }
     for sa in addrs {
-        fam = sa[0] + sa[1] * 256;
+        fam = address_family(sa);
         s = socket(family=fam, socktype=1, proto=0);
         if s.fileno() < 0 {
             continue;

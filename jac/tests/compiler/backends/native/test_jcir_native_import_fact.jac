@@ -38,8 +38,7 @@ glob FIXTURES = os.path.join(
 def _compiled(fixture: str) -> tuple {
     prog = JacProgram();
     mod = prog.compile(
-        file_path=os.path.join(FIXTURES, fixture),
-        options=CompileOptions(no_ir_cache=True)
+        file_path=os.path.join(FIXTURES, fixture), options=CompileOptions()
     );
     return (prog, mod, );
 }

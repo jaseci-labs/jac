@@ -9,7 +9,7 @@ import re;
 import subprocess;
 import sys;
 import tempfile;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, unit_symbol }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -32,7 +32,8 @@ def _probe_fn_ir(gc_mode: str, enforce: bool) -> str {
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
     text = str(ir.gen.llvm_ir);
-    m = re.search(r'define[^\n]*@"?probe"?\([^\n]*\n(.*?)\n\}', text, re.DOTALL);
+    sym = re.escape(unit_symbol(ir, "probe"));
+    m = re.search(r'define[^\n]*@"?' + sym + r'"?\([^\n]*\n(.*?)\n\}', text, re.DOTALL);
     assert m , "probe fn not found in IR";
     return m.group(1);
 }

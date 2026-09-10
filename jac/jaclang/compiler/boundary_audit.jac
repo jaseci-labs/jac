@@ -1,16 +1,15 @@
 import json;
+import type from jaclang.compiler.driver.program { JacProgram }
 
-def boundary_audit(program: any, artifacts: list[dict]) -> dict {
+def boundary_audit(program: JacProgram, artifacts: list[dict]) -> dict {
     boundaries: dict = {};
     effects: dict = {};
     host_imports: dict = {};
     manifests = list(artifacts);
     compiler = program._get_compiler();
-    for hub in program._search_hubs() {
-        for module in hub.values() {
-            if module is not None and module.gen is not None {
-                manifests.append(compiler._build_interop_dict(module));
-            }
+    for module in program.mod.hub.values() {
+        if module is not None and module.gen is not None {
+            manifests.append(compiler._build_interop_dict(module));
         }
     }
     for manifest in manifests {

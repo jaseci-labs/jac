@@ -1,3 +1,4 @@
+import from jaclang.jac0core.cache_paths { atomic_write }
 import io;
 import os;
 import json;
@@ -479,14 +480,6 @@ def download_release_binary(
 }
 
 
-def _write_cache_atomic(cache_file: Path, payload: bytes) {
-    cache_file.parent.mkdir(parents=True, exist_ok=True);
-    tmp = cache_file.with_name(f"{cache_file.name}.{os.getpid()}.tmp");
-    tmp.write_bytes(payload);
-    tmp.replace(cache_file);
-}
-
-
 def _fetch_verified_asset(
     url: str, checksum_url: str, cache_file: Path, what: str
 ) -> bytes {
@@ -520,7 +513,7 @@ def host_toolchain_path(project_dir: str, channel: str = "") -> str {
     payload = download_release_binary(channel, arch, version, plat);
     path = _binary_cache_path(channel, arch, plat, version);
     if not path.is_file() {
-        _write_cache_atomic(path, payload);
+        atomic_write(path, payload);
     }
     path.chmod(0o755);
     logger.info(f"Host build steps for this deploy run the pinned jac {version}.");

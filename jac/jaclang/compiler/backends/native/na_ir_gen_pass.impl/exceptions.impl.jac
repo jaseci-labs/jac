@@ -647,7 +647,7 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
         }
     }
     func = self.builder.function;
-    if func.name == "jac_entry" {
+    if func is self.func_symtab.get("jac_entry") {
         (_tg, _og, mglob) = self._nogc_err_slot();
         msg = self.builder.load(mglob, name="err.msg");
         fmt = self._make_global_string(
@@ -656,6 +656,8 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
         self.builder.call(
             self._get_printf(), [self.builder.bitcast(fmt, i8p, name="err.fmt"), msg]
         );
+        flush_fn = self._get_or_declare_extern("fflush", ir.IntType(32), [i8p]);
+        self.builder.call(flush_fn, [ir.Constant(i8p, None)]);
         abort_fn = self._get_or_declare_extern("abort", ir.VoidType(), []);
         self.builder.call(abort_fn, []);
         self.builder.unreachable();

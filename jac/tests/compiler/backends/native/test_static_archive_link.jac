@@ -26,40 +26,17 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
 import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
-import from jaclang.compiler.backends.native.linker_common { select_ar_members }
-import from jaclang.cli.commands.native_build {
-    _inject_entry_elf_static,
-    _collect_musl_static,
-    _musl_lib_dir
+import from jaclang.compiler.backends.native.linker_common {
+    collect_musl_static,
+    musl_lib_dir,
+    select_ar_members
 }
+import from tests.support { program_ir }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
-
-
-"""Compile a fixture for `triple` and return its LLVM IR text (mirrors the
-nacompile CLI AOT path; see test_exec_link)."""
-def _compile_ir(fixture: str, triple: str) -> str {
-    prev = push_native_target(triple);
-    try {
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=os.path.join(FIXTURES, fixture),
-            options=CompileOptions(aot_mode=True)
-        );
-        assert not prog.errors_had , f"compile errors: {[
-            str(e) for e in prog.errors_had
-        ]}";
-        ir_txt = str(ir.gen.llvm_ir);
-    } finally {
-        pop_native_target(prev);
-    }
-    return ir_txt;
-}
 
 
 """Assemble IR into a relocatable object using the fixed-base large code model,
@@ -73,32 +50,6 @@ def _emit_object(ir_txt: str, triple: str) -> bytes {
         opt=2, codemodel="large"
     );
     return tm.emit_object(mod);
-}
-
-
-"""Inject `main` for Mach-O — mirrors nacompile's _inject_entry_macho."""
-def _inject_macho(ir_txt: str) -> str {
-    globals_ir = ""
-        if "__jac_argc" in ir_txt
-        else "@__jac_argc = global i32 0\n@__jac_argv = global ptr null\n\n";
-    return ir_txt
-        + (
-            "\n; --- injected entry point ---\n"
-            + globals_ir
-            + "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n"
-            + "    store i32 %argc, ptr @__jac_argc\n"
-            + "    store ptr %argv, ptr @__jac_argv\n"
-            + "    call void @jac_entry()\n    ret i32 0\n}\n"
-        );
-}
-
-
-"""Inject `main` + `_start` for ELF — mirrors nacompile's _inject_entry_elf
-(see test_exec_link). ELF executables need an explicit `_start` that calls
-`main` and `exit`, unlike Mach-O where dyld provides the entry stub."""
-def _inject_elf(ir_txt: str) -> str {
-    # Static musl entry (crt1.o supplies `_start`); see test_exec_link.
-    return _inject_entry_elf_static(ir_txt);
 }
 
 
@@ -127,13 +78,11 @@ test "Mach-O: static-link lzma_crc32 from liblzma.a, run, verify (#6978 0.1a)" {
     assert members , "ar selection found no member defining _lzma_crc32";
     member_bytes = [m.data for m in members];
 
-    relobj = _emit_object(
-        _inject_macho(_compile_ir("static_archive_crc32.jac", triple)), triple
-    );
+    relobj = _emit_object(program_ir("static_archive_crc32.jac", triple), triple);
     d = tempfile.mkdtemp();
     out = os.path.join(d, "crc32_static");
     ok = MachOLinker.link(
-        obj_bytes=relobj,
+        objects=[relobj],
         output_path=out,
         needed_libs=["/usr/lib/libSystem.B.dylib"],
         shared=False,
@@ -166,13 +115,11 @@ test "Mach-O: static-link XML_ExpatVersion from libexpat.a (multi-member) (#6978
     assert len(members) > 1 , f"expected a multi-member closure, got {len(members)}";
     member_bytes = [m.data for m in members];
 
-    relobj = _emit_object(
-        _inject_macho(_compile_ir("static_archive_expat.jac", triple)), triple
-    );
+    relobj = _emit_object(program_ir("static_archive_expat.jac", triple), triple);
     d = tempfile.mkdtemp();
     out = os.path.join(d, "expat_static");
     ok = MachOLinker.link(
-        obj_bytes=relobj,
+        objects=[relobj],
         output_path=out,
         needed_libs=["/usr/lib/libSystem.B.dylib"],
         shared=False,
@@ -224,7 +171,7 @@ test "nacompile CLI: `import from lzma` static-links the floor, no dylib dep (#6
 
 
 """Emit a PIC relocatable object for `triple` (shared-object flavor, matching
-emit_shared_library's target-machine settings)."""
+link_plan.link_artifact's target-machine settings)."""
 def _emit_pic_object(ir_txt: str, triple: str) -> bytes {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
@@ -247,7 +194,7 @@ def _link_elf_shared(main_ir: str, member_irs: list[str], triple: str) -> tuple 
     os.environ["JAC_SYMMAP"] = "1";
     try {
         ok = ElfLinker.link(
-            obj_bytes=_emit_pic_object(main_ir, triple),
+            objects=[_emit_pic_object(main_ir, triple)],
             output_path=out,
             needed_libs=["libc.so.6"],
             crt_objects=[],
@@ -406,7 +353,7 @@ test "ELF: static-link jac_floor_magic from a member object, run, verify (#6978 
     # Execution stays gated to a Linux x86_64 host that can run the result.
     triple = "x86_64-unknown-linux-gnu";
     main_obj = _emit_object(
-        _inject_elf(_compile_ir("static_archive_elf_leaf.jac", triple)), triple
+        program_ir("static_archive_elf_leaf.jac", triple, static_musl=True), triple
     );
     # The archive member as a raw relocatable object -- the same shape
     # select_ar_members hands back as `.data`: a leaf defining the extern the
@@ -419,17 +366,17 @@ test "ELF: static-link jac_floor_magic from a member object, run, verify (#6978 
 
     d = tempfile.mkdtemp();
     out = os.path.join(d, "floor_static_elf");
-    if _musl_lib_dir(triple) is None {
+    if musl_lib_dir(triple) is None {
         return;
     }
-    musl = _collect_musl_static(main_obj, triple);
+    musl = collect_musl_static([main_obj], triple);
     assert musl is not None , "musl runtime unexpectedly unavailable";
     (members, crt) = musl;
     # Prepend the member-under-test to the vendored musl members: an unmerged
     # member would leave `jac_floor_magic` undefined (resolved to 0) and the
     # program would crash, so a clean run proves the merge.
     ok = ElfLinker.link(
-        obj_bytes=main_obj,
+        objects=[main_obj],
         output_path=out,
         needed_libs=[],
         crt_objects=crt,

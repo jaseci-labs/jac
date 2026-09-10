@@ -576,7 +576,9 @@ impl compute_mro_linearization(
                 head = linz[0];
                 in_tail = False;
                 for other_lin in linearizations {
-                    if head in other_lin[1:] {
+                    if any(
+                        head.shared.same_class(tail.shared) for tail in other_lin[1:]
+                    ) {
                         in_tail = True;
                         break;
                     }
@@ -596,7 +598,7 @@ impl compute_mro_linearization(
                 new_lin = [
                     c
                     for c in linz
-                    if c is not candidate
+                    if not c.shared.same_class(candidate.shared)
                 ];
                 if new_lin {
                     new_linearizations.append(new_lin);

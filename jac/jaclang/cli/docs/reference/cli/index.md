@@ -1784,15 +1784,16 @@ jac build filename.jac --native [-o OUTPUT] [--memory managed|rc|nogc] [--lib] [
 | `--lib` | Build a C-ABI shared library (`.so`/`.dylib`/`.dll`) exporting `:pub` symbols instead of an executable | inferred from the absence of `with entry` |
 | `--target-triple` | `host`, `wasm32` for a browser `.wasm` module, or an LLVM triple | `[native] target`, else host |
 | `--debug` | DWARF debug info, symbol table, and the RC trace machinery, together | `[native] debug`, else off |
+| `--link-mode` | Reuse optimized objects (`objects`) or optimize whole-program bitcode (`bitcode`) | `[native] link_mode`, else `objects` |
 
 A stale IR cache is cleared with `jac clean --cache`. Nothing at compile time reads the environment; a built binary reads only `JAC_GC=off` (disable collection for leak debugging) and `JAC_THREADS` (`flow for` width). `jac explain memory|placement|ir` shows what the compiler inferred; `jac explain memory <file> --memory rc|nogc|managed` explains the module under a profile other than the project's, and prints the per-module RC coverage line (`rc-stats ... promoted=N`) on stderr.
 
 **What happens under the hood:**
 
-1. Compiles the `.jac` file through the Jac pipeline (native codespace forced) to get LLVM IR
-2. Injects `main()` and `_start` as pure LLVM IR (zero inline assembly)
-3. Emits native object code via llvmlite's `emit_object()`
-4. Links into an ELF executable via the built-in pure-Python ELF linker
+1. Compiles the `.jac` file and every native unit it reaches through the Jac pipeline (native codespace forced); each unit's native interface, relocatable object and bitcode land in its module cache
+2. Builds one link plan over the units: dependency order, an agreement check on every recorded interface digest, and one synthesized glue object holding `jac_entry`, `main()` / `_start` as pure LLVM IR (zero inline assembly)
+3. In `objects` mode links the cached objects; in `bitcode` mode links every unit's bitcode into one LLVM module and optimizes it whole-program before a single codegen
+4. Links into an ELF, Mach-O or PE executable (or a wasm module) via the built-in pure-Python linkers, and writes the plan digest beside the artifact
 
 The resulting binary dynamically links against `libc.so.6`. Memory management is the profile's runtime: reference counting with the cycle collector under `managed`, reference counting under `rc`, and static drops with no runtime under `nogc`.
 

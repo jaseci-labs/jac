@@ -35,6 +35,7 @@ import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
+import from tests.support { native_address }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      WALK_ORDERS: list = [None, "reverse", "shuffle:1337", "shuffle:7", "shuffle:42"];
@@ -44,7 +45,6 @@ def compile_ir_text(fixture: str, walk_order: str | None) -> str {
     prog = JacProgram();
     opts = CompileOptions(
         force_codespace='native',
-        force_target_program=True,
         skip_native_engine=True,
         native_module_walk_order=walk_order
     );
@@ -107,7 +107,7 @@ test "imported obj-field chain IR is walk-order independent" {
 
 test "imported obj-field chain executes correctly" {
     prog = JacProgram();
-    opts = CompileOptions(force_codespace='native', force_target_program=True);
+    opts = CompileOptions(force_codespace='native');
     mod = prog.compile(
         file_path=os.path.join(FIXTURES, "xmodfield_entry.jac"), options=opts
     );
@@ -115,7 +115,7 @@ test "imported obj-field chain executes correctly" {
     assert not prog.errors_had , f"Compilation errors: {errors}";
     eng = mod.gen.native_engine;
     assert eng is not None , "No native engine produced";
-    addr = eng.get_function_address("imported_field_checksum");
+    addr = native_address(eng, "imported_field_checksum");
     assert addr != 0 , "imported_field_checksum not found";
     result = ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
     assert result == 1020 , f"Expected 1020, got {result}";
@@ -123,9 +123,7 @@ test "imported obj-field chain executes correctly" {
 
 test "an unlowerable field erases loudly: the declaration seams, every touch refuses" {
     prog = JacProgram();
-    opts = CompileOptions(
-        force_codespace='native', force_target_program=True, skip_native_engine=True
-    );
+    opts = CompileOptions(force_codespace='native', skip_native_engine=True);
     na_coverage_begin();
     mod = prog.compile(
         file_path=os.path.join(FIXTURES, "unlowerable_field.jac"), options=opts

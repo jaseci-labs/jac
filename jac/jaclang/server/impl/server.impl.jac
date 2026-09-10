@@ -499,7 +499,7 @@ impl ModuleIntrospector._load_manifest -> None {
 
     aggregated: dict = {};
 
-    for hub in Jac.get_program()._search_hubs() {
+    for hub in Jac.get_program().execution_hubs() {
         for hub_mod in hub.values() {
             if hub_mod and hub_mod.gen.interop_manifest {
                 for (ekey, eeff) in hub_mod.gen.interop_manifest.endpoint_effects.items() {
@@ -733,7 +733,7 @@ impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
     func_access: dict[str, bool] = {};
     walker_access: dict[str, bool] = {};
 
-    for hub in Jac.get_program()._search_hubs() {
+    for hub in Jac.get_program().execution_hubs() {
         for mod in hub.values() {
             man = mod.gen.interop_manifest if (mod and mod.gen) else None;
             if not man {
@@ -1420,7 +1420,11 @@ impl JacAPIServer.add_shutdown_hook(fn: Callable[..., any]) -> None {
 
 impl JacAPIServer._install_middleware -> None {
     import from jaclang.server.middleware { jwt_middleware, request_context_middleware }
-    self.add_middleware(request_context_middleware());
+    self.add_middleware(
+        request_context_middleware(
+            base_path_dir=self.base_path or None, full_target_path=self.module_file
+        )
+    );
     self.add_middleware(jwt_middleware(self.user_manager));
 }
 

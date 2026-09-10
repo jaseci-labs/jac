@@ -1,4 +1,33 @@
 import from jaclang.compiler.backends.native.llvm { ir }
+import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.frontend.diagnostics { DiagnosticInfo }
+
+impl NaIRGenPass.emit(
+    diag: DiagnosticInfo,
+    node_override: (uni.UniNode | None) = None,
+    related: (list[tuple[str, uni.UniNode]] | None) = None,
+    help_text: (str | None) = None,
+    **kwargs: any
+) -> bool {
+    """A lowering diagnostic is a routing fact before it is a report: the
+demotion of a function is decided by the errors its lowering recorded, so a
+suppressed code must still be recorded here. The pass driver applies the
+policy when it delivers the pass's alerts to the program, so a suppressed
+diagnostic never reaches a user.""";
+    saved = self.policy;
+    self.policy = None;
+    try {
+        return super.emit(
+            diag,
+            node_override=node_override,
+            related=related,
+            help_text=help_text,
+            **kwargs
+        );
+    } finally {
+        self.policy = saved;
+    }
+}
 
 impl NaIRGenPass.builder.getter -> ir.IRBuilder {
     if self._builder is None {

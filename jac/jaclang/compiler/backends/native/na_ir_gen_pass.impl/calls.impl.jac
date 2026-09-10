@@ -2183,8 +2183,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if _alias_arch is not None and _alias_arch in self.struct_types {
         return self._codegen_instantiation(nd, type_name_override=_alias_arch);
     }
+    _skipped_key = f"{_mod_qual}.{func_name}" if _mod_qual is not None else func_name;
     if (
-        func_name in self._native_skipped_methods and func_name not in self.generic_fns
+        _skipped_key in self._native_skipped_methods
+        and func_name not in self.generic_fns
     ) {
         self.emit(
             E5092,

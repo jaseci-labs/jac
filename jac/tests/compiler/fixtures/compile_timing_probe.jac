@@ -82,9 +82,7 @@ def phase_row(src: str) -> dict {
     errors += len(whole.errors_had);
     whole.release_compile_closure();
     checker = JacProgram();
-    check_opts = CompileOptions(
-        no_cgen=True, native_parity=True, force_target_program=True
-    );
+    check_opts = CompileOptions(no_cgen=True, native_parity=True);
     if hasattr(check_opts, "iface_ok") {
         check_opts.iface_ok = True;
     }

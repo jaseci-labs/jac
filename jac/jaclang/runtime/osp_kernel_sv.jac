@@ -178,10 +178,10 @@ def _sv_on_complete(scope: WalkScope, ok: bool) {
         scope.wlk.reports = scope.reports;
     }
 
-    import from jaclang.runtime.runtime { JacRuntime, _request_context }
+    import from jaclang.runtime.runtime { JacRuntime }
     ctx = None;
     try {
-        ctx = _request_context.get() or JacRuntime.exec_ctx;
+        ctx = JacRuntime.peek_context();
         if ctx is None {
             return;
         }

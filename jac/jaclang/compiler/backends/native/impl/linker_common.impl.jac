@@ -337,7 +337,7 @@ impl parse_ar_symbol_index(data: bytes) -> dict[str, int] {
 }
 
 
-def _ar_member_undefs(mem: bytes) -> list[str] {
+impl object_undefined_symbols(mem: bytes) -> list[str] {
     if len(mem) < 4 {
         return [];
     }
@@ -476,7 +476,7 @@ impl select_ar_members(data: bytes, root_undef: list[str]) -> list[ArMember] {
             continue;
         }
         selected[off] = m;
-        for u in _ar_member_undefs(m.data) {
+        for u in object_undefined_symbols(m.data) {
             if u not in seen_syms {
                 worklist.append(u);
             }

@@ -30,76 +30,20 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
              module="jaclang.compiler.passes.sym_tab_build_pass", strict=True
          ),
 
-     );
-
-obj ActiveNativeScope {
-    has compiler_roots: set[str];
-}
-
-glob _SCOPE_SUFFIX_CACHE: list[str] = [],
-     _SCOPE_ACTIVE: list[ActiveNativeScope] = [];
-
-def activate_scope_lowering(source_path: str | None = None) -> None {
-    if _SCOPE_ACTIVE {
-        return;
-    }
-    roots = {os.path.dirname(os.path.realpath(__file__)) + os.sep};
-    if source_path is not None {
-        source = os.path.realpath(source_path);
-        for suffix in native_scope_path_suffixes() {
-            if source.endswith(suffix) {
-                checkout = source[:-len(suffix)];
-                roots.add(os.path.join(checkout, "jaclang", "compiler") + os.sep);
-                break;
-            }
-        }
-    }
-    _SCOPE_ACTIVE.append(ActiveNativeScope(compiler_roots=roots));
-    try {
-        import from jaclang.runtime.runtime { JacRuntime }
-        sh = JacRuntime.get_selfhost();
-        prog = sh.peek_program();
-        if prog is not None {
-            hub = prog.mod.hub;
-            for k in list(hub.keys()) {
-                if in_native_scope_path(k) {
-                    del hub[k];
-                }
-            }
-        }
-    } except Exception {}
-}
-
-def scope_lowering_active -> bool {
-    return len(_SCOPE_ACTIVE) > 0;
-}
+     ),
+     KERNEL_ROOT_MODULE: str = "jaclang.compiler.jc_unit",
+     _SCOPE_SUFFIX_CACHE: list[str] = [];
 
 def scope_allows_inferred_path(mod_path: str) -> bool {
-    if not scope_lowering_active() {
-        return True;
+    import from jaclang.compiler.frontend.codeinfo {
+        native_unit_compile_active,
+        native_unit_identity
     }
-    candidate = os.path.realpath(mod_path);
-    for compiler_root in _SCOPE_ACTIVE[-1].compiler_roots {
-        if candidate.startswith(compiler_root) {
-            return in_native_scope_path(candidate);
-        }
+    if native_unit_compile_active()
+        and native_unit_identity(mod_path).startswith("jaclang/compiler/") {
+        return in_native_scope_path(mod_path);
     }
     return True;
-}
-
-def deactivate_scope_lowering {
-    """Turn scope lowering back off once the build that armed it is done.
-
-    Scope lowering is a property of one ahead-of-time native build (the
-    kernel's), not of the process. While it is on, the selfhost resolver
-    hands NATIVE_SCOPE modules to the target program instead of the
-    compiler's own, so in a sealed image, where those are two different
-    trees, a compile that outlives the build sees the frontend twice:
-    `Source` from the checkout and `Source` from the shipped compiler, and
-    the checker reports "Cannot assign Source to parameter of type Source".
-    The outermost compile that armed it disarms it on exit.
-    """;
-    _SCOPE_ACTIVE.clear();
 }
 
 def native_scope_path_suffixes -> list[str] {
@@ -123,4 +67,18 @@ def in_native_scope_path(mod_path: str) -> bool {
         }
     }
     return False;
+}
+
+def scope_module_path(module: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    rel = module.replace("jaclang.", "", 1).replace(".", os.sep) + ".jac";
+    return os.path.join(jaclang_pkg_root(), rel);
+}
+
+def native_scope_paths -> list[str] {
+    return [scope_module_path(e.module) for e in NATIVE_SCOPE];
+}
+
+def kernel_root_path -> str {
+    return scope_module_path(KERNEL_ROOT_MODULE);
 }

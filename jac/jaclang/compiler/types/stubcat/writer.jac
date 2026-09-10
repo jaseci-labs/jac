@@ -295,7 +295,7 @@ obj CatalogWriter {
         pending_syms: list[int] postinit,
         type_ids: dict[any, int] postinit,
         _ident_visiting: set[int] postinit,
-        _type_ident_memo: dict[int, any] postinit,
+        _type_ident_memo: dict[int, tuple[TypeBase, any]] postinit,
         types: list[TypeBase] postinit,
         pending_types: list[int] postinit,
         shared_ids: dict[any, int] postinit,
@@ -398,7 +398,7 @@ obj CatalogWriter {
             return id(scope);
         }
         mod = module_of(scope);
-        if mod is None or not self.in_boundary(mod) {
+        if mod is None {
             return id(scope);
         }
         loc = scope.loc;
@@ -422,7 +422,7 @@ obj CatalogWriter {
         }
         home = home_scope(sym);
         mod = module_of(home);
-        if home is None or mod is None or not self.in_boundary(mod) {
+        if home is None or mod is None {
             return id(sym);
         }
         loc = sym.decl.loc if sym.decl else None;
@@ -449,8 +449,17 @@ obj CatalogWriter {
             tab = None;
         }
         mod = module_of(tab) if tab is not None else None;
-        if tab is None or mod is None or not self.in_boundary(mod) {
+        if tab is None or mod is None {
             return id(shared);
+        }
+        if not self.in_boundary(mod) {
+            return (
+                "xref",
+                self._mod_ident(mod),
+                self.scope_dotted_path(tab),
+                shared.class_name,
+                shared.canonical_key()
+            );
         }
         return (self._scope_ident(tab), shared.class_name, );
     }
@@ -742,7 +751,7 @@ obj CatalogWriter {
         }
         memo = self._type_ident_memo.get(tid);
         if memo is not None {
-            return memo;
+            return memo[1];
         }
         if tid in self._ident_visiting {
             return tid;
@@ -753,7 +762,7 @@ obj CatalogWriter {
         } finally {
             self._ident_visiting.discard(tid);
         }
-        self._type_ident_memo[tid] = key;
+        self._type_ident_memo[tid] = (t, key);
         return key;
     }
 

@@ -18,6 +18,8 @@ import os;
 import from tests.support {
     TESTS_DIR,
     compile_native,
+    names_function,
+    native_address,
     compile_native_ir,
     native_force_opts
 }
@@ -39,7 +41,7 @@ def sv_module -> any {
 
 """Get a ctypes-callable int -> int function from the JIT engine."""
 def get_func(eng: any, name: str) -> any {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
 }
@@ -62,11 +64,10 @@ def congruent(eng: any, sv: object, name: str, inputs: list[int]) -> list[int] {
 
 """Slice one function's body out of a printed LLVM module."""
 def func_ir(llvm_ir: str, name: str) -> str {
-    marker = '@"' + name + '"(';
     out: list[str] = [];
     inside = False;
     for line in str(llvm_ir).split("\n") {
-        if not inside and line.startswith("define ") and marker in line {
+        if not inside and line.startswith("define ") and names_function(line, name) {
             inside = True;
         }
         if inside {

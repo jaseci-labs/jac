@@ -80,18 +80,18 @@ def _call_na_int(eng: object, name: str) -> int {
 }
 
 
-test "urllib.request.urlopen GET over the libcurl floor (sv<->na congruent)" {
+test "urllib.request.urlopen GET over the socket transport (sv<->na congruent)" {
     (srv, port) = _start_server();
     os.environ["JAC_URLLIB_TEST_PORT"] = str(port);
     try {
         # Pin the canonical sv (CPython urllib) semantics as a hard guard.
-        py = run_py_fixture("prim_urllib", "urllib_py");
+        py = run_py_fixture("prim_urllib_host", "urllib_py");
         assert py["status"] == 200 , py;
         assert py["body"] == "hello world" , py;
         assert py["body_length"] == 11 , py;
         assert py["content_type"] == "text/plain; charset=utf-8" , py;
 
-        # Native libcurl floor: same status and body length, parsed from the
+        # Native socket transport: same status and body length, parsed from the
         # real HTTP exchange against the loopback server.
         # Rebuild dependencies so JIT shared-library loading is exercised even
         # when earlier tests have populated the native IR cache.
@@ -107,11 +107,11 @@ test "urllib.request.urlopen GET over the libcurl floor (sv<->na congruent)" {
 }
 
 
-test "urllib.request.urlopen follows redirects over the libcurl floor (sv<->na)" {
+test "urllib.request.urlopen follows redirects over the socket transport (sv<->na)" {
     (srv, port) = _start_server();
     os.environ["JAC_URLLIB_TEST_PORT"] = str(port);
     try {
-        py = run_py_fixture("prim_urllib", "urllib_redirect_py");
+        py = run_py_fixture("prim_urllib_host", "urllib_redirect_py");
         assert py["status"] == 200 , py;
         assert py["body"] == "hello world" , py;
         assert py["body_length"] == 11 , py;

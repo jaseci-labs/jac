@@ -50,9 +50,7 @@ def brand_errors(space: str) -> list[str] {
     prog.compile(
         file_path=BRAND_PATH,
         use_str=BRAND_SRC,
-        options=CompileOptions(
-            no_cgen=True, force_codespace=space, force_target_program=True
-        )
+        options=CompileOptions(no_cgen=True, force_codespace=space)
     );
     return [
         str(alrt)
@@ -68,9 +66,7 @@ def inferred_brand_errors -> list[str] {
     prog.compile(
         file_path=BRAND_PATH,
         use_str=BRAND_SRC,
-        options=CompileOptions(
-            skip_native_engine=True, suppress_codes=["E5092"], force_target_program=True
-        )
+        options=CompileOptions(skip_native_engine=True, suppress_codes=["E5092"])
     );
     return [
         str(alrt)

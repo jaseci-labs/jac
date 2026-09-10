@@ -23,12 +23,13 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, program_ir }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.backends.native.pe_linker { PeLinker }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
+import from tests.support { program_ir }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -38,61 +39,12 @@ glob FIXTURES = os.path.join(
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
-"""Inject the PE entry stub the way nacompile does (main + _jac_win_start +
-the _fltused / __getmainargs / exit declarations)."""
-def _inject_pe_entry(ir: str) -> str {
-    glob_ir = ""
-        if "__jac_argc" in ir
-        else ('@__jac_argc = global i32 0\n@__jac_argv = global ptr null\n\n');
-    exit_decl = ""
-        if ("@exit" in ir or '@"exit"' in ir)
-        else 'declare void @exit(i32)\n\n';
-    fltused = "" if "@_fltused" in ir else '@_fltused = global i32 0\n\n';
-    return ir
-        + (
-            '\n'
-            + glob_ir
-            + exit_decl
-            + fltused
-            + 'declare i32 @__getmainargs(ptr, ptr, ptr, i32, ptr)\n\n'
-            + 'define i32 @main(i32 %argc, ptr %argv) {\n'
-            + 'entry:\n'
-            + '  store i32 %argc, ptr @__jac_argc\n'
-            + '  store ptr %argv, ptr @__jac_argv\n'
-            + '  call void @jac_entry()\n'
-            + '  ret i32 0\n'
-            + '}\n\n'
-            + 'define void @_jac_win_start() {\n'
-            + 'entry:\n'
-            + '  %argc.addr = alloca i32\n'
-            + '  %argv.addr = alloca ptr\n'
-            + '  %env.addr = alloca ptr\n'
-            + '  %si = alloca i32\n'
-            + '  store i32 0, ptr %si\n'
-            + '  %gr = call i32 @__getmainargs(ptr %argc.addr, ptr %argv.addr, ptr %env.addr, i32 0, ptr %si)\n'
-            + '  %ac = load i32, ptr %argc.addr\n'
-            + '  %av = load ptr, ptr %argv.addr\n'
-            + '  %r = call i32 @main(i32 %ac, ptr %av)\n'
-            + '  call void @exit(i32 %r)\n'
-            + '  ret void\n'
-            + '}\n'
-        );
-}
-
-
-"""Compile a fixture to a relocatable COFF object the way nacompile does."""
+"""Compile a fixture to a relocatable COFF object the way nacompile does:
+the plan's whole-program IR carries the PE entry (main + _jac_win_start)."""
 def emit_coff_object(fixture: str) -> bytes {
     prev = push_native_target(WIN_TRIPLE);
     try {
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=os.path.join(FIXTURES, fixture),
-            options=CompileOptions(aot_mode=True)
-        );
-        assert not prog.errors_had , f"compile errors: {[
-            str(e) for e in prog.errors_had
-        ]}";
-        src = _inject_pe_entry(str(ir.gen.llvm_ir));
+        src = program_ir(fixture, WIN_TRIPLE);
         llvm.initialize_all_targets();
         llvm.initialize_all_asmprinters();
         mod = llvm.parse_assembly(src);
@@ -123,7 +75,7 @@ def emit_coff_object(fixture: str) -> bytes {
 def link_pe(relobj: bytes) -> bytes {
     d = tempfile.mkdtemp();
     out = os.path.join(d, "a.exe");
-    ok = PeLinker.link(obj_bytes=relobj, output_path=out);
+    ok = PeLinker.link(objects=[relobj], output_path=out);
     assert ok , "PeLinker.link returned False";
     return Path(out).read_bytes();
 }
@@ -317,7 +269,7 @@ test "data import: direct reference to imported data is a loud link error (#7626
     out = os.path.join(d, "a.exe");
     raised = False;
     try {
-        PeLinker.link(obj_bytes=relobj, output_path=out);
+        PeLinker.link(objects=[relobj], output_path=out);
     } except ValueError as e {
         raised = True;
         assert "__imp_stdout" in str(e) , (
@@ -341,7 +293,7 @@ test "nacompile --target windows writes a valid PE via the CLI" {
             "jaclang",
             "build",
             "--native",
-            "--target",
+            "--target-triple",
             "windows",
             os.path.join(FIXTURES, FIXTURE),
             "-o",

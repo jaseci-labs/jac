@@ -14,7 +14,7 @@ import ctypes;
 import os;
 import shutil;
 import tempfile;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_address }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.diagnostics { E5095, W6008 }
@@ -33,7 +33,7 @@ glob BITS_1_5 = 4609434218613702656,  # 0x3FF8000000000000
 
 
 def _native_opts(gc_mode: str | None = None) -> any {
-    kwargs: dict = {"force_codespace": "native", "force_target_program": True};
+    kwargs: dict = {"force_codespace": "native"};
     if gc_mode is not None {
         kwargs["na_gc_mode"] = gc_mode;
     }
@@ -54,7 +54,7 @@ def _compile_src(source: str, gc_mode: str | None = None) -> tuple {
 }
 
 def _get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function {name} not found in JIT engine";
     functype = ctypes.CFUNCTYPE(restype, *argtypes);
     return functype(addr);

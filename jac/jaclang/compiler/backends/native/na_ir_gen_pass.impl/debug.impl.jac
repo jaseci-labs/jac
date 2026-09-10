@@ -98,11 +98,11 @@ impl NaIRGenPass.post_transform -> None {
     ir_str = str(self.llvm_module);
 
     if self.prog.options.debug_ir {
-        import from jaclang.compiler.driver.jir { get_native_cache_dir }
+        import from jaclang.compiler.driver.jir { get_native_debug_dir }
         src_path = self.ir_in.loc.mod_path;
         if src_path {
             stem = os.path.splitext(os.path.basename(src_path))[0];
-            ir_dir = str(get_native_cache_dir(src_path));
+            ir_dir = str(get_native_debug_dir(src_path));
             os.makedirs(ir_dir, exist_ok=True);
             auto_ir_path = os.path.join(ir_dir, stem + ".ll");
             with open(auto_ir_path, "w") as f {

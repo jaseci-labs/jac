@@ -49,7 +49,8 @@ obj RunConfig {
 }
 
 obj NativeConfig {
-    has target: str = "",
+    has link_mode: str = "objects",
+        target: str = "",
         opt: int = 2,
         debug: bool = False,
         threads: int = 4;

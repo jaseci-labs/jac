@@ -605,7 +605,7 @@ def _dirty_setattr(self: any, name: str, value: any) -> None {
         return;
     }
     import from jaclang.runtime.runtime { JacRuntime }
-    ctx = JacRuntime.exec_ctx;
+    ctx = JacRuntime.peek_context();
     if ctx is None {
         object.__setattr__(self, name, value);
         return;

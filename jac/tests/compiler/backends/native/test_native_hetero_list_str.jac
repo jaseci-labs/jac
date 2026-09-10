@@ -14,7 +14,7 @@ element is released when its list dies, not merely kept alive.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -37,7 +37,7 @@ def _compile(fixture: str) -> any {
 
 
 def _get(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(restype, *argtypes)(addr);
 }
@@ -65,7 +65,7 @@ def _get_s(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
     # bytes/str args build their backing storage via jac_str_new; str
     # returns come back as the full bytes of the result string, so existing
     # comparisons keep working.
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     real_res: any = JacStrABI if restype == ctypes.c_char_p else restype;
     str_slots: list = [];
@@ -85,7 +85,7 @@ def _get_s(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
     sn_addr = 0;
     for sn in ("jac_str_new", "__jac_str_new") {
         try {
-            sn_addr = eng.get_function_address(sn);
+            sn_addr = native_address(eng, sn);
         } except Exception {
             sn_addr = 0;
         }

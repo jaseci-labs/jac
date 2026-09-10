@@ -13,6 +13,9 @@ Three of them had no owner and no lifecycle:
   - `JacProgram.scratch.na_dep_units` memoized dependency units compiled purely to
     read a demotion verdict. The verdict is a set of names; the unit is a
     module tree plus a live LLVM `ModuleRef`. Nothing ever released one.
+    (That scratch is gone since #8943: a dependency's verdict is read from
+    its native interface, served by the program's `NativeUnitRegistry`
+    from the module JIR, so no unit is compiled to answer it.)
   - The `TypeEvaluator` flow-narrowing caches are keyed by `id()` and were
     never cleared on the runtime paths, so they grew with every module the
     process ever checked.
@@ -34,7 +37,6 @@ import gc;
 import os;
 import tempfile;
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 
 """Write a throwaway project and answer its directory."""
@@ -218,114 +220,6 @@ test "a hub lookup finds the module however the path is spelled" {
         f"{real!r}. Every hub lookup must normalize through "
         "JacProgram.hub_key, or a symlinked root (macOS /var, a git "
         "worktree, a container mount) defeats the hub silently"
-    );
-}
-
-test "a verdict query's dep units do not outlive the compile that asked" {
-    import from jaclang.compiler.backends.native.na_compile_pass {
-        native_unit_demotions
-    }
-    tmp = write_mods(
-        {
-            "jac.toml": "[project]\nname = \"retention_na\"\n",
-            "leaf.jac": (
-                "def bad_fmt(n: int) -> str {\n"
-                "    return (\"%03d\" % n);\n"
-                "}\n\n"
-                "def ok(n: int) -> int {\n"
-                "    return n + 1;\n"
-                "}\n"
-            ),
-            "other.jac": ("def solo(n: int) -> int {\n" "    return n * 3;\n" "}\n")
-        }
-    );
-    prog = JacProgram();
-    verdict = native_unit_demotions(
-        prog,
-        os.path.join(tmp, "leaf.jac"),
-        CompileOptions(aot_mode=True, no_ir_cache=True)
-    );
-    assert verdict == {"bad_fmt"} , (
-        f"the fixture must produce a real demotion verdict, got {verdict!r}"
-    );
-    assert prog.scratch.na_dep_units , (
-        "the verdict resolver is expected to memoize the unit it compiled; "
-        "without that this test measures nothing"
-    );
-    prog.compile(
-        file_path=os.path.join(tmp, "other.jac"),
-        options=CompileOptions(
-            force_codespace='native',
-            force_target_program=True,
-            no_ir_cache=True,
-            aot_mode=True
-        )
-    );
-    stranded: list[str] = [];
-    for (path, unit) in prog.scratch.na_dep_units.items() {
-        if isinstance(unit, str) {
-            continue;
-        }
-        if (
-            unit.gen.llvm_ir is not None
-            or unit.gen.native_engine is not None
-            or unit.gen.native_bitcode is not None
-        ) {
-            stranded.append(os.path.basename(path));
-        }
-    }
-    assert not stranded , (
-        f"{stranded} still carry live LLVM state after the compile finished. "
-        "The verdict is a set of names; holding the unit that produced it "
-        "holds a module tree and an LLVM ModuleRef -- native allocations no "
-        "Python collector can see. The verdicts persist in the on-disk "
-        "ir_meta cache, so the units need a lifecycle, not immortality"
-    );
-}
-
-"""Releasing a unit must not turn its verdict fail-closed.
-
-The unit the verdict resolver compiled is also the hub's module for that
-path, so stripping its LLVM IR in place leaves a hub entry that answers
-"no IR" -- and the resolver reads that as "demote every symbol in this
-module". That is safe but ruinous: it demotes whole modules to Python and
-can trip the verdict blast guard. Releasing has to evict the entry, so the
-next query recompiles instead of reading a hollowed one.
-"""
-test "a released dep unit still answers its real verdict" {
-    import from jaclang.compiler.backends.native.na_compile_pass {
-        native_unit_demotions
-    }
-    tmp = write_mods(
-        {
-            "jac.toml": "[project]\nname = \"retention_na2\"\n",
-            "leaf.jac": (
-                "def bad_fmt(n: int) -> str {\n"
-                "    return (\"%03d\" % n);\n"
-                "}\n\n"
-                "def ok(n: int) -> int {\n"
-                "    return n + 1;\n"
-                "}\n"
-            )
-        }
-    );
-    leaf = os.path.realpath(os.path.join(tmp, "leaf.jac"));
-    opts = CompileOptions(aot_mode=True, no_ir_cache=True);
-    prog = JacProgram();
-    first = native_unit_demotions(prog, leaf, opts);
-    assert first is not None;
-    assert first == {"bad_fmt"} , f"fixture verdict changed: {first!r}";
-    prog.release_native_dep_units();
-    second = native_unit_demotions(prog, leaf, opts);
-    assert second == first , (
-        f"the verdict went from {sorted(first)} to "
-        f"{sorted(second) if second is not None else None} after the release. "
-        "A stripped hub entry answers 'no IR', which the resolver reads as "
-        "'demote everything'; the release must evict the entry, not hollow it"
-    );
-    assert prog.scratch.na_verdict_misses == 0 , (
-        f"{prog.scratch.na_verdict_misses} fail-closed verdict misses after a "
-        "release; the second query took the no-IR path instead of recompiling"
     );
 }
 

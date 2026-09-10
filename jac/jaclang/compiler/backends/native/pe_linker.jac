@@ -34,7 +34,7 @@ obj PeLinker {
         soname: str = "";
 
     static def link(
-        obj_bytes: bytes,
+        objects: list[bytes],
         output_path: str,
         needed_libs: list[str] = ["msvcrt.dll"],
         symbol_lib_map: dict[str, str] = {},

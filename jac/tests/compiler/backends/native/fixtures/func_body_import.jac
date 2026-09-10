@@ -1,7 +1,7 @@
 """`import` statements written inside a function body (roadmap N8c).
 
 A body-scoped import is the house idiom for a lazy or conditional import; the
-compiler's own source uses it throughout (`shared_emit.jac`,
+compiler's own source uses it throughout (`link_plan.jac`,
 `placement_solver.jac`, and the native pass itself), in both the `import x;` and
 the `import from x { y }` spelling. Module-level imports already lower, so this
 fixture pins the body-scoped ones: a stdlib import, a sibling Jac module import,

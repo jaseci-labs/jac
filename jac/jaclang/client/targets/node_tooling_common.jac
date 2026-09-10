@@ -43,8 +43,9 @@ def _require_bundled_bun -> str {
 }
 
 def run_manifest_install(project_dir: Path) {
-    import from jaclang.toolchains.store { offline, InstallLock }
-    with InstallLock(project_dir / ".jac-dependencies.lock") {
+    import from jaclang.jac0core.cache_paths { FileLock }
+    import from jaclang.toolchains.store { offline }
+    with FileLock(project_dir / ".jac-dependencies.lock") {
         stamp = project_dir / ".jac-dependencies.sha256";
         signature = manifest_signature(project_dir);
         if offline() {

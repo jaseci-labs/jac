@@ -356,10 +356,10 @@ def emit_wasm_from_ir(
     obj_bytes = tm.emit_object(mod);
     assert isinstance(obj_bytes, bytes);
     if not libc_linked {
-        return WasmLinker.link(obj_bytes, export_funcs, 256);
+        return WasmLinker.link([obj_bytes], export_funcs, 256);
     }
     return WasmLinker.link(
-        obj_bytes,
+        [obj_bytes],
         export_funcs,
         256,
         host_abi=WASM_HOST_ABI,
@@ -406,12 +406,18 @@ def wasm_import_map(wasm_bytes: bytes) -> dict {
     return out;
 }
 
-def app_declared_imports(ir_module: UniModule) -> set[str] {
+def app_declared_imports(ir_module: UniModule, plan: any = None) -> set[str] {
     names: set[str] = set();
     gen = ir_module.gen;
     sym_lib = gen._clib_symbol_lib;
     if sym_lib {
         names.update(sym_lib.keys());
+    }
+    if plan is not None {
+        """A C declaration in any unit of the program is the application's
+        import: the platform layer of a game declares the host calls its
+        entry module never names.""";
+        names.update(plan.clib_symbol_lib().keys());
     }
     manifest = gen.interop_manifest;
     bindings = manifest.bindings if manifest else None;
@@ -514,16 +520,23 @@ def compile_to_wasm(file_path: str, export_funcs: list = []) -> bytes {
                 f"native lowering produced no IR for '{file_path}': {reason}"
             );
         }
-        import from jaclang.compiler.backends.native.na_compile_pass {
-            native_linked_ir_text
+        import from jaclang.compiler.backends.native.link_plan {
+            build_link_plan,
+            wasm_program_ir
         }
-        llvm_ir_str = native_linked_ir_text(ir);
-        app_imports = app_declared_imports(ir);
+        plan = build_link_plan(prog, [ir.loc.mod_path], prog.options);
+        llvm_ir_str = wasm_program_ir(plan);
+        app_ir_str = str(ir.gen.llvm_ir);
+        app_imports = app_declared_imports(ir, plan);
     } finally {
         pop_native_target(prev);
     }
     if gc_mode == "none" {
-        _assert_ir_rc_free(llvm_ir_str, file_path);
+        """The rule is about the application's own unit: the runtime units
+        linked beside it define the reference-counting helpers whatever the
+        application's gc setting, and they are inert unless something in
+        the application calls them.""";
+        _assert_ir_rc_free(app_ir_str, file_path);
     }
     return emit_wasm_from_ir(llvm_ir_str, export_funcs, app_imports=app_imports);
 }

@@ -55,6 +55,4 @@ def parametrize(
     id_fn: (Callable | None) = None
 ) -> None;
 
-def invoke_native_test(
-    engine: any, symbol: str, test_name: str, init_symbols: (list | None) = None
-) -> None;
+def invoke_native_test(engine: any, symbol: str, test_name: str) -> None;

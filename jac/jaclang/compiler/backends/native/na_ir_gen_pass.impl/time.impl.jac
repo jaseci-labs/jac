@@ -1,6 +1,3 @@
-glob _CLOCK_REALTIME: int = 0,
-     _CLOCK_MONOTONIC: int = 1;
-
 impl NaIRGenPass._emit_clock_gettime(clock_id: int) -> tuple {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
@@ -28,10 +25,15 @@ impl NaIRGenPass._emit_time_call(name: str, nd: uni.FuncCall) -> (ir.Value | Non
     i64 = ir.IntType(64);
     billion = ir.Constant(i64, 1000000000);
 
+    triple = str(self.llvm_module.triple or "").lower();
+    monotonic_clock = 6
+        if ("darwin" in triple or "apple" in triple or "macos" in triple)
+        else 1;
+
     _float_clocks: dict[str, int] = {
-        "time": _CLOCK_REALTIME,
-        "monotonic": _CLOCK_MONOTONIC,
-        "perf_counter": _CLOCK_MONOTONIC,
+        "time": 0,
+        "monotonic": monotonic_clock,
+        "perf_counter": monotonic_clock,
 
     };
     if name in _float_clocks {
@@ -43,9 +45,9 @@ impl NaIRGenPass._emit_time_call(name: str, nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     _ns_clocks: dict[str, int] = {
-        "time_ns": _CLOCK_REALTIME,
-        "monotonic_ns": _CLOCK_MONOTONIC,
-        "perf_counter_ns": _CLOCK_MONOTONIC,
+        "time_ns": 0,
+        "monotonic_ns": monotonic_clock,
+        "perf_counter_ns": monotonic_clock,
 
     };
     if name in _ns_clocks {

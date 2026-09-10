@@ -4,18 +4,18 @@ import struct;
 import sys;
 import zlib;
 import from pathlib { Path }
+import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
 
 glob MAGIC = b"JIR\x00",
-     FORMAT_VERSION: int = 25,
+     FORMAT_VERSION: int = 28,
      HEADER_SIZE: int = 32,
      HEADER_FMT: str = "<4sHHIIIIII",
      EXTERNAL_REF: int = 0xFFFFFF,
      SECTIONS_MAGIC: any = b"JIRX",
      SEC_BYTECODE: int = 0x02,
      SEC_MTIR: int = 0x03,
-     SEC_LLVM_IR: int = 0x04,
      SEC_INTEROP: int = 0x05,
-     SEC_NATIVE_OBJ: int = 0x06,
+     SEC_NBITCODE: int = 0x06,
      SEC_SYMINDEX: int = 0x07,
      SEC_MODKEY: int = 0x08,
      SEC_DEBUG_SRC: int = 0x09,
@@ -26,10 +26,132 @@ glob MAGIC = b"JIR\x00",
      SEC_DEPS: int = 0x0E,
      SEC_DIAG: int = 0x0F,
      SEC_CLIENT: int = 0x10,
+     SEC_NIFACE: int = 0x11,
+     SEC_NOBJ: int = 0x12,
+     SEC_NDEPS: int = 0x13,
+     SEC_NCTDEPS: int = 0x14,
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
      PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
      FLAG_BOOTSTRAP: int = 0x04;
+
+glob NATIVE_SECTIONS: tuple[int, ...] = (
+         SEC_NBITCODE,
+         SEC_NIFACE,
+         SEC_NOBJ,
+         SEC_NDEPS,
+         SEC_NCTDEPS
+     ),
+     NATIVE_STAMP_MAGIC: bytes = b"JNS1",
+     NATIVE_VARIANTS_MAGIC: bytes = b"JNV1";
+
+obj NativeStamp {
+    has compiler_digest: str = "",
+        codegen_identity: str = "",
+        triple: str = "",
+        reloc: str = "pic",
+        code_model: str = "small";
+
+    def key -> str {
+        return "\x1f".join(
+            [
+                self.compiler_digest,
+                self.codegen_identity,
+                self.triple,
+                self.reloc,
+                self.code_model
+            ]
+        );
+    }
+
+    def pack(payload: bytes) -> bytes {
+        head = self.key().encode("utf-8");
+        record = NATIVE_STAMP_MAGIC + struct.pack("<I", len(head)) + head + payload;
+        return pack_native_variants({self.key(): record});
+    }
+
+    static def unpack_record(
+        data: (bytes | None)
+    ) -> (tuple[NativeStamp, bytes] | None) {
+        if data is None or len(data) < 8 or data[:4] != NATIVE_STAMP_MAGIC {
+            return None;
+        }
+        (head_len, ) = struct.unpack_from("<I", data, 4);
+        if len(data) < 8 + head_len {
+            return None;
+        }
+        try {
+            parts = data[8:8 + head_len].decode("utf-8").split("\x1f");
+        } except Exception {
+            return None;
+        }
+        if len(parts) != 5 {
+            return None;
+        }
+        return (
+            NativeStamp(
+                compiler_digest=parts[0],
+                codegen_identity=parts[1],
+                triple=parts[2],
+                reloc=parts[3],
+                code_model=parts[4]
+            ),
+            data[8 + head_len:]
+        );
+    }
+
+    def matches(other: NativeStamp) -> bool {
+        return self.key() == other.key();
+    }
+}
+
+def current_native_stamp(codegen_identity: str, triple: str) -> NativeStamp {
+    return NativeStamp(
+        compiler_digest=running_compiler_digest(),
+        codegen_identity=codegen_identity,
+        triple=triple
+    );
+}
+
+def native_section_variants(data: (bytes | None)) -> dict[str, bytes] {
+    variants: dict[str, bytes] = {};
+    if data is None or len(data) < 8 or data[:4] != NATIVE_VARIANTS_MAGIC {
+        return variants;
+    }
+    (count, ) = struct.unpack_from("<I", data, 4);
+    pos = 8;
+    for _ in range(count) {
+        if pos + 4 > len(data) {
+            return {};
+        }
+        (size, ) = struct.unpack_from("<I", data, pos);
+        pos += 4;
+        if size > len(data) - pos {
+            return {};
+        }
+        record = data[pos:pos + size];
+        found = NativeStamp.unpack_record(record);
+        if found is None or found[0].key() in variants {
+            return {};
+        }
+        variants[found[0].key()] = record;
+        pos += size;
+    }
+    return variants if pos == len(data) else {};
+}
+
+def pack_native_variants(variants: dict[str, bytes]) -> bytes {
+    records = [variants[key] for key in sorted(variants)];
+    return NATIVE_VARIANTS_MAGIC
+        + struct.pack("<I", len(records))
+        + b"".join(struct.pack("<I", len(record)) + record for record in records);
+}
+
+def native_section_payload(data: (bytes | None), want: NativeStamp) -> (bytes | None) {
+    record = native_section_variants(data).get(want.key());
+    found = NativeStamp.unpack_record(record);
+    return found[1] if found is not None else None;
+}
 
 obj JirHeader {
     has magic: any = b"JIR\x00",
@@ -530,6 +652,51 @@ def ct_deps_section(
     return "\n".join(lines).encode("utf-8");
 }
 
+def rebase_placement_section(raw: bytes, base: str) -> bytes {
+    """A placement summary names its module by path; sealed under a
+    package it names it under the package sentinel, so two seals of one
+    tree are the same bytes wherever they were staged.""";
+    import json as _json;
+    try {
+        parsed = _json.loads(raw.decode("utf-8"));
+    } except Exception {
+        return raw;
+    }
+    roots: list[str] = [];
+    for cand in (os.path.normpath(base), os.path.realpath(base)) {
+        if cand not in roots {
+            roots.append(cand);
+        }
+    }
+
+    def _rebase(value: any) -> any {
+        if isinstance(value, str) {
+            for base_dir in roots {
+                if value == base_dir {
+                    return PRECOMPILE_SENTINEL;
+                }
+                prefix = base_dir + os.sep;
+                if value.startswith(prefix) {
+                    return (
+                        PRECOMPILE_SENTINEL
+                        + "/"
+                        + value[len(prefix):].replace(os.sep, "/")
+                    );
+                }
+            }
+            return value;
+        }
+        if isinstance(value, list) {
+            return [_rebase(v) for v in value];
+        }
+        if isinstance(value, dict) {
+            return {k: _rebase(v) for (k, v) in value.items()};
+        }
+        return value;
+    }
+    return _json.dumps(_rebase(parsed), sort_keys=True).encode("utf-8");
+}
+
 def rebase_ct_deps_section(raw: bytes, base: str) -> bytes {
     lines: list[str] = [];
     for (path, digest, is_body) in _ct_dep_rows(raw.decode("utf-8")) {
@@ -575,17 +742,23 @@ def absolutize_ct_deps_section(raw: bytes, base: str) -> bytes {
     return "\n".join(lines).encode("utf-8");
 }
 
-def deps_section(rows: list[tuple[str, str, str]]) -> bytes {
+obj DepRow {
+    has path: str,
+        digest: str = "",
+        flags: str = "";
+}
+
+def deps_section(rows: list[DepRow]) -> bytes {
     lines: list[str] = [];
-    for (path, digest, flags) in sorted(rows) {
-        lines.append(f"{path}\t{digest}\t{flags}");
+    for row in sorted(rows, key=lambda (r: DepRow) { r.path; }) {
+        lines.append(f"{row.path}\t{row.digest}\t{row.flags}");
     }
     return "\n".join(lines).encode("utf-8");
 }
 
-def read_dep_rows(data: bytes, base_dir: str = "") -> list[tuple[str, str, str]] {
+def read_dep_rows(data: bytes, base_dir: str = "") -> list[DepRow] {
     raw = _read_key_section(data, SEC_DEPS);
-    out: list[tuple[str, str, str]] = [];
+    out: list[DepRow] = [];
     if not raw {
         return out;
     }
@@ -594,9 +767,13 @@ def read_dep_rows(data: bytes, base_dir: str = "") -> list[tuple[str, str, str]]
             continue;
         }
         parts = line.split("\t");
-        digest = parts[1] if len(parts) > 1 else "";
-        flags = parts[2] if len(parts) > 2 else "";
-        out.append((_dep_row_path(parts[0], base_dir), digest, flags, ));
+        out.append(
+            DepRow(
+                path=_dep_row_path(parts[0], base_dir),
+                digest=parts[1] if len(parts) > 1 else "",
+                flags=parts[2] if len(parts) > 2 else ""
+            )
+        );
     }
     return out;
 }
@@ -611,10 +788,45 @@ def _dep_row_path(stored: str, base_dir: str) -> str {
 
 def read_dep_hashes(data: bytes, base_dir: str = "") -> list[tuple[str, str]] {
     out: list[tuple[str, str]] = [];
-    for (path, digest, _flags) in read_dep_rows(data, base_dir) {
-        out.append((path, digest, ));
+    for row in read_dep_rows(data, base_dir) {
+        out.append((row.path, row.digest, ));
     }
     return out;
+}
+
+def native_deps_section(dep_digests: dict[str, str]) -> bytes {
+    import from jaclang.compiler.frontend.codeinfo { native_unit_ref }
+    lines: list[str] = [];
+    for path in sorted(dep_digests) {
+        lines.append(f"{native_unit_ref(path)}\t{dep_digests[path]}");
+    }
+    return "\n".join(lines).encode("utf-8");
+}
+
+def parse_native_dep_rows(raw: bytes, anchor: str = "") -> list[tuple[str, str]] {
+    import from jaclang.compiler.frontend.codeinfo { resolve_native_unit_ref }
+    out: list[tuple[str, str]] = [];
+    for line in raw.decode("utf-8").split("\n") {
+        if "\t" not in line {
+            continue;
+        }
+        (path, digest) = line.split("\t", 1);
+        out.append((resolve_native_unit_ref(path, anchor), digest, ));
+    }
+    return out;
+}
+
+def read_native_dep_hashes(
+    data: bytes, stamp: NativeStamp, base_dir: str = "", anchor: str = ""
+) -> list[tuple[str, str]] {
+    raw = native_section_payload(read_section_bytes(data, SEC_NDEPS), stamp);
+    if not raw {
+        return [];
+    }
+    return [
+        (_dep_row_path(path, base_dir), digest, )
+        for (path, digest) in parse_native_dep_rows(raw, anchor)
+    ];
 }
 
 def compute_stub_module_key(source_path: str) -> str {
@@ -822,23 +1034,8 @@ def _sweep_once(cache_root: Path) {
     } except Exception {}
 }
 
-glob _na_ir_cache_region: dict[str, bool] = {"suspended": False};
-
-
-def native_ir_cache_suspended -> bool {
-    return _na_ir_cache_region["suspended"];
-}
-
-
-def native_ir_cache_set_suspended(value: bool) -> bool {
-    prev = _na_ir_cache_region["suspended"];
-    _na_ir_cache_region["suspended"] = value;
-    return prev;
-}
-
-
-def get_native_cache_dir(source_path: str) -> Path {
-    return _get_module_cache_dir(source_path) / "native";
+def get_native_debug_dir(source_path: str) -> Path {
+    return _get_module_cache_dir(source_path) / "native-debug";
 }
 
 def scrub_cache_dirs(root_dir: str) -> int {
@@ -877,6 +1074,14 @@ def write_sections(sections: (dict[int, bytes] | None)) -> bytes {
     buf.append(SEC_TERMINATOR);
     buf.extend(bytes(4));
     return bytes(buf);
+}
+
+def read_sections_blob(data: bytes) -> dict[int, bytes] {
+    magic: any = SECTIONS_MAGIC;
+    if not data.startswith(magic) {
+        return {};
+    }
+    return read_sections(data, len(magic));
 }
 
 def read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
@@ -968,10 +1173,6 @@ def read_debug_source(data: bytes) -> (str | None) {
 }
 
 def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
-    import from jaclang.compiler.driver.bccache {
-        discover_annex_files,
-        discover_style_annex
-    }
     if not cache_path.exists() {
         return False;
     }
@@ -987,32 +1188,8 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
         if not ct_deps_fresh(data) {
             return False;
         }
-        cache_mtime = os.path.getmtime(cache_path);
-
-        related = discover_annex_files(source_path, '.impl.jac')
-            + discover_annex_files(source_path, '.test.jac');
-        style = discover_style_annex(source_path);
-        if style is not None {
-            related.append(style);
-        }
-        fresh = cache_mtime > os.path.getmtime(source_path);
-        if fresh {
-            for f in related {
-                try {
-                    if cache_mtime <= os.path.getmtime(f) {
-                        fresh = False;
-                        break;
-                    }
-                } except OSError {
-                    fresh = False;
-                    break;
-                }
-            }
-        }
-        if fresh {
-            return True;
-        }
-
+        """Timestamps are not source identities: restores can preserve mtimes
+        and annex deletion must invalidate the same way annex edits do.""";
         return jir_matches_source(data, source_path);
     } except OSError {
         return False;
@@ -1038,14 +1215,56 @@ def _mergeable_sections(
             return ({}, 0, );
         }
         secs = read_sections(data, pos + len(magic));
-        if secs.get(SEC_MODKEY) != key_sections.get(SEC_MODKEY)
-            or secs.get(SEC_ENVKEY) != key_sections.get(SEC_ENVKEY) {
+        if secs.get(SEC_MODKEY) != key_sections.get(SEC_MODKEY) {
             return ({}, 0, );
         }
-        return (secs, header.flags, );
+        if secs.get(SEC_ENVKEY) == key_sections.get(SEC_ENVKEY) {
+            return (secs, header.flags, );
+        }
+        native_only: dict[int, bytes] = {
+            sec: secs[sec]
+            for sec in NATIVE_SECTIONS
+            if sec in secs
+        };
+        return (native_only, 0, );
     } except Exception {
         return ({}, 0, );
     }
+}
+
+def merge_native_sections(
+    existing: dict[int, bytes], incoming: dict[int, bytes]
+) -> dict[int, bytes] {
+    merged: dict[int, bytes] = {};
+    before = native_section_variants(existing.get(SEC_NBITCODE));
+    after = native_section_variants(incoming.get(SEC_NBITCODE));
+    changed = {
+        key
+        for (key, value) in after.items()
+        if before.get(key) != value
+    };
+    for tag in NATIVE_SECTIONS {
+        variants = native_section_variants(existing.get(tag));
+        if tag == SEC_NOBJ {
+            for key in changed {
+                variants.pop(key, None);
+            }
+        }
+        if tag in incoming {
+            updates = native_section_variants(incoming[tag]);
+            digests = {key.split("\x1f")[0] for key in updates};
+            variants = {
+                key: value
+                for (key, value) in variants.items()
+                if key.split("\x1f")[0] in digests
+            };
+            variants.update(updates);
+        }
+        if tag in existing or tag in incoming {
+            merged[tag] = pack_native_variants(variants);
+        }
+    }
+    return merged;
 }
 
 def write_module_cache(
@@ -1061,34 +1280,39 @@ def write_module_cache(
     try {
         cache_path = get_module_cache_path(resolved_path);
         key_sections = module_jir_key_sections(resolved_path);
-        (existing, existing_flags) = _mergeable_sections(cache_path, key_sections);
-        sections: dict[int, bytes] = {};
-        sections.update(existing);
-        sections.update(key_sections);
-        if bytecode is not None {
-            sections[SEC_BYTECODE] = bytecode;
-        }
-        if extra_sections is not None {
-            for (k, v) in extra_sections.items() {
-                sections[k] = v;
-            }
-        }
-        merged_flags = flags | existing_flags;
-        if existing and sections == existing and merged_flags == existing_flags {
-            return False;
-        }
-        cache_path.parent.mkdir(parents=True, exist_ok=True);
         _sweep_once(_module_cache_root(resolved_path));
-        jir_bytes = write_precompiled_jir(None, "", merged_flags, sections);
-        tmp_path = cache_path.with_suffix(f'.{os.getpid()}.tmp');
-        try {
-            tmp_path.write_bytes(jir_bytes);
-            tmp_path.rename(cache_path);
-        } finally {
-            tmp_path.unlink(missing_ok=True);
+        with FileLock(cache_path.with_suffix(".lock")) {
+            (existing, existing_flags) = _mergeable_sections(cache_path, key_sections);
+            sections: dict[int, bytes] = {};
+            sections.update(existing);
+            sections.update(key_sections);
+            if bytecode is not None {
+                sections[SEC_BYTECODE] = bytecode;
+            }
+            if extra_sections is not None {
+                for (k, v) in extra_sections.items() {
+                    if k not in NATIVE_SECTIONS {
+                        sections[k] = v;
+                    }
+                }
+                if any(tag in extra_sections for tag in NATIVE_SECTIONS) {
+                    sections.update(merge_native_sections(existing, extra_sections));
+                }
+            }
+            merged_flags = flags | existing_flags;
+            if existing and sections == existing and merged_flags == existing_flags {
+                return False;
+            }
+            cache_path.parent.mkdir(parents=True, exist_ok=True);
+            jir_bytes = write_precompiled_jir(None, "", merged_flags, sections);
+            atomic_write(cache_path, jir_bytes);
+            return True;
         }
-        return True;
-    } except Exception {
+    } except Exception as exc {
+        import logging;
+        logging.getLogger(__name__).warning(
+            f"Could not write module cache for {resolved_path}: {exc}", exc_info=True
+        );
         return False;
     }
 }

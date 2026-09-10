@@ -175,9 +175,7 @@ def _compile_runtime_module(pkg_root: Path, path: Path, prog: JacProgram) -> str
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     ir = prog.compile(
         file_path=str(path),
-        options=CompileOptions(
-            force_target_program=True, need_full_ast=True, force_codespace="server"
-        )
+        options=CompileOptions(need_full_ast=True, force_codespace="server")
     );
     if prog.errors_had {
         details = "\n".join(f"  {err}" for err in prog.errors_had);

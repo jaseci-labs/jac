@@ -282,7 +282,7 @@ def _sym_val(
 
 obj WasmLinker {
     static def link(
-        obj_bytes: bytes,
+        objects: list[bytes],
         export_funcs: list = [],
         mem_pages: int = 256,
         host_abi: (set | None) = None,
@@ -292,14 +292,20 @@ obj WasmLinker {
 }
 
 impl WasmLinker.link(
-    obj_bytes: bytes,
+    objects: list[bytes],
     export_funcs: list = [],
     mem_pages: int = 256,
     host_abi: (set | None) = None,
     host_module: str = "jac_host1",
     app_imports: (set | None) = None,
 ) -> bytes {
-    ob = WasmObj(b=obj_bytes);
+    if len(objects) != 1 {
+        raise ValueError(
+            f"WasmLinker.link takes exactly one object (got {len(objects)}); "
+            "link the units in bitcode mode first"
+        );
+    }
+    ob = WasmObj(b=objects[0]);
     segs = _parse_data_segments(ob.data_raw);
 
     base = 1024;

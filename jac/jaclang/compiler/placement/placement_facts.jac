@@ -5,8 +5,7 @@ glob SPACE_SERVER: str = 'server',
      SPACE_CLIENT: str = 'client',
      SPACE_NATIVE: str = 'native';
 
-glob TOOLCHAIN_NATIVE_ONLY_REL: tuple = ("runtime", "na_stdlib"),
-     TOOLCHAIN_MIXED_NATIVE_REL: tuple = ("client", "targets", "desktop", "native");
+glob NATIVE_POLICY_DIR_REL: tuple[str, ...] = ("client/targets/desktop/native", );
 
 
 def project_root_of(source_path: str) -> (str | None) {
@@ -162,18 +161,69 @@ def sealed_spaces_for(source_path: str) -> (set[str] | None) {
 }
 
 
-def toolchain_native_by_policy(package_dir: str, source_path: str) -> bool {
-    rel = os.path.relpath(os.path.abspath(source_path), os.path.abspath(package_dir));
-    native_only = os.path.join(*TOOLCHAIN_NATIVE_ONLY_REL) + os.sep;
-    if rel.startswith(native_only) {
+def _toolchain_rel(source_path: str) -> (str | None) {
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    pkg = os.path.realpath(jaclang_pkg_root());
+    rp = os.path.realpath(source_path);
+    if not rp.startswith(pkg + os.sep) {
+        return None;
+    }
+    return rp[len(pkg) + 1:].replace(os.sep, "/");
+}
+
+def native_only(source_path: str) -> bool {
+    rel = _toolchain_rel(source_path);
+    if rel is None {
+        return False;
+    }
+    import from jaclang.bootstrap_manifest { is_native_only }
+    return is_native_only(rel);
+}
+
+def native_unit(
+    source_path: str, native_unit_compile: (bool | None) = None, prog: any = None
+) -> bool {
+    if native_only(source_path) {
         return True;
     }
-    mixed = os.path.join(*TOOLCHAIN_MIXED_NATIVE_REL) + os.sep;
-    if rel.startswith(mixed) {
-        import from jaclang.compiler.placement.placement_solver {
-            native_default_path_ok
+    import from jaclang.compiler.frontend.codeinfo { is_kernel_unit_path }
+    if is_kernel_unit_path(source_path) {
+        return True;
+    }
+    import from jaclang.compiler.placement.placement_pins { effective_module_pin }
+    if effective_module_pin(source_path, prog) == SPACE_NATIVE {
+        return True;
+    }
+    import from jaclang.compiler.native_scope { in_native_scope_path }
+    if in_native_scope_path(source_path) {
+        if native_unit_compile is None {
+            import from jaclang.compiler.frontend.codeinfo {
+                native_unit_compile_active
+            }
+            native_unit_compile = native_unit_compile_active();
         }
-        return native_default_path_ok(source_path);
+        return bool(native_unit_compile);
+    }
+    rel = _toolchain_rel(source_path);
+    if rel is not None {
+        for d in NATIVE_POLICY_DIR_REL {
+            if rel.startswith(d + "/") {
+                import from jaclang.compiler.placement.placement_solver {
+                    native_default_path_ok
+                }
+                return native_default_path_ok(source_path);
+            }
+        }
     }
     return False;
+}
+
+def native_units_of(package_dir: str, sources: list[str]) -> list[str] {
+    out: list[str] = [];
+    for p in sources {
+        if native_unit(p, native_unit_compile=True) {
+            out.append(os.path.realpath(p));
+        }
+    }
+    return sorted(set(out));
 }

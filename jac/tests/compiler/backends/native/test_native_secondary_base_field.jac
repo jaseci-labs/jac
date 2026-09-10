@@ -25,7 +25,12 @@ in the sealed native parser.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, compile_native, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    compile_native,
+    native_address,
+    native_force_opts
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -33,7 +38,7 @@ glob FIXTURES = os.path.join(
 
 """Call `name` in the JIT engine over the five fixture instances."""
 def probe(eng: any, name: str) -> list[int] {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     f = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
     return [f(k) for k in range(5)];

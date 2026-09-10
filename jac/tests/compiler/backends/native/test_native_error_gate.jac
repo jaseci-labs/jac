@@ -116,10 +116,7 @@ test "check-path compile surfaces native codegen errors (check/run parity)" {
     prog.compile(
         file_path=src,
         options=CompileOptions(
-            no_cgen=True,
-            native_parity=True,
-            force_codespace="native",
-            force_target_program=True
+            no_cgen=True, native_parity=True, force_codespace="native",
         )
     );
     assert has_error_code(prog, "E5092") , (

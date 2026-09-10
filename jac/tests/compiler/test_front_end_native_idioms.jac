@@ -33,9 +33,7 @@ def check_na_inline(label: str, code: str) -> JacProgram {
     prog.compile(
         file_path=os.path.join(FIXTURES, f"_idiom_{label}.jac"),
         use_str=code,
-        options=CompileOptions(
-            no_cgen=True, force_codespace="native", force_target_program=True
-        )
+        options=CompileOptions(no_cgen=True, force_codespace="native")
     );
     return prog;
 }
@@ -130,9 +128,12 @@ test "native_safe_sym treats non-ASCII letters as unsafe" {
     assert safe_sym_stem("naïve_mod") == "na_ve_mod";
 }
 
-test "native_safe_sym keeps the kernel modules unhashed" {
-    assert native_safe_sym("osp_kernel") == "osp_kernel";
-    assert native_safe_sym("fmt_kernel") == "fmt_kernel";
+test "native_safe_sym hashes the kernel modules like every other unit" {
+    # Every native module is a unit named by its module key; the toolchain
+    # units carry no fixed link names any more.
+    assert native_safe_sym("osp_kernel") != "osp_kernel";
+    assert native_safe_sym("osp_kernel").startswith("osp_kernel_");
+    assert native_safe_sym("fmt_kernel").startswith("fmt_kernel_");
 }
 
 test "native_safe_sym keeps distinct sources distinct after sanitizing" {
@@ -181,10 +182,7 @@ test "helpers.jac lowers when a native unit reaches it" {
     );
     prog = JacProgram();
     opts = CompileOptions(
-        aot_mode=True,
-        force_codespace='native',
-        force_target_program=True,
-        no_ir_cache=True
+        aot_mode=True, force_codespace='native'
     ).clone_for_native_import();
     na_coverage_begin();
     try {

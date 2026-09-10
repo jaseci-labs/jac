@@ -15,6 +15,9 @@ import from jaclang.compiler.driver.progstate {
 }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
 import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
+import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
+import type from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.mtp { Info }
 import type from jaclang.compiler.passes.transform { Transform }
@@ -32,16 +35,20 @@ class JacProgram {
         mtir_map: dict[(str, Info)],
         type_evaluator: TypeEvaluator | None,
         _compiler: JacCompiler | None,
-        _iface: any;
+        _stub_catalog: StubCatalog | None,
+        _stub_trees_served: bool,
+        _iface: IfaceRegistry | None,
+        _natives: NativeUnitRegistry | None;
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;
-    def iface_registry(self: JacProgram) -> any;
+    def iface_registry(self: JacProgram) -> IfaceRegistry;
+    def native_units(self: JacProgram) -> NativeUnitRegistry;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
     def stub_catalog(self: JacProgram) -> StubCatalog | None;
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
+    def scrub_hub_types(self: JacProgram) -> None;
     def release_compile_closure(self: JacProgram, collect: bool = True) -> None;
-    def release_native_dep_units(self: JacProgram) -> None;
     def release_check_caches(self: JacProgram) -> None;
     def hub_cache_stamp(self: JacProgram, resolved_path: str) -> None;
     def install_module(self: JacProgram, resolved_path: str, mod: uni.Module) -> None;
@@ -65,7 +72,7 @@ class JacProgram {
     def reset_module_root(self: JacProgram, module_root: uni.ProgramModule) -> None;
     static def hub_key(path: str) -> str;
     def has_failed_parse(self: JacProgram, path: str) -> bool;
-    def _search_hubs(self: JacProgram) -> list[dict[(str, uni.Module)]];
+    def execution_hubs(self: JacProgram) -> list[dict[str, uni.Module]];
     def find_module(self: JacProgram, path: str) -> (uni.Module | None);
     def get_bytecode(self: JacProgram, full_target: str) -> (types.CodeType | None);
     def get_client_artifact(

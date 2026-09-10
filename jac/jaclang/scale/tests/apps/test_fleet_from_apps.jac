@@ -422,7 +422,7 @@ test "edge analysis visits modules registered while analyzing either hub" {
         }
     }
     with patch.object(JacProgram, "compile"), patch.object(
-        JacProgram, "_search_hubs", return_value=[user_hub, compiler_hub]
+        JacProgram, "execution_hubs", return_value=[user_hub, compiler_hub]
     ), patch.object(JacProgram, "run_schedule", analyze) {
         edges = _compiled_app_edges("main.jac", "web", "web-app", "/tmp");
         assert set(edges) == {("web", "orders"), ("orders", "db")};

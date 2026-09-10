@@ -4,6 +4,8 @@ import subprocess;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
+import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 
 def seal_copy_ignore(_dir: str, items: list) -> list {
@@ -67,8 +69,19 @@ def resolve_entry_file(config: any, app: str = "") -> (Path | None) {
 }
 
 def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict | None) {
+    program = JacProgram();
+    program.options = CompileOptions(skip_native_engine=True);
+    try {
+        return _build_serve_manifest(entry_file, proj_root, program);
+    } finally {
+        program.release_compile_closure();
+    }
+}
+
+def _build_serve_manifest(
+    entry_file: Path, proj_root: Path, program: JacProgram
+) -> (dict | None) {
     import os;
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from jaclang.compiler.frontend.constant { Tokens as Tok }
     import from jaclang.compiler.driver.schedules { get_boundary_analysis_sched }
     import from jaclang.client.client_bundle { _ensure_js_generated }
@@ -89,27 +102,25 @@ def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict | None) {
     }
 
     for jac_path in targets {
-        prev_errors = len(Jac.get_program().errors_had);
+        prev_errors = len(program.errors_had);
         try {
-            Jac.get_program().compile(jac_path);
+            program.compile(jac_path, options=program.options);
         } except Exception as e {
             console.error(f"Seal aborted: '{jac_path}' failed to compile: {e}");
             return None;
         }
-        if len(Jac.get_program().errors_had) > prev_errors {
-            errs = "\n".join(
-                str(e) for e in Jac.get_program().errors_had[prev_errors:]
-            );
+        if len(program.errors_had) > prev_errors {
+            errs = "\n".join(str(e) for e in program.errors_had[prev_errors:]);
             console.error(f"Seal aborted: '{jac_path}' failed to compile:\n{errs}");
             return None;
         }
     }
 
     client: dict = {};
-    mod = Jac.get_program().find_module(entry_key);
+    mod = program.find_module(entry_key);
     if mod and mod.gen.client_manifest {
         if not mod.gen.client_manifest.exports {
-            _ensure_js_generated(mod, Jac.program);
+            _ensure_js_generated(mod, program);
         }
         m = mod.gen.client_manifest;
         client = {
@@ -125,20 +136,18 @@ def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict | None) {
 
     def in_project(hmod: any) -> bool {
         mp = hmod?.loc?.mod_path;
-        return bool(mp) and os.path.abspath(str(mp)).startswith(proj_prefix);
+        return bool(mp) and os.path.realpath(str(mp)).startswith(proj_prefix);
     }
 
-    for hub in Jac.get_program()._search_hubs() {
-        for hmod in hub.values() {
-            if not in_project(hmod) {
-                continue;
-            }
-            man0 = hmod.gen.interop_manifest if (hmod and hmod.gen) else None;
-            if man0 and not (man0.walker_access or man0.func_access) {
-                try {
-                    Jac.get_program().run_schedule(hmod, get_boundary_analysis_sched());
-                } except Exception {}
-            }
+    for hmod in program.mod.hub.values() {
+        if not in_project(hmod) {
+            continue;
+        }
+        man0 = hmod.gen.interop_manifest if (hmod and hmod.gen) else None;
+        if man0 and not (man0.walker_access or man0.func_access) {
+            try {
+                program.run_schedule(hmod, get_boundary_analysis_sched());
+            } except Exception {}
         }
     }
 
@@ -147,64 +156,60 @@ def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict | None) {
     endpoint_effects: dict[str, any] = {};
     cross: list[dict] = [];
     seen: set = set();
-    for hub in Jac.get_program()._search_hubs() {
-        for hmod in hub.values() {
-            if not in_project(hmod) {
+    for hmod in program.mod.hub.values() {
+        if not in_project(hmod) {
+            continue;
+        }
+        man = hmod.gen.interop_manifest if (hmod and hmod.gen) else None;
+        if not man {
+            continue;
+        }
+        for (n, a) in man.func_access.items() {
+            if n not in func_access {
+                func_access[n] = a;
+            }
+        }
+        for (n, a) in man.walker_access.items() {
+            if n not in walker_access {
+                walker_access[n] = a;
+            }
+        }
+        for (ekey, eeff) in man.endpoint_effects.items() {
+            endpoint_effects[ekey] = eeff;
+        }
+        for binding in man.server_exports_to_client {
+            ast_node = binding?.ast_node;
+            src_path = ast_node.loc.mod_path if (ast_node and ast_node?.loc) else None;
+            if not src_path or (binding.name, binding.kind) in seen {
                 continue;
             }
-            man = hmod.gen.interop_manifest if (hmod and hmod.gen) else None;
-            if not man {
+            try {
+                rel = os.path.relpath(src_path, str(proj_root));
+            } except ValueError {
                 continue;
             }
-            for (n, a) in man.func_access.items() {
-                if n not in func_access {
-                    func_access[n] = a;
-                }
+            if rel.startswith('..') {
+                continue;
             }
-            for (n, a) in man.walker_access.items() {
-                if n not in walker_access {
-                    walker_access[n] = a;
-                }
-            }
-            for (ekey, eeff) in man.endpoint_effects.items() {
-                endpoint_effects[ekey] = eeff;
-            }
-            for binding in man.server_exports_to_client {
-                ast_node = binding?.ast_node;
-                src_path = (
-                    ast_node.loc.mod_path if (ast_node and ast_node?.loc) else None
+            table = walker_access if binding.kind == 'walker' else func_access;
+            auth = table.get(binding.name, None);
+            if auth is None {
+                is_pub = (
+                    ast_node is not None
+                    and ast_node?.access is not None
+                    and ast_node.access.tag.name == Tok.KW_PUB
                 );
-                if not src_path or (binding.name, binding.kind) in seen {
-                    continue;
-                }
-                try {
-                    rel = os.path.relpath(src_path, str(proj_root));
-                } except ValueError {
-                    continue;
-                }
-                if rel.startswith('..') {
-                    continue;
-                }
-                table = walker_access if binding.kind == 'walker' else func_access;
-                auth = table.get(binding.name, None);
-                if auth is None {
-                    is_pub = (
-                        ast_node is not None
-                        and ast_node?.access is not None
-                        and ast_node.access.tag.name == Tok.KW_PUB
-                    );
-                    auth = not is_pub;
-                }
-                seen.add((binding.name, binding.kind));
-                cross.append(
-                    {
-                        'name': binding.name,
-                        'kind': binding.kind,
-                        'src': rel.replace(os.sep, '/'),
-                        'auth': bool(auth)
-                    }
-                );
+                auth = not is_pub;
             }
+            seen.add((binding.name, binding.kind));
+            cross.append(
+                {
+                    'name': binding.name,
+                    'kind': binding.kind,
+                    'src': rel.replace(os.sep, '/'),
+                    'auth': bool(auth)
+                }
+            );
         }
     }
     return {
