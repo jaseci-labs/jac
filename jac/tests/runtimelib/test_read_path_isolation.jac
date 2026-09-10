@@ -19,6 +19,7 @@ import from tempfile { TemporaryDirectory }
 import from uuid { UUID, uuid4 }
 import from jaclang.server.session { Session }
 import from jaclang.data.store { Store, TxnIsolation }
+import from jaclang.runtime.archetype { NodeAnchor }
 
 
 def _mk_session(td: str) -> Session {
@@ -50,6 +51,16 @@ def _sireads(s: Session) -> int {
         {}
     );
     return int(r[0][0]);
+}
+
+
+def _as_any(v: any) -> any {
+    return v;
+}
+
+
+node _RoNode {
+    has label: str = "";
 }
 
 
@@ -217,6 +228,52 @@ test "isolation: the read tier refuses writes at the server" {
                 'committing under-isolated'
             );
         } finally {
+            s.close();
+        }
+    }
+}
+
+
+test "isolation: a read-tier unit that writes after its snapshot closed opens a writable txn (#9044)" {
+    # A unit optimistically on the read tier updates a loaded node's field. The
+    # write is discovered by hashing at flush, so `_dirty` stays empty and the
+    # isolation heuristic still wants the read tier. A concurrent sibling has
+    # meanwhile committed the shared store, leaving no open transaction. The
+    # flush must open a read-write transaction for the pending write, never a
+    # second READ ONLY one that Postgres then rejects with 25006. The pending
+    # write is the full flush that commit() runs on the request boundary.
+    with TemporaryDirectory() as td {
+        seed = _mk_session(td);
+        anchor = NodeAnchor(archetype=_RoNode(label='orig'), edges=[]);
+        anchor.persistent = True;
+        aid = anchor.ensure_id();
+        seed.put(anchor);
+        seed.commit();
+        seed.close();
+        s = _mk_session(td);
+        s.unit_enter('_RoNode');
+        try {
+            loaded = s.get(aid);
+            assert loaded is not None;
+            _as_any(loaded).archetype.label = 'changed';
+            assert not s._dirty , (
+                'a field write on a loaded anchor is discovered by hashing, not '
+                'by mark_dirty: the guard under test only bites while _dirty is empty'
+            );
+            if _store(s).in_txn() {
+                _store(s).commit();
+            }
+            assert not _store(s).in_txn() , (
+                'a concurrent sibling has closed the shared read snapshot; the '
+                'flush below runs with no open transaction'
+            );
+            s.flush(full=True);
+            assert _server_txn_state(s) == ['serializable', 'off'] , (
+                'the flush of a pending write must open a read-write SERIALIZABLE '
+                'transaction, never re-open the read tier before the INSERT'
+            );
+        } finally {
+            s.unit_exit();
             s.close();
         }
     }
