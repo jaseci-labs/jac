@@ -188,10 +188,15 @@ test "boot serves a source entry in dev and a remote backend serves no program" 
 }
 
 test "sealed remote desktop does not prepare or initialize workspace services" {
+    import sys;
+    import types;
     os.environ["JAC_SCALE_RUNTIME"] = "1";
     proj = _project();
     tmp = os.path.dirname(proj);
     ctx: any = None;
+    previous = sys.modules.get('hostapp');
+    collision = types.ModuleType('hostapp');
+    collision.__file__ = os.path.join(tmp, 'other', '__init__.py');
     try {
         import from jaclang.dist.seal { build_jab }
         (Path(proj) / 'jac.toml').write_text(
@@ -208,6 +213,7 @@ test "sealed remote desktop does not prepare or initialize workspace services" {
         );
         set_config(None);
         os.environ['JAC_DATA_PATH'] = os.path.join(tmp, 'data');
+        sys.modules['hostapp'] = collision;
         ctx = host_boot.boot(
             _config(app_dir, {'jab': str(jab)}, backend='https://example.invalid')
         );
@@ -218,11 +224,17 @@ test "sealed remote desktop does not prepare or initialize workspace services" {
         assert code == 200 and 'hostapp' in body , (code, body);
         (code, body) = _post(f'{origin}/walker/greet', {});
         assert code in (404, 405) , (code, body);
+        assert sys.modules['hostapp'] is collision;
     } finally {
         if ctx is not None {
             ctx.shutdown();
         }
         os.environ.pop('JAC_DATA_PATH', None);
+        if previous is None {
+            sys.modules.pop('hostapp', None);
+        } else {
+            sys.modules['hostapp'] = previous;
+        }
         set_config(None);
         shutil.rmtree(tmp, ignore_errors=True);
     }

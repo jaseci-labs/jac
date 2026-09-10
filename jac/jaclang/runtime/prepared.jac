@@ -131,6 +131,7 @@ def load_prepared_module(path: str) -> types.ModuleType {
                     name = namespace + info['module'][len(package):];
                     image.index[name] = (info, source);
                 }
+                ensure_namespace(application, namespace);
                 target = namespace + target[len(package):];
             }
         }
@@ -163,11 +164,11 @@ def application_namespace(application: PreparedApplication) -> str {
     return '_jac_app_' + hashlib.sha256(application.entry.encode()).hexdigest()[:16];
 }
 
-def ensure_namespace(application: PreparedApplication) -> str {
+def ensure_namespace(application: PreparedApplication, name: str = '') -> str {
     import sys;
     import importlib.machinery;
     import importlib.util;
-    name = application_namespace(application);
+    name = name or application_namespace(application);
     if name not in sys.modules {
         initializer = os.path.join(application.root, '__init__.jac');
         if initializer in application.code {
