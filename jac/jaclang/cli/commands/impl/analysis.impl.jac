@@ -167,8 +167,8 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
             }
         }
         if opts.get("placements") {
-            import from jaclang.compiler.placement.placement { collect_placement_rows }
-            result['placements'] = collect_placement_rows(prog);
+            import from jaclang.compiler.driver.pipeline { placement_report }
+            result['placements'] = placement_report(prog);
         }
         if opts.get("native_coverage") {
             import from jaclang.compiler.driver.na_coverage { _na_coverage }
@@ -1904,13 +1904,13 @@ impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> i
         return 0;
     }
     if topic == "placement" {
-        import from jaclang.compiler.placement.placement { collect_placement_rows }
+        import from jaclang.compiler.driver.pipeline { placement_report }
         import from jaclang.cli.check_report { print_placement_report }
         prog.compile(file_path=path);
         for err in prog.errors_had {
             console.print(err.pretty_print());
         }
-        print_placement_report(collect_placement_rows(prog));
+        print_placement_report(placement_report(prog));
         return 0;
     }
     import re;

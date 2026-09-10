@@ -83,6 +83,8 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
         work.forget_path(resolved_path);
     }
     self.hub.evict(resolved_path);
+    self.analysis.serving_facts.pop(resolved_path, None);
+    self.analysis.module_spaces.pop(resolved_path, None);
     if resolved_path in self.analysis.placement_summaries {
         del self.analysis.placement_summaries[resolved_path];
     }
@@ -200,7 +202,6 @@ impl JacProgram.load_dependency_module(
 
             target_program.install_module(resolved_path, mod);
             compiler.note_stub_tree_served(resolved_path, self);
-            compiler.resolve_absorb_imports(mod, self);
             run_utility(UtilityProduct.PYTHON_SYMBOLS, mod, self);
         } else {
             mod = self.compile(
@@ -457,7 +458,11 @@ impl JacProgram.parse_str(
     mod = self._get_compiler().parse_str(source_str, file_path, self, cancel_token);
     if self.deps.tracking {
         try {
-            self.deps.record_module(mod);
+            import from jaclang.compiler.driver.pipeline {
+                require_product,
+                CompilationProduct
+            }
+            require_product(self, mod, CompilationProduct.IMPORTS);
         } except Exception {}
     }
     return mod;
@@ -482,7 +487,11 @@ impl JacProgram.compile(
     );
     if self.deps.tracking {
         try {
-            self.deps.record_module(mod);
+            import from jaclang.compiler.driver.pipeline {
+                require_product,
+                CompilationProduct
+            }
+            require_product(self, mod, CompilationProduct.IMPORTS);
         } except Exception {}
     }
     return mod;

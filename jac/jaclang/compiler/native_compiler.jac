@@ -416,22 +416,28 @@ class NativeCompiler {
 
     def prepare_early(self: NativeCompiler, context: str) {
         if self.supports_early {
-            self.lib.jc_set_early(
-                {"server": 1, "client": 2, "native": 3}.get(context, 0)
-            );
+            import sys;
+            schedule = sys.modules.get(
+                'jaclang.compiler.driver.pipeline'
+            )?.early_pipeline;
+            mask = sum(bit for (bit, step) in schedule())
+                if schedule is not None
+                else 0;
+            space = {"server": 1, "client": 2, "native": 3}.get(context, 0);
+            self.lib.jc_set_early((space | (mask << 8)) if space and mask else 0);
         }
     }
 
     def take_pass_results(self: NativeCompiler) -> dict[str, PassResult] {
         import from jaclang.compiler.passes.transform { PassResult }
-        import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
-        import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
         out: dict[str, PassResult] = {};
         if not self.supports_early {
             return out;
         }
         completed = self.lib.jc_completed();
-        passes: list[tuple[int, type]] = [(1, ASTValidationPass), (2, SymTabBuildPass)];
+        import sys;
+        schedule = sys.modules.get('jaclang.compiler.driver.pipeline')?.early_pipeline;
+        passes = schedule() if schedule is not None else [];
         for (pass_id, pass_cls) in passes {
             if not (completed & pass_id) {
                 continue;

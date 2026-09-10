@@ -958,7 +958,8 @@ impl JacLangServer.get_node_type(n: uni.UniNode) -> Optional[TypeBase] {
     if isinstance(n, uni.Expr) {
         typ = n.type;
         if typ is None {
-            typ = self.program.get_type_evaluator().get_type_of_expression(n);
+            import from jaclang.compiler.driver.pipeline { query_type }
+            typ = query_type(self.program, n);
         }
         self.debug("found type " + str(typ) + " for expr " + str(n));
         return typ;

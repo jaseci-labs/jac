@@ -29,6 +29,7 @@ obj JcState {
         lexdiags_h: int = 0,
         comments_h: int = 0,
         early_context: int = 0,
+        early_passes: int = 0,
         completed: int = 0,
         validation_errors_h: int = 0,
         validation_warnings_h: int = 0,
@@ -77,7 +78,8 @@ def _clear_results {
 }
 
 def:pub jc_set_early(context: int) -> int {
-    _JC.early_context = context;
+    _JC.early_context = context & 255;
+    _JC.early_passes = context >> 8;
     return 0;
 }
 
@@ -183,8 +185,10 @@ def _finish_unit(
         } elif _JC.early_context == 3 {
             mod.set_code_context(CodeContext.NATIVE);
         }
-        validation = ASTValidationPass(ir_in=mod);
-        _JC.completed = 1;
+        if _JC.early_passes & 1 {
+            validation = ASTValidationPass(ir_in=mod);
+            _JC.completed |= 1;
+        }
         has_absorb = False;
         for imp in mod.get_all_sub_nodes(Import) {
             if imp.is_absorb {
@@ -193,9 +197,9 @@ def _finish_unit(
             }
         }
 
-        if not has_absorb {
+        if not has_absorb and _JC.early_passes & 2 {
             symbols = SymTabBuildPass(ir_in=mod);
-            _JC.completed = 3;
+            _JC.completed |= 2;
         }
     }
     status = _materialize(r, mod, p_diags, comments, lex_diags);

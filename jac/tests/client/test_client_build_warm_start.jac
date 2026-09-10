@@ -140,7 +140,7 @@ test "a warm client build over a real layout is served from the cache" {
     reloader._running = True;
     edited: list[str] = [];
     with compile_progress.listen(edited.append) {
-        reloader._recompile_client_unified(str(button));
+        reloader._recompile_client_code(str(button));
     }
     assert any(p.endswith("button.jac") for p in edited) , (
         f"an HMR edit must recompile the edited module, saw {edited}"

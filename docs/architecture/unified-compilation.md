@@ -123,18 +123,59 @@ stamps. This inventory detects added routes, assets, and dynamic roots; it does
 not parse files to infer app context. A failed preparation leaves the published
 revision intact. Startup progress begins before source compilation.
 
-## Removed infrastructure
+## Scheduled semantic products
 
-- Directory-rooted app declarations and directory containment rules.
-- Workspace consumer-graph parsing and `ownership.json` snapshots.
-- Default-app context inference and E5107 workspace-app validation.
-- Pass-class string contracts scattered among individual pass implementations.
-- Hidden pass selection in native inference, interface flow recovery, layout,
-  client code generation, and compiler tools.
-- The unused nominal compile schedule separate from actual execution.
-- Executing the web entry as a prerequisite for building client output.
+`semantic_passes.jac` produces detached import, serving, placement, and native
+eligibility facts. `module_context_pass.jac` applies the configured codespace and
+native-default policy after parsing. `semantic_facts.jac` defines the records
+consumed by preparation, interface persistence, HMR, and compiler tools.
 
-Typed lists keep the order inspectable. An OSP scheduler is unnecessary for this
-serial implementation; a future task graph can use the same product identities
-if parallel scheduling proves useful. It must preserve context identity, cycles,
-cancellation, and failure handling rather than introduce another scheduling path.
+| Product | Producer | Consumers |
+| --- | --- | --- |
+| Import edges | `DependencyFactsPass` | Application closure, comptime imports, client closure, interface cache, reverse dependencies |
+| Placement summary | `PlacementSummaryPass` | Placement solver and cached placement metadata |
+| Program placement | `ProgramPlacementPass` | Module compilation |
+| Client dependency closure | `ClientDependenciesPass` | Client code generation |
+| Serving facts | `ServingFactsPass` | Application preparation and sealed manifests |
+| Placement spaces | `PlacementSpacesPass` | Standalone HMR dispatch |
+| Interface | `InterfaceFactsPass` | Interface persistence and verification |
+| Native eligibility | `NativeEligibilityPass`, `NativeClosurePass` | Native-default selection and packaging |
+| Requested type | `TypeQueryPass` | IDE queries and interface symbol resolution |
+
+The global placement worklist remains necessary: an imported module can change
+which declarations are available to a client. It executes inside a scheduled
+pass. Placement-only changes retain reference facts; symbol refreshes discard
+them. The summary producer supplies the reference graph to both placement
+consumers, replacing the solver's duplicate name-resolution walk.
+
+Native dependency analysis uses `SourceStore` syntax units and content revisions.
+It does not maintain a second parser or a timestamp-based source cache.
+Speculative parse errors remain in the syntax unit; compiling the source itself
+still delivers those errors normally.
+
+`PassIdentity` makes contract lookup and completion records explicit. Registering
+a new scheduled pass requires adding its identity; unknown names do not silently
+receive an empty contract. `PRODUCT_REQUIREMENTS` declares prerequisites in the
+same file as the product schedules.
+
+The native parser can execute requested validation and symbol passes before
+materializing its tree. `early_pipeline()` selects that schedule; the native
+adapter receives its bit mask and returns normal pass results to the driver.
+Unsupported syntax falls back to ordinary scheduled execution. During compiler
+bootstrap, an unavailable early schedule disables this optimization.
+
+HMR has one standalone client emission path, using the regular client bundle
+builder. Prepared applications continue to rebuild and publish a complete
+revision before reinitialization. File watching, asset copying, route output,
+and browser notification remain outside the semantic passes.
+
+## Boundaries
+
+Syntax parsing and cloning, cache decoding, bytecode dependency inspection,
+artifact bundling, and runtime initialization are not semantic-analysis passes.
+Helpers called from a pass may traverse Unitree; the relevant boundary is who
+requests and executes the analysis, rather than the helper's filename.
+
+Typed lists keep execution order inspectable. An OSP task graph is unnecessary
+for this serial implementation. Any future parallel scheduler must preserve
+context identity, cycles, cancellation, and failure handling.

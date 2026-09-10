@@ -58,7 +58,7 @@ def emits_server_code(mod: (uni.Module | None)) -> bool {
 
 
 def declared_path_spaces(source_path: str, prog: any) -> set[str] {
-    import from jaclang.compiler.placement.placement_solver { _materialize_module }
+    import from jaclang.compiler.driver.pipeline { _materialize_module }
     return module_spaces(_materialize_module(source_path, prog));
 }
 
@@ -169,10 +169,8 @@ def toolchain_native_by_policy(package_dir: str, source_path: str) -> bool {
     }
     mixed = os.path.join(*TOOLCHAIN_MIXED_NATIVE_REL) + os.sep;
     if rel.startswith(mixed) {
-        import from jaclang.compiler.placement.placement_solver {
-            native_default_path_ok
-        }
-        return native_default_path_ok(source_path);
+        import from jaclang.compiler.driver.pipeline { native_path_eligible }
+        return native_path_eligible(source_path);
     }
     return False;
 }

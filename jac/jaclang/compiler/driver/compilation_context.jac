@@ -1,3 +1,4 @@
+import type from jaclang.compiler.driver.semantic_facts { NativeEligibility }
 import copy;
 import from pathlib { Path }
 import type from jaclang.compiler.placement.workspace { AppSpec }
@@ -38,7 +39,8 @@ obj SourceUnit {
     has syntax: Module,
         failed: bool,
         errors: list[Alert],
-        warnings: list[Alert];
+        warnings: list[Alert],
+        native_facts: dict[tuple[bool, str], NativeEligibility] = {};
 }
 
 obj SourceStore {
@@ -47,9 +49,7 @@ obj SourceStore {
         parses: int = 0,
         hits: int = 0;
 
-    def parse(
-        source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
-    ) -> tuple[Module, bool] {
+    def unit(source: str, path: str, annexes: list[tuple[str, str]]) -> SourceUnit {
         import from jaclang.compiler.frontend.parser.frontend { parse_woven }
         import from jaclang.compiler.driver.program { JacProgram }
         key = hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
@@ -73,6 +73,13 @@ obj SourceStore {
         } else {
             self.hits += 1;
         }
+        return unit;
+    }
+
+    def parse(
+        source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
+    ) -> tuple[Module, bool] {
+        unit = self.unit(source, path, annexes);
         syntax = copy.deepcopy(unit.syntax);
         assert isinstance(syntax, Module);
         program.errors_had.extend(unit.errors);

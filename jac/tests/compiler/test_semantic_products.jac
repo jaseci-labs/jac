@@ -1,0 +1,82 @@
+"""Semantic queries share scheduled, detached compiler products."""
+
+import os;
+import from pathlib { Path }
+import from tempfile { TemporaryDirectory }
+import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.pipeline {
+    require_product,
+    CompilationProduct,
+    native_dependency_facts
+}
+import from jaclang.compiler.frontend.constant { CodeContext }
+
+
+test "native eligibility reuses syntax and observes content changes with identical stat" {
+    with TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'main.jac';
+        path.write_text('def value -> int { return 1; }\n');
+        program = JacProgram();
+        first = native_dependency_facts(program, str(path));
+        assert not first.reason;
+        parses = program.source_store.parses;
+        assert native_dependency_facts(program, str(path)) is first;
+        assert program.source_store.parses == parses;
+        stamp = path.stat();
+        path.write_text('def value -> int { return 2; }\n');
+        os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns));
+        second = native_dependency_facts(program, str(path));
+        assert second is not first;
+        assert program.source_store.parses == parses + 1;
+    }
+}
+
+
+test "native speculative parse errors do not contaminate compilation diagnostics" {
+    with TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'bad.jac';
+        path.write_text('def broken {');
+        program = JacProgram();
+        assert native_dependency_facts(program, str(path)).reason == 'parse error';
+        assert not program.errors_had;
+    }
+}
+
+
+test "import facts include plain imports and drive reverse dependencies" {
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        path = base / 'main.jac';
+        (base / 'helper.jac').write_text('def value -> int { return 1; }');
+        path.write_text('import helper;\nwith entry { print(helper.value()); }');
+        program = JacProgram();
+        module = program.compile(str(path), no_cgen=True);
+        assert not program.errors_had , [str(e) for e in program.errors_had];
+        assert require_product(program, module, CompilationProduct.IMPORTS);
+        assert any(
+            edge.target == str(base / 'helper.jac')
+            for edge in program.deps.imports[str(path)]
+        );
+        assert str(path) in program.transitive_dependents(str(base / 'helper.jac'));
+    }
+}
+
+
+test "serving access is a reusable scheduled product" {
+    with TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'main.jac';
+        path.write_text(
+            'def:pub ping -> int { return 1; }\ndef secret -> int { return 2; }'
+        );
+        program = JacProgram();
+        module = program.compile(str(path), no_cgen=True);
+        assert not program.errors_had , [str(e) for e in program.errors_had];
+        assert require_product(program, module, CompilationProduct.SERVING);
+        facts = program.analysis.serving_facts[str(path)];
+        assert facts.func_access['ping'] is False;
+        assert facts.func_access['secret'] is True;
+        count = program.analysis.pass_runs['ServingFactsPass'];
+        assert require_product(program, module, CompilationProduct.SERVING);
+        assert program.analysis.pass_runs['ServingFactsPass'] == count;
+    }
+}

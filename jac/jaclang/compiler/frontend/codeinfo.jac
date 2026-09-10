@@ -521,8 +521,8 @@ def _inferred_native_path(candidate: (str | None)) -> (str | None) {
     if not scope_allows_inferred_path(candidate) {
         return None;
     }
-    import from jaclang.compiler.placement.placement_solver { native_default_path_ok }
-    return candidate if native_default_path_ok(candidate) else None;
+    import from jaclang.compiler.driver.pipeline { native_path_eligible }
+    return candidate if native_path_eligible(candidate) else None;
 }
 
 def resolve_native_module(

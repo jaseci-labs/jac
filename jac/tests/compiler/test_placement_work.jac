@@ -6,6 +6,7 @@ import from unittest.mock { patch }
 import from tests.support { JAC_ROOT }
 import jaclang.compiler.frontend.unitree as uni;
 import jaclang.compiler.placement.placement_solver as solver;
+import jaclang.compiler.placement.placement as placement;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.constant { CodeContext }
 
@@ -25,7 +26,9 @@ test "unchanged and unrelated modules do not rescan the solved import graph" {
     with patch.object(
         solver, "_pull_boundary_import", wraps=solver._pull_boundary_import
     ) as pulls {
-        with patch.object(solver, "_ref_top_ids", wraps=solver._ref_top_ids) as refs {
+        with patch.object(
+            placement, "_element_ref_ids", wraps=placement._element_ref_ids
+        ) as refs {
             solver.solve_program_placement(mod, prog);
             solver.solve_program_placement(mod, prog);
             other = prog.parse_str(
@@ -41,7 +44,9 @@ test "unchanged and unrelated modules do not rescan the solved import graph" {
 test "symbol refresh invalidates references while placement changes reuse them" {
     (prog, mod) = _compile();
     work = solver.placement_work(prog);
-    with patch.object(solver, "_ref_top_ids", wraps=solver._ref_top_ids) as refs {
+    with patch.object(
+        placement, "_element_ref_ids", wraps=placement._element_ref_ids
+    ) as refs {
         work.refresh(mod);
         before = work.refs(mod);
         assert refs.call_count == len(mod.body);

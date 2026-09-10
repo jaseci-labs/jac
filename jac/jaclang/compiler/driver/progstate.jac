@@ -1,3 +1,8 @@
+import from jaclang.compiler.driver.semantic_facts {
+    ImportEdge,
+    ServingFacts,
+    PlacementSpaces
+}
 import os;
 import sys;
 import jaclang.compiler.frontend.unitree as uni;
@@ -6,6 +11,7 @@ import from jaclang.compiler.passes.transform { Alert, PassResult }
 import type from jaclang.compiler.driver.mtp { Info }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
 import from jaclang.compiler.driver.pipeline_types {
+    PassIdentity,
     AnalysisFact,
     CompilationProduct,
     ProductTask
@@ -31,6 +37,11 @@ obj ModuleHub {
     }
 
     def is_fresh(resolved_path: str) -> bool {
+        import from jaclang.compiler.driver.semantic_facts {
+            ImportEdge,
+            ServingFacts,
+            PlacementSpaces
+        }
         import os;
         import from jaclang.compiler.driver.bccache { discover_annex_files }
         cached_at = self.stamps.get(resolved_path);
@@ -117,8 +128,25 @@ obj ModuleHub {
 }
 
 obj DepGraph {
-    has dependents: dict[str, set[str]] = {},
+    has imports: dict[str, list[ImportEdge]] = {},
+        dependents: dict[str, set[str]] = {},
         tracking: bool = False;
+
+    def restore_imports(path: str, rows: list[tuple[str, str, str]]) {
+        import from jaclang.compiler.frontend.constant { CodeContext }
+        self.imports[path] = [
+            ImportEdge(
+                target,
+                target.endswith('.jac'),
+                'k' in flags,
+                CodeContext.CLIENT if 'c' in flags else CodeContext.SERVER,
+                't' in flags
+            ) for (target, digest, flags) in rows
+        ];
+        for edge in self.imports[path] {
+            self.record(path, edge.target);
+        }
+    }
 
     def record(importer_path: str, target_path: str) -> None {
         if importer_path == target_path {
@@ -130,42 +158,6 @@ obj DepGraph {
             self.dependents[target_path] = bucket;
         }
         bucket.add(importer_path);
-    }
-
-    def record_module(mod: uni.Module) -> None {
-        import from pathlib { Path }
-        if mod.loc is None {
-            return;
-        }
-        mod_path = mod.loc.mod_path;
-        if not mod_path.endswith(".jac") {
-            return;
-        }
-        try {
-            importer = str(Path(mod_path).resolve());
-        } except Exception {
-            return;
-        }
-        for imp in mod.get_all_sub_nodes(uni.Import) {
-            paths: list[uni.ModulePath] = [];
-            if imp.from_loc is not None {
-                paths.append(imp.from_loc);
-            } else {
-                for item in imp.items {
-                    if isinstance(item, uni.ModulePath) {
-                        paths.append(item);
-                    }
-                }
-            }
-            for mp in paths {
-                try {
-                    target = str(Path(mp.resolve_relative_path()).resolve());
-                } except Exception {
-                    continue;
-                }
-                self.record(importer, target);
-            }
-        }
     }
 
     def transitive_dependents(target_path: str) -> set[str] {
@@ -185,6 +177,7 @@ obj DepGraph {
     }
 
     def forget(resolved_path: str) {
+        self.imports.pop(resolved_path, None);
         for bucket in self.dependents.values() {
             bucket.discard(resolved_path);
         }
@@ -192,6 +185,7 @@ obj DepGraph {
 
     def clear {
         self.dependents.clear();
+        self.imports.clear();
     }
 }
 
@@ -221,6 +215,11 @@ obj DiagLedger {
     }
 
     def _owned(alert: Alert, path: str) -> bool {
+        import from jaclang.compiler.driver.semantic_facts {
+            ImportEdge,
+            ServingFacts,
+            PlacementSpaces
+        }
         import os;
         import from jaclang.jac0core.ext_registry { is_annex_path_of }
         try {
@@ -316,20 +315,24 @@ obj PendingPassResults {
 }
 
 class AnalysisCaches {
-    has placement_summaries: dict[str, any],
+    has module_spaces: dict[str, PlacementSpaces],
+        serving_facts: dict[str, ServingFacts],
+        placement_summaries: dict[str, any],
         placement_state: dict[str, any],
         analyses_run: AnalysisLedger,
         mtir_map: dict[(str, Info)],
         pass_runs: dict[str, int],
         pass_time: dict[str, float],
         phase_time: dict[str, float],
-        completed_passes: dict[int, set[str]],
+        completed_passes: dict[int, set[PassIdentity]],
         product_tasks: dict[int, dict[CompilationProduct, ProductTask]],
         task_owners: dict[int, any],
         early_passes: dict[int, PendingPassResults],
         cache_events: dict[str, int];
 
     def init(self: AnalysisCaches) {
+        self.module_spaces = {};
+        self.serving_facts = {};
         self.placement_summaries: dict[str, any] = {};
         self.placement_state: dict[str, any] = {};
         self.analyses_run: AnalysisLedger = AnalysisLedger();

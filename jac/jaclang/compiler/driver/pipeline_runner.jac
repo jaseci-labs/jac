@@ -45,7 +45,6 @@ obj ModuleCompilation {
             keep_str, self.path, self.program, cancel_token=self.options.cancel_token
         );
         self.parse_failed = len(self.program.errors_had) > errors_before;
-        self.compiler._ingest_comptime_producers(self.module, self.program, self.path);
     }
 
     def ir {
@@ -83,20 +82,20 @@ obj ModuleCompilation {
 
     def placement {
         if not self.options.symtab_ir_only and not self.blocked {
-            import from jaclang.compiler.placement.placement_solver {
-                solve_program_placement,
-                refresh_placement_module
+            import from jaclang.compiler.driver.pipeline {
+                require_product,
+                invalidate_product,
+                CompilationProduct
             }
-            refresh_placement_module(self.module, self.program);
-            solve_program_placement(self.module, self.program);
+            invalidate_product(self.program, self.module, CompilationProduct.IMPORTS);
+            require_product(self.program, self.module, CompilationProduct.PLACEMENT);
         }
     }
 
     def analysis {
         import from jaclang.compiler.driver.pipeline { get_analysis_sched }
-        import from jaclang.compiler.frontend.constant { CodeContext as _CodeCtx }
-        self.native = self.module is not None
-            and self.module.declares_codespace(_CodeCtx.NATIVE, path_hint=self.path);
+        import from jaclang.compiler.driver.pipeline { module_spaces }
+        self.native = module_spaces(self.program, self.module).native_module;
 
         if self.native {
             self.options.need_full_ast = True;
@@ -127,12 +126,11 @@ obj ModuleCompilation {
             if not self.program.analysis.analyses_run.provides(
                 self.module, AnalysisFact.TYPE_OF
             ) {
-                self.compiler.run_schedule(
-                    mod=self.module,
-                    target_program=self.program,
-                    passes=get_analysis_sched(),
-                    cancel_token=self.options.cancel_token
-                );
+                import from jaclang.compiler.driver.pipeline {
+                    require_product,
+                    CompilationProduct
+                }
+                require_product(self.program, self.module, CompilationProduct.ANALYSIS);
             }
         }
 
@@ -150,16 +148,16 @@ obj ModuleCompilation {
             and not self.blocked
             and not self.options.symtab_ir_only
         ) {
-            self.compiler.run_schedule(
-                mod=self.module,
-                target_program=self.program,
-                passes=get_boundary_analysis_sched(),
-                cancel_token=self.options.cancel_token
-            );
+            import from jaclang.compiler.driver.pipeline {
+                require_product,
+                CompilationProduct
+            }
+            require_product(self.program, self.module, CompilationProduct.BOUNDARIES);
         }
     }
 
     def native_checks {
+        import from jaclang.compiler.driver.pipeline { module_spaces }
         if (
             self.options.no_cgen
             and self.options.native_parity
@@ -173,7 +171,7 @@ obj ModuleCompilation {
             import from jaclang.compiler.frontend.module_facts {
                 ModuleFacts as _PtyMcp
             }
-            if self.native or _PtyMcp.has_native_context_stmts(self.module) {
+            if self.native or module_spaces(self.program, self.module).has_native {
                 import from jaclang.compiler.driver.pipeline {
                     require_product,
                     CompilationProduct
@@ -186,87 +184,17 @@ obj ModuleCompilation {
     }
 
     def client_dependencies {
-        if (
-            not self.parse_failed
+        if not self.parse_failed
             and not self.blocked
             and not self.options.symtab_ir_only
-            and not self.options.no_cgen
-        ) {
-            import os as _cb_os;
-            cb_seen: set[str] = set();
-            cb_worklist: list = [self.module];
-            cb_paths: list[str] = [];
-
-            cb_opts = CompileOptions(
-                no_cgen=True,
-                force_target_program=True,
-                cancel_token=self.options.cancel_token
-            );
-            cb_reg = self.program.iface_registry();
-            while cb_worklist or cb_paths {
-                if cb_worklist {
-                    cb_cur = cb_worklist.pop();
-                    if cb_cur is None {
-                        continue;
-                    }
-                    for cb_imp in cb_cur.get_all_sub_nodes(uni.Import) {
-                        if not cb_imp.from_loc {
-                            continue;
-                        }
-
-                        if cb_imp.is_virtual_jac {
-                            continue;
-                        }
-                        try {
-                            cb_src = cb_imp.from_loc.resolve_relative_path();
-                        } except Exception {
-                            continue;
-                        }
-                        cb_is_client_dep = isinstance(cb_src, str)
-                            and cb_imp.code_context == CodeContext.CLIENT
-                            and cb_src.endswith('.jac');
-                        if not cb_is_client_dep {
-                            continue;
-                        }
-                        cb_paths.append(_cb_os.path.abspath(cb_src));
-                    }
-                    continue;
-                }
-                cb_next = cb_paths.pop();
-                if cb_next in cb_seen {
-                    continue;
-                }
-                cb_seen.add(cb_next);
-
-                cb_mod = self.program.find_module(cb_next);
-                cb_has_facts = (
-                    cb_mod is not None
-                    and cb_mod.gen
-                    and cb_mod.gen.interop_manifest
-                    and bool(cb_mod.gen.interop_manifest.bindings)
-                );
-
-                cb_known_bad = self.program.has_failed_parse(cb_next);
-                if not cb_has_facts and not cb_known_bad {
-                    cb_served: (list[str] | None) = None;
-                    try {
-                        cb_served = cb_reg.client_boundary_facts(cb_next);
-                    } except Exception {
-                        cb_served = None;
-                    }
-                    if cb_served is not None {
-                        for cb_edge in cb_served {
-                            cb_paths.append(_cb_os.path.abspath(cb_edge));
-                        }
-                        continue;
-                    }
-                    cb_mod = self.compiler.compile(
-                        file_path=cb_next, target_program=self.program, options=cb_opts
-                    );
-                }
-                cb_worklist.append(cb_mod);
+            and not self.options.no_cgen {
+            import from jaclang.compiler.driver.pipeline {
+                require_product,
+                CompilationProduct
             }
-            self.program.options = self.options;
+            require_product(
+                self.program, self.module, CompilationProduct.CLIENT_DEPENDENCIES
+            );
         }
     }
 
@@ -288,6 +216,7 @@ obj ModuleCompilation {
     }
 
     def codegen {
+        import from jaclang.compiler.driver.pipeline { module_spaces }
         import from jaclang.compiler.driver.pipeline {
             get_analysis_sched,
             get_py_code_gen
@@ -302,18 +231,17 @@ obj ModuleCompilation {
 
             import from jaclang.compiler.frontend.module_facts { ModuleFacts }
             needs_native = self.native
-                or ModuleFacts.has_native_context_stmts(self.module);
+                or module_spaces(self.program, self.module).has_native;
 
             if needs_native
                 and not self.program.analysis.analyses_run.provides(
                     self.module, AnalysisFact.TYPE_OF
                 ) {
-                self.compiler.run_schedule(
-                    mod=self.module,
-                    target_program=self.program,
-                    passes=get_analysis_sched(),
-                    cancel_token=self.options.cancel_token
-                );
+                import from jaclang.compiler.driver.pipeline {
+                    require_product,
+                    CompilationProduct
+                }
+                require_product(self.program, self.module, CompilationProduct.ANALYSIS);
             }
             self.compiler.run_schedule(
                 mod=self.module,

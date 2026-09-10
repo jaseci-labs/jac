@@ -826,7 +826,7 @@ def record_placement_evidence(prog: any, mod_path: str, index: int, note: str) {
     }
 }
 
-def collect_placement_rows(prog: any) -> dict {
+def _collect_placement_rows(prog: any) -> dict {
     rows_by_module: dict = {};
     hub = prog?.mod?.hub;
     if not isinstance(hub, dict) or not hub {
@@ -927,14 +927,19 @@ def get_module_summary(
     module: uni.Module, prog: any, with_refs: bool = True
 ) -> PlacementSummary {
     store = summary_store(prog);
-    key = os.path.abspath(module.loc.mod_path) if module.loc.mod_path else '';
+    key = os.path.abspath(module.loc.mod_path)
+        if module.loc.mod_path
+        else f'@{id(module)}';
     cached = store.get(key);
     if (isinstance(cached, PlacementSummary) and (cached.has_refs or not with_refs)) {
         return cached;
     }
-    ps = summarize_module(module, with_refs=with_refs);
-    if key {
-        store[key] = ps;
+    import from jaclang.compiler.driver.pipeline {
+        require_product,
+        invalidate_product,
+        CompilationProduct
     }
-    return ps;
+    invalidate_product(prog, module, CompilationProduct.PLACEMENT_SUMMARY);
+    require_product(prog, module, CompilationProduct.PLACEMENT_SUMMARY);
+    return store[key];
 }

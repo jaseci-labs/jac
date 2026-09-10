@@ -33,7 +33,8 @@ impl ViteCompiler._owes_wasm(self: ViteCompiler, module_path: Path) -> bool {
     target = str(module_path.resolve());
     compiled = Jac.get_program().mod.hub.get(target);
     if compiled is not None {
-        return bool(compiled.declares_codespace(CodeContext.NATIVE));
+        import from jaclang.compiler.driver.pipeline { module_spaces }
+        return module_spaces(Jac.get_program(), compiled).native_module;
     }
     declared = self.jac_client_compiler?.na_wasm_modules or set();
     for known in declared {

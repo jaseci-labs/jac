@@ -1,3 +1,20 @@
+import from jaclang.compiler.driver.semantic_passes {
+    DependencyFactsPass,
+    ComptimeImportsPass,
+    PlacementSummaryPass,
+    ProgramPlacementPass,
+    ClientDependenciesPass,
+    ServingFactsPass,
+    InterfaceFactsPass,
+    PlacementSpacesPass
+}
+import from jaclang.compiler.driver.semantic_facts {
+    NativeEligibility,
+    PlacementSpaces
+}
+import from jaclang.compiler.driver.module_context_pass { ModuleContextPass }
+import type from jaclang.compiler.frontend.unitree { Expr, Symbol }
+import type from jaclang.compiler.types.types { TypeBase }
 import os;
 import time;
 import from collections.abc { Callable }
@@ -27,6 +44,7 @@ import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.compiler.placement.placement_solver { PlacementApplyPass }
 import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
 import from jaclang.compiler.driver.pipeline_types {
+    PassIdentity,
     UtilityProduct,
     AnalysisFact,
     PassContract,
@@ -36,21 +54,22 @@ import from jaclang.compiler.driver.pipeline_types {
 }
 import from jaclang.compiler.driver.client_graph { collect_client_graph }
 
-glob PASS_CONTRACTS: dict[str, PassContract] = {
-         'AccessCheckPass': PassContract((), (AnalysisFact.ACCESS_CHECKS, )),
-         'CFGBuildPass': PassContract(
+glob PASS_CONTRACTS: dict[PassIdentity, PassContract] = {
+         ** {identity: PassContract() for identity in PassIdentity},
+         PassIdentity.AccessCheckPass: PassContract((), (AnalysisFact.ACCESS_CHECKS, )),
+         PassIdentity.CFGBuildPass: PassContract(
              (),
              (AnalysisFact.CFG_SUCC, AnalysisFact.CFG_TRUE, AnalysisFact.CFG_FALSE, )
          ),
-         'ClientCapabilityCheckPass': PassContract(
+         PassIdentity.ClientCapabilityCheckPass: PassContract(
              (), (AnalysisFact.CLIENT_CAPABILITY, )
          ),
-         'ComptimeResolvePass': PassContract((), (AnalysisFact.COMPTIME, )),
-         'DeclImplMatchPass': PassContract(
+         PassIdentity.ComptimeResolvePass: PassContract((), (AnalysisFact.COMPTIME, )),
+         PassIdentity.DeclImplMatchPass: PassContract(
              (AnalysisFact.SYM_OF, ), (AnalysisFact.IMPL_OF, )
          ),
-         'FreezeStructurePass': PassContract((), (AnalysisFact.FROZEN, )),
-         'NaIRGenPass': PassContract(
+         PassIdentity.FreezeStructurePass: PassContract((), (AnalysisFact.FROZEN, )),
+         PassIdentity.NaIRGenPass: PassContract(
              (
                  AnalysisFact.TYPE_OF,
                  AnalysisFact.CFG_SUCC,
@@ -61,11 +80,13 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
              ),
              ()
          ),
-         'NativeCapabilityCheckPass': PassContract((), (AnalysisFact.CAPABILITY, )),
-         'OwnershipCheckPass': PassContract(
+         PassIdentity.NativeCapabilityCheckPass: PassContract(
+             (), (AnalysisFact.CAPABILITY, )
+         ),
+         PassIdentity.OwnershipCheckPass: PassContract(
              (AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF, ), (AnalysisFact.OWNERSHIP, )
          ),
-         'PlacementApplyPass': PassContract(
+         PassIdentity.PlacementApplyPass: PassContract(
              (AnalysisFact.SYM_OF, ),
              (
                  AnalysisFact.PLACED_IN,
@@ -74,13 +95,17 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
 
              )
          ),
-         'PortabilityWarnPass': PassContract((), (AnalysisFact.PORTABILITY, )),
-         'RcFactsPass': PassContract(
+         PassIdentity.PortabilityWarnPass: PassContract(
+             (), (AnalysisFact.PORTABILITY, )
+         ),
+         PassIdentity.RcFactsPass: PassContract(
              (AnalysisFact.CFG_SUCC, ), (AnalysisFact.RC_FACTS, )
          ),
-         'RegionInferPass': PassContract((), (AnalysisFact.REGION_INFER, )),
-         'StaticAnalysisPass': PassContract((), (AnalysisFact.STATIC_CHECKS, )),
-         'SymTabBuildPass': PassContract(
+         PassIdentity.RegionInferPass: PassContract((), (AnalysisFact.REGION_INFER, )),
+         PassIdentity.StaticAnalysisPass: PassContract(
+             (), (AnalysisFact.STATIC_CHECKS, )
+         ),
+         PassIdentity.SymTabBuildPass: PassContract(
              (),
              (
                  AnalysisFact.SYM_OF,
@@ -90,11 +115,53 @@ glob PASS_CONTRACTS: dict[str, PassContract] = {
 
              )
          ),
-         'TypeCheckPass': PassContract((), (AnalysisFact.TYPE_OF, )),
-         'VariantAgreementPass': PassContract((), (AnalysisFact.VARIANT_AGREEMENT, ))
+         PassIdentity.TypeCheckPass: PassContract((), (AnalysisFact.TYPE_OF, )),
+         PassIdentity.VariantAgreementPass: PassContract(
+             (), (AnalysisFact.VARIANT_AGREEMENT, )
+         )
+     },
+     PRODUCT_REQUIREMENTS:
+         dict[
+             CompilationProduct,
+             list[tuple[CompilationProduct, AnalysisFact | None]]
+         ] = {
+         CompilationProduct.ANALYSIS: [
+             (CompilationProduct.FLOW, AnalysisFact.CFG_SUCC)
+         ],
+         CompilationProduct.CLIENT: [
+             (CompilationProduct.ANALYSIS, AnalysisFact.TYPE_OF)
+         ],
+         CompilationProduct.NATIVE_IR: [
+             (CompilationProduct.ANALYSIS, AnalysisFact.TYPE_OF)
+         ],
+         CompilationProduct.SERVING: [(CompilationProduct.BOUNDARIES, None)],
+         CompilationProduct.INTERFACE: [
+             (CompilationProduct.FLOW, AnalysisFact.CFG_SUCC)
+         ]
      };
 
 def product_pipeline(product: CompilationProduct) -> list[type[Transform]] {
+    if product == CompilationProduct.SPACES {
+        return [PlacementSpacesPass];
+    }
+    if product == CompilationProduct.IMPORTS {
+        return [DependencyFactsPass];
+    }
+    if product == CompilationProduct.PLACEMENT_SUMMARY {
+        return [PlacementSummaryPass];
+    }
+    if product == CompilationProduct.PLACEMENT {
+        return [ProgramPlacementPass, DependencyFactsPass];
+    }
+    if product == CompilationProduct.CLIENT_DEPENDENCIES {
+        return [ClientDependenciesPass];
+    }
+    if product == CompilationProduct.SERVING {
+        return [ServingFactsPass];
+    }
+    if product == CompilationProduct.INTERFACE {
+        return [InterfaceFactsPass];
+    }
     if product == CompilationProduct.SYMBOLS {
         return get_symtab_ir_sched();
     }
@@ -124,6 +191,21 @@ def product_pipeline(product: CompilationProduct) -> list[type[Transform]] {
     raise ValueError(f"Product {product.value} requires an entry compilation");
 }
 
+def invalidate_product(
+    program: JacProgram, module: Module, product: CompilationProduct
+) {
+    tasks = program.analysis.product_tasks.get(id(module));
+    if tasks is not None {
+        tasks.pop(product, None);
+    }
+    completed = program.analysis.completed_passes.get(id(module));
+    if completed is not None {
+        for step in product_pipeline(product) {
+            completed.discard(PassIdentity(step.__name__));
+        }
+    }
+}
+
 def invalidate_client_product(program: JacProgram, module: Module) {
     module.gen.js = '';
     module.gen.es_ast = None;
@@ -134,7 +216,7 @@ def invalidate_client_product(program: JacProgram, module: Module) {
     completed = program.analysis.completed_passes.get(id(module));
     if completed is not None {
         for step in product_pipeline(CompilationProduct.CLIENT) {
-            completed.discard(step.__name__);
+            completed.discard(PassIdentity(step.__name__));
         }
     }
     path = os.path.realpath(module.loc.mod_path);
@@ -171,34 +253,22 @@ def require_product(
     start = time.perf_counter();
     before = len(program.errors_had);
     try {
-        if product in (CompilationProduct.ANALYSIS, CompilationProduct.NATIVE_IR)
-            and not program.analysis.analyses_run.provides(
-                module, AnalysisFact.CFG_SUCC
-            ) {
-            if not require_product(program, module, CompilationProduct.FLOW) {
+        for (prerequisite, fact) in PRODUCT_REQUIREMENTS.get(product, []) {
+            if fact is not None
+                and program.analysis.analyses_run.provides(module, fact) {
+                continue;
+            }
+            if not require_product(program, module, prerequisite) {
                 task.state = TaskState.FAILED;
                 return False;
             }
         }
-        if product in (CompilationProduct.CLIENT, CompilationProduct.NATIVE_IR)
-            and not program.analysis.analyses_run.provides(
-                module, AnalysisFact.TYPE_OF
-            ) {
-            if not require_product(program, module, CompilationProduct.ANALYSIS) {
-                task.state = TaskState.FAILED;
-                return False;
-            }
+        passes = product_pipeline(product);
+        if not passes {
+            tasks.pop(product, None);
+            return False;
         }
-        if product == CompilationProduct.INTERFACE {
-            if not program.iface_registry().prepare_interface(
-                os.path.realpath(module.loc.mod_path), module
-            ) {
-                task.state = TaskState.FAILED;
-                return False;
-            }
-        } else {
-            program.run_schedule(module, product_pipeline(product));
-        }
+        program.run_schedule(module, passes);
         task.state = TaskState.CANCELLED
             if program.options.cancel_token is not None
                 and program.options.cancel_token.is_set()
@@ -293,8 +363,11 @@ def get_symtab_ir_sched -> list[type[Transform]] {
     return validate_schedule(
         [
             AppContextPass,
+            ModuleContextPass,
             GraphLoweringPass,
             ASTValidationPass,
+            DependencyFactsPass,
+            ComptimeImportsPass,
             AbsorbImportsPass,
             SymTabBuildPass,
             DeclImplMatchPass,
@@ -400,11 +473,11 @@ def _codegen_tier_reason -> str {
 }
 
 def pass_requires(p: type[Transform]) -> tuple[AnalysisFact, ...] {
-    return PASS_CONTRACTS.get(p.__name__, PassContract()).requires;
+    return PASS_CONTRACTS[PassIdentity(p.__name__)].requires;
 }
 
 def pass_provides(p: type[Transform]) -> tuple[AnalysisFact, ...] {
-    return PASS_CONTRACTS.get(p.__name__, PassContract()).provides;
+    return PASS_CONTRACTS[PassIdentity(p.__name__)].provides;
 }
 
 def validate_schedule(
@@ -460,8 +533,11 @@ def get_bootstrap_ir_sched -> list[type[Transform]] {
     return validate_schedule(
         [
             AppContextPass,
+            ModuleContextPass,
             GraphLoweringPass,
             ASTValidationPass,
+            DependencyFactsPass,
+            ComptimeImportsPass,
             AbsorbImportsPass,
             SymTabBuildPass,
             DeclImplMatchPass,
@@ -488,8 +564,11 @@ def get_ir_gen_sched(
 
         passes: list[type[Transform]] = [
             AppContextPass,
+            ModuleContextPass,
             GraphLoweringPass,
             ASTValidationPass,
+            DependencyFactsPass,
+            ComptimeImportsPass,
             AbsorbImportsPass,
             SymTabBuildPass,
             DeclImplMatchPass,
@@ -733,7 +812,7 @@ def execute_passes(
     policy = build_diagnostic_policy(program);
     completed = program.analysis.completed_passes.setdefault(id(module), set());
     for step in passes {
-        if step.__name__ in completed {
+        if PassIdentity(step.__name__) in completed {
             continue;
         }
         if cancel_token is not None and cancel_token.is_set() {
@@ -744,7 +823,7 @@ def execute_passes(
         ).ir_out;
         provided.update(pass_provides(step));
         if cancel_token is None or not cancel_token.is_set() {
-            completed.add(step.__name__);
+            completed.add(PassIdentity(step.__name__));
         }
     }
     return module;
@@ -763,6 +842,7 @@ def run_utility(
         import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
         step = PyastBuildPass;
     } elif product == UtilityProduct.PYTHON_SYMBOLS {
+        run_pass(AbsorbImportsPass, ir, program, cancel_token=cancel_token);
         step = SymTabBuildPass;
     } elif product == UtilityProduct.GRAMMAR {
         import from jaclang.compiler.tools.grammar_extract_pass { GrammarExtractPass }
@@ -806,7 +886,6 @@ def compile_application(
         bind_options,
         context_program
     }
-    import from jaclang.compiler.frontend.unitree { Import, ModulePath }
     import from jaclang.compiler.backends.py.artifact_imports { package_sources }
     import from jaclang.jac0core.ext_registry { is_annex }
     import from jaclang.project.app_kinds { kind_has_client }
@@ -854,24 +933,12 @@ def compile_application(
             for (dependency, importers) in context.deps.dependents.items()
             if path in importers
         );
-        for statement in module.get_all_sub_nodes(Import) {
-            if not statement.is_jac or statement.is_virtual_jac {
-                continue;
-            }
-            imports = [statement.from_loc]
-                if statement.from_loc is not None
-                else [
-                    item
-                    for item in statement.items
-                    if isinstance(item, ModulePath)
-                ];
-            for imported in imports {
-                dependency = imported.resolve_relative_path();
-                if isinstance(dependency, str) and dependency.endswith('.jac') {
-                    dependencies.add(os.path.realpath(dependency));
-                }
-            }
-        }
+        require_product(context, module, CompilationProduct.IMPORTS);
+        dependencies.update(
+            edge.target
+            for edge in context.deps.imports.get(path, [])
+            if edge.jac and edge.target.endswith('.jac')
+        );
         pending.extend(
             (context, dependency)
             for dependency in sorted(dependencies)
@@ -889,4 +956,100 @@ def compile_application(
         );
     }
     return entry_module;
+}
+
+
+def native_dependency_facts(
+    program: JacProgram, path: str, hold_exempt: bool = False
+) -> NativeEligibility {
+    import from jaclang.compiler.frontend.parser.frontend { annex_sources }
+    import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+    import from jaclang.compiler.placement.placement_pins { _is_demoted_native }
+    import from jaclang.compiler.driver.pass_driver { run_pass }
+    import from jaclang.compiler.driver.semantic_passes { NativeEligibilityPass }
+    path = os.path.realpath(path);
+    if _is_demoted_native(path) {
+        return NativeEligibility('previously-demoted');
+    }
+    try {
+        unit = program.source_store.unit(
+            read_file_with_encoding(path), path, annex_sources(path)
+        );
+    } except OSError {
+        return NativeEligibility('unreadable source');
+    }
+    if unit.failed {
+        return NativeEligibility('parse error');
+    }
+    identity = (hold_exempt, program.options.analysis_identity());
+    cached = unit.native_facts.get(identity);
+    if cached is None {
+        result = run_pass(
+            NativeEligibilityPass, unit.syntax, program, hold_exempt=hold_exempt
+        );
+        cached = result.result;
+        unit.native_facts[identity] = cached;
+    }
+    return cached;
+}
+
+def native_closure_eligible(
+    program: JacProgram,
+    module: Module,
+    dependencies: list[str],
+    hold_exempt: bool = False
+) -> bool {
+    import from jaclang.compiler.driver.pass_driver { run_pass }
+    import from jaclang.compiler.driver.semantic_passes { NativeClosurePass }
+    return run_pass(
+        NativeClosurePass,
+        module,
+        program,
+        dependencies=dependencies,
+        hold_exempt=hold_exempt
+    ).eligible;
+}
+
+def native_path_eligible(path: str) -> bool {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.frontend.unitree { Module }
+    import from jaclang.compiler.placement.placement { PLACEMENT_HOLD_EXEMPT_ROOTS }
+    program = JacProgram();
+    path = os.path.realpath(path);
+    exempt = any(
+        marker in path.replace(os.sep, '/') for marker in PLACEMENT_HOLD_EXEMPT_ROOTS
+    );
+    facts = native_dependency_facts(program, path, exempt);
+    if facts.reason {
+        return False;
+    }
+    module = Module.make_stub();
+    module.source.file_path = path;
+    return native_closure_eligible(program, module, facts.dependencies, exempt);
+}
+
+
+def query_type(program: JacProgram, query: Expr | Symbol) -> TypeBase | None {
+    import from jaclang.compiler.driver.pass_driver { run_pass }
+    import from jaclang.compiler.driver.semantic_passes { TypeQueryPass }
+    import from jaclang.compiler.frontend.unitree { Module }
+    return run_pass(TypeQueryPass, Module.make_stub(), program, query=query).result;
+}
+
+
+def early_pipeline -> list[tuple[int, type[Transform]]] {
+    return [(1, ASTValidationPass), (2, SymTabBuildPass)];
+}
+
+
+def module_spaces(program: JacProgram, module: Module) -> PlacementSpaces {
+    require_product(program, module, CompilationProduct.SPACES);
+    return program.analysis.module_spaces[os.path.realpath(module.loc.mod_path)];
+}
+
+
+def placement_report(program: JacProgram) -> dict {
+    import from jaclang.compiler.driver.pass_driver { run_pass }
+    import from jaclang.compiler.driver.semantic_passes { PlacementReportPass }
+    return run_pass(PlacementReportPass, program.mod.main, program).rows;
 }

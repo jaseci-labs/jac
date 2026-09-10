@@ -290,37 +290,19 @@ obj IfaceRegistry {
         bucket[real] = digest;
     }
 
-    def _client_edges(mod: any) -> set[str] {
-        import jaclang.compiler.frontend.unitree as uni;
-        import from jaclang.compiler.frontend.constant { CodeContext }
-        out: set[str] = set();
-        try {
-            for imp in mod.get_all_sub_nodes(uni.Import) {
-                if imp.from_loc is None or imp.is_virtual_jac {
-                    continue;
-                }
-                if imp.code_context != CodeContext.CLIENT {
-                    continue;
-                }
-                try {
-                    target = imp.from_loc.resolve_relative_path();
-                } except Exception {
-                    continue;
-                }
-                if isinstance(target, str) and target.endswith(".jac") {
-                    out.add(os.path.realpath(target));
-                }
-            }
-        } except Exception {}
-        return out;
-    }
-
     def dep_rows(resolved_path: str, mod: any) -> list[tuple[str, str, str]] {
         bucket = self.direct_deps.get(resolved_path, {});
-        client = self._client_edges(mod) if mod is not None else set();
+        import from jaclang.compiler.frontend.constant { CodeContext }
+        flags: dict[str, str] = {};
+        for edge in self.prog.deps.imports.get(resolved_path, []) {
+            flags[edge.target] = flags.get(edge.target, '')
+                + ('c' if edge.context == CodeContext.CLIENT else '')
+                + ('t' if edge.top_level else '')
+                + ('k' if edge.is_comptime else '');
+        }
         out: list[tuple[str, str, str]] = [];
         for (path, digest) in bucket.items() {
-            out.append((path, digest, "c" if path in client else "", ));
+            out.append((path, digest, flags.get(path, ""), ));
         }
         return out;
     }
@@ -564,6 +546,11 @@ obj IfaceRegistry {
         }
         ent.catalog = catalog;
         ent.module = mod;
+        found = self._module_jir(ent.path);
+        if found is not None {
+            import from jaclang.compiler.driver.jir { read_dep_rows }
+            self.prog.deps.restore_imports(ent.path, read_dep_rows(found[0], found[1]));
+        }
         return mod;
     }
 
@@ -809,29 +796,9 @@ obj IfaceRegistry {
         return hashlib.sha256(ident.encode()).hexdigest()[:16];
     }
 
-    def _ensure_flow_graph(mod: any) -> None {
-        if getattr(mod, "stub_only", False)
-            or getattr(mod, "is_raised_from_py", False) {
-            return;
-        }
-        ledger = self.prog.analysis.analyses_run;
-        if ledger.provides(mod, AnalysisFact.CFG_SUCC) {
-            return;
-        }
-        import from jaclang.compiler.driver.pipeline {
-            require_product,
-            CompilationProduct
-        }
-        if not require_product(self.prog, mod, CompilationProduct.FLOW) {
-            raise RuntimeError(f"Interface flow analysis failed: {mod.loc.mod_path}");
-        }
-        self._event("iface_cfg");
-    }
-
     def _encode_iface(codec: IfaceCodec, mod: any) -> (bytes | None) {
         import from jaclang.compiler.types.stubcat.modiface { IncoherentInterface }
         self._event("iface_encode");
-        self._ensure_flow_graph(mod);
         try {
             return codec.build_module_iface(
                 mod, self.prog.get_type_evaluator(), self._pkg_dir()
@@ -907,13 +874,13 @@ obj IfaceRegistry {
         }
         sections[SEC_DEPS] = deps_section(self.dep_rows(resolved, mod));
         try {
-            import from jaclang.compiler.placement.placement {
-                get_module_summary,
-                summary_to_bytes
-            }
-            sections[SEC_PLACEMENT] = summary_to_bytes(
-                get_module_summary(mod, self.prog)
+            import from jaclang.compiler.placement.placement { summary_to_bytes }
+            summary = self.prog.analysis.placement_summaries.get(
+                os.path.abspath(mod.loc.mod_path)
             );
+            if summary is not None {
+                sections[SEC_PLACEMENT] = summary_to_bytes(summary);
+            }
         } except Exception {}
         if mod.ct_file_deps {
             sections[SEC_CTDEPS] = ct_deps_section(mod.ct_file_deps, mod.ct_body_deps);
@@ -1084,13 +1051,9 @@ obj IfaceRegistry {
             return None;
         }
         resolved_type: any = None;
-        provider = sym.provider;
         try {
-            if provider is not None {
-                resolved_type = provider.resolve_type(sym);
-            } else {
-                resolved_type = self.prog.get_type_evaluator().get_type_of_symbol(sym);
-            }
+            import from jaclang.compiler.driver.pipeline { query_type }
+            resolved_type = query_type(self.prog, sym);
         } except Exception {
             return None;
         }
@@ -1137,12 +1100,13 @@ obj IfaceRegistry {
             }
             codec = iface_codec();
             assert codec is not None;
-            fresh_digest = codec.read_iface_hash(
-                codec.build_module_iface(
-                    fresh, prog2.get_type_evaluator(), self._pkg_dir()
-                )
-            )
-                or "";
+            import from jaclang.compiler.driver.pipeline {
+                require_product,
+                CompilationProduct
+            }
+            require_product(prog2, fresh, CompilationProduct.INTERFACE);
+            encoded = prog2.iface_registry()._iface_bytes.get(resolved);
+            fresh_digest = encoded[2] if encoded is not None else '';
             if fresh_digest != ent.digest {
                 raise RuntimeError(
                     f"analysis-cache verify failed for {resolved}: the served "

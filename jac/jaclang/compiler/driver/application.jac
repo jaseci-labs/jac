@@ -98,64 +98,44 @@ def _project_modules(program: any, `root: any) -> dict {
 }
 
 def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict {
-    import from jaclang.compiler.frontend { unitree as uni }
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
-    mod = mod if (mod is not None) else program.find_module(path);
-    if (mod is None) {
+    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
+    mod = mod if mod is not None else program.find_module(path);
+    if mod is None {
         raise RuntimeError(f'Preparation did not produce metadata for {path}');
     }
-    sources = [mod];
-    for item in mod.body {
-        if (isinstance(item, uni.Import) and item.is_jac and item.from_loc) {
-            source = item.from_loc.resolve_relative_path();
-            imported = program.find_module(source) if source else None;
-            if (imported is not None) {
-                sources.append(imported);
-            }
-        }
-    }
+    require_product(program, mod, CompilationProduct.IMPORTS);
+    sources = {os.path.realpath(path)};
+    sources.update(
+        edge.target
+        for edge in program.deps.imports.get(os.path.realpath(path), [])
+        if edge.jac and edge.top_level
+    );
     (funcs, walkers, effects) = ({}, {}, {});
-    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
-    for source in sources {
-        manifest = source.gen.interop_manifest;
-        if (manifest and not (manifest.func_access or manifest.walker_access)) {
-            require_product(program, source, CompilationProduct.BOUNDARIES);
-            manifest = source.gen.interop_manifest;
-        }
-        if manifest {
-            for (name, access) in manifest.func_access.items() {
+    (cross, seen) = ([], `set());
+    for (source_path, source) in _project_modules(program, `root).items() {
+        require_product(program, source, CompilationProduct.SERVING);
+        facts = program.analysis.serving_facts[source_path];
+        if source_path in sources {
+            for (name, access) in facts.func_access.items() {
                 funcs.setdefault(name, access);
             }
-            for (name, access) in manifest.walker_access.items() {
+            for (name, access) in facts.walker_access.items() {
                 walkers.setdefault(name, access);
             }
         }
-    }
-    (cross, seen) = ([], `set());
-    for source in _project_modules(program, `root).values() {
-        manifest = source.gen.interop_manifest;
-        if not manifest {
-            continue;
-        }
-        effects.update(manifest.endpoint_effects);
-        for binding in manifest.server_exports_to_client {
-            `node = binding.ast_node;
-            if ((`node is None) or ((binding.name, binding.kind) in seen)) {
+        effects.update(facts.effects);
+        for binding in facts.cross_bindings {
+            identity = (binding.name, binding.kind);
+            if identity in seen or not binding.source.startswith(`root + os.sep) {
                 continue;
             }
-            src = `node.loc.mod_path;
-            if (not src or not os.path.realpath(src).startswith((`root + os.sep))) {
-                continue;
-            }
-            access = `node?.access;
-            auth = not ((access is not None) and (access.tag.name == Tok.KW_PUB));
-            seen.add((binding.name, binding.kind));
+            seen.add(identity);
             cross.append(
                 `dict(
                     name=binding.name,
                     kind=binding.kind,
-                    src=os.path.relpath(src, `root),
-                    auth=auth
+                    src=os.path.relpath(binding.source, `root),
+                    auth=binding.auth
                 )
             );
         }

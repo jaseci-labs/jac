@@ -3,7 +3,8 @@ import jaclang.compiler.frontend.unitree as uni;
 
 
 obj PlacementWork {
-    has modules: dict[int, uni.Module] = {},
+    has program: any,
+        modules: dict[int, uni.Module] = {},
         edges: dict[int, tuple[uni.Import, uni.Module]] = {},
         owned: dict[int, list[int]] = {},
         readers: dict[int, dict[int, bool]] = {},
@@ -34,6 +35,10 @@ obj PlacementWork {
         mid = id(module);
         self.modules[mid] = module;
         self.references.pop(mid, None);
+        path = os.path.abspath(module.loc.mod_path)
+            if module.loc.mod_path
+            else f'@{id(module)}';
+        self.program.analysis.placement_summaries.pop(path, None);
         old = self.owned.get(mid, []);
         owned: list[int] = [];
         for stmt in module.get_all_sub_nodes(uni.Import) {
@@ -50,6 +55,17 @@ obj PlacementWork {
     }
 
     def changed(module: uni.Module) {
+        import from jaclang.compiler.driver.pipeline {
+            invalidate_product,
+            CompilationProduct
+        }
+        for product in (
+            CompilationProduct.IMPORTS,
+            CompilationProduct.SPACES,
+            CompilationProduct.SERVING
+        ) {
+            invalidate_product(self.program, module, product);
+        }
         mid = id(module);
         for eid in self.owned.get(mid, []) {
             self.enqueue(eid);
@@ -125,12 +141,17 @@ obj PlacementWork {
     }
 
     def refs(module: uni.Module) -> dict[int, set[int]] {
-        import from jaclang.compiler.placement.placement_solver { _ref_top_ids }
+        import from jaclang.compiler.placement.placement { get_module_summary }
         self.observe(module);
         mid = id(module);
         cached = self.references.get(mid);
         if cached is None {
-            cached = {id(top): _ref_top_ids(module, top) for top in module.body};
+            summary = get_module_summary(module, prog=self.program);
+            cached = {
+                id(module.body[element.index]): {
+                    id(module.body[index]) for index in element.refs
+                } for element in summary.elements
+            };
             self.references[mid] = cached;
         }
         return cached;

@@ -141,11 +141,11 @@ def ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
 def bake_native_payloads(config: any, pkg_copy: Path, app: str = "") -> bool {
     import os;
     import from jaclang.jac0core.ext_registry { base_stem }
-    import from jaclang.compiler.placement.placement_solver { native_default_path_ok }
+    import from jaclang.compiler.driver.pipeline { native_path_eligible }
     import from jaclang.server.sealed_serve { NATIVE_DIR_REL }
 
     entry_file = resolve_entry_file(config, app);
-    if entry_file is None or not native_default_path_ok(str(entry_file)) {
+    if entry_file is None or not native_path_eligible(str(entry_file)) {
         return True;
     }
     try {

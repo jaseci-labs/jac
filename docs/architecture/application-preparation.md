@@ -39,6 +39,10 @@ Jac modules. The Python import hook reads the revision registry only after that
 module loads, avoiding a recursive import while bootstrapping the compiler.
 Installed builds can load these modules from their precompiled artifacts.
 
+Preparation reads detached serving facts from the scheduled compiler product.
+Access rules, boundary exports, and endpoint effects are derived in compiler
+passes, rather than by walking Unitree during revision assembly.
+
 The revision holds server bytecode, compiler restoration sections, endpoint
 access and boundary metadata, client output and native output. The runtime
 import hook consumes prepared bytecode and native bindings. A dynamic import

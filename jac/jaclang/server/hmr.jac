@@ -47,11 +47,7 @@ obj HotReloader {
     def _process_change(file_path: str, is_directory: bool = False) -> None;
     def _dispatch_change(file_path: str, is_directory: bool = False) -> None;
     def _reload_server_module(file_path: str) -> None;
-    def _recompile_client_code(
-        file_path: str, visited: set | None = None, force: bool = True
-    ) -> None;
-
-    def _recompile_client_unified(file_path: str) -> None;
+    def _recompile_client_code(file_path: str) -> None;
     def _client_js_path(file_path: str) -> (Path | None);
     def _extract_js_exports(js_path: Path) -> set[str];
     def _signal_full_reload -> None;
@@ -63,7 +59,6 @@ obj HotReloader {
     def _entry_module_path -> Path;
     def _status_file_path -> Path;
     def _sync_status_file -> None;
-    def _classify_declarations(file_path: str) -> tuple[bool, bool, bool];
     def _path_to_module(file_path: str) -> str;
     def _get_js_filename(file_path: str) -> str;
     def _copy_frontend_files(file_path: str) -> None;
