@@ -134,12 +134,11 @@ default-app = "web"
 
 [apps.web]
 kind = "web-app"                 # required: any project kind
-path = "web"                     # dir root, relative to the project root
-entry-point = "main.jac"         # relative to path; default = the kind's entry
+entry-point = "web/main.jac"
 platform = ""                    # default platform (mobile: android | ios | web; desktop: windows | macos | linux)
 route = "/api/web"               # default "/api/<name>"; serving kinds only
 
-[apps.social_graph]              # file-rooted: no path, the entry file is the whole app
+[apps.social_graph]              # declared service entry
 kind = "service"
 entry-point = "core/social_graph.jac"
 ```
@@ -147,8 +146,7 @@ entry-point = "core/social_graph.jac"
 | Field | Type | Description |
 |-------|------|-------------|
 | `kind` | string | **Required.** The app's project kind (same values as `[project] kind`). The kind decides the client too: `web-app`, `web-static`, `desktop` and `js-package` render React DOM; `mobile` renders native views through `@jac/mobui` (its modules are under the `E1105` host-tag guard) |
-| `path` | string | Directory root of the app, relative to the project root; omit for a file-rooted app |
-| `entry-point` | string | Entry file, relative to `path` (or to the project root without one); default = the kind's entry |
+| `entry-point` | string | **Required.** Entry module relative to the project root |
 | `platform` | string | Default platform: `android`, `ios` or `web` for a `mobile` app; `windows`, `macos` or `linux` for a `desktop` app. `--platform` overrides it for one command |
 | `route` | string | Public route prefix for apps with a server; must start with `/`; default `/api/<name>`. Two serving apps claiming one prefix is a config error |
 
@@ -420,7 +418,10 @@ Element placement (server / client / native) is inferred by the compiler from ev
 
 A pinned element is immovable to the placement solver; everything else re-solves around it. Module-level `"server"` pins additionally give client imports of that module full service-boundary semantics (non-`:pub` items callable with auth, boundary types collected). Pins are part of the program: changing them invalidates the compilation cache, and `jac explain placement` reports them in each element's evidence chain.
 
-Pins can also be overlaid per app -- `[apps.<name>.placement.pins]` merges over this table for that app's modules -- and a pin is one way to name the **owner** of a server-placed shared module when several apps serve (`E5107`). Declaring that a module runs as its own **service** is a different fact with a different home: an `[apps.<name>]` table with `kind = "service"` (see [Workspaces & Apps](../apps.md)); imports of what that app owns lower to typed-async bridge stubs automatically.
+`[apps.<name>.placement.pins]` merges over the project pins in that app's
+compilation context. Pins select codespaces. A service boundary is declared with
+`[apps.<name>] kind = "service"` and `entry-point`; imports of its public surface
+lower to awaited bridge calls. See [Workspaces & Apps](../apps.md).
 
 ---
 

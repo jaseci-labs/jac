@@ -125,12 +125,7 @@ test "target_for_app reads the app's kind" {
 
     _register_client_targets();
     cfg = JacConfig.from_toml_str(
-        '[project]\nname = "acme"\n\n'
-        '[apps.phone]\nkind = "mobile"\npath = "phone"\n\n'
-        '[apps.site]\nkind = "web-app"\npath = "site"\n\n'
-        '[apps.page]\nkind = "web-static"\npath = "page"\n\n'
-        '[apps.shell]\nkind = "desktop"\npath = "shell"\n\n'
-        '[apps.api]\nkind = "service"\npath = "api"\n'
+        '[project]\nname = "acme"\n\n[apps.phone]\nkind = "mobile"\nentry-point = "phone/main.jac"\n\n[apps.site]\nkind = "web-app"\nentry-point = "site/main.jac"\n\n[apps.page]\nkind = "web-static"\nentry-point = "page/main.jac"\n\n[apps.shell]\nkind = "desktop"\nentry-point = "shell/main.jac"\n\n[apps.api]\nkind = "service"\nentry-point = "api/main.jac"\n'
     );
     expected = {"phone": "mobile", "site": "web", "page": "static", "shell": "desktop"};
     for (name, target_name) in expected.items() {

@@ -6,7 +6,7 @@ import tempfile;
 import time;
 import from pathlib { Path }
 import type from jaclang.runtime.prepared { PreparedApplication }
-glob _FORMAT: int = 1,
+glob _FORMAT: int = 2,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
 def _inventory(`root: any, inputs: bool = False) -> dict {
@@ -61,7 +61,15 @@ def _write(path: any, value: any) {
     }
 }
 
-def _sections(path: any) -> dict {
+def _sections(path: any, program: any) -> dict {
+    import from jaclang.compiler.driver.compilation_context { cache_scope, program_for }
+    actual = program_for(path, program);
+    with cache_scope(actual.context_key, actual.options) {
+        return _context_sections(path);
+    }
+}
+
+def _context_sections(path: any) -> dict {
     import from jaclang.compiler.driver.jir {
         get_module_cache_path,
         HEADER_SIZE,
@@ -107,11 +115,11 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict {
         }
     }
     (funcs, walkers, effects) = ({}, {}, {});
-    import from jaclang.compiler.driver.schedules { get_boundary_analysis_sched }
+    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
     for source in sources {
         manifest = source.gen.interop_manifest;
         if (manifest and not (manifest.func_access or manifest.walker_access)) {
-            program.run_schedule(source, get_boundary_analysis_sched());
+            require_product(program, source, CompilationProduct.BOUNDARIES);
             manifest = source.gen.interop_manifest;
         }
         if manifest {
@@ -192,7 +200,10 @@ def _prepare_sealed(
         read_bytecode_only,
         patch_co_filenames_bytes
     }
-    import from jaclang.compiler.backends.py.artifact_imports { runtime_sources }
+    import from jaclang.compiler.backends.py.artifact_imports {
+        runtime_sources,
+        package_sources
+    }
     import from jaclang.jac0core.sealed { image_for_bundle_dir, register_image }
     bundle_dir = Path(image_root) / '_precompiled';
     image = image_for_bundle_dir(bundle_dir) or register_image(bundle_dir);
@@ -280,7 +291,6 @@ def prepare_application(
     dev: bool = True
 ) -> PreparedApplication {
     import from jaclang.cli.console { console }
-    import from jaclang.compiler.placement.ownership { workspace_snapshot }
     `entry = os.path.realpath(`entry);
     `root = os.path.realpath((`root or os.path.dirname(`entry)));
     entries = `list(`dict.fromkeys([`entry, *(os.path.realpath(p) for p in services)]));
@@ -318,8 +328,42 @@ def prepare_application(
     try {
         with console.status('Preparing application...') as status {
             status.update(progress);
-            with workspace_snapshot(), compile_progress.listen(begin, finish) {
-                return _prepare(`entry, program, `root, entries, client, dev, console);
+            with compile_progress.listen(begin, finish) {
+                import from jaclang.compiler.driver.compilation_context {
+                    bind_options,
+                    context_program
+                }
+                import from jaclang.compiler.driver.compile_options { CompileOptions }
+                import from jaclang.runtime.prepared { publish }
+                applications = [];
+                for path in entries {
+                    options = bind_options(
+                        path,
+                        program,
+                        CompileOptions(
+                            default_codespace='server',
+                            entry_point=path,
+                            project_root=`root
+                        )
+                    );
+                    actual = context_program(program, options);
+                    applications.append(
+                        _prepare(
+                            path,
+                            actual,
+                            `root,
+                            [path],
+                            client and path == `entry,
+                            dev,
+                            console
+                        )
+                    );
+                }
+                revision = applications[0];
+                revision.services = tuple(entries[1:]);
+                revision.applications = applications[1:];
+                publish(revision);
+                return revision;
             }
         }
     } finally {
@@ -338,8 +382,6 @@ def _prepare(
 ) -> PreparedApplication {
     import from jaclang.runtime.prepared { PreparedApplication, publish }
     inventory = _inventory(`root, inputs=True);
-    import from jaclang.compiler.placement.ownership { seed_workspace_snapshot }
-    seed_workspace_snapshot(`root, inventory);
     key = (_FORMAT, _identity(), inventory, entries, client, dev);
     slot = hashlib.sha256(repr((`entry, entries, client, dev)).encode()).hexdigest()[:20];
     cache = Path(`root) / '.jac' / 'cache' / 'applications' / f'{slot}.bin';
@@ -384,22 +426,28 @@ def _prepare(
         revision.code = record['code'];
         revision.manifests = record['manifests'];
         for (path, sections) in record['sections'].items() {
-            actual = compiler.selfhost.resolve(path, program);
+            import from jaclang.compiler.driver.compilation_context {
+                program_for,
+                cache_scope
+            }
+            actual = program_for(path, program);
             compiler._restore_sections(path, actual, sections);
         }
         for path in revision.code {
             revision.native[path] = compiler.get_native_interop_setup(path, program);
         }
-        publish(revision);
         return revision;
     }
     console.print('  Compiling server modules and placement metadata...');
     before = len(program.errors_had);
+    import copy;
+    modules = {};
+    import from jaclang.compiler.driver.pipeline { compile_application }
     for path in entries {
-        actual = compiler.selfhost.resolve(path, program);
-        actual_before = len(actual.errors_had);
-        program.compile(path);
-        _check(actual, actual_before);
+        options = copy.copy(program.options);
+        options.project_root = `root;
+        options.no_cgen = False;
+        modules[path] = compile_application(program, path, options);
         _check(program, before);
     }
     if client {
@@ -414,32 +462,22 @@ def _prepare(
         revision.client_compiler._emit_na_wasm(Path(`entry));
         _check(program, before);
     }
-    import from jaclang.compiler.frontend { unitree as uni }
+    routes = prepare_route_metadata(os.path.dirname(`entry), program);
     for path in entries {
-        mod = program.find_module(path);
-        if (mod is None) {
-            mod = program.compile(path);
-        }
-        for item in mod.body {
-            if (isinstance(item, uni.Import) and item.is_jac and item.from_loc) {
-                source = item.from_loc.resolve_relative_path();
-                if (source and source.endswith('.jac') and os.path.isfile(source)) {
-                    if (program.find_module(source) is None) {
-                        program.compile(source);
-                    }
-                }
-            }
-        }
-        _check(program, before);
+        mod = modules[path];
         revision.manifests[path] = _manifest(program, path, `root, mod);
         _check(program, before);
     }
-    revision.manifests[`entry]['spa_routes'] = prepare_route_metadata(
-        os.path.dirname(`entry)
-    );
-    import from jaclang.compiler.backends.py.artifact_imports { runtime_sources }
+    revision.manifests[`entry]['spa_routes'] = routes;
+    import from jaclang.compiler.backends.py.artifact_imports {
+        runtime_sources,
+        package_sources
+    }
     sections = {};
     pending = `set(entries);
+    for path in entries {
+        pending.update(package_sources(path, `root));
+    }
     for manifest in revision.manifests.values() {
         for binding in manifest['cross_bindings'] {
             pending.add(os.path.realpath(os.path.join(`root, binding['src'])));
@@ -466,7 +504,7 @@ def _prepare(
             raise RuntimeError(f'No executable artifact produced for {path}');
         }
         revision.code[path] = code;
-        sections[path] = _sections(path);
+        sections[path] = _sections(path, program);
         revision.native[path] = compiler.get_native_interop_setup(path, program);
         pending.update((runtime_sources(code, path, `root) - revision.code.keys()));
     }
@@ -520,18 +558,19 @@ def _prepare(
             dependencies=dependencies
         )
     );
-    publish(revision);
     return revision;
 }
 
-def prepare_route_metadata(`root: str) -> (list[str] | None) {
+def prepare_route_metadata(`root: str, program: any) -> (list[str] | None) {
     if not (Path(`root) / 'pages').is_dir() {
         return None;
     }
-    import from jaclang.client.route_scanner { RouteScanner, resolve_route_exports }
-    scanner = RouteScanner(
-        project_root=Path(`root), route_exports_of=resolve_route_exports
-    );
+    import from jaclang.client.route_scanner { RouteScanner }
+    import from jaclang.compiler.driver.pipeline { route_exports }
+    def exports(path: Path) -> tuple[str | None, str | None] {
+        return route_exports(program, str(path));
+    }
+    scanner = RouteScanner(project_root=Path(`root), route_exports_of=exports);
     return [
         route.path
         for route in scanner.scan()
@@ -557,12 +596,20 @@ def prepare_dynamic_module(
 ) -> PreparedApplication {
     import from jaclang.cli.console { console }
     console.print(f'Preparing dynamically imported module: {path}');
-    return prepare_application(
+    import from jaclang.compiler.driver.compilation_context { program_for }
+    import from jaclang.runtime.prepared { publish }
+    actual = program_for(application.entry, program);
+    revision = _prepare(
         application.entry,
-        program,
-        `root=application.root,
-        services=(*application.services, path),
-        client=application.client_enabled,
-        dev=application.dev
+        actual,
+        application.root,
+        [application.entry, path],
+        application.client_enabled,
+        application.dev,
+        console
     );
+    revision.services = application.services;
+    revision.applications = application.applications;
+    publish(revision);
+    return revision;
 }

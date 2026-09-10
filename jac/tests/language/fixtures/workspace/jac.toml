@@ -7,7 +7,7 @@ default-app = "web"
 
 [apps.web]
 kind = "web-app"
-path = "web"
+entry-point = "web/main.jac"
 
 [apps.svc]
 kind = "service"
@@ -15,4 +15,4 @@ entry-point = "core/svc.jac"
 
 [apps.cli]
 kind = "cli"
-path = "cli"
+entry-point = "cli/main.jac"

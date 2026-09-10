@@ -148,13 +148,7 @@ def make_dualrole_client(tmp_path: str) -> JacTestClient {
     with open(str(dest / "jac.toml"), "w") as tf {
         tf.write(
             "[project]\nname = \"dualrole\"\n\n"
-            f"[apps.web]\nkind = \"web-app\"\npath = \".\"\nentry-point = \"{module_name}.jac\"\n\n"
-            "[apps.analytics]\nkind = \"service\"\n"
-            "entry-point = \"dualrole_analytics.jac\"\n"
-            "route = \"/analytics\"\n\n"
-            "[placement.pins]\n"
-            "\"dualrole_guestbook\" = \"server\"\n"
-            "\"dualrole_analytics\" = \"server\"\n"
+            f'[apps.web]\nkind = "web-app"\nentry-point = "./{module_name}.jac"\n\n[apps.analytics]\nkind = "service"\nentry-point = "dualrole_analytics.jac"\nroute = "/analytics"\n\n[placement.pins]\n"dualrole_guestbook" = "server"\n"dualrole_analytics" = "server"\n'
         );
     }
     for name in [
@@ -2727,11 +2721,7 @@ test "sv_client: register_local short-circuits function calls in-process" {
 }
 
 glob _READ_CACHE_TOML: str = (
-         '[project]\nname = "rc"\n\n'
-         '[apps.web]\nkind = "web-app"\npath = "web"\n\n'
-         '[apps.cli]\nkind = "cli"\npath = "cli"\n\n'
-         '[apps.social]\nkind = "service"\nentry-point = "social.jac"\n\n'
-         '[apps.web.scale]\nread_cache = true\n'
+         '[project]\nname = "rc"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web/main.jac"\n\n[apps.cli]\nkind = "cli"\nentry-point = "cli/main.jac"\n\n[apps.social]\nkind = "service"\nentry-point = "social.jac"\n\n[apps.web.scale]\nread_cache = true\n'
      );
 
 test "sv_client: read_cache serves effect-free bridged calls from memory" {

@@ -1,3 +1,4 @@
+import type from jaclang.compiler.driver.program { JacProgram }
 import hashlib;
 import json;
 import marshal;
@@ -293,6 +294,36 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
 def precompile_unit(
     jac_path: str, pkg_root: str, embed_src: bool = False, collect: bool = True
 ) -> bytes | None {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.compilation_context {
+        bind_options,
+        context_program,
+        cache_scope
+    }
+    if not _unit_program {
+        _unit_program.append(JacProgram());
+    }
+    program = _unit_program[0];
+    compiler = program._get_compiler();
+    selected = compiler.selfhost.resolve(jac_path, program);
+    if not compiler.selfhost.is_selfhost(selected) {
+        options = bind_options(jac_path, program, CompileOptions(entry_point=jac_path));
+        selected = context_program(program, options);
+    }
+    identity = '' if compiler.selfhost.is_selfhost(selected) else selected.context_key;
+    with cache_scope(identity, selected.options) {
+        return _precompile_unit(jac_path, pkg_root, selected, embed_src, collect);
+    }
+}
+
+def _precompile_unit(
+    jac_path: str,
+    pkg_root: str,
+    program: JacProgram,
+    embed_src: bool = False,
+    collect: bool = True
+) -> bytes | None {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.cli.workpool { maybe_malloc_trim }
@@ -317,19 +348,17 @@ def precompile_unit(
         }
     } except Exception {}
 
-    compiler = Jac.get_compiler();
-
-    if not _unit_program {
-        _unit_program.append(JacProgram());
-    }
-    program = _unit_program[0];
+    compiler = program._get_compiler();
     compiler.unit_collect = collect;
     code = compiler.get_bytecode(full_target=jac_path, target_program=program);
     if code is None {
         _emit_unit_diagnostics(jac_path, [program, compiler.selfhost.program]);
     }
-    program.release_compile_closure(collect=collect);
-    compiler.selfhost.program.release_compile_closure(collect=collect);
+    owner = program.context_root if program.context_root is not None else program;
+    owner.release_compile_closure(collect=collect);
+    if owner is not compiler.selfhost.program {
+        compiler.selfhost.program.release_compile_closure(collect=collect);
+    }
     maybe_malloc_trim();
     if code is None {
         return None;

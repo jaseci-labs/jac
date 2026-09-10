@@ -1,3 +1,4 @@
+import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import types;
 import from threading { Event }
@@ -18,6 +19,7 @@ import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.mtp { Info }
 import type from jaclang.compiler.passes.transform { Transform }
+import type from jaclang.compiler.driver.compilation_context { SourceStore }
 
 class JacProgram {
     has hub: ModuleHub,
@@ -32,7 +34,11 @@ class JacProgram {
         mtir_map: dict[(str, Info)],
         type_evaluator: TypeEvaluator | None,
         _compiler: JacCompiler | None,
-        _iface: any;
+        _iface: any,
+        source_store: SourceStore,
+        context_root: JacProgram | None,
+        context_key: str,
+        contexts: dict[str, JacProgram];
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;

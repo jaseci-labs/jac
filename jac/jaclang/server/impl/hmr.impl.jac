@@ -516,9 +516,7 @@ impl HotReloader._recompile_client_unified(file_path: str) -> None {
         }
         jcc = self.client_compiler.jac_client_compiler;
         mark = len(program.errors_had) if program is not None else 0;
-        jcc.compile_dependencies_recursively(
-            source_path, source_root=Path(self.base_path).resolve(), skip_existing=True
-        );
+        jcc.emit_dependencies(source_path, source_root=Path(self.base_path).resolve());
         console.success(
             f"Recompiled: {file_path} -> {self._get_js_filename(file_path)}"
         );

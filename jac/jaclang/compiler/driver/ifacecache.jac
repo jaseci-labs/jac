@@ -1,3 +1,6 @@
+import from contextlib { contextmanager }
+import from collections.abc { Iterator }
+import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import os;
 import time;
 import from jaclang.compiler.driver.jir {
@@ -73,9 +76,9 @@ def iface_verify_enabled -> bool {
     return os.environ.get('JAC_IFACE_VERIFY', '') in truthy;
 }
 
-def _symtab_provides -> set[str] {
+def _symtab_provides -> set[AnalysisFact] {
     if not _SYMTAB_PROVIDES_MEMO {
-        import from jaclang.compiler.driver.schedules {
+        import from jaclang.compiler.driver.pipeline {
             get_symtab_ir_sched,
             providers_of
         }
@@ -364,7 +367,58 @@ obj IfaceRegistry {
         return ent;
     }
 
-    def _module_jir(resolved: str) -> (tuple[bytes, str] | None) {
+    @contextmanager
+    def _cache_scope -> Iterator[None] {
+        import from jaclang.compiler.driver.compilation_context {
+            cache_scope,
+            context_identity
+        }
+        identity = ''
+            if self.prog._get_compiler().selfhost.is_selfhost(self.prog)
+            else self.prog.context_key or context_identity(self.prog.options);
+        with cache_scope(identity, self.prog.options) {
+            yield ;
+        }
+    }
+
+    def _module_jir(resolved: str) -> tuple[bytes, str] | None {
+        with self._cache_scope() {
+            return self._module_jir_in_context(resolved);
+        }
+    }
+
+    def ensure(path: str, compile_on_miss: bool = True) -> IfaceEntry | None {
+        import from jaclang.compiler.driver.compilation_context { program_for }
+        actual = program_for(path, self.prog);
+        if actual is not self.prog {
+            return actual.iface_registry().ensure(path, compile_on_miss);
+        }
+        with self._cache_scope() {
+            return self._ensure_in_context(path, compile_on_miss);
+        }
+    }
+
+    def serve(compiler: any, resolved: str, options: any) -> any {
+        with self._cache_scope() {
+            return self._serve_in_context(compiler, resolved, options);
+        }
+    }
+
+    def prepare_interface(resolved: str, mod: any) -> bool {
+        with self._cache_scope() {
+            return self._prepare_interface_in_context(resolved, mod);
+        }
+    }
+
+    def persist_after_compile(
+        resolved: str, mod: any, options: any, err_start: int, warn_start: int
+    ) {
+        with self._cache_scope() {
+            self._persist_in_context(resolved, mod, options, err_start, warn_start);
+        }
+    }
+
+    def _module_jir_in_context(resolved: str) -> (tuple[bytes, str] | None) {
         try {
             cache_path = get_module_cache_path(resolved);
             if is_module_cache_valid(resolved, cache_path) {
@@ -427,7 +481,9 @@ obj IfaceRegistry {
         return True;
     }
 
-    def ensure(path: str, compile_on_miss: bool = True) -> (IfaceEntry | None) {
+    def _ensure_in_context(
+        path: str, compile_on_miss: bool = True
+    ) -> (IfaceEntry | None) {
         resolved = os.path.realpath(path);
         ent = self.entries.get(resolved);
         if ent is not None and self._entry_fresh(ent) {
@@ -465,10 +521,19 @@ obj IfaceRegistry {
         try {
             self._event("dep_miss_compile");
             import from jaclang.compiler.driver.compile_options { CompileOptions }
-            self.prog.compile(
-                resolved,
-                options=CompileOptions(no_cgen=True, symtab_ir_only=True, iface_ok=True)
-            );
+            before_errors = len(self.prog.errors_had);
+            before_warnings = len(self.prog.warnings_had);
+            options = self.prog.options.for_symbols();
+            module = self.prog.compile(resolved, options=options);
+            import from jaclang.compiler.driver.pipeline {
+                require_product,
+                CompilationProduct
+            }
+            if require_product(self.prog, module, CompilationProduct.INTERFACE) {
+                self.persist_after_compile(
+                    resolved, module, options, before_errors, before_warnings
+                );
+            }
         } except Exception {} finally {
             self.building.discard(resolved);
         }
@@ -586,7 +651,7 @@ obj IfaceRegistry {
         return iface_codec() is not None;
     }
 
-    def serve(compiler: any, resolved: str, options: any) -> any {
+    def _serve_in_context(compiler: any, resolved: str, options: any) -> any {
         if not options.iface_ok or options.need_full_ast or not self.ready() {
             return None;
         }
@@ -696,6 +761,7 @@ obj IfaceRegistry {
         }
         self._prepare(ent, mod);
         self._replay_records(prof, err0, warn0);
+        self.direct_deps[resolved] = dict(read_dep_hashes(data, base_dir));
         ent.replayed_token = self.closure_token;
         self._event("analysis_replay");
         if self.verifying is False and iface_verify_enabled() {
@@ -746,14 +812,15 @@ obj IfaceRegistry {
             return;
         }
         ledger = self.prog.analysis.analyses_run;
-        if ledger.provides(mod, "CfgSucc") {
+        if ledger.provides(mod, AnalysisFact.CFG_SUCC) {
             return;
         }
-        import from jaclang.compiler.driver.pass_driver { run_pass }
-        import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }
-        run_pass(CFGBuildPass, mod, self.prog);
-        for tag in CFGBuildPass.PROVIDES {
-            ledger.provided(mod).add(tag);
+        import from jaclang.compiler.driver.pipeline {
+            require_product,
+            CompilationProduct
+        }
+        if not require_product(self.prog, mod, CompilationProduct.FLOW) {
+            raise RuntimeError(f"Interface flow analysis failed: {mod.loc.mod_path}");
         }
         self._event("iface_cfg");
     }
@@ -772,10 +839,39 @@ obj IfaceRegistry {
         }
     }
 
-    def persist_after_compile(
+    def _prepare_interface_in_context(resolved: str, mod: any) -> bool {
+        if mod.parse_failed
+            or mod.codespace_inferred
+            or not jir_cacheable_source_path(resolved)
+            or not os.path.isfile(resolved) {
+            return False;
+        }
+        codec = iface_codec();
+        if codec is None {
+            return False;
+        }
+        key = module_cache_key(resolved);
+        memo = self._iface_bytes.get(resolved);
+        if memo is not None and memo[0] == key {
+            return True;
+        }
+        encoded = self._encode_iface(codec, mod);
+        if encoded is None {
+            return False;
+        }
+        self._iface_bytes[resolved] = (
+            key,
+            encoded,
+            codec.read_iface_hash(encoded) or ''
+        );
+        return True;
+    }
+
+    def _persist_in_context(
         resolved: str, mod: any, options: any, err_start: int, warn_start: int
     ) -> None {
         import json;
+
         if mod is None or mod.parse_failed {
             return;
         }
@@ -800,15 +896,7 @@ obj IfaceRegistry {
             payload = memo[1];
             digest = memo[2];
         } else {
-            encoded = self._encode_iface(codec, mod);
-            if encoded is None {
-                return;
-            }
-            payload = encoded;
-            digest = codec.read_iface_hash(encoded) or "";
-            if modkey {
-                self._iface_bytes[resolved] = (modkey, encoded, digest, );
-            }
+            return;
         }
         if payload is not None {
             sections[SEC_IFACE] = payload;
@@ -1129,6 +1217,7 @@ obj IfaceRegistry {
 }
 
 def seed_dep_edges(prog: any, root_dir: str, limit: int = 5000) -> int {
+    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
     seeded = 0;
     scanned = 0;
     skip_dirs = {".git", ".jac", "node_modules", "__pycache__", ".venv", "venv"};
@@ -1148,7 +1237,7 @@ def seed_dep_edges(prog: any, root_dir: str, limit: int = 5000) -> int {
             }
             full = os.path.realpath(os.path.join(walk_dir, name));
             try {
-                cache_path = get_module_cache_path(full);
+                cache_path = artifact_cache_path(full, prog);
                 if not cache_path.exists() {
                     continue;
                 }

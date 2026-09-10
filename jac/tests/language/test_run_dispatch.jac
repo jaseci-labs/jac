@@ -197,7 +197,7 @@ test "kind mobile with a platform carries it on the plan" {
     assert "platform" not in p.flags , "no platform unless the app names one";
     # A workspace app names its platform in its own table.
     d = _mk_project(
-        "\n[apps.phone]\nkind = \"mobile\"\npath = \"phone\"\nplatform = \"ios\"\n"
+        '\n[apps.phone]\nkind = "mobile"\nentry-point = "phone/main.jac"\nplatform = "ios"\n'
     );
     os.makedirs(os.path.join(d, "phone"), exist_ok=True);
     with open(os.path.join(d, "phone", "main.jac"), "w") as f {
@@ -279,7 +279,7 @@ test "resolve_app_kind: an explicit kind wins for any app" {
     app = cfg.resolve_app("");
     assert app.implicit;
     assert resolve_app_kind(cfg, app, resolve_entry(cfg, d, app)) == "service";
-    named = AppConfig(name="tool", kind="native-binary", path="tool");
+    named = AppConfig(name="tool", kind="native-binary", entry_point="tool/main.jac");
     assert resolve_app_kind(cfg, named, "") == "native-binary";
 }
 
@@ -292,7 +292,7 @@ test "resolve_app_kind: only the implicit app infers; an [apps] entry is cli" {
     implicit = cfg.resolve_app("");
     assert resolve_app_kind(cfg, implicit, resolve_entry(cfg, d, implicit))
         == "web-app";
-    explicit = AppConfig(name="web", kind="", path="web");
+    explicit = AppConfig(name="web", kind="", entry_point="web/main.jac");
     assert resolve_app_kind(cfg, explicit, "") == "cli";
 }
 

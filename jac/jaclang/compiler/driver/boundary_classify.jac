@@ -1,5 +1,4 @@
 import os;
-import from functools { lru_cache }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -265,35 +264,20 @@ def bridgeable_import_target(nd: uni.Import) -> (str | None) {
     return resolved;
 }
 
-def owner_app_name_for_path(path: str, serving_only: bool = False) -> (str | None) {
-    import from jaclang.compiler.placement.workspace { owner_app_for_path }
-    if not path {
-        return None;
-    }
-    (owner, _ambiguous) = owner_app_for_path(path);
-    if owner is None or (serving_only and not owner.has_server) {
-        return None;
-    }
-    return owner.name;
-}
-
 def is_service_app_entry(path: str) -> bool {
     import from jaclang.compiler.placement.workspace { app_for_path }
     if not path {
         return False;
     }
     app = app_for_path(path);
-    return app is not None and app.file_rooted and app.has_server;
+    return app is not None and app.has_server;
 }
 
 def consumer_owner_app(module: (uni.Module | None)) -> (str | None) {
     if module is None {
         return None;
     }
-    if module.owner_app is not None {
-        return module.owner_app;
-    }
-    return owner_app_name_for_path(module.loc.mod_path or '');
+    return module.owner_app;
 }
 
 def import_consumer_app(nd: uni.Import) -> (str | None) {
@@ -309,45 +293,7 @@ def same_workspace(consumer_path: str, provider_path: str) -> bool {
     return os.path.realpath(cws.toml_path) == os.path.realpath(pws.toml_path);
 }
 
-@lru_cache(maxsize=256)
-def _source_carries_owned_elements(path: str, stamp: tuple[int, int]) -> bool {
-    import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
-    import from jaclang.compiler.frontend.parser.frontend { parse }
-    (module, had_error) = parse(read_file_with_encoding(path), path);
-    return not had_error
-        and any(
-            isinstance(stmt, uni.Archetype)
-                and stmt.arch_kind in ('walker', 'node', 'edge') for stmt in module.body
-        );
-}
-
-def _module_carries_owned_elements(nd: uni.Import) -> bool {
-    linked = symbol_linked_source_module(nd);
-    if linked is None {
-        resolved = bridgeable_import_target(nd);
-        if resolved is None {
-            return False;
-        }
-        try {
-            stat = os.stat(resolved);
-            return _source_carries_owned_elements(
-                resolved, (stat.st_mtime_ns, stat.st_size)
-            );
-        } except OSError {
-            return False;
-        }
-    }
-    for stmt in linked.body {
-        if isinstance(stmt, uni.Archetype)
-            and stmt.arch_kind in ('walker', 'node', 'edge') {
-            return True;
-        }
-    }
-    return False;
-}
-
 def import_provider_spec(nd: uni.Import) -> (AppSpec | None) {
-    import from jaclang.compiler.placement.workspace { owner_app_for_path }
     resolved = bridgeable_import_target(nd);
     if resolved is None {
         return None;
@@ -356,11 +302,8 @@ def import_provider_spec(nd: uni.Import) -> (AppSpec | None) {
     if not consumer_path or not same_workspace(consumer_path, resolved) {
         return None;
     }
-    (owner, _ambiguous) = owner_app_for_path(resolved);
+    owner = app_for_path(resolved);
     if owner is None or not owner.has_server {
-        return None;
-    }
-    if app_for_path(resolved) is None and not _module_carries_owned_elements(nd) {
         return None;
     }
     consumer_mod = nd.find_parent_of_type(uni.Module);

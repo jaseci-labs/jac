@@ -110,21 +110,15 @@ impl WebTarget.build(
         dist_dir.mkdir(parents=True, exist_ok=True);
     }
 
-    (base, mod) = _parse_entry_file(entry_file);
-
-    Jac.jac_import(target=mod, base_path=base, lng=JAC_LANG_ID);
     program = Jac.get_program();
-    if program.errors_had {
-        errors = '\n'.join(str(e) for e in program.errors_had);
+    before = len(program.errors_had);
+    program.compile(str(entry_file.resolve()));
+    if len(program.errors_had) > before {
+        errors = '\n'.join(str(e) for e in program.errors_had[before:]);
         raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
     }
-    loaded_mod = Jac.loaded_modules.get(mod);
-    if not loaded_mod {
-        raise RuntimeError(f"Module '{mod}' not found after import");
-    }
-    if not isinstance(loaded_mod, types.ModuleType) {
-        raise RuntimeError(f"Module '{mod}' is not a valid module type");
-    }
+    loaded_mod = types.ModuleType(entry_file.stem);
+    loaded_mod.__file__ = str(entry_file.resolve());
     builder = make_client_bundle_builder(project_dir);
     builder.build(loaded_mod, force=True);
     bundle_path = bundler.find_bundle();

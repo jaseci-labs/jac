@@ -111,7 +111,8 @@ test "app table append declares the service once and keeps the file intact" {
             text = f.read();
         }
         assert text.startswith("[project]\nname = \"x\"\n") , text;
-        assert "\n[apps.analytics]\nkind = \"service\"\n" in text , text;
+        assert '\n[apps.analytics]\nkind = "service"\nentry-point = "main.jac"\n'
+            in text , text;
         again = _append_app_table(toml_path, "analytics", table, False);
         assert again == [] , "an app already declared must not be appended twice";
         preview = _append_app_table(toml_path, "billing", {"kind": "service"}, True);

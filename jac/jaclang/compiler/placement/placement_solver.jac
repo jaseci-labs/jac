@@ -159,7 +159,7 @@ def native_default_path_ok(path: str) -> bool {
 }
 
 def native_default_verdict(module: uni.Module) -> tuple[bool, str] {
-    import from jaclang.compiler.driver.schedules { native_pipeline_available }
+    import from jaclang.compiler.driver.pipeline { native_pipeline_available }
     import from jaclang.compiler.placement.placement_pins { _is_demoted_native }
 
     if module.app_kind == 'web-app' {
@@ -961,15 +961,11 @@ def demote_client_pulled_elements(
 }
 
 walker PlacementApplyPass(Transform) {
-    static has PROVIDES: tuple = ('PlacedIn', 'DecidedCodespace'),
-        REQUIRES: tuple = ('SymOf', );
-
     has prog: JacProgram,
         ir_in: uni.Module,
         cancel_token: any = None;
 
-    static has PROVIDES: tuple = ('codespace-pull', ),
-        HOST_PASS: bool = True;
+    static has HOST_PASS: bool = True;
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;

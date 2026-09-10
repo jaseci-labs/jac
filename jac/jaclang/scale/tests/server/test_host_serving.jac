@@ -30,17 +30,7 @@ import from jaclang.server.settings { ServeSettings }
 
 
 glob _TOML: str = (
-         "[project]\n"
-         "name = \"hosted\"\n"
-         "default-app = \"web\"\n"
-         "\n"
-         "[apps.web]\n"
-         "kind = \"web-app\"\n"
-         "path = \"web\"\n"
-         "\n"
-         "[apps.feed]\n"
-         "kind = \"service\"\n"
-         "entry-point = \"core/feed.jac\"\n"
+         '[project]\nname = "hosted"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web/main.jac"\n\n[apps.feed]\nkind = "service"\nentry-point = "core/feed.jac"\n'
      ),
      _WEB_SRC: str = (
          "walker:pub Hello {\n"

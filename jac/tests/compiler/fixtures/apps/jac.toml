@@ -4,7 +4,7 @@ default-app = "web"
 
 [apps.web]
 kind = "web-app"
-path = "web"
+entry-point = "web/main.jac"
 
 [apps.social]
 kind = "service"
@@ -17,7 +17,7 @@ entry-point = "cli_app.jac"
 
 [apps.portal]
 kind = "web-app"
-path = "portal"
+entry-point = "portal/main.jac"
 
 [apps.feed]
 kind = "service"

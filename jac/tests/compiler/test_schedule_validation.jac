@@ -1,25 +1,15 @@
-"""Construction-time schedule validation against declared pass dependencies.
-
-Every pass schedule is validated from the passes' declared REQUIRES/PROVIDES at
-construction time (#7871 workstream H): a schedule that omits a declared
-dependency fails fast with the pass and the missing analysis named, never
-mid-compile on user code.
-
-Since #8398 there is one canonical compile pipeline instead of option-shaped
-fragments, so validation is the whole story: every REQUIRES is satisfied by an
-earlier pass in the single list, and nothing is derived or dropped at runtime.
-The analysis stage is unconditional, so a pass whose declared inputs are
-missing is a construction error rather than a silently omitted analysis.
-
-Dependency tags are the relation-edge class names the analyses materialize
-(CfgSucc/CfgTrue/CfgFalse from CFG build, TypeOf from type checking, SymOf
-from symbol-table build), not the old free-form 'cfg'/'inference' labels.
-"""
+import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.schedules {
+import from jaclang.compiler.driver.pipeline {
+    pass_requires,
+    pass_provides,
     get_analysis_sched,
-    get_compile_sched,
+    get_ir_gen_sched,
+    get_boundary_analysis_sched,
+    get_py_code_gen,
+    module_pipeline,
+    CompilationPhase,
     providers_of,
     validate_schedule
 }
@@ -46,7 +36,9 @@ test "validation names the first missing analysis with CfgSucc preprovided" {
     err = '';
     try {
         validate_schedule(
-            [OwnershipCheckPass], preprovided={'CfgSucc'}, origin='test schedule'
+            [OwnershipCheckPass],
+            preprovided={AnalysisFact.CFG_SUCC},
+            origin='test schedule'
         );
     } except RuntimeError as e {
         err = str(e);
@@ -57,7 +49,9 @@ test "validation names the first missing analysis with CfgSucc preprovided" {
 
 test "validation accepts a schedule whose dependencies are preprovided" {
     sched = validate_schedule(
-        [OwnershipCheckPass], preprovided={'CfgSucc', 'TypeOf'}, origin='test schedule'
+        [OwnershipCheckPass],
+        preprovided={AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF},
+        origin='test schedule'
     );
     assert sched == [OwnershipCheckPass];
 }
@@ -78,7 +72,8 @@ test "the analysis stage always carries type checking and the checkers" {
 }
 
 test "the canonical compile pipeline validates end to end" {
-    sched = get_compile_sched();
+    sched = get_ir_gen_sched() + get_analysis_sched() + get_boundary_analysis_sched();
+    sched += get_py_code_gen(provided=providers_of(sched));
     assert CFGBuildPass in sched;
     assert TypeCheckPass in sched;
     assert OwnershipCheckPass in sched;
@@ -87,21 +82,22 @@ test "the canonical compile pipeline validates end to end" {
 }
 
 test "every declared requirement is satisfied within the one pipeline" {
-    sched = get_compile_sched();
-    provided: set[str] = set();
+    sched = get_ir_gen_sched() + get_analysis_sched() + get_boundary_analysis_sched();
+    sched += get_py_code_gen(provided=providers_of(sched));
+    provided: set[AnalysisFact] = set();
     for p in sched {
-        for tag in (getattr(p, 'REQUIRES', ()) or ()) {
+        for tag in pass_requires(p) {
             assert tag in provided , f"{p.__name__} requires '{tag}' with no earlier provider";
         }
-        for tag in (getattr(p, 'PROVIDES', ()) or ()) {
+        for tag in pass_provides(p) {
             provided.add(tag);
         }
     }
 }
 
 test "providers_of reports the tags a schedule segment supplies" {
-    assert 'CfgSucc' in providers_of([CFGBuildPass]);
-    assert 'TypeOf' in providers_of([TypeCheckPass]);
+    assert AnalysisFact.CFG_SUCC in providers_of([CFGBuildPass]);
+    assert AnalysisFact.TYPE_OF in providers_of([TypeCheckPass]);
     assert providers_of([]) == set();
 }
 
@@ -117,4 +113,47 @@ test "run_schedule rejects an incoherent schedule before running any pass" {
     assert 'OwnershipCheckPass' in err;
     assert "'CfgSucc'" in err;
     assert 'scheduling error' in err;
+}
+
+test "the module pipeline declares its complete phase order" {
+    assert [step.phase for step in module_pipeline()]
+        == [
+            CompilationPhase.PARSE,
+            CompilationPhase.IR,
+            CompilationPhase.PLACEMENT,
+            CompilationPhase.ANALYSIS,
+            CompilationPhase.BOUNDARIES,
+            CompilationPhase.NATIVE_CHECKS,
+            CompilationPhase.CLIENT_DEPENDENCIES,
+            CompilationPhase.INTERFACE,
+            CompilationPhase.CODEGEN
+        ];
+}
+
+
+test "symbols-only requests never resolve types to serialize an interface" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    with TemporaryDirectory() as td {
+        path = Path(td) / 'main.jac';
+        path.write_text('def value -> int { return 1; }\n');
+        program = JacProgram();
+        registry = program.iface_registry();
+        with patch.object(
+            type(registry),
+            '_encode_iface',
+            side_effect=AssertionError(
+                'symbols-only compilation resolved interface types'
+            )
+        ) as encode {
+            module = program.compile(
+                str(path), options=CompileOptions(symtab_ir_only=True)
+            );
+            assert not encode.called;
+        }
+        assert not program.errors_had;
+        assert not program.analysis.analyses_run.provides(module, AnalysisFact.TYPE_OF);
+    }
 }

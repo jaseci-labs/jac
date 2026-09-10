@@ -34,7 +34,7 @@ import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.source_failures { CompilerSourceError }
-import from jaclang.compiler.driver.schedules {
+import from jaclang.compiler.driver.pipeline {
     ANALYSIS_SCHED_DEPS,
     CODEGEN_SCHED_DEPS,
     IR_SCHED_DEPS,

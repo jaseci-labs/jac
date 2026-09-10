@@ -343,7 +343,6 @@ obj JacConfig {
     def app_for_path(abs_path: str) -> AppConfig | None;
     def app_for_target(entry_path: str = "") -> AppConfig | None;
     def serving_apps -> list[AppConfig];
-    def owner_app_for_path(abs_path: str) -> tuple[AppConfig | None, bool];
 }
 
 def _parse_toml_data(data: dict[str, any], toml_path: Path | None = None) -> JacConfig;

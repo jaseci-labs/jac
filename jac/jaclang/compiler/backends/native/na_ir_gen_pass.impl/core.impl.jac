@@ -1,3 +1,4 @@
+import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 def scalar_llvm_type(`entry: JacTypeEntry) -> ir.Type {
     if `entry.is_float {
         return ir.FloatType() if `entry.width == 32 else ir.DoubleType();
@@ -1246,21 +1247,15 @@ impl NaIRGenPass._record_linked_decl(
 }
 
 impl NaIRGenPass._ensure_dep_inference(dep_mod: uni.Module) -> None {
-    _provided = self.prog.analysis.analyses_run.provided(dep_mod);
-    if 'TypeOf' in _provided {
+    if self.prog.analysis.analyses_run.provides(dep_mod, AnalysisFact.TYPE_OF) {
         return;
     }
-    _provided.add('TypeOf');
-    try {
-        import from jaclang.compiler.driver.pass_driver { run_pass }
-        import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }
-        import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-        if 'CfgSucc' not in _provided {
-            run_pass(CFGBuildPass, dep_mod, self.prog);
-            _provided.add('CfgSucc');
-        }
-        run_pass(TypeCheckPass, dep_mod, self.prog);
-    } except Exception {}
+    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
+    if not require_product(self.prog, dep_mod, CompilationProduct.ANALYSIS) {
+        raise RuntimeError(
+            f"Native dependency analysis failed: {dep_mod.loc.mod_path}"
+        );
+    }
 }
 
 impl NaIRGenPass._imported_function_demotions(

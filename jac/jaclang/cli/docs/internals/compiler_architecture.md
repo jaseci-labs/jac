@@ -127,7 +127,7 @@ graph TD
     NA --> NAOUT[".o / ELF / Mach-O"]
 ```
 
-The orchestration lives in [`compiler/driver/schedules.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/schedules.jac).
+The orchestration lives in [`compiler/driver/pipeline.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/pipeline.jac).
 Each named "schedule" function returns a list of `Transform[uni.Module, uni.Module]`
 classes to run, and the `JacCompiler.compile` method walks them in order.
 
@@ -216,7 +216,7 @@ verdict. Every other plain `.jac` module goes through placement inference
 instead.
 
 The coercion helpers live in
-[`compiler.jac:_coerce_module`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/schedules.jac#L250)
+[`compiler.jac:_coerce_module`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/pipeline.jac#L250)
 and two wrappers around it:
 
 | Helper | Triggered by | What it does |
@@ -292,7 +292,7 @@ through the interop stubs.
 
 These passes run regardless of codespace and are collected by
 `get_ir_gen_sched` and `get_analysis_sched` in
-[`compiler.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/schedules.jac#L42).
+[`compiler.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/pipeline.jac#L42).
 
 The ir-gen schedule (`get_ir_gen_sched`):
 
@@ -735,7 +735,7 @@ A short index, organised by the role each file plays in the pipeline.
 
 **Orchestration**
 
-- [`compiler/driver/schedules.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/schedules.jac)
+- [`compiler/driver/pipeline.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/pipeline.jac)
   -- `JacCompiler`, schedule functions, codespace coercion
 - [`compiler/driver/program.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/program.jac)
   -- `JacProgram`, the module hub passes operate on

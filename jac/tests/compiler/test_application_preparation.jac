@@ -163,11 +163,17 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
             package_init.write_text('');
             path.write_text("def:pub hello -> str { return 'sealed'; }\n");
             try {
+                source_program = JacProgram();
                 first = prepare_application(
-                    str(path), JacProgram(), tmp, services=[str(package_init)]
+                    str(path), source_program, tmp, services=[str(package_init)]
                 );
-                data = get_module_cache_path(str(path)).read_bytes();
-                init_data = get_module_cache_path(str(package_init)).read_bytes();
+                import from jaclang.compiler.driver.compilation_context {
+                    artifact_cache_path
+                }
+                data = artifact_cache_path(str(path), source_program).read_bytes();
+                init_data = artifact_cache_path(
+                    str(package_init), source_program
+                ).read_bytes();
                 forget(str(path));
                 bundle = base / '_precompiled';
                 (bundle / sealed.python_tag()).mkdir(parents=True);

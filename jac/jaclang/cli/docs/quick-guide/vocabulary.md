@@ -48,7 +48,7 @@ Use this glossary when a design term appears in the documentation. The linked re
 | [**Composition thesis**](ideas-behind-jac.md#the-two-ideas-compound) | The thesis that the independent synechic and topokinetic properties offer additional benefits when combined. |
 | [**Workspace**](../reference/apps.md) | One project holding several apps over one body of shared code, type-checked as a single program; a project with no `[apps]` table is the degenerate case of one implicit app. |
 | [**App**](../reference/apps.md#the-appsname-table) | An `[apps.<name>]` table in `jac.toml`: a project kind plus a root (a directory, or a single entry file) that says what it builds and which modules are its. |
-| [**Shared code**](../reference/apps.md#dir-rooted-file-rooted-and-shared) | A module under no app's root; any app may load it in-process, none owns it, and it never imports from an app. |
+| [**Shared code**](../reference/apps.md#entry-modules-and-shared-source) | An ordinary module that can be compiled in each importing app's context. |
 | [**Owner**](../reference/apps.md#ownership-one-owner-per-server-placed-shared-module) | The one serving app whose server runs a server-placed shared module's walkers and persisted archetypes, so every other app bridges to the same place. |
 | [**Bridge surface**](../reference/apps.md#the-app-dependency-graph) | The walkers and `def:pub` functions of an app: the only things another app may call, compiled as a call across the boundary rather than an in-process reference. |
 | [**App facts**](../reference/placement.md#app-facts) | What the driver stamps onto every module from `jac.toml` (its app, root, kind, owner) so that no compiler pass reads configuration. |

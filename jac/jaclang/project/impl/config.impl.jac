@@ -1505,27 +1505,12 @@ impl JacConfig.app_for_path(abs_path: str) -> AppConfig | None {
     if self.project_root is None {
         return None;
     }
-    root_dir = str(self.project_root);
-    if not self.apps {
-        implicit = implicit_app(self);
-        return implicit if implicit.contains(root_dir, abs_path) else None;
-    }
-    best: AppConfig | None = None;
-    best_depth = -1;
     for app in self.apps.values() {
-        if not app.contains(root_dir, abs_path) {
-            continue;
-        }
-        if app.is_file_rooted() {
+        if app.contains(str(self.project_root), abs_path) {
             return app;
         }
-        depth = len(app.root_dir(root_dir));
-        if depth > best_depth {
-            best = app;
-            best_depth = depth;
-        }
     }
-    return best;
+    return None;
 }
 
 impl JacConfig.serving_apps -> list[AppConfig] {
@@ -1538,22 +1523,6 @@ impl JacConfig.serving_apps -> list[AppConfig] {
         }
     }
     return out;
-}
-
-impl JacConfig.owner_app_for_path(abs_path: str) -> tuple[AppConfig | None, bool] {
-    app = self.app_for_path(abs_path);
-    if app is not None {
-        return (app, False);
-    }
-    serving = self.serving_apps();
-    if len(serving) == 1 {
-        return (serving[0], False);
-    }
-    default_app = self.app(self.default_app) if self.default_app else None;
-    if default_app is not None and default_app in serving {
-        return (default_app, False);
-    }
-    return (None, len(serving) > 1);
 }
 
 impl JacConfig.default_app.getter -> str {

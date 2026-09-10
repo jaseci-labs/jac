@@ -23,16 +23,7 @@ import jaclang.project.mobui_scope as pure_mod;
 import jaclang.project.config as config_mod;
 
 glob WORKSPACE_TOML = (
-         '[project]\nname = "acme"\ndefault-app = "web"\n\n'
-         '[apps.web]\nkind = "web-app"\npath = "web"\n\n'
-         '[apps.mobile]\nkind = "mobile"\npath = "mobile"\nplatform = "ios"\n\n'
-         '[apps.social_graph]\nkind = "service"\n'
-         'entry-point = "core/social_graph.jac"\nroute = "/api/social"\n\n'
-         '[apps.web.serve]\nport = 8100\n\n'
-         '[apps.social_graph.scale]\nhttp_activation = true\n\n'
-         '[apps.mobile.dependencies.npm]\nlucide-react-native = "^0.4"\n\n'
-         '[serve]\nport = 8090\n\n'
-         '[dependencies.npm]\nreact = "^19"\n'
+         '[project]\nname = "acme"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web/main.jac"\n\n[apps.mobile]\nkind = "mobile"\nentry-point = "mobile/main.jac"\nplatform = "ios"\n\n[apps.social_graph]\nkind = "service"\nentry-point = "core/social_graph.jac"\nroute = "/api/social"\n\n[apps.web.serve]\nport = 8100\n\n[apps.social_graph.scale]\nhttp_activation = true\n\n[apps.mobile.dependencies.npm]\nlucide-react-native = "^0.4"\n\n[serve]\nport = 8090\n\n[dependencies.npm]\nreact = "^19"\n'
      ),
      MAIN_JAC = 'with entry {\n    print("hi");\n}\n';
 
@@ -72,9 +63,8 @@ test "parse a three-app workspace" {
     assert cfg.project.default_app == "web";
     web = cfg.apps["web"];
     assert web.kind == "web-app";
-    assert web.path == "web";
+    assert web.entry_point == "web/main.jac";
     assert not web.implicit;
-    assert not web.is_file_rooted();
     assert web.ui() == "dom" , "a web-app renders the DOM";
     assert not hasattr(web, "client") and not hasattr(web, "client_kind") , (
         "AppConfig carries no client axis: the kind decides"
@@ -85,7 +75,6 @@ test "parse a three-app workspace" {
     assert mobile.platform == "ios";
     assert mobile.overlays["dependencies"]["npm"]["lucide-react-native"] == "^0.4";
     sg = cfg.apps["social_graph"];
-    assert sg.is_file_rooted();
     assert sg.entry_point == "core/social_graph.jac";
     assert sg.route == "/api/social";
     assert sg.overlays == {"scale": {"http_activation": True}};
@@ -103,8 +92,6 @@ test "no [apps] means one implicit app" {
     assert app.implicit;
     assert app.kind == "cli";
     assert app.entry_point == "app.jac";
-    assert app.path == "";
-    assert not app.is_file_rooted();
     assert app.ui() == "" , "a cli app has no client UI";
     assert cfg.resolve_app("") is app;
     assert cfg.default_app == "";
@@ -122,7 +109,9 @@ test "[apps] next to [project] kind or entry-point is a hard error" {
         raised = False;
         try {
             JacConfig.from_toml_str(
-                '[project]\nname = "x"\n' + key + '\n\n[apps.web]\nkind = "web-app"\n'
+                '[project]\nname = "x"\n'
+                    + key
+                    + '\n\n[apps.web]\nkind = "web-app"\nentry-point = "main.jac"\n'
             );
         } except ValueError as e {
             raised = True;
@@ -136,7 +125,7 @@ test "default-app must name an app and needs [apps]" {
     raised = False;
     try {
         JacConfig.from_toml_str(
-            '[project]\nname = "x"\ndefault-app = "zzz"\n\n[apps.web]\nkind = "web-app"\n'
+            '[project]\nname = "x"\ndefault-app = "zzz"\n\n[apps.web]\nkind = "web-app"\nentry-point = "main.jac"\n'
         );
     } except ValueError as e {
         raised = True;
@@ -155,13 +144,19 @@ test "default-app must name an app and needs [apps]" {
 
 test "app validation rejects bad kinds, names and keys" {
     cases = [
-        ('[apps.web]\nkind = "nope"\n', "kind="),
-        ('[apps."a/b"]\nkind = "cli"\n', "cannot contain"),
+        ('[apps.web]\nkind = "nope"\nentry-point = "main.jac"\n', "kind="),
+        ('[apps."a/b"]\nkind = "cli"\nentry-point = "main.jac"\n', "cannot contain"),
         ('[apps."main.jac"]\nkind = "cli"\n', ".jac"),
-        ('[apps.web]\npath = "web"\n', "required key 'kind'"),
-        ('[apps.web]\nkind = "web-app"\ncolour = "red"\n', "unknown key"),
-        ('[apps.web]\nkind = "web-app"\nroute = "api"\n', "must start with"),
-        ('[apps.web]\nkind = "web-app"\npath = "/abs/web"\n', "relative")
+        ('[apps.web]\nentry-point = "web/main.jac"\n', "required key 'kind'"),
+        (
+            '[apps.web]\nkind = "web-app"\nentry-point = "main.jac"\ncolour = "red"\n',
+            "unknown key"
+        ),
+        (
+            '[apps.web]\nkind = "web-app"\nentry-point = "main.jac"\nroute = "api"\n',
+            "must start with"
+        ),
+        ('[apps.web]\nkind = "web-app"\npath = "web"\n', "removed")
     ];
     for (body, needle) in cases {
         raised = False;
@@ -181,15 +176,42 @@ test "the removed client and client_kind keys are hard errors with a pointer" {
     # decides. Every spelling, and every value (even the old defaults), is
     # refused so a stale jac.toml never silently means something else.
     cases = [
-        ('[apps.mobile]\nkind = "mobile"\nclient = "react-native"\n', "client"),
-        ('[apps.mobile]\nkind = "mobile"\nclient = "rn"\n', "client"),
-        ('[apps.web]\nkind = "web-app"\nclient = "web"\n', "client"),
-        ('[apps.web]\nkind = "web-app"\nclient = "pwa"\n', "client"),
-        ('[apps.web]\nkind = "web-app"\nclient = "flutter"\n', "client"),
-        ('[apps.mobile]\nkind = "mobile"\nclient_kind = "mobui"\n', "client_kind"),
-        ('[apps.web]\nkind = "web-app"\nclient_kind = "web"\n', "client_kind"),
-        ('[apps.web]\nkind = "web-app"\nclient-kind = "mobui"\n', "client-kind"),
-        ('[apps.web]\nkind = "web-app"\nclient_kind = "tv"\n', "client_kind")
+        (
+            '[apps.mobile]\nkind = "mobile"\nentry-point = "main.jac"\nclient = "react-native"\n',
+            "client"
+        ),
+        (
+            '[apps.mobile]\nkind = "mobile"\nentry-point = "main.jac"\nclient = "rn"\n',
+            "client"
+        ),
+        (
+            '[apps.web]\nkind = "web-app"\nentry-point = "main.jac"\nclient = "web"\n',
+            "client"
+        ),
+        (
+            '[apps.web]\nkind = "web-app"\nentry-point = "main.jac"\nclient = "pwa"\n',
+            "client"
+        ),
+        (
+            '[apps.web]\nkind = "web-app"\nentry-point = "main.jac"\nclient = "flutter"\n',
+            "client"
+        ),
+        (
+            '[apps.mobile]\nkind = "mobile"\nentry-point = "main.jac"\nclient_kind = "mobui"\n',
+            "client_kind"
+        ),
+        (
+            '[apps.web]\nkind = "web-app"\nentry-point = "main.jac"\nclient_kind = "web"\n',
+            "client_kind"
+        ),
+        (
+            '[apps.web]\nkind = "web-app"\nentry-point = "main.jac"\nclient-kind = "mobui"\n',
+            "client-kind"
+        ),
+        (
+            '[apps.web]\nkind = "web-app"\nentry-point = "main.jac"\nclient_kind = "tv"\n',
+            "client_kind"
+        )
     ];
     for (body, key) in cases {
         name = "mobile" if "[apps.mobile]" in body else "web";
@@ -214,7 +236,7 @@ test "the removed client and client_kind keys are hard errors with a pointer" {
     raised = False;
     try {
         JacConfig.from_toml_str(
-            '[project]\nname = "x"\n\n[apps.mobile]\nkind = "mobile"\nclient = "rn"\n'
+            '[project]\nname = "x"\n\n[apps.mobile]\nkind = "mobile"\nentry-point = "main.jac"\nclient = "rn"\n'
         );
     } except ValueError as e {
         raised = True;
@@ -227,7 +249,7 @@ test "[project] client_kind next to [apps] is no longer special-cased" {
     # Only kind / entry-point are refused beside [apps]; a stray
     # [project] client_kind is just an unknown key the loader ignores.
     cfg = JacConfig.from_toml_str(
-        '[project]\nname = "x"\nclient_kind = "mobui"\n\n[apps.web]\nkind = "web-app"\n'
+        '[project]\nname = "x"\nclient_kind = "mobui"\n\n[apps.web]\nkind = "web-app"\nentry-point = "main.jac"\n'
     );
     assert cfg.is_workspace and list(cfg.apps) == ["web"];
     assert not hasattr(cfg.project, "client_kind");
@@ -251,18 +273,14 @@ test "dashed and underscored app keys are both accepted" {
 # ===========================================================================
 test "route defaults to /api/<name> and collisions are hard errors" {
     cfg = JacConfig.from_toml_str(
-        '[project]\nname = "acme"\n\n'
-        '[apps.web]\nkind = "web-app"\npath = "web"\n\n'
-        '[apps.api]\nkind = "service"\nentry-point = "api.jac"\n'
+        '[project]\nname = "acme"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web/main.jac"\n\n[apps.api]\nkind = "service"\nentry-point = "api.jac"\n'
     );
     assert cfg.apps["web"].effective_route() == "/api/web";
     assert cfg.apps["api"].effective_route() == "/api/api";
     raised = False;
     try {
         JacConfig.from_toml_str(
-            '[project]\nname = "acme"\n\n'
-            '[apps.web]\nkind = "web-app"\npath = "web"\nroute = "/api/x"\n\n'
-            '[apps.api]\nkind = "service"\nentry-point = "api.jac"\nroute = "/api/x"\n'
+            '[project]\nname = "acme"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web/main.jac"\nroute = "/api/x"\n\n[apps.api]\nkind = "service"\nentry-point = "api.jac"\nroute = "/api/x"\n'
         );
     } except ValueError as e {
         raised = True;
@@ -271,9 +289,7 @@ test "route defaults to /api/<name> and collisions are hard errors" {
     }
     assert raised , "expected ValueError for a route collision";
     no_server = JacConfig.from_toml_str(
-        '[project]\nname = "acme"\n\n'
-        '[apps.web]\nkind = "web-app"\npath = "web"\n\n'
-        '[apps.tool]\nkind = "cli"\npath = "tool"\nroute = "/api/web"\n'
+        '[project]\nname = "acme"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web/main.jac"\n\n[apps.tool]\nkind = "cli"\nentry-point = "tool/main.jac"\nroute = "/api/web"\n'
     );
     assert list(no_server.apps.keys()) == ["web", "tool"] , (
         "apps without a server never claim routes"
@@ -283,155 +299,33 @@ test "route defaults to /api/<name> and collisions are hard errors" {
 # ===========================================================================
 # Membership
 # ===========================================================================
-test "membership: dir-rooted, file-rooted and shared" {
+test "declarations identify entries without claiming neighboring files" {
     with TemporaryDirectory() as td {
-        root_path = write_workspace(Path(td) / "acme");
-        cfg = JacConfig.load(root_path / "jac.toml");
-        assert _app_name(
-            cfg.app_for_path(str(root_path / "web" / "pages" / "home.jac"))
-        )
-            == "web";
-        assert _app_name(cfg.app_for_path(str(root_path / "mobile" / "main.jac")))
-            == "mobile";
-        sg_owner = cfg.app_for_path(str(root_path / "core" / "social_graph.jac"));
-        assert sg_owner is not None and sg_owner.name == "social_graph";
-        assert cfg.app_for_path(str(root_path / "core" / "shared.jac")) is None;
-        assert cfg.app_for_path(str(root_path / "jac.toml")) is None;
-        assert cfg.app_for_path(str(Path(td) / "elsewhere.jac")) is None;
-        sg = cfg.apps["social_graph"];
-        assert sg.root_dir(str(root_path)) == "";
-        assert sg.entry_path(str(root_path))
-            == str(root_path / "core" / "social_graph.jac");
-        assert sg.contains(
-            str(root_path), str(root_path / "core" / "social_graph.jac")
-        );
-        assert not sg.contains(str(root_path), str(root_path / "core" / "shared.jac"));
-        web = cfg.apps["web"];
-        assert web.root_dir(str(root_path)) == str(root_path / "web");
-        assert web.entry_path(str(root_path)) == str(root_path / "web" / "main.jac");
-    }
-}
-
-test "membership: nearest root_path wins" {
-    with TemporaryDirectory() as td {
-        root_path = write_workspace(
-            Path(td) / "acme",
-            '[project]\nname = "acme"\n\n'
-            '[apps.site]\nkind = "web-app"\npath = "web"\n\n'
-            '[apps.admin]\nkind = "web-app"\npath = "web/admin"\n'
-        );
-        (root_path / "web" / "admin").mkdir();
-        (root_path / "web" / "admin" / "main.jac").write_text(MAIN_JAC);
-        cfg = JacConfig.load(root_path / "jac.toml");
-        assert _app_name(
-            cfg.app_for_path(str(root_path / "web" / "admin" / "main.jac"))
-        )
-            == "admin";
-        assert _app_name(cfg.app_for_path(str(root_path / "web" / "main.jac")))
-            == "site";
-        assert _app_name(
-            cfg.app_for_path(str(root_path / "web" / "pages" / "home.jac"))
-        )
-            == "site";
-    }
-}
-
-test "membership: the implicit app owns the whole project root_path" {
-    with TemporaryDirectory() as td {
-        root_path = Path(td) / "hello";
-        (root_path / "lib").mkdir(parents=True);
-        (root_path / "jac.toml").write_text(
-            '[project]\nname = "hello"\nkind = "cli"\n'
-        );
-        (root_path / "lib" / "x.jac").write_text(MAIN_JAC);
-        cfg = JacConfig.load(root_path / "jac.toml");
-        owner = cfg.app_for_path(str(root_path / "lib" / "x.jac"));
-        assert owner is not None and owner.implicit;
-        assert owner.root_dir(str(root_path)) == str(root_path);
-        assert cfg.app_for_path(str(Path(td) / "other.jac")) is None;
-        bare = JacConfig(project_root=root_path);
-        assert not bare.apps;
-        bare_owner = bare.app_for_path(str(root_path / "lib" / "x.jac"));
-        assert bare_owner is not None and bare_owner.implicit , (
-            "a config built without an [apps] table still owns its root_path"
-        );
-        assert bare.app_for_path(str(Path(td) / "other.jac")) is None;
-    }
-}
-
-# ===========================================================================
-# Ownership (decision 2)
-# ===========================================================================
-test "owner: explicit file-rooted service app, default app, ambiguity without one" {
-    with TemporaryDirectory() as td {
-        root_path = write_workspace(Path(td) / "acme");
-        cfg = JacConfig.load(root_path / "jac.toml");
+        base = write_workspace(Path(td) / "acme");
+        cfg = JacConfig.load(base / "jac.toml");
+        assert _app_name(cfg.app_for_path(str(base / "web/main.jac"))) == "web";
+        assert _app_name(cfg.app_for_path(str(base / "core/social_graph.jac")))
+            == "social_graph";
+        for relative in ["web/pages/home.jac", "core/shared.jac", "jac.toml"] {
+            assert cfg.app_for_path(str(base / relative)) is None;
+        }
+        assert cfg.apps["web"].entry_path(str(base)) == str(base / "web/main.jac");
         assert [a.name for a in cfg.serving_apps()] == ["web", "social_graph"];
-        (owner, ambiguous) = cfg.owner_app_for_path(
-            str(root_path / "core" / "social_graph.jac")
-        );
-        assert owner is not None and owner.name == "social_graph";
-        assert not ambiguous;
-        (owner, ambiguous) = cfg.owner_app_for_path(
-            str(root_path / "core" / "shared.jac")
-        );
-        assert owner is not None and owner.name == "web";
-        assert not ambiguous;
-        no_default = write_workspace(
-            Path(td) / "acme2", WORKSPACE_TOML.replace('default-app = "web"\n', "")
-        );
-        cfg2 = JacConfig.load(no_default / "jac.toml");
-        (owner, ambiguous) = cfg2.owner_app_for_path(
-            str(no_default / "core" / "shared.jac")
-        );
-        assert owner is None;
-        assert ambiguous;
-        (owner, ambiguous) = cfg.owner_app_for_path(
-            str(root_path / "mobile" / "main.jac")
-        );
-        assert owner is not None and owner.name == "mobile";
-        assert not ambiguous;
     }
 }
 
-test "owner: the sole serving app owns shared modules implicitly" {
-    with TemporaryDirectory() as td {
-        root_path = write_workspace(
-            Path(td) / "acme",
-            '[project]\nname = "acme"\n\n'
-            '[apps.web]\nkind = "web-app"\npath = "web"\n\n'
-            '[apps.mobile]\nkind = "mobile"\npath = "mobile"\n'
-        );
-        cfg = JacConfig.load(root_path / "jac.toml");
-        (owner, ambiguous) = cfg.owner_app_for_path(
-            str(root_path / "core" / "shared.jac")
-        );
-        assert owner is not None and owner.name == "web";
-        assert not ambiguous;
+test "explicit apps require entry modules and reject directory ownership" {
+    for fields in [{"kind": "cli"}, {"kind": "cli", "path": "tool"}] {
+        error = "";
+        try {
+            parse_apps({}, {"tool": fields});
+        } except ValueError as e {
+            error = str(e);
+        }
+        assert "entry-point" in error;
     }
 }
 
-test "owner: no serving apps means no owner and no ambiguity" {
-    with TemporaryDirectory() as td {
-        root_path = write_workspace(
-            Path(td) / "acme",
-            '[project]\nname = "acme"\n\n'
-            '[apps.tool]\nkind = "cli"\npath = "web"\n\n'
-            '[apps.mobile]\nkind = "mobile"\npath = "mobile"\n'
-        );
-        cfg = JacConfig.load(root_path / "jac.toml");
-        assert cfg.serving_apps() == [];
-        (owner, ambiguous) = cfg.owner_app_for_path(
-            str(root_path / "core" / "shared.jac")
-        );
-        assert owner is None;
-        assert not ambiguous;
-    }
-}
-
-# ===========================================================================
-# resolve_app
-# ===========================================================================
 test "resolve_app: explicit, default, sole, ambiguous" {
     cfg = JacConfig.from_toml_str(WORKSPACE_TOML);
     assert cfg.resolve_app("mobile").name == "mobile";
@@ -445,8 +339,7 @@ test "resolve_app: explicit, default, sole, ambiguous" {
     }
     assert raised , "expected ValueError for an unknown app";
     two = JacConfig.from_toml_str(
-        '[project]\nname = "acme"\n\n'
-        '[apps.a]\nkind = "cli"\npath = "a"\n\n[apps.b]\nkind = "cli"\npath = "b"\n'
+        '[project]\nname = "acme"\n\n[apps.a]\nkind = "cli"\nentry-point = "a/main.jac"\n\n[apps.b]\nkind = "cli"\nentry-point = "b/main.jac"\n'
     );
     raised = False;
     try {
@@ -457,7 +350,7 @@ test "resolve_app: explicit, default, sole, ambiguous" {
     }
     assert raised , "expected ValueError when no default app in a multi-app workspace";
     one = JacConfig.from_toml_str(
-        '[project]\nname = "acme"\n\n[apps.a]\nkind = "cli"\npath = "a"\n'
+        '[project]\nname = "acme"\n\n[apps.a]\nkind = "cli"\nentry-point = "a/main.jac"\n'
     );
     assert one.resolve_app("").name == "a" , "a sole app is the default";
     assert JacConfig().resolve_app("").implicit , "a bare config still resolves";
@@ -471,17 +364,7 @@ test "effective_for_app layers base, app overlays, profile and local" {
     with TemporaryDirectory() as td {
         root_path = write_workspace(
             Path(td) / "acme",
-            '[project]\nname = "acme"\n\n'
-            '[apps.web]\nkind = "web-app"\npath = "web"\n\n'
-            '[apps.mobile]\nkind = "mobile"\npath = "mobile"\n\n'
-            '[apps.web.serve]\nport = 8100\nsession = "web-sess"\n'
-            'conflict_max_attempts = 3\n\n'
-            '[apps.web.byllm]\nmodel = "web-model"\n\n'
-            '[apps.mobile.dependencies.npm]\nlucide-react-native = "^0.4"\n\n'
-            '[serve]\nport = 8090\nsession = "base-sess"\n\n'
-            '[dependencies.npm]\nreact = "^19"\n\n'
-            '[byllm]\nmodel = "base-model"\ntemperature = 0.1\n\n'
-            '[environments.prod]\n[environments.prod.serve]\nsession = "prod-sess"\n'
+            '[project]\nname = "acme"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web/main.jac"\n\n[apps.mobile]\nkind = "mobile"\nentry-point = "mobile/main.jac"\n\n[apps.web.serve]\nport = 8100\nsession = "web-sess"\nconflict_max_attempts = 3\n\n[apps.web.byllm]\nmodel = "web-model"\n\n[apps.mobile.dependencies.npm]\nlucide-react-native = "^0.4"\n\n[serve]\nport = 8090\nsession = "base-sess"\n\n[dependencies.npm]\nreact = "^19"\n\n[byllm]\nmodel = "base-model"\ntemperature = 0.1\n\n[environments.prod]\n[environments.prod.serve]\nsession = "prod-sess"\n'
         );
         (root_path / "jac.prod.toml").write_text(
             '[serve]\nconflict_max_attempts = 9\n'
@@ -528,9 +411,7 @@ test "effective_for_app layers base, app overlays, profile and local" {
 
 test "effective_for_app replays a directly applied profile" {
     cfg = JacConfig.from_toml_str(
-        '[project]\nname = "acme"\n\n[apps.web]\nkind = "web-app"\npath = "web"\n\n'
-        '[apps.web.serve]\nport = 8100\n\n[serve]\nport = 8090\n\n'
-        '[environments.dev]\n[environments.dev.serve]\nsession = "dev"\n'
+        '[project]\nname = "acme"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web/main.jac"\n\n[apps.web.serve]\nport = 8100\n\n[serve]\nport = 8090\n\n[environments.dev]\n[environments.dev.serve]\nsession = "dev"\n'
     );
     cfg.apply_profile("dev");
     web = cfg.effective_for_app("web");
@@ -665,7 +546,7 @@ test "plan_app_run honors an entry overridden and names named-app outputs" {
     with TemporaryDirectory() as td {
         root_path = write_workspace(
             Path(td) / "acme",
-            '[project]\nname = "acme"\n\n[apps.bin]\nkind = "native-binary"\npath = "web"\n'
+            '[project]\nname = "acme"\n\n[apps.bin]\nkind = "native-binary"\nentry-point = "web/main.jac"\n'
         );
         cfg = JacConfig.load(root_path / "jac.toml");
         plan = plan_app_run(cfg, str(root_path), cfg.apps["bin"]);
@@ -683,7 +564,7 @@ test "plan_app_run honors an entry overridden and names named-app outputs" {
 
 test "plan_app_run raises when a needs-entry app has no entry file" {
     cfg = JacConfig.from_toml_str(
-        '[project]\nname = "acme"\n\n[apps.web]\nkind = "web-app"\npath = "web"\n'
+        '[project]\nname = "acme"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web/main.jac"\n'
     );
     with TemporaryDirectory() as td {
         raised = False;
@@ -700,39 +581,12 @@ test "plan_app_run raises when a needs-entry app has no entry file" {
 # ===========================================================================
 # mobUI scope lane
 # ===========================================================================
-test "the mobUI guard scope answers from the owning app's kind" {
-    # The compiler reads the app's ui off the workspace facts: a mobile app
-    # switches the guard on for its root_dir; everything else is exempt.
-    import from jaclang.compiler.placement.workspace { app_for_path }
-    config_mod.set_config(None);
+test "mobUI enforcement uses a compilation context root" {
     with TemporaryDirectory() as td {
-        root_path = write_workspace(Path(td) / "acme");
-        try {
-            mobile_main = str(root_path / "mobile" / "main.jac");
-            web_main = str(root_path / "web" / "main.jac");
-            shared = str(root_path / "core" / "shared.jac");
-            mobile_app = app_for_path(mobile_main);
-            assert mobile_app is not None and mobile_app.ui == "mobui";
-            web_app = app_for_path(web_main);
-            assert web_app is not None and web_app.ui == "dom";
-            assert app_for_path(shared) is None , "shared code has no app";
-            enforced_root = mobile_app.root_dir;
-            assert Path(enforced_root).resolve() == (root_path / "mobile").resolve();
-            assert not mobui_module_exempt(mobile_main, enforced_root);
-            assert mobui_module_exempt(web_main, enforced_root) , (
-                "another app's module is outside the mobile root"
-            );
-            assert mobui_module_exempt(shared, enforced_root) , (
-                "shared code is outside the mobile root"
-            );
-            assert mobui_module_exempt(mobile_main, None) , "no root: nothing enforced";
-            assert mobui_module_exempt(mobile_main, "") , "empty root: nothing enforced";
-            assert not hasattr(mobile_app, "client_kind") , (
-                "AppSpec carries ui, not client_kind"
-            );
-        } finally {
-            config_mod.set_config(None);
-        }
+        base = write_workspace(Path(td) / "acme");
+        assert not mobui_module_exempt(str(base / "core/shared.jac"), str(base));
+        assert mobui_module_exempt(str(base / "core/shared.jac"), None);
+        assert mobui_module_exempt(str(Path(td) / "outside.jac"), str(base));
     }
 }
 
@@ -765,7 +619,7 @@ def _rewrite_toml(root_path: Path, toml: str) {
     os.utime(toml_path, (st.st_atime + bump, st.st_mtime + bump));
 }
 
-test "app_fact_digest tracks route, root, entry-point and file rooting" {
+test "app_fact_digest tracks routes and entry modules" {
     import from jaclang.compiler.placement.workspace { app_fact_digest, app_for_path }
     with TemporaryDirectory() as td {
         root_path = write_workspace(Path(td) / "acme");
@@ -806,24 +660,15 @@ test "app_fact_digest tracks route, root, entry-point and file rooting" {
             "the entry-point is part of the digest"
         );
         _rewrite_toml(
-            root_path, WORKSPACE_TOML.replace('path = "web"\n', 'path = "web2"\n')
+            root_path, WORKSPACE_TOML.replace('web/main.jac', 'web2/main.jac')
         );
         web2_file = str(root_path / "web2" / "main.jac");
         assert app_fact_digest(app_for_path(web2_file)) != web_before , (
             "the app root is part of the digest"
         );
-        _rewrite_toml(
-            root_path,
-            WORKSPACE_TOML.replace(
-                '[apps.web]\nkind = "web-app"\npath = "web"\n',
-                '[apps.web]\nkind = "web-app"\nentry-point = "web/main.jac"\n'
-            )
-        );
-        web_rooted = app_fact_digest(app_for_path(web_file));
-        assert web_rooted != web_before , "file rooting is part of the digest";
-        assert app_for_path(str(root_path / "web" / "index.jac")) is None , (
-            "a file-rooted app claims only its entry"
-        );
+        _rewrite_toml(root_path, WORKSPACE_TOML);
+        assert app_fact_digest(app_for_path(web_file)) == web_before;
+        assert app_for_path(str(root_path / "web/index.jac")) is None;
     }
 }
 

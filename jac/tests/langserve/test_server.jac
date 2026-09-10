@@ -1,4 +1,5 @@
 """Tests for Jac Language Server."""
+import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
 
 import contextlib;
 import os;
@@ -1400,7 +1401,6 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
     import tempfile;
     import shutil;
     import from jaclang.compiler.driver.jir {
-        get_module_cache_path,
         is_module_cache_valid,
         HEADER_FMT,
         HEADER_SIZE
@@ -1414,7 +1414,7 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
         import from jaclang.compiler.driver.program { JacProgram }
         dep_src = fixture_path("cross_module_func.jac");
         JacCompiler().get_bytecode(dep_src, JacProgram());
-        cache_path = get_module_cache_path(dep_src);
+        cache_path = artifact_cache_path(dep_src, JacProgram());
 
         # Sanity: cache should exist and be valid right now.
         assert cache_path.exists() , "module cache was not written";

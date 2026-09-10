@@ -52,12 +52,31 @@ Runtime logs and database files do not invalidate the source inventory.
 Production client builds finish before initialization; a failed build aborts
 startup and a corrected application can be prepared on the next run.
 
-Workspace ownership has a separate persistent index in `.jac/cache/ownership.json`.
-A preparation transaction supplies its inventory to the ownership consumer.
-Nested cache-validation and placement queries reuse that transaction's snapshot.
-Outside preparation, callers can use `workspace_snapshot()` to establish the same
-scope. A new scope reconciles the filesystem again, so additions and deletions
-are observed. Ownership records include compiler and workspace identities.
+Apps declare `entry-point` modules. Directory ownership, the source consumer scan,
+`ownership.json`, and default-owner inference have been removed. The declaration
+reader reads configuration only. The selected entry establishes an app compilation
+context; ordinary imports inherit it, while another declared entry establishes a
+boundary. `default-app` selects a CLI default and does not assign shared modules.
+
+`compiler/driver/pipeline.jac` owns the phase order, pass lists, typed contracts,
+product requests, and pass execution. `pipeline_types.jac` defines analysis facts,
+products, and task states. `pipeline_runner.jac` implements the phase actions.
+Context and import facts are explicit scheduled passes. Backend and tooling
+consumers request named products through this pipeline rather than invoking passes.
+
+`compilation_context.jac` holds parsed source revisions and context-specific
+programs. A source revision is parsed once per session and cloned before semantic
+mutation. App, entry, UI, codespace, and target settings distinguish compilation
+contexts and disk artifact namespaces. A symbol-only dependency can progress
+through the remaining passes without reparsing or repeating completed passes.
+Native and client outputs retain target-specific analysis and code generation.
+
+Preparation produces a revision for each selected app and publishes the set only
+after every app succeeds. Source applications load in namespaces derived from
+their entries, so colocated apps do not accidentally share module globals through
+Python's import cache. Sealed applications use their image's manifest identities.
+Web builds compile the entry and bundle its artifacts without executing its entry
+block or module initialization.
 
 Development changes use the same preparation entry point. Prepared application
 reloads currently reload the backend and signal a full browser reload after a

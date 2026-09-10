@@ -74,9 +74,7 @@ test "private functions remain unavailable across app boundaries" {
     try {
         with open(os.path.join(d, "jac.toml"), "w") as config {
             config.write(
-                '[project]\nname = "private-boundary"\ndefault-app = "web"\n'
-                '[apps.web]\nkind = "web-app"\npath = "."\nentry-point = "main.jac"\n'
-                '[apps.api]\nkind = "service"\nentry-point = "api.jac"\n'
+                '[project]\nname = "private-boundary"\ndefault-app = "web"\n[apps.web]\nkind = "web-app"\nentry-point = "./main.jac"\n[apps.api]\nkind = "service"\nentry-point = "api.jac"\n'
             );
         }
         prog = JacProgram();

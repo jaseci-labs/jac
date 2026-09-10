@@ -7,7 +7,7 @@ MobUI is Jac's cross-platform UI model: **one source compiles to both native Rea
 
 MobUI is real React Native components, not a web page in a webview. The in-repo example is the flagship workspace's mobile app, `jac/examples/jaclang_org/mobile/` (`jac create <name> --awesome` scaffolds the whole workspace) - a React Native client for the same social graph the site serves, with typed theme tokens, `.native.jac` icon variants, and `BridgeError` handling; the product-scale reference is `jachammer` (a mobile clone of jacBuilder) in the jacBuilder repo under `apps/mobile/` - copy their patterns.
 
-A MobUI app is a **client app** of its workspace: it has no server of its own. Its screens import walkers / `def:pub` functions from shared `core/` code that a serving app (the `web-app`, or a file-rooted `service` app) owns, and every `root spawn` / call bridges to that owner - in the flagship, `core/social_graph.jac` is `[apps.social_graph]`'s entry file and `mobile/` is one of its clients. All of `jac-walker-patterns`, `jac-sv-endpoints`, `jac-sv-persistence` apply to that backend unchanged; `jac-sv-microservices` covers the bridge and the `BridgeError` family.
+A MobUI app is a **client app** of its workspace: it has no server of its own. Its screens import walkers / `def:pub` functions from shared `core/` code that a serving app (the `web-app`, or a declared `service` entry) owns, and every `root spawn` / call bridges to that owner - in the flagship, `core/social_graph.jac` is `[apps.social_graph]`'s entry file and `mobile/` is one of its clients. All of `jac-walker-patterns`, `jac-sv-endpoints`, `jac-sv-persistence` apply to that backend unchanged; `jac-sv-microservices` covers the bridge and the `BridgeError` family.
 
 ## The one hard rule: NO raw HTML (E1105)
 
@@ -132,7 +132,7 @@ default-app = "mobile"
 
 [apps.mobile]
 kind = "mobile"                # THE switch: native views via Expo/Metro, @jac/mobui only (HTML is E1105)
-path = "mobile"                # dir-rooted; omit in a single-app project (root = project root)
+entry-point = "mobile/main.jac" # relative to the project root
 platform = "android"           # optional default for `jac run mobile` / `jac build mobile`
 
 [dependencies.npm]

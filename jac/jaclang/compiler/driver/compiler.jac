@@ -1,3 +1,4 @@
+import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import ast as py_ast;
 import marshal;
@@ -51,7 +52,9 @@ import from jaclang.compiler.driver.pass_driver {
     run_pass,
     setup_progress
 }
-import from jaclang.compiler.driver.schedules {
+import from jaclang.compiler.driver.pipeline {
+    run_utility,
+    UtilityProduct,
     get_analysis_sched,
     get_boundary_analysis_sched,
     get_format_sched,
@@ -62,6 +65,7 @@ import from jaclang.compiler.driver.schedules {
     native_pipeline_available,
     native_schedule_failure,
     providers_of,
+    pass_provides,
     validate_schedule
 }
 import from jaclang.compiler.driver.source_failures {
@@ -124,6 +128,14 @@ obj JacCompiler {
         full_target: str, target_program: JacProgram
     ) -> (ClientArtifact | None);
 
+    def _get_bytecode(
+        full_target: str, target_program: JacProgram
+    ) -> (types.CodeType | None);
+
+    def _get_client_artifact(
+        full_target: str, target_program: JacProgram
+    ) -> (ClientArtifact | None);
+
     def client_codegen_target(
         full_target: str, target_program: JacProgram
     ) -> (uni.Module | None);
@@ -168,7 +180,6 @@ obj JacCompiler {
     def resolve_absorb_imports(mod: uni.Module, target_program: JacProgram) -> None;
     def stamp_boundary_facts(mod: uni.Module, target_program: JacProgram) -> None;
     def stamp_app_facts(mod: uni.Module, target_program: JacProgram) -> None;
-    static def _module_defines_owned_elements(mod: uni.Module) -> bool;
     def stamp_access_check_facts(mod: uni.Module) -> None;
     def stamp_native_import_facts(mod: uni.Module, target_program: JacProgram) -> None;
     def _persist_module_cache(

@@ -139,8 +139,8 @@ impl AccessCheckPass._module_app_facts(
         return (None, mod.jac_project_root);
     }
     import from jaclang.compiler.driver.modresolver { find_jac_project_root }
-    import from jaclang.compiler.placement.workspace { app_for_path }
-    app = app_for_path(mod_path);
+    import from jaclang.compiler.driver.compilation_context { context_app }
+    app = context_app(mod_path);
     return (
         app.name if app is not None else None,
         mod.jac_project_root or find_jac_project_root(mod_path)
@@ -157,7 +157,7 @@ impl AccessCheckPass._check_app_laws(
     if def_root != self.ir_in.jac_project_root {
         return True;
     }
-    use_app = self.ir_in.app;
+    use_app = self.ir_in.app or self.ir_in.name;
     if def_app == use_app {
         return True;
     }
@@ -167,17 +167,6 @@ impl AccessCheckPass._check_app_laws(
     def_path = def_module.loc.mod_path if def_module.loc else '';
     if def_path and os.path.normpath(def_path) in self._bridged_mods {
         return True;
-    }
-    if use_app is None {
-        use_path = self.ir_in.loc.mod_path if self.ir_in.loc else '';
-        self.emit(
-            E2040 if self._enforce else W2040,
-            node_override=use_node,
-            module=os.path.basename(use_path),
-            name=sym.sym_name,
-            app=def_app
-        );
-        return False;
     }
     self.emit(
         E2039 if self._enforce else W2039,

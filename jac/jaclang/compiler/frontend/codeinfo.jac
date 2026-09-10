@@ -782,11 +782,10 @@ obj CodeGenTarget {
 
 def endpoint_descriptor(module: any, kind: str, name: str) -> dict {
     import os;
-    import from jaclang.compiler.driver.boundary_classify { owner_app_name_for_path }
     import from jaclang.compiler.placement.workspace { workspace_for_path }
     path = module.loc.mod_path;
     workspace = workspace_for_path(path);
-    app = owner_app_name_for_path(path) or module.owner_app or "";
+    app = module.owner_app or "";
     source = os.path.relpath(path, workspace.project_root)
         if workspace
         else module.name;

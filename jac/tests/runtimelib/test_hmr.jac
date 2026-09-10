@@ -361,9 +361,7 @@ obj _FakeJcc {
         return self.out_path;
     }
 
-    def compile_dependencies_recursively(
-        source_path: any, source_root: any = None, skip_existing: bool = False
-    ) {
+    def emit_dependencies(source_path: any, source_root: any = None) {
         self.out_path.write_text(self.next_code);
     }
 }

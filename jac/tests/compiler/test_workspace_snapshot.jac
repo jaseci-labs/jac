@@ -1,58 +1,43 @@
-"""Workspace reconciliation is shared by preparation consumers and persisted."""
-
-import shutil;
-import tempfile;
+"""Reading app declarations never walks or parses the source workspace."""
 import from pathlib { Path }
+import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
-import jaclang.compiler.placement.ownership as ownership;
+import os;
 import from jaclang.compiler.placement.workspace { workspace_for_path }
+import from jaclang.compiler.driver.compilation_context { SourceStore }
+import from jaclang.compiler.driver.program { JacProgram }
 
-
-test "ownership cache survives a new process state without parsing" {
-    tmp = tempfile.mkdtemp(prefix="jac-ownership-");
-    try {
-        base = Path(tmp);
+test "unrelated broken source is not discovery input" {
+    with TemporaryDirectory() as td {
+        base = Path(td);
         (base / 'jac.toml').write_text(
-            '[project]\nname="snapshot"\ndefault-app="a"\n'
-                + '[apps.a]\nkind="service"\npath="a"\n'
-                + '[apps.b]\nkind="service"\npath="b"\n'
+            '[apps.a]\nkind="service"\nentry-point="a.jac"\n'
         );
-        for name in ['a', 'b'] {
-            (base / name).mkdir();
-            (base / name / 'main.jac').write_text(
-                "def:pub hello -> str { return 'ok'; }\n"
-            );
-        }
-        ws = workspace_for_path(str(base / 'a' / 'main.jac'));
-        assert ws is not None;
-        with patch.object(ownership.os, 'walk', wraps=ownership.os.walk) as walk {
-            with ownership.workspace_snapshot() {
-                first = ownership.consumer_graph(ws);
-                assert ownership.consumer_graph(ws) == first;
-            }
-            assert walk.call_count == 1;
-        }
-        ownership._graphs.clear();
-        ownership._imports.clear();
+        (base / 'a.jac').write_text('def:pub hello -> str { return "ok"; }\n');
+        (base / 'unrelated.jac').write_text('this is not valid Jac !!!');
         with patch.object(
-            ownership,
-            'parse',
-            side_effect=AssertionError('ownership reparsed unchanged source')
+            os, 'walk', side_effect=AssertionError('source scan during declarations')
         ) {
-            with ownership.workspace_snapshot() {
-                assert ownership.consumer_graph(ws) == first;
-            }
+            spec = workspace_for_path(str(base / 'a.jac'));
+            assert spec is not None;
+            assert list(spec.apps) == ['a'];
+            assert spec.app_for_path(str(base / 'unrelated.jac')) is None;
         }
-        (base / 'a' / 'extra.jac').write_text('glob added = 1;\n');
-        with ownership.workspace_snapshot() {
-            changed = ownership.consumer_graph(ws);
-            assert str(base / 'a' / 'extra.jac') in changed[0];
-        }
-        (base / 'a' / 'extra.jac').unlink();
-        with ownership.workspace_snapshot() {
-            assert ownership.consumer_graph(ws) == first;
-        }
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
     }
+}
+
+test "source revisions parse once and return isolated syntax" {
+    store = SourceStore();
+    program = JacProgram();
+    (first, failed) = store.parse(
+        'glob value = 1;\n', '/tmp/context-source.jac', program, []
+    );
+    assert not failed;
+    (second, failed) = store.parse(
+        'glob value = 1;\n', '/tmp/context-source.jac', program, []
+    );
+    assert not failed and store.parses == 1 and store.hits == 1;
+    assert first is not second and first.body[0] is not second.body[0];
+    store.parse('glob value = 2;\n', '/tmp/context-source.jac', program, []);
+    assert store.parses == 2 and len(store.units) == 1;
 }

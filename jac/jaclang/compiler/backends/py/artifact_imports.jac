@@ -77,3 +77,19 @@ def runtime_sources(code: types.CodeType, source: str, `root: str) -> set[str] {
     }
     return sources;
 }
+
+def package_sources(source: str, project_root: str) -> set[str] {
+    result: set[str] = set();
+    parent = Path(source).parent;
+    while parent.is_relative_to(project_root) {
+        initializer = parent / '__init__.jac';
+        if initializer.is_file() {
+            result.add(os.path.realpath(initializer));
+        }
+        if parent == Path(project_root) {
+            break;
+        }
+        parent = parent.parent;
+    }
+    return result;
+}

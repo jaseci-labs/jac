@@ -1,4 +1,5 @@
 """Tests for Jac Loader."""
+import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
 
 import io;
 import os;
@@ -19,7 +20,6 @@ import from jaclang.cli.commands { analysis }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compiler { JacCompiler }
 import from jaclang.compiler.driver.jir {
-    get_module_cache_path,
     read_bytecode_only,
     SEC_LLVM_IR,
     SEC_PLACEMENT,
@@ -271,7 +271,7 @@ test "get bytecode uses JIR cache on second call" {
         assert code1 is not None , "First compilation should succeed";
 
         # JIR cache should exist and contain bytecode section
-        cache_path = get_module_cache_path(jac_file);
+        cache_path = artifact_cache_path(jac_file, JacProgram());
         assert cache_path.exists() , "JIR cache file should exist after first compile";
         jir_data = cache_path.read_bytes();
         bc = read_bytecode_only(jir_data);
@@ -284,7 +284,7 @@ test "get bytecode uses JIR cache on second call" {
         assert marshal.dumps(code1) == marshal.dumps(code2);
     } finally {
         os.unlink(jac_file);
-        cache_path2 = get_module_cache_path(jac_file);
+        cache_path2 = artifact_cache_path(jac_file, JacProgram());
         if cache_path2.exists() {
             cache_path2.unlink();
         }
@@ -487,7 +487,7 @@ test "fresh mtime does not admit a cache written under a different environment" 
     try {
         compiler = JacCompiler();
         assert compiler.get_bytecode(jac_file, JacProgram()) is not None;
-        cache_path = get_module_cache_path(jac_file);
+        cache_path = artifact_cache_path(jac_file, JacProgram());
         assert cache_path.exists() , "JIR cache was not written";
         assert os.path.getmtime(cache_path) > os.path.getmtime(jac_file) , (
             "cache must be newer than source for the mtime fast path to apply"
@@ -542,7 +542,7 @@ test "fresh mtime does not admit a cache written under a different environment" 
         }
     } finally {
         os.unlink(jac_file);
-        cache_path2 = get_module_cache_path(jac_file);
+        cache_path2 = artifact_cache_path(jac_file, JacProgram());
         if cache_path2.exists() {
             cache_path2.unlink();
         }
@@ -583,7 +583,7 @@ test "editing placement pins in jac.toml invalidates the module cache" {
         os.utime(toml_path, (past, past));
         compiler = JacCompiler();
         assert compiler.get_bytecode(jac_file, JacProgram()) is not None;
-        cache_path = get_module_cache_path(jac_file);
+        cache_path = artifact_cache_path(jac_file, JacProgram());
         try {
             assert cache_path.exists() , "JIR cache was not written";
             assert os.path.getmtime(cache_path) > os.path.getmtime(jac_file) , (
