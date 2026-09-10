@@ -133,6 +133,8 @@ def load_prepared_module(path: str) -> types.ModuleType {
                 }
                 ensure_namespace(application, namespace);
                 target = namespace + target[len(package):];
+            } elif package not in image.index {
+                ensure_namespace(application, package);
             }
         }
     }

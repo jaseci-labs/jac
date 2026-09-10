@@ -22,7 +22,7 @@ test "destructured TypeScript component parameters validate JSX props" {
             }
         );
         write_client_jac_project(
-            project, "jsxprops", "lib/app.jac", 'jsx-props = "1.0.0"\n'
+            project, "jsxprops", "lib.app", 'jsx-props = "1.0.0"\n'
         );
         for (name, attributes, expected) in [
             ("valid", 'basename="docs"', []),

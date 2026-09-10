@@ -3,6 +3,7 @@ import builtins;
 import sys;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
+import from types { SimpleNamespace }
 import from unittest.mock { patch }
 import from jaclang.runtime.prepared {
     PreparedApplication,
@@ -12,6 +13,35 @@ import from jaclang.runtime.prepared {
     application_namespace
 }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
+
+test "a sealed entry loads without a package initializer" {
+    import jaclang.jac0core.sealed as sealed;
+    with TemporaryDirectory() as td {
+        path = str(Path(td) / 'main.jac');
+        Path(path).write_text('');
+        app = PreparedApplication(td, path);
+        app.code[path] = builtins.compile('ready = True', path, 'exec');
+        name = 'prepared_namespace_fixture';
+        info = {'module': name + '.main'};
+        image = SimpleNamespace(
+            package=name,
+            manifest={'modules': {'main.jac': info}},
+            index={name + '.main': (info, 'main.jac')}
+        );
+        publish(app);
+        try {
+            with patch.object(sealed, 'image_for_bundle_dir', return_value=image) {
+                loaded: any = load_prepared_module(path);
+                assert loaded.ready;
+                assert loaded.__name__ == name + '.main';
+            }
+        } finally {
+            clear();
+            sys.modules.pop(name + '.main', None);
+            sys.modules.pop(name, None);
+        }
+    }
+}
 
 test "prepared app imports cannot share mutable module state" {
     with TemporaryDirectory() as td {

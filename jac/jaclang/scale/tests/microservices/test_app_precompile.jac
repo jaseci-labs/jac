@@ -387,16 +387,22 @@ test "an explicit app seal follows its entry and excludes unrelated apps" {
         (base / 'jac.toml').write_text(
             '[project]\nname = "selected"\ndefault-app = "web"\n'
                 + '[apps.web]\nkind = "service"\nentry-point = "web"\n'
+                + '[apps.scoring]\nkind = "service"\nentry-point = "scoring"\n'
                 + '[apps.cli]\nkind = "cli"\nentry-point = "cli"\n'
+                + '[apps.desktop]\nkind = "desktop"\nentry-point = "desktop"\n'
         );
         (base / 'web.jac').write_text(
             'import from helper { value }\ndef:pub read -> int { return value(); }\n'
         );
         (base / 'helper.jac').write_text('def:pub value -> int { return 7; }\n');
+        (base / 'scoring.jac').write_text('def:pub score -> int { return 42; }\n');
+        (base / 'desktop.jac').write_text('def:pub app -> int { return 1; }\n');
         (base / 'cli.jac').write_text('this is deliberately invalid Jac');
         sources = {Path(p).name for p in sealable_sources(td)};
-        assert sources == {'web.jac', 'helper.jac'} , sources;
+        assert sources == {'web.jac', 'helper.jac', 'scoring.jac'} , sources;
         (base / 'cli.jac').write_text('def:pub main -> int { return 3; }\n');
         assert {Path(p).name for p in sealable_sources(td, 'cli')} == {'cli.jac'};
+        assert {Path(p).name for p in sealable_sources(td, 'desktop')}
+            == {'desktop.jac'};
     }
 }

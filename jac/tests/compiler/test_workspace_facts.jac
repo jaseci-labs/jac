@@ -134,8 +134,8 @@ test "placement reuses an untyped dependency tree across app contexts" {
             'compile',
             side_effect=AssertionError('placement rebuilt a symbol tree')
         ) {
-            for iteration in range(3) {
-                assert web.load_dependency_module(path, need_tree=True) is first;
+            for need_tree in [True, False, True] {
+                assert web.load_dependency_module(path, need_tree=need_tree) is first;
             }
         }
     }

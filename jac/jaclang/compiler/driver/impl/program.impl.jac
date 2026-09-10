@@ -1,4 +1,3 @@
-import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 impl JacProgram.init(
     self: JacProgram, main_mod: (uni.ProgramModule | None) = None
 ) -> None {
@@ -175,30 +174,13 @@ impl JacProgram.load_dependency_module(
     }
 
     mod: uni.Module;
-    foreign_untyped = (
-        resolved_path in target_hub
-        and not need_tree
-        and target_program is not self
-        and not resolved_path.endswith('.pyi')
-        and not target_hub[resolved_path].stub_only
-        and not target_program.analysis.analyses_run.provides(
-            target_hub[resolved_path], AnalysisFact.TYPE_OF
-        )
-    );
     if resolved_path in self.mod.hub
         and not (need_tree and self.mod.hub[resolved_path].stub_only) {
         mod = self.mod.hub[resolved_path];
     } elif resolved_path in target_hub
-        and not foreign_untyped
         and not (need_tree and target_hub[resolved_path].stub_only) {
         mod = target_hub[resolved_path];
     } else {
-        if foreign_untyped {
-            events = self.analysis.cache_events;
-            events["untyped_foreign_tree_skipped"] = (
-                events.get("untyped_foreign_tree_skipped", 0) + 1
-            );
-        }
         if resolved_path.endswith('.pyi') {
             import ast as py_ast;
             import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
@@ -227,7 +209,7 @@ impl JacProgram.load_dependency_module(
                 options=self.options.for_symbols(need_tree)
             );
         }
-        if not hasattr(mod, "cat_kids") and not foreign_untyped {
+        if not hasattr(mod, "cat_kids") {
             target_program.install_module(resolved_path, mod);
         }
     }

@@ -77,25 +77,37 @@ def _check_recomputed(path: str) -> list[str] {
 }
 
 test "a compiler-tree analysis hydrates its dependencies instead of re-ingesting them" {
+    import from unittest.mock { patch }
+    import jaclang.compiler.driver.pass_driver as driver;
     target = _tree_path(HYDRATION_TARGET);
-    _reset_selfhost();
-    _check_recomputed(target);
-    cold = _selfhost().analysis.pass_runs.get("SymTabBuildPass", 0);
-    assert cold >= 8 , (
-        f"the cold analysis ingested only {cold} dependency trees, too few to measure"
-    );
-    _reset_selfhost();
-    _forget_verdict(target);
+    dependency = _tree_path('server/serving/app.jac');
+    paths: set[str] = set();
+    original: any = getattr(driver, 'run_pass');
+    def record(pass_cls: any, ir_in: any, prog: any, **kwargs: any) -> any {
+        if pass_cls.__name__ == 'SymTabBuildPass' and prog is _selfhost() {
+            paths.add(os.path.realpath(ir_in.loc.mod_path));
+        }
+        return original(pass_cls, ir_in, prog, **kwargs);
+    }
+    # Measure actual dependency reuse, independently of how many duplicate
+    # compilations a cold pipeline happens to perform.
     _check(target);
+    with patch.object(driver, 'run_pass', record) {
+        _reset_selfhost();
+        _check_recomputed(target);
+        cold = set(paths);
+        assert dependency in cold , cold;
+        paths.clear();
+        _reset_selfhost();
+        _forget_verdict(target);
+        _check(target);
+    }
     events = dict(_selfhost().analysis.cache_events);
-    warm = _selfhost().analysis.pass_runs.get("SymTabBuildPass", 0);
     assert events.get("dep_hydrate", 0) >= 1 , (
         f"the warm analysis hydrated no compiler-tree dependency (events: {events})"
     );
-    assert warm * 4 <= cold , (
-        f"the warm analysis re-ingested its dependencies: {warm} symbol-table runs "
-        f"against {cold} cold (events: {events})"
-    );
+    assert dependency not in paths , f'cached dependency was rebuilt: {paths}';
+    assert len(paths) < len(cold) , (paths, cold, events);
 }
 
 test "a verdict served warm is the verdict a cold analysis computes, across the compiler tree" {

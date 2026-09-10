@@ -153,13 +153,20 @@ def _application_sources(package_dir: str, app: str) -> list[str] | None {
         raise ValueError(f'Unknown app: {app}');
     }
     program = JacProgram();
-    options = bind_options(
-        selected.entry,
-        program,
-        CompileOptions(entry_point=selected.entry, project_root=package_dir)
-    );
+    entries = [selected];
+    if selected.has_server {
+        import from jaclang.server.assembly { service_apps }
+        entries.extend(service_apps(workspace, selected));
+    }
     try {
-        compile_application(program, selected.entry, options);
+        for application in entries {
+            options = bind_options(
+                application.entry,
+                program,
+                CompileOptions(entry_point=application.entry, project_root=package_dir)
+            );
+            compile_application(program, application.entry, options);
+        }
         if program.errors_had {
             for diagnostic in program.errors_had {
                 console.error(diagnostic.pretty_print());

@@ -79,9 +79,7 @@ def make_dts_project(
             '"import":"./dist/index.mjs"}}}',
         {"dist/index.mjs": mjs, "dist/index.d.ts": dts}
     );
-    write_client_jac_project(
-        proj_dir, project_name, "lib/app.jac", pkg + ' = "^1.0.0"\n'
-    );
+    write_client_jac_project(proj_dir, project_name, "lib.app", pkg + ' = "^1.0.0"\n');
     return proj_dir;
 }
 
@@ -272,7 +270,7 @@ test "a server module may value-import a jac type alias and construct it" {
     # -- E1107 exists to keep the base primitive precisely so this works. E1131
     # must not push cross-module brand construction onto `import type`.
     with TemporaryDirectory() as td {
-        proj_root = write_server_project(Path(cast(str, td)), "use.jac");
+        proj_root = write_server_project(Path(cast(str, td)), "use");
         (proj_root / "brands.jac").write_text(BRAND_SRC);
         f = proj_root / "use.jac";
         f.write_text(BRAND_USE_SRC);
@@ -311,7 +309,7 @@ test "import type of a jac alias erases it on the server too, so value use is E1
     # to a TYPE_CHECKING guard, so the name is not there at run time and the
     # constructor call is refused rather than left to fail as a NameError.
     with TemporaryDirectory() as td {
-        proj_root = write_server_project(Path(cast(str, td)), "use.jac");
+        proj_root = write_server_project(Path(cast(str, td)), "use");
         (proj_root / "brands.jac").write_text(BRAND_SRC);
         f = proj_root / "use.jac";
         f.write_text(
@@ -333,7 +331,7 @@ test "a server has-field may be typed by a plainly imported jac alias" {
     # through typing.get_type_hints, so pushing this onto `import type` would
     # break it. A plain import has to stay legal here.
     with TemporaryDirectory() as td {
-        proj_root = write_server_project(Path(cast(str, td)), "store.jac");
+        proj_root = write_server_project(Path(cast(str, td)), "store");
         (proj_root / "rows.jac").write_text("type Row = dict[str, int];\n");
         f = proj_root / "store.jac";
         f.write_text(
