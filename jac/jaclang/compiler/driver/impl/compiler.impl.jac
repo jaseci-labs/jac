@@ -131,7 +131,9 @@ impl JacCompiler.get_bytecode(
         actual = context_program(actual, options);
     }
     with cache_scope(
-        '' if self.selfhost.is_selfhost(actual) else actual.context_key, actual.options
+        '' if self.selfhost.is_selfhost(actual) else actual.context_key,
+        actual.options,
+        actual
     ) {
         return self._get_bytecode(full_target, actual);
     }
@@ -809,12 +811,8 @@ impl JacCompiler.stamp_native_import_facts(
 ) -> None {
     """Stamp each import with the emitter's native-only verdict.
 
-    Whether an import resolves to a module the native lane owns, and
-    whether that module lives inside jaclang's own tree, are both
-    import-resolution questions: they need the hub, the placement pins
-    and the filesystem, which is the driver's ground and not a pass's.
-    The emitter used to ask for them through `self.prog`, the one
-    driver read left in a sealed pass. It now consumes a bool.
+    NativeImportFactsPass calls this helper with the compilation context.
+    It resolves native placement before the emitter consumes the verdict.
     """;
     import os;
     import from jaclang.compiler.frontend.module_facts { ModuleFacts }
@@ -1139,7 +1137,7 @@ impl JacCompiler.compile(
     identity = ''
         if self.selfhost.is_selfhost(target_program)
         else target_program.context_key;
-    with cache_scope(identity, options) {
+    with cache_scope(identity, options, target_program) {
         import from jaclang.compiler.native_scope {
             activate_scope_lowering,
             deactivate_scope_lowering,
@@ -1876,7 +1874,9 @@ impl JacCompiler.get_client_artifact(
         actual = context_program(actual, options);
     }
     with cache_scope(
-        '' if self.selfhost.is_selfhost(actual) else actual.context_key, actual.options
+        '' if self.selfhost.is_selfhost(actual) else actual.context_key,
+        actual.options,
+        actual
     ) {
         return self._get_client_artifact(full_target, actual);
     }

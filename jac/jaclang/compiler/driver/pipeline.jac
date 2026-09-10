@@ -50,6 +50,7 @@ import from jaclang.compiler.driver.pipeline_types {
     PassContract,
     CompilationProduct,
     ProductTask,
+    ProductUnavailable,
     TaskState
 }
 import from jaclang.compiler.driver.client_graph { collect_client_graph }
@@ -226,7 +227,7 @@ def invalidate_client_product(program: JacProgram, module: Module) {
     identity = ''
         if program._get_compiler().selfhost.is_selfhost(program)
         else program.context_key;
-    with cache_scope(identity, program.options) {
+    with cache_scope(identity, program.options, program) {
         try {
             get_module_cache_path(path).unlink(missing_ok=True);
         } except OSError {}
@@ -278,6 +279,9 @@ def require_product(
                     else TaskState.FAILED
             );
         return task.state == TaskState.SUCCEEDED;
+    } except ProductUnavailable {
+        task.state = TaskState.FAILED;
+        return False;
     } except Exception {
         task.state = TaskState.FAILED;
         raise;
@@ -1011,11 +1015,12 @@ def native_closure_eligible(
     ).eligible;
 }
 
-def native_path_eligible(path: str) -> bool {
+def native_path_eligible(path: str, program: JacProgram | None = None) -> bool {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.frontend.unitree { Module }
     import from jaclang.compiler.placement.placement { PLACEMENT_HOLD_EXEMPT_ROOTS }
-    program = JacProgram();
+    import from jaclang.compiler.driver.compilation_context { active_program }
+    program = program or active_program() or JacProgram();
     path = os.path.realpath(path);
     exempt = any(
         marker in path.replace(os.sep, '/') for marker in PLACEMENT_HOLD_EXEMPT_ROOTS

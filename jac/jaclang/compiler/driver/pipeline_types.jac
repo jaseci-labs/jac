@@ -126,6 +126,8 @@ obj ProductTask {
         elapsed: float = 0.0;
 }
 
+class ProductUnavailable(RuntimeError) {}
+
 enum UtilityProduct {
     PYTHON_AST = "python-ast",
     PYTHON_SYMBOLS = "python-symbols",

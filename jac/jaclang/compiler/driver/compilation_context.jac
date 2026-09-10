@@ -15,21 +15,33 @@ import from jaclang.compiler.passes.transform { Alert }
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
          'jac_active_options', `default=None
      ),
-     _cache_context: ContextVar[str] = ContextVar('jac_compilation_cache', `default='');
+     _cache_context: ContextVar[str] = ContextVar('jac_compilation_cache', `default=''),
+     _active_program: ContextVar[JacProgram | None] = ContextVar(
+         'jac_active_program', `default=None
+     );
 
 @contextmanager
 def cache_scope(
-    identity: str, options: CompileOptions | None = None
+    identity: str,
+    options: CompileOptions | None = None,
+    program: JacProgram | None = None
 ) -> Iterator[None] {
     token = _cache_context.set(identity);
     option_token = _active_options.set(options);
+    program_token = _active_program.set(program or _active_program.get());
     try {
         yield ;
     } finally {
         _cache_context.reset(token);
         _active_options.reset(option_token);
+        _active_program.reset(program_token);
     }
 }
+
+def active_program -> JacProgram | None {
+    return _active_program.get();
+}
+
 
 def cache_identity -> str {
     return _cache_context.get();
@@ -221,7 +233,7 @@ def artifact_cache_path(path: str, program: JacProgram) -> Path {
     identity = ''
         if selected._get_compiler().selfhost.is_selfhost(selected)
         else selected.context_key;
-    with cache_scope(identity, selected.options) {
+    with cache_scope(identity, selected.options, selected) {
         return get_module_cache_path(path);
     }
 }

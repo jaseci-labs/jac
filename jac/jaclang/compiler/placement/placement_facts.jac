@@ -1,4 +1,5 @@
 import os;
+import type from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
 
 glob SPACE_SERVER: str = 'server',
@@ -161,7 +162,9 @@ def sealed_spaces_for(source_path: str) -> (set[str] | None) {
 }
 
 
-def toolchain_native_by_policy(package_dir: str, source_path: str) -> bool {
+def toolchain_native_by_policy(
+    package_dir: str, source_path: str, program: JacProgram | None = None
+) -> bool {
     rel = os.path.relpath(os.path.abspath(source_path), os.path.abspath(package_dir));
     native_only = os.path.join(*TOOLCHAIN_NATIVE_ONLY_REL) + os.sep;
     if rel.startswith(native_only) {
@@ -170,7 +173,7 @@ def toolchain_native_by_policy(package_dir: str, source_path: str) -> bool {
     mixed = os.path.join(*TOOLCHAIN_MIXED_NATIVE_REL) + os.sep;
     if rel.startswith(mixed) {
         import from jaclang.compiler.driver.pipeline { native_path_eligible }
-        return native_path_eligible(source_path);
+        return native_path_eligible(source_path, program);
     }
     return False;
 }

@@ -150,6 +150,8 @@ consumers, replacing the solver's duplicate name-resolution walk.
 
 Native dependency analysis uses `SourceStore` syntax units and content revisions.
 It does not maintain a second parser or a timestamp-based source cache.
+Queries reuse the active compiler context; package discovery shares a program
+across its candidates so overlapping dependency closures reuse syntax units.
 Speculative parse errors remain in the syntax unit; compiling the source itself
 still delivers those errors normally.
 

@@ -192,9 +192,12 @@ walker ServingFactsPass(ProgramTransform) {
 
 walker InterfaceFactsPass(ProgramTransform) {
     def transform(ir_in: uni.Module) -> uni.Module {
-        self.prog.iface_registry().prepare_interface(
+        import from jaclang.compiler.driver.pipeline_types { ProductUnavailable }
+        if not self.prog.iface_registry().prepare_interface(
             os.path.realpath(ir_in.loc.mod_path), ir_in
-        );
+        ) {
+            raise ProductUnavailable('Module has no cacheable interface');
+        }
         return ir_in;
     }
 }

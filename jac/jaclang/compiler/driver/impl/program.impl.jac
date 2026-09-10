@@ -378,6 +378,8 @@ impl JacProgram.release_compile_closure(
     self.analysis.early_passes.clear();
     self.analysis.product_tasks.clear();
     self.analysis.completed_passes.clear();
+    self.analysis.serving_facts.clear();
+    self.analysis.module_spaces.clear();
     self.analysis.task_owners.clear();
     if self._iface is not None {
         self._iface.on_closure_release();

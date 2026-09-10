@@ -110,3 +110,46 @@ test "serving metadata exposes members only for from imports" {
         }
     }
 }
+
+
+test "native path queries share compilation syntax and restore nested contexts" {
+    import from jaclang.compiler.driver.pipeline { native_path_eligible }
+    import from jaclang.compiler.driver.compilation_context {
+        cache_scope,
+        active_program
+    }
+    with TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'main.jac';
+        path.write_text('def value -> int { return 1; }');
+        program = JacProgram();
+        previous = active_program();
+        with cache_scope('', program.options, program) {
+            assert native_path_eligible(str(path));
+            parses = program.source_store.parses;
+            assert parses > 0;
+            with cache_scope('nested') {
+                assert active_program() is program;
+                assert native_path_eligible(str(path));
+            }
+            assert program.source_store.parses == parses;
+        }
+        assert active_program() is previous;
+    }
+}
+
+
+test "an uncacheable interface does not become a successful product" {
+    import from jaclang.compiler.driver.pipeline { invalidate_product }
+    with TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'main.jac';
+        path.write_text('def value -> int { return 1; }');
+        program = JacProgram();
+        module = program.compile(str(path), no_cgen=True);
+        assert not program.errors_had;
+        module.codespace_inferred = True;
+        invalidate_product(program, module, CompilationProduct.INTERFACE);
+        assert not require_product(program, module, CompilationProduct.INTERFACE);
+        assert not require_product(program, module, CompilationProduct.INTERFACE);
+        assert not program.errors_had;
+    }
+}

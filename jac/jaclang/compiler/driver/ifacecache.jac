@@ -362,7 +362,7 @@ obj IfaceRegistry {
         identity = ''
             if self.prog._get_compiler().selfhost.is_selfhost(self.prog)
             else self.prog.context_key or context_identity(self.prog.options);
-        with cache_scope(identity, self.prog.options) {
+        with cache_scope(identity, self.prog.options, self.prog) {
             yield ;
         }
     }

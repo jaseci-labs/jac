@@ -224,10 +224,12 @@ def sealable_sources(package_dir: str, app: str = "") -> list[str] {
         import from jaclang.compiler.placement.placement_facts {
             toolchain_native_by_policy
         }
+        import from jaclang.compiler.driver.program { JacProgram }
+        discovery = JacProgram();
         result = [
             p
             for p in candidates
-            if not toolchain_native_by_policy(package_dir, p)
+            if not toolchain_native_by_policy(package_dir, p, discovery)
         ];
     } else {
         import from jaclang.compiler.placement.placement_facts {
@@ -412,7 +414,7 @@ def precompile_unit(
     );
     selected = precompile_context(jac_path, pkg_root, program, source_app);
     identity = '' if compiler.selfhost.is_selfhost(selected) else selected.context_key;
-    with cache_scope(identity, selected.options) {
+    with cache_scope(identity, selected.options, selected) {
         return _precompile_unit(jac_path, pkg_root, selected, embed_src, collect);
     }
 }
