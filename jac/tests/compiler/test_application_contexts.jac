@@ -19,25 +19,41 @@ test "a sealed entry loads without a package initializer" {
     with TemporaryDirectory() as td {
         path = str(Path(td) / 'main.jac');
         Path(path).write_text('');
+        helper_path = str(Path(td) / 'helper.jac');
+        Path(helper_path).write_text('');
         app = PreparedApplication(td, path);
-        app.code[path] = builtins.compile('ready = True', path, 'exec');
+        app.code[path] = builtins.compile('values = []', path, 'exec');
+        app.code[helper_path] = builtins.compile(
+            'from .main import values', helper_path, 'exec'
+        );
         name = 'prepared_namespace_fixture';
         info = {'module': name + '.main'};
         image = SimpleNamespace(
             package=name,
-            manifest={'modules': {'main.jac': info}},
-            index={name + '.main': (info, 'main.jac')}
+            manifest={
+                'modules': {
+                    'main.jac': info,
+                    'helper.jac': {'module': name + '.helper'}
+                }
+            },
+            index={
+                name + '.main': (info, 'main.jac'),
+                name + '.helper': ({'module': name + '.helper'}, 'helper.jac')
+            }
         );
         publish(app);
         try {
             with patch.object(sealed, 'image_for_bundle_dir', return_value=image) {
                 loaded: any = load_prepared_module(path);
-                assert loaded.ready;
                 assert loaded.__name__ == name + '.main';
+                helper: any = load_prepared_module(helper_path);
+                assert helper.__name__ == name + '.helper';
+                assert helper.values is loaded.values;
             }
         } finally {
             clear();
             sys.modules.pop(name + '.main', None);
+            sys.modules.pop(name + '.helper', None);
             sys.modules.pop(name, None);
         }
     }

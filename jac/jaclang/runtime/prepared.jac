@@ -122,6 +122,7 @@ def load_prepared_module(path: str) -> types.ModuleType {
             package = image.package;
             loaded = sys.modules.get(package);
             if loaded is not None
+                and application.root not in getattr(loaded, '__path__', ())
                 and not str(getattr(loaded, '__file__', '') or '').startswith(
                     application.root + os.sep
                 ) {
