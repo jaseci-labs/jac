@@ -205,7 +205,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rep: [1, 2, 3, 4]
+        rep: [1, 2, 3, 4, 5, 6, 7, 8]
     env:
       JAC_NO_DEV_SOURCE: ""
       JAC_XREF_PROBE: "1"
@@ -234,24 +234,39 @@ jobs:
             "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
             --global
 
+      # Two sweeps per leg: the first is cold (this job restores no cache),
+      # the second reuses what the first wrote. Real CI fails both ways, so
+      # both are samples, and the second costs a fraction of the first.
       - name: Run jac check with the XREF probe
         run: |
           set +e
           IGNORE_ARGS="tests checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ')"
-          jac check . --ignore $IGNORE_ARGS --nowarn 2> "probe-${{ matrix.rep }}.err"
-          echo "check_exit=$?"
-          echo "===== XREF orphan/fail summary (rep ${{ matrix.rep }}) ====="
-          grep -oE '\[XREF-(ORPHAN|FAIL)\].*' "probe-${{ matrix.rep }}.err" \
-            | sort | uniq -c | sort -rn | head -80
-          echo "===== totals ====="
-          echo "orphans: $(grep -c 'XREF-ORPHAN' "probe-${{ matrix.rep }}.err")"
-          echo "fails:   $(grep -c 'XREF-FAIL' "probe-${{ matrix.rep }}.err")"
+          for SWEEP in 1 2; do
+            TAG="${{ matrix.rep }}-$SWEEP"
+            echo "::group::sweep $TAG"
+            SECONDS=0
+            jac check . --ignore $IGNORE_ARGS --nowarn > "out-$TAG.log" 2> "probe-$TAG.err"
+            RC=$?
+            echo "sweep=$TAG exit=$RC seconds=$SECONDS"
+            tail -n 3 "out-$TAG.log"
+            echo "failed files:"
+            sed -n '/failed files/,$p' "out-$TAG.log" | head -20
+            echo "orphans: $(grep -c 'XREF-ORPHAN' "probe-$TAG.err")"
+            echo "xref fails: $(grep -c 'XREF-FAIL' "probe-$TAG.err")"
+            echo "cycle stubs: $(grep -c 'CYCLE-STUB' "probe-$TAG.err")"
+            echo "-- orphan/fail/cycle detail (top 60) --"
+            grep -oE '\[(XREF-ORPHAN|XREF-FAIL|CYCLE-STUB)\].*' "probe-$TAG.err" \
+              | sort | uniq -c | sort -rn | head -60
+            echo "::endgroup::"
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: xref-probe-${{ matrix.rep }}
-          path: probe-${{ matrix.rep }}.err
+          path: |
+            probe-${{ matrix.rep }}-*.err
+            out-${{ matrix.rep }}-*.log
           if-no-files-found: ignore
 
   jac-check:
@@ -465,9 +480,9 @@ jobs:
   # Pure PR-metadata policy: no kit, no jac. Docs code blocks are validated
   # by the suite (tests/cli/test_docs_code_blocks.jac) in the test lanes.
   contribution-checks:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     name: Contribution Checks
     needs: changes
-    if: ${{ github.event_name != 'push' || needs.changes.outputs.docs == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v5
@@ -530,8 +545,8 @@ jobs:
   # pools run at auto and JAC_TEST_RSS_LOG leaves a per-file trail if a
   # box ever dies again.
   test-compiler:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
@@ -583,8 +598,8 @@ jobs:
 
   # Everything except the compiler tests.
   test-runtime:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
@@ -635,8 +650,8 @@ jobs:
   #   has one and recompiles. Fails the same way with the native pipeline
   #   off.
   test-in-package-sealed:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
@@ -687,8 +702,8 @@ jobs:
   # (tests/compiler/test_no_llvm_degradation.jac, via JAC_LLVM_SHIM=none).
 
   test-client:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
@@ -727,8 +742,8 @@ jobs:
   # has (test_byllm.jac, test_auth_cutover.jac, test_firebase_auth_sso.jac).
   # Those findings are a follow-up on the test files, not on this lane.
   test-packages-and-docs:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.docs == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: ""
@@ -759,8 +774,8 @@ jobs:
             jac/tests/cli/test_docs_code_blocks.jac
 
   test-scale:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: ""
@@ -816,12 +831,8 @@ jobs:
   # failure-path leg ships the binary into the pods, and that must be the one
   # built from this checkout.
   test-scale-k8s:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     needs: [changes, build-kit]
-    if: >-
-      (github.event_name != 'pull_request' ||
-       needs.changes.outputs.core == 'true' ||
-       needs.changes.outputs.scale == 'true') &&
-      !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
@@ -901,8 +912,8 @@ jobs:
   # aarch64 cross lane: in-house ELF linker + arch-parameterized musl from the
   # kit, binaries run under qemu-user.
   test-native-aarch64:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
     runs-on: ubuntu-latest
     env:
       JAC_NO_DEV_SOURCE: "1"
@@ -930,8 +941,8 @@ jobs:
   # launcher materializes through, the walk-up import shape the stub is built
   # with, and an end-to-end fused-runtime boot of a freshly compiled na host.
   test-launcher-jac:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v5
@@ -956,8 +967,8 @@ jobs:
   # launcher itself is Jac; its trailer codec, payload tool and boot path are
   # covered by `jac test` in the kit lanes below.
   test-bootstrap:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -978,8 +989,8 @@ jobs:
   # (tests/client/test_cef_dispatch_build.jac, in test-client's lane).
 
   test-jac-pack-smoke:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
@@ -1432,8 +1443,8 @@ jobs:
   # instead of a second copy of it. The PR lane lints install.sh; the nightly
   # one does not (it exercises the published installer, not this checkout).
   installer-test:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     needs: changes
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.changes.outputs.installer == 'true') }}
     uses: ./.github/workflows/_installer.yml
     with:
       shellcheck: true
@@ -1446,12 +1457,12 @@ jobs:
   # on ordinary compiler churn, which is what put a 44-68 min leg on the
   # critical path of every native PR to begin with.
   macos-native:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')) }}
+    if: false  # TEMP probe branch: lane disabled (#8828)
     uses: ./.github/workflows/_macos-native.yml
 
   test-managed-android:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -1487,8 +1498,8 @@ jobs:
   # must be added to needs below by hand; always() so failures upstream fail
   # the gate instead of skipping it (skipped required checks count as passing).
   everything-passed:
+    if: false  # TEMP probe branch: lane disabled (#8828)
     name: Everything Passed
-    if: always()
     needs:
       - changes
       - build-kit
