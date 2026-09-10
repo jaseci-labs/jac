@@ -218,7 +218,7 @@ impl EsastGenPass._partition_client_import_items(
     bridged: list = [];
     for item in nd.items {
         if isinstance(item, uni.ModuleItem) {
-            local_name = item.alias.sym_name if item.alias else item.name.sym_name;
+            local_name = item.alias.sym_name if item.alias else item.name.value;
             binding = self.ir_in.gen.interop_manifest.bindings.get(local_name);
             if binding is not None and binding.kind == 'type' {
                 bridged.append(item);
