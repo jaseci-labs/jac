@@ -217,6 +217,11 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     return self.ir_in;
 }
 
+impl NaIRGenPass._record_lowering_issue(issue: NativeLoweringIssue) -> None {
+    self._lowering_issues.append(issue);
+    issue.record(self.llvm_module);
+}
+
 impl NaIRGenPass._export_native_iface -> None {
     import os as _ni_os;
     import from jaclang.compiler.driver.native_iface {
@@ -297,11 +302,7 @@ impl NaIRGenPass._export_native_iface -> None {
         iface.entry_symbol = str(entry_fn.name);
     }
     iface.demoted = sorted(
-        self._demoted_names
-            | {
-                f"{arch}.{name}" for (arch, fields) in self.struct_field_opaque.items()
-                for name in fields
-            }
+        self._demoted_names | {issue.symbol for issue in self._lowering_issues}
     );
     iface.clib_paths = list(self.ir_in.gen._clib_paths or []);
     iface.python_imports = [
@@ -1885,10 +1886,8 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     self.ir_out = ir_in;
     ir_in spawn self;
     if self.errors_had {
-        raise RuntimeError(
-            "Native module lowering failed:\n"
-                + "\n".join(alert.pretty_print() for alert in self.errors_had)
-        );
+        self.prog.native_units().failures[os.path.realpath(ir_in.loc.mod_path)] = "Native module lowering failed:\n"
+            + "\n".join(alert.pretty_print() for alert in self.errors_had);
     }
     out = self.ir_out;
     assert isinstance(out, uni.Module);

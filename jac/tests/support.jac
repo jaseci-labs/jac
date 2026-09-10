@@ -230,9 +230,9 @@ def remember_native_unit(eng: any, ir: any) {
 Every external symbol that is not `:pub` is module-qualified
 (`<unit prefix>.<name>`, methods `<prefix>.Class.method`); `:pub` symbols,
 the glue's `jac_entry` and the runtime's `__jac_*` / `__rc_*` / `jac_*`
-helpers keep bare names. A name the interface does not list resolves to the
-qualified form, and a name the engine cannot find under either spelling
-falls back to the bare one so the caller's assertion names it.
+helpers keep bare names. Already qualified symbols retain their spelling.
+A name the interface does not list resolves to the root-qualified form;
+address lookup never retries an unrelated bare symbol.
 """
 def native_symbol(eng: any, name: str) -> str {
     path = getattr(eng, "_jac_unit_path", "") or "";
@@ -243,17 +243,18 @@ def native_symbol(eng: any, name: str) -> str {
     if name == "jac_entry" {
         return name;
     }
+    interfaces = list(eng?._jac_unit_ifaces or []);
     iface = eng?._jac_native_iface;
     if iface is not None {
-        found = iface.symbol_of(name);
-        if found is not None {
-            return found;
-        }
+        interfaces.insert(0, iface);
     }
-    for unit_iface in (eng?._jac_unit_ifaces or []) {
+    for unit_iface in interfaces {
         found = unit_iface.symbol_of(name);
         if found is not None {
             return found;
+        }
+        if unit_iface.prefix and name.startswith(unit_iface.prefix + ".") {
+            return name;
         }
     }
     if name.startswith(("__jac_", "__rc_", "jac_", "__osp", "__mt_")) {

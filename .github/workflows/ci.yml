@@ -491,6 +491,9 @@ jobs:
           - chunk: passes-native
             paths: tests/compiler/backends/native tests/compiler/tools
             sealed: "1"
+            # Native builds spawn compiler children; four workers can exhaust
+            # the runner's memory and stall the arena subprocess timeout.
+            jobs: "2"
           # The equivalence suite builds fixture paths from jaclang.__file__,
           # which only resolve in the checkout: it runs through the reroute,
           # over the kit's shim and floors ("" clears JAC_NO_DEV_SOURCE).

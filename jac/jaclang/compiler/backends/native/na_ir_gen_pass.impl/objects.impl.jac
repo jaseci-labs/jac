@@ -1212,14 +1212,14 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     del self.errors_had[local_mark:];
 
     if stub_body {
-        NativeLoweringIssue(
-            symbol=full_name,
-            kind=NativeLoweringKind.CALLABLE,
-            source=self.ir_in.loc.mod_path,
-            code=_own[0].code.code if _own[0].code is not None else "",
-            detail=_own[0].pretty_print()
-        ).record(
-            self.llvm_module
+        self._record_lowering_issue(
+            NativeLoweringIssue(
+                symbol=full_name,
+                kind=NativeLoweringKind.CALLABLE,
+                source=self.ir_in.loc.mod_path,
+                code=_own[0].code.code if _own[0].code is not None else "",
+                detail=_own[0].pretty_print()
+            )
         );
         func.blocks.clear();
         blk = func.append_basic_block(name="entry");
@@ -1304,14 +1304,14 @@ impl NaIRGenPass._opaque_field_if_unlowerable(
             f"{arch_name}.{fname}: " + (f"[{_code}] " if _code else "") + _why
         );
     } except Exception {}
-    NativeLoweringIssue(
-        symbol=f"{arch_name}.{fname}",
-        kind=NativeLoweringKind.FIELD,
-        source=self.ir_in.loc.mod_path,
-        code=_code,
-        detail=_own[0].pretty_print()
-    ).record(
-        self.llvm_module
+    self._record_lowering_issue(
+        NativeLoweringIssue(
+            symbol=f"{arch_name}.{fname}",
+            kind=NativeLoweringKind.FIELD,
+            source=self.ir_in.loc.mod_path,
+            code=_code,
+            detail=_own[0].pretty_print()
+        )
     );
     del self.errors_had[local_mark:];
     if arch_name not in self.struct_field_opaque {

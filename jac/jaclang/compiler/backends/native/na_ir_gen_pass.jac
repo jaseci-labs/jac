@@ -274,6 +274,7 @@ walker NaIRGenPass(Transform) {
         _pub_symbols: set[str] = set(),
         _unit_exports: dict[str, NativeExport] = {},
         _demoted_names: set[str] = set(),
+        _lowering_issues: list[NativeLoweringIssue] = [],
         tuple_types: dict[str, ir.LiteralStructType] = {},
         global_vars: dict[str, ir.GlobalVariable] = {},
         global_var_types: dict[str, ir.Type] = {},
@@ -937,6 +938,7 @@ walker NaIRGenPass(Transform) {
     def _dep_iface(imported_mod: uni.Module) -> (NativeIface | None);
     def _load_native_unit_module(path: str) -> (uni.Module | None);
     def _is_kernel_unit -> bool;
+    def _record_lowering_issue(issue: NativeLoweringIssue) -> None;
     def _export_native_iface -> None;
     def _build_class_layouts -> dict;
     def _osp_kernel_init_fns -> list[ir.Function];
