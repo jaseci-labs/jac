@@ -2,6 +2,7 @@ import os;
 import sys;
 import from jaclang.compiler.types.types { ClassType, UnknownType }
 import from jaclang.compiler.frontend.unitree { Module }
+import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 
 def probe_on -> bool {
     return bool(os.environ.get("JAC_XREF_PROBE", ""));
@@ -207,7 +208,7 @@ def describe_expr(evaluator: any, expr: any, sh: any) -> str {
         parts.append("decl_mod=None");
     } else {
         mp = m.loc.mod_path if m.loc is not None else "";
-        typed = prog.analysis.analyses_run.provides(m, "TypeOf");
+        typed = prog.analysis.analyses_run.provides(m, AnalysisFact.TYPE_OF);
         parts.append(
             f"decl_mod={os.path.basename(mp)} {_state(prog, sh, m)} typed={typed}"
         );
@@ -268,7 +269,9 @@ def describe_rhs(evaluator: any, sym: any, sh: any) -> list[str] {
                     dpath = os.path.basename(dm.loc.mod_path)
                         if dm is not None and dm.loc is not None
                         else "?";
-                    dtyped = prog.analysis.analyses_run.provides(dm, "TypeOf")
+                    dtyped = prog.analysis.analyses_run.provides(
+                        dm, AnalysisFact.TYPE_OF
+                    )
                         if dm is not None
                         else "?";
                     out.append(

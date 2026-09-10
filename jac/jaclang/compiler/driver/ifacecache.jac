@@ -880,7 +880,10 @@ obj IfaceRegistry {
         if os.environ.get("JAC_XREF_PROBE", "") {
             import sys;
             try {
-                _typed = self.prog.analysis.analyses_run.provides(mod, "TypeOf");
+                import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
+                _typed = self.prog.analysis.analyses_run.provides(
+                    mod, AnalysisFact.TYPE_OF
+                );
                 sys.stderr.write(
                     f"[IFACE-ENCODE] pid={os.getpid()} path={resolved} "
                     f"result={'incoherent' if encoded is None else 'ok'} typed={_typed} "

@@ -232,8 +232,11 @@ impl JacProgram.load_dependency_module(
         import sys;
         try {
             _kind = "cat" if mod?.cat_kids else ("stub" if mod.stub_only else "tree");
-            _typed = self.analysis.analyses_run.provides(mod, "TypeOf");
-            _ttyped = target_program.analysis.analyses_run.provides(mod, "TypeOf");
+            import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
+            _typed = self.analysis.analyses_run.provides(mod, AnalysisFact.TYPE_OF);
+            _ttyped = target_program.analysis.analyses_run.provides(
+                mod, AnalysisFact.TYPE_OF
+            );
             sys.stderr.write(
                 f"[DEP-LOAD] pid={os.getpid()} path={resolved_path} importer={importer_path} "
                 f"src={_dep_src} kind={_kind} typed_self={_typed} typed_target={_ttyped} "
