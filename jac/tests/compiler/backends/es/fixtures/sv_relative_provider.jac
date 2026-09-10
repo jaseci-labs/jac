@@ -25,7 +25,8 @@ walker:pub Analyze {
 
 walker:pub Tally {
     has count: int = 3,
-        label: str = "tally";
+        label: str = "tally",
+        tags: list = [];
 
     can run with Root entry {
         report self.count;

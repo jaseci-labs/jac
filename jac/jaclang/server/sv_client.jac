@@ -333,7 +333,7 @@ def hydrate_walker_envelope(
     reports = envelope.get("reports") if isinstance(envelope, dict) else None;
     fields = (
         dict.fromkeys(stub_cls.__jac_fields__)
-        | stub_cls.__jac_field_defaults__
+        | copy.deepcopy(stub_cls.__jac_field_defaults__)
         | copy.deepcopy(kwargs)
     );
     fields["reports"] = reports if isinstance(reports, list) else [];

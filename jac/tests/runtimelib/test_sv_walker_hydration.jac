@@ -56,6 +56,19 @@ test "omitted fields take the provider's literal defaults" {
     assert rg.reports == [3];
 }
 
+test "omitted container defaults are not shared between instances" {
+    Tally = generated_stubs()["Tally"];
+    first = sv_client.hydrate_walker_envelope(
+        ok_envelope([]), "sv_relative_provider", "Tally", {}, Tally
+    );
+    second = sv_client.hydrate_walker_envelope(
+        ok_envelope([]), "sv_relative_provider", "Tally", {}, Tally
+    );
+    first.tags.append("x");
+    assert second.tags == [];
+    assert Tally.__jac_field_defaults__["tags"] == [];
+}
+
 test "the instance does not alias the caller's mutable arguments" {
     Analyze = generated_stubs()["Analyze"];
     sent = {"count": [1, 2]};
