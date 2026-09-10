@@ -1678,11 +1678,25 @@ Types that cross the app boundary use the same wire contract as client-to-server
 
 What works:
 
-- **`obj` types** -- fields hydrated recursively, including nested objects.
+- **`obj` types** -- fields hydrated recursively, including inherited fields, objects inside lists and dictionaries, optional fields, and recursive type declarations. Nested types are included even when the consumer imports only the function or the outer type. Import aliases on either side refer to the same consumer-side type.
 - **`enum` types** -- serialized by name.
 - **Primitives** -- `int`, `float`, `str`, `bool`, `None`, `list[T]`, `dict[K, V]`.
 - **Bidirectional** -- typed function arguments are wrapped on the way out and unwrapped on the way in.
 - **walkers** -- when imported by name. The consumer-side stub mirrors the provider's `has` fields, and the round-trip rehydrates the walker into a real instance with `reports` populated. See [Walker Imports](#walker-imports).
+
+Reconstruction uses the `_jac_type_id` identity in API responses and the boundary
+types collected by the compiler. Identities include the declaring app and module,
+so unrelated types with the same name remain distinct while aliases of one
+declaration share a consumer-side type. It applies to function results, walker fields,
+and reports, including when services run in separate processes. Ordinary
+dictionaries stay dictionaries. Forwarding a reconstructed value preserves its
+nested type markers and inherited fields, including when passed to a typed
+service parameter. Reconstruction only uses the declared boundary types; it
+does not import or execute the provider module.
+
+Browser stubs resolve field and function-signature types in their declaring
+modules too. Imports and re-exported aliases retain the matching boundary class,
+even when several providers declare types with the same name.
 
 What doesn't:
 

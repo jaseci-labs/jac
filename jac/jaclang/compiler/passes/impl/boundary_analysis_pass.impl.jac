@@ -311,16 +311,19 @@ impl BoundaryAnalysisPass._register_sv_import(
             }
         }
         if walker_node is not None {
+            walker_mod = walker_node.find_parent_of_type(Module);
+            self._collect_boundary_type(walker_node.sym_name, walker_mod);
             (param_names, param_types) = self._extract_walker_has_fields(walker_node);
             binding = InteropBinding(
                 name=sym_name,
                 source_context=InteropContext.SERVER,
                 callers={caller_ctx},
-                ret_type=sym_name,
+                ret_type=walker_node.sym_name,
                 param_types=param_types,
                 param_names=param_names,
                 ast_node=walker_node,
                 source_module=module_name,
+                type_scope=walker_mod.loc.mod_path if walker_mod else '',
                 kind='walker',
                 provider_app=provider_app
             );
@@ -334,28 +337,14 @@ impl BoundaryAnalysisPass._register_sv_import(
         if ability_node is None and parsed_mod is not None {
             ability_node = self._find_ability(parsed_mod, sym_name);
         }
-        if ability_node is None and cross_app {
+        if ability_node is None
+            and (cross_app or caller_ctx == InteropContext.CLIENT) {
             type_mod = (
                 provider_mod
                     if (provider_mod is not None and not provider_mod.stub_only)
                     else parsed_mod
             );
-            type_node = (
-                self._find_archetype(type_mod, sym_name)
-                    if type_mod is not None
-                    else None
-            );
-            if isinstance(type_node, Enum)
-                or (
-                    isinstance(type_node, Archetype)
-                    and type_node.arch_kind not in ('walker', 'node', 'edge')
-                ) {
-                self._collect_boundary_type(sym_name, type_mod);
-                continue;
-            }
-            if isinstance(type_node, Archetype)
-                and type_node.arch_kind in ('node', 'edge') {
-                self._reject_owned_type_import(nd, item, str(type_node.arch_kind));
+            if self._register_type_import(nd, item, type_mod, caller_ctx) {
                 continue;
             }
         }
@@ -452,6 +441,9 @@ impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
 
 impl BoundaryAnalysisPass._register_client_bridged_import(nd: Import) -> None {
     import from jaclang.compiler.driver.boundary_classify {
+        ClientImportVerdict,
+        classify_client_import_item,
+        is_client_boundary_import,
         import_crosses_apps,
         import_provider_app,
         import_provider_route
@@ -466,7 +458,7 @@ impl BoundaryAnalysisPass._register_client_bridged_import(nd: Import) -> None {
         }
         self._record_app_edge(nd);
     }
-    if not facts or not facts.bridged_decls {
+    if not facts or not is_client_boundary_import(nd) {
         return;
     }
     manifest = self.ir_in.gen.interop_manifest;
@@ -481,6 +473,12 @@ impl BoundaryAnalysisPass._register_client_bridged_import(nd: Import) -> None {
         local_name = item.alias.sym_name if item.alias else sym_name;
         ability = facts.bridged_decls.get(sym_name);
         if ability is None {
+            source_mod = self._provider_module_of(nd);
+            if source_mod is not None
+                and classify_client_import_item(source_mod, item)
+                    != ClientImportVerdict.CLIENT {
+                self._register_type_import(nd, item, source_mod, InteropContext.CLIENT);
+            }
             continue;
         }
         (ret_type, param_types, param_names) = self._signature_of_decl(ability);
@@ -500,6 +498,35 @@ impl BoundaryAnalysisPass._register_client_bridged_import(nd: Import) -> None {
     if provider_app and provider_route {
         manifest.provider_routes[provider_app] = provider_route;
     }
+}
+
+impl BoundaryAnalysisPass._register_type_import(
+    nd: Import,
+    item: ModuleItem,
+    source_mod: (Module | None),
+    caller_ctx: InteropContext
+) -> bool {
+    import from jaclang.compiler.driver.boundary_classify { import_provider_app }
+    info = self._collect_boundary_type(item.name.value, source_mod);
+    if info is None or info.kind not in ('obj', 'enum', 'node', 'edge') {
+        return False;
+    }
+    if caller_ctx == InteropContext.SERVER and info.kind in ('node', 'edge') {
+        self._reject_owned_type_import(nd, item, info.kind);
+        return True;
+    }
+    local_name = item.alias.sym_name if item.alias else item.name.value;
+    self.ir_in.gen.interop_manifest.bindings[local_name] = InteropBinding(
+        name=item.name.value,
+        source_context=InteropContext.SERVER,
+        callers={caller_ctx},
+        ret_type=item.name.value,
+        source_module=nd.from_loc.base_module_name if nd.from_loc else '',
+        type_scope=(source_mod or self.ir_in).loc.mod_path,
+        kind='type',
+        provider_app=import_provider_app(nd) or ''
+    );
+    return True;
 }
 
 impl BoundaryAnalysisPass._provider_module_of(nd: Import) -> (Module | None) {
@@ -1070,7 +1097,7 @@ impl BoundaryAnalysisPass._extract_all_type_names(expr: (UniNode | None)) -> lis
 
 impl BoundaryAnalysisPass._collect_boundary_type(
     type_name: str, source_mod: (Module | None)
-) -> None {
+) -> (BoundaryTypeInfo | None) {
     prims = {
         'str',
         'int',
@@ -1089,11 +1116,13 @@ impl BoundaryAnalysisPass._collect_boundary_type(
         'JsxElement'
     };
     if type_name in prims {
-        return;
+        return None;
     }
     manifest = self.ir_in.gen.interop_manifest;
-    if type_name in manifest.boundary_types {
-        return;
+    scope = source_mod.loc.mod_path if source_mod else self.ir_in.loc.mod_path;
+    scope_names = manifest.boundary_type_names.setdefault(scope, {});
+    if type_name in scope_names {
+        return manifest.boundary_types[scope_names[type_name]];
     }
 
     search_mods: list[Module] = [];
@@ -1142,18 +1171,32 @@ impl BoundaryAnalysisPass._collect_boundary_type(
         arch_node = self._parse_imported_archetype(type_name, search_mods);
     }
     if arch_node is None {
-        return;
+        return None;
+    }
+
+    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+    arch_mod = arch_node.find_parent_of_type(Module) or source_mod or self.ir_in;
+    type_id = endpoint_key(arch_mod, 'type', arch_node.sym_name);
+    scope_names[type_name] = type_id;
+    manifest.boundary_type_names.setdefault(arch_mod.loc.mod_path, {})[
+        arch_node.sym_name
+    ] = type_id;
+    if type_id in manifest.boundary_types {
+        return manifest.boundary_types[type_id];
     }
 
     if isinstance(arch_node, Archetype) {
         _ak = arch_node.arch_kind;
         kind: str = "obj";
-        if (isinstance(_ak, str) and _ak in ("node", "walker")) {
+        if (isinstance(_ak, str) and _ak in ("node", "edge", "walker")) {
             kind = _ak;
         }
         fields: list[tuple[(str, str)]] = [];
         fdefaults: dict[(str, any)] = {};
         nested: list[str] = [];
+        for base in arch_node.base_classes {
+            nested.extend(self._extract_all_type_names(base));
+        }
 
         if arch_node.body {
             body_items = arch_node.body
@@ -1194,19 +1237,20 @@ impl BoundaryAnalysisPass._collect_boundary_type(
             }
         }
         info = BoundaryTypeInfo(
-            name=type_name,
+            name=arch_node.sym_name,
             kind=kind,
+            type_id=type_id,
+            type_scope=arch_mod.loc.mod_path,
             fields=fields,
             field_defaults=fdefaults,
             nested_types=nested
         );
-        manifest.boundary_types[type_name] = info;
+        manifest.boundary_types[type_id] = info;
 
-        arch_mod = arch_node.find_parent_of_type(Module);
         for nt in nested {
-            self._collect_boundary_type(nt, arch_mod or source_mod);
+            self._collect_boundary_type(nt, arch_mod);
         }
-        return;
+        return info;
     }
 
     if isinstance(arch_node, Enum) {
@@ -1257,10 +1301,17 @@ impl BoundaryAnalysisPass._collect_boundary_type(
                 }
             }
         }
-        info = BoundaryTypeInfo(name=type_name, kind="enum", enum_members=members);
-        manifest.boundary_types[type_name] = info;
-        return;
+        info = BoundaryTypeInfo(
+            name=arch_node.sym_name,
+            kind="enum",
+            type_id=type_id,
+            type_scope=arch_mod.loc.mod_path,
+            enum_members=members
+        );
+        manifest.boundary_types[type_id] = info;
+        return info;
     }
+    return None;
 }
 
 impl BoundaryAnalysisPass._literal_default(
@@ -1376,6 +1427,9 @@ impl BoundaryAnalysisPass.after_pass -> None {
                 }
                 walk_node = walk_node.parent;
             }
+            binding.type_scope = cl_src_mod.loc.mod_path
+                if cl_src_mod
+                else self.ir_in.loc.mod_path;
             sig = binding.ast_node.signature;
             if isinstance(sig, FuncSignature) {
                 if sig.return_type {
@@ -1406,6 +1460,7 @@ impl BoundaryAnalysisPass.after_pass -> None {
                 walker_node = walker_node.parent;
             }
             sig = binding.ast_node.signature;
+            binding.type_scope = source_mod_obj.loc.mod_path if source_mod_obj else '';
             if isinstance(sig, FuncSignature) {
                 if sig.return_type {
                     for tn in self._extract_all_type_names(sig.return_type) {
@@ -1446,7 +1501,7 @@ impl BoundaryAnalysisPass.after_pass -> None {
 
     import from jaclang.compiler.frontend.codeinfo { endpoint_key }
     for binding in self.ir_in.gen.interop_manifest.bindings.values() {
-        if binding.ast_node is None {
+        if binding.ast_node is None or binding.kind == 'type' {
             continue;
         }
         source = binding.ast_node.find_parent_of_type(Module);

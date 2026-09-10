@@ -2,6 +2,13 @@ impl InteropBinding.is_cross_module.getter -> bool {
     return (self.source_module is not None);
 }
 
+impl InteropManifest.boundary_types_for(scope: str) -> dict[str, BoundaryTypeInfo] {
+    return {
+        name: self.boundary_types[type_id]
+        for (name, type_id) in self.boundary_type_names.get(scope, {}).items()
+    };
+}
+
 impl InteropManifest.native_imports.getter -> list[InteropBinding] {
     return [
         b
