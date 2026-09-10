@@ -543,8 +543,8 @@ impl linearize_mro(
     _visiting.add(key);
     try {
         for base in cls.shared.base_classes {
-            if isinstance(base, ClassType) and not base.shared.mro {
-                compute_mro_linearization(base, _visiting);
+            if isinstance(base, ClassType) {
+                ensure_mro_fresh(base, _visiting);
             }
         }
 

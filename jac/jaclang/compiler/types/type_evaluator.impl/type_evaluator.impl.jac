@@ -3011,12 +3011,22 @@ impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> boo
 }
 
 impl TypeEvaluator._heal_ancestry(cls: ClassType) -> None {
-    if cls.shared._provisional {
-        self._heal_class_bases(cls);
-    }
-    for ancestor in list(cls.shared.mro or []) {
-        if ancestor.shared._provisional {
-            self._heal_class_bases(ancestor);
+    import from jaclang.compiler.types.type_utils { ensure_mro_fresh }
+    for _round in range(8) {
+        healed = False;
+        if cls.shared._provisional {
+            self._heal_class_bases(cls);
+            healed = True;
+        }
+        ensure_mro_fresh(cls);
+        for ancestor in list(cls.shared.mro or []) {
+            if ancestor.shared._provisional {
+                self._heal_class_bases(ancestor);
+                healed = True;
+            }
+        }
+        if not healed {
+            return;
         }
     }
 }
@@ -3030,10 +3040,10 @@ impl TypeEvaluator._heal_class_bases(cls: ClassType) -> None {
         shared._provisional = False;
         return;
     }
-    if shared._heal_stamp == id(self) {
+    if shared._heal_stamp in (id(self), -id(self)) {
         return;
     }
-    shared._heal_stamp = id(self);
+    shared._heal_stamp = -id(self);
     shared._provisional = False;
     bases: list[TypeBase] = [];
     unresolved = False;
@@ -3053,6 +3063,7 @@ impl TypeEvaluator._heal_class_bases(cls: ClassType) -> None {
         shared._heal_stamp = 0;
         return;
     }
+    shared._heal_stamp = id(self);
     if not [
         b
         for b in bases
