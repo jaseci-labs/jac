@@ -178,6 +178,11 @@ def check_host_call(call: any) -> None {
         provider.find_parent_of_type(Module)
     ).items() {
         if name not in methods {
+            import os;
+            if os.environ.get("JAC_XREF_PROBE", "") {
+                import from jaclang.compiler.types.probe_dump { dump_host_contract }
+                dump_host_contract(scope, host_type, name, sorted(methods.keys()));
+            }
             raise ValueError(f"Host is missing native import '{name}'");
         }
         supplied = function_contract(methods[name], host=True);

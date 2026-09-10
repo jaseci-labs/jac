@@ -40,6 +40,26 @@ def _mod_of(t: any) -> any {
     return cur;
 }
 
+def _state(prog: any, selfhost_prog: any, m: any) -> str {
+    if m is None {
+        return "nomod";
+    }
+    mp = m.loc.mod_path if m.loc is not None else "";
+    if prog is None {
+        return f"?[{os.path.basename(mp)}]";
+    }
+    found = prog.find_module(mp) if mp else None;
+    state = "gone";
+    if found is m {
+        state = "live";
+    } elif found is not None {
+        state = "stale";
+    }
+    in_t = "y" if mp in prog.mod.hub else "n";
+    in_s = "y" if mp in selfhost_prog.mod.hub else "n";
+    return f"{state}[t={in_t},s={in_s}]";
+}
+
 def _rec(prog: any, selfhost_prog: any, t: any) -> str {
     if not isinstance(t, ClassType) or t._shared is None {
         return f"<{type(t).__name__}>";
@@ -49,22 +69,7 @@ def _rec(prog: any, selfhost_prog: any, t: any) -> str {
     if key is not None {
         site = f"{os.path.basename(key[0])}:{key[1]}:{key[2]}";
     }
-    m = _mod_of(t);
-    state = "nomod";
-    if m is not None {
-        mp = m.loc.mod_path if m.loc is not None else "";
-        found = prog.find_module(mp) if mp else None;
-        if found is m {
-            state = "live";
-        } elif found is not None {
-            state = "stale";
-        } else {
-            state = "gone";
-        }
-        in_t = "y" if mp in prog.mod.hub else "n";
-        in_s = "y" if mp in selfhost_prog.mod.hub else "n";
-        state = f"{state}[t={in_t},s={in_s}]";
-    }
+    state = _state(prog, selfhost_prog, _mod_of(t));
     mro_names = ",".join([c.shared.class_name for c in (t.shared.mro or [])]);
     base_names = ",".join(
         [
@@ -81,33 +86,98 @@ def _rec(prog: any, selfhost_prog: any, t: any) -> str {
     );
 }
 
+def _progs(evaluator: any) -> tuple {
+    prog = evaluator.program;
+    return (prog, prog._get_compiler().selfhost.program);
+}
+
+def _tail(tag: str, prog: any, selfhost_prog: any) -> str {
+    te_state = "set" if selfhost_prog.type_evaluator is not None else "none";
+    return (
+        f"[{tag}]   selfhost_te={te_state} "
+        f"selfhost_hub={len(selfhost_prog.mod.hub)} "
+        f"target_hub={len(prog.mod.hub)} "
+        f"depth={prog.scratch.compile_depth}/{selfhost_prog.scratch.compile_depth}"
+    );
+}
+
 def dump_assign_fail(evaluator: any, src_type: any, dest_type: any, tag: str) {
     try {
-        prog = evaluator.program;
-        selfhost_prog = prog._get_compiler().selfhost.program;
+        (prog, sh) = _progs(evaluator);
         lines = [
-            f"[{tag}] pid={os.getpid()} src={_rec(prog, selfhost_prog, src_type)}",
-            f"[{tag}]   dest={_rec(prog, selfhost_prog, dest_type)}"
+            f"[{tag}] pid={os.getpid()} src={_rec(prog, sh, src_type)}",
+            f"[{tag}]   dest={_rec(prog, sh, dest_type)}"
         ];
         if isinstance(src_type, ClassType) and src_type._shared is not None {
             for b in (src_type.shared.base_classes or []) {
-                lines.append(f"[{tag}]   src.base={_rec(prog, selfhost_prog, b)}");
+                lines.append(f"[{tag}]   src.base={_rec(prog, sh, b)}");
                 if isinstance(b, ClassType) and b._shared is not None {
                     for bb in (b.shared.base_classes or []) {
-                        lines.append(
-                            f"[{tag}]     src.base.base={_rec(prog, selfhost_prog, bb)}"
-                        );
+                        lines.append(f"[{tag}]     src.base.base={_rec(prog, sh, bb)}");
                     }
                 }
             }
         }
-        te_state = "set" if selfhost_prog.type_evaluator is not None else "none";
-        lines.append(
-            f"[{tag}]   selfhost_te={te_state} "
-            f"selfhost_hub={len(selfhost_prog.mod.hub)} "
-            f"target_hub={len(prog.mod.hub)} "
-            f"depth={prog.scratch.compile_depth}/{selfhost_prog.scratch.compile_depth}"
-        );
+        lines.append(_tail(tag, prog, sh));
+        sys.stderr.write("\n".join(lines) + "\n");
+    } except Exception as e {
+        sys.stderr.write(f"[{tag}-PROBE-ERR] {e!r}" + "\n");
+    }
+}
+
+def dump_member_miss(evaluator: any, obj_type: any, member: str, tag: str) {
+    try {
+        (prog, sh) = _progs(evaluator);
+        lines = [
+            f"[{tag}] pid={os.getpid()} member={member} obj={_rec(prog, sh, obj_type)}"
+        ];
+        if isinstance(obj_type, ClassType) and obj_type._shared is not None {
+            for cls in (obj_type.shared.mro or []) {
+                hit = "miss";
+                try {
+                    syms: list = [];
+                    if cls.lookup_member_symbol(member, syms) {
+                        hit = "HIT";
+                    }
+                } except Exception as e {
+                    hit = f"err:{e!r}";
+                }
+                lines.append(f"[{tag}]   mro {hit} {_rec(prog, sh, cls)}");
+            }
+            for b in (obj_type.shared.base_classes or []) {
+                lines.append(f"[{tag}]   base={_rec(prog, sh, b)}");
+                if isinstance(b, ClassType) and b._shared is not None {
+                    for bb in (b.shared.base_classes or []) {
+                        lines.append(f"[{tag}]     base.base={_rec(prog, sh, bb)}");
+                    }
+                }
+            }
+        }
+        lines.append(_tail(tag, prog, sh));
+        sys.stderr.write("\n".join(lines) + "\n");
+    } except Exception as e {
+        sys.stderr.write(f"[{tag}-PROBE-ERR] {e!r}" + "\n");
+    }
+}
+
+def dump_host_contract(scope: any, host_type: any, name: str, methods: list) {
+    tag = "E5110-DUMP";
+    try {
+        import from jaclang.runtime.runtime { JacRuntime }
+        sh = JacRuntime.get_compiler().selfhost.program;
+        lines = [
+            f"[{tag}] pid={os.getpid()} missing={name} host={_rec(sh, sh, host_type)}",
+            f"[{tag}]   methods_seen={methods}"
+        ];
+        for base in (scope?.base_classes or []) {
+            bt = base?.type;
+            rec = _rec(sh, sh, bt) if isinstance(bt, ClassType) else "";
+            lines.append(
+                f"[{tag}]   base_expr={type(base).__name__} "
+                f"base.type={type(bt).__name__} {rec}"
+            );
+        }
+        lines.append(f"[{tag}]   selfhost_hub={len(sh.mod.hub)}");
         sys.stderr.write("\n".join(lines) + "\n");
     } except Exception as e {
         sys.stderr.write(f"[{tag}-PROBE-ERR] {e!r}" + "\n");

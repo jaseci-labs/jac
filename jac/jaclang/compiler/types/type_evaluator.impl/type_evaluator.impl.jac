@@ -896,6 +896,15 @@ impl TypeEvaluator._get_type_of_expression_core(
                             )
                         );
                         if not _has_tvars {
+                            import os;
+                            if os.environ.get("JAC_XREF_PROBE", "") {
+                                import from jaclang.compiler.types.probe_dump {
+                                    dump_member_miss
+                                }
+                                dump_member_miss(
+                                    self, lookup_type, expr.right.value, "E1030-DUMP"
+                                );
+                            }
                             self.emit_diag(
                                 E1030,
                                 expr.right,
@@ -1087,6 +1096,15 @@ impl TypeEvaluator._get_type_of_expression_core(
                             )
                         );
                         if not _has_tvars {
+                            import os;
+                            if os.environ.get("JAC_XREF_PROBE", "") {
+                                import from jaclang.compiler.types.probe_dump {
+                                    dump_member_miss
+                                }
+                                dump_member_miss(
+                                    self, base_type, expr.right.value, "E1030-DUMP"
+                                );
+                            }
                             self.emit_diag(
                                 E1030,
                                 expr.right,
