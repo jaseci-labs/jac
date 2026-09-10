@@ -690,6 +690,13 @@ impl TypeEvaluator._get_type_of_expression_core(
                     );
 
                     if not target_already_unknown {
+                        import os;
+                        if os.environ.get("JAC_XREF_PROBE", "") {
+                            import from jaclang.compiler.types.probe_dump {
+                                dump_unknown
+                            }
+                            dump_unknown(self, expr.target, "E1032-DUMP");
+                        }
                         self.emit_diag(E1032, expr.right, attr=expr.right.value);
                     }
                     return UnknownType();

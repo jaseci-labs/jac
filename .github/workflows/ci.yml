@@ -263,8 +263,12 @@ jobs:
             echo "foreign recompiles: $(grep -c 'FOREIGN-RECOMPILE' "probe-$TAG.err")"
             echo "mro-trunc dumps: $(grep -c '^\[MRO-TRUNC\] pid' "probe-$TAG.err")"
             echo "e1053 dumps: $(grep -c '^\[E1053-DUMP\] pid' "probe-$TAG.err")"
-            echo "-- E1053 / MRO-TRUNC dumps (first 80 lines) --"
-            grep -E '^\[(E1053-DUMP|MRO-TRUNC)\]' "probe-$TAG.err" | head -80
+            echo "e1032 dumps: $(grep -c '^\[E1032-DUMP\] pid' "probe-$TAG.err")"
+            echo "e1053 unknown-arg dumps: $(grep -c '^\[E1053-UNKNOWN\] pid' "probe-$TAG.err")"
+            echo "-- E1032 / E1053-UNKNOWN dumps (first 60 lines) --"
+            grep -E '^\[(E1032-DUMP|E1053-UNKNOWN)\] pid' "probe-$TAG.err" | head -60
+            echo "-- E1053 / MRO-TRUNC dumps (first 40 lines) --"
+            grep -E '^\[(E1053-DUMP|MRO-TRUNC)\]' "probe-$TAG.err" | head -40
             echo "-- orphan/fail/cycle detail (top 20) --"
             grep -oE '\[(XREF-ORPHAN|XREF-FAIL|CYCLE-STUB)\].*' "probe-$TAG.err" \
               | sort | uniq -c | sort -rn | head -20

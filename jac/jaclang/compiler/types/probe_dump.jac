@@ -1,6 +1,6 @@
 import os;
 import sys;
-import from jaclang.compiler.types.types { ClassType }
+import from jaclang.compiler.types.types { ClassType, UnknownType }
 import from jaclang.compiler.frontend.unitree { Module }
 
 def probe_on -> bool {
@@ -157,6 +157,71 @@ def dump_member_miss(evaluator: any, obj_type: any, member: str, tag: str) {
         }
         lines.append(_tail(tag, prog, sh));
         sys.stderr.write("\n".join(lines) + "\n");
+    } except Exception as e {
+        sys.stderr.write(f"[{tag}-PROBE-ERR] {e!r}" + "\n");
+    }
+}
+
+def _expr_head_node(expr: any) -> any {
+    cur = expr;
+    hops = 0;
+    while cur is not None and hops < 12 {
+        hops += 1;
+        nxt = cur?.target;
+        if nxt is None {
+            break;
+        }
+        cur = nxt;
+    }
+    return cur;
+}
+
+def describe_expr(evaluator: any, expr: any, sh: any) -> str {
+    prog = evaluator.program;
+    head_node = _expr_head_node(expr);
+    memo = expr?.type;
+    parts = [f"expr={type(expr).__name__}", f"head_node={type(head_node).__name__}"];
+    val = head_node?.value;
+    if isinstance(val, str) {
+        parts.append(f"name={val}");
+    }
+    memo_desc = type(memo).__name__;
+    if isinstance(memo, UnknownType) {
+        memo_desc = f"{memo_desc}[diag={memo.is_diagnosed},inc={memo.is_incomplete}]";
+    }
+    parts.append(f"memo={memo_desc}");
+    sym = head_node?.sym;
+    if sym is None {
+        parts.append("sym=None");
+        return " ".join(parts);
+    }
+    prov = type(sym.provider).__name__ if sym.provider is not None else "None";
+    parts.append(
+        f"sym_type={getattr(sym, 'sym_type', '?')} imported={getattr(
+            sym, 'imported', '?'
+        )} provider={prov}"
+    );
+    decl = sym?.decl;
+    m = decl.find_parent_of_type(Module) if decl is not None else None;
+    if m is None {
+        parts.append("decl_mod=None");
+    } else {
+        mp = m.loc.mod_path if m.loc is not None else "";
+        typed = prog.analysis.analyses_run.provides(m, "TypeOf");
+        parts.append(
+            f"decl_mod={os.path.basename(mp)} {_state(prog, sh, m)} typed={typed}"
+        );
+    }
+    return " ".join(parts);
+}
+
+def dump_unknown(evaluator: any, expr: any, tag: str) {
+    try {
+        (prog, sh) = _progs(evaluator);
+        sys.stderr.write(
+            f"[{tag}] pid={os.getpid()} {describe_expr(evaluator, expr, sh)}" + "\n"
+        );
+        sys.stderr.write(_tail(tag, prog, sh) + "\n");
     } except Exception as e {
         sys.stderr.write(f"[{tag}-PROBE-ERR] {e!r}" + "\n");
     }
