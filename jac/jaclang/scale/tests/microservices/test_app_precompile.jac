@@ -272,7 +272,8 @@ test "a real pod binary seals and serves an entry named app" {
         '[project]\nname="mini"\nkind="service"\nentry-point="app.jac"\n'
     );
     (base / "app.jac").write_text(
-        'walker:pub echo { can run with Root entry { report "hello"; } }\n'
+        'import from svc { ping }\n'
+            + 'walker:pub echo { can run with Root entry { report "hello"; } }\n'
     );
     raw = pack_jab(str(base), jac_bin.read_bytes());
     names = _names(raw);

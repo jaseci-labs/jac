@@ -6,7 +6,7 @@ import tempfile;
 import time;
 import from pathlib { Path }
 import type from jaclang.runtime.prepared { PreparedApplication }
-glob _FORMAT: int = 2,
+glob _FORMAT: int = 4,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
 def _inventory(`root: any, inputs: bool = False) -> dict {
@@ -163,6 +163,7 @@ def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict {
     client = mod.gen.client_manifest;
     return `dict(
         `root=`root,
+        app=mod.app or '',
         client=`dict(
             exports=`list(client.exports),
             globals=`list(client.globals),
@@ -423,6 +424,10 @@ def _prepare(
     }
     if (record is not None) {
         console.print('  Restoring prepared application');
+        if not record['has_client'] {
+            revision.client_compiler = None;
+            revision.client_dist = '';
+        }
         revision.code = record['code'];
         revision.manifests = record['manifests'];
         for (path, sections) in record['sections'].items() {
@@ -450,7 +455,13 @@ def _prepare(
         modules[path] = compile_application(program, path, options);
         _check(program, before);
     }
-    if client {
+    entry_client = modules[`entry].gen.client_manifest;
+    has_client = client
+        and bool(
+            (entry_client is not None and entry_client.has_client)
+                or (Path(`entry).parent / 'pages').is_dir()
+        );
+    if has_client {
         console.print('  Compiling client and native artifacts...');
         revision.client_compiler.compile(None, Path(`entry));
         if not dev {
@@ -461,6 +472,9 @@ def _prepare(
         }
         revision.client_compiler._emit_na_wasm(Path(`entry));
         _check(program, before);
+    } else {
+        revision.client_compiler = None;
+        revision.client_dist = '';
     }
     routes = prepare_route_metadata(os.path.dirname(`entry), program);
     for path in entries {
@@ -509,7 +523,7 @@ def _prepare(
         pending.update((runtime_sources(code, path, `root) - revision.code.keys()));
     }
     outputs = {};
-    if client {
+    if has_client {
         for directory in (
             revision.client_compiler.compiled_dir,
             revision.client_compiler.vite_bundler.output_dir
@@ -551,6 +565,7 @@ def _prepare(
         cache,
         `dict(
             key=key,
+            has_client=has_client,
             code=revision.code,
             manifests=revision.manifests,
             sections=sections,

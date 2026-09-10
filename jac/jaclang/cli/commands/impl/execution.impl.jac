@@ -90,7 +90,7 @@ def _takes_over_app(config: any, file_path: str) -> bool {
     if config is None {
         return False;
     }
-    app = config.app_for_path(file_path);
+    app = _file_app(config, file_path, None);
     if app is None or not _app_serves(config, app) {
         return False;
     }
@@ -638,7 +638,8 @@ def _file_app(cfg: any, target: str, takeover: (bool | None)) -> any {
         return None;
     }
     app = cfg.app_for_path(os.path.abspath(target));
-    if app is None and takeover is True {
+    if app is None
+        and (takeover is True or (not cfg.is_workspace and takeover is not False)) {
         try {
             app = cfg.resolve_app("");
         } except ValueError {
@@ -1371,6 +1372,7 @@ impl serve(
             hot_reloader = HotReloader(
                 base_path=base,
                 module_name=mod,
+                entry_path=prepared.entry,
                 watcher=watcher,
                 client_compiler=client_compiler
             );

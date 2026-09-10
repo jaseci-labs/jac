@@ -158,6 +158,28 @@ test "jac check --app with an unknown name lists the apps" {
     _cleanup();
 }
 
+test "imported modules use their selected app lint policy" {
+    d = _workspace();
+    config = Path(d) / "jac.toml";
+    config.write_text(
+        config.read_text()
+            + '\n[check.lint]\nselect = ["no-print"]\n'
+            + '\n[apps.cli.check.lint]\nignore = ["no-print"]\n'
+    );
+    helper = Path(d) / HELPER;
+    helper.write_text(helper.read_text() + '\ndef announce { print("hello"); }\n');
+    try {
+        for iteration in range(2) {
+            (rc, out) = _check_in(d, app="cli");
+            assert rc == 0 and "E3012" not in out , out;
+            (rc, out) = _check_in(d, app="web");
+            assert rc != 0 and "E3012" in out , out;
+        }
+    } finally {
+        _cleanup();
+    }
+}
+
 test "jac check <path> keeps the file-per-root behavior" {
     d = _workspace();
     (rc, out) = _check_in(d, paths=[HELPER]);

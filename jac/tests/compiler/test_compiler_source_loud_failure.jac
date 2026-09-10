@@ -177,10 +177,12 @@ test "a broken compiler source fails loudly instead of dropping backends" {
 
 test "an absent backend still degrades to the bytecode-only fallback" {
     sched = _codegen_with(_absent_backend());
-    assert sched == [JcirGenPass, JcirBytecodeGenPass];
+    assert [p.__name__ for p in sched]
+        == ["NativeImportFactsPass", "JcirGenPass", "JcirBytecodeGenPass"];
 }
 
 test "a broken module outside the compiler tree still degrades" {
     sched = _codegen_with(_broken_backend(USER_SRC));
-    assert sched == [JcirGenPass, JcirBytecodeGenPass];
+    assert [p.__name__ for p in sched]
+        == ["NativeImportFactsPass", "JcirGenPass", "JcirBytecodeGenPass"];
 }

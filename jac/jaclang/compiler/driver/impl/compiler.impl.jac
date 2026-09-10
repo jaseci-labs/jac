@@ -1232,6 +1232,11 @@ impl JacCompiler.compile(
         context_program
     }
     caller_program = target_program;
+    if self._reentrant_depth == 0 and not options.entry_point {
+        import copy;
+        options = copy.copy(options);
+        options.entry_point = os.path.realpath(file_path);
+    }
     resolved_program = self.selfhost.resolve(file_path, target_program)
         if not options.force_target_program
         else target_program;
@@ -1441,6 +1446,9 @@ impl JacCompiler.compile(
                 self._reentrant_depth = _depth_prev;
                 if _depth_prev == 0 {
                     self._closure_opts = None;
+                    if caller_program is not target_program {
+                        self._release_compile_scratch(caller_program);
+                    }
                 }
                 if _outer_prog is not None and _outer_opts is not None {
                     _outer_prog.options = _outer_opts;

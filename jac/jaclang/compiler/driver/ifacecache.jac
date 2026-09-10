@@ -887,16 +887,15 @@ obj IfaceRegistry {
             modkey = "";
         }
         inferred = bool(getattr(mod, "codespace_inferred", False));
-        frontier = self._closure_is_frontier(options);
         memo = self._iface_bytes.get(resolved);
         payload: (bytes | None) = None;
-        if inferred or not frontier {
+        if inferred {
             digest = self._disk_iface_digest(resolved);
         } elif modkey and memo is not None and memo[0] == modkey {
             payload = memo[1];
             digest = memo[2];
         } else {
-            return;
+            digest = self._disk_iface_digest(resolved);
         }
         if payload is not None {
             sections[SEC_IFACE] = payload;
@@ -963,19 +962,6 @@ obj IfaceRegistry {
                 }
             }
         }
-    }
-
-    def _closure_is_frontier(options: any) -> bool {
-        root_opts: any = None;
-        try {
-            root_opts = self.prog._get_compiler()._closure_opts;
-        } except Exception {
-            root_opts = None;
-        }
-        if root_opts is None {
-            root_opts = options;
-        }
-        return bool(root_opts.no_cgen or root_opts.symtab_ir_only);
     }
 
     def _disk_iface_digest(resolved: str) -> str {

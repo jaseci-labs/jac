@@ -31,6 +31,7 @@ obj ModuleCompilation {
             and not self.compiler.selfhost.is_selfhost(self.program)
             and existing is not None
             and not existing.stub_only
+            and not existing.parse_failed
             and self.program.is_hub_entry_fresh(os.path.realpath(self.path))
             and id(existing) in self.program.analysis.completed_passes {
             self.module = existing;
@@ -274,8 +275,10 @@ obj ModuleCompilation {
         if not self.parse_failed
             and not self.blocked
             and self.source is None
-            and closure.no_cgen
-            and not closure.symtab_ir_only {
+            and (
+                (self.options.no_cgen and not self.options.symtab_ir_only)
+                or (closure.no_cgen and not closure.symtab_ir_only)
+            ) {
             import from jaclang.compiler.driver.pipeline {
                 require_product,
                 CompilationProduct

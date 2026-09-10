@@ -14,6 +14,31 @@ import from jaclang.runtime.prepared {
     initialize_application
 }
 
+test "server entries do not build a browser app during cold or warm preparation" {
+    import from jaclang.client.compiler { ViteCompiler }
+    with tempfile.TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'main.jac';
+        path.write_text('walker:pub Ping { can ping with Root entry { report 1; } }\n');
+        try {
+            with patch.object(
+                ViteCompiler,
+                'compile',
+                side_effect=AssertionError('server entry requested a browser bundle')
+            ) {
+                for iteration in range(2) {
+                    prepared = prepare_application(
+                        str(path), JacProgram(), tmp, client=True
+                    );
+                    assert prepared.client_compiler is None;
+                    assert prepared.client_dist == '';
+                }
+            }
+        } finally {
+            forget(str(path));
+        }
+    }
+}
+
 
 test "executable import discovery includes package initializers and deferred imports" {
     import from jaclang.compiler.backends.py.artifact_imports { runtime_sources }

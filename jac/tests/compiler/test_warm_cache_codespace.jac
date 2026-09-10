@@ -194,7 +194,8 @@ test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
             "mid-import; a pass reaching that module at run time re-enters it"
         );
         tail = [p.__name__ for p in get_py_code_gen()];
-        assert tail == ["JcirGenPass", "JcirBytecodeGenPass"] , tail;
+        assert tail
+            == ["NativeImportFactsPass", "JcirGenPass", "JcirBytecodeGenPass"] , tail;
     } finally {
         sys.modules[name] = saved;
     }

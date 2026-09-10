@@ -162,7 +162,8 @@ obj CompileOptions {
         result.no_cgen = True;
         result.symtab_ir_only = True;
         result.iface_ok = not need_tree;
-        result.need_full_ast = need_tree or self.need_full_ast;
+        result.need_full_ast = need_tree;
+        result.native_parity = False;
         result.force_target_program = False;
         return result;
     }

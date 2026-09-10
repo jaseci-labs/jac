@@ -111,6 +111,15 @@ def bind_options(
         return bound;
     }
     declared = workspace.app_for_path(path);
+    if declared is None and not workspace.explicit and not bound.target_app {
+        implicit = next(iter(workspace.apps.values()), None);
+        if implicit is not None {
+            bound.target_app = implicit.name;
+            bound.app_kind = implicit.kind;
+            bound.ui = bound.ui or implicit.ui;
+            bound.project_root = workspace.project_root;
+        }
+    }
     if declared is not None {
         bound.target_app = declared.name;
         bound.app_kind = declared.kind;

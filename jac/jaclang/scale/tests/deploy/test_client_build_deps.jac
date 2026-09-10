@@ -172,6 +172,12 @@ test "a dependency the host cannot install does not abort the deploy" {
 
 test "a client build that dies on a missing import names the failed install" {
     project_dir = _project(f'{MISSING_DEP} = ">=1.0"', "jac_nonexistent_module_8010");
+    # Building client artifacts does not execute the server's entry block.
+    # Fail an import the browser needs, while retaining the failed install.
+    (Path(project_dir) / 'main.jac').write_text(
+        'import from .missing_client { Broken }\n'
+            + 'def:pub app -> JsxElement { return <Broken />; }\n'
+    );
     raised = None;
     try {
         _builder(project_dir)._build_client_bundle(project_dir);

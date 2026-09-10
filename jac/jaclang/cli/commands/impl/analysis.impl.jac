@@ -1581,6 +1581,7 @@ impl `test(
         app_root = os.path.dirname(app_cfg.entry_path(cfg_root));
         if not paths
             and not directory
+            and not app_cfg.implicit
             and not (cfg.`test.directory or cfg.`test.directories) {
             paths = [app_cfg.entry_path(cfg_root)];
         }

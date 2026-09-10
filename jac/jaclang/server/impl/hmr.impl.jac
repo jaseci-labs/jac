@@ -197,7 +197,7 @@ impl HotReloader._process_change(file_path: str, is_directory: bool = False) -> 
 
 impl HotReloader._dispatch_change(file_path: str, is_directory: bool = False) -> None {
     import from jaclang.runtime.prepared { application_for }
-    entry_path = str(Path(self.base_path) / (self.module_name + '.jac'));
+    entry_path = str(self._entry_module_path());
     if application_for(entry_path) is not None {
         self._reload_server_module(file_path);
         if self._build_status is BuildStatus.COMPILING {
@@ -292,6 +292,9 @@ impl HotReloader._reemit_native_wasm(file_path: str) -> None {
 }
 
 impl HotReloader._entry_module_path -> Path {
+    if self.entry_path {
+        return Path(self.entry_path);
+    }
     return Path(self.base_path) / f"{self.module_name}.jac";
 }
 
@@ -415,7 +418,7 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
 
     import from jaclang.runtime.prepared { application_for }
-    entry_path = str(Path(self.base_path) / (self.module_name + '.jac'));
+    entry_path = str(self._entry_module_path());
     previous = application_for(entry_path);
     program = Jac.program;
 
@@ -433,7 +436,7 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
 
     try {
         import from jaclang.runtime.prepared { application_for }
-        entry_path = str(Path(self.base_path) / (self.module_name + '.jac'));
+        entry_path = str(self._entry_module_path());
         prepared = application_for(entry_path);
         if prepared is not None {
             import from jaclang.compiler.driver.application { reprepare_application }

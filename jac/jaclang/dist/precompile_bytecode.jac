@@ -291,26 +291,51 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
     return extra;
 }
 
-def precompile_unit(
-    jac_path: str, pkg_root: str, embed_src: bool = False, collect: bool = True
-) -> bytes | None {
-    import from jaclang.compiler.driver.program { JacProgram }
+def precompile_context(
+    jac_path: str, pkg_root: str, program: JacProgram, app: str = ""
+) -> JacProgram {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     import from jaclang.compiler.driver.compilation_context {
         bind_options,
-        context_program,
-        cache_scope
+        context_program
     }
+    compiler = program._get_compiler();
+    selected = compiler.selfhost.resolve(jac_path, program);
+    if compiler.selfhost.is_selfhost(selected) {
+        return selected;
+    }
+    entry_path = os.path.join(pkg_root, '__init__.jac');
+    if os.path.isfile(os.path.join(pkg_root, 'jac.toml')) {
+        import from jaclang.project.config { get_config_for_path }
+        config = get_config_for_path(Path(pkg_root));
+        if config is not None {
+            entry_path = config.resolve_app(app).entry_path(pkg_root);
+        }
+    }
+    options = bind_options(
+        entry_path,
+        program,
+        CompileOptions(entry_point=entry_path, project_root=pkg_root)
+    );
+    options = bind_options(jac_path, program, options);
+    return context_program(program, options);
+}
+
+def precompile_unit(
+    jac_path: str,
+    pkg_root: str,
+    embed_src: bool = False,
+    collect: bool = True,
+    app: str = ""
+) -> bytes | None {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compilation_context { cache_scope }
     if not _unit_program {
         _unit_program.append(JacProgram());
     }
     program = _unit_program[0];
     compiler = program._get_compiler();
-    selected = compiler.selfhost.resolve(jac_path, program);
-    if not compiler.selfhost.is_selfhost(selected) {
-        options = bind_options(jac_path, program, CompileOptions(entry_point=jac_path));
-        selected = context_program(program, options);
-    }
+    selected = precompile_context(jac_path, pkg_root, program, app);
     identity = '' if compiler.selfhost.is_selfhost(selected) else selected.context_key;
     with cache_scope(identity, selected.options) {
         return _precompile_unit(jac_path, pkg_root, selected, embed_src, collect);
@@ -1019,7 +1044,7 @@ def run_precompile(
                 }
             }
             jir_bytes = precompile_unit(
-                jac_path, package_dir, embed_src, collect=not use_pool
+                jac_path, package_dir, embed_src, collect=not use_pool, app=app
             );
             if jir_bytes is None {
                 jir_path.unlink(missing_ok=True);
