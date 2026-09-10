@@ -113,6 +113,34 @@ test "contextual artifacts cannot overwrite another app cache slot" {
     }
 }
 
+test "placement reuses an untyped dependency tree across app contexts" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
+    with TemporaryDirectory() as td {
+        base = Path(td);
+        workspace(base);
+        program = JacProgram();
+        web = context_program(
+            program,
+            bind_options(str(base / 'web.jac'), program, CompileOptions(no_cgen=True))
+        );
+        path = str(base / 'api.jac');
+        first = web.load_dependency_module(path, need_tree=True);
+        api = context_program(web, bind_options(path, web, web.options));
+        assert api is not web;
+        assert not api.analysis.analyses_run.provides(first, AnalysisFact.TYPE_OF);
+        with patch.object(
+            web,
+            'compile',
+            side_effect=AssertionError('placement rebuilt a symbol tree')
+        ) {
+            for iteration in range(3) {
+                assert web.load_dependency_module(path, need_tree=True) is first;
+            }
+        }
+    }
+}
+
 test "implicit projects still identify their entry" {
     with TemporaryDirectory() as td {
         base = Path(td);

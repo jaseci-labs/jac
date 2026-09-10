@@ -177,6 +177,7 @@ impl JacProgram.load_dependency_module(
     mod: uni.Module;
     foreign_untyped = (
         resolved_path in target_hub
+        and not need_tree
         and target_program is not self
         and not resolved_path.endswith('.pyi')
         and not target_hub[resolved_path].stub_only
