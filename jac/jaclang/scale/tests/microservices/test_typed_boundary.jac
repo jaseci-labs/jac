@@ -59,7 +59,7 @@ test "split services recursively reconstruct returned archetypes" {
                     json={},
                     timeout=30
                 );
-                assert response.status_code == 200 , response.text;
+                assert response.status_code == 200 , f"{endpoint}: {response.text}";
                 assert response.json()["data"]["result"] is True , response.text;
             }
             response = requests.post(
@@ -75,6 +75,12 @@ test "split services recursively reconstruct returned archetypes" {
         } finally {
             stop_server(consumer);
             stop_server(provider);
+            for server in [consumer, provider] {
+                if server is not None {
+                    (stdout, stderr) = server.communicate();
+                    print(stdout + stderr);
+                }
+            }
         }
     }
 }
