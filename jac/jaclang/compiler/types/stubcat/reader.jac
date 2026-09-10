@@ -964,6 +964,18 @@ obj StubCatalog {
                     resolved = None;
                 }
             }
+            if os.environ.get("JAC_XREF_PROBE", "") {
+                import sys;
+                tag = "XREF-ORPHAN" if resolved is None else "XREF-OK";
+                sys.stderr.write(
+                    f"[{tag}] {name} dotted={dotted} home={self.abs_path(
+                        self._mod_recs[xmid][1]
+                    )
+                        if xmid >= 0
+                        else '<none>'}"
+                        + "\n"
+                );
+            }
             if resolved is None {
                 resolved = ClassDetailsShared(
                     class_name=name,

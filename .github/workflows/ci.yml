@@ -194,6 +194,66 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # TEMPORARY (#8828 validation): repeats the whole-tree sweep with the
+  # XREF probe on, to capture which cross-module class reference orphans
+  # on a run that fails. Delete before merge.
+  jac-check-xref-probe:
+    needs: [changes, build-kit]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        rep: [1, 2, 3, 4]
+    env:
+      JAC_NO_DEV_SOURCE: ""
+      JAC_XREF_PROBE: "1"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - uses: ./.github/actions/jac-kit
+
+      - name: Install plugin deps so jac check resolves scale/byllm imports
+        run: |
+          jac install \
+            "python-dotenv>=1.2.1,<2.0.0" \
+            "prometheus-client>=0.21.0,<1.0.0" \
+            "opentelemetry-sdk>=1.27.0,<2.0.0" \
+            "opentelemetry-exporter-otlp-proto-http>=1.27.0,<2.0.0" \
+            "apscheduler>=3.11.2,<4.0.0" "kubernetes>=34.1.0,<35.0.0" \
+            "docker>=7.1.0,<8.0.0" "boto3>=1.40.0,<2.0.0" \
+            "google-cloud-firestore>=2.21.0,<3.0.0" "google-cloud-storage>=2.19.0,<3.0.0" \
+            "firebase-admin>=6.0.0,<8.0.0" "requests>=2.32.0,<3.0.0" \
+            --global
+          jac install \
+            "litellm>=1.75.2,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+            "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
+            --global
+
+      - name: Run jac check with the XREF probe
+        run: |
+          set +e
+          IGNORE_ARGS="tests checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ')"
+          jac check . --ignore $IGNORE_ARGS --nowarn 2> "probe-${{ matrix.rep }}.err"
+          echo "check_exit=$?"
+          echo "===== XREF orphan/fail summary (rep ${{ matrix.rep }}) ====="
+          grep -oE '\[XREF-(ORPHAN|FAIL)\].*' "probe-${{ matrix.rep }}.err" \
+            | sort | uniq -c | sort -rn | head -80
+          echo "===== totals ====="
+          echo "orphans: $(grep -c 'XREF-ORPHAN' "probe-${{ matrix.rep }}.err")"
+          echo "fails:   $(grep -c 'XREF-FAIL' "probe-${{ matrix.rep }}.err")"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xref-probe-${{ matrix.rep }}
+          path: probe-${{ matrix.rep }}.err
+          if-no-files-found: ignore
+
   jac-check:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}

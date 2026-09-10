@@ -987,9 +987,30 @@ obj IfaceRegistry {
         }
     }
 
+    def _xref_fail(reason: str, module_path: str, class_name: str, extra: str = "") {
+        import os;
+        if not os.environ.get("JAC_XREF_PROBE", "") {
+            return;
+        }
+        import sys;
+        sys.stderr.write(
+            f"[XREF-FAIL] reason={reason} class={class_name} mod={module_path} {extra}"
+                + "\n"
+        );
+    }
+
     def resolve_shared(module_path: str, dotted: str, class_name: str) -> any {
+        import os;
+        forced = os.environ.get("JAC_XREF_FAIL_CLASSES", "");
+        if forced and class_name in forced.split(",") {
+            self._xref_fail("forced", module_path, class_name);
+            return None;
+        }
         mod = self.resolve_module(module_path);
         if mod is None or not dotted {
+            self._xref_fail(
+                "no_module" if mod is None else "no_dotted", module_path, class_name
+            );
             return None;
         }
         parts = dotted.split(".");
@@ -997,11 +1018,13 @@ obj IfaceRegistry {
         for part in parts[:-1] {
             scope = scope.find_scope(part);
             if scope is None {
+                self._xref_fail("no_scope", module_path, class_name, f"part={part}");
                 return None;
             }
         }
         sym = scope.names_in_scope.get(parts[-1]);
         if sym is None {
+            self._xref_fail("no_symbol", module_path, class_name, f"dotted={dotted}");
             return None;
         }
         resolved_type: any = None;
@@ -1012,13 +1035,17 @@ obj IfaceRegistry {
             } else {
                 resolved_type = self.prog.get_type_evaluator().get_type_of_symbol(sym);
             }
-        } except Exception {
+        } except Exception as e {
+            self._xref_fail("resolve_raised", module_path, class_name, f"err={e!r}");
             return None;
         }
         shared = resolved_type?._shared;
         if shared is not None {
             return shared;
         }
+        self._xref_fail(
+            "no_shared", module_path, class_name, f"type={type(resolved_type).__name__}"
+        );
         return None;
     }
 

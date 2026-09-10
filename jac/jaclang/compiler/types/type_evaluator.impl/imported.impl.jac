@@ -478,6 +478,11 @@ impl TypeEvaluator._import_module_from_path(
         if _pending is not None {
             mod = _pending;
         } else {
+            import os;
+            if os.environ.get("JAC_XREF_PROBE", "") {
+                import sys;
+                sys.stderr.write(f"[CYCLE-STUB] {resolved_path}" + "\n");
+            }
             return Module.make_stub(inject_name=Path(resolved_path).stem);
         }
     } else {
