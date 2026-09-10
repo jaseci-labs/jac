@@ -4,12 +4,12 @@ default-app = "consumer"
 
 [apps.scoring]
 kind = "service"
-entry-point = "scoring.jac"
+entry-point = "scoring"
 
 [apps.consumer]
 kind = "service"
-entry-point = "consumer.jac"
+entry-point = "consumer"
 
 [apps.other]
 kind = "service"
-entry-point = "other_service.jac"
+entry-point = "other_service"

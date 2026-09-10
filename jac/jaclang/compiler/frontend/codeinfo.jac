@@ -791,7 +791,10 @@ def endpoint_descriptor(module: any, kind: str, name: str) -> dict {
     import from jaclang.compiler.placement.workspace { workspace_for_path }
     path = module.loc.mod_path;
     workspace = workspace_for_path(path);
-    app = module.app or "";
+    # module.app on a shared module is whichever app is compiling it, so a key
+    # built from it differs between the provider and each consumer process.
+    owner = workspace.app_for_path(path) if workspace else None;
+    app = owner.name if owner is not None else "";
     source = os.path.relpath(path, workspace.project_root)
         if workspace
         else module.name;
