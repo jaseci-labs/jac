@@ -119,10 +119,10 @@ test "gateway-only mode does not report an unserved route healthy" {
         + 'default-app = "web"\n\n'
         + '[apps.web]\n'
         + 'kind = "web-app"\n'
-        + 'entry-point = "main.jac"\n\n'
+        + 'entry-point = "main"\n\n'
         + '[apps.ghost_app]\n'
         + 'kind = "service"\n'
-        + 'entry-point = "ghost_app.jac"\n'
+        + 'entry-point = "ghost_app"\n'
         + 'route = "/ghost"\n\n'
         + '[scale.gateway]\n'
         + f"gateway_port = {port}\n"

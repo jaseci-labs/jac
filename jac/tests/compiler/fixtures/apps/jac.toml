@@ -4,33 +4,33 @@ default-app = "web"
 
 [apps.web]
 kind = "web-app"
-path = "web"
+entry-point = "web.main"
 
 [apps.social]
 kind = "service"
-entry-point = "social_app.jac"
+entry-point = "social_app"
 route = "/api/social"
 
 [apps.cli]
 kind = "cli"
-entry-point = "cli_app.jac"
+entry-point = "cli_app"
 
 [apps.portal]
 kind = "web-app"
-path = "portal"
+entry-point = "portal.main"
 
 [apps.feed]
 kind = "service"
-entry-point = "feed_app.jac"
+entry-point = "feed_app"
 
 [apps.cycle_a]
 kind = "service"
-entry-point = "cycle_a.jac"
+entry-point = "cycle_a"
 
 [apps.cycle_b]
 kind = "service"
-entry-point = "cycle_b.jac"
+entry-point = "cycle_b"
 
 [apps.cli_spawn]
 kind = "cli"
-entry-point = "cli_spawn.jac"
+entry-point = "cli_spawn"

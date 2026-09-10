@@ -5,6 +5,7 @@ import glob;
 import tempfile;
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
+import from jaclang.compiler.driver.application { prepare_application }
 import from jaclang.compiler.frontend.constant { Constants as Con }
 import from jaclang.server { sv_client as __jac_sv }
 import from jaclang.server.bridge { BridgeUnavailable }
@@ -110,6 +111,9 @@ test "eager spawn: ensure_all fail-fast re-raises first error" {
 test "eager spawn: consumer module import registers its providers" {
     tmp = setup_env();
     try {
+        prepare_application(
+            str(Path(tmp) / ("calculator_service" + '.jac')), Jac.get_program(), tmp
+        );
         Jac.jac_import(target="calculator_service", base_path=tmp, lng="jac");
         providers = __jac_sv.get_consumer_providers("calculator_service");
         assert "math_service" in providers;
@@ -121,6 +125,9 @@ test "eager spawn: consumer module import registers its providers" {
 test "eager spawn: sibling flag skips the eager spawn pass" {
     tmp = setup_env();
     try {
+        prepare_application(
+            str(Path(tmp) / ("calculator_service" + '.jac')), Jac.get_program(), tmp
+        );
         Jac.jac_import(target="calculator_service", base_path=tmp, lng="jac");
         __jac_sv._registry.clear();
         __jac_sv.clear_test_clients();
@@ -140,6 +147,9 @@ test "eager spawn: sibling flag skips the eager spawn pass" {
 test "eager spawn: non-sibling consumer resolves declared providers" {
     tmp = setup_env();
     try {
+        prepare_application(
+            str(Path(tmp) / ("calculator_service" + '.jac')), Jac.get_program(), tmp
+        );
         Jac.jac_import(target="calculator_service", base_path=tmp, lng="jac");
         __jac_sv._registry.clear();
         __jac_sv.clear_test_clients();
@@ -160,7 +170,13 @@ test "eager spawn: non-sibling consumer resolves declared providers" {
 test "eager spawn: transitive BFS discovers providers through chain" {
     tmp = setup_env();
     try {
+        prepare_application(
+            str(Path(tmp) / ("level_a" + '.jac')), Jac.get_program(), tmp
+        );
         Jac.jac_import(target="level_a", base_path=tmp, lng="jac");
+        prepare_application(
+            str(Path(tmp) / ("level_b" + '.jac')), Jac.get_program(), tmp
+        );
         Jac.jac_import(target="level_b", base_path=tmp, lng="jac");
 
         assert __jac_sv.get_consumer_providers("level_a") == ["level_b"];

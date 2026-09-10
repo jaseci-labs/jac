@@ -54,7 +54,7 @@ def make_temp_project -> tuple {
 
     jac_toml = project_dir / "jac.toml";
     jac_toml.write_text(
-        '[project]\nname = "test-project"\nversion = "0.1.0"\ndescription = "A test project"\nentry-point = "main.jac"\n\n[dependencies]\nrequests = ">=2.28.0"\n\n[dev-dependencies]\npytest = ">=8.0.0"\n\n[run]\nmain = true\ncache = true\n\n[scripts]\ntest = "jac test"\n'
+        '[project]\nname = "test-project"\nversion = "0.1.0"\ndescription = "A test project"\nentry-point = "main"\n\n[dependencies]\nrequests = ">=2.28.0"\n\n[dev-dependencies]\npytest = ">=8.0.0"\n\n[run]\nmain = true\ncache = true\n\n[scripts]\ntest = "jac test"\n'
     );
 
     src_dir = project_dir / "src";
@@ -795,7 +795,7 @@ test "resolve_plan folds capability deps with manifest priority" {
     try {
         # Manifest pins its own fastapi; the serve capability must not
         # override or duplicate it.
-        toml = '[project]\nname = "svc"\nversion = "0.1.0"\nkind = "service"\nentry-point = "main.jac"\n\n[dependencies]\nfastapi = ">=0.100.0"\n';
+        toml = '[project]\nname = "svc"\nversion = "0.1.0"\nkind = "service"\nentry-point = "main"\n\n[dependencies]\nfastapi = ">=0.100.0"\n';
         project_path = create_test_project(tmp, toml);
         (Path(project_path) / "main.jac").write_text(
             "with entry {\n    print(\"hi\");\n}\n"

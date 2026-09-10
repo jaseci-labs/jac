@@ -43,6 +43,12 @@ def _dev_client_elsewhere -> JSONResponse {
 
 
 def _static_base(server: JacAPIServer) -> str {
+    import from jaclang.server.sealed_serve { sealed_root_for }
+    source_path = getattr(server.module, '__file__', '') or '';
+    image_root = sealed_root_for(source_path) if source_path else None;
+    if image_root is not None {
+        return image_root;
+    }
     ctx = Jac.get_context();
     bp = (ctx.base_path_dir if ctx else '') or Jac.get_base_path_dir();
     return bp or server.base_path;

@@ -13,7 +13,7 @@ def _project(base: Path, assets_dir: str) {
     (base / "main.jac").write_text("def app -> str { return \"hi\"; }\n");
     section = f"[client.assets]\ndir = \"{assets_dir}\"\n" if assets_dir else "";
     (base / "jac.toml").write_text(
-        "[project]\nname = \"assets-probe\"\nversion = \"0.0.1\"\nentry-point = \"main.jac\"\n\n"
+        "[project]\nname = \"assets-probe\"\nversion = \"0.0.1\"\nentry-point = \"main\"\n\n"
             + section
     );
 }

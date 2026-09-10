@@ -212,7 +212,7 @@ def _core_template(
         "kind": kind,
         "is_default_for_kind": True,
         "config": config,
-        "files": {spec.`entry: body},
+        "files": {spec.`entry.replace(".", "/") + ".jac": body},
         "root_gitignore_entries": [".jac/", "jac.local.toml"],
         "directories": [".jac"]
     };

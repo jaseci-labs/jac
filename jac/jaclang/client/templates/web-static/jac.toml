@@ -2,7 +2,7 @@
 name = "{{name}}"
 version = "1.0.0"
 description = "Jac client application: {{name}}"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "web-static"
 
 [dependencies]

@@ -1748,7 +1748,7 @@ to in-browser WebAssembly). Declare it once in `jac.toml`:
 ```toml
 [project]
 name = "browser-app"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "web-static"
 
 [client]
@@ -1898,7 +1898,7 @@ A mobile app is a **mobUI** app: one source tree that compiles to both native (A
 ```toml
 [apps.mobile]
 kind = "mobile"
-path = "mobile"
+entry-point = "mobile.main"
 platform = "android"      # optional default for `jac run mobile` / `jac build mobile`
 ```
 

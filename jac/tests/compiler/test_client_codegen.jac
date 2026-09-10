@@ -17,7 +17,7 @@ test "endpoint identity preserves compact JSON and escaping" {
         mod = SimpleNamespace(
             loc=SimpleNamespace(mod_path=os.path.join(directory, "identity.jac")),
             name='module, "quoted"',
-            owner_app=""
+            app=""
         );
         name = 'name with spaces, "quotes" and \\slashes';
         descriptor = endpoint_descriptor(mod, "func", name);

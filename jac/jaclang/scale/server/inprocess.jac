@@ -85,16 +85,28 @@ def prepare_inprocess_runtime(
         if mod in sys.modules {
             del sys.modules[mod];
         }
-        Jac.jac_import(target=mod, base_path=base, lng="jac");
         import from jaclang.project.config { get_config_for_dir }
-        import from jaclang.server.assembly { assemble_served_program }
+        import from jaclang.server.assembly { service_apps }
+        import from jaclang.compiler.driver.application { prepare_application }
+        import from jaclang.runtime.prepared { initialize_application }
         cfg = get_config_for_dir(base);
         served = cfg.app_for_path(os.path.abspath(jac_file))
             if cfg is not None
             else None;
-        if cfg is not None and served is not None and not served.implicit {
-            assemble_served_program(cfg, served, base);
-        }
+        project_root = str(cfg.project_root) if cfg and cfg.project_root else base;
+        static_only = bool((overrides or {}).get('static_only', False));
+        services = service_apps(cfg, served)
+            if cfg and served and not static_only
+            else [];
+        prepared = prepare_application(
+            jac_file,
+            Jac.get_program(),
+            project_root,
+            [svc.entry_path(project_root) for svc in services]
+        );
+        mod = initialize_application(
+            prepared, cfg, None if static_only else served
+        ).__name__;
 
         serve_overrides: dict[str, any] = {'no_client': True};
         serve_overrides.update(overrides or {});

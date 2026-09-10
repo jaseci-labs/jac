@@ -264,8 +264,7 @@ walker StaticAnalysisPass(Transform) {
         cancel_token: any = None,
         _checked_scopes: set[int] = set();
 
-    static has PROVIDES: tuple = ('static-checks', ),
-        HOST_PASS: bool = True;
+    static has HOST_PASS: bool = True;
 
     def postinit -> None;
     def transform(ir_in: Module) -> Module;

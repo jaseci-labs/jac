@@ -5107,7 +5107,7 @@ test "jac_toml_kind_mobui_round_trip" {
     import tempfile;
     import from jaclang.project.config { JacConfig }
 
-    toml_content = '[project]\nname = "test-proj"\n\n[apps.main]\nkind = "mobile"\n';
+    toml_content = '[project]\nname = "test-proj"\n\n[apps.main]\nkind = "mobile"\nentry-point = "main"\n';
 
     with tempfile.TemporaryDirectory() as tmp_dir {
         toml_path = Path(tmp_dir) / "jac.toml";

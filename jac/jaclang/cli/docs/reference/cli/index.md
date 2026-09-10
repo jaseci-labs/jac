@@ -454,7 +454,12 @@ jac check [-h] [-e] [-i [IGNORE ...]] [-p] [--nowarn] [--lint] [--fix] [--app AP
 | `--lint` | Also run the linter and report style/lint violations | `False` |
 | `--fix` | With `--lint`, auto-fix lint violations (code corrections) | `False` |
 
-**The workspace gate.** With no paths, `jac check` compiles **one rooted program per app** -- each app's entry with that app's facts (kind, ui, platform, owning app) stamped -- and then sweeps every `.jac` file no app reached as its own root, so nothing under the project goes unchecked. When more than one app is checked, each diagnostic is prefixed `[<app>]`. Explicit paths keep the file-per-root behavior, using the owning app's facts for each file. `--app <name>` restricts both the app compile and the sweep to one app. This is the check that sees the cross-app laws (`E2039`, `E2040`, `E5107`, `E5104`, `E5106`); see [Workspaces & Apps](../apps.md#working-with-a-workspace).
+**The workspace gate.** With no paths, `jac check` traverses imports from every
+declared app entry in its compilation context, including page roots for client
+apps. Shared helpers are checked in each context that reaches them. Diagnostics
+carry an app prefix when several apps are checked. `--app <name>` selects one
+context; explicit files remain explicit roots. Unreachable source is checked by
+naming it explicitly. See [Workspaces & Apps](../apps.md#working-with-a-workspace).
 
 **Examples:**
 

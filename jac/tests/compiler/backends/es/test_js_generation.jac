@@ -857,11 +857,11 @@ test "separated files" {
     # `input` is destructured from useState (external React typings) so its
     # static type is unknown — `.strip()` routes through the polymorphic
     # runtime dispatcher instead of leaking the Python method name.
-    # This module is consumed only by `separated`, so shared ownership
-    # keeps the spawn within that app while retaining its boundary contract.
+    # Compiling the client as an entry crosses the declared service entry,
+    # so the call carries its app, route, and endpoint contract.
     assert (
         "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.call(input, \"strip\")}, "
-            + "{\"contract\": \"[\\\"separated\\\",\\\"separated.jac\\\",\\\"walker\\\",\\\"create_todo\\\"]\"});"
+            + "{\"app\": \"separated\", \"route\": \"/separated\", \"contract\": \"[\\\"separated\\\",\\\"separated.jac\\\",\\\"walker\\\",\\\"create_todo\\\"]\"});"
         in js_code
     );
 }

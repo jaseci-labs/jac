@@ -23,7 +23,7 @@ import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.passes { Transform }
-import from jaclang.compiler.driver.schedules {
+import from jaclang.compiler.driver.pipeline {
     _native_env_memo,
     native_pipeline_available
 }

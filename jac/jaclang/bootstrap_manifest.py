@@ -74,7 +74,10 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/driver/mtp.jac",
     "cli/cli_boot.jac",
     "jac0core/cli_boot.jac",
+    "project/__init__.jac",
     "project/tomlio.jac",
+    "project/apps.jac",
+    "project/app_kinds.jac",
 )
 
 # Modules that live under a seed directory but belong to the native

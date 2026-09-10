@@ -34,7 +34,7 @@ import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.source_failures { CompilerSourceError }
-import from jaclang.compiler.driver.schedules {
+import from jaclang.compiler.driver.pipeline {
     ANALYSIS_SCHED_DEPS,
     CODEGEN_SCHED_DEPS,
     IR_SCHED_DEPS,
@@ -194,7 +194,8 @@ test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
             "mid-import; a pass reaching that module at run time re-enters it"
         );
         tail = [p.__name__ for p in get_py_code_gen()];
-        assert tail == ["JcirGenPass", "JcirBytecodeGenPass"] , tail;
+        assert tail
+            == ["NativeImportFactsPass", "JcirGenPass", "JcirBytecodeGenPass"] , tail;
     } finally {
         sys.modules[name] = saved;
     }

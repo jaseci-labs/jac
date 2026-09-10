@@ -130,7 +130,7 @@ test "static and pwa dev flows inherit the compile-before-serve fix" {
     with tempfile.TemporaryDirectory() as tmp {
         (Path(tmp) / "jac.toml").write_text(
             '[project]\nname = "pwa-app"\nversion = "1.0.0"\n'
-            'entry-point = "main.jac"\nkind = "web-app"\n\n'
+            'entry-point = "main"\nkind = "web-app"\n\n'
             '[client.pwa]\ntheme_color = "#000000"\n',
             encoding="utf-8"
         );
@@ -208,13 +208,7 @@ test "dev HTML and runtime aliases resolve in the selected workspace app" {
     with tempfile.TemporaryDirectory() as tmp {
         project = Path(tmp);
         manifest = (
-            '[project]\nname = "dev-paths"\ndefault-app = "web"\n'
-            '[apps.web]\nkind = "web-app"\npath = "web"\n'
-            '[apps.desktop]\nkind = "desktop"\npath = "shell"\n'
-            '[apps.desktop.dependencies.npm]\nreact-native-web = "^0.19.13"\n'
-            '[client.pwa]\nenabled = true\n'
-            '[client.vite]\nplugins = ["tailwindcss()"]\n'
-            'lib_imports = ["import tailwindcss from \'@tailwindcss/vite\'"]\n'
+            '[project]\nname = "dev-paths"\ndefault-app = "web"\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n[apps.desktop]\nkind = "desktop"\nentry-point = "shell.main"\n[apps.desktop.dependencies.npm]\nreact-native-web = "^0.19.13"\n[client.pwa]\nenabled = true\n[client.vite]\nplugins = ["tailwindcss()"]\nlib_imports = ["import tailwindcss from \'@tailwindcss/vite\'"]\n'
         );
         (project / "jac.toml").write_text(manifest);
         config = JacConfig.from_toml_str(manifest, project / "jac.toml");

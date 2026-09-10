@@ -169,7 +169,7 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     );
 }
 
-def _candidate_from(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
+def resolve_local_module(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
     candidate = os.path.join(base, *parts);
     if os.path.isdir(candidate) {
         if os.path.isfile(os.path.join(candidate, '__init__.jac')) {
@@ -221,7 +221,7 @@ def _self_tree_candidate(
         }
         if os.path.basename(cur) == actual_parts[0] {
             if not is_compiler_pkg or os.path.isdir(os.path.join(cur, 'jac0core')) {
-                res = _candidate_from(parent, actual_parts);
+                res = resolve_local_module(parent, actual_parts);
                 if res {
                     return res;
                 }
@@ -375,7 +375,7 @@ def resolve_module(
 
     alias_resolved = _resolve_path_alias(target, base_path);
     if alias_resolved {
-        res = _candidate_from(
+        res = resolve_local_module(
             os.path.dirname(alias_resolved), [os.path.basename(alias_resolved)]
         );
         if res {
@@ -407,7 +407,7 @@ def resolve_module(
         actual_parts = parts[level:];
 
         if not _in_typeshed_tree(base_path) {
-            res = _candidate_from(base_dir, actual_parts);
+            res = resolve_local_module(base_dir, actual_parts);
             if res {
                 return res;
             }
@@ -482,28 +482,28 @@ def resolve_module(
         base_dir = os.path.dirname(base_dir);
     }
     if level > 0 {
-        res = _candidate_from(base_dir, actual_parts);
+        res = resolve_local_module(base_dir, actual_parts);
         if res {
             return res;
         }
     }
 
     for sp in get_jac_search_paths(base_path) {
-        res = _candidate_from(sp, actual_parts);
+        res = resolve_local_module(sp, actual_parts);
         if res {
             return res;
         }
     }
 
     if level == 0 {
-        res = _candidate_from(base_dir, actual_parts);
+        res = resolve_local_module(base_dir, actual_parts);
         if res {
             return res;
         }
     }
     jacpath = os.getenv('JACPATH');
     if jacpath {
-        res = _candidate_from(jacpath, actual_parts);
+        res = resolve_local_module(jacpath, actual_parts);
         if res {
             return res;
         }

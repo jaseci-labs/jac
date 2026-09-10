@@ -4,11 +4,13 @@ glob PWA_STORAGE_KEY = "__jac_pwa_prefs__",
      PWA_BACKOFF_MULTIPLIER = 2;
 
 impl _useBool(initial: bool) -> tuple[bool, Callable[[bool], None]] {
-    return reactUseState(initial);
+    state = reactUseState(initial);
+    return (state[0], state[1]);
 }
 
 impl _useStr(initial: str) -> tuple[str, Callable[[str], None]] {
-    return reactUseState(initial);
+    state = reactUseState(initial);
+    return (state[0], state[1]);
 }
 
 impl getPlatform -> str {

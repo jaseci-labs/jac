@@ -25,8 +25,7 @@ def client_app_root(config: any, project_dir: Path, entry_path: str = "") -> Pat
     if app is None or config.project_root is None {
         return project_dir;
     }
-    app_root = app.root_dir(str(config.project_root));
-    return Path(app_root) if app_root else project_dir;
+    return Path(app.entry_path(str(config.project_root))).parent;
 }
 
 class ClientTarget {

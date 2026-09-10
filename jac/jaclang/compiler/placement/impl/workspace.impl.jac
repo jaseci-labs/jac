@@ -2,36 +2,6 @@ impl AppSpec.effective_route -> str {
     return self.route or f"/api/{self.name}";
 }
 
-impl AppSpec.contains(abs_path: str) -> bool {
-    if not abs_path {
-        return False;
-    }
-    real = _real(abs_path);
-    if self.file_rooted {
-        return bool(self.`entry) and real == _real(self.`entry);
-    }
-    if not self.root_dir {
-        return False;
-    }
-    root_dir = _real(self.root_dir);
-    return real == root_dir or real.startswith(root_dir + os.sep);
-}
-
-impl AppSpec.claims_module(mod_dot: str) -> bool {
-    if not mod_dot {
-        return False;
-    }
-    for (pattern, space) in self.own_pins.items() {
-        if space != 'server' {
-            continue;
-        }
-        if fnmatch.fnmatchcase(mod_dot, pattern) or pattern.startswith(mod_dot + '.') {
-            return True;
-        }
-    }
-    return False;
-}
-
 impl WorkspaceSpec.app(name: str) -> (AppSpec | None) {
     return self.apps.get(name);
 }
@@ -40,56 +10,13 @@ impl WorkspaceSpec.app_for_path(abs_path: str) -> (AppSpec | None) {
     if not abs_path {
         return None;
     }
-    best: (AppSpec | None) = None;
-    best_len = -1;
+    resolved = _real(abs_path);
     for app in self.apps.values() {
-        if not app.contains(abs_path) {
-            continue;
-        }
-        if app.file_rooted {
+        if resolved == _real(app.`entry) {
             return app;
         }
-        depth = len(_real(app.root_dir));
-        if depth > best_len {
-            best = app;
-            best_len = depth;
-        }
     }
-    return best;
-}
-
-impl WorkspaceSpec.owner_app_for_path(abs_path: str) -> tuple[(AppSpec | None), bool] {
-    app = self.app_for_path(abs_path);
-    if app is not None {
-        return (app, False);
-    }
-    mod_dot = self.module_dot_path(abs_path);
-    claimers = [
-        a
-        for a in self.apps.values()
-        if a.claims_module(mod_dot)
-    ];
-    if len(claimers) == 1 {
-        return (claimers[0], False);
-    }
-    if len(claimers) > 1 {
-        return (None, True);
-    }
-    serving = self.serving_apps();
-    if len(serving) == 1 {
-        return (serving[0], False);
-    }
-    import from jaclang.compiler.placement.ownership { consumer_graph }
-    (consumers, _) = consumer_graph(self);
-    users = consumers.get(_real(abs_path), set());
-    if len(users) == 1 {
-        return (self.apps[next(iter(users))], False);
-    }
-    default_app = self.apps.get(self.default_app) if self.default_app else None;
-    if default_app is not None and default_app.has_server {
-        return (default_app, False);
-    }
-    return (None, len(serving) > 1);
+    return None;
 }
 
 impl WorkspaceSpec.serving_apps -> list[AppSpec] {
@@ -113,18 +40,6 @@ impl WorkspaceSpec.module_dot_path(abs_path: str) -> str {
         rel = rel[:-4];
     }
     return rel.replace(os.sep, '.');
-}
-
-impl kind_codespace(kind: str) -> str {
-    return KIND_CODESPACE.get(kind, '');
-}
-
-impl kind_has_server(kind: str) -> bool {
-    return kind == '' or kind in KIND_HAS_SERVER;
-}
-
-impl kind_entry(kind: str) -> str {
-    return KIND_ENTRY.get(kind, DEFAULT_ENTRY);
 }
 
 impl _real(path: str) -> str {
@@ -234,58 +149,47 @@ impl _build_workspace(root_dir: str, toml_path: str, doc: dict) -> WorkspaceSpec
     base_npm = _npm_names_of(_table(doc, 'dependencies', 'npm'));
     apps: dict[str, AppSpec] = {};
     if explicit {
-        for (raw_name, raw) in apps_raw.items() {
-            if not isinstance(raw, dict) {
-                continue;
+        import from jaclang.project.apps { parse_apps }
+        declarations = parse_apps(project, apps_raw);
+        entries: dict[str, str] = {};
+        for (name, declaration) in declarations.items() {
+            entry_abs = _real(declaration.entry_path(root_dir));
+            if entry_abs in entries {
+                raise ValueError(
+                    f"Apps '{name}' and '{entries[
+                        entry_abs
+                    ]}' declare the same entry-point"
+                );
             }
-            name = str(raw_name);
-            kind = str(raw.get('kind', '') or '');
-            rel = str(raw.get('path', '') or '');
-            entry_rel = str(
-                raw.get('entry-point', '') or raw.get('entry_point', '') or ''
-            );
-            file_rooted = rel == '' and entry_rel != '';
-            app_root = ''
-                if file_rooted
-                else os.path.normpath(os.path.join(root_dir, rel));
-            entry_abs = os.path.normpath(
-                os.path.join(root_dir, rel, entry_rel or kind_entry(kind))
-            );
-            own_pins = _pins_of(_table(raw, 'placement', 'pins'));
+            entries[entry_abs] = name;
+            raw = declaration.overlays;
             pins = dict(base_pins);
-            pins.update(own_pins);
+            pins.update(_pins_of(_table(raw, 'placement', 'pins')));
             npm = set(base_npm) | _npm_names_of(_table(raw, 'dependencies', 'npm'));
             apps[name] = AppSpec(
                 name=name,
-                kind=kind,
-                root_dir=app_root,
+                kind=declaration.kind,
                 `entry=entry_abs,
-                file_rooted=file_rooted,
-                ui=kind_ui(kind),
-                platform=str(raw.get('platform', '') or ''),
-                route=str(raw.get('route', '') or ''),
+                ui=kind_ui(declaration.kind),
+                platform=declaration.platform,
+                route=declaration.route,
                 pins=pins,
-                own_pins=own_pins,
                 npm_names=npm,
-                has_server=kind_has_server(kind),
-                codespace=kind_codespace(kind)
+                has_server=kind_has_server(declaration.kind),
+                codespace=kind_codespace(declaration.kind)
             );
         }
     } else {
         name = str(project.get('name', '') or 'main');
         kind = _implicit_kind(root_dir, project);
-        entry_rel = str(project.get('entry-point', '') or '');
+        import from jaclang.project.apps { resolve_entry_path }
+        entry_module = str(project.get('entry-point', '') or '');
         apps[name] = AppSpec(
             name=name,
             kind=kind,
-            root_dir=root_dir,
-            `entry=os.path.normpath(
-                os.path.join(root_dir, entry_rel or kind_entry(kind))
-            ),
-            file_rooted=False,
+            `entry=resolve_entry_path(entry_module or kind_entry(kind), root_dir),
             ui=kind_ui(kind),
             pins=dict(base_pins),
-            own_pins={},
             npm_names=set(base_npm),
             has_server=kind_has_server(kind),
             codespace=kind_codespace(kind),
@@ -342,19 +246,11 @@ impl app_for_path(path: str) -> (AppSpec | None) {
     return ws.app_for_path(path) if ws is not None else None;
 }
 
-impl owner_app_for_path(path: str) -> tuple[(AppSpec | None), bool] {
-    ws = workspace_for_path(path);
-    if ws is None {
-        return (None, False);
-    }
-    return ws.owner_app_for_path(path);
-}
-
 impl app_fact_digest(app: (AppSpec | None)) -> str {
     if app is None {
         return '';
     }
-    anchor = app.root_dir or (os.path.dirname(app.`entry) if app.`entry else '');
+    anchor = os.path.dirname(app.`entry) if app.`entry else '';
     ws_root = (find_jac_project_root(anchor) if anchor else None) or '';
 
     def _rel(path: str, base: str) -> str {
@@ -374,9 +270,7 @@ impl app_fact_digest(app: (AppSpec | None)) -> str {
             [
                 app.name,
                 app.kind,
-                _rel(app.root_dir, ws_root),
-                _rel(app.`entry, app.root_dir or ws_root),
-                app.file_rooted,
+                _rel(app.`entry, ws_root),
                 app.effective_route(),
                 app.platform,
                 sorted(app.pins.items()),

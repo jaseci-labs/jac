@@ -27,8 +27,7 @@ walker VariantAgreementPass(Transform) {
         ir_in: Module,
         cancel_token: any = None;
 
-    static has PROVIDES: tuple = ('variant-agreement', ),
-        HOST_PASS: bool = True;
+    static has HOST_PASS: bool = True;
 
     def postinit -> None;
     def transform(ir_in: Module) -> Module;

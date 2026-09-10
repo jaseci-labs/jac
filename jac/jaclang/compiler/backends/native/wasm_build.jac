@@ -463,67 +463,7 @@ def _assert_ir_rc_free(llvm_ir_str: str, file_path: str) {
 }
 
 def compile_to_wasm(file_path: str, export_funcs: list = []) -> bytes {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options {
-        CompileOptions,
-        push_native_target,
-        pop_native_target
-    }
-    import from jaclang.compiler.driver.na_coverage {
-        na_coverage_begin,
-        na_coverage_end
-    }
-    (gc_mode, enf_mods, enf_grand) = _project_gc_settings();
-    prev = push_native_target("wasm32-unknown-unknown");
-    auto_promote = True;
-    try {
-        prog = JacProgram();
-        na_coverage_begin();
-        try {
-            ir = prog.compile(
-                file_path=os.path.abspath(file_path),
-                options=CompileOptions(
-                    aot_mode=True,
-                    default_codespace=('native' if auto_promote else ''),
-                    na_gc_mode=gc_mode,
-                    memory_enforce=enf_mods,
-                    memory_exempt=enf_grand,
-                    native_target="wasm32-unknown-unknown"
-                )
-            );
-        } finally {
-            coverage = na_coverage_end();
-        }
-        if prog.errors_had {
-            first = prog.errors_had[0].pretty_print();
-            more = len(prog.errors_had) - 1;
-            suffix = f" (+{more} more)" if more > 0 else "";
-            raise RuntimeError(f"{first}{suffix}");
-        }
-        if (ir is None) or (ir.gen.llvm_ir is None) {
-            rec = coverage.get(os.path.realpath(os.path.abspath(file_path)));
-            reason = "the module did not lower to native IR"
-                + " (no demotion recorded; it likely compiled as a"
-                + " non-native codespace)";
-            if rec {
-                code = f" [{rec['code']}]" if rec['code'] else '';
-                detail = f": {rec['detail']}" if rec['detail'] else '';
-                reason = f"{rec['outcome']}{code}{detail}";
-            }
-            raise RuntimeError(
-                f"native lowering produced no IR for '{file_path}': {reason}"
-            );
-        }
-        import from jaclang.compiler.backends.native.na_compile_pass {
-            native_linked_ir_text
-        }
-        llvm_ir_str = native_linked_ir_text(ir);
-        app_imports = app_declared_imports(ir);
-    } finally {
-        pop_native_target(prev);
-    }
-    if gc_mode == "none" {
-        _assert_ir_rc_free(llvm_ir_str, file_path);
-    }
-    return emit_wasm_from_ir(llvm_ir_str, export_funcs, app_imports=app_imports);
+    import from jaclang.compiler.driver.pipeline { build_wasm }
+    import from jaclang.runtime.runtime { JacRuntime }
+    return build_wasm(JacRuntime.get_program(), file_path, export_funcs);
 }

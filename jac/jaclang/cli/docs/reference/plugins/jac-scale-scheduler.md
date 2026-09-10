@@ -12,7 +12,7 @@ Enable the scheduler intent in `jac.toml`:
 [project]
 name = "scheduler-demo"
 version = "0.1.0"
-entry-point = "main.jac"
+entry-point = "main"
 
 [scale.scheduler]
 enabled = true

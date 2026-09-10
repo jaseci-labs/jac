@@ -16,7 +16,7 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 def _proj(files: dict, pins: str = "") -> str {
     d = tempfile.mkdtemp(prefix="jacplace_");
-    toml = "[project]\nname = \"t\"\nentry-point = \"main.jac\"\n";
+    toml = "[project]\nname = \"t\"\nentry-point = \"main\"\n";
     if pins != "" {
         toml += "\n[placement.pins]\n" + pins + "\n";
     }
@@ -74,9 +74,7 @@ test "private functions remain unavailable across app boundaries" {
     try {
         with open(os.path.join(d, "jac.toml"), "w") as config {
             config.write(
-                '[project]\nname = "private-boundary"\ndefault-app = "web"\n'
-                '[apps.web]\nkind = "web-app"\npath = "."\nentry-point = "main.jac"\n'
-                '[apps.api]\nkind = "service"\nentry-point = "api.jac"\n'
+                '[project]\nname = "private-boundary"\ndefault-app = "web"\n[apps.web]\nkind = "web-app"\nentry-point = "main"\n[apps.api]\nkind = "service"\nentry-point = "api"\n'
             );
         }
         prog = JacProgram();

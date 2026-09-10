@@ -18,6 +18,45 @@ def _as_any(v: any) -> any {
     return v;
 }
 
+test "prepared namespaced modules reload through their source source_path" {
+    import sys;
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.prepared {
+        initialize_application,
+        load_prepared_module,
+        forget
+    }
+    with tempfile.TemporaryDirectory() as tmp {
+        source_path = Path(tmp) / 'main.jac';
+        source_path.write_text('def value -> int { return 1; }\n');
+        application = prepare_application(str(source_path), Jac.get_program(), tmp);
+        module = initialize_application(application);
+        prefix = module.__name__.split('.')[0];
+        try {
+            reloader = HotReloader(
+                base_path=tmp,
+                module_name=module.__name__,
+                entry_path=str(source_path),
+                watcher=JacFileWatcher(watch_paths=[tmp])
+            );
+            source_path.write_text('def value -> int { return 2; }\n');
+            reloader._process_change(str(source_path));
+            assert not reloader.diagnostics();
+            updated: any = load_prepared_module(str(source_path));
+            assert updated.value() == 2;
+            assert updated is not module;
+        } finally {
+            forget(str(source_path));
+            for name in list(sys.modules) {
+                if name == prefix or name.startswith(prefix + '.') {
+                    sys.modules.pop(name, None);
+                }
+            }
+        }
+    }
+}
+
 # --- TestJacFileWatcher ---
 test "watcher can be instantiated" {
     with tempfile.TemporaryDirectory() as tmp {
@@ -361,9 +400,7 @@ obj _FakeJcc {
         return self.out_path;
     }
 
-    def compile_dependencies_recursively(
-        source_path: any, source_root: any = None, skip_existing: bool = False
-    ) {
+    def emit_dependencies(source_path: any, source_root: any = None) {
         self.out_path.write_text(self.next_code);
     }
 }

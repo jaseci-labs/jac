@@ -489,14 +489,15 @@ ones in the same cold run. The gate is on work, not
 seconds: pass runs are deterministic for a given tree and compiler, so the
 ceilings below are hard asserts with room, and the warm run must take the
 re-wrap fast path for every unit. Wall times are published, never asserted.
-The fixture's server default is pinned for the measurement: the project
-config resolves from the working directory, so the fixture's own jac.toml is
-never consulted from under the test runner.
+The package's selected entry supplies one compilation context for all units.
+The fixture's server default is also pinned for the measurement.
 """
 glob PRECOMPILE_GATE: str = os.path.join(
          TESTS_DIR, "compiler", "fixtures", "precompile_gate"
      ),
-     GATE_COLD_MAX_RUNS: int = 620,
+     # Context, absorbed-import and boundary/native fact work is now counted
+     # as explicit passes: 140 runs that previously lived inside the driver.
+     GATE_COLD_MAX_RUNS: int = 760,
      GATE_COLD_MAX_RATIO: float = 0.6;
 
 def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
@@ -505,14 +506,16 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
         find_jac_files,
         _unit_program
     }
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.dist.precompile_bytecode { precompile_context }
     import from jaclang.compiler.frontend.codeinfo {
         set_effective_default_codespace,
         get_effective_default_codespace_override
     }
     files = find_jac_files(pkg);
     for f in files {
-        cp = get_module_cache_path(f);
+        cp = artifact_cache_path(f, precompile_context(f, pkg, JacProgram()));
         if cp.exists() {
             cp.unlink();
         }
@@ -588,7 +591,7 @@ test "the cold precompile path stays inside its work envelope" {
         );
         assert cold <= GATE_COLD_MAX_RUNS , (
             f"cold precompile did {cold} pass runs; the ceiling is {GATE_COLD_MAX_RUNS} "
-            "(recorded 568 against 1445 without the cache, including 58 graph-lowering runs): closure work the cache used to take back is being redone"
+            "(recorded 706 against 1408 without the cache, including 140 newly explicit context/import/fact passes): closure work the cache used to take back is being redone"
         );
         assert cold <= GATE_COLD_MAX_RATIO * no_cache , (
             f"cold precompile with the cache did {cold} pass runs against {no_cache} without it "
