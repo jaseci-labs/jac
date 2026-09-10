@@ -820,6 +820,14 @@ obj IfaceRegistry {
         } else {
             encoded = self._encode_iface(codec, mod);
             if encoded is None {
+                if os.environ.get("JAC_XREF_PROBE", "") {
+                    import sys;
+                    sys.stderr.write(
+                        f"[IFACE-PERSIST] pid={os.getpid()} path={resolved} mode=encode "
+                        f"payload=incoherent"
+                            + "\n"
+                    );
+                }
                 return;
             }
             payload = encoded;
@@ -827,6 +835,29 @@ obj IfaceRegistry {
             if modkey {
                 self._iface_bytes[resolved] = (modkey, encoded, digest, );
             }
+        }
+        if os.environ.get("JAC_XREF_PROBE", "") {
+            import sys;
+            try {
+                _mode = "digest"
+                    if (inferred or not frontier)
+                    else (
+                        "memo"
+                            if payload is not None
+                                and memo is not None
+                                and memo[1] is payload
+                            else "encode"
+                    );
+                sys.stderr.write(
+                    f"[IFACE-PERSIST] pid={os.getpid()} path={resolved} mode={_mode} "
+                    f"frontier={frontier} inferred={inferred} symtab_only={options.symtab_ir_only} "
+                    f"no_cgen={options.no_cgen} payload={'yes'
+                        if payload is not None
+                        else 'no'} "
+                    f"hub={len(self.prog.mod.hub)}"
+                        + "\n"
+                );
+            } except Exception {}
         }
         if payload is not None {
             sections[SEC_IFACE] = payload;

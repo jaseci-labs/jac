@@ -215,6 +215,80 @@ def describe_expr(evaluator: any, expr: any, sh: any) -> str {
     return " ".join(parts);
 }
 
+def _memo_desc(nd: any) -> str {
+    memo = nd?.type;
+    d = type(memo).__name__;
+    if isinstance(memo, UnknownType) {
+        d = f"{d}[diag={memo.is_diagnosed},inc={memo.is_incomplete}]";
+    }
+    return d;
+}
+
+def describe_rhs(evaluator: any, sym: any, sh: any) -> list[str] {
+    import from jaclang.compiler.frontend.unitree { Assignment, AtomTrailer, FuncCall }
+    prog = evaluator.program;
+    decl = sym?.decl;
+    asg = decl.find_parent_of_type(Assignment) if decl is not None else None;
+    if asg is None {
+        return ["  rhs=<no assignment>"];
+    }
+    out: list[str] = [];
+    cur = asg.value;
+    hops = 0;
+    while cur is not None and hops < 12 {
+        hops += 1;
+        line = f"  rhs[{hops}] {type(cur).__name__}@{cur.loc.first_line}:{cur.loc.col_start} memo={_memo_desc(
+            cur
+        )}";
+        if isinstance(cur, AtomTrailer) {
+            line += f" right=<{describe_expr(evaluator, cur.right, sh)}>";
+            out.append(line);
+            cur = cur.target;
+            continue;
+        }
+        if isinstance(cur, FuncCall) {
+            out.append(line);
+            cur = cur.target;
+            continue;
+        }
+        line += f" head=<{describe_expr(evaluator, cur, sh)}>";
+        out.append(line);
+        hsym = cur?.sym;
+        if hsym is not None {
+            try {
+                dsym = evaluator.resolve_to_definition_symbol(hsym);
+                if dsym is not None and dsym is not hsym {
+                    ddecl = dsym?.decl;
+                    dm = ddecl.find_parent_of_type(Module)
+                        if ddecl is not None
+                        else None;
+                    dprov = type(dsym.provider).__name__
+                        if dsym.provider is not None
+                        else "None";
+                    dpath = os.path.basename(dm.loc.mod_path)
+                        if dm is not None and dm.loc is not None
+                        else "?";
+                    dtyped = prog.analysis.analyses_run.provides(dm, "TypeOf")
+                        if dm is not None
+                        else "?";
+                    out.append(
+                        f"  rhs-def name={dsym.name} sym_type={getattr(
+                            dsym, 'sym_type', '?'
+                        )} provider={dprov} "
+                        f"decl_type={_memo_desc(ddecl)} def_mod={dpath} {_state(
+                            prog, sh, dm
+                        )} typed={dtyped}"
+                    );
+                }
+            } except Exception as e {
+                out.append(f"  rhs-def <err {e!r}>");
+            }
+        }
+        break;
+    }
+    return out;
+}
+
 def dump_unknown(evaluator: any, expr: any, tag: str) {
     try {
         (prog, sh) = _progs(evaluator);
@@ -222,6 +296,14 @@ def dump_unknown(evaluator: any, expr: any, tag: str) {
             f"[{tag}] pid={os.getpid()} {describe_expr(evaluator, expr, sh)}" + "\n"
         );
         sys.stderr.write(_tail(tag, prog, sh) + "\n");
+        hsym = _expr_head_node(expr)?.sym;
+        if hsym is not None
+            and hsym.provider is None
+            and not getattr(hsym, "imported", False) {
+            for line in describe_rhs(evaluator, hsym, sh) {
+                sys.stderr.write(f"[{tag}]{line}" + "\n");
+            }
+        }
     } except Exception as e {
         sys.stderr.write(f"[{tag}-PROBE-ERR] {e!r}" + "\n");
     }

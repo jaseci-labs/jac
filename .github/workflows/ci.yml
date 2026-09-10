@@ -266,9 +266,12 @@ jobs:
             echo "e1032 dumps: $(grep -c '^\[E1032-DUMP\] pid' "probe-$TAG.err")"
             echo "e1053 unknown-arg dumps: $(grep -c '^\[E1053-UNKNOWN\] pid' "probe-$TAG.err")"
             echo "cat-unknown: $(grep -c '^\[CAT-UNKNOWN\]' "probe-$TAG.err")  cat-noshared: $(grep -c '^\[CAT-NOSHARED\]' "probe-$TAG.err")"
+          echo "foreign-results: $(grep -c '^\[FOREIGN-RESULT\]' "probe-$TAG.err")  iface-persist: $(grep -c '^\[IFACE-PERSIST\]' "probe-$TAG.err")  incoherent: $(grep -c 'payload=incoherent' "probe-$TAG.err")"
+          grep -oE '\[FOREIGN-RESULT\].*kind=[a-z]+ typed=[A-Za-z]+ in_self_hub=[A-Za-z]+ same_as_foreign=[A-Za-z]+' "probe-$TAG.err" | sed 's/pid=[0-9]* //; s/path=[^ ]* //' | sort | uniq -c | sort -rn | head -8
+          grep -oE '\[IFACE-PERSIST\].*mode=[a-z]+ .*payload=[a-z]+' "probe-$TAG.err" | sed 's/pid=[0-9]* //; s/path=[^ ]* //; s/hub=[0-9]*//' | sort | uniq -c | sort -rn | head -8
             grep -E '^\[(CAT-UNKNOWN|CAT-NOSHARED)\]' "probe-$TAG.err" | sed 's/pid=[0-9]* //' | sort | uniq -c | sort -rn | head -30
             echo "-- E1032 / E1053-UNKNOWN dumps (first 60 lines) --"
-            grep -E '^\[(E1032-DUMP|E1053-UNKNOWN)\] pid' "probe-$TAG.err" | head -60
+            grep -E '^\[(E1032-DUMP|E1053-UNKNOWN)\]' "probe-$TAG.err" | head -120
             echo "-- E1053 / MRO-TRUNC dumps (first 40 lines) --"
             grep -E '^\[(E1053-DUMP|MRO-TRUNC)\]' "probe-$TAG.err" | head -40
             echo "-- orphan/fail/cycle detail (top 20) --"

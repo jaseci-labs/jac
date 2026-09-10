@@ -232,6 +232,24 @@ impl JacProgram.load_dependency_module(
                         else _DepOpts(no_cgen=True, symtab_ir_only=True, iface_ok=True)
                 )
             );
+            if foreign_untyped {
+                import os;
+                if os.environ.get("JAC_XREF_PROBE", "") {
+                    import sys;
+                    try {
+                        _kind = "cat" if mod?.cat_kids else "tree";
+                        _typed = self.analysis.analyses_run.provides(mod, "TypeOf");
+                        _same = mod is target_hub.get(resolved_path);
+                        sys.stderr.write(
+                            f"[FOREIGN-RESULT] pid={os.getpid()} path={resolved_path} "
+                            f"kind={_kind} typed={_typed} in_self_hub={resolved_path
+                                in self.mod.hub} "
+                            f"same_as_foreign={_same} self_hub={len(self.mod.hub)}"
+                                + "\n"
+                        );
+                    } except Exception {}
+                }
+            }
         }
         if not hasattr(mod, "cat_kids") and not foreign_untyped {
             target_program.install_module(resolved_path, mod);
