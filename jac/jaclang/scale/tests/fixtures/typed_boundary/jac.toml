@@ -1,0 +1,11 @@
+[project]
+name = "typed-boundary"
+default-app = "consumer"
+
+[apps.scoring]
+kind = "service"
+entry-point = "scoring.jac"
+
+[apps.consumer]
+kind = "service"
+entry-point = "consumer.jac"

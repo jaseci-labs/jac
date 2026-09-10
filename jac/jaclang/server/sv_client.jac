@@ -323,9 +323,7 @@ def _rehydrate_walker(envelope: any, stub_cls: any) -> any {
         raise BridgeError(detail="Walker response has no declared boundary contract");
     }
     payload = dict(envelope.get("result") or {});
-    if "reports" in envelope {
-        payload["reports"] = envelope["reports"];
-    }
+    payload["reports"] = envelope.get("reports", []);
     return stub_cls._from_wire(payload);
 }
 

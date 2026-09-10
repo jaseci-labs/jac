@@ -1651,11 +1651,18 @@ Types that cross the app boundary use the same wire contract as client-to-server
 
 What works:
 
-- **`obj` types** -- fields hydrated recursively, including nested objects.
+- **`obj` types** -- fields hydrated recursively, including objects inside lists and dictionaries, optional fields, and recursive type declarations. Nested types are included even when the consumer imports only the function or the outer type. Import aliases refer to the same consumer-side type.
 - **`enum` types** -- serialized by name.
 - **Primitives** -- `int`, `float`, `str`, `bool`, `None`, `list[T]`, `dict[K, V]`.
 - **Bidirectional** -- typed function arguments are wrapped on the way out and unwrapped on the way in.
 - **walkers** -- when imported by name. The consumer-side stub mirrors the provider's `has` fields, and the round-trip rehydrates the walker into a real instance with `reports` populated. See [Walker Imports](#walker-imports).
+
+Reconstruction uses the `_jac_type` markers in API responses and the boundary
+types collected by the compiler. It applies to function results, walker fields,
+and reports, including when services run in separate processes. Ordinary
+dictionaries stay dictionaries. Forwarding a reconstructed value preserves its
+nested type markers. Reconstruction only uses the declared boundary types; it
+does not import or execute the provider module.
 
 What doesn't:
 

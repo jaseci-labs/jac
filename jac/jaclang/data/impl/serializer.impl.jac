@@ -224,8 +224,18 @@ impl Serializer._serialize_value(
         }
         result = Serializer._type_info(val, include_type);
         if api_mode {
-            result['__type__'] = type(val).__name__;
-            result['__module__'] = type(val).__module__;
+            api_type = val?._jac_type;
+            if isinstance(api_type, str) {
+                result['_jac_type'] = api_type;
+                for key in ('_jac_id', '_jac_archetype') {
+                    if hasattr(val, key) {
+                        result[key] = getattr(val, key);
+                    }
+                }
+            } else {
+                result['__type__'] = type(val).__name__;
+                result['__module__'] = type(val).__module__;
+            }
         }
         for (k, v) in val.__dict__.items() {
             if not k.startswith('_') {
@@ -342,6 +352,32 @@ impl Serializer.deserialize(data: dict[str, object]) -> (object | None) {
         }
     }
     return None;
+}
+
+impl Serializer.deserialize_api(
+    value: object, boundary_types: dict[str, type], target: (type | None) = None
+) -> object {
+    if isinstance(value, list) {
+        return [Serializer.deserialize_api(v, boundary_types, target) for v in value];
+    }
+    if not isinstance(value, dict) {
+        return value;
+    }
+    tag = value.get('_jac_type');
+    cls = boundary_types.get(tag, target) if isinstance(tag, str) else target;
+    decoded = {
+        k: Serializer.deserialize_api(v, boundary_types) for (k, v) in value.items()
+    };
+    if cls is None {
+        return decoded;
+    }
+    instance = object.__new__(cls);
+    for (k, v) in decoded.items() {
+        if not k.startswith('__') {
+            setattr(instance, k, v);
+        }
+    }
+    return instance;
 }
 
 impl Serializer._deserialize_value(val: object) -> object {

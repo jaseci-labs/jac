@@ -312,6 +312,15 @@ impl BoundaryAnalysisPass._register_sv_import(
         }
         if walker_node is not None {
             (param_names, param_types) = self._extract_walker_has_fields(walker_node);
+            for hv in walker_node.get_all_sub_nodes(HasVar) {
+                if hv.type_tag {
+                    for tn in self._extract_all_type_names(hv.type_tag.tag) {
+                        self._collect_boundary_type(
+                            tn, walker_node.find_parent_of_type(Module)
+                        );
+                    }
+                }
+            }
             binding = InteropBinding(
                 name=sym_name,
                 source_context=InteropContext.SERVER,
