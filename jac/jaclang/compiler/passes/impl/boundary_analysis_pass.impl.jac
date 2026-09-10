@@ -1163,6 +1163,9 @@ impl BoundaryAnalysisPass._collect_boundary_type(
         fields: list[tuple[(str, str)]] = [];
         fdefaults: dict[(str, any)] = {};
         nested: list[str] = [];
+        for base in arch_node.base_classes {
+            nested.extend(self._extract_all_type_names(base));
+        }
 
         if arch_node.body {
             body_items = arch_node.body
@@ -1203,7 +1206,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
             }
         }
         info = BoundaryTypeInfo(
-            name=type_name,
+            name=arch_node.sym_name,
             kind=kind,
             fields=fields,
             field_defaults=fdefaults,
@@ -1266,7 +1269,9 @@ impl BoundaryAnalysisPass._collect_boundary_type(
                 }
             }
         }
-        info = BoundaryTypeInfo(name=type_name, kind="enum", enum_members=members);
+        info = BoundaryTypeInfo(
+            name=arch_node.sym_name, kind="enum", enum_members=members
+        );
         manifest.boundary_types[type_name] = info;
         return;
     }

@@ -53,7 +53,12 @@ test "split services recursively reconstruct returned archetypes" {
             assert result["consumer_pid"] == consumer.pid;
             assert provider.pid != consumer.pid;
             assert result["provider_loaded"] is False;
-            for endpoint in ["check_collections", "check_walker"] {
+            for endpoint in [
+                "check_collections",
+                "check_walker",
+                "check_provider_alias",
+                "check_inherited"
+            ] {
                 response = requests.post(
                     f"http://127.0.0.1:{consumer_port}/function/{endpoint}",
                     json={},

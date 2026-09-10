@@ -370,17 +370,22 @@ impl JcirGenPass._gen_py_sv_boundary_types -> None {
         'from jaclang.data.serializer import Serializer as ' + self._sv_serializer,
         self._sv_boundary_registry + ' = {}'
     ];
+    wire_types: dict[str, str] = {};
     for (name, info) in boundary_types.items() {
-        class_name = self._reserve_name('_jac_boundary_' + name);
+        class_name = wire_types.get(info.name);
+        if class_name is None {
+            class_name = self._reserve_name('_jac_boundary_' + info.name);
+            wire_types[info.name] = class_name;
+            parts.append(self._gen_py_boundary_stub_class(class_name, info));
+        }
         self._sv_boundary_names[name] = class_name;
-        parts.append(self._gen_py_boundary_stub_class(class_name, info));
     }
     parts.append(
         self._sv_boundary_registry
             + '.update({'
             + ', '.join(
                 repr(name) + ': ' + class_name
-                for (name, class_name) in self._sv_boundary_names.items()
+                for (name, class_name) in wire_types.items()
             )
             + '})'
     );
@@ -389,7 +394,7 @@ impl JcirGenPass._gen_py_sv_boundary_types -> None {
             src='\n\n'.join(parts),
             offset=0,
             bound_names=[self._sv_serializer, self._sv_boundary_registry]
-                + list(self._sv_boundary_names.values())
+                + list(wire_types.values())
         )
     );
 }

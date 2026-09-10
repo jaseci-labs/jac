@@ -1,13 +1,23 @@
 import os;
-import from models { RepoMeta }
+import from models { RepoMeta, RepoMeta as Metadata }
 
 obj HiddenPayload {
     has meta: RepoMeta = RepoMeta();
 }
 
 obj Analysis {
-    has meta: RepoMeta = RepoMeta();
+    has meta: Metadata = Metadata();
 }
+
+obj InheritedMeta {
+    has owner: str = "inherited";
+}
+
+obj BasePayload {
+    has inherited: InheritedMeta = InheritedMeta();
+}
+
+obj DerivedPayload(BasePayload) {}
 
 obj RepoTree {
     has meta: RepoMeta = RepoMeta(),
@@ -55,4 +65,8 @@ def:pub fetch_score -> ScoredPayload {
 
 def:pub hidden_score -> HiddenPayload {
     return HiddenPayload();
+}
+
+def:pub inherited_score -> DerivedPayload {
+    return DerivedPayload();
 }

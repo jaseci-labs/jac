@@ -1651,7 +1651,7 @@ Types that cross the app boundary use the same wire contract as client-to-server
 
 What works:
 
-- **`obj` types** -- fields hydrated recursively, including objects inside lists and dictionaries, optional fields, and recursive type declarations. Nested types are included even when the consumer imports only the function or the outer type. Import aliases refer to the same consumer-side type.
+- **`obj` types** -- fields hydrated recursively, including inherited fields, objects inside lists and dictionaries, optional fields, and recursive type declarations. Nested types are included even when the consumer imports only the function or the outer type. Import aliases on either side refer to the same consumer-side type.
 - **`enum` types** -- serialized by name.
 - **Primitives** -- `int`, `float`, `str`, `bool`, `None`, `list[T]`, `dict[K, V]`.
 - **Bidirectional** -- typed function arguments are wrapped on the way out and unwrapped on the way in.

@@ -2,6 +2,7 @@ import os;
 import sys;
 import from scoring { fetch_score, hidden_score, ScoredPayload, RepoMeta }
 import from scoring { RepoMeta as Meta, ScoredPayload as Payload }
+import from scoring { Metadata, inherited_score }
 import from scoring {
     score_list,
     score_lookup,
@@ -51,6 +52,19 @@ async def:pub check_collections -> bool {
     assert await maybe_score(False) is None;
     assert isinstance(await score_or_meta(True), Payload);
     assert isinstance(await score_or_meta(False), Meta);
+    return True;
+}
+
+async def:pub check_provider_alias -> bool {
+    payload = await fetch_score();
+    assert Metadata is Meta , "provider alias must retain type identity";
+    assert isinstance(payload.analysis.meta, Metadata);
+    return True;
+}
+
+async def:pub check_inherited -> bool {
+    payload = await inherited_score();
+    assert payload.inherited.owner == "inherited";
     return True;
 }
 
