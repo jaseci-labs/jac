@@ -79,6 +79,13 @@ walker BoundaryAnalysisPass(UniPass) {
 
     def _register_na_client_import(nd: Import) -> None;
     def _register_client_bridged_import(nd: Import) -> None;
+    def _register_type_import(
+        nd: Import,
+        item: ModuleItem,
+        source_mod: (Module | None),
+        caller_ctx: InteropContext
+    ) -> bool;
+
     def _provider_module_of(nd: Import) -> (Module | None);
     def _record_app_edge(nd: Import) -> None;
     def _bridge_targets(mod: Module) -> list[tuple[(str, str)]];

@@ -692,6 +692,7 @@ obj BoundaryTypeInfo {
     has name: str,
         kind: str,
         type_id: str = '',
+        type_scope: str = '',
         fields: list[tuple[(str, str)]] = field(default_factory=`list),
         field_defaults: dict[(str, any)] = field(default_factory=`dict),
         enum_members: list[tuple[(str, any)]] = field(default_factory=`list),
@@ -740,7 +741,7 @@ obj InteropManifest {
     has server_exports_to_client: list[InteropBinding] { getter; }
     has server_exports_to_server: list[InteropBinding] { getter; }
 
-    def boundary_types_for(scope: str = '') -> dict[str, BoundaryTypeInfo];
+    def boundary_types_for(scope: str) -> dict[str, BoundaryTypeInfo];
 }
 
 obj NodeComments {

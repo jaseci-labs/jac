@@ -1667,6 +1667,10 @@ nested type markers and inherited fields, including when passed to a typed
 service parameter. Reconstruction only uses the declared boundary types; it
 does not import or execute the provider module.
 
+Browser stubs resolve field and function-signature types in their declaring
+modules too. Imports and re-exported aliases retain the matching boundary class,
+even when several providers declare types with the same name.
+
 What doesn't:
 
 - **Anchors, closures** -- not wire-friendly. Pass identifiers (e.g. `jid`) and re-resolve on the other side.

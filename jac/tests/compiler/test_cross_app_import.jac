@@ -225,7 +225,9 @@ test "a bridged obj imported alone mirrors as a boundary type, not an RPC stub" 
     assert "Profile = _jac_boundary_Profile" in py , (
         "the consumer needs a local mirror of the provider's obj; got:\n" + py
     );
-    assert "Profile" in mod.gen.interop_manifest.boundary_types_for();
+    assert any(
+        t.name == "Profile" for t in mod.gen.interop_manifest.boundary_types.values()
+    );
 }
 
 test "a bridged node imported alone is E5108" {

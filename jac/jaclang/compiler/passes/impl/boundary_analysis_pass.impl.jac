@@ -337,28 +337,14 @@ impl BoundaryAnalysisPass._register_sv_import(
         if ability_node is None and parsed_mod is not None {
             ability_node = self._find_ability(parsed_mod, sym_name);
         }
-        if ability_node is None and cross_app {
+        if ability_node is None
+            and (cross_app or caller_ctx == InteropContext.CLIENT) {
             type_mod = (
                 provider_mod
                     if (provider_mod is not None and not provider_mod.stub_only)
                     else parsed_mod
             );
-            type_info = self._collect_boundary_type(sym_name, type_mod);
-            if type_info is not None and type_info.kind in ('obj', 'enum') {
-                manifest.bindings[local_name] = InteropBinding(
-                    name=sym_name,
-                    source_context=InteropContext.SERVER,
-                    callers={caller_ctx},
-                    ret_type=sym_name,
-                    source_module=module_name,
-                    type_scope=type_mod.loc.mod_path if type_mod else '',
-                    kind='type',
-                    provider_app=provider_app
-                );
-                continue;
-            }
-            if type_info is not None and type_info.kind in ('node', 'edge') {
-                self._reject_owned_type_import(nd, item, type_info.kind);
+            if self._register_type_import(nd, item, type_mod, caller_ctx) {
                 continue;
             }
         }
@@ -455,6 +441,9 @@ impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
 
 impl BoundaryAnalysisPass._register_client_bridged_import(nd: Import) -> None {
     import from jaclang.compiler.driver.boundary_classify {
+        ClientImportVerdict,
+        classify_client_import_item,
+        is_client_boundary_import,
         import_crosses_apps,
         import_provider_app,
         import_provider_route
@@ -469,7 +458,7 @@ impl BoundaryAnalysisPass._register_client_bridged_import(nd: Import) -> None {
         }
         self._record_app_edge(nd);
     }
-    if not facts or not facts.bridged_decls {
+    if not facts or not is_client_boundary_import(nd) {
         return;
     }
     manifest = self.ir_in.gen.interop_manifest;
@@ -484,6 +473,12 @@ impl BoundaryAnalysisPass._register_client_bridged_import(nd: Import) -> None {
         local_name = item.alias.sym_name if item.alias else sym_name;
         ability = facts.bridged_decls.get(sym_name);
         if ability is None {
+            source_mod = self._provider_module_of(nd);
+            if source_mod is not None
+                and classify_client_import_item(source_mod, item)
+                    != ClientImportVerdict.CLIENT {
+                self._register_type_import(nd, item, source_mod, InteropContext.CLIENT);
+            }
             continue;
         }
         (ret_type, param_types, param_names) = self._signature_of_decl(ability);
@@ -503,6 +498,35 @@ impl BoundaryAnalysisPass._register_client_bridged_import(nd: Import) -> None {
     if provider_app and provider_route {
         manifest.provider_routes[provider_app] = provider_route;
     }
+}
+
+impl BoundaryAnalysisPass._register_type_import(
+    nd: Import,
+    item: ModuleItem,
+    source_mod: (Module | None),
+    caller_ctx: InteropContext
+) -> bool {
+    import from jaclang.compiler.driver.boundary_classify { import_provider_app }
+    info = self._collect_boundary_type(item.name.value, source_mod);
+    if info is None or info.kind not in ('obj', 'enum', 'node', 'edge') {
+        return False;
+    }
+    if caller_ctx == InteropContext.SERVER and info.kind in ('node', 'edge') {
+        self._reject_owned_type_import(nd, item, info.kind);
+        return True;
+    }
+    local_name = item.alias.sym_name if item.alias else item.name.value;
+    self.ir_in.gen.interop_manifest.bindings[local_name] = InteropBinding(
+        name=item.name.value,
+        source_context=InteropContext.SERVER,
+        callers={caller_ctx},
+        ret_type=item.name.value,
+        source_module=nd.from_loc.base_module_name if nd.from_loc else '',
+        type_scope=(source_mod or self.ir_in).loc.mod_path,
+        kind='type',
+        provider_app=import_provider_app(nd) or ''
+    );
+    return True;
 }
 
 impl BoundaryAnalysisPass._provider_module_of(nd: Import) -> (Module | None) {
@@ -1154,7 +1178,9 @@ impl BoundaryAnalysisPass._collect_boundary_type(
     arch_mod = arch_node.find_parent_of_type(Module) or source_mod or self.ir_in;
     type_id = endpoint_key(arch_mod, 'type', arch_node.sym_name);
     scope_names[type_name] = type_id;
-    manifest.boundary_type_names.setdefault('', {}).setdefault(type_name, type_id);
+    manifest.boundary_type_names.setdefault(arch_mod.loc.mod_path, {})[
+        arch_node.sym_name
+    ] = type_id;
     if type_id in manifest.boundary_types {
         return manifest.boundary_types[type_id];
     }
@@ -1214,6 +1240,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
             name=arch_node.sym_name,
             kind=kind,
             type_id=type_id,
+            type_scope=arch_mod.loc.mod_path,
             fields=fields,
             field_defaults=fdefaults,
             nested_types=nested
@@ -1275,7 +1302,11 @@ impl BoundaryAnalysisPass._collect_boundary_type(
             }
         }
         info = BoundaryTypeInfo(
-            name=arch_node.sym_name, kind="enum", type_id=type_id, enum_members=members
+            name=arch_node.sym_name,
+            kind="enum",
+            type_id=type_id,
+            type_scope=arch_mod.loc.mod_path,
+            enum_members=members
         );
         manifest.boundary_types[type_id] = info;
         return info;
@@ -1396,6 +1427,9 @@ impl BoundaryAnalysisPass.after_pass -> None {
                 }
                 walk_node = walk_node.parent;
             }
+            binding.type_scope = cl_src_mod.loc.mod_path
+                if cl_src_mod
+                else self.ir_in.loc.mod_path;
             sig = binding.ast_node.signature;
             if isinstance(sig, FuncSignature) {
                 if sig.return_type {
