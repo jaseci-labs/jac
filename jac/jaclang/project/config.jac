@@ -74,6 +74,11 @@ obj BuildConfig {
         native_closure_cap: int = 256;
 }
 
+obj ClientTestConfig {
+    has on_stub: str = "note",
+        mocks: dict[str, str] = {};
+}
+
 obj TestConfig {
     has directory: str = "",
         directories: list[str] = [],
@@ -82,7 +87,8 @@ obj TestConfig {
         filter: str = "",
         verbose: bool = False,
         fail_fast: bool = False,
-        max_failures: int = 0;
+        max_failures: int = 0,
+        client: ClientTestConfig = ClientTestConfig();
 }
 
 obj ServeWorkersConfig {

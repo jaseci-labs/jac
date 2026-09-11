@@ -33,6 +33,8 @@ glob _WORKER_MEM_BYTES: int = 2 * 1024 * 1024 * 1024,
      _MAX_AUTO_JOBS: int = 12,
      _PROGRESS_WIDTH: int = 72;
 
+glob _SUPPORT_DIRS: tuple[str, ...] = ("fixtures", "__mocks__");
+
 glob _CRASH_LOG: list[str] = [""],
      _TEST_BASES: list[str] = [],
      _TEST_PACKAGES: dict[(str, str)] = {},
@@ -182,7 +184,7 @@ def _iter_candidate_files(start: str, ignore: (list[str] | None) = None) -> list
 
 def _should_ignore(path: str, ignore: list[str]) -> bool;
 
-def _under_fixtures(path: str) -> bool;
+def _under_support_dir(path: str) -> bool;
 
 def _is_named_test_file(filename: str) -> bool;
 

@@ -7,9 +7,9 @@ naming conventions.
 
 The declared test root is the `[test] directory` from jac.toml or an explicit
 `-d <dir>`. Every `.jac` file under that root is collected as a suite, while
-`impl` annexes and `fixtures/` inputs stay excluded. Positional path targets
-(`jac test some/dir`) keep the `test_*` / `*.test` naming rules, so unrelated
-`.jac` files are never swept in.
+`impl` annexes and support-dir inputs (`fixtures/`, `__mocks__/`) stay
+excluded. Positional path targets (`jac test some/dir`) keep the `test_*` /
+`*.test` naming rules, so unrelated `.jac` files are never swept in.
 
 The `test` command is invoked in-process, so these exercise the real collection
 path end to end. `JAC_TEST_JOBS=0` keeps the inner run single-process, so no
@@ -34,7 +34,7 @@ def reset_config {
 """Create a temp project whose `[test] directory` holds a suite whose file
 name follows *no* test-naming convention (`phase1_tests.jac`). Returns the
 project root."""
-def make_project(with_fixture_trap: bool = False) -> str {
+def make_project(with_support_traps: bool = False) -> str {
     proj = tempfile.mkdtemp(prefix="jac7151-");
     (Path(proj) / "jac.toml").write_text(
         '[project]\nname = "r"\n\n[test]\ndirectory = "tests"\n'
@@ -45,14 +45,18 @@ def make_project(with_fixture_trap: bool = False) -> str {
         'test "adds" {\n    assert 1 + 1 == 2;\n}\n'
         'test "truth" {\n    assert True;\n}\n'
     );
-    if with_fixture_trap {
-        # A `.jac` under fixtures/ is a test *input*, never a suite. Its
-        # always-failing `test` block turns a wrong collection into a red run.
+    if with_support_traps {
+        # A `.jac` under a support dir is a test *input*, never a suite:
+        # fixtures/ holds inputs, __mocks__/ holds client-test doubles that
+        # the cl test runner stages. An always-failing `test` block in each
+        # turns a wrong collection into a red run.
+        trap = 'test "must not be collected" {\n    assert False;\n}\n';
         fixtures_dir = tests_dir / "fixtures";
         fixtures_dir.mkdir();
-        (fixtures_dir / "input_data.jac").write_text(
-            'test "must not be collected" {\n    assert False;\n}\n'
-        );
+        (fixtures_dir / "input_data.jac").write_text(trap);
+        mocks_dir = tests_dir / "__mocks__";
+        mocks_dir.mkdir();
+        (mocks_dir / "vscode.jac").write_text(trap);
     }
     return proj;
 }
@@ -122,17 +126,18 @@ test "non-conventional .jac in [test] directory is discovered" {
 }
 
 
-test "`-d` test root collects all .jac and skips fixtures/" {
-    proj = make_project(with_fixture_trap=True);
+test "`-d` test root collects all .jac and skips support dirs" {
+    proj = make_project(with_support_traps=True);
     try {
         rc = run_in(proj, [], directory="tests");
     } finally {
         shutil.rmtree(proj, ignore_errors=True);
     }
     # The real suite is collected (so not exit 5) while the always-failing
-    # fixtures/ input is excluded (so not exit 1) -- both hold iff exit 0.
+    # fixtures/ and __mocks__/ inputs are excluded (so not exit 1) -- all
+    # three hold iff exit 0.
     assert rc == 0 , "`jac test -d tests` must collect phase1_tests.jac and skip the "
-    f"fixtures/ input; got exit {rc}";
+    f"fixtures/ and __mocks__/ inputs; got exit {rc}";
 }
 
 

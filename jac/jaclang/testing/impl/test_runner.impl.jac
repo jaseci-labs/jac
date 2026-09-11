@@ -215,9 +215,14 @@ impl _optional_dep_gap(exc: BaseException) -> str {
     return top;
 }
 
-impl _under_fixtures(path: str) -> bool {
+impl _under_support_dir(path: str) -> bool {
     parts = os.path.abspath(path).split(os.sep);
-    return "fixtures" in parts[:-1];
+    for part in _SUPPORT_DIRS {
+        if part in parts[:-1] {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl _is_named_test_file(filename: str) -> bool {
@@ -287,7 +292,7 @@ impl discover(
         full = os.path.abspath(raw);
         if os.path.isdir(full) {
             for cand in _iter_candidate_files(full, ignored) {
-                if _under_fixtures(cand) {
+                if _under_support_dir(cand) {
                     continue;
                 }
                 if not _is_named_test_file(os.path.basename(cand)) {
@@ -311,7 +316,7 @@ impl discover(
         }
         root_dir = os.path.abspath(rt);
         for cand in _iter_candidate_files(root_dir, ignored) {
-            if _under_fixtures(cand) {
+            if _under_support_dir(cand) {
                 continue;
             }
             _add(cand);
