@@ -407,7 +407,7 @@ test "route failures use diagnostics from the selected application context" {
         }
         initial = base / 'cli' / 'main.jac';
         initial.write_text('def helper -> int { return 1; }');
-        path = base / 'web' / 'page.jac';
+        path = base / 'web' / 'main.jac';
         path.write_text('def helper -> int { return "bad"; }');
         program = JacProgram();
         program.compile(str(initial), no_cgen=True);
