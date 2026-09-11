@@ -148,6 +148,7 @@ class ProductUnavailable(RuntimeError) {}
 
 enum UtilityProduct {
     INTERFACE_CONTEXT = "interface-context",
+    SYNTAX_DIAGNOSTICS = "syntax-diagnostics",
     PYTHON_AST = "python-ast",
     PYTHON_SYMBOLS = "python-symbols",
     GRAMMAR = "grammar",
@@ -233,6 +234,8 @@ obj PassContext {
     }
 }
 
+enum ErrorRecovery { NONE = "none", NONBLOCKING = "nonblocking", ALL = "all" }
+
 obj PassSpec {
     has identity: PassIdentity,
         create: Callable[[PassContext], Transform],
@@ -240,7 +243,18 @@ obj PassSpec {
         writes: frozenset[RelationFamily],
         analysis: AnalysisContract,
         native_early_bit: int = 0,
-        preserves_facts_on_error: bool = False;
+        error_recovery: ErrorRecovery = ErrorRecovery.NONE;
+
+    def can_continue(errors: list[Alert]) -> bool {
+        if not errors or self.error_recovery == ErrorRecovery.ALL {
+            return True;
+        }
+        return self.error_recovery == ErrorRecovery.NONBLOCKING
+            and all(
+                error.code is not None and not error.code.blocks_codegen
+                for error in errors
+            );
+    }
 }
 
 type TaskAddress = tuple[GraphId, CompilationProduct, str];

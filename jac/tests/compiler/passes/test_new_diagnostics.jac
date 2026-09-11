@@ -17,7 +17,7 @@ milestones in _planning/diagnostics_implementation_progress.md.
 """
 
 import from jaclang.compiler.pipeline.contracts { PassIdentity }
-import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from jaclang.compiler.backends.common.artifact_store { existing_artifact }
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
@@ -417,7 +417,8 @@ test "E0063: glob inside a function blocks codegen and points at the rebinding i
         use_str="def foo() -> int { glob a = 1; return a; }"
     );
     assert has_diagnostic_code(prog, "E0063");
-    assert not artifact_for(mod).py_bytecode;
+    output = existing_artifact(mod);
+    assert output is None or not output.py_bytecode;
     # Jac has no `global` statement; a function rebinds a module glob by
     # plain assignment, so a hint that says "global" leads to a parse error (#8612).
     alert = [

@@ -211,9 +211,7 @@ def execute_passes(
         assert isinstance(output, Module) , "A module pass must return a Module";
         module = output;
         if result.cancel_requested
-            or (
-                result.errors_had and not PASS_REGISTRY[step].preserves_facts_on_error
-            ) {
+            or not PASS_REGISTRY[step].can_continue(result.errors_had) {
             break;
         }
         provided.update(pass_provides(step));

@@ -1,6 +1,7 @@
 import type from jaclang.compiler.session.services { AnalysisServices }
 import from jaclang.compiler.pipeline.contracts {
     PassSpec,
+    ErrorRecovery,
     PassContext,
     PassScope,
     AnalysisContract
@@ -595,6 +596,8 @@ def early_pipeline -> list[tuple[int, PassIdentity]] {
 def utility_pipeline(product: UtilityProduct) -> list[PassIdentity] {
     if product == UtilityProduct.PYTHON_AST {
         return [PassIdentity.PyastBuildPass];
+    } elif product == UtilityProduct.SYNTAX_DIAGNOSTICS {
+        return [PassIdentity.ASTValidationPass];
     } elif product == UtilityProduct.INTERFACE_CONTEXT {
         return [PassIdentity.AppContextPass, PassIdentity.InterfaceStubTypesPass];
     } elif product == UtilityProduct.PYTHON_SYMBOLS {
@@ -1667,7 +1670,8 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
                  }
              ),
              AnalysisContract(),
-             native_early_bit=1
+             native_early_bit=1,
+             error_recovery=ErrorRecovery.NONBLOCKING
          ),
          PassIdentity.AbsorbImportsPass: PassSpec(
              PassIdentity.AbsorbImportsPass,
@@ -1694,7 +1698,7 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
                  }
              ),
              AnalysisContract((), (AnalysisFact.ACCESS_CHECKS, )),
-             preserves_facts_on_error=True
+             error_recovery=ErrorRecovery.ALL
          ),
          PassIdentity.AppContextPass: PassSpec(
              PassIdentity.AppContextPass,
@@ -1756,7 +1760,7 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
              PassScope.MODULE,
              frozenset({RelationFamily.TYPES, RelationFamily.PLACEMENT}),
              AnalysisContract((), (AnalysisFact.CLIENT_CAPABILITY, )),
-             preserves_facts_on_error=True
+             error_recovery=ErrorRecovery.ALL
          ),
          PassIdentity.ClientDependenciesPass: PassSpec(
              PassIdentity.ClientDependenciesPass,
@@ -2057,7 +2061,7 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
              PassScope.MODULE,
              frozenset({RelationFamily.TYPES, RelationFamily.PLACEMENT}),
              AnalysisContract((), (AnalysisFact.CAPABILITY, )),
-             preserves_facts_on_error=True
+             error_recovery=ErrorRecovery.ALL
          ),
          PassIdentity.NativeCompilePass: PassSpec(
              PassIdentity.NativeCompilePass,
@@ -2103,7 +2107,7 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
                  (AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF, ),
                  (AnalysisFact.OWNERSHIP, )
              ),
-             preserves_facts_on_error=True
+             error_recovery=ErrorRecovery.ALL
          ),
          PassIdentity.PlacementApplyPass: PassSpec(
              PassIdentity.PlacementApplyPass,
@@ -2248,7 +2252,7 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
                  {RelationFamily.BINDING, RelationFamily.TYPES, RelationFamily.FLOW}
              ),
              AnalysisContract((), (AnalysisFact.STATIC_CHECKS, )),
-             preserves_facts_on_error=True
+             error_recovery=ErrorRecovery.ALL
          ),
          PassIdentity.SymTabBuildPass: PassSpec(
              PassIdentity.SymTabBuildPass,
@@ -2281,7 +2285,7 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
                  {RelationFamily.BINDING, RelationFamily.TYPES, RelationFamily.FLOW}
              ),
              AnalysisContract((), (AnalysisFact.TYPE_OF, )),
-             preserves_facts_on_error=True
+             error_recovery=ErrorRecovery.ALL
          ),
          PassIdentity.UnparsePass: PassSpec(
              PassIdentity.UnparsePass,
@@ -2298,7 +2302,7 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
                  {RelationFamily.BINDING, RelationFamily.TYPES, RelationFamily.FLOW}
              ),
              AnalysisContract((), (AnalysisFact.VARIANT_AGREEMENT, )),
-             preserves_facts_on_error=True
+             error_recovery=ErrorRecovery.ALL
          )
      };
 

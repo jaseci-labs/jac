@@ -42,15 +42,17 @@ obj ModuleCompilation {
         keep_str = self.source
             if self.source is not None
             else read_file_with_encoding(self.path);
-        errors_before = len(self.program.errors_had);
         self.module = self.compiler.parse_str(
             keep_str, self.path, self.program, cancel_token=self.options.cancel_token
         );
-        self.parse_failed = len(self.program.errors_had) > errors_before;
+        self.parse_failed = self.module.parse_failed;
     }
 
     def ir {
         if self.parse_failed {
+            import from jaclang.compiler.pipeline.executor { run_utility }
+            import from jaclang.compiler.pipeline.contracts { UtilityProduct }
+            run_utility(UtilityProduct.SYNTAX_DIAGNOSTICS, self.module, self.program);
             return;
         }
         import from jaclang.compiler.pipeline.schedule {
