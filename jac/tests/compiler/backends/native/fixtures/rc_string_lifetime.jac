@@ -146,11 +146,20 @@ def dict_missing(value: str) -> int {
     }
 }
 
-node Item {
-    has value: str;
+node Item {}
+
+def descendants(item: Item) -> list[Item] {
+    return [item-->];
 }
 
-def destroyed_temporary(value: str) -> int {
-    del [Item(value=value)];
-    return len(value);
+def empty_items -> list[Item] {
+    return [];
+}
+
+def identity_items(items: list[Item]) -> list[Item] {
+    return items;
+}
+
+def destroy_items(items: list[Item]) {
+    del identity_items(items);
 }
