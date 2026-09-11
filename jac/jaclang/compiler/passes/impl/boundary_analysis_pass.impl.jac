@@ -1109,8 +1109,13 @@ impl BoundaryAnalysisPass._collect_boundary_type(
     }
 
     search_mods: list[Module] = [source_mod or self.ir_in];
-    arch_node: (Archetype | Enum | None) = None;
+    arch_node: (Archetype | Enum | None) = self._parse_imported_archetype(
+        type_name, search_mods
+    );
     for mod in search_mods {
+        if arch_node is not None {
+            break;
+        }
         sym = mod.sym_tab.lookup(type_name, deep=True) if mod.sym_tab else None;
         if sym and sym.defn {
             candidate: (UniNode | None) = sym.defn[0];
@@ -1145,9 +1150,6 @@ impl BoundaryAnalysisPass._collect_boundary_type(
                 break;
             }
         }
-    }
-    if arch_node is None {
-        arch_node = self._parse_imported_archetype(type_name, search_mods);
     }
     if arch_node is None {
         return None;
