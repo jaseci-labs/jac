@@ -76,7 +76,7 @@ obj SelfHostCache {
             return;
         }
 
-        if self.program.scratch.compile_depth > 0 {
+        if self.program.has_active_compilation() {
             return;
         }
         if result is not None and artifact_for(result).native_engine is not None {

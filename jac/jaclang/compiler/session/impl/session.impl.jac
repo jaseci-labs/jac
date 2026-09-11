@@ -345,11 +345,20 @@ impl JacProgram.release_check_caches(self: JacProgram) -> None {
     ev._type_guard_probes.clear();
 }
 
+impl JacProgram.has_active_compilation(self: JacProgram) -> bool {
+    return bool(self.scratch.compile_depth or self.analysis.active)
+        or any(
+            context.has_active_compilation()
+            for context in self.contexts.values()
+            if context is not self
+        );
+}
+
 impl JacProgram.release_compile_closure(
     self: JacProgram, collect: bool = True
 ) -> None {
     import os;
-    if os.environ.get("JAC_NO_UNIT_EVICT") {
+    if os.environ.get("JAC_NO_UNIT_EVICT") or self.has_active_compilation() {
         return;
     }
 

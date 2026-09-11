@@ -82,6 +82,7 @@ class JacProgram(AnalysisServices) {
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
     def stub_catalog(self: JacProgram) -> StubCatalog | None;
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
+    def has_active_compilation(self: JacProgram) -> bool;
     def release_compile_closure(self: JacProgram, collect: bool = True) -> None;
     def release_native_dep_units(self: JacProgram) -> None;
     def release_check_caches(self: JacProgram) -> None;

@@ -82,3 +82,38 @@ test "client linking reports unexported runtime imports as a failed product" {
     assert events[-1].state == ProgressState.FAILED;
     assert not program.analysis.active;
 }
+
+
+test "self-host eviction preserves active queries across compilation contexts" {
+    import from jaclang.compiler.bootstrap.selfhost { SelfHostCache }
+    for child_context in [False, True] {
+        owner = JacProgram();
+        program = JacProgram() if child_context else owner;
+        if child_context {
+            program.context_root = owner;
+        }
+        owner.contexts['query'] = program;
+        cache = SelfHostCache(_program=owner);
+        main = Path('/tmp/client-link/eviction.jac');
+        def artifact(path: Path) -> ClientArtifact {
+            assert owner.has_active_compilation();
+            assert program.analysis.active;
+            cache.evict_unit(str(path), None, collect=False);
+            owner.release_compile_closure(collect=False);
+            assert program.analysis.active;
+            assert owner.contexts['query'] is program;
+            return ClientArtifact('', ClientManifest());
+        }
+        def variant(path: Path) -> Path {
+            return path;
+        }
+        result = link_client_graph(
+            program, ClientLinkRequest([main], artifact, variant, set(), set())
+        );
+        assert [unit.path for unit in result.modules] == [main];
+        assert not owner.has_active_compilation();
+        cache.evict_unit(str(main), None, collect=False);
+        assert not owner.contexts;
+        assert not program.analysis.active;
+    }
+}
