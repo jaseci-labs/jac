@@ -526,6 +526,9 @@ obj IfaceRegistry(CatalogResolver) {
     }
 
     def _prepare(ent: IfaceEntry, mod: Module) {
+        import from jaclang.compiler.pipeline.executor { run_utility }
+        import from jaclang.compiler.pipeline.contracts { UtilityProduct }
+        run_utility(UtilityProduct.INTERFACE_CONTEXT, mod, self.prog);
         self._restore_placement(ent);
         self.prog.analysis.mark(mod, _symtab_provides());
     }

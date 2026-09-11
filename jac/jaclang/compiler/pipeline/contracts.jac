@@ -146,6 +146,7 @@ obj ProductTask {
 class ProductUnavailable(RuntimeError) {}
 
 enum UtilityProduct {
+    INTERFACE_CONTEXT = "interface-context",
     PYTHON_AST = "python-ast",
     PYTHON_SYMBOLS = "python-symbols",
     GRAMMAR = "grammar",

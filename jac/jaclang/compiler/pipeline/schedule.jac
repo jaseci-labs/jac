@@ -595,6 +595,8 @@ def early_pipeline -> list[tuple[int, PassIdentity]] {
 def utility_pipeline(product: UtilityProduct) -> list[PassIdentity] {
     if product == UtilityProduct.PYTHON_AST {
         return [PassIdentity.PyastBuildPass];
+    } elif product == UtilityProduct.INTERFACE_CONTEXT {
+        return [PassIdentity.AppContextPass];
     } elif product == UtilityProduct.PYTHON_SYMBOLS {
         return [PassIdentity.AbsorbImportsPass, PassIdentity.SymTabBuildPass];
     } elif product == UtilityProduct.GRAMMAR {
