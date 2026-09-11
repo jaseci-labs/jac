@@ -8,7 +8,10 @@ walker InterfaceFactsPass(ProgramTransform) {
             CatalogBuilder
         }
         import from jaclang.compiler.analysis.interfaces.facts { InterfaceProduct }
-        import from jaclang.compiler.session.cache.artifact_codec { is_stub_like_path }
+        import from jaclang.compiler.session.cache.artifact_codec {
+            is_compiler_tree_path,
+            is_stub_like_path
+        }
         import from jaclang.compiler.session.cache.interface_codec {
             encode_interface,
             read_iface_hash
@@ -58,6 +61,7 @@ walker InterfaceFactsPass(ProgramTransform) {
             if not writer.in_boundary(module)
                 and module.loc.mod_path
                 and not is_stub_like_path(module.loc.mod_path)
+                and not is_compiler_tree_path(module.loc.mod_path)
         );
         dependencies.discard(path);
         was_building = path in registry.building;

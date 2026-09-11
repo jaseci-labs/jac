@@ -1118,3 +1118,23 @@ test "hydrated interfaces resolve class types on symbol-only source modules" {
         assert source.names_in_scope["Data"].decl.type is not None;
     }
 }
+
+test "compiler references use the compiler fingerprint without expanding interface dependencies" {
+    import from jaclang.compiler.session.cache.artifact_codec { is_compiler_tree_path }
+    with tempfile.TemporaryDirectory() as tmp {
+        path = str(Path(tmp) / "main.jac");
+        Path(path).write_text(
+            "import type from jaclang.compiler.session.options { CompileOptions }\ndef echo(value: CompileOptions) -> CompileOptions { return value; }"
+        );
+        program = JacProgram();
+        module = program.compile(path, options=_check_opts());
+        assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
+        assert require_product(program, module, CompilationProduct.INTERFACE);
+        interface = program.analysis.lookup(path, INTERFACE);
+        assert interface is not None and interface.data is not None;
+        dependencies = program.iface_registry().direct_deps.get(path, {});
+        assert not any(
+            is_compiler_tree_path(dep) for dep in dependencies
+        ) , dependencies;
+    }
+}
