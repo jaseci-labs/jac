@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# The Blacksmith runner image's apt mirrorlist names Canonical hosts only, so a
-# Canonical archive degradation leaves apt with no reachable mirror. apt then
-# retries with no deadline of its own and the job hangs for its whole wall clock
+# The runner images point apt at a mirrorlist naming Canonical hosts only, so a
+# Canonical archive degradation leaves it nothing to fall back to: apt retries
+# with no deadline of its own and the job stalls for its whole wall clock
 # instead of failing (2026-09-11: 46 minutes in one step, on three branches).
-# Every fetch is bounded, and each rung swaps in a different set of mirrors:
-# :443 on the same hosts, then a mirror off Canonical's network entirely.
-# azure.archive.ubuntu.com answers on :80 only, so it is never rewritten.
+# apt already fails over between mirrorlist entries, so all it needs is entries
+# off Canonical's network, plus deadlines so a stalled fetch cannot sit forever.
 set -euo pipefail
 
 read -r -a packages <<<"${APT_PACKAGES:-}"
@@ -19,92 +18,22 @@ if [ "${APT_NO_RECOMMENDS:-true}" = "true" ]; then
     install_flags+=(--no-install-recommends)
 fi
 
-# Per-connection deadlines; the outer `timeout` is what turns a mirror that
-# accepts the connection and then stalls into a failed step.
-apt_flags=(
-    -o Acquire::Retries=3
-    -o Acquire::http::Timeout=20
-    -o Acquire::https::Timeout=20
-)
+apt_etc=${APT_ETC_DIR:-/etc/apt}
 
-UPDATE_TIMEOUT=180
-INSTALL_TIMEOUT=600
-DEADLINE=1500
+printf 'Acquire::Retries "3";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' \
+    | sudo tee "$apt_etc/apt.conf.d/99-ci-fetch-deadlines" >/dev/null
 
-FALLBACK_MIRRORS=(
-    http://azure.archive.ubuntu.com/ubuntu/
-    https://mirrors.edge.kernel.org/ubuntu/
-    https://archive.ubuntu.com/ubuntu/
-)
+# Blacksmith images keep this at blacksmith-ubuntu-mirrors.txt, GitHub-hosted
+# ones at apt-mirrors.txt. azure answers on :80 only, kernel.org on :443 only.
+shopt -s nullglob
+mirror_lists=("$apt_etc"/*mirrors*.txt)
+shopt -u nullglob
+if [ "${#mirror_lists[@]}" -eq 0 ]; then
+    echo "::warning::apt-install: no apt mirrorlist on this image, using its sources as-is"
+else
+    printf 'http://azure.archive.ubuntu.com/ubuntu\nhttps://mirrors.edge.kernel.org/ubuntu\n' \
+        | sudo tee -a "${mirror_lists[@]}" >/dev/null
+fi
 
-codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
-
-source_files() {
-    local f
-    for f in /etc/apt/sources.list /etc/apt/blacksmith-ubuntu-mirrors.txt; do
-        [ -f "$f" ] && printf '%s\n' "$f"
-    done
-    if [ -d /etc/apt/sources.list.d ]; then
-        find /etc/apt/sources.list.d -maxdepth 1 -type f \( -name '*.list' -o -name '*.sources' \) 2>/dev/null
-    fi
-    return 0
-}
-
-try_install() {
-    timeout "$UPDATE_TIMEOUT" sudo apt-get "${apt_flags[@]}" update \
-        && timeout "$INSTALL_TIMEOUT" sudo apt-get "${apt_flags[@]}" install "${install_flags[@]}" "${packages[@]}"
-}
-
-use_https() {
-    local f
-    while IFS= read -r f; do
-        sudo sed -i -E \
-            -e 's#http://(([a-z0-9-]+\.)*)(archive|security)\.ubuntu\.com#https://\1\3.ubuntu.com#g' \
-            -e 's#https://azure\.archive\.ubuntu\.com#http://azure.archive.ubuntu.com#g' \
-            "$f"
-    done < <(source_files)
-}
-
-use_fallback_mirror() {
-    local candidate mirror=""
-    for candidate in "${FALLBACK_MIRRORS[@]}"; do
-        if curl -fsS --max-time 20 -o /dev/null "${candidate}dists/${codename}/InRelease"; then
-            mirror="$candidate"
-            break
-        fi
-    done
-    if [ -z "$mirror" ]; then
-        return 1
-    fi
-    echo "apt-install: falling back to $mirror"
-    local f
-    while IFS= read -r f; do
-        sudo mv "$f" "$f.ci-disabled"
-    done < <(source_files)
-    sudo tee /etc/apt/sources.list.d/ci-fallback.sources >/dev/null <<EOF
-Types: deb
-URIs: $mirror
-Suites: $codename $codename-updates $codename-backports $codename-security
-Components: main restricted universe multiverse
-Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-EOF
-}
-
-for attempt in image-mirrors canonical-https fallback-mirror; do
-    if [ "$SECONDS" -ge "$DEADLINE" ]; then
-        echo "::warning::apt-install: out of time before $attempt"
-        break
-    fi
-    case "$attempt" in
-        canonical-https) use_https ;;
-        fallback-mirror) use_fallback_mirror || break ;;
-    esac
-    if try_install; then
-        echo "apt-install: installed ${packages[*]} via $attempt"
-        exit 0
-    fi
-    echo "::warning::apt-install: $attempt could not serve ${packages[*]}"
-done
-
-echo "::error::apt-install: every mirror failed for ${packages[*]}; check https://status.canonical.com"
-exit 1
+timeout 300 sudo apt-get update
+timeout 900 sudo apt-get install "${install_flags[@]}" "${packages[@]}"
