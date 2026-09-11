@@ -25,6 +25,7 @@ def _manifest(
     if mod is None {
         raise RuntimeError(f'Preparation did not produce metadata for {path}');
     }
+    program = program.module_context(mod);
     require_product(program, mod, CompilationProduct.IMPORTS);
     sources = {os.path.realpath(path)};
     sources.update(

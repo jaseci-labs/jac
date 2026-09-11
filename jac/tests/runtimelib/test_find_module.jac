@@ -1,13 +1,8 @@
-"""Regression tests for `JacProgram.find_module` -- the single, program-spanning
-resolver for "the compiled module at <path>".
+"""Module lookup stays within its compilation context.
 
-`SelfHostCache.resolve` routes a file to either the user's program (`Jac.program`) or
-the compiler's internal program (anything under the jaclang package root, e.g.
-the bundled `jac ai --ui` app). A consumer that holds only a path -- the server's
-auth/manifest introspection, the client bundler -- must resolve the module no
-matter which program owns it. Before `find_module`, those consumers read
-`Jac.program.mod.hub` directly and silently missed internal-program modules,
-which made every `def:pub` endpoint of a jaclang-bundled app return 401.
+A bundled app is compiled by the self-host program. Runtime preparation must
+consume that program's serving facts; callers with a returned module select
+its context explicitly instead of searching unrelated compiler graphs.
 """
 
 import os;
@@ -28,7 +23,7 @@ def _bundled_app(slug: str, body: str) -> tuple[Path, Path] {
     return (d, f);
 }
 
-test "find_module resolves a module routed to the internal program" {
+test "module_context resolves a module routed to the internal program" {
     (d, f) = _bundled_app("resolve", 'def:pub greet() -> str { return "hi"; }\n');
     key = str(f.resolve());
     prog = Jac.program;
@@ -36,11 +31,11 @@ test "find_module resolves a module routed to the internal program" {
     try {
         mod = prog.compile(key);
         assert mod is not None;
-        # The divergence the bug relied on: a jaclang-root file is routed to the
-        # internal program, so it never lands in the user program's hub.
         assert key not in prog.mod.hub;
-        # ...but find_module spans the internal program and resolves it.
-        assert prog.find_module(key) is mod;
+        context = prog.module_context(mod);
+        assert context is not prog;
+        assert context.find_module(key) is mod;
+        assert prog.find_module(key) is None;
     } finally {
         shutil.rmtree(d, ignore_errors=True);
     }
