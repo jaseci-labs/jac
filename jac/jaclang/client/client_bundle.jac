@@ -1,4 +1,3 @@
-import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import hashlib;
 import os;
 import from pathlib { Path }

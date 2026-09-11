@@ -46,6 +46,7 @@ impl ClientBundleBuilder.build(
         return prebuilt;
     }
     import from jaclang { JacRuntime as Jac }
+    import from jaclang.compiler.backends.common.artifact_store { artifact_for }
     program = Jac.program;
     if program is None {
         raise ClientBundleError(
