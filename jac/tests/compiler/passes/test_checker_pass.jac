@@ -7,6 +7,7 @@ import jaclang;
 import jaclang.compiler.ir.schema as uni;
 import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.api { query_type }
 import from jaclang.testing.test { parametrize }
 
 glob FIXTURES: str = os.path.join(
@@ -2816,7 +2817,7 @@ test "enum_member_declaration_resolves_to_enum_member_type" {
     for member_name in expected_members {
         member_sym = enum_scope.lookup(member_name, deep=False);
         assert member_sym is not None , f"Member {member_name} not found";
-        member_type = program.get_type_evaluator().get_type_of_symbol(member_sym);
+        member_type = query_type(program, member_sym);
         assert isinstance(member_type, EnumMemberType) , (
             f"Expected EnumMemberType for {member_name}, got {type(
                 member_type
@@ -2852,7 +2853,7 @@ test "enum_member_impl_declaration_resolves_to_enum_member_type" {
     for member_name in expected_members {
         member_sym = enum_scope.lookup(member_name, deep=False);
         assert member_sym is not None , f"Member {member_name} not found";
-        member_type = program.get_type_evaluator().get_type_of_symbol(member_sym);
+        member_type = query_type(program, member_sym);
         assert isinstance(member_type, EnumMemberType) , (
             f"Expected EnumMemberType for {member_name}, got {type(
                 member_type

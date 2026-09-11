@@ -133,6 +133,7 @@ import from jaclang.compiler.ir.types.nodes {
     UnknownType
 }
 import from jaclang.compiler.pipeline.executor { run_pass }
+import from jaclang.compiler.api { query_type }
 
 glob CHECKER_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "checker"
@@ -1272,7 +1273,18 @@ test "bug_cycimp1_reentrant_import_guard_returns_stub" {
         f"Got errors: {[str(e) for e in program.errors_had[pre_errs:]]}"
     );
 
-    settled = evaluator._import_module_from_path(target);
+    # This white-box test drives the evaluator's import guard directly. Give
+    # that internal operation the binding permit normally supplied by its pass.
+    import from jaclang.compiler.ir.identity {
+        MutationScope,
+        RelationFamily,
+        relation_bit
+    }
+    with MutationScope(
+        program.analysis.mutations, relation_bit(RelationFamily.BINDING)
+    ) {
+        settled = evaluator._import_module_from_path(target);
+    }
     assert not settled.stub_only and settled.name == "checker_cycle_guard_target" , (
         "Bug #CYCLE-IMPORT-1: once the module is no longer mid-compile, the "
         "same query must compile and return the real module."
@@ -1418,7 +1430,7 @@ test "bug_cycprec1_node_type_never_stores_incomplete_result" {
         "pushing a symbol not on the resolution stack must succeed"
     );
     try {
-        during = evaluator.get_type_of_expression(config_use);
+        during = query_type(program, config_use);
     } finally {
         evaluator.pop_symbol_resolution(config_sym);
     }
@@ -1431,7 +1443,7 @@ test "bug_cycprec1_node_type_never_stores_incomplete_result" {
         f"in node_.type. Got: {config_use.type}"
     );
 
-    settled = evaluator.get_type_of_expression(config_use);
+    settled = query_type(program, config_use);
     assert not isinstance(settled, UnknownType) and str(settled) == "dict" , (
         "Bug #CYCLE-PRECISION-1: after the stack unwinds, the same query "
         f"must resolve the settled type. Got: {settled}"

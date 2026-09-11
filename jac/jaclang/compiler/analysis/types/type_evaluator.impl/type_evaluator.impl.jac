@@ -3892,8 +3892,9 @@ impl TypeEvaluator._unwrap_awaitable_type(t: TypeBase, node_: UniNode) -> TypeBa
     return t;
 }
 
-impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
-    tgt = expr.target;
+impl TypeEvaluator._is_sv_async_call(expr: CallExpr) -> bool {
+    callable_expr = call_target(expr);
+    tgt = callable_expr;
     if not isinstance(tgt, Name) or tgt.sym is None {
         return False;
     }

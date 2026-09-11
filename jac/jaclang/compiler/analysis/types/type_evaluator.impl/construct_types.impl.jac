@@ -311,19 +311,20 @@ impl TypeEvaluator._get_iterable_element_type(
     return None;
 }
 
-impl TypeEvaluator._native_iter_next_result(expr: FuncCall) -> TypeBase | None {
+impl TypeEvaluator._native_iter_next_result(expr: CallExpr) -> TypeBase | None {
+    callable_expr = call_target(expr);
     if not (
-        isinstance(expr.target, Name)
-        and expr.target.value in ("iter", "next")
-        and len(expr.params or []) == 1
+        isinstance(callable_expr, Name)
+        and callable_expr.value in ("iter", "next")
+        and len(call_params(expr) or []) == 1
     ) {
         return None;
     }
-    sym = expr.target.sym;
+    sym = callable_expr.sym;
     if sym is None or sym.parent_tab is not self.na_builtins_module {
         return None;
     }
-    arg = expr.params[0];
+    arg = call_params(expr)[0];
 
     if isinstance(arg, KWPair) {
         return None;
@@ -337,7 +338,7 @@ impl TypeEvaluator._native_iter_next_result(expr: FuncCall) -> TypeBase | None {
     if elem is None {
         return None;
     }
-    if expr.target.value == "next" {
+    if callable_expr.value == "next" {
         return elem;
     }
     iter_cls = self._get_type_from_module(self.na_builtins_module, "Iterator");
@@ -823,14 +824,14 @@ impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
     return AnyType(is_foreign=True);
 }
 
-impl TypeEvaluator._check_extern_ctor_args(expr: FuncCall, arch: Archetype) -> None {
+impl TypeEvaluator._check_extern_ctor_args(expr: CallExpr, arch: Archetype) -> None {
     fields = arch.get_has_vars();
     by_name: dict[str, HasVar] = {};
     for hv in fields {
         by_name[hv.name.sym_name] = hv;
     }
     pos = 0;
-    for param in expr.params {
+    for param in call_params(expr) {
         field: HasVar | None = None;
         arg: Expr;
         if isinstance(param, KWPair) {

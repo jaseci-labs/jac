@@ -1,8 +1,12 @@
+import from jaclang.compiler.analysis.types.call_sites {
+    CallExpr,
+    call_target,
+    call_params
+}
 import from jaclang.compiler.ir.schema {
     AtomUnit,
     Expr,
     Float,
-    FuncCall,
     Int,
     Name,
     Token,
@@ -337,14 +341,14 @@ def _is_jac_builtin_fn(evaluator: TypeEvaluator, callee: Expr, name: str) -> boo
 }
 
 def fixed_width_call_type(
-    evaluator: TypeEvaluator, call: FuncCall, callee_type: TypeBase
+    evaluator: TypeEvaluator, call: CallExpr, callee_type: TypeBase
 ) -> TypeBase | None {
     args = [
         a
-        for a in (call.params or [])
+        for a in (call_params(call) or [])
         if isinstance(a, Expr)
     ];
-    if len(args) != len(call.params or []) {
+    if len(args) != len(call_params(call) or []) {
         return None;
     }
     if (
@@ -367,7 +371,7 @@ def fixed_width_call_type(
         }
         return target;
     }
-    callee = call.target;
+    callee = call_target(call);
     for name in WRAPPING_BINARY_BUILTINS {
         if _is_jac_builtin_fn(evaluator, callee, name) and len(args) == 2 {
             left_type = evaluator.get_type_of_expression(args[0]);

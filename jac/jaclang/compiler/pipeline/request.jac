@@ -82,11 +82,16 @@ obj ModuleCompilation {
         blocking_errs_post_ir = self.compiler._count_module_blocking_errors(
             self.program, self.module_path
         );
-        self.blocked = blocking_errs_post_ir > blocking_errs_pre_ir;
+        self.blocked = blocking_errs_post_ir > blocking_errs_pre_ir
+            or not self.program.analysis.has_module(self.module)
+            or _head_sched[-1]
+                not in self.program.analysis.module(self.module).completed;
     }
 
     def placement {
-        if not self.options.symtab_ir_only and not self.blocked {
+        if not self.parse_failed
+            and not self.options.symtab_ir_only
+            and not self.blocked {
             import from jaclang.compiler.pipeline.products {
                 require_product,
                 invalidate_product
@@ -98,6 +103,9 @@ obj ModuleCompilation {
     }
 
     def analysis {
+        if self.parse_failed or self.blocked {
+            return;
+        }
         import from jaclang.compiler.pipeline.schedule { get_analysis_sched }
         import from jaclang.compiler.api { module_spaces }
         self.native = module_spaces(self.program, self.module).native_module;
@@ -231,6 +239,12 @@ obj ModuleCompilation {
                 import from jaclang.compiler.pipeline.products { require_product }
                 import from jaclang.compiler.pipeline.contracts { CompilationProduct }
                 require_product(self.program, self.module, CompilationProduct.ANALYSIS);
+                if not self.program.analysis.provides(
+                    self.module, AnalysisFact.TYPE_OF
+                ) {
+                    self.blocked = True;
+                    return;
+                }
             }
             execute_passes(
                 module=self.module,

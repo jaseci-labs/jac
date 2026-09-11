@@ -210,3 +210,45 @@ test "a scheduled type query resolves a symbol before whole-module checking" {
         assert program.analysis.mutations.mask == 0;
     }
 }
+
+test "pipe type queries preserve syntax parents and lexical children" {
+    import from jaclang.compiler.api { query_type }
+    import from jaclang.compiler.ir.schema { BinaryExpr, Token }
+    import from jaclang.compiler.ir.enums { Tokens as Tok }
+    import from jaclang.compiler.session.options { CompileOptions }
+    with TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'pipes.jac';
+        path.write_text(
+            'def add(a: int, b: int) -> int { return a + b; } '
+            'glob forward = (1, 2) |> add, backward = add <| (3, 4);'
+        );
+        program = JacProgram();
+        module = program.compile(
+            str(path),
+            options=CompileOptions(
+                symtab_ir_only=True,
+                no_cgen=True,
+                force_target_program=True,
+                default_codespace='server'
+            )
+        );
+        pipes = [
+            part
+            for part in module.get_all_sub_nodes(BinaryExpr)
+            if isinstance(part.op, Token)
+                and part.op.name in (Tok.PIPE_FWD, Tok.PIPE_BKWD)
+        ];
+        assert len(pipes) == 2;
+        for pipe in pipes {
+            children = list(pipe.kid);
+            parents = [child.parent for child in children];
+            assert str(query_type(program, pipe)) == 'int';
+            assert pipe.kid == children;
+            assert [child.parent for child in children] == parents;
+            assert pipe.left.parent is pipe;
+            assert pipe.right.parent is pipe;
+        }
+        assert not program.errors_had;
+        assert program.analysis.mutations.mask == 0;
+    }
+}

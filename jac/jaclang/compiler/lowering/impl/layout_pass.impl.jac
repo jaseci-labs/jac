@@ -423,7 +423,11 @@ impl LayoutPass._build_enum_layouts(module: Module) -> None {
             continue;
         }
         raw_members: list[tuple[(str, (UniNode | None))]] = [];
-        for stmt in nd.body {
+        enum_body = nd.body.body if isinstance(nd.body, ImplDef) else nd.body;
+        if not isinstance(enum_body, list) {
+            continue;
+        }
+        for stmt in enum_body {
             if isinstance(stmt, Assignment) {
                 targets = stmt.target
                     if isinstance(stmt.target, (list, tuple))

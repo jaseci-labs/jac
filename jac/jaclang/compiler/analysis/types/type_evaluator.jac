@@ -1,3 +1,8 @@
+import from jaclang.compiler.analysis.types.call_sites {
+    CallExpr,
+    call_target,
+    call_params
+}
 import type from jaclang.compiler.session.services { AnalysisServices }
 import from jaclang.compiler.analysis.types.specialization { specialize_function }
 import from jaclang.compiler.analysis.types.member_lookup { lookup_member_symbol }
@@ -546,7 +551,7 @@ walker TypeEvaluator {
     ) -> bool;
 
     def _extern_scalar_type(type_expr: Expr | None) -> TypeBase;
-    def _check_extern_ctor_args(expr: FuncCall, arch: Archetype) -> None;
+    def _check_extern_ctor_args(expr: CallExpr, arch: Archetype) -> None;
     def _extern_member_type(arch: Archetype, name: str) -> TypeBase;
     def _extern_field_type(field: HasVar) -> TypeBase;
     def assign_expr(
@@ -648,7 +653,7 @@ walker TypeEvaluator {
         is_async: bool = False
     ) -> TypeBase | None;
 
-    def _native_iter_next_result(expr: FuncCall) -> TypeBase | None;
+    def _native_iter_next_result(expr: CallExpr) -> TypeBase | None;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _edge_endpoint_type(
         edge_type: ClassType, edge_dir: EdgeDir
@@ -696,15 +701,15 @@ walker TypeEvaluator {
         is_unbound_call: bool = False
     ) -> MatchArgsToParamsResult;
 
-    def _is_unbound_method_call(expr: FuncCall) -> bool;
-    def validate_call_args(expr: FuncCall) -> TypeBase;
-    def _validate_call_type(expr: FuncCall, caller_type: TypeBase) -> TypeBase;
+    def _is_unbound_method_call(expr: CallExpr) -> bool;
+    def validate_call_args(expr: CallExpr) -> TypeBase;
+    def _validate_call_type(expr: CallExpr, caller_type: TypeBase) -> TypeBase;
     def _container_value_type(value_type: TypeBase, at: Expr) -> TypeBase;
-    def _unannotated_lambda_arg_name(expr: FuncCall) -> str | None;
+    def _unannotated_lambda_arg_name(expr: CallExpr) -> str | None;
     def _make_coroutine_type(inner: TypeBase) -> TypeBase;
     def _is_awaitable_type(t: TypeBase) -> bool;
     def _unwrap_awaitable_type(t: TypeBase, node_: UniNode) -> TypeBase;
-    def _is_sv_async_call(expr: FuncCall) -> bool;
+    def _is_sv_async_call(expr: CallExpr) -> bool;
     def validate_arg_types(
         args: MatchArgsToParamsResult,
         checking_overload: bool = False,
@@ -741,7 +746,7 @@ walker TypeEvaluator {
     def _create_namedtuple_new_method(class_type: ClassType) -> FunctionType;
     def _create_special_builtin_type(name: str, base_class: ClassType) -> ClassType;
     def _validate_constructor_method(
-        expr: FuncCall, method_type: TypeBase
+        expr: CallExpr, method_type: TypeBase
     ) -> FunctionType | None;
 
     def _strip_implicit_self_cls(method: FunctionType) -> FunctionType;
@@ -757,14 +762,14 @@ walker TypeEvaluator {
         param_type: TypeBase, bindings: dict[str, TypeBase], fill: TypeBase
     ) -> None;
 
-    def _member_is_metaclass_only(cls_type: ClassType, expr: FuncCall) -> bool;
+    def _member_is_metaclass_only(cls_type: ClassType, expr: CallExpr) -> bool;
     def class_constructor_callables(cls_type: ClassType) -> list[FunctionType];
     def _infer_type_args_from_method(
-        caller_type: ClassType, expr: FuncCall, matched_method: FunctionType | None
+        caller_type: ClassType, expr: CallExpr, matched_method: FunctionType | None
     ) -> list[TypeBase];
 
     def _find_matching_raw_constructor(
-        caller_type: ClassType, expr: FuncCall, matched_method: FunctionType | None
+        caller_type: ClassType, expr: CallExpr, matched_method: FunctionType | None
     ) -> FunctionType | None;
 
     def _find_overload_by_arg_count(
@@ -777,12 +782,12 @@ walker TypeEvaluator {
 
     def _collect_type_var_bindings(
         method: FunctionType,
-        expr: FuncCall,
+        expr: CallExpr,
         is_unbound_call: bool = False,
         is_constructor_call: bool = False
     ) -> dict[str, TypeBase];
 
-    def _call_receiver_type(expr: FuncCall) -> TypeBase | None;
+    def _call_receiver_type(expr: CallExpr) -> TypeBase | None;
     def _receiver_type_var_bindings(
         method: FunctionType, receiver: TypeBase | None
     ) -> dict[str, TypeBase];

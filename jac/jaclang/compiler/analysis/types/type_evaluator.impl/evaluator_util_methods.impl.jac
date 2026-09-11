@@ -1070,12 +1070,15 @@ impl TypeEvaluator._is_expr_super(expr: Expr) -> bool {
     return False;
 }
 
-impl TypeEvaluator._is_unbound_method_call(expr: FuncCall) -> bool {
-    if isinstance(expr.target, AtomTrailer) and expr.target.is_attr {
-        base_type = self.get_type_of_expression(expr.target.target);
+impl TypeEvaluator._is_unbound_method_call(expr: CallExpr) -> bool {
+    callable_expr = call_target(expr);
+    if isinstance(callable_expr, AtomTrailer) and callable_expr.is_attr {
+        base_type = self.get_type_of_expression(callable_expr.target);
         if isinstance(base_type, ClassType) and base_type.is_instantiable_class() {
-            if isinstance(expr.target.right, Name) {
-                member = self._lookup_class_member(base_type, expr.target.right.value);
+            if isinstance(callable_expr.right, Name) {
+                member = self._lookup_class_member(
+                    base_type, callable_expr.right.value
+                );
                 if member {
                     decl = member.symbol.decl;
                     node_ = decl.name_of if decl is not None else None;

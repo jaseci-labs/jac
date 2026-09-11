@@ -17,6 +17,7 @@ import from jaclang.compiler.ir.schema {
     FuncSignature,
     HasVar,
     IndexSlice,
+    ImplDef,
     Module,
     ModuleItem,
     Name,

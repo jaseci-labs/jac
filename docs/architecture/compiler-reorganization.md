@@ -207,6 +207,8 @@ Use stable schema identifiers and a schema version. Type/path renames must not s
 
 The pass registry also declares whether a diagnostic leaves a pass's facts complete. A recovering checker can finish and allow independent diagnostics to run; an interrupted binding pass cannot authorize later type analysis. Exceptions and cancellation still invalidate partial graphs. Native early-pass results survive initial module registration and are consumed by the same executor. An interface producer can successfully report that a graph is not cacheable without invalidating its analysis; cache entries record external interface dependencies and only their owning module's diagnostics. Standalone source-rendering tools copy syntax into one tool context, leaving semantic caches and backend state behind.
 
+Interface hydration schedules source-stub class preparation before consumers decode external type references. The codec only enumerates references and reads prepared types; it never invokes the evaluator to fill a missing class. Call analysis likewise reads ordinary calls and pipe operands through typed views, without constructing temporary syntax that reparents the live graph.
+
 The core contracts are proposed APIs, not claims that these types exist today:
 
 | Type | Required contents |

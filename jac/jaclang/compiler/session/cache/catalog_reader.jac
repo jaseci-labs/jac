@@ -952,6 +952,25 @@ obj StubCatalog {
         return uk;
     }
 
+    def external_class_references -> list[tuple[str, str]] {
+        references: list[tuple[str, str]] = [];
+        for shid in range(self.hdr.n_shared) {
+            record = self._rec(self.hdr.off_sharedtab, shid);
+            record.u();
+            bits = record.u();
+            if bits & SH_XREF {
+                module_id = record.ref();
+                dotted = self.string(record.u());
+                if module_id >= 0 {
+                    references.append(
+                        (self.abs_path(self._mod_recs[module_id][1]), dotted)
+                    );
+                }
+            }
+        }
+        return references;
+    }
+
     def shared_of(shid: int) -> (ClassDetailsShared | None) {
         if shid < 0 {
             return None;

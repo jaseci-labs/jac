@@ -596,7 +596,7 @@ def utility_pipeline(product: UtilityProduct) -> list[PassIdentity] {
     if product == UtilityProduct.PYTHON_AST {
         return [PassIdentity.PyastBuildPass];
     } elif product == UtilityProduct.INTERFACE_CONTEXT {
-        return [PassIdentity.AppContextPass];
+        return [PassIdentity.AppContextPass, PassIdentity.InterfaceStubTypesPass];
     } elif product == UtilityProduct.PYTHON_SYMBOLS {
         return [PassIdentity.AbsorbImportsPass, PassIdentity.SymTabBuildPass];
     } elif product == UtilityProduct.GRAMMAR {
@@ -1103,6 +1103,24 @@ def _create_InterfaceFactsPass(context: PassContext) -> Transform {
         InterfaceFactsPass
     }
     return InterfaceFactsPass(
+        ir_in=context.ir,
+        cancel_token=context.cancel_token,
+        cancel_requested=bool(
+            context.cancel_token is not None and context.cancel_token.is_set()
+        ),
+        policy=context.policy,
+        errors_had=context.errors,
+        warnings_had=context.warnings,
+        completed=context.completed,
+        prog=context.program
+    );
+}
+
+def _create_InterfaceStubTypesPass(context: PassContext) -> Transform {
+    import from jaclang.compiler.analysis.interfaces.stub_types_pass {
+        InterfaceStubTypesPass
+    }
+    return InterfaceStubTypesPass(
         ir_in=context.ir,
         cancel_token=context.cancel_token,
         cancel_requested=bool(
@@ -1886,6 +1904,15 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
          PassIdentity.InterfaceFactsPass: PassSpec(
              PassIdentity.InterfaceFactsPass,
              _create_InterfaceFactsPass,
+             PassScope.MODULE,
+             frozenset(
+                 {RelationFamily.BINDING, RelationFamily.TYPES, RelationFamily.FLOW}
+             ),
+             AnalysisContract()
+         ),
+         PassIdentity.InterfaceStubTypesPass: PassSpec(
+             PassIdentity.InterfaceStubTypesPass,
+             _create_InterfaceStubTypesPass,
              PassScope.MODULE,
              frozenset(
                  {RelationFamily.BINDING, RelationFamily.TYPES, RelationFamily.FLOW}

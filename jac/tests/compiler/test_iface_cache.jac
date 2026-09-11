@@ -2,7 +2,7 @@
 
 Acceptance shape of jaseci-labs/jac#8836, asserted through the pass and
 cache-event counters rather than timing: a warm no-edit check replays
-persisted diagnostics with zero passes; dependency ingestion hydrates
+persisted diagnostics without reanalyzing source; dependency ingestion hydrates
 from SEC_IFACE without touching the dep's source pipeline; a body-only
 dep edit recompiles the dep but does not cascade (interface hash
 cutoff); an interface edit does cascade; JAC_REBUILD recomputes and
@@ -117,7 +117,7 @@ test "a checked module persists interface, deps, and diagnostics sections" {
     assert dep_iface is not None , "the dependency persisted no interface";
 }
 
-test "a warm no-edit check replays diagnostics and runs zero passes" {
+test "a warm no-edit check replays diagnostics and only restores interface context" {
     (main, dep) = _project();
     (cold_prog, cold_diags) = _check(main);
     assert cold_prog.analysis.pass_runs , "the cold run should have run passes";
@@ -126,8 +126,9 @@ test "a warm no-edit check replays diagnostics and runs zero passes" {
     assert events.get("analysis_replay", 0) == 1 , (
         f"warm check did not replay (events: {events})"
     );
-    assert not warm_prog.analysis.pass_runs , (
-        f"warm no-edit check ran passes: {sorted(warm_prog.analysis.pass_runs)}"
+    assert set(warm_prog.analysis.pass_runs)
+        == {"AppContextPass", "InterfaceStubTypesPass"} , (
+        f"warm no-edit check reanalyzed source: {sorted(warm_prog.analysis.pass_runs)}"
     );
     assert warm_diags == cold_diags , "warm diagnostics diverge from cold";
 }
@@ -980,4 +981,27 @@ test "cached diagnostics preserve their owner and replay once" {
     assert program.warnings_had[0].owner == '/tmp/helper.jac';
     assert program.diags._owned(program.warnings_had[0], '/tmp/helper.jac');
     assert not program.diags._owned(program.warnings_had[0], '/tmp/consumer.jac');
+}
+
+test "hydrated interfaces prepare source-stub classes before resolving references" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.session.compiler { JacCompiler }
+    (main, dep) = _project('def f -> frozenset { return frozenset(["x"]); }');
+    Path(main).parent.joinpath('jac.toml').write_text(
+        '[project]\nname = "stub-interface"\n'
+        '[placement.pins]\ndepmod = "server"\nmainmod = "server"\n'
+    );
+    Path(main).write_text('import from depmod { f }\nglob present = "x" in f();');
+    with patch.object(JacCompiler, 'stub_catalog', return_value=None), patch.object(
+        JacCompiler, 'ensure_stub_catalog', return_value=None
+    ) {
+        (cold, cold_diags) = _check(main);
+        assert not cold.errors_had , cold_diags;
+        cold.release_compile_closure(collect=False);
+        _rewrite(main, Path(main).read_text() + '\n# Recheck the consumer.\n');
+        (warm, warm_diags) = _check(main);
+        assert warm.analysis.cache_events.get('dep_hydrate', 0) >= 1;
+        assert 'InterfaceStubTypesPass' in warm.analysis.pass_runs;
+        assert not warm.errors_had , warm_diags;
+    }
 }
