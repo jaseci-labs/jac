@@ -134,7 +134,8 @@ test "native path queries share compilation syntax and restore nested contexts" 
 }
 
 
-test "an uncacheable interface does not become a successful product" {
+test "an uncacheable interface records an unavailable artifact without repeating analysis" {
+    import from jaclang.compiler.pipeline.keys { INTERFACE }
     import from jaclang.compiler.pipeline.products { invalidate_product }
     with TemporaryDirectory() as tmp {
         path = Path(tmp) / 'main.jac';
@@ -144,8 +145,14 @@ test "an uncacheable interface does not become a successful product" {
         assert not program.errors_had;
         module.codespace_inferred = True;
         invalidate_product(program, module, CompilationProduct.INTERFACE);
-        assert not require_product(program, module, CompilationProduct.INTERFACE);
-        assert not require_product(program, module, CompilationProduct.INTERFACE);
+        assert require_product(program, module, CompilationProduct.INTERFACE);
+        result = program.analysis.lookup(module.loc.mod_path, INTERFACE);
+        assert result is not None;
+        assert result.data is None;
+        assert result.unavailable_reason;
+        runs = dict(program.analysis.pass_runs);
+        assert require_product(program, module, CompilationProduct.INTERFACE);
+        assert program.analysis.pass_runs == runs;
         assert not program.errors_had;
     }
 }
