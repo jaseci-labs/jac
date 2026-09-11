@@ -23,6 +23,13 @@ obj ClientBundle {
         hash: str;
 }
 
+obj ClientBuildInputs {
+    has module_name: str,
+        client_functions: list[str],
+        client_globals: list[str],
+        assets: dict[str, bytes] = {};
+}
+
 obj _CachedBundle {
     has signature: str,
         bundle: ClientBundle;

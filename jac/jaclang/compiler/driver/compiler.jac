@@ -108,6 +108,7 @@ obj JacCompiler {
 
     has selfhost: SelfHostCache { getter; }
 
+    def release_compile_state(target_program: JacProgram) -> None;
     def stub_catalog -> StubCatalog | None;
     def ensure_stub_catalog -> StubCatalog | None;
     def note_stub_tree_served(path: str, program: JacProgram) -> None;

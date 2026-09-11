@@ -518,18 +518,15 @@ impl NaIRGenPass._codegen_dict_access(
     }
     key_exists = self.builder.call(_has_fn, _has_args, name="dict.has");
     not_exists = self.builder.not_(key_exists, name="dict.nokey");
-    self._emit_runtime_raise(not_exists, "KeyError", "key not found");
     (_get_fn, _gh) = self._static_key_op(helpers, "get", key_node);
     _get_args = [target_val, key_val];
     if _gh is not None {
         _get_args.append(_gh);
     }
-    result = self.builder.call(_get_fn, _get_args, name="dict.get");
-    if self._is_owned(target_val) and self._gc_mode() != "none" {
-        self._emit_take_ref(result, op="dict_get");
-        self._release_owned_args([target_val], op="call_arg");
-        return self._mark_reference_owned(result);
-    }
+    borrowed = self.builder.call(_get_fn, _get_args, name="dict.get");
+    self._release_owned_args([key_val], op="dict_get");
+    result = self._finish_borrowed_read(target_val, borrowed);
+    self._emit_runtime_raise(not_exists, "KeyError", "key not found");
     return result;
 }
 
@@ -552,7 +549,6 @@ impl NaIRGenPass._codegen_dict_set(
     if self._reject_ptr_into_raw_slot(None, value, val_type, "dict value assignment") {
         return;
     }
-    _orig_key = key_val;
     _orig_value = value;
     key_val = self._coerce_type(key_val, key_type);
     value = self._coerce_type(value, val_type);
@@ -566,22 +562,5 @@ impl NaIRGenPass._codegen_dict_set(
     }
     self._rc_call_with_ctx(_set_fn, _set_args, op="dict_set", loc=_dset_ctx_loc);
 
-    if (
-        isinstance(_orig_key.type, ir.PointerType)
-        and isinstance(key_type, ir.PointerType)
-        and self._is_owned(_orig_key)
-    ) {
-        self._emit_rc_release_simple(_orig_key, op="dict_set", loc=_dset_ctx_loc);
-    }
-
-    if (
-        isinstance(_orig_value.type, ir.PointerType)
-        and self._elem_kind(val_type) != "raw"
-        and self._is_owned(_orig_value)
-    ) {
-        _dset_loc = getattr(
-            _orig_value, 'jac_loc', f"{os.path.basename(self.ir_in.loc.mod_path)}:0"
-        );
-        self._emit_rc_release_simple(_orig_value, op="dict_set", loc=_dset_loc);
-    }
+    self._release_owned_args([key_val, value], op="dict_set");
 }

@@ -144,6 +144,29 @@ test "dependency ingestion hydrates from the interface, not the source" {
     assert "f" in mod.names_in_scope , "the hydrated interface lost a symbol";
 }
 
+test "hydrated dependencies retain their application context" {
+    (main, dep) = _project();
+    project = Path(main).parent;
+    second = str(project / "second.jac");
+    Path(second).write_text(MAIN_SRC);
+    (project / "jac.toml").write_text(
+        '[project]\nname = "cached_apps"\nversion = "0.0.1"\n'
+            + '[apps.first]\nkind = "service"\nentry-point = "mainmod"\n'
+            + '[apps.second]\nkind = "service"\nentry-point = "second"\n'
+    );
+    for (entry_path, app) in [(main, "first"), (second, "second")] {
+        (_cold, diagnostics) = _check(entry_path);
+        assert not diagnostics , diagnostics;
+        prog = _context(entry_path);
+        mod = prog.load_dependency_module(dep);
+        assert prog.analysis.cache_events.get("dep_hydrate", 0) == 1;
+        assert mod.stub_only;
+        assert mod.app == app , f"{app}: {mod.app}";
+        assert mod.app_kind == "service";
+        assert mod.app_root == str(project);
+    }
+}
+
 test "a body-only dependency edit does not cascade to the importer" {
     (main, dep) = _project();
     (_cold, cold_diags) = _check(main);

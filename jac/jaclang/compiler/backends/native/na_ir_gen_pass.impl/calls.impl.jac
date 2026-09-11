@@ -1111,7 +1111,7 @@ impl NaIRGenPass._codegen_receiver(nd: (uni.UniNode | None)) -> (ir.Value | None
 }
 
 impl NaIRGenPass._emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None {
-    if isinstance(value.type, ir.PointerType) and not self._is_owned(value) {
+    if self._elem_kind(value.type) in ("rc_ptr", "str") and not self._is_owned(value) {
         self._emit_rc_retain(value, op=op, loc=loc);
         return;
     }
@@ -1710,10 +1710,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         );
                     }
                     if _len_result is not None {
-                        if isinstance(arg_val.type, ir.PointerType)
-                            and self._is_owned(arg_val) {
-                            self._emit_rc_release_simple(arg_val, op="len_arg", loc="");
-                        }
+                        self._release_owned_args([arg_val], op="len_arg");
                         return _len_result;
                     }
                 }

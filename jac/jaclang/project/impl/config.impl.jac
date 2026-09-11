@@ -1402,6 +1402,14 @@ impl get_config_for_dir(start_dir: str) -> JacConfig | None {
     return get_config_for_path(Path(start_dir));
 }
 
+impl active_profile_name(config: JacConfig | None) -> str {
+    requested = os.environ.get("JAC_PROFILE", "").strip();
+    if requested or config is None {
+        return requested;
+    }
+    return config.environment.default_profile or "";
+}
+
 impl get_config_for_path(start_path: Path) -> JacConfig | None {
     explicit = get_explicit_config();
     if explicit is not None {
