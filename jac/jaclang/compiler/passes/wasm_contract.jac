@@ -110,9 +110,6 @@ def host_contracts(module: any, program: JacProgram) -> dict {
 }
 
 def _host_type(name: str) -> str {
-    if name == "NoneType" {
-        return "None";
-    }
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     shape = JAC_TYPE_REGISTRY.shape_of(name);
     if shape is not None and shape.sized {
@@ -159,14 +156,16 @@ def check_host_call(call: any, program: JacProgram) -> None {
             raise ValueError(f"Host import '{name}' must be a function");
         }
         expected = [_host_type(p["type"]) for p in required["params"]];
+        expected_return = _host_type(required["result"]["type"]);
+        if expected_return == "None" {
+            expected_return = "NoneType";
+        }
         actual = [
-            _host_type(str(p.param_type))
+            str(p.param_type)
             for p in supplied.parameters
             if not p.is_self and not p.is_cls
         ];
-        if expected != actual
-            or _host_type(required["result"]["type"])
-                != _host_type(str(supplied.return_type)) {
+        if expected != actual or expected_return != str(supplied.return_type) {
             raise ValueError(
                 f"Host import '{name}' has incompatible signature: expected {expected} -> {_host_type(
                     required['result']['type']

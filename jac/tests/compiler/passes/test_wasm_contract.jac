@@ -6,17 +6,19 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.project.config { get_explicit_config, set_config }
 
-def host_errors(hosts: str, cached_host: bool = False) -> list[str] {
+def host_errors(
+    hosts: str,
+    cached_host: bool = False,
+    native_source: str = 'import from raylib { def CloseWindow -> None; }\n'
+    'def init -> int { CloseWindow(); return 0; }\n'
+) -> list[str] {
     saved = get_explicit_config();
     set_config(None);
     try {
         with TemporaryDirectory() as directory {
             base = Path(directory);
             (base / "jac.toml").write_text('[project]\nname = "host"\n');
-            (base / "native.jac").write_text(
-                'import from raylib { def CloseWindow -> None; }\n'
-                'def init -> int { CloseWindow(); return 0; }\n'
-            );
+            (base / "native.jac").write_text(native_source);
             source = base / "main.jac";
             source.write_text(
                 'import from "@jac/wasm_host" { bind_na_host }\n'
@@ -116,4 +118,34 @@ test "host binding validates inherited signatures loaded from an interface cache
     assert any(
         "Host import 'CloseWindow' has incompatible signature" in e for e in errors
     );
+}
+
+test "host annotations cannot widen native scalar widths" {
+    for (native_type, wide_type, primitive) in [
+        ("i32", "i64", "int"),
+        ("f32", "f64", "float")
+    ] {
+        for cached_host in [False, True] {
+            for (param_type, return_type) in [
+                (wide_type, primitive),
+                (primitive, wide_type),
+                (primitive, primitive)
+            ] {
+                errors = host_errors(
+                    f'obj Host {{ def exchange(value: {param_type}) -> {return_type} {{ return {return_type}(value); }} }}\n',
+                    cached_host=cached_host,
+                    native_source=f'import from host_api {{ def exchange(value: {native_type}) -> {native_type}; }}\n'
+                    f'def init -> {native_type} {{ return exchange({native_type}(0)); }}\n'
+                );
+                if param_type == primitive and return_type == primitive {
+                    assert not errors , str(errors);
+                } else {
+                    assert any(
+                        "Host import 'exchange' has incompatible signature" in e
+                        for e in errors
+                    ) , str(errors);
+                }
+            }
+        }
+    }
 }
