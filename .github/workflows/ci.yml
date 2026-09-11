@@ -1007,7 +1007,19 @@ jobs:
       # the native engine needs WebKitGTK + a C toolchain to build libwebview,
       # patchelf for the $ORIGIN runpath, and a display to launch under.
       - name: Install desktop build deps
+        timeout-minutes: 10
         run: |
+          # The runner's mirror list uses HTTP, which can be unreachable while
+          # HTTPS works. Keep Ubuntu's signed repositories and refresh over IPv4.
+          for apt_source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list \
+                            /etc/apt/sources.list.d/*.sources \
+                            /etc/apt/blacksmith-ubuntu-mirrors.txt; do
+            if [ -f "$apt_source" ]; then
+              sudo sed -i 's|http://|https://|g' "$apt_source"
+            fi
+          done
+          printf 'Acquire::ForceIPv4 "true";\nAPT::Update::Error-Mode "any";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99-jac-ci >/dev/null
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev \
