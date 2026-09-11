@@ -2,8 +2,9 @@
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.codeinfo { HDR_RC_OFF }
 import from jaclang.compiler.native_compiler { ensure_loaded }
 
@@ -13,12 +14,22 @@ test "native string roots balance across locals fields loops and calls" {
         return;
     }
     program = JacProgram();
-    options = native_force_opts();
-    options.memory_profile = "managed";
-    options.no_ir_cache = True;
+    options = CompileOptions(
+        force_codespace="native",
+        force_target_program=True,
+        memory_profile="managed",
+        no_ir_cache=True
+    );
     mod = program.compile(
-        os.path.join(TESTS_DIR, "compiler", "backends", "native", "fixtures",
-            "rc_string_lifetime.jac"), options=options
+        os.path.join(
+            TESTS_DIR,
+            "compiler",
+            "backends",
+            "native",
+            "fixtures",
+            "rc_string_lifetime.jac"
+        ),
+        options=options
     );
     assert not program.errors_had , [str(e) for e in program.errors_had];
     engine = mod.gen.native_engine;
@@ -28,19 +39,44 @@ test "native string roots balance across locals fields loops and calls" {
     release.argtypes = [ctypes.c_void_p];
     release.restype = None;
     value = b"borrowed";
-    for (name, copies) in [("local", 1), ("field", 1), ("loop", 3), ("call", 1)] {
+    references: dict[str, int] = {};
+    for (name, copies) in [
+        ("local", 1),
+        ("field", 1),
+        ("loop", 3),
+        ("call", 1),
+        ("constructor_call", 1),
+        ("constructor_list", 1),
+        ("sliced", 1),
+        ("rebound", 1),
+        ("temporary_index", 1),
+        ("temporary_condition", 1),
+        ("discarded", 1),
+        ("compared", 1),
+        ("class_call", 1),
+        ("view_field", 1),
+        ("borrowed_view_field", 1),
+        ("compared_view", 1),
+        ("mixed_condition", 1),
+        ("conditional_owned", 1),
+        ("conditional_borrowed", 1)
+    ] {
         buffer_ptr = make(value, len(value));
         address = engine.get_function_address(name);
         assert address , f"missing fixture function {name}";
         fn = ctypes.CFUNCTYPE(
             ctypes.c_int64, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64
-        )(address);
+        )(
+            address
+        );
         try {
             assert fn(buffer_ptr, buffer_ptr, len(value)) == copies * len(value);
-            refs = ctypes.c_int64.from_address(buffer_ptr + HDR_RC_OFF).value;
-            assert refs == 1 , f"{name} left {refs} references to the input string";
+            references[name] = ctypes.c_int64.from_address(
+                buffer_ptr + HDR_RC_OFF
+            ).value;
         } finally {
             release(buffer_ptr);
         }
     }
+    assert all(count == 1 for count in references.values()) , references;
 }

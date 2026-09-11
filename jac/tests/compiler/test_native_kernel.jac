@@ -156,7 +156,8 @@ test "kernel materialization releases every borrowed input reference" {
     try {
         assert kernel.lib.jc_run(
             source_root, source_root, len(src), path_root, path_root, len(path)
-        ) == 0;
+        )
+            == 0;
         mod = kernel.take_module();
         assert mod is not None;
         assert not kernel.take_diags();

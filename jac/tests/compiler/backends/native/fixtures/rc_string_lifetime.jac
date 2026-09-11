@@ -2,6 +2,18 @@
 
 obj Text {
     has value: str;
+
+    def length(other: str) -> int {
+        return len(other);
+    }
+}
+
+obj TextList {
+    has values: list[str] = [];
+
+    def init(values: list[str]) {
+        self.values = values;
+    }
 }
 
 def local(value: str) -> int {
@@ -29,4 +41,78 @@ def identity(value: str) -> str {
 
 def call(value: str) -> int {
     return len(identity(value));
+}
+
+def constructor_call(value: str) -> int {
+    text = Text(value=identity(value));
+    return len(text.value);
+}
+
+def constructor_list(value: str) -> int {
+    texts = TextList(values=[value]);
+    return len(texts.values[0]);
+}
+
+def sliced(value: str) -> int {
+    tail = value[1:];
+    return len(tail) + 1;
+}
+
+def rebound(value: str) -> int {
+    value = value[1:];
+    return len(value) + 1;
+}
+
+def temporary_index(value: str) -> int {
+    return len([value][0]);
+}
+
+def temporary_condition(value: str) -> int {
+    if [value] {
+        return len(value);
+    }
+    return 0;
+}
+
+def discarded(value: str) -> int {
+    identity(value);
+    return len(value);
+}
+
+def compared(value: str) -> int {
+    return len(value) if identity(value) == value else 0;
+}
+
+def class_call(value: str) -> int {
+    return Text.length(Text(value=value), identity(value));
+}
+
+def view_field(value: str) -> int {
+    text = Text(value=value[1:-1]);
+    return len(text.value) + 2;
+}
+
+def borrowed_view_field(value: str) -> int {
+    view = value[1:-1];
+    text = Text(value=view);
+    return len(text.value) + 2;
+}
+
+def compared_view(value: str) -> int {
+    return len(value) if value[:3] == "bor" else 0;
+}
+
+def mixed_condition(value: str) -> int {
+    if [value] or False {
+        return len(value);
+    }
+    return 0;
+}
+
+def conditional_owned(value: str) -> int {
+    return len(identity(value) if len(value) > 0 else value);
+}
+
+def conditional_borrowed(value: str) -> int {
+    return len(identity(value) if len(value) == 0 else value);
 }

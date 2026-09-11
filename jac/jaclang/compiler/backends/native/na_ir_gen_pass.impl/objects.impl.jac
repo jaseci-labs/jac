@@ -2290,6 +2290,9 @@ impl NaIRGenPass._codegen_instantiation(
             }
         }
         self.builder.call(init_fn, coerced_args, name="call.init");
+        if not self._nogc_headerless() {
+            self._release_owned_args(coerced_args[1:], op="call_arg");
+        }
         self._emit_err_check(self._linked_callee_decl(init_fn));
     }
 
@@ -4310,7 +4313,11 @@ impl NaIRGenPass._emit_class_routed_call(
             _sargs[_i] = self._coerce_type(_sv, _sfunc.args[_i].type);
         }
     }
+    _release = self._transfer_own_args(
+        nd, _sfunc, _sargs, list(_sargs), offset=1 if _given_recv is not None else 0
+    );
     _sr = self.builder.call(_sfunc, _sargs, name=f"scall.{method_name}");
+    self._release_owned_args(_release, op="call_arg");
     self._emit_err_check(
         self._callee_ability_of(nd) or self._linked_callee_decl(_sfunc)
     );
