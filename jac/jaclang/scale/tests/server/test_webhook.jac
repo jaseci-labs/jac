@@ -862,6 +862,32 @@ test "github scheme - form-encoded delivery is refused instead of running empty"
     }
 }
 
+test "github scheme - the media type itself must be application/json" {
+    client = _github_client();
+    try {
+        payload = json.dumps({"action": "opened"});
+        body = payload.encode("utf-8");
+        with_charset = _github_headers(body);
+        with_charset["Content-Type"] = "application/json; charset=utf-8";
+        accepted = client.post(
+            "/webhook/GithubEvent", content=payload, headers=with_charset
+        );
+        assert accepted.status_code == 200 , (
+            f"a charset parameter should be allowed, got {accepted.status_code}: {accepted.text}"
+        );
+        lookalike = _github_headers(body);
+        lookalike["Content-Type"] = "application/json-patch+json";
+        refused = client.post(
+            "/webhook/GithubEvent", content=payload, headers=lookalike
+        );
+        assert refused.status_code == 415 , (
+            f"a json lookalike media type should be refused, got {refused.status_code}: {refused.text}"
+        );
+    } finally {
+        _close_github(client);
+    }
+}
+
 test "github scheme - per-walker rate limit answers 429 once the window is spent" {
     client = _github_client(rate_limit_per_minute=1);
     try {

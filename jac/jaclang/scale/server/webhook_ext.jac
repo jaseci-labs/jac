@@ -222,8 +222,12 @@ obj WebhookExtension(ServerExtension) {
         ) {
             return _fail('RATE_LIMITED', 'Rate limit exceeded', 429);
         }
-        content_type = str(request.headers.get('Content-Type') or '').lower();
-        if not content_type.startswith('application/json') {
+        media_type = (
+            str(request.headers.get('Content-Type') or '').split(';', 1)[
+                0
+            ].strip().lower()
+        );
+        if media_type != 'application/json' {
             return _fail(
                 'UNSUPPORTED_MEDIA_TYPE',
                 'Set the webhook content type to application/json',
