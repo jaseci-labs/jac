@@ -23,22 +23,20 @@ walker InterfaceFactsPass(ProgramTransform) {
             raise ProductUnavailable('Module has no cacheable interface');
         }
 
-        import from jaclang.compiler.session.cache.artifact_codec {
-            is_compiler_tree_path
-        }
         dependencies = set(registry.direct_deps.get(path, {}));
         dependencies.update(
             edge.target
             for edge in self.prog.deps.imports.get(path, [])
-            if edge.jac
-                and edge.target != path
-                and not is_compiler_tree_path(edge.target)
+            if edge.jac and edge.target != path
         );
         was_building = path in registry.building;
         registry.building.add(path);
         try {
             for dependency in sorted(dependencies) {
-                registry.ensure(dependency);
+                dependency_entry = registry.ensure(dependency);
+                if dependency_entry is not None {
+                    registry.direct_deps.setdefault(path, {})[dependency] = dependency_entry.digest;
+                }
             }
         } finally {
             if not was_building {

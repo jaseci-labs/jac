@@ -43,14 +43,14 @@ walker ModuleContextPass(ProgramTransform) {
         if not space and scope_lowering_active() and in_native_scope_path(path) {
             space = 'native';
         }
-        if not space and not internal {
+        if not space {
             space = options.force_codespace;
             if not space
                 and options.aot_mode
                 and _default_codespace_for(self.prog) == 'native' {
                 space = 'native';
             }
-            if not space {
+            if not space and not internal {
                 kind_space = config_kind_space(path, options.app_kind);
                 if kind_space in ('native', 'client') {
                     space = kind_space;

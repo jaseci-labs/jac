@@ -32,3 +32,26 @@ test "inferred compiler dependencies respect the active native scope" {
     }
     assert policy.scope_allows_inferred_path(outside);
 }
+
+test "explicit native compilation applies in the bootstrap context" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.session.options { CompileOptions }
+    import from jaclang.compiler.ir.enums { CodeContext }
+    program = JacProgram();
+    with patch.object(JacProgram, 'is_bootstrap', return_value=True) {
+        module = program.compile(
+            '/tmp/bootstrap-native-request.jac',
+            use_str='def answer -> int { return 42; }',
+            options=CompileOptions(
+                symtab_ir_only=True,
+                no_cgen=True,
+                aot_mode=True,
+                default_codespace='native',
+                force_target_program=True
+            )
+        );
+    }
+    assert not program.errors_had;
+    assert module.declares_codespace(CodeContext.NATIVE);
+}

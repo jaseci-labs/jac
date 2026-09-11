@@ -347,11 +347,6 @@ obj IfaceRegistry(CatalogResolver) {
     }
 
     def ensure(path: str, compile_on_miss: bool = True) -> IfaceEntry | None {
-        import from jaclang.compiler.session.context { program_for }
-        actual = program_for(path, self.prog);
-        if actual is not self.prog {
-            return actual.iface_registry().ensure(path, compile_on_miss);
-        }
         with self._cache_scope() {
             return self._ensure_in_context(path, compile_on_miss);
         }
@@ -963,7 +958,12 @@ obj IfaceRegistry(CatalogResolver) {
         resolved = os.path.realpath(path);
         if is_stub_like_path(resolved) {
             catalog = self.prog.stub_catalog();
-            return catalog.module_for_path(resolved) if catalog is not None else None;
+            cached_stub = catalog.module_for_path(resolved)
+                if catalog is not None
+                else None;
+            if cached_stub is not None {
+                return cached_stub;
+            }
         }
         found = self.prog.find_module(resolved);
         if found is not None {

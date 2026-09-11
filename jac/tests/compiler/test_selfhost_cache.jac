@@ -50,7 +50,7 @@ def _forget_verdict(path: str) {
 }
 
 def _check(path: str) -> list[str] {
-    prog = JacProgram();
+    prog = _selfhost() if path.startswith(JACLANG_DIR + os.sep) else JacProgram();
     prog.compile(
         path,
         options=CompileOptions(
@@ -165,4 +165,21 @@ test "bundled app dependencies retain their compilation context" {
     compiler_source = _tree_path('compiler/pipeline/schedule.jac');
     assert compiler.selfhost.resolve(compiler_source, program)
         is compiler.selfhost.program;
+}
+
+
+test "interface lookup preserves the requesting compilation context" {
+    path = _tree_path('server/serving/datatypes.jac');
+    program = JacProgram();
+    options = CompileOptions(
+        no_cgen=True, native_parity=True, force_target_program=True, iface_ok=True
+    );
+    program.compile(path, options=options);
+    assert not program.errors_had , [str(error) for error in program.errors_had];
+    registry = program.iface_registry();
+    iface_entry = registry.ensure(path);
+    assert iface_entry is not None;
+    assert registry.entries[path] is iface_entry;
+    assert program is not _selfhost();
+    program.release_compile_closure(collect=False);
 }

@@ -1017,6 +1017,9 @@ impl JacCompiler._persist_module_cache(
 }
 
 impl JacCompiler._release_compile_scratch(target_program: JacProgram) -> None {
+    if target_program.has_active_compilation() {
+        return;
+    }
     try {
         target_program.release_native_dep_units();
         target_program.release_check_caches();

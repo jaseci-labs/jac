@@ -818,3 +818,46 @@ test "external type references preserve classification without a resolver" {
     restored.mro = [];
     assert restored.canonical_key() == source.canonical_key();
 }
+
+
+test "a prepared interface records the modules defining its exported return types" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    with TemporaryDirectory() as directory {
+        base = Path(directory);
+        models = base / 'models.jac';
+        provider = base / 'provider.jac';
+        consumer = base / 'consumer.jac';
+        models.write_text('obj Payload { has value: int = 7; }\n');
+        provider.write_text(
+            'import from models { Payload }\n'
+                + 'def:pub payload -> Payload { return Payload(); }\n'
+        );
+        consumer.write_text(
+            'import from provider { payload }\n'
+                + 'with entry { print(payload().value); }\n'
+        );
+        program = _context(str(consumer));
+        registry = program.iface_registry();
+        prepared = registry.ensure(str(provider));
+        assert prepared is not None;
+        rows = registry.dep_rows(str(provider));
+        assert any(path == str(models) and digest for (path, digest, flags) in rows);
+        program.release_compile_closure(collect=False);
+        (warm, diagnostics) = _check(str(consumer));
+        assert not warm.errors_had , diagnostics;
+        assert warm.analysis.cache_events.get('dep_hydrate', 0) > 0;
+    }
+}
+
+test "interface lookup uses loaded stubs when no catalog is available" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.ir.schema { Module, Source }
+    program = JacProgram();
+    path = os.path.realpath('/tmp/loaded-stub.pyi');
+    module = Module.make_stub(inject_src=Source('', path));
+    program.install_module(path, module);
+    with patch.object(JacProgram, 'stub_catalog', return_value=None) {
+        assert program.iface_registry().resolve_module(path) is module;
+    }
+}

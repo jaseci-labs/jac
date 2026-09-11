@@ -93,14 +93,17 @@ test "self-host eviction preserves active queries across compilation contexts" {
             program.context_root = owner;
         }
         owner.contexts['query'] = program;
+        owner.scratch.na_unverified_live['pending'] = {};
         cache = SelfHostCache(_program=owner);
         main = Path('/tmp/client-link/eviction.jac');
         def artifact(path: Path) -> ClientArtifact {
             assert owner.has_active_compilation();
             assert program.analysis.active;
             cache.evict_unit(str(path), None, collect=False);
+            owner._get_compiler()._release_compile_scratch(owner);
             owner.release_compile_closure(collect=False);
             assert program.analysis.active;
+            assert 'pending' in owner.scratch.na_unverified_live;
             assert owner.contexts['query'] is program;
             return ClientArtifact('', ClientManifest());
         }
@@ -114,6 +117,7 @@ test "self-host eviction preserves active queries across compilation contexts" {
         assert not owner.has_active_compilation();
         cache.evict_unit(str(main), None, collect=False);
         assert not owner.contexts;
+        assert not owner.scratch.na_unverified_live;
         assert not program.analysis.active;
     }
 }
