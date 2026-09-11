@@ -753,7 +753,15 @@ impl BoundaryAnalysisPass._parse_imported_archetype(
     type_name: str, search_mods: list[Module]
 ) -> (Archetype | Enum | None) {
     import os;
+    import from jaclang.compiler.driver.compilation_context { program_for }
+    import from jaclang.compiler.placement.workspace { workspace_for_path }
     for mod in search_mods {
+        provider_program = self.prog;
+        workspace = workspace_for_path(mod.loc.mod_path);
+        app = workspace.apps.get(mod.app or '') if workspace is not None else None;
+        if app is not None {
+            provider_program = program_for(app.`entry, self.prog);
+        }
         for imp in mod.get_all_sub_nodes(Import) {
             for item in (imp.items or []) {
                 if not isinstance(item, ModuleItem) {
@@ -771,7 +779,9 @@ impl BoundaryAnalysisPass._parse_imported_archetype(
                 if not target or not os.path.isfile(str(target)) {
                     continue;
                 }
-                parsed = self.prog.load_dependency_module(str(target), need_tree=True);
+                parsed = provider_program.load_dependency_module(
+                    str(target), need_tree=True
+                );
                 if parsed is None {
                     continue;
                 }
@@ -1098,11 +1108,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
         return manifest.boundary_types[scope_names[type_name]];
     }
 
-    search_mods: list[Module] = [];
-    if source_mod {
-        search_mods.append(source_mod);
-    }
-    search_mods.append(self.ir_in);
+    search_mods: list[Module] = [source_mod or self.ir_in];
     arch_node: (Archetype | Enum | None) = None;
     for mod in search_mods {
         sym = mod.sym_tab.lookup(type_name, deep=True) if mod.sym_tab else None;
