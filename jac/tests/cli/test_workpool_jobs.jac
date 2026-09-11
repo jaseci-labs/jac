@@ -27,3 +27,21 @@ test "default_jobs sizes the pool by the per-worker ceiling" {
     # A ceiling the box cannot hold even once still yields one worker.
     assert default_jobs(worker_bytes=64 * GB, avail_bytes=16 * GB) == 1;
 }
+
+test "test runner auto jobs respect the test worker retirement ceiling" {
+    import from unittest.mock { patch }
+    import jaclang.cli.workpool as pool;
+    import from jaclang.testing.test_runner { resolve_jobs }
+
+    def on_runner(worker_bytes: int = 0, avail_bytes: int = 0) -> int {
+        return default_jobs(worker_bytes=worker_bytes, avail_bytes=16 * GB);
+    }
+    with patch.object(pool, "default_jobs", on_runner), patch.dict(
+        os.environ, {"JAC_TEST_RECYCLE_MB": "8192"}
+    ) {
+        assert resolve_jobs("auto") == 1 , (
+            "multiple workers allowed 8 GB each exceed a 16 GB runner's budget"
+        );
+        assert resolve_jobs(2) == 2 , "an explicit worker count must remain explicit";
+    }
+}

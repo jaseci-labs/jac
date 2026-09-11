@@ -102,6 +102,7 @@ import from jaclang.cli.workpool {
 }
 
 def _test_retire(served: int, rss_mb: int) -> bool;
+def _test_rss_cap_mb -> int;
 
 def _run_plan(
     plan: TestPlan,
