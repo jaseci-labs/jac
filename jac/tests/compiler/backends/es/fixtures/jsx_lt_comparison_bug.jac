@@ -5,10 +5,9 @@ because `<` followed by an alpha char is always treated as a JSX opening
 tag.  This corrupts the mode state machine and causes an infinite loop.
 """
 
-
 def filter_points(points: list, limit: int) -> list {
     result = [];
-    for i = 0 while i < points.length with i += 1 {
+    for i = 0 while i < len(points) with i += 1 {
         if points[i] < limit {
             result.append(points[i]);
         }
@@ -19,7 +18,7 @@ def filter_points(points: list, limit: int) -> list {
 def:pub app() -> any {
     data = [10, 5, 30, 2, 20];
     filtered = filter_points(data, 15);
-    items = filtered.map(lambda (x: any) -> any { return <li>{x}</li>; });
+    items = [<li>{x}</li> for x in filtered];
 
     return (
         <div>

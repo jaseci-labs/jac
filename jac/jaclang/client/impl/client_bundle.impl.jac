@@ -1,19 +1,3 @@
-impl _client_target_module(source_key: str, program: any) -> (Module | None) {
-    return program._get_compiler().client_codegen_target(source_key, program);
-}
-
-impl _ensure_js_generated(mod: Module, program: any) -> None {
-    _err_mark = len(program.errors_had);
-    if program._get_compiler().ensure_client_codegen(mod, program) {
-        return;
-    }
-    _detail = '\n\n'.join(_e.pretty_print() for _e in program.errors_had[_err_mark:]);
-    raise ClientBundleError(
-        f"'{os.path.basename(mod.loc.mod_path or '')}' is used by client code "
-        f"but does not lower to the client:\n\n{_detail}"
-    );
-}
-
 impl ClientBundleBuilder.postinit -> None {
     if not self.runtime_path {
         self.runtime_path = Path(__file__).with_name('client_runtime.jac');

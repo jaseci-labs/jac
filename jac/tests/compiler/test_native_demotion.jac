@@ -8,7 +8,10 @@ import-target classification and not the module's own codespace -- and
 importers' stale ES output and NATIVE manifest bindings are cleared so
 the next emission lowers the import against the real codespace."""
 
-import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from jaclang.compiler.backends.common.artifact_store {
+    artifact_for,
+    existing_artifact
+}
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang.compiler.ir.schema as uni;
@@ -39,7 +42,8 @@ import from jaclang.compiler.analysis.placement.pins {
     effective_module_pin
 }
 import from jaclang.compiler.api { invalidate_native_importers }
-import from jaclang.client.client_bundle { _ensure_js_generated }
+import from jaclang.compiler.pipeline.products { require_product }
+import from jaclang.compiler.pipeline.contracts { CompilationProduct }
 
 glob PIN_FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "fixtures", "codespace", "native_demoted_pin"
@@ -173,14 +177,16 @@ test "the demotion fallback re-lowers importers away from the na seam" {
         hub_models = prog.mod.hub.get(models_path);
         assert hub_models is not None and hub_models.decided_codespace != 'native' , "the retry after demotion must actually leave the native lane";
         assert "E5092" not in error_codes(prog) , "the native-only error must not survive the fallback";
-        raised = "";
-        try {
-            _ensure_js_generated(app, prog);
-        } except Exception as exc {
-            raised = f"{exc}";
-        }
-        assert "__na_bind" not in (artifact_for(app).js or "") , "the re-lowered importer must not bind through the na seam";
-        assert "E5082" in raised or "E5082" in error_codes(prog) , "a plain client import of a server def must be diagnosed";
+        assert not require_product(prog, app, CompilationProduct.CLIENT) , (
+            "a demoted private server function must not produce a client artifact"
+        );
+        remaining = existing_artifact(app);
+        assert remaining is None or "__na_bind" not in remaining.js , (
+            "the failed importer must not retain stale native binding output"
+        );
+        assert "E5082" in error_codes(prog) , (
+            "a plain client import of a server def must be diagnosed"
+        );
     } finally {
         _clear_demoted_native(models_path);
     }

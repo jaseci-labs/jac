@@ -8,9 +8,9 @@ instead of impressions.
 Three measurements, three shapes:
 
 `warm-compile phase timings` is a REPORT, not a gate. It drives a fixed corpus
-of real repo modules through the four schedules `_compile_once` runs for a
-Python-lane module, one at a time so each is attributable, and prints the
-table. It asserts only what a broken measurement looks like -- a compile error,
+of real repo modules through the normal Python compilation request and prints
+its executor-recorded phase timings. These include nested dependency requests
+and need not add up to the measured wall time. It asserts only what a broken measurement looks like -- a compile error,
 or a phase that took no time at all -- because a wall-clock gate on a developer
 laptop is a coin flip, and a coin flip that fails the suite teaches people to
 ignore it.

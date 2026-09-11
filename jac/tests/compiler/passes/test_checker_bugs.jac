@@ -1239,14 +1239,14 @@ test "bug_cycimp1_cyclic_import_pair_checks_clean" {
 # stack (tracked in `_modules_in_compile`) and the partial tree is not in
 # any hub yet -- reachable organically only through the narrow window
 # before parse publishes the module (e.g. a parse-failed member of a
-# native cyclic pair) -- it must answer with a stub instead of re-entering
+# native cyclic pair) -- it must defer the answer instead of re-entering
 # program.compile for the same path (unbounded mutual recursion). This
 # test drives the branch directly: it marks the path as in-compile and
-# asserts the stub answer, that no compile happened (no diagnostics, path
+# asserts the pending answer, that no compile happened (no diagnostics, path
 # still absent from the hub), and that a later, non-re-entrant query does
 # compile and resolve the real module.
 # =========================================================================
-test "bug_cycimp1_reentrant_import_guard_returns_stub" {
+test "bug_cycimp1_reentrant_import_guard_defers_pending_module" {
     import from pathlib { Path }
     program = JacProgram();
     evaluator = program.get_type_evaluator();
@@ -1256,13 +1256,13 @@ test "bug_cycimp1_reentrant_import_guard_returns_stub" {
     pre_errs = len(program.errors_had);
     evaluator._modules_in_compile.add(target);
     try {
-        stub = evaluator._import_module_from_path(target);
+        pending = evaluator._import_module_from_path(target);
     } finally {
         evaluator._modules_in_compile.discard(target);
     }
-    assert stub.stub_only , (
+    assert pending is None , (
         "Bug #CYCLE-IMPORT-1: a re-entrant import of a mid-compile module "
-        "absent from every hub must return a stub module."
+        "absent from every hub must remain pending."
     );
     assert target not in program.mod.hub , (
         "Bug #CYCLE-IMPORT-1: the re-entrant import guard must not compile "
@@ -1285,6 +1285,7 @@ test "bug_cycimp1_reentrant_import_guard_returns_stub" {
     ) {
         settled = evaluator._import_module_from_path(target);
     }
+    assert settled is not None;
     assert not settled.stub_only and settled.name == "checker_cycle_guard_target" , (
         "Bug #CYCLE-IMPORT-1: once the module is no longer mid-compile, the "
         "same query must compile and return the real module."
@@ -1418,6 +1419,7 @@ test "bug_cycprec1_node_type_never_stores_incomplete_result" {
         Path(os.path.join(CHECKER_FIXTURES, "checker_cycle_taint_reg.jac")).resolve()
     );
     reg_mod = evaluator._import_module_from_path(reg_path);
+    assert reg_mod is not None , "REGISTRY module did not resolve";
     registry_sym = reg_mod.names_in_scope.get("REGISTRY");
     assert registry_sym is not None , "REGISTRY symbol missing from reg module";
     _reg_assign: any = registry_sym.decl.name_of.parent;

@@ -8,17 +8,12 @@ compiler measures it is decided entirely by the subprocess cwd, because
 the cwd. So the same file, byte for byte, drives both halves of the comparison
 and neither tree needs to carry a copy.
 
-Corpus paths are resolved against the cwd and so name the sources of whichever
-tree is being measured. The schedule phases (parse, ir_gen, analysis, boundary,
-codegen) are the schedules `JacCompiler` `_compile_once` itself runs for a
-plain Python-lane module, driven here one at a time so each is attributable;
-`full` is the whole-closure `JacProgram.compile` that a real `jac run` pays,
-and `check` is a fresh-program full-analysis compile (`no_cgen` +
-`native_parity`), the per-file work a `jac check` pays. Every phase is
-measured warm: `phase_row` is called once before any sample is kept, and the
-on-disk JIR cache is populated by that first call - so on a compiler with the
-analysis cache, `check` measures diagnostics replay while older baselines
-measure a full re-analysis.
+Corpus paths name sources in the measured checkout. The normal compilation
+request records phase timings in the executor; the probe reads those records
+instead of maintaining a second pass schedule. Phase values include dependency
+work and can overlap when one module requests another. They are not an additive
+breakdown of wall time. `full` is the measured compilation's elapsed time, and
+`check` is a fresh-program diagnostic request with interface replay enabled.
 
 Each phase reports the MINIMUM across the samples, not the mean. On a loaded
 developer machine the mean is dominated by whatever else the box was doing; the
@@ -27,14 +22,13 @@ processes minutes apart comparable at all. `JAC_TIMING_REPS` sets the sample
 count (default 6, which is where the corpus stopped moving between runs here).
 """
 
-import from jaclang.compiler.pipeline.executor { execute_passes }
 import json;
 import os;
 import time;
 
 import from pathlib { Path }
 import from jaclang.compiler.session.options { CompileOptions }
-import from jaclang.compiler.pipeline.schedule { get_analysis_sched, get_boundary_analysis_sched, get_ir_gen_sched, get_py_code_gen }
+import from jaclang.compiler.pipeline.schedule { CompilationPhase }
 import from jaclang.compiler.session.session { JacProgram }
 
 glob CORPUS: list[str] = [
@@ -56,27 +50,16 @@ glob CORPUS: list[str] = [
 
 """Time one pass of every phase over `src`, on programs nothing else has touched."""
 def phase_row(src: str) -> dict {
-    text = Path(src).read_text(encoding="utf-8");
     staged = JacProgram();
     t0 = time.perf_counter();
-    mod = staged.parse_str(text, src);
-    t1 = time.perf_counter();
-    execute_passes(staged, mod, get_ir_gen_sched());
-    t2 = time.perf_counter();
-    execute_passes(staged, mod, get_analysis_sched());
-    t2a = time.perf_counter();
-    execute_passes(staged, mod, get_boundary_analysis_sched());
-    t3 = time.perf_counter();
-    execute_passes(staged, mod, get_py_code_gen(native=False));
-    t4 = time.perf_counter();
+    staged.compile(
+        file_path=src,
+        options=CompileOptions(force_target_program=True, force_codespace='server')
+    );
+    elapsed = time.perf_counter() - t0;
+    phases = dict(staged.analysis.phase_time);
     errors = len(staged.errors_had);
     staged.release_compile_closure();
-    whole = JacProgram();
-    t5 = time.perf_counter();
-    whole.compile(file_path=src);
-    t6 = time.perf_counter();
-    errors += len(whole.errors_had);
-    whole.release_compile_closure();
     checker = JacProgram();
     check_opts = CompileOptions(
         no_cgen=True, native_parity=True, force_target_program=True
@@ -87,14 +70,15 @@ def phase_row(src: str) -> dict {
     t7 = time.perf_counter();
     checker.compile(file_path=src, options=check_opts);
     t8 = time.perf_counter();
+    errors += len(checker.errors_had);
     checker.release_compile_closure();
     return {
-        "parse": t1 - t0,
-        "ir_gen": t2 - t1,
-        "analysis": t2a - t2,
-        "boundary": t3 - t2a,
-        "codegen": t4 - t3,
-        "full": t6 - t5,
+        "parse": phases.get(CompilationPhase.PARSE.name, 0.0),
+        "ir_gen": phases.get(CompilationPhase.IR.name, 0.0),
+        "analysis": phases.get(CompilationPhase.ANALYSIS.name, 0.0),
+        "boundary": phases.get(CompilationPhase.BOUNDARIES.name, 0.0),
+        "codegen": phases.get(CompilationPhase.CODEGEN.name, 0.0),
+        "full": elapsed,
         "check": t8 - t7,
         "errors": errors
     };

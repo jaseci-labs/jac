@@ -9,7 +9,6 @@ Every form below must resolve to the same callable the direct call emits, and
 the type must keep working as isinstance/issubclass classinfo.
 """
 
-
 def parse_all(parts: list) -> list {
     # `int` as a map callback.  JS `.map` hands its callback
     # (value, index, array), so a two-arity coercion like `int(x, base)` would
@@ -35,7 +34,7 @@ def alias_call(x: str) -> int {
 
 def coerce_all(x: any) -> list {
     # Builtin types stored in a collection, then called out of it.
-    coercions = [str, int, bool];
+    coercions: list[type[str] | type[int] | type[bool]] = [str, int, bool];
     return [c(x) for c in coercions];
 }
 

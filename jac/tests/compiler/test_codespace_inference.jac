@@ -568,7 +568,8 @@ test "client import pulls a pure markerless module cross-module" {
 }
 
 test "cross-module pulled elements dual-emit for the server side" {
-    import from jaclang.client.client_bundle { _ensure_js_generated }
+    import from jaclang.compiler.pipeline.products { require_product }
+    import from jaclang.compiler.pipeline.contracts { CompilationProduct }
     import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
     import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
     prog = JacProgram();
@@ -586,7 +587,7 @@ test "cross-module pulled elements dual-emit for the server side" {
             );
         }
     }
-    _ensure_js_generated(util, prog);
+    assert require_product(prog, util, CompilationProduct.CLIENT);
     util_js = artifact_for(util).js;
     assert 'register' in artifact_for(util).client_manifest.exports , (
         "pulled accessless def must be an ES export of the pulled module"
@@ -633,7 +634,8 @@ test "unpullable closure bridges as a wire type instead of pulling" {
 test "codespace stamps invalidate stale module codegen" {
     import from jaclang.compiler.session.options { CompileOptions }
     import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-    import from jaclang.client.client_bundle { _ensure_js_generated }
+    import from jaclang.compiler.pipeline.products { require_product }
+    import from jaclang.compiler.pipeline.contracts { CompilationProduct }
     prog = JacProgram();
     prog.compile(
         os.path.join(FIXTURE_DIR, "infer_xmod_app.jac"),
@@ -645,7 +647,7 @@ test "codespace stamps invalidate stale module codegen" {
     app = hub_module(prog, "infer_xmod_app.jac");
     assert app is not None;
     run_pass(PassIdentity.EsastGenPass, app, prog);
-    _ensure_js_generated(util, prog);
+    assert require_product(prog, util, CompilationProduct.CLIENT);
     assert 'register' in artifact_for(util).client_manifest.exports , (
         "pull stamps must invalidate the pre-pull ES cache so the pulled def "
         "regenerates with its export"
@@ -656,17 +658,14 @@ test "codespace stamps invalidate stale module codegen" {
 }
 
 test "a client-pulled module that will not lower fails loudly (#8375)" {
-    import from jaclang.client.client_bundle { ClientBundleError, _ensure_js_generated }
+    import from jaclang.compiler.pipeline.products { require_product }
+    import from jaclang.compiler.pipeline.contracts { CompilationProduct }
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURE_DIR, "infer_unlowerable_app.jac"), no_cgen=False);
     util = hub_module(prog, "infer_unlowerable_util.jac");
     assert util is not None , "imported module missing from hub";
-    raised = '';
-    try {
-        _ensure_js_generated(util, prog);
-    } except ClientBundleError as e {
-        raised = str(e);
-    }
+    assert not require_product(prog, util, CompilationProduct.CLIENT);
+    raised = '\n\n'.join(error.pretty_print() for error in prog.errors_had);
     assert 'E5018' in raised , (
         "an ES lowering failure in a pulled module must fail the bundle rather "
         f"than demote it silently; got: {raised}"
