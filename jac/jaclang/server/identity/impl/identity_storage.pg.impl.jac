@@ -157,6 +157,38 @@ impl PgIdentityStorage._claim_lookup(value_normalized: str, user_id: str) -> Non
     }
 }
 
+impl PgIdentityStorage._append_identity(
+    user_id: str, identity: dict[str, any]
+) -> bool {
+    rows = self.store.rows(
+        """
+        UPDATE identity_users
+        SET doc = jsonb_set(
+            doc,
+            '{identities}',
+            COALESCE(doc->'identities', CAST('[]' AS jsonb))
+                || jsonb_build_array(CAST(:i AS jsonb)),
+            true
+        ) || CAST(:p AS jsonb)
+        WHERE user_id = :u
+          AND NOT EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(COALESCE(doc->'identities', CAST('[]' AS jsonb))) held
+            WHERE held->>'type' = :t AND held->>'value_normalized' = :v
+          )
+        RETURNING user_id
+        """,
+        {
+            'u': user_id,
+            'i': json.dumps(identity, `default=_pg_json_default),
+            'p': json.dumps({'updated_at': datetime.now(UTC).isoformat()}),
+            't': str(identity.get('type') or ''),
+            'v': str(identity.get('value_normalized') or '')
+        }
+    );
+    return bool(rows);
+}
+
 impl PgIdentityStorage.delete_user(user_id: str) -> bool {
     self.store.rows('DELETE FROM identity_lookups WHERE user_id = :u', {'u': user_id});
     self.store.rows('DELETE FROM sso_lookups WHERE user_id = :u', {'u': user_id});
@@ -228,13 +260,11 @@ impl PgIdentityStorage._get_identities(user_id: str) -> list[dict[str, any]] {
 }
 
 impl PgIdentityStorage._add_identity(user_id: str, identity: dict[str, any]) -> bool {
-    rows = self.store.rows(
-        'SELECT doc FROM identity_users WHERE user_id = :u', {'u': user_id}
-    );
-    if not rows {
+    if not self.store.rows(
+        'SELECT 1 FROM identity_users WHERE user_id = :u', {'u': user_id}
+    ) {
         return False;
     }
-    identities = list(_pg_load_doc(rows[0][0]).get('identities') or []);
     if identity.get('type') == 'sso' and identity.get('provider') {
         try {
             self.store.rows(
@@ -255,21 +285,17 @@ impl PgIdentityStorage._add_identity(user_id: str, identity: dict[str, any]) -> 
             raise;
         }
     } elif identity.get('value_normalized') {
-        for held in identities {
-            if held.get('type') == identity.get('type')
-                and held.get('value_normalized') == identity['value_normalized'] {
-                raise IdentityTakenError();
-            }
-        }
         self._claim_lookup(identity['value_normalized'], user_id);
     }
-    identities.append(identity);
-    patch = {'identities': identities, 'updated_at': datetime.now(UTC).isoformat()};
-    self.store.rows(
-        'UPDATE identity_users SET doc = doc || CAST(:p AS jsonb) WHERE user_id = :u',
-        {'u': user_id, 'p': json.dumps(patch, `default=_pg_json_default)}
-    );
-    return True;
+    if self._append_identity(user_id, identity) {
+        return True;
+    }
+    if not self.store.rows(
+        'SELECT 1 FROM identity_users WHERE user_id = :u', {'u': user_id}
+    ) {
+        return False;
+    }
+    raise IdentityTakenError();
 }
 
 impl PgIdentityStorage._set_identity_verified(
