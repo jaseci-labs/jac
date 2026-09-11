@@ -11,7 +11,10 @@ import os;
 import type from jaclang.compiler.session.session { JacProgram }
 import type from jaclang.compiler.session.options { CompileOptions }
 import type from jaclang.compiler.ir.schema { Module }
-import from jaclang.compiler.pipeline.contracts { CompilationProduct }
+import from jaclang.compiler.pipeline.contracts {
+    CompilationProduct,
+    ProductUnavailable
+}
 
 def build_wasm(program: JacProgram, path: str, exports: list[str]) -> bytes {
     import from jaclang.compiler.pipeline.request { wasm_artifact }
@@ -22,7 +25,7 @@ def build_wasm(program: JacProgram, path: str, exports: list[str]) -> bytes {
 def route_exports(program: JacProgram, path: str) -> tuple[str | None, str | None] {
     artifact = program.get_client_artifact(os.path.realpath(path));
     if artifact is None {
-        return (None, None);
+        raise ProductUnavailable(f'Route metadata unavailable for {path}');
     }
     return (artifact.manifest.page_export, artifact.manifest.layout_export);
 }

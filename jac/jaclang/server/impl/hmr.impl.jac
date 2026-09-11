@@ -375,6 +375,7 @@ impl HotReloader._remove_compiled_dir(file_path: str) -> None {
 }
 
 impl HotReloader._refresh_routing(file_path: str) -> None {
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
     if not self.client_compiler {
         return;
     }
@@ -417,7 +418,11 @@ impl HotReloader._refresh_routing(file_path: str) -> None {
         }
     } except Exception as e {
         console.error(f"Routing refresh failed for {file_path}: {e}");
-        self.record_error(file_path, f"Routing refresh failed: {e}");
+        self.record_error(
+            file_path,
+            f"Routing refresh failed: {e}",
+            alerts=Jac.get_program().errors_had
+        );
     }
 }
 
