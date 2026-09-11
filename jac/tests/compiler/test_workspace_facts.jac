@@ -81,6 +81,28 @@ test "workspace probes scale with modules within a compilation request" {
     }
 }
 
+test "application identity scopes observe workspace edits between requests" {
+    import from jaclang.compiler.driver.compilation_context { context_app }
+    with TemporaryDirectory() as td {
+        base = Path(td);
+        workspace(base);
+        path = str(base / 'shared.jac');
+        options = CompileOptions(project_root=td, target_app='web');
+        with cache_scope('web', options) {
+            first = context_app(path);
+            assert first is not None and first.kind == 'web-app';
+            toml = base / 'jac.toml';
+            stamp = os.path.getmtime(toml) + 2.0;
+            toml.write_text(CONFIG.replace('web-app', 'desktop'));
+            os.utime(toml, (stamp, stamp));
+            refreshed = context_app(path);
+            assert refreshed is not None and refreshed.kind == 'desktop' , (
+                'an application identity scope must not retain old workspace facts'
+            );
+        }
+    }
+}
+
 test "a normal import inherits its app and an entry import changes context" {
     with TemporaryDirectory() as td {
         base = Path(td);
