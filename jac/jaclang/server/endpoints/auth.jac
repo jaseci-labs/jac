@@ -463,9 +463,6 @@ def register_auth_endpoints(server: EndpointHost) {
             return fail('VALIDATION_ERROR', 'Identity value is required', 400);
         }
         taken_msg = f"This {id_type} is already registered";
-        if users.is_identity_taken(normalized, str(user_id)) {
-            return fail('IDENTITY_TAKEN', taken_msg, 409);
-        }
         identity_doc = {
             'type': id_type,
             'value_raw': raw_value,

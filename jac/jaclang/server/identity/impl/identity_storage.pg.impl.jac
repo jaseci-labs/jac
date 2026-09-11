@@ -127,18 +127,26 @@ impl PgIdentityStorage.find_user_by_identity(value: str) -> dict[str, any] | Non
     return _pg_public(rows[0][0]) if rows else None;
 }
 
-impl PgIdentityStorage.identity_taken(value: str, for_user: str = '') -> bool {
+impl PgIdentityStorage.identity_taken(value: str) -> bool {
     normalized = value.lower().strip();
     rows = self.store.rows(
         """
-        SELECT lk.user_id FROM identity_lookups lk
+        SELECT 1 FROM identity_lookups lk
         JOIN identity_users t ON lk.user_id = t.user_id
         WHERE lk.value_normalized = :v
           AND COALESCE(t.doc->>'status', 'active') <> 'disabled'
         """,
         {'v': normalized}
     );
-    return bool(rows) and str(rows[0][0]) != for_user;
+    return bool(rows);
+}
+
+impl PgIdentityStorage._user_exists(user_id: str) -> bool {
+    return bool(
+        self.store.rows(
+            'SELECT 1 FROM identity_users WHERE user_id = :u', {'u': user_id}
+        )
+    );
 }
 
 impl PgIdentityStorage._claim_lookup(value_normalized: str, user_id: str) -> None {
@@ -260,9 +268,7 @@ impl PgIdentityStorage._get_identities(user_id: str) -> list[dict[str, any]] {
 }
 
 impl PgIdentityStorage._add_identity(user_id: str, identity: dict[str, any]) -> bool {
-    if not self.store.rows(
-        'SELECT 1 FROM identity_users WHERE user_id = :u', {'u': user_id}
-    ) {
+    if not self._user_exists(user_id) {
         return False;
     }
     if identity.get('type') == 'sso' and identity.get('provider') {
@@ -290,9 +296,7 @@ impl PgIdentityStorage._add_identity(user_id: str, identity: dict[str, any]) -> 
     if self._append_identity(user_id, identity) {
         return True;
     }
-    if not self.store.rows(
-        'SELECT 1 FROM identity_users WHERE user_id = :u', {'u': user_id}
-    ) {
+    if not self._user_exists(user_id) {
         return False;
     }
     raise IdentityTakenError();

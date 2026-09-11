@@ -42,7 +42,7 @@ obj IdentityStorage {
     def delete_user(user_id: str) -> bool;
     def find_user_by_identity(value: str) -> dict[str, any] | None;
     def rename_username(user_id: str, new_username: str) -> dict[str, any];
-    def identity_taken(value: str, for_user: str = '') -> bool;
+    def identity_taken(value: str) -> bool;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, any] | None;
     def create_user(
@@ -85,6 +85,7 @@ obj PgIdentityStorage(IdentityStorage) {
     def _get_identities(user_id: str) -> list[dict[str, any]];
     def _add_identity(user_id: str, identity: dict[str, any]) -> bool;
     def _claim_lookup(value_normalized: str, user_id: str) -> None;
+    def _user_exists(user_id: str) -> bool;
     def _append_identity(user_id: str, identity: dict[str, any]) -> bool;
     def _remove_sso_identity(user_id: str, platform: str) -> bool;
     def _replace_username(user_id: str, identity: dict[str, any]) -> bool;
@@ -94,7 +95,7 @@ obj PgIdentityStorage(IdentityStorage) {
     def get_user_by_id(user_id: str) -> dict[str, any] | None;
     def delete_user(user_id: str) -> bool;
     def find_user_by_identity(value: str) -> dict[str, any] | None;
-    def identity_taken(value: str, for_user: str = '') -> bool;
+    def identity_taken(value: str) -> bool;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, any] | None;
 }

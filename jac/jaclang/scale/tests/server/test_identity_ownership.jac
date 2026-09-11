@@ -30,6 +30,17 @@ def _email_identity(value: str) -> dict[str, any] {
 }
 
 
+def _username_identity(value: str) -> dict[str, any] {
+    return {
+        'type': 'username',
+        'value_raw': value,
+        'value_normalized': value.lower().strip(),
+        'verified': True,
+        'is_recovery': False
+    };
+}
+
+
 def _types_holding(users: UserManager, user_id: str, value: str) -> list[str] {
     user = users.get_user(user_id) or {};
     return [
@@ -55,8 +66,6 @@ test "email-shaped username can attach the same address as an email identity" {
     try {
         addr = f"owner_{uuid.uuid4().hex[:8]}@example.com";
         user_id = str(users.create_user(addr, 'pw12345')['user_id']);
-        assert users.is_identity_taken(addr);
-        assert not users.is_identity_taken(addr, user_id);
         assert users.add_identity(user_id, _email_identity(addr));
         assert _types_holding(users, user_id, addr) == ['username', 'email'];
         assert users.set_identity_verified(user_id, addr);
@@ -75,7 +84,6 @@ test "a value held by another account is still refused" {
         addr = f"holder_{tag}@example.com";
         holder_id = str(users.create_user(addr, 'pw12345')['user_id']);
         other_id = str(users.create_user(f"other_{tag}", 'pw12345')['user_id']);
-        assert users.is_identity_taken(addr, other_id);
         assert _refused(users, other_id, _email_identity(addr));
         assert _types_holding(users, other_id, addr) == [];
         assert users.create_user(addr, 'pw12345').get('code') == 'IDENTITY_TAKEN';
@@ -98,17 +106,7 @@ test "an identity already held under the same type is refused" {
         user_id = str(users.create_user(name, 'pw12345')['user_id']);
         assert users.add_identity(user_id, _email_identity(addr));
         assert _refused(users, user_id, _email_identity(addr));
-        assert _refused(
-            users,
-            user_id,
-            {
-                'type': 'username',
-                'value_raw': name,
-                'value_normalized': name,
-                'verified': True,
-                'is_recovery': False
-            }
-        );
+        assert _refused(users, user_id, _username_identity(name));
         assert _types_holding(users, user_id, addr) == ['email'];
         assert _types_holding(users, user_id, name) == ['username'];
     } finally {
@@ -128,16 +126,7 @@ test "the same-account duplicate decision is made inside the database" {
         assert not storage._append_identity(user_id, _email_identity(addr));
         assert _types_holding(users, user_id, addr) == ['email'];
         assert not storage._append_identity(f"missing_{tag}", _email_identity(addr));
-        assert users.add_identity(
-            user_id,
-            {
-                'type': 'username',
-                'value_raw': addr,
-                'value_normalized': addr,
-                'verified': True,
-                'is_recovery': False
-            }
-        );
+        assert users.add_identity(user_id, _username_identity(addr));
         assert _types_holding(users, user_id, addr) == ['email', 'username'];
     } finally {
         shutil.rmtree(test_dir, ignore_errors=True);
