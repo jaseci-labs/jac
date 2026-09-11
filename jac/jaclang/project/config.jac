@@ -381,3 +381,5 @@ def get_config_for_path(
 ) -> JacConfig | None;
 
 def get_config_for_dir(start_dir: str) -> JacConfig | None;
+
+def active_profile_name(config: JacConfig | None) -> str;

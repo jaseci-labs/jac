@@ -72,16 +72,12 @@ impl JacConfig.load(toml_path: Path) -> JacConfig {
 impl JacConfig.resolve(
     start_path: Path | None = None, profile: str | None = None
 ) -> JacConfig | None {
-    import os;
     config = JacConfig.discover(start_path=start_path);
     if config is not None {
         config.profile_override = profile.strip() if profile is not None else None;
         selected = config.profile_override
             if config.profile_override is not None
-            else (
-                os.environ.get("JAC_PROFILE", "").strip()
-                or config.environment.default_profile.strip()
-            );
+            else active_profile_name(config).strip();
         config.apply_profile_overlay(selected or None);
     }
     return config;
@@ -1428,6 +1424,14 @@ impl get_explicit_config -> JacConfig | None {
 
 impl get_config_for_dir(start_dir: str) -> JacConfig | None {
     return get_config_for_path(Path(start_dir));
+}
+
+impl active_profile_name(config: JacConfig | None) -> str {
+    requested = os.environ.get("JAC_PROFILE", "").strip();
+    if requested or config is None {
+        return requested;
+    }
+    return config.environment.default_profile or "";
 }
 
 impl get_config_for_path(

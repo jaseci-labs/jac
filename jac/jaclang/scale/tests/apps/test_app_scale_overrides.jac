@@ -20,6 +20,11 @@ import from jaclang.scale.config.validation {
     validate_scale_config
 }
 import from jaclang.scale.runtime.fleet { fleet_from_config }
+import from jaclang.scale.config.app_config { AppConfig }
+import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+    KubernetesConfig
+}
+import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
 
 glob _TOML: str = '[project]\n'
      'name = "shop"\n'
@@ -283,13 +288,6 @@ test "a profile retunes [apps.<name>.scale], not only [scale.gateway]" {
 
 test "the manifest fleet discovers the same active profile as the scale plugin (#8995)" {
     import from jaclang.project.config { get_config, get_explicit_config, set_config }
-    import from jaclang.scale.config.app_config { AppConfig }
-    import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-        ManifestBuilder
-    }
-    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-        KubernetesConfig
-    }
     import from unittest.mock { patch }
 
     directory = _project_with_profile();
@@ -354,6 +352,33 @@ test "new plugin readers refresh the shared config while preserving the explicit
     } finally {
         set_config(saved);
         shutil.rmtree(directory, ignore_errors=True);
+    }
+}
+
+
+test "the fleet a deploy builds carries the profile's [apps.<name>.scale]" {
+    d = _project_with_profile();
+    old = os.environ.get("JAC_PROFILE");
+    os.environ["JAC_PROFILE"] = "e2e";
+    try {
+        builder = ManifestBuilder(
+            k8s_config=KubernetesConfig(app_name="shop", namespace="shop"),
+            project_dir=d,
+            dry_run=True
+        );
+        builder._fleet(AppConfig(code_folder=d, app_name="shop"));
+        orders = builder._service_config("orders");
+        assert orders["replicas"] == 1 , orders;
+        assert orders["cpu_limit"] == "500m" , orders;
+        assert orders["hpa"]["enabled"] is False , orders;
+        assert orders["rpc_timeout"] == 120.0 , orders;
+    } finally {
+        if old is None {
+            os.environ.pop("JAC_PROFILE", None);
+        } else {
+            os.environ["JAC_PROFILE"] = old;
+        }
+        shutil.rmtree(d, ignore_errors=True);
     }
 }
 
