@@ -11,7 +11,6 @@ import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.pipeline.executor { run_pass }
 import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
-import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from .react_jsdom_harness { bun_install, require_client_integration }
 
 glob HARNESS: str = """
@@ -51,11 +50,11 @@ test "solid returned cleanup runs on invalidation and disposal" {
     prog = JacProgram();
     ir = prog.compile(file_path=str(fixture), no_cgen=True);
     assert not prog.errors_had , str(prog.errors_had);
-    result = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=SolidBackend());
+    es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=SolidBackend());
     with TemporaryDirectory() as tmp {
         work = Path(tmp);
         (work / "component.js").write_text(
-            es_to_js(artifact_for(result.ir_out).es_ast), encoding="utf-8"
+            artifact_for(es_pass.ir_out).js, encoding="utf-8"
         );
         (work / "harness.mjs").write_text(HARNESS, encoding="utf-8");
         bun_install(bun, work, "solid-effect-cleanup-test", {"solid-js": "^1.9.13"});

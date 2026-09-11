@@ -30,7 +30,6 @@ import from tempfile { TemporaryDirectory }
 
 import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.backends.es { EsastGenPass }
-import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
 import from jaclang.compiler.analysis.types.type_checker_pass { TypeCheckPass }
 import from jaclang.client.client_surface { with_runtime_globals }
@@ -806,7 +805,7 @@ def _compile_solid(path: str) -> str {
     ];
     assert not fatal , f"compile errors in {path}: {[str(e) for e in fatal]}";
     es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=SolidBackend());
-    return es_to_js(artifact_for(es_pass.ir_out).es_ast);
+    return artifact_for(es_pass.ir_out).js;
 }
 
 """Point the shim's dotted core import at a flat sibling (mirrors the bundler)."""

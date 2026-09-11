@@ -23,7 +23,6 @@ import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.compiler.pipeline.executor { run_pass }
 import from jaclang.compiler.backends.es { EsastGenPass }
-import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
 import from jaclang.compiler.analysis.types.type_checker_pass { TypeCheckPass }
@@ -120,11 +119,8 @@ def _compiled_body(path: Path, backend: any, name: str) -> str {
         if not issubclass(e.from_pass, TypeCheckPass)
     ];
     assert not fatal , f"{path.name} failed to compile: {[str(e) for e in fatal]}";
-    js = es_to_js(
-        artifact_for(
-            run_pass(PassIdentity.EsastGenPass, ir, prog, backend=backend).ir_out
-        ).es_ast
-    );
+    output = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=backend).ir_out;
+    js = artifact_for(output).js;
     start = js.find(f"function {name}(");
     assert start >= 0 , f"{path.name} emitted no `function {name}(`";
     body = [];
