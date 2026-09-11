@@ -211,9 +211,15 @@ def placement_report(program: AnalysisServices) -> dict {
 
 
 def invalidate_native_importers(program: AnalysisServices, path: str) {
+    import from jaclang.compiler.ir.schema { Module }
     import from jaclang.compiler.pipeline.executor { execute_query }
     import from jaclang.compiler.pipeline.schedule { native_demotion_query }
-    execute_query(program, program.mod.main, native_demotion_query(), path);
+    execute_query(
+        program,
+        Module.make_stub(inject_name='native_demotion'),
+        native_demotion_query(),
+        path
+    );
 }
 
 import type from jaclang.compiler.analysis.interfaces.facts {

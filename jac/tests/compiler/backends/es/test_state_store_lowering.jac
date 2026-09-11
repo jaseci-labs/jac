@@ -20,6 +20,8 @@ These tests pin the emitted shape for the react and preact backends:
     write sites the backend happens to recognize (#8224)
 """
 
+import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
+
 import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
@@ -36,14 +38,14 @@ glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
      );
 
-def compile_with_backend(fixture_name: str, backend: object) -> str {
+def compile_with_backend(fixture_name: str, backend: FrameworkBackend) -> str {
     prog = JacProgram();
     ir = prog.compile(file_path=os.path.join(FIXTURES, fixture_name), no_cgen=True);
     assert not prog.errors_had , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
     es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=backend);
-    return es_to_js(artifact_for(es_pass.ir_out).es_ast);
+    return es_to_js(artifact_for(es_pass.ir_out).es_program());
 }
 
 def assert_store_contract(js: str, backend_name: str) {

@@ -574,6 +574,7 @@ test "an interface is identical however many twins of its module are reachable" 
         );
         assert require_product(prog, mod, CompilationProduct.INTERFACE);
         payload = prog.analysis.result(target, INTERFACE).data;
+        assert payload is not None;
         digests.append(read_iface_hash(payload) or "");
         cat = open_module_iface(payload, pkg);
         served = iface_module(cat) if cat is not None else None;
@@ -652,6 +653,11 @@ glob TWIN_MODEL: str = (
 
 def _twin_project -> dict[str, str] {
     tmp = tempfile.mkdtemp();
+    # Exercise interface hydration independently of opportunistic native lowering,
+    # whose inferred modules deliberately do not publish reusable interfaces.
+    (Path(tmp) / "jac.toml").write_text(
+        '[project]\nname = "interface-twins"\n[placement.pins]\nmodels = "server"\n'
+    );
     paths: dict[str, str] = {};
     for (name, body) in (
         ("models", TWIN_MODEL),
@@ -738,8 +744,9 @@ test "an interface that cannot place a class is not persisted" {
     reg = prog.iface_registry();
     reg.forget(paths["provider"]);
     invalidate_product(prog, provider, CompilationProduct.INTERFACE);
-    assert not require_product(prog, provider, CompilationProduct.INTERFACE);
-    assert prog.analysis.lookup(paths["provider"], INTERFACE) is None;
+    assert require_product(prog, provider, CompilationProduct.INTERFACE);
+    assert prog.analysis.result(paths["provider"], INTERFACE).data is None;
+    assert provider not in prog.analysis.invalid_graphs;
     reg.persist_after_compile(paths["provider"], provider, prog.options, 0, 0);
     assert prog.analysis.cache_events.get("iface_incoherent", 0) == 1;
     after = cache_path.read_bytes() if cache_path.exists() else b"";
@@ -786,6 +793,7 @@ test "a codegen compile records dependency rows but encodes no interface" {
 }
 
 test "external type references preserve classification without a resolver" {
+    import from jaclang.compiler.api { query_type }
     import from jaclang.compiler.analysis.interfaces.catalog_builder { CatalogBuilder }
     import from jaclang.compiler.ir.schema { Module }
     import from jaclang.compiler.ir.types.nodes { ClassDetailsShared }
@@ -860,4 +868,93 @@ test "interface lookup uses loaded stubs when no catalog is available" {
     with patch.object(JacProgram, 'stub_catalog', return_value=None) {
         assert program.iface_registry().resolve_module(path) is module;
     }
+}
+
+test "interface preparation does not compile imports used only inside a function" {
+    with tempfile.TemporaryDirectory() as directory {
+        base = Path(directory);
+        dependency = base / 'body_dependency.jac';
+        dependency.write_text('def:pub value -> int { return 7; }\n');
+        provider = base / 'provider.jac';
+        provider.write_text(
+            'def:pub value -> int { import from body_dependency { value as inner } return inner(); }\n'
+        );
+        program = _context(str(provider));
+        registry = program.iface_registry();
+        assert registry.ensure(str(provider)) is not None;
+        assert str(dependency) not in registry.entries;
+    }
+}
+
+test "an uncacheable interface leaves its analyzed graph usable" {
+    import from jaclang.compiler.pipeline.contracts { AnalysisFact }
+    program = JacProgram();
+    path = '/tmp/in-memory-interface.jac';
+    module = program.compile(
+        path,
+        use_str='def answer -> int { return 42; }',
+        options=CompileOptions(
+            symtab_ir_only=True, no_cgen=True, force_target_program=True
+        )
+    );
+    assert require_product(program, module, CompilationProduct.INTERFACE);
+    assert program.analysis.result(path, INTERFACE).data is None;
+    assert module not in program.analysis.invalid_graphs;
+    assert program.analysis.provides(module, AnalysisFact.CFG_SUCC);
+    assert require_product(program, module, CompilationProduct.ANALYSIS);
+}
+
+test "external class references are deduplicated across compilation graphs" {
+    import from jaclang.compiler.api { query_type }
+    import from jaclang.compiler.analysis.interfaces.catalog_builder { CatalogBuilder }
+    import from jaclang.compiler.ir.schema { Module }
+    import from jaclang.compiler.ir.types.nodes { ClassType }
+    import from jaclang.compiler.session.cache.catalog_paths { jaclang_pkg_dir }
+    (main, dependency) = _project('obj Payload { has value: int = 7; }\n');
+    programs = [JacProgram(), JacProgram()];
+    types: list[ClassType] = [];
+    for program in programs {
+        module = program.compile(dependency, options=_check_opts());
+        resolved = query_type(program, module.names_in_scope['Payload']);
+        assert isinstance(resolved, ClassType);
+        types.append(resolved);
+    }
+    writer = CatalogBuilder(
+        evaluator=programs[0].get_type_evaluator(),
+        pkg_dir=jaclang_pkg_dir(),
+        boundary=Module.make_stub(inject_name='consumer')
+    );
+    assert writer.ref_shared(types[0].shared) == writer.ref_shared(types[1].shared);
+}
+
+test "reusing a released program revalidates interface dependencies" {
+    (main, dependency) = _project();
+    Path(main).write_text(
+        'import from depmod { f }\ndef value -> int { return f(); }\n'
+    );
+    program = _context(main);
+    program.compile(main, options=_check_opts());
+    assert not program.errors_had;
+    program.release_compile_closure(collect=False);
+    _rewrite(dependency, 'def f -> str { return "changed"; }\n');
+    program.compile(main, options=_check_opts());
+    assert any('expected int' in error.msg for error in program.errors_had);
+}
+
+test "cached diagnostics preserve their owner and replay once" {
+    import from jaclang.compiler.session.imports { _alert_record }
+    import from jaclang.compiler.pipeline.pass_base { Alert, Transform }
+    import from jaclang.compiler.frontend.source_locations { Span }
+    program = JacProgram();
+    location = Span.make('/tmp/helper.impl.jac', 'x', (1, 1), (1, 2), (0, 1));
+    alert = Alert('cached warning', location, Transform, owner='/tmp/helper.jac');
+    record = _alert_record(alert);
+    profile = {'warnings': [record, record]};
+    registry = program.iface_registry();
+    registry._replay_records(profile);
+    registry._replay_records(profile);
+    assert len(program.warnings_had) == 1;
+    assert program.warnings_had[0].owner == '/tmp/helper.jac';
+    assert program.diags._owned(program.warnings_had[0], '/tmp/helper.jac');
+    assert not program.diags._owned(program.warnings_had[0], '/tmp/consumer.jac');
 }

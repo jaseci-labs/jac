@@ -1,11 +1,24 @@
 impl cfg_dot_from_file(file_name: str) -> str {
     import from jaclang.compiler.pipeline.executor { run_utility }
-    import from jaclang.compiler.pipeline.contracts { UtilityProduct }
+    import from jaclang.compiler.pipeline.contracts {
+        UtilityProduct,
+        CompilationProduct
+    }
+    import from jaclang.compiler.pipeline.products { require_product }
+    import from jaclang.compiler.session.options { CompileOptions }
     import from jaclang.compiler.session.session { JacProgram }
     with open(file_name, encoding="utf-8") as f {
         file_source = f.read();
     }
-    ir = (prog := JacProgram()).compile(use_str=file_source, file_path=file_name);
+    prog = JacProgram();
+    ir = prog.compile(
+        use_str=file_source,
+        file_path=file_name,
+        options=CompileOptions(
+            no_cgen=True, symtab_ir_only=True, force_target_program=True
+        )
+    );
+    require_product(prog, ir, CompilationProduct.FLOW);
     import from typing { cast }
     cfg_pass = cast(CoalesceBBPass, run_utility(UtilityProduct.CFG_DOT, ir, prog));
     dot = cfg_pass.printgraph_cfg();
@@ -95,7 +108,14 @@ impl CoalesceBBPass._has_bool_sc(condition: Expr) -> bool {
 
 impl CoalesceBBPass._node_label(nd: UniNode) -> str {
     import from jaclang.compiler.ir.enums { Tokens as Tok }
-    import from jaclang.compiler.tools.unparse_pass { unparse_node }
+    import from jaclang.compiler.ir.syntax.nodes { Token }
+
+    def unparse_node(part: UniNode) -> str {
+        if isinstance(part, Token) {
+            return part.value;
+        }
+        return ' '.join(unparse_node(child) for child in part.kid);
+    }
 
     if isinstance(nd, ElseIf) {
         return 'elif'

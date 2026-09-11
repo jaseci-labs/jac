@@ -4,14 +4,11 @@ import jaclang.compiler.ir.schema as uni;
 
 walker InterfaceFactsPass(ProgramTransform) {
     def transform(ir_in: uni.Module) -> uni.Module {
-        import from jaclang.compiler.pipeline.contracts { ProductUnavailable }
         import from jaclang.compiler.analysis.interfaces.catalog_builder {
             CatalogBuilder
         }
-        import from jaclang.compiler.analysis.interfaces.facts {
-            IncoherentInterface,
-            InterfaceProduct
-        }
+        import from jaclang.compiler.analysis.interfaces.facts { InterfaceProduct }
+        import from jaclang.compiler.session.cache.artifact_codec { is_stub_like_path }
         import from jaclang.compiler.session.cache.interface_codec {
             encode_interface,
             read_iface_hash
@@ -20,29 +17,14 @@ walker InterfaceFactsPass(ProgramTransform) {
         path = os.path.realpath(ir_in.loc.mod_path);
         registry = self.prog.iface_registry();
         if not registry.interface_cacheable(path, ir_in) {
-            raise ProductUnavailable('Module has no cacheable interface');
+            self.prog.analysis.publish(
+                path,
+                INTERFACE,
+                InterfaceProduct(None, '', 'Module has no cacheable interface')
+            );
+            return ir_in;
         }
 
-        dependencies = set(registry.direct_deps.get(path, {}));
-        dependencies.update(
-            edge.target
-            for edge in self.prog.deps.imports.get(path, [])
-            if edge.jac and edge.target != path
-        );
-        was_building = path in registry.building;
-        registry.building.add(path);
-        try {
-            for dependency in sorted(dependencies) {
-                dependency_entry = registry.ensure(dependency);
-                if dependency_entry is not None {
-                    registry.direct_deps.setdefault(path, {})[dependency] = dependency_entry.digest;
-                }
-            }
-        } finally {
-            if not was_building {
-                registry.building.discard(path);
-            }
-        }
         cached = registry.cached_interface(path);
         if cached is not None {
             self.prog.analysis.publish(
@@ -60,9 +42,37 @@ walker InterfaceFactsPass(ProgramTransform) {
         prepared = writer.prepare(path, {});
         if writer.orphans {
             registry.reject_interface(path);
-            raise ProductUnavailable(
-                f'Interface has unresolved class scopes: {writer.orphans}'
+            self.prog.analysis.publish(
+                path,
+                INTERFACE,
+                InterfaceProduct(
+                    None, '', f'Interface has unresolved class scopes: {writer.orphans}'
+                )
             );
+            return ir_in;
+        }
+        dependencies = set(registry.direct_deps.get(path, {}));
+        dependencies.update(
+            os.path.realpath(module.loc.mod_path)
+            for module in writer.modules
+            if not writer.in_boundary(module)
+                and module.loc.mod_path
+                and not is_stub_like_path(module.loc.mod_path)
+        );
+        dependencies.discard(path);
+        was_building = path in registry.building;
+        registry.building.add(path);
+        try {
+            for dependency in sorted(dependencies) {
+                dependency_entry = registry.ensure(dependency);
+                registry.direct_deps.setdefault(path, {})[dependency] = dependency_entry.digest
+                    if dependency_entry is not None
+                    else '';
+            }
+        } finally {
+            if not was_building {
+                registry.building.discard(path);
+            }
         }
         encoded = encode_interface(prepared);
         self.prog.analysis.publish(

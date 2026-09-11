@@ -50,6 +50,9 @@ obj ModuleCompilation {
     }
 
     def ir {
+        if self.parse_failed {
+            return;
+        }
         import from jaclang.compiler.pipeline.schedule {
             get_symtab_ir_sched,
             get_ir_gen_sched,
@@ -115,7 +118,10 @@ obj ModuleCompilation {
             }
             _annex_of_base = _cc_base_file(str(self.path)) is not None;
         }
-        _analyze = self.full_head
+        _analyze = not self.blocked
+            and not self.parse_failed
+            and self.full_head
+            and self.program.analysis.provides(self.module, AnalysisFact.CFG_SUCC)
             and not _is_decl_stub
             and not _annex_of_base
             and (

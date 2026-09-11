@@ -199,29 +199,41 @@ test "bug_3_list_element_type_first_only" {
 # Buggy DFS gives: [D, B, A, object, C] (A appears before C)
 # =========================================================================
 test "bug_6_mro_not_c3_diamond" {
-    # Build a diamond hierarchy manually to check MRO order; these hand-built
-    # classes deliberately carry no symbol table.
-    _no_symtab: any = None;
+    # Synthetic classes still require typed declaration scopes.
+    import from jaclang.compiler.ir.schema { Module }
+
     a_shared = ClassDetailsShared(
-        class_name="A", symbol_table=_no_symtab, mro=[], base_classes=[]
+        class_name="A",
+        symbol_table=Module.make_stub(inject_name="A"),
+        mro=[],
+        base_classes=[]
     );
     a_type = ClassType(_shared=a_shared, flags=TypeFlags.Instantiable);
     a_type.shared.mro = [a_type];
 
     b_shared = ClassDetailsShared(
-        class_name="B", symbol_table=_no_symtab, mro=[], base_classes=[a_type]
+        class_name="B",
+        symbol_table=Module.make_stub(inject_name="B"),
+        mro=[],
+        base_classes=[a_type]
     );
     b_type = ClassType(_shared=b_shared, flags=TypeFlags.Instantiable);
     compute_mro_linearization(b_type);
 
     c_shared = ClassDetailsShared(
-        class_name="C", symbol_table=_no_symtab, mro=[], base_classes=[a_type]
+        class_name="C",
+        symbol_table=Module.make_stub(inject_name="C"),
+        mro=[],
+        base_classes=[a_type]
     );
     c_type = ClassType(_shared=c_shared, flags=TypeFlags.Instantiable);
     compute_mro_linearization(c_type);
 
     d_shared = ClassDetailsShared(
-        class_name="D", symbol_table=_no_symtab, mro=[], base_classes=[b_type, c_type]
+        class_name="D",
+        symbol_table=Module.make_stub(inject_name="D"),
+        mro=[],
+        base_classes=[b_type, c_type]
     );
     d_type = ClassType(_shared=d_shared, flags=TypeFlags.Instantiable);
     compute_mro_linearization(d_type);
@@ -246,11 +258,14 @@ test "bug_6_mro_not_c3_diamond" {
 # to a best-effort MRO. The fix adds an in-progress guard keyed on the class.
 # =========================================================================
 test "cyclic_heritage_mro_does_not_recurse" {
-    # Hand-built classes deliberately carry no symbol table.
-    _no_symtab: any = None;
+    # Give each synthetic class its own typed declaration scope.
+    import from jaclang.compiler.ir.schema { Module }
     # Self-referential: A lists itself as a base.
     a_shared = ClassDetailsShared(
-        class_name="A", symbol_table=_no_symtab, mro=[], base_classes=[]
+        class_name="A",
+        symbol_table=Module.make_stub(inject_name="A"),
+        mro=[],
+        base_classes=[]
     );
     a_type = ClassType(_shared=a_shared, flags=TypeFlags.Instantiable);
     a_type.shared.base_classes = [a_type];
@@ -259,11 +274,17 @@ test "cyclic_heritage_mro_does_not_recurse" {
 
     # Mutual cycle: B -> C -> B.
     b_shared = ClassDetailsShared(
-        class_name="B", symbol_table=_no_symtab, mro=[], base_classes=[]
+        class_name="B",
+        symbol_table=Module.make_stub(inject_name="B"),
+        mro=[],
+        base_classes=[]
     );
     b_type = ClassType(_shared=b_shared, flags=TypeFlags.Instantiable);
     c_shared = ClassDetailsShared(
-        class_name="C", symbol_table=_no_symtab, mro=[], base_classes=[]
+        class_name="C",
+        symbol_table=Module.make_stub(inject_name="C"),
+        mro=[],
+        base_classes=[]
     );
     c_type = ClassType(_shared=c_shared, flags=TypeFlags.Instantiable);
     b_type.shared.base_classes = [c_type];

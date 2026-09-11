@@ -34,7 +34,7 @@ def compile_to_esast(filename: str) -> es.Program {
         f"Compilation errors in {filename}: " + str([str(e) for e in prog.errors_had])
     );
     es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog);
-    return artifact_for(es_pass.ir_out).es_ast;
+    return artifact_for(es_pass.ir_out).es_program();
 }
 
 test "rec 7: Ref[T] field declared with has lowers to useRef(null) in client context" {

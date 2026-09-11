@@ -170,7 +170,7 @@ test "the running compiler digest covers the real compiler tree" {
     assert rels == sorted(rels);
     for rel in rels {
         assert "/tests/" not in rel and not rel.startswith("tests/") , f"{rel} is test material and must not gate the seed";
-        assert rel.endswith(".jac") or rel.endswith(".py");
+        assert rel.endswith((".jac", ".py", ".pyi")) , rel;
     }
     assert running_compiler_digest() == compiler_source_digest(pkg);
     assert running_compiler_digest() == running_compiler_digest();

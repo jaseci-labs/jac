@@ -25,7 +25,8 @@ import subprocess;
 import sys;
 import from pathlib { Path }
 import jaclang;
-import from jaclang.compiler.backends.es { EsastGenPass }
+import from jaclang.compiler.pipeline.executor { run_pass }
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.estree { Node as EsNode }
 import from jaclang.compiler.backends.native.naming { native_safe_sym }
@@ -109,7 +110,7 @@ def compile_fixture_to_js(fixture_name: str) -> str {
     assert not fatal , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in fatal]}"
     );
-    es_pass = EsastGenPass(ir_in=ir, prog=prog);
+    es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog);
     es_ir = es_pass.ir_out;
     assert isinstance(artifact_for(es_ir).es_ast, EsNode) , "es_ast should be an EsNode";
     return es_to_js(artifact_for(es_ir).es_ast);

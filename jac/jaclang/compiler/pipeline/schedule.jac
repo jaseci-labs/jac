@@ -571,6 +571,14 @@ def get_format_sched(auto_lint: bool = False) -> list[PassIdentity] {
     );
 }
 
+def get_unparse_sched(requires_format: bool = True) -> list[PassIdentity] {
+    return validate_schedule(
+        [PassIdentity.NormalizePass]
+            + (get_format_sched() if requires_format else [PassIdentity.UnparsePass]),
+        origin='unparse schedule'
+    );
+}
+
 def get_lint_sched -> list[PassIdentity] {
     return validate_schedule([PassIdentity.JacLintCheckPass], origin='lint schedule');
 }
@@ -1665,7 +1673,8 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
                      RelationFamily.PLACEMENT
                  }
              ),
-             AnalysisContract((), (AnalysisFact.ACCESS_CHECKS, ))
+             AnalysisContract((), (AnalysisFact.ACCESS_CHECKS, )),
+             preserves_facts_on_error=True
          ),
          PassIdentity.AppContextPass: PassSpec(
              PassIdentity.AppContextPass,
@@ -1726,7 +1735,8 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
              _create_ClientCapabilityCheckPass,
              PassScope.MODULE,
              frozenset({RelationFamily.TYPES, RelationFamily.PLACEMENT}),
-             AnalysisContract((), (AnalysisFact.CLIENT_CAPABILITY, ))
+             AnalysisContract((), (AnalysisFact.CLIENT_CAPABILITY, )),
+             preserves_facts_on_error=True
          ),
          PassIdentity.ClientDependenciesPass: PassSpec(
              PassIdentity.ClientDependenciesPass,
@@ -2017,7 +2027,8 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
              _create_NativeCapabilityCheckPass,
              PassScope.MODULE,
              frozenset({RelationFamily.TYPES, RelationFamily.PLACEMENT}),
-             AnalysisContract((), (AnalysisFact.CAPABILITY, ))
+             AnalysisContract((), (AnalysisFact.CAPABILITY, )),
+             preserves_facts_on_error=True
          ),
          PassIdentity.NativeCompilePass: PassSpec(
              PassIdentity.NativeCompilePass,
@@ -2062,7 +2073,8 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
              AnalysisContract(
                  (AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF, ),
                  (AnalysisFact.OWNERSHIP, )
-             )
+             ),
+             preserves_facts_on_error=True
          ),
          PassIdentity.PlacementApplyPass: PassSpec(
              PassIdentity.PlacementApplyPass,
@@ -2206,7 +2218,8 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
              frozenset(
                  {RelationFamily.BINDING, RelationFamily.TYPES, RelationFamily.FLOW}
              ),
-             AnalysisContract((), (AnalysisFact.STATIC_CHECKS, ))
+             AnalysisContract((), (AnalysisFact.STATIC_CHECKS, )),
+             preserves_facts_on_error=True
          ),
          PassIdentity.SymTabBuildPass: PassSpec(
              PassIdentity.SymTabBuildPass,
@@ -2238,7 +2251,8 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
              frozenset(
                  {RelationFamily.BINDING, RelationFamily.TYPES, RelationFamily.FLOW}
              ),
-             AnalysisContract((), (AnalysisFact.TYPE_OF, ))
+             AnalysisContract((), (AnalysisFact.TYPE_OF, )),
+             preserves_facts_on_error=True
          ),
          PassIdentity.UnparsePass: PassSpec(
              PassIdentity.UnparsePass,
@@ -2254,7 +2268,8 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
              frozenset(
                  {RelationFamily.BINDING, RelationFamily.TYPES, RelationFamily.FLOW}
              ),
-             AnalysisContract((), (AnalysisFact.VARIANT_AGREEMENT, ))
+             AnalysisContract((), (AnalysisFact.VARIANT_AGREEMENT, )),
+             preserves_facts_on_error=True
          )
      };
 

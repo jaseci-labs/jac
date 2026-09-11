@@ -1,5 +1,7 @@
 """Tests for the Preact FrameworkBackend (Phase 1)."""
 
+import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
+
 import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
@@ -35,7 +37,7 @@ glob FIXTURES = os.path.join(
      );
 
 """Compile a fixture with the given backend and return emitted JS."""
-def compile_fixture_with_backend(fixture_name: str, backend: object) -> str {
+def compile_fixture_with_backend(fixture_name: str, backend: FrameworkBackend) -> str {
     prog = JacProgram();
     ir = prog.compile(file_path=os.path.join(FIXTURES, fixture_name), no_cgen=True);
     assert not prog.errors_had , (
@@ -43,7 +45,7 @@ def compile_fixture_with_backend(fixture_name: str, backend: object) -> str {
     );
     es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=backend);
     es_ir = es_pass.ir_out;
-    return es_to_js(artifact_for(es_ir).es_ast);
+    return es_to_js(artifact_for(es_ir).es_program());
 }
 
 test "react backend reports runtime symbols for reactive lowering" {
@@ -220,7 +222,7 @@ test "preact runtime shim compiles JacForm and emits tanstack react-form" {
             run_pass(
                 PassIdentity.EsastGenPass, ir, prog, backend=PreactBackend()
             ).ir_out
-        ).es_ast
+        ).es_program()
     );
     assert "function JacForm(" in js;
     assert "function useJacForm(" in js;
@@ -259,7 +261,7 @@ test "preact runtime shim exports form symbols" {
             run_pass(
                 PassIdentity.EsastGenPass, ir, prog, backend=PreactBackend()
             ).ir_out
-        ).es_ast
+        ).es_program()
     );
     export_line = "";
     for ln in js.splitlines() {

@@ -1,6 +1,7 @@
 obj InterfaceProduct {
-    has data: bytes,
-        digest: str;
+    has data: bytes | None,
+        digest: str,
+        unavailable_reason: str = '';
 }
 
 class IncoherentInterface(RuntimeError) {

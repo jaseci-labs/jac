@@ -51,7 +51,7 @@ def compile_fixture(fixture_name: str) -> tuple[EsastGenPass, JacProgram, str] {
     assert not prog.errors_had , (
         f"ES codegen errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
-    return (es_pass, prog, es_to_js(artifact_for(es_pass.ir_out).es_ast));
+    return (es_pass, prog, es_to_js(artifact_for(es_pass.ir_out).es_program()));
 }
 
 """Slice out the body of the named emitted function for focused assertions."""

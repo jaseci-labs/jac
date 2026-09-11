@@ -681,7 +681,7 @@ impl JacCompiler.parse_str(
         }
         if target_program.mod.main.stub_only {
             old_hub = target_program.mod.hub;
-            target_program.reset_module_root(uni.ProgramModule(main_mod=mod));
+            target_program.reset_module_root(mod);
 
             target_program.mod.hub.clear();
             target_program.mod.hub.update(old_hub);
@@ -1260,7 +1260,7 @@ impl JacCompiler._prepare_tool_program(
     prog = JacProgram();
     (current_mod, had_error) = rd_parse(source_str, file_path, prog=prog);
     if had_error {
-        prog.reset_module_root(uni.ProgramModule(main_mod=current_mod));
+        prog.reset_module_root(current_mod);
         return (prog, None);
     }
 
@@ -1279,7 +1279,7 @@ impl JacCompiler.jac_file_formatter(
     current_mod = execute_passes(
         prog, current_mod, get_format_sched(auto_lint=auto_lint)
     );
-    prog.reset_module_root(uni.ProgramModule(main_mod=current_mod));
+    prog.reset_module_root(current_mod);
     return prog;
 }
 
@@ -1294,7 +1294,7 @@ impl JacCompiler.jac_str_formatter(
     current_mod = execute_passes(
         prog, current_mod, get_format_sched(auto_lint=auto_lint)
     );
-    prog.reset_module_root(uni.ProgramModule(main_mod=current_mod));
+    prog.reset_module_root(current_mod);
     return prog;
 }
 
@@ -1306,7 +1306,7 @@ impl JacCompiler.jac_file_linter(file_path: str) -> JacProgram {
     }
     import from jaclang.compiler.pipeline.executor { execute_passes }
     current_mod = execute_passes(prog, current_mod, get_lint_sched());
-    prog.reset_module_root(uni.ProgramModule(main_mod=current_mod));
+    prog.reset_module_root(current_mod);
     return prog;
 }
 

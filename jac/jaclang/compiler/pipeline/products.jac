@@ -174,7 +174,9 @@ obj ProductStore {
         if current is not None and current.owner() is module {
             return current;
         }
-        self.drop_module(key);
+        if current is not None {
+            self.drop_module(key);
+        }
         module.attach_permit(self.mutations);
         current = ModuleProducts(
             owner=weakref.ref(

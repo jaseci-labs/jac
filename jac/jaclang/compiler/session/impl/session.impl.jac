@@ -251,12 +251,11 @@ impl JacProgram.drop_module_alerts(self: JacProgram, resolved_path: str) -> None
     self.diags.drop_module(resolved_path);
 }
 
-impl JacProgram.reset_module_root(
-    self: JacProgram, module_root: uni.ProgramModule
-) -> None {
+impl JacProgram.reset_module_root(self: JacProgram, module_root: uni.Module) -> None {
     with MutationScope(self.analysis.mutations, 3) {
-        self.hub.mod = module_root;
-        self.mod = module_root;
+        program_root = uni.ProgramModule(main_mod=module_root);
+        self.hub.mod = program_root;
+        self.mod = program_root;
     }
 }
 

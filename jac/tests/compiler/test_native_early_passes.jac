@@ -2,7 +2,7 @@
 
 import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import from jaclang.compiler.session.session { JacProgram }
-import from jaclang.compiler.pipeline.executor { run_pass }
+import from jaclang.compiler.pipeline.executor { run_pass, execute_passes }
 import from jaclang.compiler.frontend.parser.frontend { parse, parse_woven }
 import from jaclang.compiler.ir.schema { Module, UniScopeNode }
 import from jaclang.compiler.frontend.kernel.adapter { ensure_loaded }
@@ -136,8 +136,11 @@ test "native early passes preserve the store parser's symbol graph" {
         assert not failed;
         assert "SymTabBuildPass" in native.analysis.early_passes[id(nat_mod)].results;
         before = scope_profile(nat_mod);
-        run_pass(PassIdentity.ASTValidationPass, nat_mod, native);
-        run_pass(PassIdentity.SymTabBuildPass, nat_mod, native);
+        execute_passes(
+            native,
+            nat_mod,
+            [PassIdentity.ASTValidationPass, PassIdentity.SymTabBuildPass]
+        );
         assert id(nat_mod) not in native.analysis.early_passes;
         assert native.analysis.pass_runs["SymTabBuildPass"] == 1;
         assert scope_profile(nat_mod) == before;

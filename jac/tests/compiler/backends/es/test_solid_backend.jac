@@ -7,6 +7,8 @@ and the acceptance fixtures (contract §7) by compiling fixtures with an explici
 SolidBackend and asserting on the emitted JS.
 """
 
+import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
+
 import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
@@ -46,7 +48,7 @@ glob FIXTURES = os.path.join(
      );
 
 """Compile a fixture with the given backend and return emitted JS."""
-def compile_fixture_with_backend(fixture_name: str, backend: object) -> str {
+def compile_fixture_with_backend(fixture_name: str, backend: FrameworkBackend) -> str {
     prog = JacProgram();
     ir = prog.compile(file_path=os.path.join(FIXTURES, fixture_name), no_cgen=True);
     assert not prog.errors_had , (
@@ -54,7 +56,7 @@ def compile_fixture_with_backend(fixture_name: str, backend: object) -> str {
     );
     es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=backend);
     es_ir = es_pass.ir_out;
-    return es_to_js(artifact_for(es_ir).es_ast);
+    return es_to_js(artifact_for(es_ir).es_program());
 }
 
 test "registry resolves the solid backend" {
@@ -395,7 +397,7 @@ test "solid runtime shim compiles and links its impl bodies" {
     js = es_to_js(
         artifact_for(
             run_pass(PassIdentity.EsastGenPass, ir, prog, backend=SolidBackend()).ir_out
-        ).es_ast
+        ).es_program()
     );
     # The dom-expressions (JSX) path: no __jacJsx hyperscript factory.
     assert "function __jacJsx(" not in js , "Solid shim must not emit __jacJsx (dom-expressions path)";
@@ -419,7 +421,7 @@ test "solid runtime shim reaches router/form parity with the React shim" {
     js = es_to_js(
         artifact_for(
             run_pass(PassIdentity.EsastGenPass, ir, prog, backend=SolidBackend()).ir_out
-        ).es_ast
+        ).es_program()
     );
     # Router adapters bridging react-router-dom's shape onto @solidjs/router.
     for fn in [
@@ -477,7 +479,7 @@ test "solid runtime shim exports the full router/form surface" {
     js = es_to_js(
         artifact_for(
             run_pass(PassIdentity.EsastGenPass, ir, prog, backend=SolidBackend()).ir_out
-        ).es_ast
+        ).es_program()
     );
     export_line = "";
     for ln in js.splitlines() {

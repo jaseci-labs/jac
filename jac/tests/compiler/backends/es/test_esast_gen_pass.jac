@@ -1,5 +1,7 @@
 """Test ECMAScript AST generation using consolidated Jac fixtures."""
 
+import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
+
 import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
@@ -117,12 +119,14 @@ def compile_to_esast(filename: str) -> es.Program {
     es_ir = es_pass.ir_out;
 
     assert hasattr(artifact_for(es_ir), "es_ast") , "es_ast attribute missing";
-    assert isinstance(artifact_for(es_ir).es_ast, es.Program);
-    return artifact_for(es_ir).es_ast;
+    assert isinstance(artifact_for(es_ir).es_program(), es.Program);
+    return artifact_for(es_ir).es_program();
 }
 
 """Compile Jac source to an ESTree program with an explicit FrameworkBackend."""
-def compile_to_esast_with_backend(filename: str, backend: object) -> es.Program {
+def compile_to_esast_with_backend(
+    filename: str, backend: FrameworkBackend
+) -> es.Program {
     prog = JacProgram();
     ir = prog.compile(file_path=filename, no_cgen=True);
 
@@ -134,8 +138,8 @@ def compile_to_esast_with_backend(filename: str, backend: object) -> es.Program 
     es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=backend);
     es_ir = es_pass.ir_out;
 
-    assert isinstance(artifact_for(es_ir).es_ast, es.Program);
-    return artifact_for(es_ir).es_ast;
+    assert isinstance(artifact_for(es_ir).es_program(), es.Program);
+    return artifact_for(es_ir).es_program();
 }
 
 """Return absolute path to a fixture file."""
@@ -1329,7 +1333,7 @@ def compile_fixture_reporting(filename: str) -> JacProgram {
 }
 
 """Run the ES pass with a backend and hand back the program's alerts."""
-def codegen_alerts(filename: str, backend: object) -> list {
+def codegen_alerts(filename: str, backend: FrameworkBackend) -> list {
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path(filename), no_cgen=True);
     run_pass(PassIdentity.EsastGenPass, ir, prog, backend=backend);

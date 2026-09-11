@@ -175,7 +175,11 @@ def execute_passes(
     passes: list[PassIdentity],
     cancel_token: Event | None = None
 ) -> Module {
-    import from jaclang.compiler.pipeline.schedule { validate_schedule, pass_provides }
+    import from jaclang.compiler.pipeline.schedule {
+        validate_schedule,
+        pass_provides,
+        PASS_REGISTRY
+    }
     import from jaclang.compiler.pipeline.executor { run_pass }
     import from jaclang.compiler.session.diagnostics { build_diagnostic_policy }
     import from jaclang.compiler.pipeline.contracts { ProductUnavailable }
@@ -206,7 +210,10 @@ def execute_passes(
         output = result.ir_out;
         assert isinstance(output, Module) , "A module pass must return a Module";
         module = output;
-        if result.errors_had or result.cancel_requested {
+        if result.cancel_requested
+            or (
+                result.errors_had and not PASS_REGISTRY[step].preserves_facts_on_error
+            ) {
             break;
         }
         provided.update(pass_provides(step));

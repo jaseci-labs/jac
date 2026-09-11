@@ -39,7 +39,7 @@ def compile_to_js(filename: str) -> str {
         f"Compilation errors in {filename}: " + str([str(e) for e in prog.errors_had])
     );
     es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog);
-    return es_to_js(artifact_for(es_pass.ir_out).es_ast);
+    return es_to_js(artifact_for(es_pass.ir_out).es_program());
 }
 
 test "props+ref component lowers to forwardRef with a (props, ref) signature" {

@@ -29,7 +29,7 @@ def compile_fixture(filename: str) -> str {
         f"Compilation errors in {filename}: " + str([str(e) for e in prog.errors_had])
     );
     return es_to_js(
-        artifact_for(run_pass(PassIdentity.EsastGenPass, ir, prog).ir_out).es_ast
+        artifact_for(run_pass(PassIdentity.EsastGenPass, ir, prog).ir_out).es_program()
     );
 }
 

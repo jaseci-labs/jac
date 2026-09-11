@@ -105,7 +105,7 @@ class JacProgram(AnalysisServices) {
     ) -> uni.Module;
 
     def drop_module_alerts(self: JacProgram, resolved_path: str) -> None;
-    def reset_module_root(self: JacProgram, module_root: uni.ProgramModule) -> None;
+    def reset_module_root(self: JacProgram, module_root: uni.Module) -> None;
     static def hub_key(path: str) -> str;
     def has_failed_parse(self: JacProgram, path: str) -> bool;
     def find_module(self: JacProgram, path: str) -> (uni.Module | None);

@@ -237,7 +237,8 @@ obj PassSpec {
         scope: PassScope,
         writes: frozenset[RelationFamily],
         analysis: AnalysisContract,
-        native_early_bit: int = 0;
+        native_early_bit: int = 0,
+        preserves_facts_on_error: bool = False;
 }
 
 type TaskAddress = tuple[GraphId, CompilationProduct, str];

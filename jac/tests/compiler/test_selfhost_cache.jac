@@ -58,8 +58,9 @@ def _check(path: str) -> list[str] {
         )
     );
     return sorted(
-        [a.pretty_print() for a in prog.errors_had]
-            + [a.pretty_print() for a in prog.warnings_had]
+        a.pretty_print()
+        for a in prog.errors_had + prog.warnings_had
+        if prog.diags._owned(a, path)
     );
 }
 

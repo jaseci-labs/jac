@@ -1,5 +1,4 @@
 import from jaclang.compiler.backends.common.artifact_store { artifact_for }
-import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from collections { deque }
 import jaclang.compiler.tools.doc_ir as doc;
 import jaclang.compiler.ir.schema as uni;
@@ -42,15 +41,14 @@ walker JacFormatPass(Transform) {
 }
 
 def format_module(mod: uni.Module) -> str {
-    import from jaclang.compiler.tools.doc_ir_gen_pass { DocIRGenPass }
-    import from jaclang.compiler.pipeline.executor { run_utility }
-    import from jaclang.compiler.pipeline.contracts { UtilityProduct }
+    import copy;
+    import from jaclang.compiler.pipeline.executor { execute_passes }
+    import from jaclang.compiler.pipeline.schedule { get_format_sched }
     import from jaclang.compiler.session.session { JacProgram }
-    return artifact_for(
-        run_utility(
-            UtilityProduct.FORMAT,
-            run_utility(UtilityProduct.DOC, mod, JacProgram()).ir_out,
-            JacProgram()
-        ).ir_out
-    ).jac;
+    program = JacProgram();
+    syntax = copy.deepcopy(mod);
+    assert isinstance(syntax, uni.Module);
+    syntax.thaw_structure();
+    execute_passes(program, syntax, get_format_sched());
+    return artifact_for(syntax).jac;
 }

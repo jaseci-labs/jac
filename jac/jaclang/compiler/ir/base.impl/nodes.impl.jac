@@ -2738,12 +2738,28 @@ impl UniNode.__deepcopy__(memo: dict) -> UniNode {
         if key == "__jac__" {
             continue;
         }
-        if key == "mutation_permit"
-            or key == "_ctx_parent"
+        if key
+            in (
+                "mutation_permit",
+                "_ctx_parent",
+                "_type_sym_tab",
+                "_type_cache",
+                "_names_index",
+                "_overload_index",
+                "declaration_symbol",
+                "ct_value"
+            )
             or key.endswith("__sub_node_tab") {
             dup.__dict__[key] = None;
-        } elif key == "_struct_frozen" {
+        } elif key in ("_struct_frozen", "_type_cache_ok") {
             dup.__dict__[key] = False;
+        } elif key == "capture_symbols" {
+            dup.__dict__[key] = [];
+        } elif key == "implicit_rebinds" {
+            dup.__dict__[key] = {};
+        } elif key
+            in ("_type_generation", "_names_generation", "_overload_generation") {
+            dup.__dict__[key] = -1;
         } elif key == "orig_src" {
             dup.__dict__[key] = val;
         } else {

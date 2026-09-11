@@ -456,8 +456,24 @@ obj CatalogBuilder {
             tab = None;
         }
         mod = module_of(tab) if tab is not None else None;
-        if tab is None or mod is None or not self.in_boundary(mod) {
+        if tab is None or mod is None {
             return id(shared);
+        }
+        if not self.in_boundary(mod) {
+            return (
+                'external',
+                self._mod_ident(mod),
+                self.scope_dotted_path(tab),
+                shared.canonical_key(),
+                shared.class_name,
+                shared.is_builtin_class,
+                shared.is_from_stdlib_stub,
+                shared.is_data_class,
+                shared.is_namedtuple,
+                shared.is_typeddict,
+                shared.is_root_class,
+                shared.is_enum_class
+            );
         }
         return (self._scope_ident(tab), shared.class_name, );
     }

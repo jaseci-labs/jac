@@ -62,3 +62,9 @@ def artifact_for(nd: UniNode) -> NodeArtifacts {
     }
     return store.output(nd);
 }
+
+def existing_artifact(nd: UniNode) -> NodeArtifacts | None {
+    owner = _owners.get(nd);
+    store = owner() if owner is not None else None;
+    return store.records.get(nd) if store is not None else None;
+}

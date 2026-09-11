@@ -11,7 +11,10 @@ import from jaclang.compiler.ir.enums {
 }
 import from jaclang.compiler.frontend.source_locations { CodeLocInfo }
 import type from jaclang.compiler.backends.es.estree { IndexInfo, SliceInfo }
-import type from jaclang.compiler.backends.es.estree { Node as EsNode }
+import type from jaclang.compiler.backends.es.estree {
+    Node as EsNode,
+    Program as EsProgram
+}
 import type from jaclang.compiler.ir.schema { CommentToken }
 import type from jaclang.compiler.tools.doc_ir { Doc }
 import type from jaclang.compiler.ir.schema { Source, Token }
@@ -328,6 +331,15 @@ obj NodeArtifacts {
     has doc_ir: Doc { getter; setter(value: Doc); }
     has client_manifest: ClientManifest { getter; setter(value: ClientManifest); }
     has interop_manifest: InteropManifest { getter; setter(value: InteropManifest); }
+
+    def es_program -> EsProgram {
+        import from jaclang.compiler.backends.es.estree { Program as EsProgram }
+        program = self.es_ast;
+        if not isinstance(program, EsProgram) {
+            raise TypeError("Expected a completed ECMAScript module artifact");
+        }
+        return program;
+    }
 
     def peek_interop -> InteropManifest | None {
         return self._interop_manifest;

@@ -45,8 +45,7 @@ import from jaclang.compiler.session.cache.artifact_codec {
     write_module_cache
 }
 
-glob DIAG_SCHEMA: int = 1,
-     IFACE_RETAIN_CAP: int = 1024,
+glob DIAG_SCHEMA: int = 2,
      _SYMTAB_PROVIDES_MEMO: list = [];
 
 def iface_verify_enabled -> bool {
@@ -103,6 +102,7 @@ def _alert_record(alert: Alert) -> dict {
     }
     return {
         "msg": alert.msg,
+        "owner": alert.owner,
         "code": alert.code.code if alert.code is not None else None,
         "help": alert.help_text,
         "span": _span_record(alert.loc),
@@ -127,6 +127,7 @@ def _alert_from_record(rec: dict) -> Alert {
         from_pass=Transform,
         code=code,
         related=related,
+        owner=str(rec.get("owner") or ""),
         help_text=help_val if isinstance(help_val, str) else None
     );
 }
@@ -164,30 +165,7 @@ obj IfaceRegistry(CatalogResolver) {
 
     def on_closure_release {
         self.closure_token += 1;
-        for ent in self.entries.values() {
-            ent.module = None;
-            ent.catalog = None;
-        }
-        cap = IFACE_RETAIN_CAP;
-        if len(self._iface_bytes) > cap {
-            stale = list(self._iface_bytes.keys())[:len(self._iface_bytes) - cap];
-            for key in stale {
-                del self._iface_bytes[key];
-            }
-        }
-        if len(self.entries) > cap {
-            doomed: list[str] = [];
-            excess = len(self.entries) - cap;
-            for key in self.entries.keys() {
-                if len(doomed) >= excess {
-                    break;
-                }
-                doomed.append(key);
-            }
-            for key in doomed {
-                del self.entries[key];
-            }
-        }
+        self.clear();
     }
 
     def _event(name: str) {
@@ -222,6 +200,9 @@ obj IfaceRegistry(CatalogResolver) {
         self.entries.clear();
         self.direct_deps.clear();
         self._iface_bytes.clear();
+        self.building.clear();
+        self.checking.clear();
+        self.frames.clear();
     }
 
     def frame_push(resolved_path: str) {
@@ -565,7 +546,7 @@ obj IfaceRegistry(CatalogResolver) {
         return payload.get("profiles", {}) or {};
     }
 
-    def _replay_records(prof: dict, err0: int, warn0: int) {
+    def _replay_records(prof: dict) {
         def key_of(alert: Alert) -> tuple {
             return (
                 alert.loc.mod_path,
@@ -580,19 +561,21 @@ obj IfaceRegistry(CatalogResolver) {
             span = rec.get("span") or ["", 0, 0, 0];
             return (span[0], span[1], span[3], rec.get("code"), rec.get("msg", ""));
         }
-        live_errs = {key_of(a) for a in self.prog.errors_had[err0:]};
-        live_warns = {key_of(a) for a in self.prog.warnings_had[warn0:]};
+        live_errs = {key_of(a) for a in self.prog.errors_had};
+        live_warns = {key_of(a) for a in self.prog.warnings_had};
         for rec in (prof.get("errors") or []) {
             if rec_key(rec) in live_errs {
                 continue;
             }
             self.prog.errors_had.append(_alert_from_record(rec));
+            live_errs.add(rec_key(rec));
         }
         for rec in (prof.get("warnings") or []) {
             if rec_key(rec) in live_warns {
                 continue;
             }
             self.prog.warnings_had.append(_alert_from_record(rec));
+            live_warns.add(rec_key(rec));
         }
     }
 
@@ -643,8 +626,6 @@ obj IfaceRegistry(CatalogResolver) {
     }
 
     def _serve_symtab(resolved: str, profile_key: (str | None)) -> Module | None {
-        err0 = len(self.prog.errors_had);
-        warn0 = len(self.prog.warnings_had);
         ent = self.ensure(resolved, compile_on_miss=False);
         if ent is None {
             return None;
@@ -668,7 +649,7 @@ obj IfaceRegistry(CatalogResolver) {
         }
         self._prepare(ent, mod);
         if prof is not None and ent.replayed_token != self.closure_token {
-            self._replay_records(prof, err0, warn0);
+            self._replay_records(prof);
             ent.replayed_token = self.closure_token;
         }
         self._event("dep_hydrate");
@@ -681,8 +662,6 @@ obj IfaceRegistry(CatalogResolver) {
     def _serve_analysis(
         compiler: JacCompiler, resolved: str, options: CompileOptions
     ) -> Module | None {
-        err0 = len(self.prog.errors_had);
-        warn0 = len(self.prog.warnings_had);
         found = self._module_jir(resolved);
         if found is None {
             return None;
@@ -729,7 +708,7 @@ obj IfaceRegistry(CatalogResolver) {
             return None;
         }
         self._prepare(ent, mod);
-        self._replay_records(prof, err0, warn0);
+        self._replay_records(prof);
         self.direct_deps[resolved] = dict(read_dep_hashes(data, base_dir));
         ent.replayed_token = self.closure_token;
         self._event("analysis_replay");
@@ -835,11 +814,15 @@ obj IfaceRegistry(CatalogResolver) {
             profiles = self._existing_profiles(resolved);
             errors: list = [];
             for alert in self.prog.errors_had[err_start:] {
-                errors.append(_alert_record(alert));
+                if self.prog.diags._owned(alert, resolved) {
+                    errors.append(_alert_record(alert));
+                }
             }
             warnings: list = [];
             for alert in self.prog.warnings_had[warn_start:] {
-                warnings.append(_alert_record(alert));
+                if self.prog.diags._owned(alert, resolved) {
+                    warnings.append(_alert_record(alert));
+                }
             }
             _prof_key = self.analysis_profile(options);
             if errors {
@@ -1087,8 +1070,16 @@ obj IfaceRegistry(CatalogResolver) {
                 span = rec.get("span") or ["", 0, 0, 0];
                 return (span[0], span[1], span[3], rec.get("code"), rec.get("msg", ""));
             }
-            fresh_errs = sorted(digestible(a) for a in prog2.errors_had);
-            fresh_warns = sorted(digestible(a) for a in prog2.warnings_had);
+            fresh_errs = sorted(
+                digestible(a)
+                for a in prog2.errors_had
+                if prog2.diags._owned(a, resolved)
+            );
+            fresh_warns = sorted(
+                digestible(a)
+                for a in prog2.warnings_had
+                if prog2.diags._owned(a, resolved)
+            );
             replay_errs = sorted(rec_digestible(r) for r in (prof.get("errors") or []));
             replay_warns = sorted(
                 rec_digestible(r) for r in (prof.get("warnings") or [])
