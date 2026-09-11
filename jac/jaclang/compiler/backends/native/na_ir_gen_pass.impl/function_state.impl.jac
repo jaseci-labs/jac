@@ -103,7 +103,15 @@ impl NaIRGenPass._bind_function_parameter(
     slot = self._entry_alloca(value.type, name);
     self.builder.store(value, slot);
     self.local_vars[name] = slot;
-    if rebound and isinstance(value.type, ir.PointerType) {
+    if not borrowed and isinstance(value.type, ir.PointerType)
+        and getattr(value.type.pointee, "name", "") == "__jac_region_handle" {
+        self.region_handle_vars.add(name);
+    }
+    if not borrowed and self._str_desc_ty is not None
+        and value.type == self._str_desc_ty {
+        self.nogc_owned_str_vars.add(name);
+    }
+    if borrowed and rebound and isinstance(value.type, ir.PointerType) {
         self._emit_rc_retain(value, op="param_promote", loc=name);
     } elif borrowed {
         self.param_vars.add(name);

@@ -51,37 +51,44 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     append_fn.linkage = "private";
     append_fn.args[0].name = "list";
     append_fn.args[1].name = "val";
-    entry_bb = append_fn.append_basic_block("entry");
-    grow_bb = append_fn.append_basic_block("grow");
-    store_bb = append_fn.append_basic_block("store");
-    b = ir.IRBuilder(entry_bb);
+    b = ir.IRBuilder(append_fn.append_basic_block("entry"));
     l_arg = append_fn.args[0];
-    v_arg = append_fn.args[1];
-    len_p2 = b.gep(l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr");
-    cap_p2 = b.gep(l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr");
-    cur_len = b.load(len_p2, name="len");
-    cur_cap = b.load(cap_p2, name="cap");
-    need_grow = b.icmp_unsigned(">=", cur_len, cur_cap, name="need.grow");
-    b.cbranch(need_grow, grow_bb, store_bb);
-
-    b.position_at_end(grow_bb);
-    data_p_g = b.gep(
-        l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.ptr.g"
+    value_slot = b.alloca(elem_type, name="value.slot");
+    b.store(append_fn.args[1], value_slot);
+    retain_address: ir.Value = ir.Constant(i64, 0);
+    if self._elem_kind(elem_type) != "raw" and not self._nogc_headerless() {
+        retain = ir.Function(
+            self.llvm_module,
+            ir.FunctionType(ir.VoidType(), [ir.IntType(8).as_pointer()]),
+            name=f"__list_retain_slot_{elem_type_name}"
+        );
+        retain.linkage = "private";
+        retain_builder = ir.IRBuilder(retain.append_basic_block("entry"));
+        slot = retain_builder.bitcast(retain.args[0], elem_type.as_pointer());
+        self._emit_elem_retain(retain_builder, elem_type, retain_builder.load(slot));
+        retain_builder.ret_void();
+        retain_address = b.ptrtoint(retain, i64);
+    }
+    i8p = ir.IntType(8).as_pointer();
+    release = self._array_storage_release();
+    append = self._get_or_declare_extern(
+        "__jac_array_append", ir.VoidType(), [i64 for _ in range(7)]
     );
-    self._emit_grow_array(b, data_p_g, elem_type, cur_len, cap_p2, cur_cap);
-    b.branch(store_bb);
-
-    b.position_at_end(store_bb);
-    data_p_s = b.gep(
-        l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="data.ptr.s"
+    stride = b.ptrtoint(
+        b.gep(ir.Constant(elem_type.as_pointer(), None), [ir.Constant(i64, 1)]), i64
     );
-    cur_data = b.load(data_p_s, name="data");
-    slot = b.gep(cur_data, [cur_len], name="slot");
-
-    self._emit_elem_retain(b, elem_type, v_arg);
-    b.store(v_arg, slot);
-    new_len = b.add(cur_len, ir.Constant(i64, 1), name="new.len");
-    b.store(new_len, len_p2);
+    b.call(
+        append,
+        [
+            b.ptrtoint(b.gep(l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 2)]), i64),
+            b.ptrtoint(b.gep(l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 1)]), i64),
+            b.ptrtoint(b.gep(l_arg, [ir.Constant(i32, 0), ir.Constant(i32, 0)]), i64),
+            stride,
+            b.ptrtoint(value_slot, i64),
+            retain_address,
+            b.ptrtoint(release, i64)
+        ]
+    );
     b.ret_void();
 
     get_fn = self._emit_array_get_fn(

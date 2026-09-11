@@ -38,3 +38,17 @@ def scenario -> int {
     }
     return total;
 }
+
+def cyclic_scenario -> int {
+    drop_log = 0;
+    r: own Region = Region();
+    total = 0;
+    in r {
+        a = Spot(v=1);
+        b = Spot(v=2);
+        a ++> b;
+        b ++> a;
+        total = a.v + b.v;
+    }
+    return total;
+}

@@ -77,7 +77,7 @@ impl NaIRGenPass._erased_generic_ctor(nd: uni.FuncCall) -> (str | None) {
 }
 
 impl NaIRGenPass._transfer_own_args(
-    nd: uni.FuncCall,
+    nd: uni.FuncCall | None,
     func: (ir.Function | None),
     args: list,
     release_args: list,
@@ -87,7 +87,7 @@ impl NaIRGenPass._transfer_own_args(
     if _hl and not self._nogc_owned_world() {
         return release_args;
     }
-    _is_ctor = isinstance(nd.target, uni.Name)
+    _is_ctor = nd is not None and isinstance(nd.target, uni.Name)
         and (
             nd.target.sym_name in self.arch_ast_map
             or self._arch_alias_target(nd.target) in self.arch_ast_map
@@ -95,67 +95,74 @@ impl NaIRGenPass._transfer_own_args(
     if _is_ctor and not _hl {
         return release_args;
     }
-    _sig = None if _is_ctor else self._callee_sig_of(nd, func);
+    linked = self._linked_callee_decl(func);
+    _sig = self._callee_sig_of(nd, func) if nd is not None and not _is_ctor else (
+        linked.signature if linked is not None
+            and isinstance(linked.signature, uni.FuncSignature) else None
+    );
     _sig_params = _sig.get_parameters() if _sig is not None else [];
-    _own_idx: set = set();
+    signature_offset = offset;
+    if offset > 0 and _sig_params and _sig_params[0].name.sym_name == "self" {
+        signature_offset = 0;
+    }
+    own_indices: set[int] = set();
     if _is_ctor {
-        for _oi in range(len(release_args)) {
-            _own_idx.add(_oi);
-        }
-    } elif _sig is not None and len(_sig_params) + offset == len(release_args) {
-        for (_oi, _op) in enumerate(_sig_params) {
-            if _op.type_tag is not None
-                and _op.type_tag.ownership == OwnershipKind.OWN {
-                _own_idx.add(_oi + offset);
+        own_indices.update(range(len(release_args)));
+    } elif _sig is not None
+        and len(_sig_params) + signature_offset <= len(release_args) {
+        for (index, param) in enumerate(_sig_params) {
+            if self._owned_param(param) {
+                own_indices.add(index + signature_offset);
             }
         }
     }
-    if not _own_idx {
+    if not own_indices {
         return release_args;
     }
-    _param_idx: dict = {};
-    for (_pi2, _p2) in enumerate(_sig_params) {
-        _param_idx[_p2.name.sym_name] = _pi2 + offset;
+    parameter_indices: dict[str, int] = {
+        param.name.sym_name: index + signature_offset
+        for (index, param) in enumerate(_sig_params)
+    };
+    actuals: dict[int, uni.Expr] = {};
+    if offset > 0 and nd is not None and isinstance(nd.target, uni.AtomTrailer) {
+        actuals[0] = nd.target.target;
     }
-    _pos = offset;
-    for _pa in (nd.params or []) {
-        _aidx = -1;
-        _anode: (uni.Expr | None) = None;
-        if isinstance(_pa, uni.KWPair) {
-            _anode = _pa.value;
-            _k = _pa.key.sym_name if _pa.key is not None else None;
-            if _k is not None and _k in _param_idx {
-                _aidx = _param_idx[_k];
+    position = offset;
+    for argument in ((nd.params or []) if nd is not None else []) {
+        if isinstance(argument, uni.KWPair) {
+            key = argument.key.sym_name if argument.key is not None else "";
+            index = parameter_indices.get(key, -1);
+            if index >= 0 and isinstance(argument.value, uni.Expr) {
+                actuals[index] = argument.value;
             }
-        } else {
-            _anode = _pa;
-            _aidx = _pos;
-            _pos += 1;
-        }
-        if not (_is_ctor or _aidx in _own_idx) or not isinstance(_anode, uni.Name) {
-            continue;
-        }
-        if not _hl and not self._is_move_site(_anode) {
-            continue;
-        }
-        _salloca = self.local_vars.get(_anode.sym_name);
-        if _salloca is None
-            or not isinstance(_salloca.type, ir.PointerType)
-            or not isinstance(_salloca.type.pointee, ir.PointerType) {
-            continue;
-        }
-        self.builder.store(ir.Constant(_salloca.type.pointee, None), _salloca);
-        if not _hl and 0 <= _aidx < len(args) {
-            self._mark_owned(args[_aidx]);
+        } elif isinstance(argument, uni.Expr) {
+            actuals[position] = argument;
+            position += 1;
         }
     }
-    if not _hl {
-        return release_args;
+    for index in own_indices {
+        actual = actuals.get(index);
+        if isinstance(actual, uni.Name)
+            and (_hl or self._is_move_site(actual)) {
+            slot = self.local_vars.get(actual.sym_name);
+            if slot is not None
+                and isinstance(slot.type, ir.PointerType) {
+                self.builder.store(ir.Constant(slot.type.pointee, None), slot);
+                if not _hl {
+                    self._mark_owned(args[index]);
+                }
+            }
+        }
+        if not _hl and not self._is_owned(args[index]) {
+            # A borrowed argument contributes a reference to the callee's
+            # owning parameter. A moved local or temporary already has one.
+            self._emit_take_ref(args[index], op="own_arg");
+            self._mark_owned(args[index]);
+        }
     }
     return [
-        _rv
-        for (_ri, _rv) in enumerate(release_args)
-        if _ri not in _own_idx
+        value for (index, value) in enumerate(release_args)
+        if index not in own_indices
     ];
 }
 
@@ -1111,19 +1118,23 @@ impl NaIRGenPass._codegen_receiver(nd: (uni.UniNode | None)) -> (ir.Value | None
 }
 
 impl NaIRGenPass._emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None {
-    if isinstance(value.type, ir.PointerType) and not self._is_owned(value) {
-        self._emit_rc_retain(value, op=op, loc=loc);
+    if self._is_owned(value) or self._gc_mode() == "none" {
         return;
     }
-    if self._opt_ptr_payload_of(value.type) is not None and not self._is_owned(value) {
-        _tr_pv = self.builder.extract_value(value, 1, name="takeref.opt.pv");
-        self._emit_rc_retain(_tr_pv, op=op, loc=loc);
-    }
-    if self.jacval_type is not None
-        and value.type == self.jacval_type
-        and not self._is_owned(value)
-        and self._gc_mode() != "none" {
-        self.builder.call(self._emit_jacval_retain_fn(), [value]);
+    owned_fields = value?.na_tuple_owned;
+    for path in self._value_reference_paths(value.type) {
+        if path and owned_fields is not None
+            and path[0] < len(owned_fields) and owned_fields[path[0]] {
+            continue;
+        }
+        field = self.builder.extract_value(value, path, name="takeref.field")
+            if path
+            else value;
+        if isinstance(field.type, ir.PointerType) {
+            self._emit_rc_retain(field, op=op, loc=loc);
+        } else {
+            self._emit_elem_retain(self.builder, field.type, field);
+        }
     }
 }
 
@@ -1141,8 +1152,9 @@ impl NaIRGenPass._codegen_decorated_call(
         }
     }
     fptr = self.builder.load(slot_gv, name=f"decslot.{func_name}");
+    release_args = self._transfer_own_args(nd, raw_fn, coerced, list(coerced));
     result = self.builder.call(fptr, coerced, name=f"call.{func_name}");
-    self._release_owned_args(coerced, op="call_arg");
+    self._release_owned_args(release_args, op="call_arg");
     return result;
 }
 
@@ -1244,8 +1256,11 @@ impl NaIRGenPass._codegen_intrinsic(
         IntrinsicDispatch.BITS_FLOAT: self._emit_intrinsic_bits_float,
         IntrinsicDispatch.MEM_LOAD: self._emit_intrinsic_mem_load,
         IntrinsicDispatch.MEM_STORE: self._emit_intrinsic_mem_store,
+        IntrinsicDispatch.MEM_ALLOC: self._emit_intrinsic_mem_alloc,
+        IntrinsicDispatch.MEM_RC_ENABLED: self._emit_intrinsic_mem_rc_enabled,
+        IntrinsicDispatch.MEM_COPY: self._emit_intrinsic_mem_copy,
         IntrinsicDispatch.ATOMIC_XCHG: self._emit_intrinsic_atomic_xchg,
-        IntrinsicDispatch.CALL_DTOR: self._emit_intrinsic_call_dtor
+        IntrinsicDispatch.MEM_CALL: self._emit_intrinsic_mem_call
     };
     handler = _emitters.get(intr.dispatch);
     if handler is None {
@@ -1348,9 +1363,72 @@ impl NaIRGenPass._emit_intrinsic_mem_load(
     if addr is None {
         return None;
     }
-    value_type = ir.IntType(int(intr.result_spec[1:]));
+    import from jaclang.compiler.intrinsic_registry { IntrinsicStorage }
+    value_type = ir.IntType(8).as_pointer()
+        if intr.storage == IntrinsicStorage.POINTER
+        else ir.IntType(int(intr.result_spec[1:]));
     slot = self.builder.inttoptr(addr, value_type.as_pointer(), name="mem.p");
-    return self.builder.load(slot, name="mem.ld");
+    value = self.builder.load(slot, name="mem.ld");
+    return self.builder.ptrtoint(value, ir.IntType(64), name="mem.addr")
+        if intr.storage == IntrinsicStorage.POINTER
+        else value;
+}
+
+impl NaIRGenPass._emit_intrinsic_mem_alloc(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+) -> (ir.Value | None) {
+    size = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
+    if size is None {
+        return None;
+    }
+    import from jaclang.compiler.intrinsic_registry { IntrinsicAllocation }
+    operands = [size];
+    if intr.allocation == IntrinsicAllocation.MANAGED {
+        self._emit_rc_helpers();
+        allocate = self.rc_alloc_fn;
+    } elif intr.allocation == IntrinsicAllocation.ZEROED {
+        allocate = self._get_or_declare_extern(
+            "calloc", ir.IntType(8).as_pointer(), [ir.IntType(64), ir.IntType(64)]
+        );
+        operands.append(ir.Constant(ir.IntType(64), 1));
+    } else {
+        allocate = self._get_or_declare_extern(
+            "malloc", ir.IntType(8).as_pointer(), [ir.IntType(64)]
+        );
+    }
+    assert allocate is not None;
+    pointer = self.builder.call(allocate, operands, name="mem.allocated");
+    return self.builder.ptrtoint(pointer, ir.IntType(64), name="mem.address");
+}
+
+impl NaIRGenPass._emit_intrinsic_mem_rc_enabled(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+) -> (ir.Value | None) {
+    return ir.Constant(ir.IntType(64), 0 if self._gc_mode() == "none" else 1);
+}
+
+impl NaIRGenPass._emit_intrinsic_mem_copy(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+) -> (ir.Value | None) {
+    destination = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
+    source = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
+    size = self._intrinsic_operand(nd, intr, args[2], intr.param_specs[2]);
+    if destination is None or source is None or size is None {
+        return None;
+    }
+    pointer = ir.IntType(8).as_pointer();
+    copy = self._get_or_declare_extern(
+        "memcpy", pointer, [pointer, pointer, ir.IntType(64)]
+    );
+    self.builder.call(
+        copy,
+        [
+            self.builder.inttoptr(destination, pointer),
+            self.builder.inttoptr(source, pointer),
+            size
+        ]
+    );
+    return None;
 }
 
 impl NaIRGenPass._emit_intrinsic_mem_store(
@@ -1360,6 +1438,10 @@ impl NaIRGenPass._emit_intrinsic_mem_store(
     val = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
     if addr is None or val is None {
         return None;
+    }
+    import from jaclang.compiler.intrinsic_registry { IntrinsicStorage }
+    if intr.storage == IntrinsicStorage.POINTER {
+        val = self.builder.inttoptr(val, ir.IntType(8).as_pointer(), name="mem.value");
     }
     slot = self.builder.inttoptr(addr, val.type.as_pointer(), name="mem.p");
     self.builder.store(val, slot);
@@ -1381,7 +1463,7 @@ impl NaIRGenPass._emit_intrinsic_atomic_xchg(
     );
 }
 
-impl NaIRGenPass._emit_intrinsic_call_dtor(
+impl NaIRGenPass._emit_intrinsic_mem_call(
     nd: uni.FuncCall, intr: IntrinsicEntry, args: list
 ) -> (ir.Value | None) {
     fn_val = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
@@ -1390,11 +1472,14 @@ impl NaIRGenPass._emit_intrinsic_call_dtor(
         return None;
     }
     i8p = ir.IntType(8).as_pointer();
-    dtor_ty = ir.FunctionType(ir.VoidType(), [i8p]).as_pointer();
-    fn_ptr = self.builder.inttoptr(fn_val, dtor_ty, name="dtor.fn");
-    obj_ptr = self.builder.inttoptr(obj_val, i8p, name="dtor.obj");
-    self.builder.call(fn_ptr, [obj_ptr]);
-    return None;
+    result_type = ir.VoidType()
+        if intr.result_spec == "none"
+        else ir.IntType(int(intr.result_spec[1:]));
+    signature = ir.FunctionType(result_type, [i8p]).as_pointer();
+    fn_ptr = self.builder.inttoptr(fn_val, signature, name="mem.callback");
+    obj_ptr = self.builder.inttoptr(obj_val, i8p, name="mem.argument");
+    result = self.builder.call(fn_ptr, [obj_ptr]);
+    return None if intr.result_spec == "none" else result;
 }
 
 impl NaIRGenPass._codegen_synthetic_call(

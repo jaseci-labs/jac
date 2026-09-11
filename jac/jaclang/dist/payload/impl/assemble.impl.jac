@@ -175,7 +175,7 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
         + "import _jac_finder\n"
         + "_jac_finder.install()\n"
         + "from jaclang.cli.commands.native_build import native_build\n"
-        + "rc = int(native_build(src, output=dst, lib=True) or 0)\n"
+        + "rc = int(native_build(src, output=dst, lib=True, closed_world=True) or 0)\n"
         + "sys.stdout.flush()\n"
         + "sys.stderr.flush()\n"
         + "os._exit(rc)\n"

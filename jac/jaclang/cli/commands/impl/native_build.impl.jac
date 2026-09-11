@@ -243,7 +243,8 @@ impl native_build(
     target: str = "",
     debug: bool = False,
     memory: str = "",
-    no_ir_cache: bool = False
+    no_ir_cache: bool = False,
+    closed_world: bool = False
 ) -> int {
     import from jaclang.jac0core.ext_registry {
         is_jac,
@@ -264,6 +265,10 @@ impl native_build(
         return 1;
     }
     shared = lib;
+    if closed_world and not shared {
+        console.error("Closed-world dispatch requires a linked native library");
+        return 1;
+    }
     assert_no_rc = memory == "nogc";
     if not is_jac(filename) {
         console.error("Input must be a .jac file.");
@@ -341,6 +346,7 @@ impl native_build(
         try {
             options = CompileOptions(
                 aot_mode=True,
+                native_closed_world=closed_world,
                 default_codespace=('native' if auto_promote else ''),
                 force_target_program=True,
                 memory_profile=memory,
@@ -590,6 +596,18 @@ impl native_build(
     }
     assert isinstance(_tm, llvm.TargetMachine);
     target_machine = _tm;
+
+    if shared {
+        import from jaclang.compiler.backends.native.lowering { prepare_native_library }
+        try {
+            prepare_native_library(
+                mod, target_machine, set(export_symbols + init_funcs)
+            );
+        } except (ValueError, RuntimeError) as error {
+            console.error(str(error));
+            return 1;
+        }
+    }
 
     _opt_level = int(options.opt_level or 0);
     _dump_path = options.dump_ir_path or "";

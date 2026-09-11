@@ -1070,7 +1070,33 @@ impl UniNode._role_set(role: type[Role], value: any) -> None {
     self._invalidate_sub_node_tab();
 }
 
-impl UniNode.link_impl(impl_node: UniNode) -> None {
+impl AstImplNeedingNode.link_impl(impl_node: ImplDef) -> None {
+    linked = [self->:ImplOf:->];
+    if linked {
+        if len(linked) == 1 and linked[0] is impl_node {
+            return;
+        }
+        raise ValueError("Declaration already has an implementation");
+    }
+    source = impl_node.sym_tab;
+    target = self.sym_tab;
+    if source is not target {
+        # Keep the declaration's existing bindings and transfer only the
+        # implementation's additional names. Rebuilding the declaration's
+        # edges here would repeat work and replace otherwise unchanged facts.
+        for (name, symbol) in source.names_in_scope.items() {
+            if name not in target.names_in_scope {
+                target.adopt_primary(symbol, alias=name);
+            }
+        }
+        for (name, symbols) in source.names_in_scope_overload.items() {
+            for symbol in symbols {
+                target.adopt_overload(symbol, alias=name);
+            }
+        }
+        source.set_primary_names({});
+        source.set_overload_names({});
+    }
     self +>:ImplOf:+> impl_node;
 }
 
@@ -1330,10 +1356,6 @@ impl UniNode.in_native_context -> bool {
     return self.codespace() == CodeContext.NATIVE;
 }
 
-impl Module.absorb_annex_body(stmts: Sequence[UniNode]) -> None {
-    self.add_kids_right(stmts, pos_update=False, parent_update=True, role=BodyRole);
-}
-
 impl Module.declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool {
     if ctx != CodeContext.SERVER and self.decided_codespace == ctx.value {
         return True;
@@ -1485,6 +1507,12 @@ impl Symbol.storage.getter -> SymbolStorage {
 }
 
 impl Symbol.add_defn(nd: NameAtom) -> None {
+    for owner in [nd<-:Defines:<-] {
+        if owner is self {
+            nd.sym = self;
+            return;
+        }
+    }
     self +>:Defines:+> nd;
     nd.sym = self;
 }
@@ -1494,6 +1522,11 @@ impl Symbol.add_use(nd: NameAtom) -> None {
 
     if self.in_stub_scope() {
         return;
+    }
+    for owner in [nd<-:Uses:<-] {
+        if owner is self {
+            return;
+        }
     }
     self +>:Uses:+> nd;
 }
@@ -1569,12 +1602,18 @@ impl UniScopeNode.kid_scope.getter -> list[UniScopeNode] {
     return [self->:ScopeChild:->];
 }
 
+impl UniScopeNode.primary_scope.getter -> UniScopeNode {
+    return self;
+}
+
 impl UniScopeNode.names_in_scope.getter -> dict[(str, Symbol)] {
-    return self?._names_index or {};
+    index = self.primary_scope?._names_index;
+    return index if index is not None else {};
 }
 
 impl UniScopeNode.names_in_scope_overload.getter -> dict[(str, list[Symbol])] {
-    return self?._overload_index or {};
+    index = self.primary_scope?._overload_index;
+    return index if index is not None else {};
 }
 
 impl UniScopeNode.lookup(
@@ -1647,16 +1686,10 @@ impl UniScopeNode.insert(
     );
     current = self.names_in_scope;
     if (nd.sym_name in current) {
-        self +>:ScopeOverload:+> symbol;
-        self._overload_index.setdefault(nd.sym_name, []).append(symbol);
+        self.adopt_overload(symbol, alias=nd.sym_name);
     }
     if (force_overwrite or (nd.sym_name not in current)) {
-        prev = current.get(nd.sym_name);
-        if prev is not None {
-            self._drop_primary(prev);
-        }
-        self +>:ScopePrimary:+> symbol;
-        self._names_index[nd.sym_name] = symbol;
+        self.adopt_primary(symbol, alias=nd.sym_name);
     } else {
         current[nd.sym_name].add_defn(nd.name_spec);
     }
@@ -1724,30 +1757,57 @@ impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
 }
 
 impl UniScopeNode.set_primary_names(syms: dict[(str, Symbol)]) -> None {
-    del [edge self->:ScopePrimary:->];
+    primary = self.primary_scope;
+    del [edge primary->:ScopePrimary:->];
     for (key, sym) in syms.items() {
-        self +>:ScopePrimary:+> sym;
+        primary +>:(ScopePrimary(name=key)):+> sym;
     }
-    self._names_index = dict(syms);
+    primary._names_index = dict(syms);
 }
 
 impl UniScopeNode.adopt_primary(sym: Symbol, alias: str = "") -> None {
+    primary = self.primary_scope;
     key = alias or sym.name;
-    prev = self._names_index.get(key);
-    if prev is not None {
-        self._drop_primary(prev);
+    prev = primary._names_index.get(key);
+    if prev is sym {
+        return;
     }
-    self +>:ScopePrimary:+> sym;
-    self._names_index[key] = sym;
+    if prev is not None {
+        self._drop_primary(key);
+    }
+    primary +>:(ScopePrimary(name=key)):+> sym;
+    primary._names_index[key] = sym;
 }
 
-impl UniScopeNode._drop_primary(sym: Symbol) -> None {
-    edges = [edge self->:ScopePrimary:->];
-    targets = [self->:ScopePrimary:->];
-    for i in range(len(targets)) {
-        target: Symbol = targets[i];
-        if target is sym {
-            edge_to_drop = edges[i];
+impl UniScopeNode.set_overload_names(syms: dict[str, list[Symbol]]) -> None {
+    primary = self.primary_scope;
+    del [edge primary->:ScopeOverload:->];
+    primary._overload_index = {};
+    for (name, symbols) in syms.items() {
+        for symbol in symbols {
+            primary.adopt_overload(symbol, alias=name);
+        }
+    }
+}
+
+impl UniScopeNode.adopt_overload(sym: Symbol, alias: str = "") -> None {
+    primary = self.primary_scope;
+    key = alias or sym.name;
+    symbols = primary._overload_index.setdefault(key, []);
+    for existing in symbols {
+        if existing is sym {
+            return;
+        }
+    }
+    primary +>:(ScopeOverload(name=key)):+> sym;
+    symbols.append(sym);
+}
+
+impl UniScopeNode._drop_primary(name: str) -> None {
+    primary = self.primary_scope;
+    edges = [edge primary->:ScopePrimary:->];
+    for edge_to_drop in edges {
+        if edge_to_drop.name == name {
             del edge_to_drop;
             break;
         }
@@ -2650,6 +2710,11 @@ impl Archetype.get_methods -> list[Ability] {
         }
     }
     return methods;
+}
+
+impl ImplDef.primary_scope.getter -> UniScopeNode {
+    declaration = self.decl_link;
+    return declaration.sym_tab if declaration is not None else self;
 }
 
 impl ImplDef.postinit -> None {
@@ -4074,6 +4139,12 @@ impl NameAtom.sym.getter -> (Symbol | None) {
 }
 
 impl NameAtom.sym.setter(sym: Symbol | None) {
+    if self.sym is sym {
+        return;
+    }
+    # A use belongs to its current binding. Retire the previous reverse-use
+    # fact together with the forward binding rather than leaving stale uses.
+    del [edge self<-:Uses:<-];
     del [edge self->:SymOf:->];
     if sym is not None {
         self +>:SymOf:+> sym;
@@ -4346,6 +4417,10 @@ impl in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool {
             return True;
         }
         if isinstance(parent, FuncSignature) and parent.return_type is cur {
+            return True;
+        }
+        if isinstance(parent, Archetype)
+            and (parent.src_endpoint is cur or parent.tgt_endpoint is cur) {
             return True;
         }
         cur = parent;

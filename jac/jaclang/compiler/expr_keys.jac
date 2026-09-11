@@ -342,6 +342,19 @@ def expr_is_builtin_region(expr: (UniNode | None)) -> bool {
     return isinstance(expr, Expr) and is_builtin_region_type(expr.type);
 }
 
+def transferred_local(expr: Expr | None) -> Name | None {
+    """Local storage transferred by a direct value or consuming freeze.
+
+    Use at ownership-transfer sites, not to infer whether an arbitrary use
+    consumes a value. In particular, `own expr` reboxes and is not transparent.
+    """;
+    import from jaclang.compiler.frontend.constant { OwnershipKind }
+    if isinstance(expr, UnaryExpr) and expr.ownership == OwnershipKind.IMM {
+        expr = expr.operand;
+    }
+    return expr if isinstance(expr, Name) else None;
+}
+
 
 def type_tag_borrows(expr: (UniNode | None)) -> bool {
     import from jaclang.compiler.frontend.unitree { SubTag, UnaryExpr }

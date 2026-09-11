@@ -1,11 +1,15 @@
 import from c { def memcpy(dst: bytes, src: int, n: u64) -> int;  }
-import from c { def osp_adj_pairs(origin: int, dir: int) -> list[int];  }
+import from c { def osp_adj_entries(origin: int, dir: int) -> list[int];  }
+import from c { def PyTuple_New(n: int) -> int;  }
+import from c { def PyTuple_SetItem(t: int, i: int, v: int) -> int;  }
+import from c { def PyObject_CallObject(f: int, args: int) -> int;  }
 import from c { def PyType_GenericAlloc(t: int, n: int) -> int;  }
 import from c { def PyObject_SetAttr(o: int, k: int, v: int) -> int;  }
 import from c { def PyObject_GetAttr(o: int, k: int) -> int;  }
 import from c { def PyErr_Clear -> int;  }
 import from c { def PyUnicode_FromString(p: int) -> int;  }
 import from c { def PyLong_FromLongLong(v: int) -> int;  }
+import from c { def PyFloat_FromDouble(v: float) -> int;  }
 import from c { def PyList_New(n: int) -> int;  }
 import from c { def PyList_SetItem(l: int, i: int, v: int) -> int;  }
 import from c { def PyList_Append(l: int, v: int) -> int;  }
@@ -30,7 +34,8 @@ glob CODE_SKIP: int = 0,
      CODE_NATLIST: int = 7,
      CODE_UNION: int = 8,
      CODE_OPTENUM: int = 9,
-     CODE_NATDICT: int = 10;
+     CODE_NATDICT: int = 10,
+     CODE_FLOAT: int = 11;
 
 obj ValueRow {
     has code: int,
@@ -83,7 +88,8 @@ obj ClassRow {
 }
 
 obj MzConsts {
-    has none_h: int = 0,
+    has edge_builder: int = 0,
+        none_h: int = 0,
         true_h: int = 0,
         false_h: int = 0,
         empty_h: int = 0,
@@ -181,25 +187,14 @@ def:pub jc_reg_default(tag: int, key_h: int, kind: int) -> int {
     return 0;
 }
 
+def:pub jc_reg_edge_builder(builder: int) -> int {
+    _K.edge_builder = builder;
+    return 0;
+}
+
 def:pub jc_reg_edge(tag: int, cls_h: int) -> int {
     _EDGE[tag] = cls_h;
     return 0;
-}
-
-glob _HINTS: list[int] = [0, 0];
-
-def:pub jc_reg_hint_tags(srcdiag_tag: int, commentdata_tag: int) -> int {
-    _HINTS[0] = srcdiag_tag;
-    _HINTS[1] = commentdata_tag;
-    return 0;
-}
-
-def hint_srcdiag -> int {
-    return _HINTS[0];
-}
-
-def hint_commentdata -> int {
-    return _HINTS[1];
 }
 
 def _ld64u(buf: bytes, off: int) -> int {
@@ -245,7 +240,14 @@ def _nlist_get(l: int, i: int) -> int {
     return _peek64(_peek64(l + 16) + (i * 8));
 }
 
-obj Mz {
+obj EdgeCopy {
+    has source: int,
+        target: int,
+        handle: int,
+        undirected: int;
+}
+
+obj Materialization {
     has map: dict[int, int] = {},
         q: list[int] = [],
         q_hint: list[int] = [],
@@ -256,19 +258,20 @@ obj Mz {
         lst_i: list[int] = [],
         lst_t: list[int] = [],
         skipped: int = 0,
-        containers: list[ContainerCopy] = [];
+        containers: list[ContainerCopy] = [],
+        nodes: list[int] = [],
+        edges: dict[int, EdgeCopy] = {},
+        failed: bool = False;
 }
 
-glob _LAST: list[Mz] = [];
-
-def _enqueue(m: Mz, h: int, hint: int) {
+def _enqueue(m: Materialization, h: int, hint: int) {
     if h != 0 {
         m.q.append(h);
         m.q_hint.append(hint);
     }
 }
 
-def _enqueue_value(m: Mz, h: int, layout: int) {
+def _enqueue_value(m: Materialization, h: int, layout: int) {
     if h == 0 {
         return;
     }
@@ -286,7 +289,7 @@ def _enqueue_value(m: Mz, h: int, layout: int) {
     }
 }
 
-def _copy_value(m: Mz, h: int, layout: int) -> int {
+def _copy_value(m: Materialization, h: int, layout: int) -> int {
     if h == 0 {
         Py_IncRef(_K.none_h);
         return _K.none_h;
@@ -320,7 +323,7 @@ def _copy_value(m: Mz, h: int, layout: int) -> int {
     return out;
 }
 
-def _defer_ref(m: Mz, o: int, k: int, t: int, hint: int) {
+def _defer_ref(m: Materialization, o: int, k: int, t: int, hint: int) {
     m.ref_o.append(o);
     m.ref_k.append(k);
     m.ref_t.append(t);
@@ -371,7 +374,7 @@ def _set_enum(o: int, k: int, enum_h: int, raw: int) -> None {
     }
 }
 
-def _copy_union(m: Mz, o: int, fr: FieldRow, buf: bytes) -> None {
+def _copy_union(m: Materialization, o: int, fr: FieldRow, buf: bytes) -> None {
     kind = _ld8(buf, fr.off);
     pay = _ld64s(buf, fr.off + 8);
     if kind == 7 {
@@ -393,13 +396,17 @@ def _copy_union(m: Mz, o: int, fr: FieldRow, buf: bytes) -> None {
     PyObject_SetAttr(o, fr.key_h, _K.none_h);
 }
 
-def _copy_fields(m: Mz, row: ClassRow, h: int, o: int) {
+def _copy_fields(m: Materialization, row: ClassRow, h: int, o: int) {
     buf = b"\x00" * row.size;
     memcpy(buf, h, u64(row.size));
     for fr in row.rows {
         code = fr.code;
         if code == CODE_INT {
             _set_fresh(o, fr.key_h, PyLong_FromLongLong(_ld64s(buf, fr.off)));
+        } elif code == CODE_FLOAT {
+            _set_fresh(
+                o, fr.key_h, PyFloat_FromDouble(__bits_float(_ld64s(buf, fr.off)))
+            );
         } elif code == CODE_BOOL {
             PyObject_SetAttr(
                 o, fr.key_h, _K.true_h if _ld8(buf, fr.off) != 0 else _K.false_h
@@ -481,7 +488,7 @@ def _resolve_row(h: int, hint: int) -> int {
     return 0;
 }
 
-def _visit(m: Mz, h: int, hint: int) -> None {
+def _visit(m: Materialization, h: int, hint: int) -> None {
     if h in m.map {
         return;
     }
@@ -503,22 +510,31 @@ def _visit(m: Mz, h: int, hint: int) -> None {
     _fill_defaults(row, o);
     _copy_fields(m, row, h, o);
     if row.is_node != 0 {
+        m.nodes.append(h);
+        anchor = _new_anchor(o);
+        if anchor != 0 {
+            Py_DecRef(anchor);
+        }
         _enqueue_adj(m, h, 2);
         _enqueue_adj(m, h, 1);
     }
 }
 
-def _enqueue_adj(m: Mz, h: int, dir: int) {
-    po = osp_adj_pairs(h, dir);
+def _enqueue_adj(m: Materialization, h: int, dir: int) {
+    po = osp_adj_entries(h, dir);
     n = len(po);
     i = 0;
     while i < n {
         _enqueue(m, po[i + 1], 0);
-        i += 2;
+        _enqueue(m, po[i + 2], po[i]);
+        if dir == 2 and po[i + 2] != 0 {
+            m.edges[po[i + 4]] = EdgeCopy(h, po[i + 1], po[i + 2], po[i + 3]);
+        }
+        i += 5;
     }
 }
 
-def _patch_refs(m: Mz) {
+def _patch_refs(m: Materialization) {
     n = len(m.ref_o);
     i = 0;
     while i < n {
@@ -539,8 +555,8 @@ def _patch_refs(m: Mz) {
     }
 }
 
-def _edge_dict_from_pairs(m: Mz, h: int, dir: int, weak: int) -> int {
-    po = osp_adj_pairs(h, dir);
+def _edge_dict_from_pairs(m: Materialization, h: int, dir: int, weak: int) -> int {
+    po = osp_adj_entries(h, dir);
     n = len(po);
     d = 0;
     cur_tag = 0;
@@ -549,8 +565,9 @@ def _edge_dict_from_pairs(m: Mz, h: int, dir: int, weak: int) -> int {
     while i < n {
         tg = po[i];
         t = po[i + 1];
-        i += 2;
-        if tg not in _EDGE {
+        eh = po[i + 2];
+        i += 5;
+        if eh != 0 or tg not in _EDGE {
             continue;
         }
         val = m.map.get(t, 0);
@@ -613,13 +630,10 @@ def _new_anchor(o: int) -> int {
     return a;
 }
 
-def _edge_lists(m: Mz, h: int, o: int) -> None {
+def _edge_lists(m: Materialization, h: int, o: int) {
     d_out = _edge_dict_from_pairs(m, h, 2, 0);
     d_in = _edge_dict_from_pairs(m, h, 1, 1);
-    if d_out == 0 and d_in == 0 {
-        return;
-    }
-    anchor = _new_anchor(o);
+    anchor = PyObject_GetAttr(o, _K.k_jac);
     if anchor != 0 {
         if d_out != 0 {
             PyObject_SetAttr(anchor, _K.k_out, d_out);
@@ -639,25 +653,47 @@ def _edge_lists(m: Mz, h: int, o: int) -> None {
     }
 }
 
-def _run(start_h: int, start_hint: int, do_edges: int) -> int {
+def _attach_edges(m: Materialization) -> None {
+    ordinals: list[int] = list(m.edges.keys());
+    ordinals.sort();
+    for ordinal in ordinals {
+        copy = m.edges[ordinal];
+        source = m.map.get(copy.source, 0);
+        target = m.map.get(copy.target, 0);
+        instance = m.map.get(copy.handle, 0);
+        if source == 0 or target == 0 or instance == 0 {
+            continue;
+        }
+        src_anchor = PyObject_GetAttr(source, _K.k_jac);
+        tgt_anchor = PyObject_GetAttr(target, _K.k_jac);
+        args = PyTuple_New(5);
+        PyTuple_SetItem(args, 0, src_anchor);
+        PyTuple_SetItem(args, 1, tgt_anchor);
+        Py_IncRef(instance);
+        PyTuple_SetItem(args, 2, instance);
+        flag = _K.true_h if copy.undirected != 0 else _K.false_h;
+        Py_IncRef(flag);
+        PyTuple_SetItem(args, 3, flag);
+        Py_IncRef(_K.none_h);
+        PyTuple_SetItem(args, 4, _K.none_h);
+        attached = PyObject_CallObject(_K.edge_builder, args);
+        Py_DecRef(args);
+        if attached != 0 {
+            Py_DecRef(attached);
+        } else {
+            m.failed = True;
+            return;
+        }
+    }
+}
+
+def jc_mz_run(m: Materialization, start_h: int) -> int {
     gc_was = PyGC_IsEnabled();
     if gc_was != 0 {
         PyGC_Disable();
     }
-    m = Mz(
-        map={},
-        q=[],
-        q_hint=[],
-        ref_o=[],
-        ref_k=[],
-        ref_t=[],
-        lst_l=[],
-        lst_i=[],
-        lst_t=[],
-        skipped=0
-    );
     m.q.append(start_h);
-    m.q_hint.append(start_hint);
+    m.q_hint.append(0);
     while m.q {
         h = m.q.pop();
         hint = m.q_hint.pop();
@@ -667,90 +703,76 @@ def _run(start_h: int, start_hint: int, do_edges: int) -> int {
     for copy in m.containers {
         _set_fresh(copy.owner, copy.key, _copy_value(m, copy.value, copy.layout));
     }
-    if do_edges != 0 {
-        for h in m.map {
-            if m.map[h] != 0 {
-                _edge_lists(m, h, m.map[h]);
-            }
-        }
+    for h in m.nodes {
+        _edge_lists(m, h, m.map[h]);
     }
+    _attach_edges(m);
     out = 0;
-    if start_h in m.map {
+    if not m.failed and start_h in m.map {
         out = m.map[start_h];
     }
     if out != 0 {
         Py_IncRef(out);
     }
-    for h in m.map {
-        po = m.map[h];
-        if po != 0 {
-            Py_DecRef(po);
-        }
-    }
     _STATS[0] = m.skipped;
-    if _LAST {
-        _LAST.pop();
-    }
-    _LAST.append(m);
     if gc_was != 0 {
         PyGC_Enable();
     }
     return out;
 }
 
-def:pub jc_mz_run(h: int) -> int {
-    return _run(h, 0, 1);
-}
-
-def:pub jc_mz_obj(h: int, hint: int) -> int {
-    return _run(h, hint, 0);
-}
-
 def:pub jc_mz_skipped -> int {
     return _STATS[0];
 }
 
-def _shape_entry(d: int, cls_h: int, code: int) {
+def _shape_entry(d: int, cls_h: int, code: int) -> int {
     if code == 1 {
-        PyDict_SetItem(d, cls_h, _K.s_none);
+        return PyDict_SetItem(d, cls_h, _K.s_none);
     } elif code == 2 {
-        PyDict_SetItem(d, cls_h, _K.s_one);
+        return PyDict_SetItem(d, cls_h, _K.s_one);
     } elif code == 3 {
-        PyDict_SetItem(d, cls_h, _K.s_many);
-    }
-}
-
-def:pub jc_mz_lookup(h: int) -> int {
-    if _LAST {
-        m: Mz = _LAST[0];
-        if h in m.map {
-            return m.map[h];
-        }
+        return PyDict_SetItem(d, cls_h, _K.s_many);
     }
     return 0;
 }
 
-def:pub jc_mz_shapes3(h: int, packed: int) -> int {
-    o = jc_mz_lookup(h);
-    if o == 0 or packed == 0 {
-        return 1;
+def jc_mz_shapes3(m: Materialization, h: int, packed: int) {
+    if packed == 0 or m.failed {
+        return;
+    }
+    o = m.map.get(h, 0);
+    if o == 0 {
+        m.failed = True;
+        return;
     }
     d = PyDict_New();
     if d == 0 {
-        PyErr_Clear();
-        return 1;
+        m.failed = True;
+        return;
     }
-    _shape_entry(d, _K.body_h, packed & 15);
-    _shape_entry(d, _K.spec_h, (packed >> 4) & 15);
-    _shape_entry(d, _K.acc_h, (packed >> 8) & 15);
-    PyObject_SetAttr(o, _K.k_shapes, d);
+    if _shape_entry(d, _K.body_h, packed & 15) != 0
+        or _shape_entry(d, _K.spec_h, (packed >> 4) & 15) != 0
+        or _shape_entry(d, _K.acc_h, (packed >> 8) & 15) != 0 {
+        m.failed = True;
+    } elif PyObject_SetAttr(o, _K.k_shapes, d) != 0 {
+        m.failed = True;
+    }
     Py_DecRef(d);
-    return 0;
 }
 
-def:pub jc_mz_dispose -> int {
-    if _LAST {
-        _LAST.pop();
+def jc_mz_finish(m: Materialization, result: int) -> int {
+    # The map owns each copied object through shape attachment. In particular,
+    # disconnected annex nodes must remain alive until that work is complete.
+    out = result;
+    if m.failed and out != 0 {
+        Py_DecRef(out);
+        out = 0;
     }
-    return 0;
+    for handle in m.map.values() {
+        if handle != 0 {
+            Py_DecRef(handle);
+        }
+    }
+    m.map.clear();
+    return out;
 }

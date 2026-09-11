@@ -6,6 +6,7 @@ import from jaclang.compiler.frontend.unitree {
     Archetype,
     Assignment,
     AtomTrailer,
+    AtomUnit,
     BinaryExpr,
     CfgExpr,
     ConcurrentExpr,
@@ -14,6 +15,8 @@ import from jaclang.compiler.frontend.unitree {
     DeleteStmt,
     DictVal,
     DisengageStmt,
+    EdgeOpRef,
+    EdgeRefTrailer,
     Enum as UniEnum,
     Expr,
     FString,
@@ -134,6 +137,7 @@ walker OwnershipCheckPass(Transform) {
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _nogc_setup -> None;
+    def _nogc_stamp_frozen_owners -> None;
     def _nogc_resolve_provenance -> (str | None);
     def _nogc_infer_locals -> None;
     def _nogc_infer_state(expr: Expr | None) -> tuple[OwnershipKind, list[Name]];
@@ -187,6 +191,8 @@ walker OwnershipCheckPass(Transform) {
     def _emit_enforcement_diagnostics -> None;
     def _build_index(tree: UniNode) -> None;
     def _stamp_ownership -> None;
+    def _stamp_immutable_aliases -> None;
+    def _projection_sources(expr: Expr | None) -> list[SymId];
     def _stamp_overwrite_consumed -> None;
     def _stamp_move_sites -> None;
     def _receiver_mode(ability: Ability | None) -> OwnershipKind;

@@ -60,6 +60,11 @@ def result_ownership(expr: (Expr | None)) -> Ownership {
     if expr is None {
         return Ownership.UNKNOWN;
     }
+    if isinstance(expr, UnaryExpr) and expr.ownership == OwnershipKind.IMM {
+        return Ownership.STATIC
+            if result_ownership(expr.operand) == Ownership.STATIC
+            else Ownership.OWNED;
+    }
     if isinstance(expr, FuncCall) {
         return Ownership.OWNED;
     }
@@ -83,7 +88,37 @@ def result_ownership(expr: (Expr | None)) -> Ownership {
     if isinstance(expr, String) {
         return Ownership.STATIC;
     }
-    if isinstance(expr, (Name, AtomTrailer)) {
+    if isinstance(expr, Name) {
+        current: Expr | None = expr;
+        seen: set[int] = set();
+        while isinstance(current, (Name, UnaryExpr)) {
+            if isinstance(current, UnaryExpr) {
+                if current.ownership != OwnershipKind.IMM {
+                    return Ownership.BORROWED;
+                }
+                current = current.operand;
+                continue;
+            }
+            symbol = current.sym;
+            if symbol is None
+                or symbol.ownership != OwnershipKind.IMM
+                or len(symbol.defn) != 1
+                or id(symbol) in seen {
+                return Ownership.BORROWED;
+            }
+            seen.add(id(symbol));
+            declaration = symbol.decl;
+            assignment = declaration.parent if declaration is not None else None;
+            if not isinstance(assignment, Assignment) {
+                return Ownership.BORROWED;
+            }
+            current = assignment.value;
+        }
+        return Ownership.STATIC
+            if result_ownership(current) == Ownership.STATIC
+            else Ownership.BORROWED;
+    }
+    if isinstance(expr, AtomTrailer) {
         return Ownership.BORROWED;
     }
     return Ownership.UNKNOWN;

@@ -320,6 +320,8 @@ with entry {
 
 The binding infers `imm` from the operator, so `cfg = imm load_config();` is the whole idiom. Freezing a possibly-aliased managed binding is rejected ([`E1311`](../diagnostics.md#ownership-borrow-errors)) -- copy the value first or take ownership of it. The frozen result is the natural payload for `flow` boundaries: `imm` values cross freely under the sendability rule. This composes with regions: `fr = imm r` consumes the owned handle and transfers handle-ness, so one frozen subgraph can be shared with any number of parallel readers -- statically race-free from two existing rules -- while opening the frozen handle for allocation is `E1309` and reopening the consumed source is `E1301`.
 
+Local reference aliases preserve this read-only contract in every memory profile. For example, `alias = d` cannot write `alias.n`, and a list obtained from an immutable object's field cannot be mutated through a local alias. Copying a scalar field, such as `n = d.n`, creates independent storage that can be reassigned. This local propagation does not prove alias relationships hidden in arbitrary managed storage or foreign calls.
+
 ## Reference-yielding loops
 
 `for x in &xs` iterates shared per-element borrows of an owned container and `for m in &mut xs` iterates exclusive ones. The loop is lowered as an index loop -- no reified iterator object ever holds a borrow, so the loop itself is the borrow's extent, and no lifetime is needed to name it:

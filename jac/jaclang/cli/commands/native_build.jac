@@ -5,5 +5,6 @@ def native_build(
     target: str = "",
     debug: bool = False,
     memory: str = "",
-    no_ir_cache: bool = False
+    no_ir_cache: bool = False,
+    closed_world: bool = False
 ) -> int;

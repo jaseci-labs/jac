@@ -1,8 +1,14 @@
+import type from jaclang.compiler.frontend.unitree {
+    AstImplNeedingNode,
+    ImplDef,
+    UniNode
+}
+
 edge Role {}
 
-edge Kid {}
+edge Kid: UniNode --> UniNode {}
 
-edge ImplOf {}
+edge ImplOf: AstImplNeedingNode --> ImplDef {}
 
 edge AccessRole(Role) {}
 

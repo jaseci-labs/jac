@@ -610,7 +610,7 @@ impl NaIRGenPass._osp_generic_edge -> (ir.Value | None) {
     _cur = self._region_current();
     self.builder.cbranch(
         self.builder.icmp_unsigned(
-            "==", _cur, ir.Constant(i8p, None), name="gedge.nocur"
+            "==", _cur, ir.Constant(_cur.type, None), name="gedge.nocur"
         ),
         heap_bb,
         rgn_bb
@@ -620,7 +620,7 @@ impl NaIRGenPass._osp_generic_edge -> (ir.Value | None) {
         self.rc_alloc_fn, [ir.Constant(i64, 8)], op="osp", loc="", name="osp.gedge"
     );
     self._osp_make_immortal(_raw);
-    _raw = self._region_ptr(_raw, name="osp.gedge.i8");
+    _raw = self._coerce_type(_raw, i8p);
     heap_end = self.builder.block;
     self.builder.branch(merge_bb);
     self.builder.position_at_end(rgn_bb);
@@ -895,20 +895,22 @@ impl NaIRGenPass._codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None) {
                 _wrap_fn, [self._coerce_type(right, _wargty)], name="osp.disc.tgt1"
             );
         _margs = _mfn.function_type.args;
+        _srcs = self._coerce_type(_srcs, _margs[0]);
+        _tgts = self._coerce_type(_tgts, _margs[1]);
         _res = self.builder.call(
             _mfn,
             [
-                self._coerce_type(_srcs, _margs[0]),
-                self._coerce_type(_tgts, _margs[1]),
+                _srcs,
+                _tgts,
                 self._coerce_type(ir.Constant(i64, _dir), _margs[2]),
                 self._coerce_type(ir.Constant(i64, edge_tag), _margs[3])
             ],
             name="osp.disc.many"
         );
-        if _srcs is not left {
+        if not _left_is_list or self._is_owned(_srcs) {
             self._emit_rc_release_simple(_srcs, op="osp_disc_many", loc="");
         }
-        if _tgts is not right {
+        if not _right_is_list or self._is_owned(_tgts) {
             self._emit_rc_release_simple(_tgts, op="osp_disc_many", loc="");
         }
     } else {
@@ -930,7 +932,7 @@ impl NaIRGenPass._codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._codegen_edge_ref_trailer(
-    nd: uni.EdgeRefTrailer
+    nd: uni.EdgeRefTrailer, raw_handles: bool = False
 ) -> (ir.Value | None) {
     osp_refs_fn = self.func_symtab.get("osp_refs");
     if (osp_refs_fn is None) or (not nd.chain) {
@@ -1152,10 +1154,59 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         self.emit(E5092, node_override=nd, kind="expression", name="EdgeRefTrailer");
         return None;
     }
+    return _cur if raw_handles else self._osp_refs_result(nd, _cur);
+}
+
+impl NaIRGenPass._osp_refs_result(nd: uni.Expr, handles: ir.Value) -> ir.Value {
+    """Convert the final kernel query result to its language representation.
+
+    Chained kernel filters keep handles internally and publish references once,
+    after all filtering. The returned list owns its elements through the normal
+    collection lifetime hooks.
+    """;
+    i64 = ir.IntType(64);
+    _cur = handles;
+    element = self._elem_arch_name_of(nd);
+    boxed = self._list_spec_of(nd) == "jacval";
+    if boxed or (element is not None and element in self.struct_types) {
+        pointer = ir.IntType(8).as_pointer();
+        storage = self.jacval_type if boxed else pointer;
+        spec = "jacval" if boxed else "ptr";
+        self._emit_list_helpers(spec, storage);
+        self._emit_list_helpers("i64", i64);
+        handle_ops = self.list_helpers["i64"];
+        objects = self.list_helpers[spec];
+        result = self.builder.call(objects["new"], [], name="osp.refs.objects");
+        count = self.builder.call(handle_ops["len"], [_cur]);
+        entry_block = self.builder.block;
+        condition = self.builder.function.append_basic_block("osp.refs.convert");
+        body = self.builder.function.append_basic_block("osp.refs.element");
+        done = self.builder.function.append_basic_block("osp.refs.done");
+        self.builder.branch(condition);
+        self.builder.position_at_end(condition);
+        index = self.builder.phi(i64, name="osp.refs.index");
+        index.add_incoming(ir.Constant(i64, 0), entry_block);
+        self.builder.cbranch(self.builder.icmp_signed("<", index, count), body, done);
+        self.builder.position_at_end(body);
+        handle = self.builder.call(handle_ops["get"], [_cur, index]);
+        reference = self.builder.inttoptr(handle, pointer);
+        value = self._box_to_jacval(reference, object_reference=True)
+            if boxed
+            else reference;
+        self.builder.call(objects["append"], [result, value]);
+        next_index = self.builder.add(index, ir.Constant(i64, 1));
+        index.add_incoming(next_index, self.builder.block);
+        self.builder.branch(condition);
+        self.builder.position_at_end(done);
+        self._emit_rc_release_simple(_cur, op="osp_refs_convert", loc="");
+        return self._mark_owned(result);
+    }
     return _cur;
 }
 
-impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None) {
+impl NaIRGenPass._codegen_chained_filter(
+    nd: uni.AtomTrailer, raw_handles: bool = False
+) -> (ir.Value | None) {
     i64 = ir.IntType(64);
     _f = nd.right;
     if not isinstance(_f, uni.FilterCompr) {
@@ -1175,12 +1226,22 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
         );
         return None;
     }
-    target_val = self._codegen_expr(nd.target);
+    if isinstance(nd.target, uni.EdgeRefTrailer) {
+        target_val = self._codegen_edge_ref_trailer(nd.target, raw_handles=True);
+    } elif isinstance(nd.target, uni.AtomTrailer)
+        and isinstance(nd.target.right, uni.FilterCompr) {
+        target_val = self._codegen_chained_filter(nd.target, raw_handles=True);
+    } else {
+        target_val = self._codegen_expr(nd.target);
+    }
     if target_val is None {
         return None;
     }
-    _result = target_val;
     _filter_fn = self.func_symtab.get("osp_filter");
+    if _filter_fn is not None {
+        target_val = self._coerce_type(target_val, _filter_fn.function_type.args[0]);
+    }
+    _result = target_val;
     if _f.f_type is not None {
         _model = self.ir_in.gen.osp_model;
         _tags = _model.tags if _model is not None else {};
@@ -1247,7 +1308,7 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
         _result = _pred;
     }
     self._mark_owned(_result);
-    return _result;
+    return _result if raw_handles else self._osp_refs_result(nd, _result);
 }
 
 impl NaIRGenPass._elem_arch_name_of(expr: (uni.UniNode | None)) -> (str | None) {
@@ -1461,7 +1522,11 @@ impl NaIRGenPass._osp_type_pair(ntag: int) -> (ir.Value | None) {
 
 impl NaIRGenPass._osp_visit_targets(target: uni.UniNode) -> (ir.Value | None) {
     if isinstance(target, uni.EdgeRefTrailer) {
-        return self._codegen_edge_ref_trailer(target);
+        return self._codegen_edge_ref_trailer(target, raw_handles=True);
+    }
+    if isinstance(target, uni.AtomTrailer)
+        and isinstance(target.right, uni.FilterCompr) {
+        return self._codegen_chained_filter(target, raw_handles=True);
     }
     _wrap = self.func_symtab.get("osp_wrap1");
     _val = self._codegen_expr(target);
@@ -1470,7 +1535,8 @@ impl NaIRGenPass._osp_visit_targets(target: uni.UniNode) -> (ir.Value | None) {
     }
     for _lt in self.list_types.values() {
         if _val.type == _lt.as_pointer() {
-            return _val;
+            self._emit_list_helpers("i64", ir.IntType(64));
+            return self._coerce_type(_val, self.list_types["i64"].as_pointer());
         }
     }
     _argtys = _wrap.function_type.args;

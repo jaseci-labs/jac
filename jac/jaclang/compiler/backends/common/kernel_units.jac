@@ -6,6 +6,7 @@ glob OSP_CORE_PARTS: list[str] = [
      ],
      FMT_KERNEL_PARTS: list[str] = ["compiler/backends/common/fmt_kernel.jac"],
      REGION_KERNEL_PARTS: list[str] = ["runtime/region_native.jac"],
+     COLLECTION_KERNEL_PARTS: list[str] = ["runtime/collections_native.jac"],
      REGION_KERNEL_ABI: dict[str, tuple[bool, int]] = {
          "__jac_region_new": (True, 0),
          "__jac_region_alloc": (True, 2),
@@ -173,6 +174,10 @@ def fmt_kernel_unit_path(variant: str) -> str {
 def region_kernel_unit_path(variant: str) -> str {
     verify_region_layout(unit_source(REGION_KERNEL_PARTS));
     return kernel_unit_path(f"region_kernel_{variant}", REGION_KERNEL_PARTS);
+}
+
+def collection_kernel_unit_path(variant: str) -> str {
+    return kernel_unit_path(f"collection_kernel_{variant}", COLLECTION_KERNEL_PARTS);
 }
 
 def _artifact_key(unit_path: str, fingerprint: str) -> str {

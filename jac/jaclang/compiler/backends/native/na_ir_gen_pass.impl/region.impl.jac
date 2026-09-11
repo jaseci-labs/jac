@@ -59,7 +59,9 @@ impl NaIRGenPass._region_i64(val: ir.Value, name: str = "rgn.i64") -> ir.Value {
 }
 
 impl NaIRGenPass._region_ptr(val: ir.Value, name: str = "rgn.p") -> ir.Value {
-    i8p = ir.IntType(8).as_pointer();
+    i8p = self.llvm_module.context.get_identified_type(
+        "__jac_region_handle"
+    ).as_pointer();
     if self._opt_ptr_payload_of(val.type) is not None {
         val = self.builder.extract_value(val, 1, name=f"{name}.opt");
     }
@@ -139,7 +141,7 @@ impl NaIRGenPass._region_alloc_object(
         ],
         name="region.alloc"
     );
-    o_ptr = self._region_ptr(raw, name="region.o_ptr");
+    o_ptr = self.builder.inttoptr(raw, ir.IntType(8).as_pointer(), name="region.o_ptr");
     self.rc_region_allocs += 1;
     if type_name is None {
         return o_ptr;
@@ -180,13 +182,40 @@ impl NaIRGenPass._region_owns(ptr: ir.Value) -> ir.Value {
 
 impl NaIRGenPass._emit_region_handle_drop(alloca: ir.Value, var_name: str) -> None {
     hdl = self.builder.load(alloca, name=f"region.drop.{var_name}");
-    self.builder.call(
-        self._region_kernel_fn("__jac_region_drop"),
-        [self._region_i64(hdl, name=f"region.drop.{var_name}.i64")]
-    );
+    self._region_release(hdl);
     slot_ty = alloca.type;
     assert isinstance(slot_ty, ir.PointerType) , "a region handle slot is always a pointer";
     self.builder.store(ir.Constant(slot_ty.pointee, None), alloca);
+}
+
+impl NaIRGenPass._region_release(hdl: ir.Value) -> None {
+    if self._gc_mode() == "none" {
+        self.builder.call(
+            self._region_kernel_fn("__jac_region_drop"), [self._region_i64(hdl)]
+        );
+    } else {
+        pointer = self._region_ptr(hdl);
+        self._emit_rc_release_simple(pointer, op="region_drop", loc="");
+    }
+}
+
+impl NaIRGenPass._region_drop_fn -> ir.Function {
+    existing = self.llvm_module.globals.get("__jac_drop_region_handle");
+    if isinstance(existing, ir.Function) {
+        return existing;
+    }
+    pointer = ir.IntType(8).as_pointer();
+    fn = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(ir.VoidType(), [pointer]),
+        name="__jac_drop_region_handle"
+    );
+    fn.linkage = "private";
+    b = ir.IRBuilder(fn.append_basic_block("entry"));
+    address = b.ptrtoint(fn.args[0], ir.IntType(64));
+    b.call(self._region_kernel_fn("__jac_region_drop"), [address]);
+    b.ret_void();
+    return fn;
 }
 
 impl NaIRGenPass._register_region_handle_var(
@@ -198,12 +227,31 @@ impl NaIRGenPass._register_region_handle_var(
     if _tgt is None or _tgt.sym is None or not _tgt.sym.na_region_handle {
         return;
     }
+    if self._nogc_borrow_local_assign(nd) {
+        self.nogc_no_free_vars.add(var_name);
+        return;
+    }
     self.region_handle_vars.add(var_name);
-    if isinstance(nd.value, uni.Name)
-        and nd.value.sym is not None
-        and nd.value.sym.na_region_handle
-        and nd.value.sym_name != var_name {
-        self.region_handle_vars.discard(nd.value.sym_name);
+    import from jaclang.compiler.expr_keys { transferred_local }
+    source = transferred_local(nd.value);
+    if source is not None
+        and source.sym is not None
+        and source.sym.na_region_handle
+        and source.sym_name != var_name {
+        source_slot = self.local_vars.get(source.sym_name);
+        if source_slot is not None {
+            import from jaclang.compiler.frontend.constant { OwnershipKind }
+            if self._gc_mode() != "none"
+                and source.sym.ownership != OwnershipKind.OWN {
+                self._emit_rc_retain(
+                    self.builder.load(source_slot), op="region_copy", loc=""
+                );
+                return;
+            }
+            slot_type = source_slot.type;
+            assert isinstance(slot_type, ir.PointerType);
+            self.builder.store(ir.Constant(slot_type.pointee, None), source_slot);
+        }
     }
 }
 
@@ -230,7 +278,6 @@ impl NaIRGenPass._lower_partition_unpack(nd: uni.Assignment) -> bool {
     if _recv is None {
         return False;
     }
-    _i8p = ir.IntType(8).as_pointer();
     for tgt in nd.target[0].values {
         if not isinstance(tgt, uni.Name) {
             continue;
@@ -238,7 +285,7 @@ impl NaIRGenPass._lower_partition_unpack(nd: uni.Assignment) -> bool {
         _child = self._region_partition(_recv);
         _slot = self.local_vars.get(tgt.sym_name);
         if _slot is None {
-            _slot = self._entry_alloca(_i8p, tgt.sym_name);
+            _slot = self._entry_alloca(_child.type, tgt.sym_name);
             self.local_vars[tgt.sym_name] = _slot;
         }
         self.builder.store(_child, _slot);
@@ -256,20 +303,9 @@ impl NaIRGenPass._emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | N
         return None;
     }
     _hook = self._drop_hook_for(type_name);
-    field_types = self.struct_field_types.get(type_name, {});
-    field_indices = self.struct_field_indices.get(type_name, {});
-    foreign_fields = self.struct_field_foreign.get(type_name, set());
-    _ptr_fields = [
-        (fname, ftype)
-        for (fname, ftype) in field_types.items()
-        if fname not in foreign_fields
-            and (
-                isinstance(ftype, ir.PointerType)
-                or self._opt_ptr_payload_of(ftype) is not None
-            )
-            and field_indices.get(fname, -1) >= 0
-    ];
-    if _hook is None and not _ptr_fields {
+    reference_paths = self._struct_reference_paths(type_name);
+    if _hook is None and not reference_paths
+        and not self.struct_field_inline.get(type_name) {
         return None;
     }
     _headerless = self._nogc_headerless();
@@ -306,32 +342,14 @@ impl NaIRGenPass._emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | N
         self.struct_drop_hooks[type_name] = _hook;
         b.call(_hook, [b.bitcast(_dobj, _hook.args[0].type)]);
     }
-    for (fname, ftype) in _ptr_fields {
-        idx = field_indices.get(fname, -1);
-        fp = b.gep(
-            _dobj, [ir.Constant(i32, 0), ir.Constant(i32, idx)], name=f"dropf.{fname}.p"
+    for path in reference_paths {
+        pointer = b.gep(
+            _dobj,
+            [ir.Constant(i32, index) for index in [0] + path],
+            name="dropf.field.ptr"
         );
-        if self._opt_ptr_payload_of(ftype) is not None {
-            fp = b.gep(
-                fp,
-                [ir.Constant(i32, 0), ir.Constant(i32, 1)],
-                name=f"dropf.{fname}.pvp"
-            );
-            fv = b.load(fp, name=f"dropf.{fname}.pv");
-            b.call(
-                self.rc_release_simple_fn,
-                [b.bitcast(fv, i8p, name=f"dropf.{fname}.pv.i8")]
-            );
-            continue;
-        }
-        fv = b.load(fp, name=f"dropf.{fname}");
-        _fv_ty = fv.type;
-        if isinstance(_fv_ty, ir.PointerType)
-            and isinstance(_fv_ty.pointee, ir.FunctionType) {
-            continue;
-        }
-        fv_i8 = b.bitcast(fv, i8p, name=f"dropf.{fname}.i8");
-        b.call(self.rc_release_simple_fn, [fv_i8]);
+        value = b.load(pointer, name="dropf.field");
+        self._emit_elem_release(b, value.type, value);
     }
     b.branch(done_bb);
 

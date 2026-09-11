@@ -84,6 +84,22 @@ impl OwnershipCheckPass._nogc_setup -> None {
     if self.nogc_prov is not None {
         self._nogc_infer_locals();
         self._stamp_view_borrows();
+        self._nogc_stamp_frozen_owners();
+    }
+}
+
+impl OwnershipCheckPass._nogc_stamp_frozen_owners -> None {
+    import from jaclang.compiler.passes.rc_facts_pass { result_ownership, Ownership }
+    for (sid, name) in self.imm_decl.items() {
+        symbol = name.sym;
+        if symbol is None
+            or symbol.storage == SymbolStorage.PARAM
+            or sid in self.borrow_meta
+            or result_ownership(name) == Ownership.STATIC {
+            continue;
+        }
+        symbol.ownership = OwnershipKind.OWN;
+        self.owned_decl[sid] = name;
     }
 }
 
@@ -206,6 +222,26 @@ impl OwnershipCheckPass._nogc_infer_locals -> None {
             self._nogc_bind_inferred(_first, _decl[_sid], _kind, _roots);
         }
     }
+    for nd in self.idx_assignments {
+        if len(nd.target) != 1
+            or nd.aug_op is not None
+            or not isinstance(nd.target[0], Name)
+            or not isinstance(nd.value, Name) {
+            continue;
+        }
+        target = nd.target[0];
+        source = nd.value;
+        if target.sym is None
+            or source.sym is None
+            or target.sym.ownership != OwnershipKind.IMM
+            or self._name_sym_id(source) not in self.imm_decl {
+            continue;
+        }
+        (kind, roots) = self._nogc_infer_state(source);
+        if is_borrow_kind(kind) {
+            self._nogc_bind_inferred(nd, target, OwnershipKind.BORROW, roots);
+        }
+    }
 }
 
 impl OwnershipCheckPass._nogc_infer_state(
@@ -265,8 +301,11 @@ impl OwnershipCheckPass._nogc_infer_state(
         if _s is None {
             return (OwnershipKind.NONE, _none);
         }
-        if _s.ownership == OwnershipKind.OWN or _s.ownership == OwnershipKind.IMM {
+        if _s.ownership == OwnershipKind.OWN {
             return (_s.ownership, _none);
+        }
+        if _s.ownership == OwnershipKind.IMM {
+            return (OwnershipKind.BORROW, [expr]);
         }
         if is_borrow_kind(_s.ownership) {
             return (_s.ownership, [expr]);
@@ -353,6 +392,11 @@ impl OwnershipCheckPass._nogc_bind_inferred(
     }
     self.borrow_meta[_sid] = _bm;
     self.borrow_created_at[_sid] = nd;
+    if any(self._name_sym_id(origin) in self.imm_decl for origin in roots) {
+        self.imm_decl[_sid] = tgt;
+        self.view_syms.add(_sid);
+        _ts.is_view = True;
+    }
 }
 
 impl OwnershipCheckPass._nogc_type_is_str(expr: Expr | None) -> bool {
@@ -1202,17 +1246,8 @@ impl OwnershipCheckPass._view_base_place(expr: Expr | None) -> (Name | None) {
 }
 
 impl OwnershipCheckPass._view_root_owner(sym_id: SymId) -> SymId {
-    _cur = sym_id;
-    _hops = 0;
-    while _cur in self.borrow_meta and _hops < 32 {
-        _own = self.borrow_meta[_cur].owner;
-        if _own is None {
-            break;
-        }
-        _cur = _own;
-        _hops += 1;
-    }
-    return _cur;
+    owner = self._borrow_owner_of(sym_id);
+    return owner if owner is not None else sym_id;
 }
 
 impl OwnershipCheckPass._sym_is_param(sym_id: SymId) -> bool {
@@ -1406,44 +1441,61 @@ impl OwnershipCheckPass._stamp_arch_view_bindings -> None {
 }
 
 impl OwnershipCheckPass._view_call_owner(call: FuncCall) -> (SymId | None) {
-    _tgt = call.target;
-    _ab: (Ability | None) = None;
-    if isinstance(_tgt, Name) and _tgt.sym is not None and _tgt.sym.decl is not None {
-        _ab = _tgt.sym.decl.find_parent_of_type(Ability);
-    } elif isinstance(_tgt, AtomTrailer)
-        and _tgt.is_attr
-        and isinstance(_tgt.right, Name)
-        and _tgt.right.sym is not None
-        and _tgt.right.sym.decl is not None {
-        _ab = _tgt.right.sym.decl.find_parent_of_type(Ability);
-    }
-    if _ab is None or id(_ab) not in self.view_elision_fns {
+    ability = self._callee_ability(call);
+    if ability is None or id(ability) not in self.view_elision_fns
+        or not isinstance(ability.signature, FuncSignature) {
         return None;
     }
-    _fct = self.view_elision_fns[id(_ab)];
-    if _fct == -1 {
-        if isinstance(_tgt, AtomTrailer) {
-            _recv = self._place_of(_tgt.target);
-            if _recv is not None and _recv.sym is not None {
-                return self._name_sym_id(_recv);
+    target = call.target;
+    bound_receiver = ability.is_method and not ability.is_static
+        and isinstance(target, AtomTrailer);
+    if bound_receiver and isinstance(target, AtomTrailer) {
+        import from jaclang.compiler.types.types { ClassType }
+        receiver_type = target.target.type;
+        if isinstance(receiver_type, ClassType) and receiver_type.is_instantiable() {
+            bound_receiver = False;
+        }
+    }
+    index = self.view_elision_fns[id(ability)];
+    parameters = ability.signature.get_parameters();
+    argument: Expr | None = None;
+    if index == -1 and bound_receiver and isinstance(target, AtomTrailer) {
+        argument = target.target;
+    } else {
+        if index == -1 {
+            index = 0;
+        }
+        if index >= len(parameters) {
+            return None;
+        }
+        parameter = parameters[index];
+        name = parameter.name.sym_name if parameter.name is not None else "";
+        if bound_receiver and name == "self" and isinstance(target, AtomTrailer) {
+            argument = target.target;
+        } else {
+            positional_index = index;
+            if bound_receiver and parameters and parameters[0].name is not None
+                and parameters[0].name.sym_name == "self" {
+                positional_index -= 1;
+            }
+            position = 0;
+            for actual in self._call_params(call) {
+                if isinstance(actual, KWPair) {
+                    if actual.key is not None and actual.key.sym_name == name {
+                        argument = actual.value;
+                        break;
+                    }
+                } else {
+                    if position == positional_index {
+                        argument = actual;
+                    }
+                    position += 1;
+                }
             }
         }
-        return None;
     }
-    _params = list(self._call_params(call));
-    if _fct >= len(_params) {
-        return None;
-    }
-    _arg = _params[_fct];
-    if isinstance(_arg, KWPair) {
-        return None;
-    }
-    _a = _arg.operand if isinstance(_arg, UnaryExpr) else _arg;
-    _pl = self._place_of(_a);
-    if _pl is None or _pl.sym is None {
-        return None;
-    }
-    return self._name_sym_id(_pl);
+    place = self._place_of(argument);
+    return self._name_sym_id(place) if place is not None and place.sym is not None else None;
 }
 
 impl OwnershipCheckPass._stamp_view_borrows -> None {
@@ -1599,7 +1651,8 @@ impl OwnershipCheckPass._stamp_view_call_results(
         if len(nd.target) != 1 or nd.aug_op is not None {
             continue;
         }
-        if nd.type_tag is not None and nd.type_tag.ownership != OwnershipKind.NONE {
+        if nd.type_tag is not None
+            and nd.type_tag.ownership not in (OwnershipKind.NONE, OwnershipKind.IMM) {
             continue;
         }
         _tgt = nd.target[0];

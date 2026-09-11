@@ -94,11 +94,18 @@ impl OwnershipCheckPass._has_region_blocks -> bool {
 
 impl OwnershipCheckPass._place_of(nd: Expr | None) -> (Name | None) {
     cur = nd;
-    if isinstance(cur, UnaryExpr) and is_borrow_kind(cur.ownership) {
-        cur = cur.operand;
-    }
-    while isinstance(cur, AtomTrailer) {
-        cur = cur.target;
+    while cur is not None {
+        if isinstance(cur, UnaryExpr) and is_borrow_kind(cur.ownership) {
+            cur = cur.operand;
+        } elif isinstance(cur, AtomTrailer) {
+            cur = cur.target;
+        } elif isinstance(cur, CfgExpr) {
+            cur = cur.expr;
+        } elif isinstance(cur, AtomUnit) and isinstance(cur.value, Expr) {
+            cur = cur.value;
+        } else {
+            break;
+        }
     }
     if isinstance(cur, Name) and cur.sym {
         return cur;

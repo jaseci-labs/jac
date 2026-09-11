@@ -921,7 +921,7 @@ def write_manifest(
     }
     if pkg_name == "jaclang" {
         import from jaclang.compiler.native_scope { NATIVE_SCOPE }
-        scope_mods = sorted([e.module for e in NATIVE_SCOPE]);
+        scope_mods = sorted(NATIVE_SCOPE);
         if scope_mods {
             manifest["native"] = {"modules": scope_mods};
         }

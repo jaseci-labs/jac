@@ -210,7 +210,9 @@ impl NaIRGenPass._emit_dict_helpers(
     };
 }
 
-impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
+impl NaIRGenPass._box_to_jacval(
+    value: ir.Value, object_reference: bool = False
+) -> ir.Value {
     value = self._str_norm(value);
     b = self.builder;
     i8 = ir.IntType(8);
@@ -245,7 +247,9 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
         payload = b.bitcast(value, i64, name="jv.f2i");
         b.store(payload, payload_ptr);
     } elif isinstance(value.type, ir.PointerType) {
-        ptr_tag = 2;
+        ptr_tag = 6
+            if object_reference or value.type == self.type_map.get("Region")
+            else 2;
         for (_, ltype) in self.list_types.items() {
             if value.type == ltype.as_pointer() {
                 ptr_tag = 3;
@@ -552,7 +556,6 @@ impl NaIRGenPass._codegen_dict_set(
     if self._reject_ptr_into_raw_slot(None, value, val_type, "dict value assignment") {
         return;
     }
-    _orig_key = key_val;
     _orig_value = value;
     key_val = self._coerce_type(key_val, key_type);
     value = self._coerce_type(value, val_type);
@@ -566,22 +569,5 @@ impl NaIRGenPass._codegen_dict_set(
     }
     self._rc_call_with_ctx(_set_fn, _set_args, op="dict_set", loc=_dset_ctx_loc);
 
-    if (
-        isinstance(_orig_key.type, ir.PointerType)
-        and isinstance(key_type, ir.PointerType)
-        and self._is_owned(_orig_key)
-    ) {
-        self._emit_rc_release_simple(_orig_key, op="dict_set", loc=_dset_ctx_loc);
-    }
-
-    if (
-        isinstance(_orig_value.type, ir.PointerType)
-        and self._elem_kind(val_type) != "raw"
-        and self._is_owned(_orig_value)
-    ) {
-        _dset_loc = getattr(
-            _orig_value, 'jac_loc', f"{os.path.basename(self.ir_in.loc.mod_path)}:0"
-        );
-        self._emit_rc_release_simple(_orig_value, op="dict_set", loc=_dset_loc);
-    }
+    self._release_owned_args([key_val, value], op="dict_set");
 }

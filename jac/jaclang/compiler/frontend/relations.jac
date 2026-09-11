@@ -1,18 +1,30 @@
-edge SymOf {}
+import type from jaclang.compiler.frontend.unitree {
+    Import,
+    Module,
+    NameAtom,
+    Symbol,
+    UniScopeNode
+}
 
-edge Defines {}
+edge SymOf: NameAtom --> Symbol {}
 
-edge Uses {}
+edge Defines: Symbol --> NameAtom {}
 
-edge InScope {}
+edge Uses: Symbol --> NameAtom {}
 
-edge ScopePrimary {}
+edge InScope: UniScopeNode --> Symbol {}
 
-edge ScopeOverload {}
+edge ScopePrimary: UniScopeNode --> Symbol {
+    has name: str;
+}
 
-edge ScopeChild {}
+edge ScopeOverload: UniScopeNode --> Symbol {
+    has name: str;
+}
 
-edge ScopeParent {}
+edge ScopeChild: UniScopeNode --> UniScopeNode {}
+
+edge ScopeParent: UniScopeNode --> UniScopeNode {}
 
 edge CfgSucc {}
 
@@ -26,7 +38,7 @@ edge DecidedCodespace {}
 
 edge CalleeDecl {}
 
-edge Absorbs {}
+edge Absorbs: Import --> Module {}
 
 node Codespace {
     has kind: str = "";

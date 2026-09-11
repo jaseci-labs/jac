@@ -72,7 +72,7 @@ class _StringReferenceCaching(object) {
 }
 
 class _HasMetadata(object) {
-    has metadata: dict[str, _StringReferenceCaching];
+    has metadata: dict[str, _StringReferenceCaching | list[_StringReferenceCaching]];
 
     """
         Attach unnamed metadata *node* to the metadata slot *name* of this
@@ -82,16 +82,28 @@ class _HasMetadata(object) {
         self.metadata[name] = `node;
     }
 
+    def add_metadata(self: _HasMetadata, name: str, value: _StringReferenceCaching) {
+        previous = self.metadata.get(name);
+        if previous is None {
+            self.metadata[name] = value;
+        } elif isinstance(previous, list) {
+            previous.append(value);
+        } else {
+            self.metadata[name] = [previous, value];
+        }
+    }
+
     def _stringify_metadata(self: _HasMetadata, leading_comma: any = False) -> object {
         if self.metadata {
             buf = [];
             if leading_comma {
                 buf.append("");
             }
-            buf += [
-                "!{0} {1}".format(k, v.get_reference())
-                for (k, v) in self.metadata.items()
-            ];
+            for (key, values) in self.metadata.items() {
+                for value in (values if isinstance(values, list) else [values]) {
+                    buf.append("!{0} {1}".format(key, value.get_reference()));
+                }
+            }
             return ', '.join(buf);
         } else {
             return '';

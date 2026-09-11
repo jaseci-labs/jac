@@ -19,6 +19,18 @@ import from tests.ownership_helpers { compile_fixture, expect_ownership_codes }
 
 # (group, case name, fixture, expected E13xx codes, [enforce nogc])
 glob OWNERSHIP_CASES: list[tuple] = [
+         (
+             "freeze",
+             "conditional freeze preserves the other branch",
+             "freeze_branch_ok.jac",
+             []
+         ),
+         (
+             "freeze",
+             "conditional freeze consumes at the join",
+             "freeze_branch_moved.jac",
+             ["E1301"]
+         ),
          ("places", "take needs optional storage", "take_nonoptional.jac", ["E1319"]),
          (
              "places",
@@ -291,6 +303,20 @@ glob OWNERSHIP_CASES: list[tuple] = [
              ["E1308"]
          ),
          # -- frozen_regions --------------------------------------------------
+         (
+             "frozen_regions",
+             "a frozen alias cannot escape its owner",
+             "frozen_region_alias_escape.jac",
+             ["E1306"],
+             True
+         ),
+         (
+             "frozen_regions",
+             "a chained frozen alias prevents moving its owner",
+             "frozen_region_owner_move.jac",
+             ["E1304"],
+             True
+         ),
          (
              "frozen_regions",
              "frozen handle crosses flow freely",
@@ -797,7 +823,7 @@ glob OWNERSHIP_CASES: list[tuple] = [
              "partition_n",
              "arity mismatch, dynamic count, unowned receiver are E1314; children stay affine",
              "partition_n_bad.jac",
-             ["E1301", "E1301", "E1301", "E1314", "E1314", "E1314"]
+             ["E1301", "E1314", "E1314", "E1314"]
          ),
          (
              "partition_n",

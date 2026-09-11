@@ -39,10 +39,7 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict {
     b = ir.IRBuilder(grow_bb);
     len_v = b.load(len_p, name="len");
 
-    is_zero = b.icmp_signed("==", cap_v, ir.Constant(i64, 0), name="cap.zero");
-    floored = b.select(is_zero, ir.Constant(i64, 4), cap_v, name="cap.floor");
-    b.store(floored, cap_p);
-    self._emit_grow_array(b, data_p, i8, len_v, cap_p, floored);
+    self._emit_grow_array(b, data_p, i8, len_v, cap_p);
     b.branch(chk_bb);
     b = ir.IRBuilder(done_bb);
     b.ret_void();

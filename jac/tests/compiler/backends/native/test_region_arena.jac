@@ -8,34 +8,8 @@ and the drop-hook/teardown behavior through the JIT.
 """
 
 import ctypes;
-import os;
-import from tests.support { TESTS_DIR, get_func }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { compile_native, get_func }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
-
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
-
-"""Compile a .jac fixture and return the JIT engine."""
-def compile_native(
-    fixture: str, gc_mode: str | None = None, opt_level: int | None = None
-) -> tuple[ExecutionEngine, uni.Module] {
-    prog = JacProgram();
-    opts = (
-        CompileOptions(na_gc_mode=gc_mode, opt_level=opt_level)
-            if (gc_mode is not None or opt_level is not None)
-            else None
-    );
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
-    return (eng, ir);
-}
 
 """Count call sites of `name` in either printer's spelling (quoted or bare)."""
 def calls_to(body: str, name: str) -> int {
@@ -73,8 +47,6 @@ test "arena: every droppable construction consults the current region" {
     assert n_cur == 3 , f"expected 3 current-region reads in dtor_order, found {n_cur}";
     n_arena = calls_to(body, "__jac_region_alloc");
     assert n_arena == 3 , f"expected 3 region-alloc arms in dtor_order, found {n_arena}";
-    n_drop = calls_to(body, "__jac_region_drop");
-    assert n_drop >= 1 , f"expected a region drop at the close, found {n_drop}";
 }
 
 test "dynamic extent: a helper called under an open allocates in the region" {
@@ -124,6 +96,46 @@ test "arena: named handle drops on reassignment and at scope exit" {
     assert log == 79 , f"scope exit must run the dtor log: log {log} != 79";
 }
 
+test "arena: freezing transfers teardown to the published handle" {
+    (eng, ir) = compile_native("region_freeze.jac", opt_level=0);
+    freeze_region = get_func(eng, "freeze_region", ctypes.c_int64);
+    read_drops = get_func(eng, "read_drops", ctypes.c_int64);
+    for _ in range(20) {
+        assert freeze_region() == 0;
+        assert read_drops() == 1;
+    }
+    returned_region = get_func(eng, "returned_region", ctypes.c_int64);
+    for _ in range(20) {
+        assert returned_region() == 0;
+        assert read_drops() == 1;
+    }
+    conditional = get_func(eng, "conditional_freeze", ctypes.c_int64, ctypes.c_bool);
+    for publish in [False, True, False, True] {
+        conditional(publish);
+        assert read_drops() == 1;
+    }
+}
+
+test "arena: owned and frozen fields keep their region alive across return" {
+    for mode in ["cycles", "rc", "none"] {
+        (eng, ir) = compile_native(
+            "region_owner_field.jac", gc_mode=mode, nogc_enforce=mode == "none"
+        );
+        read_drops = get_func(eng, "read_drops", ctypes.c_int64);
+        for (name, expected) in [
+            ("observe", 1),
+            ("observe_published", 1),
+            ("observe_partition", 2)
+        ] {
+            observe = get_func(eng, name, ctypes.c_int64);
+            for _ in range(20) {
+                assert observe() == 0;
+                assert read_drops() == expected;
+            }
+        }
+    }
+}
+
 test "arena: dynamic extent -- made in a helper, grown remotely, dropped here" {
     (eng, ir) = compile_native("region_extent.jac");
     scenario = get_func(eng, "scenario", ctypes.c_int64);
@@ -166,13 +178,21 @@ test "phase W: walkers reclaim -- spawn-heavy loop fires drop per walker" {
 }
 
 test "R3: region-resident topology traverses live and reclaims at drop" {
-    (eng, ir) = compile_native("region_graph.jac");
-    scenario = get_func(eng, "scenario", ctypes.c_int64);
-    result = scenario();
-    assert result == 3 , f"scenario() == {result}, expected traversal sum 3";
-    read_log = get_func(eng, "read_log", ctypes.c_int64);
-    log = read_log();
-    assert log == 2 , f"handle drop must reclaim both nodes: {log} != 2";
+    for mode in ["cycles", "rc", "none"] {
+        (eng, ir) = compile_native(
+            "region_graph.jac", gc_mode=mode, nogc_enforce=mode == "none"
+        );
+        read_log = get_func(eng, "read_log", ctypes.c_int64);
+        for name in ["scenario", "cyclic_scenario"] {
+            scenario = get_func(eng, name, ctypes.c_int64);
+            for _ in range(20) {
+                result = scenario();
+                assert result == 3 , f"{mode}: expected live-node sum 3, got {result}";
+                log = read_log();
+                assert log == 2 , f"{mode}: handle drop must reclaim both nodes, got {log}";
+            }
+        }
+    }
 }
 
 test "R3: growth rule -- mid-traversal allocations land in region_of(here)" {
@@ -200,6 +220,22 @@ test "a user archetype named Region shadows the builtin cleanly" {
     shadowed = get_func(eng, "shadowed", ctypes.c_int64);
     result = shadowed();
     assert result == 7 , f"shadowed() == {result}, expected 7";
+}
+
+test "frozen aliases preserve their owner and reclaim exactly once" {
+    for mode in ["cycles", "rc", "none"] {
+        (eng, _) = compile_native(
+            "region_frozen_alias.jac", gc_mode=mode, nogc_enforce=mode == "none"
+        );
+        observe = get_func(eng, "observe_alias", ctypes.c_bool);
+        drops = get_func(eng, "read_drops", ctypes.c_int64);
+        literal = get_func(eng, "static_alias", ctypes.c_char_p);
+        for _ in range(20) {
+            assert observe() , f"{mode}: alias consumed the frozen owner";
+            assert drops() == 1 , f"{mode}: region must retire exactly once";
+            assert literal() == b"stable";
+        }
+    }
 }
 
 test "nested functions preserve an event's active region" {

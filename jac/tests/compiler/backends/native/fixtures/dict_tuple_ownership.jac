@@ -26,3 +26,13 @@ def temporary_objects -> int {
 def drop_count -> int {
     return dropped;
 }
+
+"""Several rehashes must move tuple storage without duplicating its owners."""
+def rehash_objects -> int {
+    values: dict[str, tuple[DictTupleItem, DictTupleItem]] = {};
+    for index in range(64) {
+        values[str(index)] = (DictTupleItem(index), DictTupleItem(index + 1));
+    }
+    (first, second) = values["63"];
+    return first.value + second.value;
+}

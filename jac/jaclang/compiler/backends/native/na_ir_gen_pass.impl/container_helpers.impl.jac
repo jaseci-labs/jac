@@ -11,6 +11,48 @@ impl NaIRGenPass._elem_kind(elem_type: ir.Type) -> str {
     return "raw";
 }
 
+impl NaIRGenPass._value_reference_paths(value_type: ir.Type) -> list[list[int]] {
+    if self._elem_kind(value_type) != "raw" {
+        return [[]];
+    }
+    if self._str_desc_ty is not None and value_type == self._str_desc_ty {
+        return [[0]];
+    }
+    if self._opt_ptr_payload_of(value_type) is not None {
+        return [[1]];
+    }
+    if isinstance(value_type, ir.IdentifiedStructType) {
+        return self._struct_reference_paths(value_type.name);
+    }
+    paths: list[list[int]] = [];
+    if isinstance(value_type, ir.LiteralStructType) {
+        for (index, field_type) in enumerate(value_type.elements) {
+            for path in self._value_reference_paths(field_type) {
+                paths.append([index] + path);
+            }
+        }
+    }
+    return paths;
+}
+
+impl NaIRGenPass._struct_reference_paths(arch_name: str) -> list[list[int]] {
+    fields = self.struct_field_types.get(arch_name, {});
+    indices = self.struct_field_indices.get(arch_name, {});
+    foreign = self.struct_field_foreign.get(arch_name, set());
+    borrowed = self.struct_field_borrow.get(arch_name, set());
+    paths: list[list[int]] = [];
+    for (name, field_type) in fields.items() {
+        index = indices.get(name, -1);
+        if index < 0 or name in foreign or name in borrowed {
+            continue;
+        }
+        for path in self._value_reference_paths(field_type) {
+            paths.append([index] + path);
+        }
+    }
+    return paths;
+}
+
 impl NaIRGenPass._container_layout_dense(data_types: list) -> dict {
     _fields = [(_i + 2, _dt) for (_i, _dt) in enumerate(data_types)];
     return {
@@ -939,11 +981,24 @@ impl NaIRGenPass._emit_rc_alloc_container(
     cap_p = b.gep(
         container_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr"
     );
-    b.store(ir.Constant(i64, initial_cap), cap_p);
+
+    capacity = 0 if layout["kind"] == "dense" else initial_cap;
+    b.store(ir.Constant(i64, capacity), cap_p);
 
     data_ptrs = [];
     for (i, fpair) in enumerate(layout["data_fields"]) {
         (field_idx, dtype) = fpair;
+        data_p = b.gep(
+            container_ptr,
+            [ir.Constant(i32, 0), ir.Constant(i32, field_idx)],
+            name=f"data{i}.ptr"
+        );
+        if layout["kind"] == "dense" {
+            data: ir.Value = ir.Constant(dtype.as_pointer(), None);
+            b.store(data, data_p);
+            data_ptrs.append(data);
+            continue;
+        }
         elem_null = ir.Constant(dtype.as_pointer(), None);
         elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name=f"elem{i}.sizeof");
         elem_size = b.ptrtoint(elem_gep, i64, name=f"elem{i}.size");
@@ -952,11 +1007,6 @@ impl NaIRGenPass._emit_rc_alloc_container(
         );
         data_raw = b.call(malloc_fn, [data_bytes], name=f"data{i}.raw");
         data = b.bitcast(data_raw, dtype.as_pointer(), name=f"data{i}");
-        data_p = b.gep(
-            container_ptr,
-            [ir.Constant(i32, 0), ir.Constant(i32, field_idx)],
-            name=f"data{i}.ptr"
-        );
         b.store(data, data_p);
         data_ptrs.append(data);
     }
@@ -996,44 +1046,50 @@ impl NaIRGenPass._emit_rc_alloc_container(
     return tuple([container_ptr] + data_ptrs);
 }
 
+impl NaIRGenPass._array_storage_release -> ir.Function {
+    if self._nogc_headerless() {
+        return self._get_or_declare_extern(
+            "free", ir.VoidType(), [ir.IntType(8).as_pointer()]
+        );
+    }
+    if self.rc_safe_free_fn is None {
+        self._emit_rc_helpers();
+    }
+    release = self.rc_safe_free_fn;
+    assert release is not None;
+    return release;
+}
+
 impl NaIRGenPass._emit_grow_array(
     b: ir.IRBuilder,
     arr_ptr: ir.Value,
     elem_type: ir.Type,
     cur_len: ir.Value,
-    cap_ptr: ir.Value,
-    cur_cap: ir.Value
+    cap_ptr: ir.Value
 ) -> ir.Value {
     i64 = ir.IntType(64);
-    i32 = ir.IntType(32);
     i8_ptr = ir.IntType(8).as_pointer();
-    malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
-    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
-    memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
-    new_cap = b.mul(cur_cap, ir.Constant(i64, 2), name="new.cap");
-    b.store(new_cap, cap_ptr);
-    elem_null = ir.Constant(elem_type.as_pointer(), None);
-    elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name="elem.sizeof");
-    elem_sz = b.ptrtoint(elem_gep, i64, name="elem.size");
-    new_bytes = b.mul(new_cap, elem_sz, name="new.bytes");
-    new_data_raw = b.call(malloc_fn, [new_bytes], name="new.data.raw");
-    new_data = b.bitcast(new_data_raw, elem_type.as_pointer(), name="new.data");
-    old_data = b.load(arr_ptr, name="old.data");
-    old_bytes = b.mul(cur_len, elem_sz, name="old.bytes");
-    old_i8 = b.bitcast(old_data, i8_ptr, name="old.i8");
-    new_i8 = b.bitcast(new_data, i8_ptr, name="new.i8");
-    b.call(memcpy_fn, [new_i8, old_i8, old_bytes]);
-    if self._nogc_headerless() {
-        _free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
-        b.call(_free_fn, [old_i8]);
-    } else {
-        if self.rc_safe_free_fn is None {
-            self._emit_rc_helpers();
-        }
-        b.call(self.rc_safe_free_fn, [old_i8]);
-    }
-    b.store(new_data, arr_ptr);
-    return new_data;
+    release = self._array_storage_release();
+    grow = self._get_or_declare_extern(
+        "__jac_array_grow", i64, [i64, i64, i64, i64, i64]
+    );
+    stride = b.ptrtoint(
+        b.gep(ir.Constant(elem_type.as_pointer(), None), [ir.Constant(i64, 1)]),
+        i64,
+        name="elem.size"
+    );
+    data = b.call(
+        grow,
+        [
+            b.ptrtoint(arr_ptr, i64),
+            b.ptrtoint(cap_ptr, i64),
+            cur_len,
+            stride,
+            b.ptrtoint(release, i64)
+        ],
+        name="grown.storage"
+    );
+    return b.inttoptr(data, elem_type.as_pointer(), name="new.data");
 }
 
 impl NaIRGenPass._emit_rc_destructor_preamble(
@@ -1084,7 +1140,7 @@ impl NaIRGenPass._tuple_box_release_fn(
     self.tuple_release_fns[key] = release_fn;
 
     (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, struct_ptr_type);
-    fields = self._tuple_managed_fields(struct_type);
+    fields = self._value_reference_paths(struct_type);
     if fields {
         _cycles_on = self._gc_mode() == "cycles";
         if _cycles_on and self.rc_collecting_gv is None {
@@ -1103,21 +1159,10 @@ impl NaIRGenPass._tuple_box_release_fn(
             b.branch(rel_bb);
         }
         b = ir.IRBuilder(rel_bb);
-        for (idx, is_opt) in fields {
-            fptr = b.gep(
-                release_fn.args[0],
-                [ir.Constant(i32, 0), ir.Constant(i32, idx)],
-                name=f"tup.f{idx}.p"
-            );
-            if is_opt {
-                fptr = b.gep(
-                    fptr,
-                    [ir.Constant(i32, 0), ir.Constant(i32, 1)],
-                    name=f"tup.f{idx}.pvp"
-                );
-            }
-            fval = b.load(fptr, name=f"tup.f{idx}");
-            self._emit_elem_release(b, fval.type, fval);
+        value = b.load(release_fn.args[0], name="tup.value");
+        for path in fields {
+            field = b.extract_value(value, path, name="tup.field");
+            self._emit_elem_release(b, field.type, field);
         }
         b.branch(post_bb);
         b = ir.IRBuilder(post_bb);
@@ -1145,7 +1190,7 @@ impl NaIRGenPass._tuple_box_trace_fn(
     if _cached is not None {
         return _cached;
     }
-    fields = self._tuple_managed_fields(struct_type);
+    fields = self._value_reference_paths(struct_type);
     if not fields {
         return None;
     }
@@ -1167,17 +1212,10 @@ impl NaIRGenPass._tuple_box_trace_fn(
     b = ir.IRBuilder(entry_bb);
     _vis = b.bitcast(trace_fn.args[1], visitor_ptype, name="vis.fn");
     _obj = b.bitcast(trace_fn.args[0], struct_type.as_pointer(), name="obj.typed");
-    for (idx, is_opt) in fields {
-        fptr = b.gep(
-            _obj, [ir.Constant(i32, 0), ir.Constant(i32, idx)], name=f"tr.f{idx}.p"
-        );
-        if is_opt {
-            fptr = b.gep(
-                fptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name=f"tr.f{idx}.pvp"
-            );
-        }
-        fval = b.load(fptr, name=f"tr.f{idx}");
-        b.call(_vis, [b.bitcast(fval, i8_ptr, name=f"tr.f{idx}.i8")]);
+    value = b.load(_obj, name="trace.tuple");
+    for path in fields {
+        field = b.extract_value(value, path, name="trace.field");
+        b = self._emit_elem_trace(b, field, _vis);
     }
     b.branch(done_bb);
     b = ir.IRBuilder(done_bb);

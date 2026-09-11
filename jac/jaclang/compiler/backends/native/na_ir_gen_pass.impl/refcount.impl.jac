@@ -689,7 +689,15 @@ impl NaIRGenPass._release_owned_args(
     call_args: list[ir.Value], op: str = "call_arg"
 ) -> None {
     for _arg in call_args {
-        if isinstance(_arg.type, ir.PointerType) and self._is_owned(_arg) {
+        if self._str_desc_ty is not None and _arg.type == self._str_desc_ty {
+            if self._is_owned(_arg) {
+                if self._nogc_headerless() {
+                    self._nogc_str_free_owned(_arg);
+                } else {
+                    self._emit_rc_release_simple(_arg, op=op, loc="");
+                }
+            }
+        } elif isinstance(_arg.type, ir.PointerType) and self._is_owned(_arg) {
             self._emit_rc_release_simple(_arg, op=op, loc="");
         } elif (
             self?.jacval_type is not None
@@ -701,12 +709,12 @@ impl NaIRGenPass._release_owned_args(
             and self._gc_mode() != "none" {
             owned = _arg.na_tuple_owned;
             if owned is not None {
-                for (index, is_owned) in enumerate(owned) {
-                    if is_owned {
-                        value = self.builder.extract_value(
-                            _arg, index, name="arg.tuple.field"
+                for path in self._value_reference_paths(_arg.type) {
+                    if path[0] < len(owned) and owned[path[0]] {
+                        field = self.builder.extract_value(
+                            _arg, path, name="arg.tuple.field"
                         );
-                        self._release_owned_args([self._mark_owned(value)], op=op);
+                        self._emit_elem_release(self.builder, field.type, field);
                     }
                 }
             }
@@ -1664,6 +1672,9 @@ impl NaIRGenPass._nogc_drop_fn_for(
     ptr_ty: ir.PointerType, self_type: str = ""
 ) -> (ir.Function | None) {
     _pname = getattr(ptr_ty.pointee, "name", "") or "";
+    if _pname == "__jac_region_handle" {
+        return self._region_drop_fn();
+    }
     if _pname in self.struct_types or (_pname and _pname == self_type) {
         return self._emit_struct_drop_fn(_pname);
     }
@@ -2249,15 +2260,18 @@ impl NaIRGenPass._emit_scope_cleanup(
             continue;
         }
 
-        if self._nogc_headerless()
-            and self._str_desc_ty is not None
+        if self._str_desc_ty is not None
             and isinstance(alloca.type, ir.PointerType)
             and alloca.pointee_type == self._str_desc_ty {
             if var_name == skip_var {
                 self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
-            } elif var_name in self.nogc_owned_str_vars {
+            } elif not self._nogc_headerless() or var_name in self.nogc_owned_str_vars {
                 val = self.builder.load(alloca, name=f"cleanup.{var_name}");
-                self._nogc_str_free_owned(val);
+                if self._nogc_headerless() {
+                    self._nogc_str_free_owned(val);
+                } else {
+                    self._emit_rc_release_simple(val, op="scope_exit", loc=loc);
+                }
                 self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
             }
             continue;
@@ -2329,13 +2343,16 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
         if alloca is None {
             continue;
         }
-        if self._nogc_headerless()
-            and self._str_desc_ty is not None
+        if self._str_desc_ty is not None
             and isinstance(alloca.type, ir.PointerType)
             and alloca.pointee_type == self._str_desc_ty {
-            if var_name in self.nogc_owned_str_vars {
+            if not self._nogc_headerless() or var_name in self.nogc_owned_str_vars {
                 val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
-                self._nogc_str_free_owned(val);
+                if self._nogc_headerless() {
+                    self._nogc_str_free_owned(val);
+                } else {
+                    self._emit_rc_release_simple(val, op="scope_exit", loc=loc);
+                }
                 self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
             }
             continue;
@@ -2437,9 +2454,7 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
     if struct_type is None {
         return;
     }
-    field_types = self.struct_field_types.get(arch_name, {});
-    field_indices = self.struct_field_indices.get(arch_name, {});
-    foreign_fields = self.struct_field_foreign.get(arch_name, set());
+    reference_paths = self._struct_reference_paths(arch_name);
     struct_ptr_type = struct_type.as_pointer();
     i8_ptr = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -2468,8 +2483,7 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
         );
     }
 
-    _has_ref_fields = self._struct_has_ref_fields(arch_name);
-    if _has_ref_fields {
+    if reference_paths {
         _cycles_on = self._gc_mode() == "cycles";
         if _cycles_on and self.rc_collecting_gv is None {
             self._emit_rc_helpers();
@@ -2489,39 +2503,14 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
             b.branch(rel_fields_bb);
         }
         b = ir.IRBuilder(rel_fields_bb);
-        for (fname, ftype) in field_types.items() {
-            if fname in foreign_fields {
-                continue;
-            }
-            idx = field_indices.get(fname, -1);
-            if idx < 0 {
-                continue;
-            }
-            if self._elem_kind(ftype) != "raw" {
-                field_ptr = b.gep(
-                    release_fn.args[0],
-                    [ir.Constant(i32, 0), ir.Constant(i32, idx)],
-                    name=f"field.{fname}.ptr"
-                );
-                field_val = b.load(field_ptr, name=f"field.{fname}.val");
-                self._emit_elem_release(b, ftype, field_val);
-            } elif self._opt_ptr_payload_of(ftype) is not None {
-                field_ptr = b.gep(
-                    release_fn.args[0],
-                    [ir.Constant(i32, 0), ir.Constant(i32, idx)],
-                    name=f"field.{fname}.ptr"
-                );
-                pv_ptr = b.gep(
-                    field_ptr,
-                    [ir.Constant(i32, 0), ir.Constant(i32, 1)],
-                    name=f"field.{fname}.pvp"
-                );
-                pv_val = b.load(pv_ptr, name=f"field.{fname}.pv");
-                b.call(
-                    self.rc_release_simple_fn,
-                    [b.bitcast(pv_val, i8_ptr, name=f"field.{fname}.pv.cast")]
-                );
-            }
+        for path in reference_paths {
+            field_ptr = b.gep(
+                release_fn.args[0],
+                [ir.Constant(i32, index) for index in [0] + path],
+                name="release.field.ptr"
+            );
+            field = b.load(field_ptr, name="release.field");
+            self._emit_elem_release(b, field.type, field);
         }
         b.branch(post_fields_bb);
         b = ir.IRBuilder(post_fields_bb);

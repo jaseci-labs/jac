@@ -2354,11 +2354,11 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
 
     if isinstance(val.type, ir.PointerType)
         and not isinstance(target_type, ir.PointerType) {
-        if val.type?.pointee and val.type.pointee == target_type {
+        if (val.type?.pointee is not None) and val.type.pointee == target_type {
             return self.builder.load(val, name="struct.unbox");
         }
 
-        if isinstance(target_type, ir.IntType) and val.type?.pointee {
+        if isinstance(target_type, ir.IntType) and (val.type?.pointee is not None) {
             for (sname, abi_type) in self.clib_struct_abi_types.items() {
                 if val.type.pointee == self.struct_types.get(sname)
                     and abi_type == target_type {
@@ -2382,13 +2382,13 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
     if not isinstance(val.type, ir.PointerType)
         and isinstance(target_type, ir.PointerType) {
         if isinstance(val.type, ir.LiteralStructType)
-            and target_type?.pointee
+            and (target_type?.pointee is not None)
             and isinstance(target_type.pointee, ir.LiteralStructType)
             and val.type != target_type.pointee
             and len(val.type.elements) == len(target_type.pointee.elements) {
             val = self._coerce_tuple_to_struct(val, target_type.pointee);
         }
-        if target_type?.pointee and target_type.pointee == val.type {
+        if (target_type?.pointee is not None) and target_type.pointee == val.type {
             if isinstance(val.type, ir.LiteralStructType) {
                 return self._box_value_tuple(val);
             }
@@ -2413,7 +2413,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             return typed_ptr;
         }
 
-        if isinstance(val.type, ir.IntType) and target_type?.pointee {
+        if isinstance(val.type, ir.IntType) and (target_type?.pointee is not None) {
             for (sname, abi_type) in self.clib_struct_abi_types.items() {
                 if target_type.pointee == self.struct_types.get(sname)
                     and abi_type == val.type {

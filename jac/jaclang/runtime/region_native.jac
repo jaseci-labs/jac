@@ -48,7 +48,8 @@ glob RGN_CHUNK: int = 0,
      TLS_DEPTH: int = 16,
      TLS_CAP: int = 24,
      TLS_BLOCK: int = 32,
-     FLAG_ZOMBIE: int = 1;
+     FLAG_ZOMBIE: int = 1,
+     FLAG_RETIRED: int = 2;
 
 def _tls_block -> int {
     blk = __jac_region_tls_get();
@@ -195,13 +196,23 @@ def _registry_holds(ptr: int) -> int {
     return found;
 }
 
+def _release_managed_region(region: Region) {
+    __jac_region_drop(id(region));
+}
+
 def __jac_region_new -> int {
-    raw = malloc(HDR_TOTAL + RGN_CTRL_SIZE);
-    hdl = raw + HDR_TOTAL;
-    __mem_store_i64(hdl + HDR_ALLOC_ID_OFF, HDR_MAGIC_SHIFT_BASE);
-    __mem_store_i64(hdl + HDR_TAG_OFF, 0);
-    __mem_store_i64(hdl + HDR_RC_OFF, RC_SENTINEL);
-    __mem_store_i64(hdl + HDR_DTOR_OFF, 0);
+    hdl = 0;
+    if __mem_rc_enabled() != 0 {
+        hdl = __mem_alloc_managed(RGN_CTRL_SIZE);
+        __mem_store_i64(hdl + HDR_DTOR_OFF, id(_release_managed_region));
+    } else {
+        raw = malloc(HDR_TOTAL + RGN_CTRL_SIZE);
+        hdl = raw + HDR_TOTAL;
+        __mem_store_i64(hdl + HDR_ALLOC_ID_OFF, HDR_MAGIC_SHIFT_BASE);
+        __mem_store_i64(hdl + HDR_TAG_OFF, 0);
+        __mem_store_i64(hdl + HDR_RC_OFF, RC_SENTINEL);
+        __mem_store_i64(hdl + HDR_DTOR_OFF, 0);
+    }
     i = 0;
     while i < RGN_CTRL_SIZE {
         __mem_store_i64(hdl + i, 0);
@@ -349,6 +360,7 @@ def _list_tail(head: int, link_off: int) -> int {
 }
 
 def _reabsorb(child: int, parent: int) {
+    __mem_store_i64(child + RGN_FLAGS, __mem_load_i64(child + RGN_FLAGS) | FLAG_RETIRED);
     _registry_remove(child);
     ch = __mem_load_i64(child + RGN_CHUNK);
     if ch != 0 {
@@ -404,13 +416,21 @@ def _reabsorb(child: int, parent: int) {
 }
 
 def _teardown(hdl: int) {
-    _registry_remove(hdl);
+    # Field destructors may follow other arena objects or release this owner.
+    # Keep membership discoverable until every destructor has finished.
+    __mem_store_i64(hdl + RGN_FLAGS, __mem_load_i64(hdl + RGN_FLAGS) | FLAG_RETIRED);
     __jac_region_died_hook(hdl);
+    merged = __mem_load_i64(hdl + RGN_MERGED);
+    while merged != 0 {
+        __jac_region_died_hook(merged);
+        merged = __mem_load_i64(merged + RGN_SIB);
+    }
     cur = __mem_load_i64(hdl + RGN_DTL);
     while cur != 0 {
         __mem_call_dtor(__mem_load_i64(cur + DTOR_FN), __mem_load_i64(cur + DTOR_OBJ));
         cur = __mem_load_i64(cur + DTOR_NEXT);
     }
+    _registry_remove(hdl);
     ck = __mem_load_i64(hdl + RGN_CHUNK);
     while ck != 0 {
         prev = __mem_load_i64(ck + CHUNK_PREV);
@@ -428,7 +448,6 @@ def _teardown(hdl: int) {
     m = __mem_load_i64(hdl + RGN_MERGED);
     while m != 0 {
         nx = __mem_load_i64(m + RGN_SIB);
-        __jac_region_died_hook(m);
         free(m - HDR_TOTAL);
         m = nx;
     }
@@ -437,6 +456,9 @@ def _teardown(hdl: int) {
 
 def __jac_region_drop(hdl: int) {
     if hdl == 0 {
+        return;
+    }
+    if (__mem_load_i64(hdl + RGN_FLAGS) & FLAG_RETIRED) != 0 {
         return;
     }
     if __mem_load_i64(hdl + RGN_KIDS) > 0 {

@@ -31,17 +31,57 @@ and registries shared by analysis and codegen (`symbol_utils`, `expr_keys`, `typ
 
 When the driver knows a module's codespace before parsing, `jc_unit` runs the
 existing `ASTValidationPass` and `SymTabBuildPass` after annex weaving, inside
-the parse region. The tree and symbol graph cross into the host together.
+the parse region. If both succeed, `DeclImplMatchPass` matches declarations and
+implementations and resolves their local binding relationships there as well.
+The tree and symbol graph cross into the host together.
 Modules with wildcard imports defer symbol construction until the driver's
 dependency resolver has made the imported names available. Parsing without a
 compiler program, or without a known codespace, keeps the ordinary host schedule.
+Graph-construction expressions also defer early analysis until the shared graph
+lowering pass has introduced their scopes and imports.
 
 `PassResult` carries completed diagnostics and timing through the ordinary pass
 driver, which applies diagnostic policy and records each pass once. Native field
 and reference-container layouts come from the backend's ABI metadata;
 `jc_materialize` preserves object identity when copying symbol indexes and edges.
+Edge payloads and connection order survive materialization through the shared
+OSP runtime. Linked declarations and implementations use one primary scope.
 Keep pass algorithms in `passes/`, and extend this shared boundary when another
 pass moves into the kernel.
+
+The frontend ABI uses an owned request for each invocation. `jc_request` creates
+it, `jc_annex` borrows it while adding inputs, and `jc_run` consumes it. A request
+that cannot be prepared is consumed by `jc_discard`. Results and pending inputs
+are not kept in global compiler slots. The host checks the frontend ABI version
+before calling the kernel.
+
+One `FrontendResult` carries the module, per-source annex diagnostics, and named
+`PassResult` records through a single materialization. Floating-point fields use
+the same native layout metadata as other primitive fields, including pass timing.
+Annex syntax errors remain native results; a materialization failure is an error,
+not a request to silently repeat the compilation on the host. Successful annexes
+use the same weaving helper in both execution paths.
+
+The internal compiler library is linked with `native_build(..., lib=True,
+closed_world=True)`: its exported C entry points do not expose a Jac virtual-call
+ABI. All calls through Jac vtables, including calls through base classes, must
+belong to that linkage unit. The option propagates to native imports and changes
+the code-generation cache identity. Ordinary libraries default to open-world
+dispatch. Do not enable it for libraries whose clients can invoke Jac methods
+through object pointers.
+
+Closed-world emission supplies LLVM type metadata and checked virtual loads.
+The library linker internalizes non-exported definitions, runs LLVM global dead
+code/virtual-function elimination, and rejects surviving incomplete lowering
+before lowering the checked loads for machine-code emission. A demoted method
+is removable only when LLVM proves it unreachable; exported and indirect calls
+remain part of the required closure.
+
+This path still materializes mutable host graph objects. Immutable fragment
+publication, owner/root coupling, dependency reuse and retained prior binding
+results are remaining work in [the compiler migration epic](https://github.com/jaseci-labs/jac/issues/9061).
+The current Region and graph lifetime support does not by itself complete that
+publication contract.
 
 `scripts/native_compile_bench.jac` at the repository root measures uncached AOT
 application builds with a warm compiler. Set `JAC_COMPILER_LIB` to each built

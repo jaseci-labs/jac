@@ -20,7 +20,8 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.diagnostics { E5095, W6008 }
 import from jaclang.compiler.intrinsic_registry {
     INTRINSIC_REGISTRY,
-    IntrinsicDispatch
+    IntrinsicDispatch,
+    IntrinsicStorage
 }
 
 glob FIXTURES = os.path.join(
@@ -83,7 +84,9 @@ glob RAW_MEM_IMPORTS = "import from c { def malloc(n: int) -> int; def free(p: i
          IntrinsicDispatch.MEM_LOAD: "mem.ld",
          IntrinsicDispatch.MEM_STORE: "mem.p",
          IntrinsicDispatch.ATOMIC_XCHG: "atomicrmw xchg",
-         IntrinsicDispatch.CALL_DTOR: "dtor.fn"
+         IntrinsicDispatch.MEM_CALL: "mem.callback",
+         IntrinsicDispatch.MEM_ALLOC: "mem.allocated",
+         IntrinsicDispatch.MEM_COPY: "memcpy"
      };
 
 """Probe source per dispatch kind; a new dispatch kind must add one here."""
@@ -101,15 +104,16 @@ def _probe_source(intr: any) -> str {
         spec = intr.result_spec
             if intr.dispatch == IntrinsicDispatch.MEM_LOAD
             else intr.param_specs[1];
+        suffix = "ptr" if intr.storage == IntrinsicStorage.POINTER else spec;
         return (
             RAW_MEM_IMPORTS
             + "def probe(x: int) -> int { p = malloc(8); __mem_store_"
-            + spec
+            + suffix
             + "(p, "
             + spec
             + "(x + 7)); "
             + "v = __mem_load_"
-            + spec
+            + suffix
             + "(p); free(p); return int(v); }\n"
         );
     }
@@ -121,11 +125,25 @@ def _probe_source(intr: any) -> str {
             "return v + old; }\n"
         );
     }
-    if intr.dispatch == IntrinsicDispatch.CALL_DTOR {
-        return (
-            "def probe(x: int) -> int { if x == 0 { __mem_call_dtor(x, x); } "
-            "return x + 7; }\n"
-        );
+    if intr.dispatch == IntrinsicDispatch.MEM_CALL {
+        return "def probe(x: int) -> int { if x == 0 { "
+            + intr.name
+            + "(x, x); } return x + 7; }\n";
+    }
+    if intr.dispatch == IntrinsicDispatch.MEM_ALLOC {
+        return "def probe(x: int) -> int { if x == 0 { p = "
+            + intr.name
+            + "(8); return p; } return x + 7; }\n";
+    }
+    if intr.dispatch == IntrinsicDispatch.MEM_COPY {
+        return RAW_MEM_IMPORTS
+            + "def probe(x: int) -> int { p = malloc(16); __mem_store_i64(p, x + 7); "
+            + "__mem_copy(p + 8, p, 8); v = __mem_load_i64(p + 8); free(p); return v; }\n";
+    }
+    if intr.dispatch == IntrinsicDispatch.MEM_RC_ENABLED {
+        return "def probe(x: int) -> int { enabled = "
+            + intr.name
+            + "(); return x + 7 if enabled == 0 or enabled == 1 else 0; }\n";
     }
     assert False , (
         f"no probe strategy for dispatch {intr.dispatch}: add one so this "
@@ -159,6 +177,9 @@ test "every registry intrinsic lowers through its registered emitter" {
             );
             fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);
             assert fn(35) == 42 , f"{intr.name}: probe did not execute cleanly";
+        } elif intr.dispatch == IntrinsicDispatch.MEM_RC_ENABLED {
+            fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);
+            assert fn(35) == 42;
         } else {
             ir_text = str(ir_mod.gen.llvm_ir);
             assert _call_lines(ir_text, intr.name) , (

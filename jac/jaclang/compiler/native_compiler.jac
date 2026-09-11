@@ -2,9 +2,10 @@ import ctypes;
 import json;
 import os;
 import sys;
-import from ctypes { c_char_p, c_double, c_int64, c_void_p, cast, py_object }
+import from ctypes { c_char_p, c_int64, c_void_p, cast, py_object }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 import type from jaclang.compiler.passes.transform { PassResult }
+import from jaclang.compiler.frontend.result { FRONTEND_ABI, FrontendResult }
 
 glob CODE_INT: int = 1,
      CODE_BOOL: int = 2,
@@ -15,7 +16,8 @@ glob CODE_INT: int = 1,
      CODE_NATLIST: int = 7,
      CODE_UNION: int = 8,
      CODE_OPTENUM: int = 9,
-     CODE_NATDICT: int = 10;
+     CODE_NATDICT: int = 10,
+     CODE_FLOAT: int = 11;
 
 glob CLASS_MODULES: tuple = (
          "jaclang.compiler.frontend.unitree",
@@ -23,6 +25,7 @@ glob CLASS_MODULES: tuple = (
          "jaclang.compiler.frontend.srcloc",
          "jaclang.compiler.frontend.constant",
          "jaclang.compiler.frontend.parser.tokens",
+         "jaclang.compiler.frontend.result",
          "jaclang.compiler.frontend.roles",
          "jaclang.compiler.frontend.relations",
          "jaclang.compiler.frontend.diagnostics",
@@ -79,27 +82,31 @@ class NativeCompiler {
 
     def _bind(self: NativeCompiler) {
         L = self.lib;
+        version = getattr(L, "jc_result_abi", None);
+        if version is None {
+            raise OSError("Rebuild the native compiler kernel for the typed frontend ABI");
+        }
+        version.argtypes = [];
+        version.restype = c_int64;
+        self.result_abi: int = version();
+        if self.result_abi != FRONTEND_ABI {
+            raise OSError("Native compiler kernel frontend ABI does not match the compiler");
+        }
         L.jac_str_new.argtypes = [c_char_p, c_int64];
         L.jac_str_new.restype = c_void_p;
-        for name in ("jc_run", "jc_annex") {
-            fn = getattr(L, name);
-            fn.argtypes = [c_void_p, c_void_p, c_int64, c_void_p, c_void_p, c_int64];
-            fn.restype = c_int64;
-        }
-        for name in ("jc_probe", "jc_err_count", "jc_lex_errs", "jc_mz_skipped") {
-            fn = getattr(L, name);
-            fn.argtypes = [];
-            fn.restype = c_int64;
-        }
-        for name in (
-            "jc_take_module",
-            "jc_take_diags",
-            "jc_take_lexdiags",
-            "jc_take_comments"
-        ) {
+        strings = [c_void_p, c_void_p, c_int64, c_void_p, c_void_p, c_int64];
+        L.jc_request.argtypes = strings + [c_int64];
+        L.jc_request.restype = c_void_p;
+        L.jc_annex.argtypes = [c_void_p] + strings;
+        L.jc_annex.restype = c_int64;
+        L.jc_run.argtypes = [c_void_p];
+        L.jc_run.restype = c_void_p;
+        L.jc_discard.argtypes = [c_void_p];
+        L.jc_discard.restype = None;
+        for name in ("jc_probe", "jc_mz_skipped") {
             fn = getattr(L, name);
             fn.argtypes = [];
-            fn.restype = c_void_p;
+            fn.restype = c_int64;
         }
         L.jc_reg_consts.argtypes = [c_int64] * 12;
         L.jc_reg_consts.restype = c_int64;
@@ -111,21 +118,10 @@ class NativeCompiler {
         L.jc_reg_field.restype = c_int64;
         L.jc_reg_default.argtypes = [c_int64] * 3;
         L.jc_reg_default.restype = c_int64;
+        L.jc_reg_edge_builder.argtypes = [c_int64];
+        L.jc_reg_edge_builder.restype = c_int64;
         L.jc_reg_edge.argtypes = [c_int64] * 2;
         L.jc_reg_edge.restype = c_int64;
-        L.jc_reg_hint_tags.argtypes = [c_int64] * 2;
-        L.jc_reg_hint_tags.restype = c_int64;
-        self.supports_early: bool = hasattr(L, "jc_set_early");
-        if self.supports_early {
-            L.jc_set_early.argtypes = [c_int64];
-            L.jc_set_early.restype = c_int64;
-            L.jc_completed.argtypes = [];
-            L.jc_completed.restype = c_int64;
-            L.jc_pass_time.argtypes = [c_int64];
-            L.jc_pass_time.restype = c_double;
-            L.jc_take_pass_alerts.argtypes = [c_int64, c_int64];
-            L.jc_take_pass_alerts.restype = c_void_p;
-        }
     }
 
     def _hold(self: NativeCompiler, o: any) -> int {
@@ -193,6 +189,8 @@ class NativeCompiler {
             flags = 0;
             if code == "int" {
                 nat_code = CODE_INT;
+            } elif code == "float" {
+                nat_code = CODE_FLOAT;
             } elif code == "bool" {
                 nat_code = CODE_BOOL;
             } elif code == "str" {
@@ -385,71 +383,90 @@ class NativeCompiler {
         self.lib.jc_reg_class(1, self._hold(NodeAnchor), 0, 0, 0);
         self._register_defaults(NodeAnchor, 1);
         self._register_edges();
-        self.lib.jc_reg_hint_tags(
-            stable_osp_tag("SrcDiag"), stable_osp_tag("CommentData")
-        );
+        import from jaclang.runtime.runtime { JacGraph }
+        self.lib.jc_reg_edge_builder(self._hold(JacGraph.heavy_edge));
     }
 
-    def _call_str2(self: NativeCompiler, name: str, a: str, b: str) -> int {
+    def _call_str2(
+        self: NativeCompiler, name: str, a: str, b: str,
+        prefix: tuple = (), suffix: tuple = ()
+    ) -> int {
         fn = getattr(self.lib, name);
         ab = a.encode();
         bb = b.encode();
         pa = self.lib.jac_str_new(ab, len(ab));
         pb = self.lib.jac_str_new(bb, len(bb));
         return fn(
+            *prefix,
             c_void_p(pa),
             c_void_p(pa),
             c_int64(len(ab)),
             c_void_p(pb),
             c_void_p(pb),
-            c_int64(len(bb))
+            c_int64(len(bb)),
+            *suffix
         );
     }
 
-    def annex(self: NativeCompiler, annex_src: str, annex_path: str) -> int {
-        return self._call_str2("jc_annex", annex_src, annex_path);
-    }
-
-    def run(self: NativeCompiler, source: str, path: str) -> int {
-        return self._call_str2("jc_run", source, path);
-    }
-
-    def prepare_early(self: NativeCompiler, context: str) {
-        if self.supports_early {
-            self.lib.jc_set_early(
-                {"server": 1, "client": 2, "native": 3}.get(context, 0)
-            );
+    def run(
+        self: NativeCompiler,
+        source: str,
+        path: str,
+        annexes: list[tuple[str, str]],
+        context: str = ""
+    ) -> (FrontendResult | None) {
+        request = self._call_str2(
+            "jc_request", source, path,
+            suffix=(c_int64({"server": 1, "client": 2, "native": 3}.get(context, 0)),)
+        );
+        if not request {
+            raise MemoryError("Cannot allocate native frontend request");
         }
+        try {
+            for (annex_source, annex_path) in annexes {
+                self._call_str2(
+                    "jc_annex", annex_source, annex_path,
+                    prefix=(c_void_p(request),)
+                );
+            }
+        } except BaseException {
+            self.lib.jc_discard(c_void_p(request));
+            raise;
+        }
+        # jc_run consumes the request, including on a compilation failure.
+        result = self._take(self.lib.jc_run(c_void_p(request)));
+        if result is None {
+            return None;
+        }
+        if not isinstance(result, FrontendResult) {
+            raise RuntimeError("native frontend returned an invalid result");
+        }
+        return result;
     }
 
-    def take_pass_results(self: NativeCompiler) -> dict[str, PassResult] {
-        import from jaclang.compiler.passes.transform { PassResult }
+    def pass_results(
+        self: NativeCompiler, result: FrontendResult
+    ) -> dict[str, PassResult] {
+        import from jaclang.compiler.passes.transform { PassResult, Transform }
         import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
         import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+        import from jaclang.compiler.passes.decl_impl_match_pass { DeclImplMatchPass }
+        import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
+        classes: dict[str, type[Transform]] = {
+            "ASTValidationPass": ASTValidationPass,
+            "SymTabBuildPass": SymTabBuildPass,
+            "DeclImplMatchPass": DeclImplMatchPass
+        };
         out: dict[str, PassResult] = {};
-        if not self.supports_early {
-            return out;
-        }
-        completed = self.lib.jc_completed();
-        passes: list[tuple[int, type]] = [(1, ASTValidationPass), (2, SymTabBuildPass)];
-        for (pass_id, pass_cls) in passes {
-            if not (completed & pass_id) {
-                continue;
-            }
-            errors = self._take(self.lib.jc_take_pass_alerts(pass_id, 0)) or [];
-            warnings = self._take(self.lib.jc_take_pass_alerts(pass_id, 1)) or [];
-            for alert in errors + warnings {
+        for completed in result.passes {
+            pass_cls = classes[completed.name];
+            for alert in completed.errors_had + completed.warnings_had {
                 alert.from_pass = pass_cls;
                 if alert.code is not None {
-                    import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
                     alert.code = DIAGNOSTICS[alert.code.code];
                 }
             }
-            out[pass_cls.__name__] = PassResult(
-                errors_had=errors,
-                warnings_had=warnings,
-                time_taken=self.lib.jc_pass_time(pass_id)
-            );
+            out[completed.name] = completed;
         }
         return out;
     }
@@ -462,30 +479,6 @@ class NativeCompiler {
         out = boxed.value;
         ctypes.pythonapi.Py_DecRef(boxed);
         return out;
-    }
-
-    def take_module(self: NativeCompiler) -> any {
-        return self._take(self.lib.jc_take_module());
-    }
-
-    def take_diags(self: NativeCompiler) -> list {
-        return self._take(self.lib.jc_take_diags()) or [];
-    }
-
-    def take_lexdiags(self: NativeCompiler) -> list {
-        return self._take(self.lib.jc_take_lexdiags()) or [];
-    }
-
-    def take_comments(self: NativeCompiler) -> list {
-        return self._take(self.lib.jc_take_comments()) or [];
-    }
-
-    def err_count(self: NativeCompiler) -> int {
-        return self.lib.jc_err_count();
-    }
-
-    def lex_errs(self: NativeCompiler) -> int {
-        return self.lib.jc_lex_errs();
     }
 
     def skipped(self: NativeCompiler) -> int {

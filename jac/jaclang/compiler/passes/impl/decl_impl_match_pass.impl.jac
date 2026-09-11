@@ -3,23 +3,19 @@ impl DeclImplMatchPass._run_impl(ir_in: Module) -> Module {
     self._e2026_reported = fresh_reported;
     self.cur_node = ir_in;
 
-    self.connect_impls(ir_in.sym_tab, ir_in.sym_tab);
-
-    self._resolve_symbols_in_subtree(ir_in);
+    self.connect_impls(ir_in.sym_tab);
 
     for arch in ir_in.get_all_sub_nodes(Archetype) {
         self._populate_inline_init_symbols(arch);
     }
+    self._resolve_symbols_in_subtree(ir_in);
     return ir_in;
 }
 
 impl DeclImplMatchPass.defn_lookup(lookup: Symbol) -> (NameAtom | None) {
-    for defn in range(len(lookup.defn)) {
-        candidate = lookup.defn[(len(lookup.defn) - (defn + 1))];
-        if (
-            isinstance(candidate.name_of, AstImplNeedingNode)
-            and candidate.name_of.needs_impl
-        ) {
+    for candidate in reversed(lookup.defn) {
+        declaration = candidate.name_of;
+        if isinstance(declaration, AstImplNeedingNode) and declaration.needs_impl {
             return candidate;
         }
     }
@@ -27,47 +23,55 @@ impl DeclImplMatchPass.defn_lookup(lookup: Symbol) -> (NameAtom | None) {
 }
 
 impl DeclImplMatchPass._find_archetype_defn(lookup: Symbol) -> (NameAtom | None) {
-    for defn_idx in range(len(lookup.defn)) {
-        candidate = lookup.defn[defn_idx];
-        if (
-            isinstance(candidate.name_of, Archetype)
-            and candidate.name_of.body is not None
-        ) {
-            return candidate;
+    first_archetype: NameAtom | None = None;
+    last_definition: NameAtom | None = None;
+    for candidate in lookup.defn {
+        last_definition = candidate;
+        declaration = candidate.name_of;
+        if isinstance(declaration, Archetype) {
+            if declaration.body is not None {
+                return candidate;
+            }
+            if first_archetype is None {
+                first_archetype = candidate;
+            }
         }
     }
-
-    for defn_idx in range(len(lookup.defn)) {
-        candidate = lookup.defn[defn_idx];
-        if isinstance(candidate.name_of, Archetype) {
-            return candidate;
-        }
-    }
-
-    return lookup.defn[-1] if lookup.defn else None;
+    return first_archetype if first_archetype is not None else last_definition;
 }
 
-impl DeclImplMatchPass.connect_impls(
-    source_sym_tab: UniScopeNode, target_sym_tab: UniScopeNode
-) -> None {
-    for sym in source_sym_tab.names_in_scope.values() {
-        for defn in sym.defn {
-            if isinstance(defn.name_of, ImplDef) {
-                self._connect_one_impl(defn.name_of, sym.sym_name, target_sym_tab);
-            }
+impl DeclImplMatchPass.connect_impls(root_scope: UniScopeNode) -> None {
+    pending: list[UniScopeNode] = [root_scope];
+    visited_scopes: set[int] = set();
+    visited_bindings: set[int] = set();
+    while pending {
+        scope = pending.pop();
+        if id(scope) in visited_scopes {
+            continue;
         }
-    }
-    self._report_bare_redecls(source_sym_tab);
-    for source_scope in source_sym_tab.kid_scope {
-        if (source_sym_tab is target_sym_tab) {
-            self.connect_impls(source_scope, source_scope);
-        } else {
-            for target_scope in target_sym_tab.kid_scope {
-                if (source_scope.scope_name == target_scope.scope_name) {
-                    self.connect_impls(source_scope, target_scope);
-                    break;
+        visited_scopes.add(id(scope));
+        binding_scope = scope.primary_scope;
+        if id(binding_scope) not in visited_bindings {
+            visited_bindings.add(id(binding_scope));
+            seen_symbols: set[int] = set();
+            for sym in binding_scope.names_in_scope.values() {
+                if id(sym) in seen_symbols {
+                    continue;
+                }
+                seen_symbols.add(id(sym));
+                for defn in sym.defn {
+                    declaration = defn.name_of;
+                    if isinstance(declaration, ImplDef) {
+                        self._connect_one_impl(declaration, sym.sym_name, binding_scope);
+                    }
                 }
             }
+            self._report_bare_redecls(binding_scope);
+        }
+        # Linked scopes share bindings but retain their distinct lexical
+        # children. Visit both child sets without deriving the bindings twice.
+        for child in reversed(scope.kid_scope) {
+            pending.append(child);
         }
     }
 }
@@ -162,7 +166,6 @@ impl DeclImplMatchPass._connect_one_impl(
             }
         }
     }
-    self._share_scope_names(impl_node, valid_decl);
 
     for assignment in impl_node.get_all_sub_nodes(Assignment) {
         if assignment.type_tag is not None {
@@ -178,7 +181,6 @@ impl DeclImplMatchPass._connect_one_impl(
         }
         bind_assignment_targets(assignment);
     }
-    self._resolve_symbols_in_subtree(impl_node);
 
     if (
         len(name_of_links) >= 1
@@ -187,17 +189,6 @@ impl DeclImplMatchPass._connect_one_impl(
     ) {
         self._populate_self_member_symbols(impl_node, name_of_links[0].name_of);
     }
-
-    self._share_scope_names(impl_node, valid_decl);
-}
-
-impl DeclImplMatchPass._share_scope_names(
-    impl_node: ImplDef, valid_decl: AstImplNeedingNode
-) -> None {
-    merged = dict(impl_node.sym_tab.names_in_scope);
-    merged.update(valid_decl.sym_tab.names_in_scope);
-    impl_node.sym_tab.set_primary_names(merged);
-    valid_decl.sym_tab.set_primary_names(merged);
 }
 
 impl DeclImplMatchPass._report_bare_redecls(sym_tab: UniScopeNode) -> None {
@@ -366,9 +357,6 @@ impl DeclImplMatchPass._populate_inline_init_symbols(archetype: Archetype) -> No
         }
         ability: Ability = method_sym.decl.name_of;
 
-        body_node = ability.body
-            if not isinstance(ability.body, ImplDef)
-            else ability.body;
         for trailer_node in ability.get_all_sub_nodes(AtomTrailer) {
             if not (
                 trailer_node.parent and isinstance(trailer_node.parent, Assignment)

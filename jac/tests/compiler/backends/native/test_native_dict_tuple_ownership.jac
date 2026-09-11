@@ -16,3 +16,16 @@ test "dictionary tuple reads release each object exactly once" {
         assert delta == 2 , f"{name}: {delta}";
     }
 }
+
+test "managed dictionary rehash moves owned tuples without extra drops or retention" {
+    for mode in ["cycles", "rc"] {
+        (engine, _) = compile_native("dict_tuple_ownership.jac", gc_mode=mode);
+        probe = get_func(engine, "rehash_objects", ctypes.c_int64);
+        drops = get_func(engine, "drop_count", ctypes.c_int64);
+        for _ in range(5) {
+            before = drops();
+            assert probe() == 127;
+            assert drops() - before == 128 , mode;
+        }
+    }
+}

@@ -75,7 +75,8 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
             continue;
         }
         slot_ty = allocation_type.pointee;
-        _lu_ptr = isinstance(slot_ty, ir.PointerType) and slot_ty?.pointee;
+        _lu_ptr = isinstance(slot_ty, ir.PointerType)
+            and (slot_ty?.pointee is not None);
         if not _lu_ptr
             and (
                 self._opt_ptr_payload_of(slot_ty) is None
@@ -399,11 +400,13 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
             }
 
             skip_var: (str | None) = None;
-            if isinstance(nd.expr, uni.Name)
-                and nd.expr.sym_name in self.local_vars
-                and nd.expr.sym_name not in self.param_vars
-                and nd.expr.sym_name not in self.closure_cell_handles {
-                skip_var = nd.expr.sym_name;
+            import from jaclang.compiler.expr_keys { transferred_local }
+            source = transferred_local(nd.expr);
+            if source is not None
+                and source.sym_name in self.local_vars
+                and source.sym_name not in self.param_vars
+                and source.sym_name not in self.closure_cell_handles {
+                skip_var = source.sym_name;
             } elif isinstance(nd.expr, uni.TupleVal) {
                 tup_elems = nd.expr.values or [];
                 for tup_elem in tup_elems {
@@ -694,7 +697,6 @@ impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
     _region_body_locals = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
-    _i8p = ir.IntType(8).as_pointer();
     _hdl = self._codegen_expr(nd.target);
     if _hdl is None {
         if isinstance(nd.body, (list, tuple)) {
@@ -706,7 +708,7 @@ impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
     _synth: (str | None) = None;
     if not isinstance(nd.target, uni.Name) {
         _synth = f".region.{id(nd)}";
-        _slot = self._entry_alloca(_i8p, _synth);
+        _slot = self._entry_alloca(_hdl.type, _synth);
         self.builder.store(_hdl, _slot);
         self.local_vars[_synth] = _slot;
         self.region_handle_vars.add(_synth);
@@ -2404,10 +2406,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 and not is_inplace_set_op {
                 if var_name in self.region_handle_vars {
                     _old_hdl = self.builder.load(alloca, name=f"{var_name}.old");
-                    self.builder.call(
-                        self._region_kernel_fn("__jac_region_drop"),
-                        [self._region_i64(_old_hdl, name=f"{var_name}.old.i64")]
-                    );
+                    self._region_release(_old_hdl);
                 } elif _is_raw_int_ptr {
                     self.param_vars.add(var_name);
                 } else {
@@ -2525,10 +2524,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             } elif var_name in self.region_handle_vars
                 and self._opt_ptr_payload_of(alloca.pointee_type) is not None {
                 _old_opt_hdl = self.builder.load(alloca, name=f"{var_name}.old");
-                self.builder.call(
-                    self._region_kernel_fn("__jac_region_drop"),
-                    [self._region_i64(_old_opt_hdl, name=f"{var_name}.old.i64")]
-                );
+                self._region_release(_old_opt_hdl);
             } elif self._opt_ptr_payload_of(alloca.pointee_type) is not None
                 and not self._nogc_headerless()
                 and not is_inplace_set_op
