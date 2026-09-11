@@ -5,7 +5,6 @@ import from ._libc { peek, poke, c_string, c_alloc_string }
 
 glob PY_VER: str = "3.14",
      PY_VER_COMPACT: str = "314",
-     # PyMemAllocatorName in the bundled CPython's public C API.
      PYMEM_ALLOCATOR_MIMALLOC: int = 7;
 
 import from c {
@@ -136,8 +135,7 @@ obj Embed {
         self.check(
             cfg, a.PyInitConfig_SetInt(cfg, "use_environment", 0), "use_environment"
         );
-        # Sparse, long-lived compiler objects otherwise pin pymalloc arenas
-        # containing gigabytes of already released syntax and type data.
+
         self.check(
             cfg,
             a.PyInitConfig_SetInt(cfg, "allocator", PYMEM_ALLOCATOR_MIMALLOC),
@@ -234,9 +232,7 @@ obj CStrArray {
 def:pub open_tree(rt: str, exe_path: str) -> Embed {
     os.environ["JAC_STANDALONE"] = "1";
     os.environ["JAC_EXECUTABLE"] = exe_path;
-    # Return unused pages even when compilation is followed by an idle wait
-    # for an external bundler. Configure before libpython initializes its
-    # allocator; preserve an explicit host tuning choice.
+
     if not os.environ.get("MIMALLOC_PURGE_DELAY", "") {
         os.environ["MIMALLOC_PURGE_DELAY"] = "0";
     }

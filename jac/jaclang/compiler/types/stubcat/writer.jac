@@ -353,8 +353,6 @@ obj CatalogWriter {
     }
 
     def _real_path(path: str) -> str {
-        # A writer owns one immutable interface snapshot. Identity comparisons
-        # must reuse canonical paths throughout its symbol/type traversal.
         found = self._canonical_paths.get(path);
         if found is None {
             found = os.path.realpath(path);

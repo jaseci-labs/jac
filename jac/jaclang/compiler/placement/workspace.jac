@@ -59,8 +59,6 @@ glob _ws_cache: dict[str, tuple[tuple, WorkspaceSpec]] = {},
 
 @contextmanager
 def workspace_scope -> Iterator[None] {
-    # Nested compilation contexts share filesystem facts, but select their
-    # own app. A new outer request observes workspace and symlink edits.
     if _resolution.get() is not None {
         yield ;
         return;
