@@ -2,7 +2,11 @@ import contextlib;
 import from pathlib { Path }
 import from types { ModuleType }
 import from typing { TYPE_CHECKING }
-import from jaclang.client.client_bundle { ClientBundleError }
+import from jaclang.client.client_bundle {
+    ClientBuildInputs,
+    ClientBundle,
+    ClientBundleError
+}
 import from jaclang.client.jac_client_compiler { JacClientCompiler }
 import from jaclang.client.vite_bundler { ViteBundler }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
@@ -32,10 +36,16 @@ class ViteCompiler {
     def _owes_wasm(self: ViteCompiler, module_path: Path) -> bool;
     def _emit_na_wasm(self: ViteCompiler, module_path: Path) -> None;
     def _emit_wasm_module(self: ViteCompiler, module_path: Path) -> bool;
-    def compile_and_bundle(
-        self: ViteCompiler, module: ModuleType, module_path: Path
-    ) -> tuple[str, str, list[str], list[str]];
+    def _wasm_targets(self: ViteCompiler, module_path: Path) -> list[Path];
+    def _compile_wasm_module(
+        self: ViteCompiler, module_path: Path
+    ) -> dict[str, bytes];
 
+    def prepare_bundle(
+        self: ViteCompiler, module: ModuleType, module_path: Path
+    ) -> ClientBuildInputs;
+
+    def bundle(self: ViteCompiler, inputs: ClientBuildInputs) -> ClientBundle;
     def compile(
         self: ViteCompiler, module: (ModuleType | None), module_path: Path
     ) -> tuple[list[str], list[str]];
