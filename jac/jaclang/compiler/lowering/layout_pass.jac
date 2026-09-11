@@ -1,3 +1,4 @@
+import type from jaclang.compiler.session.services { AnalysisServices }
 import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from jaclang.compiler.ir.enums { Tokens as Tok }
 import from jaclang.compiler.tools.unparse_pass { unparse_node }
@@ -130,7 +131,7 @@ def archetype_accessors(arch: Archetype) -> list[tuple[(str, HasVar, Ability)]] 
     return out;
 }
 
-def get_layout_registry(module: Module, prog: any) -> LayoutRegistry {
+def get_layout_registry(module: Module, prog: AnalysisServices) -> LayoutRegistry {
     reg = artifact_for(module).layout_registry;
     if reg is not None {
         return reg;

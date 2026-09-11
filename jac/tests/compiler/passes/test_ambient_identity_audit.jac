@@ -727,7 +727,7 @@ test "optional_layout_signal" {
     (native_fields, native_codes) = results["native"];
     (typed_fields, typed_codes) = results["typing"];
     assert ("inner", "Point | None") in native_fields;
-    assert ("inner", "Optional [ Point ]") in typed_fields;
+    assert ("inner", "Optional[Point]") in typed_fields;
     assert native_codes == typed_codes , (
         "layout diagnostic streams diverge: native="
         + str(native_codes)
