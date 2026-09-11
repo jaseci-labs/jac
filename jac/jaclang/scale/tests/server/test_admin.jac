@@ -903,15 +903,13 @@ test "a disabled portal warns when an admin account is dormant in the identity s
 
 
 test "a disabled portal still registers when the identity store is unreachable" {
+    import from jaclang.data.store { ConnInfo, PgStore }
+
     def check(manager: UserManager) {
-        portal = JacAPIServerAdmin(user_manager=manager);
-        with patch.object(
-            manager,
-            "find_user_by_identity",
-            side_effect=RuntimeError("connection refused")
-        ) {
-            assert portal.register_admin_endpoints() is False;
-        }
+        storage: any = manager._identity_storage;
+        storage.store = PgStore(conninfo=ConnInfo(host="127.0.0.1", port=1));
+        assert JacAPIServerAdmin(user_manager=manager).register_admin_endpoints()
+            is False;
     }
     _with_project("enabled = false\n", check);
 }
