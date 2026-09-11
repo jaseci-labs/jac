@@ -23,7 +23,10 @@ granular half of the decorator contract is pinned.
 Tracks the front-end native idiom work in #8039.
 """
 
-import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from jaclang.compiler.backends.common.artifact_store {
+    artifact_for,
+    existing_artifact
+}
 import ctypes;
 import os;
 import from tests.support {
@@ -129,7 +132,8 @@ test "guardrail: @abstractmethod refuses where abst is accepted" {
         "a seam. `import abc;` has always refused the whole module here; "
         f"the `from` spelling is classified on the same terms: {errs}"
     );
-    assert artifact_for(ir).llvm_ir is None , (
+    remaining = existing_artifact(ir);
+    assert remaining is None or remaining.llvm_ir is None , (
         "a module-fatal violation must withhold the LLVM IR"
     );
     kw = check_na_inline(

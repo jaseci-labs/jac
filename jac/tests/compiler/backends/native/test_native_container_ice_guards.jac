@@ -135,7 +135,9 @@ test "compr over or lowers, and its absent arm is falsy rather than a fault" {
         "tern_local_compr",
         "tern_inline_or"
     ] {
-        assert fn in artifact_for(ir).native_layout.functions , f"{fn} demoted";
+        ir_layout = artifact_for(ir).native_layout;
+        assert ir_layout is not None , "native layout was not produced";
+        assert fn in ir_layout.functions , f"{fn} demoted";
     }
 }
 

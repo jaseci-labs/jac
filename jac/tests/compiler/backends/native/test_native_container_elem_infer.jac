@@ -232,7 +232,9 @@ test "un-inferable elem type: equality against an unboxable peer is refused" {
         + f"{[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "f" not in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "f" not in ir_layout.functions , (
         "the refused comparison's function must be demoted out of the layout, "
         + "never answer True for 0 == (0, 0)"
     );
@@ -256,7 +258,9 @@ test "un-inferable elem type: an unorderable mixed comparison is refused, not gu
         + f"demote, got {[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "f" not in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "f" not in ir_layout.functions , (
         "the refused comparison's function must be demoted out of the layout, "
         + "never guessed"
     );

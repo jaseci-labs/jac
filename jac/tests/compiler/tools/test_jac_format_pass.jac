@@ -4,7 +4,10 @@ Tests that the Jac formatter produces correct output: fixture comparisons,
 AST preservation, micro suite round-trip, and regression tests.
 """
 
-import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from jaclang.compiler.backends.common.artifact_store {
+    artifact_for,
+    existing_artifact
+}
 import ast as ast3;
 import os;
 import from difflib { unified_diff }
@@ -937,7 +940,8 @@ test "syntax error preserves original source" {
         "jac_str_formatter must populate errors_had on syntax error"
     );
     # gen.jac will be empty since no format passes ran
-    gen_output = artifact_for(prog.mod.main).jac;
+    remaining = existing_artifact(prog.mod.main);
+    gen_output = remaining.jac if remaining is not None else "";
     # Simulate the LSP formatted_jac() logic:
     # return formatted if no errors, else return original source
     result = gen_output if not prog.errors_had else bad_source;

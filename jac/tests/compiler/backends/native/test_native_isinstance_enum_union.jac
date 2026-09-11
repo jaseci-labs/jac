@@ -99,7 +99,9 @@ test "an enum sharing the int tag is refused, not answered by tag" {
         f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "chk_enum_over_int" not in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "chk_enum_over_int" not in ir_layout.functions , (
         "isinstance against an enum that shares the int tag must demote the "
         "asking function out of the native layout, never answer by tag"
     );

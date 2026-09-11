@@ -86,10 +86,12 @@ test "every optional-container walk reaches the native layout" {
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"native compilation errors: {errors}";
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
     missing = [
         fn
         for fn in CASES
-        if fn not in artifact_for(ir).native_layout.functions
+        if fn not in ir_layout.functions
     ];
     assert not missing , (
         "these optional-container walks demoted instead of lowering: "

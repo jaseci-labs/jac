@@ -270,7 +270,9 @@ test "non-numeric intrinsic operand is E5095" {
     assert artifact_for(ir_mod).native_layout is not None , (
         "whole-module native compile aborted"
     );
-    assert "probe" not in artifact_for(ir_mod).native_layout.functions , (
+    ir_mod_layout = artifact_for(ir_mod).native_layout;
+    assert ir_mod_layout is not None , "native layout was not produced";
+    assert "probe" not in ir_mod_layout.functions , (
         "a str operand to __float_bits must demote the function out of the "
         + "native layout, never lower wrongly"
     );

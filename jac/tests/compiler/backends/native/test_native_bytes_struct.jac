@@ -338,7 +338,9 @@ test "struct pack wrong arg count is a compile error" {
         f"a seam, got: {[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "bad_pack" not in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "bad_pack" not in ir_layout.functions , (
         "a struct.pack with the wrong argument count must demote its "
         "function out of the native layout, never pack uninitialized tail "
         "bytes"

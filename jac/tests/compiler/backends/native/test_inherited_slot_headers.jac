@@ -100,8 +100,10 @@ test "a child of a flat imported base carries the same header its base does" {
 test "the child adopts the base's slot assignment verbatim" {
     (ir, _coverage) = _compile(CHILD);
     reg = artifact_for(ir).layout_registry;
+    assert reg is not None;
     base = reg.layouts.get("SlotBase");
     child = reg.layouts.get("SlotChild");
+    assert base is not None and child is not None;
     for finfo in base.fields {
         assert finfo.name in child.field_index , (
             f"the child's layout is missing the inherited field "
@@ -148,8 +150,10 @@ test "the no-override control lowers too, which places the fault on the header" 
     # the header decision was.
     (ir, coverage) = _compile(NOVT);
     reg = artifact_for(ir).layout_registry;
+    assert reg is not None;
     base = reg.layouts.get("SlotBase");
     child = reg.layouts.get("SlotChildFlat");
+    assert base is not None and child is not None;
     assert base.vtable_ptr_slot == child.vtable_ptr_slot , (
         f"base {base.vtable_ptr_slot} != child {child.vtable_ptr_slot}"
     );

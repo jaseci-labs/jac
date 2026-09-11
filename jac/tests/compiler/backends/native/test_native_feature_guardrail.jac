@@ -369,7 +369,9 @@ test "nested container subscripts preserve the inferred element layout" {
     (prog, ir, log) = compile_na_inline_demote("typed_subscript", code);
     assert not prog.errors_had , fmt_errors(prog);
     assert artifact_for(ir).native_layout is not None;
-    assert "run" in artifact_for(ir).native_layout.functions , log;
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "run" in ir_layout.functions , log;
     assert native_answer(artifact_for(ir).native_engine, "answer") == 10;
     assert server_answer("typed_subscript_server", code, "answer") == 10;
 }
@@ -386,7 +388,9 @@ test "nested container membership preserves object identity" {
     (prog, ir, log) = compile_na_inline_demote("typed_membership", code);
     assert not prog.errors_had , fmt_errors(prog);
     assert artifact_for(ir).native_layout is not None;
-    assert "run" in artifact_for(ir).native_layout.functions , log;
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "run" in ir_layout.functions , log;
     assert native_answer(artifact_for(ir).native_engine, "answer") == 10;
     assert server_answer("typed_membership_server", code, "answer") == 10;
 }
@@ -1185,7 +1189,9 @@ test "guardrail: implicit-ctor positionals lower; dynamic new() demotes" {
     assert not over.errors_had , f"new() arity overflow must demote its function, got: {fmt_errors(
         over
     )}";
-    assert "make" not in artifact_for(over_ir).native_layout.functions , (
+    over_ir_layout = artifact_for(over_ir).native_layout;
+    assert over_ir_layout is not None , "native layout was not produced";
+    assert "make" not in over_ir_layout.functions , (
         "the new()-overflow function must be demoted out of the native layout"
     );
     assert "NA_DEBUG demote make" in over_log , (
@@ -1202,7 +1208,9 @@ test "guardrail: implicit-ctor positionals lower; dynamic new() demotes" {
     assert not dyn.errors_had , f"A dynamic new() class value must demote its function, got: {fmt_errors(
         dyn
     )}";
-    assert "make" not in artifact_for(dyn_ir).native_layout.functions , (
+    dyn_ir_layout = artifact_for(dyn_ir).native_layout;
+    assert dyn_ir_layout is not None , "native layout was not produced";
+    assert "make" not in dyn_ir_layout.functions , (
         "the dynamic-new() function must be demoted out of the native layout"
     );
     assert "NA_DEBUG demote make" in dyn_log , (
@@ -1234,7 +1242,9 @@ test "guardrail: nested event ability demotes its function, not an ICE" {
     assert not prog.errors_had , f"A nested event ability must demote its function, got: {fmt_errors(
         prog
     )}";
-    assert "widget" not in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "widget" not in ir_layout.functions , (
         "the function hosting the nested event ability must be demoted"
     );
     assert "NA_DEBUG demote widget" in log , (

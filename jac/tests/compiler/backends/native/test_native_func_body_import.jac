@@ -101,7 +101,9 @@ test "an unsupported body-scoped import demotes its function, callers stay loud"
         str(e) for e in prog.errors_had
     ]}";
     assert artifact_for(ir).native_layout is not None;
-    assert "use" not in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "use" not in ir_layout.functions , (
         "the function with the Python-only import must leave the native layout"
     );
     assert "NA_DEBUG demote use" in log , f"no demotion recorded for use in:\n{log}";

@@ -31,7 +31,10 @@ and the demotion coverage already names it `<Archetype>.<field>.__get__` -- so
 the partition answers for it rather than falling through to a module refusal.
 """
 
-import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from jaclang.compiler.backends.common.artifact_store {
+    artifact_for,
+    existing_artifact
+}
 import ctypes;
 import os;
 import from jaclang.compiler.analysis.capabilities.capability_check_pass {
@@ -162,7 +165,8 @@ test "the from-imported Python base refuses instead of lowering" {
             str(e) for e in prog.errors_had
         ]}"
     );
-    assert artifact_for(ir).llvm_ir is None , (
+    remaining = existing_artifact(ir);
+    assert remaining is None or remaining.llvm_ir is None , (
         "a wrong binary is worse than a refusal: lowering `Holder` here "
         "drops everything it inherits from `Event` with no diagnostic"
     );

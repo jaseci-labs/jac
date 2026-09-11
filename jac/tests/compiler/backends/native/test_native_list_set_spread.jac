@@ -272,7 +272,9 @@ test "a spread that cannot lower refuses loudly instead of dropping" {
         assert artifact_for(ir).native_layout is not None , (
             f"{label}: whole-module native compile aborted"
         );
-        assert "f" not in artifact_for(ir).native_layout.functions , (
+        ir_layout = artifact_for(ir).native_layout;
+        assert ir_layout is not None , "native layout was not produced";
+        assert "f" not in ir_layout.functions , (
             f"{label}: a spread native cannot lower must demote its function "
             f"out of the native layout, never silently build a shorter "
             f"container"

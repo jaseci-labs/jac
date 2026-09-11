@@ -123,7 +123,9 @@ test "an explicit-self variadic callee lowers with no seam" {
 
 test "every caller of the explicit-self method reaches native code" {
     (_prog, ir) = compile_native(FIXTURE);
-    fns = artifact_for(ir).native_layout.functions;
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    fns = ir_layout.functions;
     for name in (
         "spelled_literal",
         "spelled_defaulted",

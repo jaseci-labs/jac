@@ -286,7 +286,9 @@ test "a generic archetype instantiated at a scalar is refused, not lowered" {
         f"{[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "zero" not in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "zero" not in ir_layout.functions , (
         "Ctx[int] puts a scalar in an erased pointer slot, where 0 is "
         "indistinguishable from the null that spells None; it must demote, "
         "never lower"
@@ -333,7 +335,9 @@ test "a bare `T` slot at a scalar type argument is refused too" {
         f"{[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "get" not in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "get" not in ir_layout.functions , (
         "Plain[int] stores a scalar in an erased pointer slot; it must demote"
     );
 }
@@ -361,7 +365,9 @@ test "an inferred scalar type argument is refused the same as a written one" {
         f"{[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "go" not in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "go" not in ir_layout.functions , (
         "an inferred Ctx[int] is the same unsound erasure as a written one"
     );
 }
@@ -389,7 +395,9 @@ test "an inferred archetype type argument still lowers" {
         f"{[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "go" in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "go" in ir_layout.functions , (
         "the gate must not refuse an inferred type argument that is sound"
     );
 }
@@ -421,7 +429,9 @@ test "every type parameter an erased slot can hold is checked, not just the firs
         f"{[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "go" not in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "go" not in ir_layout.functions , (
         "a scalar in the second type parameter is the same unsound erasure "
         "as one in the first"
     );
@@ -454,7 +464,9 @@ test "a multi-parameter erased slot still lowers when every argument is a refere
         f"{[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "go" in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "go" in ir_layout.functions , (
         "the widened check must not refuse a slot whose parameters are all "
         "references"
     );
@@ -481,7 +493,9 @@ test "an archetype type argument is still accepted for a bare `T` slot" {
         f"{[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "get" in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "get" in ir_layout.functions , (
         "the gate must not refuse the erasure that is actually sound"
     );
 }

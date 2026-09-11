@@ -25,8 +25,9 @@ test "string fields retain their schema while foreign pointers remain opaque" {
             )
         );
         assert not program.errors_had , str(program.errors_had);
-        assert artifact_for(module).jc_layout is not None;
-        classes = json.loads(artifact_for(module).jc_layout)["classes"];
+        layout = artifact_for(module).jc_layout;
+        assert layout is not None;
+        classes = json.loads(layout)["classes"];
         assert classes["Parent"]["fields"]["name"]["code"] == "str";
         assert classes["Child"]["fields"]["name"]["code"] == "str";
         assert classes["Child"]["fields"]["file_path"]["code"] == "str";

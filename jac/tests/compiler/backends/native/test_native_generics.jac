@@ -223,7 +223,9 @@ test "mono guardrail: a generic function used as a value stays rejected" {
         f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "use_it" not in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "use_it" not in ir_layout.functions , (
         "a generic fn used as a value must demote its function out of the "
         "native layout, never lower wrongly"
     );

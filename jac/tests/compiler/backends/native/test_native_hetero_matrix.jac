@@ -325,7 +325,9 @@ test "mixed dict keys and mixed set elements are stable diagnostics" {
             assert artifact_for(ir).native_layout is not None , (
                 f"{label}: whole-module native compile aborted"
             );
-            assert fn_name not in artifact_for(ir).native_layout.functions , (
+            ir_layout = artifact_for(ir).native_layout;
+            assert ir_layout is not None , "native layout was not produced";
+            assert fn_name not in ir_layout.functions , (
                 f"{label}: the refused container must demote its function "
                 f"out of the native layout, never lower silently"
             );

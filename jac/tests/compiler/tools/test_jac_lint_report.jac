@@ -52,7 +52,7 @@ def _write_tmp(src: str) -> str {
 test "lint report scheduler uses JacLintCheckPass" {
     sched = get_lint_sched();
     assert len(sched) == 1;
-    assert sched[0] is JacLintCheckPass;
+    assert sched[0] is PassIdentity.JacLintCheckPass;
 }
 
 test "lint report path preserves every diagnostic the mutation pass emits" {

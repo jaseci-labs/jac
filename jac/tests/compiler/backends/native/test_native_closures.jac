@@ -276,7 +276,9 @@ test "closure escape: capture borrowed from an outer frame stays rejected" {
         f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "outer" not in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "outer" not in ir_layout.functions , (
         "a closure escaping with an outer-frame capture must demote its "
         "function out of the native layout, never lower wrongly"
     );
@@ -296,7 +298,9 @@ test "closure escape: calling a closure through an any-typed value stays rejecte
         f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
-    assert "outer" not in artifact_for(ir).native_layout.functions , (
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "outer" not in ir_layout.functions , (
         "an any-typed closure call site must demote its function out of the "
         "native layout, never lower wrongly"
     );

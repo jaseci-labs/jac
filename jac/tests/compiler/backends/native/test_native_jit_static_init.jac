@@ -24,7 +24,6 @@ SIGSEGV in-process would take the whole test run down with it instead of
 failing one test.
 """
 
-import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import subprocess;
 import sys;
@@ -36,6 +35,7 @@ glob FIXTURES = os.path.join(
      _JIT_DRIVER = """
 import ctypes
 import sys
+from jaclang.compiler.backends.common.artifact_store import artifact_for
 
 from jaclang.compiler.session.options import CompileOptions
 from jaclang.compiler.session.session import JacProgram

@@ -117,7 +117,9 @@ test "the refusals are granular: their neighbours still lower" {
     (_seams, _prog, ir) = measured();
     assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
     for fn in ["plain_startswith", "takes_holder"] {
-        assert fn in artifact_for(ir).native_layout.functions , (
+        ir_layout = artifact_for(ir).native_layout;
+        assert ir_layout is not None , "native layout was not produced";
+        assert fn in ir_layout.functions , (
             f"{fn} lowers on its own and must not be taxed by its neighbour's "
             "refusal"
         );
