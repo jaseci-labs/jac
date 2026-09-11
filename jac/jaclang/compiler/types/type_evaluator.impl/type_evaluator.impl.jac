@@ -3049,25 +3049,17 @@ impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> boo
 
 impl TypeEvaluator._heal_class_bases(cls: ClassType) -> None {
     import from jaclang.compiler.frontend.unitree { Archetype }
-    import from jaclang.compiler.types.type_utils { linearize_mro, mro_signature }
     shared = cls.shared;
     node_ = shared.symbol_table;
     if not isinstance(node_, Archetype) {
         shared._provisional = False;
         return;
     }
-    if shared._heal_stamp == id(self) {
-        return;
-    }
-    shared._heal_stamp = id(self);
     shared._provisional = False;
     bases: list[TypeBase] = [];
     unresolved = False;
     for base_expr in node_.base_classes or [] {
-        memo = base_expr.type;
-        if isinstance(memo, UnknownType) and not memo.is_diagnosed {
-            base_expr.type = None;
-        }
+        base_expr.type = None;
         base_type = self.get_type_of_expression(base_expr);
         if isinstance(base_type, UnknownType) and not base_type.is_diagnosed {
             unresolved = True;
@@ -3089,11 +3081,9 @@ impl TypeEvaluator._heal_class_bases(cls: ClassType) -> None {
         bases.append(self.prefetch.object_class);
     }
     shared.base_classes = bases;
-    rebuilt = linearize_mro(cls);
-    if len(rebuilt) > len(shared.mro) {
-        shared.mro = rebuilt;
-    }
-    shared._mro_sig = mro_signature(cls);
+    shared.mro = [];
+    compute_mro_linearization(cls);
+    shared._provisional = False;
 }
 
 impl TypeEvaluator.get_type_of_magic_method_call(
@@ -6098,7 +6088,7 @@ impl TypeEvaluator._intern_shared(shared: ClassDetailsShared) -> ClassDetailsSha
     ];
     if fresh_bases and not known_bases {
         found.base_classes = shared.base_classes;
-        found._mro_sig = ();
+        found.mro = [];
         found._provisional = shared._provisional;
     }
     return found;

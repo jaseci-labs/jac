@@ -530,20 +530,23 @@ impl ParamAssignmentTracker.postinit -> None {
     }
 }
 
-impl linearize_mro(
+impl compute_mro_linearization(
     cls: ClassType, _visiting: (set[int] | None) = None
-) -> list[ClassType] {
+) -> None {
+    if cls.shared.mro {
+        return;
+    }
     if _visiting is None {
         _visiting = set();
     }
     key = id(cls.shared);
     if key in _visiting {
-        return [];
+        return;
     }
     _visiting.add(key);
     try {
         for base in cls.shared.base_classes {
-            if isinstance(base, ClassType) and not base.shared.mro {
+            if isinstance(base, ClassType) {
                 compute_mro_linearization(base, _visiting);
             }
         }
@@ -601,22 +604,10 @@ impl linearize_mro(
             }
             linearizations = new_linearizations;
         }
-        return result;
-    } finally {
-        _visiting.discard(key);
-    }
-}
-
-impl compute_mro_linearization(
-    cls: ClassType, _visiting: (set[int] | None) = None
-) -> None {
-    if cls.shared.mro {
-        return;
-    }
-    result = linearize_mro(cls, _visiting);
-    if result {
         cls.shared.mro = result;
         cls.shared._mro_sig = mro_signature(cls);
+    } finally {
+        _visiting.discard(key);
     }
 }
 
@@ -646,14 +637,15 @@ impl ensure_mro_fresh(cls: ClassType) -> bool {
     if shared._mro_sig == sig {
         return False;
     }
-    rebuilt = linearize_mro(cls);
-    if len(rebuilt) > len(shared.mro) {
-        shared.mro = rebuilt;
+    previous = list(shared.mro);
+    shared.mro = [];
+    compute_mro_linearization(cls);
+    if len(shared.mro) < len(previous) {
+        shared.mro = previous;
         shared._mro_sig = sig;
-        return True;
+        return False;
     }
-    shared._mro_sig = sig;
-    return False;
+    return True;
 }
 
 impl compute_module_source_flags(file_path: str) -> ModuleSourceFlags {

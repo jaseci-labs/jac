@@ -164,8 +164,7 @@ node ClassDetailsShared {
         _mro_cache: (list[ClassType] | None) = None,
         _acc_cache: (dict[str, any] | None) = None,
         _mro_sig: (tuple | None) = None,
-        _provisional: bool = False,
-        _heal_stamp: int = 0;
+        _provisional: bool = False;
 
     has symbol_table: SymbolTable { getter; setter(symbol_table: SymbolTable); }
     has mro: list[ClassType] { getter; setter(mro: list[ClassType]); }

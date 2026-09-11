@@ -52,10 +52,6 @@ def compute_mro_linearization(
     cls: ClassType, _visiting: (set[int] | None) = None
 ) -> None;
 
-def linearize_mro(
-    cls: ClassType, _visiting: (set[int] | None) = None
-) -> list[ClassType];
-
 def mro_signature(cls: ClassType) -> tuple;
 
 def ensure_mro_fresh(cls: ClassType) -> bool;
