@@ -1,5 +1,4 @@
 import logging;
-import mimetypes;
 import from pathlib { Path }
 import from jaclang.server.serving.app { ServingApp }
 import from jaclang.server.serving.datatypes { Request }
@@ -16,6 +15,7 @@ import from jaclang.scale.runtime.context.util {
     DEFAULT_GATEWAY_HOST,
     DEFAULT_CLIENT_DIST_DIR
 }
+import from jaclang.server.serving.static_assets { AssetRoot }
 
 import from jaclang.server.identity.user_manager { UserManager }
 import from jaclang.server.server { EndpointHost }
@@ -55,11 +55,13 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
         _metrics: any = None,
         base_path: str = ".",
         route_table: ServiceRouteTable = ServiceRouteTable(),
+        _asset_table: list[AssetRoot] | None = None,
         _spec_crawl: any = None,
         port_pinned: bool = False,
         drain: DrainState = DrainState();
 
     def setup -> ServingApp;
+    def _get_asset_table -> list[AssetRoot];
     def add_endpoint(ep: JEndPoint) -> None;
     def identity -> UserManager;
     def resolve_target_url(service_entry: ServiceEntry, path: str, query: str) -> str;
@@ -86,7 +88,7 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
         request: Request, path: str, candidates: list[tuple[str, ServiceEntry]]
     ) -> Response;
 
-    def handle_admin(path: str) -> Response | None;
+    def handle_admin(request: Request, path: str) -> Response | None;
     async def handle_proxy(request: Request, path: str) -> Response | None;
     async def handle_app_route(request: Request, path: str) -> Response | None;
     async def refresh_app_routes -> bool;
@@ -102,12 +104,9 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
     def handle_docs -> Response;
     def has_client_bundle -> bool;
     def build_forward_headers(request: Request) -> dict[str, str];
-    def serve_static(file_path: str) -> Response | None;
-    def serve_extra_static(local_dir: str, file_path: str) -> Response | None;
-    def serve_project_static(rest: str) -> Response | None;
     def serve_spa_fallback -> Response | None;
     def bootstrap_admin_ui -> None;
     def _install_admin_api -> None;
-    def serve_admin_asset(asset_path: str) -> Response | None;
+    def serve_admin_asset(request: Request, asset_path: str) -> Response | None;
     def start(on_ready: any = None) -> None;
 }

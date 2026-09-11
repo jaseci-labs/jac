@@ -6,7 +6,7 @@ import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.client.config_loader { JacClientConfig }
-import from jaclang.server.static_files { find_root_asset, find_static_candidate }
+import from jaclang.server.serving.static_assets { asset_root_table, resolve_asset }
 
 
 def _project(base: Path, assets_dir: str) {
@@ -46,13 +46,15 @@ test "static requests find shared assets from source, nested paths intact" {
         (shared / "media").mkdir(parents=True);
         (shared / "logo.svg").write_text("<svg/>");
         (shared / "media" / "diagram.png").write_bytes(b"png");
-        assert find_static_candidate(str(base), "assets/logo.svg")
-            == shared / "logo.svg";
+        table = asset_root_table(base, base / ".jac" / "client" / "dist", []);
+        static_hit = resolve_asset(table, "/static/assets/logo.svg");
+        assert static_hit is not None and static_hit[0] == shared / "logo.svg";
+        nested_hit = resolve_asset(table, "/static/assets/media/diagram.png");
         assert (
-            find_static_candidate(str(base), "assets/media/diagram.png")
-            == shared / "media" / "diagram.png"
+            nested_hit is not None and nested_hit[0] == shared / "media" / "diagram.png"
         );
-        assert find_root_asset(str(base), "logo.svg") == shared / "logo.svg";
-        assert find_static_candidate(str(base), "assets/missing.svg") is None;
+        root_hit = resolve_asset(table, "/logo.svg");
+        assert root_hit is not None and root_hit[0] == shared / "logo.svg";
+        assert resolve_asset(table, "/static/assets/missing.svg") is None;
     }
 }

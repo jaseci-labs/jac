@@ -7,6 +7,8 @@ import from jaclang.scale.runtime.gateway.service_registry {
     ServiceStatus
 }
 import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
+import from jaclang.scale.runtime.gateway.process_gateway { ProcessGateway }
+import from jaclang.runtime.runtime { JacRuntime as Jac }
 import from jaclang.server.serving.datatypes { Headers, Request, URL }
 import from jaclang.scale.tests.support { get_free_port }
 
@@ -715,123 +717,6 @@ test "empty registry returns 404" {
     assert resp.status_code == 404;
 }
 
-test "serve static returns file with correct mime type" {
-    tmp = tempfile.mkdtemp();
-    assets_dir = Path(tmp) / "assets";
-    assets_dir.mkdir();
-    js_file = assets_dir / "app.js";
-    js_file.write_text("console.log('hello');");
-
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
-
-    resp = gw.serve_static("assets/app.js");
-    assert resp is not None;
-    assert "javascript" in resp.media_type;
-    assert b"hello" in resp.body;
-
-    import shutil;
-    shutil.rmtree(tmp);
-}
-
-test "serve static returns none for missing file" {
-    tmp = tempfile.mkdtemp();
-
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
-
-    resp = gw.serve_static("nonexistent.js");
-    assert resp is None;
-
-    import shutil;
-    shutil.rmtree(tmp);
-}
-
-test "serve static blocks path traversal" {
-    tmp = tempfile.mkdtemp();
-
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
-
-    resp = gw.serve_static("../../etc/passwd");
-    assert resp is None;
-
-    import shutil;
-    shutil.rmtree(tmp);
-}
-
-test "serve static css file returns text content type" {
-    tmp = tempfile.mkdtemp();
-    css_file = Path(tmp) / "style.css";
-    css_file.write_text("body { color: red; }");
-
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
-
-    resp = gw.serve_static("style.css");
-    assert resp is not None;
-    assert resp.media_type == "text/css";
-
-    import shutil;
-    shutil.rmtree(tmp);
-}
-
-test "serve_extra_static serves a file from a configured local dir" {
-    tmp = tempfile.mkdtemp();
-    assets = Path(tmp) / "assets";
-    assets.mkdir();
-    (assets / "logo.png").write_bytes(b"PNG_DATA");
-
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
-
-    resp = gw.serve_extra_static(str(assets), "logo.png");
-    assert resp is not None;
-    assert b"PNG_DATA" in resp.body;
-    assert "image/png" in resp.media_type;
-
-    import shutil;
-    shutil.rmtree(tmp);
-}
-
-test "serve_extra_static returns None when local_dir is empty" {
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg);
-
-    resp = gw.serve_extra_static("", "anything.txt");
-    assert resp is None;
-}
-
-test "serve_extra_static returns None for missing file" {
-    tmp = tempfile.mkdtemp();
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg);
-
-    resp = gw.serve_extra_static(tmp, "nonexistent.png");
-    assert resp is None;
-
-    import shutil;
-    shutil.rmtree(tmp);
-}
-
-test "serve_extra_static blocks path traversal escape" {
-    tmp = tempfile.mkdtemp();
-    assets = Path(tmp) / "assets";
-    assets.mkdir();
-
-    secret = Path(tmp) / "secret.txt";
-    secret.write_text("classified");
-
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg);
-
-    resp = gw.serve_extra_static(str(assets), "../secret.txt");
-    assert resp is None;
-
-    import shutil;
-    shutil.rmtree(tmp);
-}
-
 test "static_mounts wins over dist_dir for matching URL" {
     tmp = tempfile.mkdtemp();
     dist = Path(tmp) / "dist";
@@ -1044,6 +929,10 @@ test "Gateway returns 404 for GET / when no index.html exists" {
     shutil.rmtree(tmp);
 }
 
+def _admin_get(path: str) -> Request {
+    return Request(url=URL(path=path), headers=Headers());
+}
+
 test "serve admin asset returns index.html for root" {
     tmp = tempfile.mkdtemp();
     admin_dir = Path(tmp) / "admin";
@@ -1053,7 +942,7 @@ test "serve admin asset returns index.html for root" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
 
-    resp = gw.serve_admin_asset("");
+    resp = gw.serve_admin_asset(_admin_get("/admin/"), "");
     assert resp is not None;
     assert b"Admin Portal" in resp.body;
 
@@ -1071,7 +960,9 @@ test "serve admin asset returns static file" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
 
-    resp = gw.serve_admin_asset("assets/admin.js");
+    resp = gw.serve_admin_asset(
+        _admin_get("/admin/assets/admin.js"), "assets/admin.js"
+    );
     assert resp is not None;
     assert b"admin" in resp.body;
 
@@ -1088,9 +979,14 @@ test "serve admin asset spa fallback for unknown route" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
 
-    resp = gw.serve_admin_asset("users/list");
+    resp = gw.serve_admin_asset(_admin_get("/admin/users/list"), "users/list");
     assert resp is not None;
     assert b"Admin SPA" in resp.body;
+    cache = resp.headers.get("Cache-Control") or "";
+    assert cache == "no-cache" , (
+        "the admin shell must never be cached, so a redeploy's hashed bundles "
+        f"are never served stale from an hour-old cached shell; got Cache-Control: {cache}"
+    );
 
     import shutil;
     shutil.rmtree(tmp);
@@ -1104,8 +1000,35 @@ test "serve admin asset blocks path traversal" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
 
-    resp = gw.serve_admin_asset("../../etc/passwd");
+    resp = gw.serve_admin_asset(
+        _admin_get("/admin/../../etc/passwd"), "../../etc/passwd"
+    );
     assert resp is None;
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
+test "serve admin asset responses go through the shared file_response policy" {
+    tmp = tempfile.mkdtemp();
+    admin_dir = Path(tmp) / "admin";
+    assets = admin_dir / "assets";
+    assets.mkdir(parents=True);
+    (assets / "admin.js").write_text("var admin = true;");
+
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
+
+    resp = gw.serve_admin_asset(
+        _admin_get("/admin/assets/admin.js"), "assets/admin.js"
+    );
+    assert resp is not None;
+    cache = resp.headers.get("Cache-Control") or "";
+    assert "must-revalidate" in cache , (
+        "admin assets must be built through the shared file_response so the "
+        f"one response policy holds everywhere; got Cache-Control: {cache}"
+    );
+    assert resp.headers.get("ETag") , "file_response must set an ETag for admin assets";
 
     import shutil;
     shutil.rmtree(tmp);
@@ -1503,6 +1426,25 @@ test "bare /jobs (create + list) is forwarded as a built-in route, not 404'd" {
 
     resp_one = client.get("/jobs/abc123");
     assert resp_one.status_code == 503;
+}
+
+test "ProcessGateway.setup resolves base_path from the Jac context, not the '.' default" {
+    # No project markers above /tmp, so find_project_root falls back to this dir
+    # (same fallback asset_base_path relies on in test_static_fallback.jac).
+    project_root = tempfile.mkdtemp();
+    Jac.get_context().base_path_dir = project_root;
+
+    gw = ProcessGateway(registry=ServiceRegistry());
+    gw.setup();
+
+    assert gw._gateway is not None;
+    assert gw._gateway.base_path == project_root , (
+        "local `jac start` must resolve base_path the same way every other "
+        f"asset consumer does, not fall back to '.'; got {gw._gateway.base_path}"
+    );
+
+    import shutil;
+    shutil.rmtree(project_root);
 }
 
 import socket;

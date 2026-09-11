@@ -574,9 +574,13 @@ impl normalize_gateway_config(gateway_config: dict[str, any] | None) -> dict[str
         },
         'ingress': dict(raw.get('ingress', {}) or {}),
         'shared_volumes': list(raw.get('shared_volumes', []) or []),
+        'static_mounts': list(raw.get('static_mounts', []) or []),
         'logs': dict(raw.get('logs', {}) or {}),
         'tracing': dict(raw.get('tracing', {}) or {})
     };
+    if 'client_dist_dir' in raw and raw['client_dist_dir'] is not None {
+        normalized['client_dist_dir'] = str(raw['client_dist_dir']);
+    }
     for boot_key in GATEWAY_BOOT_KEYS {
         if boot_key in raw and raw[boot_key] is not None {
             normalized[boot_key] = raw[boot_key];

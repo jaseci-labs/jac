@@ -241,6 +241,25 @@ if ! echo "${ROOT_BODY}" | grep -qi "<script"; then
 fi
 echo "  / serves the client"
 
+echo "=== public/ asset served at the web root (#8125 one asset law) ==="
+# The shared static resolver serves the project public/ dir at the web root in
+# --scale too: public/brand/logo.png must resolve at /brand/logo.png with the
+# exact bytes. public/ is bundled from source (it is not in the client dist),
+# so this proves the k8s bundle stages it and the gateway resolves it -- the
+# cross-mode byte-parity #8125 is about.
+BRAND_CODE=$(curl -s -o /tmp/brand_logo.out -w "%{http_code}" --max-time 10 \
+    "http://localhost:${GATEWAY_LOCAL_PORT}/brand/logo.png" || echo "000")
+if [ "${BRAND_CODE}" != "200" ]; then
+    echo "FAIL: /brand/logo.png did not serve public/brand/logo.png (got ${BRAND_CODE})" >&2
+    exit 1
+fi
+if ! grep -q "JAC-8125-PUBLIC-ASSET-AT-ROOT" /tmp/brand_logo.out; then
+    echo "FAIL: /brand/logo.png served unexpected bytes (public/ not resolved verbatim)" >&2
+    head -c 200 /tmp/brand_logo.out >&2
+    exit 1
+fi
+echo "  /brand/logo.png serves public/ at the web root"
+
 _t "health OK"
 echo "=== verify per-service routing ==="
 # 503 from the gateway means upstream service unreachable; 404/405 means
