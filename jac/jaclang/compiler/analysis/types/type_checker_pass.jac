@@ -146,10 +146,10 @@ glob FW_INTERVAL_OPS: dict[str, str] = {
 
 walker TypeCheckPass(UniPass) {
     has prog: AnalysisServices,
-        evaluator: TypeEvaluator postinit,
         _lambda_depth: int = 0;
 
-    def postinit -> None;
+    has evaluator: TypeEvaluator { getter; }
+
     def transform(ir_in: Module) -> Module;
     def before_pass -> None;
     def after_pass -> None;

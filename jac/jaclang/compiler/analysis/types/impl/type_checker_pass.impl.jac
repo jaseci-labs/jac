@@ -298,9 +298,10 @@ impl TypeCheckPass._check_intrinsic_call(nd: FuncCall) -> None {
         );
     }
     if intr.result_spec != "none" {
-        if self.evaluator.na_builtins_module is not None {
+        native_builtins = self.evaluator.na_builtins_module;
+        if native_builtins is not None {
             result_cls = self.evaluator._get_type_from_module(
-                self.evaluator.na_builtins_module, intr.result_spec
+                native_builtins, intr.result_spec
             );
             if not isinstance(result_cls, UnknownType) {
                 nd.type = self.evaluator._convert_to_instance(result_cls);
@@ -2050,7 +2051,6 @@ impl TypeCheckPass._provably_in_range(nd: Expr, name: str) -> bool {
     return False;
 }
 
-impl TypeCheckPass.postinit -> None {
-    self.evaluator = self.prog.get_type_evaluator();
-    super.postinit();
+impl TypeCheckPass.evaluator.getter -> TypeEvaluator {
+    return self.prog.get_type_evaluator();
 }
