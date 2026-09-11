@@ -36,7 +36,7 @@ def _stable_dump(value: any) -> str {
         return "{" + ",".join([f"{kv[0]}:{kv[1]}" for kv in items]) + "}";
     }
 
-    attrs: dict = {};
+    attrs: dict[str, any] = {};
     for name in dir(value) {
         if name.startswith("_") {
             continue;

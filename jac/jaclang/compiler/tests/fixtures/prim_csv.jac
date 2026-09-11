@@ -18,19 +18,19 @@ documented na divergence. ES/JS opts out.
 import from csv { reader }
 
 
-def csv_py -> dict {
-    r1: list = list(reader(["a,b,c", "1,2,3"]));
-    r2: list = list(reader(["\"a,b\",c", "\"x\"\"y\",z"]));
-    r3: list = list(reader(["a, b ,c"]));
-    r4: list = list(reader(["a,,c", ",x,"]));
-    r5: list = list(reader([""]));
-    r6: list = list(reader(["a\"b,c"]));
-    r7: list = list(reader(["\"a\"b,c"]));
-    r8: list = list(reader(["\"abc"]));
-    r9: list = list(reader(["\"a,b\nc\""]));
-    r10: list = list(reader(["a" + chr(0) + "b,c"]));
-    r11: list = list(reader(["a,b\n", "\n", "c,d\n"]));
-    r12: list = list(reader(["x,\r\n"]));
+def csv_py -> dict[any, any] {
+    r1: list[any] = list(reader(["a,b,c", "1,2,3"]));
+    r2: list[any] = list(reader(["\"a,b\",c", "\"x\"\"y\",z"]));
+    r3: list[any] = list(reader(["a, b ,c"]));
+    r4: list[any] = list(reader(["a,,c", ",x,"]));
+    r5: list[any] = list(reader([""]));
+    r6: list[any] = list(reader(["a\"b,c"]));
+    r7: list[any] = list(reader(["\"a\"b,c"]));
+    r8: list[any] = list(reader(["\"abc"]));
+    r9: list[any] = list(reader(["\"a,b\nc\""]));
+    r10: list[any] = list(reader(["a" + chr(0) + "b,c"]));
+    r11: list[any] = list(reader(["a,b\n", "\n", "c,d\n"]));
+    r12: list[any] = list(reader(["x,\r\n"]));
     return {
         "n1": len(r1),
         "r0c0": r1[0][0],
@@ -70,7 +70,7 @@ def csv_py -> dict {
 }
 
 
-def csv_cl -> dict {
+def csv_cl -> dict[any, any] {
     return {};
 }
 

@@ -59,7 +59,7 @@ test "na host boots the fused runtime (no display)" {
         # Append this jac's [payload][trailer] so the host carries the fused runtime
         # and engine_boot() can materialize it from /proc/self/exe at launch.
         _bundle_runtime(binary);
-        env = dict(os.environ);
+        env: dict[str, str] = dict(os.environ);
         env.pop("SSL_CERT_FILE", None);
         env.pop("SSL_CERT_DIR", None);
         run = subprocess.run(

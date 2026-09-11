@@ -158,7 +158,7 @@ def location_targets {
     holders = [{"k": a16}];
     calls: list[int] = [];
 
-    def pick(i: int) -> dict {
+    def pick(i: int) -> dict[any, any] {
         calls.append(i);
         return holders[i];
     }
@@ -285,7 +285,7 @@ def value_targets {
     # B13: flattening terminates on a self referential container
     n1b = fresh("n1b");
     before = nkids();
-    cyclic: list = [n1b];
+    cyclic: list[any] = [n1b];
     cyclic.append(cyclic);
     del cyclic;
     assert nkids() == before - 1 , "B13 cyclic container";

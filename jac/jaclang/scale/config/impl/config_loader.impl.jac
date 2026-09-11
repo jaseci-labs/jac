@@ -327,7 +327,9 @@ impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
-impl _ws_positive(ws_config: dict, key: str, fallback: (int | float)) -> float {
+impl _ws_positive(
+    ws_config: dict[str, any], key: str, fallback: (int | float)
+) -> float {
     raw = ws_config.get(key, fallback);
     if isinstance(raw, bool) or not isinstance(raw, (int, float, str)) {
         raise ValueError(f"[scale.websocket].{key} must be a number, got {raw!r}.");
@@ -348,7 +350,7 @@ impl _ws_positive(ws_config: dict, key: str, fallback: (int | float)) -> float {
 
 impl JacScaleConfig.get_websocket_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
-    ws_config: dict = config.get('websocket', {});
+    ws_config: dict[str, any] = config.get('websocket', {});
     backplane = ws_config.get('backplane');
     if backplane is not None {
         backplane = str(backplane).lower();
@@ -427,8 +429,8 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any]
 
 impl JacScaleConfig.get_emailer_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
-    emailer_config = config.get('emailer', {}) or {};
-    smtp_config = dict(emailer_config.get('smtp', {}) or {});
+    emailer_config: any = config.get('emailer', {}) or {};
+    smtp_config: dict[str, any] = dict(emailer_config.get('smtp', {}) or {});
     smtp_password_env = os.environ.get('EMAILER_SMTP_PASSWORD');
     if smtp_password_env {
         smtp_config['password'] = smtp_password_env;
@@ -450,7 +452,7 @@ impl JacScaleConfig.get_emailer_config(self: JacScaleConfig) -> dict[str, any] {
 
 impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
-    auth_config = config.get('auth', {}) or {};
+    auth_config: any = config.get('auth', {}) or {};
     return {
         'reset_token_ttl_seconds': int(
             auth_config.get('reset_token_ttl_seconds', 1800)
@@ -515,8 +517,8 @@ impl app_scale_overrides(config: any, app_name: str) -> dict[str, any] {
         return {};
     }
     app = config.apps[app_name];
-    overlays = app.overlays if isinstance(app.overlays, dict) else {};
-    declared = overlays.get("scale");
+    overlays: dict[str, any] = app.overlays if isinstance(app.overlays, dict) else {};
+    declared: dict[str, any] | None = overlays.get("scale");
     if isinstance(declared, dict) {
         import from jaclang.project.config_schema { report_schema_findings }
         import from jaclang.scale.config.validation {
@@ -534,16 +536,18 @@ impl app_scale_overrides(config: any, app_name: str) -> dict[str, any] {
     } except Exception {
         return _pick_app_scale_keys(declared);
     }
-    plugins = effective.plugins if isinstance(effective.plugins, dict) else {};
+    plugins: dict[str, any] = effective.plugins
+        if isinstance(effective.plugins, dict)
+        else {};
     return _pick_app_scale_keys(plugins.get("scale", {}));
 }
 
 
 impl normalize_gateway_config(gateway_config: dict[str, any] | None) -> dict[str, any] {
-    raw = dict(gateway_config or {});
-    cors_config = dict(raw.get('cors', {}) or {});
-    rl_config = dict(raw.get('rate_limit', {}) or {});
-    normalized = {
+    raw: dict[str, any] = dict(gateway_config or {});
+    cors_config: dict[str, any] = dict(raw.get('cors', {}) or {});
+    rl_config: dict[str, any] = dict(raw.get('rate_limit', {}) or {});
+    normalized: dict[str, any] = {
         'colocate': bool(raw.get('colocate', True)),
         'gateway_port': int(raw.get('gateway_port', 8000)),
         'gateway_host': str(raw.get('gateway_host', '0.0.0.0')),

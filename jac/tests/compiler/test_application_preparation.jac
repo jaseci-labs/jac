@@ -172,7 +172,7 @@ test "runtime logs and toolchain directories do not become application inputs" {
         path.write_text("def:pub hello -> str { return 'hello'; }\n");
         log.write_text('starting');
         original = preparation._manifest;
-        def logging_manifest(*args: any, **kwargs: any) -> dict {
+        def logging_manifest(*args: any, **kwargs: any) -> dict[str, any] {
             log.write_text(log.read_text() + '\ncompiling');
             return original(*args, **kwargs);
         }

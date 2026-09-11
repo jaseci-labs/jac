@@ -1,7 +1,7 @@
 glob _CLOCK_REALTIME: int = 0,
      _CLOCK_MONOTONIC: int = 1;
 
-impl NaIRGenPass._emit_clock_gettime(clock_id: int) -> tuple {
+impl NaIRGenPass._emit_clock_gettime(clock_id: int) -> tuple[ir.Value, ir.Value] {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
 
@@ -55,7 +55,7 @@ impl NaIRGenPass._emit_time_call(name: str, nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     if name == "sleep" {
-        params = nd.params or [];
+        params: Sequence[any] = nd.params or [];
         if not params {
             return None;
         }

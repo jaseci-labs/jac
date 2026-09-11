@@ -176,7 +176,9 @@ impl SolidBackend._jsx_attr(
     );
 }
 
-impl SolidBackend._jsx_child_nodes(children: list[ViewChild], sync_loc: any) -> list {
+impl SolidBackend._jsx_child_nodes(
+    children: list[ViewChild], sync_loc: any
+) -> list[any] {
     import from jaclang.compiler.backends.es.view_ir {
         TextChild,
         DynamicChild,
@@ -344,7 +346,11 @@ impl SolidBackend.view_runtime_symbols(view: ViewElement) -> list[str] {
 }
 
 impl SolidBackend._jsx_element(
-    name_node: any, attrs: list, children: list, jac_node: any, sync_loc: any
+    name_node: any,
+    attrs: list[es.JsxAttribute | es.JsxSpreadAttribute],
+    children: list[any],
+    jac_node: any,
+    sync_loc: any
 ) -> es.JsxElement {
     self_closing = len(children) == 0;
     opening = sync_loc(
@@ -367,8 +373,8 @@ impl SolidBackend._jsx_element(
 
 impl SolidBackend._jsx_dynamic(
     component_expr: es.Expression,
-    attrs: list,
-    children: list,
+    attrs: list[es.JsxAttribute | es.JsxSpreadAttribute],
+    children: list[any],
     jac_node: any,
     sync_loc: any
 ) -> es.JsxElement {

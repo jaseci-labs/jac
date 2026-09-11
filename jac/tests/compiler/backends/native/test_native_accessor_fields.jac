@@ -23,7 +23,7 @@ import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
-     _ENGINE_MEMO: list = [];
+     _ENGINE_MEMO: list[any] = [];
 
 """Compile the accessor fixture once and hand back its JIT engine."""
 def accessor_engine -> tuple[ExecutionEngine, uni.Module] {

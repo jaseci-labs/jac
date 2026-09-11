@@ -23,13 +23,13 @@ def _s(v: any) -> str {
 }
 
 
-def _rollout_status(dep: dict) -> dict {
-    spec = dep.get("spec", {}) or {};
-    status = dep.get("status", {}) or {};
+def _rollout_status(dep: dict[str, any]) -> dict[str, any] {
+    spec: any = dep.get("spec", {}) or {};
+    status: any = dep.get("status", {}) or {};
     desired = int(spec.get("replicas", 0) or 0);
     updated = int(status.get("updated_replicas", 0) or 0);
     available = int(status.get("available_replicas", 0) or 0);
-    conditions = status.get("conditions", []) or [];
+    conditions: any = status.get("conditions", []) or [];
 
     for c in conditions {
         if c.get("type") == "Progressing"
@@ -53,15 +53,15 @@ def _rollout_status(dep: dict) -> dict {
 }
 
 
-def summarize_deployment(dep: dict) -> dict {
-    meta = dep.get("metadata", {}) or {};
-    spec = dep.get("spec", {}) or {};
-    status = dep.get("status", {}) or {};
-    containers = ((spec.get("template", {}) or {}).get("spec", {}) or {}).get(
+def summarize_deployment(dep: dict[str, any]) -> dict[str, any] {
+    meta: any = dep.get("metadata", {}) or {};
+    spec: any = dep.get("spec", {}) or {};
+    status: any = dep.get("status", {}) or {};
+    containers: any = ((spec.get("template", {}) or {}).get("spec", {}) or {}).get(
         "containers", []
     )
         or [];
-    images: list = [];
+    images: list[str] = [];
     for c in containers {
         img = c.get("image");
         if img {
@@ -80,17 +80,17 @@ def summarize_deployment(dep: dict) -> dict {
 }
 
 
-def _container_state(cs: dict) -> dict {
-    state = cs.get("state", {}) or {};
+def _container_state(cs: dict[str, any]) -> dict[str, any] {
+    state: any = cs.get("state", {}) or {};
     if state.get("running") {
         return {"state": "running", "reason": ""};
     }
     if state.get("waiting") {
-        w = state.get("waiting", {}) or {};
+        w: any = state.get("waiting", {}) or {};
         return {"state": "waiting", "reason": _s(w.get("reason"))};
     }
     if state.get("terminated") {
-        t = state.get("terminated", {}) or {};
+        t: any = state.get("terminated", {}) or {};
         return {"state": "terminated", "reason": _s(t.get("reason"))};
     }
     return {"state": "unknown", "reason": ""};
@@ -102,11 +102,11 @@ def summarize_pod(pod: dict[str, any]) -> dict[str, any] {
     spec: dict[str, any] = pod.get("spec", {}) or {};
     status: dict[str, any] = pod.get("status", {}) or {};
     labels: dict[str, any] = meta.get("labels", {}) or {};
-    cstatuses: list[any] = status.get("container_statuses", []) or [];
+    cstatuses: any = status.get("container_statuses", []) or [];
 
     ready_count = 0;
     restart_total = 0;
-    containers: list = [];
+    containers: list[dict[str, any]] = [];
     for cs in cstatuses {
         is_ready = bool(cs.get("ready", False));
         if is_ready {
@@ -142,7 +142,9 @@ def summarize_pod(pod: dict[str, any]) -> dict[str, any] {
 }
 
 
-def build_deploy_health(namespace: str, deployments: list, pods: list) -> dict {
+def build_deploy_health(
+    namespace: str, deployments: list[dict[str, any]], pods: list[dict[str, any]]
+) -> dict[str, any] {
     deps = [summarize_deployment(d) for d in deployments];
     pds = [summarize_pod(p) for p in pods];
     deps.sort(key=lambda (d) { d.get("name", ""); });
@@ -156,7 +158,7 @@ def build_deploy_health(namespace: str, deployments: list, pods: list) -> dict {
 }
 
 
-def _collect_deploy_health -> dict {
+def _collect_deploy_health -> dict[str, any] {
     if not k8s_available() {
         return {"available": False, "detail": unavailable_detail()};
     }
@@ -173,8 +175,9 @@ def _collect_deploy_health -> dict {
         logger.warning(f"deploy-health list failed: {e}");
         return {"available": False, "detail": api_error_detail(e)};
     }
-    deployments = [d.to_dict() for d in (dep_objs or [])];
-    pods = [p.to_dict() for p in (pod_objs or [])];
+    empty: list[any] = [];
+    deployments = [d.to_dict() for d in (dep_objs or empty)];
+    pods = [p.to_dict() for p in (pod_objs or empty)];
     return build_deploy_health(ns, deployments, pods);
 }
 

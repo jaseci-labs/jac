@@ -11,7 +11,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 
 glob SRC = "def area(r: float) -> float { return 3.14 * r * r; }\n";
 
-def _probe(prog: JacProgram) -> tuple {
+def _probe(prog: JacProgram) -> tuple[any, ...] {
     mod = prog.parse_str(SRC, "release_probe.jac");
     assert mod is not None;
     return (
@@ -32,7 +32,7 @@ test "released module trees are garbage collectable" {
     assert all(dead) , f"leaked (module, kid, anchor): {dead}";
 }
 
-def _compile_probe(prog: JacProgram) -> tuple {
+def _compile_probe(prog: JacProgram) -> tuple[any, ...] {
     mod = prog.compile(file_path="release_closure_probe.jac", use_str=SRC);
     assert mod is not None;
     return (weakref.ref(mod), weakref.ref(mod.kid[0]));
@@ -96,9 +96,9 @@ glob STUB_SRC: str = (
          "}\n"
      );
 
-def _stub_modules(prog: JacProgram) -> dict {
+def _stub_modules(prog: JacProgram) -> dict[str, any] {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
-    out: dict = {};
+    out: dict[str, any] = {};
     for p in [prog, Jac.get_compiler().selfhost.program] {
         for (path, mod) in p.mod.hub.items() {
             if path.endswith(".pyi") {

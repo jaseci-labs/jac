@@ -27,7 +27,7 @@ def _stmt(expr: any) -> any {
 }
 
 """Map generated (line, column) -> (source line, source column, name)."""
-def _segment_index(segments: list) -> dict[tuple[int, int], tuple[int, int, str]] {
+def _segment_index(segments: list[any]) -> dict[tuple[int, int], tuple[int, int, str]] {
     out: dict[tuple[int, int], tuple[int, int, str]] = {};
     for seg in segments {
         out[(seg[0], seg[1])] = (seg[2], seg[3], seg[4]);

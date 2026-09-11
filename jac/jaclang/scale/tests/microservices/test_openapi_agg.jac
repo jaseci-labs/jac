@@ -15,7 +15,7 @@ import from jaclang.scale.runtime.gateway.service_registry {
 
 
 """Serve `payload` as JSON on every GET after `delay` seconds; (server, port)."""
-def _serve_spec(payload: dict, delay: float = 0.0) -> tuple {
+def _serve_spec(payload: dict[str, any], delay: float = 0.0) -> tuple[any, ...] {
     import http.server;
     import json;
     import threading;

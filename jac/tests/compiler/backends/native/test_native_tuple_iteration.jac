@@ -51,7 +51,7 @@ glob FIXTURES = os.path.join(
          "nested_tuple"
      ],
      SEEDS = [0, 1, 7],
-     _MEMO: list = [];
+     _MEMO: list[any] = [];
 
 
 """Compile the fixture natively once and return the JIT engine."""

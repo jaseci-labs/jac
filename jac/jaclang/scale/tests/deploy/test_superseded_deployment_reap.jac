@@ -63,8 +63,8 @@ def _hand_rolled_canary(app: str) -> any {
 
 
 obj FakeAppsV1 {
-    has items: list,
-        deleted: list = [];
+    has items: list[any],
+        deleted: list[str] = [];
 
     def list_namespaced_deployment(namespace: str, **kwargs: any) -> any {
         return SimpleNamespace(items=list(self.items));
@@ -99,7 +99,7 @@ def _bundle_for(app: str) -> dict[str, any] {
 test "a bundle never ships two Deployments backing one Service selector" {
     bundle = _bundle_for("standup");
 
-    by_selector: dict[str, list] = {};
+    by_selector: dict[str, list[any]] = {};
     for dep in bundle["deployments"].values() {
         selector = dep["spec"]["selector"]["matchLabels"]["app"];
         by_selector.setdefault(selector, []).append(dep["metadata"]["name"]);
@@ -227,7 +227,7 @@ test "reverting a template drops pod-template-hash and keeps the rest" {
 # can share a namespace. Kubernetes revision numbers are per Deployment and
 # overlap freely, so an unscoped revert would patch a neighbour's fleet.
 obj _FleetApps {
-    has names: list,
+    has names: list[any],
         selector: str = "";
 
     def list_namespaced_deployment(namespace: str, **kwargs: any) -> any {
@@ -567,7 +567,7 @@ test "a release holds the newest revision of each service, whatever the order" {
 
 obj _HalfPatchApps {
     has fail_on: str,
-        patched: list = [];
+        patched: list[any] = [];
 
     def read_namespaced_deployment(name: str, namespace: str) -> any {
         return SimpleNamespace(
@@ -662,11 +662,11 @@ obj _BrokenFleetApps {
 # stripped of the marker that makes putting it back a no-op.
 
 obj _RollbackApps {
-    has revisions: dict,
+    has revisions: dict[str, any],
         fail_on: str = "",
-        patched: list = [],
-        bodies: list = [],
-        reads: list = [];
+        patched: list[any] = [],
+        bodies: list[any] = [],
+        reads: list[str] = [];
 
     def list_namespaced_deployment(namespace: str, **kwargs: any) -> any {
         return SimpleNamespace(
@@ -678,7 +678,7 @@ obj _RollbackApps {
     }
 
     def list_namespaced_replica_set(namespace: str, **kwargs: any) -> any {
-        items: list = [];
+        items: list[any] = [];
         for (dep, revs) in self.revisions.items() {
             for rev in revs {
                 items.append(_rs_for(dep, rev));
@@ -756,7 +756,7 @@ import jaclang.scale.deploy.target.kubernetes.target as target_mod;
 obj _Serializer {
     def sanitize_for_serialization(value: any) -> any {
         if isinstance(value, SimpleNamespace) {
-            out: dict = {};
+            out: dict[str, any] = {};
             for (key, item) in vars(value).items() {
                 out[key] = self.sanitize_for_serialization(item);
             }

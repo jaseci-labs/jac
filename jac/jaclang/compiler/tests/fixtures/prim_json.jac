@@ -19,7 +19,7 @@ ES/JS opts out.
 import from json { loads, dumps }
 
 
-def json_py() -> dict {
+def json_py() -> dict[any, any] {
     scalars: any = loads(
         "{\"a\": 1, \"b\": \"hi\", \"c\": true, \"d\": false, \"e\": null, \"f\": 3.5, \"g\": -7}"
     );
@@ -59,7 +59,7 @@ def json_py() -> dict {
 }
 
 
-def json_cl() -> dict {
+def json_cl() -> dict[any, any] {
     return {};
 }
 

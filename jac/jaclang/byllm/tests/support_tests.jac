@@ -31,7 +31,7 @@ import from jaclang.byllm.mtir { MTRuntime }
 import from jaclang.byllm.types { Message, MessageRole, StreamEvent, Tool }
 
 glob FIXTURE_DIR: str = os.path.join(os.path.dirname(__file__), "fixtures"),
-     TOKENS: dict = {
+     TOKENS: dict[str, any] = {
          "prompt_tokens": 100,
          "completion_tokens": 20,
          "total_tokens": 120
@@ -41,9 +41,9 @@ glob FIXTURE_DIR: str = os.path.join(os.path.dirname(__file__), "fixtures"),
 """One scripted model turn. `tool_calls` holds (call_id, name, arguments_json)."""
 obj Reply {
     has content: str = "",
-        tool_calls: list = [],
+        tool_calls: list[any] = [],
         finish_reason: str = "",
-        usage: dict | None = None,
+        usage: dict[str, any] | None = None,
         error: Exception | None = None,
         error_after: int = 0;
 
@@ -56,7 +56,9 @@ obj Reply {
 }
 
 
-def say(content: str, usage: dict | None = None, finish_reason: str = "") -> Reply {
+def say(
+    content: str, usage: dict[str, any] | None = None, finish_reason: str = ""
+) -> Reply {
     return Reply(content=content, usage=usage, finish_reason=finish_reason);
 }
 
@@ -68,7 +70,7 @@ OutputConversionError for a `-> int`. An enum takes the member's value, not its 
 
     typed(120597);  typed({"name": "Ada"});  typed(Colour.RED.value);
 """
-def typed(value: object, usage: dict | None = None) -> Reply {
+def typed(value: object, usage: dict[str, any] | None = None) -> Reply {
     import json;
     return say(json.dumps({"schema_object_wrapper": value}), usage=usage);
 }
@@ -77,9 +79,9 @@ def typed(value: object, usage: dict | None = None) -> Reply {
 """A single tool call; `args` may be a dict or an already-encoded JSON string."""
 def call(
     name: str,
-    args: dict | str | None = None,
+    args: dict[str, any] | str | None = None,
     call_id: str = "",
-    usage: dict | None = None,
+    usage: dict[str, any] | None = None,
     finish_reason: str = ""
 ) -> Reply {
     return calls(
@@ -91,9 +93,11 @@ def call(
 
 
 """Several tool calls in one turn; each entry is (name, args) or (name, args, id)."""
-def calls(entries: list, usage: dict | None = None, finish_reason: str = "") -> Reply {
+def calls(
+    entries: list[any], usage: dict[str, any] | None = None, finish_reason: str = ""
+) -> Reply {
     import json;
-    out: list = [];
+    out: list[any] = [];
     for (i, spec) in enumerate(entries) {
         name = spec[0];
         args = spec[1];
@@ -118,7 +122,7 @@ def fail(error: Exception, content: str = "", after: int = 0) -> Reply {
 }
 
 
-def _tool_call_dicts(reply: Reply) -> list {
+def _tool_call_dicts(reply: Reply) -> list[any] {
     return [
         {
             "id": call_id,
@@ -133,7 +137,7 @@ def _tool_call_dicts(reply: Reply) -> list {
 Usage is omitted, not empty, when the reply carries none: litellm turns an empty
 dict into a zero-token Usage, which production never sends."""
 def response(reply: Reply, model: str = "gpt-4o-mini") -> object {
-    payload: dict = {
+    payload: dict[str, any] = {
         "model": model,
         "choices": [
             {
@@ -155,9 +159,12 @@ def response(reply: Reply, model: str = "gpt-4o-mini") -> object {
 
 
 def _chunk(
-    model: str, delta: dict, finish_reason: str | None = None, usage: dict | None = None
+    model: str,
+    delta: dict[str, any],
+    finish_reason: str | None = None,
+    usage: dict[str, any] | None = None
 ) -> object {
-    payload: dict = {
+    payload: dict[str, any] = {
         "id": "chunk",
         "object": "chat.completion.chunk",
         "created": 1,
@@ -173,7 +180,7 @@ def _chunk(
 
 """A usage-only chunk with no choices, which is how OpenAI ends a stream when
 `include_usage` is set (and the product sets it on every stream)."""
-def _usage_chunk(model: str, usage: dict) -> object {
+def _usage_chunk(model: str, usage: dict[str, any]) -> object {
     return litellm.ModelResponseStream(
         **{
             "id": "chunk",
@@ -189,12 +196,12 @@ def _usage_chunk(model: str, usage: dict) -> object {
 
 """The stream `model_call_with_stream` yields for `reply`, as real litellm chunks.
 Usage arrives on a trailing empty-choices chunk, as it does from OpenAI."""
-def chunks(reply: Reply, model: str = "gpt-4o-mini", size: int = 12) -> list {
-    out: list = [];
+def chunks(reply: Reply, model: str = "gpt-4o-mini", size: int = 12) -> list[any] {
+    out: list[any] = [];
     first = True;
     text = reply.content;
     for i in range(0, len(text), size) {
-        delta: dict = {"content": text[i:i + size]};
+        delta: dict[str, any] = {"content": text[i:i + size]};
         if first {
             delta["role"] = "assistant";
         }
@@ -205,7 +212,7 @@ def chunks(reply: Reply, model: str = "gpt-4o-mini", size: int = 12) -> list {
         pieces = [arguments[i:i + size] for i in range(0, len(arguments), size)]
             or [""];
         for (n, piece) in enumerate(pieces) {
-            frag: dict = {"index": index, "function": {"arguments": piece}};
+            frag: dict[str, any] = {"index": index, "function": {"arguments": piece}};
             if n == 0 {
                 frag["id"] = call_id;
                 frag["type"] = "function";
@@ -229,12 +236,12 @@ def chunks(reply: Reply, model: str = "gpt-4o-mini", size: int = 12) -> list {
 
 """Serves scripted replies in order and records every outgoing params dict."""
 obj Script {
-    has replies: list = [],
-        seen: list = [],
+    has replies: list[any] = [],
+        seen: list[dict[str, any]] = [],
         model: str = "gpt-4o-mini",
         chunk_size: int = 12;
 
-    def next_reply(params: dict) -> Reply {
+    def next_reply(params: dict[str, any]) -> Reply {
         self.seen.append(params);
         if not self.replies {
             raise AssertionError(
@@ -244,7 +251,7 @@ obj Script {
         return self.replies.pop(0);
     }
 
-    def no_stream(params: dict) -> object {
+    def no_stream(params: dict[str, any]) -> object {
         reply = self.next_reply(params);
         if reply.error is not None {
             raise reply.error;
@@ -252,7 +259,7 @@ obj Script {
         return response(reply, params.get("model") or self.model);
     }
 
-    def with_stream(params: dict) -> Generator[object, None, None] {
+    def with_stream(params: dict[str, any]) -> Generator[object, None, None] {
         reply = self.next_reply(params);
         stream = chunks(reply, params.get("model") or self.model, self.chunk_size);
         for (i, chunk) in enumerate(stream) {
@@ -266,21 +273,21 @@ obj Script {
         }
     }
 
-    async def no_stream_async(params: dict) -> object {
+    async def no_stream_async(params: dict[str, any]) -> object {
         return self.no_stream(params);
     }
 
-    async def _astream(params: dict) -> any {
+    async def _astream(params: dict[str, any]) -> any {
         for chunk in self.with_stream(params) {
             yield chunk;
         }
     }
 
-    async def with_stream_async(params: dict) -> any {
+    async def with_stream_async(params: dict[str, any]) -> any {
         return self._astream(params);
     }
 
-    def sent(key: str) -> list {
+    def sent(key: str) -> list[any] {
         return [p.get(key) for p in self.seen];
     }
 
@@ -291,15 +298,15 @@ obj Script {
 
 
 """Tool names as the model would see them in one recorded params dict."""
-def tool_names(params: dict) -> list {
+def tool_names(params: dict[str, any]) -> list[any] {
     return [t["function"]["name"] for t in (params.get("tools") or [])];
 }
 
 
 obj FakeLLM(BaseLLM) {
     has model_name: str = "gpt-4o-mini",
-        replies: list = [],
-        seen: list = [],
+        replies: list[any] = [],
+        seen: list[dict[str, any]] = [],
         chunk_size: int = 12,
         script: Script = Script();
 
@@ -312,15 +319,17 @@ obj FakeLLM(BaseLLM) {
         );
     }
 
-    override def model_call_no_stream(params: dict) -> object {
+    override def model_call_no_stream(params: dict[str, any]) -> object {
         return self.script.no_stream(params);
     }
 
-    override def model_call_with_stream(params: dict) -> Generator[object, None, None] {
+    override def model_call_with_stream(
+        params: dict[str, any]
+    ) -> Generator[object, None, None] {
         return self.script.with_stream(params);
     }
 
-    def sent(key: str) -> list {
+    def sent(key: str) -> list[any] {
         return self.script.sent(key);
     }
 
@@ -333,10 +342,10 @@ obj FakeLLM(BaseLLM) {
 """Patch a real `Model` (or any BaseLLM) to serve `replies` on all dispatch paths."""
 obj Scripted {
     has model: BaseLLM,
-        replies: list,
+        replies: list[any],
         chunk_size: int = 12,
         script: Script | None = None,
-        _patches: list = [];
+        _patches: list[any] = [];
 
     def __enter__ -> Script {
         script = Script(
@@ -369,7 +378,7 @@ obj Scripted {
 }
 
 
-def scripted(model: BaseLLM, replies: list, chunk_size: int = 12) -> Scripted {
+def scripted(model: BaseLLM, replies: list[any], chunk_size: int = 12) -> Scripted {
     return Scripted(model=model, replies=replies, chunk_size=chunk_size);
 }
 
@@ -378,13 +387,15 @@ def scripted(model: BaseLLM, replies: list, chunk_size: int = 12) -> Scripted {
 finish tool is appended whenever tools are given unless `finish` says otherwise."""
 def mk_run(
     resp_type: type = str,
-    tools: list | None = None,
+    tools: list[any] | None = None,
     stream: bool = False,
-    call_params: dict | None = None,
-    messages: list | None = None,
+    call_params: dict[str, any] | None = None,
+    messages: list[any] | None = None,
     finish: bool | None = None
 ) -> MTRuntime {
-    wrapped: list = [t if isinstance(t, Tool) else Tool(func=t) for t in (tools or [])];
+    wrapped: list[any] = [
+        t if isinstance(t, Tool) else Tool(func=t) for t in (tools or [])
+    ];
     if finish if finish is not None else bool(wrapped) {
         wrapped.append(Tool.make_finish_tool(resp_type));
     }
@@ -463,7 +474,7 @@ def capture_logs(level: int = logging.DEBUG, name: str = "") -> LogCapture {
 
 
 """The conversation sent on call `n`, as the model saw it."""
-def sent_messages(llm: FakeLLM | Script, n: int = 0) -> list {
+def sent_messages(llm: FakeLLM | Script, n: int = 0) -> list[dict[str, any]] {
     return llm.sent("messages")[n];
 }
 
@@ -482,7 +493,7 @@ def roles(llm: FakeLLM | Script, n: int = 0) -> list[str] {
 A multimodal request lands its argument, image or video frames here. A text-only
 request is normalised to one text block, so callers can treat both alike.
 """
-def user_blocks(llm: FakeLLM | Script, n: int = 0) -> list {
+def user_blocks(llm: FakeLLM | Script, n: int = 0) -> list[dict[str, any]] {
     content = sent_messages(llm, n)[1]["content"];
     return content
         if isinstance(content, list)
@@ -491,7 +502,7 @@ def user_blocks(llm: FakeLLM | Script, n: int = 0) -> list {
 
 
 """Just the inlined media of the user turn of call `n`, in order."""
-def media_blocks(llm: FakeLLM | Script, n: int = 0) -> list {
+def media_blocks(llm: FakeLLM | Script, n: int = 0) -> list[dict[str, any]] {
     return [
         b
         for b in user_blocks(llm, n)
@@ -501,7 +512,7 @@ def media_blocks(llm: FakeLLM | Script, n: int = 0) -> list {
 
 
 """The data url carried by one media block."""
-def data_url(block: dict) -> str {
+def data_url(block: dict[str, any]) -> str {
     return block["image_url"]["url"];
 }
 
@@ -530,8 +541,8 @@ def prompt_text(llm: FakeLLM | Script, n: int = 0) -> str {
 
 
 """Drain a `logging=True` stream, checking every item is a StreamEvent."""
-def stream_events(stream: any) -> list {
-    out: list = [];
+def stream_events(stream: any) -> list[StreamEvent] {
+    out: list[StreamEvent] = [];
     for e in stream {
         assert isinstance(e, StreamEvent) , (
             f"a logging stream yields StreamEvent, got {type(e).__name__}"
@@ -543,7 +554,7 @@ def stream_events(stream: any) -> list {
 
 
 """The events of one type, in order."""
-def events_of(events: list, kind: str) -> list {
+def events_of(events: list[StreamEvent], kind: str) -> list[StreamEvent] {
     return [
         e
         for e in events
@@ -553,13 +564,13 @@ def events_of(events: list, kind: str) -> list {
 
 
 """The event types in order, for ordering assertions."""
-def event_types(events: list) -> list[str] {
+def event_types(events: list[StreamEvent]) -> list[str] {
     return [e.event_type for e in events];
 }
 
 
 """The text delivered on the chunk channel, reassembled."""
-def chunk_text(events: list) -> str {
+def chunk_text(events: list[StreamEvent]) -> str {
     return "".join([e.data.get("content", "") for e in events_of(events, "chunk")]);
 }
 
@@ -570,9 +581,9 @@ heading. Handles are generated from the candidate set: two `Agent` siblings beco
 `Agent_alpha` and `Agent_beta`, a lone one stays `Agent`. Read them, do not write
 them.
 """
-def routing_candidates(params: dict) -> list[tuple[str, str]] {
+def routing_candidates(params: dict[str, any]) -> list[tuple[str, str]] {
     import re;
-    out: list = [];
+    out: list[tuple[str, str]] = [];
     seen_heading = False;
     for line in str(params.get("messages")).replace("\\n", "\n").split("\n") {
         if line.lstrip().startswith("Candidates") {
@@ -595,15 +606,17 @@ def routing_candidates(params: dict) -> list[tuple[str, str]] {
 `pick(candidates, prompt)` takes the candidate list from routing_candidates() and
 the prompt they came from, and returns the handles to visit.
 
-    RoutingLLM(pick=lambda (c: list, p: str) { [x[0] for x in c if "high" in x[1]]; });
+    RoutingLLM(pick=lambda (c: list[tuple[str, str]], p: str) { [x[0] for x in c if "high" in x[1]]; });
 
 A graph whose nodes also make their own `by llm()` calls sends both kinds through
 one model, so a prompt with no candidates falls through to the scripted replies.
 """
 obj RoutingLLM(FakeLLM) {
-    has pick: Callable = lambda (c: list, p: str) { [c[0][0]] if c else []; };
+    has pick: Callable = lambda (c: list[tuple[str, str]], p: str) { [c[0][0]]
+        if c
+        else []; };
 
-    override def model_call_no_stream(params: dict) -> object {
+    override def model_call_no_stream(params: dict[str, any]) -> object {
         candidates = routing_candidates(params);
         if not candidates {
             # Not a routing prompt. A graph whose nodes also make their own
@@ -617,7 +630,9 @@ obj RoutingLLM(FakeLLM) {
         );
     }
 
-    override def model_call_with_stream(params: dict) -> Generator[object, None, None] {
+    override def model_call_with_stream(
+        params: dict[str, any]
+    ) -> Generator[object, None, None] {
         candidates = routing_candidates(params);
         if not candidates {
             for chunk in super.model_call_with_stream(params) {
@@ -636,7 +651,7 @@ obj RoutingLLM(FakeLLM) {
     }
 
     """The reply this routing call should answer with."""
-    def _answer(params: dict, candidates: list) -> Reply {
+    def _answer(params: dict[str, any], candidates: list[tuple[str, str]]) -> Reply {
         import json;
         chosen = self.pick(candidates, str(params.get("messages")));
         return say(json.dumps({"schema_object_wrapper": chosen}));

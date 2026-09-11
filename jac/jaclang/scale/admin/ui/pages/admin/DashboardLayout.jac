@@ -66,7 +66,7 @@ glob PAGE_ROUTES = {
      };
 
 # Nav items for one sidebar group, typed for the id/label lookups below.
-def groupItems(group: dict) -> list[dict[str, str]] {
+def groupItems(group: dict[str, any]) -> list[dict[str, str]] {
     return group["items"] as list[dict[str, str]];
 }
 

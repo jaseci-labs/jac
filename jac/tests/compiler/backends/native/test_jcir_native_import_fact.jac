@@ -35,7 +35,7 @@ glob FIXTURES = os.path.join(
 
 
 """Compile a fixture the ordinary way and hand back (program, module)."""
-def _compiled(fixture: str) -> tuple {
+def _compiled(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     mod = prog.compile(
         file_path=os.path.join(FIXTURES, fixture),

@@ -45,12 +45,12 @@ test "above threshold compacts and next iteration sees shortened messages" {
     );
 
     hook_call_count = [0];
-    def shrinking_hook(msgs: list, keep_recent: int) -> list {
+    def shrinking_hook(msgs: list[any], keep_recent: int) -> list[any] {
         hook_call_count[0] += 1;
         return [msgs[0], msgs[1]];
     }
 
-    iter_msgs: list = [];
+    iter_msgs: list[int] = [];
     original_dispatch = llm.dispatch_no_streaming;
     def capturing_dispatch(mt_run: MTRuntime) -> CompletionResult {
         iter_msgs.append(len(mt_run.get_msg_list()));
@@ -75,7 +75,7 @@ test "above threshold compacts and next iteration sees shortened messages" {
 test "default compactor produces system user summary and kept-tail structure" {
     sys_msg = {"role": "system", "content": "You are a helpful assistant."};
     user_msg = {"role": "user", "content": "Do the thing."};
-    def make_round(idx: int) -> list {
+    def make_round(idx: int) -> list[any] {
         return [
             {
                 "role": "assistant",
@@ -100,7 +100,7 @@ test "default compactor produces system user summary and kept-tail structure" {
     summary_text = "Steps 1, 2, and 3 searched for q1/q2/q3.";
     summariser = MockLLM(model_name="mockllm", config={"outputs": [summary_text]});
 
-    result: list = list(_byllm_llm_mod._default_compact(messages, 1, summariser));
+    result: list[any] = list(_byllm_llm_mod._default_compact(messages, 1, summariser));
 
     assert len(result) == 5 , f"Expected 5 messages, got {len(result)}";
     assert result[0] is sys_msg;
@@ -164,7 +164,7 @@ test "ctx_window priority - call_params beats self.ctx_window" {
     );
 
     compaction_fired = [False];
-    def hook(msgs: list, keep_recent: int) -> list {
+    def hook(msgs: list[any], keep_recent: int) -> list[any] {
         compaction_fired[0] = True;
         return msgs[:2];
     }
@@ -232,7 +232,7 @@ test "ctx_window fallback - unknown model with no override disables threshold" {
     );
 
     compaction_fired = [False];
-    def hook(msgs: list, keep_recent: int) -> list {
+    def hook(msgs: list[any], keep_recent: int) -> list[any] {
         compaction_fired[0] = True;
         return msgs[:2];
     }
@@ -268,7 +268,7 @@ test "compaction_enabled false suppresses proactive and emergency paths" {
     );
 
     proactive_fired = [False];
-    def hook1(msgs: list, keep_recent: int) -> list {
+    def hook1(msgs: list[any], keep_recent: int) -> list[any] {
         proactive_fired[0] = True;
         return msgs[:2];
     }
@@ -325,7 +325,7 @@ test "ContextWindowExceededError triggers emergency compaction and retries" {
     );
 
     hook_called = [False];
-    def hook(msgs: list, keep_recent: int) -> list {
+    def hook(msgs: list[any], keep_recent: int) -> list[any] {
         hook_called[0] = True;
         return msgs[:2];
     }
@@ -374,7 +374,7 @@ test "compaction with no reduction raises CompactionNotEffectiveError" {
         }
     );
 
-    def noop_hook(msgs: list, keep_recent: int) -> list {
+    def noop_hook(msgs: list[any], keep_recent: int) -> list[any] {
         return msgs;
     }
 
@@ -423,21 +423,21 @@ test "on_compaction hook returning invalid types raises ConfigurationError" {
         return None;
     }
 
-    def hook_none(msgs: list, keep_recent: int) -> any {
+    def hook_none(msgs: list[any], keep_recent: int) -> any {
         return None;
     }
     e1 = run_with_hook(hook_none);
     assert isinstance(e1, ConfigurationError) , f"Got {type(e1).__name__}: {e1}";
     assert "on_compaction hook" in str(e1);
 
-    def hook_empty(msgs: list, keep_recent: int) -> list {
+    def hook_empty(msgs: list[any], keep_recent: int) -> list[any] {
         return [];
     }
     e2 = run_with_hook(hook_empty);
     assert isinstance(e2, ConfigurationError);
     assert "at least 2 messages" in str(e2);
 
-    def hook_dict(msgs: list, keep_recent: int) -> any {
+    def hook_dict(msgs: list[any], keep_recent: int) -> any {
         return {"role": "user", "content": "wrong shape"};
     }
     e3 = run_with_hook(hook_dict);
@@ -466,7 +466,7 @@ test "streaming path triggers compaction and respects compaction_enabled" {
     );
 
     fired1 = [False];
-    def hook1(msgs: list, keep_recent: int) -> list {
+    def hook1(msgs: list[any], keep_recent: int) -> list[any] {
         fired1[0] = True;
         return msgs[:2];
     }
@@ -497,7 +497,7 @@ test "streaming path triggers compaction and respects compaction_enabled" {
     );
 
     fired2 = [False];
-    def hook2(msgs: list, keep_recent: int) -> list {
+    def hook2(msgs: list[any], keep_recent: int) -> list[any] {
         fired2[0] = True;
         return msgs[:2];
     }
@@ -550,12 +550,12 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
     # format_prompt subscripts messages[3] assuming get_msg_list() converted
     # ToolCallResultMsg via to_dict(). On CI this isinstance check evaluates
     # differently and the subscript raises. Bypass it - logging-only helper.
-    def noop_format(p: dict) -> str {
+    def noop_format(p: dict[str, any]) -> str {
         return "";
     }
 
     def make_fake_dispatch -> any {
-        step_resp: dict = {
+        step_resp: dict[str, any] = {
             "choices": [
                 {
                     "message": {
@@ -574,7 +574,7 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
             "usage": {"prompt_tokens": 850},
             "model": "local:gemma-4-e4b"
         };
-        finish_resp: dict = {
+        finish_resp: dict[str, any] = {
             "choices": [
                 {
                     "message": {
@@ -595,7 +595,7 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
             "model": "local:gemma-4-e4b"
         };
         call_count = [0];
-        def fake(params: dict) -> dict {
+        def fake(params: dict[str, any]) -> dict[str, any] {
             call_count[0] += 1;
             return step_resp if call_count[0] == 1 else finish_resp;
         }
@@ -609,7 +609,7 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
         target: object, patch_target: object, ctx_window_in_call: int
     ) -> bool {
         fired = [False];
-        def hook(msgs: list, keep_recent: int) -> list {
+        def hook(msgs: list[any], keep_recent: int) -> list[any] {
             fired[0] = True;
             return msgs[:2];
         }

@@ -1,4 +1,4 @@
-impl Message.from_dict(d: dict) -> Message | LiteLLMMessage | dict {
+impl Message.from_dict(d: dict[str, any]) -> Message | LiteLLMMessage | dict[str, any] {
     if "tool_call_id" in d {
         return ToolCallResultMsg(
             content=d.get("content", ""),

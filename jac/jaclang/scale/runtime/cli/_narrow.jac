@@ -1,4 +1,4 @@
-def dget(blob: any, key: str) -> dict {
+def dget(blob: any, key: str) -> dict[str, any] {
     if not isinstance(blob, dict) {
         return {};
     }
@@ -7,7 +7,7 @@ def dget(blob: any, key: str) -> dict {
 }
 
 
-def lget(blob: any, key: str) -> list {
+def lget(blob: any, key: str) -> list[any] {
     if not isinstance(blob, dict) {
         return [];
     }
@@ -54,6 +54,8 @@ def fget(blob: any, key: str, fallback: float) -> float {
     if not isinstance(blob, dict) {
         return fallback;
     }
+
+    blob: dict[str, any] = blob;
     val = blob.get(key);
     if val is None {
         return fallback;
@@ -66,7 +68,7 @@ def fget(blob: any, key: str, fallback: float) -> float {
 }
 
 
-def pod_spec(deployment: any) -> dict {
+def pod_spec(deployment: any) -> dict[str, any] {
     return dget(dget(dget(deployment, "spec"), "template"), "spec");
 }
 

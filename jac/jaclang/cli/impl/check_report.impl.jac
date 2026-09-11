@@ -24,7 +24,9 @@ impl print_file_progress(file_path: str, success: bool, idx: int, total: int) ->
     console.print(f"{file_path} {status} [{percentage}%]");
 }
 
-impl print_failures(failed_results: list, nowarn: bool = False) -> None {
+impl print_failures(
+    failed_results: list[dict[str, any]], nowarn: bool = False
+) -> None {
     import from jaclang.cli.console { console }
     console.print("");
     console.print(separator("FAILURES"));
@@ -32,8 +34,9 @@ impl print_failures(failed_results: list, nowarn: bool = False) -> None {
         console.print(separator(r['path'], char='_'));
         for e in r['errors'] {
             if isinstance(e, dict) {
-                console.error(str(e.get('pretty') or e.get('text') or ''));
-                print_guide_hint(e.get('code'), e.get('category'));
+                err: dict[str, any] = e;
+                console.error(str(err.get('pretty') or err.get('text') or ''));
+                print_guide_hint(err.get('code'), err.get('category'));
             } else {
                 console.error(str(e));
             }
@@ -41,8 +44,9 @@ impl print_failures(failed_results: list, nowarn: bool = False) -> None {
         if not nowarn and r['warnings'] {
             for w in r['warnings'] {
                 if isinstance(w, dict) {
-                    console.warning(str(w.get('pretty') or w.get('text') or ''));
-                    print_guide_hint(w.get('code'), w.get('category'));
+                    warn: dict[str, any] = w;
+                    console.warning(str(warn.get('pretty') or warn.get('text') or ''));
+                    print_guide_hint(warn.get('code'), warn.get('category'));
                 } else {
                     console.warning(str(w));
                 }
@@ -52,7 +56,7 @@ impl print_failures(failed_results: list, nowarn: bool = False) -> None {
     }
 }
 
-impl print_failed_summary(failed_results: list) -> None {
+impl print_failed_summary(failed_results: list[dict[str, any]]) -> None {
     import from jaclang.cli.console { console }
     console.print(separator("failed files"));
     for r in failed_results {
@@ -136,7 +140,13 @@ impl print_native_coverage(coverage: dict[str, dict[str, any]]) -> None {
         for (p, rec) in demoted {
             by_code.setdefault(rec['code'] or '<uncoded>', []).append((p, rec));
         }
-        ranked = sorted(by_code.items(), key=lambda (x: tuple) { (-len(x[1]), x[0]); });
+        ranked = sorted(
+            by_code.items(),
+            key=lambda (x: tuple[str, list[tuple[str, dict[str, any]]]]) { (
+                -len(x[1]),
+                x[0]
+            ); }
+        );
         for (code, entries) in ranked {
             console.print(f"  {code}  ({len(entries)})");
             for (p, rec) in sorted(entries) {
@@ -157,7 +167,8 @@ impl print_native_coverage(coverage: dict[str, dict[str, any]]) -> None {
             by_reason.setdefault(rec['detail'] or '<unknown>', []).append(p);
         }
         ranked_r = sorted(
-            by_reason.items(), key=lambda (x: tuple) { (-len(x[1]), x[0]); }
+            by_reason.items(),
+            key=lambda (x: tuple[str, list[str]]) { (-len(x[1]), x[0]); }
         );
         for (reason, paths) in ranked_r {
             console.print(f"  {reason}  ({len(paths)})");

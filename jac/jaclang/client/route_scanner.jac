@@ -1,7 +1,7 @@
 import re;
 import from pathlib { Path }
 
-glob _ROUTE_ROLE_SUFFIXES: list = ['.impl.', '.test.'],
+glob _ROUTE_ROLE_SUFFIXES: list[str] = ['.impl.', '.test.'],
      _JSX_ELEMENT_EXPORT_RE: str = (
          r'def(?::\w+)?\s+(\w+)\s*(?:\([^)]*\))?\s*->\s*JsxElement\b'
      ),

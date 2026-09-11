@@ -39,16 +39,18 @@ impl _StubResp.headers.getter -> any {
 obj _StubClient {
     has body_text: str,
         content_type: str = "application/json",
-        headers_seen: list[dict] = [];
+        headers_seen: list[dict[str, any]] = [];
 
-    def post(path: str, json: any = None, headers: (dict | None) = None) -> _StubResp {
+    def post(
+        path: str, json: any = None, headers: (dict[str, any] | None) = None
+    ) -> _StubResp {
         self.headers_seen.append(dict(headers or {}));
         return _StubResp(body_text=self.body_text, content_type=self.content_type);
     }
 }
 
 
-def _sse_body(events: list[dict], trailer: str = "end") -> str {
+def _sse_body(events: list[dict[str, any]], trailer: str = "end") -> str {
     parts: list[str] = [];
     for ev in events {
         parts.append("data: " + json.dumps(ev) + "\n\n");
@@ -64,7 +66,7 @@ def _sse_body(events: list[dict], trailer: str = "end") -> str {
 
 test "_parse_sse splits messages on blank lines and accumulates data" {
     body = "data: hello\n" "\n" "data: line1\n" "data: line2\n" "\n";
-    out: list = [];
+    out: list[any] = [];
     for ev in _parse_sse(body.splitlines()) {
         out.append(ev);
     }
@@ -80,7 +82,7 @@ test "_parse_sse picks up event: tags and trims one leading space" {
         "data:{\"message\": \"boom\"}\n"
         "\n"
     );
-    out: list = [];
+    out: list[any] = [];
     for ev in _parse_sse(body.splitlines()) {
         out.append(ev);
     }
@@ -92,7 +94,7 @@ test "_parse_sse ignores comment lines and unknown fields" {
     body = (
         ": this is a heartbeat comment - ignore me\n" "id: 42\n" "data: keep_me\n" "\n"
     );
-    out: list = [];
+    out: list[any] = [];
     for ev in _parse_sse(body.splitlines()) {
         out.append(ev);
     }
@@ -101,7 +103,7 @@ test "_parse_sse ignores comment lines and unknown fields" {
 
 test "_parse_sse yields trailing message without final blank line" {
     body = "data: a\n" "\n" "data: b\n";
-    out: list = [];
+    out: list[any] = [];
     for ev in _parse_sse(body.splitlines()) {
         out.append(ev);
     }
@@ -110,7 +112,7 @@ test "_parse_sse yields trailing message without final blank line" {
 
 test "_parse_sse decodes bytes input (native client aiter_lines yields bytes)" {
     body_lines = [b"data: hi", b"", b"event: end", b"data: {}", b""];
-    out: list = [];
+    out: list[any] = [];
     for ev in _parse_sse(body_lines) {
         out.append(ev);
     }
@@ -132,7 +134,7 @@ obj _FakeResp {
 test "consume_sse_stream yields parsed dicts and stops at event: end" {
     events_in = [{"type": "tool_use", "step": 1}, {"type": "agent_text", "text": "hi"}];
     resp = _FakeResp(body=_sse_body(events_in));
-    got: list = [];
+    got: list[any] = [];
     for ev in consume_sse_stream(resp.iter_lines(), "test.func") {
         got.append(ev);
     }
@@ -164,7 +166,7 @@ test "consume_sse_stream skips malformed JSON payload, keeps streaming" {
         "\n"
     );
     resp = _FakeResp(body=body);
-    got: list = [];
+    got: list[any] = [];
     for ev in consume_sse_stream(resp.iter_lines(), "test.func") {
         got.append(ev);
     }
@@ -185,7 +187,7 @@ test "sv_service_call returns a generator when downstream emits SSE" {
     );
     try {
         gen = JacScalePlugin.sv_service_call("stream_mod", "stream_events", {});
-        out: list = [];
+        out: list[any] = [];
         for ev in gen {
             out.append(ev);
         }
@@ -245,14 +247,17 @@ test "sv_walker_call carries the idempotency header through the scale transport"
 
 
 obj _StubTransport {
-    has calls: list[dict] = [];
+    has calls: list[dict[str, any]] = [];
 
     def sv_transport_available -> bool {
         return True;
     }
 
     def sv_service_call(
-        app: str, func_name: str, args: dict, headers: (dict | None) = None
+        app: str,
+        func_name: str,
+        args: dict[str, any],
+        headers: (dict[str, any] | None) = None
     ) -> any {
         self.calls.append(
             {"kind": "fn", "name": func_name, "headers": dict(headers or {})}
@@ -263,9 +268,9 @@ obj _StubTransport {
     def sv_walker_call(
         app: str,
         walker_name: str,
-        args: dict,
+        args: dict[str, any],
         stub_cls: any,
-        headers: (dict | None) = None
+        headers: (dict[str, any] | None) = None
     ) -> any {
         self.calls.append(
             {"kind": "walker", "name": walker_name, "headers": dict(headers or {})}

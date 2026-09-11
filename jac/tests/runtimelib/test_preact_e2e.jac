@@ -74,7 +74,7 @@ def _write_preact_project(dest: Path) {
 }
 
 """Start `jac run --serve` for a temp preact project. Returns (process, port, url)."""
-def _start_preact_server(project_dir: Path) -> tuple {
+def _start_preact_server(project_dir: Path) -> tuple[any, ...] {
     import shutil as sh;
     import sys;
     jac_cmd = [sh.which("jac")]

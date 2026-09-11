@@ -58,7 +58,9 @@ def _native_dir -> Path {
 
 Returns (returncode, stderr, binary_bytes). binary_bytes is empty on failure.
 """
-def _compile_host(host_src: str, extra_files: dict[str, str] = None) -> tuple {
+def _compile_host(
+    host_src: str, extra_files: dict[str, str] = None
+) -> tuple[any, ...] {
     jac = shutil.which("jac") or "jac";
     tmp = tempfile.mkdtemp();
     try {

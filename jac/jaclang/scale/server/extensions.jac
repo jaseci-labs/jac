@@ -265,7 +265,7 @@ obj RecoveryMailExtension(ServerExtension) {
         ext = self;
 
         def _fail(
-            code: str, message: str, status: int, extra: (dict | None) = None
+            code: str, message: str, status: int, extra: (dict[str, any] | None) = None
         ) -> TransportResponse {
             meta_extra: dict[str, any] = {'http_status': status};
             if extra {
@@ -323,7 +323,7 @@ obj RecoveryMailExtension(ServerExtension) {
             if user is None {
                 return _fail('NOT_FOUND', 'User not found', 404);
             }
-            target: (dict | None) = None;
+            target: (dict[str, any] | None) = None;
             for ident in user.get('identities', []) {
                 if ident.get('type') == 'email'
                     and (ident.get('value_normalized') or '') == normalized {

@@ -33,8 +33,8 @@ impl _prebuilt_bundle(module: ModuleType, source_path: Path) -> (ClientBundle | 
     bundle_js = candidates[-1];
     parts = bundle_js.name.split('.');
     bundle_hash = parts[1] if len(parts) >= 3 else '';
-    sm = serve_manifest_for(str(source_path)) or {};
-    client_meta = sm.get('client', {}) or {};
+    sm: dict[str, any] = serve_manifest_for(str(source_path)) or {};
+    client_meta: any = sm.get('client', {}) or {};
     return ClientBundle(
         module_name=module.__name__,
         code=bundle_js.read_text(encoding='utf-8'),

@@ -98,8 +98,9 @@ impl from_dict(data: any, cls: any) -> any {
         return data;
     }
 
+    raw_data: dict[str, any] = data;
     snake_data: dict[str, any] = {};
-    for (key, value) in data.items() {
+    for (key, value) in raw_data.items() {
         snake_data[_to_snake_case(key)] = value;
     }
 
@@ -211,7 +212,8 @@ impl TextDocument.apply_change(change: any) -> None {
     if isinstance(change, TextDocumentContentChangeEvent_Type1) {
         self._apply_incremental_change(change);
     } elif isinstance(change, dict) and "range" in change {
-        range_data = change["range"];
+        change_data: dict[str, any] = change;
+        range_data = change_data["range"];
         range_obj = Range(
             start=Position(
                 line=range_data["start"]["line"],
@@ -222,7 +224,7 @@ impl TextDocument.apply_change(change: any) -> None {
             )
         );
         typed_change = TextDocumentContentChangeEvent_Type1(
-            range=range_obj, text=change["text"]
+            range=range_obj, text=change_data["text"]
         );
         self._apply_incremental_change(typed_change);
     } else {
@@ -268,7 +270,8 @@ impl TextDocument._apply_incremental_change(
 
 impl TextDocument._apply_full_change(change: any) -> None {
     if isinstance(change, dict) {
-        self._source = change.get("text", "");
+        change_data: dict[str, any] = change;
+        self._source = change_data.get("text", "");
     } else {
         self._source = change.text;
     }
@@ -431,7 +434,9 @@ impl LanguageServer.start_io -> None {
     }
 }
 
-impl LanguageServer.publish_diagnostics(uri: str, diagnostics: list) -> None {
+impl LanguageServer.publish_diagnostics(
+    uri: str, diagnostics: list[Diagnostic]
+) -> None {
     self._send_notification(
         TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS,
         {"uri": uri, "diagnostics": [to_dict(d) for d in diagnostics]}
@@ -482,7 +487,7 @@ impl LanguageServer._send_response(msg_id: any, result: any) -> None {
     self._write_message(body);
 }
 
-impl LanguageServer._write_message(body: dict) -> None {
+impl LanguageServer._write_message(body: dict[str, any]) -> None {
     if self._transport_writer is None {
         return;
     }
@@ -497,7 +502,7 @@ impl LanguageServer._write_message(body: dict) -> None {
     }
 }
 
-impl LanguageServer._read_message(stream: any) -> Optional[dict] {
+impl LanguageServer._read_message(stream: any) -> Optional[dict[str, any]] {
     content_length = -1;
     while True {
         line = stream.readline();
@@ -524,13 +529,13 @@ impl LanguageServer._read_message(stream: any) -> Optional[dict] {
     return json.loads(body.decode("utf-8"));
 }
 
-impl LanguageServer._handle_initialize(params: dict) -> dict {
+impl LanguageServer._handle_initialize(params: dict[str, any]) -> dict[str, any] {
     root_uri = params.get("rootUri") or params.get("rootPath");
     self._workspace = Workspace(root_uri=root_uri);
     return {"capabilities": self._build_capabilities()};
 }
 
-impl LanguageServer._build_capabilities -> dict {
+impl LanguageServer._build_capabilities -> dict[str, any] {
     caps: dict[str, any] = {
         "textDocumentSync": {
             "openClose": True,

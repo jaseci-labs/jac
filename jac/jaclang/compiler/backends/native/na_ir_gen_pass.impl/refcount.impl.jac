@@ -1,4 +1,4 @@
-glob _NOGC_OSP_ENGINE_STRUCTS: tuple = (
+glob _NOGC_OSP_ENGINE_STRUCTS: tuple[str, ...] = (
          "Slot",
          "Plan",
          "WalkerDesc",
@@ -11,7 +11,7 @@ glob _NOGC_OSP_ENGINE_STRUCTS: tuple = (
          "Adj",
          "EdgeRow"
      ),
-     _NOGC_CONTAINER_DROP_OPS: tuple = (
+     _NOGC_CONTAINER_DROP_OPS: tuple[str, ...] = (
          "scope_exit",
          "field_set",
          "iter_end",
@@ -26,7 +26,7 @@ glob _NOGC_OSP_ENGINE_STRUCTS: tuple = (
          "last_use",
          "del_stmt"
      ),
-     _NOGC_TEMP_FREE_OPS: tuple = (
+     _NOGC_TEMP_FREE_OPS: tuple[str, ...] = (
          "binop_lhs",
          "binop_rhs",
          "binop_list",
@@ -584,7 +584,7 @@ impl NaIRGenPass._emit_rc_helpers -> None {
 }
 
 impl NaIRGenPass._rc_call_with_ctx(
-    fn: ir.Function, args: list, op: str, loc: str = "", name: str = ""
+    fn: ir.Function, args: list[any], op: str, loc: str = "", name: str = ""
 ) -> ir.Value {
     self._set_rc_ctx(op, loc);
     result = self.builder.call(fn, args, name=name);
@@ -1785,7 +1785,7 @@ impl NaIRGenPass._emit_container_drop_fn(cont_name: str) -> (ir.Function | None)
             bw = ir.IRBuilder(_walk_bb);
 
             def _drop_slot(
-                bl: ir.IRBuilder, i: ir.Value, elem_ptrs: list
+                bl: ir.IRBuilder, i: ir.Value, elem_ptrs: list[ir.Value]
             ) -> ir.IRBuilder {
                 if _fkind == "jacval" {
                     bl.call(
@@ -1880,9 +1880,13 @@ impl NaIRGenPass._nogc_type_arg_mangles(expr: uni.UniNode | None) -> list[str] {
     return self._nogc_type_arg_mangles_of_str(expr.type.mangle());
 }
 
-impl NaIRGenPass._drop_spec_for_mangle(mangle: str) -> (tuple | None) {
+impl NaIRGenPass._drop_spec_for_mangle(mangle: str) -> (tuple[str, ir.Type] | None) {
     if mangle == "int" or mangle == "bool" {
         return ("i64", ir.IntType(64));
+    }
+
+    if mangle in ("any", "Any") {
+        return ("jacval", self.jacval_type) if self?.jacval_type else None;
     }
     if mangle == "float" {
         return ("f64", ir.DoubleType());
@@ -1911,7 +1915,7 @@ impl NaIRGenPass._drop_fn_for(mangle: str) -> (ir.Function | None) {
     }
     if mangle == "str" {
         _fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
-    } elif "|" in mangle or mangle == "any" {
+    } elif "|" in mangle or mangle in ("any", "Any") {
         _fn = self._emit_jacval_slot_drop_fn(mangle);
     } elif mangle in self.struct_types {
         _fn = self._emit_struct_drop_fn(mangle);
@@ -1943,7 +1947,7 @@ impl NaIRGenPass._drop_fn_for(mangle: str) -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._nogc_stamp_elem_drops(
-    cont: ir.Value | None, elem_mangles: list
+    cont: ir.Value | None, elem_mangles: list[str]
 ) -> None {
     if cont is None or self._gc_mode() != "none" {
         return;
@@ -1967,7 +1971,7 @@ impl NaIRGenPass._nogc_stamp_elem_drops(
         and _base + len(_layout["data_fields"]) > len(_cont_elems) {
         return;
     }
-    _slot_specs: list = [
+    _slot_specs: list[tuple[int, str]] = [
         (_base + _k, elem_mangles[_k])
         for _k in range(len(_layout["data_fields"]))
         if _k < len(elem_mangles)
@@ -1996,8 +2000,8 @@ impl NaIRGenPass._emit_jacval_slot_drop_fn(elem_mangle: str) -> (ir.Function | N
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     _members = [_m.strip() for _m in elem_mangle.split("|")];
-    _list_drops: list = [];
-    _struct_drops: list = [];
+    _list_drops: list[ir.Function] = [];
+    _struct_drops: list[ir.Function] = [];
     for _m in _members {
         if _m == "list[int]" {
             self._emit_list_helpers("i64", i64);
@@ -2279,7 +2283,7 @@ impl NaIRGenPass._emit_scope_cleanup(
         return;
     }
     self._emit_region_leaves(len(self.region_open_stack));
-    _region_handles: list = [];
+    _region_handles: list[tuple[str, ir.Value]] = [];
     for (var_name, alloca) in reversed(list(self.local_vars.items())) {
         if var_name == "self" and not self._self_owned {
             continue;
@@ -2359,11 +2363,13 @@ impl NaIRGenPass._emit_scope_cleanup(
     }
 }
 
-impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> None {
+impl NaIRGenPass._emit_loop_iter_cleanup(
+    body_locals: list[str], loc: str = ""
+) -> None {
     if self._builder is None or self._builder.block.is_terminated {
         return;
     }
-    _region_handles: list = [];
+    _region_handles: list[tuple[str, ir.Value]] = [];
     for var_name in reversed(body_locals) {
         if var_name == "self" or var_name in self.param_vars {
             continue;

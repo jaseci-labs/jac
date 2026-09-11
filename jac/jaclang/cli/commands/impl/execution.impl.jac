@@ -10,6 +10,7 @@ import from jaclang.server.assembly {
     service_apps as _service_apps
 }
 import from jaclang.project.kinds { RunPlan }
+import type from jaclang.project.config { AppConfig, JacConfig }
 import type from importlib.metadata { EntryPoint }
 import type from jaclang.compiler.backends.native.llvm.binding.executionengine {
     ExecutionEngine
@@ -245,12 +246,12 @@ def _print_plan(plan: RunPlan, app: any) {
     console.print(f"equivalent   : {plan.command_line()}");
 }
 
-def _workspace_plans(cfg: any, project_root: str) -> list {
+def _workspace_plans(cfg: any, project_root: str) -> list[RunPlan] {
     import from jaclang.project.kinds { plan_app_run, plan_workspace }
     try {
         return plan_workspace(cfg, project_root);
     } except ValueError {}
-    plans: list = [];
+    plans: list[RunPlan] = [];
     for app in cfg.apps.values() {
         try {
             plans.append(plan_app_run(cfg, project_root, app));
@@ -307,7 +308,7 @@ def _show_workspace(cfg: any, project_root: str) -> int {
     return 0;
 }
 
-def _serve_flag_spelling -> dict {
+def _serve_flag_spelling -> dict[str, str] {
     return {
         "port": "--port",
         "dev": "--dev",
@@ -321,7 +322,7 @@ def _serve_flag_spelling -> dict {
     };
 }
 
-def _flag_list(names: list) -> str {
+def _flag_list(names: list[str]) -> str {
     return ", ".join(sorted(names));
 }
 
@@ -347,8 +348,8 @@ def _serve_overrides(
     fleet: bool,
     cfg: any,
     workers: (str | None) = None
-) -> dict {
-    over: dict = {};
+) -> dict[str, any] {
+    over: dict[str, any] = {};
     if _port_is_explicit(port, cfg) {
         over["port"] = port;
     }
@@ -381,8 +382,8 @@ def _serve_overrides(
 
 def _entry_flags_used(
     entry_name: str, nd: str, root_id: str, debug_mode: bool
-) -> list {
-    used: list = [];
+) -> list[str] {
+    used: list[str] = [];
     if entry_name {
         used.append("--entry");
     }
@@ -400,7 +401,7 @@ def _entry_flags_used(
 
 def _kind_serve_flags(
     plan: (RunPlan | None), kind_serves: bool, serve_mode: (bool | None)
-) -> dict {
+) -> dict[str, any] {
     if not kind_serves or plan is None {
         return {};
     }
@@ -416,8 +417,8 @@ def _kind_serve_flags(
 
 def _serve_with(
     entry_path: str,
-    plan_flags: dict,
-    over: dict,
+    plan_flags: dict[str, any],
+    over: dict[str, any],
     main: bool,
     app_name: str,
     takeover: bool = False
@@ -433,7 +434,7 @@ def _serve_with(
     }
     initialize_provider_registry();
 
-    kw: dict = {
+    kw: dict[str, any] = {
         "port": 0,
         "dev": False,
         "api_port": 0,
@@ -529,8 +530,8 @@ impl run_jab_image(
 
     meta = jab_app_meta(img_root);
     kind = str(meta.get("kind") or "cli");
-    entry_meta: dict = meta.get("entry") or {};
-    caps: list = meta.get("capabilities") or [];
+    entry_meta: any = meta.get("entry") or {};
+    caps: any = meta.get("capabilities") or [];
     entry_rel = str(entry_meta.get("path") or "");
     if not entry_rel {
         attach_note = ", attachable package" if "attachable" in caps else "";
@@ -649,7 +650,9 @@ def _file_app(cfg: any, target: str, takeover: (bool | None)) -> any {
     return app;
 }
 
-def _resolve_target(target: str, takeover: (bool | None) = None) -> tuple {
+def _resolve_target(
+    target: str, takeover: (bool | None) = None
+) -> tuple[JacConfig | None, AppConfig | None, str, int] {
     import from jaclang.project.config { get_config }
 
     if _is_file_target(target) {
@@ -700,7 +703,9 @@ def _resolve_target(target: str, takeover: (bool | None) = None) -> tuple {
     return (cfg, app, "", 0);
 }
 
-def _resolve_plan(target: str, takeover: (bool | None) = None) -> tuple {
+def _resolve_plan(
+    target: str, takeover: (bool | None) = None
+) -> tuple[RunPlan | None, JacConfig | None, AppConfig | None, str, int] {
     import from jaclang.project.kinds { plan_app_run }
 
     (cfg, app, file, rc) = _resolve_target(target, takeover);
@@ -734,7 +739,7 @@ def _resolve_plan(target: str, takeover: (bool | None) = None) -> tuple {
 }
 
 def _invoke_entrypoint(
-    filename: str, entrypoint: str, args: list, main: bool, root_id: str, nd: str
+    filename: str, entrypoint: str, args: list[str], main: bool, root_id: str, nd: str
 ) -> int {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from jaclang.runtime.constructs { WalkerArchetype }
@@ -795,7 +800,7 @@ impl run(
     takeover: (bool | None) = None,
     fleet: bool = False,
     workers: (str | None) = None,
-    args: list = [],
+    args: list[str] = [],
     backend: str = ""
 ) -> int {
     use_line_buffered_output();
@@ -936,7 +941,7 @@ def _exec_file(
     main: bool,
     cache: bool,
     diagnostics: str,
-    args: list,
+    args: list[str],
     backend: str = ""
 ) -> int {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
@@ -1347,7 +1352,7 @@ impl serve(
 
     hot_reloader = None;
 
-    vite_holder: list = [];
+    vite_holder: list[any] = [];
     if dev {
         if not _ensure_watchdog_installed() {
             mach.close();
@@ -1398,8 +1403,8 @@ impl serve(
             free_vite_port = _find_free_port(
                 vite_port, skip_port=actual_port, strict=port_pinned
             );
-            declared_paths: list = [];
-            claimed_paths: list = [];
+            declared_paths: list[str] = [];
+            claimed_paths: list[str] = [];
             try {
                 import from jaclang.client.vite_bundler { DEV_PROXY_PREFIXES }
                 declared_paths = server.introspector.declared_api_paths();

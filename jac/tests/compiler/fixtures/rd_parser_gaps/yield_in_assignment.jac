@@ -1,6 +1,6 @@
 """Test yield expression as assignment value."""
 
-def gen_accumulate(items: list) -> int {
+def gen_accumulate(items: list[any]) -> int {
     total = 0;
     for item in items {
         total += item;

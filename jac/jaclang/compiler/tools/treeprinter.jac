@@ -4,8 +4,8 @@ import html;
 import jaclang.compiler.frontend.unitree as uni;
 import type from jaclang.compiler.frontend.unitree { UniNode, UniScopeNode }
 
-glob id_bag: dict = {},
-     id_state: dict = {"used": 0},
+glob id_bag: dict[int, any] = {},
+     id_state: dict[str, int] = {"used": 0},
      CLASS_COLOR_MAP: dict[(str, str)] = {
          'Expr': '#fbeb93',
          'AtomExpr': '#fbeb93',
@@ -461,7 +461,7 @@ def get_symtab_tree_str(
     if ((root_node is None) or (depth == 0) or (root_node.name in dir(builtins))) {
         return '';
     }
-    level_markers = level_markers or [];
+    level_markers: list[bool] = level_markers or [];
     markers = (
         ''.join(
             [
@@ -495,8 +495,8 @@ def get_symtab_tree_str(
 
 def printgraph_symtab_tree(nd: UniScopeNode) -> str {
     dot_lines = [];
-    id_map = {};
-    last_id_state = {"used": 0};
+    id_map: dict[int, int] = {};
+    last_id_state: dict[str, int] = {"used": 0};
     def gen_node_id(nd: SymbolTree) -> int {
         if (id(nd) not in id_map) {
             id_map[id(nd)] = last_id_state["used"];

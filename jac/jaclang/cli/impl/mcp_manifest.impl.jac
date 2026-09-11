@@ -5,13 +5,13 @@ impl list_commands -> dict[str, str | int | list[dict[str, str]] | list[str]] {
     for meta in iter_command_meta() {
         commands.append({'name': meta.name, 'help': meta.help, 'group': meta.group});
     }
-    commands.sort(key=lambda (c: dict) { (c['group'], c['name']); });
+    commands.sort(key=lambda (c: dict[str, any]) { (c['group'], c['name']); });
     return {'commands': commands, 'groups': get_groups(), 'total': len(commands)};
 }
 
 impl get_command(
     name: str
-) -> dict[str, str | bool | list | None | list[dict[str, str]]] {
+) -> dict[str, str | bool | list[object] | None | list[dict[str, str]]] {
     import from jaclang.cli.manifest { get_command_meta }
     import from jaclang.cli.command { arg_typ_name }
 
@@ -20,14 +20,14 @@ impl get_command(
         return {'error': f"Command not found: {name}"};
     }
 
-    args: list[dict[str, str | bool | list | None]] = [];
+    args: list[dict[str, str | bool | list[object] | None]] = [];
     seen: set[str] = set();
     for arg in meta.args {
         if arg.name in seen {
             continue;
         }
         seen.add(arg.name);
-        info: dict[str, str | bool | list | None] = {
+        info: dict[str, str | bool | list[object] | None] = {
             'name': arg.name,
             'kind': arg.kind.name,
             'type': arg_typ_name(arg.typ),

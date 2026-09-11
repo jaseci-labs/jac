@@ -724,7 +724,7 @@ test "fstring advanced fixture template literals" {
 }
 
 test "fstring edge cases" {
-    jac_code = "\"\"\"Test f-string edge cases.\"\"\"\n\ndef test_edge_cases() -> dict {\n    name = \"Alice\";\n    value = 42;\n\n    # Text only (no interpolation)\n    text_only = f\"This is just plain text\";\n\n    # Expression only (no static text)\n    expr_only = f\"{value}\";\n\n    # Multiple consecutive expressions\n    consecutive = f\"{name}{value}\";\n\n    # Mixed with spaces\n    mixed = f\"Name: {name}, Value: {value}\";\n\n    return {\"text\": text_only, \"expr\": expr_only, \"cons\": consecutive, \"mixed\": mixed};\n}\n";
+    jac_code = "\"\"\"Test f-string edge cases.\"\"\"\n\ndef test_edge_cases() -> dict[any, any] {\n    name = \"Alice\";\n    value = 42;\n\n    # Text only (no interpolation)\n    text_only = f\"This is just plain text\";\n\n    # Expression only (no static text)\n    expr_only = f\"{value}\";\n\n    # Multiple consecutive expressions\n    consecutive = f\"{name}{value}\";\n\n    # Mixed with spaces\n    mixed = f\"Name: {name}, Value: {value}\";\n\n    return {\"text\": text_only, \"expr\": expr_only, \"cons\": consecutive, \"mixed\": mixed};\n}\n";
 
     temp_path = write_temp_jac(jac_code);
 
@@ -1298,7 +1298,7 @@ test "for-of tuple targets destructure into binding patterns" {
 
 test "tuple assignment targets destructure with a rest pattern" {
     jac_code = (
-        "def f(rows: list) {\n"
+        "def f(rows: list[any]) {\n"
         "    (first, *rest) = rows;\n"
         "    return rest;\n"
         "}\n"
@@ -2370,7 +2370,7 @@ test "cl negative indexing counts from the end like Python (#6320)" {
     # Python/Jac negative indices count from the end. A raw JS subscript
     # `xs[-1]` is `undefined`, silently producing the wrong value.
     jac_code = """
-def neg_index() -> dict {
+def neg_index() -> dict[any, any] {
     xs: list[int] = [10, 20, 30];
     s: str = "abc";
     return {
@@ -2423,7 +2423,7 @@ test "cl collection truthiness matches Python emptiness (#6320)" {
     # never short-circuit. Boolean contexts on a collection must test
     # emptiness like Python (empty list/dict/set is falsy; str already agrees).
     jac_code = """
-def truthy_probe() -> dict {
+def truthy_probe() -> dict[any, any] {
     el: list[int] = [];
     fl: list[int] = [1];
     ed: dict[str, int] = {};
@@ -2511,7 +2511,7 @@ test "cl negative-index assignment and while-truthiness match Python (#6320)" {
     # (raw `xs[-1] = v` would create a bogus "-1" property), and a `while`
     # guard on a collection must drain like Python rather than loop forever.
     jac_code = """
-def probe() -> dict {
+def probe() -> dict[any, any] {
     xs: list[int] = [1, 2, 3];
     xs[-1] = 99;
     xs[0] = 5;
@@ -2577,7 +2577,7 @@ test "cl subscript on unknown-typed values keeps JS undefined-on-miss (#6320)" {
     # index is rewritten to count from the end. This guards the jac-client
     # `data["data"]["user_id"]` pattern from regressing to a KeyError throw.
     jac_code = """
-def probe(resp: any, xs: any) -> dict {
+def probe(resp: any, xs: any) -> dict[any, any] {
     present: any = resp["user_id"];
     guard: int = 1 if (resp["data"] and resp["data"]["k"]) else 0;
     return {
@@ -2992,7 +2992,7 @@ test "builtin name used as a dict key lowers to that key, not the 'key' fallback
     # renderer read that accidental `config.key`, so once the builtin-type
     # handler started lowering `type` correctly the form input types broke
     # (native `type="email"` validation stopped working). Lock the key down.
-    jac_code = "def make_cfg() -> dict {\n    return {type: \"email\", label: \"Email\"};\n}\n";
+    jac_code = "def make_cfg() -> dict[any, any] {\n    return {type: \"email\", label: \"Email\"};\n}\n";
 
     temp_path = write_temp_jac(jac_code);
     try {

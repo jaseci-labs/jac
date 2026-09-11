@@ -75,7 +75,7 @@ def build_traceparent(
     return f"{_TP_VERSION}-{tid}-{sid}-{flg}";
 }
 
-def parse_traceparent(header: str | None) -> dict | None {
+def parse_traceparent(header: str | None) -> dict[str, any] | None {
     if not header {
         return None;
     }
@@ -200,7 +200,7 @@ def start_server_span(
     name: str,
     trace_uuid: str | None,
     parent_traceparent: str | None = None,
-    attributes: dict | None = None
+    attributes: dict[str, any] | None = None
 ) -> any {
     if not _tracing_active or _tracer is None or not HAS_OTEL {
         return None;
@@ -253,7 +253,7 @@ def end_span(span: any) {
     _current_span.set(None);
 }
 
-def start_memory_span(name: str, attributes: dict | None = None) -> any {
+def start_memory_span(name: str, attributes: dict[str, any] | None = None) -> any {
     if not _tracing_active or _tracer is None or not HAS_OTEL {
         return None;
     }

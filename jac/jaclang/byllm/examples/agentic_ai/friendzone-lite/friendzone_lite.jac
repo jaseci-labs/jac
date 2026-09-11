@@ -42,7 +42,7 @@ def update_memory_details(
     who: list[str] = [],
     where: list[str] = [],
     what: str = "",
-    conversation: list[dict] = [],
+    conversation: list[dict[str, any]] = [],
     show_summary: bool = False,
     terminate_conversation: bool = False
 ) -> Response by llm();
@@ -50,10 +50,10 @@ def update_memory_details(
 node session {
     has summary: str = "",
         when: str = "",
-        who: list = [],
-        where: list = [],
+        who: list[str] = [],
+        where: list[str] = [],
         what: str = "",
-        conversation: list = [],
+        conversation: list[dict[str, any]] = [],
         image_url: str = "",
         show_summary: bool = False,
         terminate_conversation: bool = False;

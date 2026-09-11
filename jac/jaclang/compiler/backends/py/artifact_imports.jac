@@ -18,7 +18,7 @@ def runtime_sources(code: types.CodeType, source: str, `root: str) -> set[str] {
                 continue;
             }
             level = instructions[(index - 2)].argval;
-            names = instructions[(index - 1)].argval;
+            names: tuple[str, ...] | None = instructions[(index - 1)].argval;
             if not isinstance(level, int) {
                 raise RuntimeError(
                     f'Nonconstant import level in prepared module {source}'

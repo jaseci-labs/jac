@@ -3,7 +3,7 @@ import from jaclang.cli.console { console }
 def _jac_client_plugin_dir -> Path {
     import importlib;
     client_pkg = importlib.import_module("jaclang.client");
-    paths = list(getattr(client_pkg, "__path__", []) or []);
+    paths: list[str] = list(getattr(client_pkg, "__path__", []) or []);
     if not paths {
         raise ClientBundleError(
             "jaclang.client not found; cannot locate D9 client runtime"

@@ -18,7 +18,7 @@ def _binary_dir -> str {
 }
 
 obj PluginHost {
-    has plugins: dict,
+    has plugins: dict[str, DesktopPlugin],
         _wv_handle: int = 0,
         _wv_lib: ctypes.CDLL | None = None,
         _cef: bool = False,
@@ -130,7 +130,7 @@ obj PluginHost {
         );
     }
 
-    def _parse_invoke(req_json: str) -> dict {
+    def _parse_invoke(req_json: str) -> dict[str, any] {
         wire = json.loads(req_json);
         if isinstance(wire, list) and len(wire) >= 2 {
             args = wire[2] if len(wire) > 2 and wire[2] is not None else {};
@@ -175,7 +175,7 @@ obj PluginHost {
         }
     }
 
-    def emit(event: str, payload: dict) -> None {
+    def emit(event: str, payload: dict[str, any]) -> None {
         if self._cef {
             self._push(json.dumps({"event": event, "payload": payload}));
             return;

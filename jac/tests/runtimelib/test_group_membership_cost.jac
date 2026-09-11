@@ -55,8 +55,8 @@ def _link(ctx: ExecutionContext, src: any, dst: any, kind: any) {
 }
 
 """Serialized fingerprint per content row, which is what a store write sees."""
-def _fingerprints(ctx: ExecutionContext, ids: list) -> dict {
-    out: dict = {};
+def _fingerprints(ctx: ExecutionContext, ids: list[any]) -> dict[str, any] {
+    out: dict[str, any] = {};
     for i in ids {
         anchor: any = ctx.mem.get(i);
         props = Serializer.serialize(anchor, include_type=True);
@@ -80,7 +80,7 @@ test "a group join and leave rewrite no content rows, and visibility flips" {
             setattr(team, "root", owner.id);
             ctx.mem.put(team);
 
-            ids: list = [];
+            ids: list[any] = [];
             for i in range(8) {
                 it = Item(label=f"i{i}").__jac__;
                 it.persistent = True;

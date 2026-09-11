@@ -4,9 +4,9 @@ impl register_agent_callback(callback: Callable) -> None {
     }
 }
 
-impl _aggregate_usage(usage_history: list[dict]) -> dict[str, object] {
-    totals: dict = {};
-    by_kind: dict = {};
+impl _aggregate_usage(usage_history: list[dict[str, any]]) -> dict[str, object] {
+    totals: dict[str, any] = {};
+    by_kind: dict[str, any] = {};
     for u in usage_history {
         kind = u.get("call_kind", "react_iteration");
         if kind not in by_kind {
@@ -45,7 +45,7 @@ impl _emit_agent_telemetry(
         logger.debug(f"user_prompt extraction failed: {e}");
     }
 
-    caller_args: dict = {};
+    caller_args: dict[str, any] = {};
     try {
         mtir = getattr(mt_run, "mtir");
         if mtir and mtir.args {
@@ -57,7 +57,7 @@ impl _emit_agent_telemetry(
         logger.debug(f"caller_args extraction failed: {e}");
     }
 
-    conv_history: list = [];
+    conv_history: list[any] = [];
     try {
         conv_history = getattr(mt_run, "get_msg_list")();
     } except Exception as e {
@@ -73,7 +73,12 @@ impl _emit_agent_telemetry(
         }
     }
 
-    tokens: dict = {"total": {}, "by_kind": {}, "per_call": [], "requests": 0};
+    tokens: dict[str, any] = {
+        "total": {},
+        "by_kind": {},
+        "per_call": [],
+        "requests": 0
+    };
     try {
         history: any = mt_run._usage_history or [];
         tokens = _aggregate_usage(history);

@@ -54,7 +54,7 @@ def create_mcjit_compiler(
 # JIT'd it lives, and nothing on the Python side references the engine once
 # the compile closure that produced it is released, so the hand-out pins it
 # for the life of the process.
-glob _PINNED_ENGINES: list = [];
+glob _PINNED_ENGINES: list[ExecutionEngine] = [];
 
 class ExecutionEngine(ffi.ObjectRef) {
     with entry {
@@ -67,7 +67,7 @@ class ExecutionEngine(ffi.ObjectRef) {
     def init(self: ExecutionEngine, ptr: any, module: any) -> object {
         self._modules = `set([module]);
         self._td: (targets.TargetData | None) = None;
-        self.static_init_symbols = [];
+        self.static_init_symbols: list[str] = [];
         self.static_init_chained = `set();
         self._pinned = False;
         module._owned = True;

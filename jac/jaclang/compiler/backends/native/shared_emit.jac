@@ -235,8 +235,8 @@ def emit_shared_library(
     output_path: str,
     opt_level: int = 2,
     auto_init: bool = False,
-    clib_paths: (list | None) = None,
-    clib_symbol_lib: (dict | None) = None
+    clib_paths: (list[str] | None) = None,
+    clib_symbol_lib: (dict[str, str] | None) = None
 ) -> tuple[bool, str] {
     import os;
     import sys;

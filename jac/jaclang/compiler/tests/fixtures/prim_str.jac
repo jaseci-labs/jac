@@ -7,7 +7,7 @@ format_map, translate, title, rfind, zfill.
 """
 
 # --- All string methods and operators ---
-def str_py() -> dict {
+def str_py() -> dict[any, any] {
     s1: str = "HELLO WORLD";
     s2: str = "hello world";
     s3: str = "  Hello, World!  ";
@@ -17,7 +17,7 @@ def str_py() -> dict {
     alnum: str = "abc123";
     spaces: str = "   ";
     sep: str = ",";
-    items: list = ["x", "y", "z"];
+    items: list[any] = ["x", "y", "z"];
 
     # format_map
     fm1: str = "{name} is {age}".format_map({"name": "Bob", "age": "30"});
@@ -38,8 +38,8 @@ def str_py() -> dict {
     mod2: str = "Value: %d" % 42;
 
     # encode
-    enc1: list = list("hello".encode());
-    enc2: list = list("".encode());
+    enc1: list[any] = list("hello".encode());
+    enc2: list[any] = list("".encode());
 
     # partition
     p1: list[str] = list("hello world".partition(" "));
@@ -305,7 +305,7 @@ def str_py() -> dict {
     };
 }
 
-def str_cl() -> dict {
+def str_cl() -> dict[any, any] {
     s1: str = "HELLO WORLD";
     s2: str = "hello world";
     s3: str = "  Hello, World!  ";
@@ -315,7 +315,7 @@ def str_cl() -> dict {
     alnum: str = "abc123";
     spaces: str = "   ";
     sep: str = ",";
-    items: list = ["x", "y", "z"];
+    items: list[any] = ["x", "y", "z"];
 
     fm1: str = "{name} is {age}".format_map({"name": "Bob", "age": "30"});
     fm2: str = "{x}{y}{x}".format_map({"x": "a", "y": "b"});
@@ -327,8 +327,8 @@ def str_cl() -> dict {
     tr1: str = "hello world".translate(table);
     mod1: str = "Hello %s" % "world";
     mod2: str = "Value: %d" % 42;
-    enc1: list = list("hello".encode());
-    enc2: list = list("".encode());
+    enc1: list[any] = list("hello".encode());
+    enc2: list[any] = list("".encode());
 
     p1: list[str] = list("hello world".partition(" "));
     p2: list[str] = list("hello".partition("x"));

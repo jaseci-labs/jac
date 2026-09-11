@@ -30,9 +30,9 @@ def _snippet_task(code: str, worker: object, suffix: str = ".jac") -> object {
     return _run;
 }
 
-impl run_with_timeout(func: object, timeout: int = 10) -> tuple {
-    result_holder: list = [None];
-    error_holder: list = [None];
+impl run_with_timeout(func: object, timeout: int = 10) -> tuple[bool, any] {
+    result_holder: list[object] = [None];
+    error_holder: list[Exception | None] = [None];
     def _worker {
         try {
             result_holder[0] = func();
@@ -52,9 +52,9 @@ impl run_with_timeout(func: object, timeout: int = 10) -> tuple {
     return (True, result_holder[0]);
 }
 
-def _cap_read(stream: IO[bytes], holder: list, cap: int) {
+def _cap_read(stream: IO[bytes], holder: list[bytes | None], cap: int) {
     try {
-        chunks: list = [];
+        chunks: list[bytes] = [];
         total: int = 0;
         while True {
             want: int = min(4096, cap - total);
@@ -119,7 +119,7 @@ impl CompilerBridge.parse_snippet(
 
         ir = program.parse_str(code, tmp_path);
 
-        errors: list[dict] = [];
+        errors: list[dict[str, any]] = [];
         for e in program.errors_had {
             errors.append(_extract_error_info(e));
         }
@@ -162,8 +162,8 @@ impl CompilerBridge.typecheck_snippet(
 
         ir = compiler.compile(tmp_path, program);
 
-        errors: list[dict] = [];
-        warnings: list[dict] = [];
+        errors: list[dict[str, any]] = [];
+        warnings: list[dict[str, any]] = [];
         for e in program.errors_had {
             errors.append(_extract_error_info(e));
         }
@@ -279,7 +279,7 @@ impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, a
 
         ir = program.parse_str(code, tmp_path);
 
-        errors: list[dict] = [];
+        errors: list[dict[str, any]] = [];
         for e in program.errors_had {
             errors.append(_extract_error_info(e));
         }
@@ -324,7 +324,7 @@ impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str,
             prog = JacCompiler.jac_file_linter(file_path=tmp_path);
         }
 
-        violations: list[dict] = [];
+        violations: list[dict[str, any]] = [];
         for w in prog.warnings_had {
             violations.append(_extract_error_info(w));
         }
@@ -484,8 +484,8 @@ impl CompilerBridge.run_snippet(
                 start_new_session=True,
             );
         }
-        out_buf: list = [None];
-        err_buf: list = [None];
+        out_buf: list[bytes | None] = [None];
+        err_buf: list[bytes | None] = [None];
         t_out = threading.Thread(
             target=_cap_read, args=(proc.stdout, out_buf, MAX_OUTPUT_SIZE), daemon=True
         );

@@ -184,7 +184,7 @@ sem _wind_speed = "Get the current wind speed of a given city.";
 
 """One tool-using turn, so the recorded params carry a real tools array and a
 real tool result. `extra` is merged into the by-llm call params."""
-def _wind_report(llm: FakeLLM, extra: dict) -> str {
+def _wind_report(llm: FakeLLM, extra: dict[str, any]) -> str {
     answer = "The current wind speed in Puttalam is about 18-22 km/h.";
     llm.replies.extend([call("_wind_speed", {"city": "Puttalam"}), say(answer)]);
     llm.postinit();
@@ -375,7 +375,7 @@ test "a list-of-obj return parses, and each element feeds the next call" {
 test "the model can be any expression, and a bound call keeps its tools" {
     # `by <expr>` takes a model from anywhere, not just a bare name, and a model
     # already bound with tools= keeps that binding.
-    ran: list = [];
+    ran: list[str] = [];
 
     """Run Python code and return the output, or the error message."""
     def run_and_test_python_code(code: str) -> str {

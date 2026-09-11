@@ -9,7 +9,7 @@ type after unary+, causing subsequent == to use JS === (identity) instead
 of _jac.complex.eq(). The pos runtime function itself is trivially correct.
 """
 
-def complex_ops_py() -> dict {
+def complex_ops_py() -> dict[any, any] {
     c1 = complex(3, 4);
     c2 = complex(1, 2);
 
@@ -57,7 +57,7 @@ def complex_ops_py() -> dict {
     };
 }
 
-def complex_ops_cl() -> dict {
+def complex_ops_cl() -> dict[any, any] {
     c1 = complex(3, 4);
     c2 = complex(1, 2);
 

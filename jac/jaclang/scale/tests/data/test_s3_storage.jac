@@ -11,7 +11,7 @@ import from jaclang.scale.storage.s3_storage { S3Storage }
 import from jaclang.project.config { JacConfig }
 
 
-glob _LOCALSTACK: dict = {};
+glob _LOCALSTACK: dict[str, any] = {};
 
 
 def _require_localstack -> str {

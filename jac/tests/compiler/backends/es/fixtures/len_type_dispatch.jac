@@ -31,7 +31,7 @@ def t_len_str -> int {
     return len("abcd");
 }
 
-def t_len_all -> dict {
+def t_len_all -> dict[any, any] {
     return {
         "d": t_len_dict(),
         "s": t_len_set(),

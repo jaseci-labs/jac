@@ -164,7 +164,7 @@ impl PgRuntime._run_as -> (PgRunAs | None) {
 }
 
 
-impl PgRuntime._as_user -> dict {
+impl PgRuntime._as_user -> dict[str, any] {
     target = self._run_as();
     if target is None {
         return {};
@@ -736,7 +736,7 @@ impl PgRuntime.drop_database(database: str, force: bool = False) -> bool {
 }
 
 
-impl PgRuntime.databases -> list {
+impl PgRuntime.databases -> list[DbRecord] {
     import from jaclang.data.dbcatalog { connect_admin, list_databases }
     conn: any = connect_admin(self.conninfo());
     try {

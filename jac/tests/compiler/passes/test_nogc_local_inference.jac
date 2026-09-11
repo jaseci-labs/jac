@@ -18,7 +18,7 @@ glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "nogc_locals"
      );
 
-def enforced(fixture: str) -> tuple {
+def enforced(fixture: str) -> tuple[any, ...] {
     path = os.path.join(FIXTURES, fixture);
     prog = JacProgram();
     mod = prog.compile(

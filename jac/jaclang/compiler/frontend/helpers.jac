@@ -360,7 +360,7 @@ def path_matches_exclude(
 glob JACIGNORE_FILENAME: str = '.jacignore';
 
 
-def normalize_exclude_patterns(patterns: list) -> list[str] {
+def normalize_exclude_patterns(patterns: list[str]) -> list[str] {
     normalized: list[str] = [];
     for raw in (patterns or []) {
         stripped = raw.strip();

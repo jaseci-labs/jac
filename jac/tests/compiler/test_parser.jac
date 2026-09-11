@@ -780,8 +780,8 @@ test "docstring attaches to all member types inside archetype body" {
     (mod, err) = rd_parse(load_fixture("docstring_with_entry.jac"), "");
     assert not err , "Parser reported errors for docstrings on archetype members";
 
-    def collect_doc_nodes(nd: uni.UniNode) -> list {
-        results: list = [];
+    def collect_doc_nodes(nd: uni.UniNode) -> list[any] {
+        results: list[any] = [];
         if isinstance(nd, (uni.ArchHas, uni.Ability, uni.ModuleCode, uni.Archetype))
             and nd.doc is not None {
             results.append(nd);

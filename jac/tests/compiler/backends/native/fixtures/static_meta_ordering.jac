@@ -5,7 +5,7 @@ field order; `ir_in` has no default and legitimately follows it.
 """
 
 obj Stage {
-    static has PROVIDES: tuple = ('capability', );
+    static has PROVIDES: tuple[any, ...] = ('capability', );
     has ir_in: int,
         prog: int = 0;
 

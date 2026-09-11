@@ -32,7 +32,7 @@ print("ORDER=" + ",".join(tuple({"cron", "interval", "trigger", "date", "walker"
 """;
 
 def _digest_under_seed(seed: str) -> tuple[str, str] {
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["PYTHONHASHSEED"] = seed;
     proc = subprocess.run(
         [sys.executable, "-c", PROBE, FIXTURE],

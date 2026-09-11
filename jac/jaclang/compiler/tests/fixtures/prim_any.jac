@@ -34,7 +34,7 @@ def tag_py(x: any) -> str {
     return "other";
 }
 
-def any_dispatch_py() -> dict {
+def any_dispatch_py() -> dict[any, any] {
     yb: any = True;
     yi: any = 42;
     yf: any = 3.5;

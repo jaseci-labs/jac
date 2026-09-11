@@ -178,7 +178,7 @@ impl JcirGenPass.finish_expr with Expr exit {
 }
 
 impl JcirGenPass.nod(
-    cls_name: str, keys: list[str], vals: list, jac_node: (UniNode | None) = None
+    cls_name: str, keys: list[str], vals: list[any], jac_node: (UniNode | None) = None
 ) -> CgNode {
     src = jac_node if jac_node is not None else self.cur_node;
     loc = src.loc;
@@ -201,13 +201,16 @@ impl JcirGenPass.nod(
 }
 
 impl JcirGenPass.nod_loc(
-    cls_name: str, keys: list[str], vals: list, l1: int, c1: int, l2: int, c2: int
+    cls_name: str, keys: list[str], vals: list[any], l1: int, c1: int, l2: int, c2: int
 ) -> CgNode {
     return CgNode(cls=cls_name, keys=keys, vals=vals, l1=l1, c1=c1, l2=l2, c2=c2);
 }
 
 impl JcirGenPass.call_node(
-    func: CgNode, args: list, keywords: list, jac_node: (UniNode | None) = None
+    func: CgNode,
+    args: Sequence[CgItem],
+    keywords: Sequence[CgItem],
+    jac_node: (UniNode | None) = None
 ) -> CgNode {
     return self.nod(
         'Call', ['func', 'args', 'keywords'], [func, args, keywords], jac_node=jac_node

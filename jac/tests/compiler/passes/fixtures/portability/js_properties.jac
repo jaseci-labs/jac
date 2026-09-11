@@ -1,7 +1,7 @@
 """Test: JS-specific property access should produce portability warnings."""
 
 def use_length_prop() -> None {
-    items: list = [1, 2, 3];
+    items: list[any] = [1, 2, 3];
     n = items.length;
     s = "hello";
     m = s.length;

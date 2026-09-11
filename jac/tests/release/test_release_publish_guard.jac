@@ -104,7 +104,7 @@ def assets_for(platforms: list[str]) -> list[str] {
 def run_guard(
     fx: dict[(str, str)], required: list[str], api_fails: bool = False
 ) -> subprocess.CompletedProcess[str] {
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["PATH"] = fx["bin"] + os.pathsep + env["PATH"];
     env["GH_LOG"] = fx["log"];
     env["GH_ASSETS"] = fx["assets"];

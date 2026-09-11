@@ -5,7 +5,7 @@ def find_repo_root -> str | None;
 def get_resource_provider -> ResourceProvider;
 
 obj ResourceProvider {
-    has _resources: dict = {},
+    has _resources: dict[str, dict[str, any]] = {},
         _repo_root: str | None = None,
         _package_dir: str = "",
         _indexed: bool = False;

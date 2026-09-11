@@ -48,7 +48,7 @@ walker create_event {
 
 
 def:pub app -> JsxElement {
-    has events: list = [];
+    has events: list[any] = [];
 
     async def loadEvents -> None {
         opts = QueryOptions(

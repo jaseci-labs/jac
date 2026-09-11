@@ -310,7 +310,7 @@ obj CodegenIrWriter {
         self.emit_loc(first_line, col_start, last_line, col_end);
     }
 
-    def emit_node(class_name: str, field_names: list) {
+    def emit_node(class_name: str, field_names: list[str]) {
         self._require_open();
         if not self._loc_set {
             raise CodegenIrFormatError(

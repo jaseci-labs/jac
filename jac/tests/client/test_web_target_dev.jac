@@ -16,13 +16,13 @@ import from pathlib { Path }
 
 
 obj _FakeBundler {
-    has calls: list;
+    has calls: list[str];
 
-    def create_vite_config(entry_file: any, **kw: dict) -> any {
+    def create_vite_config(entry_file: any, **kw: dict[str, any]) -> any {
         return None;
     }
 
-    def start_dev_server(**kw: dict) -> any {
+    def start_dev_server(**kw: dict[str, any]) -> any {
         self.calls.append("serve");
         return None;
     }
@@ -30,7 +30,7 @@ obj _FakeBundler {
 
 
 obj _FakeWatcher {
-    has events: list;
+    has events: list[str];
 
     def add_callback(cb: any) {
         self.events.append("callback");
@@ -49,11 +49,11 @@ obj _FakeWatcher {
 """Runs target.dev() with the compile step and the watchdog probe stubbed out,
 and returns the steps the flow actually took, in order. Passing a watcher makes
 ensure_watchdog_common() report watchdog as available, so the HMR path runs."""
-def _record_dev_calls(target: any, watcher: any = None) -> list {
-    calls: list = [];
+def _record_dev_calls(target: any, watcher: any = None) -> list[str] {
+    calls: list[str] = [];
     fake_bundler = _FakeBundler(calls=calls);
 
-    def _fake_prepare(project_dir: any, entry_file: any) -> tuple {
+    def _fake_prepare(project_dir: any, entry_file: any) -> tuple[any, ...] {
         calls.append("compile");
         return (fake_bundler, object());
     }
@@ -62,7 +62,7 @@ def _record_dev_calls(target: any, watcher: any = None) -> list {
         return watcher is not None;
     }
 
-    def _fake_watcher_cls(**kw: dict) -> any {
+    def _fake_watcher_cls(**kw: dict[str, any]) -> any {
         return watcher;
     }
 
@@ -163,7 +163,7 @@ test "configured scripts reach the dev server index.html" {
     import from jaclang.project.config { JacConfig }
     import from jaclang.client.vite_bundler { ViteBundler }
 
-    def _fake_plugin_config(self: JacConfig, name: str) -> dict {
+    def _fake_plugin_config(self: JacConfig, name: str) -> dict[str, any] {
         return {
             "app_meta_data": {
                 "title": "ignored in dev",

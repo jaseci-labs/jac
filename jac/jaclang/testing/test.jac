@@ -56,5 +56,5 @@ def parametrize(
 ) -> None;
 
 def invoke_native_test(
-    engine: any, symbol: str, test_name: str, init_symbols: (list | None) = None
+    engine: any, symbol: str, test_name: str, init_symbols: (list[str] | None) = None
 ) -> None;

@@ -20,6 +20,6 @@ def:pub AlertProvider(children: any) -> JsxElement {
     <AlertContext.Provider value={value}>{children}</AlertContext.Provider>
 }
 
-def:pub useAlert -> dict {
+def:pub useAlert -> dict[str, any] {
     return useContext(AlertContext);
 }

@@ -8,7 +8,7 @@ handling used to stop at textual captures, so the sibling call sites died
 with E5092 ("captured 'pos' not in the calling frame").
 """
 
-def transitive_py -> dict {
+def transitive_py -> dict[any, any] {
     toks = ["a", "a", "b"];
     pos = 0;
     def kind_at -> str {
@@ -34,7 +34,7 @@ def transitive_py -> dict {
     return {"r1": r1, "r2": r2, "r3": r3, "k": k, "pos": pos};
 }
 
-def fwd_mutual_py -> dict {
+def fwd_mutual_py -> dict[any, any] {
     pos = 0;
     def parse_a(d: int) -> int {
         return parse_b(d) + 100;
@@ -51,11 +51,11 @@ def fwd_mutual_py -> dict {
     return {"r1": r1, "r2": r2, "pos": pos};
 }
 
-def transitive_cl -> dict {
+def transitive_cl -> dict[any, any] {
     return {};
 }
 
-def fwd_mutual_cl -> dict {
+def fwd_mutual_cl -> dict[any, any] {
     return {};
 }
 

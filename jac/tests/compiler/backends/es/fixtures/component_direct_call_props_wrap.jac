@@ -5,16 +5,15 @@ preamble. Direct call sites must therefore repackage positional / keyword args
 into that props object, while single-`props` components must *not* be rewrapped.
 """
 
-
 def:pub Greeting(name: str, title: str = "!") -> JsxElement {
     return <div>{name}{title}{props.children}</div>;
 }
 
-def:pub SingleKeyStyle(payload: dict) -> JsxElement {
+def:pub SingleKeyStyle(payload: dict[any, any]) -> JsxElement {
     return <div>{payload["label"]}</div>;
 }
 
-def:pub PropsPassthrough(props: dict) -> JsxElement {
+def:pub PropsPassthrough(props: dict[any, any]) -> JsxElement {
     return <div>{props["label"]}</div>;
 }
 
@@ -30,22 +29,22 @@ def:pub direct_kw -> any {
     return Greeting(title="?", name="World");
 }
 
-def:pub direct_single_object(payload: dict) -> any {
+def:pub direct_single_object(payload: dict[any, any]) -> any {
     return SingleKeyStyle(payload);
 }
 
-def:pub direct_spread(vals: list) -> any {
+def:pub direct_spread(vals: list[any]) -> any {
     return Greeting(*vals);
 }
 
-def:pub direct_mixed_spread(vals: list) -> any {
+def:pub direct_mixed_spread(vals: list[any]) -> any {
     return Greeting("Hi", *vals);
 }
 
-def:pub passthrough_bundle(bundle: dict) -> any {
+def:pub passthrough_bundle(bundle: dict[any, any]) -> any {
     return PropsPassthrough(bundle);
 }
 
-def:pub plain_spread(vals: list) -> any {
+def:pub plain_spread(vals: list[any]) -> any {
     return plain(*vals);
 }

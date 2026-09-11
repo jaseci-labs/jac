@@ -68,12 +68,13 @@ def _class_decl(arch: Archetype) -> str {
         return "";
     }
     lines: list[str] = [f"export declare class {name} {{"];
-    body = arch?.body or [];
+    body: any = arch?.body or [];
     for member in body {
         if type(member).__name__ != "ArchHas" {
             continue;
         }
-        for v in member?.vars or [] {
+        member_vars: any = member?.vars or [];
+        for v in member_vars {
             fname = v?.sym_name;
             if not fname {
                 continue;
@@ -86,7 +87,7 @@ def _class_decl(arch: Archetype) -> str {
 }
 
 def _global_decl(assign: any, wanted: any) -> str {
-    targets = assign?.target or [];
+    targets: list[any] = assign?.target or [];
     if not targets {
         return "";
     }

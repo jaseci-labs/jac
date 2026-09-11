@@ -8,6 +8,8 @@ import from jaclang.cli.console { console }
 import from jaclang.client.targets.build_common { SUBPROCESS_TIMEOUT_SHORT }
 import from jaclang.server.sv_client { headless_start_args }
 import from jaclang.server.watcher { FileChangeEvent }
+import type from jaclang.client.vite_bundler { ViteBundler }
+import type from jaclang.client.compiler { ViteCompiler }
 
 def port_bind_error(port: int) -> Optional[str] {
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
@@ -128,7 +130,9 @@ def start_backend_server_common(entry_file: Path, project_dir: Path, port: int) 
     );
 }
 
-def prepare_vite_dev_compilation(project_dir: Path, entry_file: Path) -> tuple {
+def prepare_vite_dev_compilation(
+    project_dir: Path, entry_file: Path
+) -> tuple[ViteBundler, ViteCompiler] {
     import from jaclang.client.vite_bundler { ViteBundler }
     import from jaclang.client.vite_client_bundle { make_client_bundle_builder }
 
@@ -178,7 +182,9 @@ obj _ClientHmrHandler {
     }
 }
 
-def dev_proxy_paths(project_dir: Path, entry_file: Path) -> tuple {
+def dev_proxy_paths(
+    project_dir: Path, entry_file: Path
+) -> tuple[list[str], list[str]] {
     import from jaclang.client.vite_bundler { DEV_PROXY_PREFIXES }
     import from jaclang.jac0core.ext_registry { base_stem }
     try {
@@ -249,7 +255,8 @@ def stop_dev_watcher(watcher: any) {
 }
 
 def terminate_dev_processes(
-    processes: list[any], timeout: int = SUBPROCESS_TIMEOUT_SHORT
+    processes: list[subprocess.Popen[bytes] | None],
+    timeout: int = SUBPROCESS_TIMEOUT_SHORT
 ) {
     for p in processes {
         if not p {

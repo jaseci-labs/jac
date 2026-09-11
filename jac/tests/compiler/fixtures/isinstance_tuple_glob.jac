@@ -25,7 +25,7 @@ obj Twig(Base) {
 
 glob LEAF_ONLY: tuple[type[Leaf]] = (Leaf, ),
      LEAF_OR_TWIG: tuple[(type[Leaf], type[Twig])] = (Leaf, Twig),
-     ERASED: tuple = (Leaf, Twig);
+     ERASED: tuple[any, ...] = (Leaf, Twig);
 
 def takes_base(nd: Base) -> str {
     return nd.kind;
@@ -59,14 +59,14 @@ def erased_table(nd: Base) -> str {
     return "";
 }
 
-def bare_class_positive(x: (str | tuple)) -> tuple {
+def bare_class_positive(x: (str | tuple[any, ...])) -> tuple[any, ...] {
     if isinstance(x, tuple) {
         return x + ("tail", );
     }
     return (x, );
 }
 
-def bare_class_negative(x: (type | tuple | None)) -> str {
+def bare_class_negative(x: (type | tuple[any, ...] | None)) -> str {
     if isinstance(x, tuple) {
         return "tuple";
     } elif x is not None {

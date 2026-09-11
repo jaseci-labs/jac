@@ -1,4 +1,4 @@
-impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
+impl __jacJsx(tag: any, props: dict[str, any] = {}, children: any = []) -> JsxElement {
     renderer: any = globalThis.__jacGetRenderer__();
     return renderer.create(tag, props, children);
 }
@@ -7,7 +7,7 @@ impl __jacRegisterRenderer(renderer: any) -> None {
     globalThis.__jacRenderer__ = renderer;
 }
 
-impl JacAwaiting(props: dict) -> JsxElement {
+impl JacAwaiting(props: dict[str, any]) -> JsxElement {
     return React.createElement(
         React.Suspense, {"fallback": props["fallback"]}, props["children"]
     );
@@ -33,19 +33,19 @@ impl __createJacSchema(zodLib: any) -> any {
     return Reflect.construct(Proxy, [dummyFunc, handler]);
 }
 
-impl __getEndpointEffects -> dict {
+impl __getEndpointEffects -> dict[str, any] {
     return cache___getEndpointEffects();
 }
 
-impl __getCacheState -> dict {
+impl __getCacheState -> dict[str, any] {
     return cache___getCacheState();
 }
 
-impl __isFresh(`entry: dict) -> bool {
+impl __isFresh(`entry: dict[str, any]) -> bool {
     return cache___isFresh(`entry);
 }
 
-impl __cacheGet(key: str) -> dict | None {
+impl __cacheGet(key: str) -> dict[str, any] | None {
     return cache___cacheGet(key);
 }
 
@@ -85,7 +85,7 @@ impl __bridgeErrorFromFetch(err: any, app: str = "", name: str = "") -> BridgeEr
     return BridgeUnavailable(app=app, name=name, detail=message);
 }
 
-impl __bridgeApiBase(opts: (dict | None) = None) -> str {
+impl __bridgeApiBase(opts: (dict[str, any] | None) = None) -> str {
     base_url = globalThis.__jacGetApiBaseUrl__();
     route = opts["route"] if opts and opts["route"] else "";
     if route {
@@ -95,7 +95,10 @@ impl __bridgeApiBase(opts: (dict | None) = None) -> str {
 }
 
 impl __doWalkerFetch(
-    `walker: str, nodeId: str, fields: dict, opts: (dict | None) = None
+    `walker: str,
+    nodeId: str,
+    fields: dict[str, any],
+    opts: (dict[str, any] | None) = None
 ) -> any {
     await _awaitPlatformReady();
     app = opts["app"] if opts and opts["app"] else "";
@@ -146,7 +149,9 @@ impl __doWalkerFetch(
     return payload["data"] if payload["data"] else {};
 }
 
-impl __doFuncFetch(function_name: str, args: dict, opts: (dict | None) = None) -> any {
+impl __doFuncFetch(
+    function_name: str, args: dict[str, any], opts: (dict[str, any] | None) = None
+) -> any {
     await _awaitPlatformReady();
     app = opts["app"] if opts and opts["app"] else "";
     token = globalThis.__jacGetLocalStorage__("jac_token");
@@ -213,7 +218,10 @@ impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> an
 }
 
 impl __jacSpawn(
-    left: str, right: str = "", fields: dict = {}, opts: (dict | None) = None
+    left: str,
+    right: str = "",
+    fields: dict[str, any] = {},
+    opts: (dict[str, any] | None) = None
 ) -> any {
     if left == "login"
         or left == "signup"
@@ -234,13 +242,16 @@ impl __jacSpawn(
 }
 
 impl jacSpawn(
-    left: str, right: str = "", fields: dict = {}, opts: (dict | None) = None
+    left: str,
+    right: str = "",
+    fields: dict[str, any] = {},
+    opts: (dict[str, any] | None) = None
 ) -> any {
     return __jacSpawn(left, right, fields, opts);
 }
 
 impl __jacCallFunction(
-    function_name: str, args: dict = {}, opts: (dict | None) = None
+    function_name: str, args: dict[str, any] = {}, opts: (dict[str, any] | None) = None
 ) -> any {
     app = opts["app"] if opts and opts["app"] else "";
     endpoint_key = __endpointKey("func", function_name, opts);
@@ -254,14 +265,14 @@ impl __jacCallFunction(
     );
 }
 
-impl __normalizeIdentity(x: any) -> dict {
+impl __normalizeIdentity(x: any) -> dict[str, any] {
     if x != None and Object.prototype.toString.call(x) == "[object Object]" {
         return x;
     }
     return {"type": "username", "value": x};
 }
 
-impl __normalizeCredential(x: any) -> dict {
+impl __normalizeCredential(x: any) -> dict[str, any] {
     if x != None and Object.prototype.toString.call(x) == "[object Object]" {
         return x;
     }
@@ -269,9 +280,9 @@ impl __normalizeCredential(x: any) -> dict {
 }
 
 impl jacSignup(
-    identities_or_username: (str | list),
-    credential_or_password: (str | dict),
-    profile: (dict | None) = None
+    identities_or_username: (str | list[str | dict[str, any]]),
+    credential_or_password: (str | dict[str, any]),
+    profile: (dict[str, any] | None) = None
 ) -> SignupResult {
     base_url = globalThis.__jacGetApiBaseUrl__();
     credential = __normalizeCredential(credential_or_password);
@@ -335,7 +346,8 @@ impl jacSignup(
 }
 
 impl jacLogin(
-    identity_or_username: (str | dict), credential_or_password: (str | dict)
+    identity_or_username: (str | dict[str, any]),
+    credential_or_password: (str | dict[str, any])
 ) -> bool {
     base_url = globalThis.__jacGetApiBaseUrl__();
     identity = __normalizeIdentity(identity_or_username);

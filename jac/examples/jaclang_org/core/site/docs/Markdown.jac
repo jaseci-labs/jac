@@ -12,7 +12,7 @@ import from "@hugeicons/core-free-icons" {
     Alert01Icon
 }
 
-glob _ICON_MAP: dict = {
+glob _ICON_MAP: dict[str, any] = {
          "octicons-arrow-right-24": ArrowRight01Icon,
          "octicons-arrow-left-24": ArrowLeft01Icon,
          "octicons-check-16": CheckmarkCircle01Icon,
@@ -22,7 +22,7 @@ glob _ICON_MAP: dict = {
          "material-check": CheckmarkCircle01Icon,
 
      },
-     _ADMON_STYLES: dict = {
+     _ADMON_STYLES: dict[str, any] = {
          "note": ["border-sky-500/50", "bg-sky-500/5", "text-sky-400"],
          "info": ["border-sky-500/50", "bg-sky-500/5", "text-sky-400"],
          "abstract": ["border-sky-500/50", "bg-sky-500/5", "text-sky-400"],
@@ -93,8 +93,10 @@ def _split_row(s: str) -> list[str] {
     return [c.strip() for c in t.split("|")];
 }
 
-def _parse_blocks(lines: list[str], anchors: list[str] | None = None) -> list[dict] {
-    blocks: list[dict] = [];
+def _parse_blocks(
+    lines: list[str], anchors: list[str] | None = None
+) -> list[dict[str, any]] {
+    blocks: list[dict[str, any]] = [];
     seen_headings = 0;
     i = 0;
     n = len(lines);
@@ -150,7 +152,7 @@ def _parse_blocks(lines: list[str], anchors: list[str] | None = None) -> list[di
             continue;
         }
         if s.startswith('=== "') {
-            tabs: list[dict] = [];
+            tabs: list[dict[str, any]] = [];
             while i < n and lines[i].strip().startswith('=== "') {
                 tt = lines[i].strip()[4:].strip().strip('"');
                 i = i + 1;
@@ -198,7 +200,7 @@ def _parse_blocks(lines: list[str], anchors: list[str] | None = None) -> list[di
             continue;
         }
         if _is_list_line(ln) {
-            items: list[dict] = [];
+            items: list[dict[str, any]] = [];
             while i < n
                 and (
                     _is_list_line(lines[i])
@@ -291,8 +293,8 @@ def _icon_name_ok(name: str) -> bool {
     return True;
 }
 
-def _parse_inline(t: str) -> list[dict] {
-    spans: list[dict] = [];
+def _parse_inline(t: str) -> list[dict[str, any]] {
+    spans: list[dict[str, any]] = [];
     buf = "";
     i = 0;
     n = len(t);
@@ -486,7 +488,7 @@ def:pub MDSpans(text: str) -> JsxElement {
         </span>;
 }
 
-def:pub MDBlocks(blocks: list[dict]) -> JsxElement {
+def:pub MDBlocks(blocks: list[dict[str, any]]) -> JsxElement {
     return
         <div>
             {for (bi, b) in enumerate(blocks) {
@@ -559,7 +561,9 @@ def:pub MDBlocks(blocks: list[dict]) -> JsxElement {
                     }
                 } elif b["k"] == "list" {
                     <div key={str(bi)} className="mb-4 flex flex-col gap-1.5">
-                        {for (ii, it) in enumerate(b["items"] as list[dict]) {
+                        {for (ii, it) in enumerate(
+                            b["items"] as list[dict[str, any]]
+                        ) {
                             <div
                                 key={str(ii)}
                                 className="flex items-start gap-2 leading-7 text-foreground/90"
@@ -608,7 +612,7 @@ def:pub MDBlocks(blocks: list[dict]) -> JsxElement {
                                 <MDLabel text={b["title"] as str}/>
                             </summary>
                             <div className="pl-5 pr-5 pb-4">
-                                <MDBlocks blocks={b["blocks"] as list[dict]}/>
+                                <MDBlocks blocks={b["blocks"] as list[dict[str, any]]}/>
                             </div>
                         </details>
                     } else {
@@ -635,21 +639,27 @@ def:pub MDBlocks(blocks: list[dict]) -> JsxElement {
                             >
                                 {b["title"]}
                             </p>
-                            <MDBlocks blocks={b["blocks"] as list[dict]}/>
+                            <MDBlocks blocks={b["blocks"] as list[dict[str, any]]}/>
                         </div>
                     }
                 } elif b["k"] == "tabs" {
                     <Tabs key={str(bi)} defaultValue="t0" className="my-5">
                         <TabsList className="mb-1 flex-wrap">
-                            {for (ti, tb) in enumerate(b["items"] as list[dict]) {
+                            {for (ti, tb) in enumerate(
+                                b["items"] as list[dict[str, any]]
+                            ) {
                                 <TabsTrigger key={str(ti)} value={"t" + str(ti)}>
                                     <MDLabel text={tb["title"] as str}/>
                                 </TabsTrigger>
                             }}
                         </TabsList>
-                        {for (ti, tb) in enumerate(b["items"] as list[dict]) {
+                        {for (ti, tb) in enumerate(
+                            b["items"] as list[dict[str, any]]
+                        ) {
                             <TabsContent key={str(ti)} value={"t" + str(ti)}>
-                                <MDBlocks blocks={tb["blocks"] as list[dict]}/>
+                                <MDBlocks
+                                    blocks={tb["blocks"] as list[dict[str, any]]}
+                                />
                             </TabsContent>
                         }}
                     </Tabs>
@@ -658,7 +668,7 @@ def:pub MDBlocks(blocks: list[dict]) -> JsxElement {
                         key={str(bi)}
                         className="my-4 border-l-2 border-border pl-4 text-muted-foreground"
                     >
-                        <MDBlocks blocks={b["blocks"] as list[dict]}/>
+                        <MDBlocks blocks={b["blocks"] as list[dict[str, any]]}/>
                     </div>
                 } elif b["k"] == "table" {
                     <div key={str(bi)} className="my-5 overflow-x-auto">

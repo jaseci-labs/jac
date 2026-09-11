@@ -35,6 +35,8 @@ import from .types {
     UnknownType
 }
 
+glob BARE_GENERIC_REQUIRED: list[str] = ["dict", "list", "tuple"];
+
 enum PropertyWriteKind { NOT_PROPERTY = 0, READ_ONLY = 1, WRITABLE = 2, }
 
 obj PropertyWriteResult {
@@ -56,7 +58,7 @@ def linearize_mro(
     cls: ClassType, _visiting: (set[int] | None) = None
 ) -> list[ClassType];
 
-def mro_signature(cls: ClassType) -> tuple;
+def mro_signature(cls: ClassType) -> tuple[tuple[int, int | str], ...];
 
 def ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bool;
 

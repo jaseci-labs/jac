@@ -69,11 +69,11 @@ test "a url that resolves but cannot be reached is reported as such" {
 obj _SchemaFailingStore {
     has conninfo: any = None;
 
-    def rows(sql: str, params: dict) -> list {
+    def rows(sql: str, params: dict[str, any]) -> list[any] {
         return [];
     }
 
-    def ensure_schema_once(promotions: dict) {
+    def ensure_schema_once(promotions: dict[str, any]) {
         raise RuntimeError(
             'duplicate key value violates unique constraint'
             ' "pg_type_typname_nsp_index"'

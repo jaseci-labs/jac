@@ -497,13 +497,13 @@ Jac's three access modifiers -- `:pub`, `:protect`, `:priv` -- control *source-l
 
 ```jac
 # Exported -- visible to any module, including consuming projects
-def:pub add_task(title: str) -> dict { ...; }
+def:pub add_task(title: str) -> dict[str, any] { ...; }
 
 # Project-internal -- visible within this project (same jac.toml root)
-def:protect retry(title: str) -> dict { ...; }
+def:protect retry(title: str) -> dict[str, any] { ...; }
 
 # Module-internal -- visible only in this module
-def:priv get_tasks -> list { ...; }
+def:priv get_tasks -> list[any] { ...; }
 ```
 
 | Modifier | Top-level visibility | Use Case |

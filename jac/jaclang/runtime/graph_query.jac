@@ -30,7 +30,7 @@ obj QOrder {
 obj QHop {
     has dir: int,
         `edge: (type | None) = None,
-        nd: (type | tuple | None) = None,
+        nd: (type | tuple[type, ...] | None) = None,
         epreds: list[QPred] = [],
         preds: list[QPred] = [],
         only: any = None;
@@ -44,7 +44,7 @@ obj QHop {
 
 
 obj GraphQuery {
-    has origin: list,
+    has origin: list[any],
         hops: list[QHop] = [],
         edges_only: bool = False,
         from_visit: bool = False,

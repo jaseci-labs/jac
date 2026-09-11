@@ -50,7 +50,7 @@ def _mk_user_root(mem: any) -> any {
     return anch;
 }
 
-def _three_transcripts(origin_arch: any, mem: any) -> tuple {
+def _three_transcripts(origin_arch: any, mem: any) -> tuple[any, ...] {
     bare = [
         n.label
         for n in [origin_arch-->]

@@ -106,7 +106,9 @@ impl EsastGenPass._is_ct_type_param(nd: uni.Name) -> bool {
     return isinstance(owner, uni.TypeParam) and owner.is_comptime;
 }
 
-impl EsastGenPass._ct_ctor_slots(nd: uni.UniNode) -> (list[tuple] | None) {
+impl EsastGenPass._ct_ctor_slots(
+    nd: uni.UniNode
+) -> (list[tuple[str, uni.UniNode]] | None) {
     if not isinstance(nd, uni.AtomTrailer) or nd.is_attr {
         return None;
     }
@@ -124,10 +126,10 @@ impl EsastGenPass._ct_ctor_slots(nd: uni.UniNode) -> (list[tuple] | None) {
     }
     s0 = nd.right.slices[0] if nd.right.slices else None;
     head = s0.start if s0 is not None else None;
-    vals: list = `list(head.values)
+    vals: list[uni.UniNode] = `list(head.values)
         if isinstance(head, uni.TupleVal)
         else ([head] if head else []);
-    out: list[tuple] = [];
+    out: list[tuple[str, uni.UniNode]] = [];
     for (i, tp) in enumerate(arch.type_params or []) {
         if tp.is_comptime and i < len(vals) {
             out.append((tp.name.value, vals[i], ));

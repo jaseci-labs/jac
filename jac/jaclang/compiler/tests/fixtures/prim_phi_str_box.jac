@@ -1,6 +1,6 @@
 """Branch-reassigned str local boxed into a dict[str, any] return."""
 
-def phi_str_box_py -> dict {
+def phi_str_box_py -> dict[any, any] {
     flag = len("abc") > 1;
     label = "unset";
     if flag {
@@ -9,7 +9,7 @@ def phi_str_box_py -> dict {
     return {"label": label, "flag": flag};
 }
 
-def phi_str_box_cl -> dict {
+def phi_str_box_cl -> dict[any, any] {
     return {};
 }
 

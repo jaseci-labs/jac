@@ -14,7 +14,7 @@ import from jaclang.byllm.types { Message, MessageRole, Tool }
 import from jaclang.byllm.exceptions { FinishToolError, OutputConversionError }
 
 glob RETRY: str = "__retry__",
-     SHIPPED_DEFAULTS: dict = {
+     SHIPPED_DEFAULTS: dict[str, any] = {
          "enabled": False,
          "min_chars": 48,
          "min_interval": 0.15,
@@ -61,8 +61,10 @@ def _chunk(
 
 
 """Split `args` into `size`-char fragments and wrap them as one call's chunks."""
-def _frags(args: str, tool: str, call_id: str, size: int = 12, index: int = 0) -> list {
-    out: list = [];
+def _frags(
+    args: str, tool: str, call_id: str, size: int = 12, index: int = 0
+) -> list[any] {
+    out: list[any] = [];
     for i in range(0, len(args), size) {
         first = i == 0;
         out.append(
@@ -79,7 +81,7 @@ def _frags(args: str, tool: str, call_id: str, size: int = 12, index: int = 0) -
 
 
 """What `stream_chunk_builder` returns for `calls`, each (id, name, args)."""
-def _rebuilt(calls: list) -> dict {
+def _rebuilt(calls: list[any]) -> dict[str, any] {
     tcs = [
         types.SimpleNamespace(
             id=c[0],
@@ -100,7 +102,7 @@ def _rebuilt(calls: list) -> dict {
 }
 
 
-def _plain(text: str) -> dict {
+def _plain(text: str) -> dict[str, any] {
     return {
         "choices": [
             {
@@ -120,14 +122,14 @@ LLM round: chunks, or RETRY to drop the stream. `rebuilts` is parallel to it.
 `bounds` stands in for `[byllm.tool_stream]`, so a run never depends on the
 jac.toml of whoever is running the suite."""
 def _run(
-    turns: list,
-    rebuilts: list,
-    tools: list,
+    turns: list[any],
+    rebuilts: list[any],
+    tools: list[any],
     enabled: bool = True,
-    bounds: dict | None = None,
+    bounds: dict[str, any] | None = None,
     tolerate_errors: bool = False,
-    probe: dict | None = None
-) -> list {
+    probe: dict[str, any] | None = None
+) -> list[any] {
     llm = Model(model_name="gpt-4o");
     wrapped = [Tool(func=t) for t in tools];
     wrapped.append(Tool.make_finish_tool(str));
@@ -147,7 +149,7 @@ def _run(
     }
     at = [0];
 
-    def _stream(params: dict) -> any {
+    def _stream(params: dict[str, any]) -> any {
         i = at[0];
         at[0] += 1;
         if i >= len(turns) {
@@ -177,7 +179,7 @@ def _run(
         );
     }
 
-    def _rebuild(seen: list, logging_obj: object = None) -> dict {
+    def _rebuild(seen: list[any], logging_obj: object = None) -> dict[str, any] {
         i = at[0] - 1;
         if i < len(rebuilts) and rebuilts[i] is not None {
             return rebuilts[i];
@@ -188,11 +190,11 @@ def _run(
     resolved = dict(bounds) if bounds else dict(SHIPPED_DEFAULTS);
     cfg = _byllm_llm_mod.get_byllm_config();
 
-    def _tool_stream_cfg -> dict {
+    def _tool_stream_cfg -> dict[str, any] {
         return dict(resolved);
     }
 
-    events: list = [];
+    events: list[any] = [];
     with mock.patch.object(llm, "model_call_with_stream", _stream), mock.patch.object(
         _byllm_llm_mod.litellm, "stream_chunk_builder", _rebuild
     ), mock.patch.object(cfg, "get_tool_stream_config", _tool_stream_cfg), mock.patch.object(
@@ -213,12 +215,12 @@ def _run(
 }
 
 
-def _kinds(events: list) -> list {
+def _kinds(events: list[any]) -> list[any] {
     return [e.event_type for e in events];
 }
 
 
-def _of(events: list, kind: str) -> list {
+def _of(events: list[any], kind: str) -> list[any] {
     return [
         e
         for e in events
@@ -253,7 +255,7 @@ test "disabled is the shipped default and changes nothing" {
 
 
 test "the gate opens per call or from jac.toml" {
-    def gate(enabled: bool, bounds: dict | None) -> list {
+    def gate(enabled: bool, bounds: dict[str, any] | None) -> list[any] {
         return _of(
             _run(
                 [_frags(BODY, "write_file", "c1")],
@@ -321,7 +323,7 @@ test "deltas precede the call, name the tool, and leave execution untouched" {
         [write_file, read_file]
     );
 
-    joined: dict = {};
+    joined: dict[str, any] = {};
     for d in _of(events, "tool_call_delta") {
         cid = d.data.get("call_id", "");
         joined[cid] = joined.get(cid, "") + str(d.data.get("arg_fragment", ""));
@@ -335,7 +337,7 @@ test "deltas precede the call, name the tool, and leave execution untouched" {
 
 
 test "coalescing is bounded, and the bounds come from config" {
-    def under(min_chars: int, max_per_call: int, size: int) -> list {
+    def under(min_chars: int, max_per_call: int, size: int) -> list[any] {
         return _of(
             _run(
                 [_frags(BODY, "write_file", "c1", size=size)],
@@ -433,7 +435,7 @@ test "an abandoned stream is always announced alongside its deltas" {
     ];
 
     for (label, turns, rebuilts, tools, reset_first, tolerate) in cases {
-        seen: dict = {};
+        seen: dict[str, any] = {};
         events = _run(turns, rebuilts, tools, tolerate_errors=tolerate, probe=seen);
         kinds = _kinds(events);
 
@@ -456,7 +458,7 @@ test "an abandoned stream is always announced alongside its deltas" {
 # The streaming finish branch (jaseci-labs/jac#8169): heal misnamed arguments,
 # feed back invocation failures as recoverable tool errors.
 test "the streaming finish branch heals and recovers" {
-    def _finish_args(payload: str, call_id: str) -> tuple {
+    def _finish_args(payload: str, call_id: str) -> tuple[any, ...] {
         return (
             _frags(payload, "finish_tool", call_id),
             _rebuilt([(call_id, "finish_tool", payload)])

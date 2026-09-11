@@ -217,7 +217,7 @@ impl NaIRGenPass._emit_wrap_to(
 
 impl NaIRGenPass._codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value | None) {
     dst = self._scalar_shape_named(name);
-    params = nd.params or [];
+    params: Sequence[any] = nd.params or [];
     if dst is None or len(params) != 1 {
         self.emit(E5092, node_override=nd, kind="fixed-width cast", name=name);
         return None;
@@ -251,7 +251,7 @@ impl NaIRGenPass._codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value |
 
 impl NaIRGenPass._codegen_sized_wrap(nd: uni.FuncCall, name: str) -> (ir.Value | None) {
     dst = self._scalar_shape_named(name);
-    params = nd.params or [];
+    params: Sequence[any] = nd.params or [];
     if dst is None or dst.is_float or len(params) != 1 {
         self.emit(E5092, node_override=nd, kind="fixed-width wrap", name=name);
         return None;
@@ -290,8 +290,8 @@ impl NaIRGenPass._codegen_type_name_str(name: str) -> ir.Value {
 }
 
 impl NaIRGenPass._codegen_wrapping(nd: uni.FuncCall, name: str) -> (ir.Value | None) {
-    params = nd.params or [];
-    vals: list = [];
+    params: Sequence[any] = nd.params or [];
+    vals: list[ir.Value] = [];
     for p in params {
         v = self._codegen_expr(p);
         if v is None or not isinstance(v.type, ir.IntType) {

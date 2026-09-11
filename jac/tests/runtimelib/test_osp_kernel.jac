@@ -20,18 +20,18 @@ import from jaclang.runtime.osp_kernel {
 obj TNode {
     has tag: int,
         name: str,
-        neighbors: list = [];
+        neighbors: list[any] = [];
 }
 
 obj TWalker {
-    has log: list = [],
+    has log: list[str] = [],
         tag: int = 10;
 }
 
 # Toy type system: Cafe (2) is-a Place (1); Spot (3) standalone; Walker (10).
 glob _ancestors = {1: [1], 2: [2, 1], 3: [3], 10: [10]},
-     _ndescs: dict = {},
-     _last_reports: list = [];
+     _ndescs: dict[any, any] = {},
+     _last_reports: list[any] = [];
 
 def _as_any(v: any) -> any {
     return v;

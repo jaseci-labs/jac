@@ -251,7 +251,7 @@ impl serve_sse(engine: McpEngine, host: str, port: int) -> None {
     _serve_forever(httpd);
 }
 
-def _error_response(msg_id: any, code: int, message: str) -> dict {
+def _error_response(msg_id: any, code: int, message: str) -> dict[str, any] {
     return {
         "jsonrpc": "2.0",
         "id": msg_id,
@@ -261,8 +261,9 @@ def _error_response(msg_id: any, code: int, message: str) -> dict {
 
 def _process(engine: McpEngine, msg: any) -> any {
     if isinstance(msg, list) {
+        batch: list[any] = msg;
         responses: list[any] = [];
-        for m in msg {
+        for m in batch {
             r = engine.handle_message(m);
             if r is not None {
                 responses.append(r);

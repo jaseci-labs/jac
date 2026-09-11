@@ -77,14 +77,14 @@ def complete_identity(
     if linked.get("error") {
         return OAuthLogin(error="Could not connect that SSO account.");
     }
-    user = manager.get_user(user_id) or {};
+    user: dict[str, any] = manager.get_user(user_id) or {};
     if not user
         or user.get("status", "active") != "active"
         or user.get("role") == "system" {
         return OAuthLogin(error="This account cannot sign in.");
     }
-    profile = user.get("profile") or {};
-    profiles = profile.get("sso") or {};
+    profile: any = user.get("profile") or {};
+    profiles: any = profile.get("sso") or {};
     profiles[platform] = info.profile_fields();
     profile["sso"] = profiles;
     manager.update_user_fields(user_id, {"profile": profile});
@@ -154,7 +154,7 @@ obj OAuthSession {
         );
     }
 
-    def record(state: str) -> dict | None {
+    def record(state: str) -> dict[str, any] | None {
         record = AuthTokenStore.instance().peek_token(
             state, "oauth_session:" + self.platform
         );

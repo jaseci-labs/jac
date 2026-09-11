@@ -67,7 +67,7 @@ obj SourceRef {
         return f"{loc}  {self.snippet}" if self.snippet else loc;
     }
 
-    def to_dict -> dict {
+    def to_dict -> dict[str, any] {
         return {
             "file": self.file,
             "line": self.line,
@@ -116,7 +116,7 @@ obj SymbolInfo {
         return "\n".join(lines);
     }
 
-    def to_dict -> dict {
+    def to_dict -> dict[str, any] {
         return {
             "name": self.name,
             "kind": self.kind,
@@ -133,7 +133,7 @@ obj SymbolInfo {
         };
     }
 
-    static def from_dict(d: dict) -> SymbolInfo {
+    static def from_dict(d: dict[str, any]) -> SymbolInfo {
         return SymbolInfo(
             name=str(d.get("name", "")),
             kind=str(d.get("kind", "symbol")),
@@ -162,7 +162,7 @@ obj Diagnostic {
         return f"{self.severity}: {self.file}:{self.line}: {self.message}";
     }
 
-    def to_dict -> dict {
+    def to_dict -> dict[str, any] {
         return {
             "file": self.file,
             "line": self.line,
@@ -190,7 +190,7 @@ obj EntryPoint {
         return f"{self.walker_name}.{self.ability}  ({self.event} {self.node_type})  [{self.file}:{self.line}]";
     }
 
-    def to_dict -> dict {
+    def to_dict -> dict[str, any] {
         return {
             "walker_name": self.walker_name,
             "ability": self.ability,
@@ -201,7 +201,7 @@ obj EntryPoint {
         };
     }
 
-    static def from_dict(d: dict) -> EntryPoint {
+    static def from_dict(d: dict[str, any]) -> EntryPoint {
         return EntryPoint(
             walker_name=str(d.get("walker_name", "")),
             ability=str(d.get("ability", "")),
@@ -271,7 +271,7 @@ obj ContextSlice {
         return "\n".join(parts);
     }
 
-    def to_dict -> dict {
+    def to_dict -> dict[str, any] {
         return {
             "query": self.query,
             "target": self.target.to_dict() if self.target is not None else None,

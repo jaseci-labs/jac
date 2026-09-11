@@ -59,7 +59,7 @@ def find_ep(site_dir: Path, script: str) -> any {
 }
 
 """Drop a fabricated package from sys.path / sys.modules so tests don't leak."""
-def cleanup_site(site_dir: Path, pkgs: list) {
+def cleanup_site(site_dir: Path, pkgs: list[any]) {
     site_str = str(site_dir);
     if site_str in sys.path {
         sys.path.remove(site_str);

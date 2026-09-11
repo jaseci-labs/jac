@@ -36,10 +36,10 @@ obj DepClibMeta {
         ct_deps: str = "",
         options_fingerprint: str = "",
         unverified_live_calls: dict[str, list[str]] = {},
-        coverage: dict = {};
+        coverage: dict[str, any] = {};
 
-    def to_meta -> dict;
-    static def from_meta(meta: dict) -> DepClibMeta;
+    def to_meta -> dict[str, any];
+    static def from_meta(meta: dict[str, any]) -> DepClibMeta;
     def propagate_to(gen: CodeGenTarget) -> None;
 }
 
@@ -48,13 +48,18 @@ def native_dep_cache_paths(real_path: str, options: CompileOptions) -> tuple[str
 def native_demoted_ir_symbols(llvm_ir_text: str) -> list[str];
 def native_linked_ir_text(module: uni.Module) -> str;
 def native_ir_live_externs(llvm_ir_text: str) -> set[str];
-def native_prune_live_record(pending: dict, declared: set[str]) -> dict[str, set[str]];
+def native_prune_live_record(
+    pending: dict[str, list[str]] | dict[str, set[str]], declared: set[str]
+) -> dict[str, set[str]];
+
 def native_unit_demotions(
     prog: JacProgram, real_path: str, options: CompileOptions
 ) -> (set[str] | None);
 
 def native_live_call_conflicts(
-    prog: JacProgram, pending: dict, options: CompileOptions
+    prog: JacProgram,
+    pending: dict[str, list[str]] | dict[str, set[str]],
+    options: CompileOptions
 ) -> dict[str, set[str]];
 
 glob NATIVE_VERDICT_TAINT_BOUND: int = 2048,

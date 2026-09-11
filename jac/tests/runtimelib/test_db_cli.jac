@@ -13,11 +13,11 @@ import from tempfile { TemporaryDirectory }
 
 
 """Run a subprocess and return (rc, stdout, stderr)."""
-def _run(cwd: str, argv: list) -> tuple {
+def _run(cwd: str, argv: list[any]) -> tuple[any, ...] {
     import jaclang;
     # -m jaclang must resolve to the source tree under test, not a
     # launcher-embedded snapshot.
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     src = str(Path(jaclang.__file__).parent.parent);
     env['PYTHONPATH'] = src + os.pathsep + env.get('PYTHONPATH', '');
     result = subprocess.run(
@@ -27,7 +27,7 @@ def _run(cwd: str, argv: list) -> tuple {
 }
 
 
-def _jac(cwd: str, args: list) -> tuple {
+def _jac(cwd: str, args: list[any]) -> tuple[any, ...] {
     return _run(cwd, [sys.executable, "-m", "jaclang"] + args);
 }
 

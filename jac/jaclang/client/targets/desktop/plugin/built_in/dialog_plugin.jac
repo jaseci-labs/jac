@@ -20,13 +20,13 @@ obj DialogPlugin(OsPlugin) {
         return DialogPlugin(DesktopPlugin._coerce_config(config));
     }
 
-    def init(config: dict) {
+    def init(config: dict[str, any]) {
         self.plugin_name = "jac.dialog";
 
         self._enabled = DesktopPlugin._config_enabled(config);
     }
 
-    def handle(command: str, args: dict) -> dict {
+    def handle(command: str, args: dict[str, any]) -> dict[str, any] {
         if not self._enabled {
             raise PluginError(ErrorCode.FORBIDDEN, "Dialogs are not enabled.");
         }
@@ -42,7 +42,7 @@ obj DialogPlugin(OsPlugin) {
         return super.handle(command, args);
     }
 
-    def _open_file(args: dict) -> dict {
+    def _open_file(args: dict[str, any]) -> dict[str, any] {
         platform = self._detect_platform();
         title = args.get("title", "Open File");
         filters = args.get("filters", []);
@@ -97,7 +97,7 @@ obj DialogPlugin(OsPlugin) {
         }
     }
 
-    def _save_file(args: dict) -> dict {
+    def _save_file(args: dict[str, any]) -> dict[str, any] {
         platform = self._detect_platform();
         title = args.get("title", "Save File");
         default_name = args.get("default_name", "");
@@ -156,7 +156,7 @@ obj DialogPlugin(OsPlugin) {
         }
     }
 
-    def _message(args: dict) -> dict {
+    def _message(args: dict[str, any]) -> dict[str, any] {
         platform = self._detect_platform();
         title = args.get("title", "Message");
         body = args.get("body", "");

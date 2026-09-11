@@ -11,7 +11,7 @@ def save_data(name: str, payload: str) -> str {
 
 
 test "truncated tool call surfaces a max_tokens error, not missing-arg" {
-    conv: list[dict] = [];
+    conv: list[dict[str, any]] = [];
     llm = Model(model_name="gpt-4o");
 
     def run(task: str) -> str by llm(

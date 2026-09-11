@@ -59,7 +59,7 @@ glob _orders: dict[str, OrderRecord] = {},
 # Public Functions
 # ============================================================================
 """Create an order after validating stock via inventory_service."""
-async def:pub create_order(items: list[dict]) -> OrderResult {
+async def:pub create_order(items: list[dict[str, any]]) -> OrderResult {
     order_items: list[OrderItem] = [];
     total: float = 0.0;
 

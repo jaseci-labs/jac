@@ -86,7 +86,13 @@ impl OwnershipCheckPass._process_partition_sugar -> None {
     }
 }
 
-glob _REGION_SCALARS: tuple = ("int", "float", "bool", "None", "NoneType");
+glob _REGION_SCALARS: tuple[str, ...] = (
+         "int",
+         "float",
+         "bool",
+         "None",
+         "NoneType"
+     );
 
 impl OwnershipCheckPass._has_region_blocks -> bool {
     return bool(self.ir_in.get_all_sub_nodes(OpenStmt));

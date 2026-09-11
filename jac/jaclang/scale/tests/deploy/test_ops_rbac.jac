@@ -4,8 +4,8 @@ import from jaclang.scale.deploy.target.kubernetes.ops_rbac {
 }
 
 
-def _all_verbs(role: dict) -> list {
-    out: list = [];
+def _all_verbs(role: dict[str, any]) -> list[str] {
+    out: list[str] = [];
     for rule in role["rules"] {
         for v in rule["verbs"] {
             out.append(v);
@@ -23,7 +23,7 @@ test "build_ops_rbac: read-only Role (no mutating verbs) bound to the SA" {
     assert role["metadata"]["namespace"] == "myns";
     verbs = _all_verbs(role);
     assert "patch" not in verbs and "delete" not in verbs and "create" not in verbs;
-    resources: list = [];
+    resources: list[str] = [];
     for rule in role["rules"] {
         for res in rule["resources"] {
             resources.append(res);

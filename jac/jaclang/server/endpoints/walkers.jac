@@ -76,7 +76,7 @@ def _stream(result: any) -> StreamingResponse {
 }
 
 
-def _failure(result: dict, fallback: str) -> TransportResponse {
+def _failure(result: dict[str, any], fallback: str) -> TransportResponse {
     if result.get('error') == 'User not found' {
         return TransportResponse.fail(
             code='UNAUTHORIZED',

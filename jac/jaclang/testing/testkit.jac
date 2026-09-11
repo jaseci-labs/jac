@@ -137,9 +137,9 @@ obj ServingTestClient {
         json: any = None,
         data: any = None,
         content: any = None,
-        files: (dict | None) = None,
-        params: (dict | None) = None,
-        headers: (dict | None) = None,
+        files: (dict[str, any] | None) = None,
+        params: (dict[str, any] | None) = None,
+        headers: (dict[str, any] | None) = None,
         follow_redirects: (bool | None) = None
     ) -> TestResponse {
         if follow_redirects is None {
@@ -271,7 +271,9 @@ obj ServingTestClient {
         return self._server.bound_port;
     }
 
-    def websocket_connect(path: str, headers: (dict | None) = None) -> SyncWebSocket {
+    def websocket_connect(
+        path: str, headers: (dict[str, any] | None) = None
+    ) -> SyncWebSocket {
         port = self._ensure_live_server();
         merged: dict[str, str] = {};
         for (k, v) in self.base_headers.items() {
@@ -321,7 +323,7 @@ async def dispatch_and_collect(app: any, request: any) -> tuple[any, bytes] {
     return (response, content);
 }
 
-def _build_multipart(files: dict, data: any = None) -> tuple[bytes, str] {
+def _build_multipart(files: dict[str, any], data: any = None) -> tuple[bytes, str] {
     boundary = f"jactest{secrets.token_hex(16)}";
     parts: list[bytes] = [];
     for (field, spec) in files.items() {
@@ -329,6 +331,7 @@ def _build_multipart(files: dict, data: any = None) -> tuple[bytes, str] {
         content: bytes = b'';
         ctype = 'application/octet-stream';
         if isinstance(spec, tuple) {
+            spec: tuple[any, ...] = spec;
             if len(spec) >= 1 and spec[0] {
                 filename = str(spec[0]);
             }

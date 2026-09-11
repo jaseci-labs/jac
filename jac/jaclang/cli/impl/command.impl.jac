@@ -5,7 +5,7 @@ impl Arg.create(
     `default: any = None,
     help: str = "",
     short: str | None = None,
-    choices: list[any] | None = None,
+    choices: list[str] | None = None,
     required: bool = False,
     metavar: str | None = None,
     dest: str | None = None,

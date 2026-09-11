@@ -34,7 +34,12 @@ def _cs(
 }
 
 def _pod(
-    name: str, app: str, phase: str, inits: list, mains: list, deleting: bool = False
+    name: str,
+    app: str,
+    phase: str,
+    inits: list[any],
+    mains: list[any],
+    deleting: bool = False
 ) -> object {
     return SimpleNamespace(
         metadata=SimpleNamespace(
@@ -52,7 +57,7 @@ def _pod(
     );
 }
 
-def _bundle(deploy_name: str, app: str) -> dict {
+def _bundle(deploy_name: str, app: str) -> dict[str, any] {
     return {
         "deployments": {
             app: {
@@ -81,7 +86,7 @@ def _dep(ready: int) -> object {
 }
 
 
-def _apis(ready: int, pods: list) -> tuple {
+def _apis(ready: int, pods: list[any]) -> tuple[any, ...] {
     apps = unittest.mock.MagicMock();
     apps.read_namespaced_deployment.return_value = _dep(ready);
     core = unittest.mock.MagicMock();
@@ -91,7 +96,7 @@ def _apis(ready: int, pods: list) -> tuple {
 }
 
 def _run(
-    target: any, bundle: dict, apps: object, core: object, timeout: int
+    target: any, bundle: dict[str, any], apps: object, core: object, timeout: int
 ) -> object {
     err = None;
     with unittest.mock.patch.object(

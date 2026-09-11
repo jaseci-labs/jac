@@ -21,7 +21,7 @@ import from jaclang.server { sv_client }
 
 
 """Assert the parser the `jac` entrypoint builds accepts `argv` headless."""
-def _parse_with_real_cli(argv: list) {
+def _parse_with_real_cli(argv: list[any]) {
     assert len(argv) >= 1 , f"spawn argv must start with a command: {argv}";
     meta = get_command_meta(argv[0]);
     assert meta is not None , f"unknown CLI command in spawn argv: {argv}";
@@ -38,7 +38,7 @@ def _parse_with_real_cli(argv: list) {
 
 
 """A subprocess.Popen stand-in that records argv and spawns nothing."""
-def _capture_popen(captured: list) -> any {
+def _capture_popen(captured: list[list[str]]) -> any {
     fake = unittest.mock.MagicMock();
     fake.poll.return_value = None;
     fake.pid = 4242;
@@ -76,7 +76,7 @@ test "orchestrator start_service argv is accepted by the real CLI" {
                 )
             );
             mgr = ServiceProcessManager(registry=reg);
-            captured: list = [];
+            captured: list[list[str]] = [];
             with unittest.mock.patch("subprocess.Popen", _capture_popen(captured)) {
                 ok = mgr.start_service("argv_probe_orch");
             }
@@ -92,7 +92,7 @@ test "orchestrator start_service argv is accepted by the real CLI" {
 
 test "client dev backend spawn argv is accepted by the real CLI" {
     import from jaclang.client.targets.client_dev_common { start_backend_server_common }
-    captured: list = [];
+    captured: list[list[str]] = [];
     with unittest.mock.patch("subprocess.Popen", _capture_popen(captured)) {
         start_backend_server_common(Path("app.jac"), Path("."), 8321);
     }

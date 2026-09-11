@@ -115,7 +115,7 @@ node Item {
     has name: str = "";
 }
 
-def:pub useItems() -> dict {
+def:pub useItems() -> dict[str, any] {
     has items: list[Item] = [];
     has loading: bool = True;
 

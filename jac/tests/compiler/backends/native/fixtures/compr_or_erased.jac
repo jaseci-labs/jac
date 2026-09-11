@@ -26,7 +26,7 @@ def compr_over_or(items: list[Nd] | None) -> int {
 
 def tern_local_or(flag: bool) -> int {
     xs = [Nd(n=3), Nd(n=4)] if flag else None;
-    ys = xs or [];
+    ys: list[Nd] = xs or [];
     total = 0;
     for p in ys {
         total += p.n;

@@ -33,7 +33,7 @@ test "AWSProvider and LocalProvider honour their per-provider contracts" {
 }
 
 test "validate_ports: AWS skips the API; Local raises on conflict and excludes own namespace" {
-    def make_svc(ns: str, name: str, node_ports: list) -> object {
+    def make_svc(ns: str, name: str, node_ports: list[any]) -> object {
         ports = [SimpleNamespace(node_port=p) for p in node_ports];
         return SimpleNamespace(
             metadata=SimpleNamespace(namespace=ns, name=name),

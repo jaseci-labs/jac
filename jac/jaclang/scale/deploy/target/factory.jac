@@ -8,7 +8,7 @@ import from jaclang.project.capabilities {
 
 type TargetFactory = Callable[[dict[str, any], Logger | None], DeploymentTarget];
 
-glob BUILTIN_TARGET_TYPES: tuple = (
+glob BUILTIN_TARGET_TYPES: tuple[str, ...] = (
          "kubernetes",
          "kubernetes-microservice",
          "aws",

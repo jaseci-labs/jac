@@ -7,9 +7,9 @@ impl _path_of(uri: str) -> str {
 }
 
 impl _merge_app_alerts(
-    collected: list[tuple[str, list, list]], app_count: int
-) -> tuple[list, list] {
-    def key_of(alert: any) -> tuple {
+    collected: list[tuple[str, list[Alert], list[Alert]]], app_count: int
+) -> tuple[list[Alert], list[Alert]] {
+    def key_of(alert: any) -> tuple[str, int, int, str, str] {
         code = alert.code.code if alert.code else '';
         return (
             alert.loc.mod_path,
@@ -20,10 +20,10 @@ impl _merge_app_alerts(
         );
     }
 
-    def merge(index: int) -> list {
-        seen_apps: dict[tuple, set[str]] = {};
-        first: dict[tuple, any] = {};
-        order: list[tuple] = [];
+    def merge(index: int) -> list[Alert] {
+        seen_apps: dict[tuple[str, int, int, str, str], set[str]] = {};
+        first: dict[tuple[str, int, int, str, str], any] = {};
+        order: list[tuple[str, int, int, str, str]] = [];
         tagged: list[tuple[str, any]] = [];
         for entry_item in collected {
             app_name = entry_item[0];
@@ -43,8 +43,8 @@ impl _merge_app_alerts(
             for key in order
             if len(seen_apps[key]) >= app_count
         };
-        out: list = [];
-        emitted: set[tuple] = set();
+        out: list[Alert] = [];
+        emitted: set[tuple[str, int, int, str, str]] = set();
         for (app_name, alert) in tagged {
             key = key_of(alert);
             if key in shared {
@@ -248,7 +248,7 @@ impl JacLangServer.type_check_file(
             ];
         }
         multi = len(targets) > 1;
-        collected: list[tuple[str, list, list]] = [];
+        collected: list[tuple[str, list[Alert], list[Alert]]] = [];
         build: (uni.Module | None) = None;
         for (app_name, app_kind) in targets {
             build = self.program.compile(
@@ -445,11 +445,15 @@ impl JacLangServer.get_references(
 ) -> list[lspt.Location] {
     node_selected = self.get_token_at_position(file_path, position);
     if node_selected and node_selected.sym {
+        occurrences: list[uni.NameAtom] = [
+            *node_selected.sym.defn,
+            *node_selected.sym.uses
+        ];
         list_of_references: list[lspt.Location] = [
             lspt.Location(
                 uri=_uri_of(cur_node.loc.mod_path),
                 range=utils.create_range(cur_node.loc)
-            ) for cur_node in [*node_selected.sym.defn, *node_selected.sym.uses]
+            ) for cur_node in occurrences
         ];
         return list_of_references;
     }
@@ -1212,7 +1216,7 @@ impl JacLangServer._clear_alerts_for_file(file_path: str) -> None {
     }
 }
 
-impl JacLangServer.diagnostics.getter -> dict[str, list] {
+impl JacLangServer.diagnostics.getter -> dict[str, list[lspt.Diagnostic]] {
     with self._state_lock.read_lock() {
         all_errors = list(self.program.errors_had);
         all_warnings = list(self.program.warnings_had);

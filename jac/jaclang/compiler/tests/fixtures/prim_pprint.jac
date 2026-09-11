@@ -16,7 +16,7 @@ import from json { loads }
 import from pprint { pformat }
 
 
-def pprint_py -> dict {
+def pprint_py -> dict[any, any] {
     return {
         "p1": pformat(loads("{\"name\":\"alice\",\"age\":30,\"active\":true}")),
         "p2": pformat(loads("[1, 2, 3, \"x\"]")),
@@ -41,7 +41,7 @@ def pprint_py -> dict {
 }
 
 
-def pprint_cl -> dict {
+def pprint_cl -> dict[any, any] {
     return {};
 }
 

@@ -7,7 +7,7 @@ silently at runtime.
 
 import os;
 
-glob _subs: list = [];
+glob _subs: list[any] = [];
 
 def:pub subscribe(cb: Callable[([str], None)]) -> int {
     _ = os.getpid();

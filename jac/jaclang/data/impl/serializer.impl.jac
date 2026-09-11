@@ -67,7 +67,8 @@ impl Serializer._declared_of(owner: object, attr: str) -> object {
             if not isinstance(ann, dict) {
                 continue;
             }
-            for (name, tag) in ann.items() {
+            annotations: dict[str, any] = ann;
+            for (name, tag) in annotations.items() {
                 sized = SIZED_TYPES.get(tag)
                     if isinstance(tag, str)
                     else (tag if tag?.__jac_sized__ is not None else None);
@@ -373,7 +374,7 @@ impl Serializer.deserialize_api(
     }
     tag = value.get('_jac_type_id', value.get('_jac_type'));
     cls = boundary_types.get(tag, target) if isinstance(tag, str) else target;
-    decoded = {
+    decoded: dict[str, object] = {
         k: Serializer.deserialize_api(v, boundary_types) for (k, v) in value.items()
     };
     if cls is None {
@@ -446,7 +447,9 @@ impl Serializer.register_alias(old_name: str, cls: type) -> None {
     Serializer._aliases[old_name] = new_name;
 }
 
-impl Serializer.repair(data: dict[str, object], cls: type) -> tuple {
+impl Serializer.repair(
+    data: dict[str, object], cls: type
+) -> tuple[dict[str, object], list[str]] {
     import from jaclang.data.schema_rules { apply_rules, merged_rules_for, repair_mode }
     mode = repair_mode();
     if mode == 'off' {
@@ -480,7 +483,7 @@ impl Serializer.repair(data: dict[str, object], cls: type) -> tuple {
     return (repaired, steps);
 }
 
-impl Serializer.coerce(val: object, target_type: object) -> tuple {
+impl Serializer.coerce(val: object, target_type: object) -> tuple[object, bool] {
     if target_type is None or isinstance(target_type, str) {
         return (val, False);
     }
@@ -602,7 +605,7 @@ impl Serializer.fingerprint(cls: type) -> str {
             field_pairs.append([f.name, str(f.type)]);
         }
     }
-    field_pairs.sort(key=lambda (p: list) { p[0]; });
+    field_pairs.sort(key=lambda (p: list[str]) { p[0]; });
     payload = {'module': cls.__module__, 'name': cls.__name__, 'fields': field_pairs};
     encoded = _json_dumps(payload, sort_keys=True, `default=str).encode('utf-8');
     return sha256(encoded).hexdigest()[:FINGERPRINT_LENGTH];
@@ -1037,7 +1040,8 @@ impl Serializer._deserialize_permission(data: object) -> (Permission | None) {
         return None;
     }
     perm = Permission();
-    perm.all = access_level_cast(data.get('all', -1));
+    perm_data: dict[str, any] = data;
+    perm.all = access_level_cast(perm_data.get('all', -1));
     if (roots := data.get('roots')) {
         perm.roots = Serializer._deserialize_access(roots);
     }
@@ -1085,7 +1089,7 @@ impl Serializer._deserialize_archetype(
         arch: object = cls.__new__(cls);
         field_types = get_field_types(cls);
         known = set(field_types.keys());
-        attic: dict = {};
+        attic: dict[str, any] = {};
 
         stored_attic = data.get(ATTIC_KEY);
         if isinstance(stored_attic, dict) {

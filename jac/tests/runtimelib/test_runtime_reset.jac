@@ -83,7 +83,7 @@ test "an explicit project config does not survive the reset" {
     );
 }
 
-glob PIN_HANDOFF: list = [];
+glob PIN_HANDOFF: list[any] = [];
 
 test "the reset restores the run's config pin baseline" {
     baseline = get_explicit_config();

@@ -6,7 +6,6 @@ into Jac `or` / `and`, the parenthesized ?? subexpression must stay grouped
 — unparenthesized ?? mixed with ||/&& is a SyntaxError.
 """
 
-
 def getattr_two_arg_or_empty(o: object) -> str {
     return getattr(o, "k", "") or "";
 }
@@ -19,7 +18,7 @@ def getattr_or_fallback(o: object) -> str {
     return getattr(o, "k", "") or "fallback";
 }
 
-def getattr_or_empty_dict(o: object) -> dict {
+def getattr_or_empty_dict(o: object) -> dict[any, any] {
     return getattr(o, "paths", None) or {};
 }
 
@@ -39,15 +38,15 @@ def getattr_alone(o: object) -> str {
     return getattr(o, "k", "default");
 }
 
-def dict_get_or_empty(d: dict) -> str {
+def dict_get_or_empty(d: dict[any, any]) -> str {
     return d.get("k", "") or "";
 }
 
-def dict_get_one_arg_or_empty(d: dict) -> str {
+def dict_get_one_arg_or_empty(d: dict[any, any]) -> str {
     return d.get("k") or "";
 }
 
-def test_nullish_logical_precedence_cases() -> dict {
+def test_nullish_logical_precedence_cases() -> dict[any, any] {
     return {
         "getattr_two_arg_hit": getattr_two_arg_or_empty({"k": "hi"}),
         "getattr_two_arg_miss": getattr_two_arg_or_empty({}),

@@ -37,7 +37,9 @@ def validate_entry_point(module: str) -> str;
 
 def resolve_entry_path(module: str, project_root: str) -> str;
 
-def parse_apps(project_data: dict, apps_data: dict) -> dict[str, AppConfig];
+def parse_apps(
+    project_data: dict[str, any], apps_data: dict[str, any]
+) -> dict[str, AppConfig];
 
 def implicit_app(config: any) -> AppConfig;
 

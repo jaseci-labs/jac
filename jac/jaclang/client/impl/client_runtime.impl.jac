@@ -2,20 +2,21 @@ impl navigate(path: str) -> None {
     _navigate(path);
 }
 
-impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
+impl jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any {
     return _jacSpawn(left, right, fields);
 }
 
 impl jacSignup(
-    identities_or_username: (str | list),
-    credential_or_password: (str | dict),
-    profile: (dict | None) = None
+    identities_or_username: (str | list[str | dict[str, any]]),
+    credential_or_password: (str | dict[str, any]),
+    profile: (dict[str, any] | None) = None
 ) -> SignupResult {
     return await _jacSignup(identities_or_username, credential_or_password, profile);
 }
 
 impl jacLogin(
-    identity_or_username: (str | dict), credential_or_password: (str | dict)
+    identity_or_username: (str | dict[str, any]),
+    credential_or_password: (str | dict[str, any])
 ) -> bool {
     return await _jacLogin(identity_or_username, credential_or_password);
 }
@@ -36,11 +37,11 @@ impl jacSetToken(token: str) -> None {
     _jacSetToken(token);
 }
 
-impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
+impl __jacJsx(tag: any, props: dict[str, any] = {}, children: any = []) -> JsxElement {
     if tag == None {
         tag = React.Fragment;
     }
-    childrenArray = [];
+    childrenArray: list[any] = [];
     if children != None {
         if Array.isArray(children) {
             childrenArray = children;
@@ -107,7 +108,7 @@ impl useJacState(initial: any) -> any {
     return store;
 }
 
-impl useRouter -> dict {
+impl useRouter -> dict[str, any] {
     navigate = reactRouterUseNavigate();
     location = reactRouterUseLocation();
     params = reactRouterUseParams();
@@ -139,7 +140,7 @@ impl JacAwaiting(props: dict[str, any]) -> JsxElement {
 
 impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     actualSchema = __unwrapFormSchema(schema);
-    schemaShape = actualSchema.shape or {};
+    schemaShape: dict[str, any] = actualSchema.shape or {};
     defaults = {};
     for key in Object.keys(schemaShape) {
         defaults[key] = "";
@@ -175,7 +176,7 @@ impl JacForm(props: dict[str, any]) -> JsxElement {
     validateMode: str = props["validateMode"] or "onTouched";
     className = props["className"] or "";
     actualSchema = __unwrapFormSchema(schema);
-    schemaShape = actualSchema.shape or {};
+    schemaShape: dict[str, any] = actualSchema.shape or {};
     fieldNames = Object.keys(schemaShape);
     form = useJacForm(validateMode, schema, onSubmit);
     [passwordVisible, setPasswordVisible] = useState({});
@@ -205,7 +206,7 @@ impl JacForm(props: dict[str, any]) -> JsxElement {
         }
         return schema;
     }
-    def renderError(errors: list, isTouched: bool) -> JsxElement | None {
+    def renderError(errors: list[any], isTouched: bool) -> JsxElement | None {
         if validateMode == "onTouched" and not isTouched {
             return None;
         }
@@ -218,7 +219,7 @@ impl JacForm(props: dict[str, any]) -> JsxElement {
             </p>
         );
     }
-    def getEnumOptions(fieldSchema: any) -> list {
+    def getEnumOptions(fieldSchema: any) -> list[str] {
         unwrapped = unwrapZodSchema(fieldSchema);
 
         if unwrapped.options and Array.isArray(unwrapped.options) {
@@ -463,7 +464,7 @@ impl JacForm(props: dict[str, any]) -> JsxElement {
             </form.Field>
         );
     }
-    def getLayoutStyle -> dict {
+    def getLayoutStyle -> dict[str, any] {
         if layout == "grid" {
             return {
                 display: "grid",

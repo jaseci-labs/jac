@@ -52,7 +52,7 @@ def compile_na_inline(label: str, code: str) -> JacProgram {
 
 """Like `compile_na_inline`, but also hand back the compiled module so a
 granular demotion (epic #8201) is observable through the native layout."""
-def compile_na_inline_ir(label: str, code: str) -> tuple {
+def compile_na_inline_ir(label: str, code: str) -> tuple[any, ...] {
     path = os.path.join(FIXTURES, f"_closure_{label}.jac");
     prog = JacProgram();
     ir = prog.compile(file_path=path, use_str=code, options=native_force_opts());

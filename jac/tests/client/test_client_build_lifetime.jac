@@ -21,7 +21,7 @@ test "standalone client build releases application trees before bundling" {
         );
         Jac.set_full_target_path(str(entry_path));
         reached: list[bool] = [];
-        trees: list = [];
+        trees: list[weakref.ref] = [];
         program = Jac.get_program();
         original_compile = program.compile;
         def compile(*args: any, **kwargs: any) -> any {

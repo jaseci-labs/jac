@@ -20,7 +20,7 @@ the native lane has no lowering for; deleting one from this list is how the
 suite starts covering it, and the harness fails if a name here is one the
 lane now produces.
 """
-glob STR_NA_GAPS: list = [
+glob STR_NA_GAPS: list[any] = [
          "casefold",
          "enc1",
          "enc2",
@@ -75,7 +75,7 @@ glob STR_NA_GAPS: list = [
          "startswith_t",
          "tr1"
      ],
-     EQUIV_CASES: list[tuple] = [
+     EQUIV_CASES: list[tuple[any, ...]] = [
          ("int", "prim_int.jac", "int_py", "int_cl", "int_na"),
          (
              "dict ctor",
@@ -637,7 +637,7 @@ glob STR_NA_GAPS: list = [
 
      ];
 
-def _equiv_case(row: tuple) {
+def _equiv_case(row: tuple[any, ...]) {
     require = row[5] if len(row) > 5 else [];
     waived = row[6] if len(row) > 6 else None;
     run_with_both(
@@ -647,7 +647,10 @@ def _equiv_case(row: tuple) {
 
 with entry {
     parametrize(
-        "prim equivalence", EQUIV_CASES, _equiv_case, id_fn=lambda (c: tuple) { c[0]; }
+        "prim equivalence",
+        EQUIV_CASES,
+        _equiv_case,
+        id_fn=lambda (c: tuple[any, ...]) { c[0]; }
     );
 }
 

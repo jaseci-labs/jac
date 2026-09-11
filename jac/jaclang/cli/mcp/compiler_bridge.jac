@@ -3,7 +3,7 @@ glob MAX_INPUT_SIZE: int = 102400,
      OUTPUT_TRUNCATION_MARKER: str = "\n[... output truncated ...]",
      DEFAULT_TIMEOUT: int = 10;
 
-def run_with_timeout(func: object, timeout: int = 10) -> tuple;
+def run_with_timeout(func: object, timeout: int = 10) -> tuple[bool, any];
 
 obj CompilerBridge {
     static def parse_snippet(

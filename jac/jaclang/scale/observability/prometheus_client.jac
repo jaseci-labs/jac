@@ -25,7 +25,7 @@ def resolve_prometheus_url -> str | None {
     return f"http://{app_name}-prometheus-service:9090";
 }
 
-def query(promql: str, timeout: float = 3.0) -> list[any] | None {
+def query(promql: str, timeout: float = 3.0) -> list[dict[str, any]] | None {
     base = resolve_prometheus_url();
     if not base {
         return None;
@@ -62,11 +62,11 @@ def query(promql: str, timeout: float = 3.0) -> list[any] | None {
     }
 }
 
-def _extract_result(body: any) -> list[any] {
+def _extract_result(body: any) -> list[dict[str, any]] {
     try {
         data = body["data"];
         raw = data["result"];
-        out: list[any] = [];
+        out: list[dict[str, any]] = [];
         if raw {
             for `entry in raw {
                 out.append(`entry);
@@ -80,7 +80,7 @@ def _extract_result(body: any) -> list[any] {
 
 def query_range(
     promql: str, start: float, end: float, step: str = "15s", timeout: float = 5.0
-) -> list[any] | None {
+) -> list[dict[str, any]] | None {
     base = resolve_prometheus_url();
     if not base {
         return None;

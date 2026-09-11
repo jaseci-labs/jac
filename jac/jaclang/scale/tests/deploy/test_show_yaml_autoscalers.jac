@@ -140,7 +140,9 @@ test "keda engine renders the TriggerAuthentication apply() would create for an 
 # Drive the real bundle the deploy builds, then render the autoscaler objects
 # the apply path would send, so a declared bound is followed all the way to the
 # manifest instead of being asserted at an intermediate hop.
-def _applied_hpas(k8s_config: KubernetesConfig, services: dict) -> list[dict] {
+def _applied_hpas(
+    k8s_config: KubernetesConfig, services: dict[str, any]
+) -> list[dict[str, any]] {
     import tempfile;
     import from pathlib { Path }
     with tempfile.TemporaryDirectory() as project {

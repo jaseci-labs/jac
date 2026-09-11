@@ -11,7 +11,7 @@ drawer in the footer so they keep working as a smoke probe without dominating
 the UI.
 """
 def:pub app -> JsxElement {
-    has notes: list = [],
+    has notes: list[dict[str, any]] = [],
         activeId: str = "",
         query: str = "",
         diagnosticsOpen: bool = False,
@@ -103,7 +103,7 @@ def:pub app -> JsxElement {
         return None;
     }
 
-    def filteredNotes -> list {
+    def filteredNotes -> list[dict[str, any]] {
         q = query.strip().lower();
         if q == "" {
             return notes;

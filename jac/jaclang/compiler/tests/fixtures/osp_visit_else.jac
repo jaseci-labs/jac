@@ -19,7 +19,7 @@ node P {
 }
 
 walker Walk {
-    has seen: list = [],
+    has seen: list[any] = [],
         ends: int = 0;
 
     can step with P entry {
@@ -31,7 +31,7 @@ walker Walk {
 }
 
 walker Halt {
-    has seen: list = [],
+    has seen: list[any] = [],
         tail: int = 0;
 
     can step with P entry {

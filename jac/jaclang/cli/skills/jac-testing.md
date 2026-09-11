@@ -133,7 +133,7 @@ test "unreachable branch" {
 ```jac
 import from jaclang.testing.test { parametrize }
 
-def _test_square(pair: tuple) {
+def _test_square(pair: tuple[int, int]) {
     assert pair[0] ** 2 == pair[1];
 }
 

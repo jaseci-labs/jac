@@ -17,7 +17,7 @@ obj WriteConflict(Exception) {
     has anchor_id: UUID,
         expected_version: int = -1,
         actual_version: int = -1,
-        siblings: (list | None) = None;
+        siblings: (list[any] | None) = None;
 
     def postinit {
         super.init(self.message());

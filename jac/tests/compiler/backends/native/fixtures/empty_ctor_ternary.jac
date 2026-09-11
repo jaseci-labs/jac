@@ -21,7 +21,7 @@ def gen_bare -> set {
 }
 
 
-def lst_bare -> list {
+def lst_bare -> list[any] {
     return ["a", "b", "c", "d"];
 }
 

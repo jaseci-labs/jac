@@ -33,7 +33,7 @@ def provider_route(config: any, provider_app: str) -> str {
 }
 
 
-def _body(request: Request) -> (dict | None) {
+def _body(request: Request) -> (dict[str, any] | None) {
     if not request.body {
         return {};
     }
@@ -55,6 +55,7 @@ def _fail(code: str, message: str, status: int) -> TransportResponse {
 
 def _outcome(result: any, fallback: str) -> TransportResponse {
     if isinstance(result, dict) and 'error' in result {
+        result: dict[str, any] = result;
         if result.get('error') == 'User not found' {
             return _fail('UNAUTHORIZED', 'Unauthorized: unknown user', 401);
         }
@@ -155,7 +156,7 @@ def _function_callback(
 def _listing(names: list[str], key: str) -> Callable[..., TransportResponse] {
     async def callback(request: Request, **kwargs: JsonValue) -> TransportResponse {
         return TransportResponse.success(
-            data={key: list(names)}, meta=Meta(extra={'http_status': 200})
+            data={key: list[str](names)}, meta=Meta(extra={'http_status': 200})
         );
     }
     return callback;

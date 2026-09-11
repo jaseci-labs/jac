@@ -332,7 +332,7 @@ impl ViteBundler.add_packages(
 }
 
 impl ViteBundler._format_config_object(
-    self: ViteBundler, config: dict, indent: int = 0
+    self: ViteBundler, config: dict[str, any], indent: int = 0
 ) -> str {
     if not config {
         return '';
@@ -398,7 +398,7 @@ def _to_js_expr(value: any) -> str {
 }
 
 impl ViteBundler._format_define_entries(
-    self: ViteBundler, api_base_url: str, custom_defines: dict
+    self: ViteBundler, api_base_url: str, custom_defines: dict[str, any]
 ) -> str {
     entries = [];
 
@@ -1205,7 +1205,7 @@ impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
     return npmrc_path;
 }
 
-def _toml_config_to_js(config_data: dict) -> str {
+def _toml_config_to_js(config_data: dict[str, any]) -> str {
     return f"module.exports = {json.dumps(
         {
             k: v
@@ -1216,7 +1216,7 @@ def _toml_config_to_js(config_data: dict) -> str {
     )};\n";
 }
 
-def _toml_config_from_raw(config_data: dict) -> str {
+def _toml_config_from_raw(config_data: dict[str, any]) -> str {
     content = str(config_data.get('raw', '')).strip();
     return content + '\n' if content else '';
 }

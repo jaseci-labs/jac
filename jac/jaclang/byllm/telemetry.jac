@@ -1,7 +1,7 @@
 import from contextvars { ContextVar }
 import logging;
 
-glob _agent_callbacks: list = [],
+glob _agent_callbacks: list[Callable] = [],
      logger = logging.getLogger(__name__),
      _current_invocation_id: ContextVar = ContextVar(
          'byllm_invocation_id', `default=None
@@ -9,7 +9,7 @@ glob _agent_callbacks: list = [],
 
 def:pub register_agent_callback(callback: Callable) -> None;
 
-def _aggregate_usage(usage_history: list[dict]) -> dict[str, object];
+def _aggregate_usage(usage_history: list[dict[str, any]]) -> dict[str, object];
 
 def _emit_agent_telemetry(
     mt_run: object,

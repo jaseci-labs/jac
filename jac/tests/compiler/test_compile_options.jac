@@ -19,7 +19,7 @@ import from jaclang.compiler.driver.jir { compute_module_key }
 
 
 def _pinned_opts(**overrides: any) -> CompileOptions {
-    base: dict = {
+    base: dict[str, any] = {
         "memory_profile": "managed",
         "nogc_enforce_all": False,
         "memory_enforce": [],
@@ -60,7 +60,7 @@ test "forced server compilation retains Python standard-library imports" {
 
 test "every codegen option flip changes the fingerprint" {
     base_fp = _pinned_opts().codegen_fingerprint();
-    flips: list = [
+    flips: list[any] = [
         _pinned_opts(memory_profile="nogc"),
         _pinned_opts(memory_profile="rc"),
         _pinned_opts(nogc_enforce_all=True),

@@ -556,7 +556,7 @@ impl ElfLinker.parse_object -> bool {
         return False;
     }
 
-    raw_sections: list[dict] = [];
+    raw_sections: list[dict[str, int]] = [];
     for i in range(e_shnum) {
         off = e_shoff + i * e_shentsize;
         (
@@ -1565,8 +1565,8 @@ impl ElfLinker.build_executable -> bytes {
             "data": sh_name_to_idx.get(".data", text_idx)
         };
 
-        sym_locals: list = [];
-        sym_globals: list = [];
+        sym_locals: list[tuple[str, int, int, int, int, int]] = [];
+        sym_globals: list[tuple[str, int, int, int, int, int]] = [];
         for dsym in self.symbols {
             if (not dsym.name)
                 or dsym.shndx == SHN_UNDEF
@@ -2171,8 +2171,8 @@ impl ElfLinker.build_shared_object -> bytes {
         "data": sh_name_to_idx.get(".data", sh_name_to_idx.get(".dynamic", 1))
     };
 
-    sym_locals: list = [];
-    sym_globals: list = [];
+    sym_locals: list[tuple[str, int, int, int, int, int]] = [];
+    sym_globals: list[tuple[str, int, int, int, int, int]] = [];
     for dsym in self.symbols {
         if (not dsym.name)
             or dsym.shndx == SHN_UNDEF

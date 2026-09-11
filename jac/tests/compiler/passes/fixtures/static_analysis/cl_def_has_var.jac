@@ -1,11 +1,11 @@
 """Test: has variables reassigned inside cl def nested abilities should not produce unused warnings."""
 
-def:pub get_items -> list {
+def:pub get_items -> list[any] {
     return [1, 2, 3];
 }
 
 def app -> str {
-    has items: list = [],
+    has items: list[any] = [],
         count: int = 0;
 
     can with entry {

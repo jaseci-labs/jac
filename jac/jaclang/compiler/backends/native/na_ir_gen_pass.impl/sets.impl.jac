@@ -106,7 +106,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
 
     _first_spread = self._spread_operand(nd.values[0]);
     first_val: (ir.Value | None) = None;
-    _first_src_info: (dict | None) = None;
+    _first_src_info: (dict[str, any] | None) = None;
     if _first_spread is not None {
         _first_src_info = self._container_src_info(
             self._str_norm_optional(self._codegen_expr(_first_spread))

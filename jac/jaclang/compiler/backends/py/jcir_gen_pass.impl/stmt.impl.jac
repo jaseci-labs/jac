@@ -91,7 +91,7 @@ impl JcirGenPass.resolve_stmt_block(
     return ret;
 }
 
-impl JcirGenPass._stmts_with_releases(stmts: list) -> list[CgItem] {
+impl JcirGenPass._stmts_with_releases(stmts: Sequence[UniNode]) -> list[CgItem] {
     out: list[CgItem] = [];
     for x in stmts {
         if isinstance(x, ImplDef) {
@@ -107,12 +107,12 @@ impl JcirGenPass._stmts_with_releases(stmts: list) -> list[CgItem] {
     return out;
 }
 
-impl JcirGenPass._move_release_stmts(stmt: CodeBlockStmt) -> list[CgNode] {
+impl JcirGenPass._move_release_stmts(stmt: UniNode) -> list[CgNode] {
     if isinstance(stmt, (ReturnStmt, RaiseStmt)) {
         return [];
     }
     sites = self.ir_in.own_move_sites;
-    last_uses = self.ir_in.rc_last_use.get(id(stmt)) or [];
+    last_uses: any = self.ir_in.rc_last_use.get(id(stmt)) or [];
     if not sites and not last_uses {
         return [];
     }
@@ -267,7 +267,9 @@ impl JcirGenPass.exit_open_stmt with OpenStmt exit {
         ],
         jac_node=here
     );
-    body_stmts: list = self._flatten_ast_list([self.outs(item) for item in here.body]);
+    body_stmts: list[CgItem] = self._flatten_ast_list(
+        [self.outs(item) for item in here.body]
+    );
     if not body_stmts {
         body_stmts = [self.nod('Pass', [], [], jac_node=here)];
     }

@@ -4,7 +4,7 @@ coroutine the stub returns and is awaited as such."""
 
 import from social_app { Greet }
 
-async def run_greet(name: str) -> list {
+async def run_greet(name: str) -> list[any] {
     walked = await (root spawn Greet(name=name));
     return walked.reports;
 }

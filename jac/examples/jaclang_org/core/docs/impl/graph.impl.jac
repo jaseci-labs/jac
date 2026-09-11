@@ -106,7 +106,7 @@ impl rewrite_href(href: str, version: str, cur_dir: str) -> str {
 }
 
 impl _teardown_version(v: DocVersion) {
-    containers: list = [v];
+    containers: list[DocContainer] = [v];
     dirs: list[DocDir] = [];
     pages: list[DocPage] = [];
     i = 0;

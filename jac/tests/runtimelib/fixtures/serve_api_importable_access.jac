@@ -1,21 +1,24 @@
 """Module with walkers and functions having different access levels to be imported for serve testing."""
 
 # Public function (no authentication required) - marked with :pub
-def :pub publicImportedFunc -> dict {
+def:pub publicImportedFunc -> dict[str, any] {
     return {"message": "Hello from imported public function!", "auth_required": False};
 }
 
-def :protect protectedImportedFunc -> dict {
-    return {"message": "Hello from imported protected function!", "auth_required": True};
+def:protect protectedImportedFunc -> dict[str, any] {
+    return {
+        "message": "Hello from imported protected function!",
+        "auth_required": True
+    };
 }
 
 # Default function (no access modifier - requires auth by default)
-def defaultImportedFunc -> dict {
+def defaultImportedFunc -> dict[str, any] {
     return {"message": "Hello from imported default function!", "auth_required": True};
 }
 
 # Public walker (no authentication required) - marked with :pub
-walker :pub PublicImportedWalker {
+walker:pub PublicImportedWalker {
     has message: str = "hello from public imported walker";
 
     can greet with Root entry {
@@ -24,7 +27,7 @@ walker :pub PublicImportedWalker {
 }
 
 # Protected walker (authentication required) - marked with :protect
-walker :protect ProtectedImportedWalker {
+walker:protect ProtectedImportedWalker {
     has data: str = "protected data";
 
     can process with Root entry {

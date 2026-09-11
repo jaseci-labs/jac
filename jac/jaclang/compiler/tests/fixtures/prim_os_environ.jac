@@ -24,7 +24,7 @@ def _set_from_param_na(key: str, val: str) -> str {
     return os.environ.get(key, "");
 }
 
-def environ_py -> dict {
+def environ_py -> dict[any, any] {
     os.environ["JAC_ENVFIX_A"] = "alpha";
     got = os.environ.get("JAC_ENVFIX_A", "");
     missing = os.environ.get("JAC_ENVFIX_MISSING", "fallback");
@@ -43,10 +43,11 @@ def environ_py -> dict {
         "after_pop": after_pop,
         "popped_missing_none": popped_missing is None,
         "from_param": from_param,
+
     };
 }
 
-def environ_cl -> dict {
+def environ_cl -> dict[any, any] {
     return {};
 }
 
@@ -70,5 +71,6 @@ def environ_na -> dict[str, any] {
         "after_pop": after_pop,
         "popped_missing_none": popped_missing is None,
         "from_param": from_param,
+
     };
 }

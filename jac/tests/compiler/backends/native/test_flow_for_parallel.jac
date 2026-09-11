@@ -79,7 +79,7 @@ def _run_matrix(fixture: str, expected: str) {
             bins[mode] = out_bin;
         }
         for nthreads in ("1", "3", "16") {
-            env = dict(os.environ);
+            env: dict[str, str] = dict(os.environ);
             env["JAC_FLOW_THREADS"] = nthreads;
             ran = subprocess.run(
                 [bins["none"]], capture_output=True, text=True, env=env
@@ -117,7 +117,7 @@ test "rc parallel output is byte-identical across thread counts" {
         );
         assert res.returncode == 0 , res.stderr;
         for nthreads in ("1", "3", "16") {
-            env = dict(os.environ);
+            env: dict[str, str] = dict(os.environ);
             env["JAC_FLOW_THREADS"] = nthreads;
             ran = subprocess.run([out_bin], capture_output=True, text=True, env=env);
             assert ran.returncode == 0 , f"threads={nthreads}: {ran.stderr}";
@@ -148,7 +148,7 @@ test "shared-capture rc stress is identical across widths and modes" {
         assert outs["rc"] == outs["cycles"] , f"{outs['rc']} vs {outs['cycles']}";
         assert outs["rc"].endswith("end\n") , outs["rc"];
         for nthreads in ("1", "8", "16") {
-            env = dict(os.environ);
+            env: dict[str, str] = dict(os.environ);
             env["JAC_FLOW_THREADS"] = nthreads;
             ran = subprocess.run([bins["rc"]], capture_output=True, text=True, env=env);
             assert ran.returncode == 0 , f"threads={nthreads}: {ran.stderr}";
@@ -192,7 +192,7 @@ test "output is byte-identical across gc modes and thread counts" {
         assert outs["rc"] == EXPECTED , outs["rc"];
         assert outs["cycles"] == EXPECTED , outs["cycles"];
         for nthreads in ("1", "3", "16") {
-            env = dict(os.environ);
+            env: dict[str, str] = dict(os.environ);
             env["JAC_FLOW_THREADS"] = nthreads;
             ran = subprocess.run(
                 [bins["none"]], capture_output=True, text=True, env=env

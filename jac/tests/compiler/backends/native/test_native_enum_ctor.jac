@@ -40,9 +40,9 @@ import from jaclang.compiler.passes.layout_pass { get_layout_registry }
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
-     EXPECTED: tuple = ("2", "1", "25", "4", "rejected", "rejected", "0");
+     EXPECTED: tuple[str, ...] = ("2", "1", "25", "4", "rejected", "rejected", "0");
 
-def compile_native(fixture: str) -> tuple {
+def compile_native(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
@@ -51,7 +51,7 @@ def compile_native(fixture: str) -> tuple {
 }
 
 
-def sv_lines(fixture: str) -> list {
+def sv_lines(fixture: str) -> list[str] {
     output = python_run(os.path.join(FIXTURES, fixture), timeout=900);
     return [
         line
@@ -74,7 +74,7 @@ def seam_report(fixture: str) -> str {
 }
 
 
-def na_lines(fixture: str) -> list {
+def na_lines(fixture: str) -> list[str] {
     out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
     comp = subprocess.run(
         [

@@ -48,7 +48,7 @@ glob FIXTURES = os.path.join(
 declared-union globals need it because a boxed initializer is a runtime
 store, not a constant.
 """
-def _compile(fixture: str) -> tuple {
+def _compile(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()

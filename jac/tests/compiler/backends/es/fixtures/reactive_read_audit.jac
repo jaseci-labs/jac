@@ -7,7 +7,7 @@ string literal, member property) MUST NOT. Under React/Preact the read seam is a
 no-op, so this fixture is also a plain bare-identifier fixture.
 """
 
-def:pub audit_app(items: list) -> JsxElement {
+def:pub audit_app(items: list[any]) -> JsxElement {
     has count: int = 0;
 
     # value positions — must wrap under signals

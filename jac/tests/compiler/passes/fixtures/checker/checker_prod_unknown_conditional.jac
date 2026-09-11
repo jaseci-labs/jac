@@ -15,19 +15,19 @@ Expected errors: 3
 
 with entry {
     # Any + int -> Unknown (magic method __add__ unresolved on Any)
-    items: list = [1, 2, 3];
+    items: list[any] = [1, 2, 3];
     any_val = items.pop();
     x = any_val + 1;
 
     # isinstance on Unknown — should narrow or flag
     if isinstance(x, int) {
-        result: int = x;            # If narrowed: Ok. If Unknown: should warn
-        bad1: str = x;              # Error: narrowed int -> str (or Unknown -> str)
+        result: int = x;  # If narrowed: Ok. If Unknown: should warn
+        bad1: str = x;  # Error: narrowed int -> str (or Unknown -> str)
     } else {
-        bad2: str = x;              # Error: Unknown not guaranteed to be str
+        bad2: str = x;  # Error: Unknown not guaranteed to be str
     }
 
     # Ternary with Unknown
     val = x if isinstance(x, int) else "fallback";
-    bad3: int = val;                # Error: int|str not assignable to int
+    bad3: int = val;  # Error: int|str not assignable to int
 }

@@ -35,7 +35,7 @@ try:
 except SystemExit as exc:
     raise SystemExit(int(exc.code) if isinstance(exc.code, int) else 1)
 """;
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["JAC_LLVM_SHIM"] = "none";
     env["HOME"] = work;
     env["XDG_CACHE_HOME"] = os.path.join(work, "cache");

@@ -16,26 +16,26 @@ that string back out and returns it, exercising the paths that regressed:
 
 def via_local(s: str) -> str {
     cal: str = s[5:12];
-    r: list = [19, ""];
+    r: list[any] = [19, ""];
     r[1] = cal;
     return r[1];
 }
 
 
 def via_literal_a(s: str) -> str {
-    r: list = [99, s[0:3], s[5:12]];
+    r: list[any] = [99, s[0:3], s[5:12]];
     return r[1];
 }
 
 
 def via_literal_b(s: str) -> str {
-    r: list = [99, s[0:3], s[5:12]];
+    r: list[any] = [99, s[0:3], s[5:12]];
     return r[2];
 }
 
 
 def via_arg(pos: int, tag: str) -> str {
-    r: list = [pos, ""];
+    r: list[any] = [pos, ""];
     r[1] = tag;
     return r[1];
 }
@@ -45,7 +45,7 @@ def churn(n: int) -> int {
     total: int = 0;
     i: int = 0;
     while i < n {
-        m: list = [i, "v" + str(i)];
+        m: list[any] = [i, "v" + str(i)];
         cc: str = m[1];
         total = total + len(cc);
         i = i + 1;

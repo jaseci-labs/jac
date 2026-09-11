@@ -131,9 +131,9 @@ def _native_parse_woven(
     source_str: str,
     file_path: str,
     prog: (JacProgram | None),
-    annexes: list,
+    annexes: list[tuple[str, str]],
     early_context: str = ""
-) -> (tuple | None) {
+) -> (tuple[Module, bool] | None) {
     import jaclang.compiler.native_compiler as _jc;
     kernel = _jc.ensure_loaded();
     if kernel is None {
@@ -171,9 +171,9 @@ def parse_woven(
     source_str: str,
     file_path: str,
     prog: (JacProgram | None),
-    annexes: list,
+    annexes: list[tuple[str, str]],
     early_context: str = ""
-) -> tuple {
+) -> tuple[any, bool] {
     nat = _native_parse_woven(source_str, file_path, prog, annexes, early_context);
     if nat is not None {
         return nat;
@@ -203,7 +203,7 @@ def annex_sources(file_path: str) -> list[tuple[str, str]] {
         if discover_base_file(file_path) is not None {
             return [];
         }
-        paths = [
+        paths: list[str] = [
             *discover_annex_files(file_path, ".impl.jac"),
             *discover_annex_files(file_path, ".test.jac")
         ];

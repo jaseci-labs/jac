@@ -41,10 +41,10 @@ glob FIXTURES = os.path.join(
      ),
      FIXTURE = "any_all_elem_truthiness.jac";
 
-glob _MEMO: list = [];
+glob _MEMO: list[any] = [];
 
 """Compile the fixture once and return (coverage record, engine)."""
-def measured -> tuple {
+def measured -> tuple[any, ...] {
     if _MEMO {
         return _MEMO[0];
     }

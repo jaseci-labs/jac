@@ -1,17 +1,17 @@
-impl ws_error_frame(code: str, message: any, reason: any = None) -> dict {
-    err: dict = {'code': code, 'message': message};
+impl ws_error_frame(code: str, message: any, reason: any = None) -> dict[str, any] {
+    err: dict[str, any] = {'code': code, 'message': message};
     if reason {
         err['reason'] = reason;
     }
     return {'ok': False, 'error': err};
 }
 
-impl _auth_fail(status: str, reason: str) -> dict {
+impl _auth_fail(status: str, reason: str) -> dict[str, any] {
     return {'status': status, 'user_id': None, 'exp': None, 'reason': reason};
 }
 
 impl _ws_send_then_close(
-    websocket: WebSocket, frame: dict, close_code: int, close_reason: str
+    websocket: WebSocket, frame: dict[str, any], close_code: int, close_reason: str
 ) -> None {
     try {
         await websocket.send_json(frame);
@@ -33,7 +33,7 @@ impl ws_pre_accept_auth(websocket: WebSocket, user_manager: any) -> any {
     return user_manager.validate_jwt_token_detail(query_token);
 }
 
-impl ws_reject_pre_accept(websocket: WebSocket, auth_detail: dict) {
+impl ws_reject_pre_accept(websocket: WebSocket, auth_detail: dict[str, any]) {
     status = auth_detail.get('status', 'invalid');
     try {
         await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason=str(status));
@@ -44,7 +44,7 @@ impl ws_reject_pre_accept(websocket: WebSocket, auth_detail: dict) {
 
 impl ws_authenticate(
     websocket: WebSocket, user_manager: any, handshake_timeout: float, max_bytes: int
-) -> (dict, dict | None) {
+) -> (dict[str, any], dict[str, any] | None) {
     try {
         raw = await asyncio.wait_for(
             websocket.receive_text(), timeout=handshake_timeout
@@ -133,7 +133,7 @@ impl ws_heartbeat_loop(
     }
 }
 
-impl ws_reject_auth(websocket: WebSocket, auth_detail: dict) {
+impl ws_reject_auth(websocket: WebSocket, auth_detail: dict[str, any]) {
     status = auth_detail.get('status', 'invalid');
     message_map = {
         'missing': 'Invalid or missing token',
@@ -171,7 +171,9 @@ impl ws_reject_registration(websocket: WebSocket, rejection: str) {
     );
 }
 
-impl ws_receive_frame(websocket: WebSocket, max_bytes: int) -> (str, dict | None) {
+impl ws_receive_frame(
+    websocket: WebSocket, max_bytes: int
+) -> (str, dict[str, any] | None) {
     raw = await websocket.receive_text();
     if len(raw.encode()) > max_bytes {
         await websocket.send_json(
@@ -202,7 +204,7 @@ impl ws_receive_frame(websocket: WebSocket, max_bytes: int) -> (str, dict | None
 impl ws_handle_control(
     websocket: WebSocket,
     ctx: ConnectionContext,
-    data: dict,
+    data: dict[str, any],
     user_manager: any,
     requires_auth: bool,
     msgs_per_sec: float,

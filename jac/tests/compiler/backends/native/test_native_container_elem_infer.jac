@@ -60,7 +60,7 @@ def native_call(eng: any, name: str) -> int {
 }
 
 """Run the same fixture through the sv pathway and return its module globals."""
-def sv_funcs(fixture: str) -> dict {
+def sv_funcs(fixture: str) -> dict[str, any] {
     path = str(os.path.join(FIXTURES, fixture));
     prog = JacProgram();
     ir = prog.compile(
@@ -68,7 +68,7 @@ def sv_funcs(fixture: str) -> dict {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"sv compilation errors in {fixture}: {errors}";
-    ns: dict = {};
+    ns: dict[str, any] = {};
     exec(compile(ir.gen.py, path, "exec"), ns);
     return ns;
 }
@@ -83,7 +83,7 @@ def compile_na_inline(label: str, code: str) -> JacProgram {
 
 """Like `compile_na_inline`, but also hand back the compiled module so a
 granular demotion (epic #8201) is observable through the native layout."""
-def compile_na_inline_ir(label: str, code: str) -> tuple {
+def compile_na_inline_ir(label: str, code: str) -> tuple[any, ...] {
     path = os.path.join(FIXTURES, f"_elem_infer_{label}.jac");
     prog = JacProgram();
     ir = prog.compile(file_path=path, use_str=code, options=native_force_opts());

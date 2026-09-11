@@ -15,7 +15,7 @@ impl MemoryBackplane.start{
     }
 }
 
-impl MemoryBackplane.publish(channel: str, message: dict) -> None {
+impl MemoryBackplane.publish(channel: str, message: dict[str, any]) -> None {
     handlers = list(self._subs.get(channel, []));
     if not handlers {
         return;
@@ -74,7 +74,7 @@ impl PgBackplane.start -> None {
 }
 
 
-impl PgBackplane.publish(channel: str, message: dict) -> None {
+impl PgBackplane.publish(channel: str, message: dict[str, any]) -> None {
     await self.start();
     payload = json.dumps(message);
     if len(payload.encode('utf-8')) > _NOTIFY_LIMIT {
@@ -121,7 +121,7 @@ impl PgBackplane._on_notify(channel: str, payload: str) -> None {
 }
 
 
-impl PgBackplane._dispatch(channel: str, message: dict) -> None {
+impl PgBackplane._dispatch(channel: str, message: dict[str, any]) -> None {
     handlers = list(self._handlers.get(channel, []));
     if handlers {
         tasks = [h(channel, message) for h in handlers];
@@ -167,7 +167,7 @@ impl PgBackplane.close{
 }
 
 
-impl build_backplane(cfg: dict) -> BaseBackplane {
+impl build_backplane(cfg: dict[str, any]) -> BaseBackplane {
     backplane = cfg.get('backplane');
     if backplane == 'memory' {
         return MemoryBackplane();

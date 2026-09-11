@@ -203,7 +203,7 @@ impl JcirGenPass._sort_order_specs(
     if body is None {
         return None;
     }
-    parts: list = list(body.values) if isinstance(body, TupleVal) else [body];
+    parts: list[UniNode] = list(body.values) if isinstance(body, TupleVal) else [body];
     out: list[tuple[str, bool, bool]] = [];
     for part in parts {
         if not isinstance(part, Expr) {
@@ -278,7 +278,7 @@ impl JcirGenPass._cmp_op_str(op: CgNode) -> (str | None) {
 
 impl JcirGenPass._query_filter_kws(
     fc: FilterCompr, type_arg: str, preds_arg: str
-) -> list {
+) -> list[CgNode] {
     return self._query_filter_kws_ord(fc, type_arg, preds_arg, False, [])[0];
 }
 
@@ -588,7 +588,7 @@ impl JcirGenPass.exit_edge_ref_trailer with EdgeRefTrailer exit {
     }
     origin: (CgNode | None) = None;
     cur = here.chain[0];
-    chomp = [*here.chain[1:]];
+    chomp: list[Expr | FilterCompr] = [*here.chain[1:]];
     from_visit = bool(isinstance(here.parent, VisitStmt));
     if not isinstance(cur, EdgeOpRef) {
         origin = self.val(cur);

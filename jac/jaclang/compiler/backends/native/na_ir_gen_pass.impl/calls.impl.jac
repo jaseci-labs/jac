@@ -1,6 +1,6 @@
 import from jaclang.compiler.frontend.constant { OwnershipKind }
 
-glob _NA_ABC_REDUCTIONS: dict[str, tuple] = {
+glob _NA_ABC_REDUCTIONS: dict[str, tuple[str, ...]] = {
          "Sequence": ("list", "tuple", "str", "bytes", "bytearray"),
          "MutableSequence": ("list", "bytearray"),
          "Mapping": ("dict", ),
@@ -10,7 +10,7 @@ glob _NA_ABC_REDUCTIONS: dict[str, tuple] = {
          "MutableSet": ("set", ),
          "ByteString": ("bytes", "bytearray")
      },
-     _NA_ABC_OPAQUE: tuple = (
+     _NA_ABC_OPAQUE: tuple[str, ...] = (
          "Iterable",
          "Iterator",
          "Reversible",
@@ -79,10 +79,10 @@ impl NaIRGenPass._erased_generic_ctor(nd: uni.FuncCall) -> (str | None) {
 impl NaIRGenPass._transfer_own_args(
     nd: uni.FuncCall,
     func: (ir.Function | None),
-    args: list,
-    release_args: list,
+    args: list[ir.Value],
+    release_args: list[ir.Value],
     offset: int = 0
-) -> list {
+) -> list[ir.Value] {
     _hl = self._nogc_headerless();
     if _hl and not self._nogc_owned_world() {
         return release_args;
@@ -113,7 +113,7 @@ impl NaIRGenPass._transfer_own_args(
     if not _own_idx {
         return release_args;
     }
-    _param_idx: dict = {};
+    _param_idx: dict[str, int] = {};
     for (_pi2, _p2) in enumerate(_sig_params) {
         _param_idx[_p2.name.sym_name] = _pi2 + offset;
     }
@@ -220,13 +220,13 @@ impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
 
 impl NaIRGenPass._codegen_bound_args(
     nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
-) -> list {
-    raw = nd.params or [];
-    positional: list = [];
-    kw_map: dict = {};
-    kw_spreads: list = [];
-    kw_order: list = [];
-    _unpack_names: list = [];
+) -> list[ir.Value] {
+    raw: list[uni.Expr | uni.KWPair] = list(nd.params or []);
+    positional: list[uni.Expr | tuple[str, ir.Value]] = [];
+    kw_map: dict[str, uni.Expr] = {};
+    kw_spreads: list[uni.Expr] = [];
+    kw_order: list[tuple[str, str | uni.Expr]] = [];
+    _unpack_names: list[str] = [];
     for param in raw {
         if isinstance(param, uni.KWPair) {
             key = param.key.sym_name if param.key is not None else None;
@@ -266,7 +266,7 @@ impl NaIRGenPass._codegen_bound_args(
             }
             if (_tup_ptr or _tup_val) and _tv is not None {
                 _sp32 = ir.IntType(32);
-                _tup_elems: tuple = ();
+                _tup_elems: tuple[ir.Type, ...] = ();
                 if _tup_ptr and isinstance(_tt, ir.PointerType) {
                     _tup_elems = _tt.pointee.elements;
                 } elif isinstance(_tt, ir.LiteralStructType) {
@@ -325,7 +325,7 @@ impl NaIRGenPass._codegen_bound_args(
         kw_spreads = [];
         kw_order = [];
     }
-    args: list = [];
+    args: list[ir.Value] = [];
 
     if callee_sig is None {
         for p in positional {
@@ -492,7 +492,7 @@ impl NaIRGenPass._codegen_bound_args(
             _fixed = _fixed[1:];
             _n_posonly = _n_posonly - 1 if _n_posonly > 0 else 0;
         }
-        _bind_records: list = [];
+        _bind_records: list[dict[str, any]] = [];
         for (pix, sp) in enumerate(_fixed) {
             slot = self_offset + pix;
             expected_type = func.args[slot].type
@@ -726,7 +726,9 @@ impl NaIRGenPass._emit_pack_slot_refusal(nd: uni.FuncCall, star: str) -> None {
 }
 
 impl NaIRGenPass._codegen_varargs_list(
-    nd: uni.FuncCall, extras: list, expected: (ir.Type | None)
+    nd: uni.FuncCall,
+    extras: list[uni.Expr | tuple[str, ir.Value]],
+    expected: (ir.Type | None)
 ) -> (ir.Value | None) {
     spec: (str | None) = None;
     if expected is not None and isinstance(expected, ir.PointerType) {
@@ -756,7 +758,8 @@ impl NaIRGenPass._codegen_varargs_list(
     );
     for e in extras {
         if isinstance(e, tuple) and e and e[0] == "spread.list.val" {
-            _src = e[1];
+            _spread: tuple[str, ir.Value] = e;
+            _src = _spread[1];
             _src_h = None;
             for (_sn, _slt) in self.list_types.items() {
                 if _slt.as_pointer() == _src.type {
@@ -806,7 +809,8 @@ impl NaIRGenPass._codegen_varargs_list(
             continue;
         }
         if isinstance(e, tuple) and e and e[0] == "spread.val" {
-            v = e[1];
+            _one: tuple[str, ir.Value] = e;
+            v = _one[1];
         } else {
             v = self._codegen_expr(e);
             if v is None {
@@ -831,10 +835,10 @@ impl NaIRGenPass._codegen_varargs_list(
 
 impl NaIRGenPass._codegen_kwargs_dict(
     nd: uni.FuncCall,
-    leftover: dict,
+    leftover: dict[str, uni.Expr],
     expected: (ir.Type | None),
-    order: (list | None) = None,
-    bind_records: (list | None) = None
+    order: (list[tuple[str, str | uni.Expr]] | None) = None,
+    bind_records: (list[dict[str, any]] | None) = None
 ) -> (ir.Value | None) {
     dict_key: (str | None) = None;
     if expected is not None and isinstance(expected, ir.PointerType) {
@@ -867,7 +871,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
     );
 
     _skip_dv: (ir.Value | None) = None;
-    _unbound: list = [];
+    _unbound: list[dict[str, any]] = [];
     for _br in (bind_records or []) {
         if _br["alloca"] is not None {
             _unbound.append(_br);
@@ -1008,7 +1012,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
 impl NaIRGenPass._merge_dict_into(
     dst: ir.Value,
     src: ir.Value,
-    helpers: dict,
+    helpers: dict[str, any],
     dict_key: str,
     loc: str,
     skip_keys: (ir.Value | None) = None
@@ -1075,7 +1079,7 @@ impl NaIRGenPass._merge_dict_into(
     return True;
 }
 
-impl NaIRGenPass._codegen_call_args(nd: uni.FuncCall) -> list {
+impl NaIRGenPass._codegen_call_args(nd: uni.FuncCall) -> list[ir.Value] {
     arg_vals: list[ir.Value] = [];
     for param in (nd.params or []) {
         v = self._coerce_narrowed_arg(param, self._codegen_expr(param));
@@ -1159,7 +1163,7 @@ impl NaIRGenPass._emit_unsupported_builtin_call(
 }
 
 impl NaIRGenPass._emit_new(nd: uni.FuncCall) -> (ir.Value | None) {
-    params_l = nd.params or [];
+    params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     if not params_l or any([isinstance(p, uni.KWPair) for p in params_l]) {
         self.emit(
             E5092,
@@ -1219,7 +1223,7 @@ impl NaIRGenPass._codegen_intrinsic(
 ) -> (ir.Value | None) {
     import from jaclang.compiler.intrinsic_registry { IntrinsicDispatch }
 
-    positional: list = [];
+    positional: list[uni.Expr] = [];
     _has_kw = False;
     for p in (nd.params or []) {
         if isinstance(p, uni.KWPair) {
@@ -1309,7 +1313,7 @@ impl NaIRGenPass._intrinsic_operand(
 }
 
 impl NaIRGenPass._emit_intrinsic_rc_runtime(
-    nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
     if intr.gc_mode_gate is not None and self._gc_mode() != intr.gc_mode_gate {
         return None;
@@ -1322,7 +1326,7 @@ impl NaIRGenPass._emit_intrinsic_rc_runtime(
 }
 
 impl NaIRGenPass._emit_intrinsic_float_bits(
-    nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
     arg_val = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
     if arg_val is None {
@@ -1332,7 +1336,7 @@ impl NaIRGenPass._emit_intrinsic_float_bits(
 }
 
 impl NaIRGenPass._emit_intrinsic_bits_float(
-    nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
     arg_val = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
     if arg_val is None {
@@ -1342,7 +1346,7 @@ impl NaIRGenPass._emit_intrinsic_bits_float(
 }
 
 impl NaIRGenPass._emit_intrinsic_mem_load(
-    nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
     addr = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
     if addr is None {
@@ -1354,7 +1358,7 @@ impl NaIRGenPass._emit_intrinsic_mem_load(
 }
 
 impl NaIRGenPass._emit_intrinsic_mem_store(
-    nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
     addr = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
     val = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
@@ -1367,7 +1371,7 @@ impl NaIRGenPass._emit_intrinsic_mem_store(
 }
 
 impl NaIRGenPass._emit_intrinsic_atomic_xchg(
-    nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
     addr = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
     val = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
@@ -1382,7 +1386,7 @@ impl NaIRGenPass._emit_intrinsic_atomic_xchg(
 }
 
 impl NaIRGenPass._emit_intrinsic_call_dtor(
-    nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
     fn_val = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
     obj_val = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
@@ -1501,7 +1505,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     _callee_t = nd.target?.type;
     if isinstance(_callee_t, jtypes.ClassType)
         and _callee_t.private.distinct_key is not None {
-        _cast_params = nd.params or [];
+        _cast_params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
         if len(_cast_params) == 1 {
             _cast_arg = self._codegen_expr(_cast_params[0]);
             if _cast_arg is not None {
@@ -1538,7 +1542,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name == "managed" {
-            params_l = nd.params or [];
+            params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             if not params_l {
                 return None;
             }
@@ -1576,7 +1580,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name == "region_of" {
-            params_l = nd.params or [];
+            params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             if not params_l {
                 return None;
             }
@@ -1592,7 +1596,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name == "type" {
-            _cid_params = nd.params or [];
+            _cid_params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             if len(_cid_params) == 1 {
                 _scalar = self._scalar_shape(_cid_params[0]);
                 if _scalar is not None {
@@ -1606,7 +1610,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name == "id" {
-            _id_params = nd.params or [];
+            _id_params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             if len(_id_params) == 1 {
                 _id_val = self._codegen_expr(_id_params[0]);
                 if _id_val is not None {
@@ -1631,7 +1635,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name == "len" {
-            params_l = nd.params or [];
+            params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             if params_l {
                 elem_type_name: (str | None) = None;
                 arg_val = self._codegen_expr(params_l[0]);
@@ -1731,7 +1735,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name == "complex" {
-            params_l = nd.params or [];
+            params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             if len(params_l) >= 2 {
                 real_val = self._codegen_expr(params_l[0]);
                 imag_val = self._codegen_expr(params_l[1]);
@@ -1775,7 +1779,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name == "range" {
-            params_l = nd.params or [];
+            params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             i64 = ir.IntType(64);
             i32 = ir.IntType(32);
             start_v: (ir.Value | None) = None;
@@ -1821,7 +1825,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name == "slice" {
-            params_l = nd.params or [];
+            params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             i64 = ir.IntType(64);
             i32 = ir.IntType(32);
             start_v: (ir.Value | None) = None;
@@ -1868,9 +1872,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
         if func_name
             in ("abs", "min", "max", "pow", "divmod", "sum", "any", "all", "format") {
-            params_l = nd.params or [];
+            params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             arg_vals: list[ir.Value] = [];
-            arg_nodes: list = [];
+            arg_nodes: list[uni.UniNode] = [];
             for param in params_l {
                 v = self._codegen_expr(param);
                 if v is not None {
@@ -1934,7 +1938,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 "repr",
                 "ascii"
             ) {
-            params_l = nd.params or [];
+            params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             _ez_peer = self._spec_from_container_ptr(self._peer_container_ty)
                 if not params_l and func_name in ("list", "set")
                 else None;
@@ -2015,7 +2019,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
         if func_name == "input" {
             i8p = ir.IntType(8).as_pointer();
-            params_l = nd.params or [];
+            params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
 
             if params_l {
                 prompt_val = self._codegen_expr(params_l[0]);
@@ -2272,7 +2276,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 );
                 return None;
             }
-            param_ir_types: list = [];
+            param_ir_types: list[ir.Type] = [];
             for p in sig.get_parameters() {
                 param_ir_types.append(
                     self._resolve_jac_type(p.type_tag)
@@ -2539,7 +2543,7 @@ impl NaIRGenPass._isinstance_target_names(
     archetype names it in an MRO, so a user type registered under the ABC still
     answers through the vtable arm. `None` means a diagnostic was emitted.
     """;
-    raw: list = list(type_arg.values or [])
+    raw: list[uni.UniNode] = list(type_arg.values or [])
         if isinstance(type_arg, uni.TupleVal)
         else [type_arg];
     pyb_operand = self._isinstance_operand_is_pyb(nd, operand);
@@ -2659,7 +2663,7 @@ impl NaIRGenPass._isinstance_type_name(nd: uni.UniNode) -> (str | None) {
 
 impl NaIRGenPass._enum_union_tags(
     operand_expr: uni.UniNode, names: list[str]
-) -> tuple {
+) -> tuple[list[int], list[str]] {
     try {
         import from jaclang.compiler.types.types {
             ClassType as _EnClassType,
@@ -2670,7 +2674,7 @@ impl NaIRGenPass._enum_union_tags(
         return ([], names, );
     }
     t = operand_expr.type if isinstance(operand_expr, uni.Expr) else None;
-    members: list = [];
+    members: list[TypeBase] = [];
     if isinstance(t, _EnUnionType) {
         members = list(t.types or []);
     } elif t is not None {
@@ -2679,7 +2683,7 @@ impl NaIRGenPass._enum_union_tags(
     if not members {
         return ([], names, );
     }
-    member_rows: list = [];
+    member_rows: list[tuple[str, bool, list[int]]] = [];
     for m in members {
         cls = m.enum_class if isinstance(m, _EnMemberType) else m;
         if not isinstance(cls, _EnClassType) or cls._shared is None {
@@ -2735,7 +2739,7 @@ impl NaIRGenPass._enum_union_tags(
 impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
     i1 = ir.IntType(1);
     i8 = ir.IntType(8);
-    params = nd.params or [];
+    params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     if len(params) < 2 {
         self._emit_unsupported_builtin_call(nd, "isinstance");
         return None;
@@ -2799,7 +2803,7 @@ impl NaIRGenPass._emit_isinstance_core(
 ) -> (ir.Value | None) {
     i1 = ir.IntType(1);
     i8 = ir.IntType(8);
-    params = nd.params or [];
+    params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
 
     type_arg = params[1];
     if not isinstance(type_arg, uni.TupleVal) {
@@ -3294,7 +3298,7 @@ impl NaIRGenPass._try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None) {
     if h is None {
         return None;
     }
-    _argv: list = [];
+    _argv: list[ir.Value] = [];
     for p in (call.params or []) {
         if isinstance(p, uni.KWPair) {
             return None;
@@ -3308,7 +3312,7 @@ impl NaIRGenPass._try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None) {
     if len(_argv) != len(callee.args) {
         return None;
     }
-    _cargs: list = [];
+    _cargs: list[ir.Value] = [];
     for (i, a) in enumerate(_argv) {
         _cargs.append(self._coerce_type(a, callee.args[i].type));
     }
@@ -3321,7 +3325,7 @@ impl NaIRGenPass._try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None) {
     _task_fn.linkage = "private";
     _tb = ir.IRBuilder(_task_fn.append_basic_block("entry"));
     _tf = _tb.bitcast(_task_fn.args[0], fut_ty.as_pointer(), name="t.fut");
-    _t_args: list = [];
+    _t_args: list[ir.Value] = [];
     for i in range(len(_cargs)) {
         _t_args.append(
             _tb.load(
@@ -3406,7 +3410,7 @@ impl NaIRGenPass._try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None) {
     return _hraw;
 }
 
-impl NaIRGenPass._empty_ctor_args_of(nd: uni.FuncCall) -> list {
+impl NaIRGenPass._empty_ctor_args_of(nd: uni.FuncCall) -> list[TypeBase] {
     _own = self._container_type_args(nd?.type);
     if _own {
         return _own;
@@ -3435,7 +3439,7 @@ impl NaIRGenPass._unwrap_cfg_expr(e: any) -> any {
 }
 
 impl NaIRGenPass._call_args_lowered(
-    nd: uni.UniNode, func: ir.Function, func_name: str, coerced: list
+    nd: uni.UniNode, func: ir.Function, func_name: str, coerced: list[ir.Value]
 ) -> bool {
     """Whether every argument reached the callee's parameter type.
 
@@ -3486,7 +3490,7 @@ impl NaIRGenPass._spec_from_container_ptr(t: (ir.Type | None)) -> (str | None) {
     return None;
 }
 
-impl NaIRGenPass._container_type_args(t: any) -> list {
+impl NaIRGenPass._container_type_args(t: any) -> list[TypeBase] {
     if t is None {
         return [];
     }
@@ -3506,8 +3510,8 @@ impl NaIRGenPass._prep_kwbind_record(
     stored: ir.Value,
     bound_kind: (str | None),
     required_kind: (str | None)
-) -> dict {
-    rec: dict = {};
+) -> dict[str, any] {
+    rec: dict[str, any] = {};
     rec["name"] = name;
     rec["slot_type"] = slot_type;
     rec["args_idx"] = args_idx;
@@ -3595,7 +3599,7 @@ impl NaIRGenPass._emit_swap(nd: uni.FuncCall) -> (ir.Value | None) {
         self.emit(E5092, node_override=nd, kind="swap() call", name="swap");
         return None;
     }
-    _slots: list = [];
+    _slots: list[ir.Value] = [];
     for _p in params_l {
         _place = _p.operand if isinstance(_p, uni.UnaryExpr) else _p;
         _slot = self._codegen_place_ptr(_place, allow_inline=True);

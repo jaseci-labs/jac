@@ -17,7 +17,10 @@ impl NaIRGenPass._mangled_of(t: any) -> (str | None) {
 }
 
 impl NaIRGenPass._syntactic_bind_type_params(
-    tag_node: (uni.UniNode | None), actual: any, tp_names: list[str], solution: dict
+    tag_node: (uni.UniNode | None),
+    actual: any,
+    tp_names: list[str],
+    solution: dict[str, TypeBase]
 ) -> None {
     try {
         import from jaclang.compiler.types.types { ClassType as _SbCT }
@@ -64,7 +67,7 @@ impl NaIRGenPass._syntactic_bind_type_params(
         and isinstance(nd.right, uni.IndexSlice)
         and isinstance(actual, _SbCT)
     ) {
-        _args = actual.private.type_args or [];
+        _args: list[TypeBase] = actual.private.type_args or [];
         for (i, sl) in enumerate(nd.right.slices) {
             if sl.start is not None and i < len(_args) {
                 self._syntactic_bind_type_params(
@@ -77,7 +80,7 @@ impl NaIRGenPass._syntactic_bind_type_params(
 
 impl NaIRGenPass._solve_generic_call(
     ability: uni.Ability, nd: uni.FuncCall
-) -> (dict | None) {
+) -> (dict[str, TypeBase] | None) {
     try {
         import from jaclang.compiler.types.types {
             TypeVarType as _TVT,
@@ -87,7 +90,7 @@ impl NaIRGenPass._solve_generic_call(
     } except ImportError {
         return None;
     }
-    solution: dict = {};
+    solution: dict[str, TypeBase] = {};
 
     def unify(decl: any, actual: any) -> None {
         if decl is None or actual is None {
@@ -116,8 +119,8 @@ impl NaIRGenPass._solve_generic_call(
             return;
         }
         if isinstance(decl, _CT) and isinstance(actual, _CT) {
-            d_args = decl.private.type_args or [];
-            a_args = actual.private.type_args or [];
+            d_args: list[TypeBase] = decl.private.type_args or [];
+            a_args: list[TypeBase] = actual.private.type_args or [];
             for (i, da) in enumerate(d_args) {
                 if i < len(a_args) {
                     unify(da, a_args[i]);
@@ -139,8 +142,8 @@ impl NaIRGenPass._solve_generic_call(
     params = sig.get_parameters() if isinstance(sig, uni.FuncSignature) else [];
     _ft = ability.name_ref.type if ability.name_ref is not None else None;
     _ft_params = list(_ft.parameters) if isinstance(_ft, SemanticFunctionType) else [];
-    positional: list = [];
-    kw_map: dict = {};
+    positional: list[uni.Expr] = [];
+    kw_map: dict[str, uni.Expr] = {};
     for a in (nd.params or []) {
         if isinstance(a, uni.KWPair) {
             if a.key is not None {
@@ -197,7 +200,7 @@ impl NaIRGenPass._ct_eval -> any {
     return self.prog.get_type_evaluator().ct_eval;
 }
 
-impl NaIRGenPass._ct_value_with_bindings(nd: uni.Expr) -> tuple {
+impl NaIRGenPass._ct_value_with_bindings(nd: uni.Expr) -> tuple[bool, any] {
     cv = nd.ct_value;
     if cv is None {
         return (False, None);
@@ -315,11 +318,11 @@ impl NaIRGenPass._ability_has_ct_params(ability: uni.Ability) -> bool {
 
 impl NaIRGenPass._solve_ct_args(
     ability: uni.Ability, nd: uni.FuncCall
-) -> (dict | None) {
+) -> (dict[str, any] | None) {
     sig = ability.signature;
     params = sig.get_parameters() if isinstance(sig, uni.FuncSignature) else [];
-    positional: list = [];
-    kw_map: dict = {};
+    positional: list[uni.Expr] = [];
+    kw_map: dict[str, uni.Expr] = {};
     for a in (nd.params or []) {
         if isinstance(a, uni.KWPair) {
             if a.key is not None {
@@ -329,7 +332,7 @@ impl NaIRGenPass._solve_ct_args(
             positional.append(a);
         }
     }
-    out: dict = {};
+    out: dict[str, any] = {};
     for (i, p) in enumerate(params) {
         if not p.is_comptime {
             continue;
@@ -404,7 +407,7 @@ impl NaIRGenPass._instantiate_generic(
     if ct_bind is None {
         return None;
     }
-    _mangles: dict = {};
+    _mangles: dict[str, str] = {};
     for (k, v) in solution.items() {
         _mangles[k] = v.mangle() if v?.mangle else "any";
     }
@@ -493,8 +496,8 @@ impl NaIRGenPass._instantiate_generic_for_target(
     if not isinstance(sig, uni.FuncSignature) {
         return None;
     }
-    _tgt_params = tag_t.parameters or [];
-    solution: dict = {};
+    _tgt_params: list[Parameter] = tag_t.parameters or [];
+    solution: dict[str, TypeBase] = {};
     for (i, p) in enumerate(sig.get_parameters()) {
         _pt = None;
         if p.type_tag and p.type_tag.tag and isinstance(p.type_tag.tag, uni.Expr) {
@@ -518,7 +521,7 @@ impl NaIRGenPass._instantiate_generic_for_target(
     if not solution {
         return None;
     }
-    _mangles: dict = {};
+    _mangles: dict[str, str] = {};
     for (k, v) in solution.items() {
         _mangles[k] = v.mangle() if v?.mangle else "any";
     }
@@ -561,7 +564,7 @@ impl NaIRGenPass._instantiate_generic_method(
         );
         return None;
     }
-    _mangles: dict = {};
+    _mangles: dict[str, str] = {};
     for (k, v) in solution.items() {
         _mangles[k] = v.mangle() if v?.mangle else "any";
     }

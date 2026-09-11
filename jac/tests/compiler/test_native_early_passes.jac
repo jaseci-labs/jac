@@ -86,21 +86,21 @@ def total(items: list[int]) -> int {
 @overload def choose(value: str) -> str;
 """;
 
-def scope_profile(mod: Module) -> list {
-    out: list = [];
+def scope_profile(mod: Module) -> list[any] {
+    out: list[any] = [];
     for scope in [mod]
         + [
             n
             for n in mod._in_mod_nodes
             if isinstance(n, UniScopeNode) and n is not mod
         ] {
-        names: list = [];
+        names: list[any] = [];
         for (name, symbol) in scope.names_in_scope.items() {
             names.append((name, symbol.imported, [d.sym_name for d in symbol.defn]));
             assert symbol.parent_tab is scope;
             assert symbol.provider is None;
         }
-        overloads: list = [];
+        overloads: list[any] = [];
         for (name, symbols) in scope.names_in_scope_overload.items() {
             overloads.append((name, [[d.sym_name for d in s.defn] for s in symbols]));
             for symbol in symbols {

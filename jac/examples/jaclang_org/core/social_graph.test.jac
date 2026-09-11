@@ -67,7 +67,7 @@ def login_as(client: JacTestClient, username: str, password: str) {
     client.login(username, password);
 }
 
-def reports_of(response: TestResponse) -> list {
+def reports_of(response: TestResponse) -> list[any] {
     data = response.data;
     if data and "reports" in data {
         return list(data["reports"]);

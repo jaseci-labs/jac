@@ -164,7 +164,7 @@ def _resolve_deploy_target(target: str) -> tuple[str, str, str] {
     return (entry_path, "" if app.implicit else app.name, "");
 }
 
-def _print_deployment_status(status_data: dict) -> None {
+def _print_deployment_status(status_data: dict[str, any]) -> None {
     app_name = status_data.get('app_name', 'unknown');
     namespace = status_data.get('namespace', 'default');
     components = status_data.get('components', []);
@@ -635,7 +635,10 @@ class JacScalePlugin {
     }
 
     static def sv_service_call(
-        app: str, func_name: str, args: dict, headers: dict[str, str] | None = None
+        app: str,
+        func_name: str,
+        args: dict[str, any],
+        headers: dict[str, str] | None = None
     ) -> any {
         import from jaclang.scale.runtime.transport.transport { http_transport }
         return http_transport().call_function(app, func_name, args, headers=headers);
@@ -644,7 +647,7 @@ class JacScalePlugin {
     static def sv_walker_call(
         app: str,
         walker_name: str,
-        args: dict,
+        args: dict[str, any],
         stub_cls: any,
         headers: dict[str, str] | None = None
     ) -> any {

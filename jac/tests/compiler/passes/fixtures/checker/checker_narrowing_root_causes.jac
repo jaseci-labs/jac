@@ -155,7 +155,7 @@ def fail_unknown_cascade_from_subclass_attr(mem: Memory) -> str | None {
     return result;
 }
 
-def fail_unknown_cascade_from_method(mem: Memory) -> list {
+def fail_unknown_cascade_from_method(mem: Memory) -> list[any] {
     # get_mem() is only on TieredMemory, not on base Memory
     data = mem.get_mem();                # E1030: Memory has no attribute get_mem
     return `list(data.values());         # E1032: Unknown (cascade from above)
@@ -377,7 +377,7 @@ def fail_dynamic_instance_cache() -> object {
     return instance;
 }
 
-def fail_object_typed_attr(model: object) -> dict {
+def fail_object_typed_attr(model: object) -> dict[str, any] {
     # Parameter typed as `object` — accessing .call_params fails
     params = model.call_params;     # E1030: object has no attribute call_params
     return params if isinstance(params, `dict) else {};

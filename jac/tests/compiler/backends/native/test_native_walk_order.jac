@@ -37,7 +37,13 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
-     WALK_ORDERS: list = [None, "reverse", "shuffle:1337", "shuffle:7", "shuffle:42"];
+     WALK_ORDERS: list[any] = [
+         None,
+         "reverse",
+         "shuffle:1337",
+         "shuffle:7",
+         "shuffle:42"
+     ];
 
 """Compile a fixture natively under a given module walk order; return IR text."""
 def compile_ir_text(fixture: str, walk_order: str | None) -> str {
@@ -86,7 +92,7 @@ def ir_hash(text: str) -> str {
 }
 
 test "cross-module enum chain IR is byte-identical under any walk order" {
-    hashes: dict = {};
+    hashes: dict[str, any] = {};
     for order in WALK_ORDERS {
         hashes[order or "forward"] = ir_hash(
             compile_ir_text("opcodes_entry.jac", order)
@@ -96,7 +102,7 @@ test "cross-module enum chain IR is byte-identical under any walk order" {
 }
 
 test "imported obj-field chain IR is walk-order independent" {
-    hashes: dict = {};
+    hashes: dict[str, any] = {};
     for order in WALK_ORDERS {
         hashes[order or "forward"] = ir_hash(
             toplevel_sorted(compile_ir_text("xmodfield_entry.jac", order))
@@ -131,7 +137,7 @@ test "an unlowerable field erases loudly: the declaration seams, every touch ref
         file_path=os.path.join(FIXTURES, "unlowerable_field.jac"), options=opts
     );
     snap = na_coverage_end();
-    seams: list = [];
+    seams: list[any] = [];
     for (path, rec) in snap.items() {
         if os.path.basename(path) == "unlowerable_field.jac" {
             seams = list(rec['seams']);

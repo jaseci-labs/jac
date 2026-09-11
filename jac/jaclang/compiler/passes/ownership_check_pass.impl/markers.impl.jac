@@ -71,7 +71,7 @@ impl OwnershipCheckPass._emit_place_intrinsic_diagnostics -> None {
             continue;
         }
         operation = call.target.sym_name;
-        params = list(call.params or []);
+        params: list[Expr | KWPair] = list(call.params or []);
         if len(params) != (1 if operation == "take" else 2)
             or any([isinstance(p, KWPair) for p in params]) {
             self.emit(

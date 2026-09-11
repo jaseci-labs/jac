@@ -49,7 +49,7 @@ def resolve_query_exists(mem: Session, q: GraphQuery) -> bool;
 class LazyRefs(list) {
     def init(self: LazyRefs, resolve: any, query: GraphQuery) -> None;
     def _realize(self: LazyRefs) -> None;
-    def _bounded(self: LazyRefs, limit: (int | None), offset: int) -> list;
+    def _bounded(self: LazyRefs, limit: (int | None), offset: int) -> list[any];
     def _count(self: LazyRefs) -> int;
     def _mem(self: LazyRefs) -> any;
     def __len__(self: LazyRefs) -> int;
@@ -73,5 +73,5 @@ class LazyRefs(list) {
     def reverse(self: LazyRefs) -> None;
     def index(self: LazyRefs, item: any, *a: any) -> int;
     def count(self: LazyRefs, item: any) -> int;
-    def copy(self: LazyRefs) -> list;
+    def copy(self: LazyRefs) -> list[any];
 }

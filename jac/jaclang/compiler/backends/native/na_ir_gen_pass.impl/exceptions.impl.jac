@@ -270,7 +270,7 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
             exc_type_name = self._get_name(nd.cause.target) or "Exception";
             exc_type_id = self._get_or_register_exc_type(exc_type_name);
 
-            _exc_pos_args = [];
+            _exc_pos_args: list[uni.Expr] = [];
             for _p in (nd.cause.params or []) {
                 if not isinstance(_p, uni.KWPair) {
                     _exc_pos_args.append(_p);

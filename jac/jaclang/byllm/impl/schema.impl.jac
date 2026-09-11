@@ -1,4 +1,4 @@
-impl _as_info(v: object) -> (Info | str | tuple | None) {
+impl _as_info(v: object) -> (Info | str | tuple[any, ...] | None) {
     if isinstance(v, (Info, str, tuple)) {
         return v;
     }
@@ -6,8 +6,8 @@ impl _as_info(v: object) -> (Info | str | tuple | None) {
 }
 
 impl _info_at(
-    info: (Info | str | tuple | None), idx: int
-) -> (Info | str | tuple | None) {
+    info: (Info | str | tuple[any, ...] | None), idx: int
+) -> (Info | str | tuple[any, ...] | None) {
     if not isinstance(info, VarInfo) {
         return None;
     }
@@ -19,8 +19,11 @@ impl _info_at(
 }
 
 impl _type_to_schema(
-    ty: type, title: str = "", desc: str = "", info: (Info | str | tuple | None) = None
-) -> dict {
+    ty: type,
+    title: str = "",
+    desc: str = "",
+    info: (Info | str | tuple[any, ...] | None) = None
+) -> dict[str, any] {
     title = title.replace("_", " ").title();
     context = ({"title": title} if title else {})
         | ({"description": desc} if desc else {});
@@ -227,7 +230,7 @@ impl _type_to_schema(
             }
             base_desc = enum_info_to_use.semstr or semstr or "";
             full_desc = f"{base_desc}{enum_desc}";
-            schema_out: dict = {
+            schema_out: dict[str, any] = {
                 "description": full_desc,
                 "type": "integer" if enum_type == "int" else "string",
 
@@ -260,7 +263,7 @@ impl _type_to_schema(
                 "Only int and str enums are supported for schema generation."
             );
         }
-        schema_fb: dict = {
+        schema_fb: dict[str, any] = {
             "description": semstr + fb_desc,
             "type": "integer" if fb_type is int else "string",
 
@@ -280,8 +283,8 @@ impl _type_to_schema(
 }
 
 impl _function_to_schema(
-    fn: Callable, title: str = "", info: (Info | str | tuple | None) = None
-) -> dict {
+    fn: Callable, title: str = "", info: (Info | str | tuple[any, ...] | None) = None
+) -> dict[str, any] {
     hints = get_type_hints(fn);
     hints.pop("return", None);
     fn_name: str = getattr(fn, "__name__", "");
@@ -318,7 +321,9 @@ impl _function_to_schema(
     };
 }
 
-impl _name_of_type(ty: type, info: (Info | str | tuple | None) = None) -> str {
+impl _name_of_type(
+    ty: type, info: (Info | str | tuple[any, ...] | None) = None
+) -> str {
     if get_origin(ty) in (Union, UnionType) {
         names = [_name_of_type(arg) for arg in get_args(ty)];
         return "_or_".join(names);
@@ -329,7 +334,7 @@ impl _name_of_type(ty: type, info: (Info | str | tuple | None) = None) -> str {
     return "type";
 }
 
-impl _convert_dict_to_schema(ty_dict: type) -> dict {
+impl _convert_dict_to_schema(ty_dict: type) -> dict[str, any] {
     if get_origin(ty_dict) is not dict {
         raise ConfigurationError(f"Expected a dictionary type, got {ty_dict}.");
     }
@@ -360,7 +365,7 @@ impl _convert_dict_to_schema(ty_dict: type) -> dict {
     };
 }
 
-impl _decode_dict(json_obj: dict) -> dict {
+impl _decode_dict(json_obj: dict[str, any]) -> dict[str, any] {
     if not isinstance(json_obj, dict) {
         return json_obj;
     }
@@ -385,7 +390,7 @@ impl _wrap_to_object(schema: dict[str, object]) -> dict[str, object] {
     };
 }
 
-impl _unwrap_from_object(json_obj: dict) -> dict {
+impl _unwrap_from_object(json_obj: dict[str, any]) -> dict[str, any] {
     if _SCHEMA_OBJECT_WRAPPER in json_obj {
         return json_obj[_SCHEMA_OBJECT_WRAPPER];
     }
@@ -393,7 +398,7 @@ impl _unwrap_from_object(json_obj: dict) -> dict {
 }
 
 impl type_to_schema(
-    resp_type: type, info: (Info | str | tuple | None) = None
+    resp_type: type, info: (Info | str | tuple[any, ...] | None) = None
 ) -> dict[str, object] {
     type_name = _name_of_type(resp_type, info=info);
     schema = _type_to_schema(resp_type, type_name, info=info);
@@ -435,13 +440,13 @@ impl tool_to_schema(
     };
 }
 
-impl json_to_instance(json_obj: dict, ty: type) -> object {
+impl json_to_instance(json_obj: dict[str, any], ty: type) -> object {
     json_obj = _unwrap_from_object(json_obj);
     json_obj = _decode_dict(json_obj);
     return TypeAdapter(ty).validate_python(json_obj);
 }
 
-impl _format_enum_hint(values: list, names: list) -> str {
+impl _format_enum_hint(values: list[any], names: list[any]) -> str {
     if not values {
         return "";
     }
@@ -456,7 +461,7 @@ impl _format_enum_hint(values: list, names: list) -> str {
     return ", ".join(pairs);
 }
 
-impl _hints_from_schema(name: str, prop: dict) -> list[str] {
+impl _hints_from_schema(name: str, prop: dict[str, any]) -> list[str] {
     out: list[str] = [];
     if not isinstance(prop, dict) {
         return out;
@@ -490,7 +495,8 @@ impl _hints_from_schema(name: str, prop: dict) -> list[str] {
     if prop.get("type") == "object" {
         nested = prop.get("properties");
         if isinstance(nested, dict) {
-            for (sub, sub_prop) in nested.items() {
+            nested_props: dict[str, any] = nested;
+            for (sub, sub_prop) in nested_props.items() {
                 if sub != name {
                     out.extend(_hints_from_schema(sub, sub_prop));
                 }
@@ -500,12 +506,12 @@ impl _hints_from_schema(name: str, prop: dict) -> list[str] {
     return out;
 }
 
-impl schema_to_hint_text(rf: dict | None) -> str {
+impl schema_to_hint_text(rf: dict[str, any] | None) -> str {
     if not isinstance(rf, dict) {
         return "";
     }
 
-    schema: dict | None = None;
+    schema: dict[str, any] | None = None;
     rf_type = rf.get("type");
     if rf_type == "json_schema" {
         js = rf.get("json_schema");
@@ -530,7 +536,8 @@ impl schema_to_hint_text(rf: dict | None) -> str {
         return lead;
     }
     lines: list[str] = [];
-    for (name, prop) in props.items() {
+    top_props: dict[str, any] = props;
+    for (name, prop) in top_props.items() {
         if isinstance(prop, dict) {
             lines.extend(_hints_from_schema(name, prop));
         }
@@ -541,7 +548,7 @@ impl schema_to_hint_text(rf: dict | None) -> str {
     return lead + "\nSchema requirements:\n" + "\n".join(lines);
 }
 
-impl attach_schema_hint(messages: list, rf: dict | None) -> list {
+impl attach_schema_hint(messages: list[any], rf: dict[str, any] | None) -> list[any] {
     hint: str = schema_to_hint_text(rf);
     if not hint or not messages {
         return messages;
@@ -549,7 +556,7 @@ impl attach_schema_hint(messages: list, rf: dict | None) -> list {
     last_user_idx: int = -1;
     for (i, m) in enumerate(messages) {
         if isinstance(m, dict) {
-            mdict: dict = m;
+            mdict: dict[str, any] = m;
             if mdict.get("role") == "user" {
                 last_user_idx = i;
             }
@@ -558,12 +565,12 @@ impl attach_schema_hint(messages: list, rf: dict | None) -> list {
     if last_user_idx < 0 {
         return messages;
     }
-    out: list = list(messages);
+    out: list[any] = list(messages);
     target_raw = out[last_user_idx];
     if not isinstance(target_raw, dict) {
         return messages;
     }
-    target: dict = dict(target_raw);
+    target: dict[str, any] = dict(target_raw);
     body = target.get("content", "");
     if isinstance(body, str) {
         body_str: str = body;
@@ -572,7 +579,7 @@ impl attach_schema_hint(messages: list, rf: dict | None) -> list {
         }
         target["content"] = body_str.rstrip() + "\n\n" + hint;
     } elif isinstance(body, list) {
-        body_list: list = body;
+        body_list: list[any] = body;
         for part in body_list {
             if isinstance(part, dict) and part.get("type") == "text" {
                 if hint in str(part.get("text", "")) {
@@ -588,7 +595,7 @@ impl attach_schema_hint(messages: list, rf: dict | None) -> list {
     return out;
 }
 
-impl inject_schema_hint(params: dict) -> dict {
+impl inject_schema_hint(params: dict[str, any]) -> dict[str, any] {
     rf = params.get("response_format");
     msgs = params.get("messages");
     if not isinstance(msgs, list) or rf is None {
@@ -598,7 +605,7 @@ impl inject_schema_hint(params: dict) -> dict {
     if new_msgs is msgs {
         return params;
     }
-    out: dict = dict(params);
+    out: dict[str, any] = dict(params);
     out["messages"] = new_msgs;
     return out;
 }

@@ -33,7 +33,7 @@ glob correct = 0,
 
 with entry {
     for (title, expected) in cases {
-        results: list = [];
+        results: list[Category | str] = [];
         for _ in range(runs_per_prompt) {
             try {
                 got = categorize(title);

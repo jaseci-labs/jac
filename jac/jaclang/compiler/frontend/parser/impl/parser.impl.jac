@@ -2714,7 +2714,7 @@ impl Parser.parse_lambda_expr -> Expr {
         ret_hint_uni = self.make_uni_token(self.previous());
         return_type = self.parse_expression();
     }
-    body_stmts2: (list | None) = None;
+    body_stmts2: (list[CodeBlockStmt] | None) = None;
     body_expr2: Expr | None = None;
     lbrace_uni: Token | None = None;
     rbrace_uni: Token | None = None;
@@ -5169,7 +5169,7 @@ impl Parser.parse_from_path -> tuple[(ModulePath | None, bool)] {
 
 impl Parser.parse_import_items(
     kid: list[UniNode], is_clib_import: bool
-) -> tuple[(list, list)] {
+) -> tuple[(list[ModuleItem | ModulePath], list[UniNode])] {
     items: list[ModuleItem | ModulePath] = [];
     clib_decls: list[UniNode] = [];
     self.expect(TokenKind.LBRACE);
@@ -5264,7 +5264,7 @@ impl Parser.parse_archetype -> Archetype {
     name_tok = self.expect_name("archetype");
     name = self.make_name(name_tok);
 
-    tp_list: (list | None) = None;
+    tp_list: (list[TypeParam] | None) = None;
     tp_lb_uni: Token | None = None;
     tp_rb_uni: Token | None = None;
     tp_comma_unis: list[Token] = [];
@@ -5667,10 +5667,12 @@ impl Parser.parse_has_var -> HasVar {
             );
         }
         acc_lb_uni = self.consume_uni(TokenKind.LBRACE);
-        acc_list = [];
+
+        accs: list[Ability] = [];
         while not self.check(TokenKind.RBRACE) {
-            acc_list.append(self.parse_accessor());
+            accs.append(self.parse_accessor());
         }
+        acc_list = accs;
         acc_rb_uni = self.consume_uni(TokenKind.RBRACE);
         if len(acc_list) == 0 {
             self.emit_diag(
@@ -5732,7 +5734,7 @@ impl Parser.parse_accessor -> Ability {
         signature = None;
     }
 
-    body: (list | None) = None;
+    body: (list[CodeBlockStmt] | None) = None;
     body_lb_uni: Token | None = None;
     body_rb_uni: Token | None = None;
     if self.match_tok(TokenKind.LBRACE) {
@@ -5839,7 +5841,7 @@ impl Parser.parse_ability -> Ability {
         name = self.make_name(name_tok);
     }
 
-    tp_list: (list | None) = None;
+    tp_list: (list[TypeParam] | None) = None;
     tp_lb_uni: Token | None = None;
     tp_rb_uni: Token | None = None;
     tp_comma_unis: list[Token] = [];
@@ -5874,7 +5876,7 @@ impl Parser.parse_ability -> Ability {
     } else {
         signature = self.parse_func_signature();
     }
-    body_stmts: (list | None) = None;
+    body_stmts: (list[CodeBlockStmt] | None) = None;
     body_expr: Expr | None = None;
     is_abstract = False;
     body_type = "semi";
@@ -6953,7 +6955,7 @@ impl Parser.parse_type_alias -> TypeAlias {
         name_tok = self.expect_name();
     }
     name = self.make_name_or_special(name_tok);
-    tp_list: (list | None) = None;
+    tp_list: (list[TypeParam] | None) = None;
     tp_lb_uni: Token | None = None;
     tp_rb_uni: Token | None = None;
     tp_comma_unis: list[Token] = [];
@@ -7002,7 +7004,7 @@ impl Parser.parse_type_alias -> TypeAlias {
     );
 }
 
-impl Parser.parse_type_params -> tuple[(list, list)] {
+impl Parser.parse_type_params -> tuple[(list[TypeParam], list[Token])] {
     params: list[TypeParam] = [];
     comma_unis: list[Token] = [];
 

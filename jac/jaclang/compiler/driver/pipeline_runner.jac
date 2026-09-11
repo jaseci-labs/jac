@@ -194,7 +194,7 @@ obj ModuleCompilation {
         ) {
             import os as _cb_os;
             cb_seen: set[str] = set();
-            cb_worklist: list = [self.module];
+            cb_worklist: list[uni.Module | None] = [self.module];
             cb_paths: list[str] = [];
 
             cb_opts = CompileOptions(

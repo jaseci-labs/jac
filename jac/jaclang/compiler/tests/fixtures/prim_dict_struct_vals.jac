@@ -37,7 +37,7 @@ def _mk_reg -> Reg {
     );
 }
 
-def dict_struct_vals_py -> dict {
+def dict_struct_vals_py -> dict[any, any] {
     reg = _mk_reg();
     e = reg.get("int");
     missing = reg.get("nope");
@@ -62,7 +62,7 @@ def dict_struct_vals_py -> dict {
     };
 }
 
-def dict_struct_vals_cl -> dict {
+def dict_struct_vals_cl -> dict[any, any] {
     return {};
 }
 

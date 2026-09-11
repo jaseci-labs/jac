@@ -10,7 +10,7 @@ node Team {}
 
 walker supervisor {
     has user_input: str = "",
-        answers: list = [];
+        answers: list[tuple[str, any]] = [];
 
     # Triggered on Team, not Root: `root` accumulates across tests in a file, so
     # a Root-triggered walker would route over every other test's nodes too.

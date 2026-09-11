@@ -42,7 +42,7 @@ import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.driver.program { JacProgram }
 
 """Compile once, returning the pyast tree, the shim tree and the bytes."""
-def emit_both(src: str, path: str) -> tuple {
+def emit_both(src: str, path: str) -> tuple[any, ...] {
     prog = JacProgram();
     mod = prog.compile(
         use_str=src,
@@ -68,7 +68,7 @@ def emit_bytes(src: str, path: str) -> bytes {
     return blob;
 }
 
-glob _CODE_FIELDS: tuple = (
+glob _CODE_FIELDS: tuple[any, ...] = (
          "co_name",
          "co_qualname",
          "co_filename",
@@ -174,7 +174,7 @@ with entry {
 }
 """;
 
-glob CORPUS: tuple = (
+glob CORPUS: tuple[any, ...] = (
          ("comments", COMMENTS_SRC, "canary_comments.jac", ),
          ("string-named tests", TESTS_SRC, "canary_tests.jac", ),
          ("diagnostics", DIAG_SRC, "canary_diags.jac", ),

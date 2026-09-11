@@ -15,7 +15,7 @@ node Product {
         stock: int = 0;
 }
 
-glob CATALOG: list[dict] = [
+glob CATALOG: list[dict[str, any]] = [
          {
              "id": "prod_1",
              "name": "Wireless Headphones",
@@ -72,9 +72,9 @@ def _get_or_seed_anchor -> Products {
 }
 
 
-def:pub list_products -> list[dict] {
+def:pub list_products -> list[dict[str, any]] {
     anchor = _get_or_seed_anchor();
-    items: list = [];
+    items: list[dict[str, any]] = [];
     for p in [anchor-->][?:Product] {
         items.append(
             {
@@ -89,7 +89,7 @@ def:pub list_products -> list[dict] {
     return items;
 }
 
-def:pub get_product(product_id: str) -> dict {
+def:pub get_product(product_id: str) -> dict[str, any] {
     anchor = _get_or_seed_anchor();
     for p in [anchor-->][?:Product] {
         if p.id == product_id {

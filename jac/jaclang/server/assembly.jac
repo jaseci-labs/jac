@@ -1,8 +1,9 @@
 import os;
+import type from jaclang.project.apps { AppConfig }
 import from jaclang.cli.console { console }
 
 
-def service_apps(cfg: any, served: any) -> list {
+def service_apps(cfg: any, served: any) -> list[AppConfig] {
     return [
         a
         for a in cfg.serving_apps()
@@ -11,7 +12,7 @@ def service_apps(cfg: any, served: any) -> list {
 }
 
 def gateway_colocates(cfg: any) -> bool {
-    scale_cfg = cfg.get_plugin_config("scale") or {};
+    scale_cfg: dict[str, any] = cfg.get_plugin_config("scale") or {};
     gateway = scale_cfg.get("gateway", {}) if isinstance(scale_cfg, dict) else {};
     return not (isinstance(gateway, dict) and gateway.get("colocate") is False);
 }

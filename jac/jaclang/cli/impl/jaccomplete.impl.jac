@@ -15,13 +15,13 @@ impl static_shellcode(
 impl _static_bash(commands: list[dict[str, any]], exe: str) -> str {
     cmd_names = " ".join(c["name"] for c in commands);
 
-    value_cases: list = [];
+    value_cases: list[str] = [];
     for c in commands {
         if not c["value_opts"] {
             continue;
         }
         cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]);
-        prev_cases: list = [];
+        prev_cases: list[str] = [];
 
         for (long, short, choices) in cast_ValueOpts {
             pattern = long;
@@ -39,7 +39,7 @@ impl _static_bash(commands: list[dict[str, any]], exe: str) -> str {
         value_block = _BASH_VALUE_BLOCK % "\n".join(value_cases);
     }
 
-    cmd_cases: list = [];
+    cmd_cases: list[str] = [];
     for c in commands {
         cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]);
         flags = " ".join(
@@ -64,16 +64,16 @@ impl _static_bash(commands: list[dict[str, any]], exe: str) -> str {
 }
 
 impl _static_zsh(commands: list[dict[str, any]], exe: str) -> str {
-    cmd_descs: list = [];
+    cmd_descs: list[str] = [];
     for c in commands {
         h = c["help"].replace("'", "'\\''");
         cmd_descs.append("        '%s:%s'" % (c["name"], h));
     }
-    subcases: list = [];
+    subcases: list[str] = [];
     for c in commands {
         cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]);
         cast_Flags = cast(list[tuple[str, str, str]], c["flags"]);
-        args_lines: list = [];
+        args_lines: list[str] = [];
         for (long, short, helptext) in cast_Flags {
             h = helptext.replace("'", "'\\''").replace("[", "\\[").replace("]", "\\]");
             if short {
@@ -115,7 +115,7 @@ impl _static_zsh(commands: list[dict[str, any]], exe: str) -> str {
 }
 
 impl _static_fish(commands: list[dict[str, any]], exe: str) -> str {
-    lines: list = ["# Fish completions for " + exe];
+    lines: list[str] = ["# Fish completions for " + exe];
     lines.append("complete -c %s -f" % exe);
 
     for c in commands {

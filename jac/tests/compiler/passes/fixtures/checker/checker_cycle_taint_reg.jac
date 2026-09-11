@@ -4,7 +4,7 @@ references the importing module's CONFIG while CONFIG is being resolved."""
 import from checker_cycle_taint_main { CONFIG }
 
 obj Reg {
-    has defaults: dict = {};
+    has defaults: dict[any, any] = {};
 }
 
 glob REGISTRY = Reg() if CONFIG is None else Reg();

@@ -1,6 +1,7 @@
 """Server-Sent Events streaming for generator-returning `def:pub` endpoints.
 
-A `def:pub` function whose result is a generator (e.g. `-> Iterator[dict]`, the
+A `def:pub` function whose result is a generator (e.g. `-> Iterator[dict[str,
+any]]`, the
 shape used by `jac ai --ui`'s `agent_stream`) is a stream, not a single value.
 The JSON transport cannot encode a generator -- it raised "Object of type
 generator is not JSON serializable" -- so the base server must instead emit each
@@ -16,7 +17,7 @@ test "function returning an iterator streams as SSE instead of crashing" {
     with TemporaryDirectory() as tmp {
         app = Path(tmp) / "stream_app.jac";
         app.write_text(
-            'def:pub stream_numbers -> Iterator[dict] {\n'
+            'def:pub stream_numbers -> Iterator[dict[str, any]] {\n'
             '    for i in range(3) {\n'
             '        yield {"n": i};\n'
             '    }\n'

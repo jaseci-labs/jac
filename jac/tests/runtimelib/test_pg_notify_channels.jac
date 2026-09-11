@@ -25,7 +25,7 @@ import from tempfile { mkdtemp }
 import from jaclang.data.pgembed { PgRuntime }
 import from jaclang.data.store { PgStore }
 
-glob _holder: dict = {},
+glob _holder: dict[str, any] = {},
      _LONG_STEM = 'cache:' + ('x' * 70) + ':';
 
 
@@ -56,7 +56,7 @@ def _runtime -> any {
 }
 
 
-def _pair -> tuple {
+def _pair -> tuple[any, ...] {
     # Publisher and subscriber on separate connections: the same path a
     # second pod takes, and it makes delivery push-driven rather than
     # waiting out the listen loop's idle poll.
@@ -76,7 +76,7 @@ def _settle {
 }
 
 
-def _wait_for(box: list, want: int, seconds: float = 10.0) {
+def _wait_for(box: list[any], want: int, seconds: float = 10.0) {
     deadline = time.monotonic() + seconds;
     while len(box) < want and time.monotonic() < deadline {
         time.sleep(0.05);

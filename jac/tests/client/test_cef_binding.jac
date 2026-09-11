@@ -37,7 +37,7 @@ def _cef_dir -> Path {
 
 Returns (returncode, stderr, binary_bytes). binary_bytes is empty on failure.
 """
-def _compile_cef_host(host_src: str) -> tuple {
+def _compile_cef_host(host_src: str) -> tuple[any, ...] {
     jac = shutil.which("jac") or "jac";
     tmp = tempfile.mkdtemp();
     try {

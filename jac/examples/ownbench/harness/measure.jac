@@ -73,7 +73,7 @@ def compile_kernel(kernel: str, mode: str) -> Path {
 }
 
 """One measured invocation: internal ns, max RSS (KB), and output digest."""
-def run_once(binary: Path, args: list[str]) -> dict {
+def run_once(binary: Path, args: list[str]) -> dict[str, any] {
     r = subprocess.run(
         ["/usr/bin/time", "-v", str(binary)] + args,
         capture_output=True,
@@ -103,8 +103,8 @@ def run_once(binary: Path, args: list[str]) -> dict {
 }
 
 """Parse --flag value / --flag CLI options into a dict, with defaults."""
-def parse_opts(argv: list[str]) -> dict {
-    opts: dict = {
+def parse_opts(argv: list[str]) -> dict[str, any] {
+    opts: dict[str, any] = {
         "kernels": ",".join(KERNELS),
         "modes": ",".join(MODES),
         "invocations": 10,
@@ -135,7 +135,7 @@ def parse_opts(argv: list[str]) -> dict {
 }
 
 """Measure every requested (kernel, mode) cell and write results JSON."""
-def main(opts: dict) {
+def main(opts: dict[str, any]) {
     kernels = [
         k
         for k in opts["kernels"].split(",")
@@ -146,12 +146,12 @@ def main(opts: dict) {
         for m in opts["modes"].split(",")
         if m
     ];
-    results: dict = {};
+    results: dict[str, dict[str, any]] = {};
     identity_fail = False;
 
     for kernel in kernels {
         args = SIZES[opts["sizes"]][kernel];
-        per_mode: dict = {};
+        per_mode: dict[str, any] = {};
         for mode in modes {
             binary = BENCH / "bin" / f"{kernel}_{mode}";
             if not opts["skip_compile"] or not binary.exists() {

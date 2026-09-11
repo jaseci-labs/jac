@@ -71,7 +71,7 @@ def:pub TextInput() -> JsxElement {
 
 ```jac
 # jac:ignore[W5015]
-def:pub FancyInput(props: dict) -> JsxElement {
+def:pub FancyInput(props: dict[str, any]) -> JsxElement {
     <input className="fancy" {**props} />
 }
 ```

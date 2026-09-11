@@ -275,7 +275,7 @@ impl list_databases(conn: any) -> list[DbRecord] {
 
 impl load_record(conn: any, database: str) -> (DbRecord | None) {
     try {
-        rows = conn.run(_records_sql('d.datname = :db'), db=database) or [];
+        rows: list[any] = conn.run(_records_sql('d.datname = :db'), db=database) or [];
     } except Exception as e {
         logger.debug(f"could not re-read the registry row for {database}: {e}");
         return None;

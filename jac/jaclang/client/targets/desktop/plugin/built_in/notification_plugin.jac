@@ -21,13 +21,13 @@ obj NotificationPlugin(OsPlugin) {
         return NotificationPlugin(DesktopPlugin._coerce_config(config));
     }
 
-    def init(config: dict) {
+    def init(config: dict[str, any]) {
         self.plugin_name = "jac.notification";
 
         self._enabled = DesktopPlugin._config_enabled(config);
     }
 
-    def handle(command: str, args: dict) -> dict {
+    def handle(command: str, args: dict[str, any]) -> dict[str, any] {
         if not self._enabled {
             raise PluginError(ErrorCode.FORBIDDEN, "Notifications are not enabled.");
         }
@@ -37,7 +37,7 @@ obj NotificationPlugin(OsPlugin) {
         return super.handle(command, args);
     }
 
-    def _send(args: dict) -> dict {
+    def _send(args: dict[str, any]) -> dict[str, any] {
         title = args.get("title", "");
         body = args.get("body", "");
         if not title {

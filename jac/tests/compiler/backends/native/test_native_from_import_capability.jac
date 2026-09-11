@@ -57,7 +57,7 @@ def _opts -> CompileOptions {
 
 
 """Compile a fixture on the native pathway; return (program, module)."""
-def _compile_native(fixture: str) -> tuple {
+def _compile_native(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     ir = prog.compile(file_path=os.path.join(FIXTURES, fixture), options=_opts());
     return (prog, ir, );
@@ -65,7 +65,7 @@ def _compile_native(fixture: str) -> tuple {
 
 
 """Compile a fixture under the demotion coverage; return (program, module, coverage)."""
-def _compile_with_coverage(fixture: str) -> tuple {
+def _compile_with_coverage(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     na_coverage_begin();
     try {
@@ -127,7 +127,7 @@ def _native_int_fn(ir: any, name: str) -> any {
 
 
 """The coverage seam list recorded for a fixture path."""
-def _seams_of(coverage: dict, fixture: str) -> list[str] {
+def _seams_of(coverage: dict[str, any], fixture: str) -> list[str] {
     rec = coverage.get(os.path.realpath(os.path.join(FIXTURES, fixture)));
     if rec is None {
         return [];

@@ -8,7 +8,7 @@ assignment, `+=`, len, `bytes()` freeze, and `struct.pack_into`.
 """
 import struct;
 
-def bytearray_core_py -> dict {
+def bytearray_core_py -> dict[any, any] {
     empty = bytearray();
     sized = bytearray(4);
     copied = bytearray(b"seed");
@@ -33,7 +33,7 @@ def bytearray_core_py -> dict {
     };
 }
 
-def bytearray_slices_py -> dict {
+def bytearray_slices_py -> dict[any, any] {
     buf = bytearray(8);
     buf[0:4] = b"\x01\x02\x03\x04";
     buf[4:8] = b"\xff\x06\x07\x08";
@@ -55,7 +55,7 @@ def bytearray_slices_py -> dict {
     };
 }
 
-def bytearray_pack_py -> dict {
+def bytearray_pack_py -> dict[any, any] {
     buf = bytearray(16);
     struct.pack_into("<I", buf, 0, 305419896);
     struct.pack_into("<Q", buf, 4, 1311768467463790320);
@@ -73,15 +73,15 @@ def bytearray_pack_py -> dict {
     };
 }
 
-def bytearray_core_cl -> dict {
+def bytearray_core_cl -> dict[any, any] {
     return {};
 }
 
-def bytearray_slices_cl -> dict {
+def bytearray_slices_cl -> dict[any, any] {
     return {};
 }
 
-def bytearray_pack_cl -> dict {
+def bytearray_pack_cl -> dict[any, any] {
     return {};
 }
 

@@ -38,7 +38,7 @@ the cl->sv response re-serializes it), this consumes the archetype IN
 the gateway process: `res.result` / `res.error` must resolve as real
 attributes. If the sv->sv return value arrives as a plain dict the
 attribute access raises `'dict' object has no attribute ...` (#6710)."""
-async def:pub describe_divide(a: float, b: float) -> dict {
+async def:pub describe_divide(a: float, b: float) -> dict[str, any] {
     res: DivResult = await divide(a, b);
     return {"value": res.result, "error": res.error};
 }

@@ -1,4 +1,5 @@
-import from manifest { PluginContext }
+import from types { ModuleType }
+import from manifest { PluginContext, PluginManifest }
 import from desktop_plugin { DesktopPlugin }
 import from plugin_host { PluginHost }
 import from built_in.path_plugin { PathPlugin }
@@ -10,7 +11,7 @@ import from built_in.dialog_plugin { DialogPlugin }
 import from built_in.shell_plugin { ShellPlugin }
 
 
-glob BUILTIN_PLUGINS: list = [
+glob BUILTIN_PLUGINS: list[PluginManifest] = [
          PathPlugin.manifest(),
          WindowPlugin.manifest(),
          FsPlugin.manifest(),
@@ -21,7 +22,9 @@ glob BUILTIN_PLUGINS: list = [
      ];
 
 
-def bootstrap_plugins(configs: dict, modules: dict) -> PluginHost {
+def bootstrap_plugins(
+    configs: dict[str, any], modules: dict[str, ModuleType]
+) -> PluginHost {
     ctx = PluginContext();
 
     ctx.path_plugin = PathPlugin();

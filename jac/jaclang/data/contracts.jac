@@ -45,7 +45,7 @@ def:pub decode_contract(value: any, contract: any, path: str = "response") -> an
         raise ContractError(f"{path}: expected declared record {contract}");
     }
     hints = get_type_hints(contract);
-    kwargs: dict = {};
+    kwargs: dict[str, any] = {};
     for f in fields(contract) {
         if not f.init {
             continue;

@@ -6,7 +6,7 @@ The lambda helper hoists to the enclosing scope and the field uses a plain
 """
 
 obj B {
-    has cbs: list = [
+    has cbs: list[any] = [
         lambda (x: int) -> int {
             a = x + 1;
             a

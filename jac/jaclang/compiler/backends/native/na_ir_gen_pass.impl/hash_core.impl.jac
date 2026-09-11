@@ -33,8 +33,8 @@ impl NaIRGenPass._emit_hash_core_helpers(
     val_type: (ir.Type | None),
     key_type_name: str,
     key_size: int,
-    layout: dict
-) -> dict {
+    layout: dict[str, any]
+) -> dict[str, any] {
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
@@ -836,7 +836,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
         boob.ret(ir.Constant(key_type, 0));
     }
 
-    core: dict = {
+    core: dict[str, any] = {
         "hash": hash_fn,
         "find_ph": find_fn,
         "rehash": rehash_fn,
@@ -935,7 +935,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
         core["get_val"] = get_val_fn;
     }
 
-    _pub_specs: list = [
+    _pub_specs: list[tuple[str, str, any]] = [
         ("find", "find", find_fn),
         ("insert", _ins_op, ins_fn),
         ("contains", "contains", contains_fn),
@@ -999,8 +999,8 @@ impl NaIRGenPass._static_key_hash_of(key_node: (uni.UniNode | None)) -> (int | N
 }
 
 impl NaIRGenPass._static_key_op(
-    helpers: dict, op: str, key_node: (uni.UniNode | None)
-) -> tuple {
+    helpers: dict[str, any], op: str, key_node: (uni.UniNode | None)
+) -> tuple[ir.Function, ir.Value | None] {
     plain = helpers[op];
     ph = helpers.get(f"{op}_ph");
     if ph is None or key_node is None {

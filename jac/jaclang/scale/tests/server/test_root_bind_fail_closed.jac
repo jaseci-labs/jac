@@ -85,7 +85,7 @@ def _whoami(base: str, token: str) -> requests.Response {
     return res;
 }
 
-def _corrupt(base: str, username: str, new_root_id: str) -> dict {
+def _corrupt(base: str, username: str, new_root_id: str) -> dict[str, any] {
     res = requests.post(
         f"{base}/function/corrupt_root",
         json={"username": username, "new_root_id": new_root_id},

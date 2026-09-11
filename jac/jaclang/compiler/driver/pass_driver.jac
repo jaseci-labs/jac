@@ -7,7 +7,7 @@ import from jaclang.compiler.passes.transform { Alert, DiagnosticPolicy }
 import from jaclang.compiler.driver.program { JacProgram }
 
 def diagnostic_policy_for(
-    config: any, extra_suppress_tokens: (list | None) = None
+    config: any, extra_suppress_tokens: (list[str] | None) = None
 ) -> DiagnosticPolicy {
     import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
     tokens: list[str] = [];
@@ -130,8 +130,8 @@ def run_pass(
     **kwargs: any
 ) -> any {
     pol = policy if policy is not None else build_diagnostic_policy(prog);
-    errors: list = [];
-    warnings: list = [];
+    errors: list[Alert] = [];
+    warnings: list[Alert] = [];
     inst: any = None;
     if getattr(pass_cls, 'HOST_PASS', False) {
         kwargs['prog'] = prog;

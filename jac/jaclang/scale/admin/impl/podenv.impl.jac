@@ -13,7 +13,7 @@ import from jaclang.scale.admin.k8s_ops {
 }
 
 glob logger = logging.getLogger(__name__),
-     _ENV_ALLOW_PREFIXES: list = [
+     _ENV_ALLOW_PREFIXES: list[str] = [
          "OTEL_",
          "JAC_",
          "K8S_",
@@ -38,7 +38,7 @@ def _s(v: any) -> str {
 }
 
 
-def is_allowed_key(key: str, prefixes: list) -> bool {
+def is_allowed_key(key: str, prefixes: list[str]) -> bool {
     for p in prefixes {
         if key.startswith(p) {
             return True;
@@ -48,7 +48,7 @@ def is_allowed_key(key: str, prefixes: list) -> bool {
 }
 
 
-def redact_entry(item: dict, prefixes: list) -> dict {
+def redact_entry(item: dict[str, any], prefixes: list[str]) -> dict[str, any] {
     name = _s(item.get("name"));
     source = _s(item.get("source"));
     if source {
@@ -71,19 +71,22 @@ def redact_entry(item: dict, prefixes: list) -> dict {
 }
 
 
-def redact_env(entries: list, prefixes: list) -> list {
+def redact_env(
+    entries: list[dict[str, any]], prefixes: list[str]
+) -> list[dict[str, any]] {
     return [redact_entry(e, prefixes) for e in entries];
 }
 
 
-def pod_env_entries(pod: dict) -> list {
-    spec = pod.get("spec", {}) or {};
-    out: list = [];
-    containers = spec.get("containers", []) or [];
+def pod_env_entries(pod: dict[str, any]) -> list[dict[str, any]] {
+    spec: any = pod.get("spec", {}) or {};
+    out: list[dict[str, any]] = [];
+    containers: any = spec.get("containers", []) or [];
     if not containers {
         return out;
     }
-    for e in (containers[0].get("env", []) or []) {
+    env_entries: any = containers[0].get("env", []) or [];
+    for e in env_entries {
         source = "";
         value_from = e.get("value_from");
         if value_from {
@@ -107,11 +110,16 @@ def pod_env_entries(pod: dict) -> list {
 }
 
 
-def build_podenv(namespace: str, this_env: list, pods: list, prefixes: list) -> dict {
-    pod_rows: list = [];
+def build_podenv(
+    namespace: str,
+    this_env: list[dict[str, any]],
+    pods: list[dict[str, any]],
+    prefixes: list[str]
+) -> dict[str, any] {
+    pod_rows: list[dict[str, any]] = [];
     for pod in pods {
-        meta = pod.get("metadata", {}) or {};
-        labels = meta.get("labels", {}) or {};
+        meta: any = pod.get("metadata", {}) or {};
+        labels: any = meta.get("labels", {}) or {};
         pod_rows.append(
             {
                 "pod": _s(meta.get("name")),
@@ -130,8 +138,8 @@ def build_podenv(namespace: str, this_env: list, pods: list, prefixes: list) -> 
 }
 
 
-def _own_env_entries -> list {
-    out: list = [];
+def _own_env_entries -> list[dict[str, any]] {
+    out: list[dict[str, any]] = [];
     for (k, v) in os.environ.items() {
         out.append({"name": str(k), "value": str(v), "source": ""});
     }
@@ -140,7 +148,7 @@ def _own_env_entries -> list {
 }
 
 
-def _collect_podenv -> dict {
+def _collect_podenv -> dict[str, any] {
     own_env = _own_env_entries();
     if not k8s_available() {
         return {
@@ -171,8 +179,9 @@ def _collect_podenv -> dict {
             "pods": []
         };
     }
+    empty: list[any] = [];
     return build_podenv(
-        ns, own_env, [p.to_dict() for p in (pod_objs or [])], _ENV_ALLOW_PREFIXES
+        ns, own_env, [p.to_dict() for p in (pod_objs or empty)], _ENV_ALLOW_PREFIXES
     );
 }
 

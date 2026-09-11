@@ -21,7 +21,7 @@ import from jaclang.scale.scheduler.scheduler {
     TriggerSpec
 }
 
-glob _holder: dict = {},
+glob _holder: dict[str, any] = {},
      _DOCS_DDL = (
          'CREATE TABLE IF NOT EXISTS jac_docs ('
          'collection text NOT NULL, id text NOT NULL, doc jsonb NOT NULL, '
@@ -52,7 +52,7 @@ def _pod(store: PgStore, collection: str) -> JacScaleScheduler {
 }
 
 
-def _job(job_id: str, interval: float) -> dict {
+def _job(job_id: str, interval: float) -> dict[str, any] {
     return {
         'job_id': job_id,
         'name': 'tick',

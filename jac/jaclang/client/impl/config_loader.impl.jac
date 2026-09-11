@@ -12,7 +12,7 @@ import from jaclang.client.npm_provider {
     app_npm_deps
 }
 
-def _inject_missing(deps: dict, required: dict[str, str]) -> dict {
+def _inject_missing(deps: dict[str, any], required: dict[str, str]) -> dict[str, any] {
     merged = dict(deps);
     for (name, version) in required.items() {
         if name not in merged {
@@ -23,8 +23,8 @@ def _inject_missing(deps: dict, required: dict[str, str]) -> dict {
 }
 
 def _migrate_legacy_meta_packages(
-    jac_config: any, npm_deps: dict, npm_dev_deps: dict
-) -> tuple[dict, dict, bool] {
+    jac_config: any, npm_deps: dict[str, any], npm_dev_deps: dict[str, any]
+) -> tuple[dict[str, any], dict[str, any], bool] {
     migrated = False;
 
     if 'jac-client-node' in npm_deps {
@@ -134,9 +134,13 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
         }
     }
 
-    npm_plugin_deps: dict = dict(jac_config.plugin_dependencies.get('npm', {}));
+    npm_plugin_deps: dict[str, any] = dict(
+        jac_config.plugin_dependencies.get('npm', {})
+    );
     dev_section = npm_plugin_deps.get('dev', {});
-    npm_dev_deps: dict = dict(dev_section) if isinstance(dev_section, dict) else {};
+    npm_dev_deps: dict[str, any] = dict(dev_section)
+        if isinstance(dev_section, dict)
+        else {};
 
     if 'client' in jac_config.plugins {
         (npm_deps, npm_dev_deps, migrated) = _migrate_legacy_meta_packages(

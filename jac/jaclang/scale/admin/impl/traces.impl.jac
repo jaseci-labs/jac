@@ -63,11 +63,13 @@ def _build_traceql(service: str, status: str, min_duration_ms: int) -> str {
 }
 
 
-async def _tempo_request(path: str, params: dict, accept_json: bool = False) -> dict {
+async def _tempo_request(
+    path: str, params: dict[str, str], accept_json: bool = False
+) -> dict[str, any] {
     import from jaclang.server.serving.client { ClientConnectionError, arequest }
     base = _tempo_base_url();
     url = base + path;
-    headers: dict = {};
+    headers: dict[str, str] = {};
     if accept_json {
         headers["Accept"] = "application/json";
     }
@@ -83,7 +85,7 @@ async def _tempo_request(path: str, params: dict, accept_json: bool = False) -> 
 }
 
 
-def _otlp_value(value: dict) -> any {
+def _otlp_value(value: dict[str, any]) -> any {
     if "stringValue" in value {
         return value["stringValue"];
     }
@@ -100,8 +102,8 @@ def _otlp_value(value: dict) -> any {
 }
 
 
-def _otlp_attrs(attrs: list) -> dict {
-    out: dict = {};
+def _otlp_attrs(attrs: list[dict[str, any]]) -> dict[str, any] {
+    out: dict[str, any] = {};
     for a in (attrs or []) {
         k = a.get("key", "");
         if k {
@@ -112,18 +114,19 @@ def _otlp_attrs(attrs: list) -> dict {
 }
 
 
-def _flatten_tempo_trace(payload: dict) -> dict {
-    spans: list[dict] = [];
+def _flatten_tempo_trace(payload: dict[str, any]) -> dict[str, any] {
+    spans: list[dict[str, any]] = [];
     min_start: int = 0;
     max_end: int = 0;
-    batches = payload.get("batches", []) or [];
+    batches: any = payload.get("batches", []) or [];
     for batch in batches {
         resource: dict[str, any] = batch.get("resource", {}) or {};
         res_attrs = _otlp_attrs(resource.get("attributes", []));
         service = str(res_attrs.get("service.name", "unknown"));
-        scope_spans = batch.get("scopeSpans", []) or [];
+        scope_spans: any = batch.get("scopeSpans", []) or [];
         for scope in scope_spans {
-            for span in (scope.get("spans", []) or []) {
+            scope_span_list: any = scope.get("spans", []) or [];
+            for span in scope_span_list {
                 start_ns = int(span.get("startTimeUnixNano", 0) or 0);
                 end_ns = int(span.get("endTimeUnixNano", 0) or 0);
                 if start_ns and (min_start == 0 or start_ns < min_start) {
@@ -132,7 +135,7 @@ def _flatten_tempo_trace(payload: dict) -> dict {
                 if end_ns > max_end {
                     max_end = end_ns;
                 }
-                status = span.get("status", {}) or {};
+                status: any = span.get("status", {}) or {};
                 spans.append(
                     {
                         "span_id": span.get("spanId", ""),
@@ -252,8 +255,8 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
             );
         }
 
-        raw_traces = payload.get("traces", []) or [];
-        traces: list[dict] = [];
+        raw_traces: any = payload.get("traces", []) or [];
+        traces: list[dict[str, any]] = [];
         for t in raw_traces {
             traces.append(
                 {

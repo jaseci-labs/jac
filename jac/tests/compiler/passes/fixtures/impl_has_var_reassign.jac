@@ -11,7 +11,7 @@ enclosing def-component, matching the inline behavior.
 
 
 def:pub taskManager -> None {
-    has tasks: list[dict] = [];
-    async def addTask(task: dict) -> None;
+    has tasks: list[dict[str, any]] = [];
+    async def addTask(task: dict[str, any]) -> None;
     async def listTasks -> None;
 }

@@ -15,7 +15,7 @@ import from jaclang.compiler.backends.native.abi {
 
 # Foreign struct model shaped like targets.foreign.collect_foreign_structs
 # output: V2 rides SSE registers, Big is MEMORY class (3 eightbytes).
-glob FN_STRUCTS: dict = {
+glob FN_STRUCTS: dict[str, any] = {
          "V2": [("x", "f64"), ("y", "f64")],
          "Big": [("a", "i64"), ("b", "i64"), ("c", "i64")],
 

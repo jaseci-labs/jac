@@ -74,7 +74,7 @@ walker MTIRGenPass(Transform) {
     def _doc_text(doc: String | None) -> str | None;
     def _parse_type_expr(
         type_expr: Expr | None, scope: UniScopeNode
-    ) -> ClassInfo | EnumInfo | str | tuple | None;
+    ) -> ClassInfo | EnumInfo | str | tuple[object, ...] | None;
 
     def _extract_type_symbol(
         type_expr: Expr | None, scope: UniScopeNode
@@ -96,6 +96,9 @@ walker MTIRGenPass(Transform) {
         type_expr: Expr, scope: UniScopeNode
     ) -> Archetype | None;
 
-    def _traversal_candidate_archetypes(expr: Expr, scope: UniScopeNode) -> tuple;
+    def _traversal_candidate_archetypes(
+        expr: Expr, scope: UniScopeNode
+    ) -> tuple[list[Archetype], bool];
+
     def _register_archetype_light(nd: Archetype) -> None;
 }

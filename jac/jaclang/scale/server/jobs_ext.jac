@@ -40,7 +40,9 @@ def _err_response(e: Exception) -> TransportResponse {
 }
 
 
-def _build_spec(body: dict) -> tuple[(TriggerSpec | None), (TransportResponse | None)] {
+def _build_spec(
+    body: dict[str, any]
+) -> tuple[(TriggerSpec | None), (TransportResponse | None)] {
     trigger = body.get('trigger', '');
     if not trigger {
         return (None, _fail('INVALID_REQUEST', 'Field "trigger" is required', 400));
@@ -93,7 +95,7 @@ obj JobsExtension(ServerExtension) {
         }
 
         def _ensure_authorized(
-            job: (dict | None), user_id: str
+            job: (dict[str, any] | None), user_id: str
         ) -> (TransportResponse | None) {
             if job is None {
                 return _fail('NOT_FOUND', 'Job not found', 404);

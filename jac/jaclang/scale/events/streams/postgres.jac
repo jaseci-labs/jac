@@ -141,7 +141,7 @@ obj PgEventStream(EventStreamBroker) {
         self._positioned.add(key);
     }
 
-    def _claim(topic: str, group: str, max_messages: int) -> list {
+    def _claim(topic: str, group: str, max_messages: int) -> list[any] {
         store = self._ensure_store();
         store.begin(TxnIsolation.READ_COMMITTED);
         try {

@@ -17,13 +17,13 @@ test "noop endpoint handler returns callable" {
     assert callable(handler);
 }
 
-glob ENABLED_CONFIG: dict = {
+glob ENABLED_CONFIG: dict[str, any] = {
          "enabled": True,
          "namespace": "test_app",
          "walker_metrics": True,
          "histogram_buckets": [0.01, 0.1, 1.0]
      },
-     DISABLED_CONFIG: dict = {"enabled": False};
+     DISABLED_CONFIG: dict[str, any] = {"enabled": False};
 
 test "prometheus enabled when configured" {
     collector = PrometheusMetricsCollector(config=ENABLED_CONFIG);
@@ -309,10 +309,16 @@ test "metrics summary classifies platform paths out of the app scope" {
 }
 
 
-glob BAND_TRAFFIC: list = [(0.005, 5), (0.05, 10), (0.2, 20), (1.0, 8), (5.0, 3)];
+glob BAND_TRAFFIC: list[tuple[float, int]] = [
+         (0.005, 5),
+         (0.05, 10),
+         (0.2, 20),
+         (1.0, 8),
+         (5.0, 3)
+     ];
 
 
-def _distribution_for(cfg: dict) -> list {
+def _distribution_for(cfg: dict[str, any]) -> list[dict[str, str | int]] {
     import from jaclang.scale.admin.admin_portal {
         _parse_prometheus_text,
         _calculate_metrics_summary

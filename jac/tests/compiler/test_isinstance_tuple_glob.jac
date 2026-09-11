@@ -34,7 +34,7 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 glob FIXTURES = os.path.join(TESTS_DIR, "compiler", "fixtures");
 
 """Type-check a fixture and return its errors."""
-def check_errors(fixture: str) -> list {
+def check_errors(fixture: str) -> list[any] {
     prog = JacProgram();
     prog.compile(
         file_path=str(os.path.join(FIXTURES, fixture)),

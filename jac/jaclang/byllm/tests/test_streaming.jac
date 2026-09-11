@@ -181,16 +181,16 @@ def _next_or_stop(gen: any) -> object {
 
 
 """Drain a generator inside a fresh contextvars Context."""
-def _drain_in_copied_context(gen: any) -> list {
+def _drain_in_copied_context(gen: any) -> list[any] {
     return contextvars.copy_context().run(list, gen);
 }
 
 
 """Drive each next() on a thread-pool worker, as the scale backend's SSE path does."""
-def _drain_in_thread_pool(gen: any) -> list {
-    async def _run -> list {
+def _drain_in_thread_pool(gen: any) -> list[any] {
+    async def _run -> list[any] {
         loop = asyncio.get_event_loop();
-        out: list = [];
+        out: list[any] = [];
         while True {
             item = await loop.run_in_executor(None, _next_or_stop, gen);
             if item is _STOP {
@@ -288,7 +288,7 @@ test "a mid-stream drop is retried only when the error is transient" {
             assert raised is None , f"{label}: unexpected {raised!r}";
             # A reset discards what was already delivered, so the caller sees
             # the retry's output once, not the partial prepended to it.
-            buf: list = [];
+            buf: list[str] = [];
             for ev in events {
                 if ev.event_type == "stream_reset" {
                     buf = [];

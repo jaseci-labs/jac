@@ -1,4 +1,4 @@
-def bar(some_list: list) {
+def bar(some_list: list[any]) {
     invalid_index = 4;
     print(some_list[invalid_index]);  # This should fail.
 }

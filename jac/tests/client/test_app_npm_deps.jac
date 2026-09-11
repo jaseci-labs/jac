@@ -12,7 +12,7 @@ glob _TOML: str = (
          '[project]\nname = "acme"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.admin]\nkind = "web-app"\nentry-point = "admin.main"\n\n[apps.tool]\nkind = "cli"\nentry-point = "tool.main"\n\n[dependencies.npm]\nreact = "^19"\n\n[apps.web.dependencies.npm]\nlucide-react = "^0.5"\nzustand = "^4"\n\n[apps.web.dependencies.npm.dev]\nvitest = "^2"\n\n[apps.admin.dependencies.npm]\nlucide-react = "^0.6"\nrecharts = "^3"\n\n[apps.admin.dependencies.npm.dev]\nvitest = "^2"\n\n[apps.tool.dependencies.npm]\nlucide-react = "^0.9"\n'
      );
 
-def _resolve(toml: str) -> tuple[list, str] {
+def _resolve(toml: str) -> tuple[list[any], str] {
     buf = io.StringIO();
     with redirect_stderr(buf) {
         deps = app_npm_deps(JacConfig.from_toml_str(toml));

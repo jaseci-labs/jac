@@ -3,7 +3,7 @@ impl EsJsxProcessor.init(self: EsJsxProcessor, pass_ref: EsastGenPass) -> None {
     import from jaclang.compiler.backends.es { estree as es }
     self.es = es;
 
-    self._view_by_node = {};
+    self._view_by_node: dict[int, ViewElement] = {};
 }
 
 impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Expression {
@@ -244,7 +244,7 @@ impl EsJsxProcessor._lift_if(
 
 impl EsJsxProcessor._view_arm(
     self: EsJsxProcessor, nd: uni.JsxElement
-) -> (list | None) {
+) -> (list[ViewChild] | None) {
     import from jaclang.compiler.backends.es.view_ir { ElementChild }
     ve = self._view_by_node.get(id(nd));
     if ve is None {
@@ -253,7 +253,12 @@ impl EsJsxProcessor._view_arm(
     return [ElementChild(element=ve, jac_node=nd)];
 }
 
-impl EsJsxProcessor._split_key(self: EsJsxProcessor, ve: ViewElement) -> tuple {
+impl EsJsxProcessor._split_key(
+    self: EsJsxProcessor, ve: ViewElement
+) -> tuple[
+    Expression | None,
+    list[StaticAttr | DynamicAttr | EventAttr | RefAttr | SpreadAttr]
+] {
     import from jaclang.compiler.backends.es.view_ir { StaticAttr, DynamicAttr }
     key_expr = None;
     kept = [];

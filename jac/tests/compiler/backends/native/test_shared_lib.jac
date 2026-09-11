@@ -52,7 +52,7 @@ glob FIXTURES = os.path.join(
 wrappers (mirroring the nacompile CLI), and emit a PIC relocatable object.
 
 Returns (object_bytes, export_symbols)."""
-def emit_shared_object(fixture: str, triple: str) -> tuple {
+def emit_shared_object(fixture: str, triple: str) -> tuple[any, ...] {
     prev = push_native_target(triple);
     try {
         prog = JacProgram();
@@ -109,7 +109,7 @@ def _exec_seg_flags(raw: bytes, sig_off: int) -> (int | None) {
 
 
 """Scan Mach-O load commands for the fields the dylib test asserts on."""
-def _macho_info(raw: bytes) -> dict {
+def _macho_info(raw: bytes) -> dict[str, any] {
     filetype = struct.unpack_from("<I", raw, 12)[0];
     ncmds = struct.unpack_from("<I", raw, 16)[0];
     off = 32;
@@ -312,7 +312,7 @@ test "Mach-O dylib has MH_DYLIB filetype, export trie, and init section" {
 """Build a dylib from the scalar-only fixture for `triple` and return its
 parsed Mach-O info. Kept separate from the object-handle FIXTURE so these
 load-command assertions don't depend on object attribute-access support."""
-def _build_scalar_dylib(triple: str, name: str) -> dict {
+def _build_scalar_dylib(triple: str, name: str) -> dict[str, any] {
     (relobj, exports) = emit_shared_object("shared_export_scalar.jac", triple);
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, name);

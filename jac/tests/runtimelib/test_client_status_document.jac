@@ -394,7 +394,7 @@ test "a tagged stdout line reaches the callback and is never echoed" {
         CLIENT_EVENT_PREFIX
     }
     with TemporaryDirectory() as tmp {
-        seen: list = [];
+        seen: list[any] = [];
         bundler = ViteBundler(Path(tmp));
         bundler.on_client_event = lambda (slot: str, payload: any) { seen.append(
             (slot, payload)

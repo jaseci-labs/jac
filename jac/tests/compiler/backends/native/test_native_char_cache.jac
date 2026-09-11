@@ -20,7 +20,7 @@ glob FIXTURES = os.path.join(
      FIXTURE = "char_cache.jac";
 
 
-def _compile(fixture: str) -> tuple {
+def _compile(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()

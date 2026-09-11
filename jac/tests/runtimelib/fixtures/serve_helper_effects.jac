@@ -6,7 +6,7 @@ helper functions instead of misclassifying the walker as a reader.
 
 node Item {
     has title: str;
-    has tags: list = [];
+    has tags: list[any] = [];
 }
 
 # The graph write lives here, in a plain helper -- not in the walker body.

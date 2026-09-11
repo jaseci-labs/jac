@@ -6,7 +6,7 @@ import from jaclang.data.serializer { Serializer }
 class WireRecord {
     has value: int | str,
         nested: dict[str, list[any]],
-        empty: list,
+        empty: list[any],
         _jac_id: str;
 
     def __new__(cls: type) -> any {

@@ -81,14 +81,14 @@ glob logger = getLogger(__name__),
      _request_context: ContextVar[ExecutionContext | None] = ContextVar(
          'request_context', `default=None
      ),
-     _default_base_path_dir: list = [os.getcwd()],
-     _default_full_target_path: list = [None],
-     _shared_root_resolver: list = [None, None];
+     _default_base_path_dir: list[str | None] = [os.getcwd()],
+     _default_full_target_path: list[str | None] = [None],
+     _shared_root_resolver: list[any] = [None, None];
 
-glob _scale_provider_cache: list = [],
-     _scale_provider_error: list = [None];
+glob _scale_provider_cache: list[type | None] = [],
+     _scale_provider_error: list[Exception | None] = [None];
 
-glob _persistent_memory_provider: list = [None];
+glob _persistent_memory_provider: list[Callable | None] = [None];
 
 def _scale_provider -> any {
     if _scale_provider_cache {
@@ -105,7 +105,7 @@ def _scale_provider -> any {
     return result;
 }
 
-def scale_provider_error -> any {
+def scale_provider_error -> Exception | None {
     return _scale_provider_error[0];
 }
 
@@ -231,7 +231,7 @@ class JacPersistence {
     static def peek_item(container: any, key: any) -> any;
     static def get_user_manager(base_path: str) -> UserManager;
     static def store(base_path: str = './storage', create_dirs: bool = True) -> any;
-    static def get_persistent_memory(config: dict) -> any;
+    static def get_persistent_memory(config: dict[str, any]) -> any;
     static def set_persistent_memory_provider(provider: Callable | None) -> None;
 }
 
@@ -298,7 +298,7 @@ class JacGraph {
         right: (NodeArchetype | list[NodeArchetype]),
         `edge: type[EdgeArchetype] | EdgeArchetype | None = None,
         undir: bool = False,
-        conn_assign: (tuple[(tuple, tuple)] | None) = None,
+        conn_assign: (tuple[(tuple[str], tuple[any])] | None) = None,
         edges_only: bool = False
     ) -> (NodeArchetype | list[NodeArchetype] | list[EdgeArchetype]);
 
@@ -318,7 +318,7 @@ class JacGraph {
     static def build_edge(
         is_undirected: bool,
         conn_type: type[EdgeArchetype] | EdgeArchetype | None,
-        conn_assign: (tuple[(tuple, tuple)] | None)
+        conn_assign: (tuple[(tuple[str], tuple[any])] | None)
     ) -> Callable[([NodeAnchor, NodeAnchor], EdgeArchetype)];
 
     static def heavy_edge(
@@ -326,12 +326,12 @@ class JacGraph {
         target: NodeAnchor,
         conn_type: type[EdgeArchetype] | EdgeArchetype | None,
         is_undirected: bool,
-        conn_assign: (tuple[(tuple, tuple)] | None)
+        conn_assign: (tuple[(tuple[any, ...], tuple[any, ...])] | None)
     ) -> EdgeArchetype;
 
     static def hop(
         origin: any, dir: int, edge_type: (type | None) = None, edges_only: bool = False
-    ) -> list;
+    ) -> list[any];
 
     static def clear_edges(
         origin: any, dir: int, edge_type: (type | None) = None
@@ -416,12 +416,14 @@ class JacIntrospection {
     static def list_nodes(module_name: str) -> list[str];
     static def list_edges(module_name: str) -> list[str];
     static def spawn_node(
-        node_name: str, attributes: (dict | None) = None, module_name: str = '__main__'
+        node_name: str,
+        attributes: (dict[str, any] | None) = None,
+        module_name: str = '__main__'
     ) -> NodeArchetype;
 
     static def spawn_walker(
         walker_name: str,
-        attributes: (dict | None) = None,
+        attributes: (dict[str, any] | None) = None,
         module_name: str = '__main__'
     ) -> WalkerArchetype;
 

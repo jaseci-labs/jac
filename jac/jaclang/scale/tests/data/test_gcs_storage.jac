@@ -10,7 +10,7 @@ import from jaclang.project.config { JacConfig }
 import from jaclang.scale.storage.gcs_storage { GcsStorage }
 
 
-glob _EMULATOR: dict = {};
+glob _EMULATOR: dict[str, any] = {};
 
 
 def _require_emulator -> str {

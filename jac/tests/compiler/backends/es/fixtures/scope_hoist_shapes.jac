@@ -65,7 +65,7 @@ impl t_impl(neg: bool) -> str {
     return r2;
 }
 
-def t_all -> dict {
+def t_all -> dict[any, any] {
     return {
         "ifelse": t_ifelse(True),
         "whl": t_while(),

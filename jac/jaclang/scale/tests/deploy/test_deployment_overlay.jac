@@ -14,7 +14,7 @@ import from jaclang.scale.deploy.autoscale.autoscaler { Autoscaler, AutoscalerSp
 import from jaclang.scale.runtime.fleet { fleet_of }
 
 
-def _builder(services: dict) -> ManifestBuilder {
+def _builder(services: dict[str, any]) -> ManifestBuilder {
     return ManifestBuilder(
         k8s_config=KubernetesConfig(app_name="t", namespace="t-ns"),
         fleet=fleet_of({}, overrides=services),

@@ -35,7 +35,7 @@ def get_miss_with_default -> int {
     return d.get("missing", 7);
 }
 
-def get_all -> dict {
+def get_all -> dict[any, any] {
     return {
         "miss_is_none": get_is_none(),
         "miss_is_not_none": get_is_not_none(),

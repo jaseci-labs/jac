@@ -28,7 +28,7 @@ impl ResourceProvider._ensure_indexed -> None {
     }
 }
 
-glob _provider_cache: dict = {};
+glob _provider_cache: dict[str, ResourceProvider] = {};
 
 impl get_resource_provider -> ResourceProvider {
     if "instance" not in _provider_cache {
@@ -310,9 +310,10 @@ impl ResourceProvider._fetch_github_categories -> list[str] {
     if data is None or not isinstance(data, list) {
         return [];
     }
+    entries: list[dict[str, any]] = data;
     categories: list[str] = [
         item["name"]
-        for item in data
+        for item in entries
         if item.get("type") == "dir"
             and not item["name"].startswith(".")
             and not item["name"].startswith("_")
@@ -345,13 +346,16 @@ def _fetch_example_github(github_path: str) -> str {
     return result;
 }
 
-def _list_jac_files_recursive(github_path: str, base_path: str = "") -> list[tuple] {
+def _list_jac_files_recursive(
+    github_path: str, base_path: str = ""
+) -> list[tuple[str, str]] {
     data = _github_api_get(f"{GITHUB_API_BASE}/contents/{github_path}");
     if data is None or not isinstance(data, list) {
         return [];
     }
-    results: list[tuple] = [];
-    for item in data {
+    results: list[tuple[str, str]] = [];
+    entries: list[dict[str, any]] = data;
+    for item in entries {
         name = item.get("name", "");
         rel = f"{base_path}/{name}" if base_path else name;
         if item.get("type") == "file" and name.endswith(".jac") {

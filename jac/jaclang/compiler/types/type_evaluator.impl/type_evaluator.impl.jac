@@ -5321,7 +5321,7 @@ impl TypeEvaluator._specialize_narrow_from_base(
         if not isinstance(m, ClassType) {
             continue;
         }
-        args = m.private.type_args or [];
+        args: list[TypeBase] = m.private.type_args or [];
         if len(args) != want or m.shared.same_class(narrow_type.shared) {
             continue;
         }

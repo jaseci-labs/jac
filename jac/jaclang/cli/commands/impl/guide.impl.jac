@@ -126,7 +126,7 @@ def _print_nav(as_json: bool) -> int {
         return 0;
     }
 
-    def walk(items: list, depth: int) {
+    def walk(items: list[object], depth: int) {
         pad = "  " * (depth + 1);
         for item in items {
             if not isinstance(item, dict) {
@@ -141,7 +141,7 @@ def _print_nav(as_json: bool) -> int {
                 _emit(f"{pad}{title}  [{name}]");
             } elif "items" in item {
                 console.print(f"{pad}{title}", style="bold");
-                walk(item["items"] as list, depth + 1);
+                walk(item["items"] as list[object], depth + 1);
             } elif "url" in item {
                 _emit(f"{pad}{title}  {item['url']}");
             }
@@ -150,7 +150,7 @@ def _print_nav(as_json: bool) -> int {
     console.print();
     console.print("Bundled docs navigation", style="bold");
     console.print();
-    walk(manifest.get("nav", []) as list, 0);
+    walk(manifest.get("nav", []) as list[object], 0);
     console.print();
     console.print("Read a doc with:  jac guide <name>", style="muted");
     console.print("Manifest as JSON: jac guide --nav --json", style="muted");
@@ -158,7 +158,7 @@ def _print_nav(as_json: bool) -> int {
     return 0;
 }
 
-def _index_payload -> list[dict] {
+def _index_payload -> list[dict[str, any]] {
     payload = [
         {
             "name": g.name,

@@ -33,7 +33,7 @@ import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
-     _ENGINE: list = [];
+     _ENGINE: list[any] = [];
 
 """Stand-ins for the fixture's archetypes, so CPython answers the same question."""
 class PyBase {}
@@ -114,7 +114,7 @@ test "untagged arm: bytes answers by its own runtime struct" {
 
 test "abc arm: Sequence reduces to the native shapes that inhabit it" {
     f = native_fn("chk_sequence");
-    operands: list = [[1, 2], 5, "ab", {1: 2}, PyFoo()];
+    operands: list[any] = [[1, 2], 5, "ab", {1: 2}, PyFoo()];
     for k in range(len(operands)) {
         assert f(k) == py_verdict(operands[k], Sequence) , (
             f"chk_sequence({k}) disagrees with CPython"
@@ -125,7 +125,7 @@ test "abc arm: Sequence reduces to the native shapes that inhabit it" {
 
 test "abc arm: Sequence holds for operands whose type is already known" {
     f = native_fn("chk_sequence_typed");
-    operands: list = ["ab", [1, 2], (1, 2, )];
+    operands: list[any] = ["ab", [1, 2], (1, 2, )];
     for k in range(len(operands)) {
         assert f(k) == py_verdict(operands[k], Sequence) , (
             f"chk_sequence_typed({k}) disagrees with CPython"
@@ -193,7 +193,7 @@ test "abc arm: a Python-based operand refuses rather than read a partial MRO" {
 
 test "value arms: a fixed-arity tuple of types unrolls" {
     f = native_fn("chk_types_fixed");
-    picks: list = [PyFoo(), PyBar(), PyBaz()];
+    picks: list[any] = [PyFoo(), PyBar(), PyBaz()];
     for k in range(3) {
         assert f(k) == py_verdict(picks[k], (PyFoo, PyBar, )) , (
             f"chk_types_fixed({k}) disagrees with CPython"
@@ -204,7 +204,7 @@ test "value arms: a fixed-arity tuple of types unrolls" {
 
 test "value arms: a variadic tuple of types loops over a runtime length" {
     f = native_fn("chk_types_variadic");
-    picks: list = [PyFoo(), PyBar(), PyBaz()];
+    picks: list[any] = [PyFoo(), PyBar(), PyBaz()];
     for k in range(3) {
         assert f(k) == py_verdict(picks[k], (PyFoo, PyBar, )) , (
             f"chk_types_variadic({k}) disagrees with CPython"
@@ -228,7 +228,7 @@ test "seam shapes: the coverage sites' own spellings lower and answer" {
 test "value arms: the variadic arity is the caller's, not the signature's" {
     one = native_fn("chk_types_variadic_one");
     three = native_fn("chk_types_variadic_three");
-    picks: list = [PyFoo(), PyBar(), PyBaz()];
+    picks: list[any] = [PyFoo(), PyBar(), PyBaz()];
     for k in range(3) {
         assert one(k) == py_verdict(picks[k], (PyBaz, )) , (
             f"chk_types_variadic_one({k}) disagrees with CPython"

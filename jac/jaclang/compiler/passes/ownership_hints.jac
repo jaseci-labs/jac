@@ -57,7 +57,7 @@ def _explicit_self(ab: Ability) -> bool {
         and params[0].name.sym_name == "self";
 }
 
-def _end_of(nd: Name) -> tuple {
+def _end_of(nd: Name) -> tuple[int, int] {
     loc = nd.loc;
     return (loc.last_line or loc.first_line, loc.col_end or loc.col_start);
 }

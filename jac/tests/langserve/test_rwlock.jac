@@ -19,7 +19,7 @@ import from jaclang.lsp.protocol.server { Workspace }
 glob FIXTURE_DIR = os.path.join(
          os.path.dirname(os.path.abspath(__file__)), "fixtures"
      ),
-     _active_servers: list = [];
+     _active_servers: list[any] = [];
 
 def _clear_jac_modules {
     jac_modules_to_clear = [

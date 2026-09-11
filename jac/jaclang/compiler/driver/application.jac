@@ -6,11 +6,12 @@ import tempfile;
 import time;
 import from pathlib { Path }
 import type from jaclang.runtime.prepared { PreparedApplication }
+import type from jaclang.compiler.frontend { unitree as uni }
 glob _FORMAT: int = 4,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
-def _inventory(`root: any, inputs: bool = False) -> dict {
-    result = {};
+def _inventory(`root: any, inputs: bool = False) -> dict[str, tuple[int, int]] {
+    result: dict[str, tuple[int, int]] = {};
     for (directory, dirs, files) in os.walk(`root) {
         dirs[:] = sorted(
             d
@@ -36,7 +37,7 @@ def _inventory(`root: any, inputs: bool = False) -> dict {
     return result;
 }
 
-def _identity -> tuple {
+def _identity -> tuple[str, str | None, str] {
     import from jaclang.compiler.driver.jir { compiler_generation }
     return (
         compiler_generation(),
@@ -61,7 +62,7 @@ def _write(path: any, value: any) {
     }
 }
 
-def _sections(path: any, program: any) -> dict {
+def _sections(path: any, program: any) -> dict[int, bytes] {
     import from jaclang.compiler.driver.compilation_context { cache_scope, program_for }
     actual = program_for(path, program);
     with cache_scope(actual.context_key, actual.options) {
@@ -69,7 +70,7 @@ def _sections(path: any, program: any) -> dict {
     }
 }
 
-def _context_sections(path: any) -> dict {
+def _context_sections(path: any) -> dict[int, bytes] {
     import from jaclang.compiler.driver.jir {
         get_module_cache_path,
         HEADER_SIZE,
@@ -85,8 +86,8 @@ def _context_sections(path: any) -> dict {
     return read_sections(data, (pos + len(SECTIONS_MAGIC))) if (pos >= 0) else {};
 }
 
-def _project_modules(program: any, `root: any) -> dict {
-    result = {};
+def _project_modules(program: any, `root: any) -> dict[str, uni.Module] {
+    result: dict[str, uni.Module] = {};
     for hub in program._search_hubs() {
         for (path, module) in `list(hub.items()) {
             if (module and os.path.realpath(path).startswith((`root + os.sep))) {
@@ -97,7 +98,7 @@ def _project_modules(program: any, `root: any) -> dict {
     return result;
 }
 
-def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict {
+def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str, any] {
     import from jaclang.compiler.frontend { unitree as uni }
     import from jaclang.compiler.frontend.constant { Tokens as Tok }
     mod = mod if (mod is not None) else program.find_module(path);
@@ -188,7 +189,7 @@ def _check(program: any, before: any) {
 }
 
 def _prepare_sealed(
-    `entry: str, program: any, image_root: str, entries: list
+    `entry: str, program: any, image_root: str, entries: list[str]
 ) -> PreparedApplication {
     import json;
     import from jaclang.runtime.prepared { PreparedApplication, publish }
@@ -313,7 +314,7 @@ def prepare_application(
     }
     import from jaclang.compiler.driver.pass_driver { compile_progress }
     started = time.monotonic();
-    active = [];
+    active: list[str] = [];
     completed: list[int] = [0];
     def begin(path: any) {
         active.append(path);
@@ -346,7 +347,7 @@ def prepare_application(
                 }
                 import from jaclang.compiler.driver.compile_options { CompileOptions }
                 import from jaclang.runtime.prepared { publish }
-                applications = [];
+                applications: list[PreparedApplication] = [];
                 for path in entries {
                     options = bind_options(
                         path,
@@ -456,7 +457,7 @@ def _prepare(
     console.print('  Compiling server modules and placement metadata...');
     before = len(program.errors_had);
     import copy;
-    modules = {};
+    modules: dict[str, uni.Module] = {};
     import from jaclang.compiler.driver.pipeline { compile_application }
     for path in entries {
         options = copy.copy(program.options);

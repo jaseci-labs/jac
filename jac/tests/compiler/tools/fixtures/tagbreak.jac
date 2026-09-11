@@ -367,8 +367,8 @@ obj ClientTweet {
     has username: str = "";
     has id: str = "";
     has content: str = "";
-    has likes: list = [];
-    has comments: list = [];
+    has likes: list[any] = [];
+    has comments: list[any] = [];
 }
 
 # UI Components - Render a single tweet card

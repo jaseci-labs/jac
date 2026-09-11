@@ -15,7 +15,7 @@ obj AndroidEnvironment {
         sdk_home: Path;
 
     def env -> dict[str, str] {
-        result = dict(os.environ);
+        result: dict[str, str] = dict(os.environ);
         result["JAVA_HOME"] = str(self.java_home);
         result["ANDROID_HOME"] = str(self.sdk_home);
         result["ANDROID_SDK_ROOT"] = str(self.sdk_home);

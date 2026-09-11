@@ -3,7 +3,7 @@ import from "motion/react" { motion }
 
 glob MLine: any = motion.line,
      MCircle: any = motion.circle,
-     _GNODES: list[dict] = [
+     _GNODES: list[dict[str, any]] = [
          {"x": 150, "y": 92},
          {"x": 150, "y": 228},
          {"x": 252, "y": 62},
@@ -13,7 +13,7 @@ glob MLine: any = motion.line,
          {"x": 352, "y": 208},
 
      ],
-     _GEDGES: list[dict] = [
+     _GEDGES: list[dict[str, any]] = [
          {"x1": 70, "y1": 160, "x2": 150, "y2": 92},
          {"x1": 70, "y1": 160, "x2": 150, "y2": 228},
          {"x1": 150, "y1": 92, "x2": 252, "y2": 62},

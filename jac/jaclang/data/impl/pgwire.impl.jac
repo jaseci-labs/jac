@@ -51,10 +51,10 @@ impl _decode_value(oid: int, raw: bytes) -> any {
 }
 
 
-impl _named_to_positional(sql: str, params: dict) -> tuple[str, list] {
+impl _named_to_positional(sql: str, params: dict[str, any]) -> tuple[str, list[any]] {
     out: list[str] = [];
     order: dict[str, int] = {};
-    args: list = [];
+    args: list[any] = [];
     i = 0;
     n = len(sql);
     in_squote = False;
@@ -366,7 +366,7 @@ impl PgWireConnection._handle_async(msg_type: str, payload: bytes) -> bool {
 }
 
 
-impl PgWireConnection.run(sql: str, **params: any) -> list {
+impl PgWireConnection.run(sql: str, **params: any) -> list[any] {
     assert not self._closed , 'connection is closed';
     (pos_sql, args) = _named_to_positional(sql, params);
     bind = b'\x00\x00' + struct.pack(_INT16, 0) + struct.pack(_INT16, len(args));
@@ -390,9 +390,9 @@ impl PgWireConnection.run(sql: str, **params: any) -> list {
             + _frame('S', b'')
     );
 
-    rows: list = [];
+    rows: list[tuple[any, ...]] = [];
     oids: list[int] = [];
-    err: (dict | None) = None;
+    err: (dict[str, any] | None) = None;
     while True {
         (mtype, payload) = self._read_message();
         if self._handle_async(mtype, payload) {
@@ -416,7 +416,7 @@ impl PgWireConnection.run(sql: str, **params: any) -> list {
         if mtype == 'D' {
             ncols = struct.unpack(_INT16, payload[:2])[0];
             pos = 2;
-            row: list = [];
+            row: list[any] = [];
             for ci in range(ncols) {
                 vlen = struct.unpack(_INT32, payload[pos:pos + 4])[0];
                 pos += 4;

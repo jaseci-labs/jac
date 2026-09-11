@@ -38,7 +38,7 @@ def _status_of(resp: bytes) -> int {
 }
 
 
-def socket_py -> dict {
+def socket_py -> dict[any, any] {
     port = int(os.getenv("JAC_SOCKET_TEST_PORT"));
     s = socket.create_connection(("127.0.0.1", port));
     s.sendall(_request().encode());
@@ -57,7 +57,7 @@ def socket_py -> dict {
 }
 
 
-def socket_cl -> dict {
+def socket_cl -> dict[any, any] {
     return {};
 }
 

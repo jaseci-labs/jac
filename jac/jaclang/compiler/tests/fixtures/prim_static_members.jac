@@ -53,7 +53,7 @@ obj Point {
 }
 
 
-def static_members_py() -> dict {
+def static_members_py() -> dict[any, any] {
     p = Point.at(3, 4);
     return {
         "shade": Color.shade(5),
@@ -68,7 +68,7 @@ def static_members_py() -> dict {
 }
 
 
-def static_members_cl() -> dict {
+def static_members_cl() -> dict[any, any] {
     return {};
 }
 

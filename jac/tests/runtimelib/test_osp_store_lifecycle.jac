@@ -38,7 +38,7 @@ def _mk_ctx(dirpath: str, name: str) -> ExecutionContext {
     );
 }
 
-def _connect_pair(mem: any, label: str) -> tuple {
+def _connect_pair(mem: any, label: str) -> tuple[any, ...] {
     a = LifeNode(label=f"{label}.src").__jac__;
     b = LifeNode(label=f"{label}.tgt").__jac__;
     e = EdgeAnchor(

@@ -5,7 +5,7 @@ module reveals it. Access-less elements are shared logic; the def:pub is a
 server endpoint and must stay one.
 """
 
-glob _tags: list = [];
+glob _tags: list[any] = [];
 
 def register(tag: str) {
     _tags.append(tag);

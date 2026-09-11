@@ -23,7 +23,7 @@ node N {
 }
 
 walker Ex {
-    has log: list = [];
+    has log: list[any] = [];
 
     can enter with N entry {
         self.log.append(here.val);

@@ -63,7 +63,7 @@ the first `fail_first` build invocations, then hands off to the real binary.
 Every other subcommand (the dependency install that precedes the build) passes
 straight through, so the counter tracks build attempts alone. Uses the
 codebase's own JAC_EXECUTABLE substitution seam, not a mock."""
-def _counting_jac(tmp: str, fail_first: int, failure_text: str) -> tuple {
+def _counting_jac(tmp: str, fail_first: int, failure_text: str) -> tuple[any, ...] {
     counter = os.path.join(tmp, "attempts");
     real_jac = jac_executable();
     script = os.path.join(tmp, "counting-jac.sh");

@@ -27,7 +27,7 @@ glob TAR_DIRTYPE: bytes = b"5",
 
 """Build an in-memory tar of `(name, data, mode)` regular files (a `name`
 ending in "/" is a directory; a `(name, target, "symlink")` row is a symlink)."""
-def make_tar(rows: list) -> bytes {
+def make_tar(rows: list[any]) -> bytes {
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w") as tf {
         for row in rows {

@@ -49,7 +49,7 @@ impl LocalLLM._ensure_llama -> object {
     chat_format = self.config.get("chat_format") or self.spec.get("chat_format");
     verbose = bool(self.config.get("verbose", False));
     n_threads_cfg = int(self.config.get("n_threads", 0));
-    kwargs: dict = {
+    kwargs: dict[str, any] = {
         "model_path": model_path,
         "n_ctx": n_ctx,
         "n_gpu_layers": n_gpu_layers,
@@ -66,7 +66,7 @@ impl LocalLLM._ensure_llama -> object {
     return self._llama;
 }
 
-impl LocalLLM.model_call_no_stream(params: dict) -> dict {
+impl LocalLLM.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
     engine = self._ensure_llama();
     call_params = filter_params(params);
     resp = engine.create_chat_completion(**call_params);
@@ -91,7 +91,9 @@ impl LocalLLM.model_call_no_stream(params: dict) -> dict {
     return resp;
 }
 
-impl LocalLLM.model_call_with_stream(params: dict) -> Generator[object, None, None] {
+impl LocalLLM.model_call_with_stream(
+    params: dict[str, any]
+) -> Generator[object, None, None] {
     engine = self._ensure_llama();
     call_params = filter_params(params);
     call_params["stream"] = True;
@@ -100,7 +102,7 @@ impl LocalLLM.model_call_with_stream(params: dict) -> Generator[object, None, No
     }
 }
 
-impl LocalLLM._get_ctx_window(call_params: dict) -> int {
+impl LocalLLM._get_ctx_window(call_params: dict[str, any]) -> int {
     `override = int(
         call_params.get("ctx_window")
             or self.ctx_window

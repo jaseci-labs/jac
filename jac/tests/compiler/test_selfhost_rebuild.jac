@@ -51,13 +51,13 @@ def _peak_children_mb -> int {
     return int(peak // 1024);
 }
 
-def _cold_rebuild -> tuple[int, dict, int] {
+def _cold_rebuild -> tuple[int, dict[str, any], int] {
     work = tempfile.mkdtemp();
     probe = os.path.join(work, "probe.jac");
     with open(probe, "w") as fh {
         fh.write(PROBE_SRC);
     }
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["HOME"] = work;
     env["XDG_CACHE_HOME"] = os.path.join(work, "cache");
     env["LOCALAPPDATA"] = os.path.join(work, "cache");

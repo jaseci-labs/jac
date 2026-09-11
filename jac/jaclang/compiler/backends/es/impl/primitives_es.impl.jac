@@ -1711,7 +1711,7 @@ impl ESBuiltinEmitter.emit_print(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     import from jaclang.runtime.scalars { shape_of }
-    names = ctx.arg_type_names or [];
+    names: list[str] = ctx.arg_type_names or [];
     shown: list[str] = [];
     for (i, a) in enumerate(args) {
         shape = shape_of(names[i]) if i < len(names) else None;
@@ -1813,7 +1813,7 @@ impl ESBuiltinEmitter.emit_abs(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     import from jaclang.runtime.scalars { is_sized }
-    names = ctx.arg_type_names or [];
+    names: list[str] = ctx.arg_type_names or [];
     if args and names and is_sized(names[0]) {
         return _rt("fw", "abs_" + names[0], [args[0]]);
     }

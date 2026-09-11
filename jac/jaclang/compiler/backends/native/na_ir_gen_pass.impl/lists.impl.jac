@@ -364,7 +364,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
 
     _first_spread = self._spread_operand(nd.values[0]);
     first_val: (ir.Value | None) = None;
-    _first_src_info: (dict | None) = None;
+    _first_src_info: (dict[str, any] | None) = None;
     if _first_spread is not None {
         _first_src_info = self._container_src_info(
             self._str_norm_optional(self._codegen_expr(_first_spread))
@@ -901,7 +901,9 @@ impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
     _d_selfp = b.bitcast(drop_fn.args[0], _stp, name="d.self");
     _d_fields = self._emit_struct_drop_fields_fn(tname);
 
-    def _aos_drop_elem(bl: ir.IRBuilder, i: ir.Value, elem_ptrs: list) -> ir.IRBuilder {
+    def _aos_drop_elem(
+        bl: ir.IRBuilder, i: ir.Value, elem_ptrs: list[ir.Value]
+    ) -> ir.IRBuilder {
         if _d_fields is not None {
             bl.call(_d_fields, [bl.bitcast(elem_ptrs[0], i8p, name="d.elem8")]);
         }

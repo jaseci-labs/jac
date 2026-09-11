@@ -16,7 +16,7 @@ def with_pipe(x: int | str) -> str {
 
 # --- Union[...] works with type narrowing via early returns ---
 
-def narrow_union(x: Union[list, int, str]) -> str {
+def narrow_union(x: Union[list[any], int, str]) -> str {
     if isinstance(x, list) {
         return str(len(x));
     }

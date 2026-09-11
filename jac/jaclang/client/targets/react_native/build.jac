@@ -332,7 +332,7 @@ def lint_native_incompatible_usage(
     relative_img_src_hits: set[str] = set();
     bundleable_relative_img_src_hits: set[str] = set();
     unresolved_relative_img_src_hits: set[str] = set();
-    global_patterns = {};
+    global_patterns: dict[str, any] = {};
     for global_name in _WEB_ONLY_GLOBALS {
         global_patterns[global_name] = re.compile(
             r"\b" + re.escape(global_name) + r"\b"
@@ -564,7 +564,7 @@ def run_gradle_assemble(rn_dir: Path, release: bool = False) -> Path {
         / "apk"
         / ("release" if release else "debug")
     );
-    candidates = [];
+    candidates: list[Path] = [];
     if preferred.exists() {
         candidates.extend(
             [
@@ -683,7 +683,7 @@ def run_xcodebuild_ios(
         / "Build"
         / "Products"
         / f"{configuration}-{products_suffix}";
-    app_candidates = [];
+    app_candidates: list[Path] = [];
     if products_dir.exists() {
         app_candidates.extend(
             [

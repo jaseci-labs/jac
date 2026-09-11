@@ -5,7 +5,7 @@ Set fixtures use ascending small ints so CPython's hash order coincides
 with native insertion order. ES/JS opts out.
 """
 
-def repr_py -> dict {
+def repr_py -> dict[any, any] {
     lst: list[int] = [1, 2, 3];
     empty: list[int] = [];
     nested: list[list[int]] = [[1, 2], [3]];
@@ -31,7 +31,7 @@ def repr_py -> dict {
     };
 }
 
-def repr_cl -> dict {
+def repr_cl -> dict[any, any] {
     return {};
 }
 

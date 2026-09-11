@@ -165,14 +165,15 @@ async def _do_call_tool(
     logger.debug(f"[MCP] call_tool {name}({arguments})");
     result = await session.call_tool(name, arguments);
     parts: list[str] = [];
-    for item in (result.content or []) {
+    content: any = result.content or [];
+    for item in content {
         text = item?.text;
         parts.append(str(text) if text is not None else str(item));
     }
     return "\n".join(parts) if parts else "MCP tool returned no content.";
 }
 
-async def _open_transport(client: McpClient, transport_type: str) -> tuple {
+async def _open_transport(client: McpClient, transport_type: str) -> tuple[any, ...] {
     import from mcp.client.stdio { StdioServerParameters, stdio_client }
     import from mcp.client.sse { sse_client }
     import from mcp.client.streamable_http { streamablehttp_client }
@@ -242,7 +243,7 @@ impl McpClient.connect -> None {
     }
 }
 
-impl McpClient.get_tools(names: list[str] | None = None) -> list {
+impl McpClient.get_tools(names: list[str] | None = None) -> list[McpTool] {
     state = _get_state(self);
     if not state.connected {
         self.connect();
@@ -305,7 +306,7 @@ impl McpTool.get_json_schema -> dict[str, any] {
     };
 }
 
-impl McpTool.parse_arguments(args_json: dict) -> dict {
+impl McpTool.parse_arguments(args_json: dict[str, any]) -> dict[str, any] {
     return args_json;
 }
 

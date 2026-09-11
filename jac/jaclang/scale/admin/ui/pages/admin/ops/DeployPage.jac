@@ -24,8 +24,8 @@ def:pub DeployPage -> JsxElement {
         available: bool = True,
         detail: str = "",
         namespace: str = "",
-        deployments: list = [],
-        pods: list = [],
+        deployments: list[dict[str, any]] = [],
+        pods: list[dict[str, any]] = [],
         errorMsg: str = "",
         loadedOnce: bool = False;
 
@@ -40,8 +40,8 @@ def:pub DeployPage -> JsxElement {
                 available = data["available"] or False;
                 detail = data["detail"] or "";
                 namespace = data["namespace"] or "";
-                deployments = data["deployments"] or [];
-                pods = data["pods"] or [];
+                deployments: list[dict[str, any]] = data["deployments"] or [];
+                pods: list[dict[str, any]] = data["pods"] or [];
                 errorMsg = "";
             } elif result["error"] {
                 errorMsg = getErrorMessage(result, "Failed to load deploy health");
@@ -85,7 +85,7 @@ def:pub DeployPage -> JsxElement {
         return base + "bg-danger-weak text-danger";
     }
 
-    def containerSummary(containers: list) -> str {
+    def containerSummary(containers: list[dict[str, any]]) -> str {
         parts: list[str] = [];
         for c in containers {
             tag = c["state"];
@@ -97,7 +97,7 @@ def:pub DeployPage -> JsxElement {
         return ", ".join(parts);
     }
 
-    def joinLabels(values: list) -> str {
+    def joinLabels(values: list[str]) -> str {
         return ", ".join([String(v) for v in values]);
     }
 

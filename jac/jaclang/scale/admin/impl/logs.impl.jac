@@ -87,7 +87,9 @@ def _service_to_pod_regex(service: str) -> str {
 }
 
 
-def _parse_log_body(body: str, pod_labels: dict, ts_nanos: str) -> dict {
+def _parse_log_body(
+    body: str, pod_labels: dict[str, str], ts_nanos: str
+) -> dict[str, any] {
     try {
         ns = int(ts_nanos);
         ts_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ns / 1_000_000_000))
@@ -96,7 +98,7 @@ def _parse_log_body(body: str, pod_labels: dict, ts_nanos: str) -> dict {
         ts_iso = "";
     }
 
-    out: dict = {
+    out: dict[str, any] = {
         "ts": ts_iso,
         "ts_ns": ts_nanos,
         "level": pod_labels.get("level") or "INFO",
@@ -178,7 +180,7 @@ def _build_logql(
 }
 
 
-async def _loki_request(path: str, params: dict) -> dict {
+async def _loki_request(path: str, params: dict[str, str]) -> dict[str, any] {
     import from jaclang.server.serving.client { ClientConnectionError, arequest }
     base = _loki_base_url();
     url = f"{base}{path}";
@@ -197,12 +199,16 @@ async def _loki_request(path: str, params: dict) -> dict {
 }
 
 
-def _flatten_loki_response(payload: dict, ascending: bool = True) -> list[dict] {
-    out: list[dict] = [];
-    data = payload.get("data") or {};
-    for stream in (data.get("result") or []) {
-        labels: dict = stream.get("stream") or {};
-        for `entry in (stream.get("values") or []) {
+def _flatten_loki_response(
+    payload: dict[str, any], ascending: bool = True
+) -> list[dict[str, any]] {
+    out: list[dict[str, any]] = [];
+    data: any = payload.get("data") or {};
+    results: any = data.get("result") or [];
+    for stream in results {
+        labels: any = stream.get("stream") or {};
+        values: any = stream.get("values") or [];
+        for `entry in values {
             if len(`entry) < 2 {
                 continue;
             }

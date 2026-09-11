@@ -39,7 +39,7 @@ glob FIXTURES = os.path.join(
 
 
 """Compile a fixture natively under the coverage; return (module, coverage)."""
-def _compile(fixture: str) -> tuple {
+def _compile(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     na_coverage_begin();
     try {
@@ -61,7 +61,7 @@ def _compile(fixture: str) -> tuple {
 
 
 """The coverage seams recorded across every module of the compile."""
-def _all_seams(coverage: dict) -> list[str] {
+def _all_seams(coverage: dict[str, any]) -> list[str] {
     out: list[str] = [];
     for (_, rec) in coverage.items() {
         for s in (rec.get("seams") or []) {

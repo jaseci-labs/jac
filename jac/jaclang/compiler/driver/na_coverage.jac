@@ -2,7 +2,7 @@ import os;
 import sys;
 import jaclang.compiler.frontend.unitree as uni;
 
-glob _na_coverage: dict[str, dict] = {},
+glob _na_coverage: dict[str, dict[str, any]] = {},
      _na_coverage_state: dict[str, bool] = {"enabled": False},
      _na_cap_noted: dict[str, bool] = {};
 
@@ -46,7 +46,7 @@ def na_coverage_seam(path: str, reason: str) {
     rec['seams'].append(reason);
 }
 
-def na_coverage_capture(path: str) -> dict {
+def na_coverage_capture(path: str) -> dict[str, any] {
     if not path {
         return {};
     }
@@ -62,7 +62,7 @@ def na_coverage_capture(path: str) -> dict {
     };
 }
 
-def na_coverage_replay(path: str, rec: dict) {
+def na_coverage_replay(path: str, rec: dict[str, any]) {
     if not _na_coverage_state["enabled"] or not path or not rec {
         return;
     }
@@ -78,7 +78,7 @@ def na_coverage_replay(path: str, rec: dict) {
     };
 }
 
-def na_coverage_end -> dict {
+def na_coverage_end -> dict[str, dict[str, any]] {
     snap = dict(_na_coverage);
     _na_coverage_state["enabled"] = False;
     return snap;

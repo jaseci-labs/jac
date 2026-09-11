@@ -21,7 +21,7 @@ import from jaclang.scale.runtime.gateway.route_table {
 
 
 """Serve the in-process jac app over a real socket; returns (server, port)."""
-def _expose_backend(client: ScaleTestClient) -> tuple {
+def _expose_backend(client: ScaleTestClient) -> tuple[any, ...] {
     import from jaclang.server.serving.server { ServingServer }
     backend = client._server;
     assert backend is not None , "client has no in-process server";
@@ -44,7 +44,7 @@ def _gateway_for(port: int, dist_dir: str = "") -> MicroserviceGateway {
             status=ServiceStatus.HEALTHY
         )
     );
-    kwargs: dict = {"registry": reg};
+    kwargs: dict[str, any] = {"registry": reg};
     if dist_dir {
         kwargs["client_dist_dir"] = dist_dir;
     }

@@ -27,7 +27,7 @@ import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
 
 
 obj PodListStub {
-    has pods: list;
+    has pods: list[any];
 
     def list_namespaced_pod(namespace: str) -> V1PodList {
         return V1PodList(items=self.pods);
@@ -50,7 +50,7 @@ def _cs(name: str, restarts: int, waiting_reason: str = "") -> V1ContainerStatus
 }
 
 
-def _pod(name: str, app: str, phase: str, statuses: list, pth: str = "") -> V1Pod {
+def _pod(name: str, app: str, phase: str, statuses: list[any], pth: str = "") -> V1Pod {
     labels = {"app": app};
     if pth {
         labels["pod-template-hash"] = pth;
@@ -71,7 +71,7 @@ def _target -> KubernetesTarget {
 }
 
 
-def _scan(pods: list) -> dict {
+def _scan(pods: list[any]) -> dict[str, any] {
     return _target()._scan_for_crash_loop(
         PodListStub(pods=pods),
         "jb-standup",
@@ -82,7 +82,7 @@ def _scan(pods: list) -> dict {
 }
 
 
-glob _FLEET: list = [
+glob _FLEET: list[any] = [
          _pod(
              "main-deployment-6874b99c85-dh4p8",
              "main",

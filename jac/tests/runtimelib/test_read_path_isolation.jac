@@ -34,7 +34,7 @@ def _store(s: Session) -> Store {
 }
 
 
-def _server_txn_state(s: Session) -> list {
+def _server_txn_state(s: Session) -> list[any] {
     r = _store(s).rows(
         "SELECT current_setting('transaction_isolation'),"
         " current_setting('transaction_read_only')",

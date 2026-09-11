@@ -131,7 +131,7 @@ S3 backends and `get_url` presigning: `jac-sv-deploy`.
 
 - Mark an endpoint `async def:pub` when its body uses `await` (external API calls, LLM endpoints), so the result is awaited rather than handed back as an unresolved coroutine.
 - Give every endpoint an explicit return type - **the return type IS the wire format**. Use typed objs/nodes for domain data (the client gets dot access: `items[0].title`); an ad-hoc `dict` is fine for a one-off payload (`{"liked": True, "likes": ...}`).
-- **JSON-shaped `dict` returns: don't chase the warning pair.** A bare `-> dict` draws W1036 (add type args); `-> dict[str, any]` swaps it for the noisier W1037 (explicit any disables checking). Where a heterogeneous dict is genuinely the contract, keep bare `dict` - W1036 is informational.
+- **JSON-shaped `dict` returns: name the value type.** A bare `-> dict` is an error (E1036). Where a heterogeneous dict is genuinely the contract, write `-> dict[str, any]`; that draws W1037 (explicit any disables checking), which is the intended trade and is informational.
 - **`_jac_id` is volatile** - the runtime assigns a fresh one to the walker instance and to every freshly-constructed report obj on every response (persistent node jids are stable). Strip it before hashing, caching, or diffing responses.
 - Mixed visibility in one module is normal design: an anonymous `walker:pub` (public directory, trending) sits next to authenticated plain walkers.
 - Walker spawns take **keyword** arguments mapped to `has` fields (`{"title": ...}` in the body); function calls take the declared parameters. Don't pass nodes by reference across the wire - pass `jid(node)` strings.

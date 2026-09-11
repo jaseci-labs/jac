@@ -13,7 +13,7 @@ import from jaclang.server.hmr { HotReloader }
 import from jaclang.server.watcher { JacFileWatcher }
 
 obj _CapturedServer {
-    has endpoints: list = [],
+    has endpoints: list[any] = [],
         base_path: str = "";
 
     def add_endpoint(ep: any) {

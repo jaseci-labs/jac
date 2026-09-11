@@ -46,7 +46,7 @@ impl _real(path: str) -> str {
     return os.path.normcase(os.path.realpath(os.path.abspath(path)));
 }
 
-impl _read_toml(toml_path: str) -> dict {
+impl _read_toml(toml_path: str) -> dict[str, any] {
     import tomllib;
     try {
         with open(toml_path, 'rb') as f {
@@ -58,7 +58,7 @@ impl _read_toml(toml_path: str) -> dict {
     return doc if isinstance(doc, dict) else {};
 }
 
-impl _table(raw: any, *keys: str) -> dict {
+impl _table(raw: any, *keys: str) -> dict[str, any] {
     cur = raw;
     for key in keys {
         if not isinstance(cur, dict) {
@@ -100,7 +100,7 @@ impl _npm_names_of(raw: any) -> set[str] {
     return names;
 }
 
-impl _chain_stamp(root_dir: str) -> tuple {
+impl _chain_stamp(root_dir: str) -> tuple[float, ...] {
     stamps: list[float] = [];
     cur: (str | None) = root_dir;
     seen: set[str] = set();
@@ -124,7 +124,7 @@ impl _chain_stamp(root_dir: str) -> tuple {
     return tuple(stamps);
 }
 
-impl _implicit_kind(root_dir: str, project: dict) -> str {
+impl _implicit_kind(root_dir: str, project: dict[str, any]) -> str {
     kind = str(project.get('kind', '') or '');
     if kind {
         return kind;
@@ -141,7 +141,9 @@ impl _implicit_kind(root_dir: str, project: dict) -> str {
     return outer_app.kind if outer_app is not None else '';
 }
 
-impl _build_workspace(root_dir: str, toml_path: str, doc: dict) -> WorkspaceSpec {
+impl _build_workspace(
+    root_dir: str, toml_path: str, doc: dict[str, any]
+) -> WorkspaceSpec {
     project = _table(doc, 'project');
     apps_raw = doc.get('apps', {});
     explicit = isinstance(apps_raw, dict) and len(apps_raw) > 0;

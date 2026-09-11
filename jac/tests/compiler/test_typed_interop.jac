@@ -177,7 +177,7 @@ test "cl->sv: sv-imported type does not become a callable stub (#6795)" {
 
 # Inline cl block with def:pub produces __jacCallFunction
 test "inline cl block with defpub generates stubs" {
-    code = '"""Test."""\n\nimport os;\n\ndef:pub get_data(name: str) -> dict {\n    return {"message": "Hello " + name + os.sep};\n}\n\nasync def:pub app() -> Any {\n    data = await get_data("World");\n    return <div>{data}</div>;\n}\n';
+    code = '"""Test."""\n\nimport os;\n\ndef:pub get_data(name: str) -> dict[any, any] {\n    return {"message": "Hello " + name + os.sep};\n}\n\nasync def:pub app() -> Any {\n    data = await get_data("World");\n    return <div>{data}</div>;\n}\n';
     mod = compile_inline(code);
     js = mod.gen.js;
     assert "__jacCallFunction" in js;

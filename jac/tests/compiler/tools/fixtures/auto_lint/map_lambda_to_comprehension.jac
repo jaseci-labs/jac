@@ -5,11 +5,10 @@ lambda that must be left alone (MultiParamMap), since list comprehensions
 only bind a single iteration variable per `for` clause.
 """
 
-def:pub HourGrid(hours: list, items: list) -> JsxElement {
+def:pub HourGrid(hours: list[any], items: list[any]) -> JsxElement {
     hourLabels = hours.map(
-        lambda (hour: any) -> any {
-            return <div className="text-xs text-center">{hour}</div>;
-        }
+        lambda (hour: any) -> any { return
+            <div className="text-xs text-center">{hour}</div>; }
     );
 
     return (
@@ -20,11 +19,7 @@ def:pub HourGrid(hours: list, items: list) -> JsxElement {
     );
 }
 
-def:pub MultiParamMap(items: list) -> JsxElement {
-    rendered = items.map(
-        lambda (a: any, b: any) -> any {
-            return <li>{a + b}</li>;
-        }
-    );
+def:pub MultiParamMap(items: list[any]) -> JsxElement {
+    rendered = items.map(lambda (a: any, b: any) -> any { return <li>{a + b}</li>; });
     return <ul>{rendered}</ul>;
 }

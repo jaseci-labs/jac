@@ -231,8 +231,8 @@ impl types_equivalent(a: TypeBase, b: TypeBase, depth: int = 0) -> bool {
         if a.get_literal_value() != b.get_literal_value() {
             return False;
         }
-        a_args = a.private.type_args or [];
-        b_args = b.private.type_args or [];
+        a_args: list[TypeBase] = a.private.type_args or [];
+        b_args: list[TypeBase] = b.private.type_args or [];
         if len(a_args) != len(b_args) {
             return False;
         }
@@ -244,8 +244,8 @@ impl types_equivalent(a: TypeBase, b: TypeBase, depth: int = 0) -> bool {
         return True;
     }
     if isinstance(a, FunctionType) and isinstance(b, FunctionType) {
-        a_params = a.parameters or [];
-        b_params = b.parameters or [];
+        a_params: list[Parameter] = a.parameters or [];
+        b_params: list[Parameter] = b.parameters or [];
         if len(a_params) != len(b_params) {
             return False;
         }
@@ -272,8 +272,8 @@ impl types_equivalent(a: TypeBase, b: TypeBase, depth: int = 0) -> bool {
         return True;
     }
     if isinstance(a, UnionType) and isinstance(b, UnionType) {
-        a_types = a.types or [];
-        b_types = b.types or [];
+        a_types: list[TypeBase] = a.types or [];
+        b_types: list[TypeBase] = b.types or [];
         if len(a_types) != len(b_types) {
             return False;
         }
@@ -620,8 +620,8 @@ impl compute_mro_linearization(
     }
 }
 
-impl mro_signature(cls: ClassType) -> tuple {
-    sig: list = [];
+impl mro_signature(cls: ClassType) -> tuple[tuple[int, int | str], ...] {
+    sig: list[tuple[int, int | str]] = [];
     for base in cls.shared.base_classes {
         if isinstance(base, ClassType) {
             sig.append((id(base.shared), len(base.shared.mro)));
@@ -774,8 +774,8 @@ impl apply_solved_type_vars(
         }
 
         if class_type is not None and ty.name {
-            cls_type_params = class_type.shared.type_params or [];
-            cls_type_args = class_type.private.type_args or [];
+            cls_type_params: list[TypeVarType] = class_type.shared.type_params or [];
+            cls_type_args: list[TypeBase] = class_type.private.type_args or [];
             for (idx, tp) in enumerate(cls_type_params) {
                 if tp.name == ty.name {
                     if idx < len(cls_type_args) {
@@ -862,9 +862,12 @@ impl build_type_var_solution(class_type: ClassType) -> dict[str, TypeBase] {
             }
         }
     } elif class_type.shared.type_params {
+        unparameterized: TypeBase = UnknownType()
+            if class_type.is_builtin(BARE_GENERIC_REQUIRED)
+            else AnyType();
         for tp in class_type.shared.type_params {
             if tp.name {
-                solution[tp.name] = AnyType();
+                solution[tp.name] = unparameterized;
             }
         }
     }

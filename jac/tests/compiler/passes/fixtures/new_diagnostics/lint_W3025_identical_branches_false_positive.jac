@@ -4,7 +4,7 @@ one pair that genuinely matches (must warn exactly once)."""
 
 with entry {
     flag = True;
-    model_fields: dict = {};
+    model_fields: dict[any, any] = {};
     default_val = 42;
     description = "hi";
 
@@ -20,7 +20,7 @@ with entry {
     result = 0;
     extra = {"a": 1};
     if flag {
-        result = sum({1: 10, **extra}.values());
+        result = sum({1: 10, ** extra}.values());
     } else {
         result = sum(extra.values());
     }

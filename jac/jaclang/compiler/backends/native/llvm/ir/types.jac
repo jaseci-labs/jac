@@ -453,7 +453,7 @@ class VectorType(Type) {
 
 class Aggregate(Type) {
     with entry {
-        elements: (_Repeat | tuple | None);
+        elements: (_Repeat | tuple[Type, ...] | None);
     }
 
     def __len__(self: Aggregate) -> object {
@@ -622,7 +622,7 @@ class LiteralStructType(BaseStructType) {
 class IdentifiedStructType(BaseStructType) {
     with entry {
         null = 'zeroinitializer';
-        elements: (tuple | None);
+        elements: (tuple[Type, ...] | None);
     }
 
     def init(

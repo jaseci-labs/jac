@@ -53,7 +53,7 @@ impl OwnershipCheckPass._flow_reduce_shape(asgn: Assignment, sid: SymId) -> str 
             return "";
         }
     }
-    _params = fc.params or [];
+    _params: Sequence[any] = fc.params or [];
     if len(_params) != 2 {
         return "";
     }
@@ -460,7 +460,9 @@ impl OwnershipCheckPass._is_deep_immutable_scalar(nm: Name) -> bool {
     return _mangled in ("int", "float", "bool", "str", "bytes");
 }
 
-impl OwnershipCheckPass._chunks_shape_of(expr: Expr | None) -> (tuple | None) {
+impl OwnershipCheckPass._chunks_shape_of(
+    expr: Expr | None
+) -> (tuple[Expr, Expr] | None) {
     if not isinstance(expr, FuncCall) {
         return None;
     }

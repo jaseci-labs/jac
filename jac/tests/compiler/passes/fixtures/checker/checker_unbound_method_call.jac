@@ -15,13 +15,13 @@ obj Dog(Animal) {
 
 # Valid: multiple inheritance
 obj BaseNode {
-    def init(kid: list) {
+    def init(kid: list[any]) {
         self.kid = kid;
     }
 }
 
 obj ChildNode(BaseNode) {
-    def init(items: list) {
+    def init(items: list[any]) {
         BaseNode.init(self, kid=items);
     }
 }

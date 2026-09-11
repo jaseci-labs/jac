@@ -30,7 +30,7 @@ import from jaclang.dist.precompile_bytecode { precompile_unit }
 import from types { CodeType }
 import from unittest.mock { patch }
 
-glob CACHE_HOME_VARS: tuple = (
+glob CACHE_HOME_VARS: tuple[any, ...] = (
          "HOME",
          "USERPROFILE",
          "XDG_CACHE_HOME",

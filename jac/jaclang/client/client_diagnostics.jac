@@ -1,3 +1,5 @@
+import type from jaclang.compiler.passes.transform { Alert }
+
 enum DiagChannel { JAC = "jac", VITE = "vite", BROWSER = "browser", SERVER = "server" }
 
 obj ClientDiagnostic {
@@ -31,10 +33,10 @@ def related_location(
     label: str, file: str, line: int = 0, column: int = 0
 ) -> dict[str, any];
 
-def diagnostic_from_alert(alert: any, base_path: str = "") -> ClientDiagnostic;
+def diagnostic_from_alert(alert: Alert, base_path: str = "") -> ClientDiagnostic;
 
 def diagnostics_from_alerts(
-    alerts: list[any], base_path: str = ""
+    alerts: list[Alert], base_path: str = ""
 ) -> list[ClientDiagnostic];
 
 def build_failure_diagnostic(

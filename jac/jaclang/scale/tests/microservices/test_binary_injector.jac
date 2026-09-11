@@ -419,7 +419,7 @@ test "BinaryInjector unpacks AND seeds both the app .jab and the toolchain bundl
     assert "toolchain/orders/bbb.tar.gz" in keys;
 }
 
-glob _fake_urls: dict = {};
+glob _fake_urls: dict[str, any] = {};
 
 
 def _fake_admin_dist_urls(channel: str, version: str = "") -> tuple[str, str] {
@@ -725,7 +725,7 @@ test "host_seal_platform accepts linux/macos hosts and rejects the rest" {
 }
 
 
-glob _dl_seen: dict = {};
+glob _dl_seen: dict[str, any] = {};
 
 
 def _capture_fetch(url: str, checksum_url: str, cache_file: Path, what: str) -> bytes {

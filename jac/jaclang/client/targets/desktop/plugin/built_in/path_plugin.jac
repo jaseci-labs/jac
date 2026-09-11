@@ -26,7 +26,7 @@ obj PathPlugin(DesktopPlugin) {
         self.plugin_name = "jac.path";
     }
 
-    def handle(command: str, args: dict) -> dict {
+    def handle(command: str, args: dict[str, any]) -> dict[str, any] {
         if command == "home" {
             return {"path": str(Path.home())};
         }

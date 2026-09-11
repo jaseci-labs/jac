@@ -141,14 +141,14 @@ node Person {
     static def __jac_schema__ -> None;       # field-level history hook
 }
 
-def fix_tags(doc: dict) -> None {            # migration callback for the rule below
+def fix_tags(doc: dict[str, any]) -> None {  # migration callback for the rule below
     doc["tags"] = str(doc.get("tags", "")).split(",");
 }
 
 impl Person.__jac_schema__ -> None {
     schema_alias("name", stored="username"); # field rename: old value flows into new field
     schema_drop("legacy_bio");               # deleted field: preserve remains in the attic
-    schema_upgrade(fix_tags, when=(lambda (doc: dict) { isinstance(doc.get("tags"), str); }));
+    schema_upgrade(fix_tags, when=(lambda (doc: dict[str, any]) { isinstance(doc.get("tags"), str); }));
 }
 ```
 

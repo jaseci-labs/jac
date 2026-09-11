@@ -1245,7 +1245,7 @@ test "websocket functionality" {
         }
         asyncio.run(test_private_broadcast_no_auth());
 
-        users: list = [];
+        users: list[any] = [];
         for i in range(2) {
             username = f"broadcast_user_{i}_{uuid.uuid4().hex[:8]}";
             password = "testpass123";
@@ -1268,7 +1268,7 @@ test "websocket functionality" {
             );
         }
 
-        async def test_private_broadcast_with_auth(u: list) {
+        async def test_private_broadcast_with_auth(u: list[any]) {
             async with await aws_connect(
                 f"{sv_ws_url}/ws/PrivateBroadcastChat?token={u[0]['token']}"
             ) as ws1 {

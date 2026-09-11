@@ -19,7 +19,7 @@ import from "@hugeicons/core-free-icons" {
     CheckmarkCircle01Icon
 }
 
-glob _KINDS: list[dict] = [
+glob _KINDS: list[dict[str, any]] = [
          {"name": "Script / CLI tool", "cmd": "jac run app.jac"},
          {"name": "Zero-dependency native binary", "cmd": "jac build --as native"},
          {"name": "REST API + Swagger + auth", "cmd": "jac run --serve api.jac"},

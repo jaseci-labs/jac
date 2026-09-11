@@ -81,7 +81,7 @@ def loop_examples(limit: int) -> int {
 }
 
 # Data structures and assignments
-def collection_examples -> dict {
+def collection_examples -> dict[any, any] {
     numbers = [1, 2, 3, 4];
     person = {"name": "Alice", "age": 30};
     matrix = [[1, 2], [3, 4]];
@@ -89,7 +89,7 @@ def collection_examples -> dict {
     return {"numbers": numbers, "person": person, "matrix": matrix, "history": history};
 }
 
-def destructuring_examples -> dict {
+def destructuring_examples -> dict[any, any] {
     (x, y) = (10, 20);
     [a, b, c] = [1, 2, 3];
     (head, *tail) = [5, 6, 7, 8];
@@ -103,7 +103,7 @@ def destructuring_examples -> dict {
     };
 }
 
-def assignment_examples(value: int) -> dict {
+def assignment_examples(value: int) -> dict[any, any] {
     # `/=` produces a float, so the accumulator is float-typed from the start.
     current: float = value;
     current += 5;
@@ -127,7 +127,7 @@ def safe_division(a: int, b: int) -> float {
 }
 
 # Boolean and comparison helpers
-def compare_values(x: int, y: int) -> dict {
+def compare_values(x: int, y: int) -> dict[any, any] {
     return {
         "lt": x < y,
         "le": x <= y,
@@ -208,13 +208,13 @@ enum Status { ACTIVE = "active", INACTIVE = "inactive", PENDING = "pending" }
 
 enum Priority { LOW = 1, MEDIUM = 2, HIGH = 3 }
 
-def summarize_status -> dict {
+def summarize_status -> dict[any, any] {
     states = [Status.ACTIVE, Status.PENDING];
     return {"first": states[0], "count": len(states), "names": ["ACTIVE", "PENDING"]};
 }
 
 # Utility demonstrating combined features
-def build_report(data: list) -> dict {
+def build_report(data: list[any]) -> dict[any, any] {
     processed = [];
     for item in data {
         if item is None {

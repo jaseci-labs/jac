@@ -4,32 +4,32 @@ Cross-backend equivalence fixture.
 """
 
 # --- Range constructor and methods ---
-def range_py() -> dict {
+def range_py() -> dict[any, any] {
     # range_builtin_py
-    r1: list = list(range(5));
-    r2: list = list(range(2, 7));
-    r3: list = list(range(0, 10, 2));
-    r4: list = list(range(10, 0, -2));
-    r5: list = list(range(5, 5));
-    r6: list = list(range(10, 5));
-    r7: list = list(range(3, 4));
+    r1: list[any] = list(range(5));
+    r2: list[any] = list(range(2, 7));
+    r3: list[any] = list(range(0, 10, 2));
+    r4: list[any] = list(range(10, 0, -2));
+    r5: list[any] = list(range(5, 5));
+    r6: list[any] = list(range(10, 5));
+    r7: list[any] = list(range(3, 4));
 
     total: int = 0;
     for i in range(5) {
         total += i;
     }
 
-    stepped: list = [];
+    stepped: list[any] = [];
     for i in range(1, 10, 3) {
         stepped.append(i);
     }
 
-    countdown: list = [];
+    countdown: list[any] = [];
     for i in range(5, 0, -1) {
         countdown.append(i);
     }
 
-    pairs: list = [];
+    pairs: list[any] = [];
     for i in range(3) {
         for j in range(2) {
             pairs.append(i * 10 + j);
@@ -37,7 +37,7 @@ def range_py() -> dict {
     }
 
     # range_methods_py
-    r_m: list = list(range(0, 10, 2));
+    r_m: list[any] = list(range(0, 10, 2));
     count_hit: int = r_m.count(4);
     count_miss: int = r_m.count(3);
     idx_first: int = r_m.index(0);
@@ -82,38 +82,38 @@ def range_py() -> dict {
     };
 }
 
-def range_cl() -> dict {
-    r1: list = list(range(5));
-    r2: list = list(range(2, 7));
-    r3: list = list(range(0, 10, 2));
-    r4: list = list(range(10, 0, -2));
-    r5: list = list(range(5, 5));
-    r6: list = list(range(10, 5));
-    r7: list = list(range(3, 4));
+def range_cl() -> dict[any, any] {
+    r1: list[any] = list(range(5));
+    r2: list[any] = list(range(2, 7));
+    r3: list[any] = list(range(0, 10, 2));
+    r4: list[any] = list(range(10, 0, -2));
+    r5: list[any] = list(range(5, 5));
+    r6: list[any] = list(range(10, 5));
+    r7: list[any] = list(range(3, 4));
 
     total: int = 0;
     for i in range(5) {
         total += i;
     }
 
-    stepped: list = [];
+    stepped: list[any] = [];
     for i in range(1, 10, 3) {
         stepped.append(i);
     }
 
-    countdown: list = [];
+    countdown: list[any] = [];
     for i in range(5, 0, -1) {
         countdown.append(i);
     }
 
-    pairs: list = [];
+    pairs: list[any] = [];
     for i in range(3) {
         for j in range(2) {
             pairs.append(i * 10 + j);
         }
     }
 
-    r_m: list = list(range(0, 10, 2));
+    r_m: list[any] = list(range(0, 10, 2));
     count_hit: int = r_m.count(4);
     count_miss: int = r_m.count(3);
     idx_first: int = r_m.index(0);

@@ -59,7 +59,7 @@ glob CORPUS: list[str] = [
      ];
 
 """Time one pass of every phase over `src`, on programs nothing else has touched."""
-def phase_row(src: str) -> dict {
+def phase_row(src: str) -> dict[any, any] {
     text = Path(src).read_text(encoding="utf-8");
     staged = JacProgram();
     t0 = time.perf_counter();

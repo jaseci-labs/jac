@@ -165,7 +165,9 @@ impl ClientArtifact.from_bytes(raw: bytes) -> (ClientArtifact | None) {
         manifest=manifest,
         native_import_sources=[str(s) for s in native_import_sources],
         source_map=[tuple(seg) for seg in source_map],
-        dep_digests={str(k): str(v) for (k, v) in dict(dep_digests).items()},
+        dep_digests={
+            str(k): str(v) for (k, v) in dict[object, object](dep_digests).items()
+        },
         framework=str(framework),
         boundary_contracts=dict(boundary_contracts)
     );

@@ -40,7 +40,7 @@ def _seed(ctx: ExecutionContext) -> UUID {
     ranch = Root().__jac__;
     ranch.persistent = True;
     ctx.mem.put(ranch);
-    pas: list = [];
+    pas: list[any] = [];
     for i in [1, 2, 3] {
         nanch = PA(val=i).__jac__;
         nanch.persistent = True;

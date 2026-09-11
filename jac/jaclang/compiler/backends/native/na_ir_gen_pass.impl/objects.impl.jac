@@ -265,7 +265,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     self._generate_inherited_method_wrappers();
 }
 
-impl NaIRGenPass._constructor_slots -> tuple {
+impl NaIRGenPass._constructor_slots -> tuple[str, ...] {
     return ("init", "__init__", "postinit", "__post_init__", );
 }
 
@@ -329,7 +329,7 @@ impl NaIRGenPass._predemote_capability_constructors -> None {
     }
 }
 
-impl NaIRGenPass._codegen_constructors_first(archetypes: list) -> None {
+impl NaIRGenPass._codegen_constructors_first(archetypes: list[uni.Archetype]) -> None {
     """Lower every constructor body before any other body is lowered.
 
     The companion to `_predemote_capability_constructors`, for the demotions
@@ -466,7 +466,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     field_type_map: dict[(str, ir.Type)] = {};
     field_default_map: dict[str, uni.Expr] = {};
     foreign_fields: set = set();
-    erased_tv_fields: dict[(str, list)] = {};
+    erased_tv_fields: dict[str, list[str]] = {};
 
     if layout.vtable_ptr_slot is not None {
         field_types.append(ir.IntType(8).as_pointer().as_pointer());
@@ -629,7 +629,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     ];
 }
 
-impl NaIRGenPass._erased_sig_typevars(nd: uni.Archetype) -> dict {
+impl NaIRGenPass._erased_sig_typevars(nd: uni.Archetype) -> dict[str, list[str]] {
     """The type params a method signature erases, keyed by the slot naming it.
 
     A sequence of `T` in a signature lays out as the pointer-flavoured list,
@@ -638,7 +638,7 @@ impl NaIRGenPass._erased_sig_typevars(nd: uni.Archetype) -> dict {
     slots alongside the erased fields lets the construction site refuse both
     with one rule.
     """;
-    out: dict = {};
+    out: dict[str, list[str]] = {};
     if nd.body is None {
         return out;
     }
@@ -666,11 +666,11 @@ impl NaIRGenPass._erased_sig_typevars(nd: uni.Archetype) -> dict {
 }
 
 impl NaIRGenPass._reject_scalar_type_args(nd: uni.UniNode, type_name: str) -> bool {
-    _erased = self.struct_field_erased_tv.get(type_name) or {};
+    _erased: any = self.struct_field_erased_tv.get(type_name) or {};
     if not _erased {
         return False;
     }
-    _params = self.arch_type_params.get(type_name) or [];
+    _params: any = self.arch_type_params.get(type_name) or [];
     if not _params {
         return False;
     }
@@ -760,7 +760,7 @@ impl NaIRGenPass._register_static_fields(arch_name: str, archhas: uni.ArchHas) -
 
         if var.value is not None and const_init is None {
             if not self?._global_init_nodes {
-                self._global_init_nodes: list = [];
+                self._global_init_nodes: list[tuple[str, uni.Expr, ir.Type]] = [];
             }
             self._global_init_nodes.append((full_name, var.value, ftype));
         }
@@ -830,7 +830,7 @@ impl NaIRGenPass._register_one_class_const(
 
     if const_init is None {
         if not self?._global_init_nodes {
-            self._global_init_nodes: list = [];
+            self._global_init_nodes: list[tuple[str, uni.Expr, ir.Type]] = [];
         }
         self._global_init_nodes.append((full_name, assign.value, ftype));
     }
@@ -1790,7 +1790,7 @@ impl NaIRGenPass._empty_container_for_field(
 impl NaIRGenPass._codegen_instantiation(
     nd: (uni.FuncCall | uni.Name),
     type_name_override: (str | None) = None,
-    ctor_params: (list | None) = None
+    ctor_params: (list[uni.Expr | uni.KWPair] | None) = None
 ) -> (ir.Value | None) {
     _is_call = isinstance(nd, uni.FuncCall);
     type_name = type_name_override
@@ -2226,8 +2226,8 @@ impl NaIRGenPass._codegen_instantiation(
         init_args: list[ir.Value] = [obj_ptr];
         init_sig = self._arch_init_sig_of(_init_owner) if _is_call else None;
         if init_sig is not None {
-            _init_pos: list = [];
-            _init_kw: dict = {};
+            _init_pos: list[uni.Expr] = [];
+            _init_kw: dict[str, uni.Expr] = {};
             for param in params {
                 if isinstance(param, uni.KWPair) {
                     _k = param.key.sym_name if param.key is not None else None;
@@ -3433,7 +3433,7 @@ impl NaIRGenPass._emit_dispatched_field_ptr(
     if _base_idx is None and ftype is not None {
         return None;
     }
-    _variants: list[tuple] = [];
+    _variants: list[tuple[str, ir.GlobalVariable | None, int, ir.Type]] = [];
     _uniform = True;
     for _cls in reg.mro_order {
         _cls_mro = self._mro_of(_cls);
@@ -3508,7 +3508,7 @@ impl NaIRGenPass._emit_dispatched_field_ptr(
     _df_vtp = b.load(_df_vpp, name="df.vt");
     _df_fnc = b.block.function;
     _df_done = _df_fnc.append_basic_block(name=f"df.{field_name}.done");
-    _df_incoming: list[tuple] = [];
+    _df_incoming: list[tuple[ir.Value, ir.Block]] = [];
     for (_vc, _vt, _ci, _vft) in _variants {
         _df_hit = _df_fnc.append_basic_block(name=f"df.{field_name}.{_vc}");
         _df_nxt = _df_fnc.append_basic_block(name=f"df.{field_name}.n.{_vc}");
@@ -3677,7 +3677,7 @@ impl NaIRGenPass._codegen_class_const_read(
     _cc_vtp = b.load(_cc_vpp, name="cc.vt");
     _cc_fn = b.block.function;
     _cc_done = _cc_fn.append_basic_block(name=f"cc.{field_name}.done");
-    _cc_incoming: list[tuple] = [];
+    _cc_incoming: list[tuple[ir.Value, ir.Block]] = [];
     for (_vc, _vt, _gv) in _variants {
         _cc_hit = _cc_fn.append_basic_block(name=f"cc.{field_name}.{_vc}");
         _cc_nxt = _cc_fn.append_basic_block(name=f"cc.{field_name}.n.{_vc}");
@@ -4329,8 +4329,10 @@ impl NaIRGenPass._emit_class_routed_call(
 
 
 impl NaIRGenPass._jc_reference_schema(
-    ft: ir.Type, layouts: dict, semantic: TypeBase | None = None
-) -> (dict | None) {
+    ft: ir.Type,
+    layouts: dict[str, tuple[list[int], int]],
+    semantic: TypeBase | None = None
+) -> (dict[str, any] | None) {
     """Combine semantic reference types with the backend's container ABI.""";
     args = semantic.private.type_args or [] if isinstance(semantic, ClassType) else [];
     semantic_name = semantic.shared.class_name
@@ -4390,7 +4392,7 @@ impl NaIRGenPass._build_jc_layout -> str {
     import json;
     import from jaclang.compiler.backends.native.abi { struct_layouts }
     layouts = struct_layouts(self.llvm_module);
-    out: dict = {"classes": {}};
+    out: dict[str, any] = {"classes": {}};
     _model = self.ir_in.gen.osp_model;
     _tags = _model.tags if _model is not None else {};
     for arch_name in self.struct_field_indices {
@@ -4406,7 +4408,7 @@ impl NaIRGenPass._build_jc_layout -> str {
         semantic_fields = {f.name: f.semantic_type for f in arch_layout.fields}
             if arch_layout is not None
             else {};
-        fields: dict = {};
+        fields: dict[str, dict[str, any]] = {};
         for (fname, fidx) in idx_map.items() {
             if fidx >= len(offsets) {
                 continue;

@@ -33,7 +33,7 @@ def fixture(*parts: str) -> str {
     return os.path.join(APPS_DIR, *parts);
 }
 
-def compile_fixture(path: str, cgen: bool = False, app: str = "") -> tuple {
+def compile_fixture(path: str, cgen: bool = False, app: str = "") -> tuple[any, ...] {
     prog = JacProgram();
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     options = CompileOptions(no_cgen=not cgen);

@@ -26,8 +26,8 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
      PROG = "enum_keyed_dict.jac",
-     _SV_MOD: list = [],
-     _ENG: list = [];
+     _SV_MOD: list[any] = [],
+     _ENG: list[any] = [];
 
 """Compile the fixture natively, run module init, return its JIT engine."""
 def compile_native(fixture: str) -> ExecutionEngine {

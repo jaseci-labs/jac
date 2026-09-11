@@ -562,7 +562,7 @@ obj Parser {
     def parse_from_path -> tuple[(ModulePath | None, bool)];
     def parse_import_items(
         kid: list[UniNode], is_clib_import: bool
-    ) -> tuple[(list, list)];
+    ) -> tuple[(list[ModuleItem | ModulePath], list[UniNode])];
 
     def parse_archetype -> Archetype;
     def parse_archetype_member -> UniNode | None;
@@ -597,7 +597,7 @@ obj Parser {
     def parse_impl_enum_body -> tuple[(list[Assignment], list[Token])];
     def parse_sem_def -> SemDef;
     def parse_type_alias -> TypeAlias;
-    def parse_type_params -> tuple[(list, list)];
+    def parse_type_params -> tuple[(list[TypeParam], list[Token])];
 }
 
 def parse_program(

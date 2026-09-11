@@ -26,7 +26,7 @@ comptime SPEC_TOOL: CommandSpec = CommandSpec(
          handler_name=ct_name(tool)
      );
 
-def tool(tool: str, args: list = []) -> int;
+def tool(tool: str, args: list[str] = []) -> int;
 
 comptime SPEC_DOT: CommandSpec = CommandSpec(
          name="dot",
@@ -93,7 +93,7 @@ def dot(
     initial: str = "",
     depth: int = -1,
     traverse: bool = False,
-    connection: list = [],
+    connection: list[str] = [],
     bfs: bool = False,
     edge_limit: int = 512,
     node_limit: int = 512,

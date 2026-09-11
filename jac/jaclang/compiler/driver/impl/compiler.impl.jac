@@ -331,8 +331,8 @@ impl JacCompiler._load_native_from_cache(
         }
         gen = CodeGenTarget();
         gen.native_engine = engine;
-        py_func_table: dict = {};
-        callbacks_list: list = [];
+        py_func_table: dict[str, Callable[..., object]] = {};
+        callbacks_list: list[object] = [];
         gen.interop_py_funcs = py_func_table;
         gen._interop_callbacks = callbacks_list;
         if cached_interop {
@@ -399,8 +399,8 @@ impl JacCompiler._load_native_from_bitcode(
     }
     gen = CodeGenTarget();
     gen.native_engine = engine;
-    py_func_table: dict = {};
-    callbacks_list: list = [];
+    py_func_table: dict[str, Callable[..., object]] = {};
+    callbacks_list: list[object] = [];
     gen.interop_py_funcs = py_func_table;
     gen._interop_callbacks = callbacks_list;
     if cached_interop {
@@ -590,12 +590,12 @@ impl JacCompiler._get_precompiled_jir_bytecode(
     return None;
 }
 
-impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
+impl JacCompiler._build_interop_dict(result: uni.Module) -> dict[str, any] {
     manifest = result.gen.interop_manifest;
     if manifest is None {
         return {};
     }
-    interop_data: dict = {'bindings': {}};
+    interop_data: dict[str, any] = {'bindings': {}};
     for (name, binding) in manifest.bindings.items() {
         interop_data['bindings'][name] = {
             'name': binding.name,
@@ -1286,7 +1286,7 @@ impl JacCompiler.compile(
             if _depth_prev == 0 {
                 self._closure_opts = options;
             }
-            _gc_prev: (tuple | None) = None;
+            _gc_prev: (tuple[int, int, int] | None) = None;
             if _depth_prev == 0 and not os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
                 import gc;
                 _gc_prev = gc.get_threshold();

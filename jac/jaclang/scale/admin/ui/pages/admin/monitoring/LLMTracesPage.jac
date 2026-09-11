@@ -7,14 +7,14 @@ import from ....services.llmService { getLLMTraces, getLLMTraceDetail }
 
 def:pub LLMTracesPage -> JsxElement {
     has isLoading: bool = True,
-        traces: list = [],
-        selectedTrace: dict = {},
+        traces: list[dict[str, any]] = [],
+        selectedTrace: dict[str, any] = {},
         showDetail: bool = False,
         detailLoading: bool = False,
         autoRefresh: bool = True,
         errorMsg: str = "",
         expandedIds: list[str] = [],
-        childrenMap: dict = {};
+        childrenMap: dict[str, list[dict[str, any]]] = {};
 
     auth = useAuth();
 
@@ -22,7 +22,7 @@ def:pub LLMTracesPage -> JsxElement {
         try {
             result = await getLLMTraces(auth["authToken"], 50, 0, "", "", "", True);
             if result["ok"] and result["data"] {
-                traces = result["data"]["traces"] or [];
+                traces: list[dict[str, any]] = result["data"]["traces"] or [];
                 errorMsg = "";
             } elif result["error"] {
                 errorMsg = result["error"]["message"] or "Failed to load traces";
@@ -56,7 +56,7 @@ def:pub LLMTracesPage -> JsxElement {
             if not childrenMap[traceId] {
                 tResult = await getLLMTraceDetail(auth["authToken"], traceId);
                 if tResult["ok"] and tResult["data"] {
-                    newMap: dict = {** childrenMap};
+                    newMap: dict[str, list[dict[str, any]]] = {** childrenMap};
                     newMap[traceId] = tResult["data"]["child_traces"] or [];
                     childrenMap = newMap;
                 }
@@ -144,6 +144,7 @@ def:pub LLMTracesPage -> JsxElement {
     }
 
     if showDetail {
+        emptyList: list[dict[str, any]] = [];
         return
             <div className="space-y-4">
                 <div className="flex items-center gap-3">
@@ -388,7 +389,9 @@ def:pub LLMTracesPage -> JsxElement {
                                                     {call["error"]}
                                                 </div>}
                                         </div>
-                                        for call in (selectedTrace["llm_calls"] or [])
+                                        for call in (
+                                            selectedTrace["llm_calls"] or emptyList
+                                        )
                                     ]}
                                 </div>}
                         </div>
@@ -475,7 +478,7 @@ def:pub LLMTracesPage -> JsxElement {
                                             </div>
                                         </div>
                                         for child in (
-                                            selectedTrace["child_traces"] or []
+                                            selectedTrace["child_traces"] or emptyList
                                         )
                                     ]}
                                 </div>
@@ -484,12 +487,14 @@ def:pub LLMTracesPage -> JsxElement {
             </div>;
     }
 
-    def appendChildren(parentId: str, depth: int, items: list, visited: list[str]) {
+    def appendChildren(
+        parentId: str, depth: int, items: list[dict[str, any]], visited: list[str]
+    ) {
         if parentId in visited {
             return;
         }
         nextVisited: list[str] = visited + [parentId];
-        ch = childrenMap[parentId] or [];
+        ch: list[dict[str, any]] = childrenMap[parentId] or [];
         for child in ch {
             items.append({"trace": child, "depth": depth});
             childId = child["invocation_id"] or "";
@@ -499,8 +504,8 @@ def:pub LLMTracesPage -> JsxElement {
         }
     }
 
-    def getDisplayItems -> list {
-        items: list = [];
+    def getDisplayItems -> list[dict[str, any]] {
+        items: list[dict[str, any]] = [];
         for i in traces {
             items.append({"trace": i, "depth": 0});
             traceId = i["invocation_id"] or "";

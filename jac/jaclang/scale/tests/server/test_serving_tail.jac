@@ -29,7 +29,7 @@ import from jaclang.server.serving.ws {
 
 
 def _make_app -> ServingApp {
-    def hello -> dict {
+    def hello -> dict[str, any] {
         return {"ok": True};
     }
 
@@ -52,7 +52,7 @@ def _make_app -> ServingApp {
 
 def _spawn(
     ws_allowed_origins: (list[str] | None) = None, ws_max_message_bytes: int = 0
-) -> tuple {
+) -> tuple[any, ...] {
     settings = ServeSettings();
     if ws_allowed_origins is not None {
         settings.websocket.allowed_origins = list(ws_allowed_origins);
@@ -78,7 +78,7 @@ def _run(coro: object) -> object {
 }
 
 
-async def _ws_handshake(port: int, path: str, origin: str = "") -> tuple {
+async def _ws_handshake(port: int, path: str, origin: str = "") -> tuple[any, ...] {
     (reader, writer) = await asyncio.open_connection("127.0.0.1", port);
     origin_line = f"Origin: {origin}\r\n" if origin else "";
     writer.write(
@@ -181,7 +181,7 @@ test "PING interleaved in a fragmented message is answered, message survives" {
     # and closed 1002.
     (stop, server) = _spawn();
     try {
-        async def scenario -> dict {
+        async def scenario -> dict[str, any] {
             (reader, writer, status) = await _ws_handshake(
                 server.bound_port, "/ws/echo"
             );

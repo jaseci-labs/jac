@@ -271,7 +271,8 @@ impl NormalizePass.enter_archetype with uni.Archetype entry {
         }
         new_kid.append(here.gen_token(Tok.RSQUARE));
     }
-    inherit: list = list(here.base_classes) + list(here.keywords);
+    inherit: list[uni.Expr | uni.KWPair] = list(here.base_classes)
+        + list(here.keywords);
     if inherit {
         new_kid.append(here.gen_token(Tok.LPAREN));
         for idx in range(len(inherit)) {
@@ -1116,7 +1117,7 @@ impl NormalizePass.enter_list_val with uni.ListVal entry {
 
 impl NormalizePass.enter_set_val with uni.SetVal entry {
     new_kid: list[uni.UniNode] = [here.gen_token(Tok.LBRACE)];
-    values = here.values if here.values is not None else [];
+    values: Sequence[any] = here.values if here.values is not None else [];
     for idx in range(len(values)) {
         new_kid.append(values[idx]);
         if idx < len(values) - 1 {
@@ -1300,7 +1301,7 @@ impl NormalizePass.enter_yield_expr with uni.YieldExpr entry {
 
 impl NormalizePass.enter_func_call with uni.FuncCall entry {
     new_kids: list[uni.UniNode] = [here.target];
-    params = here.params if here.params is not None else [];
+    params: Sequence[any] = here.params if here.params is not None else [];
     is_gencompr = len(params) == 1 and isinstance(params[0], uni.GenCompr);
     if not is_gencompr {
         new_kids.append(here.gen_token(Tok.LPAREN));

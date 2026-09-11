@@ -3,7 +3,7 @@ import from jaclang.compiler.backends.native.llvm.ir { types }
 class Context(object) {
     def init(self: Context) -> object {
         self.scope = _utils.NameScope();
-        self.identified_types = {};
+        self.identified_types: dict[str, any] = {};
     }
 
     def get_identified_type(self: Context, name: any, packed: any = False) -> object {

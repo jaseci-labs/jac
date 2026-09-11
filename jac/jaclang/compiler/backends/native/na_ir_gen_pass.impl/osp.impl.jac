@@ -1,4 +1,4 @@
-glob _NA_OSP_KERNEL_MOD: list = [];
+glob _NA_OSP_KERNEL_MOD: list[uni.Module] = [];
 
 def _load_native_osp_kernel_module -> (uni.Module | None) {
     if _NA_OSP_KERNEL_MOD {
@@ -82,7 +82,7 @@ impl NaIRGenPass._osp_active -> bool {
         and (_model.has_event_ability() or _model.uses_construct);
 }
 
-impl NaIRGenPass._xmod_osp_help(names: list) -> (str | None) {
+impl NaIRGenPass._xmod_osp_help(names: list[str | None]) -> (str | None) {
     _model = self.ir_in.gen.osp_model;
     _tags = _model.tags if (_model is not None) else {};
     for _n in names {
@@ -203,14 +203,16 @@ impl NaIRGenPass._osp_make_immortal(ptr: ir.Value) -> None {
     );
 }
 
-impl NaIRGenPass._osp_collect_slots(arch_name: str, is_entry: bool) -> list {
-    slots: list = [];
+impl NaIRGenPass._osp_collect_slots(
+    arch_name: str, is_entry: bool
+) -> list[tuple[int, ir.Function]] {
+    slots: list[tuple[int, ir.Function]] = [];
     _model = self.ir_in.gen.osp_model;
     if _model is None {
         return slots;
     }
 
-    merged: dict = {};
+    merged: dict[str, OspSlot] = {};
     layout = self._arch_layout(arch_name);
     order = layout.mro if layout is not None else [arch_name];
     for owner in reversed(order) {
@@ -262,7 +264,9 @@ impl NaIRGenPass._osp_build_slot(
     return slot;
 }
 
-impl NaIRGenPass._osp_build_slot_list(pairs: list) -> ir.Value {
+impl NaIRGenPass._osp_build_slot_list(
+    pairs: list[tuple[int, ir.Function]]
+) -> ir.Value {
     i8p = ir.IntType(8).as_pointer();
     _h = self.list_helpers.get("ptr");
     _lst = self._rc_call_with_ctx(_h["new"], [], op="new", loc="", name="osp.slots");
@@ -279,7 +283,10 @@ impl NaIRGenPass._osp_build_slot_list(pairs: list) -> ir.Value {
 }
 
 impl NaIRGenPass._osp_build_descriptor(
-    struct_name: str, type_tag: int, entry_slots: list, exit_slots: list
+    struct_name: str,
+    type_tag: int,
+    entry_slots: list[tuple[int, ir.Function]],
+    exit_slots: list[tuple[int, ir.Function]]
 ) -> (ir.Value | None) {
     desc = self._osp_rc_new(struct_name);
     if desc is None {
@@ -315,14 +322,14 @@ impl NaIRGenPass._osp_build_descriptor(
     return desc;
 }
 
-impl NaIRGenPass._osp_emit_callbacks -> dict {
+impl NaIRGenPass._osp_emit_callbacks -> dict[str, any] {
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     i8p = i8.as_pointer();
     _fields = self.struct_field_types.get("OspRuntime", {});
     _saved = self._builder;
-    out: dict = {};
+    out: dict[str, any] = {};
 
     _tf = self._define_function("__osp_tag_of", _fields["tag_of"].pointee);
     _tf.linkage = "internal";
@@ -641,7 +648,7 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
     osp_conn_fn = self.func_symtab.get("osp_conn");
 
-    _xnames: list = [
+    _xnames: list[str | None] = [
         self._spawn_operand_name(nd.left),
         self._spawn_operand_name(nd.right),
 
@@ -772,7 +779,7 @@ impl NaIRGenPass._codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
     disc_fn = self.func_symtab.get("osp_disconn_between");
     _fcond = dop.edge_spec.filter_cond;
-    _xnames: list = [
+    _xnames: list[str | None] = [
         self._spawn_operand_name(nd.left),
         self._spawn_operand_name(nd.right),
 
@@ -795,7 +802,7 @@ impl NaIRGenPass._codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
     _left_is_list = self._osp_disc_list_operand(nd.left);
     _right_is_list = self._osp_disc_list_operand(nd.right);
-    _disc_compares: list = [];
+    _disc_compares: list[uni.CompareExpr] = [];
     if (_fcond is not None) and _fcond.compares {
         _disc_compares = [
             _c
@@ -1003,7 +1010,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
                 }
             }
         }
-        _ec_compares: list = [];
+        _ec_compares: list[any] = [];
         if (_fcond is not None) and _fcond.compares {
             _ec_compares = list(_fcond.compares);
         }
@@ -1312,7 +1319,7 @@ impl NaIRGenPass._osp_pred_pair(
             return None;
         }
     }
-    _rhs_vals: list = [];
+    _rhs_vals: list[ir.Value] = [];
     for cmp in compares {
         _rv = self._codegen_expr(cmp.rights[0]);
         if _rv is None {

@@ -78,9 +78,12 @@ class ViteBundler {
         client_paths: (list[str] | None) = None
     ) -> Path;
 
-    def _format_config_object(self: ViteBundler, config: dict, indent: int = 0) -> str;
+    def _format_config_object(
+        self: ViteBundler, config: dict[str, any], indent: int = 0
+    ) -> str;
+
     def _format_define_entries(
-        self: ViteBundler, api_base_url: str, custom_defines: dict
+        self: ViteBundler, api_base_url: str, custom_defines: dict[str, any]
     ) -> str;
 
     def install_packages(

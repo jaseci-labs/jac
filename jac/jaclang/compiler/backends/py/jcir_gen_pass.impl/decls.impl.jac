@@ -69,7 +69,7 @@ impl JcirGenPass.enter_archetype with Archetype entry {
 impl JcirGenPass.exit_archetype with Archetype exit {
     inner = ModuleFacts.unwrap_body(here);
     decorators = [self.val(i) for i in here.decorators] if here.decorators else [];
-    body: list = self.resolve_stmt_block(inner, doc=here.doc);
+    body: list[CgItem] = self.resolve_stmt_block(inner, doc=here.doc);
     if here.arch_type.name != Tok.KW_CLASS {
         import from jaclang.compiler.frontend.codeinfo { endpoint_key }
         type_id = endpoint_key(self.ir_in, 'type', here.sym_name);
@@ -764,7 +764,7 @@ impl JcirGenPass._invoke_llm_call(
     return call;
 }
 
-impl JcirGenPass.gen_llm_body(nd: Ability) -> list {
+impl JcirGenPass.gen_llm_body(nd: Ability) -> list[CgNode] {
     assert isinstance(nd.signature, FuncSignature);
     model_expr: CgNode;
     if (

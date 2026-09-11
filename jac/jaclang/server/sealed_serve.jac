@@ -23,7 +23,7 @@ def _image_module_keys(img_root: str) -> set {
     }
     keys = set();
     try {
-        data = json.loads(Path(mf).read_text(encoding="utf-8"));
+        data: dict[str, any] = json.loads(Path(mf).read_text(encoding="utf-8"));
         if isinstance(data, dict) {
             modules = data.get("modules");
             if isinstance(modules, dict) {
@@ -79,7 +79,7 @@ def serve_manifest_for(path: str) -> (dict[str, any] | None) {
         return None;
     }
     try {
-        data = json.loads(Path(mf).read_text(encoding="utf-8"));
+        data: dict[str, any] = json.loads(Path(mf).read_text(encoding="utf-8"));
     } except Exception {
         return None;
     }

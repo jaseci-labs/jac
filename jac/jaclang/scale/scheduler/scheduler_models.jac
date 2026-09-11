@@ -5,7 +5,7 @@ import from jaclang.server.serving.model { ApiModel, require_str }
 glob TRIGGER_KINDS: set[str] = {'interval', 'cron', 'date'};
 
 
-def _validate_trigger_fields(data: dict, allowed: set[str]) {
+def _validate_trigger_fields(data: dict[str, any], allowed: set[str]) {
     extra = [
         k
         for k in data.keys()
@@ -45,6 +45,8 @@ obj CreateJobRequest(ApiModel) {
         if not isinstance(data, dict) {
             raise ValueError('request body must be an object');
         }
+
+        data: dict[str, any] = data;
         comptime allowed: set[str] = {f.name for f in fields(CreateJobRequest)};
         _validate_trigger_fields(data, allowed);
         return CreateJobRequest(
@@ -69,6 +71,8 @@ obj UpdateJobRequest(ApiModel) {
         if not isinstance(data, dict) {
             raise ValueError('request body must be an object');
         }
+
+        data: dict[str, any] = data;
         comptime allowed: set[str] = {f.name for f in fields(UpdateJobRequest)};
         _validate_trigger_fields(data, allowed);
         return UpdateJobRequest(

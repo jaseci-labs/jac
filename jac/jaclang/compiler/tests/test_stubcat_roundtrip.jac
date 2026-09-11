@@ -41,7 +41,7 @@ glob SMALL_SET: list[str] = [
          "js_globals",
          "typing_ambient"
      ],
-     _built: list = [];
+     _built: list[any] = [];
 
 def sources_present -> bool {
     return os.path.isfile(

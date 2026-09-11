@@ -14,9 +14,9 @@ def:pub app -> any {
         authPassword: str = "",
         error: str = "",
         loading: bool = False,
-        products: list = [],
+        products: list[any] = [],
         cart: any = {},
-        orders: list = [],
+        orders: list[any] = [],
         currentView: str = "products";
 
     can with entry {
@@ -35,7 +35,7 @@ def:pub app -> any {
         }
     }
 
-    async def apiCall(service: str, endpoint: str, body: dict = {}) -> any;
+    async def apiCall(service: str, endpoint: str, body: dict[str, any] = {}) -> any;
     async def fetchProducts -> None;
     async def addToCart(productId: str, name: str, price: float) -> None;
     async def fetchCart -> None;

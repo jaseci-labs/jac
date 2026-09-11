@@ -12,7 +12,7 @@ import from jaclang.compiler.frontend.diagnostics {
     W1312
 }
 
-glob _MOVE_EXEMPT_CALLS: tuple = (
+glob _MOVE_EXEMPT_CALLS: tuple[str, ...] = (
          "len",
          "print",
          "range",
@@ -31,7 +31,7 @@ glob _MOVE_EXEMPT_CALLS: tuple = (
          "oct",
          "bin"
      ),
-     _NONRETAINING_METHOD_CALLS: tuple = (
+     _NONRETAINING_METHOD_CALLS: tuple[str, ...] = (
          "find",
          "rfind",
          "index",
@@ -58,7 +58,7 @@ glob _MOVE_EXEMPT_CALLS: tuple = (
          "difference",
          "symmetric_difference"
      ),
-     _NONRETAINING_STDLIB_MODULES: tuple = (
+     _NONRETAINING_STDLIB_MODULES: tuple[str, ...] = (
          "os",
          "sys",
          "time",

@@ -22,9 +22,9 @@ import from ....utils.format { formatBytes }
 def:pub MetricsPage -> JsxElement {
     has isLoading: bool = True,
         metricsEnabled: bool = False,
-        summary: dict = {},
-        metrics: list = [],
-        history: list = [],
+        summary: dict[str, any] = {},
+        metrics: list[dict[str, any]] = [],
+        history: list[dict[str, int]] = [],
         autoRefresh: bool = True,
         windowSecs: int = 60,
         scope: str = "app";
@@ -36,7 +36,7 @@ def:pub MetricsPage -> JsxElement {
     # stable across renders, so .current always reads the latest buffer.
     histRef = useRef([]);
 
-    def scopeFailed(s: dict) -> int {
+    def scopeFailed(s: dict[str, any]) -> int {
         return (s["server_errors"] or 0) + (s["client_errors"] or 0);
     }
 
@@ -47,10 +47,10 @@ def:pub MetricsPage -> JsxElement {
             summary = result["data"]["summary"] or {};
             metrics = result["data"]["metrics"] or [];
             prevBuf = histRef.current or [];
-            scopes = summary["scopes"] or {};
-            appScope = scopes["app"] or {};
-            otherScope = scopes["other"] or {};
-            allScope = scopes["all"] or {};
+            scopes: dict[str, dict[str, any]] = summary["scopes"] or {};
+            appScope: dict[str, any] = scopes["app"] or {};
+            otherScope: dict[str, any] = scopes["other"] or {};
+            allScope: dict[str, any] = scopes["all"] or {};
             newPoint = {
                 "time": Date.now(),
                 "app": appScope["requests"] or 0,
@@ -112,7 +112,7 @@ def:pub MetricsPage -> JsxElement {
         return str(int(pct)) + "%";
     }
 
-    def getMetricByName(name: str) -> dict {
+    def getMetricByName(name: str) -> dict[str, any] {
         for m in metrics {
             if m["name"] == name {
                 return m;
@@ -174,7 +174,7 @@ def:pub MetricsPage -> JsxElement {
         return str(Math.round(secs * 100) / 100) + "s";
     }
 
-    def formatPercentile(p: dict) -> str {
+    def formatPercentile(p: dict[str, any]) -> str {
         if not p["known"] {
             return "--";
         }
@@ -197,7 +197,7 @@ def:pub MetricsPage -> JsxElement {
         return Math.ceil(v / 10) * 10.0;
     }
 
-    def chartLine(points: list, maxV: float) -> str {
+    def chartLine(points: list[dict[str, float]], maxV: float) -> str {
         n = len(points);
         if n == 0 {
             return "";
@@ -223,7 +223,9 @@ def:pub MetricsPage -> JsxElement {
         return out;
     }
 
-    def errorMarks(points: list, maxE: float) -> list {
+    def errorMarks(
+        points: list[dict[str, float]], maxE: float
+    ) -> list[dict[str, float]] {
         n = len(points);
         out = [];
         if n == 0 or maxE <= 0 {
@@ -246,7 +248,7 @@ def:pub MetricsPage -> JsxElement {
         return out;
     }
 
-    def chartArea(points: list, maxV: float) -> str {
+    def chartArea(points: list[dict[str, float]], maxV: float) -> str {
         line = chartLine(points, maxV);
         if not line {
             return "";
@@ -264,7 +266,7 @@ def:pub MetricsPage -> JsxElement {
         return "60s";
     }
 
-    def getEndpointRows -> list {
+    def getEndpointRows -> list[dict[str, any]] {
         rows = [];
         for r in (summary["endpoints"] or []) {
             isApp = r["kind"] == "app";
@@ -330,14 +332,14 @@ def:pub MetricsPage -> JsxElement {
     }
 
     windowStartMs = Date.now() - (windowSecs * 1000);
-    windowPoints = [];
+    windowPoints: list[dict[str, int]] = [];
     for h in history {
         if h["time"] >= windowStartMs {
             windowPoints.append(h);
         }
     }
 
-    ratePoints = [];
+    ratePoints: list[dict[str, float]] = [];
     maxRate = 0.0;
     ptIdx = 0;
     for h in windowPoints {
@@ -380,7 +382,7 @@ def:pub MetricsPage -> JsxElement {
         throughput = windowReqs / elapsedSecs;
     }
     throughputDisplay = Math.round(throughput * 10) / 10;
-    maxIntervalErrs = 0;
+    maxIntervalErrs: float = 0.0;
     for rp in ratePoints {
         if rp["errs"] > maxIntervalErrs {
             maxIntervalErrs = rp["errs"];
@@ -411,7 +413,7 @@ def:pub MetricsPage -> JsxElement {
     jacInfo = getMetricByName("jac_info");
     jacVersion = "N/A";
     if jacInfo and jacInfo["values"] and len(jacInfo["values"]) > 0 {
-        jacLabels = jacInfo["values"][0]["labels"] or {};
+        jacLabels: dict[str, str] = jacInfo["values"][0]["labels"] or {};
         jacVersion = jacLabels["version"] or "N/A";
     }
 
@@ -445,13 +447,13 @@ def:pub MetricsPage -> JsxElement {
     }
 
     endpointRows = getEndpointRows();
-    allScopes = summary["scopes"] or {};
-    scopeStats = allScopes[scopeKey] or {};
-    unknownP = {"value": 0.0, "over": False, "known": False};
+    allScopes: dict[str, dict[str, any]] = summary["scopes"] or {};
+    scopeStats: dict[str, any] = allScopes[scopeKey] or {};
+    unknownP: dict[str, any] = {"value": 0.0, "over": False, "known": False};
     scopeP50 = scopeStats["p50"] or unknownP;
     scopeP95 = scopeStats["p95"] or unknownP;
     scopeP99 = scopeStats["p99"] or unknownP;
-    histGroups = scopeStats["distribution"] or [];
+    histGroups: list[dict[str, any]] = scopeStats["distribution"] or [];
     maxGroupCount = 1.0;
     for g in histGroups {
         if g["count"] > maxGroupCount {

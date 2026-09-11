@@ -17,7 +17,7 @@ def shout(msg: str) -> str {
     loud + "!"
 }
 
-def styled -> dict {
+def styled -> dict[any, any] {
     {"color": "red", "size": 4}
 }
 

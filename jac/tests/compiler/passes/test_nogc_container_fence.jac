@@ -28,7 +28,7 @@ glob FIXTURES = os.path.join(
 
 """Compile a fixture as a headerless nogc-enforced module; return its coded
 alerts in emission order."""
-def enforced_alerts(fixture: str) -> list {
+def enforced_alerts(fixture: str) -> list[any] {
     path = os.path.join(FIXTURES, fixture);
     prog = JacProgram();
     opts = CompileOptions(aot_mode=True, memory_profile="nogc");

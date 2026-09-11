@@ -22,9 +22,9 @@ def:pub NetworkPage -> JsxElement {
         available: bool = True,
         detail: str = "",
         namespace: str = "",
-        services: list = [],
-        ingresses: list = [],
-        pvcs: list = [],
+        services: list[dict[str, any]] = [],
+        ingresses: list[dict[str, any]] = [],
+        pvcs: list[dict[str, any]] = [],
         errorMsg: str = "",
         loadedOnce: bool = False;
 
@@ -39,9 +39,9 @@ def:pub NetworkPage -> JsxElement {
                 available = data["available"] or False;
                 detail = data["detail"] or "";
                 namespace = data["namespace"] or "";
-                services = data["services"] or [];
-                ingresses = data["ingresses"] or [];
-                pvcs = data["pvcs"] or [];
+                services: list[dict[str, any]] = data["services"] or [];
+                ingresses: list[dict[str, any]] = data["ingresses"] or [];
+                pvcs: list[dict[str, any]] = data["pvcs"] or [];
                 errorMsg = "";
             } elif result["error"] {
                 errorMsg = getErrorMessage(result, "Failed to load network view");
@@ -62,7 +62,7 @@ def:pub NetworkPage -> JsxElement {
         []
     );
 
-    def portsLabel(ports: list) -> str {
+    def portsLabel(ports: list[dict[str, any]]) -> str {
         parts: list[str] = [];
         for p in ports {
             parts.append(String(p["port"]) + "->" + String(p["target"]));
@@ -70,7 +70,7 @@ def:pub NetworkPage -> JsxElement {
         return ", ".join(parts);
     }
 
-    def joinLabels(values: list) -> str {
+    def joinLabels(values: list[str]) -> str {
         return ", ".join([String(v) for v in values]);
     }
 
@@ -84,7 +84,7 @@ def:pub NetworkPage -> JsxElement {
 
     # ExternalName / headless (clusterIP None) services have no Endpoints by
     # design, so 0 ready backends is expected for them - don't flag red.
-    def backendCls(s: dict) -> str {
+    def backendCls(s: dict[str, any]) -> str {
         base = "py-1.5 pr-3 ";
         if s["type"] == "ExternalName" or s["cluster_ip"] == "None" {
             return base + "text-muted";
@@ -94,6 +94,8 @@ def:pub NetworkPage -> JsxElement {
         }
         return base + "text-success";
     }
+
+    emptyList: list[dict[str, any]] = [];
 
     <div className="space-y-4">
         <PageHeader
@@ -175,7 +177,7 @@ def:pub NetworkPage -> JsxElement {
                             {r["host"] or "*"}{r["path"]} {"->"} {r["service"]}:{String(
                                 r["port"]
                             )}
-                        </div> for r in (ing["rules"] or [])
+                        </div> for r in (ing["rules"] or emptyList)
                     ]}
                 </div> for ing in ingresses
             ]}

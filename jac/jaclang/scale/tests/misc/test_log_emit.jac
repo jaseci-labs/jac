@@ -275,7 +275,7 @@ test "trace_id populates on records emitted from child loggers" {
             child: logging.Logger = logging.getLogger("jaclang.scale.test.child");
             child.info("propagated line");
             line: str = buf.getvalue().strip().split("\n")[-1];
-            parsed: dict = json.loads(line);
+            parsed: dict[str, any] = json.loads(line);
             assert parsed["trace_id"] == "trace-from-child-test";
         } finally {
             reset_current_trace(tok);

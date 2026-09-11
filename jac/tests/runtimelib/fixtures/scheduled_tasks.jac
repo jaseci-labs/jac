@@ -2,8 +2,10 @@
 
 import datetime;
 
-glob execution_log: list = [],
-     run_at: str = (datetime.datetime.now() + datetime.timedelta(seconds=1)).isoformat(),
+glob execution_log: list[any] = [],
+     run_at: str = (
+         datetime.datetime.now() + datetime.timedelta(seconds=1)
+     ).isoformat(),
      fn_run_at: str = (
          datetime.datetime.now() + datetime.timedelta(seconds=1)
      ).isoformat();
@@ -53,13 +55,13 @@ def cron_function {
 # 7. Default trigger (static) walker
 @schedule(interval=1)
 walker StaticWalker {
-    can act with Root entry { }
+    can act with Root entry {}
 }
 
 # 8. Explicit ScheduleTrigger.STATIC function
 @schedule(interval=1, trigger=ScheduleTrigger.STATIC)
-def static_fn { }
+def static_fn {}
 
 # 9. String trigger="static" function
 @schedule(interval=1, trigger="static")
-def str_trigger_fn { }
+def str_trigger_fn {}

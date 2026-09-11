@@ -27,12 +27,12 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
     }
 }
 
-impl JcirGenPass._native_import_registration_map -> dict {
+impl JcirGenPass._native_import_registration_map -> dict[str, list[CgSplice]] {
     manifest = self.ir_in.gen.interop_manifest;
     if not (manifest and manifest.bindings and manifest.native_imports) {
         return {};
     }
-    reg_map: dict = {};
+    reg_map: dict[str, list[CgSplice]] = {};
     for binding in manifest.native_imports {
         if binding.name in reg_map {
             continue;
@@ -47,7 +47,7 @@ impl JcirGenPass._native_import_registration_map -> dict {
     return reg_map;
 }
 
-impl JcirGenPass._top_level_bound_names(items: any) -> list {
+impl JcirGenPass._top_level_bound_names(items: any) -> list[str] {
     stmts = items if isinstance(items, list) else [items];
     names: list[str] = [];
     for stmt in stmts {
@@ -97,7 +97,7 @@ impl JcirGenPass._top_level_bound_names(items: any) -> list {
     return names;
 }
 
-impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list {
+impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list[CgItem] {
     import from jaclang.compiler.frontend.codeinfo {
         native_test_symbol,
         native_glob_init_name
@@ -160,7 +160,7 @@ impl JcirGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
     provider_route = manifest.provider_routes.get(provider_app, '')
         or import_provider_route(nd);
     self._gen_py_sv_boundary_types();
-    parts: list = [
+    parts: list[str] = [
         "from jaclang.server import sv_client as __jac_sv_client",
         "__jac_sv_client._declare_consumer_provider("
             + self._sv_consumer_app_expr()
@@ -170,7 +170,7 @@ impl JcirGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
             + provider_route
             + "')"
     ];
-    names: list = ['__jac_sv_client'];
+    names: list[str] = ['__jac_sv_client'];
     for item in nd.items {
         if not isinstance(item, ModuleItem) {
             continue;
@@ -206,7 +206,7 @@ impl JcirGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
 }
 
 impl JcirGenPass._sv_wire_args_dict(
-    names: list[str], types: list[str], boundary_types: dict
+    names: list[str], types: list[str], boundary_types: dict[str, BoundaryTypeInfo]
 ) -> str {
     args_kvs: list[str] = [];
     for i in range(len(names)) {

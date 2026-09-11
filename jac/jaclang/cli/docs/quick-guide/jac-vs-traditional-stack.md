@@ -13,7 +13,7 @@ node Todo {
         done: bool;
 }
 
-def:pub get_todos -> list {
+def:pub get_todos -> list[any] {
     root ++> [
         Todo("build startup", False),
         Todo("raise funding", False),

@@ -92,7 +92,8 @@ impl describe_pod_status(
             pod = core_v1.read_namespaced_pod(pod_name, namespace);
         }
         lines.append(f"phase={(pod.status.phase or '?')}");
-        for cond in (pod.status.conditions or []) {
+        conditions: any = pod.status.conditions or [];
+        for cond in conditions {
             if (cond.status or '') != 'True' and cond.reason {
                 lines.append(
                     f"condition {cond.type}={cond.status} ({cond.reason}: {cond.message
@@ -100,7 +101,7 @@ impl describe_pod_status(
                 );
             }
         }
-        container_states = (pod.status.init_container_statuses or [])
+        container_states: any = (pod.status.init_container_statuses or [])
             + (pod.status.container_statuses or []);
         for cs in container_states {
             waiting = cs.state.waiting if cs.state else None;
@@ -111,7 +112,8 @@ impl describe_pod_status(
                 );
             }
         }
-        for vol in ((pod.spec.volumes if pod.spec else None) or []) {
+        volumes: any = (pod.spec.volumes if pod.spec else None) or [];
+        for vol in volumes {
             claim = vol.persistent_volume_claim;
             if not claim {
                 continue;
@@ -140,7 +142,8 @@ impl describe_pod_status(
             events = core_v1.list_namespaced_event(
                 namespace, field_selector=f"involvedObject.name={obj_name}"
             );
-            for ev in (events.items or []) {
+            ev_items: any = events.items or [];
+            for ev in ev_items {
                 lines.append(
                     f"event [{obj_name}/{ev.reason or '?'}] {ev.message or ''}"
                 );
@@ -391,8 +394,10 @@ impl ensure_namespace_exists(namespace: str, owner: str) -> None {
         existing_ns = core_v1.read_namespace(name=namespace);
         console.print(f"Namespace '{namespace}' already exists.");
 
-        existing_labels: dict = dict(getattr(existing_ns.metadata, "labels", {}) or {});
-        patch_labels: dict = {};
+        existing_labels: dict[str, any] = dict(
+            getattr(existing_ns.metadata, "labels", {}) or {}
+        );
+        patch_labels: dict[str, any] = {};
         for (label, value) in default_pss_labels().items() {
             if not existing_labels.get(label) {
                 patch_labels[label] = value;
@@ -415,7 +420,7 @@ impl ensure_namespace_exists(namespace: str, owner: str) -> None {
     } except ApiException as e {
         if (e.status == 404) {
             console.print(f"Namespace '{namespace}' not found. Creating it...");
-            create_labels: dict = dict(default_pss_labels());
+            create_labels: dict[str, any] = dict(default_pss_labels());
             if owner {
                 create_labels[NAMESPACE_OWNER_LABEL] = owner;
             }
@@ -445,7 +450,7 @@ impl namespace_is_owned(core_v1: client.CoreV1Api, namespace: str, owner: str) -
         }
         raise;
     }
-    labels: dict = dict(getattr(ns.metadata, "labels", {}) or {});
+    labels: dict[str, any] = dict(getattr(ns.metadata, "labels", {}) or {});
     return labels.get(NAMESPACE_OWNER_LABEL) == owner;
 }
 

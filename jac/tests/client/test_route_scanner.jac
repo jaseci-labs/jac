@@ -331,7 +331,7 @@ test "pages entry that ignores children drops every route" {
     # The generated entry renders `app` with the route tree as its children,
     # so the bundle refuses an `app` that could not receive them. The verdict
     # comes from the compiled manifest, which a warm build already has.
-    def manifest(params: list) -> ClientManifest {
+    def manifest(params: list[any]) -> ClientManifest {
         return ClientManifest(exports=["app"], params={"app": params});
     }
     assert entry_drops_route_children(manifest([])) , "a no-parameter app drops the routes";

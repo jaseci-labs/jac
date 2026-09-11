@@ -35,7 +35,7 @@ import from jaclang.compiler.frontend.unitree { decode_string_literal }
 import jaclang.compiler.frontend.unitree as uni;
 
 """Every prefix spelling `Parser.parse_multistring` splices onto a STRING."""
-glob LITERAL_PREFIXES: tuple = (
+glob LITERAL_PREFIXES: tuple[any, ...] = (
          '',
          'r',
          'b',
@@ -52,7 +52,7 @@ glob LITERAL_PREFIXES: tuple = (
      );
 
 """Every quote form `Lexer.scan_string` opens a literal with."""
-glob LITERAL_QUOTES: tuple = ("'", '"', "'''", '"""');
+glob LITERAL_QUOTES: tuple[str, ...] = ("'", '"', "'''", '"""');
 
 """The escape alphabet `Lexer.scan_string` admits without a warning."""
 glob LEXER_ESCAPE_CHARS: str = "nrtbfva01234567xNuU\\\"'";
@@ -65,8 +65,8 @@ glob DECODER_EXCLUSIONS: dict[(str, str)] = {
          )
      };
 
-glob _CORPUS_MEMO: list = [],
-     _HARVEST_MEMO: list = [];
+glob _CORPUS_MEMO: list[any] = [],
+     _HARVEST_MEMO: list[any] = [];
 
 """Payload bodies, built from the lexer's escape alphabet plus plain text."""
 def _payloads -> list[str] {

@@ -241,7 +241,7 @@ impl _suite_source(filepath: str) -> str {
 
 impl _iter_candidate_files(start: str, ignore: (list[str] | None) = None) -> list[str] {
     import from jaclang.jac0core.ext_registry { is_impl, is_jac }
-    ignored = ignore or [];
+    ignored: list[str] = ignore or [];
     found: list[str] = [];
     for (dirpath, dirnames, filenames) in os.walk(start, topdown=True) {
         dirnames[:] = [
@@ -270,8 +270,8 @@ impl discover(
     ignore: (list[str] | None) = None
 ) -> TestPlan {
     import from jaclang.jac0core.ext_registry { is_jac }
-    targets = paths or [];
-    ignored = ignore or [];
+    targets: list[str] = paths or [];
+    ignored: list[str] = ignore or [];
     explicit: set[str] = set();
     ordered: list[str] = [];
     seen: set[str] = set();
@@ -720,7 +720,7 @@ impl run_file(
                 )
             ];
         }
-        pending: list = [];
+        pending: list[any] = [];
         for (_key, registered) in list(JacTestCheck.test_suite_path.items()) {
             for info in list(registered) {
                 pending.append(info);
@@ -1167,7 +1167,8 @@ impl _run_plan(
             );
             return;
         }
-        for item in (record.get("result") or []) {
+        outcomes: any = record.get("result") or [];
+        for item in outcomes {
             reporter.record(TestOutcome.from_wire(item));
         }
     }

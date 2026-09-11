@@ -13,7 +13,7 @@ obj Metric {
 obj Dashboard {
     has title: str,
         metrics: list[Metric],
-        tags: dict = {};
+        tags: dict[any, any] = {};
 }
 
 def:pub get_metrics -> list[Metric] {
@@ -31,7 +31,7 @@ def:pub get_dashboard -> Dashboard {
     );
 }
 
-def:pub get_metrics_by_name -> dict {
+def:pub get_metrics_by_name -> dict[any, any] {
     return {
         "cpu": Metric(name="cpu", value=45.2, unit="%"),
         "mem": Metric(name="mem", value=2.1, unit="GB")

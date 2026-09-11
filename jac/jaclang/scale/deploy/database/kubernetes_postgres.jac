@@ -20,7 +20,7 @@ obj KubernetesPostgresProvider {
         self.app_name = self.config.get('app_name', 'jaseci');
     }
 
-    def _db_cfg -> dict {
+    def _db_cfg -> dict[str, any] {
         return get_scale_config().get_deploy_database_config();
     }
 
@@ -254,7 +254,7 @@ obj KubernetesPostgresProvider {
                     'random_page_cost': '1.1'
                 }
             );
-            overrides = self._db_cfg().get('postgres_settings') or {};
+            overrides: any = self._db_cfg().get('postgres_settings') or {};
             if isinstance(overrides, dict) {
                 for (key, value) in overrides.items() {
                     settings[str(key)] = str(value);

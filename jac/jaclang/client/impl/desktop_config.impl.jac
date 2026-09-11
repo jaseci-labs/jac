@@ -118,8 +118,9 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
     }
     dispatch = config.get('dispatch', {});
     if isinstance(dispatch, dict) {
-        timeout_s = float(dispatch.get('timeout_s', 30.0));
-        max_queue = int(dispatch.get('max_queue', 128));
+        dispatch_cfg: dict[str, any] = dispatch;
+        timeout_s = float(dispatch_cfg.get('timeout_s', 30.0));
+        max_queue = int(dispatch_cfg.get('max_queue', 128));
         if timeout_s <= 0 {
             raise ValueError(
                 f"Desktop configuration error: dispatch.timeout_s ({timeout_s}) "

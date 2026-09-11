@@ -363,7 +363,7 @@ test "python provider installs a capability closure into .jac/venv" {
                 if c.args[1] and c.args[1][0] == "install"
             ];
             assert install_calls , "expected a pip install call";
-            installed_args: list = list(install_calls[0].args[1]);
+            installed_args: list[any] = list(install_calls[0].args[1]);
             assert "python-dotenv>=1.2.1,<2.0.0" in installed_args;
             # runtime closure must not push deploy clients to pip
             assert "kubernetes>=34.1.0,<35.0.0" not in installed_args;
@@ -426,7 +426,7 @@ test "ensure_global_capability pip-installs only the missing deploy tooling" {
         mock_run.return_value.returncode = 0;
         assert ensure_global_capability("deploy.k8s");
         mock_run.assert_called_once();
-        cmd: list = list(mock_run.call_args[0][0]);
+        cmd: list[any] = list(mock_run.call_args[0][0]);
         assert cmd
             == [
                 sys.executable,

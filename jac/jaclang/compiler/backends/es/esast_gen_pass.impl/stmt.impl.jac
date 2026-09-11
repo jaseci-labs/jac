@@ -375,7 +375,7 @@ impl EsastGenPass.exit_raise_stmt with uni.RaiseStmt exit {
         else self.sync_loc(es.Identifier(name='Error'), jac_node=here);
 
     callee: (es.Expression | None) = None;
-    call_args: (list | None) = None;
+    call_args: (list[es.Expression | es.SpreadElement] | None) = None;
     if isinstance(argument, es.CallExpression) {
         callee = argument.callee;
         call_args = argument.arguments;

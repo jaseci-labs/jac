@@ -54,7 +54,7 @@ def resilient(n: int) -> Iterator[int] {
     yield 4;
 }
 
-def gens_py -> dict {
+def gens_py -> dict[any, any] {
     total = 0;
     for v in counter(5) {
         total = total + v;
@@ -108,7 +108,7 @@ def gens_py -> dict {
     };
 }
 
-def gens_cl -> dict {
+def gens_cl -> dict[any, any] {
     return {};
 }
 

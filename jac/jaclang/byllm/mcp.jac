@@ -18,7 +18,7 @@ obj McpClient {
 
     def postinit -> None;
     def connect -> None;
-    def get_tools(names: list[str] | None = None) -> list;
+    def get_tools(names: list[str] | None = None) -> list[McpTool];
     def call_tool(name: str, arguments: dict[str, any]) -> str;
     def close -> None;
 }
@@ -32,6 +32,6 @@ obj McpTool {
     def __call__(**kwargs: any) -> str;
     def get_name -> str;
     def get_json_schema -> dict[str, any];
-    def parse_arguments(args_json: dict) -> dict;
+    def parse_arguments(args_json: dict[str, any]) -> dict[str, any];
     def is_finish_tool -> bool;
 }

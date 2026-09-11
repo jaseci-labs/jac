@@ -28,8 +28,8 @@ import from ....utils.api { getErrorMessage }
 def:pub LogsPage -> JsxElement {
     has isLoading: bool = True,
         isLoadingMore: bool = False,
-        lines: list[dict] = [],
-        services: list = [],
+        lines: list[dict[str, any]] = [],
+        services: list[str] = [],
         filterService: str = "",
         filterLevel: str = "",
         filterSearch: str = "",
@@ -47,10 +47,10 @@ def:pub LogsPage -> JsxElement {
         # for the header section, and if the line has a trace_id we
         # kick off loadTrace() to populate the journey list below.
         panelIdx: int = -1,
-        panelLine: dict = {},
+        panelLine: dict[str, any] = {},
         traceId: str = "",
-        traceLines: list[dict] = [],
-        traceServices: list = [],
+        traceLines: list[dict[str, any]] = [],
+        traceServices: list[str] = [],
         traceLoading: bool = False;
 
     auth = useAuth();
@@ -59,7 +59,7 @@ def:pub LogsPage -> JsxElement {
         try {
             result = await getLogServices(auth["authToken"]);
             if result["ok"] and result["data"] {
-                services = result["data"]["services"] or [];
+                services: list[str] = result["data"]["services"] or [];
             }
         } except Exception as e {
             console.error("loadServices error:", e);
@@ -82,7 +82,7 @@ def:pub LogsPage -> JsxElement {
                 ""
             );
             if result["ok"] and result["data"] {
-                lines = result["data"]["lines"] or [];
+                lines: list[dict[str, any]] = result["data"]["lines"] or [];
                 nextBefore = String(result["data"]["next_before"] or "");
                 errorMsg = "";
             } elif result["error"] {
@@ -117,7 +117,7 @@ def:pub LogsPage -> JsxElement {
                 nextBefore
             );
             if result["ok"] and result["data"] {
-                older = result["data"]["lines"] or [];
+                older: list[dict[str, any]] = result["data"]["lines"] or [];
                 # Append: newer page is already at the top, older
                 # entries land beneath - the display stays
                 # newest-first end-to-end.
@@ -138,8 +138,8 @@ def:pub LogsPage -> JsxElement {
         try {
             result = await getTraceLogs(auth["authToken"], tid);
             if result["ok"] and result["data"] {
-                traceLines = result["data"]["lines"] or [];
-                traceServices = result["data"]["services_touched"] or [];
+                traceLines: list[dict[str, any]] = result["data"]["lines"] or [];
+                traceServices: list[str] = result["data"]["services_touched"] or [];
             } elif result["error"] {
                 errorMsg = getErrorMessage(result, "Failed to load trace");
             }
@@ -149,7 +149,7 @@ def:pub LogsPage -> JsxElement {
         traceLoading = False;
     }
 
-    def openPanel(idx: int, line: dict) {
+    def openPanel(idx: int, line: dict[str, any]) {
         panelIdx = idx;
         panelLine = line;
         tid = String(line["trace_id"] or "");

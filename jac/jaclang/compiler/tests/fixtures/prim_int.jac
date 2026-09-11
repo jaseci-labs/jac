@@ -4,7 +4,7 @@ Cross-backend equivalence fixture.
 """
 
 # --- Int arithmetic and bitwise operators ---
-def int_py -> dict {
+def int_py -> dict[any, any] {
     a: int = 17;
     b: int = 5;
 
@@ -42,13 +42,13 @@ def int_py -> dict {
 
     # int extra (as_integer_ratio, to_bytes, from_bytes)
     n: int = 42;
-    ratio: tuple = n.as_integer_ratio();
-    ratio_list: list = list(ratio);
+    ratio: tuple[any, ...] = n.as_integer_ratio();
+    ratio_list: list[any] = list(ratio);
     conj: int = n.conjugate();
-    tb_big: list = list((1024).to_bytes(2, "big"));
-    tb_little: list = list((1024).to_bytes(2, "little"));
-    tb_zero: list = list((0).to_bytes(1, "big"));
-    tb_255: list = list((255).to_bytes(1, "big"));
+    tb_big: list[any] = list((1024).to_bytes(2, "big"));
+    tb_little: list[any] = list((1024).to_bytes(2, "little"));
+    tb_zero: list[any] = list((0).to_bytes(1, "big"));
+    tb_255: list[any] = list((255).to_bytes(1, "big"));
     fb_big: int = int.from_bytes([4, 0], "big");
     fb_little: int = int.from_bytes([0, 4], "big");
     fb_single: int = int.from_bytes([255], "big");
@@ -163,7 +163,7 @@ def int_py -> dict {
     };
 }
 
-def int_cl -> dict {
+def int_cl -> dict[any, any] {
     a: int = 17;
     b: int = 5;
 
@@ -183,13 +183,13 @@ def int_cl -> dict {
     xor_val: int = int(ba ^ bb);
 
     n: int = 42;
-    ratio: tuple = n.as_integer_ratio();
-    ratio_list: list = list(ratio);
+    ratio: tuple[any, ...] = n.as_integer_ratio();
+    ratio_list: list[any] = list(ratio);
     conj: int = n.conjugate();
-    tb_big: list = list((1024).to_bytes(2, "big"));
-    tb_little: list = list((1024).to_bytes(2, "little"));
-    tb_zero: list = list((0).to_bytes(1, "big"));
-    tb_255: list = list((255).to_bytes(1, "big"));
+    tb_big: list[any] = list((1024).to_bytes(2, "big"));
+    tb_little: list[any] = list((1024).to_bytes(2, "little"));
+    tb_zero: list[any] = list((0).to_bytes(1, "big"));
+    tb_255: list[any] = list((255).to_bytes(1, "big"));
     fb_big: int = int.from_bytes([4, 0], "big");
     fb_little: int = int.from_bytes([0, 4], "big");
     fb_single: int = int.from_bytes([255], "big");

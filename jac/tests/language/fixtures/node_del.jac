@@ -19,7 +19,7 @@ with entry {
     assert a.count('label=""]') == 9;
     assert a.count('[label="person(') == 8;
     # # delete p2
-    del p2 ;
+    del p2;
     b = printgraph(root);
     assert b.count('label="person') == 7;
     assert 'age=20' not in b;
@@ -28,19 +28,19 @@ with entry {
     assert c.count('label="person') == 7;
     assert 'age=20' not in c;
     # # del multiple nodes
-    del [p1, p4] ;
+    del [p1, p4];
     d = printgraph(root);
     assert d.count('label="person') == 4;
     for i in [10, 20, 30, 40] {
         assert f'age={i}' not in d;
     }
     apple_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    del apple_list[0] ;
+    del apple_list[0];
     print('apple list after delete 0 :', apple_list);
-    del [apple_list[6], apple_list[7]] ;
+    del [apple_list[6], apple_list[7]];
     print('apple list after delete 7, 8 :', apple_list);
     obj Inner {
-        has c: list;
+        has c: list[any];
         has d: int;
     }
     obj Outer {
@@ -48,6 +48,6 @@ with entry {
     }
     outer_a = Outer(b=Inner(c=[1, 2, 3], d=4));
     print('outer_a.b before delete :', outer_a.b);
-    del outer_a.b.c[1] ;
+    del outer_a.b.c[1];
     print('outer_a.b after delete :', outer_a.b);
 }

@@ -69,7 +69,7 @@ def _restore_home_module(previous: (object | None)) {
 }
 
 
-def _anchor_blob(arch: object) -> dict {
+def _anchor_blob(arch: object) -> dict[str, any] {
     raw = Serializer.serialize(arch, include_type=True);
     return {
         '__type__': 'NodeAnchor',
@@ -87,7 +87,7 @@ def _anchor_blob(arch: object) -> dict {
 
 # --- Back-fill on hook install ---------------------------------------------
 test "installing a hook back-fills archetype classes that already exist" {
-    seen: list = [];
+    seen: list[any] = [];
 
     def recorder(cls: type) {
         seen.append(_key(cls));
@@ -109,7 +109,7 @@ test "installing a hook back-fills archetype classes that already exist" {
 
 
 test "installing the same hook twice neither duplicates it nor re-runs it" {
-    calls: list = [];
+    calls: list[type] = [];
 
     def recorder(cls: type) {
         calls.append(cls);
@@ -131,7 +131,7 @@ test "installing the same hook twice neither duplicates it nor re-runs it" {
 
 
 test "an installed hook still fires for classes created afterwards" {
-    seen: list = [];
+    seen: list[str] = [];
 
     def recorder(cls: type) {
         seen.append(cls.__name__);
@@ -155,7 +155,7 @@ test "a raw append cannot install a hook that skips the back-fill" {
     # who reaches for `.append` silently reintroduces #8049: their hook only
     # ever sees classes created after it, so everything defined earlier goes
     # unregistered and every read of those anchors is refused and dropped.
-    seen: list = [];
+    seen: list[type] = [];
 
     def recorder(cls: type) {
         seen.append(cls);
@@ -181,7 +181,7 @@ test "a raw append cannot install a hook that skips the back-fill" {
 
 
 test "uninstall_subclass_hook removes a hook and is safe to repeat" {
-    calls: list = [];
+    calls: list[type] = [];
 
     def recorder(cls: type) {
         calls.append(cls);

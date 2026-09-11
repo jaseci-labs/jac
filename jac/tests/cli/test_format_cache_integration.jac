@@ -52,7 +52,7 @@ test "second run on a clean file is a cache hit (formatter not invoked)" {
         f = Path(repo) / "a.jac";
         f.write_text(CLEAN);
         reset_state();
-        stats1: dict = {};
+        stats1: dict[str, any] = {};
         r1 = fmt_cmd([str(f)], cache=True, cache_stats=stats1);
         assert r1 == 0 , "clean file formats successfully";
         assert stats1.get("hits", 0) == 0 and stats1.get("misses", 0) == 1 , (
@@ -60,7 +60,7 @@ test "second run on a clean file is a cache hit (formatter not invoked)" {
         );
         # Second identical run: same bytes => same key => HIT, no formatter work.
         reset_state();
-        stats2: dict = {};
+        stats2: dict[str, any] = {};
         r2 = fmt_cmd([str(f)], cache=True, cache_stats=stats2);
         assert r2 == 0;
         assert stats2.get("hits", 0) == 1 and stats2.get("misses", 0) == 0 , (
@@ -82,7 +82,7 @@ test "check mode returns 0 on a cached clean file via a hit" {
         reset_state();
         fmt_cmd([str(f)], cache=True);  # populate
         reset_state();
-        stats: dict = {};
+        stats: dict[str, any] = {};
         rc = fmt_cmd([str(f)], check=True, cache=True, cache_stats=stats);
         assert rc == 0 , "--check on a cached clean file must pass";
         assert stats.get("hits", 0) == 1 , f"--check must honour a clean hit, got {stats}";
@@ -101,14 +101,14 @@ test "a file that needed formatting is cached clean only after it is written" {
         f.write_text(NEEDS_FMT);
         # Run 1: needs formatting -> miss -> formats -> writes -> now clean on disk.
         reset_state();
-        stats1: dict = {};
+        stats1: dict[str, any] = {};
         r1 = fmt_cmd([str(f)], cache=True, cache_stats=stats1);
         assert r1 == 1 , "a changed file exits 1";
         assert f.read_text() == CLEAN , "the file must actually be rewritten";
         assert stats1.get("misses", 0) == 1 , f"first run is a miss, got {stats1}";
         # Run 2: disk now holds CLEAN -> must be a HIT (proves post-write caching).
         reset_state();
-        stats2: dict = {};
+        stats2: dict[str, any] = {};
         r2 = fmt_cmd([str(f)], cache=True, cache_stats=stats2);
         assert r2 == 0;
         assert stats2.get("hits", 0) == 1 , (
@@ -133,7 +133,7 @@ test "syntax errors are never cached as clean" {
         # It was examined and missed, but -- crucially -- NOT recorded clean,
         # so a second run must miss again (re-attempt formatting).
         reset_state();
-        stats: dict = {};
+        stats: dict[str, any] = {};
         r2 = fmt_cmd([str(f)], cache=True, cache_stats=stats);
         assert stats.get("hits", 0) == 0 , (
             f"a failing file must never become a cache hit, got {stats}"
@@ -156,7 +156,7 @@ test "content change invalidates the cache" {
         # Edit the file to need formatting: content changes -> key changes -> miss.
         f.write_text(NEEDS_FMT);
         reset_state();
-        stats: dict = {};
+        stats: dict[str, any] = {};
         r = fmt_cmd([str(f)], cache=True, cache_stats=stats);
         assert r == 1 , "changed content must miss and reformat (exit 1)";
         assert stats.get("hits", 0) == 0 and stats.get("misses", 0) == 1 , (
@@ -176,7 +176,7 @@ test "cache disabled by default for jac fmt (opt-in, Prettier-style)" {
         f = Path(repo) / "a.jac";
         f.write_text(CLEAN);
         reset_state();
-        stats: dict = {};
+        stats: dict[str, any] = {};
         fmt_cmd([str(f)], cache_stats=stats);  # no cache=True
         fmt_cmd([str(f)], cache_stats=stats);  # still no cache
         assert stats.get("hits", 0) == 0 and stats.get("misses", 0) == 0 , (
@@ -199,7 +199,7 @@ test "cache works outside a project with default .jac/cache path" {
         f = Path(tmp) / "solo.jac";
         f.write_text(CLEAN);
         reset_state();
-        stats1: dict = {};
+        stats1: dict[str, any] = {};
         r1 = fmt_cmd([str(f)], cache=True, cache_stats=stats1);
         assert r1 == 0;
         assert stats1.get("misses", 0) == 1 , f"first run must miss, got {stats1}";
@@ -208,7 +208,7 @@ test "cache works outside a project with default .jac/cache path" {
             f"without jac.toml, --cache must still create {cache_root}"
         );
         reset_state();
-        stats2: dict = {};
+        stats2: dict[str, any] = {};
         r2 = fmt_cmd([str(f)], cache=True, cache_stats=stats2);
         assert r2 == 0;
         assert stats2.get("hits", 0) == 1 , (
@@ -232,7 +232,7 @@ test "to_screen with cache still prints formatted source" {
         reset_state();
         buf = StringIO();
         with redirect_stdout(buf) {
-            stats: dict = {};
+            stats: dict[str, any] = {};
             rc = fmt_cmd([str(f)], to_screen=True, cache=True, cache_stats=stats);
             assert rc == 1 , "needs-fmt under to_screen still reports changed";
         }
@@ -269,12 +269,12 @@ test "lintfix cache does not share entries across excluded vs included paths" {
         (src / "a.jac").write_text(CLEAN);
         (vendor / "a.jac").write_text(CLEAN);
         reset_state();
-        stats_v: dict = {};
+        stats_v: dict[str, any] = {};
         fmt_cmd([str(vendor / "a.jac")], lintfix=True, cache=True, cache_stats=stats_v);
         assert stats_v.get("misses", 0) == 1;
         # Formatting the included path must miss -- path is part of the key.
         reset_state();
-        stats_s: dict = {};
+        stats_s: dict[str, any] = {};
         fmt_cmd([str(src / "a.jac")], lintfix=True, cache=True, cache_stats=stats_s);
         assert stats_s.get("hits", 0) == 0 and stats_s.get("misses", 0) == 1 , (
             f"excluded-path clean entry must not satisfy included path, got {stats_s}"
@@ -296,10 +296,10 @@ test "broken annex is never cached as clean" {
         # Deliberately unparseable so the annex formatter reports errors.
         annex.write_text("this is {{{ not valid jac\n");
         reset_state();
-        stats1: dict = {};
+        stats1: dict[str, any] = {};
         fmt_cmd([str(f)], lintfix=True, cache=True, cache_stats=stats1);
         reset_state();
-        stats2: dict = {};
+        stats2: dict[str, any] = {};
         fmt_cmd([str(f)], lintfix=True, cache=True, cache_stats=stats2);
         assert stats2.get("hits", 0) == 0 , (
             f"a unit with a broken annex must never become a cache hit, got {stats2}"
@@ -332,7 +332,7 @@ test "precommit cache keys on staged blob bytes, not the worktree" {
 
         # Run 1: staged == worktree (clean) -> miss -> records clean.
         reset_state();
-        stats1: dict = {};
+        stats1: dict[str, any] = {};
         r1 = precommit(staged=True, verify=True, cache_stats=stats1);
         assert r1 == 0 , "clean staged blob must pass verify";
         assert stats1.get("hits", 0) == 0 and stats1.get("misses", 0) == 1 , (
@@ -344,7 +344,7 @@ test "precommit cache keys on staged blob bytes, not the worktree" {
 
         # Run 2: staged dirty -> temp checkout of staged bytes -> same key -> HIT.
         reset_state();
-        stats2: dict = {};
+        stats2: dict[str, any] = {};
         r2 = precommit(staged=True, verify=True, cache_stats=stats2);
         assert r2 == 0 , "clean staged blob must still pass over a dirty worktree";
         assert stats2.get("hits", 0) == 1 and stats2.get("misses", 0) == 0 , (
@@ -381,7 +381,7 @@ test "precommit cache uses nested file config instead of root anchor" {
 
         # The first verify records a clean entry using nested/jac.toml.
         reset_state();
-        stats1: dict = {};
+        stats1: dict[str, any] = {};
         r1 = precommit(staged=True, verify=True, cache_stats=stats1);
         assert r1 == 0;
         assert stats1.get("misses", 0) == 1 , (
@@ -397,7 +397,7 @@ test "precommit cache uses nested file config instead of root anchor" {
             '[precommit]\ntypecheck = false\n'
         );
         reset_state();
-        stats2: dict = {};
+        stats2: dict[str, any] = {};
         r2 = precommit(staged=True, verify=True, cache_stats=stats2);
         assert r2 == 0;
         assert stats2.get("hits", 0) == 0 and stats2.get("misses", 0) == 1 , (

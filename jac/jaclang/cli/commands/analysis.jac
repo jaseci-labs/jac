@@ -165,10 +165,10 @@ comptime SPEC_EXPLAIN: CommandSpec = CommandSpec(
 def explain(topic: str, filename: str, output: str = "", memory: str = "") -> int;
 
 def check(
-    paths: list,
+    paths: list[str],
     print_errs: bool = True,
-    ignore: (list | None) = None,
-    disable_error_code: (list | None) = None,
+    ignore: (list[str] | None) = None,
+    disable_error_code: (list[str] | None) = None,
     parse_only: bool = False,
     nowarn: bool = False,
     lint_only: bool = False,
@@ -179,7 +179,9 @@ def check(
     app: str = ""
 ) -> int;
 
-def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;
+def lint(
+    paths: list[str], fix: bool = False, ignore: (list[str] | None) = None
+) -> int;
 
 comptime SPEC_FORMAT: CommandSpec = CommandSpec(
          name="fmt",
@@ -240,14 +242,14 @@ comptime SPEC_FORMAT: CommandSpec = CommandSpec(
      );
 
 def format(
-    paths: list,
+    paths: list[str],
     to_screen: bool = False,
     lintfix: bool = False,
     check: bool = False,
     cache: bool = False,
     cache_anchor: str = "",
-    path_map: dict | None = None,
-    cache_stats: dict | None = None,
+    path_map: dict[str, str] | None = None,
+    cache_stats: dict[str, int] | None = None,
     jobs: str = ""
 ) -> int;
 
@@ -304,12 +306,12 @@ comptime SPEC_PRECOMMIT: CommandSpec = CommandSpec(
      );
 
 def precommit(
-    paths: (list | None) = None,
+    paths: (list[str] | None) = None,
     staged: bool = False,
     verify: bool = False,
     install: bool = False,
     force: bool = False,
-    cache_stats: dict | None = None
+    cache_stats: dict[str, int] | None = None
 ) -> int;
 
 comptime SPEC_TEST: CommandSpec = CommandSpec(
@@ -422,7 +424,7 @@ comptime SPEC_TEST: CommandSpec = CommandSpec(
 
 def `test(
     target: str = "",
-    paths: list = [],
+    paths: list[str] = [],
     test_name: str = "",
     filter: str = "",
     xit: bool = False,
@@ -432,7 +434,7 @@ def `test(
     pct_range: str = "",
     resume: bool = False,
     verbose: bool = False,
-    ignore: (list | None) = None,
+    ignore: (list[str] | None) = None,
     jobs: str = ""
 ) -> int;
 

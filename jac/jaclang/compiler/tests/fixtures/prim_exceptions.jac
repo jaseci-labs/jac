@@ -4,8 +4,8 @@ Cross-backend equivalence fixture.
 All exceptions are raised explicitly (JS 1/0 yields Infinity, not an error).
 """
 
-def exceptions_py() -> dict {
-    results: dict = {};
+def exceptions_py() -> dict[any, any] {
+    results: dict[any, any] = {};
 
     try {
         raise ValueError("test");
@@ -142,8 +142,8 @@ def exceptions_py() -> dict {
     return results;
 }
 
-def exceptions_cl() -> dict {
-    results: dict = {};
+def exceptions_cl() -> dict[any, any] {
+    results: dict[any, any] = {};
 
     try {
         raise ValueError("test");

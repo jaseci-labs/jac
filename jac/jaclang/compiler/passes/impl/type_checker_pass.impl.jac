@@ -270,7 +270,7 @@ impl TypeCheckPass._check_intrinsic_call(nd: FuncCall) -> None {
     if intr is None {
         return;
     }
-    positional: list = [];
+    positional: list[Expr] = [];
     has_kw = False;
     for p in (nd.params or []) {
         if isinstance(p, KWPair) {
@@ -353,7 +353,7 @@ impl TypeCheckPass.exit_compare_expr with CompareExpr exit {
     }
     _ord_ops = (Tok.LT, Tok.LTE, Tok.GT, Tok.GTE);
     _mem_ops = (Tok.KW_IN, Tok.KW_NIN);
-    operands: list = [here.left];
+    operands: list[Expr] = [here.left];
     operands.extend(here.rights);
     for (i, op) in enumerate(here.ops) {
         _opname = op.name if isinstance(op, Token) else str(op);
@@ -1097,21 +1097,35 @@ impl TypeCheckPass._body_always_returns(body: list[CodeBlockStmt]) -> bool {
     return self.evaluator._collect_return_types(body, []);
 }
 
-impl TypeCheckPass._check_bare_generic(ann_node: UniNode, ty: object) -> None {
+impl TypeCheckPass._check_bare_generic(
+    ann_node: UniNode, ty: object, written: bool = True
+) -> None {
     if isinstance(ty, UnionType) and ty.types {
         for branch in ty.types {
-            self._check_bare_generic(ann_node, branch);
+            self._check_bare_generic(ann_node, branch, written);
         }
         return;
     }
+    if not isinstance(ty, ClassType) or not ty.shared {
+        return;
+    }
     if (
-        isinstance(ty, ClassType)
-        and ty.shared
-        and ty.shared.type_params
+        ty.shared.type_params
+        and ty.is_builtin(BARE_GENERIC_REQUIRED)
         and (not ty.private or not ty.private.type_args)
     ) {
-        self.emit(W1036, node_override=ann_node, type=ty.shared.class_name);
+        if not (written and self._writes_type_args(ann_node)) {
+            self.emit(E1036, node_override=ann_node, type=ty.shared.class_name);
+        }
+        return;
     }
+    for arg in (ty.private.type_args if ty.private else None) or [] {
+        self._check_bare_generic(ann_node, arg, False);
+    }
+}
+
+impl TypeCheckPass._writes_type_args(ann_node: UniNode) -> bool {
+    return isinstance(ann_node, AtomTrailer) and isinstance(ann_node.right, IndexSlice);
 }
 
 impl TypeCheckPass._check_unresolved_lambda_params -> None {
@@ -2012,7 +2026,7 @@ impl TypeCheckPass._eval_unpacking_names(container: Expr) -> None {
 impl TypeCheckPass._stamp_fixed_width -> None {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     import from jaclang.compiler.types.fixed_width { numeric_name_of }
-    stack: list = [self.ir_in];
+    stack: list[UniNode] = [self.ir_in];
     while stack {
         nd = stack.pop();
         if isinstance(nd, Expr) {

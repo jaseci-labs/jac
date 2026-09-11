@@ -1,4 +1,4 @@
-impl PyastBuildPass.aug_op_map(tok_dict: dict, op: Token) -> str {
+impl PyastBuildPass.aug_op_map(tok_dict: dict[str, str], op: Token) -> str {
     op.value += '=';
     for (_key, value) in tok_dict.items() {
         if (value == op.value) {
@@ -237,11 +237,14 @@ impl PyastBuildPass.operator(tok: Tok, value: str) -> Token {
 }
 
 impl PyastBuildPass.proc_arguments(nd: py_ast.arguments) -> FuncSignature {
-    def _apply_kind(params: list, kind: ParamKind) -> list {
+    def _apply_kind(params: list[UniNode], kind: ParamKind) -> list[ParamVar] {
+        typed: list[ParamVar] = [];
         for param in params {
-            cast(ParamVar, param).param_kind = kind;
+            param_var = cast(ParamVar, param);
+            param_var.param_kind = kind;
+            typed.append(param_var);
         }
-        return params;
+        return typed;
     }
     posonlyargs = _apply_kind(
         [self.convert(arg) for arg in nd.posonlyargs], ParamKind.POSONLY
@@ -1899,7 +1902,7 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (Archetype | Enum) {
         raise RuntimeError(self.ice('Length mismatch in decorators on class'));
     }
     valid_decorators = decorators or None;
-    kid: list = [];
+    kid: list[UniNode] = [];
     if valid_decorators {
         kid.extend(valid_decorators);
     }

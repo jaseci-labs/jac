@@ -47,7 +47,7 @@ def reset_config {
 }
 
 """Create a temporary project directory with jac.toml. Returns (temp_dir, project_dir)."""
-def make_temp_project -> tuple {
+def make_temp_project -> tuple[any, ...] {
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     project_dir = Path(tmp) / "test_project";
     project_dir.mkdir();

@@ -2,6 +2,7 @@ import from jaclang.comptime { name as ct_name }
 import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
 import from jaclang.project.config { JacConfig }
 import type from jaclang.project.apps { AppConfig }
+import type from jaclang.project.providers { EcosystemProvider }
 import os;
 
 import from jaclang.client.targets.registry { ClientTarget, target_for_app }
@@ -287,7 +288,7 @@ def get_config -> JacConfig | None {
     return _get_config();
 }
 
-def _npm_context -> tuple | None {
+def _npm_context -> tuple[JacConfig, EcosystemProvider] | None {
     import from jaclang.project.providers { get_provider_registry }
     import from jaclang.cli.console { console }
 
@@ -310,7 +311,7 @@ def _npm_context -> tuple | None {
     return (config, provider);
 }
 
-def run_npm_add(packages: list, dev: bool, install_global: bool = False) -> int {
+def run_npm_add(packages: list[str], dev: bool, install_global: bool = False) -> int {
     import from jaclang.project.providers { InstallContext }
     import from jaclang.cli.console { console }
 
@@ -360,7 +361,7 @@ def run_npm_add(packages: list, dev: bool, install_global: bool = False) -> int 
     }
 }
 
-def run_npm_add_global(packages: list, dev: bool) -> int {
+def run_npm_add_global(packages: list[str], dev: bool) -> int {
     import subprocess;
     import from jaclang.cli.console { console }
     import from jaclang.client.bun_installer { get_bun, bun_unavailable_message }
@@ -387,7 +388,7 @@ def run_npm_add_global(packages: list, dev: bool) -> int {
             '{\n  "name": "jac-global-tools",\n  "private": true\n}\n', encoding="utf-8"
         );
     }
-    cmd: list = [bun, "add"];
+    cmd: list[str] = [bun, "add"];
     if dev {
         cmd.append("--dev");
     }
@@ -407,7 +408,7 @@ def run_npm_add_global(packages: list, dev: bool) -> int {
     return 0;
 }
 
-def run_npm_remove(packages: list, dev: bool) -> int {
+def run_npm_remove(packages: list[str], dev: bool) -> int {
     import from jaclang.project.providers { InstallContext }
     import from jaclang.cli.console { console }
 

@@ -5,12 +5,11 @@ dict. The ECMAScript backend must fall back to the runtime-polymorphic
 `_jac.poly.get` helper instead of emitting the Python method name verbatim.
 """
 
-
 def opaque(x: any) -> any {
     return x;
 }
 
-def test_poly_get() -> dict {
+def test_poly_get() -> dict[any, any] {
     mapping = opaque({"a": 1, "b": 2});
     val_hit = mapping.get("a");
     val_miss = mapping.get("z", -1);

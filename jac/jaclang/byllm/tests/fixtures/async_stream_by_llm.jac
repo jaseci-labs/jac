@@ -22,7 +22,7 @@ def _chunk(text: str) -> object {
 
 obj StubStreamLLM(BaseLLM) {
     """Implements only the sync provider call, so it inherits the base async one."""
-    override def model_call_with_stream(params: dict) -> object {
+    override def model_call_with_stream(params: dict[str, any]) -> object {
         for word in ["streamed ", "reply"] {
             yield _chunk(word);
         }

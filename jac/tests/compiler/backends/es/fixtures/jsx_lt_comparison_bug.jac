@@ -5,8 +5,7 @@ because `<` followed by an alpha char is always treated as a JSX opening
 tag.  This corrupts the mode state machine and causes an infinite loop.
 """
 
-
-def filter_points(points: list, limit: int) -> list {
+def filter_points(points: list[any], limit: int) -> list[any] {
     result = [];
     for i = 0 while i < points.length with i += 1 {
         if points[i] < limit {

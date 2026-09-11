@@ -1,6 +1,5 @@
 """Test Immediately Invoked Function Expressions (IIFE) for client-side (JavaScript) execution."""
 
-
 with entry {
     # Test 1: Basic IIFE with no parameters
     result1 = (
@@ -102,7 +101,7 @@ with entry {
 
     # Test 8: IIFE with array operations
     result8 = (
-        def process_data(data: list) -> int {
+        def process_data(data: list[any]) -> int {
             sum = 0;
             count = 0;
             for item in data {
@@ -124,20 +123,21 @@ with entry {
 
     # Test 9: IIFE used in assignment chain
     x = 5;
-    result9 = x + (
-        def double(n: int) -> int {
-            return n * 2;
-        }
-    )(
-        x
-    );
+    result9 = x
+        + (
+            def double(n: int) -> int {
+                return n * 2;
+            }
+        )(
+            x
+        );
 
     print("Test 9 - IIFE in expression (5 + double(5)):", result9);
     # Expected: 15
 
     # Test 10: IIFE with object creation
     result10 = (
-        def create_object() -> dict {
+        def create_object() -> dict[str, any] {
             my_obj = {"name": "Test", "value": 123, "active": True};
             return my_obj;
         }

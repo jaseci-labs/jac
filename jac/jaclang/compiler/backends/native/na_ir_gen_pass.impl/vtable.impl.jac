@@ -612,7 +612,7 @@ impl NaIRGenPass._is_enum_arch(name: str) -> bool {
     if name in self.enum_types {
         return True;
     }
-    _cands: list = [self.ir_in];
+    _cands: list[uni.Module] = [self.ir_in];
     for _fm in (self?._foreign_modules or []) {
         _cands.append(_fm);
     }
@@ -637,7 +637,7 @@ impl NaIRGenPass._emit_isa_fn -> ir.Function {
     row_ty = ir.LiteralStructType([i8p, i8p]);
 
     reg = get_layout_registry(self.ir_in, self.prog);
-    rows: list = [];
+    rows: list[ir.Constant] = [];
     for cls in sorted(reg.mro_order) {
         for anc in self._mro_of(cls) {
             if anc == cls {
@@ -786,7 +786,9 @@ impl NaIRGenPass._is_runtime_class_tuple(t: any) -> bool {
     return saw_class;
 }
 
-impl NaIRGenPass._runtime_class_arms(expr: (uni.UniNode | None)) -> tuple {
+impl NaIRGenPass._runtime_class_arms(
+    expr: (uni.UniNode | None)
+) -> tuple[list[ir.Value] | None, ir.Value | None] {
     """The class handles an `isinstance` type argument carries as a value.
 
     `isinstance(x, types)` where `types` is a value is the same check as a

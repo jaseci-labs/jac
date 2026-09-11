@@ -18,7 +18,7 @@ import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
-     _ENG: list = [];
+     _ENG: list[any] = [];
 
 def compile_native -> ExecutionEngine {
     if _ENG {

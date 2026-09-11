@@ -45,7 +45,7 @@ glob FIXTURES = os.path.join(
      );
 
 """Compile a fixture natively and hand back the program and the module."""
-def compile_native(fixture: str, expect_demotions: bool = False) -> tuple {
+def compile_native(fixture: str, expect_demotions: bool = False) -> tuple[any, ...] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
@@ -70,7 +70,7 @@ def seam_report(fixture: str) -> str {
 }
 
 """Field name to slot index, as the consumer's registry holds it."""
-def slots_of(ir: uni.Module, prog: JacProgram, name: str) -> dict {
+def slots_of(ir: uni.Module, prog: JacProgram, name: str) -> dict[str, any] {
     layout = get_layout_registry(ir, prog).get_layout(name);
     assert layout is not None , f"no layout for {name}";
     return dict(layout.field_index);

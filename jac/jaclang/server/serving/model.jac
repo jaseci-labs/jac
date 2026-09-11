@@ -50,7 +50,7 @@ obj ApiModel {
     }
 }
 
-def require_str(data: dict, key: str, label: str = '') -> str {
+def require_str(data: dict[str, any], key: str, label: str = '') -> str {
     value = data.get(key);
     name = label or key;
     if not isinstance(value, str) or not value {

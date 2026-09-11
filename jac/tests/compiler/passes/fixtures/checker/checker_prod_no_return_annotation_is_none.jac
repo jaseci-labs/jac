@@ -33,12 +33,12 @@ with entry {
 
     # side_effect() has no return annotation -> should be None
     # These should all error: None is not assignable to int/str/list
-    bad1: int = no_ret_result;     # Error: None -> int
-    bad2: str = no_ret_result;     # Error: None -> str
-    bad3: list = no_ret_result;    # Error: None -> list
+    bad1: int = no_ret_result;  # Error: None -> int
+    bad2: str = no_ret_result;  # Error: None -> str
+    bad3: list[any] = no_ret_result;  # Error: None -> list[any]
 
     # Same for methods without return annotation
     f = Foo();
     obj_result = f.mutate();
-    bad4: int = obj_result;        # Error: None -> int
+    bad4: int = obj_result;  # Error: None -> int
 }

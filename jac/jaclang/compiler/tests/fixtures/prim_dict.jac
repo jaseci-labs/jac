@@ -4,25 +4,25 @@ Cross-backend equivalence fixture.
 """
 
 # --- Dict methods and operators ---
-def dict_py() -> dict {
-    d: dict = {"a": 1, "b": 2, "c": 3};
+def dict_py() -> dict[any, any] {
+    d: dict[any, any] = {"a": 1, "b": 2, "c": 3};
 
     get_hit: int = d.get("a", 0);
     get_miss: int = d.get("z", -1);
 
-    keys: list = list(d.keys());
-    values: list = list(d.values());
-    items: list = list(d.items());
+    keys: list[any] = list(d.keys());
+    values: list[any] = list(d.values());
+    items: list[any] = list(d.items());
 
-    d2: dict = {"x": 10};
+    d2: dict[any, any] = {"x": 10};
     d2.update({"y": 20, "z": 30});
 
-    d3: dict = d.copy();
+    d3: dict[any, any] = d.copy();
 
-    fk1: dict = dict.fromkeys(["x", "y", "z"], 0);
-    fk2: dict = dict.fromkeys(["a", "b"]);
+    fk1: dict[any, any] = dict[any, any].fromkeys(["x", "y", "z"], 0);
+    fk2: dict[any, any] = dict[any, any].fromkeys(["a", "b"]);
 
-    d4: dict = {"a": 100, "b": 200, "c": 300};
+    d4: dict[any, any] = {"a": 100, "b": 200, "c": 300};
 
     # dict_copy
     dc1: dict[str, int] = {"x": 10, "y": 20};
@@ -45,7 +45,7 @@ def dict_py() -> dict {
     upd_c: int = de["c"];
     upd_d: int = de["d"];
     de3: dict[str, int] = {"x": 10, "y": 20};
-    v: list = list(de3.values());
+    v: list[any] = list(de3.values());
 
     # dict_setdefault
     ds1: dict[str, int] = {"a": 1, "b": 2};
@@ -65,17 +65,17 @@ def dict_py() -> dict {
     sd_multi_b: int = ds3["b"];
 
     # containers: | and |=
-    d_in1: dict = {"x": 1};
-    d_in2: dict = {"y": 2};
-    dict_merge: dict = d_in1 | d_in2;
+    d_in1: dict[any, any] = {"x": 1};
+    d_in2: dict[any, any] = {"y": 2};
+    dict_merge: dict[any, any] = d_in1 | d_in2;
     dict_in: bool = "x" in d_in1;
     dict_nin: bool = "z" not in d_in1;
-    d_ior: dict = {"a": 1, "b": 2};
+    d_ior: dict[any, any] = {"a": 1, "b": 2};
     d_ior |= {"b": 99, "c": 3};
 
     # popitem (emit_popitem) — single-key dict for deterministic result
-    dp: dict = {"pi_only": 77};
-    pi: tuple = dp.popitem();
+    dp: dict[any, any] = {"pi_only": 77};
+    pi: tuple[any, ...] = dp.popitem();
     pi_key: str = pi[0];
     pi_val: int = pi[1];
     pi_after_len: int = len(dp);
@@ -134,23 +134,23 @@ def dict_py() -> dict {
     };
 }
 
-def dict_cl() -> dict {
-    d: dict = {"a": 1, "b": 2, "c": 3};
+def dict_cl() -> dict[any, any] {
+    d: dict[any, any] = {"a": 1, "b": 2, "c": 3};
 
     get_hit: int = d.get("a", 0);
     get_miss: int = d.get("z", -1);
 
-    keys: list = list(d.keys());
-    values: list = list(d.values());
-    items: list = list(d.items());
+    keys: list[any] = list(d.keys());
+    values: list[any] = list(d.values());
+    items: list[any] = list(d.items());
 
-    d2: dict = {"x": 10};
+    d2: dict[any, any] = {"x": 10};
     d2.update({"y": 20, "z": 30});
 
-    d3: dict = d.copy();
+    d3: dict[any, any] = d.copy();
 
-    fk1: dict = dict.fromkeys(["x", "y", "z"], 0);
-    fk2: dict = dict.fromkeys(["a", "b"]);
+    fk1: dict[any, any] = dict[any, any].fromkeys(["x", "y", "z"], 0);
+    fk2: dict[any, any] = dict[any, any].fromkeys(["a", "b"]);
 
     dc1: dict[str, int] = {"x": 10, "y": 20};
     dc1.clear();
@@ -171,7 +171,7 @@ def dict_cl() -> dict {
     upd_c: int = de["c"];
     upd_d: int = de["d"];
     de3: dict[str, int] = {"x": 10, "y": 20};
-    v: list = list(de3.values());
+    v: list[any] = list(de3.values());
 
     ds1: dict[str, int] = {"a": 1, "b": 2};
     sd_missing: int = ds1.setdefault("c", 99);
@@ -189,12 +189,12 @@ def dict_cl() -> dict {
     sd_multi_a: int = ds3["a"];
     sd_multi_b: int = ds3["b"];
 
-    d_in1: dict = {"x": 1};
-    d_in2: dict = {"y": 2};
-    dict_merge: dict = d_in1 | d_in2;
+    d_in1: dict[any, any] = {"x": 1};
+    d_in2: dict[any, any] = {"y": 2};
+    dict_merge: dict[any, any] = d_in1 | d_in2;
     dict_in: bool = "x" in d_in1;
     dict_nin: bool = "z" not in d_in1;
-    d_ior: dict = {"a": 1, "b": 2};
+    d_ior: dict[any, any] = {"a": 1, "b": 2};
     d_ior |= {"b": 99, "c": 3};
 
     return {
@@ -346,13 +346,13 @@ def dict_na() -> dict[str, any] {
     };
 }
 
-def dict_ctor_py() -> dict {
-    base: dict = {"a": 1, "b": 2};
-    copy1: dict = dict(base);
+def dict_ctor_py() -> dict[any, any] {
+    base: dict[any, any] = {"a": 1, "b": 2};
+    copy1: dict[any, any] = dict(base);
     copy1["c"] = 3;
-    pairs: list = [["x", 10], ["y", 20]];
-    from_pairs: dict = dict(pairs);
-    empty: dict = dict();
+    pairs: list[any] = [["x", 10], ["y", 20]];
+    from_pairs: dict[any, any] = dict(pairs);
+    empty: dict[any, any] = dict();
     return {
         "orig_len": len(base),
         "copy_len": len(copy1),
@@ -364,13 +364,13 @@ def dict_ctor_py() -> dict {
     };
 }
 
-def dict_ctor_cl() -> dict {
-    base: dict = {"a": 1, "b": 2};
-    copy1: dict = dict(base);
+def dict_ctor_cl() -> dict[any, any] {
+    base: dict[any, any] = {"a": 1, "b": 2};
+    copy1: dict[any, any] = dict(base);
     copy1["c"] = 3;
-    pairs: list = [["x", 10], ["y", 20]];
-    from_pairs: dict = dict(pairs);
-    empty: dict = dict();
+    pairs: list[any] = [["x", 10], ["y", 20]];
+    from_pairs: dict[any, any] = dict(pairs);
+    empty: dict[any, any] = dict();
     return {
         "orig_len": len(base),
         "copy_len": len(copy1),
@@ -382,25 +382,25 @@ def dict_ctor_cl() -> dict {
     };
 }
 
-def dict_ctor_na() -> dict {
+def dict_ctor_na() -> dict[any, any] {
     return {};
 }
 
-def dict_iter_py() -> dict {
-    d: dict = {"a": 1, "b": 2, "c": 3};
-    seen: list = [];
+def dict_iter_py() -> dict[any, any] {
+    d: dict[any, any] = {"a": 1, "b": 2, "c": 3};
+    seen: list[any] = [];
     total: int = 0;
     for k in d {
         seen.append(k);
         total += d[k];
     }
     dyn: any = {"x": 7, "y": 8};
-    dyn_seen: list = [];
+    dyn_seen: list[any] = [];
     for k2 in dyn {
         dyn_seen.append(k2);
     }
-    as_list: list = list(d);
-    as_sorted: list = sorted(d);
+    as_list: list[any] = list(d);
+    as_sorted: list[any] = sorted(d);
     return {
         "seen": seen,
         "total": total,
@@ -411,21 +411,21 @@ def dict_iter_py() -> dict {
     };
 }
 
-def dict_iter_cl() -> dict {
-    d: dict = {"a": 1, "b": 2, "c": 3};
-    seen: list = [];
+def dict_iter_cl() -> dict[any, any] {
+    d: dict[any, any] = {"a": 1, "b": 2, "c": 3};
+    seen: list[any] = [];
     total: int = 0;
     for k in d {
         seen.append(k);
         total += d[k];
     }
     dyn: any = {"x": 7, "y": 8};
-    dyn_seen: list = [];
+    dyn_seen: list[any] = [];
     for k2 in dyn {
         dyn_seen.append(k2);
     }
-    as_list: list = list(d);
-    as_sorted: list = sorted(d);
+    as_list: list[any] = list(d);
+    as_sorted: list[any] = sorted(d);
     return {
         "seen": seen,
         "total": total,
@@ -436,6 +436,6 @@ def dict_iter_cl() -> dict {
     };
 }
 
-def dict_iter_na() -> dict {
+def dict_iter_na() -> dict[any, any] {
     return {};
 }

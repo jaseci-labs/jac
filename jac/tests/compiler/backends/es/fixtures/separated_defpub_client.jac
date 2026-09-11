@@ -12,7 +12,7 @@ import from "@jac/runtime" { jacIsLoggedIn }
 import from separated_defpub { add_task, get_tasks, toggle_task }
 
 def:pub app -> JsxElement {
-    has tasks: list = [],
+    has tasks: list[any] = [],
         taskText: str = "",
         tasksLoading: bool = True;
 

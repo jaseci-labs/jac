@@ -13,18 +13,18 @@ class _I {
     has x: int = 0;
 }
 
-def builtins_introspection_py() -> dict {
+def builtins_introspection_py() -> dict[any, any] {
     # emit_enumerate
-    enum_pairs: list = list(enumerate(["a", "b", "c"]));
+    enum_pairs: list[any] = list(enumerate(["a", "b", "c"]));
 
     # emit_zip
-    zip_pairs: list = list(zip([1, 2, 3], ["a", "b", "c"]));
+    zip_pairs: list[any] = list(zip([1, 2, 3], ["a", "b", "c"]));
 
     # emit_map
-    map_result: list = list(map(str, [1, 2, 3]));
+    map_result: list[any] = list(map(str, [1, 2, 3]));
 
     # emit_filter
-    filter_result: list = list(filter(None, [0, 1, 0, 2, 0, 3]));
+    filter_result: list[any] = list(filter(None, [0, 1, 0, 2, 0, 3]));
 
     # emit_setattr / emit_getattr / emit_hasattr / emit_vars / emit_delattr
     o: _I = _I();
@@ -98,7 +98,7 @@ def builtins_introspection_py() -> dict {
     };
 }
 
-def builtins_introspection_cl() -> dict {
+def builtins_introspection_cl() -> dict[any, any] {
     return {};
 }
 

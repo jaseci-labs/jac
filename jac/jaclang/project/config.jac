@@ -347,7 +347,7 @@ obj JacConfig {
 
 def _parse_toml_data(data: dict[str, any], toml_path: Path | None = None) -> JacConfig;
 
-def _parse_persons(raw: list[any]) -> list[PersonConfig];
+def _parse_persons(raw: list[object]) -> list[PersonConfig];
 
 def _parse_include(raw: dict[str, any]) -> PackageIncludeConfig;
 

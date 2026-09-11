@@ -79,7 +79,7 @@ Handlers are usually inline `lambda`; close over row data: `onPress={lambda { op
 
 **Lists** - comprehension in a JSX slot with a `key`: `{[<Card key={p["id"]} p={p}/> for p in items]}`.
 **Conditionals** - Jac ternary; empty branch is `<View/>`: `{(<Progress/>) if busy else <View/>}`.
-**Components** declare props as typed params: `def Card(p: dict) -> JsxElement {...}`, called `<Card p={p}/>`.
+**Components** declare props as typed params: `def Card(p: dict[str, any]) -> JsxElement {...}`, called `<Card p={p}/>`.
 **Backend** - call walkers as usual: `result = root spawn create(name=txt); fresh = result.reports[0];` or import the server function + `await fn(arg)` (positional). Both bridge to the provider app; wrap them in `try { ... } except BridgeError as e { ... }` (`import from "@jac/runtime" { BridgeError, BridgeUnavailable, BridgeTimeout, BridgeRejected }`) and show a retry banner rather than a blank screen - the flagship's `components/BridgeBanner.jac` is the pattern. Auth: `import from "@jac/runtime" { jacLogin, jacSignup, jacLogout }` (backed by `expo-secure-store` on native).
 
 ## Styling - React Native `StyleSheet` only
@@ -109,7 +109,7 @@ glob:pub styles = StyleSheet.create({
 });
 ```
 
-Re-skin the whole app by editing the field defaults; for a runtime light/dark switch keep two `Colors` instances and a `buildStyles(c: Colors) -> dict` factory, prebuild both sheets once, pick one per render off a `has` field. ⚠ A `dict` accessed by attribute (`C.bg` on a `glob C = {...}`) is `E1030` - use an `obj`.
+Re-skin the whole app by editing the field defaults; for a runtime light/dark switch keep two `Colors` instances and a `buildStyles(c: Colors) -> dict[str, any]` factory, prebuild both sheets once, pick one per render off a `has` field. ⚠ A `dict` accessed by attribute (`C.bg` on a `glob C = {...}`) is `E1030` - use an `obj`.
 
 Supported props are the RN flexbox subset: `flex`, `flexDirection`, `alignItems`, `justifyContent`, `gap`, `padding*`, `margin*`, `backgroundColor`, `borderRadius`, `borderWidth`, `borderColor`, `width`/`height`/`maxWidth`, `position:"absolute"` + `top`/`left`/…, and (on `<Text>` only) `color`, `fontSize`, `fontWeight`, `lineHeight`, `textAlign`.
 

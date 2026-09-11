@@ -51,7 +51,7 @@ def _seed_foreign_anchor(db: str) -> str {
 }
 
 
-def _table_ids(db: str, table: str) -> list {
+def _table_ids(db: str, table: str) -> list[any] {
     conn = sqlite3.connect(db);
     rows = [r[0] for r in conn.execute(f"SELECT id FROM {table}")];
     conn.close();

@@ -62,7 +62,7 @@ print('OWNING=' + json.dumps(out))
 """;
 
 def _env -> dict[str, str] {
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["JAC_BENCH_ROOT"] = JAC_ROOT;
     return env;
 }

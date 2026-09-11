@@ -6,7 +6,6 @@ shape that the positional form produces — not drop the kwargs and emit
 an empty object.
 """
 
-
 # Server function imports — these become __jacCallFunction RPC stubs.
 import from sv_import_kwargs { greet, add_pair }
 
@@ -35,7 +34,7 @@ def:pub app -> JsxElement {
     async def call_add_kw_spread -> None {
         # ``**dict`` spread — unknown keys at compile time, must be carried
         # through as an ObjectExpression spread element.
-        kw: dict = {"a": 1, "b": 2};
+        kw: dict[any, any] = {"a": 1, "b": 2};
         sum_val = await add_pair(**kw);
     }
 

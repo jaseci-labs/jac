@@ -664,7 +664,7 @@ test "optional_layout_signal" {
         + "    has inner: Optional[Point] = None;\n"
         + "}\n"
     );
-    results: dict[str, tuple] = {};
+    results: dict[str, tuple[any, ...]] = {};
     for (tag, header, body) in [
         ("native", "# native spelling probe", native_body),
         ("typing", "import from typing { Optional }", typed_body)

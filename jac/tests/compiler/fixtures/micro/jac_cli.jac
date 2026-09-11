@@ -21,7 +21,7 @@ obj ShellCmd(cmd.Cmd) {
     has reg: Interface,
         prompt: str = "> ";
 
-    def init(registry: Interface, *args: list, **kwargs: dict);
+    def init(registry: Interface, *args: list[any], **kwargs: dict[any, any]);
     def `default(line: str);
     def do_quit(arg: str) -> bool;
 }
@@ -41,6 +41,7 @@ def function_two(x: float, y: float) {
 def function_three(name: str, age: int, country: str = 'Unknown') {
     print(f"Function Three -> name: {name}, age: {age}, country: {country}");
 }
+
 # Run CLI or Shell mode
 # interface.run_from_cli()
 with entry {
@@ -94,7 +95,7 @@ impl Interface.run_shell{
     ShellCmd(self).cmdloop();
 }
 
-impl ShellCmd.init(registry: Interface, *args: list, **kwargs: dict) {
+impl ShellCmd.init(registry: Interface, *args: list[any], **kwargs: dict[any, any]) {
     self.cmd.Cmd.__init__(*args, **kwargs);
     self.reg = registry;
 }

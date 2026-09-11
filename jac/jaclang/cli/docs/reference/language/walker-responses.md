@@ -256,7 +256,7 @@ with entry {
 Some operations naturally produce multiple reports:
 
 ```jac
-def do_processing(input: str) -> list {
+def do_processing(input: str) -> list[any] {
     return [input, input + "_processed"];
 }
 
@@ -380,7 +380,7 @@ The same applies to `def:pub` functions -- return typed objects instead of manua
 
 ```jac
 # Bad: Manual dict return
-def:pub get_task(id: str) -> dict {
+def:pub get_task(id: str) -> dict[str, any] {
     task = find_task(id);
     return {"id": jid(task), "title": task.title, "done": task.done};
 }

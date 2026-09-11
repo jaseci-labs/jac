@@ -4,4 +4,4 @@ obj MyObj {
     def foo(edge_spec: tuple[int, Optional[type], Optional[tuple]]) -> Archetype;
 }
 
-impl MyObj.foo(edge_spec: tuple[int, Optional[type], Optional[tuple]]) -> Archetype { }
+impl MyObj.foo(edge_spec: tuple[int, Optional[type], Optional[tuple]]) -> Archetype {}

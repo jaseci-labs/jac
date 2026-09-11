@@ -164,7 +164,7 @@ test "engine get_prompt renders messages as text content with valid roles" {
         {"jsonrpc": "2.0", "id": 1, "method": "prompts/list"}
     )["result"]["prompts"];
     name = prompts[0]["name"];
-    args: dict = {};
+    args: dict[str, any] = {};
     for a in prompts[0].get("arguments", []) {
         args[a["name"]] = "x";
     }
@@ -604,7 +604,7 @@ test "unknown prompt returns error" {
 #   CLI (explicit) > [mcp] in jac.toml > CLI default. The resolution
 #   lives in the `mcp_cmd` command body; JacMcpServer is patched so the server
 #   never actually starts -- we only capture the constructor kwargs.
-glob _MCP_TOML_CFG: dict = {
+glob _MCP_TOML_CFG: dict[str, any] = {
          "transport": "streamable-http",
          "port": 9000,
          "host": "0.0.0.0"
@@ -616,7 +616,7 @@ def _run_mcp_cmd(
     transport: str = "stdio",
     port: int = 3001,
     host: str = "127.0.0.1"
-) -> dict {
+) -> dict[str, any] {
     import from unittest.mock { patch, MagicMock }
     import from jaclang.cli.commands.mcp { mcp_cmd }
 
@@ -625,7 +625,7 @@ def _run_mcp_cmd(
         mock_jac_cfg = MagicMock();
         mock_jac_cfg.get_plugin_config.return_value = cfg_value;
     }
-    captured: list = [];
+    captured: list[dict[str, any]] = [];
     def capture_ctor(**kwargs: object) -> object {
         captured.append(kwargs);
         return MagicMock();
@@ -676,7 +676,7 @@ test "all prompt messages use only MCP-valid roles" {
     pp = PromptProvider();
     valid_roles = ["user", "assistant"];
     for prompt in pp.list_prompts() {
-        args: dict = {};
+        args: dict[str, any] = {};
         for arg in prompt.get("arguments", []) {
             args[arg["name"]] = "test";
         }
@@ -698,7 +698,7 @@ test "all prompts render into well-formed MCP messages through the engine" {
         {"jsonrpc": "2.0", "id": 1, "method": "prompts/list"}
     )["result"]["prompts"];
     for prompt in listed {
-        args: dict = {};
+        args: dict[str, any] = {};
         for arg in prompt.get("arguments", []) {
             args[arg["name"]] = "test";
         }

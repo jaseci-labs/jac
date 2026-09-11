@@ -102,7 +102,11 @@ def _mint_user_token(srv: JacAPIServer, username: str) -> str {
 
 
 def _post(
-    client: TestClient, path: str, token: str, key: str, body: (dict | None) = None
+    client: TestClient,
+    path: str,
+    token: str,
+    key: str,
+    body: (dict[str, any] | None) = None
 ) -> any {
     headers = {"X-Jac-Idempotency-Key": key};
     if token {
@@ -112,7 +116,7 @@ def _post(
 }
 
 
-def _reports(resp: any) -> list {
+def _reports(resp: any) -> list[any] {
     body = resp.json();
     assert body.get("ok") is True , resp.text;
     return body["data"]["reports"];
@@ -267,7 +271,7 @@ test "scale server: a worker arms the outbox worker for a bridging consumer" {
     use_store(store);
     saved_consumers = dict(sv_client._consumer_providers);
     sv_client.clear_consumer_providers();
-    patches: list = [
+    patches: list[any] = [
         unittest.mock.patch.object(JacAPIServer, "_ensure_client_bundle", _noop),
         unittest.mock.patch.object(ServingServer, "run", _fake_run)
     ];

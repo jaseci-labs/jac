@@ -128,7 +128,7 @@ glob CHESS_RUNS: int = 5,
 """How many alternating rounds the baseline comparison measures each tree for."""
 glob PAIRED_ROUNDS: int = 2;
 
-glob _PROBE_CACHE: dict[str, list[dict]] = {};
+glob _PROBE_CACHE: dict[str, list[dict[str, any]]] = {};
 
 """This checkout's cache root, which is also where the probe subprocess writes."""
 def head_cache -> str {
@@ -157,7 +157,7 @@ would be a second, contradicting answer to the one question this harness needs
 the subprocess to answer for itself -- which compiler is running.
 """
 def _probe_env(cache: str) -> dict[str, str] {
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env.pop("JAC_DEV_SOURCE", None);
     env["XDG_CACHE_HOME"] = cache;
     return env;
@@ -168,7 +168,7 @@ def _probe_env(cache: str) -> dict[str, str] {
 Memoized per `(tree, round)` so the paired comparison can ask for a specific
 round and the HEAD-only report can share round zero with it.
 """
-def run_probe(tree_dir: str, cache: str, round_no: int = 0) -> list[dict] {
+def run_probe(tree_dir: str, cache: str, round_no: int = 0) -> list[dict[str, any]] {
     key = f"{os.path.abspath(tree_dir)}#{round_no}";
     if key in _PROBE_CACHE {
         return _PROBE_CACHE[key];
@@ -195,8 +195,8 @@ def run_probe(tree_dir: str, cache: str, round_no: int = 0) -> list[dict] {
 }
 
 """Fold several runs of one tree into one row set, keeping each phase's minimum."""
-def merge_runs(runs: list[list[dict]]) -> list[dict] {
-    merged = [dict(r) for r in runs[0]];
+def merge_runs(runs: list[list[dict[str, any]]]) -> list[dict[str, any]] {
+    merged: list[dict[str, any]] = [dict(r) for r in runs[0]];
     for later in runs[1:] {
         by_rel = {str(r["rel"]): r for r in later};
         for row in merged {
@@ -221,9 +221,11 @@ duly reported HEAD faster on every phase of every module -- a result shaped
 like the ordering, not like the branch. Alternating and keeping each phase's
 minimum across rounds removes the monotonic half of that bias.
 """
-def paired_rows(base_tree: str, base_cache: str) -> tuple[list[dict], list[dict]] {
-    base_runs: list[list[dict]] = [];
-    head_runs: list[list[dict]] = [];
+def paired_rows(
+    base_tree: str, base_cache: str
+) -> tuple[list[dict[str, any]], list[dict[str, any]]] {
+    base_runs: list[list[dict[str, any]]] = [];
+    head_runs: list[list[dict[str, any]]] = [];
     for round_no in range(PAIRED_ROUNDS) {
         base_runs.append(run_probe(base_tree, base_cache, round_no));
         head_runs.append(run_probe(JAC_ROOT, head_cache(), round_no));
@@ -295,7 +297,7 @@ def baseline_tree -> str {
 }
 
 """Format one tree's rows as a fixed-width table, phase columns in pipeline order."""
-def phase_table(title: str, rows: list[dict]) -> str {
+def phase_table(title: str, rows: list[dict[str, any]]) -> str {
     width = max([len(str(r["rel"])) for r in rows]);
     head = "  " + "module".ljust(width);
     for phase in PHASES {
@@ -318,7 +320,7 @@ def phase_table(title: str, rows: list[dict]) -> str {
 }
 
 """Format the per-phase delta between two trees as a percentage of baseline."""
-def delta_table(baseline: list[dict], current: list[dict]) -> str {
+def delta_table(baseline: list[dict[str, any]], current: list[dict[str, any]]) -> str {
     by_rel = {str(r["rel"]): r for r in baseline};
     width = max([len(str(r["rel"])) for r in current]);
     head = "  " + "module".ljust(width);
@@ -500,7 +502,7 @@ glob PRECOMPILE_GATE: str = os.path.join(
      GATE_COLD_MAX_RUNS: int = 760,
      GATE_COLD_MAX_RATIO: float = 0.6;
 
-def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
+def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict[str, any], float] {
     import from jaclang.dist.precompile_bytecode {
         precompile_unit,
         find_jac_files,

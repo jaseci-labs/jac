@@ -29,7 +29,7 @@ def t_value_is_not_none -> bool {
     return v is not None;
 }
 
-def none_cmp_all -> dict {
+def none_cmp_all -> dict[any, any] {
     return {
         "noret_none": t_noret_is_none(),
         "noret_not_none": t_noret_is_not_none(),

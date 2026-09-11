@@ -18,13 +18,13 @@ import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
-glob FW_CODES: tuple = ("E1126", "E1127", "E1128", "E1129", "E1130"),
+glob FW_CODES: tuple[str, ...] = ("E1126", "E1127", "E1128", "E1129", "E1130"),
      VIRTUAL_PATH: str = os.path.join(
          TESTS_DIR, "compiler", "passes", "fixtures", "checker", "_fw_inline.jac"
      );
 
 """Type-check `source` on one lane; return (code, line, col) per diagnostic."""
-def check(source: str, space: str = "server") -> list[tuple] {
+def check(source: str, space: str = "server") -> list[tuple[any, ...]] {
     prog = JacProgram();
     prog.compile(
         file_path=VIRTUAL_PATH,
@@ -33,7 +33,7 @@ def check(source: str, space: str = "server") -> list[tuple] {
             no_cgen=True, force_codespace=space, force_target_program=True
         )
     );
-    out: list[tuple] = [];
+    out: list[tuple[any, ...]] = [];
     for alrt in prog.errors_had {
         if alrt.code is None {
             continue;
@@ -43,7 +43,7 @@ def check(source: str, space: str = "server") -> list[tuple] {
     return out;
 }
 
-def fw_only(diags: list[tuple]) -> list[tuple] {
+def fw_only(diags: list[tuple[any, ...]]) -> list[tuple[any, ...]] {
     return [
         d
         for d in diags

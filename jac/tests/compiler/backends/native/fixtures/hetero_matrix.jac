@@ -10,34 +10,34 @@ self-checks and prints OK so the same fixture drives the AOT gc-mode runs.
 """
 
 def hl_read_str(s: &str) -> str {
-    l: list = [1, s + "!", 2.5];
-    return l[1];
+    l: list[any] = [1, s + "!", 2.5];
+    return l.pop(1);
 }
 
 
 def hl_read_int -> int {
-    l: list = [41, "a", 2.5];
+    l: list[any] = [41, "a", 2.5];
     a: int = l[0];
     return a + 1;
 }
 
 
 def hl_read_float -> float {
-    l: list = [1, "a", 2.5];
-    return l[2];
+    l: list[any] = [1, "a", 2.5];
+    return l.pop(2);
 }
 
 
 def hl_overwrite(s: &str) -> str {
-    l: list = [7, "seed"];
+    l: list[any] = [7, "seed"];
     l[1] = s + "-one";
     l[1] = s + "-two";
-    return l[1];
+    return l.pop(1);
 }
 
 
 def hl_append_pop -> int {
-    l: list = [1, "a"];
+    l: list[any] = [1, "a"];
     l.append("bb" + "cc");
     x: str = l.pop();
     return len(x) + len(l);
@@ -45,7 +45,7 @@ def hl_append_pop -> int {
 
 
 def hl_iter_int_total -> int {
-    l: list = [3, "x", 4.5, True, 9];
+    l: list[any] = [3, "x", 4.5, True, 9];
     total: int = 0;
     for v in l {
         if isinstance(v, int) {
@@ -58,7 +58,9 @@ def hl_iter_int_total -> int {
 
 
 def hl_repr -> str {
-    l: list = [1, "two", 3.5, True];
+    # repr() has no native lowering for list[any]; the jacval layout is
+    # what this case exercises.
+    l: list[any] = [1, "two", 3.5, True];
     return repr(l);
 }
 
@@ -78,42 +80,44 @@ def hl_annotated(s: &str) -> str {
 
 
 def hd_read_str -> str {
-    d: dict = {"a": 1, "b": "be" + "e", "c": 2.5};
-    return d["b"];
+    d: dict[str, any] = {"a": 1, "b": "be" + "e", "c": 2.5};
+    return d.pop("b");
 }
 
 
 def hd_read_int -> int {
-    d: dict = {"a": 40, "b": "x"};
+    d: dict[str, any] = {"a": 40, "b": "x"};
     a: int = d["a"];
     return a + 2;
 }
 
 
 def hd_overwrite(s: &str) -> str {
-    d: dict = {"k": 1, "pad": 2.5};
+    d: dict[str, any] = {"k": 1, "pad": 2.5};
     d["k"] = s + "-first";
     d["k"] = s + "-second";
-    return d["k"];
+    return d.pop("k");
 }
 
 
 def hd_pop_len(s: &str) -> int {
-    d: dict = {"a": s + "abc", "b": 5};
+    d: dict[str, any] = {"a": s + "abc", "b": 5};
     x: str = d.pop("a");
     return len(x) + len(d);
 }
 
 
 def hd_clear_len(s: &str) -> int {
-    d: dict = {"a": s + "abc", "b": 5, "c": 1.5};
+    d: dict[str, any] = {"a": s + "abc", "b": 5, "c": 1.5};
     d.clear();
     return len(d);
 }
 
 
 def hd_repr -> str {
-    d: dict = {"a": 1, "b": "two"};
+    # repr() has no native lowering for dict[str, any]; the jacval layout
+    # is what this case exercises.
+    d: dict[str, any] = {"a": 1, "b": "two"};
     return repr(d);
 }
 
@@ -122,7 +126,7 @@ def hl_churn(n: int) -> int {
     total: int = 0;
     i: int = 0;
     while i < n {
-        m: list = [i, "v" + str(i), i * 1.5];
+        m: list[any] = [i, "v" + str(i), i * 1.5];
         cc: str = m[1];
         total = total + len(cc);
         i = i + 1;
@@ -135,7 +139,7 @@ def hd_churn(n: int) -> int {
     total: int = 0;
     i: int = 0;
     while i < n {
-        d: dict = {"num": i, "tag": "v" + str(i)};
+        d: dict[str, any] = {"num": i, "tag": "v" + str(i)};
         cc: str = d["tag"];
         total = total + len(cc);
         i = i + 1;
@@ -145,7 +149,7 @@ def hd_churn(n: int) -> int {
 
 
 def hl_overwrite_churn(n: int) -> int {
-    l: list = [0, "seed"];
+    l: list[any] = [0, "seed"];
     i: int = 0;
     while i < n {
         l[1] = "ow" + str(i);
@@ -157,7 +161,7 @@ def hl_overwrite_churn(n: int) -> int {
 
 
 def hd_overwrite_churn(n: int) -> int {
-    d: dict = {"k": "seed", "num": 0};
+    d: dict[str, any] = {"k": "seed", "num": 0};
     i: int = 0;
     while i < n {
         d["k"] = "ow" + str(i);
@@ -171,7 +175,7 @@ def hd_overwrite_churn(n: int) -> int {
 def hd_clear_churn(n: int) -> int {
     i: int = 0;
     hits: int = 0;
-    d: dict = {"seed": 0, "pad": 1.5};
+    d: dict[str, any] = {"seed": 0, "pad": 1.5};
     while i < n {
         d["s" + str(i % 8)] = "val" + str(i);
         if i % 8 == 7 {

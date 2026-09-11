@@ -7,8 +7,8 @@ class declares the empty tuple, which has to lower as well.
 
 obj Stage {
     has ir_in: int = 0;
-    static has PROVIDES: tuple = (),
-        REQUIRES: tuple = ();
+    static has PROVIDES: tuple[()] = (),
+        REQUIRES: tuple[()] = ();
 
     def run -> int {
         return self.ir_in + 1;
@@ -17,7 +17,7 @@ obj Stage {
 
 
 obj Access(Stage) {
-    static has PROVIDES: tuple = ('access-checks', );
+    static has PROVIDES: tuple[str] = ('access-checks', );
 }
 
 

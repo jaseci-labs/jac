@@ -134,7 +134,7 @@ def bun_install(bun: str, work: Path, name: str, deps: (dict[str, str] | None) =
 """Run `work/harness.mjs` once, with `args` appended, and assert it exited 0.
 
 Prefers a real `node` when present; falls back to `bun run`."""
-def run_harness(bun: str, work: Path, args: list, label: str) {
+def run_harness(bun: str, work: Path, args: list[any], label: str) {
     node_bin = shutil.which("node");
     if node_bin {
         cmd = [node_bin, str(work / "harness.mjs")] + args;

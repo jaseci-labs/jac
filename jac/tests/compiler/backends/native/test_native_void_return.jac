@@ -22,7 +22,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
-     _MEMO: list = [];
+     _MEMO: list[any] = [];
 
 """Compile the fixture once; a codegen failure here is the bug, not a symptom."""
 def void_fixture -> uni.Module {

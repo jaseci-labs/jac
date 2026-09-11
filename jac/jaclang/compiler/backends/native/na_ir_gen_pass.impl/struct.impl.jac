@@ -1,5 +1,5 @@
 impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | None) {
-    params = nd.params or [];
+    params: Sequence[any] = nd.params or [];
     if not params {
         return None;
     }
@@ -44,7 +44,7 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
     };
     signed_codes = {"b", "h", "i", "l", "q", "n"};
     float_sizes = {"f": 4, "d": 8};
-    fields: list = [];
+    fields: list[tuple[str, int, bool]] = [];
     total = 0;
     i = 0;
     count_str = "";
@@ -102,7 +102,11 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
 }
 
 impl NaIRGenPass._emit_struct_pack(
-    nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
+    nd: uni.FuncCall,
+    params: Sequence[uni.Expr | uni.KWPair],
+    fields: list[tuple[str, int, bool]],
+    total: int,
+    little: bool
 ) -> (ir.Value | None) {
     b = self.builder;
     i8 = ir.IntType(8);
@@ -127,7 +131,7 @@ impl NaIRGenPass._emit_struct_pack(
         );
         return None;
     }
-    arg_vals: list = [];
+    arg_vals: list[ir.Value] = [];
     for p in params[1:] {
         v = self._codegen_expr(p);
         if v is not None {
@@ -176,7 +180,11 @@ impl NaIRGenPass._emit_struct_pack(
 }
 
 impl NaIRGenPass._emit_struct_unpack(
-    nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
+    nd: uni.FuncCall,
+    params: Sequence[uni.Expr | uni.KWPair],
+    fields: list[tuple[str, int, bool]],
+    total: int,
+    little: bool
 ) -> (ir.Value | None) {
     if len(params) < 2 {
         return None;
@@ -207,8 +215,8 @@ impl NaIRGenPass._emit_struct_unpack(
     );
     data = self._bytes_data_ptr(data_val);
 
-    values: list = [];
-    elem_types: list = [];
+    values: list[ir.Value] = [];
+    elem_types: list[ir.Type] = [];
     off = 0;
     for (kind, sz, signed) in fields {
         if kind == "pad" {

@@ -50,7 +50,7 @@ def _assert_error_pretty_found(needle: str, haystack: str) {
 }
 
 """Run jac check and return file count."""
-def _run_jac_check(test_dir: str, ignore_pattern: (list | None) = None) -> int {
+def _run_jac_check(test_dir: str, ignore_pattern: (list[any] | None) = None) -> int {
     captured_stdout = io.StringIO();
     captured_stderr = io.StringIO();
     old_stdout = sys.stdout;
@@ -89,7 +89,7 @@ def _create_clean_project(tmpdir: str) -> str {
 }
 
 """Set up output capture and return (stdout_capture, stderr_capture, old_stdout, old_stderr)."""
-def _capture_output -> tuple {
+def _capture_output -> tuple[any, ...] {
     captured_stdout = io.StringIO();
     captured_stderr = io.StringIO();
     old_stdout = sys.stdout;
@@ -237,7 +237,7 @@ test "jac run with no filename and no resolvable entry errors cleanly" {
     # `jac run` with no file is now project-aware: it climbs to the nearest
     # jac.toml and dispatches on the project kind. JAC_ROOT's project declares
     # no entry-point, so this must fail with a clear message (not a crash).
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["PYTHONPATH"] = JAC_ROOT;
     result = subprocess.run(
         [sys.executable, "-m", "jaclang", "run"],
@@ -624,7 +624,7 @@ test "discovery prunes hidden and pycache dirs" {
         # A declared `-d` root collects every .jac beneath it regardless of
         # naming (#7151), so good_test.jac is a suite even without a test_
         # prefix.
-        env = dict(os.environ);
+        env: dict[str, str] = dict(os.environ);
         env["JAC_TEST_JOBS"] = "0";
         process = subprocess.Popen(
             ["jac", "test", "-d", tmp_dir, "-v"],
@@ -651,7 +651,7 @@ test "discovery prunes hidden and pycache dirs" {
 test "maxfail spans several files" {
     # --maxfail counts across the whole run, not per file. Serial so the
     # cap trips deterministically rather than racing parallel workers.
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["JAC_TEST_JOBS"] = "0";
     process = subprocess.Popen(
         [
@@ -1466,7 +1466,7 @@ test "jac install -e links all packages for space-separated and repeated flag fo
         );
         os.chdir(_tmpdir);
 
-        linked: list = [];
+        linked: list[any] = [];
         def fake_install_editable(self: object, src_dir: object, site_pkgs: object) {
             linked.append(src_dir);
         }
@@ -1509,7 +1509,7 @@ test "jac install <pkg> routes package names to the project venv installer" {
         # `install` now records to jac.toml, so discovery must resolve to this
         # tmp project (not a config cached from an earlier test) before save.
         _reset_config();
-        captured: list = [];
+        captured: list[any] = [];
         def fake_install_specs(
             self: object, config: object, specs: object, ctx: object
         ) -> bool {
@@ -2200,7 +2200,7 @@ test "jac check nowarn flag suppresses warnings" {
 
 """Run analysis.check with captured stdout/stderr; reset global config after."""
 def _check_captured(
-    paths: list, disable_error_code: (list | None) = None
+    paths: list[any], disable_error_code: (list[any] | None) = None
 ) -> tuple[int, str] {
     (captured_stdout, captured_stderr, old_stdout, old_stderr) = _capture_output();
     _reset_config();

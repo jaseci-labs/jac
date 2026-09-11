@@ -25,14 +25,14 @@ import from jaclang.compiler.driver.jir {
 
 glob DIAG_SCHEMA: int = 1,
      IFACE_RETAIN_CAP: int = 1024,
-     _SYMTAB_PROVIDES_MEMO: list = [],
-     _CODEC_MODULES: tuple = (
+     _SYMTAB_PROVIDES_MEMO: list[set[AnalysisFact]] = [],
+     _CODEC_MODULES: tuple[str, ...] = (
          "jaclang.compiler.types.type_evaluator",
          "jaclang.compiler.types.stubcat.reader",
          "jaclang.compiler.types.stubcat.writer",
          "jaclang.compiler.types.stubcat.modiface"
      ),
-     _CODEC_MEMO: list = [];
+     _CODEC_MEMO: list[IfaceCodec] = [];
 
 obj IfaceCodec {
     has build_module_iface: any,
@@ -87,7 +87,7 @@ def _symtab_provides -> set[AnalysisFact] {
     return set(_SYMTAB_PROVIDES_MEMO[0]);
 }
 
-def _span_record(span: any) -> list {
+def _span_record(span: any) -> list[str | int | None] {
     return [
         span.mod_path,
         span.first_line,
@@ -102,7 +102,7 @@ def _span_record(span: any) -> list {
     ];
 }
 
-def _span_from_record(rec: list) -> any {
+def _span_from_record(rec: list[any]) -> any {
     import from jaclang.compiler.frontend.srcloc { Span }
     return Span(
         mod_path=rec[0],
@@ -118,8 +118,8 @@ def _span_from_record(rec: list) -> any {
     );
 }
 
-def _alert_record(alert: any) -> dict {
-    related: list = [];
+def _alert_record(alert: any) -> dict[str, any] {
+    related: list[list[object]] = [];
     for (label, span) in (alert.related or []) {
         related.append([label, _span_record(span)]);
     }
@@ -132,16 +132,16 @@ def _alert_record(alert: any) -> dict {
     };
 }
 
-def _alert_from_record(rec: dict) -> any {
+def _alert_from_record(rec: dict[str, any]) -> any {
     import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
     import from jaclang.compiler.passes.transform { Alert, Transform }
     code_str: str = str(rec.get("code") or "");
     code = DIAGNOSTICS.get(code_str) if code_str else None;
-    related: list = [];
+    related: list[any] = [];
     for pair in (rec.get("related") or []) {
         related.append((pair[0], _span_from_record(list(pair[1])), ));
     }
-    span_rec: list = list(rec.get("span") or []);
+    span_rec: list[any] = list(rec.get("span") or []);
     help_val: any = rec.get("help");
     return Alert(
         msg=str(rec.get("msg", "")),
@@ -589,7 +589,7 @@ obj IfaceRegistry {
         self.prog.analysis.analyses_run.mark(mod, _symtab_provides());
     }
 
-    def _profiles_of(diag_bytes: (bytes | None)) -> (dict | None) {
+    def _profiles_of(diag_bytes: (bytes | None)) -> (dict[str, any] | None) {
         import json;
         if diag_bytes is None {
             return None;
@@ -605,8 +605,8 @@ obj IfaceRegistry {
         return payload.get("profiles", {}) or {};
     }
 
-    def _replay_records(prof: dict, err0: int, warn0: int) {
-        def key_of(alert: any) -> tuple {
+    def _replay_records(prof: dict[str, any], err0: int, warn0: int) {
+        def key_of(alert: any) -> tuple[str, int, int, str | None, str] {
             return (
                 alert.loc.mod_path,
                 alert.loc.first_line,
@@ -616,19 +616,21 @@ obj IfaceRegistry {
             );
         }
 
-        def rec_key(rec: dict) -> tuple {
+        def rec_key(rec: dict[str, any]) -> tuple[object, ...] {
             span = rec.get("span") or ["", 0, 0, 0];
             return (span[0], span[1], span[3], rec.get("code"), rec.get("msg", ""));
         }
         live_errs = {key_of(a) for a in self.prog.errors_had[err0:]};
         live_warns = {key_of(a) for a in self.prog.warnings_had[warn0:]};
-        for rec in (prof.get("errors") or []) {
+        prof_errors: any = prof.get("errors") or [];
+        for rec in prof_errors {
             if rec_key(rec) in live_errs {
                 continue;
             }
             self.prog.errors_had.append(_alert_from_record(rec));
         }
-        for rec in (prof.get("warnings") or []) {
+        prof_warnings: any = prof.get("warnings") or [];
+        for rec in prof_warnings {
             if rec_key(rec) in live_warns {
                 continue;
             }
@@ -685,7 +687,7 @@ obj IfaceRegistry {
         if ent is None {
             return None;
         }
-        prof: (dict | None) = None;
+        prof: (dict[str, any] | None) = None;
         if profile_key is not None {
             profiles = self._profiles_of(ent.diags);
             prof = profiles.get(profile_key) if profiles is not None else None;
@@ -928,11 +930,11 @@ obj IfaceRegistry {
         }
         if options.no_cgen {
             profiles = self._existing_profiles(resolved);
-            errors: list = [];
+            errors: list[dict[str, any]] = [];
             for alert in self.prog.errors_had[err_start:] {
                 errors.append(_alert_record(alert));
             }
-            warnings: list = [];
+            warnings: list[dict[str, any]] = [];
             for alert in self.prog.warnings_had[warn_start:] {
                 warnings.append(_alert_record(alert));
             }
@@ -979,7 +981,7 @@ obj IfaceRegistry {
         return codec.read_iface_hash(read_section_bytes(found[0], SEC_IFACE)) or "";
     }
 
-    def _existing_profiles(resolved: str) -> dict {
+    def _existing_profiles(resolved: str) -> dict[str, any] {
         import json;
         found = self._module_jir(resolved);
         if found is None {
@@ -1156,7 +1158,7 @@ obj IfaceRegistry {
         }
     }
 
-    def _verify_analysis(resolved: str, options: any, prof: dict) {
+    def _verify_analysis(resolved: str, options: any, prof: dict[str, any]) {
         self.verifying = True;
         try {
             import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -1174,7 +1176,7 @@ obj IfaceRegistry {
                 );
             } except Exception {}
 
-            def digestible(alert: any) -> tuple {
+            def digestible(alert: any) -> tuple[str, int, int, str | None, str] {
                 return (
                     os.path.realpath(alert.loc.mod_path),
                     alert.loc.first_line,
@@ -1184,16 +1186,16 @@ obj IfaceRegistry {
                 );
             }
 
-            def rec_digestible(rec: dict) -> tuple {
+            def rec_digestible(rec: dict[str, any]) -> tuple[object, ...] {
                 span = rec.get("span") or ["", 0, 0, 0];
                 return (span[0], span[1], span[3], rec.get("code"), rec.get("msg", ""));
             }
             fresh_errs = sorted(digestible(a) for a in prog2.errors_had);
             fresh_warns = sorted(digestible(a) for a in prog2.warnings_had);
-            replay_errs = sorted(rec_digestible(r) for r in (prof.get("errors") or []));
-            replay_warns = sorted(
-                rec_digestible(r) for r in (prof.get("warnings") or [])
-            );
+            cached_errs: any = prof.get("errors") or [];
+            cached_warns: any = prof.get("warnings") or [];
+            replay_errs = sorted(rec_digestible(r) for r in cached_errs);
+            replay_warns = sorted(rec_digestible(r) for r in cached_warns);
             if fresh_errs != replay_errs or fresh_warns != replay_warns {
                 raise RuntimeError(
                     f"analysis-cache verify failed for {resolved}: replayed "

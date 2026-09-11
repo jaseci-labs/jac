@@ -81,7 +81,7 @@ def _get(url: str) -> tuple[int, str] {
 }
 
 
-def _post(url: str, body: dict) -> tuple[int, str] {
+def _post(url: str, body: dict[str, any]) -> tuple[int, str] {
     data = json.dumps(body).encode("utf-8");
     req = urllib.request.Request(
         url, data=data, method="POST", headers={"Content-Type": "application/json"}

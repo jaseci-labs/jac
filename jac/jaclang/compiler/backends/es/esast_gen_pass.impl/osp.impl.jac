@@ -4,7 +4,7 @@ impl EsastGenPass._osp_model -> OspModel {
     return get_osp_model(_root);
 }
 
-impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
+impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict[str, any] | None) {
     if not isinstance(nd.signature, uni.EventSignature) {
         return None;
     }
@@ -44,7 +44,7 @@ impl EsastGenPass._osp_const_decl(
     );
 }
 
-impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
+impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict[str, any]) -> None {
     self.needs_jac_runtime = True;
     is_walker = osp["kind"] == "walker";
     other_ref = self.sync_loc(es.Identifier(name="__other"), jac_node=nd);
@@ -328,8 +328,8 @@ impl EsastGenPass._build_osp_setup_js -> str {
     arch_kinds = self._osp_arch_kinds();
     tags = _model.tags;
 
-    entry_by_owner: dict[str, list] = {};
-    exit_by_owner: dict[str, list] = {};
+    entry_by_owner: dict[str, list[OspSlot]] = {};
+    exit_by_owner: dict[str, list[OspSlot]] = {};
     for slot in _model.local_slots() {
         bucket = entry_by_owner if slot.is_entry else exit_by_owner;
         if slot.owner not in bucket {
@@ -365,7 +365,7 @@ impl EsastGenPass._build_osp_setup_js -> str {
     return "\n".join(lines);
 }
 
-impl EsastGenPass._osp_slots_js(slots: list, tags: dict) -> str {
+impl EsastGenPass._osp_slots_js(slots: list[OspSlot], tags: dict[str, int]) -> str {
     parts: list[str] = [];
     for slot in slots {
         fn = "(o, x) => o." + slot.ability + "(x)";
@@ -797,7 +797,7 @@ impl EsastGenPass._build_osp_graph_call(
         }
     }
     if co.conn_assign is not None {
-        props: list = [];
+        props: list[es.Property] = [];
         for kw in co.conn_assign.assigns {
             if kw.key is None {
                 continue;

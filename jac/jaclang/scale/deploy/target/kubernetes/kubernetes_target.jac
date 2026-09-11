@@ -27,7 +27,7 @@ obj KubernetesTargetBase(DeploymentTarget) {
     has config: KubernetesConfig,
         logger: (Logger | None) = None,
         k8s_config: KubernetesConfig postinit,
-        env_list: list = [],
+        env_list: list[any] = [],
         secrets: dict[str, str] = {},
         env: dict[str, str] = {},
         events: EventSink = NoopSink(),
@@ -53,7 +53,8 @@ obj KubernetesTargetBase(DeploymentTarget) {
 
     def _owner_labels -> dict[str, str] {
         return {
-            str(k): str(v) for (k, v) in dict(self.k8s_config.labels or {}).items()
+            str(k): str(v)
+            for (k, v) in dict[str, any](self.k8s_config.labels or {}).items()
         };
     }
 
@@ -469,7 +470,7 @@ obj KubernetesTargetBase(DeploymentTarget) {
         }
     }
 
-    def get_full_status(app_name: str) -> dict {
+    def get_full_status(app_name: str) -> dict[str, any] {
         try {
             self._load_cluster_config();
             apps_v1 = client.AppsV1Api();
@@ -486,9 +487,9 @@ obj KubernetesTargetBase(DeploymentTarget) {
 
         namespace = self.k8s_config.namespace;
         components = [];
-        urls = {};
+        urls: dict[str, any] = {};
 
-        dep_map = {};
+        dep_map: dict[str, any] = {};
         try {
             dep_items: list[any] = apps_v1.list_namespaced_deployment(
                 namespace=namespace
@@ -504,7 +505,7 @@ obj KubernetesTargetBase(DeploymentTarget) {
             }
         }
 
-        sts_map = {};
+        sts_map: dict[str, any] = {};
         try {
             sts_items: list[any] = apps_v1.list_namespaced_stateful_set(
                 namespace=namespace
@@ -544,7 +545,7 @@ obj KubernetesTargetBase(DeploymentTarget) {
             }
         }
 
-        component_defs = [
+        component_defs: list[dict[str, any]] = [
             {'k8s_name': app_name + d[0], 'display': d[1], 'is_sts': d[2]}
             for d in COMPANION_DEFS
         ];

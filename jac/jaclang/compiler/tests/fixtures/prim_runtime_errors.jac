@@ -6,8 +6,8 @@ errors from method calls and verify they're caught by the correct handler in
 the exception hierarchy.
 """
 
-def runtime_errors_py -> dict {
-    results: dict = {};
+def runtime_errors_py -> dict[any, any] {
+    results: dict[any, any] = {};
 
     try {
         x: int = "hello".index("xyz");
@@ -115,8 +115,8 @@ def runtime_errors_py -> dict {
     return results;
 }
 
-def runtime_errors_cl -> dict {
-    results: dict = {};
+def runtime_errors_cl -> dict[any, any] {
+    results: dict[any, any] = {};
 
     try {
         x: int = "hello".index("xyz");

@@ -21,7 +21,7 @@ impl _language_of(name: str) -> str {
     return table.get(ext, "text");
 }
 
-impl _tree_order(f: SourceFile) -> tuple {
+impl _tree_order(f: SourceFile) -> tuple[int, str, int, str] {
     return (0 if f.dir == "" else 1, f.dir, 0 if f.name == "main.jac" else 1, f.name, );
 }
 

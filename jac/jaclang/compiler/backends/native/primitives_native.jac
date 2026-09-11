@@ -20,7 +20,7 @@ import from jaclang.compiler.frontend.unitree { Expr, UniNode }
 obj NativeEmitCtx {
     has pass_ref: NaIRGenPass,
         type_key: str = "",
-        call_kwargs: dict = {},
+        call_kwargs: dict[str, UniNode] = {},
         arg_nodes: list[UniNode] = [],
         call_node: UniNode | None = None;
 }
@@ -137,7 +137,7 @@ class NativeBoolEmitter(NativeIntEmitter) {
 class NativeComplexEmitter(ComplexEmitter[(ir.Value, NativeEmitCtx)]) {
     def _load_parts(
         self: NativeComplexEmitter, ctx: NativeEmitCtx, val: ir.Value
-    ) -> (tuple | None);
+    ) -> (tuple[ir.Value, ir.Value] | None);
 
     def _make_complex(
         self: NativeComplexEmitter, ctx: NativeEmitCtx, real: ir.Value, imag: ir.Value
@@ -1417,7 +1417,7 @@ class NativeTupleEmitter(TupleEmitter[(ir.Value, NativeEmitCtx)]) {
 class NativeRangeEmitter(RangeEmitter[(ir.Value, NativeEmitCtx)]) {
     def _load_range(
         self: NativeRangeEmitter, ctx: NativeEmitCtx, target: ir.Value
-    ) -> (tuple | None);
+    ) -> (tuple[ir.Value, ir.Value, ir.Value] | None);
 
     def _in_range(
         self: NativeRangeEmitter,

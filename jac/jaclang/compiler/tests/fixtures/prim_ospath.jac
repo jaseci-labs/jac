@@ -21,7 +21,7 @@ import from os.path {
     abspath
 }
 
-def ospath_py -> dict {
+def ospath_py -> dict[any, any] {
     (stem, ext) = splitext("/a/archive.tar.gz");
     (sh_trail, st_trail) = split("/a/b/");
     (sh_all, st_all) = split("//");
@@ -61,7 +61,7 @@ def ospath_py -> dict {
     };
 }
 
-def ospath_cl -> dict {
+def ospath_cl -> dict[any, any] {
     return {};
 }
 

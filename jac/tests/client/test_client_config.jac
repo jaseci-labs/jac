@@ -38,12 +38,12 @@ def _append_toml(project_path: str, block: str) {
 }
 
 """Parse the endpointEffects map embedded in a served page's __jac_init__."""
-def _endpoint_effects(page_html: str) -> dict {
+def _endpoint_effects(page_html: str) -> dict[str, any] {
     init_hit = re.search(
         r'<script\s+id="__jac_init__"[^>]*>(.*?)</script>', page_html, re.DOTALL,
     );
     assert init_hit , "served page should embed a __jac_init__ script";
-    data: dict = json.loads(init_hit.group(1));
+    data: dict[str, any] = json.loads(init_hit.group(1));
     return data.get("endpointEffects", {});
 }
 

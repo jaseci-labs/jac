@@ -9,7 +9,7 @@ def _app_purpose(purpose: str) -> str {
     return f"app:{p}";
 }
 
-def _decode(record: dict) -> dict {
+def _decode(record: dict[str, any]) -> dict[str, any] {
     raw = record.get('identity_value');
     payload: any = {};
     if isinstance(raw, str) and raw {
@@ -27,7 +27,10 @@ def _decode(record: dict) -> dict {
 }
 
 def token_create(
-    purpose: str, subject: str, ttl_seconds: int, payload: (dict | None) = None
+    purpose: str,
+    subject: str,
+    ttl_seconds: int,
+    payload: (dict[str, any] | None) = None
 ) -> str {
     return AuthTokenStore.instance().create_token(
         user_id=subject,
@@ -37,12 +40,12 @@ def token_create(
     );
 }
 
-def token_peek(purpose: str, token: str) -> (dict | None) {
+def token_peek(purpose: str, token: str) -> (dict[str, any] | None) {
     record = AuthTokenStore.instance().peek_token(token, _app_purpose(purpose));
     return _decode(record) if record is not None else None;
 }
 
-def token_consume(purpose: str, token: str) -> (dict | None) {
+def token_consume(purpose: str, token: str) -> (dict[str, any] | None) {
     record = AuthTokenStore.instance().consume_token(token, _app_purpose(purpose));
     return _decode(record) if record is not None else None;
 }

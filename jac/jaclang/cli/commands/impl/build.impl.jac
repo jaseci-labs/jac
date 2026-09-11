@@ -1,3 +1,4 @@
+import type from jaclang.project.config { AppConfig }
 import os;
 
 import from pathlib { Path }
@@ -13,7 +14,7 @@ def _is_file_target(target: str) -> bool {
     return target.lower().endswith((".jac", ".py"));
 }
 
-def _build_target(cfg: any, target: str) -> tuple {
+def _build_target(cfg: any, target: str) -> tuple[AppConfig | None, str, int] {
     if _is_file_target(target) {
         abs_file = os.path.abspath(target);
         return (cfg.app_for_path(abs_file), abs_file, 0);
@@ -71,7 +72,7 @@ def _build_app(
     }
     entry_path = entry_override or (plan.entry_path if plan is not None else "");
     kind_builds = plan is not None and plan.action == "build";
-    plan_flags: dict = plan.flags if plan is not None else {};
+    plan_flags: dict[str, any] = plan.flags if plan is not None else {};
     plan_verb = plan.verb if plan is not None else "";
     spec = plan.spec if plan is not None else None;
     client_artifact = projection == "client"

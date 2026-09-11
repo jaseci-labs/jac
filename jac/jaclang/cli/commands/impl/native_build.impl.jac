@@ -815,7 +815,9 @@ def _musl_lib_dir(triple: str) -> (str | None) {
 }
 
 
-def _collect_musl_static(obj_bytes: bytes, triple: str) -> (tuple | None) {
+def _collect_musl_static(
+    obj_bytes: bytes, triple: str
+) -> (tuple[list[bytes], list[bytes]] | None) {
     import os;
     import from jaclang.compiler.backends.native.linker_common {
         select_ar_members,

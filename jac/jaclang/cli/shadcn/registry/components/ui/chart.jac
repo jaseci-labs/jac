@@ -37,7 +37,7 @@ def buildChartStyle(config: any) -> any {
 
 def:pub ChartContainer(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    config = props["config"] or {};
+    config: dict[str, any] = props["config"] or {};
     colorStyle = buildChartStyle(config);
     ctxValue = {"config": config};
     <ChartContext.Provider value={ctxValue}>
@@ -61,9 +61,10 @@ def:pub ChartTooltipContent(props: any) -> JsxElement {
     indicator = props["indicator"] or "dot";
     ctx: any = useContext(ChartContext);
     config = ctx.config if ctx else {};
+    payload_items: list[any] = payload or [];
     filteredPayload: list[any] = [
         item
-        for item in (payload or [])
+        for item in payload_items
         if item.type != "none"
     ];
     hasItems = active and len(filteredPayload);

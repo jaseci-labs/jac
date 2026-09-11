@@ -579,7 +579,7 @@ impl search_docs(query: str, limit: int = 5) -> dict[str, any] {
     if not keywords {
         return {"results": []};
     }
-    scored: list[tuple] = [];
+    scored: list[tuple[float, dict[str, any]]] = [];
     for (uri, info) in rp._resources.items() {
         if info.get("_is_dir") or uri == "jac://examples/index" {
             continue;

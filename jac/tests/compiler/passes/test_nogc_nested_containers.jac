@@ -28,7 +28,7 @@ glob OWNFIELD_DIR = os.path.join(
          "cycles": ["--memory", "managed"]
      };
 
-def _compile(path: str) -> tuple {
+def _compile(path: str) -> tuple[any, ...] {
     prev = push_native_target("wasm32-unknown-unknown");
     try {
         prog = JacProgram();

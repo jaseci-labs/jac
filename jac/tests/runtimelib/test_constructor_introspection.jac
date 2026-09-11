@@ -17,7 +17,7 @@ test "object coercion and schemas use the public constructor signature" {
     value = coerce_value({"args": "7"}, Payload);
     assert value.args == 7;
     assert value.kwargs == "default";
-    schemas: dict = {};
+    schemas: dict[str, any] = {};
     _object_schema(Payload, schemas);
     schema = schemas["Payload"];
     assert set(schema["properties"]) == {"args", "kwargs"};

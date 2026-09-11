@@ -25,8 +25,8 @@ import from ....utils.api { getErrorMessage }
 def:pub TracesPage -> JsxElement {
     has isLoading: bool = False,
         isLoadingTrace: bool = False,
-        traces: list = [],
-        services: list = [],
+        traces: list[dict[str, any]] = [],
+        services: list[str] = [],
         filterService: str = "",
         filterStatus: str = "",
         filterMinDuration: int = 0,
@@ -34,7 +34,7 @@ def:pub TracesPage -> JsxElement {
         errorMsg: str = "",
         backendOffline: bool = False,
         selectedTraceId: str = "",
-        spans: list = [],
+        spans: list[dict[str, any]] = [],
         traceStartNs: int = 0,
         traceTotalMs: float = 0.0;
 
@@ -44,7 +44,7 @@ def:pub TracesPage -> JsxElement {
         try {
             result = await getTraceServices(auth["authToken"]);
             if result["ok"] and result["data"] {
-                services = result["data"]["services"] or [];
+                services: list[str] = result["data"]["services"] or [];
             }
         } except Exception as e {
             console.error("loadServices error:", e);
@@ -64,7 +64,7 @@ def:pub TracesPage -> JsxElement {
                 50
             );
             if result["ok"] and result["data"] {
-                traces = result["data"]["traces"] or [];
+                traces: list[dict[str, any]] = result["data"]["traces"] or [];
                 errorMsg = "";
             } elif result["error"] {
                 errorMsg = getErrorMessage(result, "Failed to load traces");
@@ -86,7 +86,7 @@ def:pub TracesPage -> JsxElement {
         try {
             result = await getTrace(auth["authToken"], tid);
             if result["ok"] and result["data"] {
-                spans = result["data"]["spans"] or [];
+                spans: list[dict[str, any]] = result["data"]["spans"] or [];
                 traceStartNs = result["data"]["start_ns"] or 0;
                 traceTotalMs = result["data"]["total_ms"] or 0.0;
             } elif result["error"] {
@@ -154,7 +154,7 @@ def:pub TracesPage -> JsxElement {
 
     # Span depth from the parent_span_id chain, so the waterfall can
     # indent children. Capped to avoid a cycle in malformed data.
-    def spanDepth(span: dict, byId: dict) -> int {
+    def spanDepth(span: dict[str, any], byId: dict[str, dict[str, any]]) -> int {
         depth: int = 0;
         parent = String(span["parent_span_id"] or "");
         guard: int = 0;
@@ -166,8 +166,8 @@ def:pub TracesPage -> JsxElement {
         return depth;
     }
 
-    def buildById -> dict {
-        byId: dict = {};
+    def buildById -> dict[str, dict[str, any]] {
+        byId: dict[str, dict[str, any]] = {};
         for s in spans {
             byId[String(s["span_id"] or "")] = s;
         }
@@ -175,7 +175,7 @@ def:pub TracesPage -> JsxElement {
     }
 
     # Percent offset + width of a span bar within the trace window.
-    def barLeft(span: dict) -> float {
+    def barLeft(span: dict[str, any]) -> float {
         if traceTotalMs <= 0 {
             return 0.0;
         }
@@ -187,7 +187,7 @@ def:pub TracesPage -> JsxElement {
         return pct;
     }
 
-    def barWidth(span: dict) -> float {
+    def barWidth(span: dict[str, any]) -> float {
         if traceTotalMs <= 0 {
             return 100.0;
         }

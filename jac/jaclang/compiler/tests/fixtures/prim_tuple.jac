@@ -4,25 +4,25 @@ Cross-backend equivalence fixture.
 """
 
 # --- Tuple operators and methods ---
-def tuple_py() -> dict {
+def tuple_py() -> dict[any, any] {
     # From containers: tuple concat, in, not in
-    t: tuple = (10, 20);
-    tuple_concat: list = list(t + (30, ));
+    t: tuple[any, ...] = (10, 20);
+    tuple_concat: list[any] = list(t + (30, ));
     tuple_in: bool = 10 in t;
     tuple_nin: bool = 99 not in t;
 
     # From jac_rt_tuple: count, index, repeat, comparisons
-    t2: tuple = (1, 2, 3, 2, 1);
+    t2: tuple[any, ...] = (1, 2, 3, 2, 1);
     cnt: int = t2.count(2);
     idx: int = t2.index(3);
 
-    t3: tuple = (1, 2);
-    repeated: list = list(t3 * 3);
+    t3: tuple[any, ...] = (1, 2);
+    repeated: list[any] = list(t3 * 3);
 
-    a: tuple = (1, 2, 3);
-    b: tuple = (1, 2, 3);
-    c: tuple = (1, 2, 4);
-    d: tuple = (1, 2);
+    a: tuple[any, ...] = (1, 2, 3);
+    b: tuple[any, ...] = (1, 2, 3);
+    c: tuple[any, ...] = (1, 2, 4);
+    d: tuple[any, ...] = (1, 2);
     eq_t: bool = a == b;
     eq_f: bool = a == c;
     lt_t: bool = a < c;
@@ -48,23 +48,23 @@ def tuple_py() -> dict {
     };
 }
 
-def tuple_cl() -> dict {
-    t: tuple = (10, 20);
-    tuple_concat: list = list(t + (30, ));
+def tuple_cl() -> dict[any, any] {
+    t: tuple[any, ...] = (10, 20);
+    tuple_concat: list[any] = list(t + (30, ));
     tuple_in: bool = 10 in t;
     tuple_nin: bool = 99 not in t;
 
-    t2: tuple = (1, 2, 3, 2, 1);
+    t2: tuple[any, ...] = (1, 2, 3, 2, 1);
     cnt: int = t2.count(2);
     idx: int = t2.index(3);
 
-    t3: tuple = (1, 2);
-    repeated: list = list(t3 * 3);
+    t3: tuple[any, ...] = (1, 2);
+    repeated: list[any] = list(t3 * 3);
 
-    a: tuple = (1, 2, 3);
-    b: tuple = (1, 2, 3);
-    c: tuple = (1, 2, 4);
-    d: tuple = (1, 2);
+    a: tuple[any, ...] = (1, 2, 3);
+    b: tuple[any, ...] = (1, 2, 3);
+    c: tuple[any, ...] = (1, 2, 4);
+    d: tuple[any, ...] = (1, 2);
     eq_t: bool = a == b;
     eq_f: bool = a == c;
     lt_t: bool = a < c;

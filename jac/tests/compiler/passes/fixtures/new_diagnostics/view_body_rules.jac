@@ -19,7 +19,7 @@ def:pub ValueReturn(x: int) -> JsxElement {
     </div>;
 }
 
-def:pub ReturnInLoop(items: list) -> JsxElement {
+def:pub ReturnInLoop(items: list[any]) -> JsxElement {
     return <ul>
         {for it in items {
             <li key={it}>{it}</li>
@@ -28,7 +28,7 @@ def:pub ReturnInLoop(items: list) -> JsxElement {
     </ul>;
 }
 
-def:pub ReturnAtTopLevel(items: list) -> JsxElement {
+def:pub ReturnAtTopLevel(items: list[any]) -> JsxElement {
     # Bare `return;` outside any loop now also drives E2020 — the
     # "use `skip;` for slot early-exit" message applies regardless
     # of loop position.
@@ -40,7 +40,7 @@ def:pub ReturnAtTopLevel(items: list) -> JsxElement {
     </ul>;
 }
 
-def:pub BreakInLoop(items: list) -> JsxElement {
+def:pub BreakInLoop(items: list[any]) -> JsxElement {
     return <ul>
         {for it in items {
             <li key={it}>{it}</li>
@@ -57,7 +57,7 @@ def:pub KeylessWhile(n: int) -> JsxElement {
     </div>;
 }
 
-def:pub RedundantSlotWrap(items: list) -> JsxElement {
+def:pub RedundantSlotWrap(items: list[any]) -> JsxElement {
     # Inside a slot body, an inner `{...}` slot is redundant — the body
     # is already in slot mode. E2023 fires for the inner `{if ...}`
     # below and for the inner `{for ...}` further down.
@@ -77,7 +77,7 @@ def:pub RedundantSlotWrap(items: list) -> JsxElement {
 
 # --- Nested-recursion coverage --------------------------------------------
 
-def:pub ReturnInLoopUnderMatch(items: list, kind: str) -> JsxElement {
+def:pub ReturnInLoopUnderMatch(items: list[any], kind: str) -> JsxElement {
     return <ul>
         {for it in items {
             <li key={it}>{it}</li>
@@ -88,7 +88,7 @@ def:pub ReturnInLoopUnderMatch(items: list, kind: str) -> JsxElement {
     </ul>;
 }
 
-def:pub BreakInLoopUnderTry(items: list) -> JsxElement {
+def:pub BreakInLoopUnderTry(items: list[any]) -> JsxElement {
     return <ul>
         {for it in items {
             <li key={it}>{it}</li>

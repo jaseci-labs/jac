@@ -44,17 +44,19 @@ obj WorkspaceSpec {
     def module_dot_path(abs_path: str) -> str;
 }
 
-glob _ws_cache: dict[str, tuple[tuple, WorkspaceSpec]] = {};
+glob _ws_cache: dict[str, tuple[tuple[float, ...], WorkspaceSpec]] = {};
 
 def workspace_for_path(path: str) -> (WorkspaceSpec | None);
 def app_for_path(path: str) -> (AppSpec | None);
 def app_fact_digest(app: (AppSpec | None)) -> str;
 def serving_apps(ws: WorkspaceSpec) -> list[AppSpec];
 def _real(path: str) -> str;
-def _read_toml(toml_path: str) -> dict;
-def _table(raw: any, *keys: str) -> dict;
+def _read_toml(toml_path: str) -> dict[str, any];
+def _table(raw: any, *keys: str) -> dict[str, any];
 def _pins_of(raw: any) -> dict[str, str];
 def _npm_names_of(raw: any) -> set[str];
-def _chain_stamp(root_dir: str) -> tuple;
-def _implicit_kind(root_dir: str, project: dict) -> str;
-def _build_workspace(root_dir: str, toml_path: str, doc: dict) -> WorkspaceSpec;
+def _chain_stamp(root_dir: str) -> tuple[float, ...];
+def _implicit_kind(root_dir: str, project: dict[str, any]) -> str;
+def _build_workspace(
+    root_dir: str, toml_path: str, doc: dict[str, any]
+) -> WorkspaceSpec;

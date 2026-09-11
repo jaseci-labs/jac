@@ -63,7 +63,7 @@ class _LoopbackHandler(BaseHTTPRequestHandler) {
 
 """Start the loopback server on an ephemeral port in a daemon thread; return
 (server, port). The caller shuts it down in a `finally`."""
-def _start_server -> tuple {
+def _start_server -> tuple[any, ...] {
     srv = HTTPServer(("127.0.0.1", 0), _LoopbackHandler);
     port = srv.server_address[1];
     t = threading.Thread(target=srv.serve_forever);

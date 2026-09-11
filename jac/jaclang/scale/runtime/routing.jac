@@ -1,4 +1,4 @@
-glob GATEWAY_API_SEGMENTS: tuple = (
+glob GATEWAY_API_SEGMENTS: tuple[str, ...] = (
          "walker",
          "function",
          "user",
@@ -9,19 +9,19 @@ glob GATEWAY_API_SEGMENTS: tuple = (
          "jobs",
          "graph"
      ),
-     GATEWAY_BARE_API_SEGMENTS: tuple = ("user", "graph", "jobs"),
+     GATEWAY_BARE_API_SEGMENTS: tuple[str, ...] = ("user", "graph", "jobs"),
      GATEWAY_CLIENT_SEGMENT: str = "cl",
-     GATEWAY_WELLKNOWN_SEGMENTS: tuple = (
+     GATEWAY_WELLKNOWN_SEGMENTS: tuple[str, ...] = (
          "health",
          "healthz",
          "metrics",
          "openapi.json",
          "docs"
      ),
-     GATEWAY_PAGE_SEGMENTS: tuple = ("docs", ),
-     GATEWAY_DISCOVERY_SEGMENTS: tuple = ("jobs", GATEWAY_CLIENT_SEGMENT),
-     GATEWAY_REPLICATED_SEGMENTS: tuple = ("user", "sso", "api-key", "graph"),
-     GATEWAY_LISTING_SEGMENTS: tuple = ("walkers", "functions"),
+     GATEWAY_PAGE_SEGMENTS: tuple[str, ...] = ("docs", ),
+     GATEWAY_DISCOVERY_SEGMENTS: tuple[str, ...] = ("jobs", GATEWAY_CLIENT_SEGMENT),
+     GATEWAY_REPLICATED_SEGMENTS: tuple[str, ...] = ("user", "sso", "api-key", "graph"),
+     GATEWAY_LISTING_SEGMENTS: tuple[str, ...] = ("walkers", "functions"),
      _GATEWAY_OWNED_PREFIX_SEGMENTS: set[str] = (
          set(GATEWAY_API_SEGMENTS)
          | set(GATEWAY_WELLKNOWN_SEGMENTS)
@@ -29,13 +29,13 @@ glob GATEWAY_API_SEGMENTS: tuple = (
      );
 
 
-def _derive_builtin_prefixes -> tuple {
+def _derive_builtin_prefixes -> tuple[str, ...] {
     segs = [GATEWAY_CLIENT_SEGMENT] + list(GATEWAY_API_SEGMENTS);
     return tuple([f"/{seg}/" for seg in segs]);
 }
 
 
-def _derive_service_owned_segments -> tuple {
+def _derive_service_owned_segments -> tuple[str, ...] {
     shared = set(GATEWAY_DISCOVERY_SEGMENTS) | set(GATEWAY_REPLICATED_SEGMENTS);
     return tuple(
         [
@@ -47,11 +47,11 @@ def _derive_service_owned_segments -> tuple {
 }
 
 
-glob GATEWAY_BUILTIN_PREFIXES: tuple = _derive_builtin_prefixes(),
+glob GATEWAY_BUILTIN_PREFIXES: tuple[str, ...] = _derive_builtin_prefixes(),
      GATEWAY_BARE_API_PATHS: set[str] = {
          f"/{seg}" for seg in GATEWAY_BARE_API_SEGMENTS
      },
-     GATEWAY_SERVICE_OWNED_SEGMENTS: tuple = _derive_service_owned_segments();
+     GATEWAY_SERVICE_OWNED_SEGMENTS: tuple[str, ...] = _derive_service_owned_segments();
 
 
 def is_learnable_prefix(prefix: str) -> bool {

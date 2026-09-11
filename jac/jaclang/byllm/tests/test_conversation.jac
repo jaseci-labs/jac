@@ -14,7 +14,7 @@ def get_weather(city: str) -> str {
 
 
 """Every message in `history` with the given role."""
-def by_role(history: list, role: str) -> list {
+def by_role(history: list[dict[str, any]], role: str) -> list[dict[str, any]] {
     return [
         m
         for m in history
@@ -24,7 +24,7 @@ def by_role(history: list, role: str) -> list {
 
 
 """One conversation carried across two turns, sharing the caller's list."""
-def ask_twice(history: list) -> tuple {
+def ask_twice(history: list[dict[str, any]]) -> tuple[any, ...] {
     llm = FakeLLM(
         replies=[
             call("get_weather", {"city": "Paris"}),
@@ -43,7 +43,9 @@ def ask_twice(history: list) -> tuple {
 
 
 test "the caller's list is mutated in place, not replaced" {
-    history: list = [{"role": "user", "content": "PRIOR_SESSION_USER_TURN"}];
+    history: list[dict[str, any]] = [
+        {"role": "user", "content": "PRIOR_SESSION_USER_TURN"}
+    ];
     before = id(history);
 
     ask_twice(history);
@@ -57,7 +59,9 @@ test "the caller's list is mutated in place, not replaced" {
 
 
 test "scaffolding and finish_tool are filtered out, a real tool result is not" {
-    history: list = [{"role": "user", "content": "PRIOR_SESSION_USER_TURN"}];
+    history: list[dict[str, any]] = [
+        {"role": "user", "content": "PRIOR_SESSION_USER_TURN"}
+    ];
     ask_twice(history);
 
     roles = [m.get("role") for m in history];
@@ -80,7 +84,9 @@ test "scaffolding and finish_tool are filtered out, a real tool result is not" {
 
 
 test "a second turn grows the same list and keeps every earlier message" {
-    history: list = [{"role": "user", "content": "PRIOR_SESSION_USER_TURN"}];
+    history: list[dict[str, any]] = [
+        {"role": "user", "content": "PRIOR_SESSION_USER_TURN"}
+    ];
     (llm, first, second, turn1_len) = ask_twice(history);
 
     assert first == "Paris is sunny." , f"got {first!r}";
@@ -100,7 +106,7 @@ test "a second turn grows the same list and keeps every earlier message" {
 
 
 """Drive one streamed turn and return what the caller saw."""
-def stream_turn(llm: FakeLLM, history: list, message: str) -> str {
+def stream_turn(llm: FakeLLM, history: list[dict[str, any]], message: str) -> str {
     def ask(msg: str) -> str by llm(
         tools=[get_weather], conversation=history, stream=True
     );
@@ -114,7 +120,7 @@ def stream_turn(llm: FakeLLM, history: list, message: str) -> str {
 
 
 """Every entry must be a dict, and the streamed answer must be among them."""
-def assert_written_back(label: str, history: list, answer: str) {
+def assert_written_back(label: str, history: list[dict[str, any]], answer: str) {
     for m in history {
         assert isinstance(m, dict) , (
             f"{label}: history holds dicts, got {type(m).__name__}"
@@ -133,7 +139,7 @@ def assert_written_back(label: str, history: list, answer: str) {
 
 
 """One streamed turn: a tool call, the finish call, then the answer."""
-def _stream_replies(answer: str = "Paris is sunny right now.") -> list {
+def _stream_replies(answer: str = "Paris is sunny right now.") -> list[any] {
     return [call("get_weather", {"city": "Paris"}), finish(answer), say(answer)];
 }
 
@@ -156,7 +162,7 @@ test "a streamed answer is written back as dicts, whatever the history was seede
 
 
 test "a second streamed turn grows the same history and keeps the first answer" {
-    history: list = [];
+    history: list[dict[str, any]] = [];
     # Distinct answers per turn: identical ones would let the second overwrite
     # the first with both assertions below still passing.
     llm = FakeLLM(

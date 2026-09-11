@@ -9,12 +9,11 @@ lifts to neutral `EachChild`/`IfChild`:
 - a view-shaped ternary with a `None` alternate (`<Show when>` / `?:`).
 """
 
-
-def:pub item_list(items: list) -> JsxElement {
+def:pub item_list(items: list[any]) -> JsxElement {
     return <ul>{[<li key={x.id}>{x.title}</li> for x in items]}</ul>;
 }
 
-def:pub filtered_list(items: list) -> JsxElement {
+def:pub filtered_list(items: list[any]) -> JsxElement {
     return
         <ul>
             {[

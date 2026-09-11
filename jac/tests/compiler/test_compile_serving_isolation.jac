@@ -58,7 +58,7 @@ scan_and_exit(0)
 
 
 def _check_probe(fixture: str) -> tuple[int, str] {
-    env = dict(os.environ);
+    env: dict[str, str] = dict(os.environ);
     env["PROBE_JAC_ROOT"] = JAC_ROOT;
     env["PROBE_FIXTURE"] = str((Path(FIXTURES) / fixture).resolve());
     proc = subprocess.run(

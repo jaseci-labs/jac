@@ -26,7 +26,7 @@ def compile_na_inline(label: str, code: str) -> JacProgram {
 
 """Like `compile_na_inline`, but also hand back the compiled module so a
 granular demotion (epic #8201) is observable through the native layout."""
-def compile_na_inline_ir(label: str, code: str) -> tuple {
+def compile_na_inline_ir(label: str, code: str) -> tuple[any, ...] {
     path = os.path.join(FIXTURES_DIR, f"_decorator_{label}.jac");
     prog = JacProgram();
     ir = prog.compile(file_path=path, use_str=code, options=native_force_opts());
@@ -122,7 +122,7 @@ test "guardrail: non-static decorator expression demotes its function" {
     (prog, ir) = compile_na_inline_ir(
         "dynamic_dec",
         "def pick(fn: any) -> any { return fn; }\n"
-        "glob decs: list = [];\n"
+        "glob decs: list[any] = [];\n"
         "@ (decs[0])\n"
         "def val(x: int) -> int { return x; }\n"
     );

@@ -36,7 +36,7 @@ class BoxEmitter(Emitter[(Box, Ctx)]) {
     }
 }
 
-def generic_classes_py -> dict {
+def generic_classes_py -> dict[any, any] {
     em = BoxEmitter();
     ctx = Ctx(scale=3);
     r1 = em.emit(ctx, Box(val=7));
@@ -44,7 +44,7 @@ def generic_classes_py -> dict {
     return {"r1": 0 if r1 is None else r1.val, "r2": 0 if r2 is None else r2.val,};
 }
 
-def generic_classes_cl -> dict {
+def generic_classes_cl -> dict[any, any] {
     return {};
 }
 

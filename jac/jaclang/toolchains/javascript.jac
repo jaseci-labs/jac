@@ -36,7 +36,7 @@ def native_node -> Path {
 
 def build_environment(base: dict[str, str]) -> dict[str, str] {
     node_path = native_node();
-    result = dict(base);
+    result: dict[str, str] = dict(base);
     result["PATH"] = str(node_path.parent) + os.pathsep + result.get("PATH", "");
     result["NODE_BINARY"] = str(node_path);
     if offline() {

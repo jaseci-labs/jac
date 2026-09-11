@@ -43,10 +43,10 @@ def _ctx(target: str, user: (str | None) = None) -> ConnectionContext {
 
 """Records the frames and close codes a handler emits, without a real socket."""
 obj _FakeWebSocket {
-    has sent: list[dict] = [],
-        closed: list[tuple] = [];
+    has sent: list[dict[str, any]] = [],
+        closed: list[tuple[any, ...]] = [];
 
-    async def send_json(payload: dict) {
+    async def send_json(payload: dict[str, any]) {
         self.sent.append(payload);
     }
 
@@ -85,7 +85,7 @@ obj _FailingBackplane(BaseBackplane) {
     has delay: float = 0.0;
 
     async def start {}
-    async def publish(channel: str, message: dict) {}
+    async def publish(channel: str, message: dict[str, any]) {}
     async def subscribe(channel: str, handler: any) {
         if self.delay {
             await asyncio.sleep(self.delay);

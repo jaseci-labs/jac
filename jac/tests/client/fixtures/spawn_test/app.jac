@@ -24,7 +24,7 @@ walker parameterized_walker {
 walker positional_walker {
     has label: str,
         count: int,
-        metadata: dict = {};
+        metadata: dict[any, any] = {};
 
     can execute with Root entry {
         report {"label": self.label, "count": self.count, "meta": self.metadata};

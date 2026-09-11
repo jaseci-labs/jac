@@ -30,7 +30,7 @@ def congruence_py(s: str) -> str {
     return s if s else "EMPTY";  # jac:ignore[simplify-ternary]
 }
 
-def congruence_check_py -> dict {
+def congruence_check_py -> dict[any, any] {
     return {
         "s_none": str(None),  # NA-1
         "s_true": str(True),  # NA-8
@@ -89,7 +89,7 @@ def any_len_py(x: any) -> int {
     return len(x);
 }
 
-def any_ops_check_py -> dict {
+def any_ops_check_py -> dict[any, any] {
     dd: dict[str, any] = {};
     dd["k"] = 7;
     dda: any = dd;
@@ -192,7 +192,7 @@ def guard_consume_plain_py(x: any) -> str {
     return "?";
 }
 
-def guard_consume_check_py -> dict {
+def guard_consume_check_py -> dict[any, any] {
     d: dict[str, any] = {};
     d["a"] = 1;
     d["b"] = 2;
@@ -250,11 +250,11 @@ def guard_consume_check_na -> dict[str, any] {
 #     mismatching the defaulted `List.i64` layout. Int-only bare lists must
 #     keep their unboxed layout, and mixed evidence collapses to the
 #     heterogeneous `any` element rather than a union. ---
-def bare_list_check_py -> dict {
-    strs: list = [];
+def bare_list_check_py -> dict[any, any] {
+    strs: list[str] = [];
     strs.append("a");
     strs.append("b");
-    ints: list = [];
+    ints: list[int] = [];
     ints.append(10);
     ints.append(20);
     total: int = 0;
@@ -262,12 +262,12 @@ def bare_list_check_py -> dict {
         iv: int = v;
         total += iv;
     }
-    ext: list = [];
+    ext: list[str] = [];
     ext.extend(["x", "y"]);
-    ins: list = [];
+    ins: list[float] = [];
     ins.insert(0, 2.5);
     ins[0] = 3.5;
-    mixed: list = [];
+    mixed: list[any] = [];
     mixed.append(1);
     mixed.append("two");
     return {
@@ -281,10 +281,10 @@ def bare_list_check_py -> dict {
 
 
 def bare_list_check_na -> dict[str, any] {
-    strs: list = [];
+    strs: list[str] = [];
     strs.append("a");
     strs.append("b");
-    ints: list = [];
+    ints: list[int] = [];
     ints.append(10);
     ints.append(20);
     total: int = 0;
@@ -292,12 +292,12 @@ def bare_list_check_na -> dict[str, any] {
         iv: int = v;
         total += iv;
     }
-    ext: list = [];
+    ext: list[str] = [];
     ext.extend(["x", "y"]);
-    ins: list = [];
+    ins: list[float] = [];
     ins.insert(0, 2.5);
     ins[0] = 3.5;
-    mixed: list = [];
+    mixed: list[any] = [];
     mixed.append(1);
     mixed.append("two");
     return {
@@ -413,7 +413,7 @@ def dumps_probe_py(val: any) -> str {
     return "?";
 }
 
-def none_consume_check_py -> dict {
+def none_consume_check_py -> dict[any, any] {
     n: any = None;
     i0: any = 0;
     i5: any = 5;

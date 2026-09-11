@@ -222,7 +222,7 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
     try {
         import os;
         import from pathlib { Path }
-        child_env = dict(os.environ);
+        child_env: dict[str, str] = dict(os.environ);
 
         child_env["JAC_SV_SIBLING"] = "1";
         child_env["JAC_SV_NAME"] = name;

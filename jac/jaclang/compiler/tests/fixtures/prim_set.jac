@@ -4,7 +4,7 @@ Cross-backend equivalence fixture.
 """
 
 # --- Set methods, algebra, operators, augmented assignment ---
-def set_py() -> dict {
+def set_py() -> dict[any, any] {
     # set_methods: add, clear, discard, copy
     s1: set[int] = {10, 20, 30};
     s1_len = len(s1);
@@ -280,7 +280,7 @@ def set_py() -> dict {
     };
 }
 
-def set_cl() -> dict {
+def set_cl() -> dict[any, any] {
     # set_methods
     s1: set = set([10, 20, 30]);
     s1_len = len(s1);

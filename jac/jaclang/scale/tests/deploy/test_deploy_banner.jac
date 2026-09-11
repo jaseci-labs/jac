@@ -34,7 +34,7 @@ def _fake_scale_config -> any {
 }
 
 
-def _realize_capturing(fleet: any, app: str) -> tuple {
+def _realize_capturing(fleet: any, app: str) -> tuple[any, ...] {
     out = io.StringIO();
     err = io.StringIO();
     fake_target = unittest.mock.MagicMock();

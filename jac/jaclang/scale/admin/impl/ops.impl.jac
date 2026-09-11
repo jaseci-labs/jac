@@ -22,8 +22,8 @@ glob logger = logging.getLogger(__name__),
      _PROBE_TIMEOUT_S: float = 2.0;
 
 
-def short_circuit_chain(rungs: list[dict]) -> dict {
-    chain: list[dict] = [];
+def short_circuit_chain(rungs: list[dict[str, any]]) -> dict[str, any] {
+    chain: list[dict[str, any]] = [];
     status: str = "ok";
     failed: bool = False;
     for r in rungs {
@@ -42,7 +42,7 @@ def short_circuit_chain(rungs: list[dict]) -> dict {
 }
 
 
-def _probe_error(name: str, err: any) -> dict {
+def _probe_error(name: str, err: any) -> dict[str, any] {
     logger.warning(f"ops self-check probe '{name}' errored: {err}");
     return {
         "status": "fail",
@@ -51,7 +51,7 @@ def _probe_error(name: str, err: any) -> dict {
 }
 
 
-def _traces_chain(p: dict) -> dict {
+def _traces_chain(p: dict[str, any]) -> dict[str, any] {
     endpoint = str(p.get("endpoint", "") or "");
     count = int(p.get("recent_count", 0) or 0);
     return short_circuit_chain(
@@ -103,7 +103,7 @@ def _traces_chain(p: dict) -> dict {
 }
 
 
-def _logs_chain(p: dict) -> dict {
+def _logs_chain(p: dict[str, any]) -> dict[str, any] {
     count = int(p.get("recent_count", 0) or 0);
     return short_circuit_chain(
         [
@@ -135,7 +135,7 @@ def _logs_chain(p: dict) -> dict {
 }
 
 
-def _metrics_chain(p: dict) -> dict {
+def _metrics_chain(p: dict[str, any]) -> dict[str, any] {
     return short_circuit_chain(
         [
             {
@@ -157,7 +157,7 @@ def _metrics_chain(p: dict) -> dict {
 }
 
 
-def _postgres_chain(p: dict) -> dict {
+def _postgres_chain(p: dict[str, any]) -> dict[str, any] {
     return short_circuit_chain(
         [
             {
@@ -170,7 +170,7 @@ def _postgres_chain(p: dict) -> dict {
 }
 
 
-def _admin_api_chain(registered: bool) -> dict {
+def _admin_api_chain(registered: bool) -> dict[str, any] {
     return short_circuit_chain(
         [
             {
@@ -279,9 +279,10 @@ async def _loki_recent_count -> int {
         if not resp.ok() {
             raise ConnectionError(f"loki returned {resp.status_code}");
         }
-        data = resp.json().get("data", {}) or {};
+        data: any = resp.json().get("data", {}) or {};
         total = 0;
-        for stream in (data.get("result", []) or []) {
+        streams: any = data.get("result", []) or [];
+        for stream in streams {
             total += len(stream.get("values", []) or []);
         }
         return total;
@@ -314,7 +315,7 @@ def _postgres_ping_blocking -> tuple[bool, str] {
 }
 
 
-async def _probe_traces -> dict {
+async def _probe_traces -> dict[str, any] {
     has_otel = bool(HAS_OTEL);
     cfg_enabled = _ms_section_enabled("tracing");
     active = False;
@@ -340,7 +341,7 @@ async def _probe_traces -> dict {
 }
 
 
-async def _probe_logs -> dict {
+async def _probe_logs -> dict[str, any] {
     cfg_enabled = _ms_section_enabled("logs");
     loki_ready = await _http_ready(_loki_base_url(), "/ready")
         if cfg_enabled
@@ -352,7 +353,7 @@ async def _probe_logs -> dict {
 }
 
 
-async def _probe_metrics -> dict {
+async def _probe_metrics -> dict[str, any] {
     has_client = bool(HAS_PROMETHEUS);
     prom_ready = await _http_ready(_prometheus_base_url(), "/-/ready")
         if has_client
@@ -361,7 +362,7 @@ async def _probe_metrics -> dict {
 }
 
 
-async def _probe_postgres -> dict {
+async def _probe_postgres -> dict[str, any] {
     (ping, detail) = await asyncio.to_thread(_postgres_ping_blocking);
     return _postgres_chain({"ping": ping, "detail": detail});
 }
@@ -374,7 +375,7 @@ impl JacAPIServerOps.register_ops_endpoints -> None {
             return guard;
         }
 
-        signals: dict = {};
+        signals: dict[str, dict[str, any]] = {};
 
         registered = self?.server is not None;
         signals["admin_api"] = _admin_api_chain(registered);

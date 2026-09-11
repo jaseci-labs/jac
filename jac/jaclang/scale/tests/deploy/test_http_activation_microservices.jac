@@ -40,7 +40,7 @@ import from jaclang.scale.runtime.fleet { fleet_of }
 
 
 def _builder(
-    services: dict, k8s_config: KubernetesConfig | None = None
+    services: dict[str, any], k8s_config: KubernetesConfig | None = None
 ) -> ManifestBuilder {
     return ManifestBuilder(
         k8s_config=k8s_config or KubernetesConfig(app_name="t", namespace="t-ns"),
@@ -52,12 +52,12 @@ def _builder(
 
 # Minimal Deployment/Service manifests: _resolve_scaling only reads
 # metadata.name off each, so a full manifest is unnecessary here.
-def _dep(name: str) -> dict {
+def _dep(name: str) -> dict[str, any] {
     return {"metadata": {"name": name}};
 }
 
 
-def _svc(name: str) -> dict {
+def _svc(name: str) -> dict[str, any] {
     return {"metadata": {"name": name}};
 }
 

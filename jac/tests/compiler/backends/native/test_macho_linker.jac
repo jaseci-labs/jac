@@ -63,7 +63,7 @@ def emit_macho_object(triple: str) -> bytes {
 
 
 """Link the probe object into a dylib and return (path, bytes)."""
-def link_dylib(triple: str) -> tuple {
+def link_dylib(triple: str) -> tuple[any, ...] {
     relobj = emit_macho_object(triple);
     d = tempfile.mkdtemp();
     out = os.path.join(d, "libprobe.dylib");
@@ -288,7 +288,7 @@ def absolute_text_relocs(relobj: bytes) -> int {
 
 
 """Link an executable the way `jac build --native` does; return (object, image)."""
-def link_exec(triple: str) -> tuple {
+def link_exec(triple: str) -> tuple[any, ...] {
     relobj = emit_large_object(
         literal_ir(triple, "exec-literal", "jac_exec_ptr"), triple
     );

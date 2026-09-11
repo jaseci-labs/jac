@@ -84,8 +84,8 @@ def _frame(data: bytes) -> bytes {
 
 
 """Walk `root` into a sorted list of [relpath, size, mode&0o777, sha256]."""
-def _tree(base: str) -> list {
-    rows: list = [];
+def _tree(base: str) -> list[any] {
+    rows: list[any] = [];
     for (dirpath, dirnames, filenames) in os.walk(base) {
         for d in dirnames {
             full = os.path.join(dirpath, d);
@@ -106,7 +106,7 @@ def _tree(base: str) -> list {
 }
 
 
-def _compile_native_forced(fixture: str) -> tuple {
+def _compile_native_forced(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     opts = CompileOptions(default_codespace="native", force_target_program=True);
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);

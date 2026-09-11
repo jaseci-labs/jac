@@ -94,14 +94,14 @@ test "an on_iteration hook can stop the loop, with or without a summary" {
             "SUMMARY_OUTPUT"
         )
     ] {
-        seen: list = [];
+        seen: list[str] = [];
 
         def get_data(key: str) -> str {
             seen.append(key);
             return f"value_for_{key}";
         }
 
-        fired: list = [];
+        fired: list[int] = [];
 
         def hook(ctx: IterationContext) -> IterationAction {
             if ctx.iteration > 2 {
@@ -132,7 +132,7 @@ test "an on_iteration hook can stop the loop, with or without a summary" {
 glob _calc_llm = FakeLLM();
 
 obj Calculator {
-    has calls: list = [];
+    has calls: list[tuple[int, int]] = [];
 
     def add(num1: int, num2: int) -> int {
         self.calls.append((num1, num2));

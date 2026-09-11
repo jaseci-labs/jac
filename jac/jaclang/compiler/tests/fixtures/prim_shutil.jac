@@ -11,7 +11,7 @@ import shutil;
 import from shutil { copy2, move, rmtree, which }
 
 
-def shutil_py -> dict {
+def shutil_py -> dict[any, any] {
     base = "/tmp/jac_prim_shutil_fix";
     if os.path.exists(base) {
         rmtree(base);
@@ -47,7 +47,7 @@ def shutil_py -> dict {
     return out;
 }
 
-def shutil_cl -> dict {
+def shutil_cl -> dict[any, any] {
     return {};
 }
 

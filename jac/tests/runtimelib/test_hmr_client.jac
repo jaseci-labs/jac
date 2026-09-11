@@ -815,7 +815,7 @@ test "dependency compiled when imported file recompiled" {
 # --- TestUnifiedClientCompilerHMR ---
 # The unified path routes HMR through the boot ViteCompiler so file-based
 # routing artifacts (_routes.js, router _entry.js) stay live across changes.
-def _make_unified_reloader(unique_dir: Path) -> tuple {
+def _make_unified_reloader(unique_dir: Path) -> tuple[any, ...] {
     import from jaclang.client.vite_client_bundle { ViteClientBundleBuilder }
     configs_dir = unique_dir / ".jac" / "client" / "configs";
     configs_dir.mkdir(parents=True, exist_ok=True);
@@ -1013,7 +1013,7 @@ test "deleted client module drops its stale compiled output" {
     }
 }
 
-def _routed_project(tmpdir: str, extra_pages: dict[str, str] = {}) -> tuple {
+def _routed_project(tmpdir: str, extra_pages: dict[str, str] = {}) -> tuple[any, ...] {
     unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
     unique_dir.mkdir(parents=True, exist_ok=True);
     (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);

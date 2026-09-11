@@ -74,7 +74,7 @@ def _get(url: str) -> tuple[int, str] {
 }
 
 
-def _post(url: str, body: dict) -> tuple[int, str] {
+def _post(url: str, body: dict[str, any]) -> tuple[int, str] {
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
@@ -91,7 +91,7 @@ def _post(url: str, body: dict) -> tuple[int, str] {
 }
 
 
-def _config(app_dir: str, program: dict, backend: str = "embedded") -> str {
+def _config(app_dir: str, program: dict[str, any], backend: str = "embedded") -> str {
     return json.dumps(
         {
             "app_name": "hostapp",

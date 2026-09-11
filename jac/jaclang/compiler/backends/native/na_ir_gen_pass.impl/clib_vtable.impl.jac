@@ -144,7 +144,8 @@ impl NaIRGenPass._lower_clib_function_type(
         }
     }
     param_types: list[ir.Type] = [];
-    for p in (t.parameters or []) {
+    fn_params: any = t.parameters or [];
+    for p in fn_params {
         param_types.append(c_scalar(self._lower_type(p.param_type)));
     }
     return ir.FunctionType(ret_type, param_types).as_pointer();

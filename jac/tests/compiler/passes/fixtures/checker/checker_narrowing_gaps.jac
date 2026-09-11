@@ -272,7 +272,7 @@ obj CallStateTest {
         _sentinel: object = object();
 }
 
-def ok_try_finally_narrowing(cv: ContextVar[CallStateTest]) -> list {
+def ok_try_finally_narrowing(cv: ContextVar[CallStateTest]) -> list[any] {
     # Exact runtime.impl.jac pattern: narrowing must propagate through try/finally
     cs = cv.get(None);
     owns = False;
@@ -286,7 +286,7 @@ def ok_try_finally_narrowing(cv: ContextVar[CallStateTest]) -> list {
         return [result];
     } finally {
         if owns {
-            reports: list = [];
+            reports: list[any] = [];
             while not cs.reports.empty() {
                 item = cs.reports.get_nowait();
                 if item is not cs._sentinel {

@@ -23,7 +23,7 @@ import from react {
 }
 
 def app -> JsxElement {
-    has todos: list = [],
+    has todos: list[any] = [],
         input: str = "";
 
     # Event Handler

@@ -1903,7 +1903,7 @@ def build_osp_core_js -> str {
         raise RuntimeError("Could not compile OSP client runtime");
     }
     program = ir.gen.es_ast;
-    kept: list = [];
+    kept: list[es.Statement | es.ModuleDeclaration] = [];
     if isinstance(program, es.Program) {
         for stmt in program.body {
             is_jac_rt = (

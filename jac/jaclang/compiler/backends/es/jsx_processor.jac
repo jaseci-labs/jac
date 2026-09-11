@@ -8,9 +8,11 @@ import type from jaclang.compiler.backends.es.view_ir {
     DynamicAttr,
     EventAttr,
     RefAttr,
+    SpreadAttr,
     ViewElement,
     IfChild,
-    EachChild
+    EachChild,
+    ViewChild
 }
 
 class EsJsxProcessor {
@@ -39,8 +41,16 @@ class EsJsxProcessor {
         self: EsJsxProcessor, child: uni.JsxExpression, ternary: uni.IfElseExpr
     ) -> (IfChild | None);
 
-    def _view_arm(self: EsJsxProcessor, nd: uni.JsxElement) -> (list | None);
-    def _split_key(self: EsJsxProcessor, ve: ViewElement) -> tuple;
+    def _view_arm(
+        self: EsJsxProcessor, nd: uni.JsxElement
+    ) -> (list[ViewChild] | None);
+
+    def _split_key(
+        self: EsJsxProcessor, ve: ViewElement
+    ) -> tuple[
+        Expression | None,
+        list[StaticAttr | DynamicAttr | EventAttr | RefAttr | SpreadAttr]
+    ];
 }
 
 glob __all__ = ['EsJsxProcessor'];

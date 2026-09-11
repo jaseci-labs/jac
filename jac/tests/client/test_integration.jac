@@ -92,7 +92,7 @@ def _bootstrap_js_snippet -> str {
 }
 
 """Run jac2py on a file, return (ok, stdout_or_None, stderr_or_None)."""
-def _jac2py(jac_file: Path) -> tuple {
+def _jac2py(jac_file: Path) -> tuple[any, ...] {
     jac = shutil.which("jac") or "jac";
     result = subprocess.run(
         [jac, "jac2py", str(jac_file)], capture_output=True, text=True, timeout=60
@@ -108,10 +108,10 @@ def _jac2py(jac_file: Path) -> tuple {
 
 results is a dict mapping relative path -> {ok, used_jac0, error}.
 """
-def _transpile_all_plugins -> tuple {
+def _transpile_all_plugins -> tuple[any, ...] {
     tmp = tempfile.mkdtemp();
     src_dir = _plugin_src_dir();
-    results: dict = {};
+    results: dict[str, any] = {};
     for jac_file in sorted(src_dir.rglob("*.jac")) {
         # rglob("*.jac") also matches directories named ".jac" (build cache).
         if not jac_file.is_file() {
@@ -159,7 +159,7 @@ def _transpile_all_plugins -> tuple {
 }
 
 """Common module names to clean up after plugin tests."""
-def _plugin_mod_names -> list {
+def _plugin_mod_names -> list[any] {
     return [
         "desktop_plugin",
         "plugin_host",

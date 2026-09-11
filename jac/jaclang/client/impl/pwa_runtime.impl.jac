@@ -680,7 +680,7 @@ impl PwaInstallBanner(
     [dismissing, setDismissing] = _useBool(False);
 
     bannerTitle = title or pwa.appName or "Install App";
-    bannerStyle = style or {};
+    bannerStyle: dict[str, any] = style or {};
 
     reactUseEffect(
         lambda -> (Callable[[], None] | None) {
@@ -777,7 +777,7 @@ impl PwaInstallButton(
     onInstalled: (Callable[[], None] | None) = None
 ) -> JsxElement {
     pwa = usePwaInstall();
-    buttonStyle = style or {};
+    buttonStyle: dict[str, any] = style or {};
 
     async def handleClick {
         result = await pwa.install();

@@ -61,7 +61,7 @@ fetch is waited out, while a genuinely-missing request still fails the caller's
 equality assertion after the deadline.
 """
 def _wait_for_count(
-    page: any, requests: list, target: int, timeout: float = 15.0
+    page: any, requests: list[any], target: int, timeout: float = 15.0
 ) -> int {
     deadline = time.time() + timeout;
     while len(requests) < target and time.time() < deadline {
@@ -85,7 +85,7 @@ test "auto cache dedupes reader and invalidates on write" {
                 browser = p.chromium.launch(headless=True);
                 try {
                     page = browser.new_context().new_page();
-                    ping_requests: list = [];
+                    ping_requests: list[any] = [];
                     page.on(
                         "request",
                         lambda (req: any) { "/walker/ping_server" in req.url

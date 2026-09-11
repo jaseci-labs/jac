@@ -18,7 +18,7 @@ the sv runtime is CPython 3.14, so these enforce the >= 3.14 semantics.
 import from textwrap { wrap, fill, dedent, indent }
 
 
-def textwrap_py -> dict {
+def textwrap_py -> dict[any, any] {
     werr0: str = "no raise";
     try {
         wrap("hello", 0);
@@ -54,7 +54,7 @@ def textwrap_py -> dict {
 }
 
 
-def textwrap_cl -> dict {
+def textwrap_cl -> dict[any, any] {
     return {};
 }
 

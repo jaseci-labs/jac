@@ -302,7 +302,7 @@ obj TelemetryStore {
         status: str | None = None,
         caller: str | None = None,
         root_only: bool = False
-    ) -> dict {
+    ) -> dict[str, any] {
         with self._lock {
             all_traces: list[Trace] = list(reversed(self._traces.values()));
             for t in all_traces {
@@ -389,7 +389,7 @@ obj TelemetryStore {
                 }
 
                 child_traces = children_lookup.get(invocation_id, []);
-                enriched_children: list = [];
+                enriched_children: list[dict[str, any]] = [];
                 for ct in child_traces {
                     self._backfill_streaming_response(ct);
                     cd = ct.to_dict(include_detail=True);
@@ -424,7 +424,7 @@ obj TelemetryStore {
         }
     }
 
-    def get_summary -> dict {
+    def get_summary -> dict[str, any] {
         with self._lock {
             traces_list = list(self._traces.values());
             if not traces_list {
@@ -506,7 +506,7 @@ obj TelemetryStore {
         }
     }
 
-    def get_available_filters -> dict {
+    def get_available_filters -> dict[str, any] {
         with self._lock {
             models = list(
                 set(
@@ -560,13 +560,14 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
 
             def log_success_event(
                 self: JacLLMLogger,
-                kwargs: dict,
+                kwargs: dict[str, any],
                 response_obj: any,
                 start_time: any,
                 end_time: any
             ) {
                 try {
-                    slp = kwargs.get("standard_logging_object", {}) or {};
+                    slp: dict[str, any] = kwargs.get("standard_logging_object", {})
+                        or {};
                     metadata = kwargs.get("litellm_params", {}).get("metadata", {})
                         or {};
                     self.store.record_llm_event(
@@ -595,13 +596,14 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
 
             def log_failure_event(
                 self: JacLLMLogger,
-                kwargs: dict,
+                kwargs: dict[str, any],
                 response_obj: any,
                 start_time: any,
                 end_time: any
             ) {
                 try {
-                    slp = kwargs.get("standard_logging_object", {}) or {};
+                    slp: dict[str, any] = kwargs.get("standard_logging_object", {})
+                        or {};
                     metadata = kwargs.get("litellm_params", {}).get("metadata", {})
                         or {};
                     self.store.record_llm_event(

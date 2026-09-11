@@ -1021,7 +1021,7 @@ impl ClassType.is_builtin(class_name: (str | list[str] | None) = None) -> bool {
 }
 
 impl ClassType.lookup_member_symbol(
-    member: str, r_overloaded: list | None = None
+    member: str, r_overloaded: list[Symbol] | None = None
 ) -> (Symbol | None) {
     import from jaclang.compiler.frontend.unitree {
         Ability,

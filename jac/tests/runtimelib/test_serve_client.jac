@@ -200,7 +200,7 @@ interop facts land in that hub rather than `Jac.program.mod.hub` -- the exact
 condition under which the serve endpoint collector missed them. Returns
 `(client, cleanup_dir)`; the caller must rmtree `cleanup_dir`.
 """
-def make_bundled_crossboundary_client -> tuple {
+def make_bundled_crossboundary_client -> tuple[any, ...] {
     import jaclang;
     jaclang_root = Path(jaclang.__file__).resolve().parent;
     fixtures_src = Path(fixture_abs_path("")).resolve();
@@ -250,7 +250,9 @@ def make_spa_client(tmp_path: str) -> JacTestClient {
 }
 
 """Attach a StringIO handler to logger and return (buf, handler, old_level)."""
-def capture_log_start(logger: logging.Logger, level: int = logging.DEBUG) -> tuple {
+def capture_log_start(
+    logger: logging.Logger, level: int = logging.DEBUG
+) -> tuple[any, ...] {
     buf = io.StringIO();
     handler = logging.StreamHandler(buf);
     handler.setLevel(level);
@@ -1856,7 +1858,7 @@ test "spawn_walker_sync and spawn_walker_async dispatch to explicit paths" {
         user_mgr = UserManager(base_path=tmpdir);
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
         user_mgr.create_user("testuser", "testpass");
-        async def run -> tuple {
+        async def run -> tuple[any, ...] {
             # Explicit sync path: must still run concurrently via to_thread.
             start = time();
             tasks = [
@@ -2043,7 +2045,7 @@ test "CallState.reports is thread-safe (sync walker worker threads put safely)" 
     items_per_thread = 100;
     expected_count = total_threads * items_per_thread;
 
-    received: list = [];
+    received: list[any] = [];
 
     def worker(tid: int) {
         for i in range(items_per_thread) {
@@ -2126,7 +2128,7 @@ test "concurrent multi-user requests do not race on ctx.user_root" {
         }
         # Sanity: each user got a unique root.
         assert len(set(root_ids.values())) == 3;
-        async def run_probe(walker_cls: any) -> list {
+        async def run_probe(walker_cls: any) -> list[any] {
             tasks = [
                 exec_mgr.spawn_walker(walker_cls, {"sleep_s": 0.1}, uname)
                 for uname in users
@@ -2578,22 +2580,22 @@ import from jaclang.server.serving.client {
 }
 
 obj _BridgeStubResponse {
-    has payload: dict,
-        headers: dict = {},
+    has payload: dict[str, any],
+        headers: dict[str, any] = {},
         text: str = "";
 
-    def json -> dict {
+    def json -> dict[str, any] {
         return self.payload;
     }
 }
 
 obj _BridgeStubClient {
-    has calls: list = [],
-        payload: dict = {},
-        headers_seen: list = [];
+    has calls: list[any] = [],
+        payload: dict[str, any] = {},
+        headers_seen: list[any] = [];
 
     def post(
-        path: str, json: dict, headers: (dict | None) = None
+        path: str, json: dict[str, any], headers: (dict[str, any] | None) = None
     ) -> _BridgeStubResponse {
         self.calls.append((path, json));
         self.headers_seen.append(dict(headers or {}));
@@ -2602,7 +2604,7 @@ obj _BridgeStubClient {
 }
 
 obj _LocalProviderModule {
-    has seen: list = [];
+    has seen: list[str] = [];
 
     def greet(name: str) -> str {
         self.seen.append(name);
@@ -2882,12 +2884,13 @@ test "sv_client: bearer token is sent on bridged calls and falls back to JAC_BRI
 
 obj _StubWalker {
     has name: str = "",
-        reports: list = [];
+        reports: list[any] = [];
 
     static def _from_wire(d: any) -> any {
         inst = _StubWalker();
         if isinstance(d, dict) {
-            for (k, v) in d.items() {
+            wire: dict[str, any] = d;
+            for (k, v) in wire.items() {
                 setattr(inst, k, v);
             }
         }

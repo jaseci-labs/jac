@@ -7,7 +7,7 @@ import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.frontend.constant { CodeContext, SymbolType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.runtime.osp_model { OspAnalysis, OspModel }
+import from jaclang.runtime.osp_model { OspAnalysis, OspModel, OspSlot }
 import from jaclang.compiler.backends.common.ast_gen_base { BaseAstGenPass }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.backends.es.jsx_processor { EsJsxProcessor }
@@ -262,7 +262,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         needs_osp_graph: bool = False,
         _unlowered_reported: set = set(),
         _unbound_reported: set[str] = set(),
-        _osp_var_arch_cache: (dict | None) = None,
+        _osp_var_arch_cache: (dict[str, str] | None) = None,
         _primitive_emitters: (dict[str, object] | None) = None,
         _builtin_emitter: (object | None) = None,
         _primitives_es_mod: (object | None) = None,
@@ -340,15 +340,15 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> es.AwaitExpression;
 
     def _osp_model -> OspModel;
-    def _osp_ability_info(nd: uni.Ability) -> (dict | None);
+    def _osp_ability_info(nd: uni.Ability) -> (dict[str, any] | None);
     def _osp_const_decl(
         name: str, `init: es.Expression, nd: uni.UniNode
     ) -> es.VariableDeclaration;
 
-    def _emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None;
+    def _emit_osp_slot_method(nd: uni.Ability, osp: dict[str, any]) -> None;
     def _build_osp_tags_js -> str;
     def _build_osp_setup_js -> str;
-    def _osp_slots_js(slots: list, tags: dict) -> str;
+    def _osp_slots_js(slots: list[OspSlot], tags: dict[str, int]) -> str;
     def _osp_arch_kinds -> dict[str, str];
     def _osp_arch_set -> set[str];
     def _osp_var_arch -> dict[str, str];
@@ -396,7 +396,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _ct_only_name(nd: uni.Name) -> bool;
     def _comptime_only_names -> set[str];
     def _is_ct_type_param(nd: uni.Name) -> bool;
-    def _ct_ctor_slots(nd: uni.UniNode) -> (list[tuple] | None);
+    def _ct_ctor_slots(nd: uni.UniNode) -> (list[tuple[str, uni.UniNode]] | None);
     def _trailer_reaches_ct_class(nd: uni.AtomTrailer) -> bool;
     def _build_block_statement(
         scope_node: uni.UniScopeNode, body_nodes: (Sequence[uni.UniNode] | None)
@@ -416,7 +416,16 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def populate_client_manifest(nd: uni.Module) -> None;
     can exit_sub_tag with uni.SubTag exit;
     can exit_import with uni.Import exit;
-    def _partition_client_import_items(nd: uni.Import) -> (tuple[list, list] | None);
+    def _partition_client_import_items(
+        nd: uni.Import
+    ) -> (
+        tuple[
+            list[uni.ModuleItem | uni.ModulePath],
+            list[uni.ModuleItem | uni.ModulePath]
+        ]
+        | None
+    );
+
     def _generate_sv_import_stubs(
         nd: uni.Import, items: (Sequence[uni.ModuleItem] | None) = None
     ) -> None;
@@ -427,7 +436,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _record_sv_backend(nd: uni.Import) -> None;
     def _generate_na_import_binding(nd: uni.Import) -> None;
     def _is_client_native_import(nd: uni.Import) -> bool;
-    def _emit_boundary_type_stubs(nd: uni.Module) -> list;
+    def _emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement];
     def _boundary_type_name(info: BoundaryTypeInfo) -> str;
     def _es_json_literal(value: any) -> any;
     can exit_type_alias with uni.TypeAlias exit;
