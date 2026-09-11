@@ -1005,3 +1005,28 @@ test "hydrated interfaces prepare source-stub classes before resolving reference
         assert not warm.errors_had , warm_diags;
     }
 }
+
+
+test "symbol and codegen requests preserve a checked interface's dependencies" {
+    import from jaclang.compiler.session.cache.artifact_codec { read_dep_hashes }
+    (main, dependency) = _project();
+    Path(main).write_text(
+        'import from depmod { f }\ndef value -> int { return f(); }\n'
+    );
+    (program, diagnostics) = _check(main);
+    assert not program.errors_had , diagnostics;
+    original = list(read_dep_hashes(_cache_path(main).read_bytes()));
+    assert any(row[0] == dependency for row in original);
+    for options in [
+        CompileOptions(symtab_ir_only=True, force_target_program=True, iface_ok=True),
+        _check_opts(),
+        CompileOptions(force_target_program=True, iface_ok=True)
+    ] {
+        program.compile(main, options=options);
+        assert list(read_dep_hashes(_cache_path(main).read_bytes())) == original;
+    }
+    program.release_compile_closure(collect=False);
+    _rewrite(dependency, 'def f -> str { return "changed"; }\n');
+    (changed, _) = _check(main);
+    assert any('expected int' in error.msg for error in changed.errors_had);
+}

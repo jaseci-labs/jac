@@ -144,6 +144,13 @@ obj IfaceEntry {
         replayed_token: int = -1;
 }
 
+obj InterfaceSnapshot {
+    has cache_key: str,
+        section: bytes,
+        digest: str,
+        dependency_section: bytes;
+}
+
 obj IfaceRegistry(CatalogResolver) {
     has prog: JacProgram,
         entries: dict[str, IfaceEntry] = {},
@@ -151,7 +158,7 @@ obj IfaceRegistry(CatalogResolver) {
         checking: set[str] postinit,
         frames: list[str] postinit,
         direct_deps: dict[str, dict[str, str]] = {},
-        _iface_bytes: dict[str, tuple[str, bytes, str]] = {},
+        _interfaces: dict[str, InterfaceSnapshot] = {},
         _incoherent: set[str] = set(),
         verifying: bool = False,
         closure_token: int = 0,
@@ -190,8 +197,8 @@ obj IfaceRegistry(CatalogResolver) {
         if real in self.direct_deps {
             del self.direct_deps[real];
         }
-        if real in self._iface_bytes {
-            del self._iface_bytes[real];
+        if real in self._interfaces {
+            del self._interfaces[real];
         }
     }
 
@@ -199,7 +206,7 @@ obj IfaceRegistry(CatalogResolver) {
         self._incoherent.clear();
         self.entries.clear();
         self.direct_deps.clear();
-        self._iface_bytes.clear();
+        self._interfaces.clear();
         self.building.clear();
         self.checking.clear();
         self.frames.clear();
@@ -777,20 +784,23 @@ obj IfaceRegistry(CatalogResolver) {
             modkey = "";
         }
         inferred = bool(getattr(mod, "codespace_inferred", False));
-        memo = self._iface_bytes.get(resolved);
+        memo = self._interfaces.get(resolved);
         payload: (bytes | None) = None;
         if inferred {
             digest = self._disk_iface_digest(resolved);
-        } elif modkey and memo is not None and memo[0] == modkey {
-            payload = memo[1];
-            digest = memo[2];
+        } elif modkey and memo is not None and memo.cache_key == modkey {
+            payload = memo.section;
+            digest = memo.digest;
+            sections[SEC_DEPS] = memo.dependency_section;
         } else {
             digest = self._disk_iface_digest(resolved);
         }
         if payload is not None {
             sections[SEC_IFACE] = payload;
         }
-        sections[SEC_DEPS] = deps_section(self.dep_rows(resolved));
+        if not digest {
+            sections[SEC_DEPS] = deps_section(self.dep_rows(resolved));
+        }
         try {
             import from jaclang.compiler.analysis.placement.summary { summary_to_bytes }
             summary = self.prog.analysis.lookup(mod.loc.mod_path, PLACEMENT_SUMMARY);
@@ -1027,8 +1037,8 @@ obj IfaceRegistry(CatalogResolver) {
             import from jaclang.compiler.pipeline.products { require_product }
             import from jaclang.compiler.pipeline.contracts { CompilationProduct }
             require_product(prog2, fresh, CompilationProduct.INTERFACE);
-            encoded = prog2.iface_registry()._iface_bytes.get(resolved);
-            fresh_digest = encoded[2] if encoded is not None else '';
+            encoded = prog2.iface_registry()._interfaces.get(resolved);
+            fresh_digest = encoded.digest if encoded is not None else '';
             if fresh_digest != ent.digest {
                 raise RuntimeError(
                     f"analysis-cache verify failed for {resolved}: the served "
@@ -1109,8 +1119,8 @@ obj IfaceRegistry(CatalogResolver) {
 
     def interface_is_current(path: str) -> bool {
         with self._cache_scope() {
-            memo = self._iface_bytes.get(path);
-            return memo is not None and memo[0] == module_cache_key(path);
+            memo = self._interfaces.get(path);
+            return memo is not None and memo.cache_key == module_cache_key(path);
         }
     }
 
@@ -1118,7 +1128,7 @@ obj IfaceRegistry(CatalogResolver) {
         if not self.interface_is_current(path) {
             return None;
         }
-        return self._iface_bytes[path][1];
+        return self._interfaces[path].section;
     }
 
     def reject_interface(path: str) {
@@ -1130,10 +1140,11 @@ obj IfaceRegistry(CatalogResolver) {
         import from jaclang.compiler.session.cache.interface_codec { read_iface_hash }
         with self._cache_scope() {
             self._incoherent.discard(path);
-            self._iface_bytes[path] = (
-                module_cache_key(path),
-                encoded,
-                read_iface_hash(encoded) or ''
+            self._interfaces[path] = InterfaceSnapshot(
+                cache_key=module_cache_key(path),
+                section=encoded,
+                digest=read_iface_hash(encoded) or '',
+                dependency_section=deps_section(self.dep_rows(path))
             );
             self._event("iface_encode");
         }
