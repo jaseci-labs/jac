@@ -95,7 +95,10 @@ impl JacTestClient._ensure_initialized -> None {
 
     set_effective_default_codespace('server');
 
-    Jac.jac_import(target=mod, base_path=base, lng="jac");
+    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.runtime.prepared { initialize_application }
+    prepared = prepare_application(self._jac_file, Jac.get_program(), base);
+    initialize_application(prepared);
 
     self._server = JacAPIServer(
         module_name=mod, port=0, base_path=self._base_path, module_file=self._jac_file
@@ -293,9 +296,7 @@ impl JacTestClient.reload -> None {
     new_module = Jac.loaded_modules.get(mod);
     if new_module {
         introspector = self.server.introspector;
-        introspector._module = new_module;
-        introspector._functions = introspector._collect_functions();
-        introspector._walkers = introspector._collect_walkers();
+        introspector._check_module_freshness();
     }
 
     server_ref: any = self._server;
@@ -303,6 +304,8 @@ impl JacTestClient.reload -> None {
 }
 
 impl JacTestClient.close -> None {
+    import from jaclang.runtime.prepared { forget }
+    forget(self._jac_file);
     import from contextlib { suppress }
     if self._server {
         with suppress(Exception) {

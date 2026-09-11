@@ -1,10 +1,9 @@
 """The one fake model for the byLLM suite.
 
-A test scripts what the model says, turn by turn, and every real dispatch path
-in BaseLLM runs unchanged: only `model_call_no_stream` and
-`model_call_with_stream` (and their async twins on `Model`) are replaced.
-Streams are real litellm chunk objects, so `stream_chunk_builder`, usage, and
-cost attach exactly as they do in production.
+Script what the model says, turn by turn. Only `model_call_no_stream` and
+`model_call_with_stream` (and their async twins on `Model`) are replaced, so
+every other dispatch path is the real code and streams carry real litellm
+chunks, with usage and cost attaching as they do in production.
 
     llm = FakeLLM(replies=[call("lookup", {"q": "x"}), say("done")]);
     def task(q: str) -> str by llm(tools=[lookup]);
@@ -29,7 +28,7 @@ import from unittest { mock }
 import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.byllm.llm { BaseLLM }
 import from jaclang.byllm.mtir { MTRuntime }
-import from jaclang.byllm.types { Message, MessageRole, Tool }
+import from jaclang.byllm.types { Message, MessageRole, StreamEvent, Tool }
 
 glob FIXTURE_DIR: str = os.path.join(os.path.dirname(__file__), "fixtures"),
      TOKENS: dict = {
@@ -59,6 +58,19 @@ obj Reply {
 
 def say(content: str, usage: dict | None = None, finish_reason: str = "") -> Reply {
     return Reply(content=content, usage=usage, finish_reason=finish_reason);
+}
+
+
+"""A reply carrying a typed value, wrapped in the envelope parse_response expects.
+
+Every non-`str` return needs it, scalars included: a bare "120597" raises
+OutputConversionError for a `-> int`. An enum takes the member's value, not its name.
+
+    typed(120597);  typed({"name": "Ada"});  typed(Colour.RED.value);
+"""
+def typed(value: object, usage: dict | None = None) -> Reply {
+    import json;
+    return say(json.dumps({"schema_object_wrapper": value}), usage=usage);
 }
 
 
@@ -308,10 +320,6 @@ obj FakeLLM(BaseLLM) {
         return self.script.with_stream(params);
     }
 
-    override async def model_call_with_stream_async(params: dict) -> any {
-        return await self.script.with_stream_async(params);
-    }
-
     def sent(key: str) -> list {
         return self.script.sent(key);
     }
@@ -451,4 +459,186 @@ obj LogCapture {
 
 def capture_logs(level: int = logging.DEBUG, name: str = "") -> LogCapture {
     return LogCapture(level=level, name=name);
+}
+
+
+"""The conversation sent on call `n`, as the model saw it."""
+def sent_messages(llm: FakeLLM | Script, n: int = 0) -> list {
+    return llm.sent("messages")[n];
+}
+
+
+"""The role of each message sent on call `n`, in order.
+
+    assert roles(llm) == ["system", "user"];
+"""
+def roles(llm: FakeLLM | Script, n: int = 0) -> list[str] {
+    return [m["role"] for m in sent_messages(llm, n)];
+}
+
+
+"""The content blocks of the user turn of call `n`.
+
+A multimodal request lands its argument, image or video frames here. A text-only
+request is normalised to one text block, so callers can treat both alike.
+"""
+def user_blocks(llm: FakeLLM | Script, n: int = 0) -> list {
+    content = sent_messages(llm, n)[1]["content"];
+    return content
+        if isinstance(content, list)
+        else [{"type": "text", "text": content}];
+}
+
+
+"""Just the inlined media of the user turn of call `n`, in order."""
+def media_blocks(llm: FakeLLM | Script, n: int = 0) -> list {
+    return [
+        b
+        for b in user_blocks(llm, n)
+        if b.get("type") == "image_url"
+    ];
+}
+
+
+"""The data url carried by one media block."""
+def data_url(block: dict) -> str {
+    return block["image_url"]["url"];
+}
+
+
+"""Skip the calling test when an optional dependency is absent.
+
+    need("PIL", "Pillow");
+"""
+def need(module: str, package: str = "") {
+    import importlib;
+    try {
+        importlib.import_module(module);
+    } except ImportError {
+        testskip(f"This test requires {package or module} to be installed");
+    }
+}
+
+"""The whole conversation of call `n` as one string, for `in` assertions.
+
+Use it to ask whether something reached the model at all. For questions about
+structure use roles(), user_blocks() or media_blocks() instead.
+"""
+def prompt_text(llm: FakeLLM | Script, n: int = 0) -> str {
+    return str(sent_messages(llm, n));
+}
+
+
+"""Drain a `logging=True` stream, checking every item is a StreamEvent."""
+def stream_events(stream: any) -> list {
+    out: list = [];
+    for e in stream {
+        assert isinstance(e, StreamEvent) , (
+            f"a logging stream yields StreamEvent, got {type(e).__name__}"
+        );
+        out.append(e);
+    }
+    return out;
+}
+
+
+"""The events of one type, in order."""
+def events_of(events: list, kind: str) -> list {
+    return [
+        e
+        for e in events
+        if e.event_type == kind
+    ];
+}
+
+
+"""The event types in order, for ordering assertions."""
+def event_types(events: list) -> list[str] {
+    return [e.event_type for e in events];
+}
+
+
+"""The text delivered on the chunk channel, reassembled."""
+def chunk_text(events: list) -> str {
+    return "".join([e.data.get("content", "") for e in events_of(events, "chunk")]);
+}
+
+"""The candidate handles offered in a routing prompt, with the line each sits on.
+
+Candidates are rendered as `Handle) <description>` lines under a "Candidates"
+heading. Handles are generated from the candidate set: two `Agent` siblings become
+`Agent_alpha` and `Agent_beta`, a lone one stays `Agent`. Read them, do not write
+them.
+"""
+def routing_candidates(params: dict) -> list[tuple[str, str]] {
+    import re;
+    out: list = [];
+    seen_heading = False;
+    for line in str(params.get("messages")).replace("\\n", "\n").split("\n") {
+        if line.lstrip().startswith("Candidates") {
+            seen_heading = True;
+            continue;
+        }
+        if seen_heading {
+            m = re.match(r"\s*([A-Za-z0-9_]+)\)\s*(.*)", line);
+            if m {
+                out.append((m.group(1), m.group(2)));
+            }
+        }
+    }
+    return out;
+}
+
+
+"""A model that reads a routing prompt and answers with the handles `pick` chooses.
+
+`pick(candidates, prompt)` takes the candidate list from routing_candidates() and
+the prompt they came from, and returns the handles to visit.
+
+    RoutingLLM(pick=lambda (c: list, p: str) { [x[0] for x in c if "high" in x[1]]; });
+
+A graph whose nodes also make their own `by llm()` calls sends both kinds through
+one model, so a prompt with no candidates falls through to the scripted replies.
+"""
+obj RoutingLLM(FakeLLM) {
+    has pick: Callable = lambda (c: list, p: str) { [c[0][0]] if c else []; };
+
+    override def model_call_no_stream(params: dict) -> object {
+        candidates = routing_candidates(params);
+        if not candidates {
+            # Not a routing prompt. A graph whose nodes also make their own
+            # `by llm()` calls sends both kinds through the same model, so fall
+            # through to the scripted replies for those.
+            return super.model_call_no_stream(params);
+        }
+        self.seen.append(params);
+        return response(
+            self._answer(params, candidates), params.get("model") or self.model_name
+        );
+    }
+
+    override def model_call_with_stream(params: dict) -> Generator[object, None, None] {
+        candidates = routing_candidates(params);
+        if not candidates {
+            for chunk in super.model_call_with_stream(params) {
+                yield chunk;
+            }
+            return;
+        }
+        self.seen.append(params);
+        for chunk in chunks(
+            self._answer(params, candidates),
+            params.get("model") or self.model_name,
+            self.chunk_size
+        ) {
+            yield chunk;
+        }
+    }
+
+    """The reply this routing call should answer with."""
+    def _answer(params: dict, candidates: list) -> Reply {
+        import json;
+        chosen = self.pick(candidates, str(params.get("messages")));
+        return say(json.dumps({"schema_object_wrapper": chosen}));
+    }
 }

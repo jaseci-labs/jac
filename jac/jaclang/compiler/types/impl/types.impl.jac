@@ -1031,7 +1031,11 @@ impl ClassType.lookup_member_symbol(
         FuncSignature,
         ParamVar
     }
-    import from jaclang.compiler.types.type_utils { collect_member_syms }
+    import from jaclang.compiler.types.type_utils {
+        collect_member_syms,
+        ensure_mro_fresh
+    }
+    ensure_mro_fresh(self);
     for cls in self.shared.mro {
         all_syms = collect_member_syms(cls.shared.symbol_table, member);
         if all_syms {

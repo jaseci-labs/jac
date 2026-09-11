@@ -172,10 +172,10 @@ test "create rejects an unknown kind" {
 }
 
 test "kind_entry matches the scaffolded entry-point" {
-    assert kind_entry("cli") == "main.jac";
-    assert kind_entry("cli-native") == "main.jac";
-    assert kind_entry("service") == "main.jac";
-    assert kind_entry("mobile") == "main.jac";
+    assert kind_entry("cli") == "main";
+    assert kind_entry("cli-native") == "main";
+    assert kind_entry("service") == "main";
+    assert kind_entry("mobile") == "main";
     assert is_valid_kind("cli");
     assert is_valid_kind("service");
     assert is_valid_kind("mobile");

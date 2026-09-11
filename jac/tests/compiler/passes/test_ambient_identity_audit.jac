@@ -603,7 +603,7 @@ test "audit_optional_pep604" {
 
 test "typing_import_flips_native_placement" {
     import from jaclang.compiler.placement.placement_solver { native_default_verdict }
-    import from jaclang.compiler.driver.schedules { native_pipeline_available }
+    import from jaclang.compiler.driver.pipeline { native_pipeline_available }
     (env_ok, env_reason) = native_pipeline_available();
     if not env_ok {
         print("skipping placement audit: " + env_reason);

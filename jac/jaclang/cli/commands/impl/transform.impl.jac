@@ -6,21 +6,20 @@ impl py2jac(filename: str) -> int {
     import jaclang.compiler.frontend.unitree as uni;
     import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
     import from jaclang.compiler.tools.unparse_pass { unparse_module }
-    import from jaclang.compiler.driver.pass_driver { run_pass }
+    import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
     if filename.endswith('.py') {
         file_source = read_file_with_encoding(filename);
-        code = unparse_module(
-            run_pass(
-                PyastBuildPass,
-                uni.PythonModuleAst(
-                    ast3.parse(file_source), orig_src=uni.Source(file_source, filename)
-                ),
-                JacProgram()
-            ).ir_out,
-            requires_format=False
-        );
+        converted = run_utility(
+            UtilityProduct.PYTHON_AST,
+            uni.PythonModuleAst(
+                ast3.parse(file_source), orig_src=uni.Source(file_source, filename)
+            ),
+            JacProgram()
+        ).ir_out;
+        assert isinstance(converted, uni.Module);
+        code = unparse_module(converted, requires_format=False);
         prog = JacProgram.jac_str_formatter(
             source_str=code, file_path=filename, auto_lint=False
         );

@@ -150,28 +150,16 @@ impl JcirGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
         }
     }
     import from jaclang.compiler.driver.boundary_classify {
-        import_crosses_apps,
         import_provider_app,
         import_provider_route
     }
-    mirrored_names: set[str] = set();
-    if import_crosses_apps(nd) {
-        for item in nd.items {
-            if isinstance(item, ModuleItem) {
-                mirrored = getattr(item.name, 'value', str(item.name));
-                if mirrored in manifest.boundary_types {
-                    mirrored_names.add(mirrored);
-                }
-            }
-        }
-    }
-    if not sv_to_sv_names and not mirrored_names {
+    if not sv_to_sv_names {
         return False;
     }
     provider_app = import_provider_app(nd) or module_name;
     provider_route = manifest.provider_routes.get(provider_app, '')
         or import_provider_route(nd);
-    boundary_types = manifest.boundary_types;
+    self._gen_py_sv_boundary_types();
     parts: list = [
         "from jaclang.server import sv_client as __jac_sv_client",
         "__jac_sv_client._declare_consumer_provider("
@@ -189,31 +177,17 @@ impl JcirGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
         }
         item_name = getattr(item.name, 'value', str(item.name));
         local_name = item.alias.sym_name if item.alias else item_name;
-        if item_name in boundary_types {
-            info = boundary_types[item_name];
-            parts.append(self._gen_py_boundary_stub_class(local_name, info));
-            names.append(local_name);
-            continue;
-        }
         if item_name not in sv_to_sv_names {
             continue;
         }
-        binding = None;
-        for b in manifest.server_exports_to_server {
-            if (b.name == item_name and b.source_module == module_name) {
-                binding = b;
-                break;
-            }
-        }
-        if not isinstance(binding, InteropBinding) {
+        binding = manifest.bindings.get(local_name);
+        if binding is None or binding.source_module != module_name {
             continue;
         }
-        if binding.kind == 'walker' {
-            parts.append(
-                self._gen_py_sv_walker_stub(
-                    local_name, item_name, provider_app, binding, boundary_types
-                )
-            );
+        boundary_types = manifest.boundary_types_for(binding.type_scope);
+        if binding.kind in ('type', 'walker') {
+            info = boundary_types[binding.ret_type];
+            parts.append(local_name + ' = ' + self._sv_boundary_names[info.type_id]);
             names.append(local_name);
             continue;
         }
@@ -284,9 +258,17 @@ impl JcirGenPass._gen_py_sv_func_stub(
         + ")"
     );
     if (ret_type in boundary_types and boundary_types[ret_type].kind != "enum") {
-        ret_expr = ret_type + '._from_wire(' + raw_call + ')';
+        ret_expr = self._sv_boundary_names[boundary_types[ret_type].type_id]
+            + '._from_wire('
+            + raw_call
+            + ')';
     } else {
-        ret_expr = raw_call;
+        ret_expr = self._sv_serializer
+            + '.deserialize_api('
+            + raw_call
+            + ', '
+            + self._sv_boundary_registry
+            + ')';
     }
     return 'async def ' + local_name + '(' + params + '):\n    return ' + ret_expr;
 }
@@ -300,29 +282,18 @@ impl JcirGenPass._gen_py_sv_walker_stub(
 ) -> str {
     field_names = list(binding.param_names);
     field_types = list(binding.param_types);
-    fields_repr_pieces: list[str] = [];
-    for fname in field_names {
-        fields_repr_pieces.append("'" + fname + "'");
-    }
-    fields_repr = '[' + ', '.join(fields_repr_pieces) + ']';
-    boundary_pairs: list[str] = [];
-    for i in range(len(field_names)) {
-        ptype = field_types[i] if i < len(field_types) else '';
-        if (ptype in boundary_types and boundary_types[ptype].kind != "enum") {
-            boundary_pairs.append("'" + field_names[i] + "': " + ptype);
-        }
-    }
-    boundary_map = '{' + ', '.join(boundary_pairs) + '}';
     args_dict = self._sv_wire_args_dict(field_names, field_types, boundary_types);
     init_params = ', '.join(
         ['cls'] + [field_names[i] + '=None' for i in range(len(field_names))]
     );
     lines: list[str] = [];
     lines.append('class ' + local_name + ':');
-    lines.append('    __jac_fields__ = ' + fields_repr);
+    info = boundary_types[binding.ret_type];
+    lines.append('    _jac_type = ' + repr(info.name));
+    lines.append('    __jac_type_id__ = ' + repr(info.type_id));
     lines.append('    __jac_walker_name__ = ' + "'" + walker_name + "'");
     lines.append('    __jac_provider_app__ = ' + "'" + provider_app + "'");
-    lines.append('    __jac_boundary_types__ = ' + boundary_map);
+    lines.append('    __jac_boundary_types__ = ' + self._sv_boundary_registry);
     lines.append('    def __new__(' + init_params + '):');
     lines.append('        kwargs = ' + args_dict);
     if field_names {
@@ -354,63 +325,106 @@ impl JcirGenPass._gen_py_sv_walker_stub(
             + walker_name
             + "', kwargs)"
     );
-    lines.append('    def _to_wire(self):');
-    lines.append(
-        '        return {f: getattr(self, f, None) for f in self.__jac_fields__}'
-    );
-    lines.append('    @classmethod');
-    lines.append('    def _from_wire(cls, d):');
-    lines.append('        if d is None:');
-    lines.append('            return None');
-    lines.append('        if isinstance(d, list):');
-    lines.append('            return [cls._from_wire(i) for i in d]');
-    lines.append('        if not isinstance(d, dict):');
-    lines.append('            return d');
-    lines.append('        inst = object.__new__(cls)');
-    lines.append('        for k, v in d.items():');
-    lines.append('            if k in cls.__jac_boundary_types__ and v is not None:');
-    lines.append('                v = cls.__jac_boundary_types__[k]._from_wire(v)');
-    lines.append('            setattr(inst, k, v)');
-    lines.append('        if not hasattr(inst, "reports"):');
-    lines.append('            inst.reports = []');
-    lines.append('        return inst');
+    lines.extend(self._gen_py_wire_methods());
     return '\n'.join(lines);
+}
+
+impl JcirGenPass._gen_py_sv_boundary_types -> None {
+    if self._sv_boundary_registry {
+        return;
+    }
+    self._sv_boundary_registry = self._reserve_name('_jac_sv_boundary_types');
+    self._sv_serializer = self._reserve_name('_jac_wire_serializer');
+    manifest = self.ir_in.gen.interop_manifest;
+    boundary_types = manifest.boundary_types;
+    parts: list[str] = [
+        'from jaclang.data.serializer import Serializer as ' + self._sv_serializer,
+        self._sv_boundary_registry + ' = {}'
+    ];
+    wire_types: dict[str, str] = {};
+    short_names: dict[str, list[str]] = {};
+    for (type_id, info) in boundary_types.items() {
+        class_name = self._reserve_name('_jac_boundary_' + info.name);
+        wire_types[type_id] = class_name;
+        short_names.setdefault(info.name, []).append(class_name);
+        walker_binding: (InteropBinding | None) = None;
+        if info.kind == 'walker' {
+            for binding in manifest.server_exports_to_server {
+                if binding.kind != 'walker' {
+                    continue;
+                }
+                bound = manifest.boundary_types_for(binding.type_scope).get(
+                    binding.ret_type
+                );
+                if bound is not None and bound.type_id == type_id {
+                    walker_binding = binding;
+                    break;
+                }
+            }
+        }
+        if walker_binding is not None {
+            parts.append(
+                self._gen_py_sv_walker_stub(
+                    class_name,
+                    walker_binding.name,
+                    walker_binding.provider_app or walker_binding.source_module or '',
+                    walker_binding,
+                    manifest.boundary_types_for(walker_binding.type_scope)
+                )
+            );
+        } else {
+            parts.append(self._gen_py_boundary_stub_class(class_name, info));
+        }
+        self._sv_boundary_names[type_id] = class_name;
+    }
+    for (name, classes) in short_names.items() {
+        if len(classes) == 1 {
+            wire_types[name] = classes[0];
+        }
+    }
+    parts.append(
+        self._sv_boundary_registry
+            + '.update({'
+            + ', '.join(
+                repr(name) + ': ' + class_name
+                for (name, class_name) in wire_types.items()
+            )
+            + '})'
+    );
+    self.preamble.append(
+        CgSplice(
+            src='\n\n'.join(parts),
+            offset=0,
+            bound_names=[self._sv_serializer, self._sv_boundary_registry]
+                + list(self._sv_boundary_names.values())
+        )
+    );
+}
+
+impl JcirGenPass._gen_py_wire_methods -> list[str] {
+    return [
+        '    def _to_wire(self):',
+        '        return ' + self._sv_serializer + '.serialize(self, api_mode=True)',
+        '    @classmethod',
+        '    def _from_wire(cls, d):',
+        '        return '
+            + self._sv_serializer
+            + '.deserialize_api(d, cls.__jac_boundary_types__, cls)'
+    ];
 }
 
 impl JcirGenPass._gen_py_boundary_stub_class(
     class_name: str, info: BoundaryTypeInfo
 ) -> str {
-    field_names: list = [];
-    for f in info.fields {
-        field_names.append(f[0]);
-    }
-    fields_pieces: list[str] = [];
-    for fname in field_names {
-        fields_pieces.append("'" + fname + "'");
-    }
-    fields_repr = '[' + ', '.join(fields_pieces) + ']';
     lines: list[str] = [];
     lines.append('class ' + class_name + ':');
-    lines.append('    __jac_fields__ = ' + fields_repr);
+    lines.append('    _jac_type = ' + repr(info.name));
+    lines.append('    __jac_type_id__ = ' + repr(info.type_id));
+    lines.append('    __jac_boundary_types__ = ' + self._sv_boundary_registry);
     lines.append('    def __init__(self, **kw):');
     lines.append('        for k, v in kw.items():');
     lines.append('            setattr(self, k, v)');
-    lines.append('    def _to_wire(self):');
-    lines.append(
-        '        return {f: getattr(self, f, None) for f in self.__jac_fields__}'
-    );
-    lines.append('    @classmethod');
-    lines.append('    def _from_wire(cls, d):');
-    lines.append('        if d is None:');
-    lines.append('            return None');
-    lines.append('        if isinstance(d, list):');
-    lines.append('            return [cls._from_wire(i) for i in d]');
-    lines.append('        if not isinstance(d, dict):');
-    lines.append('            return d');
-    lines.append('        inst = cls.__new__(cls)');
-    lines.append('        for k, v in d.items():');
-    lines.append('            setattr(inst, k, v)');
-    lines.append('        return inst');
+    lines.extend(self._gen_py_wire_methods());
     return '\n'.join(lines);
 }
 
@@ -435,8 +449,8 @@ impl JcirGenPass._sv_endpoint_effects(binding: InteropBinding, key: str) -> list
 }
 
 impl JcirGenPass._sv_consumer_app_expr -> str {
-    import from jaclang.compiler.driver.boundary_classify { consumer_owner_app }
-    consumer = consumer_owner_app(self.ir_in);
+    import from jaclang.compiler.driver.boundary_classify { module_app }
+    consumer = module_app(self.ir_in);
     if consumer {
         return "'" + consumer + "'";
     }

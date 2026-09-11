@@ -126,14 +126,16 @@ def archetype_accessors(arch: Archetype) -> list[tuple[(str, HasVar, Ability)]] 
     return out;
 }
 
-def get_layout_registry(module: Module, prog: any = None) -> LayoutRegistry {
+def get_layout_registry(module: Module, prog: any) -> LayoutRegistry {
     reg = module.gen.layout_registry;
     if reg is not None {
         return reg;
     }
 
-    import from jaclang.compiler.driver.pass_driver { run_pass }
-    run_pass(LayoutPass, module, prog);
+    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
+    if not require_product(prog, module, CompilationProduct.LAYOUT) {
+        raise RuntimeError(f"Layout preparation failed: {module.loc.mod_path}");
+    }
     return module.gen.layout_registry or LayoutRegistry();
 }
 

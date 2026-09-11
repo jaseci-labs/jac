@@ -163,7 +163,7 @@ def run_js_module_fixture(fixture: str, func_name: str) -> dict {
             compiled_dir=output
         );
         source_root = Path(source.anchor);
-        compiler.compile_dependencies_recursively(source, source_root=source_root);
+        compiler.emit_dependencies(source, source_root=source_root);
         (output / "package.json").write_text('{"type":"module"}');
         js_entry = compiler._output_path_for(source, source_root);
         with js_entry.open("a") as stream {

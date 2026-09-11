@@ -1,7 +1,6 @@
-"""Tests for Integration with Jaclang."""
-
 import contextlib;
 import io;
+import time;
 import os;
 import sys;
 import warnings;
@@ -11,7 +10,7 @@ import yaml;
 import from fixtures { python_lib_mode }
 
 import jaclang.byllm.llm as _byllm_llm_mod;
-import from jaclang.byllm.lib { Model }
+import from jaclang.byllm.lib { Image, Model, ModelPool, Video }
 import types;
 import from jaclang.byllm.mtir { MTRuntime }
 import from jaclang.byllm.exceptions {
@@ -26,6 +25,8 @@ import dataclasses;
 import from jaclang { JacRuntimeInterface as Jac }
 import from support_tests {
     FakeLLM,
+    scripted,
+    typed,
     finish,
     mk_run,
     say,
@@ -39,266 +40,41 @@ import from support_tests {
 glob jac_import = Jac.jac_import,
      FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures");
 
-"""Identity cast that keeps duck-typed test payloads out of nominal checks."""
+
 def _as_any(v: any) -> any {
     return v;
 }
 
-test "llm mail summerize" {
-    stdout_value = run_fixture("llm_mail_summerize");
-    summaries = [
-        "AetherGuard reports a login to your account from a new device in Berlin and advises a password reset if the activity was unauthorized.",
-        "Claire from Novelink invites writers to a biweekly Writer's Circle this Friday for sharing work and receiving feedback in a supportive environment.",
-        "Marcus Bentley from FinTracker reports a weekly spending total of $342.65, mainly on Groceries, Transport, and Dining, with a link for detailed insights.",
-        "TechNews from DailyByte highlights how quantum computing is set to transform fields like cryptography and climate modeling, with more details in the full article.",
-        "Nora Hartwell from Wanderlust Travels offers a 30% discount on international trips booked this week, urging recipients to take advantage of the limited-time travel deal.",
 
-    ];
-    for summary in summaries {
-        assert summary in stdout_value;
-    }
-}
+test "the deprecated method= parameter still runs and warns once" {
+    llm = FakeLLM(replies=[say("test output")]);
 
-test "method include context" {
-    stdout_value = run_fixture("method_incl_ctx");
-    assert "Average marks for Alice : 86.75" in stdout_value;
-}
-
-test "with llm function" {
-    stdout_value = run_fixture("with_llm_function");
-    assert "\U0001f464\u27a1\ufe0f\U0001f5fc" in stdout_value;
-}
-
-test "method tool call" {
-    stdout_value = run_fixture("method_tool");
-    assert "Calculator.add called with 12, 34" in stdout_value;
-    assert "Result: 46" in stdout_value;
-}
-
-test "params format" {
-    stdout_value = run_fixture("llm_params");
-    dict_str = stdout_value[stdout_value.find("{"):stdout_value.rfind("}") + 1];
-    extracted_dict = yaml.safe_load(dict_str);
-
-    required_keys = [
-        "model",
-        "api_base",
-        "messages",
-        "tools",
-        "response_format",
-        "max_tokens",
-
-    ];
-    for key in required_keys {
-        assert key in extracted_dict , f"Missing key: {key}";
+    def simple_tool -> str {
+        return "tool ran";
     }
 
-    # Temperature is omitted entirely when the caller never sets one, so the
-    # provider (or an aggregator like OpenRouter) applies its own default
-    # instead of byLLM forcing an unsupported value. See issue #7687.
-    assert "temperature" not in extracted_dict , "temperature must be omitted when unset";
-
-    add_message = extracted_dict["messages"];
-    assert add_message[0]["role"] == "system" , "First message should be of role 'system'";
-    assert add_message[1]["role"] == "user" , "Second message should be of role 'user'";
-    assert add_message[3]["role"] == "tool" , "Fourth message should be of role 'tool'";
-    assert (
-        add_message[3]["content"]
-        == "The current wind speed in Puttalam is about 18-22 km/h."
-    ) , "Content mismatch";
-
-    add_tool = extracted_dict["tools"][0];
-    assert add_tool["type"] == "function" , "First tool should be of type 'function'";
-    assert add_tool["function"]["name"] == "get_live_wind_speed" , "First tool function should be 'get_live_wind_speed'";
-    assert "city" in add_tool["function"]["parameters"]["properties"] , "get_live_wind_speed function should have 'city' parameter";
-}
-
-test "temperature passed through when set" {
-    stdout_value = run_fixture("llm_params_temp");
-    dict_str = stdout_value[stdout_value.find("{"):stdout_value.rfind("}") + 1];
-    extracted_dict = yaml.safe_load(dict_str);
-
-    assert "temperature" in extracted_dict , "temperature must be present when the caller sets it";
-    assert extracted_dict["temperature"] == 0.3 , f"expected temperature 0.3, got {extracted_dict.get(
-        'temperature'
-    )}";
-}
-
-test "image input" {
-    stdout_value = run_fixture("image_test");
-    assert "The image shows a hot air balloon shaped like a heart" in stdout_value;
-}
-
-test "image param with sem string doesn't crash Message.to_dict" {
-    stdout_value = run_fixture("image_with_sem");
-    assert "IMAGE_SEM_PASS" in stdout_value;
-}
-
-test "streaming output" {
-    stdout_value = run_fixture("streaming_output");
-    assert (
-        "The orca whale, or killer whale, is one of the most intelligent and adaptable marine predators"
-        in stdout_value
-    );
-}
-
-test "streaming with react" {
-    stdout_value = run_fixture("streaming_with_react");
-    assert "29-10-2025" in stdout_value;
-    assert "100" in stdout_value;
-    assert "Test passed!" in stdout_value;
-}
-
-test "logging stream no tools" {
-    stdout_value = run_fixture("logging_stream_no_tools");
-    assert "NO_TOOLS_PASS" in stdout_value;
-}
-
-test "logging stream react" {
-    stdout_value = run_fixture("logging_stream_react");
-    assert "REACT_LOGGING_PASS" in stdout_value;
-}
-
-test "logging stream str answer without finish_tool delivers on chunk" {
-    # a `-> str` agent whose model skips finish_tool and
-    # returns plain text must deliver that terminal text on the `chunk` channel,
-    # not leave it stranded as `thought`-only.
-    stdout_value = run_fixture("logging_stream_str_skip_finish");
-    assert "STR_SKIP_FINISH_CHUNK_PASS" in stdout_value;
-}
-
-test "conversation kwarg writes back history with tool calls preserved" {
-    stdout_value = run_fixture("conversation_param");
-    assert "CONV_PARAM_PASS" in stdout_value;
-}
-
-test "streaming + conversation persists assistant message and emits dicts" {
-    stdout_value = run_fixture("streaming_conversation");
-    assert "STREAM_CONV_PASS" in stdout_value;
-}
-
-test "transient mid-stream drop retried on same model, output de-duplicated" {
-    stdout_value = run_fixture("stream_retry");
-    assert "STREAM_RETRY_PASS" in stdout_value;
-}
-
-test "streaming generator survives consumption from a foreign Context" {
-    # Regression test: a streaming by llm() generator must be safe to consume
-    # from a different contextvars.Context than the one that created it — e.g. a
-    # thread-pool worker, which is how the scale backend's sse_frame_stream drives SSE.
-    # Pre-fix, the wrapper reset a ContextVar Token across Context boundaries and
-    # raised "Token was created in a different Context", killing the stream.
-    stdout_value = run_fixture("streaming_cross_context");
-    assert "CROSS_CONTEXT_PASS" in stdout_value;
-}
-
-test "by expr" {
-    stdout_value = run_fixture("by_expr");
-    expected_lines = (
-        "Generated greeting: Hello, Alice! It's great to see you!",
-        "[run_and_test_python_code] Executing code:",
-        "[run_and_test_python_code] \"name = 'Alice'\\nprint(f'Hello, {name}! Welcome to the Python world!')\"",
-        "Hello, Alice! Welcome to the Python world!",
-        "[run_and_test_python_code] Code executed successfully.",
-        "Generated greeting code: name = 'Alice'",
-        "print(f'Hello, {name}! Welcome to the Python world!')",
-
-    );
-    for line in expected_lines {
-        assert line in stdout_value;
-    }
-}
-
-test "with llm method" {
-    stdout_value = run_fixture("with_llm_method");
-    assert "Personality.INTROVERT" in stdout_value;
-}
-
-test "deprecated method param" {
-    captured_output = io.StringIO();
-    sys.stdout = captured_output;
     with warnings.catch_warnings(record=True) as w {
         warnings.simplefilter("always");
-        jac_import("with_llm_deprecated_method", base_path=FIXTURE_DIR + "/");
+        def simple_task(query: str) -> str by llm(method="ReAct", tools=[simple_tool]);
+        result = simple_task("hello");
     }
-    sys.stdout = sys.__stdout__;
-    stdout_value = captured_output.getvalue();
-    assert "test output" in stdout_value;
-    deprecation_warnings = [
+    assert result == "test output" , f"the call must still work, got {result!r}";
+    deprecations = [
         x
         for x in w
         if issubclass(x.category, DeprecationWarning)
     ];
-    assert len(deprecation_warnings) >= 1;
-    assert "'method' parameter is deprecated" in str(deprecation_warnings[0].message);
-}
-
-test "with llm lower" {
-    stdout_value = run_fixture("with_llm_lower");
-    assert (
-        "J. Robert Oppenheimer was a Introvert person who died in 1967" in stdout_value
+    assert len(deprecations) == 1 , (
+        f"expected exactly one DeprecationWarning for method=, got {len(deprecations)}"
+    );
+    assert "'method' parameter is deprecated" in str(deprecations[0].message) , (
+        f"got: {deprecations[0].message}"
+    );
+    assert "simple_tool" in tool_names(llm.seen[0]) , (
+        "tools= must still be sent alongside the deprecated method="
     );
 }
 
-test "with llm type" {
-    stdout_value = run_fixture("with_llm_type");
-    assert "14/03/1879" in stdout_value;
-    assert (
-        'University (University) (obj) = type(__module__="with_llm_type", __doc__=None, '
-        "_jac_entry_funcs_`=[`], _jac_exit_funcs_=[], __init__=function(__wrapped__=function()))"
-        not in stdout_value
-    );
-    desired_output_count = stdout_value.count(
-        "Person(name='Jason Mars', dob='1994-01-01', age=30)"
-    );
-    assert desired_output_count == 2;
-}
-
-test "with llm image" {
-    try {
-        import PIL;
-    } except ImportError {
-        testskip("This test requires Pillow to be installed");
-    }
-    stdout_value = run_fixture("with_llm_image");
-    assert "'role': 'system'" in stdout_value;
-    assert "{'type': 'text', 'text': 'solve_math_question" in stdout_value;
-    assert "data:image/jpeg;base64," in stdout_value[:500];
-}
-
-test "webp image support" {
-    stdout_value = run_fixture("webp_support_test");
-    assert "full_name='Albert Einstein'" in stdout_value;
-    assert "year_of_death='1955'" in stdout_value;
-}
-
-test "with llm video" {
-    try {
-        import cv2;
-    } except ImportError {
-        testskip("This test requires OpenCV to be installed");
-    }
-    stdout_value = run_fixture("with_llm_video");
-    video_explanation = (
-        "The video features a large rabbit emerging from a burrow in a lush, green environment. "
-        "The rabbit stretches and yawns, seemingly enjoying the morning. The scene is set in a "
-        "vibrant, natural setting with bright skies and trees, creating a peaceful and cheerful atmosphere."
-    );
-    assert video_explanation in stdout_value;
-}
-
-test "semstrings" {
-    stdout_value = run_fixture("llm_semstrings");
-    assert "Specific number generated: 120597" in stdout_value;
-
-    i = stdout_value.find("Generated password:");
-    password = stdout_value[i:].split("\n")[0];
-
-    assert len(password) >= 8 , "Password should be at least 8 characters long.";
-    assert any(c.isdigit() for c in password) , "Password should contain at least one digit.";
-    assert any(c.isupper() for c in password) , "Password should contain at least one uppercase letter.";
-    assert any(c.islower() for c in password) , "Password should contain at least one lowercase letter.";
-}
 
 test "python lib mode" {
     person = python_lib_mode.test_get_person_info();
@@ -322,123 +98,6 @@ test "enum without value" {
     assert "NO" in stdout_value;
 }
 
-test "fixtures image types" {
-    stdout_value = run_fixture("image_types");
-    expected_labels = [
-        "PIL Image",
-        "Image from file path",
-        "Image from URL",
-        "Image from BytesIO",
-        "Image from raw bytes",
-        "Image from memoryview",
-        "Image from data URL",
-        "Image from PathLike",
-        "Image from file-like without getvalue",
-        "Image from bytearray",
-        "Image from gs:// URL",
-
-    ];
-    for label in expected_labels {
-        assert label in stdout_value;
-    }
-}
-
-test "visit by for routing" {
-    stdout_value = run_fixture("math_poem_agents");
-    assert "Agentic minds, we hold dear" in stdout_value;
-    assert "Math Result: 35" in stdout_value;
-}
-
-test "streaming visit by routes and streams tokens to handler" {
-    # `visit [-->] by model(stream=True, stream_handler=fn)` streams the routing
-    # decision token-by-token to the handler (the path a live token feed
-    # consumes) while the structured choice still selects the successor edge.
-    stdout_value = run_fixture("streaming_visit_by");
-    assert "STREAMING_VISIT_BY_PASS" in stdout_value;
-    # The structured choice [1] picked the second successor edge.
-    assert "VISITED: green" in stdout_value;
-    assert "VISITED: red" not in stdout_value;
-}
-
-test "structured streaming without a handler is rejected" {
-    # Streaming a non-str return needs a stream_handler to consume the events;
-    # omitting it raises ConfigurationError up front (the guard the visit-by
-    # streaming path relaxes only when a handler is supplied).
-    stdout_value = run_fixture("streaming_structured_no_handler");
-    assert "STREAMING_GUARD_PASS" in stdout_value;
-}
-
-test "http client with system prompt override" {
-    captured_output = io.StringIO();
-    sys.stdout = captured_output;
-    jac_import(
-        "direct_http_model_call",
-        base_path=os.path.join(FIXTURE_DIR, "system_prompt_override/")
-    );
-    sys.stdout = sys.__stdout__;
-    stdout_value = captured_output.getvalue();
-
-    # Both calls' responses surface.
-    assert "Hello, Alice! It's great to meet you." in stdout_value;
-    assert "Hi Alice, welcome!" in stdout_value;
-
-    # jac.toml base SYSTEM reaches the prompt for both calls.
-    assert "You are a friendly assistant. Greet the person" in stdout_value;
-
-    # Per-call `system_prompt` on `say_hello_brief` extends the base — both
-    # texts must appear together in the SYSTEM payload of that second call.
-    assert "Respond in three words maximum." in stdout_value;
-
-    assert (
-        "'api_base': 'https://your_api_base_here/v1/chat/completions'" in stdout_value
-    );
-}
-
-test "max react iterations" {
-    stdout_value = run_fixture("react_max_iterations");
-    assert "get_live_wind_speed called for Puttalam" in stdout_value;
-    assert "get_speed_unit called" in stdout_value;
-    assert "RESULT: FINAL_REPORT" in stdout_value;
-    assert "WIND_TOOL_CALLS: 1" in stdout_value;
-    assert "UNIT_TOOL_CALLS: 1" in stdout_value;
-    assert (
-        "Based on the tool calls and their results above, provide only your final answer."
-        in stdout_value
-    );
-}
-
-test "max react iterations with finish tool call" {
-    # Verifies that when max_react_iterations is exceeded and the LLM responds
-    # with a finish_tool call (instead of plain text), the output is correctly extracted.
-    stdout_value = run_fixture("react_max_iterations_finish_tool");
-    assert "get_live_wind_speed called for Puttalam" in stdout_value;
-    assert "get_speed_unit called" in stdout_value;
-    assert "RESULT: FINAL_REPORT" in stdout_value;
-    assert "WIND_TOOL_CALLS: 1" in stdout_value;
-    assert "UNIT_TOOL_CALLS: 1" in stdout_value;
-}
-
-test "on_iteration callback ABORT and ABORT_WITH_SUMMARY" {
-    stdout_value = run_fixture("on_iteration_callback");
-    # ABORT: hook fired, only 2 tool calls (a, b), c and d skipped
-    assert "ABORT_TRIGGERED" in stdout_value;
-    assert "ABORT_TOOLS: 2" in stdout_value;
-    assert "get_data called: a" in stdout_value;
-    assert "get_data called: b" in stdout_value;
-    # ABORT_WITH_SUMMARY: hook fired, only 2 tool calls (c, d), summary returned
-    assert "SUMMARY_TRIGGERED" in stdout_value;
-    assert "SUMMARY_TOOLS: 2" in stdout_value;
-    assert "SUMMARY_RESULT" in stdout_value;
-}
-
-test "plain text recovery - LLM bypasses finish_tool" {
-    # Verifies the Bug 2B fix: when a model (e.g. gpt-4o) returns plain conversational
-    # text instead of calling finish_tool, the invoke loop detects the failure,
-    # re-prompts with only finish_tool available, and correctly extracts the typed result.
-    stdout_value = run_fixture("plain_text_recovery");
-    assert "PERSON: Merchant" in stdout_value;
-    assert "MESSAGE: Greetings traveller, I have wares to trade!" in stdout_value;
-}
 
 test "api key resolves from constructor, then instance config, then global config" {
     for (why, global_key, kwargs, expected) in [
@@ -502,11 +161,6 @@ test "format_prompt never prints the api key and leaves params intact" {
 }
 
 test "resolved api_base reaches the litellm call" {
-    # `make_model_params` resolves api_base, then dispatch pops it off `params`
-    # into `self.api_base`, an attribute only the proxy and http_client
-    # branches read. On the default litellm path a configured base_url was
-    # therefore dropped and requests went to the provider's own endpoint
-    # (api.openai.com for gpt-*) instead of the configured gateway.
     if not hasattr(_byllm_llm_mod.litellm, "completion") {
         testskip("litellm is not installed");
     }
@@ -530,19 +184,7 @@ test "resolved api_base reaches the litellm call" {
         with unittest.mock.patch.object(
             _byllm_llm_mod.litellm, "completion", _fake_completion
         ) {
-            model.dispatch_no_streaming(
-                MTRuntime(
-                    messages=[
-                        Message(role=MessageRole.SYSTEM, content="s"),
-                        Message(role=MessageRole.USER, content="u")
-                    ],
-                    resp_type=str,
-                    stream=False,
-                    tools=[],
-                    call_params={},
-                    mtir=None
-                )
-            );
+            model.dispatch_no_streaming(mk_run(resp_type=str));
         }
         return seen.get("api_base");
     }
@@ -553,8 +195,6 @@ test "resolved api_base reaches the litellm call" {
     );
     assert _dispatched_api_base(configured) == "https://gateway.example.com/v1" , "a configured base_url must reach litellm";
 
-    # With nothing configured the loader's empty-string default must normalise
-    # to None so litellm keeps the provider's endpoint, never DEFAULT_BASE_URL.
     with unittest.mock.patch.dict(
         _byllm_llm_mod._model_config, {"base_url": ""}, clear=True
     ) {
@@ -564,36 +204,34 @@ test "resolved api_base reaches the litellm call" {
 }
 
 
-test "api key not in verbose output" {
+test "a verbose model logs the call without leaking the api key" {
     import from loguru { logger }
+    secret = "sk-secret-test-key-do-not-leak";
+    model = Model(model_name="gpt-4o-mini", api_key=secret, config={"verbose": True});
 
-    captured_output = io.StringIO();
-    logger.remove();
-    logger.add(captured_output);
-    with contextlib.suppress(Exception) {
-        jac_import("api_key_verbose", base_path=FIXTURE_DIR + "/");
+    def greet(name: str) -> str by model();
+
+    log = io.StringIO();
+    handler_id = logger.add(log);
+    try {
+        with scripted(model, [say("Hello, Alice!")]) {
+            assert greet("Alice") == "Hello, Alice!";
+        }
+    } finally {
+        logger.remove(handler_id);
     }
-    log_value = captured_output.getvalue();
-    assert "sk-secret-test-key-do-not-leak" not in log_value;
-    assert "Calling LLM" in log_value;
+    log_value = log.getvalue();
+    assert "Calling LLM" in log_value , f"a verbose model must log the call: {log_value[:300]}";
+    assert secret not in log_value , "the api key must never reach the log";
 }
 
-test "builtin llm with mock override" {
-    stdout_value = run_fixture("builtin_llm");
-    assert "POSITIVE" in stdout_value or "positive" in stdout_value;
-}
 
 test "builtin llm compiles without glob" {
-    # Verify that a file using 'by llm()' without defining glob llm
-    # compiles successfully (the llm name is recognized as a builtin).
-    # We suppress runtime errors since no actual LLM API key is configured.
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     try {
         jac_import("builtin_llm_no_override", base_path=FIXTURE_DIR + "/");
     } except Exception as e {
-        # Runtime errors are expected (no API key), but NameError for 'llm'
-        # would indicate the builtin wasn't recognized.
         assert "name 'llm' is not defined" not in str(e) , f"'llm' should be a recognized builtin, got: {e}";
     }
     sys.stdout = sys.__stdout__;
@@ -607,22 +245,18 @@ glob GEMINI_FIXTURE = os.path.join(FIXTURE_DIR, "jac_toml_gemini");
 
 
 test "byllm config reads model from jac.toml" {
-    # Explicit project_dir pointing at a jac.toml with gemini model
     reset_byllm_config();
     config = get_byllm_config(Path(GEMINI_FIXTURE));
     assert config.get_model_config()['default_model'] == "gemini/gemini-1.5-pro";
 }
 
 test "byllm config defaults to gpt-4o-mini when no jac.toml" {
-    # fixtures/ dir has no jac.toml, so built-in defaults apply
     reset_byllm_config();
     config = get_byllm_config(Path(FIXTURE_DIR));
     assert config.get_model_config()['default_model'] == "gpt-4o-mini";
 }
 
 test "byllm config uses full_target_path to find jac.toml regardless of cwd" {
-    # cwd is /tmp, but full_target_path points at the gemini fixture —
-    # the correct jac.toml must still be picked up
     orig = JacRuntime.get_full_target_path();
     orig_cwd = os.getcwd();
     JacRuntime.set_full_target_path(os.path.join(GEMINI_FIXTURE, "main.jac"));
@@ -638,10 +272,6 @@ test "byllm config uses full_target_path to find jac.toml regardless of cwd" {
     }
 }
 
-# Note: OutputConversionError tests call MTRuntime.parse_response directly because
-# MockLLM.dispatch_no_streaming bypasses parse_response, returning the pre-built
-# output object straight from CompletionResult. The error lives in parse_response,
-# so that is the correct unit to test.
 glob _TestPerson = dataclasses.make_dataclass(
          "Person", [("name", str), ("age", int)]
      ),
@@ -680,7 +310,6 @@ test "parse_response passes through str returns and valid typed json" {
     assert (person.name, person.age) == ("Alice", 30) , f"got {person}";
 }
 
-# Schema generation is what rejects bare unparameterized containers.
 test "bare container return types are a configuration error" {
     for bare in [list, dict] {
         raised = False;
@@ -696,27 +325,12 @@ test "bare container return types are a configuration error" {
     }
 }
 
-# An unregistered tool name is recovered, not fatal: dispatch_no_streaming
-# returns a tool call that reports the error back so the model can retry,
-# rather than crashing the whole turn.
-# model_call_no_stream is mocked so no real API key is needed.
 test "unregistered tool call is recovered not fatal" {
     model = Model(model_name="test-model");
-    messages_list = [
-        Message(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
-        Message(role=MessageRole.USER, content="Do something."),
+    # resp_type is immaterial here; the subject is how an unknown tool name is
+    # handled, so the default str return keeps the run valid.
+    mt_run = mk_run(finish=False);
 
-    ];
-    mt_run = MTRuntime(
-        messages=messages_list,
-        resp_type=None,
-        stream=False,
-        tools=[],
-        call_params={},
-        mtir=None  # type: ignore[arg-type]
-    );
-
-    # Fake LLM response referencing a tool not registered in mt_run.tools
     fake_fn = types.SimpleNamespace(name="nonexistent_tool", arguments="{}");
     fake_tool_call = types.SimpleNamespace(id="call_abc", function=fake_fn);
     fake_response = {
@@ -729,7 +343,7 @@ test "unregistered tool call is recovered not fatal" {
     ) {
         result = model.dispatch_no_streaming(mt_run);
     }
-    # No exception: the unknown tool is surfaced as a recoverable tool result.
+
     assert len(result.tool_calls) == 1 , "Expected one recovered tool call";
     err_result = result.tool_calls[0]();
     assert "nonexistent_tool" in str(err_result.content) , (
@@ -740,10 +354,7 @@ test "unregistered tool call is recovered not fatal" {
     );
 }
 
-# FinishToolError is raised inside the finish_tool closure when the final output
-# fails pydantic validation against the declared return type.
 test "finish tool error on type mismatch" {
-    # Input missing required Person fields cannot be validated — raises FinishToolError
     finish_tool = Tool.make_finish_tool(_TestPerson);
 
     raised = False;
@@ -757,14 +368,12 @@ test "finish tool error on type mismatch" {
 }
 
 test "finish tool error not raised for valid type" {
-    # Valid input matching the declared type should return the constructed instance
     finish_tool = Tool.make_finish_tool(_TestPerson);
     result = finish_tool({"name": "Alice", "age": 30});
     assert result.name == "Alice" , f"Expected name='Alice', got '{result.name}'";
     assert result.age == 30 , f"Expected age=30, got '{result.age}'";
 }
 
-# finish_tool argument robustness (issue #8169).
 test "finish tool argument resolution heals recoverable shapes" {
     finish_tool = Tool.make_finish_tool(_TestPerson);
     person = {"name": "Bob", "age": 25};
@@ -776,9 +385,9 @@ test "finish tool argument resolution heals recoverable shapes" {
         parsed = finish_tool.parse_arguments(sent);
         assert parsed["final_output"].name == "Bob" , f"{why}: got {parsed}";
     }
-    bare = Tool.make_finish_tool(str).parse_arguments("just the answer");  # type: ignore[arg-type]
+    bare = Tool.make_finish_tool(str).parse_arguments("just the answer");
     assert bare == {"final_output": "just the answer"} , f"bare payload: got {bare}";
-    # Output type whose OWN field is named final_output, sent flattened.
+
     self_named = dataclasses.make_dataclass(
         "_SelfNamed", [("final_output", str), ("score", int)]
     );
@@ -824,9 +433,6 @@ test "finish tool invocation failure raises FinishToolError not TypeError" {
     assert raised , "Expected FinishToolError for argument-less finish call";
 }
 
-# finish_tool argument robustness end to end (issue #8169): a misnamed
-# argument is healed into the typed output; an unusable one comes back as a
-# recoverable tool error that must not masquerade as the finish call.
 glob _WELL_FORMED_FINISH = '{"final_output": {"name": "Amy", "age": 30}}',
      _HEALABLE_FINISH = '{"output": {"name": "Dana", "age": 33}}',
      _UNUSABLE_FINISH = '{"a": 1, "b": 2}';
@@ -864,30 +470,15 @@ test "dispatch heals a misnamed finish argument and recovers an unusable one" {
     }
 }
 
-# Some backends downgrade json_schema to json_object and reject requests whose
-# messages lack the word "json" (issue #8114).
 test "response format requests always carry the json word" {
     def _params(resp_type: type, tools: list) -> dict {
         model = Model(model_name="test-model");
-        mt_run = MTRuntime(
-            messages=[
-                Message(role=MessageRole.SYSTEM, content="sys"),
-                Message(role=MessageRole.USER, content="do the thing")
-            ],
-            resp_type=resp_type,
-            stream=False,
-            tools=tools,
-            call_params={},
-            mtir=None  # type: ignore[arg-type]
-        );
+        mt_run = mk_run(resp_type=resp_type, tools=tools, finish=False);
         return model.make_model_params(mt_run);
     }
     for (label, resp_type, tools, want_rf) in [
         ("typed no tools", _TestPerson, [], True),
         ("scalar no tools", int, [], True),
-        # A union field compiles to anyOf with no top-level type, and a fieldless
-        # obj to empty properties: both yield no schema hint lines, so the lead
-        # sentence must not depend on those lines existing.
         ("union field", _TestUnionField, [], True),
         ("fieldless obj", _TestFieldless, [], True),
         ("plain str", str, [], False),
@@ -901,9 +492,6 @@ test "response format requests always carry the json word" {
     }
 }
 
-# =============================================================================
-# LiteLLM debug config and provider-error mapping
-# =============================================================================
 test "litellm debug config toggles litellm's verbose loggers" {
     import from litellm._logging {
         verbose_logger,
@@ -950,12 +538,7 @@ import from jaclang.byllm.exceptions {
 
 import from loguru { logger as _loguru_logger }
 
-# Provider errors map to byllm's own exceptions and log at ERROR through byllm's
-# logger whatever the litellm debug flag says. litellm.completion is the seam
-# here because the mapping under test lives in Model.model_call_no_stream.
 test "provider errors map to byllm exceptions and log at ERROR regardless of debug" {
-    # Rows carry byllm's classes; litellm's AuthenticationError and RateLimitError
-    # share those names, so matching by name would let an unmapped error through.
     rows: list = [
         (False, "AuthenticationError", AuthenticationError, "Invalid API key"),
         (True, "RateLimitError", RateLimitError, "Rate limit exceeded"),
@@ -1006,52 +589,6 @@ test "provider errors map to byllm exceptions and log at ERROR regardless of deb
 }
 
 
-"""Test ModelPool fallback strategy: router is configured with unique aliases and
-a fallbacks chain; successful responses are returned via the dispatch pipeline."""
-test "model pool router fallback" {
-    stdout_value = run_fixture("model_pool_fallback");
-    assert "fallback_success" in stdout_value;
-}
-
-"""Test ModelPool load-balancing (simple-shuffle): all three deployments share the
-pool-model alias; three independent calls all succeed and the alias is pool-model."""
-test "model pool router load balance" {
-    stdout_value = run_fixture("model_pool_round_robin");
-    assert "pool_alias:pool-model" in stdout_value;
-    assert stdout_value.count("load_balance_response") == 3;
-}
-
-"""Test ModelPool propagates router exceptions: when the LiteLLM Router
-raises (all deployments exhausted) the exception reaches the caller."""
-test "model pool router all fail" {
-    stdout_value = run_fixture("model_pool_all_fail");
-    assert "EXPECTED_ERROR: RateLimitError" in stdout_value;
-    assert "UNEXPECTED" not in stdout_value;
-}
-
-"""Test ModelPool cost-based-routing uses the async path (acompletion).
-LiteLLM Router only supports cost-based-routing via acompletion(); ModelPool
-bridges this via ThreadPoolExecutor to stay safe in async frameworks."""
-test "model pool router cost based" {
-    stdout_value = run_fixture("model_fallbacks_convenience");
-    assert "cost_based_success" in stdout_value;
-}
-
-"""Test ModelPool LiteLLM Router model_list initialisation.
-Fallback strategy: unique per-model aliases + fallbacks list.
-Load-balance strategy: all models share pool-model alias."""
-test "model pool router init" {
-    stdout_value = run_fixture("model_pool_router_init");
-    assert "fb_pool_alias:pool-primary" in stdout_value;
-    assert "fb_deploy_count:2" in stdout_value;
-    assert "fb_fallbacks_has_primary:True" in stdout_value;
-    assert "fb_fallbacks_has_chain:True" in stdout_value;
-    assert "lb_pool_alias:pool-model" in stdout_value;
-    assert "lb_deploy_count:3" in stdout_value;
-    assert "lb_all_share_alias:True" in stdout_value;
-}
-
-# MCP integration tests
 glob _dummy_mcp_client = McpClient(url="http://example.invalid/mcp");
 
 test "McpTool implements Tool interface" {
@@ -1067,7 +604,7 @@ test "McpTool implements Tool interface" {
     );
     assert tool.get_name() == "get_weather";
     assert not tool.is_finish_tool();
-    # parse_arguments is a passthrough — MCP schema is the source of truth.
+
     assert tool.parse_arguments({"city": "Paris"}) == {"city": "Paris"};
 }
 
@@ -1097,21 +634,13 @@ test "McpTool plugs into MTRuntime.get_tool() polymorphically" {
         input_schema={"type": "object", "properties": {}},
         _client=_dummy_mcp_client
     );
-    mt_run = MTRuntime(
-        messages=[],
-        resp_type=None,
-        stream=False,
-        tools=[],
-        call_params={},
-        mtir=None  # type: ignore[arg-type]
-    );
-    # Mutate tools list via dynamic access — IDE type checker flags
-    # list[Tool | McpTool] as invariant, but the actual compiler accepts it.
+    mt_run = mk_run(messages=[], finish=False);
+
     getattr(mt_run, "tools").append(mcp_tool);
     found = mt_run.get_tool("lookup");
     assert found is mcp_tool , "MTRuntime.get_tool should resolve McpTool by name";
     assert mt_run.get_tool("nonexistent") is None;
-    # get_tool_list calls get_json_schema on every tool — must not blow up.
+
     schemas = mt_run.get_tool_list();
     assert len(schemas) == 1;
     assert schemas[0]["function"]["name"] == "lookup";
@@ -1144,19 +673,6 @@ test "McpClient raises McpError when mcp package is missing" {
     }
 }
 
-"""Test ModelPool streaming fallback path."""
-test "model pool streaming fallback" {
-    stdout_value = run_fixture("model_pool_streaming_fallback");
-    assert "output:stream_fallback_success" in stdout_value;
-    assert "primary_tried:True" in stdout_value;
-    assert "fallback_tried:True" in stdout_value;
-    assert "order_correct:True" in stdout_value;
-    # Scenario B: mid-stream failure — exception must propagate, no fallback
-    assert "mid_raised:True" in stdout_value;
-    assert "mid_partial_received:True" in stdout_value;
-    assert "mid_fallback_not_tried:True" in stdout_value;
-    assert "mid_should_not_appear:True" in stdout_value;
-}
 
 import from jaclang.byllm.llm {
     _is_prompt_caching_eligible,
@@ -1165,12 +681,10 @@ import from jaclang.byllm.llm {
 }
 
 test "prompt caching marks system, last non-system message, and last tool for anthropic models" {
-    # Eligibility: Anthropic yes, others no
     assert _is_prompt_caching_eligible("anthropic/claude-sonnet-4-20250514") == True;
     assert _is_prompt_caching_eligible("claude-3-opus-20240229") == True;
     assert _is_prompt_caching_eligible("gpt-4o") == False;
 
-    # Multi-turn ReAct conversation, with list-content on the last message
     messages = [
         {"role": "system", "content": "You are an agent."},
         {"role": "user", "content": "Do something"},
@@ -1189,14 +703,13 @@ test "prompt caching marks system, last non-system message, and last tool for an
     ];
     _apply_prompt_caching(messages, tools);
 
-    # System marked, intermediate messages NOT marked, last message's last block marked
     assert messages[0].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
     assert "cache_control" not in messages[1];
     assert "cache_control" not in messages[2];
     tool_content: any = messages[3].get("content");
     assert "cache_control" not in tool_content[0];
     assert tool_content[-1].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
-    # Only last tool marked
+
     assert "cache_control" not in tools[0];
     assert tools[-1].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
 }
@@ -1212,9 +725,6 @@ test "prompt caching disabled via config" {
     }
 }
 
-# Regression guard for jac#8381: tools serialize ahead of messages in Anthropic's
-# wire format, so shrinking mt_run.tools on the narration call broke the cached
-# prefix. The terminal paths that force finish_tool must keep the array too.
 test "_stream_final_answer keeps the tools array intact" {
     def tool_a(x: str) -> str {
         return x;
@@ -1261,9 +771,6 @@ test "finish_tool exit sends an identical tools payload on the narration call" {
     );
 }
 
-# A structured resp_type still needs finish_tool callable, so the terminal
-# paths force it via tool_choice instead of tool_choice="none". Neither path
-# has a retry loop: heal a misnamed argument or degrade, never raise.
 test "forced answer and recovery force finish_tool, keep the tools array, and heal" {
     def extra_tool(x: str) -> str {
         return x;
@@ -1325,6 +832,172 @@ test "acall_llm proxy is a coroutine function" {
     );
 }
 
+# jac#8932: adispatch_streaming awaits model_call_with_stream_async, so the base
+# must be a coroutine returning an async iterator, not an async generator.
+def _chunk_8932(text: str) -> object {
+    return litellm.ModelResponseStream(
+        **{
+            "id": "c",
+            "object": "chat.completion.chunk",
+            "created": 1,
+            "model": "fake",
+            "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}]
+        }
+    );
+}
+
+
+"""Drain an async stream, pausing between chunks to pace the producer."""
+async def _drain_8932(stream: any, pace: float = 0.0) -> str {
+    acc: list[object] = [];
+    async for chunk in stream {
+        acc.append(chunk);
+        if pace {
+            await asyncio.sleep(pace);
+        }
+    }
+    return "".join([str(c) for c in acc]);
+}
+
+
+"""Drive one LLM down the async streaming path, as `by llm()` does."""
+async def _stream_8932(llm: _byllm_llm_mod.BaseLLM, pace: float = 0.0) -> str {
+    return await _drain_8932(await llm.ainvoke(mk_run(stream=True)), pace);
+}
+
+
+"""Builds the whole stream before returning it, like ModelPool cost-based-routing."""
+obj _EagerStream8932(_byllm_llm_mod.BaseLLM) {
+    has build_s: float = 0.0;
+
+    override def model_call_with_stream(params: dict) -> object {
+        time.sleep(self.build_s);
+        return [_chunk_8932("eager "), _chunk_8932("list")];
+    }
+}
+
+
+"""Records when each chunk is produced, so laziness can be asserted."""
+obj _LazyStream8932(_byllm_llm_mod.BaseLLM) {
+    has produced: list[float] = [];
+
+    override def model_call_with_stream(params: dict) -> object {
+        for word in ["one ", "two ", "three"] {
+            self.produced.append(time.perf_counter());
+            yield _chunk_8932(word);
+        }
+    }
+}
+
+
+"""Stream while a ticker runs, to measure whether the loop stayed free."""
+async def _ticked_stream_8932(llm: _byllm_llm_mod.BaseLLM) -> tuple[int, str] {
+    ticks: list[int] = [0];
+    stop: list[bool] = [False];
+
+    async def _tick {
+        while not stop[0] {
+            ticks[0] += 1;
+            await asyncio.sleep(0.01);
+        }
+    }
+    task = asyncio.ensure_future(_tick());
+    text = await _stream_8932(llm);
+    stop[0] = True;
+    await task;
+    return (ticks[0], text);
+}
+
+
+test "async streaming delivers every provider shape" {
+    cases: list[tuple] = [
+        (
+            "subclass inheriting the base method",
+            FakeLLM(model_name="fake-8932", replies=[say("hello world")]),
+            "hello world"
+        ),
+        (
+            "MockLLM, which overrides adispatch_streaming",
+            _byllm_llm_mod.MockLLM(
+                model_name="mockllm", config={"outputs": ["hello world"]}
+            ),
+            "hello world"
+        ),
+        (
+            "provider call returning a list, as ModelPool cost-based-routing does",
+            _EagerStream8932(model_name="list-8932"),
+            "eager list"
+        ),
+        (
+            "Model delegating to its mock",
+            Model(model_name="mockllm", config={"outputs": ["hello world"]}),
+            "hello world"
+        )
+    ];
+    for (label, llm, expected) in cases {
+        assert asyncio.run(_stream_8932(llm)) == expected , label;
+    }
+}
+
+
+def _probe_tool_8932(query: str) -> str {
+    return "probe";
+}
+
+
+async def _ainvoke_8932(llm: _byllm_llm_mod.BaseLLM, run: MTRuntime) -> object {
+    return await llm.ainvoke(run);
+}
+
+
+test "Model hands async work to its delegate off the streaming path" {
+    # Both ainvoke branches: handled_directly, and the tools-bound fall-through.
+    cases: list[tuple] = [
+        ("no stream, no tools", mk_run()),
+        ("tools bound", mk_run(tools=[_probe_tool_8932]))
+    ];
+    for (label, run) in cases {
+        llm = Model(model_name="mockllm", config={"outputs": ["hello world"]});
+        assert asyncio.run(_ainvoke_8932(llm, run)) == "hello world" , label;
+    }
+}
+
+
+test "async streaming keeps the loop free while an eager provider builds" {
+    llm = _EagerStream8932(model_name="eager-8932", build_s=0.3);
+    (ticks, text) = asyncio.run(_ticked_stream_8932(llm));
+    assert text == "eager list";
+    assert ticks > 10 , f"loop was blocked during the eager build: {ticks} ticks";
+}
+
+
+test "async streaming stays lazy: the producer waits for the consumer" {
+    llm = _LazyStream8932(model_name="lazy-8932");
+    assert asyncio.run(_stream_8932(llm, pace=0.12)) == "one two three";
+    gaps = [llm.produced[i] - llm.produced[i - 1] for i in range(1, len(llm.produced))];
+    assert all(g > 0.08 for g in gaps) , f"stream was buffered, not lazy: {gaps}";
+}
+
+
+# The by llm() declaration lives in a fixture: at module level here it perturbs
+# the two tests that compile a fixture with JacProgram().
+test "async def by llm(stream=True) streams end to end" {
+    code_gen = (prog := JacProgram()).compile(
+        os.path.join(FIXTURE_DIR, "async_stream_by_llm.jac")
+    );
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    compiled = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec");
+    module = types.ModuleType("async_stream_by_llm_fixture");
+    module.__dict__["__file__"] = code_gen.loc.mod_path;
+    exec(compiled, module.__dict__);
+
+    async def _run -> str {
+        return await _drain_8932(await module.__dict__["ask"](topic="anything"));
+    }
+    assert asyncio.run(_run()) == "streamed reply";
+}
+
+
 test "model_call_no_stream_async raises and logs AuthenticationError" {
     log_output = io.StringIO();
     _loguru_logger.remove();
@@ -1363,6 +1036,7 @@ test "model_call_no_stream_async raises and logs AuthenticationError" {
         _loguru_logger.remove(handler_id);
     }
 }
+
 
 test "model_call_with_stream_async raises and logs RateLimitError" {
     log_output = io.StringIO();
@@ -1431,7 +1105,6 @@ import ast as ast3;
 import from jaclang.compiler.driver.program { JacProgram }
 
 test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
-    # Compile the fixture that has both an async and a sync by llm() function.
     code_gen = (prog := JacProgram()).compile(
         os.path.join(FIXTURE_DIR, "async_by_llm.jac")
     );
@@ -1441,18 +1114,14 @@ test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
     );
     py_source = ast3.unparse(code_gen.gen.py_ast[0]);
 
-    # Async function must use acall_llm, wrapped in await.
     assert "acall_llm" in py_source , (
         f"Expected 'acall_llm' in generated source for async by llm(). Got:\n{py_source}"
     );
 
-    # Sync function must still use call_llm (no await).
     assert "call_llm" in py_source , (
         f"Expected 'call_llm' in generated source for sync by llm(). Got:\n{py_source}"
     );
 
-    # The async body must contain an Await node whose value is a Call to acall_llm.
-    # The codegen imports acall_llm directly (Name node), not as Jac.acall_llm (Attribute).
     def _is_acall_llm_call(`node: object) -> bool {
         if not (isinstance(`node, ast3.Call)) {
             return False;
@@ -1472,7 +1141,6 @@ test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
         "Expected at least one ast3.Await(value=Call(acall_llm, ...)) in generated AST"
     );
 
-    # All acall_llm calls must be wrapped in Await — no bare unawaited calls.
     all_acall_nodes = [
         n
         for n in ast3.walk(code_gen.gen.py_ast[0])
@@ -1495,7 +1163,6 @@ test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
 }
 
 test "async by llm() end-to-end with mocked acall_llm" {
-    # Compile the fixture and execute it with acall_llm mocked to return "summary".
     code_gen = (prog := JacProgram()).compile(
         os.path.join(FIXTURE_DIR, "async_by_llm.jac")
     );
@@ -1507,12 +1174,10 @@ test "async by llm() end-to-end with mocked acall_llm" {
     module.__dict__["__file__"] = code_gen.loc.mod_path;
 
     async def _run_end_to_end -> str {
-        # Patch acall_llm so no real API call is made.
         async def _fake_acall_llm(**kwargs: object) -> any {
             return "summary";
         }
-        # acall_llm is imported directly from jaclang.lib.jaclib into the
-        # compiled module's namespace, so we patch it there.
+
         import jaclang.lib.jaclib as _jaclib;
         with unittest.mock.patch.object(_jaclib, "acall_llm", _fake_acall_llm) {
             exec(compiled, module.__dict__);
@@ -1527,19 +1192,10 @@ test "async by llm() end-to-end with mocked acall_llm" {
 }
 
 
-"""Text tool protocol: a reply object carrying a tool call as plain text must
-be recovered into a structured `tool_calls` field.
-
-Regression for the ollama/gemma loop: `recover_tool_calls` only handled dict
-replies, so the litellm path (which yields a `Message` *object*) silently
-no-opped -- the model's `<tool_call>` text was never executed and the agent
-re-issued the same call forever. The fix coerces object replies to a dict and
-returns it, so callers pick up the recovered call.
-"""
 test "recover_tool_calls handles an object-shaped reply" {
     import from jaclang.byllm.tool_protocol { recover_tool_calls }
     import from types { SimpleNamespace }
-    # Mimics a litellm Message object: attribute access, no dict-ness.
+
     msg = SimpleNamespace(
         role="assistant",
         content="<tool_call>{\"name\": \"get_count\", \"arguments\": {}}</tool_call>",
@@ -1556,15 +1212,12 @@ test "recover_tool_calls handles an object-shaped reply" {
 }
 
 
-"""Text tool protocol: tool-call and tool-result history must linearise to text
-for models whose chat template has no `tool` role (e.g. gemma)."""
 test "linearize_tool_messages renders calls and results as text" {
     import from jaclang.byllm.tool_protocol { linearize_tool_messages }
     import from types { SimpleNamespace }
     msgs = [
         {"role": "system", "content": "sys"},
         {"role": "user", "content": "how many?"},
-        # assistant tool-call message (object-shaped tool_calls, content stripped)
         {
             "role": "assistant",
             "content": "",
@@ -1574,144 +1227,50 @@ test "linearize_tool_messages renders calls and results as text" {
                 )
             ]
         },
-        # tool result (identified by tool_call_id)
         {"role": "tool", "tool_call_id": "abc", "name": "get_count", "content": "7"}
     ];
     out = linearize_tool_messages(msgs);
-    # System + user pass through untouched.
+
     assert out[0]["role"] == "system";
     assert out[1]["role"] == "user";
-    # Assistant tool call becomes <tool_call> text.
+
     assert out[2]["role"] == "assistant";
     assert "<tool_call>" in out[2]["content"];
     assert "get_count" in out[2]["content"];
-    # Tool result becomes a readable user message (no dropped tool role).
+
     assert out[3]["role"] == "user";
     assert "<tool_response>" in out[3]["content"];
     assert "7" in out[3]["content"];
 }
 
 
-"""Gemma-family models route through the text tool protocol automatically,
-since their chat template cannot consume `role:tool` results."""
 test "gemma models default to the text tool protocol" {
     m = Model(model_name="ollama/gemma4:31b");
     assert m.supports_native_tools == False;
-    # An explicit override still wins.
+
     m2 = Model(model_name="ollama/gemma4:31b", config={"native_tools": True});
     assert m2.supports_native_tools == True;
-    # A model without the gemma template keeps native tools.
+
     m3 = Model(model_name="gpt-4o");
     assert m3.supports_native_tools == True;
 }
 
 
-# ---------------------------------------------------------------------------
-# Typed-output retry, driven through real `by llm()` calls
-# ---------------------------------------------------------------------------
-# The llm_typed_retry fixture declares `by llm()` functions backed by MockLLM:
-# MockRawResponse routes text through parse_response, MockError raises a
-# non-conversion error, and each MockLLM records the prompt it saw per attempt.
-# The module is imported once per test so the mock outputs are consumed exactly
-# once, and exception classes are matched by name because a jac_import can carry
-# a distinct class object.
-test "typed retry regenerates after broken json, then gives up after the configured attempts" {
-    mod = load_fixture("llm_typed_retry");
-    for (why, person, llm, name, age) in [
-        ("sync", mod.get_person_recovering(), mod.recover_llm, "Ada", 36),
-        (
-            "async",
-            asyncio.run(mod.aget_person_recovering()),
-            mod.arecover_llm,
-            "Zoe",
-            27
-        )
-    ] {
-        assert (person.name, person.age) == (name, age) , (
-            f"{why}: malformed-then-valid JSON should retry and recover, got {person}"
-        );
-        assert len(llm.seen_prompts) == 2 , (
-            f"{why}: expected one retry (2 attempts), got {len(llm.seen_prompts)}"
-        );
-        retry_prompt = llm.seen_prompts[1];
-        broken = '{"name": "' + name + '", "age":';
-        assert broken in retry_prompt , f"{why}: retry prompt missing the broken output:\n{retry_prompt}";
-        assert "age" in retry_prompt , f"{why}: retry prompt should re-show the schema";
-    }
-
-    for (why, run, llm, attempts, retries) in [
-        ("default limit", mod.get_person_failing, mod.exhaust_llm, 4, 3),
-        ("instance limit of 1", mod.get_person_limited, mod.limited_llm, 2, 1)
-    ] {
-        err: any = None;
-        try {
-            run();
-        } except Exception as e {
-            err = e;
-        }
-        assert type(err).__name__ == "OutputConversionError" , (
-            f"{why}: expected OutputConversionError once retries are exhausted, got {err!r}"
-        );
-        assert len(llm.seen_prompts) == attempts , (
-            f"{why}: expected exactly {attempts} attempts, got {len(llm.seen_prompts)}"
-        );
-        assert f"{attempts} attempt" in str(err) and f"{retries} retries" in str(err) , (
-            f"{why}: final error should report the counts, got: {err}"
-        );
-    }
-
-    reset_byllm_config();
-    cfg = get_byllm_config(Path(FIXTURE_DIR));
-    assert cfg.get_call_params_config().get("max_output_retries") == 3 , (
-        "default config flow should expose max_output_retries=3"
-    );
-    reset_byllm_config();
-}
-
-test "typed retry only fires for structured output failures" {
-    mod = load_fixture("llm_typed_retry");
-    assert mod.get_person_passthrough() == "Average: 86.75" , (
-        "a non-empty string should pass through for a structured type"
-    );
-    assert len(mod.passthrough_llm.seen_prompts) == 1 , "passthrough must not retry";
-
-    assert mod.get_text() == "" , "empty str return should pass through";
-    assert len(mod.str_llm.seen_prompts) == 1 , "str return must not retry";
-
-    raised = False;
-    try {
-        mod.get_person_erroring();
-    } except ValueError {
-        raised = True;
-    }
-    assert raised , "a ValueError must propagate, not be retried";
-    assert len(mod.error_llm.seen_prompts) == 1 , (
-        f"non-conversion error must not retry, got {len(mod.error_llm.seen_prompts)}"
-    );
-}
-
-
-"""A tool requiring an argument; calling it with none raises inside Tool.__call__."""
 def _needs_arg_tool(x: int) -> str {
     return str(x);
 }
 
 
-"""A tool body that raises at call time."""
 def _raising_tool -> str {
     raise ValueError("kaboom");
 }
 
 
-"""A tool with required parameters, for the damaged/truncated split."""
 def _writer_tool(file_path: str, content: str) -> str {
     return f"wrote {len(content)} bytes to {file_path}";
 }
 
 
-# Issue #7657: a handled tool failure is returned to the model as a "Tool error"
-# observation and logged once at WARNING with no traceback, never at ERROR. A
-# callable without __name__ (functools.partial) used to escape as AttributeError.
 test "a handled tool failure returns a Tool error at WARNING, even for a callable without __name__" {
     import functools;
     for (why, func, named) in [
@@ -1736,9 +1295,6 @@ test "a handled tool failure returns a Tool error at WARNING, even for a callabl
     }
 }
 
-# Streaming leaves finish_reason empty exactly when a call was cut short, so a
-# corrupted call is reported by the sanitizer, not the max_tokens guard, and the
-# two causes get different advice: only a genuinely truncated call should split.
 test "damaged and truncated tool calls are told apart and get the advice that fits (issue #7657)" {
     for (why, arguments, expect_damaged) in [
         (

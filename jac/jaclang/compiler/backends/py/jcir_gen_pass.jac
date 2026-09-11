@@ -353,7 +353,10 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
         _sink: dict[UniNode, list[CgItem]] postinit,
         _module_root: (CgNode | None) = None,
         _module_path: str = "",
-        _interop_stub_node: (UniNode | None) = None;
+        _interop_stub_node: (UniNode | None) = None,
+        _sv_boundary_names: dict[str, str] = {},
+        _sv_boundary_registry: str = "",
+        _sv_serializer: str = "";
 
     with entry {}
 
@@ -442,6 +445,8 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def _top_level_bound_names(items: any) -> list;
     def _native_test_shim_stmts(nd: Test) -> list;
     def _generate_sv_to_sv_stubs(nd: Import) -> bool;
+    def _gen_py_sv_boundary_types -> None;
+    def _gen_py_wire_methods -> list[str];
     def _sv_consumer_app_expr -> str;
     def _sv_endpoint_effects(binding: InteropBinding, key: str) -> list[str];
     def _sv_bridge_walker_call(expr: Expr) -> (FuncCall | None);

@@ -544,8 +544,7 @@ def _theme_app_root(config: any, project_root: Path) -> Path {
     } except ValueError {
         return project_root;
     }
-    app_root = app.root_dir(str(project_root));
-    return Path(app_root) if app_root else project_root;
+    return Path(app.entry_path(str(project_root))).parent;
 }
 
 def retheme_project(config: any, overrides: dict) -> bool {

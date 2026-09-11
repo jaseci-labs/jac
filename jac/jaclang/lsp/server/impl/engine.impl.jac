@@ -260,6 +260,9 @@ impl JacLangServer.type_check_file(
                     cancel_token=cancel_token,
                     target_app=app_name,
                     app_kind=app_kind,
+                    entry_point=ws.apps[app_name].`entry
+                        if ws is not None and app_name in ws.apps
+                        else main_path,
                     project_root=proj_root
                 )
             );

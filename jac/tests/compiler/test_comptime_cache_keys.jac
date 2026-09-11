@@ -21,11 +21,11 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.compiler { JacCompiler }
 import from jaclang.compiler.driver.jir {
     SEC_CTDEPS,
-    get_module_cache_path,
     precompiled_jir_matches_source,
     read_section_bytes
 }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
 import from jaclang.dist.precompile_bytecode { precompile_unit }
 import from types { CodeType }
 import from unittest.mock { patch }
@@ -164,7 +164,7 @@ test "the comptime producers are recorded on the consumer's cache" {
     paths = _project();
     with _isolated(paths["root"]) {
         _folded(paths["consmod"]);
-        data = get_module_cache_path(paths["consmod"]).read_bytes();
+        data = artifact_cache_path(paths["consmod"], JacProgram()).read_bytes();
         raw = read_section_bytes(data, SEC_CTDEPS);
         assert raw is not None , "the consumer recorded no comptime dependencies";
         text = raw.decode("utf-8");
@@ -181,7 +181,7 @@ test "an edit to a module no fold read leaves the consumer's cache alone" {
     paths = _project();
     with _isolated(paths["root"]) {
         _folded(paths["consmod"]);
-        cache = get_module_cache_path(paths["consmod"]);
+        cache = artifact_cache_path(paths["consmod"], JacProgram());
         stamp = os.path.getmtime(cache);
         _write(paths["othermod"], OTHER_SRC_EDIT);
         _folded(paths["consmod"]);
@@ -196,7 +196,7 @@ test "a fold still resolves when the producer is served from its cache" {
     with _isolated(paths["root"]) {
         cold = _folded(paths["consmod"]);
         assert "base one help" in cold , f"cold compile did not fold: {cold}";
-        get_module_cache_path(paths["consmod"]).unlink();
+        artifact_cache_path(paths["consmod"], JacProgram()).unlink();
         again = _folded(paths["consmod"]);
         assert "base one help" in again , (
             f"the fold broke once the producer came back from cache: {again}"
@@ -335,12 +335,12 @@ test "a bundle promoted into the module cache carries its comptime deps" {
         cold = _folded(paths["consumer"]);
         assert "spec one" in cold , f"cold compile did not fold: {cold}";
         _bundle(paths);
-        get_module_cache_path(paths["consumer"]).unlink();
+        artifact_cache_path(paths["consumer"], JacProgram()).unlink();
         promoted = _folded(paths["consumer"]);
         assert "spec one" in promoted , (
             f"the bundle did not serve the consumer: {promoted}"
         );
-        data = get_module_cache_path(paths["consumer"]).read_bytes();
+        data = artifact_cache_path(paths["consumer"], JacProgram()).read_bytes();
         raw = read_section_bytes(data, SEC_CTDEPS);
         assert raw is not None , (
             "the promoted module cache recorded no comptime dependencies"

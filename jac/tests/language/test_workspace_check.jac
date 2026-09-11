@@ -1,12 +1,8 @@
 """`jac check` and `jac test` in a workspace.
 
-With no paths, `jac check` compiles one rooted program per app of jac.toml
-(each with that app's facts) and then sweeps the files no app reached. A
-shared module is checked once under every app that reaches it, and when
-more than one app was checked every diagnostic carries a `[<app>] ` prefix.
-`--app <name>` restricts the run to one app. `jac test <app>` re-roots test
-collection at that app's root, and a bare `jac test` re-roots at the
-default app, the same way a bare `jac run` does.
+With no paths, `jac check` traverses imports from each declared app entry.
+Shared source is checked in every app context that reaches it. `jac test <app>`
+uses configured test directories, or the entry module when none are configured.
 
 The fixture is copied to a temp dir before use: the runner never collects
 test files that live under a `fixtures/` directory, and the workspace reader
@@ -105,8 +101,6 @@ test "the fixture is a three-app workspace" {
     assert cfg is not None and cfg.is_workspace;
     assert list(cfg.apps) == ["web", "svc", "cli"] , str(list(cfg.apps));
     assert cfg.default_app == "web";
-    assert cfg.apps["svc"].is_file_rooted();
-    assert not cfg.apps["web"].is_file_rooted();
     assert [a.name for a in cfg.serving_apps()] == ["web", "svc"];
     assert cfg.app_for_path(os.path.join(FIXTURE, HELPER)) is None , (
         "core/helper.jac belongs to no app: it is shared"
@@ -164,6 +158,28 @@ test "jac check --app with an unknown name lists the apps" {
     _cleanup();
 }
 
+test "imported modules use their selected app lint policy" {
+    d = _workspace();
+    config = Path(d) / "jac.toml";
+    config.write_text(
+        config.read_text()
+            + '\n[check.lint]\nselect = ["no-print"]\n'
+            + '\n[apps.cli.check.lint]\nignore = ["no-print"]\n'
+    );
+    helper = Path(d) / HELPER;
+    helper.write_text(helper.read_text() + '\ndef announce { print("hello"); }\n');
+    try {
+        for iteration in range(2) {
+            (rc, out) = _check_in(d, app="cli");
+            assert rc == 0 and "E3012" not in out , out;
+            (rc, out) = _check_in(d, app="web");
+            assert rc != 0 and "E3012" in out , out;
+        }
+    } finally {
+        _cleanup();
+    }
+}
+
 test "jac check <path> keeps the file-per-root behavior" {
     d = _workspace();
     (rc, out) = _check_in(d, paths=[HELPER]);
@@ -174,26 +190,25 @@ test "jac check <path> keeps the file-per-root behavior" {
     _cleanup();
 }
 
-test "jac test <app> re-roots collection at the app" {
+test "jac test app selects its entry module" {
     d = _workspace();
     (rc, out) = _collect_in(d, "cli");
     assert rc == 0 , f"rc={rc}\n{out}";
-    assert os.path.join("cli", "test_greet.jac") in out , out;
+    assert os.path.join("cli", "main.jac") in out , out;
     assert os.path.join("web", "test_page.jac") not in out , out;
-    assert "test_greet.jac" in out and "2 test files collected" in out , out;
     assert "web/" not in out and "core/" not in out , out;
     (rc, out) = _collect_in(d, "web");
     assert rc == 0 , f"rc={rc}\n{out}";
-    assert os.path.join("web", "test_page.jac") in out , out;
+    assert os.path.join("web", "main.jac") in out , out;
     assert os.path.join("cli", "test_greet.jac") not in out , out;
     _cleanup();
 }
 
-test "bare jac test in a workspace re-roots at the default app" {
+test "bare jac test selects the default app entry" {
     d = _workspace();
     (rc, out) = _collect_in(d, "");
     assert rc == 0 , f"rc={rc}\n{out}";
-    assert os.path.join("web", "test_page.jac") in out , out;
+    assert os.path.join("web", "main.jac") in out , out;
     assert os.path.join("cli", "test_greet.jac") not in out , (
         f"default-app web must not collect the cli app's tests:\n{out}"
     );
@@ -231,7 +246,7 @@ def _insert_import(path: str, line: str) {
     }
 }
 
-test "the workspace gate reports E5107 for a walker module two serving apps reach with no default app" {
+test "shared graph declarations are valid in each selected app context" {
     d = _workspace();
     toml_path = os.path.join(d, "jac.toml");
     with open(toml_path, "r") as f {
@@ -250,9 +265,8 @@ test "the workspace gate reports E5107 for a walker module two serving apps reac
         os.path.join(d, "core", "svc.jac"), "import from core.graph { Note }"
     );
     (rc, out) = _check_in(d);
-    assert rc != 0 , out;
-    assert "E5107" in out and "graph.jac" in out , out;
-    assert "web" in out and "svc" in out , out;
+    assert "E5107" not in out , out;
+    assert rc == 0 , out;
 }
 
 test "the app-isolation law fires on a warm interface cache too" {
@@ -277,7 +291,7 @@ test "the app-isolation law fires on a warm interface cache too" {
 }
 
 
-test "the gate body-checks every module an app owns, not only its entry" {
+test "the gate checks imported bodies in the entry compilation context" {
     d = _workspace();
     bad = os.path.join(d, "cli", "cmd.jac");
     with open(bad, "w") as f {
@@ -290,9 +304,22 @@ test "the gate body-checks every module an app owns, not only its entry" {
     }
     (rc, out) = _check_in(d);
     assert rc != 0 , f"a body type error in a module the cli app reaches must fail the gate:\n{out}";
-    assert _checked(out, os.path.join("cli", "cmd.jac")) , f"cmd.jac was never checked as a root:\n{out}";
+    assert "E1002" in out , out;
     assert "cmd.jac" in out and "[cli] " in out , out;
     (rc_app, out_app) = _check_in(d, app="cli");
     assert rc_app != 0 , f"--app cli must fail the same way:\n{out_app}";
+    _cleanup();
+}
+
+
+test "app test directories override the entry default" {
+    d = _workspace();
+    with open(os.path.join(d, 'jac.toml'), 'a') as config {
+        config.write('\n[apps.cli.test]\ndirectories = ["."]\n');
+    }
+    (rc, out) = _collect_in(d, 'cli');
+    assert rc == 0 , out;
+    assert os.path.join('cli', 'test_greet.jac') in out , out;
+    assert os.path.join('web', 'test_page.jac') not in out , out;
     _cleanup();
 }

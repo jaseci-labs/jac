@@ -72,6 +72,13 @@ curl -X POST $HOST/webhook/PaymentReceived -H "X-API-Key: $API_KEY" \
 
 Keys live in the shared Postgres store, so they survive restarts; only if the store is unreachable do they fall back to in-memory (a restart then invalidates them all).
 
+**Provider-signed deliveries (GitHub).** `@restspec(protocol=APIProtocol.WEBHOOK, scheme="github")` drops the api key: the runtime verifies `X-Hub-Signature-256` (HMAC-SHA256 of the raw body keyed by `[scale.webhook].github_secret`, `sha256=` prefix optional), runs the walker as the system identity, and copies `X-GitHub-Event` and `X-GitHub-Delivery` into declared `event` and `delivery` fields (headers win over same-named body keys). The walker resolves its own tenant from the payload, typically `installation.id`. Boot fails when the secret is empty or the system identity is missing; `verify_signature` never applies to this scheme. Set the webhook's content type to `application/json` (the form-encoded default is refused with 415), and treat `X-GitHub-Event`/`X-GitHub-Delivery` as unsigned: a delivery-id dedupe absorbs GitHub's own redeliveries, not a captured body replayed under a new id.
+
+```toml
+[scale.webhook]
+github_secret = "${GITHUB_APP_WEBHOOK_SECRET}"   # the App's webhook secret, kept out of the file
+```
+
 ## WebSockets
 
 `@restspec(protocol=APIProtocol.WEBSOCKET)` on an **`async walker`** serves `ws://host/ws/<name>`; each JSON message maps onto `has` fields, `report` values stream back. `:pub` = anonymous; without it, JWT. `broadcast=True` sends each response to ALL connected clients of that walker (chat/live-update fan-out).

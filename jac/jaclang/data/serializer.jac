@@ -71,6 +71,10 @@ obj Serializer {
     ) -> object;
 
     static def deserialize(data: dict[str, object]) -> (object | None);
+    static def deserialize_api(
+        value: object, boundary_types: dict[str, type], target: (type | None) = None
+    ) -> object;
+
     static def _serialize_value(
         val: object,
         include_type: bool,

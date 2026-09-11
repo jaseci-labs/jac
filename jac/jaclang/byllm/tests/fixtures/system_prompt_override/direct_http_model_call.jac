@@ -1,35 +1,15 @@
-import from jaclang.byllm.lib { MockLLM }
+"""Program under test for jac.toml system-prompt config.
 
-glob llm: MockLLM = MockLLM(
-    model_name = "gemma3:4b",
-    config = {
-        "outputs": [
-            "Hello, Alice! It's great to meet you.",
-            "Hi Alice, welcome!"
-        ],
+Lives in its own directory because the `[byllm]` block in the jac.toml beside it
+is the subject: config is resolved from the module's own location. The test
+assigns `llm` and asserts on what was sent.
+"""
 
-        # Use these config options to call your own LLM endpoint
-        "api_base": "https://your_api_base_here/v1/chat/completions",
-        "api_key": "your_api_key_here",
-        "http_client": True,
-        "ca_bundle": True,
-
-        # for test cases
-        "show_params": True,
-        "verbose": True,
-    }
-);
+glob llm: any = None;
 
 def say_hello(name: str) -> str by llm();
 
-# Per-call `system_prompt` extends the jac.toml base SYSTEM (does not replace).
+# A per-call system_prompt extends the jac.toml base, it does not replace it.
 def say_hello_brief(name: str) -> str by llm(
     system_prompt="Respond in three words maximum."
 );
-
-with entry {
-    result = say_hello("Alice");
-    print(f"Result: {result}");
-    brief = say_hello_brief("Alice");
-    print(f"Brief: {brief}");
-}

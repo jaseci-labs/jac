@@ -6,77 +6,77 @@ name = "es-fixtures"
 # are shared modules that bridge to the app owning the stem they import.
 [apps.sv_relative_provider]
 kind = "service"
-entry-point = "sv_relative_provider.jac"
+entry-point = "sv_relative_provider"
 route = "/sv-relative"
 
 [apps.sv_relative_consumer]
 kind = "service"
-entry-point = "sv_relative_consumer.jac"
+entry-point = "sv_relative_consumer"
 route = "/sv-relative-consumer"
 
 [apps.typed_return_obj]
 kind = "service"
-entry-point = "typed_return_obj.jac"
+entry-point = "typed_return_obj"
 route = "/t-obj"
 
 [apps.typed_return_nested]
 kind = "service"
-entry-point = "typed_return_nested.jac"
+entry-point = "typed_return_nested"
 route = "/t-nested"
 
 [apps.typed_return_enum]
 kind = "service"
-entry-point = "typed_return_enum.jac"
+entry-point = "typed_return_enum"
 route = "/t-enum"
 
 [apps.typed_optional_union]
 kind = "service"
-entry-point = "typed_optional_union.jac"
+entry-point = "typed_optional_union"
 route = "/t-union"
 
 [apps.typed_collection_return]
 kind = "service"
-entry-point = "typed_collection_return.jac"
+entry-point = "typed_collection_return"
 route = "/t-coll"
 
 [apps.typed_args_obj]
 kind = "service"
-entry-point = "typed_args_obj.jac"
+entry-point = "typed_args_obj"
 route = "/t-args"
 
 [apps.typed_bidirectional]
 kind = "service"
-entry-point = "typed_bidirectional.jac"
+entry-point = "typed_bidirectional"
 route = "/t-bidi"
 
 [apps.typed_dict_return]
 kind = "service"
-entry-point = "typed_dict_return.jac"
+entry-point = "typed_dict_return"
 route = "/t-dict"
 
 [apps.typed_walker_spawn]
 kind = "service"
-entry-point = "typed_walker_spawn.jac"
+entry-point = "typed_walker_spawn"
 route = "/t-wspawn"
 
 [apps.typed_walker_fields]
 kind = "service"
-entry-point = "typed_walker_fields.jac"
+entry-point = "typed_walker_fields"
 route = "/t-wfields"
 
 [apps.typed_graph_return]
 kind = "service"
-entry-point = "typed_graph_return.jac"
+entry-point = "typed_graph_return"
 route = "/t-graph"
 
 [apps.separated]
 kind = "service"
-entry-point = "separated.jac"
+entry-point = "separated"
 route = "/separated"
 
 [apps.separated_defpub]
 kind = "service"
-entry-point = "separated_defpub.jac"
+entry-point = "separated_defpub"
 route = "/separated-defpub"
 
 [placement.pins]

@@ -24,8 +24,7 @@ def colocate_services(cfg: any, served: any, base: str) -> None {
     if not services {
         return;
     }
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.runtime.prepared { load_prepared_module }
     import from jaclang.server.sv_client { register_local }
 
     project_root = str(cfg.project_root) if cfg.project_root else base;
@@ -37,18 +36,7 @@ def colocate_services(cfg: any, served: any, base: str) -> None {
             );
             continue;
         }
-        (svc_base, svc_file) = os.path.split(entry_file);
-        loaded = Jac.jac_import(
-            target=base_stem(svc_file),
-            base_path=svc_base or "./",
-            lng=entry_file.split(".")[-1]
-        );
-        module = loaded[0] if loaded else None;
-        if module is None {
-            raise RuntimeError(
-                f"Service app '{svc.name}' failed to load from {entry_file}"
-            );
-        }
+        module = load_prepared_module(entry_file);
         register_local(svc.name, module);
         console.print(
             f"  ✔ colocated service '{svc.name}' "

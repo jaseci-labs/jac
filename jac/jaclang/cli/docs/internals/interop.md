@@ -42,7 +42,7 @@ the discovery:
   native code, etc.) and re-reads the *provider* module's AST to extract
   the public surface -- walker `has`-fields, `def` signatures, struct
   layouts -- into an `InteropBinding`. On an import, service-boundary
-  status is an **app fact**: the target element's `owner_app` (stamped by
+  status is an **app fact**: the target element's `app` (stamped by
   the driver from `[apps]` in `jac.toml`) differs from the importing
   module's; the import's own `code_context` is its
   placement, which determines the caller side of the binding. The same pass
@@ -463,13 +463,13 @@ Every import that reaches across modules is classified exactly once, by
 `classify_cross_app_import(nd, manifest)` in
 `compiler/driver/boundary_classify.jac`, from the app facts the driver stamps
 on each module before any pass runs (`app`, `app_root`, `app_kind`,
-`owner_app`; see [Placement -- App facts](../reference/placement.md#app-facts)):
+`app`; see [Placement -- App facts](../reference/placement.md#app-facts)):
 
 | `CrossAppKind` | When | Transport |
 |---|---|---|
 | `LOCAL` | same app, or shared code, in the same codespace | a plain import (rows 1, 3, 4) |
 | `CLIENT_BRIDGE` | a `CLIENT`-context consumer importing server-placed elements (same app or another) | HTTP from the browser (row 5) |
-| `SERVICE_BRIDGE` | a `SERVER` (or `NATIVE`) consumer importing server-placed elements whose `owner_app` differs from its own | the typed-async `__jac_sv_client` stub (row 2) |
+| `SERVICE_BRIDGE` | a `SERVER` (or `NATIVE`) consumer importing server-placed elements whose `app` differs from its own | the typed-async `__jac_sv_client` stub (row 2) |
 | `NATIVE_BIND` | a client consumer binding a decidedly-native module | the wasm edge (rows 9, 10) |
 
 `Import.is_client_boundary_import` and `Import.is_service_import` are thin
@@ -482,9 +482,9 @@ edge into the `InteropManifest`; the driver checks the edges for cycles
 ## `sv → sv` across apps (row 2)
 
 By default an import between two server modules is a free, in-process
-Python import. When the imported element is **owned by a different app** of
+Python import. When the imported element is **compiled in a different app context** of
 the workspace (a walker or `def:pub` in a file-rooted `service` app, or a
-server-placed shared module whose owner is another serving app), the same
+server-placed shared module compiled in another serving app context), the same
 import is a `SERVICE_BRIDGE`:
 
 ```jac

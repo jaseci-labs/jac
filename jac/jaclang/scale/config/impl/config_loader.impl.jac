@@ -47,7 +47,9 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'replay_tolerance_seconds': 300,
             'max_body_bytes': 1048576,
             'rate_limit_per_minute': 0,
-            'api_key_expiry_days': 365
+            'api_key_expiry_days': 365,
+            'github_secret': '',
+            'github_signature_header': 'X-Hub-Signature-256'
         },
         'monitoring': {
             'enabled': False,
@@ -215,7 +217,12 @@ impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, any] {
         ),
         'max_body_bytes': int(webhook_config.get('max_body_bytes', 1048576)),
         'rate_limit_per_minute': int(webhook_config.get('rate_limit_per_minute', 0)),
-        'api_key_expiry_days': int(webhook_config.get('api_key_expiry_days', 365))
+        'api_key_expiry_days': int(webhook_config.get('api_key_expiry_days', 365)),
+        'github_secret': str(webhook_config.get('github_secret', '') or ''),
+        'github_signature_header': str(
+            webhook_config.get('github_signature_header', 'X-Hub-Signature-256')
+                or 'X-Hub-Signature-256'
+        )
     };
 }
 

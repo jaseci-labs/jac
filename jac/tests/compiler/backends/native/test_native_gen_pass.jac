@@ -22,6 +22,7 @@ reading, and merged they read a list three pushes deep.
 So: if a new fixture declares a glob anything writes, or imports one that
 does, give each of its cases its own test.
 """
+import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
 
 import ctypes;
 import from jaclang.compiler.driver.compile_options {
@@ -3007,7 +3008,6 @@ test "cache marker non native file has no llvmir section in jir" {
     import time;
     import shutil;
     import from jaclang.compiler.driver.jir {
-        get_module_cache_path,
         read_sections,
         SECTIONS_MAGIC,
         HEADER_SIZE,
@@ -3029,7 +3029,7 @@ test "cache marker non native file has no llvmir section in jir" {
         prog = JacProgram();
         JacCompiler().get_bytecode(jac_file, prog);
 
-        cache_path = get_module_cache_path(jac_file);
+        cache_path = artifact_cache_path(jac_file, prog);
         assert cache_path.exists() , f"JIR cache file not created at {cache_path}";
 
         data = cache_path.read_bytes();
@@ -4560,7 +4560,6 @@ test "jir bitcode cache round-trip" {
     import struct;
     import from jaclang.compiler.driver.compiler { JacCompiler }
     import from jaclang.compiler.driver.jir {
-        get_module_cache_path,
         SECTIONS_MAGIC,
         HEADER_SIZE,
         read_sections,
@@ -4576,7 +4575,7 @@ test "jir bitcode cache round-trip" {
     assert code1 is not None , "get_bytecode should return code object";
 
     # Step 2: Verify SEC_NATIVE_OBJ section exists in the cached JIR file
-    cache_path = get_module_cache_path(fixture);
+    cache_path = artifact_cache_path(fixture, prog1);
     assert cache_path.exists() , f"JIR cache file should exist at {cache_path}";
     jir_data = cache_path.read_bytes();
     magic: bytes = SECTIONS_MAGIC;

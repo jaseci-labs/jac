@@ -70,6 +70,26 @@ impl JcirGenPass.exit_archetype with Archetype exit {
     inner = ModuleFacts.unwrap_body(here);
     decorators = [self.val(i) for i in here.decorators] if here.decorators else [];
     body: list = self.resolve_stmt_block(inner, doc=here.doc);
+    if here.arch_type.name != Tok.KW_CLASS {
+        import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+        type_id = endpoint_key(self.ir_in, 'type', here.sym_name);
+        body.append(
+            self.nod(
+                'Assign',
+                ['targets', 'value'],
+                [
+                    [
+                        self.nod(
+                            'Name',
+                            ['id', 'ctx'],
+                            ['__jac_type_id__', self.nod('Store', [], [])]
+                        )
+                    ],
+                    self.const_of(type_id)
+                ]
+            )
+        );
+    }
     if (not body and not isinstance(here.body, Expr)) {
         self.emit(E5003, node_override=here);
         body = [self.nod('Pass', [], [], jac_node=here)];

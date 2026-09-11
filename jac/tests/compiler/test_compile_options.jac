@@ -710,3 +710,22 @@ test "no consumer-site NULL guards on string operands" {
         f"(_coerce_type_inner in types.impl.jac); found: {unwrap_sites}"
     );
 }
+
+test "symbol requests preserve their app and native target context" {
+    parent = CompileOptions(
+        aot_mode=True,
+        default_codespace='native',
+        target_app='cli',
+        entry_point='/project/main.jac',
+        project_root='/project',
+        native_target='wasm32-unknown-unknown'
+    );
+    child = parent.for_symbols(need_tree=True);
+    assert child is not parent;
+    assert child.no_cgen and child.symtab_ir_only and child.need_full_ast;
+    assert child.aot_mode and child.default_codespace == 'native';
+    assert child.entry_point == parent.entry_point;
+    assert child.project_root == parent.project_root;
+    assert child.codegen_identity() == parent.codegen_identity();
+    assert not parent.no_cgen and not parent.symtab_ir_only;
+}

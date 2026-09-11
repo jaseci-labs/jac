@@ -691,6 +691,11 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
         flags=TypeFlags.Instantiable,
     );
 
+    if any(
+        isinstance(base, UnknownType) and not base.is_diagnosed for base in base_classes
+    ) {
+        cls_type.shared._provisional = True;
+    }
     compute_mro_linearization(cls_type);
 
     if is_typeddict {

@@ -67,7 +67,7 @@ def _make_compiler(proj: Path) -> tuple[any, Path] {
 test "client compile writes a per-file source map even when the hub is empty" {
     with TemporaryDirectory() as tmp {
         (compiler, out_dir) = _make_compiler(Path(tmp));
-        compiler.compile_dependencies_recursively(
+        compiler.emit_dependencies(
             Path(tmp) / "app.jac",
             visited=set(),
             collected_exports=set(),
@@ -87,7 +87,7 @@ test "per-file source map resolves a deep JS line to the exact .jac line" {
 
     with TemporaryDirectory() as tmp {
         (compiler, out_dir) = _make_compiler(Path(tmp));
-        compiler.compile_dependencies_recursively(
+        compiler.emit_dependencies(
             Path(tmp) / "app.jac",
             visited=set(),
             collected_exports=set(),

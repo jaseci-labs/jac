@@ -115,6 +115,8 @@ impl Model.ainvoke(mt_run: MTRuntime) -> object {
         return await super.ainvoke(mt_run);
     }
 
+    delegate: BaseLLM | None = self._mock_delegate or self._local_delegate;
+
     _parent = _current_invocation_id.get(None);
     mt_run._parent_invocation_id = _parent;
     mt_run._invocation_id = str(uuid.uuid4());
@@ -122,7 +124,9 @@ impl Model.ainvoke(mt_run: MTRuntime) -> object {
     _start = time.time();
 
     try {
-        result = await super.ainvoke(mt_run);
+        result = await delegate.ainvoke(mt_run)
+            if delegate
+            else await super.ainvoke(mt_run);
 
         if isinstance(result, _types_mod.AsyncGeneratorType) {
             _current_invocation_id.reset(_ctx_token);

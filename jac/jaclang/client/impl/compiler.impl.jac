@@ -209,7 +209,7 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
         }
         dependency_path = Path(str(dependency)).resolve();
         if dependency_path.suffix == '.jac' {
-            self.jac_client_compiler.compile_dependencies_recursively(
+            self.jac_client_compiler.emit_dependencies(
                 dependency_path, visited=visited, source_root=runtime_utils_path.parent
             );
         }

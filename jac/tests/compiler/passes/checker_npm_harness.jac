@@ -149,7 +149,7 @@ def make_npm_client_project(proj_dir: Path, strict: bool = False) -> Path {
     write_client_jac_project(
         proj_dir,
         "npmfixture",
-        "lib/utils.jac",
+        "lib.utils",
         'clsx = "^2.1.1"\ntailwind-merge = "^2.5.0"\n',
         strict=strict
     );
@@ -188,7 +188,7 @@ def make_iface_npm_project(proj_dir: Path) -> Path {
         }
     );
     write_client_jac_project(
-        proj_dir, "ifacefixture", "lib/app.jac", 'cfgpkg = "^1.0.0"\n'
+        proj_dir, "ifacefixture", "lib.app", 'cfgpkg = "^1.0.0"\n'
     );
     return proj_dir;
 }
@@ -226,9 +226,7 @@ def make_relational_npm_project(proj_dir: Path) -> Path {
             )
         }
     );
-    write_client_jac_project(
-        proj_dir, "relfixture", "lib/app.jac", 'relpkg = "^1.0.0"\n'
-    );
+    write_client_jac_project(proj_dir, "relfixture", "lib.app", 'relpkg = "^1.0.0"\n');
     return proj_dir;
 }
 
@@ -256,9 +254,7 @@ def make_generic_npm_project(proj_dir: Path) -> Path {
             )
         }
     );
-    write_client_jac_project(
-        proj_dir, "genfixture", "lib/app.jac", 'genpkg = "^1.0.0"\n'
-    );
+    write_client_jac_project(proj_dir, "genfixture", "lib.app", 'genpkg = "^1.0.0"\n');
     return proj_dir;
 }
 
@@ -298,9 +294,7 @@ def make_modifiers_npm_project(proj_dir: Path) -> Path {
             )
         }
     );
-    write_client_jac_project(
-        proj_dir, "modfixture", "lib/app.jac", 'modpkg = "^1.0.0"\n'
-    );
+    write_client_jac_project(proj_dir, "modfixture", "lib.app", 'modpkg = "^1.0.0"\n');
     return proj_dir;
 }
 
@@ -331,9 +325,7 @@ def make_cyclic_npm_project(proj_dir: Path) -> Path {
             )
         }
     );
-    write_client_jac_project(
-        proj_dir, "cycfixture", "lib/app.jac", 'cycpkg = "^1.0.0"\n'
-    );
+    write_client_jac_project(proj_dir, "cycfixture", "lib.app", 'cycpkg = "^1.0.0"\n');
     return proj_dir;
 }
 
@@ -363,7 +355,7 @@ def make_callable_npm_project(proj_dir: Path) -> Path {
         }
     );
     write_client_jac_project(
-        proj_dir, "callfixture", "lib/app.jac", 'callpkg = "^1.0.0"\n'
+        proj_dir, "callfixture", "lib.app", 'callpkg = "^1.0.0"\n'
     );
     return proj_dir;
 }
@@ -412,8 +404,6 @@ def make_degrade_npm_project(proj_dir: Path) -> Path {
             )
         }
     );
-    write_client_jac_project(
-        proj_dir, "degfixture", "lib/app.jac", 'degpkg = "^1.0.0"\n'
-    );
+    write_client_jac_project(proj_dir, "degfixture", "lib.app", 'degpkg = "^1.0.0"\n');
     return proj_dir;
 }

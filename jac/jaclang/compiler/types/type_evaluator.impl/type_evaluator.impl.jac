@@ -2999,15 +2999,90 @@ impl TypeEvaluator._solve_protocol_type_args(
 
 
 impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> bool {
-    if not sub_cls.shared.mro {
-        compute_mro_linearization(sub_cls);
-    }
+    import from jaclang.compiler.types.type_utils { ensure_mro_fresh }
+    self._heal_ancestry(sub_cls);
+    ensure_mro_fresh(sub_cls);
     for cls in sub_cls.shared.mro {
         if cls.shared.same_class(super_cls.shared) {
             return True;
         }
     }
     return False;
+}
+
+impl TypeEvaluator._heal_ancestry(cls: ClassType) -> None {
+    import from jaclang.compiler.types.type_utils { ensure_mro_fresh }
+    attempted: set[int] = set();
+    while True {
+        healed = False;
+        if cls.shared._provisional and id(cls.shared) not in attempted {
+            attempted.add(id(cls.shared));
+            self._heal_class_bases(cls);
+            healed = True;
+        }
+        ensure_mro_fresh(cls);
+        for ancestor in list(cls.shared.mro or []) {
+            if ancestor.shared._provisional and id(ancestor.shared) not in attempted {
+                attempted.add(id(ancestor.shared));
+                self._heal_class_bases(ancestor);
+                healed = True;
+            }
+        }
+        if not healed {
+            return;
+        }
+    }
+}
+
+impl TypeEvaluator._heal_class_bases(cls: ClassType) -> None {
+    import from jaclang.compiler.frontend.unitree { Archetype }
+    import from jaclang.compiler.types.type_utils { linearize_mro, mro_signature }
+    shared = cls.shared;
+    node_ = shared.symbol_table;
+    if not isinstance(node_, Archetype) {
+        shared._provisional = False;
+        return;
+    }
+    if shared._heal_stamp in (id(self), -id(self)) {
+        return;
+    }
+    shared._heal_stamp = -id(self);
+    shared._provisional = False;
+    bases: list[TypeBase] = [];
+    unresolved = False;
+    for base_expr in node_.base_classes or [] {
+        memo = base_expr.type;
+        if isinstance(memo, UnknownType) and not memo.is_diagnosed {
+            base_expr.type = None;
+        }
+        base_type = self.get_type_of_expression(base_expr);
+        if isinstance(base_type, UnknownType) and not base_type.is_diagnosed {
+            unresolved = True;
+        }
+        bases.append(base_type);
+    }
+    if unresolved {
+        shared._provisional = True;
+        shared._heal_stamp = 0;
+        return;
+    }
+    shared._heal_stamp = id(self);
+    if not [
+        b
+        for b in bases
+        if isinstance(b, ClassType)
+    ]
+        and self.prefetch
+        and self.prefetch.object_class
+        and not shared.same_class(self.prefetch.object_class.shared) {
+        bases.append(self.prefetch.object_class);
+    }
+    shared.base_classes = bases;
+    rebuilt = linearize_mro(cls);
+    if len(rebuilt) > len(shared.mro) {
+        shared.mro = rebuilt;
+    }
+    shared._mro_sig = mro_signature(cls);
 }
 
 impl TypeEvaluator.get_type_of_magic_method_call(
@@ -3673,7 +3748,14 @@ impl TypeEvaluator.get_type_of_expression(
             and node_.value == '_'
             and node_.find_parent_of_type(MatchPattern) is not None
         );
-        if (mod is None or not mod.is_raised_from_py) and not is_pattern_wildcard {
+        is_annotation_ellipsis = isinstance(node_, Ellipsis)
+            and (
+                node_.find_parent_of_type(SubTag) is not None
+                or node_.find_parent_of_type(FuncSignature) is not None
+            );
+        if (mod is None or not mod.is_raised_from_py)
+            and not is_pattern_wildcard
+            and not is_annotation_ellipsis {
             self.emit_diag(W1051, node_);
         }
     }
@@ -5992,6 +6074,21 @@ impl TypeEvaluator._intern_shared(shared: ClassDetailsShared) -> ClassDetailsSha
     if found.symbol_table is not shared.symbol_table
         and self._scope_is_current(shared.symbol_table) {
         found.symbol_table = shared.symbol_table;
+    }
+    fresh_bases = [
+        b
+        for b in shared.base_classes
+        if isinstance(b, ClassType)
+    ];
+    known_bases = [
+        b
+        for b in found.base_classes
+        if isinstance(b, ClassType)
+    ];
+    if fresh_bases and not known_bases {
+        found.base_classes = shared.base_classes;
+        found._mro_sig = ();
+        found._provisional = shared._provisional;
     }
     return found;
 }

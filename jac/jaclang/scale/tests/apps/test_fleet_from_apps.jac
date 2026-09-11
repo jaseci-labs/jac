@@ -30,26 +30,7 @@ import from jaclang.scale.runtime.gateway.service_registry {
 }
 import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
 
-glob _WORKSPACE_TOML: str = '[project]\n'
-     'name = "shop"\n'
-     'default-app = "web"\n'
-     '\n'
-     '[apps.web]\n'
-     'kind = "web-app"\n'
-     'path = "web"\n'
-     '\n'
-     '[apps.orders]\n'
-     'kind = "service"\n'
-     'entry-point = "core/orders.jac"\n'
-     '\n'
-     '[apps.cart]\n'
-     'kind = "service"\n'
-     'entry-point = "core/cart.jac"\n'
-     'route = "/api/basket"\n'
-     '\n'
-     '[apps.tool]\n'
-     'kind = "cli"\n'
-     'path = "tool"\n';
+glob _WORKSPACE_TOML: str = '[project]\nname = "shop"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.orders]\nkind = "service"\nentry-point = "core.orders"\n\n[apps.cart]\nkind = "service"\nentry-point = "core.cart"\nroute = "/api/basket"\n\n[apps.tool]\nkind = "cli"\nentry-point = "tool.main"\n';
 
 
 def _workspace -> str {
@@ -340,21 +321,7 @@ test "an app that does not compile stops the fleet loudly" {
 }
 
 
-glob _BRIDGE_TOML: str = '[project]\n'
-     'name = "bridged"\n'
-     'default-app = "web"\n'
-     '\n'
-     '[apps.web]\n'
-     'kind = "web-app"\n'
-     'path = "web"\n'
-     '\n'
-     '[apps.orders]\n'
-     'kind = "service"\n'
-     'entry-point = "core/orders.jac"\n'
-     '\n'
-     '[apps.cart]\n'
-     'kind = "service"\n'
-     'entry-point = "core/cart.jac"\n';
+glob _BRIDGE_TOML: str = '[project]\nname = "bridged"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.orders]\nkind = "service"\nentry-point = "core.orders"\n\n[apps.cart]\nkind = "service"\nentry-point = "core.cart"\n';
 
 
 def _bridge_workspace -> str {

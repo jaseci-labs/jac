@@ -49,7 +49,7 @@ def _builder(project_dir: str) -> ManifestBuilder {
 def _project(entry_source: str) -> str {
     tmp = tempfile.mkdtemp(prefix="client-fail-fast-");
     with open(os.path.join(tmp, "jac.toml"), "w", encoding="utf-8") as f {
-        f.write('[project]\nname = "landing"\nentry-point = "main.jac"\n');
+        f.write('[project]\nname = "landing"\nentry-point = "main"\n');
     }
     with open(os.path.join(tmp, "main.jac"), "w", encoding="utf-8") as f {
         f.write(entry_source);

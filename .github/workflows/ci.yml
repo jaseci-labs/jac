@@ -201,6 +201,8 @@ jobs:
     env:
       # Reroute lane: see the jac check step below.
       JAC_NO_DEV_SOURCE: ""
+      # Leave memory for the driver and self-hosted compiler on the 16 GB runner.
+      JAC_CHECK_JOBS: "2"
     permissions:
       contents: write
     steps:
@@ -488,9 +490,12 @@ jobs:
           - chunk: toplevel
             paths: tests/compiler/test_*.jac
             sealed: "1"
+            jobs: "2"
           - chunk: passes-native
             paths: tests/compiler/backends/native tests/compiler/tools
             sealed: "1"
+            # Native workers retain LLVM state; keep headroom on the 16 GB runner.
+            jobs: "2"
           # The equivalence suite builds fixture paths from jaclang.__file__,
           # which only resolve in the checkout: it runs through the reroute,
           # over the kit's shim and floors ("" clears JAC_NO_DEV_SOURCE).

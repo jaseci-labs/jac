@@ -75,21 +75,21 @@ def _cleanup {
 # One planner test per project kind (explicit [project] kind)
 # ---------------------------------------------------------------------------
 test "kind cli -> execute via run" {
-    p = _plan("kind = \"cli\"\nentry-point = \"main.jac\"\n", "main.jac");
+    p = _plan("kind = \"cli\"\nentry-point = \"main\"\n", "main.jac");
     assert p.kind == "cli";
     assert p.action == "execute";
     assert p.verb == "run";
 }
 
 test "kind cli-native -> execute via run" {
-    p = _plan("kind = \"cli-native\"\nentry-point = \"main.jac\"\n", "main.jac");
+    p = _plan("kind = \"cli-native\"\nentry-point = \"main\"\n", "main.jac");
     assert p.kind == "cli-native";
     assert p.action == "execute";
     assert p.verb == "run";
 }
 
 test "kind native-binary -> build via jac build --native" {
-    p = _plan("kind = \"native-binary\"\nentry-point = \"main.jac\"\n", "main.jac");
+    p = _plan("kind = \"native-binary\"\nentry-point = \"main\"\n", "main.jac");
     assert p.action == "build";
     assert p.verb == "native";
     assert "output" in p.flags;
@@ -97,7 +97,7 @@ test "kind native-binary -> build via jac build --native" {
 }
 
 test "kind native-lib -> build a shared library via jac build --native --lib" {
-    p = _plan("kind = \"native-lib\"\nentry-point = \"lib.jac\"\n", "lib.jac");
+    p = _plan("kind = \"native-lib\"\nentry-point = \"lib\"\n", "lib.jac");
     assert p.action == "build";
     assert p.verb == "native";
     assert "--native" in p.command_line();
@@ -106,7 +106,7 @@ test "kind native-lib -> build a shared library via jac build --native --lib" {
 }
 
 test "kind service -> serve headless" {
-    p = _plan("kind = \"service\"\nentry-point = \"api.sv.jac\"\n", "api.sv.jac");
+    p = _plan("kind = \"service\"\nentry-point = \"api\"\n", "api.jac");
     assert p.action == "serve";
     assert p.verb == "run";
     assert p.flags.get("no_client") == True;
@@ -117,18 +117,14 @@ test "kind service -> serve headless" {
 
 test "serve plan forwards a custom [serve] port from jac.toml" {
     p = _plan(
-        "kind = \"service\"\nentry-point = \"api.sv.jac\"\n\n[serve]\nport = 3000\n",
-        "api.sv.jac"
+        "kind = \"service\"\nentry-point = \"api\"\n\n[serve]\nport = 3000\n", "api.jac"
     );
     assert p.flags.get("port") == 3000;
     assert "--port 3000" in p.command_line();
 }
 
 test "kind service-mesh -> serve consumer" {
-    p = _plan(
-        "kind = \"service-mesh\"\nentry-point = \"consumer.sv.jac\"\n",
-        "consumer.sv.jac"
-    );
+    p = _plan("kind = \"service-mesh\"\nentry-point = \"consumer\"\n", "consumer.jac");
     assert p.action == "serve";
     assert p.verb == "run";
 }
@@ -150,7 +146,7 @@ test "kind js-package -> build npm via build --as" {
 }
 
 test "kind web-app -> serve dev (client framework is core)" {
-    p = _plan("kind = \"web-app\"\nentry-point = \"app.jac\"\n", "app.jac");
+    p = _plan("kind = \"web-app\"\nentry-point = \"app\"\n", "app.jac");
     assert p.action == "serve";
     assert p.verb == "run";
     assert p.flags.get("dev") == True;
@@ -160,7 +156,7 @@ test "kind web-app -> serve dev (client framework is core)" {
 }
 
 test "kind web-static -> serve (client framework is core)" {
-    p = _plan("kind = \"web-static\"\nentry-point = \"page.jac\"\n", "page.jac");
+    p = _plan("kind = \"web-static\"\nentry-point = \"page\"\n", "page.jac");
     assert p.action == "serve";
     assert p.verb == "run";
     assert "client" not in p.flags;
@@ -168,7 +164,7 @@ test "kind web-static -> serve (client framework is core)" {
 }
 
 test "kind desktop -> serve the desktop client target (core)" {
-    p = _plan("kind = \"desktop\"\nentry-point = \"app.jac\"\n", "app.jac");
+    p = _plan("kind = \"desktop\"\nentry-point = \"app\"\n", "app.jac");
     assert p.action == "serve";
     assert p.verb == "run";
     # The desktop target is a core client target -- it must reach the serve
@@ -181,7 +177,7 @@ test "kind desktop -> serve the desktop client target (core)" {
 }
 
 test "kind mobile -> build the mobile client shell (core)" {
-    p = _plan("kind = \"mobile\"\nentry-point = \"app.jac\"\n", "app.jac");
+    p = _plan("kind = \"mobile\"\nentry-point = \"app\"\n", "app.jac");
     assert p.action == "build";
     assert p.verb == "build";
     # Must build the mobile shell, not fall through to a default .jab build:
@@ -193,11 +189,11 @@ test "kind mobile -> build the mobile client shell (core)" {
 }
 
 test "kind mobile with a platform carries it on the plan" {
-    p = _plan("kind = \"mobile\"\nentry-point = \"app.jac\"\n", "app.jac");
+    p = _plan("kind = \"mobile\"\nentry-point = \"app\"\n", "app.jac");
     assert "platform" not in p.flags , "no platform unless the app names one";
     # A workspace app names its platform in its own table.
     d = _mk_project(
-        "\n[apps.phone]\nkind = \"mobile\"\npath = \"phone\"\nplatform = \"ios\"\n"
+        '\n[apps.phone]\nkind = "mobile"\nentry-point = "phone.main"\nplatform = "ios"\n'
     );
     os.makedirs(os.path.join(d, "phone"), exist_ok=True);
     with open(os.path.join(d, "phone", "main.jac"), "w") as f {
@@ -217,46 +213,45 @@ test "plain .jac entry no longer infers cli-native (marker retired)" {
     # Pre-0.35 a main.na.jac entry inferred cli-native from the filename.
     # With the marker retired, native is a placement decision, not a kind
     # signal: plain .jac infers "cli" and cli-native must be explicit.
-    p = _plan("entry-point = \"main.jac\"\n", "main.jac");
+    p = _plan("entry-point = \"main\"\n", "main.jac");
     assert p.kind == "cli";
 }
 
 test "infer web-app from a client-pinned entry" {
     p = _plan(
-        "entry-point = \"main.jac\"\n\n[placement.pins]\nmain = \"client\"\n",
-        "main.jac"
+        "entry-point = \"main\"\n\n[placement.pins]\nmain = \"client\"\n", "main.jac"
     );
     assert p.kind == "web-app";
 }
 
 test "infer cli from plain .jac entry" {
-    p = _plan("entry-point = \"main.jac\"\n", "main.jac");
+    p = _plan("entry-point = \"main\"\n", "main.jac");
     assert p.kind == "cli";
 }
 
 test "infer web-app from plain .jac when jac-client is a dependency" {
     p = _plan(
-        "entry-point = \"main.jac\"\n\n[dependencies]\njac-client = \"*\"\n", "main.jac"
+        "entry-point = \"main\"\n\n[dependencies]\njac-client = \"*\"\n", "main.jac"
     );
     assert p.kind == "web-app";
 }
 
 test "infer web-app from plain .jac when [client] is configured" {
-    p = _plan("entry-point = \"main.jac\"\n\n[client]\npaths = {}\n", "main.jac");
+    p = _plan("entry-point = \"main\"\n\n[client]\npaths = {}\n", "main.jac");
     assert p.kind == "web-app";
 }
 
 # ---------------------------------------------------------------------------
 # Entry-point resolution
 # ---------------------------------------------------------------------------
-test "stale entry-point resolves by stem to the real language file" {
-    # entry-point says main.jac but only main.py exists on disk.
-    p = _plan("entry-point = \"main.jac\"\n", "main.py", entry_body="print('ok')");
+test "module entry resolves a Python implementation" {
+    # Module names are independent of the implementation language.
+    p = _plan("entry-point = \"main\"\n", "main.py", entry_body="print('ok')");
     assert p.entry_path.endswith("main.py");
 }
 
 test "missing entry is a planning error for runnable kinds" {
-    d = _mk_project("kind = \"cli\"\nentry-point = \"nope.jac\"\n", "");
+    d = _mk_project("kind = \"cli\"\nentry-point = \"nope\"\n", "");
     cfg = JacConfig.discover(start_path=Path(d));
     assert cfg is not None;
     raised = "";
@@ -273,31 +268,31 @@ test "missing entry is a planning error for runnable kinds" {
 # Kind resolution (resolve_app_kind)
 # ---------------------------------------------------------------------------
 test "resolve_app_kind: an explicit kind wins for any app" {
-    d = _mk_project("kind = \"service\"\nentry-point = \"main.jac\"\n", "main.jac");
+    d = _mk_project("kind = \"service\"\nentry-point = \"main\"\n", "main.jac");
     cfg = JacConfig.discover(start_path=Path(d));
     assert cfg is not None;
     app = cfg.resolve_app("");
     assert app.implicit;
     assert resolve_app_kind(cfg, app, resolve_entry(cfg, d, app)) == "service";
-    named = AppConfig(name="tool", kind="native-binary", path="tool");
+    named = AppConfig(name="tool", kind="native-binary", entry_point="tool.main");
     assert resolve_app_kind(cfg, named, "") == "native-binary";
 }
 
 test "resolve_app_kind: only the implicit app infers; an [apps] entry is cli" {
     d = _mk_project(
-        "entry-point = \"main.jac\"\n\n[dependencies]\njac-client = \"*\"\n", "main.jac"
+        "entry-point = \"main\"\n\n[dependencies]\njac-client = \"*\"\n", "main.jac"
     );
     cfg = JacConfig.discover(start_path=Path(d));
     assert cfg is not None;
     implicit = cfg.resolve_app("");
     assert resolve_app_kind(cfg, implicit, resolve_entry(cfg, d, implicit))
         == "web-app";
-    explicit = AppConfig(name="web", kind="", path="web");
+    explicit = AppConfig(name="web", kind="", entry_point="web.main");
     assert resolve_app_kind(cfg, explicit, "") == "cli";
 }
 
 test "plan_workspace on a plain project yields the implicit app's plan" {
-    d = _mk_project("kind = \"cli\"\nentry-point = \"main.jac\"\n", "main.jac");
+    d = _mk_project("kind = \"cli\"\nentry-point = \"main\"\n", "main.jac");
     cfg = JacConfig.discover(start_path=Path(d));
     assert cfg is not None;
     plans = plan_workspace(cfg, d);
@@ -341,8 +336,7 @@ test "a plan carries the spec it was planned from" {
 
 test "planning never mutates the shared spec's flags" {
     p = _plan(
-        "kind = \"service\"\nentry-point = \"api.sv.jac\"\n\n[serve]\nport = 3000\n",
-        "api.sv.jac"
+        "kind = \"service\"\nentry-point = \"api\"\n\n[serve]\nport = 3000\n", "api.jac"
     );
     assert p.flags.get("port") == 3000;
     # The port landed on the plan, not on the table entry every project shares.
@@ -398,7 +392,7 @@ test "jac run with no file executes a cli-native project from cwd" {
     # cli-native prints via the JIT'd binary, which writes to fd 1 directly
     # (C printf) -- so we capture at the file-descriptor level, not sys.stdout.
     d = _mk_project(
-        "kind = \"cli-native\"\nentry-point = \"main.jac\"\n",
+        "kind = \"cli-native\"\nentry-point = \"main\"\n",
         "main.jac",
         "with entry { print(\"RAN_NA_OK\"); }"
     );
@@ -425,7 +419,7 @@ test "jac run with no file executes a cli-native project from cwd" {
 
 test "jac run builds a native-binary project into dist/" {
     d = _mk_project(
-        "kind = \"native-binary\"\nentry-point = \"app.jac\"\n",
+        "kind = \"native-binary\"\nentry-point = \"app\"\n",
         "app.jac",
         "with entry { print(\"x\"); }"
     );
@@ -475,7 +469,7 @@ test "unknown explicit kind is reported by jac run" {
 # ---------------------------------------------------------------------------
 test "an explicitly named file resolves the project kind, not a bare execute" {
     d = _mk_project(
-        "kind = \"service\"\nentry-point = \"main.jac\"\n",
+        "kind = \"service\"\nentry-point = \"main\"\n",
         "main.jac",
         entry_body="with entry { }"
     );
@@ -493,7 +487,7 @@ test "an explicitly named file resolves the project kind, not a bare execute" {
 
 test "a named file executes in a build kind; only a bare run builds" {
     d = _mk_project(
-        "kind = \"mobile\"\nentry-point = \"main.jac\"\n",
+        "kind = \"mobile\"\nentry-point = \"main\"\n",
         "main.jac",
         entry_body="with entry { }"
     );
@@ -552,8 +546,7 @@ test "serve flags are recognised only when they were actually typed" {
 
 test "a [serve] port from jac.toml is not mistaken for a typed --port" {
     d = _mk_project(
-        "kind = \"cli\"\nentry-point = \"main.jac\"\n\n[serve]\nport = 3000\n",
-        "main.jac"
+        "kind = \"cli\"\nentry-point = \"main\"\n\n[serve]\nport = 3000\n", "main.jac"
     );
     cfg = JacConfig.discover(start_path=Path(d));
     assert cfg is not None;
@@ -574,7 +567,7 @@ test "entry-only flags are reported by their CLI spelling" {
 }
 
 test "--port on a cli-kind project is a hard error, not a silent no-op" {
-    d = _mk_project("kind = \"cli\"\nentry-point = \"main.jac\"\n", "main.jac");
+    d = _mk_project("kind = \"cli\"\nentry-point = \"main\"\n", "main.jac");
     saved = os.getcwd();
     try {
         os.chdir(d);
@@ -586,7 +579,7 @@ test "--port on a cli-kind project is a hard error, not a silent no-op" {
 }
 
 test "--serve overrides a non-serving kind instead of erroring" {
-    d = _mk_project("kind = \"cli\"\nentry-point = \"main.jac\"\n", "main.jac");
+    d = _mk_project("kind = \"cli\"\nentry-point = \"main\"\n", "main.jac");
     saved = os.getcwd();
     try {
         os.chdir(d);
@@ -598,7 +591,7 @@ test "--serve overrides a non-serving kind instead of erroring" {
 }
 
 test "--entry against a serving kind is a hard error" {
-    d = _mk_project("kind = \"service\"\nentry-point = \"main.jac\"\n", "main.jac");
+    d = _mk_project("kind = \"service\"\nentry-point = \"main\"\n", "main.jac");
     saved = os.getcwd();
     try {
         os.chdir(d);
@@ -610,7 +603,7 @@ test "--entry against a serving kind is a hard error" {
 }
 
 test "--no-serve forces execution of a serving kind" {
-    d = _mk_project("kind = \"service\"\nentry-point = \"main.jac\"\n", "main.jac");
+    d = _mk_project("kind = \"service\"\nentry-point = \"main\"\n", "main.jac");
     saved = os.getcwd();
     try {
         os.chdir(d);
@@ -627,7 +620,7 @@ test "temp projects from the merged-dispatch cases are removed" {
 }
 
 test "a client build kind still accepts serve flags (mobile dev server)" {
-    d = _mk_project("kind = \"mobile\"\nentry-point = \"main.jac\"\n", "main.jac");
+    d = _mk_project("kind = \"mobile\"\nentry-point = \"main\"\n", "main.jac");
     saved = os.getcwd();
     try {
         os.chdir(d);
@@ -655,7 +648,7 @@ test "a library build kind refuses serve flags" {
 }
 
 test "--serve is a plain serve: the kind's dev default does not ride along" {
-    d = _mk_project("kind = \"web-app\"\nentry-point = \"main.jac\"\n", "main.jac");
+    d = _mk_project("kind = \"web-app\"\nentry-point = \"main\"\n", "main.jac");
     cfg = JacConfig.discover(start_path=Path(d));
     assert cfg is not None;
     plan = plan_app_run(cfg, d, cfg.resolve_app(""));
@@ -665,7 +658,7 @@ test "--serve is a plain serve: the kind's dev default does not ride along" {
     # ...but `--serve`, the successor to `jac run --serve`, serves plainly.
     assert "dev" not in execution._kind_serve_flags(plan, True, True);
     # Kind properties other than the dev default still ride along.
-    svc = _plan("kind = \"service\"\nentry-point = \"api.jac\"\n", "api.jac");
+    svc = _plan("kind = \"service\"\nentry-point = \"api\"\n", "api.jac");
     assert execution._kind_serve_flags(svc, True, True).get("no_client") == True;
     _cleanup();
 }

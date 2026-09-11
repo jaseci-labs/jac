@@ -79,9 +79,7 @@ def make_dts_project(
             '"import":"./dist/index.mjs"}}}',
         {"dist/index.mjs": mjs, "dist/index.d.ts": dts}
     );
-    write_client_jac_project(
-        proj_dir, project_name, "lib/app.jac", pkg + ' = "^1.0.0"\n'
-    );
+    write_client_jac_project(proj_dir, project_name, "lib.app", pkg + ' = "^1.0.0"\n');
     return proj_dir;
 }
 
@@ -114,7 +112,7 @@ def make_mermaid_project(proj_dir: Path) -> Path {
 def write_client_project(proj_root: Path) -> Path {
     (proj_root / "jac.toml").write_text(
         '[project]\nname = "typeonly"\nversion = "0.1.0"\n'
-        'kind = "js-package"\nentry-point = "app.jac"\n'
+        'kind = "js-package"\nentry-point = "app"\n'
     );
     return proj_root;
 }
@@ -272,7 +270,7 @@ test "a server module may value-import a jac type alias and construct it" {
     # -- E1107 exists to keep the base primitive precisely so this works. E1131
     # must not push cross-module brand construction onto `import type`.
     with TemporaryDirectory() as td {
-        proj_root = write_server_project(Path(cast(str, td)), "use.jac");
+        proj_root = write_server_project(Path(cast(str, td)), "use");
         (proj_root / "brands.jac").write_text(BRAND_SRC);
         f = proj_root / "use.jac";
         f.write_text(BRAND_USE_SRC);
@@ -311,7 +309,7 @@ test "import type of a jac alias erases it on the server too, so value use is E1
     # to a TYPE_CHECKING guard, so the name is not there at run time and the
     # constructor call is refused rather than left to fail as a NameError.
     with TemporaryDirectory() as td {
-        proj_root = write_server_project(Path(cast(str, td)), "use.jac");
+        proj_root = write_server_project(Path(cast(str, td)), "use");
         (proj_root / "brands.jac").write_text(BRAND_SRC);
         f = proj_root / "use.jac";
         f.write_text(
@@ -333,7 +331,7 @@ test "a server has-field may be typed by a plainly imported jac alias" {
     # through typing.get_type_hints, so pushing this onto `import type` would
     # break it. A plain import has to stay legal here.
     with TemporaryDirectory() as td {
-        proj_root = write_server_project(Path(cast(str, td)), "store.jac");
+        proj_root = write_server_project(Path(cast(str, td)), "store");
         (proj_root / "rows.jac").write_text("type Row = dict[str, int];\n");
         f = proj_root / "store.jac";
         f.write_text(
@@ -418,7 +416,7 @@ test "value uses of an import-type binding are refused in a server module" {
         proj_root = Path(cast(str, td));
         (proj_root / "jac.toml").write_text(
             '[project]\nname = "typeonlysv"\nversion = "0.1.0"\n'
-            'entry-point = "uses.jac"\n'
+            'entry-point = "uses"\n'
         );
         (proj_root / "point.jac").write_text(POINT_SRC);
         f = proj_root / "uses.jac";
@@ -437,7 +435,7 @@ test "type uses of an import-type binding are accepted in a server module" {
         proj_root = Path(cast(str, td));
         (proj_root / "jac.toml").write_text(
             '[project]\nname = "typeonlysv"\nversion = "0.1.0"\n'
-            'entry-point = "typeuses.jac"\n'
+            'entry-point = "typeuses"\n'
         );
         (proj_root / "point.jac").write_text(POINT_SRC);
         f = proj_root / "typeuses.jac";
@@ -463,7 +461,7 @@ test "bridged import stubs skip archetype items and keep function items" {
         proj_root = Path(cast(str, td));
         (proj_root / "jac.toml").write_text(
             '[project]\nname = "svstub"\nversion = "0.1.0"\n'
-            'entry-point = "page.jac"\n\n'
+            'entry-point = "page"\n\n'
             '[placement.pins]\napi = "server"\n'
         );
         (proj_root / "api.jac").write_text(

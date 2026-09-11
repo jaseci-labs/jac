@@ -857,11 +857,11 @@ test "separated files" {
     # `input` is destructured from useState (external React typings) so its
     # static type is unknown — `.strip()` routes through the polymorphic
     # runtime dispatcher instead of leaking the Python method name.
-    # This module is consumed only by `separated`, so shared ownership
-    # keeps the spawn within that app while retaining its boundary contract.
+    # Compiling the client as an entry crosses the declared service entry,
+    # so the call carries its app, route, and endpoint contract.
     assert (
         "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.call(input, \"strip\")}, "
-            + "{\"contract\": \"[\\\"separated\\\",\\\"separated.jac\\\",\\\"walker\\\",\\\"create_todo\\\"]\"});"
+            + "{\"app\": \"separated\", \"route\": \"/separated\", \"contract\": \"[\\\"separated\\\",\\\"separated.jac\\\",\\\"walker\\\",\\\"create_todo\\\"]\"});"
         in js_code
     );
 }
@@ -992,11 +992,12 @@ test "bridge wrapper covers posonly and kwonly params" {
         + "signature, not silently drop them;\ngot:\n"
         + js_code
     );
-    # All three params must appear in the RPC args object the wrapper posts.
+    # All three params must appear in the RPC args object the wrapper posts,
+    # including serialization of both boundary-typed params.
     # The server is a service app of the fixture workspace, so the call also
     # carries the provider's app and route after the args object.
     assert (
-        '__jacCallFunction("query",{"filter":filter,"query":query,"scope":scope},'
+        '__jacCallFunction("query",{"filter":filter.__to_wire(),"query":query,"scope":scope.__to_wire()},'
         in compact_js
     ) , (
         "sv-import wrapper must forward posonly + kwonly params in the RPC "

@@ -29,7 +29,7 @@ obj _FakeJacClientCompiler {
         return self.compiled_dir / (module_path.stem + ".js");
     }
 
-    def compile_dependencies_recursively(module_path: Path, **kwargs: any) {
+    def emit_dependencies(module_path: Path, **kwargs: any) {
         self.recompiled.append(str(module_path));
     }
 

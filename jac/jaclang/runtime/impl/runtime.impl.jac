@@ -1982,6 +1982,10 @@ impl JacPersistence.set_persistent_memory_provider(provider: Callable | None) ->
 
 impl JacRuntime.reset_process_state(cls: any, clear_modules: bool = True) -> None {
     import sys;
+    prepared = sys.modules.get('jaclang.runtime.prepared');
+    if prepared is not None {
+        prepared.clear();
+    }
     import from concurrent.futures { ThreadPoolExecutor }
     if cls.exec_ctx is not None {
         cls.exec_ctx.mem.close();

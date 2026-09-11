@@ -109,3 +109,57 @@ test "stdlib enum ancestry survives independently loaded class graphs" {
     );
     assert not program.errors_had , str(program.errors_had);
 }
+
+test "an ancestry computed against a base still being populated heals on use" {
+    import from jaclang.compiler.types.type_utils {
+        compute_mro_linearization,
+        ensure_mro_fresh
+    }
+    scope = Module.make_stub("ancestry_heal");
+    top = ClassType(
+        _shared=ClassDetailsShared(
+            class_name="Root",
+            symbol_table=scope,
+            _identity_key=("ancestry_heal.jac", 1, 0, "Root")
+        )
+    );
+    top.shared.mro = [top];
+    mid = ClassType(
+        _shared=ClassDetailsShared(
+            class_name="Mid",
+            symbol_table=scope,
+            _identity_key=("ancestry_heal.jac", 2, 0, "Mid")
+        )
+    );
+    leaf = ClassType(
+        _shared=ClassDetailsShared(
+            class_name="Leaf",
+            symbol_table=scope,
+            base_classes=[mid],
+            _identity_key=("ancestry_heal.jac", 3, 0, "Leaf")
+        )
+    );
+    compute_mro_linearization(leaf);
+    assert [c.shared.class_name for c in leaf.shared.mro] == ["Leaf", "Mid"];
+    mid.shared.base_classes = [top];
+    mid.shared.mro = [mid, top];
+    assert ensure_mro_fresh(leaf);
+    assert [c.shared.class_name for c in leaf.shared.mro] == ["Leaf", "Mid", "Root"];
+    assert not ensure_mro_fresh(leaf);
+    assert leaf.lookup_member_symbol("nothing") is None;
+    deep = ClassType(
+        _shared=ClassDetailsShared(
+            class_name="Deep",
+            symbol_table=scope,
+            _identity_key=("ancestry_heal.jac", 0, 0, "Deep")
+        )
+    );
+    deep.shared.mro = [deep];
+    top.shared.base_classes = [deep];
+    top.shared.mro = [top, deep];
+    assert ensure_mro_fresh(leaf);
+    assert [c.shared.class_name for c in mid.shared.mro] == ["Mid", "Root", "Deep"];
+    assert [c.shared.class_name for c in leaf.shared.mro]
+        == ["Leaf", "Mid", "Root", "Deep"];
+    assert not ensure_mro_fresh(leaf);
+}

@@ -5,7 +5,7 @@ workspace's app facts: LOCAL (same app or shared), CLIENT_BRIDGE (client code
 reaching server-placed elements), SERVICE_BRIDGE (server/native code reaching
 elements owned by another serving app) and NATIVE_BIND (a client-native edge
 recorded in the interop manifest). The fixture under fixtures/apps is a five-app
-workspace: a dir-rooted web-app, a file-rooted social service, a cli app and a
+workspace: a web-app entry, a social service entry, a cli app and a
 pair of mutually-importing services that close an app cycle.
 """
 
@@ -33,9 +33,16 @@ def fixture(*parts: str) -> str {
     return os.path.join(APPS_DIR, *parts);
 }
 
-def compile_fixture(path: str, cgen: bool = False) -> tuple {
+def compile_fixture(path: str, cgen: bool = False, app: str = "") -> tuple {
     prog = JacProgram();
-    mod = prog.compile(path, no_cgen=not cgen);
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    options = CompileOptions(no_cgen=not cgen);
+    if app {
+        options.target_app = app;
+        options.entry_point = fixture(app, "main.jac");
+        options.project_root = APPS_DIR;
+    }
+    mod = prog.compile(path, options=options);
     return (prog, mod);
 }
 
@@ -116,7 +123,7 @@ test "cli app importing a service walker is a SERVICE_BRIDGE consumer" {
 }
 
 test "client-context import of server-placed elements is CLIENT_BRIDGE" {
-    (prog, mod) = compile_fixture(fixture("web", "panel.jac"), cgen=True);
+    (prog, mod) = compile_fixture(fixture("web", "panel.jac"), cgen=True, app="web");
     imp = import_of(mod, "social_app");
     assert classify_cross_app_import(imp, None) == CrossAppKind.CLIENT_BRIDGE;
     assert is_client_boundary_import(imp);
@@ -222,10 +229,12 @@ test "a bridged obj imported alone mirrors as a boundary type, not an RPC stub" 
     assert "async def Profile" not in py , (
         "a data type must never lower to a coroutine stub; got:\n" + py
     );
-    assert "class Profile:" in py , (
+    assert "Profile = _jac_boundary_Profile" in py , (
         "the consumer needs a local mirror of the provider's obj; got:\n" + py
     );
-    assert "Profile" in mod.gen.interop_manifest.boundary_types;
+    assert any(
+        t.name == "Profile" for t in mod.gen.interop_manifest.boundary_types.values()
+    );
 }
 
 test "a bridged node imported alone is E5108" {
@@ -251,10 +260,10 @@ test "a provider's import of a shared pure helper is not an app edge" {
     import from jaclang.compiler.driver.boundary_classify {
         symbol_linked_source_module
     }
-    import from jaclang.compiler.passes.boundary_analysis_pass {
-        _parse_module_for_types
-    }
-    feed = _parse_module_for_types(fixture("feed_app.jac"));
+    import from pathlib { Path }
+    compiler = prog._get_compiler();
+    feed_path = fixture("feed_app.jac");
+    feed = compiler.parse_str(Path(feed_path).read_text(), feed_path, JacProgram());
     assert feed is not None;
     imp = import_of(feed, "shared_fmt");
     assert symbol_linked_source_module(imp) is None , (
@@ -264,36 +273,10 @@ test "a provider's import of a shared pure helper is not an app edge" {
     assert import_provider_app(imp) is None , (
         "shared_fmt carries no walker, node or edge: importing it bridges nowhere"
     );
-    ui = _parse_module_for_types(fixture("shared_ui.jac"));
+    ui_path = fixture("shared_ui.jac");
+    ui = compiler.parse_str(Path(ui_path).read_text(), ui_path, JacProgram());
     assert ui is not None;
     assert import_provider_app(import_of(ui, "feed_app")) == "feed" , (
         "the walker import still bridges to its owner when the binding is unlinked"
     );
-}
-
-
-test "ownership classification parses syntax without retaining type analysis trees" {
-    import tempfile;
-    import from pathlib { Path }
-    import from unittest.mock { patch }
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import jaclang.compiler.driver.boundary_classify as boundary;
-    import jaclang.compiler.frontend.parser.frontend as frontend;
-    unlinked: any = None;
-    with tempfile.TemporaryDirectory() as d {
-        path = Path(d) / "owned.jac";
-        path.write_text("node Owned {}\n");
-        with patch.object(boundary, "symbol_linked_source_module", return_value=None), patch.object(
-            boundary, "bridgeable_import_target", return_value=str(path)
-        ), patch.object(
-            JacCompiler, "parse_str", side_effect=AssertionError("placement reentry")
-        ), patch.object(frontend, "parse", wraps=frontend.parse) as parse {
-            assert boundary._module_carries_owned_elements(unlinked);
-            assert boundary._module_carries_owned_elements(unlinked);
-            assert parse.call_count == 1;
-            path.write_text("def helper -> int { return 1; }\n");
-            assert not boundary._module_carries_owned_elements(unlinked);
-            assert parse.call_count == 2;
-        }
-    }
 }

@@ -1334,7 +1334,7 @@ test "install editable outside any project errors" {
         pkg_dir = (Path(_tmpdir) / "my-lib").resolve();
         pkg_dir.mkdir();
         (pkg_dir / "jac.toml").write_text(
-            '[project]\nname = "my-lib"\nversion = "0.1.0"\ndescription = "Test lib"\nentry-point = "main.jac"\n'
+            '[project]\nname = "my-lib"\nversion = "0.1.0"\ndescription = "Test lib"\nentry-point = "main"\n'
         );
         # cwd (_tmpdir) has no jac.toml of its own; clear any cached config from a
         # prior test so discovery actually runs against this project-less cwd.
@@ -1357,7 +1357,7 @@ test "install editable resolves config from cwd when given dot path" {
     try {
         resolved_tmpdir = Path(_tmpdir).resolve();
         (resolved_tmpdir / "jac.toml").write_text(
-            '[project]\nname = "dot-lib"\nversion = "0.1.0"\ndescription = "Test lib"\nentry-point = "main.jac"\n'
+            '[project]\nname = "dot-lib"\nversion = "0.1.0"\ndescription = "Test lib"\nentry-point = "main"\n'
         );
         os.chdir(_tmpdir);
 
@@ -1395,17 +1395,17 @@ test "jac install -e accepts space-separated and repeated flag forms" {
         pkg_b.mkdir();
         pkg_c.mkdir();
         (pkg_a / "jac.toml").write_text(
-            '[project]\nname = "pkg-a"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+            '[project]\nname = "pkg-a"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main"\n'
         );
         (pkg_b / "jac.toml").write_text(
-            '[project]\nname = "pkg-b"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+            '[project]\nname = "pkg-b"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main"\n'
         );
         (pkg_c / "jac.toml").write_text(
-            '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+            '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main"\n'
         );
         # The host project (cwd) receives the editable links in its .jac/venv.
         (Path(_tmpdir) / "jac.toml").write_text(
-            '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+            '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main"\n'
         );
 
         # -e pkg_a pkg_b exercises space-separated; -e pkg_c exercises repeated flag
@@ -1452,17 +1452,17 @@ test "jac install -e links all packages for space-separated and repeated flag fo
         pkg_b.mkdir();
         pkg_c.mkdir();
         (pkg_a / "jac.toml").write_text(
-            '[project]\nname = "pkg-a"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+            '[project]\nname = "pkg-a"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main"\n'
         );
         (pkg_b / "jac.toml").write_text(
-            '[project]\nname = "pkg-b"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+            '[project]\nname = "pkg-b"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main"\n'
         );
         (pkg_c / "jac.toml").write_text(
-            '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+            '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main"\n'
         );
         # The host project (cwd) receives the editable links in its .jac/venv.
         (Path(_tmpdir) / "jac.toml").write_text(
-            '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+            '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main"\n'
         );
         os.chdir(_tmpdir);
 
@@ -1503,7 +1503,7 @@ test "jac install <pkg> routes package names to the project venv installer" {
     original_cwd = os.getcwd();
     try {
         (Path(_tmpdir) / "jac.toml").write_text(
-            '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+            '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main"\n'
         );
         os.chdir(_tmpdir);
         # `install` now records to jac.toml, so discovery must resolve to this

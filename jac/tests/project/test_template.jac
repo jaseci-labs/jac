@@ -131,7 +131,7 @@ test "bundle handles binary files" {
         assets_dir.mkdir();
         jac_toml = template_dir / "jac.toml";
         jac_toml.write_text(
-            "[project]\nname = \"{{name}}\"\nversion = \"0.1.0\"\nentry-point = \"main.jac\"\n\n[jacpack]\nname = \"binary-test\"\ndescription = \"Template with binary files\"\njaclang = \"0.9.0\"\n"
+            "[project]\nname = \"{{name}}\"\nversion = \"0.1.0\"\nentry-point = \"main\"\n\n[jacpack]\nname = \"binary-test\"\ndescription = \"Template with binary files\"\njaclang = \"0.9.0\"\n"
         );
         main_jac = template_dir / "main.jac";
         main_jac.write_text('print("Hello");');
@@ -203,7 +203,7 @@ test "load extracts config" {
     template = load_template_from_directory(template_dir);
     assert "project" in template.config;
     assert template.config["project"]["name"] == "{{name}}";
-    assert template.config["project"]["entry-point"] == "main.jac";
+    assert template.config["project"]["entry-point"] == "main";
 }
 
 # --- RoundTrip tests ---
@@ -283,11 +283,7 @@ def _service_template -> ProjectTemplate {
         description="svc",
         kind="service",
         config={
-            "project": {
-                "name": "{{name}}",
-                "entry-point": "main.jac",
-                "kind": "service"
-            }
+            "project": {"name": "{{name}}", "entry-point": "main", "kind": "service"}
         },
         files={"main.jac": "walker:pub Ping {}\n", "README.md": "# {{name}}\n"}
     );
@@ -298,10 +294,7 @@ test "template dir with [apps] loads as a workspace template" {
         template_dir = Path(tmpdir) / "ws";
         (template_dir / "web").mkdir(parents=True);
         (template_dir / "jac.toml").write_text(
-            '[project]\nname = "{{name}}"\n\n'
-            '[apps.web]\nkind = "web-app"\npath = "web"\n\n'
-            '[apps.api]\nkind = "service"\nentry-point = "core/api.jac"\n\n'
-            '[jacpack]\nname = "ws"\ndescription = "workspace template"\n'
+            '[project]\nname = "{{name}}"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.api]\nkind = "service"\nentry-point = "core.api"\n\n[jacpack]\nname = "ws"\ndescription = "workspace template"\n'
         );
         (template_dir / "web" / "main.jac").write_text("with entry {}\n");
         tmpl = load_template_from_directory(template_dir);
@@ -317,11 +310,7 @@ test "a single-app [apps] template takes that app's kind" {
         template_dir = Path(tmpdir) / "mob";
         template_dir.mkdir();
         (template_dir / "jac.toml").write_text(
-            '[project]\nname = "{{name}}"\ndefault-app = "main"\n\n'
-            '[apps.main]\nkind = "mobile"\n\n'
-            '[dependencies.npm]\nreact = "^18.2.0"\n\n'
-            '[dependencies.npm.native]\nreact-native-svg = "^15.13.0"\n\n'
-            '[jacpack]\nname = "mobile"\ndescription = "mobUI app"\n'
+            '[project]\nname = "{{name}}"\ndefault-app = "main"\n\n[apps.main]\nkind = "mobile"\nentry-point = "main"\n\n[dependencies.npm]\nreact = "^18.2.0"\n\n[dependencies.npm.native]\nreact-native-svg = "^15.13.0"\n\n[jacpack]\nname = "mobile"\ndescription = "mobUI app"\n'
         );
         (template_dir / "main.jac").write_text("with entry {}\n");
         tmpl = load_template_from_directory(template_dir);
@@ -339,9 +328,7 @@ test "template dir with an invalid [apps] table is rejected" {
         template_dir = Path(tmpdir) / "ws";
         template_dir.mkdir();
         (template_dir / "jac.toml").write_text(
-            '[project]\nname = "{{name}}"\nkind = "cli"\n\n'
-            '[apps.web]\nkind = "web-app"\n\n'
-            '[jacpack]\nname = "ws"\ndescription = "bad"\n'
+            '[project]\nname = "{{name}}"\nkind = "cli"\n\n[apps.web]\nkind = "web-app"\nentry-point = "main"\n\n[jacpack]\nname = "ws"\ndescription = "bad"\n'
         );
         raised = False;
         try {
@@ -359,9 +346,7 @@ test "scaffold_app appends an [apps] table and copies the template" {
         root_path = Path(tmpdir) / "proj";
         (root_path / "web").mkdir(parents=True);
         (root_path / "jac.toml").write_text(
-            '[project]\nname = "acme"\nversion = "0.1.0"\n\n'
-            '[apps.web]\nkind = "web-app"\npath = "web"\n\n'
-            '[serve]\nport = 8090\n'
+            '[project]\nname = "acme"\nversion = "0.1.0"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[serve]\nport = 8090\n'
         );
         (root_path / "web" / "main.jac").write_text("with entry {}\n");
         created = scaffold_app(
@@ -372,14 +357,13 @@ test "scaffold_app appends an [apps] table and copies the template" {
         assert (root_path / "services" / "api" / "README.md").read_text() == "# api\n";
         text = (root_path / "jac.toml").read_text();
         assert "[serve]\nport = 8090" in text , "existing content must be untouched";
-        assert '[apps.web]\nkind = "web-app"\npath = "web"' in text;
+        assert '[apps.web]\nkind = "web-app"\nentry-point = "web.main"' in text;
         assert "[apps.api]" in text;
         assert "jacpack" not in text;
         cfg = JacConfig.load(root_path / "jac.toml");
         assert list(cfg.apps.keys()) == ["web", "api"];
         assert cfg.apps["api"].kind == "service";
-        assert cfg.apps["api"].path == "services/api";
-        assert cfg.apps["api"].entry_point == "" , "the kind default entry is not spelled out";
+        assert cfg.apps["api"].entry_point == "services.api.main";
     }
 }
 
@@ -391,7 +375,7 @@ def _mobile_template -> ProjectTemplate {
         config={
             "project": {"name": "{{name}}", "default-app": "main"},
             "apps": {
-                "main": {"kind": "mobile", "platform": "ios", "entry-point": "app.jac"}
+                "main": {"kind": "mobile", "platform": "ios", "entry-point": "app"}
             },
             "dependencies": {
                 "npm": {
@@ -410,9 +394,7 @@ test "scaffold_app copies the sole app's keys and npm deps as overlays" {
         root_path = Path(tmpdir) / "proj";
         (root_path / "web").mkdir(parents=True);
         (root_path / "jac.toml").write_text(
-            '[project]\nname = "acme"\n\n'
-            '[apps.web]\nkind = "web-app"\npath = "web"\n\n'
-            '[dependencies.npm]\nreact = "^19"\n'
+            '[project]\nname = "acme"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[dependencies.npm]\nreact = "^19"\n'
         );
         (root_path / "web" / "main.jac").write_text("with entry {}\n");
         created = scaffold_app(
@@ -426,10 +408,9 @@ test "scaffold_app copies the sole app's keys and npm deps as overlays" {
         cfg = JacConfig.load(root_path / "jac.toml");
         app = cfg.apps["mobile"];
         assert app.kind == "mobile";
-        assert app.path == "mobile";
         assert app.ui() == "mobui" , "kind = mobile is mobUI with no other key";
         assert app.platform == "ios";
-        assert app.entry_point == "app.jac" , "entry-point comes from the app table";
+        assert app.entry_point == "mobile.app" , "entry-point comes from the app table";
         assert app.entry_path(str(root_path)) == str(root_path / "mobile" / "app.jac");
         assert app.overlays["dependencies"]["npm"]["lucide-react-native"] == "^0.469.0";
         assert app.overlays["dependencies"]["npm"]["native"]["react-native-svg"]
@@ -452,7 +433,7 @@ test "scaffold_app migrates a single-app project into a workspace" {
         root_path = Path(tmpdir) / "proj";
         root_path.mkdir();
         (root_path / "jac.toml").write_text(
-            '[project]\nname = "acme"\nkind = "cli"\nentry-point = "main.jac"\n\n'
+            '[project]\nname = "acme"\nkind = "cli"\nentry-point = "main"\n\n'
             '[dependencies]\nrequests = ">=2"\n'
         );
         (root_path / "main.jac").write_text("with entry {}\n");
@@ -461,26 +442,25 @@ test "scaffold_app migrates a single-app project into a workspace" {
         assert cfg.is_workspace;
         assert list(cfg.apps.keys()) == ["acme", "api"];
         assert cfg.apps["acme"].kind == "cli";
-        assert cfg.apps["acme"].is_file_rooted();
-        assert cfg.apps["acme"].entry_point == "main.jac";
+        assert cfg.apps["acme"].entry_point == "main";
         assert cfg.default_app == "acme" , "bare `jac run` keeps running the old app";
-        assert cfg.project.kind == "" and cfg.project.entry_point == "main.jac";
+        assert cfg.project.kind == "" and cfg.project.entry_point == "main";
         assert cfg.dependencies["requests"] == ">=2";
         assert cfg.resolve_app("").name == "acme";
         assert (root_path / "api" / "main.jac").exists();
     }
 }
 
-test "scaffold_app rejects duplicate names, claimed paths and unknown kinds" {
+test "scaffold_app rejects duplicate names, entry modules and unknown kinds" {
     with TemporaryDirectory() as tmpdir {
         root_path = Path(tmpdir) / "proj";
         root_path.mkdir();
         (root_path / "jac.toml").write_text(
-            '[project]\nname = "acme"\n\n[apps.api]\nkind = "service"\npath = "api"\n'
+            '[project]\nname = "acme"\n\n[apps.api]\nkind = "service"\nentry-point = "api.main"\n'
         );
         for (args, needle) in [
             (("api", "service", "api2"), "already exists"),
-            (("api2", "service", "api"), "already the root_path"),
+            (("api2", "service", "api"), "entry-point already declared"),
             (("svc", "nope", "svc"), "Unknown app kind"),
             (("bad/name", "service", "x"), "cannot contain")
         ] {
@@ -507,11 +487,7 @@ def _entry_template -> ProjectTemplate {
         description="service with its own entry",
         kind="service",
         config={
-            "project": {
-                "name": "{{name}}",
-                "entry-point": "server.jac",
-                "kind": "service"
-            }
+            "project": {"name": "{{name}}", "entry-point": "server", "kind": "service"}
         },
         files={"server.jac": "walker:pub Ping {}\n"}
     );
@@ -522,7 +498,7 @@ test "scaffold_app honors a template entry-point other than the kind default" {
         root_path = Path(tmpdir) / "proj";
         (root_path / "web").mkdir(parents=True);
         (root_path / "jac.toml").write_text(
-            '[project]\nname = "acme"\n\n[apps.web]\nkind = "web-app"\npath = "web"\n'
+            '[project]\nname = "acme"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n'
         );
         (root_path / "web" / "main.jac").write_text("with entry {}\n");
         created = scaffold_app(
@@ -530,10 +506,10 @@ test "scaffold_app honors a template entry-point other than the kind default" {
         );
         assert str(root_path / "services" / "worker" / "server.jac") in created;
         text = (root_path / "jac.toml").read_text();
-        assert 'entry-point = "server.jac"' in text , text;
+        assert 'entry-point = "services.worker.server"' in text , text;
         cfg = JacConfig.load(root_path / "jac.toml");
         app = cfg.apps["worker"];
-        assert app.entry_point == "server.jac" , app.entry_point;
+        assert app.entry_point == "services.worker.server" , app.entry_point;
         assert app.entry_path(str(root_path))
             == str(root_path / "services" / "worker" / "server.jac");
         assert _app_name(
@@ -549,7 +525,7 @@ test "scaffold_app migration keeps the base app loadable and reusable" {
         root_path = Path(tmpdir) / "proj";
         root_path.mkdir();
         (root_path / "jac.toml").write_text(
-            '[project]\nname = "acme"\nkind = "web-app"\nentry-point = "app.jac"\n\n'
+            '[project]\nname = "acme"\nkind = "web-app"\nentry-point = "app"\n\n'
             '[serve]\nport = 8090\n'
         );
         (root_path / "app.jac").write_text("with entry {}\n");
@@ -561,7 +537,7 @@ test "scaffold_app migration keeps the base app loadable and reusable" {
         assert cfg.is_workspace and cfg.default_app == "acme";
         assert cfg.project.kind == "" and cfg.serve.port == 8090;
         assert cfg.apps["acme"].kind == "web-app";
-        assert cfg.apps["acme"].entry_point == "app.jac";
+        assert cfg.apps["acme"].entry_point == "app";
         assert cfg.apps["acme"].ui() == "dom";
         text = (root_path / "jac.toml").read_text();
         assert "client_kind" not in text and "client =" not in text , (
@@ -575,9 +551,7 @@ test "a template carrying the removed client keys is rejected on load" {
         template_dir = Path(tmpdir) / "stale";
         template_dir.mkdir();
         (template_dir / "jac.toml").write_text(
-            '[project]\nname = "{{name}}"\n\n'
-            '[apps.main]\nkind = "mobile"\nclient = "react-native"\nclient_kind = "mobui"\n\n'
-            '[jacpack]\nname = "stale"\ndescription = "pre-refactor mobile template"\n'
+            '[project]\nname = "{{name}}"\n\n[apps.main]\nkind = "mobile"\nentry-point = "main"\nclient = "react-native"\nclient_kind = "mobui"\n\n[jacpack]\nname = "stale"\ndescription = "pre-refactor mobile template"\n'
         );
         (template_dir / "main.jac").write_text("with entry {}\n");
         raised = False;

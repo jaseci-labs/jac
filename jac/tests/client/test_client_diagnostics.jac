@@ -77,7 +77,7 @@ def _make_project(proj: Path) -> Path {
     compiler = builder._get_compiler().jac_client_compiler;
     compiler.compiled_dir = compiled;
     for name in ["MermaidDiagram.jac", "Missing.jac"] {
-        compiler.compile_dependencies_recursively(
+        compiler.emit_dependencies(
             docs / name,
             visited=set(),
             collected_exports=set(),

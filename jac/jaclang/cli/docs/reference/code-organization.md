@@ -451,12 +451,10 @@ acme/
   cli/               the command-line app: main.jac, commands/
 ```
 
-Two rules keep the layering honest, and the compiler checks both:
-dependencies point from apps toward `core/` and never back (a shared module
-importing from an app is `E2040`), and one app reaches another only through
-its walkers and `def:pub` functions (`E2039`). Declaration and implementation
-files split exactly as described above inside every app and inside shared
-code; the annex rules do not change at an app boundary.
+Ordinary imports participate in the selected app's compilation context. Imports
+through another declared app entry use its public functions and walkers;
+`E2039` diagnoses access outside that surface. File location does not establish
+ownership. Declaration and implementation annexes work within every app context.
 
 ---
 

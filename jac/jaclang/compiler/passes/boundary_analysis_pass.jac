@@ -1,3 +1,4 @@
+import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.unitree {
     Ability,
@@ -51,6 +52,8 @@ import from jaclang.compiler.frontend.codeinfo {
 import from jaclang.compiler.passes.uni_pass { UniPass }
 
 walker BoundaryAnalysisPass(UniPass) {
+    has prog: JacProgram;
+    static has HOST_PASS: bool = True;
     has _func_defs: dict[(str, tuple[(InteropContext, Ability)])] = field(
         default_factory=`dict
     ),
@@ -79,6 +82,13 @@ walker BoundaryAnalysisPass(UniPass) {
 
     def _register_na_client_import(nd: Import) -> None;
     def _register_client_bridged_import(nd: Import) -> None;
+    def _register_type_import(
+        nd: Import,
+        item: ModuleItem,
+        source_mod: (Module | None),
+        caller_ctx: InteropContext
+    ) -> bool;
+
     def _provider_module_of(nd: Import) -> (Module | None);
     def _record_app_edge(nd: Import) -> None;
     def _bridge_targets(mod: Module) -> list[tuple[(str, str)]];
@@ -102,12 +112,11 @@ walker BoundaryAnalysisPass(UniPass) {
     def _extract_subscript_inner(expr: (UniNode | None)) -> str;
     def _extract_all_subscript_types(expr: (UniNode | None)) -> list[str];
     def _extract_all_type_names(expr: (UniNode | None)) -> list[str];
-    def _collect_boundary_type(type_name: str, source_mod: (Module | None)) -> None;
+    def _collect_boundary_type(
+        type_name: str, source_mod: (Module | None)
+    ) -> (BoundaryTypeInfo | None);
+
     def _literal_default(expr: (UniNode | None)) -> tuple[(bool, any)];
     def after_pass -> None;
     def _record_access_levels(manifest: any) -> None;
 }
-
-glob _type_parse_memo: dict[str, tuple[float, Module | None]] = {};
-
-def _parse_module_for_types(file_path: str) -> (Module | None);

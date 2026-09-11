@@ -11,7 +11,7 @@ import from jaclang.runtime.osp_model { OspAnalysis, OspModel }
 import from jaclang.compiler.backends.common.ast_gen_base { BaseAstGenPass }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.backends.es.jsx_processor { EsJsxProcessor }
-import from jaclang.compiler.frontend.codeinfo { ClientManifest }
+import from jaclang.compiler.frontend.codeinfo { BoundaryTypeInfo, ClientManifest }
 import from jaclang.compiler.backends.es.scoped_styles {
     ScopedStyleSheet,
     load_style_annex
@@ -428,6 +428,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _generate_na_import_binding(nd: uni.Import) -> None;
     def _is_client_native_import(nd: uni.Import) -> bool;
     def _emit_boundary_type_stubs(nd: uni.Module) -> list;
+    def _boundary_type_name(info: BoundaryTypeInfo) -> str;
     def _es_json_literal(value: any) -> any;
     can exit_type_alias with uni.TypeAlias exit;
     can exit_type_param with uni.TypeParam exit;
@@ -624,7 +625,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _wrap_to_wire_if_boundary(
         expr: es.Expression,
         type_name: str,
-        boundary_types: dict[(str, any)],
+        boundary_types: dict[str, BoundaryTypeInfo],
         jac_node: uni.UniNode
     ) -> es.Expression;
 
@@ -635,7 +636,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _wrap_return_with_boundary(
         call_expr: es.Expression,
         ret_type: str,
-        boundary_types: dict[(str, any)],
+        boundary_types: dict[str, BoundaryTypeInfo],
         jac_node: uni.UniNode,
         pre_awaited: bool
     ) -> es.Expression;
