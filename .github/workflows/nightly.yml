@@ -26,11 +26,12 @@ jobs:
       uses: ./.github/actions/setup-jac
 
     - name: Install display deps
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 \
-          libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
-          libasound2t64 patchelf
+      uses: ./.github/actions/apt-install
+      with:
+        packages: >-
+          xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1
+          libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libasound2t64 patchelf
+        no-install-recommends: "false"
 
     - name: Build notes-app example
       run: |

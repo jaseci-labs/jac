@@ -856,9 +856,9 @@ jobs:
         with:
           submodules: true
       - name: Install qemu-user and aarch64 cross libc
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-user-static libc6-arm64-cross
+        uses: ./.github/actions/apt-install
+        with:
+          packages: qemu-user-static libc6-arm64-cross
       - uses: ./.github/actions/jac-kit
       - name: Run aarch64 cross tests under qemu
         env:
@@ -926,6 +926,9 @@ jobs:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    # A wedged mirror or a hung browser must not sit on a runner for the
+    # 6-hour default; a healthy run of this job is about 22 minutes.
+    timeout-minutes: 50
     env:
       JAC_NO_DEV_SOURCE: "1"
     steps:
@@ -1007,10 +1010,10 @@ jobs:
       # the native engine needs WebKitGTK + a C toolchain to build libwebview,
       # patchelf for the $ORIGIN runpath, and a display to launch under.
       - name: Install desktop build deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev \
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
             patchelf xvfb
 
       - name: Build the desktop app
@@ -1126,15 +1129,24 @@ jobs:
             || { echo "::error::/llms.txt did not serve the llms corpus"; exit 1; }
           echo "install.sh and llms.txt serve their payloads"
 
-      - name: Ensure a Chromium binary for jac browse
+      - name: Look for a Chromium binary for jac browse
+        id: browser
         run: |
           for c in google-chrome google-chrome-stable chromium chromium-browser; do
             if command -v "$c" >/dev/null 2>&1; then
               echo "found browser: $c"
+              echo "present=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           done
-          sudo apt-get update && sudo apt-get install -y chromium-browser
+          echo "present=false" >> "$GITHUB_OUTPUT"
+
+      - name: Install a Chromium binary for jac browse
+        if: steps.browser.outputs.present != 'true'
+        uses: ./.github/actions/apt-install
+        with:
+          packages: chromium-browser
+          no-install-recommends: "false"
 
       # Drive every page and fullstack flow with jac browse: landing content,
       # live-source windows, the leaderboard shell, the whole socialize

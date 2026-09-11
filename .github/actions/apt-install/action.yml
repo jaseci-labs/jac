@@ -1,0 +1,22 @@
+name: Install apt packages
+description: >
+  Install Debian packages on a Linux runner in a way that survives a Canonical
+  archive outage. Tries the runner image's own mirrors first (Blacksmith images
+  carry a local mirrorlist, which is the fast path), then Canonical over
+  https, then a non-Canonical mirror.
+inputs:
+  packages:
+    description: Space-separated package names.
+    required: true
+  no-install-recommends:
+    description: Pass --no-install-recommends.
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        APT_PACKAGES: ${{ inputs.packages }}
+        APT_NO_RECOMMENDS: ${{ inputs.no-install-recommends }}
+      run: bash "$GITHUB_ACTION_PATH/apt-install.sh"
