@@ -1,7 +1,7 @@
 """Tool use and the ReAct loop: finish_tool, and recovering when a model skips it."""
 
 import from jaclang.byllm.types { IterationAction, IterationContext }
-import from support_tests { FakeLLM, call, finish, prompt_text, say }
+import from support_tests { FakeLLM, call, finish, prompt_text, say, tool_names }
 
 
 """A chat message from one person."""
@@ -126,4 +126,37 @@ test "an on_iteration hook can stop the loop, with or without a summary" {
             assert result == expected , f"{label}: got {result!r}";
         }
     }
+}
+
+
+glob _calc_llm = FakeLLM();
+
+obj Calculator {
+    has calls: list = [];
+
+    def add(num1: int, num2: int) -> int {
+        self.calls.append((num1, num2));
+        return num1 + num2;
+    }
+
+    # The model is named here rather than inline because the tool is a bound
+    # method: `self.add` only exists once there is a receiver.
+    def eval_expr(expression: str) -> str by _calc_llm(tools=[self.add]);
+}
+
+
+test "a bound method can be a tool, and runs against its own receiver" {
+    _calc_llm.replies.extend([call("add", {"num1": 12, "num2": 34}), say("46")]);
+    _calc_llm.postinit();
+    calc = Calculator();
+
+    assert calc.eval_expr("What is 12 + 34?") == "46";
+    assert calc.calls == [(12, 34)] , (
+        f"the tool must run against the receiver it was bound to, got {calc.calls}"
+    );
+    assert "add" in tool_names(_calc_llm.seen[0]) , (
+        f"the bound method must be offered as a tool, got {tool_names(
+            _calc_llm.seen[0]
+        )}"
+    );
 }

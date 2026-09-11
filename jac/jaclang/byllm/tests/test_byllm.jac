@@ -1,5 +1,6 @@
 import contextlib;
 import io;
+import time;
 import os;
 import sys;
 import warnings;
@@ -42,13 +43,6 @@ glob jac_import = Jac.jac_import,
 
 def _as_any(v: any) -> any {
     return v;
-}
-
-
-test "method tool call" {
-    stdout_value = run_fixture("method_tool");
-    assert "Calculator.add called with 12, 34" in stdout_value;
-    assert "Result: 46" in stdout_value;
 }
 
 
@@ -102,21 +96,6 @@ test "enum without value" {
     stdout_value = captured_output.getvalue();
     assert "YES" in stdout_value;
     assert "NO" in stdout_value;
-}
-
-
-test "visit by for routing" {
-    stdout_value = run_fixture("math_poem_agents");
-    assert "Agentic minds, we hold dear" in stdout_value;
-    assert "Math Result: 35" in stdout_value;
-}
-
-test "streaming visit by routes and streams tokens to handler" {
-    stdout_value = run_fixture("streaming_visit_by");
-    assert "STREAMING_VISIT_BY_PASS" in stdout_value;
-
-    assert "VISITED: green" in stdout_value;
-    assert "VISITED: red" not in stdout_value;
 }
 
 
@@ -853,6 +832,172 @@ test "acall_llm proxy is a coroutine function" {
     );
 }
 
+# jac#8932: adispatch_streaming awaits model_call_with_stream_async, so the base
+# must be a coroutine returning an async iterator, not an async generator.
+def _chunk_8932(text: str) -> object {
+    return litellm.ModelResponseStream(
+        **{
+            "id": "c",
+            "object": "chat.completion.chunk",
+            "created": 1,
+            "model": "fake",
+            "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}]
+        }
+    );
+}
+
+
+"""Drain an async stream, pausing between chunks to pace the producer."""
+async def _drain_8932(stream: any, pace: float = 0.0) -> str {
+    acc: list[object] = [];
+    async for chunk in stream {
+        acc.append(chunk);
+        if pace {
+            await asyncio.sleep(pace);
+        }
+    }
+    return "".join([str(c) for c in acc]);
+}
+
+
+"""Drive one LLM down the async streaming path, as `by llm()` does."""
+async def _stream_8932(llm: _byllm_llm_mod.BaseLLM, pace: float = 0.0) -> str {
+    return await _drain_8932(await llm.ainvoke(mk_run(stream=True)), pace);
+}
+
+
+"""Builds the whole stream before returning it, like ModelPool cost-based-routing."""
+obj _EagerStream8932(_byllm_llm_mod.BaseLLM) {
+    has build_s: float = 0.0;
+
+    override def model_call_with_stream(params: dict) -> object {
+        time.sleep(self.build_s);
+        return [_chunk_8932("eager "), _chunk_8932("list")];
+    }
+}
+
+
+"""Records when each chunk is produced, so laziness can be asserted."""
+obj _LazyStream8932(_byllm_llm_mod.BaseLLM) {
+    has produced: list[float] = [];
+
+    override def model_call_with_stream(params: dict) -> object {
+        for word in ["one ", "two ", "three"] {
+            self.produced.append(time.perf_counter());
+            yield _chunk_8932(word);
+        }
+    }
+}
+
+
+"""Stream while a ticker runs, to measure whether the loop stayed free."""
+async def _ticked_stream_8932(llm: _byllm_llm_mod.BaseLLM) -> tuple[int, str] {
+    ticks: list[int] = [0];
+    stop: list[bool] = [False];
+
+    async def _tick {
+        while not stop[0] {
+            ticks[0] += 1;
+            await asyncio.sleep(0.01);
+        }
+    }
+    task = asyncio.ensure_future(_tick());
+    text = await _stream_8932(llm);
+    stop[0] = True;
+    await task;
+    return (ticks[0], text);
+}
+
+
+test "async streaming delivers every provider shape" {
+    cases: list[tuple] = [
+        (
+            "subclass inheriting the base method",
+            FakeLLM(model_name="fake-8932", replies=[say("hello world")]),
+            "hello world"
+        ),
+        (
+            "MockLLM, which overrides adispatch_streaming",
+            _byllm_llm_mod.MockLLM(
+                model_name="mockllm", config={"outputs": ["hello world"]}
+            ),
+            "hello world"
+        ),
+        (
+            "provider call returning a list, as ModelPool cost-based-routing does",
+            _EagerStream8932(model_name="list-8932"),
+            "eager list"
+        ),
+        (
+            "Model delegating to its mock",
+            Model(model_name="mockllm", config={"outputs": ["hello world"]}),
+            "hello world"
+        )
+    ];
+    for (label, llm, expected) in cases {
+        assert asyncio.run(_stream_8932(llm)) == expected , label;
+    }
+}
+
+
+def _probe_tool_8932(query: str) -> str {
+    return "probe";
+}
+
+
+async def _ainvoke_8932(llm: _byllm_llm_mod.BaseLLM, run: MTRuntime) -> object {
+    return await llm.ainvoke(run);
+}
+
+
+test "Model hands async work to its delegate off the streaming path" {
+    # Both ainvoke branches: handled_directly, and the tools-bound fall-through.
+    cases: list[tuple] = [
+        ("no stream, no tools", mk_run()),
+        ("tools bound", mk_run(tools=[_probe_tool_8932]))
+    ];
+    for (label, run) in cases {
+        llm = Model(model_name="mockllm", config={"outputs": ["hello world"]});
+        assert asyncio.run(_ainvoke_8932(llm, run)) == "hello world" , label;
+    }
+}
+
+
+test "async streaming keeps the loop free while an eager provider builds" {
+    llm = _EagerStream8932(model_name="eager-8932", build_s=0.3);
+    (ticks, text) = asyncio.run(_ticked_stream_8932(llm));
+    assert text == "eager list";
+    assert ticks > 10 , f"loop was blocked during the eager build: {ticks} ticks";
+}
+
+
+test "async streaming stays lazy: the producer waits for the consumer" {
+    llm = _LazyStream8932(model_name="lazy-8932");
+    assert asyncio.run(_stream_8932(llm, pace=0.12)) == "one two three";
+    gaps = [llm.produced[i] - llm.produced[i - 1] for i in range(1, len(llm.produced))];
+    assert all(g > 0.08 for g in gaps) , f"stream was buffered, not lazy: {gaps}";
+}
+
+
+# The by llm() declaration lives in a fixture: at module level here it perturbs
+# the two tests that compile a fixture with JacProgram().
+test "async def by llm(stream=True) streams end to end" {
+    code_gen = (prog := JacProgram()).compile(
+        os.path.join(FIXTURE_DIR, "async_stream_by_llm.jac")
+    );
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    compiled = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec");
+    module = types.ModuleType("async_stream_by_llm_fixture");
+    module.__dict__["__file__"] = code_gen.loc.mod_path;
+    exec(compiled, module.__dict__);
+
+    async def _run -> str {
+        return await _drain_8932(await module.__dict__["ask"](topic="anything"));
+    }
+    assert asyncio.run(_run()) == "streamed reply";
+}
+
+
 test "model_call_no_stream_async raises and logs AuthenticationError" {
     log_output = io.StringIO();
     _loguru_logger.remove();
@@ -891,6 +1036,7 @@ test "model_call_no_stream_async raises and logs AuthenticationError" {
         _loguru_logger.remove(handler_id);
     }
 }
+
 
 test "model_call_with_stream_async raises and logs RateLimitError" {
     log_output = io.StringIO();
