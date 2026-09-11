@@ -151,7 +151,6 @@ impl JacCompiler._get_bytecode(
 ) -> (types.CodeType | None) {
     actual_program = self.selfhost.resolve(full_target, target_program);
     (rebuild, no_precompile) = cache_mode();
-    symtab_only_recovery = False;
 
     if (
         (not rebuild)
@@ -161,13 +160,6 @@ impl JacCompiler._get_bytecode(
         actual_program.invalidate_module(full_target);
     }
     if (
-        (not rebuild)
-        and (full_target in actual_program.mod.hub)
-        and not artifact_for(actual_program.mod.hub[full_target]).py_bytecode
-    ) {
-        actual_program.invalidate_module(full_target);
-        symtab_only_recovery = True;
-    } elif (
         (not rebuild)
         and (full_target in actual_program.mod.hub)
         and artifact_for(actual_program.mod.hub[full_target]).py_bytecode
@@ -236,12 +228,8 @@ impl JacCompiler._get_bytecode(
                 } else {
                     return marshal.loads(bc);
                 }
-            } else {
-                if SEC_IFACE not in secs and SEC_CLIENT not in secs {
-                    cache_path.unlink(missing_ok=True);
-                }
-                actual_program.invalidate_module(full_target);
-                symtab_only_recovery = True;
+            } elif SEC_IFACE not in secs and SEC_CLIENT not in secs {
+                cache_path.unlink(missing_ok=True);
             }
         } except Exception {}
     }

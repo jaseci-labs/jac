@@ -38,6 +38,7 @@ def m_guard(n: int) -> str {
 }
 
 def m_seq(xs: list) -> str {
+    rest: list = [];
     match xs {
         case [ 1 , 2 , 3 ]:
             return "exact";
@@ -103,6 +104,7 @@ def m_or(x: any) -> str {
 }
 
 def m_as(x: any) -> str {
+    pair: list = [];
     match x {
         case [ 1 , y ] as pair:
             return "pair:" + str(y) + ":" + str(len(pair));
@@ -114,6 +116,7 @@ def m_as(x: any) -> str {
 }
 
 def m_rest(d: dict) -> str {
+    rest: dict = {};
     match d {
         case { "a" : v , ** rest }:
             return "rest:" + str(v) + ":" + str(len(rest));

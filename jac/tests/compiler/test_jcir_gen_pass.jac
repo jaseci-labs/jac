@@ -733,8 +733,10 @@ obj Helper {
     assert_bytecode_equal(ref_tree, "llm_fixture.jac", result.modules[0].bytecode);
 }
 
-test "real repo file srcloc lowers identically end to end" {
-    path = os.path.join(JAC_ROOT, "jaclang", "compiler", "frontend", "srcloc.jac");
+test "real repo file source locations lowers identically end to end" {
+    path = os.path.join(
+        JAC_ROOT, "jaclang", "compiler", "frontend", "source_locations.jac"
+    );
     (ref_tree, got_tree, blob) = dual_compile_file(path);
     assert_dump_equal(ref_tree, got_tree);
     result = compile_ir(blob);
@@ -923,7 +925,8 @@ with entry {
     );
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
     assert artifact_for(mod).jcir , "a compiled module must carry its codegen container";
-    assert artifact_for(mod).py_bytecode;
+    bytecode = artifact_for(mod).py_bytecode;
+    assert bytecode is not None;
     sched = get_py_code_gen(native=False);
     assert PassIdentity.JcirGenPass in sched , f"jcir is not in the codegen schedule: {sched}";
     assert PassIdentity.JcirBytecodeGenPass in sched;
@@ -932,7 +935,7 @@ with entry {
             f"a legacy emitter is back in the codegen schedule: {`entry.value}"
         );
     }
-    piped_code = marshal.loads(artifact_for(mod).py_bytecode);
+    piped_code = marshal.loads(bytecode);
     round_tripped = pycompile(artifact_for(mod).py_ast[0], "tail_fixture.jac", "exec");
     diffs = code_diffs(round_tripped, piped_code, "module", []);
     assert diffs == [] , "\n".join(diffs);

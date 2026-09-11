@@ -4,11 +4,8 @@ import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from pathlib { Path }
-import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.estree { Node as EsNode }
-import from jaclang.compiler.analysis.types.type_checker_pass { TypeCheckPass }
-import from jaclang.compiler.pipeline.pass_base { Alert }
 import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.pipeline.executor { run_pass }
 
@@ -24,19 +21,6 @@ def _resolve_fixture_path(fixture_name: str, fixture_dir: str = "") -> str {
     return fixture_path;
 }
 
-"""Return compile errors that are not non-fatal TypeCheckPass diagnostics."""
-def _fatal_compile_errors(prog: JacProgram) -> list[Alert] {
-    # Filter out type-checker diagnostics (non-fatal warnings about
-    # Unknown types in client code).  Only fail on parse/compile errors.
-    # issubclass: diagnostics may come from TypeCheckPass itself or its
-    # TypeCheckPass schedule entry.
-    return [
-        e
-        for e in prog.errors_had
-        if not issubclass(e.from_pass, TypeCheckPass)
-    ];
-}
-
 """Compile a Jac fixture to JavaScript and return the emitted source."""
 def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
     fixture_path = _resolve_fixture_path(fixture_name, fixture_dir);
@@ -46,9 +30,8 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
     }
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path, no_cgen=True);
-    _fatal = _fatal_compile_errors(prog);
-    assert not _fatal , (
-        f"Compilation errors in {fixture_name}: {[str(e) for e in _fatal]}"
+    assert not prog.errors_had , (
+        f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
 
     es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog);
@@ -72,9 +55,8 @@ def compile_fixture_to_js_production(fixture_name: str, fixture_dir: str = "") -
     }
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path);
-    _fatal = _fatal_compile_errors(prog);
-    assert not _fatal , (
-        f"Compilation errors in {fixture_name}: {[str(e) for e in _fatal]}"
+    assert not prog.errors_had , (
+        f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
     assert artifact_for(ir).js and artifact_for(ir).js.strip() , (
         f"Production JS codegen produced no output for {fixture_name}"

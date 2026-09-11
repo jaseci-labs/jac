@@ -294,3 +294,23 @@ test "pipe type queries preserve syntax parents and lexical children" {
         assert program.analysis.mutations.mask == 0;
     }
 }
+
+test "runtime bytecode extends an analyzed graph without discarding its bindings" {
+    import from jaclang.compiler.session.options { CompileOptions }
+    with TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'main.jac';
+        path.write_text('def value -> int { return 42; }');
+        program = JacProgram();
+        module = program.compile(
+            str(path), options=CompileOptions(no_cgen=True, default_codespace='server')
+        );
+        assert not program.errors_had;
+        parses = program.source_store.parses;
+        code = program._get_compiler().get_bytecode(str(path), program);
+        assert code is not None;
+        context = program.module_context(module);
+        assert module not in context.analysis.invalid_graphs;
+        assert context.find_module(str(path)) is module;
+        assert program.source_store.parses == parses;
+    }
+}

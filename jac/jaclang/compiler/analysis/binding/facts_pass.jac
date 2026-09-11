@@ -8,18 +8,18 @@ import from jaclang.compiler.analysis.binding.bindings {
 
 walker BindingFactsPass(ProgramTransform) {
     def transform(ir_in: Module) -> Module {
-        scopes: list[UniScopeNode] = [ir_in];
-        scopes.extend(
+        nodes = list(ir_in.flatten());
+        scopes: list[UniScopeNode] = [
             node
-            for node in ir_in._in_mod_nodes
-            if isinstance(node, UniScopeNode) and node is not ir_in
-        );
+            for node in nodes
+            if isinstance(node, UniScopeNode)
+        ];
         symbols: set[Symbol] = set();
         for scope in scopes {
             symbols.update(scope.names_in_scope.values());
         }
         collect_capture_facts(ir_in, scopes);
-        for name in ir_in._in_mod_nodes {
+        for name in nodes {
             if isinstance(name, NameAtom) and name.sym is not None {
                 symbols.add(name.sym);
             }

@@ -159,6 +159,10 @@ def collect_capture_facts(module: Module, scopes: list[UniScopeNode]) {
         }
         symbol = name.sym;
         declaration_scope = symbol.parent_tab;
+        while declaration_scope is not None
+            and not UniScopeNode.is_python_scoping(declaration_scope) {
+            declaration_scope = declaration_scope.parent_scope;
+        }
         if name.value == "super" and declaration_scope is not None {
             receiver = declaration_scope.names_in_scope.get("self");
             if receiver is not None {

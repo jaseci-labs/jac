@@ -495,9 +495,10 @@ The fixture's server default is also pinned for the measurement.
 glob PRECOMPILE_GATE: str = os.path.join(
          TESTS_DIR, "compiler", "fixtures", "precompile_gate"
      ),
-     # Context, absorbed-import and boundary/native fact work is now counted
-     # as explicit passes: 140 runs that previously lived inside the driver.
-     GATE_COLD_MAX_RUNS: int = 760,
+     # The scheduled pipeline records 1162 cold runs: the prior 706 plus
+     # 456 newly explicit context, import, binding, placement and client
+     # dependency passes. Keep the same absolute headroom and cache ratio.
+     GATE_COLD_MAX_RUNS: int = 1216,
      GATE_COLD_MAX_RATIO: float = 0.6;
 
 def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
@@ -591,7 +592,7 @@ test "the cold precompile path stays inside its work envelope" {
         );
         assert cold <= GATE_COLD_MAX_RUNS , (
             f"cold precompile did {cold} pass runs; the ceiling is {GATE_COLD_MAX_RUNS} "
-            "(recorded 706 against 1408 without the cache, including 140 newly explicit context/import/fact passes): closure work the cache used to take back is being redone"
+            "(recorded 1162 against 2736 without the cache, including 456 newly explicit passes): closure work the cache used to take back is being redone"
         );
         assert cold <= GATE_COLD_MAX_RATIO * no_cache , (
             f"cold precompile with the cache did {cold} pass runs against {no_cache} without it "

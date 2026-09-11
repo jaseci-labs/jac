@@ -915,13 +915,13 @@ test "test_go_to_definition_nested_impl_symbols" {
         lsp.type_check_file(impl_file);
 
         positions = [
-            (2, 5, "unitree.jac"),
-            (3, 8, "unitree.jac"),
-            (4, 18, "unitree.jac"),
-            (6, 11, "unitree.jac"),
-            (7, 15, "unitree.jac"),
-            (9, 22, "unitree.jac"),
-            (10, 15, "unitree.jac"),
+            (2, 5, "compiler/ir/syntax/nodes.jac"),
+            (3, 8, "compiler/ir/syntax/nodes.jac"),
+            (4, 18, "compiler/ir/syntax/nodes.jac"),
+            (6, 11, "compiler/ir/syntax/nodes.jac"),
+            (7, 15, "compiler/ir/syntax/nodes.jac"),
+            (9, 22, "compiler/ir/syntax/nodes.jac"),
+            (10, 15, "compiler/ir/syntax/nodes.jac"),
 
         ];
 
@@ -957,7 +957,7 @@ test "test_go_to_definition_stub_param_compound_types" {
         for (line, col, desc) in positions {
             result = lsp.get_definition(stub_file, lspt.Position(line - 1, col - 1));
             assert result is not None , f"go-to-def returned None for {desc}";
-            assert "unitree.jac" in str(result) , f"Expected unitree.jac for {desc}, got: {result}";
+            assert "compiler/ir/syntax/nodes.jac" in str(result) , f"Expected compiler/ir/syntax/nodes.jac for {desc}, got: {result}";
         }
     } finally {
         teardown_test();

@@ -2,7 +2,7 @@
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.compiler.ir.enums { SymbolStorage }
-import from jaclang.compiler.ir.schema { HasVar, ParamVar, Name }
+import from jaclang.compiler.ir.schema { HasVar, ParamVar, Name, LambdaExpr }
 import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.session.options { CompileOptions }
 
@@ -18,6 +18,7 @@ obj Box {
         return updated;
     }
 }
+
 def outer(seed: int) -> int {
     saved = seed;
     def inner -> int { return saved; }
@@ -56,4 +57,32 @@ def outer(seed: int) -> int {
         }
         assert found == {'updated', 'saved'};
     }
+}
+
+test "binding facts capture lowered graph and comprehension scopes" {
+    program = JacProgram();
+    module = program.compile(
+        "lowered_captures.jac",
+        use_str='''
+node Item { has value: int; }
+def build(seed: Item) -> any {
+    return graph { seed ++> [Item(i) ++> Item(i + 1) for i in [1, 2]]; };
+}
+''',
+        options=CompileOptions(no_cgen=True, force_target_program=True)
+    );
+    assert not program.errors_had , [str(e) for e in program.errors_had];
+    closures = module.get_all_sub_nodes(LambdaExpr);
+    assert len(closures) == 2;
+    captures = [
+        {symbol.sym_name for symbol in closure.captures} for closure in closures
+    ];
+    assert any('seed' in names for names in captures) , captures;
+    nested = [
+        names
+        for names in captures
+        if 'i' in names
+    ];
+    assert len(nested) == 1 , captures;
+    assert any(name.startswith('__jac_graph_value_') for name in nested[0]);
 }

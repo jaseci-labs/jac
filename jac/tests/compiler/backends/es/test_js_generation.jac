@@ -2214,7 +2214,7 @@ test "user-defined exception except is not a catch-all" {
     # else branch and compiled to `if (true)` — catching EVERY exception. It
     # must now emit `instanceof MyError` so it catches only that type and lets
     # unrelated exceptions fall through to the next handler.
-    jac_code = "\"\"\"user-defined except is not a catch-all.\"\"\"\n\nobj MyError {}\ndef classify(which: int) -> str {\n    try {\n        if which == 1 { raise MyError(); }\n        raise ValueError(\"b\");\n    } except MyError { return \"mine\"; } except ValueError { return \"ve\"; }\n    return \"none\";\n}\n";
+    jac_code = "\"\"\"user-defined except is not a catch-all.\"\"\"\n\nobj MyError(Exception) {}\ndef classify(which: int) -> str {\n    try {\n        if which == 1 { raise MyError(); }\n        raise ValueError(\"b\");\n    } except MyError { return \"mine\"; } except ValueError { return \"ve\"; }\n    return \"none\";\n}\n";
 
     temp_path = write_temp_jac(jac_code);
     try {
