@@ -717,10 +717,11 @@ impl native_build(
     file_size = os.path.getsize(output);
     if shared {
         console.print(f"  Shared library written to {output} ({file_size} bytes).");
-        if artifact_for(ir_module).jc_layout is not None {
+        layout = artifact_for(ir_module).jc_layout;
+        if layout is not None {
             _lay_path = f"{output}.layout.json";
             with open(_lay_path, "w") as _lf {
-                _lf.write(artifact_for(ir_module).jc_layout);
+                _lf.write(layout);
             }
             console.print(f"  Class layout written to {_lay_path}.");
         }

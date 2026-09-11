@@ -1199,10 +1199,8 @@ impl DocIRGenPass.exit_lambda_expr with uni.LambdaExpr exit {
                 )
             );
         } elif isinstance(i, uni.FuncSignature) {
-            if (
-                isinstance(artifact_for(i).doc_ir, doc.Text)
-                and (artifact_for(i).doc_ir.text == '()')
-            ) {
+            signature_doc = artifact_for(i).doc_ir;
+            if isinstance(signature_doc, doc.Text) and signature_doc.text == '()' {
                 parts.append(artifact_for(i).doc_ir);
             } elif not i.params {
                 parts.pop();

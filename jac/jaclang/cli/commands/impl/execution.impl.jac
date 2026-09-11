@@ -1014,12 +1014,10 @@ def _exec_file(
                     }
                     return 1;
                 }
-                if (
-                    ir_mod
+                engine = artifact_for(ir_mod).native_engine if ir_mod else None;
+                if ir_mod
                     and ir_mod.decided_codespace == 'native'
-                    and artifact_for(ir_mod).native_engine
-                ) {
-                    engine = artifact_for(ir_mod).native_engine;
+                    and engine is not None {
                     _populate_native_argv(engine, sys.argv);
                     if main {
                         addr = engine.get_function_address("jac_entry");

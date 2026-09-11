@@ -124,7 +124,7 @@ test "an ancestry computed against a base still being populated heals on use" {
         _shared=ClassDetailsShared(
             class_name="Root",
             symbol_table=scope,
-            _identity_key=("ancestry_heal.jac", 1, 0, "Root")
+            declaration_identity=("ancestry_heal.jac", 1, 0, "Root")
         )
     );
     top.shared.mro = [top];
@@ -132,7 +132,7 @@ test "an ancestry computed against a base still being populated heals on use" {
         _shared=ClassDetailsShared(
             class_name="Mid",
             symbol_table=scope,
-            _identity_key=("ancestry_heal.jac", 2, 0, "Mid")
+            declaration_identity=("ancestry_heal.jac", 2, 0, "Mid")
         )
     );
     leaf = ClassType(
@@ -140,7 +140,7 @@ test "an ancestry computed against a base still being populated heals on use" {
             class_name="Leaf",
             symbol_table=scope,
             base_classes=[mid],
-            _identity_key=("ancestry_heal.jac", 3, 0, "Leaf")
+            declaration_identity=("ancestry_heal.jac", 3, 0, "Leaf")
         )
     );
     compute_mro_linearization(leaf);
@@ -150,12 +150,13 @@ test "an ancestry computed against a base still being populated heals on use" {
     assert ensure_mro_fresh(leaf);
     assert [c.shared.class_name for c in leaf.shared.mro] == ["Leaf", "Mid", "Root"];
     assert not ensure_mro_fresh(leaf);
-    assert leaf.lookup_member_symbol("nothing") is None;
+    import from jaclang.compiler.analysis.types.member_lookup { lookup_member_symbol }
+    assert lookup_member_symbol(leaf, "nothing") is None;
     deep = ClassType(
         _shared=ClassDetailsShared(
             class_name="Deep",
             symbol_table=scope,
-            _identity_key=("ancestry_heal.jac", 0, 0, "Deep")
+            declaration_identity=("ancestry_heal.jac", 0, 0, "Deep")
         )
     );
     deep.shared.mro = [deep];

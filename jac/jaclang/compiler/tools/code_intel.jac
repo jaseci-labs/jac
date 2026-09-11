@@ -304,7 +304,8 @@ obj CodeIntelligence {
         t0 = time.time();
         self._files = self._discover();
         self._file_set = {_real(f) for f in self._files};
-        self.prog.diags.clear();
+        self.prog.errors_had.clear();
+        self.prog.warnings_had.clear();
         self._compiled = {};
         for f in self._files {
             self._full_compile_one(f);

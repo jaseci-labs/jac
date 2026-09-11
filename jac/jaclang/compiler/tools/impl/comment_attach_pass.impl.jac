@@ -63,10 +63,12 @@ impl CommentAttachPass._run_impl(ir_in: uni.Module) -> uni.Module {
 }
 
 impl CommentAttachPass._node_comments(nd: uni.UniNode) -> NodeComments {
-    if artifact_for(nd).doc_comments is None {
-        artifact_for(nd).doc_comments = NodeComments();
+    comments = artifact_for(nd).doc_comments;
+    if comments is None {
+        comments = NodeComments();
+        artifact_for(nd).doc_comments = comments;
     }
-    return artifact_for(nd).doc_comments;
+    return comments;
 }
 
 impl CommentAttachPass._attach_trailing_own(

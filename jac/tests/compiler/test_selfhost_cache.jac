@@ -14,6 +14,7 @@ demand, the hub being transient by contract."""
 import os;
 import jaclang;
 import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import from jaclang.compiler.session.cache.artifact_codec { get_module_cache_path }
 import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
@@ -84,7 +85,7 @@ test "a compiler-tree analysis hydrates its dependencies instead of re-ingesting
     paths: set[str] = set();
     original: any = getattr(driver, 'run_pass');
     def record(pass_cls: any, ir_in: any, prog: any, **kwargs: any) -> any {
-        if pass_cls.__name__ == 'SymTabBuildPass' and prog is _selfhost() {
+        if pass_cls == PassIdentity.SymTabBuildPass and prog is _selfhost() {
             paths.add(os.path.realpath(ir_in.loc.mod_path));
         }
         return original(pass_cls, ir_in, prog, **kwargs);

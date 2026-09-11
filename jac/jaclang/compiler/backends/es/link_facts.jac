@@ -1,4 +1,3 @@
-import from collections.abc { Callable }
 import from pathlib { Path }
 import type from jaclang.compiler.backends.common.artifacts { ClientArtifact }
 
