@@ -1,6 +1,6 @@
 """Count live references, independently of RSS and allocator caching."""
 
-import from jaclang.compiler.backends.common.artifacts { artifact_for }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, get_func }
