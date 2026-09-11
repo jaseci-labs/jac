@@ -599,7 +599,7 @@ def utility_pipeline(product: UtilityProduct) -> list[PassIdentity] {
     } elif product == UtilityProduct.SYNTAX_DIAGNOSTICS {
         return [PassIdentity.ASTValidationPass];
     } elif product == UtilityProduct.INTERFACE_CONTEXT {
-        return [PassIdentity.AppContextPass, PassIdentity.InterfaceStubTypesPass];
+        return [PassIdentity.AppContextPass, PassIdentity.InterfaceReferenceTypesPass];
     } elif product == UtilityProduct.PYTHON_SYMBOLS {
         return [PassIdentity.AbsorbImportsPass, PassIdentity.SymTabBuildPass];
     } elif product == UtilityProduct.GRAMMAR {
@@ -1119,11 +1119,11 @@ def _create_InterfaceFactsPass(context: PassContext) -> Transform {
     );
 }
 
-def _create_InterfaceStubTypesPass(context: PassContext) -> Transform {
-    import from jaclang.compiler.analysis.interfaces.stub_types_pass {
-        InterfaceStubTypesPass
+def _create_InterfaceReferenceTypesPass(context: PassContext) -> Transform {
+    import from jaclang.compiler.analysis.interfaces.reference_types_pass {
+        InterfaceReferenceTypesPass
     }
-    return InterfaceStubTypesPass(
+    return InterfaceReferenceTypesPass(
         ir_in=context.ir,
         cancel_token=context.cancel_token,
         cancel_requested=bool(
@@ -1914,9 +1914,9 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
              ),
              AnalysisContract()
          ),
-         PassIdentity.InterfaceStubTypesPass: PassSpec(
-             PassIdentity.InterfaceStubTypesPass,
-             _create_InterfaceStubTypesPass,
+         PassIdentity.InterfaceReferenceTypesPass: PassSpec(
+             PassIdentity.InterfaceReferenceTypesPass,
+             _create_InterfaceReferenceTypesPass,
              PassScope.MODULE,
              frozenset(
                  {RelationFamily.BINDING, RelationFamily.TYPES, RelationFamily.FLOW}

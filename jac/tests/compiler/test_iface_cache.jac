@@ -127,7 +127,7 @@ test "a warm no-edit check replays diagnostics and only restores interface conte
         f"warm check did not replay (events: {events})"
     );
     assert set(warm_prog.analysis.pass_runs)
-        == {"AppContextPass", "InterfaceStubTypesPass"} , (
+        == {"AppContextPass", "InterfaceReferenceTypesPass"} , (
         f"warm no-edit check reanalyzed source: {sorted(warm_prog.analysis.pass_runs)}"
     );
     assert warm_diags == cold_diags , "warm diagnostics diverge from cold";
@@ -1001,7 +1001,7 @@ test "hydrated interfaces prepare source-stub classes before resolving reference
         _rewrite(main, Path(main).read_text() + '\n# Recheck the consumer.\n');
         (warm, warm_diags) = _check(main);
         assert warm.analysis.cache_events.get('dep_hydrate', 0) >= 1;
-        assert 'InterfaceStubTypesPass' in warm.analysis.pass_runs;
+        assert 'InterfaceReferenceTypesPass' in warm.analysis.pass_runs;
         assert not warm.errors_had , warm_diags;
     }
 }
@@ -1079,5 +1079,42 @@ test "cached import cycles preserve transitive base classes" {
             assert not recomputed.errors_had , actual;
             assert actual == expected;
         }
+    }
+}
+
+
+test "hydrated interfaces resolve class types on symbol-only source modules" {
+    import from jaclang.compiler.session.context { artifact_cache_path }
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        data = str(base / "data.jac");
+        main = str(base / "main.jac");
+        Path(data).write_text("obj Data { has value: int = 1; }");
+        (base / "provider.jac").write_text(
+            "import from data { Data }\ndef make -> Data { return Data(); }"
+        );
+        Path(main).write_text(
+            "import from provider { make }\nwith entry { print(make().value); }"
+        );
+        options = _check_opts();
+        options.entry_point = main;
+        options.project_root = tmp;
+        cold = JacProgram();
+        mod = cold.compile(main, options=options);
+        assert not cold.errors_had;
+        context = cold.module_context(mod);
+        assert isinstance(context, JacProgram);
+        cache = artifact_cache_path(main, context);
+        cold.release_compile_closure(collect=False);
+        cache.unlink(missing_ok=True);
+        warm = JacProgram();
+        symbols = options.for_symbols();
+        symbols.need_full_ast = True;
+        source = warm.compile(data, options=symbols);
+        assert source.names_in_scope["Data"].decl.type is None;
+        warm.compile(main, options=options);
+        assert warm.analysis.cache_events.get("dep_hydrate", 0) >= 1;
+        assert not warm.errors_had , [e.pretty_print() for e in warm.errors_had];
+        assert source.names_in_scope["Data"].decl.type is not None;
     }
 }

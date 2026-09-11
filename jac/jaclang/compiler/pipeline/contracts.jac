@@ -31,7 +31,7 @@ enum PassIdentity(StrEnum) {
     GrammarExtractPass = "GrammarExtractPass",
     GraphLoweringPass = "GraphLoweringPass",
     InterfaceFactsPass = "InterfaceFactsPass",
-    InterfaceStubTypesPass = "InterfaceStubTypesPass",
+    InterfaceReferenceTypesPass = "InterfaceReferenceTypesPass",
     JacAutoLintPass = "JacAutoLintPass",
     JacFormatPass = "JacFormatPass",
     JacLintCheckPass = "JacLintCheckPass",

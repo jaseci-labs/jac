@@ -1,16 +1,15 @@
 import from jaclang.compiler.pipeline.program_pass { ProgramTransform }
 import from jaclang.compiler.ir.schema { Module, UniScopeNode }
 import from jaclang.compiler.session.cache.catalog_reader { CatModule }
-import from jaclang.compiler.session.cache.artifact_codec { is_stub_like_path }
 
-walker InterfaceStubTypesPass(ProgramTransform) {
+walker InterfaceReferenceTypesPass(ProgramTransform) {
     def transform(ir_in: Module) -> Module {
         if not isinstance(ir_in, CatModule) {
             return ir_in;
         }
         registry = self.prog.iface_registry();
         for (path, dotted) in ir_in.cat.external_class_references() {
-            if not is_stub_like_path(path) or not dotted {
+            if not dotted {
                 continue;
             }
             module = registry.resolve_module(path);
