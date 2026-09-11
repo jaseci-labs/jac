@@ -45,8 +45,7 @@ walker InterfaceReferenceTypesPass(ProgramTransform) {
                 }
             }
         }
-        # Bind references while their prepared providers are still available.
-        # A later full-tree request may replace a provider's catalog module.
+
         for reference in references {
             module.cat.shared_of(reference.shared_id);
         }

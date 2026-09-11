@@ -99,8 +99,6 @@ obj ModuleCompilation {
     }
 
     def analysis {
-        # Recoverable syntax still needs bindings and types for editor queries.
-        # Failed requests cannot publish interfaces or executable artifacts.
         if self.blocked {
             return;
         }

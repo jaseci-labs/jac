@@ -314,3 +314,112 @@ test "runtime bytecode extends an analyzed graph without discarding its bindings
         assert program.source_store.parses == parses;
     }
 }
+
+
+test "route metadata skips valid modules without client output" {
+    import from jaclang.compiler.api { route_exports }
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        (base / 'jac.toml').write_text('[project]\nname="routes"\nkind="web-app"\n');
+        for source in [
+            '',
+            'def helper -> int { return 1; }',
+            'obj Data { has value: int; }'
+        ] {
+            path = base / 'helper.jac';
+            path.write_text(source);
+            program = JacProgram();
+            assert route_exports(program, str(path)) == (None, None);
+            assert not program.errors_had;
+        }
+        page = base / 'page.jac';
+        page.write_text('def:pub View -> JsxPage { return <div>Home</div>; }');
+        assert route_exports(JacProgram(), str(page)) == ('View', None);
+    }
+}
+
+
+test "route metadata rejects compilation errors on repeated requests" {
+    import from jaclang.compiler.api { route_exports }
+    import from jaclang.compiler.pipeline.contracts { ProductUnavailable }
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        (base / 'jac.toml').write_text('[project]\nname="routes"\nkind="web-app"\n');
+        path = base / 'page.jac';
+        for source in [
+            'def View -> JsxPage { return <div UNCLOSED; }',
+            'def helper -> int { return "bad"; }'
+        ] {
+            path.write_text(source);
+            program = JacProgram();
+            for attempt in range(2) {
+                rejected = False;
+                try {
+                    route_exports(program, str(path));
+                } except ProductUnavailable {
+                    rejected = True;
+                }
+                assert rejected;
+                assert program.errors_had;
+            }
+        }
+    }
+}
+
+
+test "recoverable syntax retains editor types but cannot publish artifacts" {
+    import from jaclang.compiler.pipeline.contracts { AnalysisFact }
+    with TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'broken.jac';
+        path.write_text('def View -> JsxPage { return <div UNCLOSED; }');
+        program = JacProgram();
+        module = program.compile(str(path), no_cgen=True);
+        context = program.module_context(module);
+        assert module.parse_failed;
+        assert context.analysis.provides(module, AnalysisFact.TYPE_OF);
+        for product in [
+            CompilationProduct.CLIENT,
+            CompilationProduct.INTERFACE,
+            CompilationProduct.NATIVE_IR,
+            CompilationProduct.EXECUTABLE,
+            CompilationProduct.SERVING
+        ] {
+            assert not require_product(context, module, product);
+        }
+        assert context.analysis.provides(module, AnalysisFact.TYPE_OF);
+        assert context.find_module(str(path)) is module;
+    }
+}
+
+
+test "route failures use diagnostics from the selected application context" {
+    import from jaclang.compiler.api { route_exports }
+    import from jaclang.compiler.pipeline.contracts { ProductUnavailable }
+    import from jaclang.compiler.session.context { program_for }
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        for (name, kind) in [('cli', 'cli'), ('web', 'web-app')] {
+            project = base / name;
+            project.mkdir();
+            (project / 'jac.toml').write_text(
+                f'[project]\nname="{name}"\nkind="{kind}"\n'
+            );
+        }
+        initial = base / 'cli' / 'main.jac';
+        initial.write_text('def helper -> int { return 1; }');
+        path = base / 'web' / 'page.jac';
+        path.write_text('def helper -> int { return "bad"; }');
+        program = JacProgram();
+        program.compile(str(initial), no_cgen=True);
+        selected = program_for(str(path), program);
+        assert selected is not program;
+        rejected = False;
+        try {
+            route_exports(program, str(path));
+        } except ProductUnavailable {
+            rejected = True;
+        }
+        assert rejected;
+        assert selected.errors_had;
+    }
+}

@@ -32,7 +32,15 @@ import from jaclang.compiler.pipeline.contracts {
     CompilationProduct
 }
 
-glob PRODUCT_REQUIREMENTS:
+glob RECOVERY_PRODUCTS: set[CompilationProduct] = {
+         CompilationProduct.SYMBOLS,
+         CompilationProduct.FLOW,
+         CompilationProduct.ANALYSIS,
+         CompilationProduct.SPACES,
+         CompilationProduct.IMPORTS,
+         CompilationProduct.PLACEMENT_SUMMARY
+     },
+     PRODUCT_REQUIREMENTS:
          dict[
              CompilationProduct,
              list[tuple[CompilationProduct, AnalysisFact | None]]

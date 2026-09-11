@@ -23,9 +23,16 @@ def build_wasm(program: JacProgram, path: str, exports: list[str]) -> bytes {
 
 
 def route_exports(program: JacProgram, path: str) -> tuple[str | None, str | None] {
-    artifact = program.get_client_artifact(os.path.realpath(path));
+    import from jaclang.compiler.session.context { program_for }
+    path = os.path.realpath(path);
+    program = program_for(path, program);
+    before = len(program.errors_had);
+    artifact = program.get_client_artifact(path);
     if artifact is None {
-        raise ProductUnavailable(f'Route metadata unavailable for {path}');
+        if len(program.errors_had) > before or program.has_failed_parse(path) {
+            raise ProductUnavailable(f'Route metadata unavailable for {path}');
+        }
+        return (None, None);
     }
     return (artifact.manifest.page_export, artifact.manifest.layout_export);
 }

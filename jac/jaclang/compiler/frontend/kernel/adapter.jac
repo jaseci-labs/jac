@@ -424,9 +424,11 @@ class NativeCompiler {
         if self.supports_early {
             import sys;
             schedule_module = sys.modules.get('jaclang.compiler.pipeline.schedule');
-            schedule: Callable[[], list[tuple[int, PassIdentity]]] | None = getattr(
-                schedule_module, 'early_pipeline', None
-            );
+            schedule: Callable[[], list[tuple[int, PassIdentity]]] | None = None;
+            if schedule_module is not None
+                and hasattr(schedule_module, 'early_pipeline') {
+                schedule = schedule_module.early_pipeline;
+            }
             order = 0;
             if schedule is not None {
                 for (index, item) in enumerate(schedule()) {

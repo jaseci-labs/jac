@@ -8,7 +8,7 @@ walker ProgramTransform(Transform) {
 walker QueryTransform[T](ProgramTransform) {
     has result: T postinit;
 
-    def postinit -> None {
+    def postinit {
         super.postinit();
     }
 }

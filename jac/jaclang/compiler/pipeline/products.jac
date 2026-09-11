@@ -372,7 +372,11 @@ def require_product(
     program = program.module_context(module);
     import from jaclang.compiler.pipeline.schedule {
         product_pipeline,
-        PRODUCT_REQUIREMENTS
+        PRODUCT_REQUIREMENTS,
+        RECOVERY_PRODUCTS
+    }
+    if module.parse_failed and product not in RECOVERY_PRODUCTS {
+        return False;
     }
     program.analysis.module(module);
     tasks = program.analysis.module(module).tasks;
