@@ -51,6 +51,42 @@ test "a fully compiled module is collectable after release_compile_closure" {
     );
 }
 
+test "a compiler phase boundary collects both application and selfhost trees" {
+    prog = JacProgram();
+    compiler = prog._get_compiler();
+    internal = compiler.selfhost.program;
+    (_, app_ref, _, _) = _probe(prog);
+    (_, internal_ref, _, _) = _probe(internal);
+    compiler.release_compile_state(prog);
+    assert app_ref() is None;
+    assert internal_ref() is None;
+    assert not prog.source_store.units;
+    assert not internal.source_store.units;
+    # Releasing working state must leave the compiler reusable.
+    (_, next_ref, _, _) = _probe(prog);
+    assert next_ref() is not None;
+    compiler.release_compile_state(prog);
+    assert next_ref() is None;
+}
+
+test "a compiler phase boundary rejects release during an active compile" {
+    prog = JacProgram();
+    (_, mod_ref, _, _) = _probe(prog);
+    prog.scratch.compile_depth += 1;
+    try {
+        try {
+            prog._get_compiler().release_compile_state(prog);
+        } except RuntimeError {
+            assert mod_ref() is not None;
+            return;
+        }
+        assert False , "compiler state was released while compilation was active";
+    } finally {
+        prog.scratch.compile_depth -= 1;
+        prog._get_compiler().release_compile_state(prog);
+    }
+}
+
 glob STUB_SRC: str = (
          "import sys;\n"
          "with entry {\n"

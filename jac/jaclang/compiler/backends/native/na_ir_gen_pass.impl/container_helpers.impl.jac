@@ -1,4 +1,7 @@
 impl NaIRGenPass._elem_kind(elem_type: ir.Type) -> str {
+    if self._str_desc_ty is not None and elem_type == self._str_desc_ty {
+        return "str";
+    }
     if self?.jacval_type and elem_type == self.jacval_type {
         return "jacval";
     }
@@ -118,6 +121,9 @@ impl NaIRGenPass._emit_elem_retain(
     if self.rc_retain_fn is None {
         self._emit_rc_helpers();
     }
+    if _kind == "str" {
+        val = b.extract_value(val, 0, name="elem.str.root");
+    }
     b.call(
         self.rc_retain_fn,
         [b.bitcast(val, ir.IntType(8).as_pointer(), name="elem.retain.cast")]
@@ -137,6 +143,9 @@ impl NaIRGenPass._emit_elem_release(
     }
     if self.rc_release_simple_fn is None {
         self._emit_rc_helpers();
+    }
+    if _kind == "str" {
+        val = b.extract_value(val, 0, name="elem.str.root");
     }
     b.call(
         self.rc_release_simple_fn,
@@ -167,7 +176,9 @@ impl NaIRGenPass._emit_elem_trace(
         visit_builder.branch(done_bb);
         return ir.IRBuilder(done_bb);
     }
-    if kind == "rc_ptr" {
+    if kind == "str" {
+        b.call(visitor, [b.extract_value(val, 0, name="trace.str.root")]);
+    } elif kind == "rc_ptr" {
         b.call(visitor, [b.bitcast(val, i8p)]);
     }
     return b;

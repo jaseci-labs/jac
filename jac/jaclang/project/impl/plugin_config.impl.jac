@@ -1,5 +1,5 @@
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig, find_project_root }
+import from jaclang.project.config { JacConfig, active_profile_name, find_project_root }
 import from jaclang.runtime.runtime { JacRuntime }
 
 impl deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str, any] {
@@ -100,13 +100,7 @@ impl PluginConfigBase.get_jac_config -> JacConfig {
     if self._jac_config is None {
         if self.config_file.exists() {
             config = JacConfig.load(self.config_file);
-
-            import os;
-            profile: str = (
-                os.environ.get("JAC_PROFILE", "").strip()
-                or config.environment.default_profile
-            );
-            config.apply_profile_overlay(profile or None);
+            config.apply_profile_overlay(active_profile_name(config) or None);
             self._jac_config = config;
         } else {
             self._jac_config = JacConfig();

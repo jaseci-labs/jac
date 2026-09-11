@@ -173,10 +173,23 @@ def source_filter_for(base: Path) -> BundleSourceFilter {
 
 
 def _project_config(project_dir: str) -> any {
-    import from jaclang.project.config { get_config_for_path }
+    import from jaclang.project.config {
+        JacConfig,
+        active_profile_name,
+        get_config_for_path,
+        project_scope_is_pinned
+    }
 
     try {
-        return get_config_for_path(Path(project_dir));
+        config = get_config_for_path(Path(project_dir));
+        if config is None or config.active_profile or project_scope_is_pinned() {
+            return config;
+        }
+        profile = active_profile_name(config);
+        if not profile {
+            return config;
+        }
+        return JacConfig.discover(start_path=config.project_root, profile=profile);
     } except Exception as exc {
         raise ValueError(
             f"jac.toml under '{project_dir}' cannot be parsed ({exc}), so the "
