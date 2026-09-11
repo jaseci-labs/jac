@@ -352,7 +352,7 @@ def _deref(lst: list) -> list {
 def validate_edge_endpoints(
     source: NodeArchetype, relation: type, target: NodeArchetype
 ) {
-    descriptor = relation?.__jac_edge_endpoints__;
+    descriptor: Callable[[], tuple[type | UnionType, type | UnionType]] | None = relation?.__jac_edge_endpoints__;
     if descriptor is not None {
         bounds = descriptor();
         if not isinstance(source, bounds[0]) or not isinstance(target, bounds[1]) {

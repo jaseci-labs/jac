@@ -272,7 +272,7 @@ test "test_go_to_definition_md_path" {
             (6, 28, "concurrent/futures/__init__.pyi:0:0-0:0"),
             (7, 17, "typing.pyi:0:0-0:0"),
             (9, 18, "jaclang/compiler/__init__.py:0:0-0:0"),
-            (9, 34, "jaclang/compiler/ir/syntax/nodes.jac:0:0-0:0"),
+            (9, 34, "jaclang/compiler/ir/schema.jac:0:0-0:0"),
             # jaclang/__init__.py now exposes JacRuntimeInterface lazily via
             # PEP 562 __getattr__ (no static import binding), so go-to-def
             # resolves to the module file at 0:0-0:0 instead of a line.
@@ -282,7 +282,7 @@ test "test_go_to_definition_md_path" {
             (13, 32, "jaclang/lsp/server/utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/analysis/types/__init__.py:0:0-0:0"),
             (18, 5, "compiler/ir/types/nodes.jac:59:5-59:13"),
-            (20, 40, "jaclang/compiler/ir/syntax/nodes.jac:0:0-0:0"),
+            (20, 40, "jaclang/compiler/ir/schema.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 37, "jaclang/lsp/protocol/uris.jac:0:0-0:0"),
             (24, 44, "jaclang/lsp/protocol/server.jac:93:4-93:18"),
@@ -915,13 +915,13 @@ test "test_go_to_definition_nested_impl_symbols" {
         lsp.type_check_file(impl_file);
 
         positions = [
-            (2, 5, "compiler/ir/syntax/nodes.jac"),
-            (3, 8, "compiler/ir/syntax/nodes.jac"),
-            (4, 18, "compiler/ir/syntax/nodes.jac"),
-            (6, 11, "compiler/ir/syntax/nodes.jac"),
-            (7, 15, "compiler/ir/syntax/nodes.jac"),
-            (9, 22, "compiler/ir/syntax/nodes.jac"),
-            (10, 15, "compiler/ir/syntax/nodes.jac"),
+            (2, 5, "compiler/ir/schema.jac"),
+            (3, 8, "compiler/ir/schema.jac"),
+            (4, 18, "compiler/ir/schema.jac"),
+            (6, 11, "compiler/ir/schema.jac"),
+            (7, 15, "compiler/ir/schema.jac"),
+            (9, 22, "compiler/ir/schema.jac"),
+            (10, 15, "compiler/ir/schema.jac"),
 
         ];
 
@@ -957,7 +957,7 @@ test "test_go_to_definition_stub_param_compound_types" {
         for (line, col, desc) in positions {
             result = lsp.get_definition(stub_file, lspt.Position(line - 1, col - 1));
             assert result is not None , f"go-to-def returned None for {desc}";
-            assert "compiler/ir/syntax/nodes.jac" in str(result) , f"Expected compiler/ir/syntax/nodes.jac for {desc}, got: {result}";
+            assert "compiler/ir/schema.jac" in str(result) , f"Expected compiler/ir/schema.jac for {desc}, got: {result}";
         }
     } finally {
         teardown_test();
