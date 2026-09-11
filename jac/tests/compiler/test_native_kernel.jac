@@ -141,7 +141,7 @@ def _rss_kb -> (int | None) {
 test "kernel materialization releases every borrowed input reference" {
     import ctypes;
     import from jaclang.compiler.native_compiler { ensure_loaded }
-    import from jaclang.compiler.backends.native.na_constants { HDR_RC_OFF }
+    import from jaclang.compiler.frontend.codeinfo { HDR_RC_OFF }
     kernel = ensure_loaded();
     if kernel is None {
         return;
@@ -162,8 +162,8 @@ test "kernel materialization releases every borrowed input reference" {
         assert not kernel.take_diags();
         assert not kernel.take_lexdiags();
         kernel.take_comments();
-        for (name, root) in [("source", source_root), ("path", path_root)] {
-            refs = ctypes.c_int64.from_address(root + HDR_RC_OFF).value;
+        for (name, buffer_ptr) in [("source", source_root), ("path", path_root)] {
+            refs = ctypes.c_int64.from_address(buffer_ptr + HDR_RC_OFF).value;
             assert refs == 1 , (
                 f"{name} has {refs} native references after materialization; "
                 "only the caller's reference may survive the parse region"

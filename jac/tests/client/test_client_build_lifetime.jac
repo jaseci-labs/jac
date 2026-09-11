@@ -9,13 +9,13 @@ import from jaclang.runtime.runtime { JacRuntime as Jac }
 
 test "standalone client build releases application trees before bundling" {
     with tempfile.TemporaryDirectory() as tmp {
-        root = Path(tmp).resolve();
-        entry = root / "main.jac";
+        project_dir = Path(tmp).resolve();
+        entry = project_dir / "main.jac";
         entry.write_text('def:pub app -> any { return <div>lifetime</div>; }');
-        (root / "jac.toml").write_text(
+        (project_dir / "jac.toml").write_text(
             '[project]\nname = "lifetime"\nkind = "web-app"\n'
         );
-        (root / "package.json").write_text('{"name":"lifetime","version":"0.0.0"}');
+        (project_dir / "package.json").write_text('{"name":"lifetime","version":"0.0.0"}');
         reached: list[bool] = [];
 
         def bundle(self: ViteBundler, *args: any, **kwargs: any) {
@@ -32,7 +32,7 @@ test "standalone client build releases application trees before bundling" {
         }
 
         with patch.object(ViteBundler, "build", bundle) {
-            WebTarget().build(entry, root);
+            WebTarget().build(entry, project_dir);
         }
         assert reached == [True];
     }
