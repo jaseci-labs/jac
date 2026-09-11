@@ -75,7 +75,25 @@ impl JacProgram.record_dependency(
 }
 
 impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set[str] {
-    return self.deps.transitive_dependents(target_path);
+    if self.context_root is not None {
+        return self.deps.transitive_dependents(target_path);
+    }
+    dependents: set[str] = set();
+    frontier = [target_path];
+    while frontier {
+        current = frontier.pop();
+        discovered = self.deps.transitive_dependents(current);
+        for context in self.contexts.values() {
+            if context is not self {
+                discovered.update(context.deps.transitive_dependents(current));
+            }
+        }
+        for importer in discovered - dependents {
+            dependents.add(importer);
+            frontier.append(importer);
+        }
+    }
+    return dependents;
 }
 
 impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None {

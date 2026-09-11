@@ -153,6 +153,7 @@ def context_program(program: JacProgram, options: CompileOptions) -> JacProgram 
         selected.context_root = context_root;
         selected._compiler = context_root._get_compiler();
         selected.source_store = context_root.source_store;
+        selected.deps.tracking = context_root.deps.tracking;
         selected.options = options;
     }
     selected.options = options;
