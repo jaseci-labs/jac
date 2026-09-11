@@ -1037,15 +1037,6 @@ impl JacCompiler.stamp_boundary_facts(
         }
     }
 
-    def collect_walker_names(nd: uni.UniNode, out: list[str]) {
-        if isinstance(nd, uni.Archetype) and nd.sym_name and nd.arch_kind == 'walker' {
-            out.append(nd.sym_name);
-        }
-        for k in nd.kid {
-            collect_walker_names(k, out);
-        }
-    }
-
     def imported_names(imp: uni.Import) -> set[str] {
         names: set[str] = set();
         for item in imp.items {
@@ -1073,7 +1064,6 @@ impl JacCompiler.stamp_boundary_facts(
         try {
             collect_walkers(src, walkers);
         } except Exception {}
-        collect_walker_names(src, facts.sv_walker_names);
         for name in wanted {
             wk_decl = walkers.get(name);
             if wk_decl is not None {

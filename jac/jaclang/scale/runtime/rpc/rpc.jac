@@ -165,7 +165,7 @@ def walker_call(
         );
         data = resp.json();
         return sv_client.hydrate_walker_envelope(
-            data, module_name, walker_name, args, stub_cls
+            data, module_name, walker_name, stub_cls
         );
     }
 
@@ -195,9 +195,7 @@ def walker_call(
     }
 
     data = _rpc_with_retries(module_name, f"walker spawn '{label}'", send);
-    return sv_client.hydrate_walker_envelope(
-        data, module_name, walker_name, args, stub_cls
-    );
+    return sv_client.hydrate_walker_envelope(data, module_name, walker_name, stub_cls);
 }
 
 

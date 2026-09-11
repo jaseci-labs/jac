@@ -1,4 +1,3 @@
-import copy;
 import os;
 import from jaclang.server.bridge {
     BridgeError,
@@ -324,17 +323,18 @@ def function_result(data: any, app: str, fn: str) -> any {
 }
 
 def hydrate_walker_envelope(
-    data: any, app: str, walker_name: str, kwargs: dict, stub_cls: any
+    data: any, app: str, walker_name: str, stub_cls: any
 ) -> any {
-    envelope = _unwrap_envelope(data, app, walker_name) or {};
+    envelope = _unwrap_envelope(data, app, walker_name);
+    if not isinstance(envelope, dict) {
+        envelope = {};
+    }
     if stub_cls is None {
         return envelope;
     }
-    reports = envelope.get("reports") if isinstance(envelope, dict) else None;
-    fields = copy.deepcopy(getattr(stub_cls, "__jac_field_defaults__", {}))
-        | copy.deepcopy(kwargs);
-    fields["reports"] = reports if isinstance(reports, list) else [];
-    return stub_cls._from_wire(fields);
+    payload = dict(envelope.get("result") or {});
+    payload["reports"] = envelope.get("reports") or [];
+    return stub_cls._from_wire(payload);
 }
 
 def _http_spawn(
@@ -363,7 +363,7 @@ def _http_spawn(
     if stub_cls is None {
         raise BridgeError(detail="Walker response has no declared boundary contract");
     }
-    return hydrate_walker_envelope(data, app, walker_name, kwargs, stub_cls);
+    return hydrate_walker_envelope(data, app, walker_name, stub_cls);
 }
 
 async def _await_if_needed(value: any) -> any {

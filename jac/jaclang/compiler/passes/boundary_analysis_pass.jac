@@ -99,7 +99,7 @@ walker BoundaryAnalysisPass(UniPass) {
     def _check_provider_pub(nd: Import, item: ModuleItem) -> None;
     def _extract_walker_has_fields(
         walker_nd: (Archetype | None)
-    ) -> tuple[list[str], list[str], dict[str, any]];
+    ) -> tuple[list[str], list[str]];
 
     def _find_archetype(nd: UniNode, target: str) -> (Archetype | Enum | None);
     def _parse_imported_archetype(

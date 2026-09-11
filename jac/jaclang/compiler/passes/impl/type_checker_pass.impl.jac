@@ -1451,18 +1451,19 @@ impl TypeCheckPass._check_walker_reports_shape(
     self.emit(E1112, node_override=nd, type=str(declared_type));
 }
 
-impl TypeCheckPass._enclosing_walk_archetype(nd: UniNode) -> (Archetype | None) {
-    cur: (UniNode | None) = nd.parent;
-    while cur is not None {
-        if isinstance(cur, Archetype) and cur.arch_kind in ("walker", "node", "edge") {
-            return cur;
+impl TypeCheckPass._enclosing_walker_report_elem_type(
+    nd: UniNode
+) -> (TypeBase | None) {
+    arch = nd.find_parent_of_type(Archetype);
+    if arch is None {
+        impl_def = nd.find_parent_of_type(ImplDef);
+        if impl_def is not None and isinstance(impl_def.decl_link, Archetype) {
+            arch = impl_def.decl_link;
         }
-        cur = cur.decl_link if isinstance(cur, ImplDef) else cur.parent;
     }
-    return None;
-}
-
-impl TypeCheckPass._walker_report_elem_type(arch: Archetype) -> (TypeBase | None) {
+    if not isinstance(arch, Archetype) or arch.arch_kind != "walker" {
+        return None;
+    }
     for has_var in arch.get_has_vars() {
         if has_var.name.value != "reports" {
             continue;
@@ -1914,15 +1915,7 @@ impl TypeCheckPass.exit_visit_stmt with VisitStmt exit {
 
 impl TypeCheckPass.exit_report_stmt with ReportStmt exit {
     expr_type = self.evaluator.get_type_of_expression(here.expr);
-    arch = self._enclosing_walk_archetype(here);
-    if arch is None {
-        self.emit(E1135, node_override=here);
-        return;
-    }
-    if arch.arch_kind != "walker" {
-        return;
-    }
-    elem_type = self._walker_report_elem_type(arch);
+    elem_type = self._enclosing_walker_report_elem_type(here);
     if elem_type is None {
         return;
     }

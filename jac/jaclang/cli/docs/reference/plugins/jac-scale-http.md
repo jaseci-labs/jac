@@ -1659,7 +1659,7 @@ A plain import bridges the boundary in two flavors depending on where the import
 
 In the app-to-app flavor, `orders/main.jac` (the `orders` app) doing `import from core.inventory { check_stock }` -- with `core/inventory.jac` the entry file of `[apps.inventory]` -- does not load the inventory code into its own process as an ordinary import would. Calling `await check_stock(sku)` issues `POST /function/check_stock` against the inventory app (or invokes it directly when colocated) and returns the typed result. The same source runs unchanged colocated (`jac run orders`), as a local fleet (`jac run orders --fleet`), or deployed (`jac scale deploy`).
 
-Both `def:pub` functions and walkers can cross the boundary. Function imports POST to `/function/<name>` and return the function's value. Walker imports POST to `/walker/<name>` and return a walker instance carrying the fields you passed (provider literal defaults for the rest) and the `reports` the provider produced, so call sites read the result the same way they would after a local spawn. See [Walker Imports](#walker-imports) for the wire shape and ergonomics.
+Both `def:pub` functions and walkers can cross the boundary. Function imports POST to `/function/<name>` and return the function's value. Walker imports POST to `/walker/<name>` and return the rehydrated walker instance with its `has` fields populated and `reports` attached, so call sites read the result the same way they would after a local spawn. See [Walker Imports](#walker-imports) for the wire shape and ergonomics.
 
 For a step-by-step walkthrough that covers project setup, running both apps, and watching the round-trip, see the [Service Apps tutorial](../../tutorials/production/microservices.md). The rest of this section is a reference for the ownership and discovery rules, the wire contract, and the `sv_client` surface.
 
@@ -1763,10 +1763,10 @@ What happens when the consumer evaluates `await Greet(name=self.who)`:
 
 1. The stub class collects the keyword arguments into a JSON dict (boundary-typed values are serialized via `_to_wire` first).
 2. The runtime spawns the walker on the provider app through `sv_client.spawn_walker("notify", "Greet", kwargs, cls)`, using the dispatch chain below (local registration → test client → registered URL → `JAC_APP_NOTIFY_URL`).
-3. The provider spawns and runs the walker, then returns a `TransportResponse` envelope whose `data.result` is `{}` (a walker on the wire is its reports) and whose `data.reports` is the list of values it emitted via `report`.
-4. The consumer builds an instance of the local stub class from the arguments it sent, filling omitted fields with the provider's literal defaults, attaches `data.reports` as the instance's `reports` attribute, and returns it. Field state the provider's walk mutated stays on the provider.
+3. The provider spawns and runs the walker, then returns a `TransportResponse` envelope whose `data.result` is the executed walker as a dict and whose `data.reports` is the list of values it emitted via `report`.
+4. The consumer rehydrates `data.result` into an instance of the local stub class, attaches `data.reports` as the instance's `reports` attribute, and returns it.
 
-The result is a normal walker instance on the consumer: `rg.name`, `rg.reports[0]`, and `isinstance(rg, Greet)` all work. Boundary-typed values inside the walker's `has` fields are rebuilt as their stub types, so a walker that takes an `obj` argument carries it back as that type, not as a raw dict.
+The result is a normal walker instance on the consumer: `rg.name`, `rg.reports[0]`, and `isinstance(rg, Greet)` all work. Boundary-typed values inside the walker's `has` fields and inside the `reports` list are unwrapped recursively, so a walker that emits an `obj` type comes back as that type, not as a raw dict.
 
 A few notes:
 
@@ -1910,7 +1910,7 @@ Always call `sv_client.clear_test_clients()` between tests to avoid bleed-over f
 | `async call(app, fn, kwargs)` / `async spawn_walker(app, walker, kwargs, cls)` | What the generated stubs call. |
 | `spawn_deferred(app, walker, kwargs, idempotency_key = "") -> str` | Enqueue a deferred spawn; returns the outbox entry id. |
 | `get_consumer_providers(consumer_app: str) -> list[str]` | The provider apps a consumer declared (the app DAG's edges out of it). |
-| `hydrate_walker_envelope(data, app, walker, kwargs, cls)` / `function_result(data, app, fn)` | Decode a provider's response envelope: a walker instance built from the caller's arguments (provider literal defaults for the rest) plus the provider's `reports`, or a function's `result`. Both raise `BridgeError` on a non-ok envelope; a custom transport ends with one of them. |
+| `hydrate_walker_envelope(data, app, walker, cls)` / `function_result(data, app, fn)` | Decode a provider's response envelope: the executed walker rebuilt as an instance of `cls` from `data.result` with `data.reports` attached, or a function's `result`. Both raise `BridgeError` on a non-ok envelope; a custom transport ends with one of them. |
 
 ## CLI Commands
 

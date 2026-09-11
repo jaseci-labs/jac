@@ -279,7 +279,6 @@ impl BoundaryAnalysisPass._register_sv_import(
         import_provider_app,
         import_provider_route
     }
-    import from jaclang.compiler.frontend.diagnostics { W6010 }
     facts = nd.boundary_facts;
     source_abilities: dict[(str, Ability)] = facts.sv_abilities if facts else {};
     source_walkers: dict[(str, Archetype)] = facts.sv_walkers if facts else {};
@@ -314,9 +313,7 @@ impl BoundaryAnalysisPass._register_sv_import(
         if walker_node is not None {
             walker_mod = walker_node.find_parent_of_type(Module);
             self._collect_boundary_type(walker_node.sym_name, walker_mod);
-            (param_names, param_types, field_defaults) = self._extract_walker_has_fields(
-                walker_node
-            );
+            (param_names, param_types) = self._extract_walker_has_fields(walker_node);
             binding = InteropBinding(
                 name=sym_name,
                 source_context=InteropContext.SERVER,
@@ -324,7 +321,6 @@ impl BoundaryAnalysisPass._register_sv_import(
                 ret_type=walker_node.sym_name,
                 param_types=param_types,
                 param_names=param_names,
-                field_defaults=field_defaults,
                 ast_node=walker_node,
                 source_module=module_name,
                 type_scope=walker_mod.loc.mod_path if walker_mod else '',
@@ -356,9 +352,6 @@ impl BoundaryAnalysisPass._register_sv_import(
             self._check_provider_pub(nd, item);
         }
         (ret_type, param_types, param_names) = self._signature_of_decl(ability_node);
-        if facts and ret_type in facts.sv_walker_names and ability_node is not None {
-            self.emit(W6010, node_override=ability_node, name=sym_name, ret=ret_type);
-        }
         binding = InteropBinding(
             name=sym_name,
             source_context=InteropContext.SERVER,
@@ -723,12 +716,11 @@ impl BoundaryAnalysisPass._check_provider_pub(nd: Import, item: ModuleItem) -> N
 
 impl BoundaryAnalysisPass._extract_walker_has_fields(
     walker_nd: any
-) -> tuple[list[str], list[str], dict[str, any]] {
+) -> tuple[list[str], list[str]] {
     names: list[str] = [];
     types: list[str] = [];
-    defaults: dict[str, any] = {};
     if (not walker_nd) or (not walker_nd.body) {
-        return (names, types, defaults);
+        return (names, types);
     }
     body_items = walker_nd.body
         if isinstance(walker_nd.body, list)
@@ -752,13 +744,9 @@ impl BoundaryAnalysisPass._extract_walker_has_fields(
             }
             names.append(fname);
             types.append(ftype);
-            (literal, val) = self._literal_default(hv.value);
-            if literal {
-                defaults[fname] = val;
-            }
         }
     }
-    return (names, types, defaults);
+    return (names, types);
 }
 
 impl BoundaryAnalysisPass._parse_imported_archetype(

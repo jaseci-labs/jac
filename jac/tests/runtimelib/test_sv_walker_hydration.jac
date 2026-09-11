@@ -1,7 +1,8 @@
-"""The consumer-side instance of a remote walker spawn is built from what the
-caller sent, the provider's literal defaults, and the provider's reports; the
-wire `result` of a walker is empty and never consulted. The stub class under
-test is the one the compiler generates for a real `sv import`."""
+"""The consumer-side instance of a remote walker spawn is rebuilt from the
+provider's `result` (the executed walker, its fields as the walk left them)
+with the provider's `reports` attached, through the stub class the compiler
+generates for a real `sv import`, so boundary-typed values inside both come
+back as their stub types."""
 import os;
 import sys;
 import types;
@@ -28,69 +29,52 @@ def generated_stubs -> dict {
     return mod.__dict__;
 }
 
-def ok_envelope(reports: list) -> dict {
-    return {"ok": True, "data": {"result": {}, "reports": reports}};
+def ok_envelope(result: dict, reports: list) -> dict {
+    return {"ok": True, "data": {"result": result, "reports": reports}};
 }
 
-test "remote walker keeps the caller's fields and the provider's reports" {
-    Analyze = generated_stubs()["Analyze"];
+test "a remote walker carries the fields its walk left and its typed reports" {
+    stubs = generated_stubs();
+    Analyze = stubs["Analyze"];
+    AnalyticsReport = stubs["AnalyticsReport"];
     rg = sv_client.hydrate_walker_envelope(
-        ok_envelope(["analyzed"]),
+        ok_envelope(
+            {"_jac_type": "Analyze", "_jac_archetype": "walker", "count": 7},
+            [{"_jac_type": "AnalyticsReport", "count": 7, "label": "walker-analyzed"}]
+        ),
         "sv_relative_provider",
         "Analyze",
-        {"count": 3},
         Analyze
     );
-    assert rg.count == 3;
-    assert rg.reports == ["analyzed"];
     assert isinstance(rg, Analyze);
+    assert rg.count == 7;
+    assert isinstance(rg.reports[0], AnalyticsReport);
+    assert rg.reports[0].label == "walker-analyzed";
 }
 
-test "omitted fields take the provider's literal defaults" {
-    Tally = generated_stubs()["Tally"];
-    rg = sv_client.hydrate_walker_envelope(
-        ok_envelope([3]), "sv_relative_provider", "Tally", {"label": "mine"}, Tally
-    );
-    assert rg.count == 3;
-    assert rg.label == "mine";
-    assert rg.reports == [3];
-}
-
-test "omitted container defaults are not shared between instances" {
-    Tally = generated_stubs()["Tally"];
-    first = sv_client.hydrate_walker_envelope(
-        ok_envelope([]), "sv_relative_provider", "Tally", {}, Tally
-    );
-    second = sv_client.hydrate_walker_envelope(
-        ok_envelope([]), "sv_relative_provider", "Tally", {}, Tally
-    );
-    first.tags.append("x");
-    assert second.tags == [];
-    assert Tally.__jac_field_defaults__["tags"] == [];
-}
-
-test "the instance does not alias the caller's mutable arguments" {
+test "a walker envelope without reports hydrates with an empty list" {
     Analyze = generated_stubs()["Analyze"];
-    sent = {"count": [1, 2]};
     rg = sv_client.hydrate_walker_envelope(
-        ok_envelope([]), "sv_relative_provider", "Analyze", sent, Analyze
+        {"ok": True, "data": {"result": {"count": 1}}},
+        "sv_relative_provider",
+        "Analyze",
+        Analyze
     );
-    rg.count.append(3);
-    assert sent["count"] == [1, 2];
+    assert rg.count == 1;
     assert rg.reports == [];
 }
 
 test "with no stub class the wire payload comes back as is" {
     payload = sv_client.hydrate_walker_envelope(
-        ok_envelope(["raw"]), "svc", "Ping", {}, None
+        ok_envelope({"count": 1}, ["raw"]), "svc", "Ping", None
     );
-    assert payload == {"result": {}, "reports": ["raw"]};
+    assert payload == {"result": {"count": 1}, "reports": ["raw"]};
 }
 
 test "an error envelope names the spawn" {
     try {
         sv_client.hydrate_walker_envelope(
-            {"ok": False, "error": {"message": "boom"}}, "svc", "Ping", {}, None
+            {"ok": False, "error": {"message": "boom"}}, "svc", "Ping", None
         );
         assert False , "an error envelope must raise";
     } except BridgeError as e {

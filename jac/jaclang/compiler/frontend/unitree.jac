@@ -846,7 +846,6 @@ obj ImportBoundaryFacts {
         client_native_edge: bool = False,
         sv_abilities: dict[(str, Ability)] = {},
         sv_walkers: dict[(str, Archetype)] = {},
-        sv_walker_names: list[str] = [],
         na_target_decls: dict[(str, Ability)] = {},
         na_unmappable_targets: list[str] = [],
         native_absorb_path: (str | None) = None,

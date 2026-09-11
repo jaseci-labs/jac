@@ -291,7 +291,6 @@ impl JcirGenPass._gen_py_sv_walker_stub(
     info = boundary_types[binding.ret_type];
     lines.append('    _jac_type = ' + repr(info.name));
     lines.append('    __jac_type_id__ = ' + repr(info.type_id));
-    lines.append('    __jac_field_defaults__ = ' + repr(binding.field_defaults));
     lines.append('    __jac_walker_name__ = ' + "'" + walker_name + "'");
     lines.append('    __jac_provider_app__ = ' + "'" + provider_app + "'");
     lines.append('    __jac_boundary_types__ = ' + self._sv_boundary_registry);

@@ -531,18 +531,3 @@ test "gap: graph return fixture compiles without error" {
         assert False , "typed_graph_return.jac crashes with RecursionError during compilation";
     }
 }
-
-# A def:pub whose declared return type is a walker hands typed consumers an
-# empty object, since a walker on the wire is its reports. The consumer's
-# binding pass says so.
-test "a def:pub returning a walker warns W6010 at the consumer" {
-    prog = JacProgram();
-    compile_fixture("sv_relative_consumer.jac", prog);
-    hits = [
-        w
-        for w in prog.warnings_had
-        if "W6010" in w.pretty_print()
-    ];
-    assert hits , "expected W6010 for launch -> Probe";
-    assert "launch" in hits[0].pretty_print();
-}

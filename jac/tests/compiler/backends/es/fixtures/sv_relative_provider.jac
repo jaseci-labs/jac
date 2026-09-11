@@ -22,25 +22,3 @@ walker:pub Analyze {
         report AnalyticsReport(count=self.count, label="walker-analyzed");
     }
 }
-
-walker:pub Tally {
-    has count: int = 3,
-        label: str = "tally",
-        tags: list = [];
-
-    can run with Root entry {
-        report self.count;
-    }
-}
-
-walker:pub Probe {
-    has n: int = 1;
-
-    can run with Root entry {
-        report self.n;
-    }
-}
-
-def:pub launch(n: int) -> Probe {
-    return root spawn Probe(n=n);
-}

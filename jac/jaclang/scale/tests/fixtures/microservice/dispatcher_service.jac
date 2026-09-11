@@ -4,8 +4,8 @@ Imports a walker (`Greet`) and a function-shaped boundary type
 (`NotifyResult`) plus another walker (`Notify`) from `notify_service`
 via `sv import`. Exercises the cross-service walker-spawn path: the
 consumer awaits `Greet(name=...)`, the runtime turns that into a
-POST to `/walker/Greet` on the provider, and a walker instance flows
-back carrying the caller's arguments and the provider's `reports`.
+POST to `/walker/Greet` on the provider, and the rehydrated walker
+flows back with its `reports` populated.
 """
 
 import from notify_service { Greet, Notify, NotifyResult }

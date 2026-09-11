@@ -11,6 +11,9 @@ impl Serializer._serialize_attrs(
     ref_mode: bool = False,
     _seen: (tuple[set, set] | None) = None
 ) -> dict[str, object] {
+    omitted: set[str] = (
+        {'reports'} if api_mode and isinstance(`obj, WalkerArchetype) else set()
+    );
     result = {
         a: Serializer._serialize_value(
             getattr(`obj, a),
@@ -21,7 +24,9 @@ impl Serializer._serialize_attrs(
             Serializer._declared_of(`obj, a)
         )
         for a in dir(`obj)
-        if not a.startswith('_') and not callable(getattr(`obj, a, None))
+        if not a.startswith('_')
+            and a not in omitted
+            and not callable(getattr(`obj, a, None))
     };
 
     if include_type and not api_mode {
@@ -170,9 +175,6 @@ impl Serializer._serialize_value(
     }
 
     if isinstance(val, Archetype) {
-        if api_mode and isinstance(val, WalkerArchetype) {
-            return {};
-        }
         if _seen is not None {
             jac_anchor = val?.__jac__;
             if jac_anchor {
@@ -209,7 +211,7 @@ impl Serializer._serialize_value(
                 '_jac_id': val.__jac__.ensure_id().hex if val?.__jac__ else None,
                 '_jac_archetype': 'node'
                     if isinstance(val, NodeArchetype)
-                    else 'archetype'
+                    else 'walker' if isinstance(val, WalkerArchetype) else 'archetype'
             };
             type_id = val?.__jac_type_id__;
             if isinstance(type_id, str) {

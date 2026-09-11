@@ -578,8 +578,6 @@ Everything crossing a marshalled boundary is **JSON** (for `cl↔sv` and the
   carry graph metadata (`_jac_type`, `_jac_id`, `_jac_archetype`), and
   custom objects are tagged with `__type__` -- the exact shape the client's
   `__from_wire` and the server's `_deserialize_wire_args` read back.
-  A walker serialises to `{}` in `api_mode`: its `has` fields are the request
-  the caller already holds, and the `reports` list beside it is its output.
 - **Envelope** -- the outer HTTP body is a `TransportResponse`:
 
   ```json

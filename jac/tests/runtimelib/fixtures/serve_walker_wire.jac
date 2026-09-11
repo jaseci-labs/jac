@@ -21,6 +21,14 @@ walker CountThings {
     }
 }
 
+walker SelfReporter {
+    has tag: str = "me";
+
+    can go with Root entry {
+        report self;
+    }
+}
+
 def list_things(n: int = 2) -> list {
     return [{"name": f"t{i}", "idx": i} for i in range(n)];
 }
