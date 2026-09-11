@@ -2,6 +2,9 @@ import fnmatch;
 import hashlib;
 import json;
 import os;
+import from collections.abc { Iterator }
+import from contextlib { contextmanager }
+import from contextvars { ContextVar }
 import from jaclang.compiler.driver.modresolver { find_jac_project_root }
 
 import from jaclang.project.app_kinds {
@@ -44,9 +47,34 @@ obj WorkspaceSpec {
     def module_dot_path(abs_path: str) -> str;
 }
 
-glob _ws_cache: dict[str, tuple[tuple, WorkspaceSpec]] = {};
+obj WorkspaceResolution {
+    has paths: dict[str, str] = {},
+        workspaces: dict[str, WorkspaceSpec | None] = {};
+}
+
+glob _ws_cache: dict[str, tuple[tuple, WorkspaceSpec]] = {},
+     _resolution: ContextVar[WorkspaceResolution | None] = ContextVar(
+         'jac_workspace_resolution', `default=None
+     );
+
+@contextmanager
+def workspace_scope -> Iterator[None] {
+    # Nested compilation contexts share filesystem facts, but select their
+    # own app. A new outer request observes workspace and symlink edits.
+    if _resolution.get() is not None {
+        yield ;
+        return;
+    }
+    token = _resolution.set(WorkspaceResolution());
+    try {
+        yield ;
+    } finally {
+        _resolution.reset(token);
+    }
+}
 
 def workspace_for_path(path: str) -> (WorkspaceSpec | None);
+def _workspace_for_path(path: str) -> (WorkspaceSpec | None);
 def app_for_path(path: str) -> (AppSpec | None);
 def app_fact_digest(app: (AppSpec | None)) -> str;
 def serving_apps(ws: WorkspaceSpec) -> list[AppSpec];

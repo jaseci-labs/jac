@@ -56,10 +56,13 @@ test "workspace probes scale with modules within a compilation request" {
                     assert context_app(path) is app;
                 }
                 assert probe.call_count == first , (
-                    f'repeated module facts made {probe.call_count - first} extra filesystem probes'
+                    f'repeated module facts made {probe.call_count
+                        - first} extra filesystem probes'
                 );
             }
-            with cache_scope('api', CompileOptions(project_root=td, target_app='api')) {
+            with cache_scope(
+                'api', CompileOptions(project_root=td, target_app='api')
+            ) {
                 other = context_app(path);
                 assert other is not None and other.name == 'api';
             }

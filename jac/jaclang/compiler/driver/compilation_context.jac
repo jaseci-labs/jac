@@ -20,10 +20,13 @@ glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
 def cache_scope(
     identity: str, options: CompileOptions | None = None
 ) -> Iterator[None] {
+    import from jaclang.compiler.placement.workspace { workspace_scope }
     token = _cache_context.set(identity);
     option_token = _active_options.set(options);
     try {
-        yield ;
+        with workspace_scope() {
+            yield ;
+        }
     } finally {
         _cache_context.reset(token);
         _active_options.reset(option_token);

@@ -296,6 +296,7 @@ obj CatalogWriter {
         type_ids: dict[any, int] postinit,
         _ident_visiting: set[int] postinit,
         _type_ident_memo: dict[int, any] postinit,
+        _canonical_paths: dict[str, str] postinit,
         types: list[TypeBase] postinit,
         pending_types: list[int] postinit,
         shared_ids: dict[any, int] postinit,
@@ -344,10 +345,22 @@ obj CatalogWriter {
         self.sym_types = {};
         self.sym_props = {};
         self.forced_scopes = set();
-        self.base_dir = os.path.realpath(self.pkg_dir);
+        self._canonical_paths = {};
+        self.base_dir = self._real_path(self.pkg_dir);
         self.external_modules = set();
         self._ident_visiting = set();
         self._type_ident_memo = {};
+    }
+
+    def _real_path(path: str) -> str {
+        # A writer owns one immutable interface snapshot. Identity comparisons
+        # must reuse canonical paths throughout its symbol/type traversal.
+        found = self._canonical_paths.get(path);
+        if found is None {
+            found = os.path.realpath(path);
+            self._canonical_paths[path] = found;
+        }
+        return found;
     }
 
     def in_boundary(mod: (Module | None)) -> bool {
@@ -366,7 +379,7 @@ obj CatalogWriter {
             if not bpath or not mpath {
                 return False;
             }
-            return os.path.realpath(mpath) == os.path.realpath(bpath);
+            return self._real_path(mpath) == self._real_path(bpath);
         } except Exception {
             return False;
         }
@@ -385,7 +398,7 @@ obj CatalogWriter {
             mpath = "";
         }
         if mpath {
-            return os.path.realpath(mpath);
+            return self._real_path(mpath);
         }
         return id(mod);
     }
@@ -483,7 +496,7 @@ obj CatalogWriter {
         if not path {
             return "";
         }
-        real = os.path.realpath(path);
+        real = self._real_path(path);
         prefix = self.base_dir + os.sep;
         if real.startswith(prefix) {
             return real[len(prefix):].replace(os.sep, "/");

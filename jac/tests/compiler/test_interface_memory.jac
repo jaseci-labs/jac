@@ -9,9 +9,7 @@ import from jaclang.compiler.types.stubcat.writer { CatalogWriter }
 
 test "interface symbol identities resolve each module path once" {
     program = JacProgram();
-    source = '\n'.join(
-        f'def function_{i} -> int {{ return {i}; }}' for i in range(40)
-    );
+    source = '\n'.join(f'def function_{i} -> int {{ return {i}; }}' for i in range(40));
     options = CompileOptions(symtab_ir_only=True, force_target_program=True);
     boundary = program.compile('identity.jac', use_str=source, options=options);
     twin = JacProgram().compile('identity.jac', use_str=source, options=options);
@@ -35,7 +33,7 @@ test "interface symbol identities resolve each module path once" {
     for name in boundary.names_in_scope.keys() {
         assert (
             writer._sym_ident(boundary.names_in_scope[name])
-                == writer._sym_ident(twin.names_in_scope[name])
+            == writer._sym_ident(twin.names_in_scope[name])
         );
     }
 }
