@@ -63,7 +63,7 @@ obj UserManager {
     def reset_password_by_user_id(user_id: str, new_password: str) -> dict[str, str];
     def add_identity(user_id: str, identity: dict[str, any]) -> bool;
     def rename_username(user_id: str, new_username: str) -> dict[str, any];
-    def is_identity_taken(value: str) -> bool;
+    def is_identity_taken(value: str, for_user: str = '') -> bool;
     def set_identity_verified(user_id: str, value_normalized: str) -> bool;
     def update_profile(
         user_id: str, profile_updates: dict[str, any]
