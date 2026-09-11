@@ -709,6 +709,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 base_type, expr.right.value
                             );
                             if submodule is not None {
+                                if isinstance(submodule, UnknownType) {
+                                    return submodule;
+                                }
                                 expr.right.type = submodule;
                                 return submodule;
                             }
@@ -782,6 +785,9 @@ impl TypeEvaluator._get_type_of_expression_core(
 
                     if submod_type
                         := self._resolve_submodule_attr(base_type, expr.right.value) {
+                        if isinstance(submod_type, UnknownType) {
+                            return submod_type;
+                        }
                         expr.right.type = submod_type;
                         return submod_type;
                     }

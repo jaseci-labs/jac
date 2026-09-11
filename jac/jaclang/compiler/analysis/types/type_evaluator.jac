@@ -428,7 +428,7 @@ walker TypeEvaluator {
     def _widen_literal_for_declaration(ty: TypeBase) -> TypeBase;
     def _import_module_from_path(
         path: str, importer_path: (str | None) = None, need_tree: bool = False
-    ) -> Module;
+    ) -> Module | None;
 
     def _resolve_importer_path(ast_node: UniNode) -> (str | None);
     def forget_module(resolved_path: str) -> None;
@@ -501,7 +501,7 @@ walker TypeEvaluator {
     def get_type_of_module_item(node_: ModuleItem) -> TypeBase;
     def _resolve_submodule_attr(
         base_type: ModuleType, attr_name: str
-    ) -> (ModuleType | None);
+    ) -> (ModuleType | UnknownType | None);
 
     def _resolve_star_import_symbol(
         mod: Module, name: str, visited: set[int] | None = None

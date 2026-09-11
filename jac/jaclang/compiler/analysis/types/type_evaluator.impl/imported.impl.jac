@@ -13,6 +13,9 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
 
     from_path = self._resolve_from_path(import_node.from_loc);
     from_mod_type = self.get_type_of_module(import_node.from_loc);
+    if isinstance(from_mod_type, UnknownType) and from_mod_type.is_incomplete {
+        return UnknownType(is_incomplete=True);
+    }
     from_mod_name = import_node.from_loc.dot_path_str;
     if isinstance(from_mod_type, ModuleType) or from_path.exists() {
         is_dir = from_path.is_dir() or (from_path.stem == "__init__");
@@ -77,6 +80,9 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                         importer_path=self._resolve_importer_path(node_),
                         need_tree=import_node.is_comptime
                     );
+                    if mod is None {
+                        return UnknownType(is_incomplete=True);
+                    }
 
                     is_subpackage_init = (
                         path.name.startswith("__init__")
@@ -362,6 +368,9 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                             str(init_file),
                             importer_path=self._resolve_importer_path(node_)
                         );
+                        if pkg_sym_tab is None {
+                            return UnknownType(is_incomplete=True);
+                        }
                         break;
                     }
                 }
@@ -391,11 +400,14 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 continue;
             }
             _imp = node_.find_parent_of_type(Import);
-            mod: Module = self._import_module_from_path(
+            mod = self._import_module_from_path(
                 mod_path,
                 importer_path=self._resolve_importer_path(node_),
                 need_tree=bool(_imp is not None and _imp.is_comptime)
             );
+            if mod is None {
+                return UnknownType(is_incomplete=True);
+            }
             mod_type = ModuleType(
                 mod_name=npath.value,
                 file_uri=Path(mod_path).resolve(),
@@ -419,7 +431,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
 
 impl TypeEvaluator._resolve_submodule_attr(
     base_type: ModuleType, attr_name: str
-) -> (ModuleType | None) {
+) -> (ModuleType | UnknownType | None) {
     import from jaclang.compiler.session.resolver { is_untyped_third_party_module }
     if base_type.file_uri is None {
         return None;
@@ -460,6 +472,9 @@ impl TypeEvaluator._resolve_submodule_attr(
                 );
             }
             mod = self._import_module_from_path(path_str);
+            if mod is None {
+                return UnknownType(is_incomplete=True);
+            }
             mod_type = ModuleType(mod_name=attr_name, file_uri=path, symbol_table=mod);
             self._module_type_cache[path_str] = mod_type;
             return mod_type;
@@ -470,7 +485,7 @@ impl TypeEvaluator._resolve_submodule_attr(
 
 impl TypeEvaluator._import_module_from_path(
     path: str, importer_path: (str | None) = None, need_tree: bool = False
-) -> Module {
+) -> Module | None {
     resolved_path = str(Path(path).resolve());
 
     if resolved_path in self._modules_in_compile {
@@ -478,7 +493,7 @@ impl TypeEvaluator._import_module_from_path(
         if _pending is not None {
             mod = _pending;
         } else {
-            return Module.make_stub(inject_name=Path(resolved_path).stem);
+            return None;
         }
     } else {
         self._modules_in_compile.add(resolved_path);

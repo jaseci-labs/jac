@@ -1048,3 +1048,36 @@ test "hydrated user functions retain precedence over builtin names" {
     assert warm.analysis.cache_events.get('dep_hydrate', 0) >= 1;
     assert not warm.errors_had , warm_diags;
 }
+
+test "cached import cycles preserve transitive base classes" {
+    for base in ["base.jac", "base/__init__.jac"] {
+        with tempfile.TemporaryDirectory() as tmp {
+            files: dict[str, str] = {
+                base: "import type from child { Child }\nobj Base { def echo(value: Child) -> Child { return value; } }",
+                "mid.jac": "import from base { Base }\nobj Mid(Base) {}",
+                "child.jac": "import from mid { Mid }\nobj Child(Mid) {}",
+                "main.jac": "import from child { Child }\nimport from base { Base }\ndef accept(value: Base) -> int { return 1; }\nwith entry { print(accept(Child())); }"
+            };
+            for (name, source) in files.items() {
+                path = Path(tmp) / name;
+                path.parent.mkdir(parents=True, exist_ok=True);
+                path.write_text(source);
+            }
+            main = str(Path(tmp) / "main.jac");
+            (cold, expected) = _check(main);
+            assert not cold.errors_had , expected;
+            cold.release_compile_closure(collect=False);
+            _cache_path(main).unlink(missing_ok=True);
+            (warm, actual) = _check(main);
+            assert not warm.errors_had , actual;
+            assert actual == expected;
+            warm.release_compile_closure(collect=False);
+            for name in files {
+                _cache_path(str(Path(tmp) / name), main).unlink(missing_ok=True);
+            }
+            (recomputed, actual) = _check(main);
+            assert not recomputed.errors_had , actual;
+            assert actual == expected;
+        }
+    }
+}
