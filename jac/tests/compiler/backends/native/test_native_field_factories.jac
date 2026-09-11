@@ -1,5 +1,5 @@
 import ctypes;
-import jaclang.compiler.frontend.unitree as uni;
+import jaclang.compiler.ir.schema as uni;
 import from tests.support { compile_native, get_func }
 
 test "native field factories use ordinary calls and fresh values per instance" {

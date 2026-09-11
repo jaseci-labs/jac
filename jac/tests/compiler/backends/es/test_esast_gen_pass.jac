@@ -1,5 +1,7 @@
 """Test ECMAScript AST generation using consolidated Jac fixtures."""
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
@@ -7,8 +9,8 @@ import from jaclang.compiler.backends.es { EsastGenPass }
 import jaclang.compiler.backends.es.estree as es;
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 """Signals-style test backend: wraps a reactive read as `name()` so the
 value-read seam (contract §4.1.1) can be audited without a real Solid backend.
@@ -81,7 +83,7 @@ def walk_es_nodes(nd: es.Node) -> list[es.Node] {
 
 """Return compile errors that are not non-fatal TypeCheckPass diagnostics."""
 def _fatal_errors(prog: JacProgram) -> list {
-    import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
+    import from jaclang.compiler.analysis.types.type_checker_pass { TypeCheckPass }
     return [
         e
         for e in prog.errors_had
@@ -111,12 +113,12 @@ def compile_to_esast(filename: str) -> es.Program {
         f"Compilation errors in {filename}: {[str(e) for e in _fatal]}"
     );
 
-    es_pass = run_pass(EsastGenPass, ir, prog);
+    es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog);
     es_ir = es_pass.ir_out;
 
-    assert hasattr(es_ir.gen, "es_ast") , "es_ast attribute missing";
-    assert isinstance(es_ir.gen.es_ast, es.Program);
-    return es_ir.gen.es_ast;
+    assert hasattr(artifact_for(es_ir), "es_ast") , "es_ast attribute missing";
+    assert isinstance(artifact_for(es_ir).es_ast, es.Program);
+    return artifact_for(es_ir).es_ast;
 }
 
 """Compile Jac source to an ESTree program with an explicit FrameworkBackend."""
@@ -129,11 +131,11 @@ def compile_to_esast_with_backend(filename: str, backend: object) -> es.Program 
         f"Compilation errors in {filename}: {[str(e) for e in _fatal]}"
     );
 
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=backend);
+    es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=backend);
     es_ir = es_pass.ir_out;
 
-    assert isinstance(es_ir.gen.es_ast, es.Program);
-    return es_ir.gen.es_ast;
+    assert isinstance(artifact_for(es_ir).es_ast, es.Program);
+    return artifact_for(es_ir).es_ast;
 }
 
 """Return absolute path to a fixture file."""
@@ -737,7 +739,7 @@ test "single-`props` component definition warns W5015" {
     assert not prog.errors_had , (
         f"Compilation errors in {fixture}: {[str(e) for e in prog.errors_had]}"
     );
-    run_pass(EsastGenPass, ir, prog);
+    run_pass(PassIdentity.EsastGenPass, ir, prog);
 
     w5015 = [
         w
@@ -1330,7 +1332,7 @@ def compile_fixture_reporting(filename: str) -> JacProgram {
 def codegen_alerts(filename: str, backend: object) -> list {
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path(filename), no_cgen=True);
-    run_pass(EsastGenPass, ir, prog, backend=backend);
+    run_pass(PassIdentity.EsastGenPass, ir, prog, backend=backend);
     return list(prog.errors_had);
 }
 

@@ -1,8 +1,3 @@
-import from jaclang.cli.console { console }
-import from jaclang.compiler.backends.native.llvm { binding as llvm }
-import os;
-import sys;
-
 impl NaIRGenPass._na_debug_on -> bool {
     _opts = self.prog.options;
     return _opts is not None and bool(_opts.na_debug);
@@ -98,7 +93,9 @@ impl NaIRGenPass.post_transform -> None {
     ir_str = str(self.llvm_module);
 
     if self.prog.options.debug_ir {
-        import from jaclang.compiler.driver.jir { get_native_cache_dir }
+        import from jaclang.compiler.session.cache.artifact_codec {
+            get_native_cache_dir
+        }
         src_path = self.ir_in.loc.mod_path;
         if src_path {
             stem = os.path.splitext(os.path.basename(src_path))[0];

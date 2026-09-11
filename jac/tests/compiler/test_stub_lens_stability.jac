@@ -21,9 +21,9 @@ import os;
 import subprocess;
 import sys;
 import tempfile;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.jir { get_module_cache_path }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.cache.artifact_codec { get_module_cache_path }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.jac0core.stubcat_hook { active, set_active }
 
 glob IMPORTER: str = (
@@ -128,7 +128,7 @@ test "a compiler-tree compile activates the catalog instead of parsing stub tree
     try {
         state.deactivate_catalog();
         target = os.path.join(
-            compiler.selfhost.jaclang_root(), "compiler", "driver", "log.jac"
+            compiler.selfhost.jaclang_root(), "compiler", "pipeline", "log.jac"
         );
         assert os.path.isfile(target) , f"missing fixture {target}";
         prog.compile(
@@ -224,7 +224,7 @@ test "a serial jac check over compiler-tree then client files stays clean" {
     prog = JacProgram();
     pkg = prog._get_compiler().selfhost.jaclang_root();
     files = [
-        os.path.join(pkg, "compiler", "driver", "ifacecache.jac"),
+        os.path.join(pkg, "compiler", "session", "imports.jac"),
         os.path.join(pkg, "client", "targets", "pwa_build.jac")
     ];
     for f in files {

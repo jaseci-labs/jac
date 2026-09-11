@@ -173,7 +173,7 @@ test "is_volatile_path routes the compiler tree and site shims to the jac frame"
     table = [
         ("site/jaclang/mod.py", True),
         ("site/jaclang", True),
-        ("site/jaclang/compiler/frontend/unitree.jac", True),
+        ("site/jaclang/compiler/ir/syntax/nodes.jac", True),
         ("site/jaclang/_precompiled/MANIFEST.json", True),
         ("site/jaclang-0.36.1.dist-info/METADATA", True),
         ("site/jaclang/compiler/backends/native/llvm/libjacllvm.so", False),

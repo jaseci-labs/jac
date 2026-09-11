@@ -1,7 +1,7 @@
 impl EsastGenPass._osp_model -> OspModel {
-    import from jaclang.runtime.osp_model { get_osp_model }
+    import from jaclang.compiler.analysis.binding.osp_model { prepare_osp_model }
     _root = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
-    return get_osp_model(_root);
+    return prepare_osp_model(_root);
 }
 
 impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
@@ -68,7 +68,7 @@ impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
         ),
         jac_node=nd
     );
-    nd.gen.es_ast = self.sync_loc(
+    artifact_for(nd).es_ast = self.sync_loc(
         es.MethodDefinition(
             key=self.sync_loc(
                 es.Identifier(name=nd.name_ref.sym_name), jac_node=nd.name_ref
@@ -94,7 +94,7 @@ impl EsastGenPass._osp_arch_set -> set[str] {
 }
 
 impl EsastGenPass._osp_expr_arch_name(expr: (uni.UniNode | None)) -> (str | None) {
-    import from jaclang.compiler.types.types { ClassType }
+    import from jaclang.compiler.ir.types.nodes { ClassType }
     if not isinstance(expr, uni.Expr) {
         return None;
     }
@@ -110,7 +110,7 @@ impl EsastGenPass._osp_expr_arch_name(expr: (uni.UniNode | None)) -> (str | None
 }
 
 impl EsastGenPass._arch_kind_of_type(ty: object) -> (str | None) {
-    import from jaclang.compiler.types.types { ClassType }
+    import from jaclang.compiler.ir.types.nodes { ClassType }
     if not isinstance(ty, ClassType) {
         return None;
     }
@@ -315,7 +315,7 @@ impl EsastGenPass._build_osp_tags_js -> str {
         );
         lines.append(f"__ospC.osp_register_type({tag}, [{isa_members}]);");
     }
-    import from jaclang.runtime.osp_model { stable_osp_tag }
+    import from jaclang.runtime.osp_tag { stable_osp_tag }
     ge_tag = stable_osp_tag("GenericEdge");
     lines.append(f"__ospGenericEdge.prototype.__tag = {ge_tag};");
     lines.append(f"__ospC.osp_register_type({ge_tag}, []);");
@@ -376,7 +376,7 @@ impl EsastGenPass._osp_slots_js(slots: list, tags: dict) -> str {
                 ttag = tags[trig] if (trig in tags) else -1;
                 if ttag < 0 {
                     if self._arch_kind_by_name(trig) in ("node", "edge", "walker") {
-                        import from jaclang.runtime.osp_model { stable_osp_tag }
+                        import from jaclang.runtime.osp_tag { stable_osp_tag }
                         ttag = stable_osp_tag(trig);
                     }
                 }
@@ -405,8 +405,8 @@ impl EsastGenPass.exit_visit_stmt with uni.VisitStmt exit {
         es.UnaryExpression(operator='-', argument=es.Literal(value=1), prefix=True),
         jac_node=here
     );
-    if here.insert_loc and here.insert_loc.gen.es_ast {
-        insert = cast(es.Expression, here.insert_loc.gen.es_ast);
+    if here.insert_loc and artifact_for(here.insert_loc).es_ast {
+        insert = cast(es.Expression, artifact_for(here.insert_loc).es_ast);
     }
     visit_call = self.sync_loc(
         es.CallExpression(
@@ -415,28 +415,28 @@ impl EsastGenPass.exit_visit_stmt with uni.VisitStmt exit {
         ),
         jac_node=here
     );
-    if here.else_body and here.else_body.gen.es_ast {
-        here.gen.es_ast = self.sync_loc(
+    if here.else_body and artifact_for(here.else_body).es_ast {
+        artifact_for(here).es_ast = self.sync_loc(
             es.IfStatement(
                 `test=self.sync_loc(
                     es.UnaryExpression(operator='!', argument=visit_call, prefix=True),
                     jac_node=here
                 ),
-                consequent=cast(es.Statement, here.else_body.gen.es_ast),
+                consequent=cast(es.Statement, artifact_for(here.else_body).es_ast),
                 alternate=None
             ),
             jac_node=here
         );
         return;
     }
-    here.gen.es_ast = self.sync_loc(
+    artifact_for(here).es_ast = self.sync_loc(
         es.ExpressionStatement(expression=visit_call), jac_node=here
     );
 }
 
 impl EsastGenPass.exit_disengage_stmt with uni.DisengageStmt exit {
     self.needs_osp_kernel = True;
-    here.gen.es_ast = self.sync_loc(
+    artifact_for(here).es_ast = self.sync_loc(
         es.BlockStatement(
             body=[
                 self.sync_loc(
@@ -469,7 +469,7 @@ impl EsastGenPass.exit_report_stmt with uni.ReportStmt exit {
             here.expr, default_factory=lambda (_src: any) { es.Literal(value=None); }
         )
     );
-    here.gen.es_ast = self.sync_loc(
+    artifact_for(here).es_ast = self.sync_loc(
         es.ExpressionStatement(
             expression=self.sync_loc(
                 es.CallExpression(
@@ -486,7 +486,7 @@ impl EsastGenPass.exit_report_stmt with uni.ReportStmt exit {
 }
 
 impl EsastGenPass.exit_edge_ref_trailer with uni.EdgeRefTrailer exit {
-    here.gen.es_ast = self._build_edge_ref(here);
+    artifact_for(here).es_ast = self._build_edge_ref(here);
 }
 
 impl EsastGenPass._edge_tag_literal(
@@ -506,7 +506,7 @@ impl EsastGenPass._edge_tag_literal(
             _xkind = self._arch_kind_of_type(self._expr_class_type(type_expr));
         }
         if _xkind in ("node", "edge") {
-            import from jaclang.runtime.osp_model { stable_osp_tag }
+            import from jaclang.runtime.osp_tag { stable_osp_tag }
             _tag = stable_osp_tag(_etname);
         }
     }
@@ -942,8 +942,10 @@ impl EsastGenPass._build_spawn_runtime_call(
     if provider_opts is None {
         provider_opts = es.ObjectExpression(properties=[]);
     }
-    import from jaclang.compiler.symbol_utils { symbol_owner_archetype }
-    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+    import from jaclang.compiler.analysis.binding.symbol_utils {
+        symbol_owner_archetype
+    }
+    import from jaclang.compiler.analysis.boundaries.identity { endpoint_key }
     owner = symbol_owner_archetype(walker_sym) if walker_sym is not None else None;
     if owner is not None and isinstance(provider_opts, es.ObjectExpression) {
         key = endpoint_key(
@@ -1044,7 +1046,7 @@ impl EsastGenPass._resolve_spawn_walker(
 impl EsastGenPass._build_spawn_arg_object(
     call_node: uni.FuncCall, walker_symbol: (uni.Symbol | None)
 ) -> es.ObjectExpression {
-    import from jaclang.compiler.symbol_utils {
+    import from jaclang.compiler.analysis.binding.symbol_utils {
         collect_field_names,
         symbol_owner_archetype
     }
@@ -1067,8 +1069,10 @@ impl EsastGenPass._build_spawn_arg_object(
             }
         }
     }
-    boundary_types = self.ir_in.gen.interop_manifest.boundary_types_for(type_scope)
-        if self.ir_in.gen.interop_manifest
+    boundary_types = artifact_for(self.ir_in).interop_manifest.boundary_types_for(
+        type_scope
+    )
+        if artifact_for(self.ir_in).interop_manifest
         else {};
     properties: list[(es.Property | es.SpreadElement)] = [];
     positional_index = 0;

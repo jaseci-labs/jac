@@ -11,9 +11,9 @@ import sys;
 import os;
 import from pathlib { Path }
 import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
+import jaclang.compiler.ir.schema as uni;
 import from jaclang { JacRuntime as Jac }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 def _jac_root -> str {
     here = __file__;

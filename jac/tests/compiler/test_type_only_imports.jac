@@ -15,12 +15,13 @@ speaking at load:
 - E1132: a binding brought in with `import type` used in value position.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from typing { cast }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.transform { Alert }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.pass_base { Alert }
 import from tests.compiler.passes.checker_npm_harness {
     check_npm_file,
     client_node_modules,
@@ -201,7 +202,7 @@ test "import type of a d.ts interface checks clean and emits no specifier" {
             program
         )}";
         (prog2, mod) = compile_module(f);
-        js = mod.gen.js;
+        js = artifact_for(mod).js;
         assert js.strip() , "Expected JS output for the client module";
         assert "kindpkg" not in js , f"A type-only import must not reach the ESM output:\n{js}";
         assert "Iface" not in js , f"A type-only binding must not reach the ESM output:\n{js}";
@@ -239,7 +240,9 @@ test "plain import of a jac type alias is refused; import type is clean" {
         assert "E1131" not in codes_of(prog_good.errors_had) , f"`import type` of a jac type alias should be clean, got {codes_of(
             prog_good.errors_had
         )}";
-        assert "Row" not in mod_good.gen.js , f"A type-only binding must not reach the ESM output:\n{mod_good.gen.js}";
+        assert "Row" not in artifact_for(mod_good).js , f"A type-only binding must not reach the ESM output:\n{artifact_for(
+            mod_good
+        ).js}";
     }
 }
 
@@ -487,7 +490,7 @@ test "bridged import stubs skip archetype items and keep function items" {
         assert "E1131" not in codes_of(prog.errors_had) , f"An `obj` is both a value and a type, so a plain import of one is legal. Got {codes_of(
             prog.errors_had
         )}";
-        js = mod.gen.js;
+        js = artifact_for(mod).js;
         assert "__jacCallFunction" in js , f"get_todos should keep its RPC stub:\n{js}";
         assert "class Todo" in js , f"Todo should cross as a boundary-type class stub:\n{js}";
         assert "Todo = async" not in js , f"Todo is a type item and must not get an RPC stub:\n{js}";
@@ -530,7 +533,7 @@ test "the mermaid shape is refused as written and clean when split" {
             program2
         )}";
         (prog3, mod) = compile_module(fixed);
-        js = mod.gen.js;
+        js = artifact_for(mod).js;
         assert 'import mermaid from "mermaid"' in js , f"Only the default value import should survive:\n{js}";
         assert "Mermaid" not in js.replace('import mermaid from "mermaid"', "") , f"The interface must not reach the ESM output:\n{js}";
     }
@@ -542,8 +545,8 @@ test "the mermaid shape is refused as written and clean when split" {
 # ---------------------------------------------------------------------------
 
 test "an imported d.ts binding takes the symbol category its kind implies" {
-    import from jaclang.compiler.frontend.constant { SymbolType }
-    import from jaclang.compiler.frontend.unitree { ModuleItem }
+    import from jaclang.compiler.ir.enums { SymbolType }
+    import from jaclang.compiler.ir.schema { ModuleItem }
 
     # A binding that answers "kind: type" and "category: variable" at the same
     # time is one fact told two ways. Semantic tokens and hover read the

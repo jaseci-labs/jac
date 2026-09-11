@@ -22,7 +22,7 @@ import os;
 import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
 import jaclang;
 
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"

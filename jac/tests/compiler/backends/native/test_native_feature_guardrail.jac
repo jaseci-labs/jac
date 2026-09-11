@@ -18,12 +18,13 @@ test that fails: "expected E5090, got no errors" — which is exactly the
 class of bug this guardrail exists to prevent.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURES_DIR = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -111,7 +112,7 @@ def server_answer(label: str, code: str, name: str) -> int {
     );
     assert not prog.errors_had , f"server-lane compilation errors: {fmt_errors(prog)}";
     ns: dict = {};
-    exec(compile(ir.gen.py, path, "exec"), ns);
+    exec(compile(artifact_for(ir).py, path, "exec"), ns);
     return ns[name]();
 }
 
@@ -228,7 +229,7 @@ test "guardrail: field access on an untyped (any) node-ref element demotes the a
     assert not has_error_code(prog, "E5090") , f"An ability-owned violation must demote, not fail the module: {fmt_errors(
         prog
     )}";
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "W.go" not in layout.methods , (
         "the violating ability must be demoted out of the native layout"
@@ -339,7 +340,7 @@ test "for-loop over a set lowers, and both lanes answer the same sum" {
     assert not prog.errors_had , f"a lowered set loop must compile clean, got: {fmt_errors(
         prog
     )}";
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "run" in layout.functions , (
         "iterating a set lowers now; run must stay in the native layout"
@@ -347,7 +348,7 @@ test "for-loop over a set lowers, and both lanes answer the same sum" {
     assert "NA_DEBUG demote run" not in log , (
         f"run must not demote for iterating a set:\n{log}"
     );
-    native = native_answer(ir.gen.native_engine, "run");
+    native = native_answer(artifact_for(ir).native_engine, "run");
     assert native == 6 , (
         f"the native lane must sum every element of the set once, got {native}"
     );
@@ -367,9 +368,9 @@ test "nested container subscripts preserve the inferred element layout" {
     "def answer -> int { return run({0: {'items': ['yes']}}) * 10 + run({0: {'items': []}}); }\n";
     (prog, ir, log) = compile_na_inline_demote("typed_subscript", code);
     assert not prog.errors_had , fmt_errors(prog);
-    assert ir.gen.native_layout is not None;
-    assert "run" in ir.gen.native_layout.functions , log;
-    assert native_answer(ir.gen.native_engine, "answer") == 10;
+    assert artifact_for(ir).native_layout is not None;
+    assert "run" in artifact_for(ir).native_layout.functions , log;
+    assert native_answer(artifact_for(ir).native_engine, "answer") == 10;
     assert server_answer("typed_subscript_server", code, "answer") == 10;
 }
 
@@ -384,9 +385,9 @@ test "nested container membership preserves object identity" {
     "def answer -> int { item = Tag(); return run({'items': [item]}, item) * 10 + run({'items': [item]}, Tag()); }\n";
     (prog, ir, log) = compile_na_inline_demote("typed_membership", code);
     assert not prog.errors_had , fmt_errors(prog);
-    assert ir.gen.native_layout is not None;
-    assert "run" in ir.gen.native_layout.functions , log;
-    assert native_answer(ir.gen.native_engine, "answer") == 10;
+    assert artifact_for(ir).native_layout is not None;
+    assert "run" in artifact_for(ir).native_layout.functions , log;
+    assert native_answer(artifact_for(ir).native_engine, "answer") == 10;
     assert server_answer("typed_membership_server", code, "answer") == 10;
 }
 
@@ -438,7 +439,7 @@ test "checker: membership over an operand with no static type is refused (E1124)
 #
 # The distinction was not free to learn. An earlier cut of this check also
 # refused unparameterized containers, and the seal caught it: NON_ESCAPED_KEYWORDS
-# in compiler/frontend/constant.jac and _proto_checks_in_progress in
+# in compiler/ir/enums.jac and _proto_checks_in_progress in
 # types/impl/type_utils.impl.jac are both bare `set`, so the compiler
 # refused to compile itself.
 test "checker: a bare container operand is left to the annotation refusal" {
@@ -532,7 +533,7 @@ test "guardrail: string and typed-list membership still lower" {
     assert not prog.errors_had , f"Supported membership must not error, got: {fmt_errors(
         prog
     )}";
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     for name in ["sub", "nsub", "lst", "chr_at"] {
         assert name in layout.functions , (
@@ -737,7 +738,7 @@ test "guardrail: inline Python block demotes its function, native callers stay l
     assert not prog.errors_had , f"A function-owned PyInlineCode must demote, got: {fmt_errors(
         prog
     )}";
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "f" not in layout.functions , (
         "the PyInlineCode function must be demoted out of the native layout"
@@ -1138,7 +1139,7 @@ test "guardrail: f-string !a conversion demotes its function" {
     assert not prog.errors_had , f"A function-owned !a violation must demote, got: {fmt_errors(
         prog
     )}";
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "f" not in layout.functions , (
         "the !a function must be demoted out of the native layout"
@@ -1184,7 +1185,7 @@ test "guardrail: implicit-ctor positionals lower; dynamic new() demotes" {
     assert not over.errors_had , f"new() arity overflow must demote its function, got: {fmt_errors(
         over
     )}";
-    assert "make" not in over_ir.gen.native_layout.functions , (
+    assert "make" not in artifact_for(over_ir).native_layout.functions , (
         "the new()-overflow function must be demoted out of the native layout"
     );
     assert "NA_DEBUG demote make" in over_log , (
@@ -1201,7 +1202,7 @@ test "guardrail: implicit-ctor positionals lower; dynamic new() demotes" {
     assert not dyn.errors_had , f"A dynamic new() class value must demote its function, got: {fmt_errors(
         dyn
     )}";
-    assert "make" not in dyn_ir.gen.native_layout.functions , (
+    assert "make" not in artifact_for(dyn_ir).native_layout.functions , (
         "the dynamic-new() function must be demoted out of the native layout"
     );
     assert "NA_DEBUG demote make" in dyn_log , (
@@ -1233,7 +1234,7 @@ test "guardrail: nested event ability demotes its function, not an ICE" {
     assert not prog.errors_had , f"A nested event ability must demote its function, got: {fmt_errors(
         prog
     )}";
-    assert "widget" not in ir.gen.native_layout.functions , (
+    assert "widget" not in artifact_for(ir).native_layout.functions , (
         "the function hosting the nested event ability must be demoted"
     );
     assert "NA_DEBUG demote widget" in log , (

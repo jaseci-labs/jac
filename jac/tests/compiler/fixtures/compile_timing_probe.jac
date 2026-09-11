@@ -27,25 +27,21 @@ processes minutes apart comparable at all. `JAC_TIMING_REPS` sets the sample
 count (default 6, which is where the corpus stopped moving between runs here).
 """
 
+import from jaclang.compiler.pipeline.executor { execute_passes }
 import json;
 import os;
 import time;
 
 import from pathlib { Path }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pipeline {
-    get_analysis_sched,
-    get_boundary_analysis_sched,
-    get_ir_gen_sched,
-    get_py_code_gen
-}
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.pipeline.schedule { get_analysis_sched, get_boundary_analysis_sched, get_ir_gen_sched, get_py_code_gen }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob CORPUS: list[str] = [
-         "jaclang/compiler/frontend/srcloc.jac",
+         "jaclang/compiler/frontend/source_locations.jac",
          "jaclang/compiler/frontend/parser/tokens.jac",
-         "jaclang/compiler/passes/uni_pass.jac",
-         "jaclang/compiler/frontend/constant.jac",
+         "jaclang/compiler/pipeline/uni_pass.jac",
+         "jaclang/compiler/ir/enums.jac",
          "examples/chess/chess.jac"
      ],
      PHASES: list[str] = [
@@ -65,13 +61,13 @@ def phase_row(src: str) -> dict {
     t0 = time.perf_counter();
     mod = staged.parse_str(text, src);
     t1 = time.perf_counter();
-    staged.run_schedule(mod, get_ir_gen_sched());
+    execute_passes(staged, mod, get_ir_gen_sched());
     t2 = time.perf_counter();
-    staged.run_schedule(mod, get_analysis_sched());
+    execute_passes(staged, mod, get_analysis_sched());
     t2a = time.perf_counter();
-    staged.run_schedule(mod, get_boundary_analysis_sched());
+    execute_passes(staged, mod, get_boundary_analysis_sched());
     t3 = time.perf_counter();
-    staged.run_schedule(mod, get_py_code_gen(native=False));
+    execute_passes(staged, mod, get_py_code_gen(native=False));
     t4 = time.perf_counter();
     errors = len(staged.errors_had);
     staged.release_compile_closure();

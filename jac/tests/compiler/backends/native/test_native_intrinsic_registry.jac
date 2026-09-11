@@ -10,15 +10,16 @@ intrinsic misuse is E5095, never a silent constant, and a user definition
 colliding with a registered name is W6008, never a silent hijack.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import shutil;
 import tempfile;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.compiler.frontend.diagnostics { E5095, W6008 }
-import from jaclang.compiler.intrinsic_registry {
+import from jaclang.compiler.analysis.types.intrinsic_registry {
     INTRINSIC_REGISTRY,
     IntrinsicDispatch
 }
@@ -141,7 +142,7 @@ test "every registry intrinsic lowers through its registered emitter" {
         (prog, ir_mod) = _compile_src(_probe_source(intr), gc_mode=intr.gc_mode_gate);
         errs = [str(e) for e in prog.errors_had] if prog.errors_had else [];
         assert not errs , f"{intr.name}: compile errors: {errs}";
-        eng = ir_mod.gen.native_engine;
+        eng = artifact_for(ir_mod).native_engine;
         assert eng is not None , f"{intr.name}: no native engine produced";
         if intr.dispatch == IntrinsicDispatch.FLOAT_BITS {
             fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_double);
@@ -151,7 +152,7 @@ test "every registry intrinsic lowers through its registered emitter" {
             fn = _get_func(eng, "probe", ctypes.c_double, ctypes.c_int64);
             assert fn(BITS_1_5) == 1.5 , f"{intr.name}(bits(1.5)) != 1.5";
         } elif intr.dispatch in RAW_MEM_MARKERS {
-            ir_text = str(ir_mod.gen.llvm_ir);
+            ir_text = str(artifact_for(ir_mod).llvm_ir);
             marker = RAW_MEM_MARKERS[intr.dispatch];
             assert marker in ir_text , (
                 f"{intr.name}: the raw-memory lowering ({marker!r}) is missing "
@@ -160,7 +161,7 @@ test "every registry intrinsic lowers through its registered emitter" {
             fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);
             assert fn(35) == 42 , f"{intr.name}: probe did not execute cleanly";
         } else {
-            ir_text = str(ir_mod.gen.llvm_ir);
+            ir_text = str(artifact_for(ir_mod).llvm_ir);
             assert _call_lines(ir_text, intr.name) , (
                 f"{intr.name}: no call site in emitted IR - the intrinsic "
                 "was stranded"
@@ -180,7 +181,7 @@ test "32 bit memory operations preserve adjacent storage and signed values" {
             + "free(p); return lo + hi; }\n"
     );
     assert not prog.errors_had , str(prog.errors_had);
-    eng = ir_mod.gen.native_engine;
+    eng = artifact_for(ir_mod).native_engine;
     assert eng is not None;
     fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);
     assert fn(-123) == 0;
@@ -200,12 +201,12 @@ test "gc-gated intrinsic is a declared no-op outside its gc mode" {
         (prog, ir_mod) = _compile_src(_probe_source(intr), gc_mode=off_mode);
         errs = [str(e) for e in prog.errors_had] if prog.errors_had else [];
         assert not errs , f"{intr.name}: compile errors: {errs}";
-        ir_text = str(ir_mod.gen.llvm_ir);
+        ir_text = str(artifact_for(ir_mod).llvm_ir);
         assert not _call_lines(ir_text, intr.name) , (
             f"{intr.name}: gated intrinsic still emitted a call under "
             f"gc mode {off_mode}"
         );
-        eng = ir_mod.gen.native_engine;
+        eng = artifact_for(ir_mod).native_engine;
         assert eng is not None;
         fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);
         assert fn(35) == 42;
@@ -266,10 +267,10 @@ test "non-numeric intrinsic operand is E5095" {
         "the E5095 refusal is owned by probe(), which must demote to a "
         + f"seam, got: {[str(e) for e in prog.errors_had]}"
     );
-    assert ir_mod.gen.native_layout is not None , (
+    assert artifact_for(ir_mod).native_layout is not None , (
         "whole-module native compile aborted"
     );
-    assert "probe" not in ir_mod.gen.native_layout.functions , (
+    assert "probe" not in artifact_for(ir_mod).native_layout.functions , (
         "a str operand to __float_bits must demote the function out of the "
         + "native layout, never lower wrongly"
     );
@@ -292,7 +293,7 @@ test "user stubs colliding with intrinsics warn W6008 and never hijack" {
             "both stub defs must draw the W6008 collision warning, got: "
             + str([str(w) for w in prog.warnings_had])
         );
-        eng = ir_mod.gen.native_engine;
+        eng = artifact_for(ir_mod).native_engine;
         assert eng is not None;
         bits_of = _get_func(eng, "bits_of", ctypes.c_int64, ctypes.c_double);
         assert bits_of(1.5) == BITS_1_5 , "call reached the stub body";

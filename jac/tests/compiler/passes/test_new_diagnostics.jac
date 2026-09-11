@@ -16,15 +16,17 @@ parametrized reject suites. Tests are organized to match the implementation
 milestones in _planning/diagnostics_implementation_progress.md.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
 
-import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.analysis.binding.ast_validation_pass { ASTValidationPass }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.frontend.parser.frontend { parse }
 import from jaclang.testing.test { parametrize }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures"),
      CHECKER_FIXTURES = os.path.join(
@@ -39,7 +41,7 @@ glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures"
 # ──────────────────────────────────────────────────────────────────
 """Compile a fixture with type checking and static analysis. Returns (program, module)."""
 def compile_and_check(fixture_name: str) -> tuple {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     path = os.path.join(NEW_DIAG_FIXTURES, fixture_name);
     program = JacProgram();
     mod = program.compile(path, options=CompileOptions(default_codespace='server'));
@@ -73,7 +75,7 @@ def parse_and_validate(source: str) -> tuple {
             return (True, None);
         }
         prog = JacProgram();
-        run_pass(ASTValidationPass, module, prog);
+        run_pass(PassIdentity.ASTValidationPass, module, prog);
         return (len(prog.errors_had) > 0, prog);
     } except Exception {
         return (True, None);
@@ -415,7 +417,7 @@ test "E0063: glob inside a function blocks codegen and points at the rebinding i
         use_str="def foo() -> int { glob a = 1; return a; }"
     );
     assert has_diagnostic_code(prog, "E0063");
-    assert not mod.gen.py_bytecode;
+    assert not artifact_for(mod).py_bytecode;
     # Jac has no `global` statement; a function rebinds a module glob by
     # plain assignment, so a hint that says "global" leads to a parse error (#8612).
     alert = [

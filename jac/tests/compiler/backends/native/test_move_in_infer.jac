@@ -7,17 +7,15 @@ live after the append keep copy-in semantics; output is byte-identical
 across gc modes either way.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
+import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import subprocess;
 import sys;
 import tempfile;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "move_in_infer.jac"
@@ -37,7 +35,7 @@ def _compile_ir -> str {
             options=CompileOptions(aot_mode=True, memory_profile="nogc")
         );
         assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-        return str(ir.gen.llvm_ir);
+        return str(artifact_for(ir).llvm_ir);
     } finally {
         pop_native_target(prev);
     }

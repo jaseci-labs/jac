@@ -115,3 +115,7 @@ libjac_*.dylib.layout.json
 libjacpyembed.so
 libjacpyembed.dylib
 jacpyembed.dll
+
+# Application preparation is source code.
+!jaclang/build/
+!jaclang/build/**

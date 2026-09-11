@@ -19,11 +19,12 @@ Two properties are pinned:
   silently iterating nothing.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -75,7 +76,7 @@ def sv_funcs -> dict {
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"sv compilation errors: {errors}";
     ns: dict = {};
-    exec(compile(ir.gen.py, path, "exec"), ns);
+    exec(compile(artifact_for(ir).py, path, "exec"), ns);
     return ns;
 }
 
@@ -84,11 +85,11 @@ test "every optional-container walk reaches the native layout" {
     (prog, ir) = native_build();
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"native compilation errors: {errors}";
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
     missing = [
         fn
         for fn in CASES
-        if fn not in ir.gen.native_layout.functions
+        if fn not in artifact_for(ir).native_layout.functions
     ];
     assert not missing , (
         "these optional-container walks demoted instead of lowering: "
@@ -100,7 +101,7 @@ test "every optional-container walk reaches the native layout" {
 
 test "optional-container walks answer the same on both pathways" {
     (prog, ir) = native_build();
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine produced";
     sv = sv_funcs();
     for fn in CASES {
@@ -113,7 +114,7 @@ test "optional-container walks answer the same on both pathways" {
 
 test "the answers are the fixture's, not a shared wrong answer" {
     (prog, ir) = native_build();
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine produced";
     # 1 + 2 + 4 over the three items, every spelling of the walk.
     for fn in [

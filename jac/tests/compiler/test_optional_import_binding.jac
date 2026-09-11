@@ -10,8 +10,8 @@ None -- so every later member access resolves against NoneType and reports.
 This is the idiom every `_optdeps` module is built on.
 """
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 def check_src(src: str) -> list[str] {
     prog = JacProgram();

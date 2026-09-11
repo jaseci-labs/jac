@@ -13,7 +13,7 @@ import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from jaclang.compiler.types.stubcat.reader import StubCatalog
+    from jaclang.compiler.session.cache.catalog_reader import StubCatalog
 
 _ACTIVE: list[StubCatalog | None] = [None]
 

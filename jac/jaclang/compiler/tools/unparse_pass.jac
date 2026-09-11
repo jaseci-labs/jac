@@ -1,7 +1,9 @@
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes { UniPass }
-import from jaclang.compiler.frontend.constant { OwnershipKind, is_mut_kind }
-import from jaclang.compiler.frontend.roles { BodyRole }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.pipeline.uni_pass { UniPass }
+import from jaclang.compiler.ir.enums { OwnershipKind, is_mut_kind }
+import from jaclang.compiler.ir.syntax.edges { BodyRole }
 
 walker UnparsePass(UniPass) {
     def _comma_sep(nodes: Sequence[uni.UniNode]) -> str;
@@ -124,8 +126,8 @@ walker UnparsePass(UniPass) {
 }
 
 def unparse_node(nd: uni.UniNode) -> str {
-    if nd.gen.jac {
-        return nd.gen.jac;
+    if artifact_for(nd).jac {
+        return artifact_for(nd).jac;
     }
     if isinstance(nd, uni.Token) {
         return nd.value;
@@ -143,7 +145,7 @@ def unparse_node(nd: uni.UniNode) -> str {
 def unparse_module(mod: uni.Module, requires_format: bool = True) -> str {
     import from jaclang.compiler.tools.jac_formatter_pass { format_module }
     import from jaclang.compiler.tools.normalize_pass { NormalizePass }
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
 
     own_path = mod.loc.mod_path;
     saved_body = mod.body;
@@ -168,13 +170,14 @@ def unparse_module(mod: uni.Module, requires_format: bool = True) -> str {
             mod.set_kids(nodes=head_kid or [uni.EmptyToken()]);
         }
         try {
-            import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
+            import from jaclang.compiler.pipeline.executor { run_utility }
+            import from jaclang.compiler.pipeline.contracts { UtilityProduct }
             run_utility(UtilityProduct.NORMALIZE, mod, JacProgram());
             if requires_format {
                 return format_module(mod);
             }
             run_utility(UtilityProduct.UNPARSE, mod, JacProgram());
-            return mod.gen.jac;
+            return artifact_for(mod).jac;
         } finally {
             if filtered {
                 mod._role_set(BodyRole, saved_body);

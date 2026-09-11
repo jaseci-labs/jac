@@ -29,6 +29,7 @@ A class something IS dispatched through keeps its header and its refusal --
 that pair genuinely has no assignment satisfying both.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import contextlib;
 import io;
 import os;
@@ -36,9 +37,9 @@ import subprocess;
 import sys;
 import tempfile;
 import from tests.support { TESTS_DIR, native_force_opts }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -214,7 +215,7 @@ test "a vtable-less imported base and its subclass agree on the header" {
         f"`depth` must sit where the module that declared it put it: "
         f"Anchor {anchor.field_index} vs FlatKid {kid.field_index}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     for fn in ["read_inherited", "stays_clean"] {
         assert fn in layout.functions , (

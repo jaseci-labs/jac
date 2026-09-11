@@ -54,7 +54,7 @@ impl ViteClientBundleBuilder._compile_bundle(
     );
     import json;
     import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.compiler.boundary_audit { boundary_audit }
+    import from jaclang.build.manifests { boundary_audit }
     if self.vite_output_dir is not None {
         (self.vite_output_dir / "boundaries.json").write_text(
             json.dumps(

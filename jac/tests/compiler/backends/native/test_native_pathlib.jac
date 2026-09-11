@@ -9,7 +9,7 @@ oracle, not a hand-copied expectation table.
 a `str` and over a `Path`, `str()`, f-string interpolation, truthiness,
 `.name`, `.stem`, `.parent`, `/`, `.resolve()`, `.exists()` and `.is_dir()`,
 including an `obj` carrying a `Path`-typed `has` field with a `Path("")`
-default -- the shape `compiler/types/types.jac` declares.
+default -- the shape `compiler/ir/types/nodes.jac` declares.
 """
 
 import os;

@@ -1,7 +1,7 @@
 """Compile-time operators use Jac semantics through one binary dispatcher."""
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.types.ct_eval { CtEvaluator, CtError }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.analysis.comptime.evaluator { CtEvaluator, CtError }
+import from jaclang.compiler.ir.enums { Tokens as Tok }
 
 test "compile-time comparison and membership preserve operand order" {
     evaluator = CtEvaluator(evaluator=JacProgram().get_type_evaluator());

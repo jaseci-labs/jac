@@ -1,5 +1,5 @@
 impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement] {
-    manifest = nd.gen.interop_manifest;
+    manifest = artifact_for(nd).interop_manifest;
     if not manifest.boundary_types {
         return [];
     }
@@ -10,9 +10,9 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
         if (
             isinstance(item, uni.Archetype)
             and (item.name is not None)
-            and isinstance(item.gen.es_ast, es.ClassDeclaration)
+            and isinstance(artifact_for(item).es_ast, es.ClassDeclaration)
         ) {
-            osp_class_map[item.name.sym_name] = item.gen.es_ast;
+            osp_class_map[item.name.sym_name] = artifact_for(item).es_ast;
         }
     }
     for info in manifest.boundary_types.values() {
@@ -690,7 +690,7 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
 }
 
 impl EsastGenPass._boundary_type_name(info: BoundaryTypeInfo) -> str {
-    manifest = self.ir_in.gen.interop_manifest;
+    manifest = artifact_for(self.ir_in).interop_manifest;
     if info.type_scope == self.ir_in.loc.mod_path {
         return info.name;
     }

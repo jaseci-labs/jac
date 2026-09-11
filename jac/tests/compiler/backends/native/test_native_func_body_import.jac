@@ -10,12 +10,13 @@ politely.
 Results are compared against the sv/bytecode run of the same fixture.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import importlib;
 import os;
 import sys;
 import from tests.support { TESTS_DIR, compile_native, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -99,8 +100,8 @@ test "an unsupported body-scoped import demotes its function, callers stay loud"
     assert not prog.errors_had , f"a function-owned import violation must demote, got: {[
         str(e) for e in prog.errors_had
     ]}";
-    assert ir.gen.native_layout is not None;
-    assert "use" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None;
+    assert "use" not in artifact_for(ir).native_layout.functions , (
         "the function with the Python-only import must leave the native layout"
     );
     assert "NA_DEBUG demote use" in log , f"no demotion recorded for use in:\n{log}";
@@ -136,9 +137,9 @@ test "an unsupported body-scoped import demotes its function, callers stay loud"
 # C library that module declares -- onto the native link line, so the artifact
 # fails to link anywhere that library is absent.
 test "nested imports are harvested only from native-context elements" {
-    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-    import from jaclang.compiler.frontend.constant { CodeContext }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.analysis.binding.module_facts { ModuleFacts }
+    import from jaclang.compiler.ir.enums { CodeContext }
+    import from jaclang.compiler.session.options { CompileOptions }
     prog = JacProgram();
     # No forced codespace: the solver places this module's elements on the
     # server, so its body-scoped import is server-context.
@@ -170,8 +171,8 @@ test "a native-context body-scoped import contributes its module's clib" {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {[str(e) for e in prog.errors_had]}";
-    assert any("libctxgated" in p for p in ir.gen._clib_paths) , (
+    assert any("libctxgated" in p for p in artifact_for(ir)._clib_paths) , (
         f"transitive body-scoped import did not contribute its clib: "
-        f"{ir.gen._clib_paths}"
+        f"{artifact_for(ir)._clib_paths}"
     );
 }

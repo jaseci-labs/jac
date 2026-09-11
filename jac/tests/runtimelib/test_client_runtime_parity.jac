@@ -13,18 +13,20 @@ from `impl AuthGuard(...)` compiles clean, keeps every signature test green, and
 revives #8023. The last test reads the compiled body instead.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import re;
 import jaclang;
 import from pathlib { Path }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.pipeline.executor { run_pass }
 import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
+import from jaclang.compiler.analysis.types.type_checker_pass { TypeCheckPass }
 
 def _as_any(v: any) -> any {
     return v;
@@ -118,7 +120,11 @@ def _compiled_body(path: Path, backend: any, name: str) -> str {
         if not issubclass(e.from_pass, TypeCheckPass)
     ];
     assert not fatal , f"{path.name} failed to compile: {[str(e) for e in fatal]}";
-    js = es_to_js(run_pass(EsastGenPass, ir, prog, backend=backend).ir_out.gen.es_ast);
+    js = es_to_js(
+        artifact_for(
+            run_pass(PassIdentity.EsastGenPass, ir, prog, backend=backend).ir_out
+        ).es_ast
+    );
     start = js.find(f"function {name}(");
     assert start >= 0 , f"{path.name} emitted no `function {name}(`";
     body = [];

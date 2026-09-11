@@ -1,9 +1,13 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import hashlib;
 import os;
 import from pathlib { Path }
 import from types { ModuleType }
-import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
-import type from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.backends.common.artifacts {
+    ClientArtifact,
+    ClientManifest
+}
+import type from jaclang.compiler.ir.schema { Module }
 
 class ClientBundleError(RuntimeError) {}
 

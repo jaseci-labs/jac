@@ -23,6 +23,8 @@ These tests pin:
     silent demotion to a spread
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import re;
 import from tests.support { JAC_ROOT }
@@ -30,9 +32,9 @@ import from jaclang.compiler.backends.es { EsastGenPass }
 import jaclang.compiler.backends.es.estree as es;
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
@@ -45,11 +47,11 @@ def compile_fixture(fixture_name: str) -> tuple[EsastGenPass, JacProgram, str] {
     assert not prog.errors_had , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=ReactBackend());
+    es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=ReactBackend());
     assert not prog.errors_had , (
         f"ES codegen errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
-    return (es_pass, prog, es_to_js(es_pass.ir_out.gen.es_ast));
+    return (es_pass, prog, es_to_js(artifact_for(es_pass.ir_out).es_ast));
 }
 
 """Slice out the body of the named emitted function for focused assertions."""

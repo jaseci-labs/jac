@@ -8,16 +8,14 @@ annotations; a returned owner stays on the heap. rc-stats reports the count
 as `promoted=N`.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
+import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import subprocess;
 import sys;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "stack_promotion.jac"
@@ -38,8 +36,8 @@ def _compile_ir(gc_mode: str, enforce: bool) -> str {
             )
         );
         assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-        assert ir is not None and ir.gen.llvm_ir is not None;
-        return str(ir.gen.llvm_ir);
+        assert ir is not None and artifact_for(ir).llvm_ir is not None;
+        return str(artifact_for(ir).llvm_ir);
     } finally {
         pop_native_target(prev);
     }

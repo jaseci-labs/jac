@@ -19,13 +19,14 @@ Coverage:
   - AOT runs of the self-checking fixture across --memory rc / cycles / none.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import subprocess;
 import sys;
 import tempfile;
 import from tests.support { TESTS_DIR, native_force_opts, native_str_func }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -34,7 +35,7 @@ glob FIXTURES = os.path.join(
 
 
 def _opts(gc_mode: str | None = None, enforce: bool = False) -> any {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     if gc_mode is None {
         return native_force_opts();
     }
@@ -55,7 +56,7 @@ def _compile(fixture: str, options: any | None = None) -> tuple {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine for {fixture}";
     return (eng, ir);
 }
@@ -127,7 +128,7 @@ test "hetero dict read-back, overwrite, pop, clear" {
 test "IR shape: hetero containers are jacval; no ptrtoint into integer slots" {
     for fixture in [PROG, "hetero_list_str.jac"] {
         (_, ir) = _compile(fixture);
-        text = str(ir.gen.llvm_ir);
+        text = str(artifact_for(ir).llvm_ir);
         assert "List.jacval" in text , f"{fixture}: hetero list did not lower to List.jacval";
         assert "ptr.toint" not in text , (
             f"{fixture}: an RC pointer was ptrtoint'd into an integer "
@@ -135,7 +136,7 @@ test "IR shape: hetero containers are jacval; no ptrtoint into integer slots" {
         );
     }
     (_, ir2) = _compile(PROG);
-    text2 = str(ir2.gen.llvm_ir);
+    text2 = str(artifact_for(ir2).llvm_ir);
     assert "Dict.ptr.jacval" in text2 , "hetero dict did not lower to Dict.<k>.jacval";
 }
 
@@ -321,10 +322,10 @@ test "mixed dict keys and mixed set elements are stable diagnostics" {
                 f"{label}: the refusal is owned by {fn_name}(), which must "
                 f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
             );
-            assert ir.gen.native_layout is not None , (
+            assert artifact_for(ir).native_layout is not None , (
                 f"{label}: whole-module native compile aborted"
             );
-            assert fn_name not in ir.gen.native_layout.functions , (
+            assert fn_name not in artifact_for(ir).native_layout.functions , (
                 f"{label}: the refused container must demote its function "
                 f"out of the native layout, never lower silently"
             );

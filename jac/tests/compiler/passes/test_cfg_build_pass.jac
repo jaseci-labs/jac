@@ -3,7 +3,7 @@
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import from jaclang.compiler.passes.cfg_build_pass { cfg_dot_from_file }
+import from jaclang.compiler.analysis.flow.cfg_build_pass { cfg_dot_from_file }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures");
 

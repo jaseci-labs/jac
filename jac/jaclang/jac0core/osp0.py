@@ -31,6 +31,7 @@ from jaclang.runtime.archetype import (
     is_light_edge_type,
     light_clear_hop,
     light_connect,
+    validate_edge_endpoints,
     light_edge_views,
     light_hop,
     light_hop_answers,
@@ -98,6 +99,9 @@ def connect0(
     rights = right if isinstance(right, list) else [right]
     ct = edge or GenericEdge
     cls = ct if isinstance(ct, type) else type(ct)
+    for source in lefts:
+        for target in rights:
+            validate_edge_endpoints(source, cls, target)
     light = conn_assign is None and is_light_edge_type(cls)
     for l_arch in lefts:
         src = l_arch.__jac__
@@ -120,7 +124,7 @@ def connect0(
 
 
 def disconnect0(left: Any, right: Any, dir: int = 2) -> bool:
-    from jaclang.compiler.frontend.constant import EdgeDir
+    from jaclang.compiler.ir.enums import EdgeDir
 
     return _rt().disconnect(left=left, right=right, dir=EdgeDir(dir))
 

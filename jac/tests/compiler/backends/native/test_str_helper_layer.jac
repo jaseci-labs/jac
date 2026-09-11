@@ -6,14 +6,15 @@ __jac_str_* bodies and the RC machinery's type-tag compares (C strings,
 not Jac strings). The fixture must also keep running identically across
 all three gc modes -- the sweep is a pure refactor."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import re;
 import subprocess;
 import sys;
 import tempfile;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "str_surface.jac"
@@ -33,7 +34,7 @@ def _violations(gc_mode: str, enforce: bool) -> list[str] {
         )
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     dpat = re.compile(r'define[^@]*@"?([A-Za-z0-9_.$]+)"?');
     cpat = re.compile(r'call[^@]*@"?(strlen|strdup|strcmp)"?\(');
     cur = "";

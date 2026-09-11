@@ -18,8 +18,8 @@ enabled via CompileOptions, matching `jac build --native --memory nogc`.
 """
 
 import os;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 import from tests.support { JAC_ROOT }
 
 glob FIXTURES = os.path.join(

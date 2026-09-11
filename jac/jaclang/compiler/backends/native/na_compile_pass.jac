@@ -1,13 +1,15 @@
+import type from jaclang.compiler.session.services { AnalysisServices }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 import type from jaclang.compiler.backends.native.llvm.binding {
     ModuleRef,
     TargetMachine,
     ValueRef
 }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes.transform { Transform }
-import from jaclang.compiler.frontend.codeinfo {
-    CodeGenTarget,
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.pipeline.pass_base { Transform }
+import from jaclang.compiler.backends.common.artifacts { NodeArtifacts }
+import from jaclang.compiler.backends.native.initialization {
     install_native_static_init
 }
 import from jaclang.compiler.frontend.diagnostics {
@@ -22,8 +24,8 @@ import from jaclang.compiler.frontend.diagnostics {
     E5028,
     E5029
 }
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import type from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 obj DepClibMeta {
     has clib_paths: list[str] = [],
@@ -40,7 +42,7 @@ obj DepClibMeta {
 
     def to_meta -> dict;
     static def from_meta(meta: dict) -> DepClibMeta;
-    def propagate_to(gen: CodeGenTarget) -> None;
+    def propagate_to(gen: NodeArtifacts) -> None;
 }
 
 def native_compiler_fingerprint(options: CompileOptions) -> str;
@@ -50,11 +52,11 @@ def native_linked_ir_text(module: uni.Module) -> str;
 def native_ir_live_externs(llvm_ir_text: str) -> set[str];
 def native_prune_live_record(pending: dict, declared: set[str]) -> dict[str, set[str]];
 def native_unit_demotions(
-    prog: JacProgram, real_path: str, options: CompileOptions
+    prog: AnalysisServices, real_path: str, options: CompileOptions
 ) -> (set[str] | None);
 
 def native_live_call_conflicts(
-    prog: JacProgram, pending: dict, options: CompileOptions
+    prog: AnalysisServices, pending: dict, options: CompileOptions
 ) -> dict[str, set[str]];
 
 glob NATIVE_VERDICT_TAINT_BOUND: int = 2048,
@@ -62,13 +64,12 @@ glob NATIVE_VERDICT_TAINT_BOUND: int = 2048,
      NATIVE_VERDICT_MISS_BOUND: int = 512;
 
 def native_verdict_blast_guard(
-    prog: JacProgram, composed: int, aot_lane: bool = False
+    prog: AnalysisServices, composed: int, aot_lane: bool = False
 ) -> str;
 
 
 walker NativeCompilePass(Transform) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
+    has prog: AnalysisServices;
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
@@ -90,3 +91,8 @@ walker NativeCompilePass(Transform) {
     def _references_undefined_region_kernel(main_mod: ModuleRef) -> bool;
     def _module_defines(main_mod: ModuleRef, name: str) -> bool;
 }
+
+glob _OSP_KERNEL_IR_CACHE: dict[str, str] = {},
+     _REGION_KERNEL_IR_CACHE: dict[str, str] = {};
+
+glob _FMT_KERNEL_IR_CACHE: dict[str, str] = {};

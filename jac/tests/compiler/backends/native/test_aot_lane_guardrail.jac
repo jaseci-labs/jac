@@ -13,20 +13,22 @@ and plays a game with it, so the AOT lane can never regress behind a green run
 lane again.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import subprocess;
 import sys;
 import tempfile;
 import from tests.support { JAC_ROOT, TESTS_DIR }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pipeline {
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.pipeline.schedule {
     get_analysis_sched,
     get_boundary_analysis_sched,
     get_ir_gen_sched,
     get_py_code_gen,
     providers_of
 }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -44,11 +46,11 @@ test "the native codegen schedule carries the native passes" {
             get_ir_gen_sched() + get_analysis_sched() + get_boundary_analysis_sched()
         )
     );
-    names = [p.__name__ for p in sched];
-    assert NaIRGenPass in sched , (
+    names = [p.value for p in sched];
+    assert PassIdentity.NaIRGenPass in sched , (
         f"native codegen schedule lost NaIRGenPass: {names}"
     );
-    assert NativeCompilePass in sched , (
+    assert PassIdentity.NativeCompilePass in sched , (
         f"native codegen schedule lost NativeCompilePass: {names}"
     );
 }
@@ -65,7 +67,7 @@ test "an AOT compile that lowers nothing names the module" {
             no_ir_cache=True
         )
     );
-    assert ir.gen.llvm_ir is None , "the fixture is not supposed to lower";
+    assert artifact_for(ir).llvm_ir is None , "the fixture is not supposed to lower";
     assert prog.errors_had , (
         "an AOT compile produced no native IR and no diagnostic to explain it"
     );

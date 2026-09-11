@@ -14,12 +14,13 @@ spellings - a divergence turns lookups into misses. Shape: the IR at
 static-key sites must call the prehashed cores, not the hashing wrappers.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
 import jaclang;
 
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -78,7 +79,7 @@ test "an embedded-NUL literal degrades to the runtime hash" {
 
 test "static-key sites lower to prehashed core calls" {
     (_, ir) = compile_native("dict_prehash.jac");
-    llvm_text = str(ir.gen.llvm_ir);
+    llvm_text = str(artifact_for(ir).llvm_ir);
     for marker in ("_set_ph_", "_get_ph_", "_contains_ph_", "_add_ph_") {
         assert marker in llvm_text , (
             f"expected prehashed core '{marker}' at static-key sites"
@@ -93,7 +94,7 @@ test "the kwargs sink builds through prehashed inserts" {
         options=native_force_opts()
     );
     assert not prog.errors_had , str([str(e) for e in prog.errors_had]);
-    llvm_text = str(ir.gen.llvm_ir);
+    llvm_text = str(artifact_for(ir).llvm_ir);
     assert "_set_ph_" in llvm_text , (
         "expected the sink's literal keyword inserts to use the prehashed core"
     );

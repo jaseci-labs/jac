@@ -68,7 +68,7 @@ def resolve_entry_file(config: any, app: str = "") -> (Path | None) {
 
 def build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict | None) {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.build.preparation { prepare_application }
     import from jaclang.project.config { get_config_for_path }
     import from jaclang.project.app_kinds { kind_has_server }
     import from jaclang.server.assembly { service_apps }
@@ -141,7 +141,7 @@ def ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
 def bake_native_payloads(config: any, pkg_copy: Path, app: str = "") -> bool {
     import os;
     import from jaclang.jac0core.ext_registry { base_stem }
-    import from jaclang.compiler.driver.pipeline { native_path_eligible }
+    import from jaclang.compiler.api { native_path_eligible }
     import from jaclang.server.sealed_serve { NATIVE_DIR_REL }
 
     entry_file = resolve_entry_file(config, app);

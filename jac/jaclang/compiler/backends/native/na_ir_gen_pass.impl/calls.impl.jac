@@ -1,40 +1,12 @@
-import from jaclang.compiler.frontend.constant { OwnershipKind }
-
-glob _NA_ABC_REDUCTIONS: dict[str, tuple] = {
-         "Sequence": ("list", "tuple", "str", "bytes", "bytearray"),
-         "MutableSequence": ("list", "bytearray"),
-         "Mapping": ("dict", ),
-         "MutableMapping": ("dict", ),
-         "Set": ("set", "frozenset"),
-         "AbstractSet": ("set", "frozenset"),
-         "MutableSet": ("set", ),
-         "ByteString": ("bytes", "bytearray")
-     },
-     _NA_ABC_OPAQUE: tuple = (
-         "Iterable",
-         "Iterator",
-         "Reversible",
-         "Generator",
-         "Container",
-         "Collection",
-         "Sized",
-         "Hashable",
-         "Callable",
-         "Awaitable",
-         "Coroutine",
-         "AsyncIterable",
-         "AsyncIterator",
-         "AsyncGenerator",
-         "MappingView",
-         "KeysView",
-         "ItemsView",
-         "ValuesView",
-         "Buffer"
-     );
-
 impl NaIRGenPass._arch_alias_target(nd: (uni.UniNode | None)) -> (str | None) {
     if not isinstance(nd, uni.NameAtom) {
         return None;
+    }
+    semantic_type = nd.type;
+    if isinstance(semantic_type, ClassType)
+        and semantic_type.is_instantiable_class()
+        and semantic_type.shared.class_name != self._get_name(nd) {
+        return semantic_type.shared.class_name;
     }
     sym = nd.sym;
     if sym is None {
@@ -160,7 +132,7 @@ impl NaIRGenPass._transfer_own_args(
 }
 
 impl NaIRGenPass._callee_ability_of(nd: uni.FuncCall) -> (uni.Ability | None) {
-    import from jaclang.compiler.symbol_utils { resolved_callee }
+    import from jaclang.compiler.analysis.binding.symbol_utils { resolved_callee }
     return resolved_callee(nd);
 }
 
@@ -1197,7 +1169,7 @@ impl NaIRGenPass._native_module_call_target(
         return None;
     }
 
-    import from jaclang.compiler.symbol_utils { imported_module_name }
+    import from jaclang.compiler.analysis.binding.symbol_utils { imported_module_name }
     mod_name = imported_module_name(trailer.target);
     method_name = self._get_name(trailer.right);
     if mod_name is None or method_name is None {
@@ -1217,7 +1189,7 @@ impl NaIRGenPass._native_module_call_target(
 impl NaIRGenPass._codegen_intrinsic(
     nd: uni.FuncCall, intr: IntrinsicEntry
 ) -> (ir.Value | None) {
-    import from jaclang.compiler.intrinsic_registry { IntrinsicDispatch }
+    import from jaclang.compiler.analysis.types.intrinsic_registry { IntrinsicDispatch }
 
     positional: list = [];
     _has_kw = False;
@@ -1406,7 +1378,7 @@ impl NaIRGenPass._codegen_synthetic_call(
     call = uni.FuncCall(
         target=target, params=params, genai_call=None, kid=[target, *params]
     );
-    import from jaclang.compiler.symbol_utils {
+    import from jaclang.compiler.analysis.binding.symbol_utils {
         ability_of_symbol,
         classify_call,
         resolve_expr_symbol
@@ -1426,9 +1398,13 @@ impl NaIRGenPass._codegen_synthetic_call(
 }
 
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
-    import from jaclang.compiler.intrinsic_registry { INTRINSIC_REGISTRY }
-    import from jaclang.compiler.symbol_utils { erased_identity_call_arg }
-    import from jaclang.compiler.field_semantics {
+    import from jaclang.compiler.analysis.types.intrinsic_registry {
+        INTRINSIC_REGISTRY
+    }
+    import from jaclang.compiler.analysis.binding.symbol_utils {
+        erased_identity_call_arg
+    }
+    import from jaclang.compiler.analysis.types.field_semantics {
         field_initialization,
         is_field_marker
     }
@@ -1497,7 +1473,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
 
-    import from jaclang.compiler.types { types as jtypes }
+    import jaclang.compiler.ir.types.nodes as jtypes;
     _callee_t = nd.target?.type;
     if isinstance(_callee_t, jtypes.ClassType)
         and _callee_t.private.distinct_key is not None {
@@ -1568,7 +1544,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name == "Region" {
-            import from jaclang.compiler.expr_keys { is_builtin_region_type }
+            import from jaclang.compiler.analysis.types.expr_keys {
+                is_builtin_region_type
+            }
             if is_builtin_region_type(nd.type) or "Region" not in self.struct_types {
                 return self._region_new_handle();
             }
@@ -2218,7 +2196,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     if _mod_qual is not None {
-        import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
+        import from jaclang.compiler.session.native_resolution { resolve_native_module }
         (_, source) = resolve_native_module(
             _mod_qual, os.path.dirname(nd.loc.mod_path)
         );
@@ -2227,7 +2205,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             else None;
     }
     if func is None {
-        manifest = self.ir_in.gen.interop_manifest;
+        manifest = artifact_for(self.ir_in).interop_manifest;
         binding = manifest.bindings.get(func_name);
         _src_ab: (uni.Ability | None) = None;
         if binding is not None
@@ -2511,7 +2489,7 @@ impl NaIRGenPass._isinstance_abc_reduction(
         return None;
     }
     try {
-        import from jaclang.compiler.types.types { ClassType as _AbcClassType }
+        import from jaclang.compiler.ir.types.nodes { ClassType as _AbcClassType }
     } except ImportError {
         return None;
     }
@@ -2616,7 +2594,10 @@ impl NaIRGenPass._isinstance_type_name(nd: uni.UniNode) -> (str | None) {
         and len(nd.params) == 1
         and isinstance(nd.params[0], uni.Null)
     ) {
-        import from jaclang.compiler.symbol_utils { classify_call, CallKind }
+        import from jaclang.compiler.analysis.binding.symbol_utils {
+            classify_call,
+            CallKind
+        }
         if classify_call(nd) == CallKind.BUILTIN {
             return "NoneType";
         }
@@ -2664,7 +2645,7 @@ impl NaIRGenPass._enum_union_tags(
     operand_expr: uni.UniNode, names: list[str]
 ) -> tuple {
     try {
-        import from jaclang.compiler.types.types {
+        import from jaclang.compiler.ir.types.nodes {
             ClassType as _EnClassType,
             EnumMemberType as _EnMemberType,
             UnionType as _EnUnionType
@@ -3148,7 +3129,7 @@ impl NaIRGenPass._emit_isinstance_user(
 }
 
 impl NaIRGenPass._flow_future_licensed(nd: uni.ConcurrentExpr) -> (uni.Name | None) {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
+    import from jaclang.compiler.ir.enums { Tokens as Tok }
     asgn = nd.parent;
     if not (
         isinstance(asgn, uni.Assignment)
@@ -3201,11 +3182,11 @@ impl NaIRGenPass._flow_future_licensed(nd: uni.ConcurrentExpr) -> (uni.Name | No
 }
 
 impl NaIRGenPass._try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None) {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
+    import from jaclang.compiler.ir.enums { Tokens as Tok }
     if nd.tok is None {
         return None;
     }
-    _par_ok = (self.ir_in.gen.nogc_enforced and self._gc_mode() == "none")
+    _par_ok = (artifact_for(self.ir_in).nogc_enforced and self._gc_mode() == "none")
         or (self._gc_mode() == "rc" and not self._rc_debug_codegen);
     if not _par_ok
         or "wasm" in str(self.llvm_module.triple)
@@ -3542,7 +3523,7 @@ impl NaIRGenPass._prep_kwbind_record(
 impl NaIRGenPass._codegen_sized_builtin_call(
     nd: uni.FuncCall, func_name: (str | None), call_kind: str
 ) -> (ir.Value | None) {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import from jaclang.compiler.analysis.types.type_registry { JAC_TYPE_REGISTRY }
     if call_kind == "method" and isinstance(nd.target, uni.AtomTrailer) {
         _owner = self._get_name(nd.target.target);
         _attr = self._get_name(nd.target.right);

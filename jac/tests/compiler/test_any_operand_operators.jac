@@ -11,8 +11,8 @@ Augmented assignment had the same hole guarded separately -- it skipped
 Unknown operands but not Any -- so `c += (..)` reported E1011.
 """
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 def check_src(src: str) -> list[str] {
     prog = JacProgram();

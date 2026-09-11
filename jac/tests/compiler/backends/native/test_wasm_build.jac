@@ -7,18 +7,16 @@ browser LinkError. These tests skip when the vendored bitcode is absent
 (`zig build vendor-wasm-libc` populates .pbs-build/wasm32/libc).
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
+import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import subprocess;
 import shutil;
 import tempfile;
 import from pathlib { Path }
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.compiler.backends.native.wasm_build {
     emit_wasm_from_ir,
     wasm_import_map,
@@ -51,7 +49,7 @@ def fixture_ir -> str {
             options=CompileOptions(aot_mode=True)
         );
         assert not prog.errors_had;
-        return str(ir.gen.llvm_ir);
+        return str(artifact_for(ir).llvm_ir);
     } finally {
         pop_native_target(prev);
     }

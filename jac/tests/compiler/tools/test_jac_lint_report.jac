@@ -6,17 +6,19 @@ mutation pass (`JacAutoLintPass`). Going report-only skips the AST-rewriting
 hooks and is much cheaper, but it must still surface every warning the full
 mutation pass would — otherwise `jac lint` would silently under-report.
 """
+
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import os;
 import tempfile;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compiler { JacCompiler }
-import from jaclang.compiler.driver.pipeline { get_lint_sched }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.compiler { JacCompiler }
+import from jaclang.compiler.pipeline.schedule { get_lint_sched }
 import from jaclang.compiler.tools.jac_auto_lint_pass {
     JacAutoLintPass,
     JacLintCheckPass
 }
 import from jaclang.project.config { JacConfig, CheckConfig, LintConfig, set_config }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 def _diag_keys(prog: JacProgram) -> list[str] {
     keys: list[str] = [];
@@ -34,7 +36,7 @@ def _full_pass_diags(source: str, path: str) -> list[str] {
     if m is None {
         return [];
     }
-    run_pass(JacAutoLintPass, m, p).ir_out;
+    run_pass(PassIdentity.JacAutoLintPass, m, p).ir_out;
     return _diag_keys(p);
 }
 

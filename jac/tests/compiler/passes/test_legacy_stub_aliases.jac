@@ -1,7 +1,7 @@
 """Legacy stub aliases retain their RHS types during overload selection."""
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 test "direct and renamed TypeAlias markers preserve overload argument types" {
     base = Path(__file__).parent / "fixtures" / "checker";

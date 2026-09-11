@@ -10,11 +10,12 @@ Imported as `from tests.support`, which resolves identically under the single
 `jac` binary and a source checkout (same mechanism as `tests.fixtures_list`).
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 
 import from pathlib { Path }
-import type from jaclang.compiler.driver.compile_options { CompileOptions }
-import type from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.session.options { CompileOptions }
+import type from jaclang.compiler.ir.schema { Module }
 import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
 # `tests/`: the directory holding this file.
@@ -30,7 +31,7 @@ Forced placement keeps lowering failures loud (no server demotion), exactly
 like the old suffix.
 """
 def native_force_opts -> CompileOptions {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     return CompileOptions(force_codespace='native', force_target_program=True);
 }
 
@@ -161,7 +162,7 @@ def compile_native(
     fixture: str, fixture_dir: str = ""
 ) -> tuple[ExecutionEngine, Module] {
     ir = _compile_native_fixture(fixture, fixture_dir, native_force_opts());
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);
 }
@@ -179,15 +180,16 @@ def compile_native_ir(
 def _compile_native_fixture(
     fixture: str, fixture_dir: str, options: CompileOptions
 ) -> Module {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     base = fixture_dir or NATIVE_FIXTURES;
     prog = JacProgram();
     ir = prog.compile(file_path=str(Path(base) / fixture), options=options);
     errors = [e.pretty_print() for e in prog.errors_had] if prog.errors_had else [];
-    if errors and ir is not None and ir.gen.llvm_ir is not None {
+    if errors and ir is not None and artifact_for(ir).llvm_ir is not None {
         import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
         errors.extend(
-            issue.detail for issue in native_lowering_issues(str(ir.gen.llvm_ir))
+            issue.detail
+            for issue in native_lowering_issues(str(artifact_for(ir).llvm_ir))
         );
     }
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";

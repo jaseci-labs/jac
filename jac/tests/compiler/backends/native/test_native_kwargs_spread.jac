@@ -19,6 +19,7 @@ its Python implementation (a granular seam, epic #8201).
 Refs #8039
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support {
@@ -30,8 +31,8 @@ import from tests.support {
 }
 import jaclang;
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -122,7 +123,7 @@ test "guardrail: a spread at a callee with no sink demotes the caller" {
         f"the sink-less spread is owned by use(), which must demote to a "
         f"seam, got {fmt_errors(prog)}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "sink" in layout.functions , (
         f"clean sibling function was lost: {list(layout.functions)}"
@@ -176,7 +177,7 @@ test "a spread emits a duplicate-key guard for every entry it inserts" {
         options=native_force_opts()
     );
     assert not prog.errors_had , str([str(e) for e in prog.errors_had]);
-    llvm_text = str(ir.gen.llvm_ir);
+    llvm_text = str(artifact_for(ir).llvm_ir);
     assert "kwsp.dup" in llvm_text , (
         "expected a duplicate-key guard on the spread merge path"
     );

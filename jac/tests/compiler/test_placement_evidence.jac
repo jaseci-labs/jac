@@ -8,11 +8,12 @@ object models unreachable in real projects. Without the second, a def:pub
 whose module imports compiler internals was dual-emitted into the client
 bundle, where the internal import is a ReferenceError at call time."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import shutil;
 import tempfile;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 def _proj(files: dict, pins: str = "") -> str {
     d = tempfile.mkdtemp(prefix="jacplace_");
@@ -50,13 +51,15 @@ test "authenticated endpoints bridge within their app without placement pins" {
                 os.path.join(d, "main.jac"), options=CompileOptions(no_ir_cache=True)
             );
             assert not prog.errors_had , [str(e) for e in prog.errors_had];
-            assert '__jacCallFunction("read_value"' in mod.gen.js , mod.gen.js;
-            binding = mod.gen.interop_manifest.bindings["read_value"];
+            assert '__jacCallFunction("read_value"' in artifact_for(mod).js , artifact_for(
+                mod
+            ).js;
+            binding = artifact_for(mod).interop_manifest.bindings["read_value"];
             assert binding.ast_node.access.tag.value == access;
             provider = JacProgram().compile(
                 os.path.join(d, "api.jac"), options=CompileOptions(no_ir_cache=True)
             );
-            assert provider.gen.interop_manifest.func_access["read_value"];
+            assert artifact_for(provider).interop_manifest.func_access["read_value"];
         } finally {
             shutil.rmtree(d, ignore_errors=True);
         }
@@ -84,7 +87,7 @@ test "private functions remain unavailable across app boundaries" {
         assert any(
             e.code is not None and e.code.code in ("E5082", "E5106")
             for e in prog.errors_had
-        ) , ([str(e) for e in prog.errors_had], mod.gen.js);
+        ) , ([str(e) for e in prog.errors_had], artifact_for(mod).js);
     } finally {
         shutil.rmtree(d, ignore_errors=True);
     }
@@ -109,7 +112,7 @@ test "rootless graph archetypes follow a client pin" {
     try {
         prog = JacProgram();
         mod = prog.compile(os.path.join(d, "model.jac"));
-        js = mod.gen.js;
+        js = artifact_for(mod).js;
         assert "class Block" in js , f"rootless pinned archetype missing from client bundle: {js[0:400]}";
         msgs = " ".join([str(e) for e in prog.errors_had]);
         assert "E5082" not in msgs and "no client-side presence" not in msgs , msgs;
@@ -168,7 +171,7 @@ test "jaclang-internal imports pin the importing element server" {
     try {
         prog = JacProgram();
         mod = prog.compile(os.path.join(d, "main.jac"));
-        js = mod.gen.js;
+        js = artifact_for(mod).js;
         assert 'from "./bridge.js"' not in js , f"jaclang-importing module dual-emitted into the client bundle: {js[0:400]}";
     } finally {
         shutil.rmtree(d, ignore_errors=True);
@@ -209,7 +212,9 @@ test "unpinned rootless archetypes pull into client closures" {
 # so it no longer blocks native placement; inline ::py:: remains the
 # statically-known native-incompatible construct.
 test "solver does not propose native for capability-violating modules" {
-    import from jaclang.compiler.placement.placement_solver { native_default_verdict }
+    import from jaclang.compiler.analysis.placement.module_context_pass {
+        native_default_verdict
+    }
     d = _proj(
         {
             "pymod.jac": (
@@ -225,7 +230,7 @@ test "solver does not propose native for capability-violating modules" {
     try {
         prog = JacProgram();
         mod = prog.compile(os.path.join(d, "pymod.jac"), no_cgen=True);
-        (ok, reason) = native_default_verdict(mod);
+        (ok, reason) = native_default_verdict(mod, prog);
         assert not ok , "capability-violating module must not prefer native";
     } finally {
         shutil.rmtree(d, ignore_errors=True);

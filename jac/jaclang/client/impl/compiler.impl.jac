@@ -28,12 +28,12 @@ impl ViteCompiler.compile_and_bundle(
 }
 
 impl ViteCompiler._owes_wasm(self: ViteCompiler, module_path: Path) -> bool {
-    import from jaclang.compiler.frontend.constant { CodeContext }
+    import from jaclang.compiler.ir.enums { CodeContext }
     import from jaclang { JacRuntime as Jac }
     target = str(module_path.resolve());
     compiled = Jac.get_program().mod.hub.get(target);
     if compiled is not None {
-        import from jaclang.compiler.driver.pipeline { module_spaces }
+        import from jaclang.compiler.api { module_spaces }
         return module_spaces(Jac.get_program(), compiled).native_module;
     }
     declared = self.jac_client_compiler?.na_wasm_modules or set();
@@ -78,7 +78,7 @@ impl ViteCompiler._emit_na_wasm(self: ViteCompiler, module_path: Path) -> None {
 
 impl ViteCompiler._emit_wasm_module(self: ViteCompiler, module_path: Path) -> bool {
     import from jaclang.compiler.backends.native.wasm_build { compile_to_wasm }
-    import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
+    import from jaclang.compiler.backends.native.naming { native_wasm_stem }
     try {
         wasm = compile_to_wasm(str(module_path));
     } except Exception as e {
@@ -226,7 +226,7 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
 }
 
 impl ViteCompiler.compile_desktop_sdk(self: ViteCompiler) {
-    import from jaclang.compiler.driver.modresolver { resolve_jac_virtual_module_path }
+    import from jaclang.compiler.session.resolver { resolve_jac_virtual_module_path }
     desktop_src = resolve_jac_virtual_module_path('@jac/desktop');
     if not desktop_src {
         return;
@@ -246,7 +246,7 @@ impl ViteCompiler.compile_desktop_sdk(self: ViteCompiler) {
     all_names = sorted(set(desktop_exports + list(desktop_globals.keys())));
 
     if not all_names {
-        import from jaclang.compiler.driver.modresolver {
+        import from jaclang.compiler.session.resolver {
             resolve_jac_virtual_module_exports
         }
         all_names = sorted(resolve_jac_virtual_module_exports('@jac/desktop'));

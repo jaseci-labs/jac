@@ -4,14 +4,15 @@ Tests that the Jac formatter produces correct output: fixture comparisons,
 AST preservation, micro suite round-trip, and regression tests.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ast as ast3;
 import os;
 import from difflib { unified_diff }
 import from tests.support { JAC_ROOT }
 import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.helpers { add_line_numbers }
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.frontend.source_io { add_line_numbers }
+import from jaclang.compiler.session.session { JacProgram }
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "tools", "fixtures");
 
 def compare_files(
@@ -23,7 +24,7 @@ def compare_files(
         }
         if formatted_file is None {
             prog = JacProgram.jac_file_formatter(original_file, auto_lint=auto_lint);
-            formatted_content = prog.mod.main.gen.jac;
+            formatted_content = artifact_for(prog.mod.main).jac;
         } else {
             with open(formatted_file) as file {
                 formatted_content = file.read();
@@ -53,7 +54,7 @@ def compare_files(
 def micro_suite_test(filename: str, auto_lint: bool = False) {
     code_gen_pure = JacProgram().compile(filename);
     format_prog = JacProgram.jac_file_formatter(filename, auto_lint=auto_lint);
-    code_gen_format = format_prog.mod.main.gen.jac;
+    code_gen_format = artifact_for(format_prog.mod.main).jac;
     code_gen_jac = JacProgram().compile(use_str=code_gen_format, file_path=filename);
     if "circle_clean_tests.jac" in filename {
         tokens = code_gen_format.split();
@@ -70,8 +71,8 @@ def micro_suite_test(filename: str, auto_lint: bool = False) {
     before = "";
     after = "";
     try {
-        before = ast3.dump(code_gen_pure.gen.py_ast[0], indent=2);
-        after = ast3.dump(code_gen_jac.gen.py_ast[0], indent=2);
+        before = ast3.dump(artifact_for(code_gen_pure).py_ast[0], indent=2);
+        after = ast3.dump(artifact_for(code_gen_jac).py_ast[0], indent=2);
         assert isinstance(code_gen_pure, uni.Module)
             and isinstance(code_gen_jac, uni.Module) , "Parsed objects are not modules.";
         diff = "\n".join(unified_diff(before.splitlines(), after.splitlines()));
@@ -131,7 +132,7 @@ test "forever fmt" {
 test "forever keyword preserved not rewritten" {
     path = os.path.join(FIXTURES, "forever_fmt.jac");
     prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     assert "forever {" in formatted;
     assert "while" not in formatted;
 }
@@ -147,7 +148,7 @@ test "awaiting jsx fmt" {
 test "fstring comment not injected" {
     path = os.path.join(FIXTURES, "fstring_comment.jac");
     prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     lines = formatted.splitlines();
 
     # Check 1: Module-level comment must not end up inside an f-string
@@ -209,14 +210,14 @@ test "fstring comment not injected" {
 
     # Check 3: Idempotency
     prog2 = JacProgram.jac_file_formatter(path, auto_lint=True);
-    formatted2 = prog2.mod.main.gen.jac;
+    formatted2 = artifact_for(prog2.mod.main).jac;
     assert formatted == formatted2 , "Formatting is not idempotent";
 }
 
 test "jsx hash text preserved" {
     path = os.path.join(FIXTURES, "jsx_hash_text.jac");
     prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
 
     assert "# for client-side routing." in formatted , (
         "Hash-prefixed JSX text was lost:\n" + formatted
@@ -250,7 +251,7 @@ test "jsx hash text preserved" {
 
     # Idempotency
     prog2 = JacProgram.jac_file_formatter(path, auto_lint=True);
-    assert formatted == prog2.mod.main.gen.jac , "Formatting is not idempotent";
+    assert formatted == artifact_for(prog2.mod.main).jac , "Formatting is not idempotent";
 }
 
 """Test that Unicode characters survive jac format --lintfix on Windows."""
@@ -275,7 +276,7 @@ test "unicode encoding write roundtrip" {
 test "native block comments stay in place" {
     path = os.path.join(FIXTURES, "native_block_comment.jac");
     prog = JacProgram.jac_file_formatter(path);
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     lines = formatted.splitlines();
 
     # Comments must appear between "obj Ops {" and its closing "}", not at EOF
@@ -315,7 +316,7 @@ test "native block comments stay in place" {
 
     # Idempotency
     prog2 = JacProgram.jac_file_formatter(path);
-    formatted2 = prog2.mod.main.gen.jac;
+    formatted2 = artifact_for(prog2.mod.main).jac;
     assert formatted == formatted2 , "Formatting of the obj block is not idempotent";
 }
 
@@ -325,10 +326,14 @@ with no duplicated or misattributed comments. Loads the fixture via its real
 fixtures/ path so the deslop lint rule is excluded and the comments are kept."""
 test "comment placement idempotent on comment-dense blocks" {
     path = os.path.join(FIXTURES, "comment_dedup_regression.jac");
-    out1 = JacProgram.jac_file_formatter(path, auto_lint=True).mod.main.gen.jac;
-    out2 = JacProgram.jac_str_formatter(
-        source_str=out1, file_path=path, auto_lint=True
-    ).mod.main.gen.jac;
+    out1 = artifact_for(
+        JacProgram.jac_file_formatter(path, auto_lint=True).mod.main
+    ).jac;
+    out2 = artifact_for(
+        JacProgram.jac_str_formatter(
+            source_str=out1, file_path=path, auto_lint=True
+        ).mod.main
+    ).jac;
     assert out1 == out2 , (
         "comment placement is not idempotent -- comments duplicated or "
         "misplaced across a re-format:\n"
@@ -348,7 +353,7 @@ test "inline comment in func call args" {
         '}\n'
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     lines = formatted.splitlines();
 
     # The inline comment must NOT swallow the next argument
@@ -378,7 +383,7 @@ test "inline comment in func call args" {
 
     # Idempotency
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "Formatting is not idempotent";
+    assert formatted == artifact_for(prog2.mod.main).jac , "Formatting is not idempotent";
 }
 
 test "empty blocks format without inner space" {
@@ -409,7 +414,7 @@ test "empty blocks format without inner space" {
         'with entry {}\n'
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
 
     assert "obj Empty {}" in formatted;
     assert "impl HasM.m{}" in formatted;
@@ -425,7 +430,7 @@ test "empty blocks format without inner space" {
 
     # Idempotency
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "Formatting is not idempotent";
+    assert formatted == artifact_for(prog2.mod.main).jac , "Formatting is not idempotent";
 }
 
 """Regression: JSX elements with only inline children (text/expression) and
@@ -457,7 +462,7 @@ test "jsx and lambda inline compact forms stay flat" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
 
     # JSX elements whose only children are text / expressions must stay on
     # one line when they fit. These exact single-line forms must survive.
@@ -480,7 +485,7 @@ test "jsx and lambda inline compact forms stay flat" {
     # Idempotency: formatting the formatted output must be a no-op.
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
     assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , (
+    assert formatted == artifact_for(prog2.mod.main).jac , (
         "JSX/lambda inline formatting is not idempotent"
     );
 }
@@ -503,7 +508,7 @@ test "JSX slot statement bodies round-trip through the formatter" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac or "";
+    formatted = artifact_for(prog.mod.main).jac or "";
 
     # The slot keyword `if` must survive verbatim -- never expanded into
     # a comprehension or ternary.
@@ -521,7 +526,9 @@ test "JSX slot statement bodies round-trip through the formatter" {
     # Idempotency: formatting the formatted output must be a no-op.
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
     assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , ("slot formatting is not idempotent");
+    assert formatted == artifact_for(prog2.mod.main).jac , (
+        "slot formatting is not idempotent"
+    );
 }
 
 test "dynamic JSX tags round-trip through the formatter" {
@@ -539,7 +546,7 @@ test "dynamic JSX tags round-trip through the formatter" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac or "";
+    formatted = artifact_for(prog.mod.main).jac or "";
 
     assert "<@as_" in formatted , (
         "identifier-form dynamic open tag must survive formatting:\n" + str(formatted)
@@ -554,7 +561,7 @@ test "dynamic JSX tags round-trip through the formatter" {
     # Idempotency: formatting the formatted output must be a no-op.
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
     assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , (
+    assert formatted == artifact_for(prog2.mod.main).jac , (
         "dynamic-tag formatting is not idempotent"
     );
 }
@@ -578,7 +585,7 @@ test "return jsx stays on one line when it fits" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac or "";
+    formatted = artifact_for(prog.mod.main).jac or "";
 
     # A self-closing element that fits must collapse onto the `return` line.
     self_closing = 'return <AlertDialogPrimitive.Root data-slot="alert-dialog" {**props}/>;';
@@ -595,7 +602,7 @@ test "return jsx stays on one line when it fits" {
     # Idempotency: formatting the formatted output must be a no-op.
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
     assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , (
+    assert formatted == artifact_for(prog2.mod.main).jac , (
         "return-JSX one-line formatting is not idempotent"
     );
 }
@@ -619,7 +626,7 @@ test "return jsx breaks when it does not fit" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac or "";
+    formatted = artifact_for(prog.mod.main).jac or "";
 
     # `return` must not carry the element when the statement overflows: every
     # `return` line in a breaking case must end right after the keyword.
@@ -638,7 +645,7 @@ test "return jsx breaks when it does not fit" {
     # Idempotency: formatting the formatted output must be a no-op.
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
     assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , (
+    assert formatted == artifact_for(prog2.mod.main).jac , (
         "return-JSX break formatting is not idempotent"
     );
 }
@@ -661,7 +668,7 @@ test "if statement outside lambda still breaks" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted: str = prog.mod.main.gen.jac or "";
+    formatted: str = artifact_for(prog.mod.main).jac or "";
     assert formatted , "formatter produced empty output";
     lines = formatted.splitlines();
 
@@ -721,7 +728,7 @@ test "jsx attributes and children group independently" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
 
     # Bucket A: short h2 fits flat in total.
     bucket_a = '<h2 style={{color: "#dc2626"}}>Short</h2>';
@@ -773,7 +780,7 @@ test "jsx attributes and children group independently" {
     # Idempotency: all three shapes must round-trip.
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
     assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , (
+    assert formatted == artifact_for(prog2.mod.main).jac , (
         "JSX attribute/children grouping is not idempotent"
     );
 }
@@ -784,7 +791,7 @@ test "genai ability bare name preserves by and semicolon" {
     source = "def classify(s: str) -> str by llm;\n";
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     assert "by" in formatted , (
         f"`by` keyword was stripped from genai ability:\n{repr(formatted)}"
     );
@@ -796,7 +803,7 @@ test "genai ability bare name preserves by and semicolon" {
     );
     # Idempotency
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "genai bare-name formatting is not idempotent";
+    assert formatted == artifact_for(prog2.mod.main).jac , "genai bare-name formatting is not idempotent";
 }
 
 """Regression: formatter must preserve `by <name>()` (genai ability with
@@ -805,13 +812,13 @@ test "genai ability empty parens preserves by and parens" {
     source = "def get_emoji(input: str) -> str by llm();\n";
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     assert "by llm()" in formatted , (
         f"expected `by llm()` in formatted output, got:\n{repr(formatted)}"
     );
     # Idempotency
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "genai empty-parens formatting is not idempotent";
+    assert formatted == artifact_for(prog2.mod.main).jac , "genai empty-parens formatting is not idempotent";
 }
 
 """Regression: formatter must preserve `by <name>(kwargs)` (genai ability
@@ -820,7 +827,7 @@ test "genai ability with kwargs preserves by and arguments" {
     source = "def get_emoji(input: str) -> str by llm(temperature=0.7, incl_info={\"examples\": emoji_examples});\n";
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     assert "by llm(" in formatted , (
         f"expected `by llm(` in formatted output, got:\n{repr(formatted)}"
     );
@@ -832,7 +839,7 @@ test "genai ability with kwargs preserves by and arguments" {
     );
     # Idempotency
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "genai kwargs formatting is not idempotent";
+    assert formatted == artifact_for(prog2.mod.main).jac , "genai kwargs formatting is not idempotent";
 }
 
 """Regression: set literals must space after commas like lists, tuples, and
@@ -842,13 +849,13 @@ test "set literal spaces after commas like other collections" {
     source = "glob a = {1,2,3};\n";
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     assert "{1, 2, 3}" in formatted , (
         f"set literal must space after commas like lists/dicts, got:\n{repr(formatted)}"
     );
     # Idempotency
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "set comma spacing is not idempotent";
+    assert formatted == artifact_for(prog2.mod.main).jac , "set comma spacing is not idempotent";
 }
 
 """Regression: a set literal wider than the print width must break one element
@@ -861,7 +868,7 @@ test "long set literal wraps one element per line like a list" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     lines = formatted.splitlines();
     assert len(lines) > 3 , (
         f"long set literal must break across lines, got:\n{formatted}"
@@ -872,7 +879,7 @@ test "long set literal wraps one element per line like a list" {
     );
     # Idempotency
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "long set wrapping is not idempotent";
+    assert formatted == artifact_for(prog2.mod.main).jac , "long set wrapping is not idempotent";
 }
 
 """Regression: assign comprehensions must space after commas the same way
@@ -882,13 +889,13 @@ test "assign comprehension spaces after commas like filter comprehension" {
     source = "with entry { x = (a)(=foo=1,bar=2); }\n";
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     assert "=foo=1, bar=2" in formatted , (
         f"assign comprehension must space after commas, got:\n{repr(formatted)}"
     );
     # Idempotency
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "assign-compr spacing is not idempotent";
+    assert formatted == artifact_for(prog2.mod.main).jac , "assign-compr spacing is not idempotent";
 }
 
 """Regression: enum base-type declarations must space like type annotations
@@ -903,7 +910,7 @@ test "enum base type colon and parens space correctly" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     # Typed-base colon: no space before, one space after.
     assert "enum Category: int" in formatted , (
         f"typed-base colon must format as `Category: int`, got:\n{repr(formatted)}"
@@ -917,7 +924,7 @@ test "enum base type colon and parens space correctly" {
     );
     # Idempotency
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , "enum base-type spacing is not idempotent";
+    assert formatted == artifact_for(prog2.mod.main).jac , "enum base-type spacing is not idempotent";
 }
 
 """Regression: jac_str_formatter must populate errors_had on syntax error
@@ -930,7 +937,7 @@ test "syntax error preserves original source" {
         "jac_str_formatter must populate errors_had on syntax error"
     );
     # gen.jac will be empty since no format passes ran
-    gen_output = prog.mod.main.gen.jac;
+    gen_output = artifact_for(prog.mod.main).jac;
     # Simulate the LSP formatted_jac() logic:
     # return formatted if no errors, else return original source
     result = gen_output if not prog.errors_had else bad_source;
@@ -957,7 +964,7 @@ test "jsx significant whitespace around inline elements is preserved" {
     );
     prog = JacProgram.jac_str_formatter(source_str=short_src, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    short_fmt = prog.mod.main.gen.jac or "";
+    short_fmt = artifact_for(prog.mod.main).jac or "";
     flat_form = '<div id="hud">score <b>0</b> · <b>0</b> fps</div>';
     assert flat_form in short_fmt , (
         "short space-separated mixed JSX must stay flat with spaces intact:\n"
@@ -965,7 +972,7 @@ test "jsx significant whitespace around inline elements is preserved" {
     );
     # Idempotency.
     prog_i = JacProgram.jac_str_formatter(source_str=short_fmt, file_path="<test>.jac");
-    assert short_fmt == prog_i.mod.main.gen.jac , (
+    assert short_fmt == artifact_for(prog_i.mod.main).jac , (
         "short mixed-JSX formatting is not idempotent:\n" + short_fmt
     );
 
@@ -981,7 +988,7 @@ test "jsx significant whitespace around inline elements is preserved" {
     );
     prog2 = JacProgram.jac_str_formatter(source_str=long_src, file_path="<test>.jac");
     assert not prog2.errors_had , f"formatter errors: {prog2.errors_had}";
-    long_fmt = prog2.mod.main.gen.jac or "";
+    long_fmt = artifact_for(prog2.mod.main).jac or "";
     # It must have broken across lines (too long to stay flat)...
     assert "\n" in long_fmt.split("return")[1].split(";")[0] , (
         "long mixed JSX was expected to break across lines:\n" + long_fmt
@@ -1004,7 +1011,7 @@ test "jsx significant whitespace around inline elements is preserved" {
     );
     # Idempotency.
     prog2_i = JacProgram.jac_str_formatter(source_str=long_fmt, file_path="<test>.jac");
-    assert long_fmt == prog2_i.mod.main.gen.jac , (
+    assert long_fmt == artifact_for(prog2_i.mod.main).jac , (
         "long mixed-JSX formatting is not idempotent:\n" + long_fmt
     );
 }
@@ -1028,7 +1035,7 @@ test "long plus chain breaks one operand per line" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     lines = formatted.splitlines();
     long_lines = [
         ln
@@ -1053,7 +1060,7 @@ test "long plus chain breaks one operand per line" {
     );
     # Idempotency.
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , (
+    assert formatted == artifact_for(prog2.mod.main).jac , (
         f"plus-chain wrapping is not idempotent:\n{formatted}"
     );
 }
@@ -1069,7 +1076,7 @@ test "bare chain continuation indents one level" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     lines = formatted.splitlines();
     # A chain that owns its line start hangs continuations one level in
     # (statement indent 4 -> operands at 8); flush-left continuations would
@@ -1082,7 +1089,7 @@ test "bare chain continuation indents one level" {
     );
     # Idempotency.
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , (
+    assert formatted == artifact_for(prog2.mod.main).jac , (
         f"indented chain wrapping is not idempotent:\n{formatted}"
     );
 }
@@ -1091,7 +1098,7 @@ test "short binary chains stay flat" {
     source = 'with entry {\n    x = 1 + 2 + 3;\n    y = x < 10;\n}\n';
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     assert "x = 1 + 2 + 3;" in formatted , (
         f"short chain must stay on one line, got:\n{formatted}"
     );
@@ -1113,7 +1120,7 @@ test "mixed precedence chain keeps tighter subexpression intact" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     lines = formatted.splitlines();
     long_lines = [
         ln
@@ -1130,7 +1137,7 @@ test "mixed precedence chain keeps tighter subexpression intact" {
         f"got:\n{formatted}"
     );
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , (
+    assert formatted == artifact_for(prog2.mod.main).jac , (
         f"mixed-chain wrapping is not idempotent:\n{formatted}"
     );
 }
@@ -1147,7 +1154,7 @@ test "long comparison chain breaks one operand per line" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     lines = formatted.splitlines();
     long_lines = [
         ln
@@ -1161,7 +1168,7 @@ test "long comparison chain breaks one operand per line" {
         f"continuation lines must lead with the operator, got:\n{formatted}"
     );
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , (
+    assert formatted == artifact_for(prog2.mod.main).jac , (
         f"comparison-chain wrapping is not idempotent:\n{formatted}"
     );
 }
@@ -1180,7 +1187,7 @@ test "long match-or pattern breaks one alternative per line" {
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
     assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     lines = formatted.splitlines();
     long_lines = [
         ln
@@ -1194,7 +1201,7 @@ test "long match-or pattern breaks one alternative per line" {
         f"broken match-or must place one alternative per line, got:\n{formatted}"
     );
     prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert formatted == prog2.mod.main.gen.jac , (
+    assert formatted == artifact_for(prog2.mod.main).jac , (
         f"match-or wrapping is not idempotent:\n{formatted}"
     );
 }

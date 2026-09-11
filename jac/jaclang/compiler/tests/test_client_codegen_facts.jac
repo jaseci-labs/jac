@@ -23,15 +23,17 @@ audit reports a bare builtin (`E5103`) rather than shipping it, so this class
 cannot go silent again.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import shutil;
 import tempfile;
 import from jaclang.client.client_bundle { _client_target_module, _ensure_js_generated }
 import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pass_driver { run_pass }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.unitree { Module }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.pipeline.executor { run_pass }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.ir.schema { Module }
 
 
 glob _HELPER_SRC: str = (
@@ -106,7 +108,7 @@ test "a second client build lowers exactly what the first one did" {
     try {
         cold = JacProgram();
         cold_mod = cold.compile(widget, options=CompileOptions(no_cgen=True));
-        run_pass(EsastGenPass, cold_mod, cold);
+        run_pass(PassIdentity.EsastGenPass, cold_mod, cold);
         assert _codes(cold) == [] , _codes(cold);
         assert _client_target_module(widget, cold) is cold_mod , (
             "a fully compiled module is the client codegen target for its source"
@@ -114,7 +116,7 @@ test "a second client build lowers exactly what the first one did" {
 
         warm = JacProgram();
         warm_dep = _ingest_as_dependency(warm, widget);
-        assert not warm.analysis.analyses_run.provides(warm_dep, "TypeOf") , (
+        assert not warm.analysis.provides(warm_dep, "TypeOf") , (
             "the dependency schedule is supposed to leave the module unanalyzed;"
             " this test no longer reproduces the warm shape"
         );
@@ -128,12 +130,16 @@ test "a second client build lowers exactly what the first one did" {
         );
         _ensure_js_generated(warm_mod, warm);
         assert _codes(warm) == [] , _codes(warm);
-        assert warm_mod.gen.js == cold_mod.gen.js , (
+        assert artifact_for(warm_mod).js == artifact_for(cold_mod).js , (
             "the warm bundle differs from the cold one:\n"
-            + _first_delta(cold_mod.gen.js, warm_mod.gen.js)
+            + _first_delta(artifact_for(cold_mod).js, artifact_for(warm_mod).js)
         );
-        assert "_jac.builtin.enumerate(" in warm_mod.gen.js , warm_mod.gen.js;
-        assert "_jac.builtin.range(" in warm_mod.gen.js , warm_mod.gen.js;
+        assert "_jac.builtin.enumerate(" in artifact_for(warm_mod).js , artifact_for(
+            warm_mod
+        ).js;
+        assert "_jac.builtin.range(" in artifact_for(warm_mod).js , artifact_for(
+            warm_mod
+        ).js;
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }
@@ -156,11 +162,11 @@ test "an unlowered builtin in the bundle is an error, never silence" {
     try {
         prog = JacProgram();
         mod = _ingest_as_dependency(prog, widget);
-        run_pass(EsastGenPass, mod, prog);
+        run_pass(PassIdentity.EsastGenPass, mod, prog);
         codes = _codes(prog);
         assert "E5103" in codes , (
             f"a bare builtin call shipped without a diagnostic: {codes}\n"
-            f"{mod.gen.js}"
+            f"{artifact_for(mod).js}"
         );
         named = [
             str(e)

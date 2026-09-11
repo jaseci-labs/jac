@@ -63,7 +63,7 @@ impl ClientDiagnostic.abs_file -> str {
 }
 
 impl ClientDiagnostic.render(colors: bool = False) -> str {
-    import from jaclang.compiler.frontend.helpers {
+    import from jaclang.compiler.frontend.source_io {
         render_diagnostic,
         span_for_file,
         read_file_with_encoding

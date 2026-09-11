@@ -3,7 +3,7 @@ process-global self-host program the running compiler keeps for its own
 modules."""
 import os;
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 
 def _pkg_path(rel: str) -> str {
@@ -29,7 +29,7 @@ test "a native stdlib module resolves into the program that imports it" {
 test "a compiler module still resolves into the self-host program" {
     prog = JacProgram();
     cache = prog._get_compiler().selfhost;
-    log_mod = _pkg_path("compiler/driver/log.jac");
+    log_mod = _pkg_path("compiler/pipeline/log.jac");
     assert os.path.isfile(log_mod) , log_mod;
     assert cache.resolve(log_mod, prog) is cache.program;
     assert cache.resolve(log_mod, prog, force=True) is prog;

@@ -13,9 +13,10 @@ program). Red-first: the fixture emits a bool dict, then an enum dict and
 an int dict, and reads the members back.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import ctypes;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from tests.support { TESTS_DIR, native_force_opts }
 
 glob FIXTURES = os.path.join(
@@ -30,7 +31,7 @@ test "a bool-valued dict does not alias an int or enum-valued dict's storage" {
     );
     errs = [str(e) for e in prog.errors_had];
     assert not errs , f"errors: {errs}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine";
     addr = eng.get_function_address("probe");
     assert addr != 0 , "probe not in JIT engine";
@@ -40,7 +41,7 @@ test "a bool-valued dict does not alias an int or enum-valued dict's storage" {
         f"got {got}: kind_code*100 + ints. A low-bit pattern (0/1 in either "
         "half) means the enum or int dict adopted the bool dict's i1 slot"
     );
-    llvm_text = str(ir.gen.llvm_ir);
+    llvm_text = str(artifact_for(ir).llvm_ir);
     assert "__dict_set_ptr_i1" in llvm_text , (
         "the bool dict must get its own i1 helper set (__dict_*_ptr_i1); "
         "sharing ptr_i64 with the int and enum dicts is the aliasing bug"
@@ -68,9 +69,9 @@ def probe -> int {
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
     import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
-    engine = module.gen.native_engine;
+    engine = artifact_for(module).native_engine;
     assert engine is not None;
     probe = ctypes.CFUNCTYPE(ctypes.c_int64)(engine.get_function_address("probe"));
     assert probe() == 311;
@@ -81,7 +82,7 @@ test "object hash layouts stay distinct from strings and other object classes" {
     import from tests.support { compile_native, get_func }
     import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
     (engine, module) = compile_native("object_hash_layouts.jac");
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
     probe = get_func(engine, "probe", ctypes.c_int64);
     assert probe() == 157;

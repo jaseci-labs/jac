@@ -1,3 +1,4 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 def native_build(
     filename: str,
     output: str = "",

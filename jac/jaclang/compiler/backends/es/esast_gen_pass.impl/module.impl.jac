@@ -9,7 +9,7 @@ impl EsastGenPass.exit_test with uni.Test exit {
         es.FunctionDeclaration(id=func_id, params=params, body=block, async_=True),
         jac_node=here
     );
-    here.gen.es_ast = func_decl;
+    artifact_for(here).es_ast = func_decl;
 
     self.client_manifest.has_client = True;
     self.client_manifest.tests.append(
@@ -23,7 +23,7 @@ impl EsastGenPass.exit_test with uni.Test exit {
 }
 
 impl EsastGenPass.exit_module_code with uni.ModuleCode exit {
-    here.gen.es_ast = self._collect_body_stmts(here.body);
+    artifact_for(here).es_ast = self._collect_body_stmts(here.body);
 }
 
 impl EsastGenPass.exit_global_vars with uni.GlobalVars exit {
@@ -51,8 +51,8 @@ impl EsastGenPass.exit_global_vars with uni.GlobalVars exit {
     }
     statements: list[(es.Statement | es.ModuleDeclaration)] = [];
     for assignment in here.assignments {
-        if assignment.gen.es_ast {
-            stmt = assignment.gen.es_ast;
+        if artifact_for(assignment).es_ast {
+            stmt = artifact_for(assignment).es_ast;
             if (
                 isinstance(stmt, es.VariableDeclaration)
                 and here.is_frozen
@@ -63,11 +63,13 @@ impl EsastGenPass.exit_global_vars with uni.GlobalVars exit {
             statements.append(cast(es.Statement, stmt));
         }
     }
-    here.gen.es_ast = statements;
+    artifact_for(here).es_ast = statements;
 }
 
 impl EsastGenPass.populate_client_manifest(nd: uni.Module) -> None {
-    for (ename, eeffect) in nd.gen.interop_manifest.endpoint_effects.items() {
+    for (ename, eeffect) in artifact_for(
+        nd
+    ).interop_manifest.endpoint_effects.items() {
         self.client_manifest.endpoint_effects[ename] = eeffect;
     }
 }
@@ -89,12 +91,14 @@ impl EsastGenPass._es_json_literal(value: any) -> any {
 }
 
 impl EsastGenPass.exit_module with uni.Module exit {
-    import from jaclang.compiler.symbol_utils { report_client_bare_import_uses }
+    import from jaclang.compiler.analysis.binding.symbol_utils {
+        report_client_bare_import_uses
+    }
     report_client_bare_import_uses(self, here);
     server_forwarders = self._bind_client_value_refs(here);
     if (self.scoped_styles is not None and self.scoped_styles.class_map) {
         import os;
-        here.gen.css = self.scoped_styles.scoped_css;
+        artifact_for(here).css = self.scoped_styles.scoped_css;
         base = os.path.basename(self.scoped_styles.css_path);
         if base.endswith('.style.css') {
             base = base[:-len('.style.css')];
@@ -145,7 +149,7 @@ impl EsastGenPass.exit_module with uni.Module exit {
     client_items: list[es.Statement | list[es.Statement] | None] = [];
     fallback_items: list[es.Statement | list[es.Statement] | None] = [];
     for stmt in merged_body {
-        if stmt.gen.es_ast {
+        if artifact_for(stmt).es_ast {
             is_shared_arch = (
                 isinstance(stmt, uni.Archetype)
                 and (stmt.name is not None)
@@ -153,7 +157,7 @@ impl EsastGenPass.exit_module with uni.Module exit {
             );
             if (getattr(stmt, 'code_context', CodeContext.CLIENT) == CodeContext.CLIENT)
                 or is_shared_arch {
-                client_items.append(cast(es.Statement, stmt.gen.es_ast));
+                client_items.append(cast(es.Statement, artifact_for(stmt).es_ast));
             } else {}
         }
     }
@@ -249,14 +253,14 @@ impl EsastGenPass.exit_module with uni.Module exit {
     }
     program = self.sync_loc(es.Program(body=body), jac_node=here);
     self._finalize_runtime_imports(program);
-    here.gen.es_ast = program;
-    here.gen.js = es_to_js(here.gen.es_ast);
-    here.gen.client_manifest = self.client_manifest;
+    artifact_for(here).es_ast = program;
+    artifact_for(here).js = es_to_js(artifact_for(here).es_ast);
+    artifact_for(here).client_manifest = self.client_manifest;
     self._audit_free_identifiers(here, program);
 }
 
 impl EsastGenPass.get_main_mod -> uni.Module {
-    main_mod_path = self.ir_in.annexable_by or self.ir_in.loc.mod_path;
+    main_mod_path = annex_base(self.ir_in) or self.ir_in.loc.mod_path;
     mod = self.prog.mod.hub.get(main_mod_path);
     if not isinstance(mod, uni.Module) {
         self.emit(E5012);

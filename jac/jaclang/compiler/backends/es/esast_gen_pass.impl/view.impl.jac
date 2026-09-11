@@ -1,11 +1,3 @@
-import from jaclang.compiler.backends.es.reactive_intent {
-    StateField,
-    RefField,
-    StateUpdate,
-    Effect,
-    AsyncBoundary
-}
-
 impl EsastGenPass._view_open_loop_acc(nd: uni.UniNode) -> None {
     acc = self._cur_view_acc();
     if (acc is None) or (acc in self._view_dynamic_accs) {
@@ -77,7 +69,7 @@ impl EsastGenPass.enter_jsx_slot with uni.JsxSlot entry {
 impl EsastGenPass.exit_jsx_slot with uni.JsxSlot exit {
     acc = self._view_stack.pop() if self._view_stack else VIEW_ACC;
     acc_name = acc if isinstance(acc, str) else VIEW_ACC;
-    here.gen.es_ast = self._build_view_iife(here.body, acc_name, here);
+    artifact_for(here).es_ast = self._build_view_iife(here.body, acc_name, here);
 }
 
 impl EsastGenPass._cur_view_acc -> (str | None) {
@@ -243,7 +235,7 @@ impl EsastGenPass.exit_jsx_text with uni.JsxText exit {
 }
 
 impl EsastGenPass.exit_jsx_comment with uni.JsxComment exit {
-    here.gen.es_ast = None;
+    artifact_for(here).es_ast = None;
 }
 
 impl EsastGenPass.exit_jsx_normal_attribute with uni.JsxNormalAttribute exit {}
@@ -272,7 +264,7 @@ impl EsastGenPass.exit_jsx_element with uni.JsxElement exit {
             self._inject_runtime_import("Dynamic", here);
         }
     }
-    here.gen.es_ast = self.jsx_processor.element(here);
+    artifact_for(here).es_ast = self.jsx_processor.element(here);
 
     self._ensure_backend();
     view = self.jsx_processor._view_by_node.get(id(here));
@@ -327,12 +319,14 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
     if arch_tag {
         if isinstance(arch_tag, (uni.ListVal, uni.TupleVal)) {
             for item in arch_tag.values {
-                if item.gen.es_ast {
-                    deps_elements.append(cast(es.Expression, item.gen.es_ast));
+                if artifact_for(item).es_ast {
+                    deps_elements.append(
+                        cast(es.Expression, artifact_for(item).es_ast)
+                    );
                 }
             }
-        } elif arch_tag.gen.es_ast {
-            deps_elements.append(cast(es.Expression, arch_tag.gen.es_ast));
+        } elif artifact_for(arch_tag).es_ast {
+            deps_elements.append(cast(es.Expression, artifact_for(arch_tag).es_ast));
         }
     }
     effect = Effect(
@@ -344,7 +338,7 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
     }
     lowered = self.backend.lower_effect(effect);
     if lowered {
-        nd.gen.es_ast = self.sync_loc(lowered[0], jac_node=nd);
+        artifact_for(nd).es_ast = self.sync_loc(lowered[0], jac_node=nd);
     }
 }
 
@@ -354,7 +348,7 @@ impl EsastGenPass.exit_arch_has with uni.ArchHas exit {
         owner = owner.parent;
     }
     if isinstance(owner, uni.Archetype) or not here.in_client_context() {
-        here.gen.es_ast = None;
+        artifact_for(here).es_ast = None;
         return;
     }
 
@@ -380,8 +374,8 @@ impl EsastGenPass.exit_arch_has with uni.ArchHas exit {
             if isinstance(has_var.value, uni.FuncCall) and has_var.value.params {
                 seed = has_var.value.params[0];
                 seed_expr = seed.value if isinstance(seed, uni.KWPair) else seed;
-                if seed_expr.gen.es_ast {
-                    ref_init = cast(es.Expression, seed_expr.gen.es_ast);
+                if artifact_for(seed_expr).es_ast {
+                    ref_init = cast(es.Expression, artifact_for(seed_expr).es_ast);
                 }
             }
             ref_field = RefField(name=var_name, init_expr=ref_init);
@@ -397,8 +391,8 @@ impl EsastGenPass.exit_arch_has with uni.ArchHas exit {
         }
 
         init_value: es.Expression;
-        if has_var.value and has_var.value.gen.es_ast {
-            init_value = cast(es.Expression, has_var.value.gen.es_ast);
+        if has_var.value and artifact_for(has_var.value).es_ast {
+            init_value = cast(es.Expression, artifact_for(has_var.value).es_ast);
         } else {
             init_value = es.Identifier(name='undefined');
         }
@@ -424,11 +418,11 @@ impl EsastGenPass.exit_arch_has with uni.ArchHas exit {
         }
     }
     if len(statements) == 1 {
-        here.gen.es_ast = statements[0];
+        artifact_for(here).es_ast = statements[0];
     } elif len(statements) > 1 {
-        here.gen.es_ast = statements;
+        artifact_for(here).es_ast = statements;
     } else {
-        here.gen.es_ast = None;
+        artifact_for(here).es_ast = None;
     }
 }
 

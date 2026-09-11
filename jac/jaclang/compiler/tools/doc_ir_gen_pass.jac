@@ -1,7 +1,8 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import jaclang.compiler.tools.doc_ir as doc;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.constant { Tokens as Tok, is_mut_kind }
-import from jaclang.compiler.passes { UniPass }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.ir.enums { Tokens as Tok, is_mut_kind }
+import from jaclang.compiler.pipeline.uni_pass { UniPass }
 
 walker DocIRGenPass(UniPass) {
     has _live_comment_ids: (set[int] | None) = None,

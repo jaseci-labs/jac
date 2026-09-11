@@ -19,14 +19,15 @@ value (freed glob, corrupted list) fails the assert rather than relying on
 what freed memory happens to contain.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, get_func, compile_native_ir }
 import jaclang;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 
-import jaclang.compiler.frontend.unitree as uni;
+import jaclang.compiler.ir.schema as uni;
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
@@ -37,7 +38,7 @@ glob FIXTURES = os.path.join(
 def fn_ir(ir: uni.Module, name: str) -> str {
     out: list[str] = [];
     inside = False;
-    for ln in str(ir.gen.llvm_ir).split("\n") {
+    for ln in str(artifact_for(ir).llvm_ir).split("\n") {
         if not inside and ln.startswith("define") and (('@"' + name + '"') in ln) {
             inside = True;
         }
@@ -66,7 +67,7 @@ def compile_native(
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);
 }

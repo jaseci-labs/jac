@@ -16,7 +16,7 @@ def _shim_name -> str {
 
 
 def _find_shim -> str {
-    import from jaclang.compiler.driver.compile_options { env_llvm_shim_override }
+    import from jaclang.compiler.session.options { env_llvm_shim_override }
     `override = env_llvm_shim_override();
     if `override and (`override.strip().lower() in ("none", "off", "disabled")) {
         raise OSError(
@@ -47,7 +47,7 @@ def _find_shim -> str {
             return alt;
         }
         # Pre-reorg site layout: a host binary built before #8681 bundles
-        # the shim under compiler/passes/native/, and the dev-source
+        # the shim under compiler/backends/native/, and the dev-source
         # reroute must still find it there.
         legacy = os.path.join(
             p, 'jaclang', 'compiler', 'passes', 'native', 'llvm', shim

@@ -13,11 +13,12 @@ Falling off the end of a `-> None` method was always fine (the fallback in
 explicit `return` with an expression breaks.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -43,17 +44,17 @@ def void_fixture -> uni.Module {
 
 test "a module with `return None` in a `-> None` method still produces IR" {
     ir = void_fixture();
-    assert ir.gen.llvm_ir is not None , (
+    assert artifact_for(ir).llvm_ir is not None , (
         "no native IR: `ret i8* null` in a void function fails LLVM's parser "
         "and takes the whole module with it"
     );
-    assert ir.gen.native_engine is not None , "no JIT engine for the fixture";
+    assert artifact_for(ir).native_engine is not None , "no JIT engine for the fixture";
 }
 
 
 test "every `-> None` callable terminates with ret void" {
     ir = void_fixture();
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     for line in text.splitlines() {
         stripped = line.strip();
         if stripped.startswith("ret ") and stripped != "ret void" {
@@ -70,7 +71,7 @@ test "every `-> None` callable terminates with ret void" {
 
 test "the returned expression is still evaluated for its effects" {
     ir = void_fixture();
-    _eng: any = ir.gen.native_engine;
+    _eng: any = artifact_for(ir).native_engine;
     addr = _eng.get_function_address("run");
     assert addr != 0 , "'run' not found in the JIT engine";
     run = ctypes.CFUNCTYPE(ctypes.c_int64)(addr);

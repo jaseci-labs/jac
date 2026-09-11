@@ -11,6 +11,7 @@ Three subprocesses with different `PYTHONHASHSEED` must agree byte for byte.
 Before the fix they produced three distinct digests.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import subprocess;
 import sys;
@@ -23,10 +24,10 @@ glob REPO: str = str(Path(JAC_ROOT).parent),
      ),
      PROBE: str = """
 import hashlib, sys
-from jaclang.compiler.driver.program import JacProgram
-from jaclang.compiler.driver.compile_options import CompileOptions
+from jaclang.compiler.session.session import JacProgram
+from jaclang.compiler.session.options import CompileOptions
 mod = JacProgram().compile(file_path=sys.argv[1], options=CompileOptions())
-bc = getattr(mod.gen, "py_bytecode", None) if mod is not None else None
+bc = getattr(artifact_for(mod), "py_bytecode", None) if mod is not None else None
 print("SHA=" + (hashlib.sha256(bc).hexdigest() if bc else "NONE"))
 print("ORDER=" + ",".join(tuple({"cron", "interval", "trigger", "date", "walker"})))
 """;

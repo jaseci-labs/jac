@@ -21,7 +21,7 @@ impl validate_entry_point(module: str) -> str {
 }
 
 impl resolve_entry_path(module: str, project_root: str) -> str {
-    import from jaclang.compiler.driver.modresolver { resolve_local_module }
+    import from jaclang.compiler.session.resolver { resolve_local_module }
     validate_entry_point(module);
     base = os.path.abspath(project_root);
     parts = module.split('.');

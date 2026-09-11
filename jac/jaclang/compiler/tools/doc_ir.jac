@@ -1,5 +1,5 @@
 import from typing { Union }
-import type jaclang.compiler.frontend.unitree as uni;
+import type jaclang.compiler.ir.schema as uni;
 
 glob DocType = Union[
          (

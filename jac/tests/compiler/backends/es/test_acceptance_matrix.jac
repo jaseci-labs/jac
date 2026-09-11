@@ -26,6 +26,8 @@ Two invariants this matrix protects:
     §4.3 Option B/C) must update this test deliberately.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
@@ -34,8 +36,8 @@ import from jaclang.compiler.backends.es.backends.react { ReactBackend }
 import from jaclang.compiler.backends.es.backends.preact { PreactBackend }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
@@ -48,8 +50,8 @@ def compile_fixture_with_backend(fixture_name: str, backend: object) -> str {
     assert not prog.errors_had , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=backend);
-    return es_to_js(es_pass.ir_out.gen.es_ast);
+    es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=backend);
+    return es_to_js(artifact_for(es_pass.ir_out).es_ast);
 }
 
 # --- #1 Counter read/write -----------------------------------------------------

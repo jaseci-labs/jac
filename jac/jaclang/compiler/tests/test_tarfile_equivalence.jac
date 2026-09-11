@@ -14,6 +14,7 @@ entry is needed. Both extract into their own temp tree; the test then walks both
 trees on the sv side and asserts an identical sorted listing of
 (relative path, size, `mode & 0o777`, sha256-of-contents). ES/JS opts out."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import hashlib;
 import io;
@@ -22,8 +23,8 @@ import shutil;
 import tarfile;
 import tempfile;
 import from compression.zstd { ZstdCompressor, CompressionParameter }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.tests.xbackend_equiv { FIXTURES, run_py_fixture, get_func }
 
 
@@ -112,7 +113,7 @@ def _compile_native_forced(fixture: str) -> tuple {
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);
 }

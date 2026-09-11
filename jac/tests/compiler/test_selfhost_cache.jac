@@ -13,9 +13,9 @@ is what a fresh process does; other tests in the same worker recompile on
 demand, the hub being transient by contract."""
 import os;
 import jaclang;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.jir { get_module_cache_path }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.cache.artifact_codec { get_module_cache_path }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 
 glob JACLANG_DIR: str = os.path.dirname(os.path.realpath(str(jaclang.__file__))),
@@ -78,7 +78,7 @@ def _check_recomputed(path: str) -> list[str] {
 
 test "a compiler-tree analysis hydrates its dependencies instead of re-ingesting them" {
     import from unittest.mock { patch }
-    import jaclang.compiler.driver.pass_driver as driver;
+    import jaclang.compiler.pipeline.executor as driver;
     target = _tree_path(HYDRATION_TARGET);
     dependency = _tree_path('server/serving/app.jac');
     paths: set[str] = set();
@@ -161,7 +161,7 @@ test "bundled app dependencies retain their compilation context" {
     program = JacProgram();
     app_source = _tree_path('scale/admin/ui/constants/users.jac');
     assert compiler.selfhost.resolve(app_source, program) is program;
-    compiler_source = _tree_path('compiler/driver/pipeline.jac');
+    compiler_source = _tree_path('compiler/pipeline/schedule.jac');
     assert compiler.selfhost.resolve(compiler_source, program)
         is compiler.selfhost.program;
 }

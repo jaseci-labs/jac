@@ -1,13 +1,14 @@
+import type from jaclang.compiler.session.services { AnalysisServices }
 import os;
 import time;
 import json;
 import zlib;
-import jaclang.compiler.frontend.unitree as uni;
+import jaclang.compiler.ir.schema as uni;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes { Alert }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.pass_base { Alert }
 import from jaclang.compiler.tools.unparse_pass { unparse_node }
-import from jaclang.compiler.driver.jir {
+import from jaclang.compiler.session.cache.artifact_codec {
     SEC_SYMINDEX,
     SECTIONS_MAGIC,
     HEADER_SIZE,
@@ -17,7 +18,7 @@ import from jaclang.compiler.driver.jir {
     read_sections,
     get_module_cache_path
 }
-import from jaclang.compiler.driver.bccache { discover_annex_files }
+import from jaclang.compiler.session.cache.annexes { discover_annex_files }
 import from jaclang.jac0core.ext_registry {
     ANNEX_SUFFIXES,
     ANNEX_FOLDER,
@@ -288,7 +289,7 @@ obj CodeIntelligence {
 
     def postinit {
         self._root_real: str = _real(self.proj_dir);
-        self.prog: JacProgram = JacProgram();
+        self.prog: AnalysisServices = JacProgram();
 
         self.prog.deps.tracking = True;
         self._files: list[str] = [];
@@ -419,7 +420,7 @@ obj CodeIntelligence {
 
     def _full_compile_one(file: str) {
         try {
-            import from jaclang.compiler.driver.compile_options { CompileOptions }
+            import from jaclang.compiler.session.options { CompileOptions }
             mod = self.prog.compile(
                 file_path=file, options=CompileOptions(no_cgen=True, need_full_ast=True)
             );

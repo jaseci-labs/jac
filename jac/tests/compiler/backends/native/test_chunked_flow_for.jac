@@ -5,14 +5,15 @@ the parent, reductions combine at the join. Output byte-identical
 across gc modes, thread widths, and the Python backend (list views via
 the `_jac_chunks` runtime)."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import re;
 import subprocess;
 import sys;
 import tempfile;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "chunked_flow_for.jac"
@@ -29,7 +30,7 @@ test "chunk bodies build view headers without allocating" {
         file_path=FIXTURE, options=CompileOptions(aot_mode=True, memory_profile="nogc")
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     m = re.search(
         r'define[^\n]*@"__jac_ffor_body_\d+"\([^\n]*\n(.*?)\n\}', text, re.DOTALL
     );

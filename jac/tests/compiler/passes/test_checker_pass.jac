@@ -4,9 +4,9 @@ import os;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.testing.test { parametrize }
 
 glob FIXTURES: str = os.path.join(
@@ -2800,7 +2800,7 @@ case, producing the enum's ClassType (or Unknown), which caused the IDE
 to render `PERSONAL: <Unknown>`.
 """
 test "enum_member_declaration_resolves_to_enum_member_type" {
-    import from jaclang.compiler.types.types { EnumMemberType }
+    import from jaclang.compiler.ir.types.nodes { EnumMemberType }
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_enum_member_decl_type.jac"),
@@ -2837,7 +2837,7 @@ ImplDef to its declaring Enum via decl_link, so the type evaluator can
 resolve the owning enum from either form uniformly.
 """
 test "enum_member_impl_declaration_resolves_to_enum_member_type" {
-    import from jaclang.compiler.types.types { EnumMemberType }
+    import from jaclang.compiler.ir.types.nodes { EnumMemberType }
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_enum_member_impl_decl_type.jac"),

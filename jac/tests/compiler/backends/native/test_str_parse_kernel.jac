@@ -4,11 +4,12 @@ slice views, keyword compares run length-aware memcmp over descriptor
 parts (__jac_str_cmp3), and char probes read the static char cache.
 Behavioral identity across modes rides the ownbench differential."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import re;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob KERNEL = str(
          Path(__file__).resolve().parents[4]
@@ -27,7 +28,7 @@ def _tokenize_ir(gc_mode: str, enforce: bool) -> str {
         )
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     m = re.search(r'define[^\n]*@"?tokenize"?\([^\n]*\n(.*?)\n\}', text, re.DOTALL);
     assert m , "tokenize fn not found in IR";
     return m.group(1);

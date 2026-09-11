@@ -16,18 +16,16 @@ unresolved libc import and the loader would abort, so a clean run proves the
 merge. Together the file covers the archive-merge path on both object formats.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
+import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import struct;
 import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
 import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
 import from jaclang.compiler.backends.native.linker_common { select_ar_members }
@@ -54,7 +52,7 @@ def _compile_ir(fixture: str, triple: str) -> str {
         assert not prog.errors_had , f"compile errors: {[
             str(e) for e in prog.errors_had
         ]}";
-        ir_txt = str(ir.gen.llvm_ir);
+        ir_txt = str(artifact_for(ir).llvm_ir);
     } finally {
         pop_native_target(prev);
     }

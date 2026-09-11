@@ -1,13 +1,3 @@
-import jaclang.compiler.backends.es.estree as es;
-import type from jaclang.compiler.backends.es.view_ir { ViewChild }
-import from jaclang.compiler.backends.es.reactive_intent {
-    StateField,
-    RefField,
-    StateUpdate,
-    Effect,
-    AsyncBoundary
-}
-
 impl SolidBackend.name -> str {
     return "solid";
 }

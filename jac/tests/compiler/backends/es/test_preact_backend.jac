@@ -1,5 +1,7 @@
 """Tests for the Preact FrameworkBackend (Phase 1)."""
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
@@ -19,14 +21,14 @@ import from jaclang.compiler.backends.es.reactive_intent {
     StateField
 }
 import jaclang.compiler.backends.es.estree as es;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.project.config { JacConfig, ClientConfig, set_config }
 import from jaclang.client.preact_entry { build_simple_preact_entry_script }
 import from jaclang.client.runtime_source {
     client_runtime_cl_basename,
     resolve_client_runtime_cl_path
 }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
@@ -39,9 +41,9 @@ def compile_fixture_with_backend(fixture_name: str, backend: object) -> str {
     assert not prog.errors_had , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=backend);
+    es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=backend);
     es_ir = es_pass.ir_out;
-    return es_to_js(es_ir.gen.es_ast);
+    return es_to_js(artifact_for(es_ir).es_ast);
 }
 
 test "react backend reports runtime symbols for reactive lowering" {
@@ -214,7 +216,11 @@ test "preact runtime shim compiles JacForm and emits tanstack react-form" {
     prog = JacProgram();
     ir = prog.compile(file_path=rt, no_cgen=True);
     js = es_to_js(
-        run_pass(EsastGenPass, ir, prog, backend=PreactBackend()).ir_out.gen.es_ast
+        artifact_for(
+            run_pass(
+                PassIdentity.EsastGenPass, ir, prog, backend=PreactBackend()
+            ).ir_out
+        ).es_ast
     );
     assert "function JacForm(" in js;
     assert "function useJacForm(" in js;
@@ -249,7 +255,11 @@ test "preact runtime shim exports form symbols" {
     prog = JacProgram();
     ir = prog.compile(file_path=rt, no_cgen=True);
     js = es_to_js(
-        run_pass(EsastGenPass, ir, prog, backend=PreactBackend()).ir_out.gen.es_ast
+        artifact_for(
+            run_pass(
+                PassIdentity.EsastGenPass, ir, prog, backend=PreactBackend()
+            ).ir_out
+        ).es_ast
     );
     export_line = "";
     for ln in js.splitlines() {

@@ -86,7 +86,7 @@ def _coverage_relpath(path: str) -> str {
 
 impl print_native_coverage(coverage: dict[str, dict[str, any]]) -> None {
     import from jaclang.cli.console { console }
-    import from jaclang.compiler.frontend.codeinfo { effective_default_codespace }
+    import from jaclang.compiler.session.target_options { effective_default_codespace }
     console.print("");
     console.print(separator("native coverage"));
     console.print(f"default codespace: {effective_default_codespace()}");

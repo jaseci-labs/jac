@@ -9,7 +9,7 @@ import from types { UnionType }
 import from typing { ClassVar, TypeVar }
 import from uuid { UUID, uuid4 }
 import weakref;
-import from jaclang.compiler.frontend.constant { EdgeDir }
+import from jaclang.compiler.ir.enums { EdgeDir }
 glob logger = getLogger(__name__),
      TARCH = TypeVar('TARCH', bound='Archetype'),
      TANCH = TypeVar('TANCH', bound='Anchor'),
@@ -349,7 +349,28 @@ def _deref(lst: list) -> list {
     return out;
 }
 
+def validate_edge_endpoints(
+    source: NodeArchetype, relation: type, target: NodeArchetype
+) {
+    descriptor = relation?.__jac_edge_endpoints__;
+    if descriptor is not None {
+        bounds = descriptor();
+        if not isinstance(source, bounds[0]) or not isinstance(target, bounds[1]) {
+            raise TypeError(
+                f"{relation.__name__} cannot connect {type(source).__name__} to {type(
+                    target
+                ).__name__}"
+            );
+        }
+    }
+    validate = source?.__jac_validate_relation__;
+    if validate is not None {
+        validate(relation, target);
+    }
+}
+
 def light_connect(src: NodeAnchor, cls: type, tgt: NodeAnchor) {
+    validate_edge_endpoints(src.archetype, cls, tgt.archetype);
     out = src.out_light;
     if out is None {
         out = {};

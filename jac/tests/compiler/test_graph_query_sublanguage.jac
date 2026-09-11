@@ -14,8 +14,8 @@ Anything outside the sublanguage must produce a diagnostic. It must never
 crash the checker: a malformed filter is user input, not an ICE.
 """
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob PRELUDE: str = "node Chan { has name: str = \"\"; }\n"
      "node Msg { has body: str = \"\", at: int = 0, seq: int = 0; }\n"

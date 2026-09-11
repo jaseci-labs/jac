@@ -1,24 +1,17 @@
-import from jaclang.compiler.backends.es.reactive_intent {
-    StateField,
-    RefField,
-    StateUpdate,
-    Effect,
-    AsyncBoundary
-}
-
 impl EsastGenPass.exit_assignment with uni.Assignment exit {
     if not here.target {
-        here.gen.es_ast = None;
+        artifact_for(here).es_ast = None;
         return;
     }
     if here.is_comptime and here.value is not None {
         folded = self._ct_es_expr(here.value.ct_value, here.value);
         if folded is not None {
-            here.value.gen.es_ast = folded;
+            artifact_for(here.value).es_ast = folded;
         }
     }
     value_expr = cast(
-        es.Expression | None, here.value.gen.es_ast if here.value is not None else None
+        es.Expression | None,
+        artifact_for(here.value).es_ast if here.value is not None else None
     );
 
     if (
@@ -35,7 +28,7 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
             es.UnaryExpression(operator='void', prefix=True, argument=discard_value),
             jac_node=here
         );
-        here.gen.es_ast = self.sync_loc(
+        artifact_for(here).es_ast = self.sync_loc(
             es.ExpressionStatement(expression=void_expr), jac_node=here
         );
         return;
@@ -76,7 +69,7 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
             expr_stmt = self.sync_loc(
                 es.ExpressionStatement(expression=setter_call), jac_node=here
             );
-            here.gen.es_ast = expr_stmt;
+            artifact_for(here).es_ast = expr_stmt;
             return;
         }
     }
@@ -107,7 +100,7 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
                 right
             );
             if _fw_aug is not None {
-                here.gen.es_ast = self.sync_loc(
+                artifact_for(here).es_ast = self.sync_loc(
                     es.ExpressionStatement(
                         expression=self.sync_loc(
                             es.AssignmentExpression(
@@ -130,7 +123,7 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
                 expr_stmt = self.sync_loc(
                     es.ExpressionStatement(expression=_prim_result), jac_node=here
                 );
-                here.gen.es_ast = expr_stmt;
+                artifact_for(here).es_ast = expr_stmt;
                 return;
             }
         }
@@ -143,14 +136,14 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
         expr_stmt = self.sync_loc(
             es.ExpressionStatement(expression=assign_expr), jac_node=here
         );
-        here.gen.es_ast = expr_stmt;
+        artifact_for(here).es_ast = expr_stmt;
         return;
     }
 
     if len(here.target) == 1 {
         _setitem = self._try_subscript_setitem(here.target[0], value_expr, here);
         if _setitem is not None {
-            here.gen.es_ast = _setitem;
+            artifact_for(here).es_ast = _setitem;
             return;
         }
     }
@@ -266,9 +259,9 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
         }
     }
     if (len(statements) == 1) {
-        here.gen.es_ast = statements[0];
+        artifact_for(here).es_ast = statements[0];
     } else {
-        here.gen.es_ast = statements;
+        artifact_for(here).es_ast = statements;
     }
 }
 
@@ -341,7 +334,7 @@ impl EsastGenPass._convert_assignment_target(
             }
             key_expr = cast(
                 es.Expression,
-                kv.key.gen.es_ast
+                artifact_for(kv.key).es_ast
                     or self.sync_loc(es.Identifier(name='key'), jac_node=kv.key)
             );
             (value_pattern, _, _) = self._convert_assignment_target(kv.value);
@@ -367,11 +360,11 @@ impl EsastGenPass._convert_assignment_target(
         and isinstance(target.right, uni.IndexSlice)
         and (not target.right.is_range)
     ) {
-        _si = target.right.gen.es_ast;
+        _si = artifact_for(target.right).es_ast;
         if isinstance(_si, es.IndexInfo) {
             _obj = cast(
                 es.Expression,
-                target.target.gen.es_ast
+                artifact_for(target.target).es_ast
                     or self.sync_loc(es.Identifier(name='obj'), jac_node=target)
             );
             _idx = cast(
@@ -387,7 +380,8 @@ impl EsastGenPass._convert_assignment_target(
     }
     left = cast(
         (es.Pattern | es.Expression),
-        target.gen.es_ast or self.sync_loc(es.Identifier(name='temp'), jac_node=target)
+        artifact_for(target).es_ast
+            or self.sync_loc(es.Identifier(name='temp'), jac_node=target)
     );
     reference = cast(es.Expression, left) if isinstance(left, es.Node) else None;
     return (left, reference, None);

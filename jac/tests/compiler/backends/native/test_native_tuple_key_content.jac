@@ -12,9 +12,10 @@ other pointers by identity. Red-first: every function below builds its probe
 key from fresh concatenations.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import ctypes;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from tests.support { TESTS_DIR, native_force_opts }
 
 glob FIXTURES = os.path.join(
@@ -29,7 +30,7 @@ test "tuple-of-str keys compare by content when the strings are fresh allocation
     );
     errs = [str(e) for e in prog.errors_had];
     assert not errs , f"errors: {errs}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine";
     got = [];
     for name in ("paren_fresh", "plain_fresh", "mixed_fresh", "dedup_fresh") {
@@ -41,6 +42,6 @@ test "tuple-of-str keys compare by content when the strings are fresh allocation
         f"got {got}: expected [101, 101, 101, 102]. A leading 0/2 means the "
         "equal key built from fresh strings was not found (pointer identity)"
     );
-    llvm = str(ir.gen.llvm_ir);
+    llvm = str(artifact_for(ir).llvm_ir);
     assert "__jac_str_fnv" in llvm , "tuple keys must hash str members by content";
 }

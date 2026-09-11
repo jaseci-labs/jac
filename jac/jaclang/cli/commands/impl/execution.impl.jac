@@ -945,7 +945,7 @@ def _exec_file(
     _discover_config_from_file(filename);
 
     if not cache {
-        import from jaclang.compiler.driver.jir { scrub_cache_dirs }
+        import from jaclang.compiler.session.cache.artifact_codec { scrub_cache_dirs }
         scrub_cache_dirs(os.path.dirname(os.path.abspath(filename)) or ".");
     }
 
@@ -958,7 +958,7 @@ def _exec_file(
     sys.argv = [filename] + list(args);
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.target_options {
         get_effective_default_codespace_override,
         set_effective_default_codespace
     }
@@ -983,7 +983,7 @@ def _exec_file(
                     and resolve_app_kind(_cfg_kind, _app, _abs_file) == 'cli-native'
                 );
             }
-            import from jaclang.compiler.driver.boundary_classify {
+            import from jaclang.compiler.analysis.boundaries.classify {
                 module_demoted_native as _na_demoted
             }
             if backend != "python"
@@ -997,7 +997,7 @@ def _exec_file(
                     )
                 ) {
                 import ctypes;
-                import from jaclang.compiler.driver.compile_options {
+                import from jaclang.compiler.session.options {
                     CompileOptions as _RunOpts
                 }
                 full_path = os.path.abspath(filename);
@@ -1017,9 +1017,9 @@ def _exec_file(
                 if (
                     ir_mod
                     and ir_mod.decided_codespace == 'native'
-                    and ir_mod.gen.native_engine
+                    and artifact_for(ir_mod).native_engine
                 ) {
-                    engine = ir_mod.gen.native_engine;
+                    engine = artifact_for(ir_mod).native_engine;
                     _populate_native_argv(engine, sys.argv);
                     if main {
                         addr = engine.get_function_address("jac_entry");
@@ -1040,9 +1040,7 @@ def _exec_file(
             }
             if not native_executed {
                 if backend == "python" {
-                    import from jaclang.compiler.driver.compile_options {
-                        CompileOptions
-                    }
+                    import from jaclang.compiler.session.options { CompileOptions }
                     program = Jac.get_program();
                     program.compile(
                         file_path=os.path.abspath(filename),
@@ -1197,7 +1195,9 @@ impl serve(
 ) -> int {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     import from pathlib { Path }
-    import from jaclang.compiler.frontend.codeinfo { set_effective_default_codespace }
+    import from jaclang.compiler.session.target_options {
+        set_effective_default_codespace
+    }
     import from jaclang.project.config { get_config }
 
     use_line_buffered_output();
@@ -1254,7 +1254,7 @@ impl serve(
 
     try {
         console.print("Preparing application...", style="bold");
-        import from jaclang.compiler.driver.application { prepare_application }
+        import from jaclang.build.preparation { prepare_application }
         import from jaclang.server.assembly { service_apps }
         project_root = str(cfg.project_root) if cfg and cfg.project_root else base;
         services = service_apps(cfg, served) if cfg and served else [];
@@ -1672,7 +1672,7 @@ def _start_vite_dev_server(
 }
 
 impl debug(filename: str, main: bool = True, cache: bool = False) -> int {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.runtime.debugger { debugger as db }
     if len(sys.argv) > 1 and sys.argv[1] == "debug" {
         console.print(
@@ -1683,7 +1683,7 @@ impl debug(filename: str, main: bool = True, cache: bool = False) -> int {
     base = base or './';
     mod = mod[:-4];
     if filename.endswith('.jac') {
-        bytecode = JacProgram().compile(filename).gen.py_bytecode;
+        bytecode = artifact_for(JacProgram().compile(filename)).py_bytecode;
         if bytecode {
             code = marshal.loads(bytecode);
             if db.has_breakpoint(bytecode) {

@@ -3,7 +3,7 @@
 Every fixture is emitted twice over the same module. The first emission
 is the pipeline's own: `JcirGenPass` writes the container and
 `JcirBytecodeGenPass` transcribes it, leaving the tree on
-`mod.gen.py_ast`. The second is a fresh `JcirGenPass` run over the
+`artifact_for(mod).py_ast`. The second is a fresh `JcirGenPass` run over the
 already-compiled module, transcribed through `codegen_shim`.
 
 Two things are asserted of every fixture. Exact
@@ -24,16 +24,18 @@ cannot make: the binder retains no function pointer, so both sides of it
 are the source lane until #8288 M1 rung 3.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ast as pyast;
 import marshal;
 import os;
 import types;
 import from builtins { compile as pycompile, exec as pyexec }
 import from tests.support { JAC_ROOT }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pipeline { get_py_code_gen }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.pipeline.schedule { get_py_code_gen }
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.backends.py.codegen_shim { compile_ir, transcribe }
@@ -52,7 +54,7 @@ def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple {
         )
     );
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
-    ref_tree = mod.gen.py_ast[0];
+    ref_tree = artifact_for(mod).py_ast[0];
     emitter = JcirGenPass(ir_in=mod);
     blob = emitter.ir_bytes();
     (mods, diags) = transcribe(blob);
@@ -67,7 +69,7 @@ def dual_compile_file(path: str) -> tuple {
     prog = JacProgram();
     mod = prog.compile(path, options=CompileOptions(no_ir_cache=True));
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
-    ref_tree = mod.gen.py_ast[0];
+    ref_tree = artifact_for(mod).py_ast[0];
     emitter = JcirGenPass(ir_in=mod);
     blob = emitter.ir_bytes();
     (mods, diags) = transcribe(blob);
@@ -920,18 +922,18 @@ with entry {
         )
     );
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
-    assert mod.gen.jcir , "a compiled module must carry its codegen container";
-    assert mod.gen.py_bytecode;
+    assert artifact_for(mod).jcir , "a compiled module must carry its codegen container";
+    assert artifact_for(mod).py_bytecode;
     sched = get_py_code_gen(native=False);
-    assert JcirGenPass in sched , f"jcir is not in the codegen schedule: {sched}";
-    assert JcirBytecodeGenPass in sched;
+    assert PassIdentity.JcirGenPass in sched , f"jcir is not in the codegen schedule: {sched}";
+    assert PassIdentity.JcirBytecodeGenPass in sched;
     for `entry in sched {
-        assert "Pyast" not in `entry.__name__ and "PyBytecode" not in `entry.__name__ , (
-            f"a legacy emitter is back in the codegen schedule: {`entry.__name__}"
+        assert "Pyast" not in `entry.value and "PyBytecode" not in `entry.value , (
+            f"a legacy emitter is back in the codegen schedule: {`entry.value}"
         );
     }
-    piped_code = marshal.loads(mod.gen.py_bytecode);
-    round_tripped = pycompile(mod.gen.py_ast[0], "tail_fixture.jac", "exec");
+    piped_code = marshal.loads(artifact_for(mod).py_bytecode);
+    round_tripped = pycompile(artifact_for(mod).py_ast[0], "tail_fixture.jac", "exec");
     diffs = code_diffs(round_tripped, piped_code, "module", []);
     assert diffs == [] , "\n".join(diffs);
 }

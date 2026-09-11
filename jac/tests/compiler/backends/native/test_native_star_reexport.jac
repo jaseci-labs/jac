@@ -5,6 +5,7 @@ and an entry module includes a native library directly; both must lower
 natively with interop bindings that resolve to the defining module.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
@@ -15,7 +16,7 @@ glob FIXTURES = os.path.join(
 
 test "star re-export chain compiles" {
     (eng, ir) = compile_native("na_star_reexport_main.jac");
-    assert ir.gen.llvm_ir is not None;
+    assert artifact_for(ir).llvm_ir is not None;
 }
 
 test "star re-export chain executes" {
@@ -26,7 +27,7 @@ test "star re-export chain executes" {
 
 test "star re-exported binding resolves to the defining module" {
     (eng, ir) = compile_native("na_star_reexport_main.jac");
-    b = ir.gen.interop_manifest.bindings["star_helper"];
+    b = artifact_for(ir).interop_manifest.bindings["star_helper"];
     assert b.source_module == "na_star_reexport_lib.jac" , (
         f"binding must name the defining module, got {b.source_module}"
     );

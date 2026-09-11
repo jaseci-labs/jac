@@ -3,7 +3,7 @@
 This file used to pin a refusal and a three-item clearing list: `typing`'s
 compile-time vocabulary admitted `TypeVar`, `cast`, `TypeAlias` and
 `ClassVar` but not `Any`, so `import from typing { Any }` answered
-`unresolved import 'typing'` and `compiler/frontend/codeinfo.jac` -- whose only typing
+`unresolved import 'typing'` and `compiler/backends/common/artifacts.jac` -- whose only typing
 import that was -- fell out of native inference. Three seams in
 `capability_check_pass` were that one fact, and the list said what admitting
 `Any` would cost.
@@ -33,7 +33,7 @@ The clearing list, and where each item stands:
      stamps `prog` on the instance at construction and the declaration is
      gone -- not widened to `any`, which would have been wrong twice over
      (only eleven passes shadowed it, so the rest would have silently lost
-     every `self.prog.*` check). `compiler/passes/transform.jac` is a member
+     every `self.prog.*` check). `compiler/pipeline/pass_base.jac` is a member
      of codeinfo's closure now, which is the measurement that says so.
 
   2 and 3. `codeinfo`'s `CLIENT_RUNTIME_SOURCE_PATHS` glob, which was a bare
@@ -63,12 +63,14 @@ keyword exactly as it would have for the name.
 """
 
 import os;
-import from jaclang.compiler.frontend.codeinfo { native_erased_import_names }
+import from jaclang.compiler.analysis.capabilities.native_policy {
+    native_erased_import_names
+}
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
-import from jaclang.compiler.placement.placement { scan_native_blockers }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.frontend.unitree { Assignment, GlobalVars }
+import from jaclang.compiler.analysis.placement.evidence { scan_native_blockers }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.analysis.binding.module_facts { ModuleFacts }
+import from jaclang.compiler.ir.schema { Assignment, GlobalVars }
 import from tests.support { TESTS_DIR }
 
 glob FIXTURES = os.path.join(
@@ -112,11 +114,12 @@ test "a module annotated with the any keyword needs no import to infer native" {
 
 
 test "the inference hold is lane-scoped: codeinfo held for users, compiler roots exempt" {
-    import from jaclang.compiler.placement.placement {
+    import from jaclang.compiler.analysis.placement.evidence {
         PLACEMENT_HOLD_EXEMPT_ROOTS,
         PLACEMENT_INFERENCE_HELD
     }
-    assert set(PLACEMENT_INFERENCE_HELD) == {"compiler/frontend/codeinfo.jac"} , (
+    assert set(PLACEMENT_INFERENCE_HELD)
+        == {"compiler/backends/common/artifacts.jac"} , (
         "the inference hold table changed: "
         f"{sorted(PLACEMENT_INFERENCE_HELD)!r}. A hold is a deliberate debt "
         "with a named reason and a coverage measurement that prices it -- "
@@ -125,7 +128,7 @@ test "the inference hold is lane-scoped: codeinfo held for users, compiler roots
         "dropping this one re-opens the jaclang-internal import universe to "
         "default-native flips in user programs"
     );
-    why = PLACEMENT_INFERENCE_HELD["compiler/frontend/codeinfo.jac"];
+    why = PLACEMENT_INFERENCE_HELD["compiler/backends/common/artifacts.jac"];
     assert "PLACEMENT_HOLD_EXEMPT_ROOTS" in why , (
         f"codeinfo's hold reason must name the exemption that answers it: {why!r}"
     );

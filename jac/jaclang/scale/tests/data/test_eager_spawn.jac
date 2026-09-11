@@ -5,8 +5,8 @@ import glob;
 import tempfile;
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
-import from jaclang.compiler.driver.application { prepare_application }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.build.preparation { prepare_application }
+import from jaclang.compiler.ir.enums { Constants as Con }
 import from jaclang.server { sv_client as __jac_sv }
 import from jaclang.server.bridge { BridgeUnavailable }
 import from jaclang.testing.testkit { ServingTestClient as TestClient }

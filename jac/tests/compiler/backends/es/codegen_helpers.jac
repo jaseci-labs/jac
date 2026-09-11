@@ -1,14 +1,16 @@
 """JavaScript fixture compilation without registering tests as an import side effect."""
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from pathlib { Path }
 import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.estree { Node as EsNode }
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-import from jaclang.compiler.passes.transform { Alert }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.analysis.types.type_checker_pass { TypeCheckPass }
+import from jaclang.compiler.pipeline.pass_base { Alert }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob _js_compile_cache: dict[str, str] = {},
      _js_production_compile_cache: dict[str, str] = {};
@@ -49,11 +51,11 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
         f"Compilation errors in {fixture_name}: {[str(e) for e in _fatal]}"
     );
 
-    es_pass = run_pass(EsastGenPass, ir, prog);
+    es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog);
     es_ir = es_pass.ir_out;
 
-    assert hasattr(es_ir.gen, "es_ast") , "es_ast attribute missing";
-    es_ast = es_ir.gen.es_ast;
+    assert hasattr(artifact_for(es_ir), "es_ast") , "es_ast attribute missing";
+    es_ast = artifact_for(es_ir).es_ast;
     assert isinstance(es_ast, EsNode) , "es_ast should be an EsNode";
 
     result = es_to_js(es_ast);
@@ -74,9 +76,9 @@ def compile_fixture_to_js_production(fixture_name: str, fixture_dir: str = "") -
     assert not _fatal , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in _fatal]}"
     );
-    assert ir.gen.js and ir.gen.js.strip() , (
+    assert artifact_for(ir).js and artifact_for(ir).js.strip() , (
         f"Production JS codegen produced no output for {fixture_name}"
     );
-    _js_production_compile_cache[cache_key] = ir.gen.js;
-    return ir.gen.js;
+    _js_production_compile_cache[cache_key] = artifact_for(ir).js;
+    return artifact_for(ir).js;
 }

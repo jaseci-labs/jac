@@ -1,7 +1,7 @@
 """Tests for the ambient test builtins: `testskip`, `testfail`, `testraises`.
 
 These are declared in `jaclang/runtime/builtin.jac` (runtime behaviour) and
-`jaclang/compiler/types/jac_builtins.pyi` (checker-visible signatures),
+`jaclang/compiler/analysis/types/jac_builtins.pyi` (checker-visible signatures),
 so they are usable inside any `test` block with no import. `skip` itself is a
 Jac keyword (the walker skip statement), hence the `testskip` spelling.
 """

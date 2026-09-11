@@ -3,8 +3,8 @@
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures");
 

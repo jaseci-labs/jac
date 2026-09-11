@@ -5,8 +5,8 @@ import sys;
 import time;
 import shutil;
 import from pathlib { Path }
-import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.driver.bccache { discover_base_file }
+import from jaclang.compiler.ir.enums { CodeContext }
+import from jaclang.compiler.session.cache.annexes { discover_base_file }
 import from jaclang.cli.console { console }
 
 glob logger = logging.getLogger(__name__);
@@ -238,11 +238,12 @@ impl HotReloader._dispatch_change(file_path: str, is_directory: bool = False) ->
     }
 
     import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
+    import from jaclang.compiler.pipeline.products { require_product }
+    import from jaclang.compiler.pipeline.contracts { CompilationProduct }
     program = Jac.get_program();
     module = program.compile(target_path, no_cgen=True);
-    require_product(program, module, CompilationProduct.SPACES);
-    spaces = program.analysis.module_spaces[os.path.realpath(target_path)].spaces;
+    import from jaclang.compiler.api { module_spaces }
+    spaces = module_spaces(program, module).spaces;
     has_client = CodeContext.CLIENT in spaces;
     has_server = CodeContext.SERVER in spaces;
 
@@ -445,7 +446,7 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
         entry_path = str(self._entry_module_path());
         prepared = application_for(entry_path);
         if prepared is not None {
-            import from jaclang.compiler.driver.application { reprepare_application }
+            import from jaclang.build.preparation { reprepare_application }
             prepared = reprepare_application(prepared, Jac.get_program());
             if prepared.client_compiler is not None {
                 self.client_compiler = prepared.client_compiler;

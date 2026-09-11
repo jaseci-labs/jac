@@ -19,14 +19,15 @@ those slots, the capture walk skips them, and the Python lane builds a keyword
 key from its spelling rather than from a lowered reference.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ast as ast3;
 import os;
 import subprocess;
 import sys;
 import from tests.support { TESTS_DIR, native_force_opts }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(TESTS_DIR, "compiler", "passes", "fixtures");
 
@@ -43,7 +44,7 @@ def compile_server(fixture: str) -> uni.Module {
 
 
 def generated_python(fixture: str) -> str {
-    return ast3.unparse(compile_server(fixture).gen.py_ast[0]);
+    return ast3.unparse(artifact_for(compile_server(fixture)).py_ast[0]);
 }
 
 
@@ -102,7 +103,7 @@ test "the predicate answers for both identifier slots" {
 
 test "a nested function does not capture through a keyword key" {
     ir = compile_server("kwarg_key_slot.jac");
-    caps = [s.sym_name for s in ability_named(ir, "slot").get_enclosing_captures()];
+    caps = [s.sym_name for s in ability_named(ir, "slot").capture_symbols];
     assert "align" not in caps , (
         f"'align' is captured though `slot` only spells it as a keyword key: " f"{caps}"
     );
@@ -120,7 +121,7 @@ test "the native nested function takes no phantom capture" {
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     defs = [
         _l.strip()
-        for _l in str(ir.gen.llvm_ir).split("\n")
+        for _l in str(artifact_for(ir).llvm_ir).split("\n")
         if "define" in _l and "__jac_nested_slot" in _l
     ];
     assert len(defs) == 1 , f"expected one nested definition, got {defs}";

@@ -1,14 +1,3 @@
-glob _OS_CONSTS: dict[str, str] = {
-         "sep": "/",
-         "extsep": ".",
-         "pardir": "..",
-         "curdir": ".",
-         "pathsep": ":",
-         "linesep": "\n",
-         "devnull": "/dev/null",
-
-     };
-
 impl NaIRGenPass._emit_os_const(name: str) -> (ir.Value | None) {
     if name not in _OS_CONSTS {
         return None;

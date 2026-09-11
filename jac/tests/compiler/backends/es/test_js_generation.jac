@@ -3,6 +3,8 @@
 Migrated from test_js_generation.py to native Jac test format.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import json;
 import os;
 import shutil;
@@ -25,9 +27,9 @@ import from jaclang.compiler.backends.es.es_unparse {
     template_element_raw
 }
 import from jaclang.compiler.backends.es.primitives_es { ESDictEmitter, ESEmitCtx }
-import from jaclang.compiler.driver.modresolver { convert_to_js_import_path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.session.resolver { convert_to_js_import_path }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
@@ -1097,13 +1099,13 @@ test "bridged call duplicate kwarg is a compile error" {
     # ``TypeError: got multiple values for argument 'name'`` and must be
     # reported as a compile-time error so the build fails fast rather than
     # silently emitting a JS object with a duplicated key.
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.compiler.backends.es { EsastGenPass }
 
     fixture = os.path.join(FIXTURES, "svc_kwargs/sv_import_kwargs_dup.jac");
     prog = JacProgram();
     ir = prog.compile(file_path=fixture, no_cgen=True);
-    run_pass(EsastGenPass, ir, prog);
+    run_pass(PassIdentity.EsastGenPass, ir, prog);
 
     dup_errs = [
         e
@@ -2841,7 +2843,7 @@ test "builtin functions lower to runtime helpers without type-check (#7480)" {
     _fatal = _fatal_compile_errors(prog);
     assert not _fatal , (f"Compilation errors: {[str(e) for e in _fatal]}");
     _ensure_js_generated(ir, prog);
-    js_code = ir.gen.js;
+    js_code = artifact_for(ir).js;
 
     fn_starts = [
         js_code.find("function " + fn) for fn in ["summarize", "numeric", "combined"]
@@ -3031,7 +3033,7 @@ test "unimplemented client statement is a hard error, not a silent drop (#7922)"
     try {
         prog = JacProgram();
         ir = prog.compile(file_path=temp_path, no_cgen=True);
-        run_pass(EsastGenPass, ir, prog);
+        run_pass(PassIdentity.EsastGenPass, ir, prog);
         drops = [
             e
             for e in prog.errors_had
@@ -3070,7 +3072,7 @@ test "supported client statements do not trip the completeness guard (#7922)" {
     try {
         prog = JacProgram();
         ir = prog.compile(file_path=temp_path, no_cgen=True);
-        run_pass(EsastGenPass, ir, prog);
+        run_pass(PassIdentity.EsastGenPass, ir, prog);
         drops = [
             e
             for e in prog.errors_had
@@ -3101,7 +3103,7 @@ test "E5018 names the rewrite that makes the pattern lower (#8375)" {
     try {
         prog = JacProgram();
         ir = prog.compile(file_path=temp_path, no_cgen=True);
-        run_pass(EsastGenPass, ir, prog);
+        run_pass(PassIdentity.EsastGenPass, ir, prog);
         pats = [
             e
             for e in prog.errors_had

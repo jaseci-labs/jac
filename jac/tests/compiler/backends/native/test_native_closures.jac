@@ -13,6 +13,7 @@ call through an `any`-typed value) stay structured E5092 errors, never a
 silently mis-bound value.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 import os;
@@ -28,7 +29,7 @@ import jaclang;
 
 test "lambda parameters remain borrowed across explicit returns" {
     (engine, module) = compile_native("lambda_borrowed_params.jac");
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
     call = get_func(engine, "call_lambda", ctypes.c_int64);
     drops = get_func(engine, "drop_count", ctypes.c_int64);
@@ -36,7 +37,7 @@ test "lambda parameters remain borrowed across explicit returns" {
     assert drops() == 1;
 }
 
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -78,9 +79,9 @@ def compute(value: int) -> int {
 """
     );
     assert not prog.errors_had , "\n".join(str(e) for e in prog.errors_had);
-    assert module.gen.native_engine is not None;
+    assert artifact_for(module).native_engine is not None;
     call = get_func(
-        module.gen.native_engine, "compute", ctypes.c_int64, ctypes.c_int64
+        artifact_for(module).native_engine, "compute", ctypes.c_int64, ctypes.c_int64
     );
     assert call(37) == 37;
 }
@@ -120,9 +121,9 @@ def probe -> int {
 """
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
-    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
+    call = get_func(artifact_for(module).native_engine, "probe", ctypes.c_int64);
     assert call() == 50;
 }
 
@@ -148,10 +149,10 @@ def drops -> int { return dropped; }
 """
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
-    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
-    drops = get_func(module.gen.native_engine, "drops", ctypes.c_int64);
+    call = get_func(artifact_for(module).native_engine, "probe", ctypes.c_int64);
+    drops = get_func(artifact_for(module).native_engine, "drops", ctypes.c_int64);
     before = drops();
     assert call() == 21;
     assert drops() - before == 1;
@@ -176,9 +177,9 @@ def probe -> int {
 """
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
-    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
+    call = get_func(artifact_for(module).native_engine, "probe", ctypes.c_int64);
     assert call() == 35;
 }
 
@@ -274,8 +275,8 @@ test "closure escape: capture borrowed from an outer frame stays rejected" {
         f"the outer-frame capture refusal is owned by outer(), which must "
         f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "outer" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    assert "outer" not in artifact_for(ir).native_layout.functions , (
         "a closure escaping with an outer-frame capture must demote its "
         "function out of the native layout, never lower wrongly"
     );
@@ -294,8 +295,8 @@ test "closure escape: calling a closure through an any-typed value stays rejecte
         f"the any-typed closure call refusal is owned by outer(), which must "
         f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "outer" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    assert "outer" not in artifact_for(ir).native_layout.functions , (
         "an any-typed closure call site must demote its function out of the "
         "native layout, never lower wrongly"
     );

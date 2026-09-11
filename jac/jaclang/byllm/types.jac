@@ -16,7 +16,7 @@ import from jaclang.byllm._optdeps.pydantic { TypeAdapter }
 import from .schema { tool_to_schema }
 import from jaclang.byllm.exceptions { ByLLMError, FinishToolError }
 
-import from jaclang.compiler.driver.mtp { Info }
+import from jaclang.compiler.lowering.mtir { Info }
 import from jaclang.byllm.mcp { McpTool }
 
 glob MessageType: TypeAlias = 'Message | LiteLLMMessage';

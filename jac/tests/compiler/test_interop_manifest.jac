@@ -7,11 +7,12 @@ diagnostics (E5093), and endpoint effects come from the dedicated
 EndpointEffectPass in the same schedule.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import tempfile;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 
 def write_mods(mods: dict[str, str]) -> str {
     tmp = tempfile.mkdtemp(prefix="jac_interop_manifest_");
@@ -40,10 +41,10 @@ test "bridged plain client import records a typed cl->sv binding" {
     );
     prog = JacProgram();
     mod = prog.compile(os.path.join(tmp, "app.jac"));
-    binding = mod.gen.interop_manifest.bindings.get("hello");
+    binding = artifact_for(mod).interop_manifest.bindings.get("hello");
     assert binding is not None , (
         f"bridged import must record a binding; got keys: "
-        f"{list(mod.gen.interop_manifest.bindings.keys())}"
+        f"{list(artifact_for(mod).interop_manifest.bindings.keys())}"
     );
     assert binding.name == "greet" , "binding keeps the export name";
     assert binding.source_context.value == "server";
@@ -124,8 +125,8 @@ test "endpoint effects are recorded by the dedicated effect pass" {
     );
     prog = JacProgram();
     mod = prog.compile(os.path.join(tmp, "main.jac"));
-    effects = mod.gen.interop_manifest.endpoint_effects;
-    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+    effects = artifact_for(mod).interop_manifest.endpoint_effects;
+    import from jaclang.compiler.analysis.boundaries.identity { endpoint_key }
     writer = effects.get(endpoint_key(mod, "func", "add_note"));
     reader = effects.get(endpoint_key(mod, "func", "read_only"));
     assert writer is not None and writer["writes"] , (

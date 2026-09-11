@@ -31,16 +31,20 @@ and the demotion coverage already names it `<Archetype>.<field>.__get__` -- so
 the partition answers for it rather than falling through to a module refusal.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
-import from jaclang.compiler.passes.capability_check_pass {
+import from jaclang.compiler.analysis.capabilities.capability_check_pass {
     native_capability_violations
 }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.analysis.placement.native_fallback {
+    na_coverage_begin,
+    na_coverage_end
+}
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
-import from jaclang.compiler.placement.placement { scan_native_blockers }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.analysis.placement.evidence { scan_native_blockers }
+import from jaclang.compiler.session.session { JacProgram }
 import from tests.support { TESTS_DIR }
 
 glob FIXTURES = os.path.join(
@@ -118,7 +122,7 @@ def _codes(prog: any) -> list[str] {
 
 """A JIT-resolved `int()` function from a compiled fixture."""
 def _native_int_fn(ir: any, name: str) -> any {
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"no native engine for '{name}'";
     addr = eng.get_function_address(name);
     assert addr != 0 , f"'{name}' is absent from the JIT engine";
@@ -158,7 +162,7 @@ test "the from-imported Python base refuses instead of lowering" {
             str(e) for e in prog.errors_had
         ]}"
     );
-    assert ir.gen.llvm_ir is None , (
+    assert artifact_for(ir).llvm_ir is None , (
         "a wrong binary is worse than a refusal: lowering `Holder` here "
         "drops everything it inherits from `Event` with no diagnostic"
     );
@@ -210,7 +214,7 @@ test "a TypeAlias import no longer blocks native placement" {
 test "a TypeAlias glob module lowers clean" {
     (prog, ir) = _compile_native("typing_type_alias_glob.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the TypeAlias glob";
+    assert ir is not None and artifact_for(ir).llvm_ir , "no native IR for the TypeAlias glob";
     assert _native_int_fn(ir, "run")() == 8 , (
         "the TypeAlias glob changed what the rest of the module computes"
     );
@@ -240,7 +244,7 @@ test "a mixed typing import is still judged per name" {
 test "a consumer links a ClassVar-importing dependency" {
     (prog, ir, coverage) = _compile_with_coverage("classvar_marker_consumer.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , (
+    assert ir is not None and artifact_for(ir).llvm_ir , (
         "no native IR for a module whose dependency's only compile-time "
         "import is `ClassVar`"
     );
@@ -263,10 +267,10 @@ test "a from import of an na_stdlib-shimmed module lowers" {
     );
     (prog, ir) = _compile_native("from_import_shimmed_stdlib.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , (
+    assert ir is not None and artifact_for(ir).llvm_ir , (
         "no native IR for a module whose only import is a shimmed one"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "run" in layout.functions , (
         "a shimmed module supplies the name natively, so nothing here "
@@ -282,7 +286,7 @@ test "a property accessor is an owning callable, not a module-fatal site" {
         f"method, so a violation written there demotes it rather than "
         f"refusing the module: {[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "Box.plain" in layout.methods , (
         f"the archetype's ordinary method was lost: {sorted(layout.methods)}"
@@ -311,7 +315,7 @@ test "a body-scoped from-import demotes only its owning function" {
             str(e) for e in prog.errors_had
         ]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "clean" in layout.functions , (
         f"clean sibling function was lost: {sorted(layout.functions)}"
@@ -361,11 +365,11 @@ test "a Python dataclass decorator still refuses" {
 test "a field-defaulted archetype lowers and builds its defaults" {
     (prog, ir) = _compile_native("object_field_default.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , (
+    assert ir is not None and artifact_for(ir).llvm_ir , (
         "no native IR for an archetype whose has-fields default through "
         "`jaclang.runtime.object_model.field`"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "run" in layout.functions , (
         f"the declaration-site marker demoted its module: {sorted(layout.functions)}"

@@ -1,11 +1,12 @@
 """Symbol table build pass tests – migrated from test_sym_tab_build_pass.py."""
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "symtab_build_tests"
@@ -110,8 +111,8 @@ test "inner compr scope linking" {
 """The symbol table records every guard branch, live or dead (version-agnostic)."""
 test "version conditional symbols are all recorded in the symbol table" {
     import ast as py_ast;
-    import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-    import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+    import from jaclang.compiler.frontend.pyast_load_pass { PyastBuildPass }
+    import from jaclang.compiler.analysis.binding.sym_tab_build_pass { SymTabBuildPass }
 
     code = """
 import sys
@@ -134,7 +135,7 @@ Always = "always_available"
         ir_in=uni.PythonModuleAst(py_ast_node, orig_src=source)
     ).ir_out;
 
-    run_pass(SymTabBuildPass, mod, prog);
+    run_pass(PassIdentity.SymTabBuildPass, mod, prog);
 
     # Every guarded declaration is in the (complete) symbol table, regardless
     # of whether its guard is statically live — including the >= 3.15 branch.
@@ -148,9 +149,9 @@ Always = "always_available"
 test "version-live branch resolves, dead branch does not" {
     import sys;
     import ast as py_ast;
-    import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-    import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
-    import from jaclang.compiler.types.type_utils { collect_member_syms }
+    import from jaclang.compiler.frontend.pyast_load_pass { PyastBuildPass }
+    import from jaclang.compiler.analysis.binding.sym_tab_build_pass { SymTabBuildPass }
+    import from jaclang.compiler.analysis.types.type_utils { collect_member_syms }
 
     # Annotated decls (as typeshed writes guarded symbols) stay in the guard
     # scope instead of hoisting to module level.
@@ -172,7 +173,7 @@ if sys.version_info >= (3, 15):
     mod = PyastBuildPass(
         ir_in=uni.PythonModuleAst(py_ast_node, orig_src=source)
     ).ir_out;
-    run_pass(SymTabBuildPass, mod, prog);
+    run_pass(PassIdentity.SymTabBuildPass, mod, prog);
 
     assert collect_member_syms(mod, "MINYEAR") , "unguarded symbol should resolve";
     if sys.version_info >= (3, 11) {
@@ -187,9 +188,9 @@ if sys.version_info >= (3, 15):
 test "version-guarded class members resolve to the live branch" {
     import sys;
     import ast as py_ast;
-    import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-    import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
-    import from jaclang.compiler.types.type_utils { collect_member_syms }
+    import from jaclang.compiler.frontend.pyast_load_pass { PyastBuildPass }
+    import from jaclang.compiler.analysis.binding.sym_tab_build_pass { SymTabBuildPass }
+    import from jaclang.compiler.analysis.types.type_utils { collect_member_syms }
 
     code = """
 import sys
@@ -210,7 +211,7 @@ class C:
     mod = PyastBuildPass(
         ir_in=uni.PythonModuleAst(py_ast_node, orig_src=source)
     ).ir_out;
-    run_pass(SymTabBuildPass, mod, prog);
+    run_pass(PassIdentity.SymTabBuildPass, mod, prog);
 
     cls_sym = mod.lookup("C", deep=False);
     assert cls_sym is not None , "class C should resolve";

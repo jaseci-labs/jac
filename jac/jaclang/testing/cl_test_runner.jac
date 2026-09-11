@@ -1,3 +1,4 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import re;
 import from contextlib { contextmanager }
 

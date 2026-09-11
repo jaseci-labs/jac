@@ -27,6 +27,7 @@ matched through its symbol, not its spelling: a module-local function called
 server lane answers what CPython answers.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import contextlib;
 import io;
 import os;
@@ -34,8 +35,8 @@ import subprocess;
 import sys;
 import tempfile;
 import from tests.support { TESTS_DIR, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -111,7 +112,7 @@ def na_lines(fixture: str) -> list {
 test "an all-auto enum lowers with no seam" {
     (prog, ir) = compile_native("enum_auto.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the fixture";
+    assert ir is not None and artifact_for(ir).llvm_ir , "no native IR for the fixture";
     seams = seam_report("enum_auto.jac");
     assert "attribute access" not in seams , (
         f"a member read off the class still refused:\n{seams}"

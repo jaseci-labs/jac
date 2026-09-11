@@ -11,6 +11,7 @@ None `str` used as a dict key or strcmp operand dereferenced NULL and
 segfaulted; these tests pin the diagnostic and the guard-free IR shape.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support {
@@ -21,7 +22,7 @@ import from tests.support {
     native_force_opts
 }
 
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -131,7 +132,7 @@ test "un-narrowed optional use at strict sites is E1121, never runtime UB" {
 
 test "IR shape: tagged optionals, jacval slots, no NULL-guarded strcmp" {
     ir = compile_native_ir("optional_ptr.jac");
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     assert "JacOpt." in text , "pointer optionals did not lower to JacOpt";
     assert "List.jacval" in text , "optional elements did not lower to jacval slots";
     for guard in (

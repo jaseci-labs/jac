@@ -1,4 +1,4 @@
-import from jaclang.compiler.frontend.unitree { Module }
+import from jaclang.compiler.ir.schema { Module }
 
 def jac_type_to_jsdoc(type_str: str, is_return: bool = False) -> str;
 

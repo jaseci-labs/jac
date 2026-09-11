@@ -71,7 +71,7 @@ impl JcirGenPass.exit_archetype with Archetype exit {
     decorators = [self.val(i) for i in here.decorators] if here.decorators else [];
     body: list = self.resolve_stmt_block(inner, doc=here.doc);
     if here.arch_type.name != Tok.KW_CLASS {
-        import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+        import from jaclang.compiler.analysis.boundaries.identity { endpoint_key }
         type_id = endpoint_key(self.ir_in, 'type', here.sym_name);
         body.append(
             self.nod(
@@ -93,6 +93,44 @@ impl JcirGenPass.exit_archetype with Archetype exit {
     if (not body and not isinstance(here.body, Expr)) {
         self.emit(E5003, node_override=here);
         body = [self.nod('Pass', [], [], jac_node=here)];
+    }
+    if here.src_endpoint is not None and here.tgt_endpoint is not None {
+        endpoints = self.nod(
+            'Tuple',
+            ['elts', 'ctx'],
+            [
+                [self.val(here.src_endpoint), self.val(here.tgt_endpoint)],
+                self.nod('Load', [], [])
+            ]
+        );
+        thunk = self.nod(
+            'Lambda',
+            ['args', 'body'],
+            [
+                self.nod(
+                    'arguments',
+                    ['posonlyargs', 'args', 'kwonlyargs', 'kw_defaults', 'defaults'],
+                    [[], [], [], [], []]
+                ),
+                endpoints
+            ]
+        );
+        body.append(
+            self.nod(
+                'Assign',
+                ['targets', 'value'],
+                [
+                    [
+                        self.nod(
+                            'Name',
+                            ['id', 'ctx'],
+                            ['__jac_edge_endpoints__', self.nod('Store', [], [])]
+                        )
+                    ],
+                    self.call_node(self.builtin_name('staticmethod'), [thunk], [])
+                ]
+            )
+        );
     }
     ct_fields = self._ct_param_fields(here);
     if ct_fields {
@@ -636,7 +674,7 @@ impl JcirGenPass.exit_arch_has with ArchHas exit {
 }
 
 impl JcirGenPass.exit_has_var with HasVar exit {
-    import from jaclang.compiler.field_semantics { is_field_marker }
+    import from jaclang.compiler.analysis.types.field_semantics { is_field_marker }
     annotation = self.val(here.type_tag) if here.type_tag else None;
     if ((here.accessors is not None) and (len(here.accessors) > 0)) {
         result_stmts: list[CgItem] = [];

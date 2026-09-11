@@ -1,7 +1,8 @@
 """Imported layouts are completed before their children adopt their slots."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from jaclang.compiler.frontend.parser.frontend { parse }
-import from jaclang.compiler.passes.layout_pass {
+import from jaclang.compiler.lowering.layout_pass {
     ArchetypeLayout,
     FieldInfo,
     LayoutRegistry,
@@ -12,7 +13,7 @@ test "partial imported MROs still adopt fields in ancestor order" {
     (mod, failed) = parse("", "layout_order.jac");
     assert not failed;
     reg = LayoutRegistry();
-    mod.gen.layout_registry = reg;
+    artifact_for(mod).layout_registry = reg;
     for (name, parent, field) in [
         ("Leaf", "Middle", "leaf"),
         ("Middle", "Base", "middle"),

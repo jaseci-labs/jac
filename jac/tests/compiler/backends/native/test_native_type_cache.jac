@@ -1,11 +1,11 @@
 """Native storage must distinguish annotations from class-valued types."""
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.frontend.unitree { Module }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.ir.schema { Module }
 import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 import from jaclang.compiler.backends.native.llvm { ir }
-import from jaclang.compiler.passes.transform { PassResult }
+import from jaclang.compiler.pipeline.pass_base { PassResult }
 
 test "native type caching preserves primitive and class value storage in either order" {
     program = JacProgram();

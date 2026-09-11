@@ -1,6 +1,6 @@
 """Type and compile-time value parameters retain distinct ordered slots."""
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 test "mixed generic arguments preserve compile-time values" {
     program = JacProgram();

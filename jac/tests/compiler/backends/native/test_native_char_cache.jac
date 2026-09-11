@@ -9,10 +9,11 @@ no per-character RC allocation) and the runtime behavior (characters compare and
 concatenate correctly, and a cached character still reports length 1).
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts, native_str_func }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -27,7 +28,7 @@ def _compile(fixture: str) -> tuple {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine for {fixture}";
     return (eng, ir);
 }
@@ -42,7 +43,7 @@ def _get(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
 
 test "single-character access uses the __jac_chars cache, not per-char rc_alloc" {
     (eng, ir) = _compile(FIXTURE);
-    txt = str(ir.gen.llvm_ir);
+    txt = str(artifact_for(ir).llvm_ir);
 
     # The immortal 256-entry cache global is emitted.
     assert "__jac_chars" in txt , "char cache global __jac_chars not emitted";

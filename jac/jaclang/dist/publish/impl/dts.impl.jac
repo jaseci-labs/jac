@@ -1,4 +1,4 @@
-import from jaclang.compiler.frontend.unitree {
+import from jaclang.compiler.ir.schema {
     Module,
     Ability,
     Archetype,
@@ -108,7 +108,9 @@ def _global_decl(assign: any, wanted: any) -> str {
 }
 
 impl dts_for_module(mod: Module) -> str {
-    manifest = mod.gen.client_manifest if (mod and mod.gen) else None;
+    manifest = artifact_for(mod).client_manifest
+        if (mod and artifact_for(mod))
+        else None;
     exports: set[str] = set(manifest.exports) if manifest else set();
     globals_set: set[str] = set(manifest.globals) if manifest else set();
     if not exports and not globals_set {

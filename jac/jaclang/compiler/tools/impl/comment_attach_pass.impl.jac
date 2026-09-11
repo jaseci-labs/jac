@@ -1,18 +1,11 @@
-import from bisect { bisect_left }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-
-glob _CLOSING_DELIMS = [Tok.RBRACE, Tok.RPAREN, Tok.RSQUARE],
-     _OPENING_DELIMS = [Tok.LBRACE, Tok.LPAREN, Tok.LSQUARE];
-
 impl CommentAttachPass._run_impl(ir_in: uni.Module) -> uni.Module {
     if not isinstance(ir_in, uni.Module) {
         return ir_in;
     }
-    if ir_in.gen.doc_comments is not None {
+    if artifact_for(ir_in).doc_comments is not None {
         return ir_in;
     }
-    ir_in.gen.doc_comments = NodeComments();
+    artifact_for(ir_in).doc_comments = NodeComments();
     comments = ir_in.source.comments if ir_in.source else [];
     if not comments {
         return ir_in;
@@ -70,10 +63,10 @@ impl CommentAttachPass._run_impl(ir_in: uni.Module) -> uni.Module {
 }
 
 impl CommentAttachPass._node_comments(nd: uni.UniNode) -> NodeComments {
-    if nd.gen.doc_comments is None {
-        nd.gen.doc_comments = NodeComments();
+    if artifact_for(nd).doc_comments is None {
+        artifact_for(nd).doc_comments = NodeComments();
     }
-    return nd.gen.doc_comments;
+    return artifact_for(nd).doc_comments;
 }
 
 impl CommentAttachPass._attach_trailing_own(

@@ -1,9 +1,9 @@
 """Quoted type syntax uses Jac's grammar and evaluator without retaining temporary uses."""
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.compiler.frontend.parser.frontend { parse_expression }
-import from jaclang.compiler.frontend.unitree { Module }
+import from jaclang.compiler.ir.schema { Module }
 
 
 def _scope(program: JacProgram) -> Module {
@@ -118,7 +118,7 @@ test "speculative type lookup preserves existing and subsequent diagnostics" {
 }
 
 test "quoted generic annotations represent instances" {
-    import from jaclang.compiler.types.types { ClassType }
+    import from jaclang.compiler.ir.types.nodes { ClassType }
     program = JacProgram();
     scope = _scope(program);
     evaluator = program.get_type_evaluator();

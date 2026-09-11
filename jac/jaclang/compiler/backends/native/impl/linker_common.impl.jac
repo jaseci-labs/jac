@@ -1,5 +1,3 @@
-import struct;
-
 impl read_uleb128(b: bytes, o: int) -> tuple[int, int] {
     r = 0;
     s = 0;

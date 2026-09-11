@@ -127,11 +127,11 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         return 1;
     }
 
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.client.client_surface { prepend_active_runtime_globals }
 
-    import jaclang.compiler.frontend.unitree as uni;
-    import from jaclang.compiler.frontend.constant { SymbolType }
+    import jaclang.compiler.ir.schema as uni;
+    import from jaclang.compiler.ir.enums { SymbolType }
 
     js_count = 0;
 
@@ -160,8 +160,8 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
             continue;
         }
 
-        py_code = _strip_test_and_impl_meta(ir.gen.py or "");
-        js_code = ir.gen.js or "";
+        py_code = _strip_test_and_impl_meta(artifact_for(ir).py or "");
+        js_code = artifact_for(ir).js or "";
 
         if js_code.strip() {
             js_rel = _to_js_rel_path(rel);
@@ -193,7 +193,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         server = _is_meaningful_python(py_code) and (not is_client);
 
         if server {
-            import from jaclang.compiler.frontend.constant { CodeContext }
+            import from jaclang.compiler.ir.enums { CodeContext }
             mod_is_native = ir.decided_codespace == 'native';
             for item in ir.body {
                 if item?.code_context == CodeContext.CLIENT {
@@ -1159,8 +1159,8 @@ def _emit_readme(out: Path, project_name: str, has_frontend: bool, env_files: li
 
 
 def _has_pub_access(ast_item: any) -> bool {
-    import jaclang.compiler.frontend.unitree as uni;
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
+    import jaclang.compiler.ir.schema as uni;
+    import from jaclang.compiler.ir.enums { Tokens as Tok }
     if not isinstance(ast_item, uni.AstAccessNode) {
         return False;
     }

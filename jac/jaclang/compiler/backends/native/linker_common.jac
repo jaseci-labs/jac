@@ -1,3 +1,4 @@
+import struct;
 def _align(value: int, alignment: int) -> int;
 
 def read_uleb128(b: bytes, o: int) -> tuple[int, int];
@@ -93,7 +94,7 @@ def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
 
 def floor_lib_dir(triple: str) -> (str | None) {
     import os;
-    import from jaclang.compiler.driver.compile_options { env_floor_dir }
+    import from jaclang.compiler.session.options { env_floor_dir }
     `override = env_floor_dir();
     if `override and os.path.isdir(`override) {
         return `override;

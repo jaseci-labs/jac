@@ -1,6 +1,6 @@
 import inspect;
 import json;
-import from jaclang.compiler.driver.mtp { Info, MethodInfo, FunctionInfo }
+import from jaclang.compiler.lowering.mtir { Info, MethodInfo, FunctionInfo }
 import from types { MethodType }
 import from typing { get_type_hints }
 import from jaclang.byllm.schema { json_to_instance, type_to_schema }

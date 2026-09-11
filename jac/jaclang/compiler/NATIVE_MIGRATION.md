@@ -10,7 +10,7 @@ methods is not evidence that the complete checker links or executes natively.
   use `runtime/object_model.jac`. External Python dataclasses are adapted at
   the boundary by `runtime/object_interop.jac`. Python parser records in the
   bootstrap implementation remain separate from Jac object semantics.
-- Field declarations share `compiler/field_semantics.jac` across checking and
+- Field declarations share `compiler/analysis/types/field_semantics.jac` across checking and
   code generation. Native factories use ordinary call classification and
   emission; constructor argument order is separate from storage layout.
 - Bundled native library functions use stable module-qualified symbols, and

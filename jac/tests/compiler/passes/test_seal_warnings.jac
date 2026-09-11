@@ -9,7 +9,7 @@ keeps it quiet.
 
 import os;
 import from tests.support { JAC_ROOT }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "ownership"

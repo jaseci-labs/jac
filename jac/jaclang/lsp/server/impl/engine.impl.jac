@@ -142,7 +142,7 @@ impl JacLangServer._fanout_dependents(file_uri: str) -> None {
         try {
             ws_root = self.workspace?.root_path;
             if isinstance(ws_root, str) and ws_root {
-                import from jaclang.compiler.driver.ifacecache { seed_dep_edges }
+                import from jaclang.compiler.session.imports { seed_dep_edges }
                 seed_dep_edges(self.program, ws_root);
             }
         } except Exception {}
@@ -207,7 +207,7 @@ impl JacLangServer.type_check_file(
             self._clear_alerts_for_file(f);
         }
 
-        import from jaclang.compiler.driver.compile_options { CompileOptions }
+        import from jaclang.compiler.session.options { CompileOptions }
         main_doc = self.workspace.get_text_document(_uri_of(main_path));
 
         import from jaclang.compiler.frontend.parser.frontend {
@@ -216,7 +216,7 @@ impl JacLangServer.type_check_file(
         }
         import from jaclang.compiler.frontend.parser.lexer { Lexer as _Lexer }
         import from jaclang.compiler.frontend.parser.parser { Parser as _SyntaxParser }
-        import from jaclang.compiler.frontend.unitree { Source as _Src }
+        import from jaclang.compiler.ir.schema { Source as _Src }
         (_syn_had, _pd, _ld) = parse_diags(main_doc.source, main_path);
         if _pd or _ld {
             _dsrc = _Src(main_doc.source, mod_path=main_path);
@@ -235,7 +235,7 @@ impl JacLangServer.type_check_file(
         if cancel_token and cancel_token.is_set() {
             return False;
         }
-        import from jaclang.compiler.placement.workspace { workspace_for_path }
+        import from jaclang.compiler.session.workspace { workspace_for_path }
         ws = workspace_for_path(main_path);
         app = ws.app_for_path(main_path) if ws is not None else None;
         proj_root = ws.project_root if ws is not None else None;
@@ -530,7 +530,7 @@ impl JacLangServer.get_definition(
                         if isinstance(node_selected, (uni.Name, uni.String))
                         else -1
                 );
-                path_list = parent.resolve_relative_path_list();
+                path_list = resolve_import_chain(parent);
                 if idx >= 0 and idx < len(path_list) {
                     resolved = path_list[idx];
                     if Path(resolved).exists() {
@@ -559,7 +559,7 @@ impl JacLangServer.get_definition(
         import_node = parent.parent_of_type(uni.Import) if parent else None;
         if import_node and import_node.from_loc {
             try {
-                mod_path = import_node.from_loc.resolve_relative_path();
+                mod_path = resolve_import_path(import_node.from_loc);
                 if Path(mod_path).exists() and not Path(mod_path).is_dir() {
                     resolved_path = str(Path(mod_path).resolve());
                     with self._state_lock.read_lock() {
@@ -660,13 +660,13 @@ impl JacLangServer._string_import_definition(
 
 impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
     import os;
-    import from jaclang.compiler.driver.modresolver {
+    import from jaclang.compiler.session.resolver {
         is_client_npm_import,
         resolve_client_npm_declarations,
         resolve_client_npm_package
     }
     try {
-        resolved = mp.resolve_relative_path();
+        resolved = resolve_import_path(mp);
         if os.path.isfile(resolved) {
             return resolved;
         }
@@ -694,7 +694,7 @@ impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
 impl JacLangServer._npm_item_location(
     from_loc: uni.ModulePath, item_name: str
 ) -> Optional[lspt.Location] {
-    import from jaclang.compiler.driver.modresolver {
+    import from jaclang.compiler.session.resolver {
         is_client_npm_import,
         resolve_client_npm_declarations,
         resolve_client_npm_package
@@ -798,7 +798,7 @@ impl JacLangServer.get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str] {
 impl JacLangServer.get_inlay_hints(
     file_path: str, range: lspt.Range
 ) -> list[lspt.InlayHint] {
-    import from jaclang.compiler.passes.ownership_hints { inferred_hints }
+    import from jaclang.compiler.analysis.ownership.ownership_hints { inferred_hints }
     fs_path = _path_of(file_path);
     mod = self.program.mod.hub.get(fs_path);
     if mod is None {
@@ -849,7 +849,7 @@ impl JacLangServer.format_document(
         prog = JacProgram.jac_str_formatter(
             source_str=document.source, file_path=document.path, auto_lint=auto_lint
         );
-        formatted_text = prog.mod.main.gen.jac
+        formatted_text = artifact_for(prog.mod.main).jac
             if not prog.errors_had
             else document.source;
     } except Exception as e {
@@ -958,7 +958,7 @@ impl JacLangServer.get_node_type(n: uni.UniNode) -> Optional[TypeBase] {
     if isinstance(n, uni.Expr) {
         typ = n.type;
         if typ is None {
-            import from jaclang.compiler.driver.pipeline { query_type }
+            import from jaclang.compiler.api { query_type }
             typ = query_type(self.program, n);
         }
         self.debug("found type " + str(typ) + " for expr " + str(n));

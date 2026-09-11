@@ -1,8 +1,10 @@
+import type from jaclang.compiler.session.services { AnalysisServices }
+import from jaclang.compiler.tools.unparse_pass { unparse_node }
 import keyword;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes { UniPass }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.frontend.constant { TOKEN_MAP }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.pipeline.uni_pass { UniPass }
+import from jaclang.compiler.ir.enums { Tokens as Tok }
+import from jaclang.compiler.ir.enums { TOKEN_MAP }
 import from jaclang.compiler.frontend.parser.tokens { KEYWORDS }
 import from jaclang.compiler.frontend.diagnostics {
     W3001,
@@ -35,8 +37,8 @@ import from jaclang.compiler.frontend.diagnostics {
     W3050,
     W3051
 }
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.roles {
+import type from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.ir.syntax.edges {
     AssignmentsRole,
     BodyRole,
     ConditionRole,
@@ -56,7 +58,7 @@ import from jaclang.compiler.frontend.roles {
 }
 
 walker JacAutoLintPass(UniPass) {
-    has prog: JacProgram,
+    has prog: AnalysisServices,
         lint_enabled: bool = True,
         report_only: bool = False,
         main_module: (uni.Module | None) = None,
@@ -66,8 +68,6 @@ walker JacAutoLintPass(UniPass) {
         _pending_setters: list[dict[str, str]] = [],
         _base_decl_cache: list[uni.Archetype] = [],
         _base_decls_loaded: bool = False;
-
-    static has HOST_PASS: bool = True;
 
     def postinit -> None;
     def _is_file_excluded(file_path: str) -> bool;

@@ -1,4 +1,6 @@
 """Lowering failures survive IR linking and retain ABI-preserving method names."""
+
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from jaclang.compiler.backends.native.llvm { ir, binding as llvm }
 import from jaclang.compiler.backends.native.lowering {
     NativeLoweringIssue,
@@ -12,7 +14,7 @@ import from tests.support { compile_native }
 
 test "method demotion is visible without changing the method ABI name" {
     (_, module) = compile_native("partial_native.jac");
-    text = str(module.gen.llvm_ir);
+    text = str(artifact_for(module).llvm_ir);
     issues = native_lowering_issues(text);
     assert any(issue.symbol == "Literal.evaluate" for issue in issues);
     assert "Literal.evaluate" in native_demoted_ir_symbols(text);

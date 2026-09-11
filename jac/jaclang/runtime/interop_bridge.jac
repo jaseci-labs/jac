@@ -1,7 +1,7 @@
 import ctypes;
 import logging;
 import from collections.abc { Callable }
-import type from jaclang.compiler.frontend.codeinfo { InteropManifest }
+import type from jaclang.compiler.backends.common.artifacts { InteropManifest }
 
 glob logger = logging.getLogger(__name__),
      JAC_TO_CTYPES: dict[(str, type)] = {

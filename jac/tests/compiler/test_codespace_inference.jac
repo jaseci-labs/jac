@@ -7,13 +7,15 @@ default_codespace-driven whole-module native inference (native by default,
 server signals and closure poison opt modules back out).
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import re;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "fixtures", "codespace"
@@ -93,7 +95,7 @@ test "three codespaces in one markerless module" {
 
 test "mixed module generates rpc bridges in js" {
     mod = compile_fixture("infer_three_spaces.jac", cgen=True);
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert js.strip() , "client side of mixed module should generate JS";
     assert '__jacCallFunction("server_stats"' in js , "client call to def:pub becomes RPC";
     assert '__jacSpawn("list_items"' in js , "client spawn of walker becomes RPC spawn";
@@ -104,7 +106,7 @@ test "inferred client triggers server archetype auto-share with wire codecs" {
     mod = compile_fixture("infer_wire_share.jac", cgen=True);
     assert stamp_of(mod, "Todo") == 'server' , "node stays server (auto-shared)";
     assert stamp_of(mod, "Particle") == 'native' , "extern-seed pull wins";
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert 'class Todo' in js , "server node auto-shared into the client bundle";
     assert '__from_wire' in js , "auto-shared archetype carries wire codecs";
     assert 'class Particle' not in js , "native-pulled obj stays out of the client bundle";
@@ -115,7 +117,7 @@ test "pull policy: tagged globs and one-sided objs relocate, stubs keep defaults
     assert stamp_of(mod, "TOKENS") == 'client' , "access tags are visibility, not placement, for globs";
     assert stamp_of(mod, "Panel") == 'client' , "obj referenced only by client code relocates";
     assert stamp_of(mod, "Task") == 'server' , "node archetype is never pulled";
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert 'TOKENS' in js , "pulled glob lands in the client bundle";
     assert 'class Panel' in js , "pulled obj is a real client class";
     assert 'class Task' in js , "two-sided node still auto-shares a stub";
@@ -127,13 +129,13 @@ test "service-cut import placement is inferred while boundary fact stays" {
     assert stamp_of(mod, "fetch_items") == 'client' , "client-consumed service import is placed client";
     assert stamp_of(mod, "app") == 'client';
     assert stamp_of(mod, "local_report") == 'server' , "using a service-imported name must not pull the caller client";
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert '__jacCallFunction("fetch_items"' in js , "service import in client placement generates RPC stub";
 }
 
 test "plain client import of a server endpoint bridges over rpc" {
     mod = compile_fixture("infer_import_bridge_client.jac", cgen=True);
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert 'from "./infer_import_bridge_service.js"' not in js , (
         "plain import of a server module must not emit a dead ES import; got:\n" + js
     );
@@ -144,7 +146,7 @@ test "plain client import of a server endpoint bridges over rpc" {
 
 test "mixed plain import keeps client symbols and bridges endpoints" {
     mod = compile_fixture("infer_import_mixed_client.jac", cgen=True);
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert 'import { badge } from "./infer_import_mixed_service.js"' in js , (
         "client symbol must keep a real ES import of the mixed module; got:\n" + js
     );
@@ -155,7 +157,8 @@ test "mixed plain import keeps client symbols and bridges endpoints" {
         "endpoint from the same import must bridge over RPC; got:\n" + js
     );
     assert any(
-        'infer_import_mixed_service' in key for key in mod.gen.client_manifest.imports
+        'infer_import_mixed_service' in key
+        for key in artifact_for(mod).client_manifest.imports
     ) , "mixed module must stay registered in the client bundle imports";
 }
 
@@ -175,13 +178,13 @@ test "plain client import of a server-only helper is a codegen error" {
     );
     assert 'local_helper' in str(dead_errs[0]);
     assert 'local_helper_two' in str(dead_errs[1]);
-    assert 'infer_import_dead_service' not in (mod.gen.js or '') , (
+    assert 'infer_import_dead_service' not in (artifact_for(mod).js or '') , (
         "dead specifier must not be emitted alongside the diagnostic"
     );
 }
 
 test "jac check flags a dead client import without codegen" {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     prog = JacProgram();
     prog.compile(
         os.path.join(FIXTURE_DIR, "pinned_dead", "infer_import_dead_client.jac"),
@@ -206,7 +209,7 @@ test "locals shadowing client names do not pull" {
 }
 
 test "pure modules infer native under the shipped default" {
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.target_options {
         set_effective_default_codespace,
         get_effective_default_codespace_override
     }
@@ -227,8 +230,8 @@ test "test blocks lower native under native default" {
     assert mod.decided_codespace == 'native' , (
         "test blocks no longer block native inference"
     );
-    assert mod.gen.native_engine is not None;
-    names = [t.name for t in mod.gen.native_layout.tests];
+    assert artifact_for(mod).native_engine is not None;
+    names = [t.name for t in artifact_for(mod).native_layout.tests];
     assert "test_double_works" in names;
 }
 
@@ -268,8 +271,8 @@ test "two colors infer independently and conflicts stay server" {
 """Compile a fixture under an explicit default codespace; resets the
 process-wide effective default afterwards so later tests are unaffected."""
 def compile_with_default(name: str, dcs: str, cgen: bool = False) -> any {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.options { CompileOptions }
+    import from jaclang.compiler.session.target_options {
         set_effective_default_codespace,
         get_effective_default_codespace_override
     }
@@ -360,7 +363,7 @@ test "import cycles infer native under native default" {
     mod = compile_with_default("nadefault_cyc_a.jac", "native", cgen=True);
     assert mod.decided_codespace == 'native' , "cyclic pure closures lower natively";
     assert stamp_of(mod, "fa") == 'native';
-    assert mod.gen.native_engine is not None , (
+    assert artifact_for(mod).native_engine is not None , (
         "cyclic closure should produce a native engine"
     );
 }
@@ -376,13 +379,13 @@ test "osp with root access keeps module server under native default" {
 test "native default produces a native engine for pure modules" {
     mod = compile_with_default("nadefault_pure.jac", "native", cgen=True);
     assert mod.decided_codespace == 'native';
-    assert mod.gen.native_engine is not None , "inferred-native module should lower to a native engine";
+    assert artifact_for(mod).native_engine is not None , "inferred-native module should lower to a native engine";
 }
 
 test "variadic defs infer native under native default" {
     mod = compile_with_default("nadefault_varargs.jac", "native", cgen=True);
     assert mod.decided_codespace == 'native' , "variadic params are native-lowerable; no demotion";
-    assert mod.gen.native_engine is not None , "variadic module should lower to a native engine";
+    assert artifact_for(mod).native_engine is not None , "variadic module should lower to a native engine";
     assert stamp_of(mod, "pack_sum") == 'native';
 }
 
@@ -397,7 +400,7 @@ test "implicit-ctor positional args lower natively under native default" {
     assert mod.decided_codespace == 'native' , (
         "positional implicit-ctor args map onto has-field order and lower"
     );
-    assert mod.gen.native_engine is not None;
+    assert artifact_for(mod).native_engine is not None;
     assert stamp_of(mod, "make") == 'native';
 }
 
@@ -409,7 +412,7 @@ test "cascade: importer of a demoted module demotes with it" {
 test "closure cap exceeded skips native inference with a note" {
     import io;
     import sys;
-    import from jaclang.compiler.frontend.codeinfo { set_native_closure_cap }
+    import from jaclang.compiler.session.target_options { set_native_closure_cap }
     set_native_closure_cap(1);
     buf = io.StringIO();
     old_stderr = sys.stderr;
@@ -430,7 +433,7 @@ test "closure cap exceeded skips native inference with a note" {
 test "capped chain still infers native under the default cap" {
     mod = compile_with_default("nadefault_capchain_a.jac", "native", cgen=True);
     assert mod.decided_codespace == 'native' , "3-module pure chain fits default cap";
-    assert mod.gen.native_engine is not None;
+    assert artifact_for(mod).native_engine is not None;
 }
 
 test "transitive import chain infers native under native default" {
@@ -438,11 +441,11 @@ test "transitive import chain infers native under native default" {
     assert mod.decided_codespace == 'native' , (
         "a -> b -> c transitive pure chain must lower native"
     );
-    assert mod.gen.native_engine is not None;
+    assert artifact_for(mod).native_engine is not None;
 }
 
 test "coverage records demotion with first error code" {
-    import from jaclang.compiler.driver.na_coverage {
+    import from jaclang.compiler.analysis.placement.native_fallback {
         na_coverage_begin,
         na_coverage_end
     }
@@ -461,7 +464,7 @@ test "coverage records demotion with first error code" {
 }
 
 test "coverage records native and server outcomes" {
-    import from jaclang.compiler.driver.na_coverage {
+    import from jaclang.compiler.analysis.placement.native_fallback {
         na_coverage_begin,
         na_coverage_end
     }
@@ -488,7 +491,7 @@ test "include chain infers native under native default" {
     assert mod.decided_codespace == 'native' , (
         "from-import of an include re-exporter must lower native"
     );
-    assert mod.gen.native_engine is not None;
+    assert artifact_for(mod).native_engine is not None;
 }
 
 test "include chain stays server under server default" {
@@ -504,7 +507,7 @@ test "bare jac import infers native under native default" {
         "bare import of a resolvable plain .jac module is a dep edge, not a "
         "server signal"
     );
-    assert mod.gen.native_engine is not None;
+    assert artifact_for(mod).native_engine is not None;
 }
 
 test "aliased bare jac import stays server under native default" {
@@ -537,7 +540,7 @@ test "client import pulls a pure markerless module cross-module" {
     prog = JacProgram();
     mod = prog.compile(os.path.join(FIXTURE_DIR, "infer_xmod_app.jac"), no_cgen=False);
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert '__jacCallFunction("register"' not in js , (
         "accessless helper from a pure module must not bridge over RPC"
     );
@@ -582,17 +585,17 @@ test "cross-module pulled elements dual-emit for the server side" {
         }
     }
     _ensure_js_generated(util, prog);
-    util_js = util.gen.js;
-    assert 'register' in util.gen.client_manifest.exports , (
+    util_js = artifact_for(util).js;
+    assert 'register' in artifact_for(util).client_manifest.exports , (
         "pulled accessless def must be an ES export of the pulled module"
     );
-    assert '_tags' in util.gen.client_manifest.globals , (
+    assert '_tags' in artifact_for(util).client_manifest.globals , (
         "pulled glob must be an ES export of the pulled module"
     );
     assert util_js.strip() , "pulled module must produce client JS";
-    run_pass(JcirGenPass, util, prog);
-    run_pass(JcirBytecodeGenPass, util, prog);
-    py_src = util.gen.py;
+    run_pass(PassIdentity.JcirGenPass, util, prog);
+    run_pass(PassIdentity.JcirBytecodeGenPass, util, prog);
+    py_src = artifact_for(util).py;
     assert 'def register' in py_src , (
         "pulled element must still exist in the python module (dual emit)"
     );
@@ -607,7 +610,7 @@ test "unpullable closure bridges as a wire type instead of pulling" {
     assert not prog.errors_had , (
         f"declined pull must bridge, not E5082: {[str(e) for e in prog.errors_had]}"
     );
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     # Qualified wire identities include the source module's name; only actual
     # import statements would pull its Python-dependent implementation client-side.
     es_imports = re.findall(r"(?m)^\s*import\b[^;]*;", js);
@@ -626,7 +629,7 @@ test "unpullable closure bridges as a wire type instead of pulling" {
 }
 
 test "codespace stamps invalidate stale module codegen" {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
     import from jaclang.client.client_bundle { _ensure_js_generated }
     prog = JacProgram();
@@ -636,16 +639,16 @@ test "codespace stamps invalidate stale module codegen" {
     );
     util = hub_module(prog, "infer_xmod_util.jac");
     assert util is not None , "imported module missing from hub";
-    run_pass(EsastGenPass, util, prog);
+    run_pass(PassIdentity.EsastGenPass, util, prog);
     app = hub_module(prog, "infer_xmod_app.jac");
     assert app is not None;
-    run_pass(EsastGenPass, app, prog);
+    run_pass(PassIdentity.EsastGenPass, app, prog);
     _ensure_js_generated(util, prog);
-    assert 'register' in util.gen.client_manifest.exports , (
+    assert 'register' in artifact_for(util).client_manifest.exports , (
         "pull stamps must invalidate the pre-pull ES cache so the pulled def "
         "regenerates with its export"
     );
-    assert 'register' in (util.gen.js or '') , (
+    assert 'register' in (artifact_for(util).js or '') , (
         "regenerated module JS must contain the pulled def"
     );
 }
@@ -686,7 +689,7 @@ test "client call to endpoint with function-typed param warns W6005" {
 }
 
 test "aot native mandate still fails loudly" {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     prog = JacProgram();
     prog.compile(
         os.path.join(FIXTURE_DIR, "nadefault_mandate.jac"),
@@ -702,7 +705,7 @@ the import server-side, the ES backend dropped it, and the page died with
 E5084 must name the symbol and the module at compile time. (Bare npm names
 like `react` resolve through the client npm world and never fire this.)"""
 test "client value use of a bare python import is E5084" {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     prog = JacProgram();
     prog.compile(
         os.path.join(FIXTURE_DIR, "infer_import_bare_py_client.jac"),
@@ -722,7 +725,7 @@ test "client value use of a bare python import is E5084" {
 }
 
 test "annotation-only use of a bare python import stays silent" {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     prog = JacProgram();
     prog.compile(
         os.path.join(FIXTURE_DIR, "infer_import_bare_py_annotation.jac"),
@@ -740,7 +743,7 @@ test "annotation-only use of a bare python import stays silent" {
 }
 
 test "server-side use of a bare python import stays silent" {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     prog = JacProgram();
     prog.compile(
         os.path.join(FIXTURE_DIR, "infer_import_bare_py_server_use.jac"),
@@ -758,7 +761,7 @@ test "server-side use of a bare python import stays silent" {
 }
 
 test "unresolvable relative bare import stays silent" {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     prog = JacProgram();
     prog.compile(
         os.path.join(FIXTURE_DIR, "infer_import_bare_py_relative_template.jac"),

@@ -229,7 +229,7 @@ impl _suite_source(filepath: str) -> str {
     import from jaclang.jac0core.ext_registry { is_test }
     if is_test(os.path.basename(filepath)) {
         try {
-            import from jaclang.compiler.driver.bccache { discover_base_file }
+            import from jaclang.compiler.session.cache.annexes { discover_base_file }
             base = discover_base_file(filepath);
             if base {
                 return os.path.realpath(base);
@@ -354,7 +354,7 @@ impl _cleanup_test_bases -> None {
 
 impl _fresh_jac_state(clear_modules: bool = True) -> None {
     import tempfile;
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.runtime.runtime { JacRuntime, JacRuntimeInterface }
     import from jaclang.project.config { get_explicit_config, set_config }
     import from jaclang.server.session { mark_scratch_base }

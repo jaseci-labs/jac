@@ -1,6 +1,6 @@
 """Typed semantic graph collections preserve identity and cache invalidation."""
-import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.types.types {
+import from jaclang.compiler.ir.schema { Module }
+import from jaclang.compiler.ir.types.nodes {
     AnyType,
     ClassDetailsPrivate,
     ClassDetailsShared,

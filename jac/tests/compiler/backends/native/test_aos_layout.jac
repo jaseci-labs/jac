@@ -6,14 +6,15 @@ modes keep pointer elements and the annotation erases, so output is
 byte-identical across gc modes. The macOS `leaks` gate pins the
 teardown exact (the deferred Valgrind-matrix stand-in)."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import shutil;
 import subprocess;
 import sys;
 import tempfile;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "aos_layout.jac"
@@ -37,7 +38,7 @@ def _compile_ir(gc_mode: str, enforce: bool) -> str {
         )
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    return str(ir.gen.llvm_ir);
+    return str(artifact_for(ir).llvm_ir);
 }
 
 test "enforced list[own T] lowers to the by-value AoS family" {
@@ -104,11 +105,11 @@ test "recompiling after adding a subclass recomputes inline layout eligibility" 
         program = JacProgram();
         first = program.compile(file_path=str(path), options=options);
         assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
-        assert "List.aos.Cell" in str(first.gen.llvm_ir);
+        assert "List.aos.Cell" in str(artifact_for(first).llvm_ir);
         program.release_compile_closure(collect=False);
         path.write_text(source + "obj Child(Cell) { has extra: int = 1; }\n");
         second = program.compile(file_path=str(path), options=options);
         assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
-        assert "List.aos.Cell" not in str(second.gen.llvm_ir);
+        assert "List.aos.Cell" not in str(artifact_for(second).llvm_ir);
     }
 }

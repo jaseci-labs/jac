@@ -5,7 +5,7 @@ diagnostic and read project config per emit, which made every pass body own
 an unwaivable Python seam. The redesigned flow is one-directional data:
 emission appends plain `Alert` objects to the pass-local `errors_had` /
 `warnings_had` lists, and the Python driver (`run_pass` /
-`JacCompiler.run_schedule`) delivers them to the program ledger after the
+`execute_passes`) delivers them to the program ledger after the
 pass body finishes -- applying suppression policy at that boundary. These
 tests pin the contract: accumulation never touches the program mid-pass,
 delivery preserves emission order, suppression is decided from the
@@ -14,17 +14,26 @@ always), and `Transform.ice` still records its E9001 before raising even
 though the constructor never returns.
 """
 
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.pass_driver { deliver_alerts, run_pass }
+import type from jaclang.compiler.session.services { AnalysisServices }
+import from jaclang.compiler.pipeline.contracts {
+    PassSpec,
+    PassContext,
+    PassScope,
+    PassIdentity,
+    AnalysisContract
+}
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.diagnostics { deliver_alerts }
+import from jaclang.compiler.pipeline.executor { run_pass }
 import from jaclang.compiler.frontend.diagnostics {
     Category,
     DiagnosticInfo,
     E1030,
     Severity
 }
-import from jaclang.compiler.passes { Transform }
-import from jaclang.compiler.passes.transform { DiagnosticPolicy }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.pipeline.pass_base { Transform }
+import from jaclang.compiler.pipeline.pass_base { DiagnosticPolicy }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob PROBE_ERR = DiagnosticInfo(
          code="E9901",
@@ -41,8 +50,7 @@ glob PROBE_ERR = DiagnosticInfo(
 
 """A pass that emits and observes the program ledger mid-run."""
 obj ProbeEmitPass(Transform) {
-    static has HOST_PASS: bool = True;
-    has prog: JacProgram,
+    has prog: AnalysisServices,
         mid_run_prog_errors: int = -1,
         mid_run_prog_warnings: int = -1,
         mid_run_local_errors: int = -1,
@@ -74,7 +82,8 @@ def _parse(prog: JacProgram, source: str) -> uni.Module {
 test "emission accumulates pass-locally and never touches the program mid-run" {
     prog = JacProgram();
     mod = _parse(prog, "with entry { x = 1; }");
-    inst = run_pass(ProbeEmitPass, mod, prog);
+    inst = run_pass(_ProbeEmitPass_spec(), mod, prog);
+    assert isinstance(inst, ProbeEmitPass);
     assert inst.mid_run_prog_errors == 0 , (
         f"emit reached the program ledger mid-pass: "
         f"{inst.mid_run_prog_errors} error(s) visible during transform"
@@ -94,7 +103,7 @@ test "emission accumulates pass-locally and never touches the program mid-run" {
 test "delivery lands alerts on the program in emission order" {
     prog = JacProgram();
     mod = _parse(prog, "with entry { x = 1; }");
-    run_pass(ProbeEmitPass, mod, prog);
+    run_pass(_ProbeEmitPass_spec(), mod, prog);
     msgs = [a.msg for a in prog.errors_had];
     assert msgs == ["probe error first", "probe error third"] , (
         f"delivered errors out of order or missing: {msgs}"
@@ -113,7 +122,8 @@ test "a policy stamped on the pass suppresses at emit time" {
     prog = JacProgram();
     mod = _parse(prog, "with entry { x = 1; }");
     policy = DiagnosticPolicy(suppress_codes=["E9901"]);
-    inst = run_pass(ProbeEmitPass, mod, prog, policy=policy);
+    inst = run_pass(_ProbeEmitPass_spec(), mod, prog, policy=policy);
+    assert isinstance(inst, ProbeEmitPass);
     assert inst.emit_results == [False, True, False] , (
         f"suppressed emits must report False: {inst.emit_results}"
     );
@@ -172,7 +182,7 @@ test "ice records its E9001 and still raises through the driver" {
     mod = _parse(prog, "with entry { x = 1; }");
     blew_up = False;
     try {
-        run_pass(ProbeIcePass, mod, prog);
+        run_pass(_ProbeIcePass_spec(), mod, prog);
     } except RuntimeError as e {
         blew_up = True;
         assert "ProbeIcePass" in str(e);
@@ -187,5 +197,36 @@ test "ice records its E9001 and still raises through the driver" {
     assert "E9001" in codes , (
         f"the ICE alert was lost when the constructor raised: "
         f"{[str(a) for a in prog.errors_had]}"
+    );
+}
+
+def _ProbeEmitPass_spec -> PassSpec {
+    return PassSpec(
+        PassIdentity.ASTValidationPass,
+        lambda (context: PassContext) -> Transform { return ProbeEmitPass(
+            ir_in=context.ir,
+            prog=context.program,
+            policy=context.policy,
+            errors_had=context.errors,
+            warnings_had=context.warnings
+        ); },
+        PassScope.MODULE,
+        frozenset(),
+        AnalysisContract()
+    );
+}
+
+def _ProbeIcePass_spec -> PassSpec {
+    return PassSpec(
+        PassIdentity.ASTValidationPass,
+        lambda (context: PassContext) -> Transform { return ProbeIcePass(
+            ir_in=context.ir,
+            policy=context.policy,
+            errors_had=context.errors,
+            warnings_had=context.warnings
+        ); },
+        PassScope.MODULE,
+        frozenset(),
+        AnalysisContract()
     );
 }

@@ -4,11 +4,11 @@ import os;
 import tempfile;
 import from unittest.mock { patch }
 import from tests.support { JAC_ROOT }
-import jaclang.compiler.frontend.unitree as uni;
-import jaclang.compiler.placement.placement_solver as solver;
-import jaclang.compiler.placement.placement as placement;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.constant { CodeContext }
+import jaclang.compiler.ir.schema as uni;
+import jaclang.compiler.analysis.placement.solver as solver;
+import jaclang.compiler.analysis.placement.evidence as placement;
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.ir.enums { CodeContext }
 
 def _compile -> tuple[JacProgram, uni.Module] {
     prog = JacProgram();
@@ -118,7 +118,7 @@ test "invalidating a module removes its reference graph and closure release drop
     with patch.dict(os.environ, {"JAC_NO_UNIT_EVICT": ""}) {
         prog.release_compile_closure();
     }
-    assert "work" not in prog.analysis.placement_state;
+    assert prog.analysis.placement_state.work is None;
 }
 
 test "client placement reaches the end of a long import chain" {

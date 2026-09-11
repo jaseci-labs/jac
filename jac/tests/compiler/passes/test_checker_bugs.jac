@@ -122,17 +122,17 @@ Bug index:
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.transform { Alert }
-import from jaclang.compiler.types.type_utils { compute_mro_linearization }
-import from jaclang.compiler.types.types {
+import from jaclang.compiler.analysis.types.type_checker_pass { TypeCheckPass }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.pass_base { Alert }
+import from jaclang.compiler.analysis.types.type_utils { compute_mro_linearization }
+import from jaclang.compiler.ir.types.nodes {
     ClassDetailsShared,
     ClassType,
     TypeFlags,
     UnknownType
 }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob CHECKER_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "checker"
@@ -140,7 +140,7 @@ glob CHECKER_FIXTURES = os.path.join(
 
 """Compile a checker fixture and run the type check pass."""
 def compile_and_check(fixture_name: str) -> JacProgram {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, fixture_name),
@@ -891,7 +891,7 @@ test "bug_jsx_slot_narrowing" {
 # Python property pattern — and must not be reported as duplicates.
 #
 # Impact: any archetype declaring a property setter (e.g. JacProgram.doc_ir
-# in compiler/frontend/codeinfo.jac) triggered a spurious E0076 syntax error.
+# in compiler/backends/common/artifacts.jac) triggered a spurious E0076 syntax error.
 #
 # The fix is *semantic*, not just structural: the dup-check first collects
 # names declared with `@property` in the class body, then skips a method
@@ -1278,7 +1278,7 @@ test "bug_cycimp1_reentrant_import_guard_returns_stub" {
 # noise, and get_type_of_symbol(CONFIG) stayed <Unknown> after the pass.
 # =========================================================================
 test "bug_cyctaint1_settling_cycle_checks_clean_and_resolves" {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_cycle_taint_main.jac"),
@@ -1328,7 +1328,7 @@ test "bug_cyctaint1_settling_cycle_checks_clean_and_resolves" {
 # fires while every cycle-transient suppression still holds.
 # =========================================================================
 test "bug_cycprec1_genuine_error_in_cycle_window_still_fires" {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_cycle_precision_main.jac"),
@@ -1371,7 +1371,7 @@ test "bug_cycprec1_genuine_error_in_cycle_window_still_fires" {
 # =========================================================================
 test "bug_cycprec1_node_type_never_stores_incomplete_result" {
     import from pathlib { Path }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_cycle_taint_main.jac"),

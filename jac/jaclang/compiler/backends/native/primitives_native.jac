@@ -15,7 +15,7 @@ import from jaclang.compiler.backends.common.primitives {
 }
 import type from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 import from jaclang.compiler.frontend.diagnostics { E5092 }
-import from jaclang.compiler.frontend.unitree { Expr, UniNode }
+import from jaclang.compiler.ir.schema { Expr, UniNode }
 
 obj NativeEmitCtx {
     has pass_ref: NaIRGenPass,

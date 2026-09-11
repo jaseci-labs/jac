@@ -9,9 +9,10 @@ resolve the bare `None` to `void`, collapsing the whole return type to `void`;
 any caller then failed to bind the result (`c = pick(...)`).
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from tests.support { TESTS_DIR, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -28,7 +29,7 @@ test "optional enum return lowers to a tagged optional ordinal" {
     assert not prog.errors_had , (
         f"unexpected diagnostics: {[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "no native layout";
     pick = layout.functions.get("pick");
     assert pick is not None , f"pick not lowered: {list(layout.functions)}";

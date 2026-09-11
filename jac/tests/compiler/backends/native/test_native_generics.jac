@@ -6,6 +6,7 @@ types stamp a specialized private copy, memoized per solved-type key. The
 same body lowers to different operations per instantiation.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support {
@@ -17,7 +18,7 @@ import from tests.support {
 }
 import jaclang;
 
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -221,8 +222,8 @@ test "mono guardrail: a generic function used as a value stays rejected" {
         f"the generic-as-value refusal is owned by use_it(), which must "
         f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "use_it" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    assert "use_it" not in artifact_for(ir).native_layout.functions , (
         "a generic fn used as a value must demote its function out of the "
         "native layout, never lower wrongly"
     );

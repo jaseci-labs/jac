@@ -6,7 +6,7 @@ analysis happens before application initialization. The server requires serving
 metadata and does not compile source to recover missing metadata.
 
 The compiler entry point is
-`jaclang.compiler.driver.application.prepare_application(entry, program, root,
+`jaclang.build.preparation.prepare_application(entry, program, root,
 services=(), client=False, dev=True)`. It returns a `PreparedApplication` and
 publishes it only after all required artifacts succeed. The runtime entry point
 is `jaclang.runtime.prepared.initialize_application(prepared, config, served)`.
@@ -67,14 +67,15 @@ reader reads configuration only. The selected entry establishes an app compilati
 context; ordinary imports inherit it, while another declared entry establishes a
 boundary. `default-app` selects a CLI default and does not assign shared modules.
 
-`compiler/driver/pipeline.jac` owns the phase order, pass lists, typed contracts,
-product requests, and pass execution. `pipeline_types.jac` defines analysis facts,
-products, and task states. `pipeline_runner.jac` implements the phase actions.
+`compiler/pipeline/schedule.jac` owns phase order, pass registration and prerequisites.
+`pipeline/contracts.jac` defines analysis facts, products and task states.
+`pipeline/request.jac` advances compilation requests, `pipeline/executor.jac`
+executes registered passes, and `pipeline/products.jac` owns results and invalidation.
 Context and import facts are explicit scheduled passes. Backend and tooling
 consumers request named products through this pipeline rather than invoking passes.
 
-`compilation_context.jac` holds parsed source revisions and context-specific
-programs. A source revision is parsed once per session and cloned before semantic
+`session/sources.jac` holds parsed source revisions and `session/context.jac`
+selects contextual programs. A source revision is parsed once per session and cloned before semantic
 mutation. App, entry, UI, codespace, and target settings distinguish compilation
 contexts and disk artifact namespaces. A symbol-only dependency can progress
 through the remaining passes without reparsing or repeating completed passes.

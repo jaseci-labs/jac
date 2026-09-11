@@ -7,17 +7,15 @@ byte-identical output across gc modes. Deeper nesting, named inner
 bindings, and non-scalar inner elements stay fenced (E1406).
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
+import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import subprocess;
 import sys;
 import tempfile;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob OWNFIELD_DIR = os.path.join(
          TESTS_DIR, "compiler", "passes", "fixtures", "nogc_ownfield"
@@ -42,7 +40,9 @@ def _compile(path: str) -> tuple {
                 and (a.code.code.startswith("E14") or a.code.code.startswith("E13"))
         ];
         codes.sort();
-        text = str(ir.gen.llvm_ir) if ir is not None and ir.gen.llvm_ir else "";
+        text = str(artifact_for(ir).llvm_ir)
+            if ir is not None and artifact_for(ir).llvm_ir
+            else "";
         return (codes, text);
     } finally {
         pop_native_target(prev);

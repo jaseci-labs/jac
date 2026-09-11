@@ -15,8 +15,8 @@ The same program must check identically on the server and native lanes.
 
 import os;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FW_CODES: tuple = ("E1126", "E1127", "E1128", "E1129", "E1130"),
      VIRTUAL_PATH: str = os.path.join(

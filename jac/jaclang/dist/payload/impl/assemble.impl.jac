@@ -160,8 +160,10 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
     jc_name = (
         "libjac_compiler.dylib" if sys.platform == "darwin" else "libjac_compiler.so"
     );
-    jc_src = os.path.join(repo_root, "jaclang", "compiler", "jc_unit.jac");
-    jc_dst = os.path.join(site, "jaclang", "compiler", jc_name);
+    jc_src = os.path.join(
+        repo_root, "jaclang", "compiler", "frontend", "kernel", "unit.jac"
+    );
+    jc_dst = os.path.join(site, "jaclang", "compiler", "frontend", "kernel", jc_name);
     if not file_exists(jc_src) {
         log("==> no compiler kernel unit in this tree; skipping kernel build");
         _bundle_bun(site, opts);
@@ -197,7 +199,9 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
         );
     }
 
-    jc_tree = os.path.join(repo_root, "jaclang", "compiler", jc_name);
+    jc_tree = os.path.join(
+        repo_root, "jaclang", "compiler", "frontend", "kernel", jc_name
+    );
     copy_file(jc_dst, jc_tree);
     copy_file(jc_dst + ".layout.json", jc_tree + ".layout.json");
 
@@ -407,6 +411,8 @@ impl stage_tree(
             "site",
             "jaclang",
             "compiler",
+            "frontend",
+            "kernel",
             "libjac_compiler.dylib"
                 if _sys.platform == "darwin"
                 else "libjac_compiler.so"

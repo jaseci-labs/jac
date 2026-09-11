@@ -22,13 +22,17 @@ Every value is additionally checked against the sv/bytecode answer for the
 same fixture, since a dropped store is still well typed and still compiles.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.analysis.placement.native_fallback {
+    na_coverage_begin,
+    na_coverage_end
+}
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
-import from jaclang.compiler.frontend.codeinfo {
+import from jaclang.compiler.session.target_options {
     get_effective_default_codespace_override,
     set_effective_default_codespace
 }
@@ -64,7 +68,7 @@ def _compile(fixture: str) -> object {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return eng;
 }
@@ -281,8 +285,8 @@ test "a generic archetype instantiated at a scalar is refused, not lowered" {
         f"the refusal is owned by zero(), which must demote to a seam: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "zero" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    assert "zero" not in artifact_for(ir).native_layout.functions , (
         "Ctx[int] puts a scalar in an erased pointer slot, where 0 is "
         "indistinguishable from the null that spells None; it must demote, "
         "never lower"
@@ -328,8 +332,8 @@ test "a bare `T` slot at a scalar type argument is refused too" {
         f"the refusal must demote get() rather than fail the module: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "get" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    assert "get" not in artifact_for(ir).native_layout.functions , (
         "Plain[int] stores a scalar in an erased pointer slot; it must demote"
     );
 }
@@ -356,8 +360,8 @@ test "an inferred scalar type argument is refused the same as a written one" {
         f"the refusal must demote go() rather than fail the module: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "go" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    assert "go" not in artifact_for(ir).native_layout.functions , (
         "an inferred Ctx[int] is the same unsound erasure as a written one"
     );
 }
@@ -384,8 +388,8 @@ test "an inferred archetype type argument still lowers" {
         f"an inferred reference type argument must lower: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "go" in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    assert "go" in artifact_for(ir).native_layout.functions , (
         "the gate must not refuse an inferred type argument that is sound"
     );
 }
@@ -416,8 +420,8 @@ test "every type parameter an erased slot can hold is checked, not just the firs
         f"the refusal must demote go() rather than fail the module: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "go" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    assert "go" not in artifact_for(ir).native_layout.functions , (
         "a scalar in the second type parameter is the same unsound erasure "
         "as one in the first"
     );
@@ -449,8 +453,8 @@ test "a multi-parameter erased slot still lowers when every argument is a refere
         f"two reference type arguments are both sound and must lower: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "go" in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    assert "go" in artifact_for(ir).native_layout.functions , (
         "the widened check must not refuse a slot whose parameters are all "
         "references"
     );
@@ -476,8 +480,8 @@ test "an archetype type argument is still accepted for a bare `T` slot" {
         f"a reference type argument is the sound case and must lower: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "get" in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    assert "get" in artifact_for(ir).native_layout.functions , (
         "the gate must not refuse the erasure that is actually sound"
     );
 }
@@ -503,7 +507,7 @@ test "a `list[T]` slot on a generic archetype stays loud" {
     assert any([("list[T]" in m) for m in msgs]) , (
         f"a list over an unsolved type parameter must keep reporting: {msgs}"
     );
-    _layout = ir.gen.native_layout;
+    _layout = artifact_for(ir).native_layout;
     assert _layout is None or "go" not in _layout.functions , (
         "the unlowerable container must demote its callable"
     );

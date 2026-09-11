@@ -1,9 +1,10 @@
 # Unified compilation
 
-The compiler uses typed phase and product lists. The authoritative definitions
-and executor live in `jac/jaclang/compiler/driver/pipeline.jac`; phase actions
-live in `pipeline_runner.jac`, and the shared enums and contracts live in
-`pipeline_types.jac`.
+The compiler uses typed phase and product lists. Their authoritative registration
+and ordering live in `jac/jaclang/compiler/pipeline/schedule.jac`.
+`pipeline/executor.jac` executes registered work, `pipeline/request.jac` advances
+compilation requests, and `pipeline/contracts.jac` defines their typed contracts.
+`pipeline/products.jac` owns task state, committed results and invalidation.
 
 ## Entry modules and contexts
 
@@ -62,10 +63,10 @@ and introspection, so these consumers do not select passes independently.
 
 The executor validates requirements before running a pass list, records completed
 passes and timings, and observes cancellation. Backend consumers request the
-products they need. Client dependency traversal belongs to the compiler driver;
+products they need. Client dependency traversal belongs to the ES backend;
 the client emitter writes the returned artifacts and copies their assets.
 Boundary analysis is a host pass: requests for provider declarations, boundary
-types, and WASM host contracts use the driver's dependency loader. There is no
+types, and WASM host contracts use the session's dependency loader. There is no
 separate parser or global syntax memo for boundary types.
 
 `compile_application` owns the application import worklist for both preparation
@@ -93,7 +94,7 @@ context instead of sharing the compiler's internal program.
 
 ## Source reuse and artifact identity
 
-`SourceStore` in `compilation_context.jac` retains one current syntax revision per
+`SourceStore` in `session/sources.jac` retains one current syntax revision per
 source path, including annex contents. Requests in another context clone the
 syntax before semantic mutation. Parsed source is shared; app-specific analyzed
 IR and target artifacts are distinct.
@@ -125,9 +126,10 @@ revision intact. Startup progress begins before source compilation.
 
 ## Scheduled semantic products
 
-`semantic_passes.jac` produces detached import, serving, placement, and native
-eligibility facts. `module_context_pass.jac` applies the configured codespace and
-native-default policy after parsing. `semantic_facts.jac` defines the records
+Passes under `analysis/binding`, `analysis/boundaries`, and `analysis/placement`
+produce detached import, serving, placement, and native eligibility facts.
+`analysis/placement/module_context_pass.jac` applies the configured codespace and
+native-default policy after parsing. Each analysis domain defines the records
 consumed by preparation, interface persistence, HMR, and compiler tools.
 
 | Product | Producer | Consumers |

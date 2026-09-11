@@ -5,7 +5,7 @@ and incompatible field types on obj archetypes, and that FieldInfo
 tracks function pointer fields.
 """
 
-import from jaclang.compiler.passes.layout_pass {
+import from jaclang.compiler.lowering.layout_pass {
     LAYOUT_COMPATIBLE_PRIMITIVES,
     FieldInfo,
     ArchetypeLayout,
@@ -13,8 +13,8 @@ import from jaclang.compiler.passes.layout_pass {
     LayoutPass,
     get_layout_registry
 }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
 import os;
 import from tests.support { TESTS_DIR }
 import jaclang;
@@ -34,7 +34,7 @@ def get_registry(fixture: str) -> LayoutRegistry {
 
 # ── LAYOUT_COMPATIBLE_PRIMITIVES ──────────────────────────────
 test "dispatch headers are independent of backend placement" {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     layouts: list[ArchetypeLayout] = [];
     for context in ["client", "native", "server"] {
         program = JacProgram();
@@ -164,6 +164,29 @@ test "child obj inherits parent fields in MRO order" {
 }
 
 # ── Validation warnings: bad types ──────────────────────────
+test "layout preserves imported ancestry in a multiple inheritance diamond" {
+    reg = get_registry("valid_imported_diamond.jac");
+    actual = reg.get_mro("BuiltinType");
+    assert actual
+        == [
+            "BuiltinType",
+            "Name",
+            "Literal",
+            "Token",
+            "NameAtom",
+            "AtomExpr",
+            "Expr",
+            "EnumBlockStmt",
+            "Root"
+        ] , actual;
+}
+
+test "foreign enum ancestry does not alias a Jac node named Enum" {
+    reg = get_registry("valid_foreign_enum_base.jac");
+    assert reg.get_mro("Labels") == ["Labels", "StrEnum"];
+    assert reg.get_mro("Enum") == ["Enum"];
+}
+
 test "obj with Any field triggers warning" {
     prog = JacProgram();
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, "invalid_any.jac")));

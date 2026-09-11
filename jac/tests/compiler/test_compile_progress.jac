@@ -10,8 +10,8 @@ subscribes for exactly the compile it drives and nothing else.
 
 import os;
 import tempfile;
-import from jaclang.compiler.driver.pass_driver { compile_progress }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.pipeline.progress { compile_progress }
+import from jaclang.compiler.session.session { JacProgram }
 
 
 """A two-module project in a fresh temp dir; returns the entry's path."""
@@ -74,7 +74,7 @@ test "nested compilation completes dependencies before their importer" {
 
 test "exceptions finish active work and detach both listeners" {
     import from unittest.mock { patch }
-    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.session.compiler { JacCompiler }
     started: list[str] = [];
     finished: list[str] = [];
     main_path = _project();

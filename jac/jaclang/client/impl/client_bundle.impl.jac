@@ -70,7 +70,9 @@ impl ClientBundleBuilder.build(
     }
     mod = program.find_module(str(source_path));
     manifest = (
-        mod.gen.client_manifest if mod else self._compile_to_js(source_path).manifest
+        artifact_for(mod).client_manifest
+            if mod
+            else self._compile_to_js(source_path).manifest
     );
     bundle_paths = [source_path];
     if (manifest and manifest.imports) {

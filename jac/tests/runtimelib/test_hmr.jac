@@ -3,6 +3,7 @@
 Tests for the file watcher and HotReloader functionality.
 """
 
+import from jaclang.compiler.pipeline.keys { SPACES }
 import tempfile;
 import threading;
 import time;
@@ -21,7 +22,7 @@ def _as_any(v: any) -> any {
 test "prepared namespaced modules reload through their source source_path" {
     import sys;
     import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.build.preparation { prepare_application }
     import from jaclang.runtime.prepared {
         initialize_application,
         load_prepared_module,
@@ -221,17 +222,15 @@ test "classify declarations server only" {
         reloader = HotReloader(
             base_path=str(temp_dir), module_name="test", watcher=watcher
         );
-        import from jaclang.compiler.driver.program { JacProgram }
-        import from jaclang.compiler.driver.pipeline {
-            require_product,
-            CompilationProduct
-        }
-        import from jaclang.compiler.frontend.constant { CodeContext }
+        import from jaclang.compiler.session.session { JacProgram }
+        import from jaclang.compiler.pipeline.products { require_product }
+        import from jaclang.compiler.pipeline.contracts { CompilationProduct }
+        import from jaclang.compiler.ir.enums { CodeContext }
         program = JacProgram();
         module = program.compile(str(test_file), no_cgen=True);
         require_product(program, module, CompilationProduct.SPACES);
         has_server = CodeContext.SERVER
-            in program.analysis.module_spaces[str(test_file)].spaces;
+            in program.analysis.result(str(test_file), SPACES).spaces;
         assert has_server is True;
     }
 }

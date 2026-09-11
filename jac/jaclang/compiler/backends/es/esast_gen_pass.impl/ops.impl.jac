@@ -2,7 +2,7 @@ impl EsastGenPass._ensure_emitters -> None {
     if self._primitive_emitters is not None {
         return;
     }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import from jaclang.compiler.analysis.types.type_registry { JAC_TYPE_REGISTRY }
     import jaclang.compiler.backends.es.primitives_es as _pes;
     self._primitives_es_mod = _pes;
     self._primitive_emitters = {};
@@ -26,7 +26,7 @@ impl EsastGenPass._ensure_emitters -> None {
 }
 
 impl EsastGenPass._resolve_primitive_type_name(_obj_type: object) -> str {
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
+    import from jaclang.compiler.analysis.types.type_utils { primitive_type_name_of }
     self._ensure_emitters();
     return primitive_type_name_of(_obj_type) or "";
 }
@@ -40,7 +40,7 @@ impl EsastGenPass._try_primitive_op(
 ) -> (es.Expression | None) {
     import from jaclang.compiler.backends.es.es_unparse { JSCodeGenerator }
 
-    import from jaclang.compiler.types.type_utils { expr_primitive_name }
+    import from jaclang.compiler.analysis.types.type_utils { expr_primitive_name }
     _type_name = expr_primitive_name(expr_node);
     if not _type_name {
         return None;
@@ -81,7 +81,7 @@ impl EsastGenPass._operand_str(unparser: object, es_node: es.Expression) -> str 
 }
 
 impl EsastGenPass._expr_type_name(expr_node: uni.UniNode) -> str {
-    import from jaclang.compiler.types.type_utils { expr_primitive_name }
+    import from jaclang.compiler.analysis.types.type_utils { expr_primitive_name }
     return expr_primitive_name(expr_node);
 }
 
@@ -208,7 +208,7 @@ impl EsastGenPass._try_subscript_setitem(
     ) {
         return None;
     }
-    _si = target.right.gen.es_ast;
+    _si = artifact_for(target.right).es_ast;
     if not isinstance(_si, es.IndexInfo) {
         return None;
     }
@@ -226,7 +226,7 @@ impl EsastGenPass._try_subscript_setitem(
     }
     _obj = cast(
         es.Expression,
-        target.target.gen.es_ast
+        artifact_for(target.target).es_ast
             or self.sync_loc(es.Identifier(name='obj'), jac_node=jac_node)
     );
     _val = cast(
@@ -252,13 +252,13 @@ impl EsastGenPass.exit_unary_expr with uni.UnaryExpr exit {
         _fw_name = here.fw;
         if _fw_name is not None {
             if op_tok == Tok.MINUS and here.fw_safe {
-                here.gen.es_ast = self.sync_loc(
+                artifact_for(here).es_ast = self.sync_loc(
                     es.UnaryExpression(operator='-', argument=operand, prefix=True),
                     jac_node=here
                 );
                 return;
             }
-            here.gen.es_ast = self._fw_call(
+            artifact_for(here).es_ast = self._fw_call(
                 f"{'neg' if op_tok == Tok.MINUS else 'inv'}_{_fw_name}", [operand], here
             );
             return;
@@ -271,7 +271,7 @@ impl EsastGenPass.exit_unary_expr with uni.UnaryExpr exit {
             here.operand, _unary_emit_name, operand, None, here
         );
         if _prim_result is not None {
-            here.gen.es_ast = _prim_result;
+            artifact_for(here).es_ast = _prim_result;
             return;
         }
     }
@@ -285,12 +285,14 @@ impl EsastGenPass.exit_unary_expr with uni.UnaryExpr exit {
         es.UnaryExpression(operator=operator, prefix=True, argument=operand),
         jac_node=here
     );
-    here.gen.es_ast = unary_expr;
+    artifact_for(here).es_ast = unary_expr;
 }
 
 impl EsastGenPass.exit_compare_expr with uni.CompareExpr exit {
     if (not here.rights or not here.ops) {
-        here.gen.es_ast = self.sync_loc(es.Literal(value=True), jac_node=here);
+        artifact_for(here).es_ast = self.sync_loc(
+            es.Literal(value=True), jac_node=here
+        );
         return;
     }
     comparisons: list[es.Expression] = [];
@@ -416,7 +418,7 @@ impl EsastGenPass.exit_compare_expr with uni.CompareExpr exit {
         left_uni = right_node;
     }
     if (len(comparisons) == 1) {
-        here.gen.es_ast = comparisons[0];
+        artifact_for(here).es_ast = comparisons[0];
     } else {
         result = comparisons[0];
         for comp in comparisons[1:] {
@@ -425,7 +427,7 @@ impl EsastGenPass.exit_compare_expr with uni.CompareExpr exit {
                 jac_node=here
             );
         }
-        here.gen.es_ast = result;
+        artifact_for(here).es_ast = result;
     }
 }
 
@@ -438,12 +440,14 @@ impl EsastGenPass._is_null_literal(nd: (uni.UniNode | None)) -> bool {
 }
 
 impl EsastGenPass.exit_cfg_expr with uni.CfgExpr exit {
-    here.gen.es_ast = here.expr.gen.es_ast;
+    artifact_for(here).es_ast = artifact_for(here.expr).es_ast;
 }
 
 impl EsastGenPass.exit_bool_expr with uni.BoolExpr exit {
     if (not here.values or (len(here.values) < 2)) {
-        here.gen.es_ast = self.sync_loc(es.Literal(value=None), jac_node=here);
+        artifact_for(here).es_ast = self.sync_loc(
+            es.Literal(value=None), jac_node=here
+        );
         return;
     }
     op_tok = Tok(here.op.name) if (here.op.name in Tok.__members__) else None;
@@ -485,7 +489,7 @@ impl EsastGenPass.exit_bool_expr with uni.BoolExpr exit {
         }
         left_maybe_collection = left_maybe_collection or self._is_collection_expr(val);
     }
-    here.gen.es_ast = result;
+    artifact_for(here).es_ast = result;
 }
 
 impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
@@ -510,11 +514,11 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
 
     connect_call = self._build_osp_graph_call(here, left, right);
     if connect_call is not None {
-        here.gen.es_ast = connect_call;
+        artifact_for(here).es_ast = connect_call;
         return;
     }
     if isinstance(here.op, uni.DisconnectOp) {
-        here.gen.es_ast = self._build_osp_disconnect_call(here, left, right);
+        artifact_for(here).es_ast = self._build_osp_disconnect_call(here, left, right);
         return;
     }
     op_name_str = here.op?.name;
@@ -522,12 +526,14 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
     if (op_name == Tok.KW_SPAWN) {
         local_spawn = self._build_local_osp_spawn(here, left, right);
         if local_spawn is not None {
-            here.gen.es_ast = local_spawn;
+            artifact_for(here).es_ast = local_spawn;
             return;
         }
         spawn_parts = self._prepare_spawn_call(here, left, right);
         if spawn_parts {
-            here.gen.es_ast = self._build_spawn_runtime_call(here, spawn_parts);
+            artifact_for(here).es_ast = self._build_spawn_runtime_call(
+                here, spawn_parts
+            );
         }
         return;
     }
@@ -536,14 +542,14 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
         assign_expr = self.sync_loc(
             es.AssignmentExpression(operator='=', left=left, right=right), jac_node=here
         );
-        here.gen.es_ast = assign_expr;
+        artifact_for(here).es_ast = assign_expr;
         return;
     }
 
     if op_name and op_name in FW_BINARY_OPS {
         _fw_result = self._fw_binary(here, FW_BINARY_OPS[op_name], left, right);
         if _fw_result is not None {
-            here.gen.es_ast = _fw_result;
+            artifact_for(here).es_ast = _fw_result;
             return;
         }
     }
@@ -554,7 +560,7 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
                 here.left, _op_emit_name, left, right, here
             );
             if _prim_result is not None {
-                here.gen.es_ast = _prim_result;
+                artifact_for(here).es_ast = _prim_result;
                 return;
             }
         }
@@ -586,7 +592,7 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
             );
         }
     }
-    here.gen.es_ast = bin_expr;
+    artifact_for(here).es_ast = bin_expr;
 }
 
 impl EsastGenPass._fw_call(
@@ -624,7 +630,7 @@ impl EsastGenPass._fw_to_number(
 impl EsastGenPass._apply_fw_coercion(nd: uni.Expr) -> None {
     import from jaclang.runtime.scalars { shape_of }
     dst = nd.coerce_to;
-    cur = nd.gen.es_ast;
+    cur = artifact_for(nd).es_ast;
     if dst is None or not isinstance(cur, es.Expression) {
         return;
     }
@@ -640,7 +646,7 @@ impl EsastGenPass._apply_fw_coercion(nd: uni.Expr) -> None {
         and isinstance(cur.value, int)
         and not isinstance(cur.value, bool)
     ) {
-        nd.gen.es_ast = self.sync_loc(
+        artifact_for(nd).es_ast = self.sync_loc(
             es.Literal(value=cur.value, raw=f"{cur.value}n"), jac_node=nd
         );
         return;
@@ -664,23 +670,23 @@ impl EsastGenPass._apply_fw_coercion(nd: uni.Expr) -> None {
         and src_shape.width == 64
     );
     if dst == "f32" {
-        nd.gen.es_ast = self._fw_call("r_f32", [cur], nd);
+        artifact_for(nd).es_ast = self._fw_call("r_f32", [cur], nd);
         return;
     }
     dst_big = dst_shape.sized and not dst_shape.is_float and dst_shape.width == 64;
     if dst_big {
         if not src_big {
-            nd.gen.es_ast = self._fw_call(f"big_{dst}", [cur], nd);
+            artifact_for(nd).es_ast = self._fw_call(f"big_{dst}", [cur], nd);
         }
         return;
     }
     if src_big {
-        nd.gen.es_ast = self._fw_to_number(cur, nd);
+        artifact_for(nd).es_ast = self._fw_to_number(cur, nd);
         return;
     }
     if src_shape is None
         and not (isinstance(cur, es.Literal) and isinstance(cur.value, (int, float))) {
-        nd.gen.es_ast = self._fw_to_number(cur, nd);
+        artifact_for(nd).es_ast = self._fw_to_number(cur, nd);
     }
 }
 

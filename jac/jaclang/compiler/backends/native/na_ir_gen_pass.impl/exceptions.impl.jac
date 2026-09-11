@@ -220,14 +220,14 @@ impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
     if exc_name in self._exc_type_registry {
         return self._exc_type_registry[exc_name];
     }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import from jaclang.compiler.analysis.types.type_registry { JAC_TYPE_REGISTRY }
     type_id = JAC_TYPE_REGISTRY.exception_type_id(exc_name);
     self._exc_type_registry[exc_name] = type_id;
     return type_id;
 }
 
 impl NaIRGenPass._get_exc_descendants(type_name: str) -> list[str] {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import from jaclang.compiler.analysis.types.type_registry { JAC_TYPE_REGISTRY }
     descendants = JAC_TYPE_REGISTRY.exception_descendants(type_name);
     for desc_name in descendants {
         self._get_or_register_exc_type(desc_name);
@@ -572,7 +572,7 @@ impl NaIRGenPass._codegen_try_unwind(
 
 impl NaIRGenPass._slot_lowering_active -> bool {
     return (
-        bool(getattr(self.ir_in.gen, "nogc_enforced", False))
+        bool(getattr(artifact_for(self.ir_in), "nogc_enforced", False))
         or "wasm" in str(self.llvm_module.triple)
     )
         and self._gen_ctx is None;

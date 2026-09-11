@@ -24,6 +24,7 @@ SIGSEGV in-process would take the whole test run down with it instead of
 failing one test.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import subprocess;
 import sys;
@@ -36,8 +37,8 @@ glob FIXTURES = os.path.join(
 import ctypes
 import sys
 
-from jaclang.compiler.driver.compile_options import CompileOptions
-from jaclang.compiler.driver.program import JacProgram
+from jaclang.compiler.session.options import CompileOptions
+from jaclang.compiler.session.session import JacProgram
 
 prog = JacProgram()
 ir = prog.compile(
@@ -50,7 +51,7 @@ ir = prog.compile(
 )
 if prog.errors_had:
     raise SystemExit('compile errors: %r' % [str(e) for e in prog.errors_had])
-engine = ir.gen.native_engine
+engine = artifact_for(ir).native_engine
 if engine is None:
     raise SystemExit('no native engine')
 addr = engine.get_function_address(sys.argv[2])
@@ -105,8 +106,8 @@ test "a bare-imported shim's table is live when a JIT'd unit reads it" {
 
 
 test "the initializer plan lists the import closure before the unit itself" {
-    import from jaclang.compiler.frontend.codeinfo {
-        InteropManifest,
+    import from jaclang.compiler.backends.common.artifacts { InteropManifest }
+    import from jaclang.compiler.backends.native.naming {
         native_glob_init_symbols,
         native_safe_sym
     }
@@ -129,7 +130,9 @@ test "the initializer plan lists the import closure before the unit itself" {
 
 
 test "jac_entry is exempt so it keeps chaining the initializers itself" {
-    import from jaclang.compiler.frontend.codeinfo { install_native_static_init }
+    import from jaclang.compiler.backends.native.initialization {
+        install_native_static_init
+    }
 
     class _FakeEngine {
         def init(self: _FakeEngine) {

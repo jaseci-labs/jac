@@ -179,7 +179,7 @@ glob FORBIDDEN: dict[str, str] = {
              "The is_builtin_region_name read (#7491) is gone from here and "
              "from stmt.impl.jac, whose entry left this table entirely: the "
              "predicate is pure unitree syntax that was marooned in "
-             "symbol_utils, whose own imports reach compiler/driver/compiler.jac, so "
+             "symbol_utils, whose own imports reach compiler/session/compiler.jac, so "
              "sealing wave 3 hoisted it to the leaf expr_keys.jac. The "
              "backend stopped reaching into the analysis module for it rather "
              "than merely renaming the reach"

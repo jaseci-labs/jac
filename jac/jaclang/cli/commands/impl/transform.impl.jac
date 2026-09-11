@@ -3,12 +3,13 @@ import ast as ast3;
 import from jaclang.cli.console { console }
 
 impl py2jac(filename: str) -> int {
-    import jaclang.compiler.frontend.unitree as uni;
-    import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
+    import jaclang.compiler.ir.schema as uni;
+    import from jaclang.compiler.frontend.pyast_load_pass { PyastBuildPass }
     import from jaclang.compiler.tools.unparse_pass { unparse_module }
-    import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+    import from jaclang.compiler.pipeline.executor { run_utility }
+    import from jaclang.compiler.pipeline.contracts { UtilityProduct }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.frontend.source_io { read_file_with_encoding }
     if filename.endswith('.py') {
         file_source = read_file_with_encoding(filename);
         converted = run_utility(
@@ -23,7 +24,7 @@ impl py2jac(filename: str) -> int {
         prog = JacProgram.jac_str_formatter(
             source_str=code, file_path=filename, auto_lint=False
         );
-        console.print(prog.mod.main.gen.jac, markup=False, highlight=False);
+        console.print(artifact_for(prog.mod.main).jac, markup=False, highlight=False);
         for error in prog.errors_had {
             console.error(f"{error}");
         }
@@ -39,9 +40,9 @@ impl py2jac(filename: str) -> int {
 }
 
 impl jac2py(filename: str) -> int {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     if filename.endswith('.jac') {
-        code = JacProgram().compile(file_path=filename).gen.py;
+        code = artifact_for(JacProgram().compile(file_path=filename)).py;
         if code {
             console.print(code, markup=False, highlight=False);
             return 0;
@@ -55,7 +56,7 @@ impl jac2py(filename: str) -> int {
 }
 
 impl jac2js(filename: str) -> int {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     if filename.endswith('.jac') {
         try {
             prog = JacProgram();
@@ -66,7 +67,7 @@ impl jac2js(filename: str) -> int {
                 }
                 return 1;
             }
-            js_output = ir.gen.js or '';
+            js_output = artifact_for(ir).js or '';
             if not js_output.strip() {
                 console.error('ECMAScript code generation produced no output.');
                 return 1;

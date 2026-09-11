@@ -1,4 +1,3 @@
-import from jaclang.compiler.expr_keys { type_tag_borrows }
 impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> None {
     if elem_type_name in self.list_helpers {
         return;

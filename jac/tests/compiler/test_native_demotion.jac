@@ -8,23 +8,27 @@ import-target classification and not the module's own codespace -- and
 importers' stale ES output and NATIVE manifest bindings are cleared so
 the next emission lowers the import against the real codespace."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from tests.support { JAC_ROOT }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.codeinfo { InteropBinding, InteropContext }
-import from jaclang.compiler.driver.na_coverage {
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.backends.common.artifacts {
+    InteropBinding,
+    InteropContext
+}
+import from jaclang.compiler.analysis.placement.native_fallback {
     _drop_demoted_native_bindings,
     na_coverage_begin,
     na_coverage_end,
     na_coverage_record,
     na_demotion_note
 }
-import from jaclang.compiler.driver.boundary_classify {
+import from jaclang.compiler.analysis.boundaries.classify {
     import_declares_native_target,
     plain_native_import_target
 }
-import from jaclang.compiler.placement.placement_pins {
+import from jaclang.compiler.analysis.placement.pins {
     _clear_demoted_native,
     _demoted_native_code,
     _demotion_sidecar,
@@ -34,7 +38,7 @@ import from jaclang.compiler.placement.placement_pins {
     _na_demotion_probed,
     effective_module_pin
 }
-import from jaclang.compiler.placement.placement_solver { invalidate_importers_es }
+import from jaclang.compiler.api { invalidate_native_importers }
 import from jaclang.client.client_bundle { _ensure_js_generated }
 
 glob PIN_FIXTURE_DIR = os.path.join(
@@ -136,8 +140,8 @@ test "a demotion verdict persists across processes and dies with the file" {
 
 test "importer invalidation clears ES output and NATIVE bindings" {
     (prog, app, _imp, models_path) = compile_pin_fixture();
-    app.gen.js = "stale na glue";
-    manifest = app.gen.interop_manifest;
+    artifact_for(app).js = "stale na glue";
+    manifest = artifact_for(app).interop_manifest;
     manifest.bindings["double"] = InteropBinding(
         name="double",
         source_context=InteropContext.NATIVE,
@@ -150,13 +154,9 @@ test "importer invalidation clears ES output and NATIVE bindings" {
         callers={InteropContext.CLIENT},
         source_module=models_path
     );
-    cleared = invalidate_importers_es(prog, models_path);
-    assert app in cleared , "the importer must be found by the hub walk";
-    assert app.gen.js == "" , "stale ES output must be cleared";
-    assert app.gen.es_ast is None;
-    for m in cleared {
-        _drop_demoted_native_bindings(m, models_path);
-    }
+    invalidate_native_importers(prog, models_path);
+    assert artifact_for(app).js == "" , "stale ES output must be cleared";
+    assert artifact_for(app).es_ast is None;
     assert "double" not in manifest.bindings , "the NATIVE binding naming the demoted module must be dropped";
     assert "unrelated" in manifest.bindings , "bindings in other contexts must survive";
 }
@@ -168,7 +168,7 @@ test "the demotion fallback re-lowers importers away from the na seam" {
     models_path = os.path.realpath(os.path.join(E2E_FIXTURE_DIR, "models.jac"));
     try {
         app = prog.compile(app_path);
-        assert "__na_bind" in (app.gen.js or "") , "the pin should bind the import through the na seam before demotion";
+        assert "__na_bind" in (artifact_for(app).js or "") , "the pin should bind the import through the na seam before demotion";
         prog.compile(models_path);
         hub_models = prog.mod.hub.get(models_path);
         assert hub_models is not None and hub_models.decided_codespace != 'native' , "the retry after demotion must actually leave the native lane";
@@ -179,7 +179,7 @@ test "the demotion fallback re-lowers importers away from the na seam" {
         } except Exception as exc {
             raised = f"{exc}";
         }
-        assert "__na_bind" not in (app.gen.js or "") , "the re-lowered importer must not bind through the na seam";
+        assert "__na_bind" not in (artifact_for(app).js or "") , "the re-lowered importer must not bind through the na seam";
         assert "E5082" in raised or "E5082" in error_codes(prog) , "a plain client import of a server def must be diagnosed";
     } finally {
         _clear_demoted_native(models_path);
@@ -191,8 +191,10 @@ test "a docstring-only module is never decided native" {
     # whole native pipeline for nothing; an interface hung on that inferred
     # verdict. A module with no executable element has nothing to lower.
     import tempfile;
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.placement.placement_solver { native_default_verdict }
+    import from jaclang.compiler.session.options { CompileOptions }
+    import from jaclang.compiler.analysis.placement.module_context_pass {
+        native_default_verdict
+    }
     tmp = tempfile.mkdtemp();
     path = os.path.join(tmp, "__init__.jac");
     with open(path, "w") as fh {
@@ -202,7 +204,7 @@ test "a docstring-only module is never decided native" {
     mod = prog.compile(
         path, options=CompileOptions(no_cgen=True, force_target_program=True)
     );
-    (ok, why) = native_default_verdict(mod);
+    (ok, why) = native_default_verdict(mod, prog);
     assert not ok , "an empty module passed the native verdict";
     assert "empty module" in why , why;
 }

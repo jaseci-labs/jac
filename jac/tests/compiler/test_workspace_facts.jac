@@ -2,14 +2,14 @@
 import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.compilation_context {
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.context {
     bind_options,
     context_program,
     cache_scope
 }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.placement.workspace {
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.workspace {
     app_for_path,
     workspace_for_path,
     app_fact_digest
@@ -94,7 +94,7 @@ test "shared syntax produces distinct app facts in either request order" {
 }
 
 test "contextual artifacts cannot overwrite another app cache slot" {
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.session.cache.artifact_codec { get_module_cache_path }
     with TemporaryDirectory() as td {
         base = Path(td);
         workspace(base);
@@ -115,7 +115,7 @@ test "contextual artifacts cannot overwrite another app cache slot" {
 
 test "placement reuses an untyped dependency tree across app contexts" {
     import from unittest.mock { patch }
-    import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
+    import from jaclang.compiler.pipeline.contracts { AnalysisFact }
     with TemporaryDirectory() as td {
         base = Path(td);
         workspace(base);
@@ -128,7 +128,7 @@ test "placement reuses an untyped dependency tree across app contexts" {
         first = web.load_dependency_module(path, need_tree=True);
         api = context_program(web, bind_options(path, web, web.options));
         assert api is not web;
-        assert not api.analysis.analyses_run.provides(first, AnalysisFact.TYPE_OF);
+        assert not api.analysis.provides(first, AnalysisFact.TYPE_OF);
         with patch.object(
             web,
             'compile',
@@ -155,7 +155,7 @@ test "implicit projects still identify their entry" {
 }
 
 test "application traversal checks imported bodies on cold and warm requests" {
-    import from jaclang.compiler.driver.pipeline { compile_application }
+    import from jaclang.compiler.api { compile_application }
     with TemporaryDirectory() as td {
         base = Path(td);
         entry_path = str(base / 'main.jac');

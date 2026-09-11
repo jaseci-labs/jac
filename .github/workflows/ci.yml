@@ -291,7 +291,7 @@ jobs:
               echo "No .jac files changed in this PR; skipping format check."
               exit 0
             fi
-            FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+            FILES="$(grep -vE '(/fixtures/|^scripts/|/compiler/backends/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
             if [ -z "$FILES" ]; then
               echo "No formattable .jac files changed (all excluded); skipping."
               exit 0
@@ -299,7 +299,7 @@ jobs:
             printf '%s\n' "$FILES" | tr '\n' '\0' \
               | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           else
-            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
+            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/compiler/backends/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           fi
 
       # Autofix push mirrors pre-commit.ci. Without a JAC_AUTOFIX_TOKEN secret
@@ -320,7 +320,7 @@ jobs:
             exit 0
           fi
           git checkout -B "$HEAD_REF" FETCH_HEAD
-          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+          FILES="$(grep -vE '(/fixtures/|^scripts/|/compiler/backends/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
           if [ -z "$FILES" ]; then
             echo "No formattable .jac files to fix."
             exit 0
@@ -347,7 +347,7 @@ jobs:
         if: steps.fmt.outcome == 'failure'
         run: |
           set -euo pipefail
-          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+          FILES="$(grep -vE '(/fixtures/|^scripts/|/compiler/backends/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
           if [ -n "$FILES" ]; then
             printf '%s\n' "$FILES" | tr '\n' '\0' \
               | xargs -0 --no-run-if-empty jac fmt --lintfix || true

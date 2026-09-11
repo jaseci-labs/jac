@@ -16,7 +16,7 @@ import sys;
 import tempfile;
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
-import from jaclang.compiler.driver.application { prepare_application }
+import from jaclang.build.preparation { prepare_application }
 import from jaclang.project.config { set_config }
 import from jaclang.server { sv_client }
 import from jaclang.server.server { JacAPIServer }

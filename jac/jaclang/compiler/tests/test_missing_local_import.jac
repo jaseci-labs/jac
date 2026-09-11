@@ -16,10 +16,11 @@ reason -- npm packages, `import type`, comptime-erased imports -- keep
 compiling.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import shutil;
 import tempfile;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 
 glob _FIELD_SRC: str = (
@@ -88,9 +89,9 @@ test "a client module importing a missing sibling fails to compile" {
         ];
         assert any([".label" in m for m in named]) , named;
         assert any(["field.jac" in m for m in named]) , named;
-        assert "Label" not in mod.gen.js , (
+        assert "Label" not in artifact_for(mod).js , (
             "a module that fails to compile must not emit a bundle that"
-            f" references the missing import: {mod.gen.js}"
+            f" references the missing import: {artifact_for(mod).js}"
         );
     } finally {
         shutil.rmtree(base, ignore_errors=True);
@@ -121,7 +122,7 @@ test "the same import compiles once the sibling exists" {
         prog = JacProgram();
         mod = prog.compile(mod_path);
         assert "E1134" not in _codes(prog) , _codes(prog);
-        assert 'from "./label.js"' in mod.gen.js , mod.gen.js;
+        assert 'from "./label.js"' in artifact_for(mod).js , artifact_for(mod).js;
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }

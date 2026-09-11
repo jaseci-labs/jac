@@ -1,6 +1,6 @@
 """Annotation arguments preserve shape and reject mapping spreads."""
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 test "mapping spreads in generic annotations report a type diagnostic" {
     program = JacProgram();

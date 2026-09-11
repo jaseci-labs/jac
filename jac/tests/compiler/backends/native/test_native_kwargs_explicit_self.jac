@@ -28,6 +28,7 @@ on the undeclared `self.evaluator` field instead, which the handshake still
 owns.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import contextlib;
 import io;
 import os;
@@ -35,7 +36,7 @@ import subprocess;
 import sys;
 import tempfile;
 import from tests.support { TESTS_DIR, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -112,7 +113,7 @@ def na_lines(fixture: str) -> list {
 test "an explicit-self variadic callee lowers with no seam" {
     (prog, ir) = compile_native(FIXTURE);
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the fixture";
+    assert ir is not None and artifact_for(ir).llvm_ir , "no native IR for the fixture";
     seams = seam_report(FIXTURE);
     assert "variadic parameter" not in seams , (
         f"the receiver is still being counted twice:\n{seams}"
@@ -122,7 +123,7 @@ test "an explicit-self variadic callee lowers with no seam" {
 
 test "every caller of the explicit-self method reaches native code" {
     (_prog, ir) = compile_native(FIXTURE);
-    fns = ir.gen.native_layout.functions;
+    fns = artifact_for(ir).native_layout.functions;
     for name in (
         "spelled_literal",
         "spelled_defaulted",

@@ -1,19 +1,30 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from jaclang.compiler.pipeline.products { require_product }
+import from jaclang.compiler.pipeline.contracts { CompilationProduct }
+import from jaclang.cli.console { console }
+import from jaclang.compiler.tools.unparse_pass { unparse_module }
+import from jaclang.compiler.tools.treeprinter {
+    print_ast_tree,
+    print_symtab_tree,
+    printgraph_ast_tree,
+    printgraph_symtab_tree
+}
 import ast as py_ast;
 import inspect;
 import json;
 import os;
 import sys;
-import jaclang.compiler.frontend.unitree as uni;
+import jaclang.compiler.ir.schema as uni;
 import from jaclang.compiler.backends.es { EsastGenPass, es_node_to_dict }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.estree { Node as EsNode }
-import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-import from jaclang.compiler.passes.cfg_build_pass { cfg_dot_from_file }
+import from jaclang.compiler.frontend.pyast_load_pass { PyastBuildPass }
+import from jaclang.compiler.analysis.flow.cfg_build_pass { cfg_dot_from_file }
 import from jaclang.compiler.tools.doc_ir_gen_pass { DocIRGenPass }
-import from jaclang.compiler.frontend.unitree { UniScopeNode }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.frontend.helpers {
+import from jaclang.compiler.ir.schema { UniScopeNode }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.frontend.source_io {
     pascal_to_snake,
     read_file_with_encoding
 }

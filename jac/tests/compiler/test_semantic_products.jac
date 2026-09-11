@@ -1,15 +1,14 @@
 """Semantic queries share scheduled, detached compiler products."""
 
+import from jaclang.compiler.pipeline.keys { SERVING }
 import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pipeline {
-    require_product,
-    CompilationProduct,
-    native_dependency_facts
-}
-import from jaclang.compiler.frontend.constant { CodeContext }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.products { require_product }
+import from jaclang.compiler.pipeline.contracts { CompilationProduct }
+import from jaclang.compiler.api { native_dependency_facts }
+import from jaclang.compiler.ir.enums { CodeContext }
 
 
 test "native eligibility reuses syntax and observes content changes with identical stat" {
@@ -72,7 +71,7 @@ test "serving access is a reusable scheduled product" {
         module = program.compile(str(path), no_cgen=True);
         assert not program.errors_had , [str(e) for e in program.errors_had];
         assert require_product(program, module, CompilationProduct.SERVING);
-        facts = program.analysis.serving_facts[str(path)];
+        facts = program.analysis.result(str(path), SERVING);
         assert facts.func_access['ping'] is False;
         assert facts.func_access['secret'] is True;
         count = program.analysis.pass_runs['ServingFactsPass'];
@@ -83,9 +82,9 @@ test "serving access is a reusable scheduled product" {
 
 
 test "serving metadata exposes members only for from imports" {
-    import from jaclang.compiler.driver.application { _manifest }
-    import from jaclang.compiler.driver.pipeline { compile_application }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.build.manifests { _manifest }
+    import from jaclang.compiler.api { compile_application }
+    import from jaclang.compiler.session.options { CompileOptions }
     with TemporaryDirectory() as tmp {
         base = Path(tmp);
         path = base / 'main.jac';
@@ -113,11 +112,8 @@ test "serving metadata exposes members only for from imports" {
 
 
 test "native path queries share compilation syntax and restore nested contexts" {
-    import from jaclang.compiler.driver.pipeline { native_path_eligible }
-    import from jaclang.compiler.driver.compilation_context {
-        cache_scope,
-        active_program
-    }
+    import from jaclang.compiler.api { native_path_eligible }
+    import from jaclang.compiler.session.context { cache_scope, active_program }
     with TemporaryDirectory() as tmp {
         path = Path(tmp) / 'main.jac';
         path.write_text('def value -> int { return 1; }');
@@ -139,7 +135,7 @@ test "native path queries share compilation syntax and restore nested contexts" 
 
 
 test "an uncacheable interface does not become a successful product" {
-    import from jaclang.compiler.driver.pipeline { invalidate_product }
+    import from jaclang.compiler.pipeline.products { invalidate_product }
     with TemporaryDirectory() as tmp {
         path = Path(tmp) / 'main.jac';
         path.write_text('def value -> int { return 1; }');
@@ -156,8 +152,8 @@ test "an uncacheable interface does not become a successful product" {
 
 
 test "cached import edges retain distinct roles for the same provider" {
-    import from jaclang.compiler.driver.semantic_facts { ImportEdge }
-    import from jaclang.compiler.driver.jir {
+    import from jaclang.compiler.analysis.binding.facts { ImportEdge }
+    import from jaclang.compiler.session.cache.artifact_codec {
         deps_section,
         read_dep_rows,
         write_precompiled_jir,
@@ -173,7 +169,7 @@ test "cached import edges retain distinct roles for the same provider" {
     ];
     registry = program.iface_registry();
     registry.direct_deps[module] = {provider: 'digest'};
-    rows = registry.dep_rows(module, None);
+    rows = registry.dep_rows(module);
     cached = write_precompiled_jir(None, extra_sections={SEC_DEPS: deps_section(rows)});
     restored = JacProgram();
     restored.deps.restore_imports(module, read_dep_rows(cached));
@@ -188,4 +184,29 @@ test "cached import edges retain distinct roles for the same provider" {
     );
     assert all(edge.jac for edge in edges);
     assert module in restored.transitive_dependents(provider);
+}
+
+test "a scheduled type query resolves a symbol before whole-module checking" {
+    import from jaclang.compiler.api { query_type }
+    import from jaclang.compiler.ir.types.nodes { FunctionType }
+    import from jaclang.compiler.session.options { CompileOptions }
+    with TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'query.jac';
+        path.write_text('def answer -> int { return 42; }');
+        program = JacProgram();
+        module = program.compile(
+            str(path),
+            options=CompileOptions(
+                symtab_ir_only=True,
+                no_cgen=True,
+                force_target_program=True,
+                default_codespace='server'
+            )
+        );
+        symbol = module.names_in_scope.get('answer');
+        assert symbol is not None;
+        assert isinstance(query_type(program, symbol), FunctionType);
+        assert not program.errors_had;
+        assert program.analysis.mutations.mask == 0;
+    }
 }

@@ -17,13 +17,14 @@ W1106 instead of silently falling back to local resolution. Quoted
 relative paths ("./x.css") stay local files.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import shutil;
 import tempfile;
 import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
+import jaclang.compiler.ir.schema as uni;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob REACT_DTS = (
          "export declare function createContext(x: any): any;\n"
@@ -114,7 +115,7 @@ test "bare npm import in a client module is placed client plus emitted" {
         _install_pkg(proj, "react");
         (prog, mod, errs, warns) = _compile(proj);
         assert _import_stamp(mod, "react") == "client" , "bare react import should classify client via resolution";
-        js = mod.gen.js or "";
+        js = artifact_for(mod).js or "";
         assert 'from "react"' in js , "emitted JS must import from the npm package";
         assert "createContext" in js;
         assert "W1100" not in warns , "resolved npm import must not warn module-not-found";
@@ -129,7 +130,7 @@ test "framework packages classify client before any install" {
         proj = _write_project(tmp, {"main.jac": CLIENT_APP});
         (prog, mod, errs, warns) = _compile(proj);
         assert _import_stamp(mod, "react") == "client" , "the active framework's own package is always npm";
-        js = mod.gen.js or "";
+        js = artifact_for(mod).js or "";
         assert 'from "react"' in js;
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -158,7 +159,7 @@ test "a local jac module shadows the npm name" {
         );
         _install_pkg(proj, "react");
         (prog, mod, errs, warns) = _compile(proj);
-        js = mod.gen.js or "";
+        js = artifact_for(mod).js or "";
         assert "./react.js" in js , "local jac module must win over the npm package";
         assert 'from "react"' not in js.replace("./react.js", "") , "npm specifier must not appear";
         assert "W1105" in warns , "shadowing an npm name deserves a diagnostic";
@@ -212,7 +213,7 @@ test "a quoted specifier beats a same-named local sibling" {
         );
         _install_pkg(proj, "sonner");
         (prog, mod, errs, warns) = _compile(proj);
-        js = mod.gen.js or "";
+        js = artifact_for(mod).js or "";
         assert 'from "sonner"' in js , "quoted specifier must resolve to the npm package";
         assert "./sonner.js" not in js , "quoted specifier must never resolve to a local sibling";
         assert "W1106" not in warns , "a declared and installed package must not warn";
@@ -247,7 +248,7 @@ test "a module named after the npm package it wraps does not self-import" {
         _install_pkg(proj, "sonner");
         prog = JacProgram();
         wrapper = prog.compile(str(proj / "components" / "ui" / "sonner.jac"));
-        js = wrapper.gen.js or "";
+        js = artifact_for(wrapper).js or "";
         assert 'from "sonner"' in js , "the wrapper must import the npm package";
         assert "./sonner.js" not in js , "the wrapper must never import itself";
     } finally {
@@ -277,7 +278,7 @@ test "an unresolved quoted specifier warns instead of going local" {
         );
         (prog, mod, errs, warns) = _compile(proj);
         assert "W1106" in warns , "a quoted specifier matching no package deserves a diagnostic";
-        js = mod.gen.js or "";
+        js = artifact_for(mod).js or "";
         assert 'from "ghost-pkg"' in js , "emission must keep the bare specifier";
         assert "./ghost-pkg.js" not in js , "no silent fallback to the local file";
     } finally {
@@ -303,7 +304,7 @@ test "a declared package subpath does not warn before install" {
         );
         (prog, mod, errs, warns) = _compile(proj);
         assert "W1106" not in warns , "a subpath of a declared package is not unresolved";
-        js = mod.gen.js or "";
+        js = artifact_for(mod).js or "";
         assert 'from "react-dom/client"' in js , "subpath specifiers emit verbatim";
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -327,7 +328,7 @@ test "a quoted relative path stays a local file import" {
             }
         );
         (prog, mod, errs, warns) = _compile(proj);
-        js = mod.gen.js or "";
+        js = artifact_for(mod).js or "";
         assert '"./styles.css"' in js , "relative string imports keep their relative path";
         assert "W1106" not in warns , "relative string imports are not package imports";
     } finally {
@@ -356,7 +357,7 @@ test "server-only python import in a mixed module prunes silently" {
         );
         (prog, mod, errs, warns) = _compile(proj);
         assert "E5084" not in errs , "server-side uses must not trip the client import error";
-        js = mod.gen.js or "";
+        js = artifact_for(mod).js or "";
         assert 'from "os"' not in js , "python import must stay out of the bundle";
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);

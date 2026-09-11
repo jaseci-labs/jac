@@ -1,11 +1,3 @@
-glob _GROUPING_AT_RULES: set[str] = {
-         'media',
-         'supports',
-         'container',
-         'layer',
-         'scope'
-     };
-
 impl ScopedStyleSheet.postinit -> None {
     self.scoped_css = scope_stylesheet(
         self.source_css, self.module_path, self.class_map

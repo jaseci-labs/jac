@@ -4,13 +4,14 @@ heap future record joining at `wait`. Parallel in enforced zero-RC and
 atomic-rc builds; cycles, wasm, rc-debug, and any handle whose uses
 are not exactly `wait` keep the sequential erasure."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import subprocess;
 import sys;
 import tempfile;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "flow_future.jac"
@@ -31,7 +32,7 @@ def _compile_ir(gc_mode: str, enforce: bool) -> str {
         )
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    return str(ir.gen.llvm_ir);
+    return str(artifact_for(ir).llvm_ir);
 }
 
 test "flow calls outline into future tasks in parallel-capable builds" {

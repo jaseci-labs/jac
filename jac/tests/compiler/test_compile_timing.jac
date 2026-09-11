@@ -77,10 +77,10 @@ probe to read its list is not an option -- importing a `.jac` module runs its
 entry block, which is the whole measurement.
 """
 glob CORPUS: list[str] = [
-         "jaclang/compiler/frontend/srcloc.jac",
+         "jaclang/compiler/frontend/source_locations.jac",
          "jaclang/compiler/frontend/parser/tokens.jac",
-         "jaclang/compiler/passes/uni_pass.jac",
-         "jaclang/compiler/frontend/constant.jac",
+         "jaclang/compiler/pipeline/uni_pass.jac",
+         "jaclang/compiler/ir/enums.jac",
          "examples/chess/chess.jac"
      ];
 
@@ -506,10 +506,10 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
         find_jac_files,
         _unit_program
     }
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.context { artifact_cache_path }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.dist.precompile_bytecode { precompile_context }
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.target_options {
         set_effective_default_codespace,
         get_effective_default_codespace_override
     }
@@ -556,7 +556,7 @@ test "the cold precompile path stays inside its work envelope" {
         find_jac_files,
         _unit_program
     }
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.target_options {
         set_effective_default_codespace,
         get_effective_default_codespace_override
     }

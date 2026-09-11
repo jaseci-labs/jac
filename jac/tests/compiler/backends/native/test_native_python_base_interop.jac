@@ -21,6 +21,7 @@ must agree: `Kid(label="kid")` chains postinit (count 0 -> 10, trace
 "|base", extra 11), `poke()` stores 99 then bumps to 100.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import importlib;
 import os;
@@ -59,7 +60,7 @@ def run_py_lane(fixture_stem: str, func_name: str) -> any {
 
 test "a native class over a Python-side base compiles with no seams" {
     (_eng, ir) = compile_native("pyb_native_main.jac");
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "no native layout was exported";
     for m in ["Kid.__post_init__", "Kid.poke", "Kid.read_back"] {
         assert m in layout.methods , (
@@ -123,7 +124,7 @@ test "a subscripted generic Python-side base still bridges" {
     # until the chain went monomorphic; user code still writes it, which is
     # why the fixture keeps measuring it.
     (eng, ir) = compile_native("pyb_gen_base_main.jac");
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "no native layout was exported";
     assert "Kid.poke" in layout.methods , (
         f"Kid.poke was demoted instead of bridging: {sorted(layout.methods)}"

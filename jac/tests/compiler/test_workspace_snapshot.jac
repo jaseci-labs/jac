@@ -3,9 +3,9 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
 import os;
-import from jaclang.compiler.placement.workspace { workspace_for_path }
-import from jaclang.compiler.driver.compilation_context { SourceStore }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.workspace { workspace_for_path }
+import from jaclang.compiler.session.sources { SourceStore }
+import from jaclang.compiler.session.session { JacProgram }
 
 test "unrelated broken source is not discovery input" {
     with TemporaryDirectory() as td {

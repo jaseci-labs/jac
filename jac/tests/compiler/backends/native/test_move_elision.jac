@@ -14,12 +14,13 @@ The proof is native-owned and does NOT depend on the ownership checker: the
 elision lives in the native codegen path rather than the analysis schedule.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts, compile_native_ir }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.session.session { JacProgram }
+import jaclang.compiler.ir.schema as uni;
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 
@@ -40,7 +41,7 @@ def compile_fixture(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);
 }
@@ -54,7 +55,7 @@ def retain_calls(fixture: str, move_lower: bool) -> int {
     }
     try {
         ir = compile_native_ir(fixture);
-        return str(ir.gen.llvm_ir).count('call void @"__rc_retain"');
+        return str(artifact_for(ir).llvm_ir).count('call void @"__rc_retain"');
     } finally {
         NaIRGenPass._can_native_move_lower = orig;
     }
@@ -79,7 +80,7 @@ test "move-lowering elides exactly the `b = a` alias retain" {
 
 test "move-lowering nulls the source slot (keeps the free sound)" {
     ir = compile_native_ir("move_elision.jac");
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     # Nulling the moved-from slot is what makes eliding the retain sound: the
     # source's cleanup release then loads null and is a no-op, so the object is
     # freed exactly once (by the destination's cleanup).

@@ -19,6 +19,7 @@ mode is a segfault, which has to fail the test rather than take the runner
 down with it.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import subprocess;
@@ -33,7 +34,7 @@ import from tests.support {
 }
 import jaclang;
 
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -224,7 +225,7 @@ test "callsite star-unpack of a LIST into a fixed-arity callee demotes the calle
         f"two(*xs) is owned by use(), which must demote to a seam, got: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "two" in layout.functions , (
         f"clean sibling function was lost: {list(layout.functions)}"
@@ -260,7 +261,7 @@ test "double-star unpack at a call site demotes the calling function" {
         f"two(**d) is owned by use(), which must demote to a seam, got: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "two" in layout.functions , (
         f"clean sibling function was lost: {list(layout.functions)}"
@@ -284,7 +285,7 @@ test "def:pub variadic demotes off the native interop surface" {
         f"variadic must demote to its Python implementation, got: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "f" not in layout.functions , (
         "the pub variadic must be demoted out of the native layout"
@@ -303,7 +304,7 @@ test "variadic init demotes the constructor and refuses its callers" {
         f"variadic init demotes instead of refusing the module, got: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "pure" in layout.functions , (
         f"clean sibling function was lost: {list(layout.functions)}"
@@ -330,7 +331,7 @@ test "a generic pack slot is a native list, not the bare erased pointer" {
     options.skip_native_engine = True;
     ir = prog.compile(os.path.join(FIXTURES, "varargs_generic.jac"), options=options);
     assert not prog.errors_had , str(prog.errors_had);
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "Cell.get" in layout.methods , (
         f"the variadic method must reach the native image: {sorted(layout.methods)}"
@@ -341,7 +342,7 @@ test "a generic pack slot is a native list, not the bare erased pointer" {
     assert "Cell.pick" in layout.methods , (
         f"a pack after a fixed parameter must lower too: {sorted(layout.methods)}"
     );
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     assert 'define i8* @"Cell.get"(%"Cell"* %"self", %"List.ptr"* %"fallback")'
         in text , (
         "the pack slot must lay out as the pointer-flavoured native list; a bare "
@@ -386,7 +387,7 @@ test "a callee whose pack slot did not lay out refuses its caller" {
         f"the caller owns the refusal, so the module must still compile: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "pure" in layout.functions , (
         f"clean sibling function was lost: {list(layout.functions)}"

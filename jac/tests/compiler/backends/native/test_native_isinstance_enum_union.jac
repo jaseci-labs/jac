@@ -19,6 +19,7 @@ reason in both directions.
 Refs #8067, #8039
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support {
@@ -30,7 +31,7 @@ import from tests.support {
 }
 import jaclang;
 
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -97,8 +98,8 @@ test "an enum sharing the int tag is refused, not answered by tag" {
         "the tag-clash refusal is owned by chk_enum_over_int(), which must "
         f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "chk_enum_over_int" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    assert "chk_enum_over_int" not in artifact_for(ir).native_layout.functions , (
         "isinstance against an enum that shares the int tag must demote the "
         "asking function out of the native layout, never answer by tag"
     );

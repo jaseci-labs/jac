@@ -42,14 +42,14 @@ kind/capabilities/entry/payloads)::
                                          # informational -- the seal already
                                          # verified every JIR against it, see #8178)
       "modules": {                      # key: source path relative to pkg dir
-        "compiler/symbol_utils.jac": {
-          "module": "jaclang.compiler.symbol_utils",
-          "jir": "compiler/symbol_utils.jir",  # relative to _precompiled/<tag>/
+        "compiler/analysis/binding/symbol_utils.jac": {
+          "module": "jaclang.compiler.analysis.binding.symbol_utils",
+          "jir": "compiler/analysis/binding/symbol_utils.jir",  # relative to _precompiled/<tag>/
           "package": false,
           "sha256": "..."                  # checked by register_image
         },
-        "compiler/driver/modresolver.jac": {
-          "module": "jaclang.compiler.driver.modresolver",
+        "compiler/session/resolver.jac": {
+          "module": "jaclang.compiler.session.resolver",
           "jir": "jac0core/modresolver.jir",
           "package": false,
           "sha256": "...",
@@ -95,7 +95,7 @@ MANIFEST_FORMAT = 8
 # the image ships with the very code that loads it, so skew means a stale or
 # partial install.
 MANIFEST_FORMATS_ACCEPTED = (2, 3, 4, 5, 6, 7, MANIFEST_FORMAT)
-# Must match jaclang.compiler.driver.jir.* ; kept literal here because this module
+# Must match jaclang.compiler.session.cache.artifact_codec.* ; kept literal here because this module
 # must import before any .jac module (including jir.jac) can. This is the whole
 # point of the bootstrap tier: jac0core modules are loaded from their JIR by the
 # pure-Python section reader below, so they need none of the .jac machinery
@@ -151,7 +151,7 @@ def _patch_code_filenames(
     code: types.CodeType, find: str, replace: str
 ) -> types.CodeType:
     """Recursively rewrite ``co_filename`` (pure-Python twin of
-    ``compiler.driver.jir.patch_co_filenames_bytes``, which is itself a .jac
+    ``compiler.session.cache.artifact_codec.patch_co_filenames_bytes``, which is itself a .jac
     module and therefore unavailable while bootstrapping)."""
     consts = tuple(
         _patch_code_filenames(c, find, replace) if isinstance(c, types.CodeType) else c

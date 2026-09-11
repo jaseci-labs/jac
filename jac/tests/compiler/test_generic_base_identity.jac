@@ -1,6 +1,10 @@
-import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.types.types { ClassDetailsShared, ClassType, TypeVarType }
-import from jaclang.compiler.types.type_utils { specialize_for_base_class }
+import from jaclang.compiler.ir.schema { Module }
+import from jaclang.compiler.ir.types.nodes {
+    ClassDetailsShared,
+    ClassType,
+    TypeVarType
+}
+import from jaclang.compiler.analysis.types.type_utils { specialize_for_base_class }
 
 test "generic specialization recognizes equivalent class graphs" {
     scope = Module.make_stub("generic_identity");
@@ -10,7 +14,7 @@ test "generic specialization recognizes equivalent class graphs" {
             class_name="Base",
             symbol_table=scope,
             type_params=[parameter],
-            _identity_key=("generic_identity.jac", 1, 0, "Base")
+            declaration_identity=("generic_identity.jac", 1, 0, "Base")
         )
     );
     base.shared.mro = [base];
@@ -19,7 +23,7 @@ test "generic specialization recognizes equivalent class graphs" {
             class_name="Base",
             symbol_table=scope,
             type_params=[parameter],
-            _identity_key=base.shared.canonical_key()
+            declaration_identity=base.shared.canonical_key()
         )
     );
     assert base.shared is not reconstructed.shared;
@@ -34,7 +38,7 @@ test "generic specialization recognizes equivalent class graphs" {
             symbol_table=scope,
             type_params=[parameter],
             base_classes=[base.specialize_generics([parameter])],
-            _identity_key=("generic_identity.jac", 2, 0, "Derived")
+            declaration_identity=("generic_identity.jac", 2, 0, "Derived")
         )
     );
     derived.shared.mro = [derived, base];
@@ -43,7 +47,7 @@ test "generic specialization recognizes equivalent class graphs" {
             class_name="Child",
             symbol_table=scope,
             base_classes=[derived.specialize_generics([integer])],
-            _identity_key=("generic_identity.jac", 3, 0, "Child")
+            declaration_identity=("generic_identity.jac", 3, 0, "Child")
         )
     );
     child.shared.mro = [child, derived, base];
@@ -54,15 +58,15 @@ test "generic specialization recognizes equivalent class graphs" {
             class_name="Base",
             symbol_table=scope,
             type_params=[parameter],
-            _identity_key=("other.jac", 1, 0, "Base")
+            declaration_identity=("other.jac", 1, 0, "Base")
         )
     );
     assert specialize_for_base_class(child, unrelated) is unrelated;
 }
 
 test "class values assign to a reconstructed builtin type annotation" {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.types.type_utils { types_equivalent }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.analysis.types.type_utils { types_equivalent }
     evaluator = JacProgram().get_type_evaluator();
     builtin_type = evaluator.prefetch.type_class;
     integer = evaluator.prefetch.int_class;
@@ -72,7 +76,7 @@ test "class values assign to a reconstructed builtin type annotation" {
         _shared=ClassDetailsShared(
             class_name="type",
             symbol_table=builtin_type.shared.symbol_table,
-            _identity_key=builtin_type.shared.canonical_key()
+            declaration_identity=builtin_type.shared.canonical_key()
         )
     );
     assert reconstructed.shared is not builtin_type.shared;
@@ -83,7 +87,7 @@ test "class values assign to a reconstructed builtin type annotation" {
         _shared=ClassDetailsShared(
             class_name="type",
             symbol_table=builtin_type.shared.symbol_table,
-            _identity_key=("user_defined.jac", 1, 0, "type")
+            declaration_identity=("user_defined.jac", 1, 0, "type")
         )
     );
     assert not types_equivalent(builtin_type, unrelated);
@@ -91,13 +95,13 @@ test "class values assign to a reconstructed builtin type annotation" {
 }
 
 test "stdlib enum ancestry survives independently loaded class graphs" {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.session.options { CompileOptions }
     program = JacProgram();
     program.compile(
         file_path="enum_base_identity.jac",
         use_str="import from enum { StrEnum, IntEnum }\n"
-            + "import from jaclang.compiler.frontend.constant { Constants }\n"
+            + "import from jaclang.compiler.ir.enums { Constants }\n"
             + "class Label(StrEnum) { with entry { FIRST = 'first'; } }\n"
             + "class Number(IntEnum) { with entry { FIRST = 1; } }\n"
             + "def label -> str { return Label.FIRST.value; }\n"

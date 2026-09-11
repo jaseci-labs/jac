@@ -1,8 +1,9 @@
 """Graph construction syntax and shared lowering contracts."""
 
-import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import jaclang.compiler.ir.schema as uni;
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
-import from jaclang.compiler.passes.graph_lowering_pass { GraphLoweringPass }
+import from jaclang.compiler.lowering.graph_lowering_pass { GraphLoweringPass }
 import from jaclang.compiler.tools.unparse_pass { UnparsePass }
 
 test "graph keyword supports escaped identifiers" {
@@ -20,7 +21,7 @@ test "graph preserves its surface for syntax tools" {
     );
     assert not errors;
     UnparsePass(ir_in=module);
-    (again, errors2) = rd_parse(module.gen.jac, "graph_again.jac");
+    (again, errors2) = rd_parse(artifact_for(module).jac, "graph_again.jac");
     assert not errors2;
     assert len(again.get_all_sub_nodes(uni.GraphExpr)) == 1;
     assert len(again.get_all_sub_nodes(uni.ConnectOp)) == 2;
@@ -29,18 +30,18 @@ test "graph preserves its surface for syntax tools" {
 test "graph formatting preserves comments and is stable" {
     import from pathlib { Path }
     import from tempfile { TemporaryDirectory }
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     with TemporaryDirectory() as directory {
         path = Path(directory) / "graph_comments.jac";
         path.write_text(
             "with entry { f = graph { # opening\n a ++> b; # edge\n # closing\n }; }"
         );
-        first = JacProgram.jac_file_formatter(str(path)).mod.main.gen.jac;
+        first = artifact_for(JacProgram.jac_file_formatter(str(path)).mod.main).jac;
         for comment in ["# opening", "# edge", "# closing"] {
             assert first.count(comment) == 1;
         }
         path.write_text(first);
-        second = JacProgram.jac_file_formatter(str(path)).mod.main.gen.jac;
+        second = artifact_for(JacProgram.jac_file_formatter(str(path)).mod.main).jac;
         assert first == second;
         (_, errors) = rd_parse(second, str(path));
         assert not errors;
@@ -74,7 +75,7 @@ test "graph rejects unsupported directions with a source diagnostic" {
 }
 
 test "generated construction imports inherit their enclosing codespace" {
-    import from jaclang.compiler.frontend.constant { CodeContext }
+    import from jaclang.compiler.ir.enums { CodeContext }
     (module, errors) = rd_parse(
         "def build { return graph { a ++> b; }; }", "graph_context.jac"
     );
@@ -89,7 +90,7 @@ test "generated construction imports inherit their enclosing codespace" {
 }
 
 test "graph roots retain their node type" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     prog = JacProgram();
     prog.compile(
         "graph_root_type.jac",
@@ -100,7 +101,7 @@ test "graph roots retain their node type" {
 }
 
 test "graph refuses non-node roots" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     prog = JacProgram();
     prog.compile(
         "graph_bad_root.jac", use_str="with entry { f = graph { 42; }; }", no_cgen=True
@@ -109,7 +110,7 @@ test "graph refuses non-node roots" {
 }
 
 test "parameterless lambda bodies validate bounded generic calls" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     prog = JacProgram();
     prog.compile(
         "lambda_bound.jac",
@@ -130,8 +131,8 @@ test "root projection does not capture membership" {
 }
 
 test "client regeneration retains construction imports" {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.session.options { CompileOptions }
     import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
     prog = JacProgram();
     module = prog.compile(
@@ -140,18 +141,18 @@ test "client regeneration retains construction imports" {
         options=CompileOptions(force_codespace="client", no_cgen=True)
     );
     EsastGenPass(ir_in=module, prog=prog);
-    first = module.gen.js;
+    first = artifact_for(module).js;
     assert not prog.errors_had , [str(error) for error in prog.errors_had];
     assert "import { GraphBuilder" in first;
-    module.gen.js = "";
-    module.gen.es_ast = None;
+    artifact_for(module).js = "";
+    artifact_for(module).es_ast = None;
     EsastGenPass(ir_in=module, prog=prog);
     assert not prog.errors_had , [str(error) for error in prog.errors_had];
-    assert module.gen.js == first;
+    assert artifact_for(module).js == first;
 }
 
 test "native construction runtime does not admit compiler internals" {
-    import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
+    import from jaclang.compiler.session.native_resolution { resolve_native_module }
     import from tempfile { gettempdir }
     (_, runtime) = resolve_native_module(
         "jaclang.runtime.graph_fragment", gettempdir()
