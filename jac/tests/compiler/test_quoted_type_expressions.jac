@@ -4,6 +4,17 @@ import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.compiler.frontend.parser.frontend { parse_expression }
 import from jaclang.compiler.ir.schema { Module }
+import from jaclang.compiler.ir.identity { MutationScope }
+import from jaclang.compiler.ir.types.nodes { TypeBase }
+import from jaclang.compiler.api { query_type }
+
+def _resolve(program: JacProgram, source: str, scope: Module) -> TypeBase | None {
+    # Exercise the speculative evaluator internals under the same write permit
+    # that the scheduled type producer grants while resolving annotations.
+    with MutationScope(program.analysis.mutations, 6) {
+        return program.get_type_evaluator()._resolve_string_type_expr(source, scope);
+    }
+}
 
 
 def _scope(program: JacProgram) -> Module {
@@ -44,7 +55,7 @@ test "quoted generic union and callable annotations share normal type semantics"
         ("Callable[..., Item]", "Callable[..., Item]"),
         ("typing.Callable[[Item], str]", "Callable[[Item], str]")
     ] {
-        resolved = evaluator._resolve_string_type_expr(source, scope);
+        resolved = _resolve(program, source, scope);
         assert resolved is not None , source;
         assert str(resolved) == expected , f"{source}: {resolved}";
     }
@@ -60,11 +71,11 @@ test "temporary quoted syntax does not accumulate symbol uses or diagnostics" {
     errors_before = len(program.errors_had);
     warnings_before = len(program.warnings_had);
     for _ in range(20) {
-        resolved = evaluator._resolve_string_type_expr("list[Item]", scope);
+        resolved = _resolve(program, "list[Item]", scope);
         assert resolved is not None;
         assert str(resolved) == "list[Item]";
-        assert evaluator._resolve_string_type_expr("MissingType", scope) is None;
-        assert evaluator._resolve_string_type_expr("int; str", scope) is None;
+        assert _resolve(program, "MissingType", scope) is None;
+        assert _resolve(program, "int; str", scope) is None;
     }
     assert len(symbol.uses) == before;
     assert len(program.errors_had) == errors_before;
@@ -84,7 +95,7 @@ test "type aliases resolve all adjacent literal fragments" {
     for (name, expected) in [("Items", "list[Item]"), ("One", "Item")] {
         symbol = module.lookup(name);
         assert symbol is not None;
-        resolved = evaluator.get_type_of_symbol(symbol);
+        resolved = query_type(program, symbol);
         assert str(resolved) == expected , str(resolved);
     }
 }
@@ -113,7 +124,7 @@ test "speculative type lookup preserves existing and subsequent diagnostics" {
     assert any("Cannot return" in str(error) for error in program.errors_had);
     errors = program.errors_had[:];
     evaluator = program.get_type_evaluator();
-    assert evaluator._resolve_string_type_expr("MissingType", module) is None;
+    assert _resolve(program, "MissingType", module) is None;
     assert program.errors_had == errors;
 }
 
@@ -122,7 +133,7 @@ test "quoted generic annotations represent instances" {
     program = JacProgram();
     scope = _scope(program);
     evaluator = program.get_type_evaluator();
-    resolved = evaluator._resolve_string_type_expr("list[Item]", scope);
+    resolved = _resolve(program, "list[Item]", scope);
     assert isinstance(resolved, ClassType);
     assert resolved.is_class_instance();
     assert not resolved.is_instantiable_class();

@@ -49,10 +49,12 @@ obj SelfHostCache {
                 directory = os.path.dirname(directory);
             }
             import from jaclang.compiler.session.native_resolution {
+                is_client_by_location,
                 is_native_by_location,
                 is_shared_runtime_module
             }
-            if is_native_by_location(file_path)
+            if is_client_by_location(file_path)
+                or is_native_by_location(file_path)
                 or is_shared_runtime_module(file_path) {
                 return target_program;
             }

@@ -477,6 +477,7 @@ schema would then be decoded against, position by position."""
 test "fresh mtime does not admit a cache written under a different environment" {
     import jaclang.compiler.session.cache.artifact_codec as jir;
     import from jaclang.compiler.session.cache.artifact_codec { is_module_cache_valid }
+    import from jaclang.compiler.session.context { cache_scope, program_for }
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
     ) as tmp {
@@ -490,24 +491,30 @@ test "fresh mtime does not admit a cache written under a different environment" 
         compiler = JacCompiler();
         assert compiler.get_bytecode(jac_file, JacProgram()) is not None;
         cache_path = artifact_cache_path(jac_file, JacProgram());
+        def cache_valid -> bool {
+            context = program_for(jac_file, JacProgram());
+            with cache_scope(context.context_key, context.options) {
+                return is_module_cache_valid(jac_file, cache_path);
+            }
+        }
         assert cache_path.exists() , "JIR cache was not written";
         assert os.path.getmtime(cache_path) > os.path.getmtime(jac_file) , (
             "cache must be newer than source for the mtime fast path to apply"
         );
-        assert is_module_cache_valid(jac_file, cache_path) , "fresh cache should be valid";
+        assert cache_valid() , "fresh cache should be valid";
 
         saved = list(jir._COMPILER_DIGEST_CACHE);
         try {
             jir._COMPILER_DIGEST_CACHE.clear();
             jir._COMPILER_DIGEST_CACHE.append("289:" + "0" * 64);
-            assert not is_module_cache_valid(jac_file, cache_path) , (
+            assert not cache_valid() , (
                 "a fresh mtime served a cache written under a different compiler"
             );
         } finally {
             jir._COMPILER_DIGEST_CACHE.clear();
             jir._COMPILER_DIGEST_CACHE.extend(saved);
         }
-        assert is_module_cache_valid(jac_file, cache_path) , (
+        assert cache_valid() , (
             "restoring the compiler digest should restore validity"
         );
 
@@ -517,21 +524,21 @@ test "fresh mtime does not admit a cache written under a different environment" 
         }
         prev_tgt = push_native_target("wasm32-unknown-unknown");
         try {
-            assert not is_module_cache_valid(jac_file, cache_path) , (
+            assert not cache_valid() , (
                 "a fresh mtime served a cache written under a different "
                 "analysis fingerprint"
             );
         } finally {
             pop_native_target(prev_tgt);
         }
-        assert is_module_cache_valid(jac_file, cache_path) , (
+        assert cache_valid() , (
             "restoring the analysis fingerprint should restore validity"
         );
 
         prev_opt = os.environ.get("JAC_OPT_LEVEL");
         try {
             os.environ["JAC_OPT_LEVEL"] = "0" if prev_opt != "0" else "1";
-            assert is_module_cache_valid(jac_file, cache_path) , (
+            assert cache_valid() , (
                 "a native-only codegen knob (opt level) must not invalidate "
                 "a bytecode cache"
             );
@@ -862,7 +869,7 @@ test "internal get_bytecode evicts unit AST after compile" {
             compiler.selfhost.jaclang_root(), "compiler", "pipeline", "log.jac"
         ),
         os.path.join(
-            compiler.selfhost.jaclang_root(), "compiler", "frontend", "constant.jac"
+            compiler.selfhost.jaclang_root(), "compiler", "frontend", "source_io.jac"
         )
     ];
     for p in samples {

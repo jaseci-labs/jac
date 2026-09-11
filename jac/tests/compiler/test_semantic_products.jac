@@ -61,6 +61,41 @@ test "import facts include plain imports and drive reverse dependencies" {
 }
 
 
+test "application closure keeps client assets out of Jac compilation" {
+    import from jaclang.compiler.api { compile_application }
+    import from jaclang.compiler.session.options { CompileOptions }
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        (base / 'jac.toml').write_text('[project]\nname="assets"\nkind="web-app"\n');
+        style = base / 'site.css';
+        style.write_text('body { color: red; }');
+        path = base / 'main.jac';
+        path.write_text('import "./site.css";\ndef:pub app -> any { return <div />; }');
+        program = JacProgram();
+        compile_application(
+            program, str(path), CompileOptions(project_root=tmp, app_kind='web-app')
+        );
+        assert not program.errors_had , [str(e) for e in program.errors_had];
+        assert program.find_module(str(style)) is None;
+    }
+}
+
+test "application closure preserves diagnostics from rejected graphs" {
+    import from jaclang.compiler.api { compile_application }
+    import from jaclang.compiler.session.options { CompileOptions }
+    with TemporaryDirectory() as tmp {
+        path = Path(tmp) / 'main.jac';
+        path.write_text('def value -> int { return "bad"; }');
+        program = JacProgram();
+        compile_application(
+            program,
+            str(path),
+            CompileOptions(no_cgen=True, default_codespace='server', project_root=tmp)
+        );
+        assert any(error.code?.code == 'E1002' for error in program.errors_had);
+    }
+}
+
 test "serving access is a reusable scheduled product" {
     with TemporaryDirectory() as tmp {
         path = Path(tmp) / 'main.jac';

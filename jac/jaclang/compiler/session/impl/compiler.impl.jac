@@ -1021,8 +1021,17 @@ impl JacCompiler._release_compile_scratch(target_program: JacProgram) -> None {
         return;
     }
     try {
-        target_program.release_native_dep_units();
-        target_program.release_check_caches();
+        context_root = target_program.context_root or target_program;
+        contexts = list(context_root.contexts.values());
+        if context_root not in contexts {
+            contexts.append(context_root);
+        }
+        for context in contexts {
+            if not context.has_active_compilation() {
+                context.release_native_dep_units();
+                context.release_check_caches();
+            }
+        }
     } except Exception {}
 }
 

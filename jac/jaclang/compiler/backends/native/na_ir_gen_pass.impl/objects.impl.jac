@@ -19,7 +19,12 @@ impl NaIRGenPass._native_archetypes(module: uni.Module) -> list[uni.Archetype] {
         }
     }
 
-    for arch in ModuleFacts.shared_archetypes_for_context(module, CodeContext.NATIVE) {
+    for arch in ModuleFacts.shared_type_declarations_for_context(
+        module, CodeContext.NATIVE
+    ) {
+        if not isinstance(arch, uni.Archetype) {
+            continue;
+        }
         aname = arch.name.value if arch.name else "unknown";
         if aname not in result {
             result[aname] = arch;

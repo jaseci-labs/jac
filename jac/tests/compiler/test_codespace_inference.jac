@@ -231,7 +231,9 @@ test "test blocks lower native under native default" {
         "test blocks no longer block native inference"
     );
     assert artifact_for(mod).native_engine is not None;
-    names = [t.name for t in artifact_for(mod).native_layout.tests];
+    layout = artifact_for(mod).native_layout;
+    assert layout is not None;
+    names = [t.name for t in layout.tests];
     assert "test_double_works" in names;
 }
 

@@ -435,7 +435,7 @@ impl EsastGenPass.exit_walk with uni.UniNode exit {
         is_native_edge = isinstance(here, uni.Import)
             and self._is_client_native_import(here);
         is_shared_arch = (
-            isinstance(here, uni.Archetype)
+            isinstance(here, (uni.Archetype, uni.Enum))
             and (here.name is not None)
             and (here.name.value in self.shared_arch_names)
         );
@@ -473,7 +473,7 @@ impl EsastGenPass.enter_walk with uni.UniNode entry {
             and self._is_service_bridge_import(here);
 
         is_shared_arch = (
-            isinstance(here, uni.Archetype)
+            isinstance(here, (uni.Archetype, uni.Enum))
             and (here.name is not None)
             and (here.name.value in self.shared_arch_names)
         );
@@ -528,7 +528,7 @@ impl EsastGenPass.before_pass -> None {
     import from jaclang.compiler.analysis.binding.module_facts { ModuleFacts }
     self.shared_arch_names: set[str] = {
         a.name.value
-        for a in ModuleFacts.shared_archetypes_for_context(
+        for a in ModuleFacts.shared_type_declarations_for_context(
             self.ir_in, CodeContext.CLIENT
         )
         if a.name is not None

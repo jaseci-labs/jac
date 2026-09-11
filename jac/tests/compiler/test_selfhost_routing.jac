@@ -35,6 +35,16 @@ test "a compiler module still resolves into the self-host program" {
     assert cache.resolve(log_mod, prog, force=True) is prog;
 }
 
+test "client runtime modules retain their consumer compilation context" {
+    prog = JacProgram();
+    cache = prog._get_compiler().selfhost;
+    for relative in ["client/client_mobui.jac", "client/client_runtime_native.jac"] {
+        path = _pkg_path(relative);
+        assert cache.resolve(path, prog) is prog;
+        assert cache.resolve(path, cache.program) is cache.program;
+    }
+}
+
 test "shared construction runtime resolves into its consumer program" {
     prog = JacProgram();
     cache = prog._get_compiler().selfhost;

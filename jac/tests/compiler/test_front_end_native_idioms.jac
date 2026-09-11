@@ -13,7 +13,10 @@ front end -- they are the object-spatial runtime and the driver -- so their
 closure and are deliberately untouched.
 """
 
-import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from jaclang.compiler.backends.common.artifact_store {
+    artifact_for,
+    existing_artifact
+}
 import os;
 import types;
 import jaclang.compiler.frontend.source_io as helpers_mod;
@@ -493,7 +496,8 @@ test "guardrail: @lru_cache refuses where a dict cache does not" {
         "a seam, so it refuses the module exactly as a bare "
         f"`import functools;` does: {errs}"
     );
-    assert artifact_for(dec_ir).llvm_ir is None , (
+    rejected_artifact = existing_artifact(dec_ir);
+    assert rejected_artifact is None or rejected_artifact.llvm_ir is None , (
         "a module-fatal violation must withhold the LLVM IR"
     );
     memo = check_na_inline(

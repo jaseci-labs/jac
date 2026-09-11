@@ -48,7 +48,7 @@ glob PIN_FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "fixtures", "codespace", "native_demoted_e2e"
      );
 
-def compile_pin_fixture -> tuple[(object, uni.Module, uni.Import, str)] {
+def compile_pin_fixture -> tuple[JacProgram, uni.Module, uni.Import, str] {
     prog = JacProgram();
     app = prog.compile(os.path.join(PIN_FIXTURE_DIR, "app.jac"), no_cgen=True);
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";

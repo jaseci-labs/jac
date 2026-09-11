@@ -1,6 +1,6 @@
 """A broken file in the compiler's own sources is never degraded around.
 
-Every schedule builder in `compiler.driver.pipeline` degrades on `ImportError` so the
+Every schedule builder in `compiler.pipeline.schedule` degrades on `ImportError` so the
 compiler can bootstrap itself and so an install missing an optional backend
 still compiles. Both of those are *absence*. When #8215 dropped a comma from
 `esast_gen_pass.jac`'s import list the file was present and simply would not
@@ -28,10 +28,8 @@ import jaclang.compiler.ir.schema as uni;
 import jaclang.compiler.session.compiler as compiler_mod;
 import from jaclang.meta_importer { JacSourceCompileError }
 import from jaclang.compiler.bootstrap.source_failures { CompilerSourceError }
-import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.pipeline.schedule { get_py_code_gen }
-import from jaclang.compiler.pipeline.pass_base { Transform }
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 
 # The #8215 defect shape: an import list whose separator went missing.
@@ -50,50 +48,35 @@ glob BROKEN_SRC = (
 
 glob COMPILER_SRC = os.path.join(
          os.path.dirname(os.path.dirname(compiler_mod.__file__)),
-         'compiler',
-         'passes',
-         'ecmascript',
+         'backends',
+         'es',
          'esast_gen_pass.jac'
      ),
      USER_SRC = os.path.join(tempfile.gettempdir(), 'not_the_compiler.jac');
 
-"""Stand in for a backend module whose source failed to compile."""
-def _broken_backend(source_path: str) -> types.ModuleType {
-    stub = types.ModuleType(ES_BACKEND);
-    def _getattr(_name: str) -> types.ModuleType {
-        raise JacSourceCompileError(
-            f"{source_path} failed to compile:\n"
-            "error[E0005]: Unexpected token 'E5099'",
-            source_path
-        );
-    }
-    stub.__getattr__ = _getattr;
-    return stub;
+def _broken_backend(source_path: str) -> ImportError {
+    return JacSourceCompileError(
+        f"{source_path} failed to compile:\n" "error[E0005]: Unexpected token 'E5099'",
+        source_path
+    );
 }
 
-"""Stand in for a partial build: the backend package is there, the pass is not.
-
-No `__path__` and no `EsastGenPass`, so `from ... import EsastGenPass` raises a
-plain `ImportError` -- the shape a dev-lane bootstrap or a build without the
-optional backend produces, and the one the fallback exists for.
-"""
-def _absent_backend -> types.ModuleType {
-    return types.ModuleType(ES_BACKEND);
+def _absent_backend -> ImportError {
+    return ModuleNotFoundError("The ES backend is absent");
 }
 
-"""Run `get_py_code_gen` with `stub` standing in for the ES backend."""
-def _codegen_with(stub: types.ModuleType) -> list[type[Transform]] {
-    had = ES_BACKEND in sys.modules;
-    saved: types.ModuleType = sys.modules[ES_BACKEND] if had else stub;
-    sys.modules[ES_BACKEND] = stub;
-    try {
-        return get_py_code_gen();
-    } finally {
-        if had {
-            sys.modules[ES_BACKEND] = saved;
-        } else {
-            sys.modules.pop(ES_BACKEND, None);
+"""Fail the backend import at the scheduler's module-loading boundary."""
+def _codegen_with(failure: ImportError) -> list[PassIdentity] {
+    import from unittest.mock { patch }
+    original = importlib.import_module;
+    def load(name: str, package: str | None = None) -> types.ModuleType {
+        if name == ES_BACKEND {
+            raise failure;
         }
+        return original(name, package);
+    }
+    with patch.object(importlib, "import_module", side_effect=load) {
+        return get_py_code_gen(native=False);
     }
 }
 
@@ -177,12 +160,12 @@ test "a broken compiler source fails loudly instead of dropping backends" {
 
 test "an absent backend still degrades to the bytecode-only fallback" {
     sched = _codegen_with(_absent_backend());
-    assert [p.__name__ for p in sched]
+    assert [p.value for p in sched]
         == ["NativeImportFactsPass", "JcirGenPass", "JcirBytecodeGenPass"];
 }
 
 test "a broken module outside the compiler tree still degrades" {
     sched = _codegen_with(_broken_backend(USER_SRC));
-    assert [p.__name__ for p in sched]
+    assert [p.value for p in sched]
         == ["NativeImportFactsPass", "JcirGenPass", "JcirBytecodeGenPass"];
 }

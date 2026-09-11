@@ -48,6 +48,7 @@ def compile_fixture(fixture_name: str) -> tuple[EsastGenPass, JacProgram, str] {
         f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
     es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=ReactBackend());
+    assert isinstance(es_pass, EsastGenPass);
     assert not prog.errors_had , (
         f"ES codegen errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );

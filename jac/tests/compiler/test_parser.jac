@@ -127,6 +127,7 @@ test "all ast has normalize" {
         "AstImplOnlyNode",
         "Expr",
         "AtomExpr",
+        "TypedNode",
         "ElementStmt",
         "ArchBlockStmt",
         "EnumBlockStmt",

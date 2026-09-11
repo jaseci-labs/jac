@@ -24,9 +24,11 @@ glob REPO: str = str(Path(JAC_ROOT).parent),
      ),
      PROBE: str = """
 import hashlib, sys
+from jaclang.compiler.backends.common.artifact_store import artifact_for
 from jaclang.compiler.session.session import JacProgram
 from jaclang.compiler.session.options import CompileOptions
-mod = JacProgram().compile(file_path=sys.argv[1], options=CompileOptions())
+program = JacProgram()
+mod = program.compile(file_path=sys.argv[1], options=CompileOptions())
 bc = getattr(artifact_for(mod), "py_bytecode", None) if mod is not None else None
 print("SHA=" + (hashlib.sha256(bc).hexdigest() if bc else "NONE"))
 print("ORDER=" + ",".join(tuple({"cron", "interval", "trigger", "date", "walker"})))

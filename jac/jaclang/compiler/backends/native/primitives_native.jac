@@ -1692,6 +1692,9 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             return None;
         }
         arg_val = args[0];
+        if ctx.pass_ref._is_bytes_value(arg_val) {
+            arg_val = ctx.pass_ref._bytes_data_ptr(arg_val);
+        }
         b = ctx.pass_ref.builder;
         byte_val = b.load(arg_val, name="ord.byte");
         return b.zext(byte_val, ir.IntType(64), name="ord.val");

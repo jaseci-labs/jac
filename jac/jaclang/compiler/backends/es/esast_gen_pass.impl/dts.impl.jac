@@ -6,7 +6,17 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
     stubs: list[es.Statement] = [];
 
     osp_class_map: dict[str, es.ClassDeclaration] = {};
+    emitted_enums: set[str] = set();
     for item in self._merge_module_bodies(nd) {
+        if isinstance(item, uni.Enum)
+            and item.name is not None
+            and (
+                item.code_context == CodeContext.CLIENT
+                or item.name.value in self.shared_arch_names
+            )
+            and artifact_for(item).es_ast is not None {
+            emitted_enums.add(item.name.value);
+        }
         if (
             isinstance(item, uni.Archetype)
             and (item.name is not None)
@@ -19,6 +29,9 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
         type_name = self._boundary_type_name(info);
         boundary_types = manifest.boundary_types_for(info.type_scope);
         if info.kind == "enum" {
+            if type_name in emitted_enums {
+                continue;
+            }
             enum_props: list[es.Property] = [];
             for (member_name, member_val) in info.enum_members {
                 key = es.Identifier(name=member_name);

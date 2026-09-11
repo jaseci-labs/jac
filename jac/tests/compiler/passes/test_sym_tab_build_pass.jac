@@ -14,7 +14,7 @@ glob FIXTURES = os.path.join(
 
 test "no dupl symbols" {
     file_path = os.path.join(FIXTURES, "no_dupls.jac");
-    mod = JacProgram().compile(file_path);
+    mod = JacProgram().compile(file_path, symtab_ir_only=True);
     assert len(mod.sym_tab.names_in_scope.values()) == 3;
     for i in ["[Symbol(a,", "Symbol(Man,", "Symbol(p,"] {
         assert i in str(mod.sym_tab.names_in_scope.values());

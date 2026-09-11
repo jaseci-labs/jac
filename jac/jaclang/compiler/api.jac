@@ -74,6 +74,9 @@ def compile_application(
         if path == entry_path and entry_module is None {
             entry_module = module;
         }
+        if not context.analysis.has_module(module) and context.errors_had {
+            continue;
+        }
         dependencies = package_sources(path, project_root);
         dependencies.update(context.iface_registry().direct_deps.get(path, {}));
         dependencies.update(
@@ -91,6 +94,7 @@ def compile_application(
             (context, dependency)
             for dependency in sorted(dependencies)
             if dependency.startswith(project_root + os.sep)
+                and dependency.endswith('.jac')
                 and os.path.isfile(dependency)
                 and not any(
                     part in ('.jac', 'node_modules', 'venv')

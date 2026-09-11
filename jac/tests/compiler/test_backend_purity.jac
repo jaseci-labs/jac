@@ -42,7 +42,7 @@ glob FORBIDDEN: dict[str, str] = {
      # at sites where the declaration IS the fact.
      SANCTIONED: dict[tuple, tuple] = {
          ("es/esast_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
-             4,
+             3,
              "return_type_is_jsx (#8314) reads the declared return annotation "
              "to pick a component's call ABI; the declaration is the fact, "
              "and the type checker keys component-hood off the same "
@@ -61,7 +61,7 @@ glob FORBIDDEN: dict[str, str] = {
              "classify_call fallback is deleted (#7418): call_kind is "
              "stamped authoritatively by the required inference schedule"
          ),
-         ("es/esast_gen_pass.impl/decls.impl.jac", "symbol_utils"): (
+         ("es/esast_gen_pass.jac", "symbol_utils"): (
              1,
              "return_type_is_jsx (#8314) reads the declared return annotation "
              "to record a component export; same declaration-surface "

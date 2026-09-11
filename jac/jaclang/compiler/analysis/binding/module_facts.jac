@@ -244,12 +244,12 @@ obj ModuleFacts {
         return names;
     }
 
-    static def shared_archetypes_for_context(
+    static def shared_type_declarations_for_context(
         module: Module, ctx: CodeContext
-    ) -> list[Archetype] {
-        shared: dict[(str, Archetype)] = {};
-        for arch in module.get_all_sub_nodes(Archetype) {
-            if (arch.name is not None) and isinstance(arch.parent, Module) {
+    ) -> list[Archetype | Enum] {
+        shared: dict[str, Archetype | Enum] = {};
+        for arch in module.body {
+            if isinstance(arch, (Archetype, Enum)) and arch.name is not None {
                 shared[arch.name.value] = arch;
             }
         }
@@ -260,7 +260,7 @@ obj ModuleFacts {
         for stmt in ModuleFacts.iter_context_stmts(module, ctx) {
             worklist.extend(ModuleFacts.archetype_refs(stmt));
         }
-        result: dict[(str, Archetype)] = {};
+        result: dict[str, Archetype | Enum] = {};
         visited: set[str] = set();
         while worklist {
             name = worklist.pop();

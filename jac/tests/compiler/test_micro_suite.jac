@@ -43,7 +43,8 @@ def micro_suite_combined_test(rel_path: str) -> None {
     }
 
     # --- Phase 1: Compile + codegen checks ---
-    code_gen = JacProgram().compile(filename);
+    original_program = JacProgram();
+    code_gen = original_program.compile(filename);
     assert code_gen is not None and artifact_for(code_gen).py_ast is not None , (
         f"Compilation failed for {filename}"
     );
@@ -91,13 +92,15 @@ def micro_suite_combined_test(rel_path: str) -> None {
     assert len(from_jac_str) > 10 , f"AST dump too short for {filename}";
 
     # --- Phase 2: Re-compile + parent scrub (tree parent test) ---
-    code_gen2 = JacProgram().compile(filename);
+    second_program = JacProgram();
+    code_gen2 = second_program.compile(filename);
     assert parent_scrub(code_gen2) , f"Parent scrub failed (pass 2) for {filename}";
 
     # --- Phase 3: Unparse roundtrip ---
     before = ast3.dump(artifact_for(code_gen).py_ast[0], indent=2);
     unparsed = unparse_module(code_gen);
-    code_gen_unparsed = JacProgram().compile(use_str=unparsed, file_path=filename);
+    unparsed_program = JacProgram();
+    code_gen_unparsed = unparsed_program.compile(use_str=unparsed, file_path=filename);
     assert code_gen_unparsed is not None
         and artifact_for(code_gen_unparsed).py_ast is not None , (
         f"Re-compilation from unparse failed for {filename}"
@@ -120,7 +123,10 @@ def micro_suite_combined_test(rel_path: str) -> None {
     # --- Phase 4: Format roundtrip ---
     format_prog = JacProgram.jac_file_formatter(filename);
     code_gen_format = artifact_for(format_prog.mod.main).jac;
-    code_gen_fmt = JacProgram().compile(use_str=code_gen_format, file_path=filename);
+    formatted_program = JacProgram();
+    code_gen_fmt = formatted_program.compile(
+        use_str=code_gen_format, file_path=filename
+    );
     if "circle_clean_tests.jac" in filename {
         tokens = code_gen_format.split();
         num_test = 0;

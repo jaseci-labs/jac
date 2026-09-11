@@ -151,7 +151,7 @@ impl EsastGenPass.exit_module with uni.Module exit {
     for stmt in merged_body {
         if artifact_for(stmt).es_ast {
             is_shared_arch = (
-                isinstance(stmt, uni.Archetype)
+                isinstance(stmt, (uni.Archetype, uni.Enum))
                 and (stmt.name is not None)
                 and (stmt.name.value in self.shared_arch_names)
             );

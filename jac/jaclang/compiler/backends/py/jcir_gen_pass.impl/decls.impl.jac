@@ -127,7 +127,7 @@ impl JcirGenPass.exit_archetype with Archetype exit {
                             ['__jac_edge_endpoints__', self.nod('Store', [], [])]
                         )
                     ],
-                    self.call_node(self.builtin_name('staticmethod'), [thunk], [])
+                    self.call_node(self.name_load('staticmethod'), [thunk], [])
                 ]
             )
         );

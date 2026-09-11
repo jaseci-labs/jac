@@ -2202,7 +2202,14 @@ glob PASS_REGISTRY: dict[PassIdentity, PassSpec] = {
              PassIdentity.RegionInferPass,
              _create_RegionInferPass,
              PassScope.MODULE,
-             frozenset({RelationFamily.TYPES, RelationFamily.FLOW}),
+             frozenset(
+                 {
+                     RelationFamily.STRUCTURE,
+                     RelationFamily.BINDING,
+                     RelationFamily.TYPES,
+                     RelationFamily.FLOW
+                 }
+             ),
              AnalysisContract((), (AnalysisFact.REGION_INFER, ))
          ),
          PassIdentity.SemDefMatchPass: PassSpec(
