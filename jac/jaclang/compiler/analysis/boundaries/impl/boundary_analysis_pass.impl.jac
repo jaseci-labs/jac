@@ -510,7 +510,7 @@ impl BoundaryAnalysisPass._register_type_import(
 ) -> bool {
     import from jaclang.compiler.analysis.boundaries.classify { import_provider_app }
     info = self._collect_boundary_type(item.name.value, source_mod);
-    if info is None or info.kind not in ('obj', 'enum', 'node', 'edge') {
+    if info is None or info.kind not in ('obj', 'enum', 'node', 'edge', 'walker') {
         return False;
     }
     if caller_ctx == InteropContext.SERVER and info.kind in ('node', 'edge') {
@@ -518,6 +518,13 @@ impl BoundaryAnalysisPass._register_type_import(
         return True;
     }
     local_name = item.alias.sym_name if item.alias else item.name.value;
+    is_walker = info.kind == 'walker';
+    endpoint_id = '';
+    if is_walker {
+        import from jaclang.compiler.analysis.boundaries.identity { endpoint_key }
+        provider = self.prog.load_dependency_module(info.type_scope, need_tree=True);
+        endpoint_id = endpoint_key(provider, 'walker', info.name);
+    }
     artifact_for(self.ir_in).interop_manifest.bindings[local_name] = InteropBinding(
         name=item.name.value,
         source_context=InteropContext.SERVER,
@@ -525,7 +532,10 @@ impl BoundaryAnalysisPass._register_type_import(
         ret_type=item.name.value,
         source_module=nd.from_loc.base_module_name if nd.from_loc else '',
         type_scope=(source_mod or self.ir_in).loc.mod_path,
-        kind='type',
+        kind='walker' if is_walker else 'type',
+        param_names=[name for (name, _) in info.fields] if is_walker else [],
+        param_types=[tag for (_, tag) in info.fields] if is_walker else [],
+        endpoint_id=endpoint_id,
         provider_app=import_provider_app(nd) or ''
     );
     return True;
@@ -548,6 +558,11 @@ impl BoundaryAnalysisPass._provider_module_of(nd: Import) -> (Module | None) {
     }
     linked_mod = symbol_linked_source_module(nd);
     if linked_mod is not None and linked_mod is not self.ir_in {
+        if linked_mod.stub_only {
+            return self.prog.load_dependency_module(
+                linked_mod.loc.mod_path, need_tree=True
+            );
+        }
         return linked_mod;
     }
     resolved = bridgeable_import_target(nd);

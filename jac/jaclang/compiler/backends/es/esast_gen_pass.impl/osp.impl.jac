@@ -934,7 +934,10 @@ impl EsastGenPass._build_spawn_runtime_call(
         }
     }
     if item is None {
-        item = self._import_item_named(parts.`walker.walker_name);
+        local_name = call_target.sym_name
+            if isinstance(call_target, uni.NameAtom)
+            else parts.`walker.walker_name;
+        item = self._import_item_named(local_name);
     }
     provider_opts = self._sv_provider_options(item.from_parent)
         if item is not None
@@ -947,10 +950,17 @@ impl EsastGenPass._build_spawn_runtime_call(
     }
     import from jaclang.compiler.analysis.boundaries.identity { endpoint_key }
     owner = symbol_owner_archetype(walker_sym) if walker_sym is not None else None;
-    if owner is not None and isinstance(provider_opts, es.ObjectExpression) {
+    binding_name = (item.alias.sym_name if item.alias else item.name.value)
+        if item is not None
+        else parts.`walker.walker_name;
+    binding = artifact_for(self.ir_in).interop_manifest.bindings.get(binding_name);
+    key = binding.endpoint_id if binding is not None else '';
+    if not key and owner is not None {
         key = endpoint_key(
             owner.find_parent_of_type(uni.Module), "walker", owner.sym_name
         );
+    }
+    if key and isinstance(provider_opts, es.ObjectExpression) {
         provider_opts.properties.append(
             es.Property(
                 key=es.Literal(value="contract"),
