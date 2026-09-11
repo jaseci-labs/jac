@@ -523,9 +523,9 @@ impl NaIRGenPass._codegen_dict_access(
     if _gh is not None {
         _get_args.append(_gh);
     }
-    result = self.builder.call(_get_fn, _get_args, name="dict.get");
+    borrowed = self.builder.call(_get_fn, _get_args, name="dict.get");
     self._release_owned_args([key_val], op="dict_get");
-    result = self._finish_borrowed_read(target_val, result);
+    result = self._finish_borrowed_read(target_val, borrowed);
     self._emit_runtime_raise(not_exists, "KeyError", "key not found");
     return result;
 }
