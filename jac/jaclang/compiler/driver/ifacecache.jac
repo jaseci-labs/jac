@@ -371,21 +371,21 @@ obj IfaceRegistry {
     }
 
     @contextmanager
-    def _cache_scope -> Iterator[None] {
+    def _compilation_scope -> Iterator[None] {
         import from jaclang.compiler.driver.compilation_context {
-            cache_scope,
+            compilation_scope,
             context_identity
         }
         identity = ''
             if self.prog._get_compiler().selfhost.is_selfhost(self.prog)
             else self.prog.context_key or context_identity(self.prog.options);
-        with cache_scope(identity, self.prog.options) {
+        with compilation_scope(identity, self.prog.options) {
             yield ;
         }
     }
 
     def _module_jir(resolved: str) -> tuple[bytes, str] | None {
-        with self._cache_scope() {
+        with self._compilation_scope() {
             return self._module_jir_in_context(resolved);
         }
     }
@@ -396,19 +396,19 @@ obj IfaceRegistry {
         if actual is not self.prog {
             return actual.iface_registry().ensure(path, compile_on_miss);
         }
-        with self._cache_scope() {
+        with self._compilation_scope() {
             return self._ensure_in_context(path, compile_on_miss);
         }
     }
 
     def serve(compiler: any, resolved: str, options: any) -> any {
-        with self._cache_scope() {
+        with self._compilation_scope() {
             return self._serve_in_context(compiler, resolved, options);
         }
     }
 
     def prepare_interface(resolved: str, mod: any) -> bool {
-        with self._cache_scope() {
+        with self._compilation_scope() {
             return self._prepare_interface_in_context(resolved, mod);
         }
     }
@@ -416,7 +416,7 @@ obj IfaceRegistry {
     def persist_after_compile(
         resolved: str, mod: any, options: any, err_start: int, warn_start: int
     ) {
-        with self._cache_scope() {
+        with self._compilation_scope() {
             self._persist_in_context(resolved, mod, options, err_start, warn_start);
         }
     }

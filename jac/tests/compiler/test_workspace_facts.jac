@@ -41,13 +41,16 @@ test "only declared entries have a filesystem app identity" {
 
 test "workspace probes scale with modules within a compilation request" {
     import from unittest.mock { patch }
-    import from jaclang.compiler.driver.compilation_context { context_app }
+    import from jaclang.compiler.driver.compilation_context {
+        compilation_scope,
+        context_app
+    }
     with TemporaryDirectory() as td {
         base = Path(td);
         workspace(base);
         path = str(base / 'shared.jac');
         options = CompileOptions(project_root=td, target_app='web');
-        with cache_scope('web', options) {
+        with compilation_scope('web', options) {
             with patch('os.lstat', wraps=os.lstat) as probe {
                 app = context_app(path);
                 assert app is not None and app.name == 'web';
@@ -60,7 +63,7 @@ test "workspace probes scale with modules within a compilation request" {
                         - first} extra filesystem probes'
                 );
             }
-            with cache_scope(
+            with compilation_scope(
                 'api', CompileOptions(project_root=td, target_app='api')
             ) {
                 other = context_app(path);
@@ -72,7 +75,7 @@ test "workspace probes scale with modules within a compilation request" {
         stamp = os.path.getmtime(toml) + 2.0;
         toml.write_text(CONFIG.replace('web-app', 'desktop'));
         os.utime(toml, (stamp, stamp));
-        with cache_scope('web', options) {
+        with compilation_scope('web', options) {
             refreshed = context_app(path);
             assert refreshed is not None and refreshed.kind == 'desktop' , (
                 f'workspace edit was not observed: {refreshed}'
