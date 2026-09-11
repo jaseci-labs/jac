@@ -1,10 +1,10 @@
 node Spot {
-    def helper -> None {
+    def helper {
         report "helper";
     }
 
     can greet with Visitor entry {
-        def inner -> None {
+        def inner {
             report "inner";
         }
         report "hi";
@@ -15,7 +15,7 @@ node Spot {
 
 walker Visitor {
     obj Tally {
-        def bump -> None {
+        def bump {
             report "nested";
         }
     }
@@ -29,11 +29,11 @@ walker Visitor {
 
 walker Later;
 
-impl Later {
+impl Later{
     can go with Root entry;
 }
 
-impl Later.go {
+impl Later.go{
     report "impl";
 }
 
