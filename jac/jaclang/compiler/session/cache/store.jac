@@ -13,6 +13,7 @@ def atomic_write(path: Path, payload: bytes) {
             stream.write(payload);
             stream.flush();
         }
+        assert temporary is not None;
         os.replace(temporary, path);
     } finally {
         if temporary is not None {

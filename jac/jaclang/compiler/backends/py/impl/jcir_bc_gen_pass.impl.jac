@@ -14,13 +14,14 @@ impl JcirBytecodeGenPass.process_modules(root_module: Module) -> None {
 impl JcirBytecodeGenPass.transcribe_module(mod: Module) -> None {
     import ast as ast3;
     import from jaclang.compiler.backends.py.codegen_shim { compile_ir }
-    if not artifact_for(mod).jcir {
+    jcir = artifact_for(mod).jcir;
+    if not jcir {
         if not artifact_for(mod).py_bytecode {
             self.emit(E5040, node_override=mod, path=mod.loc.mod_path);
         }
         return;
     }
-    result = compile_ir(artifact_for(mod).jcir);
+    result = compile_ir(jcir);
     for d in result.diags {
         self.emit(E5043, node_override=mod, error=d.message);
     }
