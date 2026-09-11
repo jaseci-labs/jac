@@ -2,7 +2,24 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.37.12 (Latest Release)
+## jaclang 0.37.13 (Latest Release)
+
+### New Features
+
+- **Webhook walkers can accept provider-signed deliveries** (#9038): `@restspec(protocol=APIProtocol.WEBHOOK, scheme="github")` verifies `X-Hub-Signature-256` over the raw body against `[scale.webhook].github_secret` instead of requiring an API key and a timestamped signature, runs the walker as the system identity, and copies `X-GitHub-Event` and `X-GitHub-Delivery` into declared `event` and `delivery` fields. The default scheme is unchanged and both kinds of webhook walker can coexist. A github-scheme walker fails at boot, with a message naming the walker, when the secret is empty or the system identity is missing, and deliveries that are not `application/json` are refused with 415.
+
+### Bug Fixes
+
+- `async def ... by llm()` now works on every LLM class: the streaming path no longer raises `TypeError: 'async_generator' object can't be awaited` on `MockLLM`, `LocalLLM`, `ModelPool` or a user-defined `BaseLLM` subclass, and `Model("mockllm")` / `Model("local:...")` now reach their delegate on the async path instead of asking a provider for a model it has never heard of.
+- **Fix: byLLM's `Image` no longer trips `jac check` when pillow is installed** (#9002): PIL types `Image.open()` as `ImageFile`, so the checker could not see the inherited `.format` and `.save`. Encoding behaviour is unchanged.
+- `jac check` no longer fails intermittently on files the change never touched: a class inheritance chain (MRO) was computed once from a base the analysis cache had published but not yet populated and then kept forever, so grandparent members and subtype checks failed at random (E1053 "Cannot assign StaticTarget to parameter of type ClientTarget", E1030 "has no attribute" on inherited members); ancestry caches now record what they were built from and rebuild when a base has grown, never shrinking and never discarding an ancestry the checker did not compute, and a class typed against an unresolved base re-binds it on first use.
+- **Fix: Nested values from shared modules reconstruct across services again**: A boundary type's identity now carries the app only when its module is an app's entry file. A shared module was tagged with whichever app happened to compile it, so the provider and each consumer computed different identities for the same type and nested fields declared in shared modules came back as plain dictionaries. The `typed_boundary` scale fixture also names its entry points as modules, as the `entry-point` validator now requires.
+- **Fix: Restore application context on cached compiler interfaces**: Hydrated dependencies retain their application's identity, kind, and root, matching freshly compiled modules when the same source is used by multiple apps.
+- **Fix: a profile's `[apps.<name>.scale]` tables reach the deployed manifests** (#8995): the deploy fleet read its project config without the active profile, so `JAC_PROFILE` retuned `[scale.gateway]` but silently dropped every per-app setting in the same profile file, including `deployment_overlay`. The fleet now resolves the profile with the same rule the `[scale.*]` reader uses.
+- Release compiler syntax trees before bundling standalone client builds while preserving native WASM assets and boundary metadata.
+- Balance native string references and constructor temporaries across compiler calls and scope cleanup.
+
+## jaclang 0.37.12
 
 ### Breaking Changes
 
