@@ -39,6 +39,40 @@ test "only declared entries have a filesystem app identity" {
     }
 }
 
+test "workspace probes scale with modules within a compilation request" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.compilation_context { context_app }
+    with TemporaryDirectory() as td {
+        base = Path(td);
+        workspace(base);
+        path = str(base / 'shared.jac');
+        options = CompileOptions(project_root=td, target_app='web');
+        with cache_scope('web', options) {
+            with patch('os.lstat', wraps=os.lstat) as probe {
+                app = context_app(path);
+                assert app is not None and app.name == 'web';
+                first = probe.call_count;
+                for i in range(40) {
+                    assert context_app(path) is app;
+                }
+                assert probe.call_count == first , (
+                    f'repeated module facts made {probe.call_count - first} extra filesystem probes'
+                );
+            }
+            with cache_scope('api', CompileOptions(project_root=td, target_app='api')) {
+                other = context_app(path);
+                assert other is not None and other.name == 'api';
+            }
+            assert context_app(path) is app;
+        }
+        (base / 'jac.toml').write_text(CONFIG.replace('web-app', 'desktop-app'));
+        with cache_scope('web', options) {
+            refreshed = context_app(path);
+            assert refreshed is not None and refreshed.kind == 'desktop-app';
+        }
+    }
+}
+
 test "a normal import inherits its app and an entry import changes context" {
     with TemporaryDirectory() as td {
         base = Path(td);
