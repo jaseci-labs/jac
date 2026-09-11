@@ -1,3 +1,5 @@
+import type from jaclang.compiler.ir.syntax.nodes { Ability, Archetype }
+
 obj ImportBoundaryFacts {
     has native_from_path: (str | None) = None,
         from_loc_resolved: (str | None) = None,

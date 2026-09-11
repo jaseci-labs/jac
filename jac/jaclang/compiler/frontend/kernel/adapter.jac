@@ -6,6 +6,7 @@ import sys;
 import from ctypes { c_char_p, c_double, c_int64, c_void_p, cast, py_object }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 import type from jaclang.compiler.pipeline.pass_base { PassResult }
+import type from jaclang.compiler.pipeline.contracts { PassIdentity }
 
 glob CODE_INT: int = 1,
      CODE_BOOL: int = 2,
@@ -422,9 +423,10 @@ class NativeCompiler {
     def prepare_early(self: NativeCompiler, context: str) {
         if self.supports_early {
             import sys;
-            schedule = sys.modules.get(
-                'jaclang.compiler.pipeline.schedule'
-            )?.early_pipeline;
+            schedule_module = sys.modules.get('jaclang.compiler.pipeline.schedule');
+            schedule: Callable[[], list[tuple[int, PassIdentity]]] | None = getattr(
+                schedule_module, 'early_pipeline', None
+            );
             order = 0;
             if schedule is not None {
                 for (index, item) in enumerate(schedule()) {

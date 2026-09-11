@@ -8,7 +8,7 @@ import from jaclang.compiler.ir.schema {
 }
 import from jaclang.compiler.ir.enums { Tokens as Tok }
 
-type CallExpr := FuncCall | BinaryExpr;
+type CallExpr = FuncCall | BinaryExpr;
 
 def _forward(expr: BinaryExpr) -> bool {
     if not isinstance(expr.op, Token)
@@ -28,7 +28,7 @@ def call_target(expr: CallExpr) -> Expr {
 
 def call_params(expr: CallExpr) -> list[Expr | KWPair] {
     if isinstance(expr, FuncCall) {
-        return expr.params or [];
+        return list(expr.params or []);
     }
     argument = expr.left if _forward(expr) else expr.right;
     if isinstance(argument, TupleVal) and argument.values {

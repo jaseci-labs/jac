@@ -267,13 +267,14 @@ impl JacCompiler._get_bytecode(
         result = self.compile(
             file_path=full_target, target_program=actual_program, options=options
         );
-        if artifact_for(result).py_bytecode {
+        compiled_bytecode = artifact_for(result).py_bytecode;
+        if compiled_bytecode {
             actual_program.hub_cache_stamp(full_target);
             self._persist_module_cache(full_target, result, actual_program);
             if is_internal {
                 note_compiler_source_failure(full_target, '');
             }
-            return marshal.loads(artifact_for(result).py_bytecode);
+            return marshal.loads(compiled_bytecode);
         }
         if is_internal {
             note_compiler_source_failure(

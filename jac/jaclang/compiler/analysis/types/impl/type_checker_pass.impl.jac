@@ -1303,8 +1303,7 @@ impl TypeCheckPass._install_client_state_setters -> None {
 }
 
 impl TypeCheckPass.transform(ir_in: Module) -> Module {
-    evaluator = self.prog.get_type_evaluator();
-    self.evaluator = evaluator;
+    evaluator = self.evaluator;
     previous_pass = evaluator._pass;
     previous_quiet = evaluator.ct_quiet;
     evaluator._pass = self;
@@ -2052,5 +2051,6 @@ impl TypeCheckPass._provably_in_range(nd: Expr, name: str) -> bool {
 }
 
 impl TypeCheckPass.postinit -> None {
+    self.evaluator = self.prog.get_type_evaluator();
     super.postinit();
 }

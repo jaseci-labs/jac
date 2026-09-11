@@ -178,7 +178,8 @@ def _build_catalog_inner(
     );
     data = encode_catalog(product.prepared);
     atomic_write(Path(out_path), data);
-    manifest: dict[str, object] = product.statistics.as_dict();
+    manifest: dict[str, object] = {};
+    manifest.update(product.statistics.as_dict());
     manifest["bytes"] = len(data);
     manifest["key"] = catalog_key(pkg);
     manifest["load_failures"] = product.load_failures;
@@ -230,10 +231,9 @@ def main(argv: list[str]) -> int {
         sys.stderr.write(f"stubcat: build failed: {type(e).__name__}: {e}\n");
         return 1;
     }
-    if manifest["load_failures"] {
-        sys.stderr.write(
-            f"stubcat: {len(manifest['load_failures'])} modules failed to load\n"
-        );
+    load_failures = manifest["load_failures"];
+    if isinstance(load_failures, list) and load_failures {
+        sys.stderr.write(f"stubcat: {len(load_failures)} modules failed to load\n");
     }
     return 0;
 }
