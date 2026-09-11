@@ -127,18 +127,34 @@ impl PgIdentityStorage.find_user_by_identity(value: str) -> dict[str, any] | Non
     return _pg_public(rows[0][0]) if rows else None;
 }
 
-impl PgIdentityStorage.identity_taken(value: str) -> bool {
+impl PgIdentityStorage.identity_taken(value: str, for_user: str = '') -> bool {
     normalized = value.lower().strip();
     rows = self.store.rows(
         """
-        SELECT 1 FROM identity_lookups lk
+        SELECT lk.user_id FROM identity_lookups lk
         JOIN identity_users t ON lk.user_id = t.user_id
         WHERE lk.value_normalized = :v
           AND COALESCE(t.doc->>'status', 'active') <> 'disabled'
         """,
         {'v': normalized}
     );
-    return bool(rows);
+    return bool(rows) and str(rows[0][0]) != for_user;
+}
+
+impl PgIdentityStorage._claim_lookup(value_normalized: str, user_id: str) -> None {
+    rows = self.store.rows(
+        """
+        INSERT INTO identity_lookups (value_normalized, user_id)
+        VALUES (:v, :u)
+        ON CONFLICT (value_normalized) DO UPDATE SET user_id = identity_lookups.user_id
+        WHERE identity_lookups.user_id = EXCLUDED.user_id
+        RETURNING user_id
+        """,
+        {'v': value_normalized, 'u': user_id}
+    );
+    if not rows {
+        raise IdentityTakenError();
+    }
 }
 
 impl PgIdentityStorage.delete_user(user_id: str) -> bool {
@@ -218,8 +234,9 @@ impl PgIdentityStorage._add_identity(user_id: str, identity: dict[str, any]) -> 
     if not rows {
         return False;
     }
-    try {
-        if identity.get('type') == 'sso' and identity.get('provider') {
+    identities = list(_pg_load_doc(rows[0][0]).get('identities') or []);
+    if identity.get('type') == 'sso' and identity.get('provider') {
+        try {
             self.store.rows(
                 """
                 INSERT INTO sso_lookups (provider, external_id, user_id)
@@ -231,22 +248,21 @@ impl PgIdentityStorage._add_identity(user_id: str, identity: dict[str, any]) -> 
                     'u': user_id
                 }
             );
-        } elif identity.get('value_normalized') {
-            self.store.rows(
-                """
-                INSERT INTO identity_lookups (value_normalized, user_id)
-                VALUES (:v, :u)
-                """,
-                {'v': identity['value_normalized'], 'u': user_id}
-            );
+        } except Exception as e {
+            if _pg_unique_violation(e) {
+                raise IdentityTakenError();
+            }
+            raise;
         }
-    } except Exception as e {
-        if _pg_unique_violation(e) {
-            raise IdentityTakenError();
+    } elif identity.get('value_normalized') {
+        for held in identities {
+            if held.get('type') == identity.get('type')
+                and held.get('value_normalized') == identity['value_normalized'] {
+                raise IdentityTakenError();
+            }
         }
-        raise;
+        self._claim_lookup(identity['value_normalized'], user_id);
     }
-    identities = list(_pg_load_doc(rows[0][0]).get('identities') or []);
     identities.append(identity);
     patch = {'identities': identities, 'updated_at': datetime.now(UTC).isoformat()};
     self.store.rows(
@@ -334,22 +350,10 @@ impl PgIdentityStorage._replace_username(
         for i in identities
         if i.get('type') == 'username'
     ];
-    try {
-        self.store.rows(
-            """
-            INSERT INTO identity_lookups (value_normalized, user_id)
-            VALUES (:v, :u)
-            """,
-            {'v': identity['value_normalized'], 'u': user_id}
-        );
-    } except Exception as e {
-        if _pg_unique_violation(e) {
-            raise IdentityTakenError();
-        }
-        raise;
-    }
+    still_used = {str(i.get('value_normalized') or '') for i in kept};
+    self._claim_lookup(identity['value_normalized'], user_id);
     for old in old_values {
-        if old and old != identity['value_normalized'] {
+        if old and old != identity['value_normalized'] and old not in still_used {
             self.store.rows(
                 'DELETE FROM identity_lookups WHERE value_normalized = :v AND user_id = :u',
                 {'v': old, 'u': user_id}
