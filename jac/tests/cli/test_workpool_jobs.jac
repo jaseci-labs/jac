@@ -45,3 +45,60 @@ test "test runner auto jobs respect the test worker retirement ceiling" {
         assert resolve_jobs(2) == 2 , "an explicit worker count must remain explicit";
     }
 }
+
+test "one test worker recycles while jobs zero stays inline" {
+    import json;
+    import subprocess;
+    import sys;
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.cli.workpool { pool_available }
+
+    if not pool_available() {
+        testskip("worker recycling requires fork");
+    }
+    with TemporaryDirectory() as tmp {
+        fixture_dir = Path(tmp);
+        files: list[str] = [];
+        outputs: list[Path] = [];
+        for index in range(2) {
+            output = fixture_dir / f"pid_{index}.txt";
+            fixture = fixture_dir / f"test_worker_{index}.jac";
+            fixture.write_text(
+                'import os;\nimport from pathlib { Path }\n'
+                    + 'test "worker" { Path('
+                    + repr(str(output))
+                    + ').write_text(str(os.getpid())); }\n'
+            );
+            files.append(str(fixture));
+            outputs.append(output);
+        }
+        probe = '''import json, os, sys
+from jaclang.testing.test_runner import run_tests
+result = run_tests(paths=sys.argv[2:], jobs=sys.argv[1])
+print("DRIVER=" + json.dumps(os.getpid()))
+sys.exit(result)
+''';
+        env = dict(os.environ);
+        env["JAC_TEST_RECYCLE"] = "1";
+        for jobs in ["1", "0"] {
+            result = subprocess.run(
+                [sys.executable, "-c", probe, jobs] + files,
+                cwd=tmp,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=180
+            );
+            assert result.returncode == 0 , result.stdout + result.stderr;
+            driver = int(json.loads(result.stdout.split("DRIVER=")[-1].strip()));
+            pids = [int(output.read_text()) for output in outputs];
+            if jobs == "1" {
+                assert driver not in pids , "one worker must not run in the driver";
+                assert len(set(pids)) == 2 , "the worker must retire after each file";
+            } else {
+                assert pids == [driver, driver] , "jobs zero must remain inline";
+            }
+        }
+    }
+}
