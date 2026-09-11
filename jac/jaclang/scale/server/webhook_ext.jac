@@ -222,6 +222,14 @@ obj WebhookExtension(ServerExtension) {
         ) {
             return _fail('RATE_LIMITED', 'Rate limit exceeded', 429);
         }
+        content_type = str(request.headers.get('Content-Type') or '').lower();
+        if not content_type.startswith('application/json') {
+            return _fail(
+                'UNSUPPORTED_MEDIA_TYPE',
+                'Set the webhook content type to application/json',
+                415
+            );
+        }
         header_fields = {
             'event': str(request.headers.get(GITHUB_EVENT_HEADER) or ''),
             'delivery': str(request.headers.get(GITHUB_DELIVERY_HEADER) or '')
@@ -371,7 +379,7 @@ obj WebhookExtension(ServerExtension) {
             scheme = walker_scheme(server, walker_name);
             if scheme == GITHUB_SCHEME {
                 self._system_user_id = self.github_prerequisites(server, walker_name);
-                description = f"Webhook for {walker_name}: X-Hub-Signature-256 over the raw body, no API key.";
+                description = f"Webhook for {walker_name}: X-Hub-Signature-256 over the raw JSON body, no API key.";
             } else {
                 needs_keys = True;
                 description = f"Webhook for {walker_name}: API key plus HMAC-SHA256 signature.";

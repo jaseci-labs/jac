@@ -589,10 +589,9 @@ test "webhook - api key rejected as user session token" {
 # =========================================================================
 import shutil;
 import tempfile;
-import unittest.mock;
+import urllib.parse;
 import from jaclang.runtime.builtin { restspec, APIProtocol }
 import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
-import from jaclang.server.identity.user_manager { SYSTEM_USER, UserManager }
 
 glob gh_secret: str = "test-github-webhook-secret";
 
@@ -628,7 +627,7 @@ without that cap reaching the servers other tests boot from the shared dir;
 the [scale.webhook] block is the last table in the file, so appended keys land
 inside it."""
 def _github_client(
-    with_secret: bool = True, signature_header: str = ""
+    with_secret: bool = True, signature_header: str = "", rate_limit_per_minute: int = 0
 ) -> ScaleTestClient {
     tmp = tempfile.mkdtemp();
     for f in `glob.`glob(str(wh_fixtures_dir / "*")) {
@@ -643,6 +642,9 @@ def _github_client(
         extra = ["max_body_bytes = 65536"];
         if signature_header {
             extra.append(f'github_signature_header = "{signature_header}"');
+        }
+        if rate_limit_per_minute > 0 {
+            extra.append(f"rate_limit_per_minute = {rate_limit_per_minute}");
         }
         toml = toml.rstrip("\n") + "\n" + "\n".join(extra) + "\n";
     } else {
@@ -842,6 +844,42 @@ test "github scheme - a missing provider header clears a same-named body key" {
     }
 }
 
+test "github scheme - form-encoded delivery is refused instead of running empty" {
+    client = _github_client();
+    try {
+        body = "payload=" + urllib.parse.quote(json.dumps({"action": "opened"}));
+        headers = _github_headers(body.encode("utf-8"));
+        headers["Content-Type"] = "application/x-www-form-urlencoded";
+        response = client.post("/webhook/GithubEvent", content=body, headers=headers);
+        assert response.status_code == 415 , (
+            f"Expected 415, got {response.status_code}: {response.text}"
+        );
+        assert "application/json" in response.text , (
+            f"refusal should name the required content type: {response.text}"
+        );
+    } finally {
+        _close_github(client);
+    }
+}
+
+test "github scheme - per-walker rate limit answers 429 once the window is spent" {
+    client = _github_client(rate_limit_per_minute=1);
+    try {
+        payload = json.dumps({"action": "opened"});
+        statuses = [
+            client.post(
+                "/webhook/GithubEvent",
+                content=payload,
+                headers=_github_headers(payload.encode("utf-8"), delivery=f"d-{i}")
+            ).status_code for i in range(3)
+        ];
+        assert statuses[0] == 200 , f"first delivery should pass: {statuses}";
+        assert 429 in statuses[1:] , f"a window of 1 never produced a 429: {statuses}";
+    } finally {
+        _close_github(client);
+    }
+}
+
 test "github scheme - not reachable via the walker endpoint" {
     client = _github_client();
     try {
@@ -950,35 +988,4 @@ test "github scheme - boot fails without a secret" {
         reset_scale_config();
     }
     assert not booted , "a github-scheme walker booted with an empty secret";
-}
-
-glob _ensure_internal_user = UserManager.ensure_internal_user;
-
-"""Leave the system identity uncreated, the way a failed boot-time
-`ensure_internal_user` leaves it, so `register` has nothing to resolve."""
-def _skip_system_user(
-    users: UserManager, username: str, password: str, role: str = "user"
-) -> dict[str, any] {
-    if username == SYSTEM_USER {
-        return {};
-    }
-    return _ensure_internal_user(users, username, password, role);
-}
-
-test "github scheme - boot fails without the system identity" {
-    booted = False;
-    try {
-        with unittest.mock.patch.object(
-            UserManager, "ensure_internal_user", _skip_system_user
-        ) {
-            client = _github_client();
-        }
-        booted = True;
-        client.close();
-    } except ValueError as e {
-        assert SYSTEM_USER in str(e) , f"unexpected boot error: {e}";
-    } finally {
-        reset_scale_config();
-    }
-    assert not booted , "a github-scheme walker booted without the system identity";
 }

@@ -1522,7 +1522,8 @@ walker GithubEvent {
 ```
 
 - No `X-API-Key`. The runtime verifies `X-Hub-Signature-256` (`sha256=` plus HMAC-SHA256 of the raw body, keyed by `[scale.webhook].github_secret`; the prefix is optional).
-- No timestamp window: GitHub sends none. Dedupe on `X-GitHub-Delivery` inside the walker.
+- No timestamp window: GitHub sends none, and only the body is signed, so `X-GitHub-Event` and `X-GitHub-Delivery` are not authenticated. Deduping on `X-GitHub-Delivery` absorbs GitHub's own redeliveries, not a captured body replayed with a new delivery id.
+- Deliveries must be `application/json`. GitHub's default content type (`application/x-www-form-urlencoded`, the JSON inside a `payload=` field) is refused with 415, so a misconfigured webhook shows up in the delivery log instead of running the walker with every field at its default.
 - The walker runs as the system identity (the user the scheduler runs jobs as, created at boot) and resolves its own tenant from the payload. Boot fails when `[scale.webhook].github_secret` is empty or that identity is missing.
 - `X-GitHub-Event` and `X-GitHub-Delivery` are copied into `event` and `delivery` when the walker declares them, and win over same-named body keys.
 - The body size cap and the per-minute rate limit apply; the rate limit is keyed by walker name.
