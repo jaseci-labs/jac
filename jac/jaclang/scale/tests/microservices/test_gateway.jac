@@ -1,6 +1,8 @@
 import os;
 import tempfile;
 import from pathlib { Path }
+import from unittest.mock { patch }
+import from jaclang.scale.config.config_loader { reset_scale_config }
 import from jaclang.scale.runtime.gateway.service_registry {
     ServiceRegistry,
     ServiceEntry,
@@ -1117,15 +1119,24 @@ test "admin redirect via testclient" {
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin</html>");
 
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
-    gw.setup();
+    with patch.dict(
+        os.environ, {"JAC_ADMIN_ENABLED": "true", "JAC_ADMIN_PASSWORD": "gw-test-pass"}
+    ) {
+        reset_scale_config();
+        try {
+            reg = ServiceRegistry();
+            gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
+            gw.setup();
 
-    import from jaclang.testing.testkit { ServingTestClient as TestClient }
-    client = TestClient(gw.app, follow_redirects=False);
-    resp = client.get("/admin");
-    assert resp.status_code == 302;
-    assert resp.headers["location"] == "/admin/";
+            import from jaclang.testing.testkit { ServingTestClient as TestClient }
+            client = TestClient(gw.app, follow_redirects=False);
+            resp = client.get("/admin");
+            assert resp.status_code == 302;
+            assert resp.headers["location"] == "/admin/";
+        } finally {
+            reset_scale_config();
+        }
+    }
 
     import shutil;
     shutil.rmtree(tmp);
@@ -1137,17 +1148,54 @@ test "admin index served at /admin/" {
     admin_dir.mkdir();
     (admin_dir / "index.html").write_text("<html>Admin Dashboard</html>");
 
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
-    gw.setup();
+    with patch.dict(
+        os.environ, {"JAC_ADMIN_ENABLED": "true", "JAC_ADMIN_PASSWORD": "gw-test-pass"}
+    ) {
+        reset_scale_config();
+        try {
+            reg = ServiceRegistry();
+            gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
+            gw.setup();
 
-    gw.server = None;
+            gw.server = None;
 
-    import from jaclang.testing.testkit { ServingTestClient as TestClient }
-    client = TestClient(gw.app);
-    resp = client.get("/admin/");
-    assert resp.status_code == 200;
-    assert "Admin Dashboard" in resp.text;
+            import from jaclang.testing.testkit { ServingTestClient as TestClient }
+            client = TestClient(gw.app);
+            resp = client.get("/admin/");
+            assert resp.status_code == 200;
+            assert "Admin Dashboard" in resp.text;
+        } finally {
+            reset_scale_config();
+        }
+    }
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
+test "disabled admin portal serves no console even on the static fallback" {
+    tmp = tempfile.mkdtemp();
+    admin_dir = Path(tmp) / "admin";
+    admin_dir.mkdir();
+    (admin_dir / "index.html").write_text("<html>Admin Dashboard</html>");
+
+    with patch.dict(os.environ, {"JAC_ADMIN_ENABLED": "false"}) {
+        reset_scale_config();
+        try {
+            reg = ServiceRegistry();
+            gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
+            gw.setup();
+
+            gw.server = None;
+
+            import from jaclang.testing.testkit { ServingTestClient as TestClient }
+            client = TestClient(gw.app, follow_redirects=False);
+            assert client.get("/admin").status_code == 404;
+            assert client.get("/admin/").status_code == 404;
+        } finally {
+            reset_scale_config();
+        }
+    }
 
     import shutil;
     shutil.rmtree(tmp);
@@ -1251,6 +1299,10 @@ obj _FakeScaleConfig {
     }
 
     def get_events_config -> dict {
+        return {"enabled": False};
+    }
+
+    def get_admin_config -> dict {
         return {"enabled": False};
     }
 }

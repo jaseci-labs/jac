@@ -563,13 +563,12 @@ obj EventsExtension(ServerExtension) {
 
 obj AdminExtension(ServerExtension, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv) {
     def register(server: JacAPIServer) -> None {
-        if not get_scale_config().get_admin_config().get('enabled', True) {
-            return;
-        }
         self.server = server;
         self.user_manager = server.user_manager;
         self._metrics = server.metrics;
-        self.register_admin_endpoints();
+        if not self.register_admin_endpoints() {
+            return;
+        }
         self.register_llm_telemetry_endpoints();
         self.register_workloads_endpoints();
         self.register_logs_endpoints();

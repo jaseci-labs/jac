@@ -63,7 +63,7 @@ Identity types: `username`, `email` (max one of each; login works with either). 
 
 ## Roles
 
-Scale HAS a built-in role system: `admin` / `system` / `user`, stored on the user and carried in JWT claims (login and `/user/me` return it). New registrations are `user`; the bootstrap admin is created on first start. Set roles via the admin API or the admin portal at `/admin`:
+Scale HAS a built-in role system: `admin` / `system` / `user`, stored on the user and carried in JWT claims (login and `/user/me` return it). New registrations are `user`. The admin portal is off by default; setting `[scale.admin] enabled = true` plus a `default_password` (or `JAC_ADMIN_PASSWORD`) bootstraps the admin account on next start. Set roles via the admin API or the admin portal at `/admin`:
 
 ```bash
 curl -X PUT http://localhost:8000/admin/users/alice \

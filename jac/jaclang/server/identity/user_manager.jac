@@ -20,6 +20,7 @@ import from jaclang.server.identity.config {
 
 glob logger = logging.getLogger(__name__),
      SYSTEM_USER: str = '__system__',
+     PLACEHOLDER_ADMIN_PASSWORD: str = 'changeme',
      _root_id_request_cache: ContextVar[dict[str, str] | None] = ContextVar(
          '_jaclang_root_id_cache', `default=None
      );
@@ -98,7 +99,20 @@ obj UserManager {
     def expire_legacy_credentials(username: (str | None) = None) -> dict[str, any];
     def is_password_required(user_id: str) -> bool;
     def bootstrap_admin_user(
-        admin_username: str = 'admin', default_password: str = 'changeme'
+        admin_username: str,
+        bootstrap_password: str,
+        require_password_reset: bool = True
+    ) -> dict[str, str];
+
+    def _bootstrap_password_refusal(
+        admin_username: str, bootstrap_password: str
+    ) -> str | None;
+
+    def _adopt_bootstrap_admin(
+        admin_username: str,
+        user_id: str,
+        bootstrap_password: str,
+        require_password_reset: bool
     ) -> dict[str, str];
 
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];

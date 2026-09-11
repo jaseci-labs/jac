@@ -1174,8 +1174,8 @@ class JacScalePluginConfig {
                     "nested": {
                         "enabled": {
                             "type": "bool",
-                            "default": True,
-                            "description": "Create the bootstrap admin user on first start"
+                            "default": False,
+                            "description": "Serve the admin portal and create the bootstrap admin user. Disabled by default; enabling it also requires setting default_password."
                         },
                         "username": {
                             "type": "string",
@@ -1189,8 +1189,8 @@ class JacScalePluginConfig {
                         },
                         "default_password": {
                             "type": "string",
-                            "default": "changeme",
-                            "description": "Initial admin password; must be rotated on first login by default"
+                            "default": None,
+                            "description": "Initial admin password. Required when the portal is enabled; there is no default, and it must be rotated on first login."
                         },
                         "session_expiry_hours": {
                             "type": "int",
