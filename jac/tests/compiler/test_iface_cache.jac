@@ -1138,3 +1138,69 @@ test "compiler references use the compiler fingerprint without expanding interfa
         ) , dependencies;
     }
 }
+
+test "prepared interface references survive full-tree provider replacement" {
+    import from jaclang.compiler.session.cache.catalog_reader { CatModule }
+    import from jaclang.compiler.session.context { artifact_cache_path }
+    import from jaclang.compiler.ir.types.nodes { ClassType, FunctionType }
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        main = str(base / "main.jac");
+        provider = str(base / "provider.jac");
+        data = str(base / "data.jac");
+        detail = str(base / "detail.jac");
+        Path(detail).write_text('obj Detail { has text: str = "ready"; }');
+        Path(data).write_text(
+            'import from detail { Detail }\n'
+            'obj Data { has detail: Detail = Detail(); }'
+        );
+        Path(provider).write_text(
+            'import from data { Data }\ndef make -> Data { return Data(); }'
+        );
+        Path(main).write_text(
+            'import from provider { make }\ndef read -> str { return make().detail.text; }'
+        );
+        options = _check_opts();
+        options.entry_point = main;
+        options.project_root = tmp;
+        cold = JacProgram();
+        mod = cold.compile(main, options=options);
+        assert not cold.errors_had , [e.pretty_print() for e in cold.errors_had];
+        context = cold.module_context(mod);
+        assert isinstance(context, JacProgram);
+        cache = artifact_cache_path(main, context);
+        cold.release_compile_closure(collect=False);
+        cache.unlink(missing_ok=True);
+        warm = JacProgram();
+        symbols = options.for_symbols();
+        cached = warm.compile(provider, options=symbols);
+        assert isinstance(cached, CatModule) , "the provider must come from its interface";
+        assert warm.analysis.cache_events.get("dep_hydrate", 0) >= 1;
+        context = warm.module_context(cached);
+        make = cached.lookup("make");
+        assert make is not None;
+        assert make.decl.type is None , "the return type must still be lazy";
+        symbols.need_full_ast = True;
+        for path in [data, detail] {
+            source = warm.compile(path, options=symbols);
+            assert not source.stub_only , "the provider must be replaced by syntax";
+        }
+        # Decode the retained interface directly: recompiling main would
+        # prepare its dependencies again and conceal the lost references.
+        evaluator = context.get_type_evaluator();
+        make_type = evaluator.get_type_of_symbol(make);
+        assert isinstance(make_type, FunctionType);
+        data_type = make_type.return_type;
+        assert isinstance(data_type, ClassType);
+        data_scope = data_type.shared.symbol_table;
+        assert data_scope is not None;
+        detail_symbol = data_scope.lookup("detail");
+        assert detail_symbol is not None , "the retained Data reference lost its fields";
+        detail_type = evaluator.get_type_of_symbol(detail_symbol);
+        assert isinstance(detail_type, ClassType);
+        detail_scope = detail_type.shared.symbol_table;
+        assert detail_scope is not None;
+        assert detail_scope.lookup("text") is not None , "the transitive Detail reference lost its fields";
+        assert not warm.errors_had , [e.pretty_print() for e in warm.errors_had];
+    }
+}

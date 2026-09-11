@@ -87,6 +87,13 @@ import from jaclang.compiler.session.cache.catalog_format {
     unpack_header
 }
 
+obj ExternalClassReference {
+    has shared_id: int,
+        module_path: str,
+        qualified_name: str;
+}
+
+
 obj CatProvider(SymbolProvider) {
     has cat: StubCatalog,
         type_id: int,
@@ -952,8 +959,8 @@ obj StubCatalog {
         return uk;
     }
 
-    def external_class_references -> list[tuple[str, str]] {
-        references: list[tuple[str, str]] = [];
+    def external_class_references -> list[ExternalClassReference] {
+        references: list[ExternalClassReference] = [];
         for shid in range(self.hdr.n_shared) {
             record = self._rec(self.hdr.off_sharedtab, shid);
             record.u();
@@ -963,7 +970,9 @@ obj StubCatalog {
                 dotted = self.string(record.u());
                 if module_id >= 0 {
                     references.append(
-                        (self.abs_path(self._mod_recs[module_id][1]), dotted)
+                        ExternalClassReference(
+                            shid, self.abs_path(self._mod_recs[module_id][1]), dotted
+                        )
                     );
                 }
             }

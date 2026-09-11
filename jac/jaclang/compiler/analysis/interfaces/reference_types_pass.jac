@@ -4,20 +4,30 @@ import from jaclang.compiler.session.cache.catalog_reader { CatModule }
 
 walker InterfaceReferenceTypesPass(ProgramTransform) {
     def transform(ir_in: Module) -> Module {
-        if not isinstance(ir_in, CatModule) {
-            return ir_in;
+        self._prepare(ir_in, set());
+        return ir_in;
+    }
+
+    def _prepare(module: Module | None, seen: set[int]) -> None {
+        if not isinstance(module, CatModule) or id(module) in seen {
+            return;
         }
+        seen.add(id(module));
         registry = self.prog.iface_registry();
-        for (path, dotted) in ir_in.cat.external_class_references() {
-            if not dotted {
+        references = module.cat.external_class_references();
+        for reference in references {
+            if not reference.qualified_name {
                 continue;
             }
-            module = registry.resolve_module(path);
-            if module is None {
-                module = self.prog.get_type_evaluator()._import_module_from_path(path);
+            target = registry.resolve_module(reference.module_path);
+            if target is None {
+                target = self.prog.get_type_evaluator()._import_module_from_path(
+                    reference.module_path
+                );
             }
-            scope: UniScopeNode | None = module;
-            parts = dotted.split('.');
+            self._prepare(target, seen);
+            scope: UniScopeNode | None = target;
+            parts = reference.qualified_name.split('.');
             for part in parts[:-1] {
                 if scope is not None {
                     scope = scope.find_scope(part);
@@ -35,6 +45,10 @@ walker InterfaceReferenceTypesPass(ProgramTransform) {
                 }
             }
         }
-        return ir_in;
+        # Bind references while their prepared providers are still available.
+        # A later full-tree request may replace a provider's catalog module.
+        for reference in references {
+            module.cat.shared_of(reference.shared_id);
+        }
     }
 }
