@@ -245,16 +245,17 @@ def start_gateway_only(fleet: FleetSpec, gateway_config: dict[str, any]) {
 
 def _populate_k8s_urls(registry: ServiceRegistry) {
     try {
-        import jaclang;
-        dns_map: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
+        import from jaclang.scale.plugin { JacScalePlugin }
+        routes: dict[str, any] = JacScalePlugin.get_sv_service_routes();
     } except Exception as e {
         logger.warning(f"K8s URL population failed: {e}");
         return;
     }
     for (svc_name, _entry) in registry.entries.items() {
-        url = dns_map.get(svc_name, "");
-        if url {
-            _entry.url = url;
+        route = routes.get(svc_name);
+        if route is not None and route.url {
+            _entry.url = route.url;
+            _entry.host_override = route.host_header or "";
         }
     }
     logger.info(

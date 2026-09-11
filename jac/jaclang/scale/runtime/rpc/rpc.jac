@@ -95,6 +95,26 @@ def _provider_url(app_name: str) -> str {
 }
 
 
+def _resolve_call_target(module_name: str) -> tuple[str, str | None] {
+    """One bundled lookup for (url, interceptor Host-header override), so
+    the two are never resolved independently and can't disagree.
+    Primary source: the live K8s dynamic registry (JacScalePlugin's
+    get_sv_service_routes, K8s-mode only) -- it already fails open to {}
+    and warns (once per underlying cause) at its own failure sites, so
+    there is nothing to catch or re-warn about here. Fallback:
+    _provider_url's registry/env-var resolution -- the K8s path never
+    reaches here, so no separate host-override table is needed for it.""";
+    import from jaclang.scale.plugin { JacScalePlugin }
+
+    routes: dict[str, any] = JacScalePlugin.get_sv_service_routes();
+    route = routes.get(module_name);
+    if route is not None and route.url {
+        return (route.url, route.host_header);
+    }
+    return (_provider_url(module_name), None);
+}
+
+
 def service_call(
     module_name: str, func_name: str, args: dict, headers: dict[str, str] | None = None
 ) -> any {
@@ -122,10 +142,14 @@ def service_call(
         );
     }
 
-    url: str = _provider_url(module_name);
+    (url, host_override) = _resolve_call_target(module_name);
     import from jaclang.server.serving.client { post_stream_aware_sync }
 
     send_headers: dict[str, str] = _rpc_headers(headers);
+
+    if host_override {
+        send_headers["Host"] = host_override;
+    }
 
     rpc_timeout: float = _sv_rpc_timeout(module_name);
 
@@ -174,10 +198,14 @@ def walker_call(
         );
     }
 
-    url = _provider_url(module_name);
+    (url, host_override) = _resolve_call_target(module_name);
     import from jaclang.server.serving.client { request_sync }
 
     send_headers: dict[str, str] = _rpc_headers(headers);
+
+    if host_override {
+        send_headers["Host"] = host_override;
+    }
 
     rpc_timeout: float = _sv_rpc_timeout(module_name);
 

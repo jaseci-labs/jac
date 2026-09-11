@@ -16,6 +16,9 @@ import from jaclang.scale.deploy.autoscale.keda_capabilities {
     SUPPORTED_HTTP_INTERCEPTOR_API_VERSIONS
 }
 import from jaclang.scale.observability.logger { Logger }
+import from jaclang.scale.runtime.context.service_routing {
+    KEDA_INTERCEPTOR_SERVICE_ADDRESS
+}
 import hashlib;
 
 obj KEDAAutoscaler(Autoscaler) {
@@ -24,7 +27,7 @@ obj KEDAAutoscaler(Autoscaler) {
         _apps_api: (any | None) = None,
         _core_api: (any | None) = None,
         http_scaler_address: str = "keda-add-ons-http-external-scaler.keda:9090",
-        interceptor_service_address: str = "keda-add-ons-http-interceptor-proxy.keda:8080",
+        interceptor_service_address: str = KEDA_INTERCEPTOR_SERVICE_ADDRESS,
         logger: (Logger | None) = None,
         _capabilities_cache: dict[str, any] = {};
 

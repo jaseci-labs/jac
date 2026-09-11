@@ -473,6 +473,13 @@ impl ServiceProcessManager.check_all_health -> dict[str, bool] {
             continue;
         }
 
+        if `entry.host_override {
+            `entry.status = ServiceStatus.HEALTHY;
+            self._failure_counts[name] = 0;
+            results[name] = True;
+            continue;
+        }
+
         healthy = self.check_health(name);
         results[name] = healthy;
 

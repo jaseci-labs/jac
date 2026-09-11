@@ -26,7 +26,13 @@ class AutoscalerFactory {
             import from jaclang.scale.deploy.autoscale.keda_autoscaler {
                 KEDAAutoscaler
             }
-            return KEDAAutoscaler(logger=logger);
+            import from jaclang.scale.runtime.context.service_routing {
+                resolve_interceptor_service_address
+            }
+            return KEDAAutoscaler(
+                logger=logger,
+                interceptor_service_address=resolve_interceptor_service_address(config)
+            );
         }
         raise ValueError(
             f"Unsupported autoscaler engine: '{engine}'. Supported built-in engines: 'hpa', 'keda'."

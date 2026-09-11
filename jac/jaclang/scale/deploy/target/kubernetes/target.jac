@@ -45,6 +45,9 @@ import from jaclang.scale.deploy.autoscale.http_activation_config {
     apply_http_activation_for_target,
     destroy_http_activation_for_target
 }
+import from jaclang.scale.runtime.context.service_routing {
+    resolve_interceptor_service_address
+}
 import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.injector.pvc_injector {
@@ -1247,7 +1250,12 @@ obj KubernetesTarget(KubernetesTargetBase) {
                 self.k8s_config.to_dict(),
                 self.logger
             ),
-            KEDAAutoscaler(logger=self.logger)
+            KEDAAutoscaler(
+                logger=self.logger,
+                interceptor_service_address=resolve_interceptor_service_address(
+                    self.k8s_config.to_dict()
+                )
+            )
         );
 
         for svc_name in scaling.keys() {
@@ -1272,7 +1280,14 @@ obj KubernetesTarget(KubernetesTargetBase) {
         }
 
         apply_http_activations_for_bundle(
-            bundle, namespace, KEDAAutoscaler(logger=self.logger)
+            bundle,
+            namespace,
+            KEDAAutoscaler(
+                logger=self.logger,
+                interceptor_service_address=resolve_interceptor_service_address(
+                    self.k8s_config.to_dict()
+                )
+            )
         );
 
         pdbs: dict[str, dict[str, any]] = bundle.get("pdbs", {}) or {};
@@ -1794,7 +1809,12 @@ obj KubernetesTarget(KubernetesTargetBase) {
 
         if self.k8s_config.autoscaler_engine != "keda" {
             try {
-                KEDAAutoscaler(logger=self.logger).destroy_collection(
+                KEDAAutoscaler(
+                    logger=self.logger,
+                    interceptor_service_address=resolve_interceptor_service_address(
+                        self.k8s_config.to_dict()
+                    )
+                ).destroy_collection(
                     namespace, ms_selector, best_effort=True
                 );
             } except ApiException as e {

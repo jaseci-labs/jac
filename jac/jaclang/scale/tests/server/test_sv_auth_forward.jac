@@ -613,8 +613,8 @@ test "_sv_rpc_timeout returns default when config lookup fails" {
 }
 
 
-test "sv_service_call uses URL from get_sv_registry hookspec when present" {
-    import jaclang;
+test "sv_service_call uses URL from get_sv_service_routes when present" {
+    import from jaclang.scale.runtime.context.service_routing { ServiceRoute }
 
     captured: dict = {};
     def handler(request: _MockRequest) -> _MockResponse {
@@ -625,14 +625,17 @@ test "sv_service_call uses URL from get_sv_registry hookspec when present" {
     }
 
     original_post = _install_mock(handler);
-    original_get_registry = jaclang.JacRuntime.get_sv_registry;
+    original_get_routes = JacScalePlugin.get_sv_service_routes;
 
-    def fake_registry -> dict[str, str] {
+    def fake_routes -> dict[str, ServiceRoute] {
         return {
-            "k9_test_mod": "http://k9-test-mod-service.prod.svc.cluster.local:8000"
+            "k9_test_mod": ServiceRoute(
+                url="http://k9-test-mod-service.prod.svc.cluster.local:8000",
+                host_header=None
+            )
         };
     }
-    _as_any(jaclang.JacRuntime).get_sv_registry = staticmethod(fake_registry);
+    _as_any(JacScalePlugin).get_sv_service_routes = staticmethod(fake_routes);
 
     try {
         if "k9_test_mod" in sv_client._registry {
@@ -644,15 +647,13 @@ test "sv_service_call uses URL from get_sv_registry hookspec when present" {
 
         assert "k9-test-mod-service.prod.svc.cluster.local" in captured["url"];
     } finally {
-        jaclang.JacRuntime.get_sv_registry = original_get_registry;
+        JacScalePlugin.get_sv_service_routes = original_get_routes;
         sv_http.post_stream_aware_sync = original_post;
     }
 }
 
 
-test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
-    import jaclang;
-
+test "sv_service_call falls back to sv_client.resolve_url when the dynamic registry is empty" {
     captured: dict = {};
     def handler(request: _MockRequest) -> _MockResponse {
         captured["url"] = str(request.url);
@@ -662,9 +663,9 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
     }
 
     original_post = _install_mock(handler);
-    original_get_registry = jaclang.JacRuntime.get_sv_registry;
+    original_get_routes = JacScalePlugin.get_sv_service_routes;
 
-    _as_any(jaclang.JacRuntime).get_sv_registry = staticmethod(lambda { {}; });
+    _as_any(JacScalePlugin).get_sv_service_routes = staticmethod(lambda { {}; });
 
     try {
         sv_client.register("k9_fallback_mod", "http://fallback.invalid:9999");
@@ -672,9 +673,109 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
         assert result == "via-fallback";
         assert "fallback.invalid:9999" in captured["url"];
     } finally {
-        jaclang.JacRuntime.get_sv_registry = original_get_registry;
+        JacScalePlugin.get_sv_service_routes = original_get_routes;
         sv_http.post_stream_aware_sync = original_post;
         sv_client.unregister("k9_fallback_mod");
+    }
+}
+
+
+test "sv_service_call sets the Host header when the resolved route carries one" {
+    import from jaclang.scale.runtime.context.service_routing { ServiceRoute }
+
+    captured: dict = {};
+    def handler(request: _MockRequest) -> _MockResponse {
+        captured["headers"] = request.headers;
+        return _MockResponse(
+            json_payload={"ok": True, "data": {"result": "via-interceptor"}}
+        );
+    }
+
+    original_post = _install_mock(handler);
+    original_get_routes = JacScalePlugin.get_sv_service_routes;
+
+    def fake_routes -> dict[str, ServiceRoute] {
+        return {
+            "k9_intercepted_mod": ServiceRoute(
+                url="http://keda-add-ons-http-interceptor-proxy.keda:8080",
+                host_header="k9-intercepted-mod-service.prod.svc.cluster.local"
+            )
+        };
+    }
+    _as_any(JacScalePlugin).get_sv_service_routes = staticmethod(fake_routes);
+
+    try {
+        if "k9_intercepted_mod" in sv_client._registry {
+            sv_client.unregister("k9_intercepted_mod");
+        }
+        result = JacScalePlugin.sv_service_call("k9_intercepted_mod", "do", {});
+        assert result == "via-interceptor";
+        assert (
+            captured["headers"]["Host"]
+            == "k9-intercepted-mod-service.prod.svc.cluster.local"
+        );
+    } finally {
+        JacScalePlugin.get_sv_service_routes = original_get_routes;
+        sv_http.post_stream_aware_sync = original_post;
+    }
+}
+
+
+obj _FakeGatewayOnlyConfig {
+    def get_gateway_config -> dict[str, any] {
+        return {"gateway_port": 8000};
+    }
+}
+
+test "get_sv_service_routes warns once on a failing lookup, then again after it recovers and fails again" {
+    import logging;
+    import jaclang.scale.plugin as plugin_mod;
+    import jaclang.scale.config.config_loader as config_loader_mod;
+    import os;
+
+    plugin_logger = logging.getLogger("jaclang.scale.plugin");
+    original_warning = plugin_logger.warning;
+    original_get_scale_config = config_loader_mod.get_scale_config;
+    warn_calls: list = [];
+
+    def fake_warning(msg: str) {
+        warn_calls.append(msg);
+    }
+
+    def failing_config(project_dir: object = None) -> object {
+        raise RuntimeError("config unreachable");
+    }
+
+    def healthy_config(project_dir: object = None) -> object {
+        return _FakeGatewayOnlyConfig();
+    }
+
+    had_k8s_env = "KUBERNETES_SERVICE_HOST" in os.environ;
+    os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";
+    plugin_mod._sv_service_routes_warned = False;
+    setattr(plugin_logger, "warning", fake_warning);
+
+    try {
+        setattr(config_loader_mod, "get_scale_config", failing_config);
+        JacScalePlugin.get_sv_service_routes();
+        JacScalePlugin.get_sv_service_routes();
+        JacScalePlugin.get_sv_service_routes();
+        assert len(warn_calls) == 1;
+
+        setattr(config_loader_mod, "get_scale_config", healthy_config);
+        JacScalePlugin.get_sv_service_routes();
+        assert len(warn_calls) == 1;
+
+        setattr(config_loader_mod, "get_scale_config", failing_config);
+        JacScalePlugin.get_sv_service_routes();
+        assert len(warn_calls) == 2;
+    } finally {
+        setattr(config_loader_mod, "get_scale_config", original_get_scale_config);
+        setattr(plugin_logger, "warning", original_warning);
+        plugin_mod._sv_service_routes_warned = False;
+        if not had_k8s_env {
+            os.environ.pop("KUBERNETES_SERVICE_HOST", None);
+        }
     }
 }
 

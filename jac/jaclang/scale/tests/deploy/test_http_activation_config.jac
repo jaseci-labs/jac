@@ -36,19 +36,44 @@ test "minimal config (enabled, target_port, concurrency_target) builds a spec wi
     assert spec.target.service == "preview-svc";
     assert spec.target.port == 8080;
     assert spec.target.port_name is None;
+    assert spec.concurrency is not None;
     assert spec.concurrency.target_value == 10;
     assert spec.request_rate is None;
     assert spec.min_replicas == 0;
     assert spec.max_replicas == 1;
     assert spec.polling_interval == 30;
     assert spec.cooldown_period == 300;
-    assert len(spec.rules) == 1;
+    assert len(spec.rules) == 2;
     assert spec.rules[0].hosts == ["*"];
+    # The auto-derived internal-routing rule: always appended last,
+    # host-only (matches any path/header), so cluster-internal gateway
+    # forwards and sv-to-sv RPC calls can reach this service through the
+    # interceptor without any operator-authored rule covering them.
+    assert spec.rules[-1].hosts == ["preview-svc.staging.svc.cluster.local"];
+    assert spec.rules[-1].paths == [];
+    assert spec.rules[-1].headers == [];
     assert spec.cold_start is None;
     assert spec.timeouts is None;
     assert spec.scale_target_kind == "Deployment";
     assert spec.scale_target_api_version == "apps/v1";
     assert spec.scale_target_plural is None;
+}
+
+
+# --- Section B2: the auto-derived internal-routing rule ---------------------
+test "the auto-derived rule's host is the target's real Service DNS name, computed independently here" {
+    spec = build_http_activation_spec(
+        _cfg(), "orders-deployment", "shop", "orders-app-service"
+    );
+    assert spec is not None;
+    expected_host = "orders-app-service.shop.svc.cluster.local";
+    assert spec.rules[-1].hosts == [expected_host] , (
+        f"expected the auto-rule to match '{expected_host}', got {spec.rules[-1].hosts}"
+    );
+}
+
+test "an empty operator rules list still raises before the auto-rule could paper over it" {
+    _assert_config_error(_cfg(rules=[]), "rules");
 }
 
 
@@ -84,6 +109,7 @@ test "full config translates rules, cold_start, timeouts, request_rate, and cust
     spec = build_http_activation_spec(
         cfg, "preview-deployment", "staging", "preview-svc"
     );
+    assert spec is not None;
     assert spec.min_replicas == 1;
     assert spec.max_replicas == 5;
     assert spec.polling_interval == 15;
@@ -91,19 +117,27 @@ test "full config translates rules, cold_start, timeouts, request_rate, and cust
     assert spec.target.port is None;
     assert spec.target.port_name == "http";
     assert spec.concurrency is None;
+    assert spec.request_rate is not None;
     assert spec.request_rate.target_value == 50;
     assert spec.request_rate.rate_window == "5m";
     assert spec.request_rate.granularity == "10s";
-    assert len(spec.rules) == 1;
+    assert len(spec.rules) == 2;
     assert spec.rules[0].hosts == ["preview.jac.dev"];
     assert spec.rules[0].paths[0].value == "/app";
     assert spec.rules[0].headers[0].name == "x-preview-id";
     assert spec.rules[0].headers[0].value == "123";
+    assert spec.rules[-1].hosts == ["preview-svc.staging.svc.cluster.local"];
+    assert spec.rules[-1].paths == [];
+    assert spec.rules[-1].headers == [];
+    assert spec.cold_start is not None;
+    assert spec.cold_start.placeholder is not None;
     assert spec.cold_start.placeholder.status_code == 503;
     assert spec.cold_start.placeholder.body == "warming up";
     assert spec.cold_start.placeholder.headers == {"Retry-After": "2"};
+    assert spec.cold_start.fallback_service is not None;
     assert spec.cold_start.fallback_service.service == "fallback-svc";
     assert spec.cold_start.fallback_service.port == 8080;
+    assert spec.timeouts is not None;
     assert spec.timeouts.readiness == "30s";
     assert spec.timeouts.request == "60s";
     assert spec.timeouts.response_header == "5s";
@@ -170,6 +204,12 @@ test "apply_http_activation_for_target calls apply_http_activation with a correc
     assert len(create_calls) == 2;
     route_body = create_calls[0][1]["body"];
     assert route_body["spec"]["target"]["service"] == "preview-svc";
+    applied_rules = route_body["spec"]["rules"];
+    assert len(applied_rules) == 2 , (
+        "expected the operator rule plus the auto-derived internal rule to "
+        f"both reach the applied InterceptorRoute body, got {applied_rules}"
+    );
+    assert applied_rules[-1]["hosts"] == ["preview-svc.staging.svc.cluster.local"];
     scaled_obj_body = create_calls[1][1]["body"];
     assert scaled_obj_body["metadata"]["name"]
         == keda.http_scaled_object_name_for("preview-deployment");

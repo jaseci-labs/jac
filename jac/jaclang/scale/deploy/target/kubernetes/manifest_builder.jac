@@ -14,13 +14,15 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 import from jaclang.scale.deploy.autoscale.http_activation_config {
     build_http_activation_spec
 }
+import from jaclang.scale.runtime.context.service_routing {
+    resolve_http_activation_config
+}
 import from enum { StrEnum }
 
 
 glob GATEWAY_NAME: str = "__gateway__",
      CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
      _EXIT_CUSHION_S: int = 5,
-     _RFC1123_MAX_LEN: int = 253,
      _CLIENT_BUILD_ATTEMPTS: int = 3,
      _CLIENT_BUILD_RETRY_PAUSE_S: int = 3,
      _DEP_INSTALL_TIMEOUT_S: int = 900,
@@ -165,24 +167,8 @@ def k8s_safe_name(svc_name: str) -> str {
     if svc_name == GATEWAY_NAME {
         return "gateway";
     }
-    import re;
-    if "${" in svc_name {
-        raise ValueError(
-            f"'{svc_name}' still contains an unresolved ${{...}} placeholder, so "
-            f"the environment variable it names was not set where this deploy "
-            f"ran. Export it, or replace it with a literal name."
-        );
-    }
-    safe = re.sub(r"[^a-z0-9.-]", "-", svc_name.lower().replace("_", "-"));
-    safe = re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", safe)[:_RFC1123_MAX_LEN];
-    safe = re.sub(r"[^a-z0-9]+$", "", safe);
-    if not safe {
-        raise ValueError(
-            f"'{svc_name}' has no characters usable in a Kubernetes name; names "
-            f"must contain at least one letter or digit."
-        );
-    }
-    return safe;
+    import from jaclang.scale.runtime.context.util { k8s_safe_service_name }
+    return k8s_safe_service_name(svc_name);
 }
 
 
@@ -1085,6 +1071,9 @@ obj ManifestBuilder {
             if peer_name == svc_name or peer_name == GATEWAY_NAME {
                 continue;
             }
+            if self._get_http_activation_config(peer_name) is not None {
+                continue;
+            }
             key = sv_client.peer_url_env_key(peer_name);
             if key in seen_peer_keys {
                 continue;
@@ -1455,14 +1444,9 @@ obj ManifestBuilder {
     }
 
     def _get_http_activation_config(svc_name: str) -> dict[str, any] | None {
-        svc: dict[str, any] = self._service_config(svc_name);
-        per_service: dict[str, any] = svc.get("http_activation", {});
-        merged: dict[str, any] = dict(self.k8s_config.http_activation);
-        merged.update(per_service);
-        if not merged.get("enabled", False) {
-            return None;
-        }
-        return merged;
+        return resolve_http_activation_config(
+            dict(self.k8s_config.http_activation), self._service_config(svc_name)
+        );
     }
 
     def _build_ingress_manifest(ingress_cfg: dict[str, any]) -> dict[str, any] | None {

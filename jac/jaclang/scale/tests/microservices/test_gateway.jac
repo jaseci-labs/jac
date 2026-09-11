@@ -432,6 +432,94 @@ test "/graph/data still answers when one service is down (partial merge)" {
     }
 }
 
+"""Serves `payload` as JSON on every GET and records the Host header each
+request actually carried, so a test can verify the header genuinely reached
+the wire -- not just that a headers dict was built correctly in memory."""
+def _serve_capturing(payload: dict) -> tuple {
+    import http.server;
+    import json;
+    import threading;
+
+    body = json.dumps(payload).encode();
+    observed_hosts: list[str] = [];
+
+    def _do_get(handler_self: any) {
+        observed_hosts.append(handler_self.headers.get("Host", ""));
+        handler_self.send_response(200);
+        handler_self.send_header("Content-Type", "application/json");
+        handler_self.send_header("Content-Length", str(len(body)));
+        handler_self.end_headers();
+        handler_self.wfile.write(body);
+    }
+
+    def _log_quiet(handler_self: any, fmt: str, *args: any) {}
+
+    handler_cls = type(
+        "_CapturingHandler",
+        (http.server.BaseHTTPRequestHandler, ),
+        {"do_GET": _do_get, "log_message": _log_quiet}
+    );
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler_cls);
+    t = threading.Thread(target=srv.serve_forever, daemon=True);
+    t.start();
+    return (srv, srv.server_address[1], observed_hosts);
+}
+
+# Two ServiceEntry's share one backing URL (simulating "both point at the
+# shared KEDA interceptor proxy") but carry different host_override values.
+# If the Host header genuinely
+# reaches the socket -- not just a headers dict built in memory -- the real
+# loopback server behind that one URL must observe two distinct Host values,
+# one per service, exactly the mechanism the interceptor relies on to tell
+# which HTTP-activated target a request is actually for.
+test "forwarded requests carry each service's own host_override as the wire Host header" {
+    frag = {"version": "1.0", "nodes": [{"id": "r", "label": "root"}], "edges": []};
+    (srv, port, observed_hosts) = _serve_capturing(frag);
+
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="orders_app",
+            file="orders_app.jac",
+            prefix="/orders",
+            port=port,
+            url=f"http://127.0.0.1:{port}",
+            host_override="orders-app-service.shop.svc.cluster.local",
+            status=ServiceStatus.HEALTHY
+        )
+    );
+    reg.register(
+        ServiceEntry(
+            name="cart_app",
+            file="cart_app.jac",
+            prefix="/cart",
+            port=port,
+            url=f"http://127.0.0.1:{port}",
+            host_override="cart-app-service.shop.svc.cluster.local",
+            status=ServiceStatus.HEALTHY
+        )
+    );
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+
+    import from jaclang.testing.testkit { ServingTestClient as TestClient }
+    client = TestClient(gw.app);
+    try {
+        resp = client.get("/graph/data");
+        assert resp.status_code == 200;
+        assert set(observed_hosts)
+            == {
+                "orders-app-service.shop.svc.cluster.local",
+                "cart-app-service.shop.svc.cluster.local"
+            } , (
+            f"expected the wire Host header to carry each service's own "
+            f"host_override, observed: {observed_hosts}"
+        );
+    } finally {
+        srv.shutdown();
+    }
+}
+
 test "build_gateway_metrics returns a fresh registry with both collectors" {
     import from jaclang.scale.runtime.middleware.metrics { build_gateway_metrics }
     (registry, requests, duration) = build_gateway_metrics();
