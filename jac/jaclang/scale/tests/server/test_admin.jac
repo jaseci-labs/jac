@@ -859,6 +859,63 @@ test "bootstrap refuses an absent or placeholder password" {
 }
 
 
+test "bootstrap promotes an existing account only with the configured bootstrap password" {
+    def check(manager: UserManager) {
+        username = _admin_name();
+        created = manager.create_user(username, "their-own-pass-1");
+        assert "error" not in created , created;
+        user_id = created["user_id"];
+
+        refused = manager.bootstrap_admin_user(username, "not-their-pass-1");
+        assert "error" in refused , refused;
+        assert not manager.is_admin(user_id);
+        assert manager.authenticate(username, "their-own-pass-1") is not None;
+
+        adopted = manager.bootstrap_admin_user(username, "their-own-pass-1");
+        assert "error" not in adopted , adopted;
+        assert manager.is_admin(user_id);
+        assert manager.requires_password_reset(user_id);
+    }
+    _with_manager(check);
+}
+
+
+test "bootstrap replaces the placeholder password on an existing admin and leaves a rotated one alone" {
+    def check(manager: UserManager) {
+        legacy = _admin_name();
+        created = manager.create_internal_user(
+            legacy, PLACEHOLDER_ADMIN_PASSWORD, role="admin"
+        );
+        assert "error" not in created , created;
+        legacy_id = created["user_id"];
+
+        for password in ["", PLACEHOLDER_ADMIN_PASSWORD] {
+            refused = manager.bootstrap_admin_user(legacy, password);
+            assert "error" in refused
+                and PLACEHOLDER_ADMIN_PASSWORD in refused["error"] , refused;
+        }
+        assert manager.authenticate(legacy, PLACEHOLDER_ADMIN_PASSWORD) is not None;
+
+        adopted = manager.bootstrap_admin_user(legacy, "boot-pass-1");
+        assert "error" not in adopted , adopted;
+        assert manager.authenticate(legacy, PLACEHOLDER_ADMIN_PASSWORD) is None;
+        assert manager.authenticate(legacy, "boot-pass-1") is not None;
+        assert manager.is_admin(legacy_id);
+        assert manager.requires_password_reset(legacy_id);
+
+        rotated = _admin_name();
+        created = manager.create_internal_user(rotated, "rotated-pass-1", role="admin");
+        assert "error" not in created , created;
+        kept = manager.bootstrap_admin_user(rotated, "boot-pass-1");
+        assert "error" not in kept , kept;
+        assert manager.authenticate(rotated, "rotated-pass-1") is not None;
+        assert manager.authenticate(rotated, "boot-pass-1") is None;
+        assert not manager.requires_password_reset(created["user_id"]);
+    }
+    _with_manager(check);
+}
+
+
 test "bootstrap_admin reads require_password_reset from jac.toml" {
     username = _admin_name();
     def check(manager: UserManager) {

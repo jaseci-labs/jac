@@ -104,6 +104,17 @@ obj UserManager {
         require_password_reset: bool = True
     ) -> dict[str, str];
 
+    def _bootstrap_password_refusal(
+        admin_username: str, bootstrap_password: str
+    ) -> str | None;
+
+    def _adopt_bootstrap_admin(
+        admin_username: str,
+        user_id: str,
+        bootstrap_password: str,
+        require_password_reset: bool
+    ) -> dict[str, str];
+
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def delete_user(user_id: str) -> dict[str, str];
     def create_user_as_admin(
