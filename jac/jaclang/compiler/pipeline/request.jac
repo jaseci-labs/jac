@@ -49,12 +49,6 @@ obj ModuleCompilation {
     }
 
     def ir {
-        if self.parse_failed {
-            import from jaclang.compiler.pipeline.executor { run_utility }
-            import from jaclang.compiler.pipeline.contracts { UtilityProduct }
-            run_utility(UtilityProduct.SYNTAX_DIAGNOSTICS, self.module, self.program);
-            return;
-        }
         import from jaclang.compiler.pipeline.schedule {
             get_symtab_ir_sched,
             get_ir_gen_sched,
@@ -69,7 +63,7 @@ obj ModuleCompilation {
         } else {
             _head_sched = get_ir_gen_sched(
                 is_internal=self.compiler.selfhost.is_selfhost(self.program),
-                gen_mtir=not self.options.no_cgen
+                gen_mtir=not self.options.no_cgen and not self.parse_failed
             );
         }
 
@@ -105,7 +99,9 @@ obj ModuleCompilation {
     }
 
     def analysis {
-        if self.parse_failed or self.blocked {
+        # Recoverable syntax still needs bindings and types for editor queries.
+        # Failed requests cannot publish interfaces or executable artifacts.
+        if self.blocked {
             return;
         }
         import from jaclang.compiler.pipeline.schedule { get_analysis_sched }
@@ -129,7 +125,6 @@ obj ModuleCompilation {
             _annex_of_base = _cc_base_file(str(self.path)) is not None;
         }
         _analyze = not self.blocked
-            and not self.parse_failed
             and self.full_head
             and self.program.analysis.provides(self.module, AnalysisFact.CFG_SUCC)
             and not _is_decl_stub
