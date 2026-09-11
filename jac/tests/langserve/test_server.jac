@@ -113,10 +113,8 @@ test "test_impl_stay_connected" {
         );
         lsp.type_check_file(circle_impl_file);
         pos = lspt.Position(8, 11);
-        assert (
-            "ability) calculate_area\n( radius : float ) -> float"
-            in _as_any(lsp.get_hover_info(circle_impl_file, pos)).contents.value
-        );
+        hover = _as_any(lsp.get_hover_info(circle_impl_file, pos)).contents.value;
+        assert "ability) calculate_area\n(radius: float) -> float" in hover , hover;
     } finally {
         teardown_test();
     }
@@ -130,10 +128,9 @@ test "test_impl_auto_discover" {
         assert circle_impl_file is not None;
         lsp.type_check_file(circle_impl_file);
         pos = lspt.Position(8, 11);
-        assert (
-            "(public ability) calculate_area\n( radius : float ) -> float"
-            in _as_any(lsp.get_hover_info(circle_impl_file, pos)).contents.value
-        );
+        hover = _as_any(lsp.get_hover_info(circle_impl_file, pos)).contents.value;
+        assert "(public ability) calculate_area\n(radius: float) -> float"
+            in hover , hover;
     } finally {
         teardown_test();
     }
@@ -277,12 +274,12 @@ test "test_go_to_definition_md_path" {
             # PEP 562 __getattr__ (no static import binding), so go-to-def
             # resolves to the module file at 0:0-0:0 instead of a line.
             (10, 34, "jaclang/__init__.py:"),
-            (11, 40, "jaclang/compiler/ir/enums.jac:0:0-0:0"),
-            (11, 51, "jaclang/compiler/ir/enums.jac:2:5-2:15"),
+            (11, 33, "jaclang/compiler/ir/enums.jac:0:0-0:0"),
+            (11, 43, "jaclang/compiler/ir/enums.jac:2:5-2:15"),
             (13, 32, "jaclang/lsp/server/utils.jac:0:0-0:0"),
-            (14, 34, "jaclang/compiler/analysis/types/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/ir/types/nodes.jac:59:5-59:13"),
-            (20, 40, "jaclang/compiler/ir/schema.jac:0:0-0:0"),
+            (14, 40, "jaclang/compiler/ir/types/nodes.jac:0:0-0:0"),
+            (18, 5, "compiler/ir/types/nodes.jac:41:5-41:13"),
+            (20, 34, "jaclang/compiler/ir/schema.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 37, "jaclang/lsp/protocol/uris.jac:0:0-0:0"),
             (24, 44, "jaclang/lsp/protocol/server.jac:93:4-93:18"),
