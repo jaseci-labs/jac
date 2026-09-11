@@ -6,6 +6,11 @@ obj Text {
     def length(other: str) -> int {
         return len(other);
     }
+
+    def tail -> str {
+        view = self.value[1:];
+        return view;
+    }
 }
 
 obj TextList {
@@ -115,4 +120,8 @@ def conditional_owned(value: str) -> int {
 
 def conditional_borrowed(value: str) -> int {
     return len(identity(value) if len(value) == 0 else value);
+}
+
+def returned_view(value: str) -> int {
+    return len(Text(value=value).tail()) + 1;
 }

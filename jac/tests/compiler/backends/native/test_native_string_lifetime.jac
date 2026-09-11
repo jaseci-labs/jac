@@ -59,7 +59,8 @@ test "native string roots balance across locals fields loops and calls" {
         ("compared_view", 1),
         ("mixed_condition", 1),
         ("conditional_owned", 1),
-        ("conditional_borrowed", 1)
+        ("conditional_borrowed", 1),
+        ("returned_view", 1)
     ] {
         buffer_ptr = make(value, len(value));
         address = engine.get_function_address(name);

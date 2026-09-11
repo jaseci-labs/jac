@@ -391,7 +391,8 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
             if isinstance(nd.expr, uni.Name)
                 and nd.expr.sym_name in self.local_vars
                 and nd.expr.sym_name not in self.param_vars
-                and nd.expr.sym_name not in self.closure_cell_handles {
+                and nd.expr.sym_name not in self.closure_cell_handles
+                and not self._is_owned(val) {
                 skip_var = nd.expr.sym_name;
             } elif isinstance(nd.expr, uni.TupleVal) {
                 tup_elems = nd.expr.values or [];
