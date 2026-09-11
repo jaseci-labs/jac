@@ -609,7 +609,7 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                 computed=False
             );
             osp_class = osp_class_map.get(info.name)
-                if info.type_scope == nd.loc.mod_path
+                if info.type_scope == boundary_type_scope(nd)
                 else None;
             if osp_class is not None {
                 if info.kind == "node" {
@@ -691,7 +691,7 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
 
 impl EsastGenPass._boundary_type_name(info: BoundaryTypeInfo) -> str {
     manifest = self.ir_in.gen.interop_manifest;
-    if info.type_scope == self.ir_in.loc.mod_path {
+    if info.type_scope == boundary_type_scope(self.ir_in) {
         return info.name;
     }
     matches = [

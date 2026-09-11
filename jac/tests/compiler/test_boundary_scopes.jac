@@ -26,6 +26,10 @@ test "service boundary metadata retains each provider application context" {
         binding = manifest.bindings[name];
         info = manifest.boundary_types_for(binding.type_scope)[binding.ret_type];
         assert json.loads(info.type_id) == [app, module, "type", "RepoMeta"] , f"{name}: {info.type_id}";
+        if name != "Meta" {
+            nested = manifest.boundary_types_for(info.type_scope)["Detail"];
+            assert json.loads(nested.type_id) == [app, module, "type", "Detail"] , f"{name}: {nested.type_id}";
+        }
     }
 }
 

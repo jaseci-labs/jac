@@ -786,6 +786,11 @@ obj CodeGenTarget {
     has interop_manifest: InteropManifest { getter; setter(value: InteropManifest); }
 }
 
+def boundary_type_scope(module: any) -> str {
+    import json;
+    return json.dumps([module.app or "", module.loc.mod_path]);
+}
+
 def endpoint_descriptor(module: any, kind: str, name: str) -> dict {
     import os;
     import from jaclang.compiler.placement.workspace { workspace_for_path }

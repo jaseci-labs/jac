@@ -271,7 +271,9 @@ impl EsastGenPass._generate_sv_import_stubs(
             continue;
         }
         boundary_types = manifest.boundary_types_for(
-            binding.type_scope if binding is not None else self.ir_in.loc.mod_path
+            binding.type_scope
+                if binding is not None
+                else boundary_type_scope(self.ir_in)
         );
         param_names: list[str] = [];
         param_type_map: dict[str, str] = {};

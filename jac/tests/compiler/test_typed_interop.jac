@@ -473,7 +473,8 @@ test "gap: dict return type wraps values with __from_wire" {
 # ---------------------------------------------------------------------------
 test "gap: nested_types field populated in manifest" {
     mod = compile_fixture("typed_return_nested.jac");
-    bt = mod.gen.interop_manifest.boundary_types_for(mod.loc.mod_path);
+    import from jaclang.compiler.frontend.codeinfo { boundary_type_scope }
+    bt = mod.gen.interop_manifest.boundary_types_for(boundary_type_scope(mod));
     assert "Person" in bt , "Person should be a boundary type";
     assert "Address" in bt , "Address should be a boundary type";
     # nested_types tracks transitive dependencies

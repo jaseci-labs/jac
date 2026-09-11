@@ -11,7 +11,11 @@ import from jaclang.runtime.osp_model { OspAnalysis, OspModel }
 import from jaclang.compiler.backends.common.ast_gen_base { BaseAstGenPass }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.backends.es.jsx_processor { EsJsxProcessor }
-import from jaclang.compiler.frontend.codeinfo { BoundaryTypeInfo, ClientManifest }
+import from jaclang.compiler.frontend.codeinfo {
+    boundary_type_scope,
+    BoundaryTypeInfo,
+    ClientManifest
+}
 import from jaclang.compiler.backends.es.scoped_styles {
     ScopedStyleSheet,
     load_style_annex

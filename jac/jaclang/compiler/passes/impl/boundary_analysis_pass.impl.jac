@@ -323,7 +323,7 @@ impl BoundaryAnalysisPass._register_sv_import(
                 param_names=param_names,
                 ast_node=walker_node,
                 source_module=module_name,
-                type_scope=walker_mod.loc.mod_path if walker_mod else '',
+                type_scope=boundary_type_scope(walker_mod) if walker_mod else '',
                 kind='walker',
                 provider_app=provider_app
             );
@@ -522,7 +522,7 @@ impl BoundaryAnalysisPass._register_type_import(
         callers={caller_ctx},
         ret_type=item.name.value,
         source_module=nd.from_loc.base_module_name if nd.from_loc else '',
-        type_scope=(source_mod or self.ir_in).loc.mod_path,
+        type_scope=boundary_type_scope(source_mod or self.ir_in),
         kind='type',
         provider_app=import_provider_app(nd) or ''
     );
@@ -1102,7 +1102,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
         return None;
     }
     manifest = self.ir_in.gen.interop_manifest;
-    scope = source_mod.loc.mod_path if source_mod else self.ir_in.loc.mod_path;
+    scope = boundary_type_scope(source_mod or self.ir_in);
     scope_names = manifest.boundary_type_names.setdefault(scope, {});
     if type_name in scope_names {
         return manifest.boundary_types[scope_names[type_name]];
@@ -1159,7 +1159,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
     arch_mod = arch_node.find_parent_of_type(Module) or source_mod or self.ir_in;
     type_id = endpoint_key(arch_mod, 'type', arch_node.sym_name);
     scope_names[type_name] = type_id;
-    manifest.boundary_type_names.setdefault(arch_mod.loc.mod_path, {})[
+    manifest.boundary_type_names.setdefault(boundary_type_scope(arch_mod), {})[
         arch_node.sym_name
     ] = type_id;
     if type_id in manifest.boundary_types {
@@ -1221,7 +1221,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
             name=arch_node.sym_name,
             kind=kind,
             type_id=type_id,
-            type_scope=arch_mod.loc.mod_path,
+            type_scope=boundary_type_scope(arch_mod),
             fields=fields,
             field_defaults=fdefaults,
             nested_types=nested
@@ -1286,7 +1286,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
             name=arch_node.sym_name,
             kind="enum",
             type_id=type_id,
-            type_scope=arch_mod.loc.mod_path,
+            type_scope=boundary_type_scope(arch_mod),
             enum_members=members
         );
         manifest.boundary_types[type_id] = info;
@@ -1408,9 +1408,7 @@ impl BoundaryAnalysisPass.after_pass -> None {
                 }
                 walk_node = walk_node.parent;
             }
-            binding.type_scope = cl_src_mod.loc.mod_path
-                if cl_src_mod
-                else self.ir_in.loc.mod_path;
+            binding.type_scope = boundary_type_scope(cl_src_mod or self.ir_in);
             sig = binding.ast_node.signature;
             if isinstance(sig, FuncSignature) {
                 if sig.return_type {
@@ -1441,7 +1439,9 @@ impl BoundaryAnalysisPass.after_pass -> None {
                 walker_node = walker_node.parent;
             }
             sig = binding.ast_node.signature;
-            binding.type_scope = source_mod_obj.loc.mod_path if source_mod_obj else '';
+            binding.type_scope = boundary_type_scope(source_mod_obj)
+                if source_mod_obj
+                else '';
             if isinstance(sig, FuncSignature) {
                 if sig.return_type {
                     for tn in self._extract_all_type_names(sig.return_type) {
