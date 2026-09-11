@@ -125,3 +125,32 @@ def conditional_borrowed(value: str) -> int {
 def returned_view(value: str) -> int {
     return len(Text(value=value).tail()) + 1;
 }
+
+def dict_read(value: str) -> int {
+    values = {value: len(value)};
+    return values[value];
+}
+
+def dict_write(value: str) -> int {
+    values: dict[str, str] = {};
+    values[value] = value;
+    return len(values) * len(value);
+}
+
+def dict_missing(value: str) -> int {
+    values: dict[str, int] = {};
+    try {
+        return values[value];
+    } except KeyError {
+        return len(value);
+    }
+}
+
+node Item {
+    has value: str;
+}
+
+def destroyed_temporary(value: str) -> int {
+    del [Item(value=value)];
+    return len(value);
+}

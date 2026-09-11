@@ -60,7 +60,11 @@ test "native string roots balance across locals fields loops and calls" {
         ("mixed_condition", 1),
         ("conditional_owned", 1),
         ("conditional_borrowed", 1),
-        ("returned_view", 1)
+        ("returned_view", 1),
+        ("dict_read", 1),
+        ("dict_write", 1),
+        ("dict_missing", 1),
+        ("destroyed_temporary", 1)
     ] {
         buffer_ptr = make(value, len(value));
         address = engine.get_function_address(name);
