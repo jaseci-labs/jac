@@ -629,22 +629,11 @@ impl ensure_mro_fresh(cls: ClassType) -> bool {
         compute_mro_linearization(cls);
         return True;
     }
-    sig = mro_signature(cls);
-    if shared._mro_sig is None {
-        shared._mro_sig = sig;
+    if shared._mro_sig is not None and shared._mro_sig == mro_signature(cls) {
         return False;
     }
-    if shared._mro_sig == sig {
-        return False;
-    }
-    previous = list(shared.mro);
     shared.mro = [];
     compute_mro_linearization(cls);
-    if len(shared.mro) < len(previous) {
-        shared.mro = previous;
-        shared._mro_sig = sig;
-        return False;
-    }
     return True;
 }
 

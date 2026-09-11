@@ -6086,7 +6086,7 @@ impl TypeEvaluator._intern_shared(shared: ClassDetailsShared) -> ClassDetailsSha
         for b in found.base_classes
         if isinstance(b, ClassType)
     ];
-    if fresh_bases and not known_bases {
+    if len(fresh_bases) > len(known_bases) {
         found.base_classes = shared.base_classes;
         found.mro = [];
         found._provisional = shared._provisional;
