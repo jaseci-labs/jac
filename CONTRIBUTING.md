@@ -252,6 +252,10 @@ the MCP server, and the client/desktop runtimes are all bundled into the binary.
 4. **Close and reopen the PR** to make CI run. The PR is authored by `github-actions[bot]`, and GitHub does not run `pull_request` checks for PRs opened by the `GITHUB_TOKEN` actor (workflows triggered by `GITHUB_TOKEN` can't trigger further workflows, to prevent recursion). Closing and reopening makes the reopen event come from *you* (a real user), so the PR checks run and attach. *(Permanent fix: author the PR with a GitHub App / PAT token instead.)*
 5. Once the checks attach, enable **auto-merge** on the PR (or approve and merge manually when CI passes)
 
+PR preparation downloads the latest released Jac binary to run the version and
+release-note scripts. It sets `JAC_NO_DEV_SOURCE=1` to use the bundled compiler,
+so this job does not build Jac from source.
+
 ### Step 2: Approve the Release
 
 After the release PR is merged, the **Release** workflow triggers automatically:

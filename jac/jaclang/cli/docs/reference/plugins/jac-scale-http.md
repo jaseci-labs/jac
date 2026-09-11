@@ -1685,9 +1685,10 @@ What works:
 - **walkers** -- when imported by name. The consumer-side stub mirrors the provider's `has` fields, and the round-trip rehydrates the walker into a real instance with `reports` populated. See [Walker Imports](#walker-imports).
 
 Reconstruction uses the `_jac_type_id` identity in API responses and the boundary
-types collected by the compiler. Identities include the declaring app and module,
-so unrelated types with the same name remain distinct while aliases of one
-declaration share a consumer-side type. It applies to function results, walker fields,
+types collected by the compiler. An identity names the declaring module, and the
+app as well when that module is an app's entry file, so unrelated types with the
+same name remain distinct while aliases of one declaration share a consumer-side
+type, whichever app compiled the module. It applies to function results, walker fields,
 and reports, including when services run in separate processes. Ordinary
 dictionaries stay dictionaries. Forwarding a reconstructed value preserves its
 nested type markers and inherited fields, including when passed to a typed
