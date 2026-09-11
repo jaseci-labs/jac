@@ -1230,6 +1230,13 @@ created on first start with `requires_password_reset` set, and that flag is enfo
 server-side: the account can call `/admin/reset-password` and nothing else until the
 password is rotated.
 
+If an account with the configured username already exists, it is adopted rather than
+created: an existing admin keeps its own password, an existing admin still carrying the
+old `changeme` placeholder has it replaced by the configured password (with the reset
+flag applied), and a non-admin account is promoted only when the configured password
+authenticates it. A username someone registered ahead of you is never promoted on its
+own.
+
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `enabled` | bool | `false` | Serve the admin portal and create the bootstrap admin user |
