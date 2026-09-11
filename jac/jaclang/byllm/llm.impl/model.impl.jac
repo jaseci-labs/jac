@@ -153,7 +153,7 @@ impl Model.ainvoke(mt_run: MTRuntime) -> object {
 }
 
 async def _astream_with_telemetry(
-    agen: AsyncGenerator[object, None], mt: object, model_name: str, start: float
+    agen: AsyncGenerator[object, None], mt: MTRuntime, model_name: str, start: float
 ) -> AsyncGenerator[object, None] {
     import asyncio;
     import contextvars;
@@ -196,7 +196,7 @@ async def _astream_with_telemetry(
 }
 
 def _stream_with_telemetry(
-    gen: object, mt: object, model_name: str, start: float
+    gen: object, mt: MTRuntime, model_name: str, start: float
 ) -> object {
     import contextvars;
     import time;
@@ -257,6 +257,7 @@ impl Model._raise_mapped_provider_error(e: Exception) -> None {
 }
 
 impl Model.model_call_no_stream(params: dict) -> dict {
+    import from typing { cast }
     try {
         if self.http_client {
             response = self.model_call_http(
@@ -278,10 +279,11 @@ impl Model.model_call_no_stream(params: dict) -> dict {
     } except Exception as e {
         self._raise_mapped_provider_error(e);
     }
-    return response;
+    return cast(dict, response);
 }
 
-impl Model.model_call_with_stream(params: dict) {
+impl Model.model_call_with_stream(params: dict) -> Generator[object, None, None] {
+    import from typing { cast }
     params["stream_options"] = (params.get("stream_options") or {})
         | {"include_usage": True};
     try {
@@ -311,7 +313,7 @@ impl Model.model_call_with_stream(params: dict) {
     } except openai.NotFoundError as e {
         raise ModelNotFoundError(str(e));
     }
-    return response;
+    return cast(Generator[object, None, None], response);
 }
 
 impl Model.model_call_http(
@@ -327,6 +329,7 @@ impl Model.model_call_http(
 }
 
 impl Model.model_call_no_stream_async(params: dict) -> dict {
+    import from typing { cast }
     try {
         if self.http_client {
             response = await self.model_call_http_async(
@@ -354,10 +357,11 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
     } except Exception as e {
         self._raise_mapped_provider_error(e);
     }
-    return response;
+    return cast(dict, response);
 }
 
-impl Model.model_call_with_stream_async(params: dict) {
+impl Model.model_call_with_stream_async(params: dict) -> AsyncIterator[object] {
+    import from typing { cast }
     params["stream_options"] = (params.get("stream_options") or {})
         | {"include_usage": True};
     try {
@@ -392,7 +396,7 @@ impl Model.model_call_with_stream_async(params: dict) {
     } except Exception as e {
         self._raise_mapped_provider_error(e);
     }
-    return response;
+    return cast(AsyncIterator[object], response);
 }
 
 impl Model.model_call_http_async(
