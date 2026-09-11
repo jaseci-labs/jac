@@ -117,6 +117,34 @@ test "an identity already held under the same type is refused" {
 }
 
 
+test "the same-account duplicate decision is made inside the database" {
+    (test_dir, users) = _manager();
+    try {
+        tag = uuid.uuid4().hex[:8];
+        addr = f"atomic_{tag}@example.com";
+        user_id = str(users.create_user(f"atomic_{tag}", 'pw12345')['user_id']);
+        storage = users._identity_storage;
+        assert storage._append_identity(user_id, _email_identity(addr));
+        assert not storage._append_identity(user_id, _email_identity(addr));
+        assert _types_holding(users, user_id, addr) == ['email'];
+        assert not storage._append_identity(f"missing_{tag}", _email_identity(addr));
+        assert users.add_identity(
+            user_id,
+            {
+                'type': 'username',
+                'value_raw': addr,
+                'value_normalized': addr,
+                'verified': True,
+                'is_recovery': False
+            }
+        );
+        assert _types_holding(users, user_id, addr) == ['email', 'username'];
+    } finally {
+        shutil.rmtree(test_dir, ignore_errors=True);
+    }
+}
+
+
 test "username may be renamed to the account's own email address" {
     (test_dir, users) = _manager();
     try {
