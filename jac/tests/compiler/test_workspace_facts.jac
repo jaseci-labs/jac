@@ -68,10 +68,15 @@ test "workspace probes scale with modules within a compilation request" {
             }
             assert context_app(path) is app;
         }
-        (base / 'jac.toml').write_text(CONFIG.replace('web-app', 'desktop-app'));
+        toml = base / 'jac.toml';
+        stamp = os.path.getmtime(toml) + 2.0;
+        toml.write_text(CONFIG.replace('web-app', 'desktop'));
+        os.utime(toml, (stamp, stamp));
         with cache_scope('web', options) {
             refreshed = context_app(path);
-            assert refreshed is not None and refreshed.kind == 'desktop-app';
+            assert refreshed is not None and refreshed.kind == 'desktop' , (
+                f'workspace edit was not observed: {refreshed}'
+            );
         }
     }
 }
