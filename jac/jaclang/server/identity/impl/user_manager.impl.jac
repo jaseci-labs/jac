@@ -165,10 +165,6 @@ impl UserManager.rename_username(user_id: str, new_username: str) -> dict[str, a
     return self._identity_storage.rename_username(user_id, new_username);
 }
 
-impl UserManager.is_identity_taken(value: str, for_user: str = '') -> bool {
-    return self._identity_storage.identity_taken(value, for_user);
-}
-
 impl UserManager.set_identity_verified(user_id: str, value_normalized: str) -> bool {
     return self._identity_storage._set_identity_verified(user_id, value_normalized);
 }
