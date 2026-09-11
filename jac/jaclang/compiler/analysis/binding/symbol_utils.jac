@@ -178,7 +178,7 @@ def _is_user_symbol(sym: Symbol) -> bool {
     scope: (UniScopeNode | None) = sym.parent_tab;
     while scope is not None {
         if isinstance(scope, Module) {
-            if scope.stub_only {
+            if scope.stub_only and sym.provider is None {
                 return False;
             }
             return not scope.source.file_path.endswith(".pyi");

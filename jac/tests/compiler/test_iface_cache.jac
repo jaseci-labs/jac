@@ -1030,3 +1030,21 @@ test "symbol and codegen requests preserve a checked interface's dependencies" {
     (changed, _) = _check(main);
     assert any('expected int' in error.msg for error in changed.errors_had);
 }
+
+
+test "hydrated user functions retain precedence over builtin names" {
+    (main, dependency) = _project('def take(value: int) -> int { return value; }\n');
+    Path(main).parent.joinpath('jac.toml').write_text(
+        '[project]\nname = "user-function"\n'
+        '[placement.pins]\ndepmod = "server"\nmainmod = "server"\n'
+    );
+    source = 'import from depmod { take }\ndef value -> int { return take(42); }\n';
+    Path(main).write_text(source);
+    (cold, cold_diags) = _check(main);
+    assert not cold.errors_had , cold_diags;
+    cold.release_compile_closure(collect=False);
+    _rewrite(main, source + '\n# Recheck the caller.\n');
+    (warm, warm_diags) = _check(main);
+    assert warm.analysis.cache_events.get('dep_hydrate', 0) >= 1;
+    assert not warm.errors_had , warm_diags;
+}
