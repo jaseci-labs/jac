@@ -256,19 +256,23 @@ impl ApiKeyManager.resolve_key(api_key: str) -> dict | None {
     return key_doc;
 }
 
-impl ApiKeyManager.check_rate_limit(api_key_id: str, limit_per_minute: int) -> bool {
+impl rate_window_ok(state: dict, key: str, limit_per_minute: int) -> bool {
     if limit_per_minute <= 0 {
         return True;
     }
     window_id = int(datetime.now(UTC).timestamp() // 60);
-    `entry = self._rate_window.get(api_key_id);
-    if not `entry or `entry[0] != window_id {
-        self._rate_window[api_key_id] = [window_id, 1];
+    slot = state.get(key);
+    if not slot or slot[0] != window_id {
+        state[key] = [window_id, 1];
         return True;
     }
-    if `entry[1] >= limit_per_minute {
+    if slot[1] >= limit_per_minute {
         return False;
     }
-    `entry[1] += 1;
+    slot[1] += 1;
     return True;
+}
+
+impl ApiKeyManager.check_rate_limit(api_key_id: str, limit_per_minute: int) -> bool {
+    return rate_window_ok(self._rate_window, api_key_id, limit_per_minute);
 }

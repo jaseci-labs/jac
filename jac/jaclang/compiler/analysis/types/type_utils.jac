@@ -52,6 +52,14 @@ def compute_mro_linearization(
     cls: ClassType, _visiting: (set[int] | None) = None
 ) -> None;
 
+def linearize_mro(
+    cls: ClassType, _visiting: (set[int] | None) = None
+) -> list[ClassType];
+
+def mro_signature(cls: ClassType) -> tuple;
+
+def ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bool;
+
 def primitive_type_name_of(ty: (TypeBase | None)) -> (str | None);
 
 def expr_primitive_name(expr_node: UniNode) -> str;

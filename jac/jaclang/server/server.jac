@@ -188,7 +188,8 @@ obj JacAPIServer(EndpointHost) {
             protocol: APIProtocol = APIProtocol.HTTP,
             broadcast: bool = False,
             produces: str = "",
-            envelope: bool = True;
+            envelope: bool = True,
+            scheme: str = "";
     }
 
     def postinit -> None;

@@ -2,7 +2,19 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.37.11 (Latest Release)
+## jaclang 0.37.12 (Latest Release)
+
+### Breaking Changes
+
+- **Breaking: `/admin/metrics` `summary` replaces `total_requests`, `error_count` and `avg_latency_ms` with `scopes` and `endpoints`**: scopes carry request and 4xx/5xx counts, p50/p95/p99 and a latency distribution cut at the configured `histogram_buckets` edges; endpoints list one row per method and path sorted by p95. The admin HTTP traffic card now shows a real 60s/5m/15m window, latency percentiles and error rates instead of lifetime counts.
+- **Breaking: Entry-module application compilation**: explicit `[apps.<name>]` tables require `kind` and a dotted, project-relative `entry-point` such as `core.api`; file-path entry values and the directory `path` key are rejected, and default-app inference and shared-layer/ambiguous-app diagnostics are removed. Single-app `[project] entry-point` values also use module names (`main`, without `.jac`). Application identity is called app context; `Module.app` replaces the redundant `owner_app` stamp, while ownership continues to describe memory and borrowing. Ordinary imports inherit the selected app context; another declared entry is a boundary. Typed phase and product schedules centralize compilation, sharing parsed syntax while keeping analyzed artifacts and source runtime modules app specific. Workspace checks follow entry imports and page roots; name unreachable files explicitly. `jac test <app>` uses configured test directories or the entry module. `jac run` prepares server, client, native, and serving artifacts before initialization, with visible progress. Programmatic source servers must prepare applications before loading them; `JacTestClient` and the in-process host do so automatically. Failed preparation preserves the working revision, and prepared development reloads perform a full browser reload. Sealed applications now retain serving metadata per module, including colocated services; rebuild existing artifacts.
+
+### Bug Fixes
+
+- **Fix: Read-tier flush no longer reopens a read-only transaction before a write**: Overlapping requests whose walker updates a field on an existing node no longer fail at commit with Postgres `25006 cannot execute INSERT in a read-only transaction`; the flush now always opens a writable transaction for pending writes.
+- **Fix: Nested archetypes survive service calls**: Service responses recursively reconstruct typed objects in inherited and nested fields, lists, dictionaries, optional and union results, and walker responses. The compiler includes nested boundary types without requiring explicit imports, distinguishes same-named declarations across apps and modules, and preserves type identity across provider and consumer import aliases. Typed forwarding retains inherited fields and nested type identities. Browser stubs also resolve boundary types and aliases in their declaring modules.
+
+## jaclang 0.37.11
 
 ### New Features
 

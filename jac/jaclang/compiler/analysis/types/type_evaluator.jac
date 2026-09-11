@@ -6,8 +6,6 @@ import from jaclang.compiler.analysis.types.specialization {
     specialize_function_variables
 }
 import from jaclang.compiler.session.import_paths { resolve_import_chain }
-import from jaclang.compiler.analysis.types.member_lookup { lookup_member_symbol }
-import from jaclang.compiler.session.import_paths { resolve_import_path }
 import from jaclang.compiler.analysis.types.builtin_extensions {
     install_builtin_extensions
 }
@@ -568,6 +566,8 @@ walker TypeEvaluator {
 
     def slice_assignment_is_valid(target: Expr, value_node: Expr) -> bool;
     def is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> bool;
+    def _heal_ancestry(cls: ClassType) -> None;
+    def _heal_class_bases(cls: ClassType) -> None;
     def _assign_callable(
         src_func: FunctionType, dest_func: FunctionType, strict: bool = False
     ) -> bool;
