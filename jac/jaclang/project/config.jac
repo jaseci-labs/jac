@@ -377,7 +377,7 @@ def project_scope_is_pinned -> bool;
 def get_explicit_config -> JacConfig | None;
 
 def get_config_for_path(
-    start_path: Path, profile: str | None = None
+    start_path: Path, profile: str | None = None, force_discover: bool = False
 ) -> JacConfig | None;
 
 def get_config_for_dir(start_dir: str) -> JacConfig | None;

@@ -140,6 +140,29 @@ test "timeouts resolve per app, then the gateway, then the default" {
     }
 }
 
+test "an explicit plugin directory without jac.toml uses defaults rather than its parent" {
+    import from jaclang.project.config { get_explicit_config, set_config }
+    directory = Path(_project());
+    child = directory / "standalone";
+    child.mkdir();
+    saved = get_explicit_config();
+    set_config(None);
+    try {
+        config = JacScaleConfig(project_dir=child);
+        assert config.get_gateway_config()["gateway_port"] == 8000;
+        initial = config.load();
+        assert config.load() is initial;
+        (child / "jac.toml").write_text(
+            '[project]\nname="child"\n[scale.gateway]\ngateway_port=9300\n'
+        );
+        assert config.get_gateway_config()["gateway_port"] == 9300;
+        assert config.load() is not initial;
+    } finally {
+        set_config(saved);
+        shutil.rmtree(directory, ignore_errors=True);
+    }
+}
+
 
 test "normalize_gateway_config fills every section with defaults" {
     gw = normalize_gateway_config({});
@@ -302,6 +325,33 @@ test "the manifest fleet discovers the same active profile as the scale plugin (
         }
     } finally {
         reset_scale_config();
+        set_config(saved);
+        shutil.rmtree(directory, ignore_errors=True);
+    }
+}
+
+test "new plugin readers refresh the shared config while preserving the explicit profile" {
+    import from jaclang.project.config { get_config, get_explicit_config, set_config }
+    import from unittest.mock { patch }
+    directory = Path(_project_with_profile());
+    saved = get_explicit_config();
+    set_config(None);
+    try {
+        with patch.dict(os.environ, {"JAC_PROFILE": ""}) {
+            get_config(start_path=directory, profile="e2e");
+            first = JacScaleConfig(project_dir=directory);
+            assert first.get_gateway_config()["gateway_port"] == 9200;
+            (directory / "jac.e2e.toml").write_text(
+                _PROFILE_TOML.replace("9200", "9400")
+            );
+            refreshed = JacScaleConfig(project_dir=directory);
+            assert refreshed.get_gateway_config()["gateway_port"] == 9400;
+            assert first.get_gateway_config()["gateway_port"] == 9400;
+            assert get_config() is refreshed.get_jac_config();
+            assert refreshed.get_jac_config().active_profile == "e2e";
+            assert len(refreshed.get_jac_config()._layers) == 1;
+        }
+    } finally {
         set_config(saved);
         shutil.rmtree(directory, ignore_errors=True);
     }

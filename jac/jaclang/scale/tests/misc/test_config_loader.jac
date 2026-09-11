@@ -13,9 +13,18 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 }
 
 
+class InMemoryScaleConfig(JacScaleConfig) {
+    has settings: dict[str, any] = {};
+
+    override def load(self: InMemoryScaleConfig) -> dict[str, any] {
+        return self.settings;
+    }
+}
+
+
 test "get_gateway_config returns ingress block" {
-    cfg = JacScaleConfig();
-    cfg._config = {
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {
         "gateway": {
             "ingress": {
                 "enabled": True,
@@ -36,16 +45,16 @@ test "get_gateway_config returns ingress block" {
 
 
 test "get_gateway_config ingress defaults to {} when section absent" {
-    cfg = JacScaleConfig();
-    cfg._config = {"gateway": {"colocate": False}};
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {"gateway": {"colocate": False}};
     out = cfg.get_gateway_config();
     assert out["ingress"] == {};
 }
 
 
 test "get_gateway_config preserves all sections (regression guard)" {
-    cfg = JacScaleConfig();
-    cfg._config = {
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {
         "gateway": {
             "colocate": False,
             "gateway_port": 9000,
@@ -77,60 +86,60 @@ test "get_gateway_config preserves all sections (regression guard)" {
 
 
 test "the gateway rate limiter asks for shared state by default" {
-    cfg = JacScaleConfig();
-    cfg._config = {"gateway": {"rate_limit": {"enabled": True, "per_ip_rpm": 10}}};
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {"gateway": {"rate_limit": {"enabled": True, "per_ip_rpm": 10}}};
     rl = cfg.get_gateway_config()["rate_limit"];
     assert rl["shared"] is True , (
         "a replica that keeps its own buckets multiplies the configured limit "
         f"by the replica count: {rl!r}"
     );
-    cfg._config = {"gateway": {}};
+    cfg.settings = {"gateway": {}};
     assert cfg.get_gateway_config()["rate_limit"]["shared"] is True;
 }
 
 
 test "an explicit rate_limit shared = false round-trips" {
-    cfg = JacScaleConfig();
-    cfg._config = {"gateway": {"rate_limit": {"enabled": True, "shared": False}}};
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {"gateway": {"rate_limit": {"enabled": True, "shared": False}}};
     assert cfg.get_gateway_config()["rate_limit"]["shared"] is False;
 }
 
 
 test "get_gateway_config logs block defaults to {} when absent" {
-    cfg = JacScaleConfig();
-    cfg._config = {"gateway": {}};
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {"gateway": {}};
     out = cfg.get_gateway_config();
     assert out["logs"] == {};
 }
 
 
 test "get_gateway_config logs block round-trips enabled flag" {
-    cfg = JacScaleConfig();
-    cfg._config = {"gateway": {"logs": {"enabled": True}}};
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {"gateway": {"logs": {"enabled": True}}};
     out = cfg.get_gateway_config();
     assert out["logs"] == {"enabled": True};
 }
 
 
 test "get_gateway_config colocates by default" {
-    cfg = JacScaleConfig();
-    cfg._config = {"gateway": {"gateway_port": 8000}};
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {"gateway": {"gateway_port": 8000}};
     assert cfg.get_gateway_config()["colocate"] is True;
-    cfg._config = {};
+    cfg.settings = {};
     assert cfg.get_gateway_config()["colocate"] is True;
 }
 
 
 test "get_gateway_config preserves an explicit colocate = false" {
-    cfg = JacScaleConfig();
-    cfg._config = {"gateway": {"colocate": False}};
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {"gateway": {"colocate": False}};
     assert cfg.get_gateway_config()["colocate"] is False;
 }
 
 
 test "get_gateway_config never reads the fleet from the environment" {
-    cfg = JacScaleConfig();
-    cfg._config = {"gateway": {}};
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {"gateway": {}};
     os.environ["JAC_SV_FLEET"] = '{"root": "web", "members": []}';
     try {
         out = cfg.get_gateway_config();
@@ -152,8 +161,8 @@ test "every get_websocket_config key has a schema entry (#8000 1.2)" {
     ws_schema = schema["options"].get("websocket");
     assert ws_schema is not None , "[scale.websocket] missing from plugin_config schema";
     declared = set(ws_schema["nested"].keys());
-    cfg = JacScaleConfig();
-    cfg._config = {"websocket": {}};
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {"websocket": {}};
     read_keys = set(cfg.get_websocket_config().keys());
     assert read_keys == declared , f"schema/read drift: schema-only={declared
         - read_keys}, read-only={read_keys - declared}";
@@ -163,8 +172,8 @@ test "every get_websocket_config key has a schema entry (#8000 1.2)" {
 test "config sections read by config_loader are schema-declared (#8000 1.2)" {
     import from jaclang.scale.config.plugin_config { JacScalePluginConfig }
     schema_sections = set(JacScalePluginConfig.get_config_schema()["options"].keys());
-    cfg = JacScaleConfig();
-    cfg._config = {};
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {};
     for section in [
         "websocket",
         "database",
@@ -182,13 +191,13 @@ test "get_kubernetes_config leaves the cached config dict unmutated" {
     # load() returns the cached dict by reference; deriving kubernetes keys
     # must not write them back, or later readers of the raw config see
     # derived values as if the user had configured them.
-    cfg = JacScaleConfig();
-    cfg._config = {
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {
         "kubernetes": {"namespace": "demo"},
         "monitoring": {"namespace": "demo_metrics"}
     };
     cfg.get_kubernetes_config();
-    leaked = cfg._config["kubernetes"];
+    leaked = cfg.settings["kubernetes"];
     assert leaked == {"namespace": "demo"} , f"derived keys leaked into the cached config: {leaked}";
 }
 
@@ -196,8 +205,8 @@ test "get_kubernetes_config leaves the cached config dict unmutated" {
 test "repeated get_kubernetes_config calls return equal results" {
     # Pre-copy, every call stacked derived keys onto the cached dict, so the
     # result depended on how many times it had been called before.
-    cfg = JacScaleConfig();
-    cfg._config = {
+    cfg = InMemoryScaleConfig();
+    cfg.settings = {
         "kubernetes": {"namespace": "demo"},
         "monitoring": {"namespace": "demo_metrics"}
     };

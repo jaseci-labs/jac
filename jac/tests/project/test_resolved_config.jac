@@ -66,14 +66,14 @@ test "default profiles and local overrides apply without a CLI dispatcher" {
     }
 }
 
-test "a pinned standalone scope prevents file-based rediscovery" {
+test "file configuration remains available without adopting it as the standalone scope" {
     saved = get_explicit_config();
     try {
         with TemporaryDirectory() as directory {
             base = Path(directory);
             project(base);
             pin_project_scope(None);
-            assert get_config_for_path(base / "main.jac") is None;
+            assert get_config_for_path(base / "main.jac") is not None;
             assert get_config() is None;
         }
     } finally {

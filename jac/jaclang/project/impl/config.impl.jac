@@ -1431,10 +1431,11 @@ impl get_config_for_dir(start_dir: str) -> JacConfig | None {
 }
 
 impl get_config_for_path(
-    start_path: Path, profile: str | None = None
+    start_path: Path, profile: str | None = None, force_discover: bool = False
 ) -> JacConfig | None {
-    if _config_explicit {
-        return _config;
+    explicit = get_explicit_config();
+    if explicit is not None {
+        return explicit;
     }
     result = find_project_root(start_path);
     if result is None {
@@ -1443,14 +1444,18 @@ impl get_config_for_path(
     (project_root, _) = result;
     key = str(project_root);
     cached = _config_by_root.get(key);
-    if key not in _config_by_root
+    if force_discover
+        or key not in _config_by_root
         or (
             profile is not None
             and cached is not None
             and cached.profile_override != profile.strip()
         ) {
+        selected = profile
+            if profile is not None
+            else (cached.profile_override if cached is not None else None);
         _config_by_root[key] = JacConfig.resolve(
-            start_path=project_root, profile=profile
+            start_path=project_root, profile=selected
         );
         if _config is not None and _config.project_root == project_root {
             _config = _config_by_root[key];

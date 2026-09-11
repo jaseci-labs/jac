@@ -97,7 +97,11 @@ impl PluginConfigBase._validate_declared_keys(raw: dict[str, any]) -> None {
 }
 
 impl PluginConfigBase.get_jac_config -> JacConfig {
-    config = get_config_for_path(self.config_file);
+    config = get_config_for_path(
+        self.config_file, force_discover=self._jac_config is None
+    )
+        if self.config_file.exists()
+        else None;
     if config is not self._jac_config {
         self._config = None;
         self._jac_config = config;

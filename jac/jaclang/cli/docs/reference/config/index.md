@@ -895,7 +895,10 @@ overrides. `jac.local.toml` is applied last, even when no named profile is selec
 Code that reads project settings should use `get_config()` or
 `get_config_for_path()` from `jaclang.project.config`. These cache the resolved
 configuration per project root. `get_config(force_discover=True)` refreshes that
-cache after configuration files or the environment change. `JacConfig.resolve()`
+cache after configuration files or the environment change;
+`get_config_for_path(path, force_discover=True)` refreshes one root while preserving
+its explicit profile selection. New plugin configuration instances refresh that
+shared root, so existing readers see the updated settings too. `JacConfig.resolve()`
 resolves a fresh configuration; `JacConfig.load()` and `JacConfig.discover()`
 remain available for raw configuration inspection. An explicit profile is carried
 across CLI project discovery; otherwise each project uses its own default.
