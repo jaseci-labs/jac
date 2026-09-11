@@ -576,7 +576,7 @@ impl compute_mro_linearization(
                 head = linz[0];
                 in_tail = False;
                 for other_lin in linearizations {
-                    if any(head.shared is o.shared for o in other_lin[1:]) {
+                    if head in other_lin[1:] {
                         in_tail = True;
                         break;
                     }
@@ -596,7 +596,7 @@ impl compute_mro_linearization(
                 new_lin = [
                     c
                     for c in linz
-                    if c.shared is not candidate.shared
+                    if c is not candidate
                 ];
                 if new_lin {
                     new_linearizations.append(new_lin);
@@ -605,36 +605,9 @@ impl compute_mro_linearization(
             linearizations = new_linearizations;
         }
         cls.shared.mro = result;
-        cls.shared._mro_sig = mro_signature(cls);
     } finally {
         _visiting.discard(key);
     }
-}
-
-impl mro_signature(cls: ClassType) -> tuple {
-    sig: list = [];
-    for base in cls.shared.base_classes {
-        if isinstance(base, ClassType) {
-            sig.append((id(base.shared), len(base.shared.mro)));
-        } else {
-            sig.append((0, type(base).__name__));
-        }
-    }
-    return tuple(sig);
-}
-
-impl ensure_mro_fresh(cls: ClassType) -> bool {
-    shared = cls.shared;
-    if not shared.mro {
-        compute_mro_linearization(cls);
-        return True;
-    }
-    if shared._mro_sig is not None and shared._mro_sig == mro_signature(cls) {
-        return False;
-    }
-    shared.mro = [];
-    compute_mro_linearization(cls);
-    return True;
 }
 
 impl compute_module_source_flags(file_path: str) -> ModuleSourceFlags {

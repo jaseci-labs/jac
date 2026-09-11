@@ -3034,56 +3034,15 @@ impl TypeEvaluator._solve_protocol_type_args(
 
 
 impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> bool {
-    import from jaclang.compiler.types.type_utils { ensure_mro_fresh }
-    if sub_cls.shared._provisional {
-        self._heal_class_bases(sub_cls);
+    if not sub_cls.shared.mro {
+        compute_mro_linearization(sub_cls);
     }
-    ensure_mro_fresh(sub_cls);
     for cls in sub_cls.shared.mro {
         if cls.shared.same_class(super_cls.shared) {
             return True;
         }
     }
     return False;
-}
-
-impl TypeEvaluator._heal_class_bases(cls: ClassType) -> None {
-    import from jaclang.compiler.frontend.unitree { Archetype }
-    shared = cls.shared;
-    node_ = shared.symbol_table;
-    if not isinstance(node_, Archetype) {
-        shared._provisional = False;
-        return;
-    }
-    shared._provisional = False;
-    bases: list[TypeBase] = [];
-    unresolved = False;
-    for base_expr in node_.base_classes or [] {
-        base_expr.type = None;
-        base_type = self.get_type_of_expression(base_expr);
-        if isinstance(base_type, UnknownType) and not base_type.is_diagnosed {
-            unresolved = True;
-        }
-        bases.append(base_type);
-    }
-    if unresolved {
-        shared._provisional = True;
-        return;
-    }
-    if not [
-        b
-        for b in bases
-        if isinstance(b, ClassType)
-    ]
-        and self.prefetch
-        and self.prefetch.object_class
-        and not shared.same_class(self.prefetch.object_class.shared) {
-        bases.append(self.prefetch.object_class);
-    }
-    shared.base_classes = bases;
-    shared.mro = [];
-    compute_mro_linearization(cls);
-    shared._provisional = False;
 }
 
 impl TypeEvaluator.get_type_of_magic_method_call(
@@ -6075,21 +6034,6 @@ impl TypeEvaluator._intern_shared(shared: ClassDetailsShared) -> ClassDetailsSha
     if found.symbol_table is not shared.symbol_table
         and self._scope_is_current(shared.symbol_table) {
         found.symbol_table = shared.symbol_table;
-    }
-    fresh_bases = [
-        b
-        for b in shared.base_classes
-        if isinstance(b, ClassType)
-    ];
-    known_bases = [
-        b
-        for b in found.base_classes
-        if isinstance(b, ClassType)
-    ];
-    if len(fresh_bases) > len(known_bases) {
-        found.base_classes = shared.base_classes;
-        found.mro = [];
-        found._provisional = shared._provisional;
     }
     return found;
 }
