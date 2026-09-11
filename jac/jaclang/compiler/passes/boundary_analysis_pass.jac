@@ -45,7 +45,6 @@ import from jaclang.compiler.frontend.constant {
     Tokens as Tok
 }
 import from jaclang.compiler.frontend.codeinfo {
-    boundary_type_scope,
     BoundaryTypeInfo,
     InteropBinding,
     InteropContext

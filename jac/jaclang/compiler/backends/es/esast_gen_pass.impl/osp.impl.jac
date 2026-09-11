@@ -1051,13 +1051,13 @@ impl EsastGenPass._build_spawn_arg_object(
     ordered_fields = collect_field_names(walker_symbol, Tok.KW_WALKER.value);
 
     field_type_map: dict[str, str] = {};
-    type_scope = boundary_type_scope(self.ir_in);
+    type_scope = self.ir_in.loc.mod_path;
     if walker_symbol {
         arch = symbol_owner_archetype(walker_symbol);
         if arch {
-            type_scope = boundary_type_scope(
+            type_scope = (
                 arch.find_parent_of_type(uni.Module) or self.ir_in
-            );
+            ).loc.mod_path;
             for field in arch.get_has_vars() {
                 if field.type_tag and field.type_tag.tag {
                     if isinstance(field.type_tag.tag, uni.Name) {

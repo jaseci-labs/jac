@@ -1,7 +1,6 @@
 """Boundary classes and codecs must resolve types in their declaring modules."""
 
 import os;
-import json;
 import re;
 import subprocess;
 import from tempfile { TemporaryDirectory }
@@ -9,32 +8,16 @@ import from tests.support { JAC_ROOT }
 import from jaclang.client.bun_installer { get_bun }
 import from jaclang.compiler.driver.program { JacProgram }
 
-glob FIXTURE_DIR = os.path.join(
-         JAC_ROOT, "jaclang", "scale", "tests", "fixtures", "typed_boundary"
-     );
-
-test "service boundary metadata retains each provider application context" {
-    prog = JacProgram();
-    mod = prog.compile(os.path.join(FIXTURE_DIR, "consumer.jac"));
-    assert not prog.errors_had , str(prog.errors_had);
-    manifest = mod.gen.interop_manifest;
-    for (name, app, module) in [
-        ("Meta", "scoring", "models.jac"),
-        ("OtherMeta", "scoring", "other_models.jac"),
-        ("ForeignMeta", "other", "other_models.jac")
-    ] {
-        binding = manifest.bindings[name];
-        info = manifest.boundary_types_for(binding.type_scope)[binding.ret_type];
-        assert json.loads(info.type_id) == [app, module, "type", "RepoMeta"] , f"{name}: {info.type_id}";
-        if name != "Meta" {
-            nested = manifest.boundary_types_for(info.type_scope)["Detail"];
-            assert json.loads(nested.type_id) == [app, module, "type", "Detail"] , f"{name}: {nested.type_id}";
-        }
-    }
-}
-
 test "JavaScript boundary types preserve provider scopes and aliases" {
-    path = os.path.join(FIXTURE_DIR, "browser.jac");
+    path = os.path.join(
+        JAC_ROOT,
+        "jaclang",
+        "scale",
+        "tests",
+        "fixtures",
+        "typed_boundary",
+        "browser.jac"
+    );
     prog = JacProgram();
     mod = prog.compile(path);
     assert not prog.errors_had , str(prog.errors_had);

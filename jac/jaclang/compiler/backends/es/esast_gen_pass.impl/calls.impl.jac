@@ -809,7 +809,7 @@ impl EsastGenPass._try_lower_server_rpc_call(
         ability_node, func_name, self.ir_in.gen.interop_manifest
     );
     inline_boundary = self.ir_in.gen.interop_manifest.boundary_types_for(
-        boundary_type_scope(ability_node.find_parent_of_type(uni.Module) or self.ir_in)
+        (ability_node.find_parent_of_type(uni.Module) or self.ir_in).loc.mod_path
     )
         if self.ir_in.gen.interop_manifest
         else {};
@@ -927,7 +927,7 @@ impl EsastGenPass._build_server_forwarder(
 ) -> es.FunctionDeclaration {
     self._warn_rpc_callable_params(ability_node, func_name, jac_node);
     boundary = self.ir_in.gen.interop_manifest.boundary_types_for(
-        boundary_type_scope(ability_node.find_parent_of_type(uni.Module) or self.ir_in)
+        (ability_node.find_parent_of_type(uni.Module) or self.ir_in).loc.mod_path
     )
         if self.ir_in.gen.interop_manifest
         else {};

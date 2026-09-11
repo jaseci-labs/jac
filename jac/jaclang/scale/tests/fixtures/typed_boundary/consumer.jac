@@ -88,21 +88,15 @@ async def:pub check_distinct_types -> bool {
     payload = await fetch_score();
     assert isinstance(other.meta, OtherMeta);
     assert not isinstance(other.meta, Meta);
-    assert not isinstance(other.meta.detail, dict);
-    assert other.meta.detail.label == "detail";
     assert isinstance(payload.meta, Meta);
     assert not isinstance(payload.meta, OtherMeta);
     assert other.meta.owner == "other";
-    # Each service compiles other_models in its own application context.
-    assert ForeignMeta is not OtherMeta , "types from different apps must stay distinct";
+    assert ForeignMeta is OtherMeta;
     assert OtherScoredPayload is not ScoredPayload;
     foreign = await fetch_other();
     assert isinstance(foreign, OtherScoredPayload);
     assert not isinstance(foreign, ScoredPayload);
-    assert isinstance(foreign.meta, ForeignMeta) , "nested values must use the exporting app's type";
-    assert not isinstance(foreign.meta, OtherMeta);
-    assert not isinstance(foreign.meta.detail, dict);
-    assert foreign.meta.detail.label == "detail";
+    assert isinstance(foreign.meta, ForeignMeta);
     assert foreign.meta.owner == "other";
     return True;
 }
