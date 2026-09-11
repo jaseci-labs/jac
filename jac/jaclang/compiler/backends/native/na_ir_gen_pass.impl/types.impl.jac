@@ -2127,9 +2127,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             and isinstance(target_type, ir.IntType)
             and target_type.width == 64 {
             return self.builder.ptrtoint(
-                self._str_materialize(val),
-                target_type,
-                name="s.box"
+                self._str_materialize(val), target_type, name="s.box"
             );
         }
     }

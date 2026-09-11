@@ -1227,7 +1227,9 @@ impl NaIRGenPass._emit_str_desc_helpers -> None {
     self.str_unwrap_fn = uf;
 
     if not _hl {
-        mf = self._define_function("__jac_str_materialize", ir.FunctionType(i8p, [desc]));
+        mf = self._define_function(
+            "__jac_str_materialize", ir.FunctionType(i8p, [desc])
+        );
         mf.linkage = "private";
         mb = ir.IRBuilder(mf.append_basic_block("entry"));
         null_bb = mf.append_basic_block("null");
@@ -1237,7 +1239,9 @@ impl NaIRGenPass._emit_str_desc_helpers -> None {
         owner = mb.extract_value(mf.args[0], 0, name="owner");
         data = mb.extract_value(mf.args[0], _di, name="data");
         size = mb.extract_value(mf.args[0], _li, name="size");
-        mb.cbranch(mb.icmp_unsigned("==", data, ir.Constant(i8p, None)), null_bb, probe_bb);
+        mb.cbranch(
+            mb.icmp_unsigned("==", data, ir.Constant(i8p, None)), null_bb, probe_bb
+        );
         mb.position_at_end(null_bb);
         mb.ret(ir.Constant(i8p, None));
         mb.position_at_end(probe_bb);
