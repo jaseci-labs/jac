@@ -121,7 +121,7 @@ def:pub SidebarProvider(props: any) -> JsxElement {
         setOpenMobile: setOpenMobile,
         toggleSidebar: toggleSidebar
     };
-    mergedStyle = {
+    mergedStyle: dict[str, object] = {
         "--sidebar-width": SIDEBAR_WIDTH,
         "--sidebar-width-icon": SIDEBAR_WIDTH_ICON
     };

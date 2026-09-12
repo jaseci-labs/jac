@@ -96,9 +96,8 @@ class PointerType(Type) {
     def _to_string(self: PointerType) -> object {
         if (self.addrspace != 0) {
             return "ptr addrspace({0})".format(self.addrspace);
-        } else {
-            return "ptr";
         }
+        return "ptr";
     }
 
     def __eq__(self: PointerType, other: any) -> object {
@@ -175,9 +174,8 @@ class FunctionType(Type) {
             strargs = ', '.join([str(a) for a in self.args]);
             if self.var_arg {
                 return '{0} ({1}, ...)'.format(self.return_type, strargs);
-            } else {
-                return '{0} ({1})'.format(self.return_type, strargs);
             }
+            return '{0} ({1})'.format(self.return_type, strargs);
         } elif self.var_arg {
             return '{0} (...)'.format(self.return_type);
         } else {
@@ -192,9 +190,8 @@ class FunctionType(Type) {
                 and (self.args == other.args)
                 and (self.var_arg == other.var_arg)
             );
-        } else {
-            return False;
         }
+        return False;
     }
 
     def __hash__(self: FunctionType) -> object {
@@ -244,9 +241,8 @@ class IntType(Type) {
     def __eq__(self: IntType, other: any) -> object {
         if isinstance(other, IntType) {
             return (self.width == other.width);
-        } else {
-            return False;
         }
+        return False;
     }
 
     def __hash__(self: IntType) -> object {
@@ -256,9 +252,8 @@ class IntType(Type) {
     def format_constant(self: IntType, val: any) -> str {
         if isinstance(val, bool) {
             return str(val).lower();
-        } else {
-            return str(val);
         }
+        return str(val);
     }
 
     def wrap_constant_value(self: IntType, val: any) -> object {
@@ -378,9 +373,8 @@ class _Repeat(object) {
     def __getitem__(self: _Repeat, item: any) -> object {
         if (0 <= item < self.size) {
             return self.value;
-        } else {
-            raise IndexError(item);
         }
+        raise IndexError(item);
     }
 }
 
@@ -585,9 +579,8 @@ class BaseStructType(Aggregate) {
     def _wrap_packed(self: BaseStructType, textrepr: str) -> str {
         if self.packed {
             return '<{}>'.format(textrepr);
-        } else {
-            return textrepr;
         }
+        return textrepr;
     }
 }
 
@@ -639,7 +632,7 @@ class IdentifiedStructType(BaseStructType) {
         return "%{name}".format(name=_wrapname(self.name));
     }
 
-    def get_declaration(self: IdentifiedStructType) -> object {
+    def get_declaration(self: IdentifiedStructType) -> str {
         if self.is_opaque {
             out = "{strrep} = type opaque".format(strrep=str(self));
         } else {

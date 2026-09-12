@@ -181,7 +181,11 @@ def sv_live_edges(
         }
     }
     if edges_only {
-        return hits;
+        live: list[Anchor] = [];
+        for h_a in hits {
+            live.append(h_a);
+        }
+        return live;
     }
     ends: list[Anchor] = [];
     seen: set[any] = set();

@@ -199,6 +199,20 @@ test "typevar10_ellipsis_stub_no_error" {
     assert len(e1004_errors) == 0 , f"Expected no E1004 for ellipsis stubs, got:\n{all_errors}";
 }
 
+"""Mutable generic containers require invariant type arguments."""
+test "invariant_generic_arguments" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_invariant_generics.jac")
+    );
+
+    errors = [e.pretty_print() for e in program.errors_had];
+    all_errors = "\n".join(errors);
+
+    assert len(errors) == 7 , f"Expected 7 invariant generic errors, got:\n{all_errors}";
+    assert all_errors.count("Cannot assign") == 7 , f"Expected all seven container substitutions to be rejected, got:\n{all_errors}";
+}
+
 """Test that module-level dunder variables (__name__, __file__, etc.) type-check cleanly."""
 test "module_dunders_no_errors" {
     program = JacProgram();

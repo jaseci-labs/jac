@@ -2083,9 +2083,12 @@ impl OwnershipCheckPass._emit_escape_diagnostics -> None {
                 owner_id = self._name_sym_id(source_owner);
                 owner_name = self._owned_name(owner_id, tgt.sym_name);
                 owner_decl = self.owned_decl.get(owner_id);
-                e1306_related = [(f"owner '{owner_name}' declared here", owner_decl)]
-                    if owner_decl is not None
-                    else None;
+                e1306_related = None;
+                if owner_decl is not None {
+                    e1306_related = [
+                        (f"owner '{owner_name}' declared here", owner_decl)
+                    ];
+                }
                 self.emit(
                     E1306,
                     node_override=nd.value,

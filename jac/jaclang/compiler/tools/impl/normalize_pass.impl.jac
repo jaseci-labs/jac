@@ -1347,7 +1347,10 @@ impl NormalizePass.enter_index_slice with uni.IndexSlice entry {
         }
     } elif len(here.slices) == 1 {
         sl = here.slices[0];
-        sl_kid = [sl.start] if sl.start else [];
+        sl_kid: list[uni.UniNode] = [];
+        if sl.start {
+            sl_kid.append(sl.start);
+        }
         sl.set_kids(nodes=sl_kid);
         new_kid.append(sl);
     }

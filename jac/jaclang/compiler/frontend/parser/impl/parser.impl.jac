@@ -1412,34 +1412,33 @@ impl Parser.parse_index_slice -> IndexSlice {
         rsq_uni = self.consume_uni(TokenKind.RSQUARE);
         index_kid.append(rsq_uni);
         return IndexSlice(slices=slices, is_range=True, kid=index_kid);
-    } else {
-        indices: list[Expr] = [];
-        list_kid: list[UniNode] = [lsq_uni];
-        if first_expr is not None {
-            indices.append(first_expr);
-            list_kid.append(first_expr);
-            while self.match_tok(TokenKind.COMMA) {
-                list_kid.append(self.make_uni_token(self.previous()));
-                if self.check(TokenKind.RSQUARE) {
-                    break;
-                }
-                idx = self.parse_expression();
-                indices.append(idx);
-                list_kid.append(idx);
-            }
-        }
-        rsq_idx_uni = self.consume_uni(TokenKind.RSQUARE);
-        list_kid.append(rsq_idx_uni);
-        list_val = ListVal(values=indices, kid=list_kid);
-        if len(indices) == 1 {
-            idx_expr = indices[0];
-            slice_node = Slice(start=idx_expr, stop=None, step=None, kid=[list_val]);
-        } else {
-            idx_expr = TupleVal(values=indices, kid=list_kid);
-            slice_node = Slice(start=idx_expr, stop=None, step=None, kid=[idx_expr]);
-        }
-        return IndexSlice(slices=[slice_node], is_range=False, kid=[slice_node]);
     }
+    indices: list[Expr] = [];
+    list_kid: list[UniNode] = [lsq_uni];
+    if first_expr is not None {
+        indices.append(first_expr);
+        list_kid.append(first_expr);
+        while self.match_tok(TokenKind.COMMA) {
+            list_kid.append(self.make_uni_token(self.previous()));
+            if self.check(TokenKind.RSQUARE) {
+                break;
+            }
+            idx = self.parse_expression();
+            indices.append(idx);
+            list_kid.append(idx);
+        }
+    }
+    rsq_idx_uni = self.consume_uni(TokenKind.RSQUARE);
+    list_kid.append(rsq_idx_uni);
+    list_val = ListVal(values=indices, kid=list_kid);
+    if len(indices) == 1 {
+        idx_expr = indices[0];
+        slice_node = Slice(start=idx_expr, stop=None, step=None, kid=[list_val]);
+    } else {
+        idx_expr = TupleVal(values=indices, kid=list_kid);
+        slice_node = Slice(start=idx_expr, stop=None, step=None, kid=[idx_expr]);
+    }
+    return IndexSlice(slices=[slice_node], is_range=False, kid=[slice_node]);
 }
 
 impl Parser.parse_call_args(kid: list[UniNode]) -> list[Expr | KWPair] {
@@ -2649,12 +2648,11 @@ impl Parser.parse_dict_spread_entry -> UniNode {
         star_pow_uni = self.make_uni_token(self.previous());
         spread_val = self.parse_expression();
         return KVPair(key=None, value=spread_val, kid=[star_pow_uni, spread_val]);
-    } else {
-        key = self.parse_expression();
-        kv_colon_uni = self.consume_uni(TokenKind.COLON);
-        val = self.parse_expression();
-        return KVPair(key=key, value=val, kid=[key, kv_colon_uni, val]);
     }
+    key = self.parse_expression();
+    kv_colon_uni = self.consume_uni(TokenKind.COLON);
+    val = self.parse_expression();
+    return KVPair(key=key, value=val, kid=[key, kv_colon_uni, val]);
 }
 
 impl Parser.parse_comprehension_clauses -> list[InnerCompr] {
@@ -3056,7 +3054,11 @@ impl Parser.parse_jsx_child -> JsxChild | JsxElement | None {
                 kid.append(s);
             }
             kid.append(rbrace_uni);
-            return JsxSlot(body=stmts, kid=kid);
+            __jsx_body: list[UniNode] = [];
+            for __s in stmts {
+                __jsx_body.append(__s);
+            }
+            return JsxSlot(body=__jsx_body, kid=kid);
         }
 
         expr = self.parse_expression();
@@ -3088,7 +3090,11 @@ impl Parser.parse_jsx_child -> JsxChild | JsxElement | None {
                 kid2.append(s);
             }
             kid2.append(rbrace_uni);
-            return JsxSlot(body=stmts2, kid=kid2);
+            __jsx_body2: list[UniNode] = [];
+            for __s2 in stmts2 {
+                __jsx_body2.append(__s2);
+            }
+            return JsxSlot(body=__jsx_body2, kid=kid2);
         }
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
         kid_expr: list[UniNode] = [lbrace_uni, expr, rbrace_uni];

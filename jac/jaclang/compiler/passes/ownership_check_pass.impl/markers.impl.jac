@@ -57,7 +57,10 @@ impl OwnershipCheckPass._emit_imm_mutation(
     sid: SymId, site: UniNode, decl: Name | None
 ) -> None {
     name = decl.sym_name if decl is not None else "";
-    related = [(f"`imm` '{name}' declared here", decl)] if decl is not None else None;
+    related: list[tuple[str, UniNode]] | None = None;
+    if decl is not None {
+        related = [(f"`imm` '{name}' declared here", decl)];
+    }
     self.emit(E1309, node_override=site, name=name, related=related);
 }
 

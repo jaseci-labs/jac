@@ -417,7 +417,7 @@ impl JcirGenPass.exit_import with Import exit {
     ) {
         return;
     }
-    py_nodes: list[CgNode] = [];
+    py_nodes: list[CgItem] = [];
     if here.doc {
         py_nodes.append(
             self.nod('Expr', ['value'], [self.val(here.doc)], jac_node=here.doc)
@@ -482,7 +482,8 @@ impl JcirGenPass.exit_import with Import exit {
                 ['test', 'body', 'orelse'],
                 [self.name_load('TYPE_CHECKING'), body_stmts, []]
             );
-            py_nodes = [wrapped];
+            py_nodes = [];
+            py_nodes.append(wrapped);
         }
     }
     self.set_out(here, py_nodes);

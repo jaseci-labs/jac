@@ -27,9 +27,9 @@ impl JcirGenPass.exit_visit_stmt with VisitStmt exit {
             )
         );
     }
-    self.set_out(
-        here,
-        [
+    out: list[CgItem] = [];
+    if here.else_body {
+        out.append(
             self.nod(
                 'If',
                 ['test', 'body', 'orelse'],
@@ -43,10 +43,11 @@ impl JcirGenPass.exit_visit_stmt with VisitStmt exit {
                     []
                 ]
             )
-        ]
-            if here.else_body
-            else [self.nod('Expr', ['value'], [visit_call])]
-    );
+        );
+    } else {
+        out.append(self.nod('Expr', ['value'], [visit_call]));
+    }
+    self.set_out(here, out);
 }
 
 impl JcirGenPass.exit_disengage_stmt with DisengageStmt exit {

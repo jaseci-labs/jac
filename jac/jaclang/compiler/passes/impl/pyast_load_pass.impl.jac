@@ -1041,7 +1041,10 @@ impl PyastBuildPass.proc_import(nd: py_ast.Import) -> Import {
             if not segments {
                 segments = [name.expr];
             }
-            seg_kid: list[UniNode] = list(segments);
+            seg_kid: list[UniNode] = [];
+            for seg in segments {
+                seg_kid.append(seg);
+            }
             if name.alias {
                 seg_kid.append(name.alias);
             }

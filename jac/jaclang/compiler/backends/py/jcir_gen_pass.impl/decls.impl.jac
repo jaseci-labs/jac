@@ -488,7 +488,7 @@ impl JcirGenPass.exit_func_signature with FuncSignature exit {
         params = params + [self.val(i) for i in here.params];
     }
     defaults: list[CgNode] = [];
-    all_params: list[UniNode] = list(here.posonly_params) + list(here.params);
+    all_params: list[ParamVar] = list(here.posonly_params) + list(here.params);
     for i in all_params {
         if (isinstance(i, ParamVar) and i.value) {
             defaults.append(self.val(i.value));

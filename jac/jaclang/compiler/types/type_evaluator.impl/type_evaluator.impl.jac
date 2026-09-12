@@ -205,21 +205,17 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                         if all_compatible {
                             list_inst.private.type_args = [expected_elem];
-                        } else {
-                            if len(elem_types) == 1 {
-                                list_inst.private.type_args = [elem_types[0]];
-                            } elif len(elem_types) > 1 {
-                                list_inst.private.type_args = [
-                                    UnionType(types=elem_types)
-                                ];
-                            }
-                        }
-                    } else {
-                        if len(elem_types) == 1 {
+                        } elif len(elem_types) == 1 {
                             list_inst.private.type_args = [elem_types[0]];
                         } elif len(elem_types) > 1 {
-                            list_inst.private.type_args = [UnionType(types=elem_types)];
+                            __ut: TypeBase = UnionType(types=elem_types);
+                            list_inst.private.type_args = [__ut];
                         }
+                    } elif len(elem_types) == 1 {
+                        list_inst.private.type_args = [elem_types[0]];
+                    } elif len(elem_types) > 1 {
+                        __ut2: TypeBase = UnionType(types=elem_types);
+                        list_inst.private.type_args = [__ut2];
                     }
                 }
                 return list_inst;
@@ -415,23 +411,17 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                         if all_ok {
                             set_inst.private.type_args = [expected_elem_s];
-                        } else {
-                            if len(set_elem_types) == 1 {
-                                set_inst.private.type_args = [set_elem_types[0]];
-                            } elif len(set_elem_types) > 1 {
-                                set_inst.private.type_args = [
-                                    UnionType(types=set_elem_types)
-                                ];
-                            }
-                        }
-                    } else {
-                        if len(set_elem_types) == 1 {
+                        } elif len(set_elem_types) == 1 {
                             set_inst.private.type_args = [set_elem_types[0]];
                         } elif len(set_elem_types) > 1 {
                             set_inst.private.type_args = [
                                 UnionType(types=set_elem_types)
                             ];
                         }
+                    } elif len(set_elem_types) == 1 {
+                        set_inst.private.type_args = [set_elem_types[0]];
+                    } elif len(set_elem_types) > 1 {
+                        set_inst.private.type_args = [UnionType(types=set_elem_types)];
                     }
                 }
                 return set_inst;
@@ -2005,22 +1995,19 @@ impl TypeEvaluator._get_type_of_expression_core(
                                     }
                                 }
                                 return type_arch_inst;
-                            } else {
-                                cls_: Archetype | None = self._get_enclosing_class(
-                                    expr
-                                );
-                                if cls_ {
-                                    peer_class: ClassType | None = None;
-                                    if cls_.sym_category == SymbolType.WALKER_ARCH {
-                                        peer_class = self.prefetch.node_class;
-                                    } elif cls_.sym_category == SymbolType.NODE_ARCH {
-                                        peer_class = self.prefetch.walker_class;
-                                    }
-                                    if peer_class is not None {
-                                        peer_symbol = peer_class.get_class_symbol();
-                                        if peer_symbol is not None {
-                                            self._set_symbol_to_expr(expr, peer_symbol);
-                                        }
+                            }
+                            cls_: Archetype | None = self._get_enclosing_class(expr);
+                            if cls_ {
+                                peer_class: ClassType | None = None;
+                                if cls_.sym_category == SymbolType.WALKER_ARCH {
+                                    peer_class = self.prefetch.node_class;
+                                } elif cls_.sym_category == SymbolType.NODE_ARCH {
+                                    peer_class = self.prefetch.walker_class;
+                                }
+                                if peer_class is not None {
+                                    peer_symbol = peer_class.get_class_symbol();
+                                    if peer_symbol is not None {
+                                        self._set_symbol_to_expr(expr, peer_symbol);
                                     }
                                 }
                             }
@@ -2603,12 +2590,11 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                         }
                     }
                     return declared_inst;
-                } else {
-                    if node_.parent.value is not None {
-                        return self._widen_literal_for_declaration(
-                            self.get_type_of_expression(node_.parent.value)
-                        );
-                    }
+                }
+                if node_.parent.value is not None {
+                    return self._widen_literal_for_declaration(
+                        self.get_type_of_expression(node_.parent.value)
+                    );
                 }
             }
 
@@ -2622,12 +2608,11 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                         node_.parent.parent.type_tag.tag
                     );
                     return self._convert_to_instance(annotation_type);
-                } else {
-                    if node_.parent.parent.value is not None {
-                        return self._widen_literal_for_declaration(
-                            self.get_type_of_expression(node_.parent.parent.value)
-                        );
-                    }
+                }
+                if node_.parent.parent.value is not None {
+                    return self._widen_literal_for_declaration(
+                        self.get_type_of_expression(node_.parent.parent.value)
+                    );
                 }
             }
 
@@ -2698,10 +2683,9 @@ impl TypeEvaluator._get_type_of_symbol_decl(
             if node_.type_tag is not None {
                 annotation_type = self.get_type_of_expression(node_.type_tag.tag);
                 return self._convert_to_instance(annotation_type);
-            } else {
-                if node_.value is not None {
-                    return self.get_type_of_expression(node_.value);
-                }
+            }
+            if node_.value is not None {
+                return self.get_type_of_expression(node_.value);
             }
 
     }
@@ -2842,16 +2826,10 @@ impl TypeEvaluator._assign_class(
         }
 
         if src_type.private.type_args and dest_type.private.type_args {
-            if len(src_type.private.type_args) == len(dest_type.private.type_args) {
-                for i in range(len(src_type.private.type_args)) {
-                    src_arg = self._convert_to_instance(src_type.private.type_args[i]);
-                    dest_arg = self._convert_to_instance(
-                        dest_type.private.type_args[i]
-                    );
-                    if not self.assign_type(src_arg, dest_arg, strict) {
-                        return False;
-                    }
-                }
+            if not self._assign_type_args(
+                src_type.private.type_args, dest_type, strict
+            ) {
+                return False;
             }
         }
         return True;
@@ -2860,34 +2838,10 @@ impl TypeEvaluator._assign_class(
     if self.is_sub_class(dest_type, src_type) {
         if dest_type.private.type_args {
             specialized = specialize_for_base_class(src_type, dest_type);
-            src_args = specialized.private.type_args;
-            if src_args and len(src_args) == len(dest_type.private.type_args) {
-                for i in range(len(src_args)) {
-                    src_arg = self._convert_to_instance(src_args[i]);
-                    dest_arg = self._convert_to_instance(
-                        dest_type.private.type_args[i]
-                    );
-
-                    tp = dest_type.shared.type_params[i]
-                        if (
-                            dest_type.shared.type_params
-                            and i < len(dest_type.shared.type_params)
-                        )
-                        else None;
-                    if tp and tp.is_covariant {
-                        if not self.assign_type(src_arg, dest_arg, strict) {
-                            return False;
-                        }
-                    } elif tp and tp.is_contravariant {
-                        if not self.assign_type(dest_arg, src_arg, strict) {
-                            return False;
-                        }
-                    } else {
-                        if not self.assign_type(src_arg, dest_arg, strict) {
-                            return False;
-                        }
-                    }
-                }
+            if not self._assign_type_args(
+                specialized.private.type_args, dest_type, strict
+            ) {
+                return False;
             }
         }
         return True;
@@ -2917,6 +2871,54 @@ impl TypeEvaluator._assign_class(
         }
     }
     return False;
+}
+
+impl TypeEvaluator._assign_type_args(
+    src_args: (list[TypeBase] | None), dest_type: ClassType, strict: bool = False
+) -> bool {
+    dest_args = dest_type.private.type_args or [];
+    if not src_args or len(src_args) != len(dest_args) {
+        return True;
+    }
+    for i in range(len(src_args)) {
+        src_arg = self._convert_to_instance(src_args[i]);
+        dest_arg = self._convert_to_instance(dest_args[i]);
+        tp = dest_type.shared.type_params[i]
+            if (dest_type.shared.type_params and i < len(dest_type.shared.type_params))
+            else None;
+        if tp is None {
+            if not self.assign_type(src_arg, dest_arg, strict) {
+                return False;
+            }
+        } elif tp.is_covariant {
+            if not self.assign_type(src_arg, dest_arg, strict) {
+                return False;
+            }
+        } elif tp.is_contravariant {
+            if not self.assign_type(dest_arg, src_arg, strict) {
+                return False;
+            }
+        } else {
+            if isinstance(dest_arg, UnknownType) {
+                continue;
+            }
+            if isinstance(src_arg, ClassType) and isinstance(dest_arg, ClassType) {
+                if src_arg.is_builtin("LiteralString") and dest_arg.is_builtin("str") {
+                    continue;
+                }
+                if src_arg.is_builtin("str") and dest_arg.is_builtin("LiteralString") {
+                    continue;
+                }
+            }
+            if not self.assign_type(src_arg, dest_arg, strict) {
+                return False;
+            }
+            if not self.assign_type(dest_arg, src_arg, strict) {
+                return False;
+            }
+        }
+    }
+    return True;
 }
 
 impl TypeEvaluator._is_protocol_class(cls_type: ClassType) -> bool {
@@ -5199,13 +5201,6 @@ impl TypeEvaluator._find_predicate_for(
 impl TypeEvaluator._narrowing_equivalent(
     left: NarrowingPredicate, right: NarrowingPredicate
 ) -> bool {
-    """Report whether two predicates narrow a target identically.
-
-    A conjunction's false edge is `not A or not B`, so it may only narrow
-    when every conjunct negates to the same thing. Mutual `isinstance`
-    matching is the equivalence used: it holds for the same class and for two
-    references to it that were converted to instances separately.
-    """;
     if left is right {
         return True;
     }
@@ -5276,34 +5271,23 @@ impl TypeEvaluator._apply_narrowing(
         }
 
         return self._specialize_narrow_from_base(base_type, predicate.narrow_type);
-    } else {
-        base_type: TypeBase;
-        if incoming is not None {
-            base_type = incoming;
-        } else {
-            base_type = target.declared_type;
-        }
-        result = self.exclude_type_from_union(base_type, predicate.narrow_type);
-        if result is base_type {
-            return incoming;
-        }
-        return result;
     }
+    base_type: TypeBase;
+    if incoming is not None {
+        base_type = incoming;
+    } else {
+        base_type = target.declared_type;
+    }
+    result = self.exclude_type_from_union(base_type, predicate.narrow_type);
+    if result is base_type {
+        return incoming;
+    }
+    return result;
 }
 
 impl TypeEvaluator._specialize_narrow_from_base(
     base_type: TypeBase, narrow_type: TypeBase
 ) -> TypeBase {
-    """Carry a member's type arguments onto the narrow target it sits above.
-
-    A member the target derives from is narrowed to the bare target class,
-    which loses the member's arguments -- `isinstance(x, list)` over an
-    `Expr | Sequence[T]` yields `list`, dropping `T`. The container protocols
-    are exactly that shape (`list` is a `Sequence`, `dict` a `Mapping`), and
-    a value that is both a `Sequence[T]` and a `list` is a `list[T]`, so the
-    member's arguments carry over when the target declares the same number of
-    parameters.
-    """;
     if not isinstance(narrow_type, ClassType)
         or (narrow_type.private.type_args or []) {
         return narrow_type;
@@ -5335,13 +5319,6 @@ impl TypeEvaluator._specialize_narrow_from_base(
 impl TypeEvaluator._narrow_type_to(
     base_type: TypeBase, narrow_type: TypeBase
 ) -> TypeBase | None {
-    """Narrow a declared type against an isinstance filter, member by member.
-
-    Narrowing the union as a whole threw the declared type away whenever no
-    member matched: `isinstance(x, Marker)` on an `x: Carrier | None` became
-    a bare `Marker` and every `Carrier` member went missing. Each member is
-    now narrowed on its own and the surviving results are re-joined.
-    """;
     members = (
         base_type.types
             if isinstance(base_type, UnionType) and base_type.types
@@ -5363,14 +5340,6 @@ impl TypeEvaluator._narrow_type_to(
 impl TypeEvaluator._narrow_member_to(
     member: TypeBase, narrow_type: TypeBase
 ) -> TypeBase | None {
-    """Narrow one declared member against the filter, or a tuple of filters.
-
-    A tuple filter is a disjunction, so the member is narrowed against every
-    alternative it is related to and the results joined. A member related to
-    none of them drops: the value cannot be that member and pass the guard,
-    unless it is an instance of a class deriving from both, which this
-    checker does not model.
-    """;
     if isinstance(narrow_type, UnionType) and narrow_type.types {
         related: list[TypeBase] = [];
         for t in narrow_type.types {
@@ -5461,10 +5430,8 @@ impl TypeEvaluator._filter_union_for_hasattr(
                 matching.append(t);
             }
         }
-    } else {
-        if self._type_has_attribute(base_type, attr_name) == keep_with_attr {
-            matching.append(base_type);
-        }
+    } elif self._type_has_attribute(base_type, attr_name) == keep_with_attr {
+        matching.append(base_type);
     }
     if len(matching) == 0 {
         return None;
@@ -5695,14 +5662,6 @@ impl TypeEvaluator._isinstance_class_alternatives(
 impl TypeEvaluator._create_type_guard_type(
     name: str, guarded: TypeBase | None
 ) -> TypeBase {
-    """Model `TypeIs[T]`/`TypeGuard[T]` as a bool that carries the guarded type.
-
-    Both forms are `bool` at runtime and both PEPs require the predicate to
-    return one, so the synthesized class derives from `bool`: a predicate's
-    result stays usable anywhere a bool is, and a plain `bool` return
-    satisfies the annotation. `T` rides along in the type arguments, which is
-    where `_extract_type_guard_info` reads it back out at the call site.
-    """;
     if not self.prefetch or self.prefetch.bool_class is None {
         return UnknownType();
     }
@@ -5714,14 +5673,6 @@ impl TypeEvaluator._create_type_guard_type(
 }
 
 impl TypeEvaluator._unwrap_type_guard_return(ty: TypeBase) -> TypeBase {
-    """Give back the bool a `TypeIs[T]`/`TypeGuard[T]` annotation stands for.
-
-    Both PEPs say the predicate returns a bool; the guarded type is a claim
-    about the argument, not about the value handed back. Keeping the special
-    form out of every declared return type is what lets the rest of the
-    compiler -- assignability, the layout pass, the native lane -- go on
-    seeing an ordinary bool. `FunctionType.type_guard` carries the claim.
-    """;
     if self._type_guard_form_of(ty) is None {
         return ty;
     }
@@ -5747,13 +5698,6 @@ impl TypeEvaluator._type_guard_form_of(ty: TypeBase) -> str | None {
 impl TypeEvaluator._extract_type_guard_info(
     condition: Expr
 ) -> tuple[str, TypeBase, bool] | None {
-    """Read a user-defined type predicate off a call in a condition.
-
-    The guarded argument is the one that binds the callee's first parameter
-    after any implicit receiver, which is the parameter both PEPs narrow. A
-    call that spells the receiver out takes the same route the argument
-    matcher does, so `Cls.pred(inst, x)` narrows `x` and not `inst`.
-    """;
     if not isinstance(condition, FuncCall) or not condition.params {
         return None;
     }

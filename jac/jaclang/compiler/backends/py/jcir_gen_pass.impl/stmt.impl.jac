@@ -80,11 +80,12 @@ impl JcirGenPass.resolve_stmt_block(
         for i in items
         if not isinstance(i, Semi)
     ];
-    ret: list[CgItem] = [self.nod('Pass', [], [])]
-        if (isinstance(nd, Sequence) and not valid_stmts)
-        else self._stmts_with_releases(valid_stmts)
-            if (nd is not None)
-            else [self.nod('Pass', [], [])];
+    ret: list[CgItem] = [];
+    if (nd is None or (isinstance(nd, Sequence) and not valid_stmts)) {
+        ret.append(self.nod('Pass', [], []));
+    } else {
+        ret = self._stmts_with_releases(valid_stmts);
+    }
     if doc {
         ret = [self.nod('Expr', ['value'], [self.val(doc)], jac_node=doc), *ret];
     }
@@ -449,7 +450,7 @@ impl JcirGenPass.exit_finally_stmt with FinallyStmt exit {
 }
 
 impl JcirGenPass.exit_iter_for_stmt with IterForStmt exit {
-    py_nodes: list[CgNode] = [];
+    py_nodes: list[CgItem] = [];
     body = self.resolve_stmt_block(here.body);
     body = body + [self.val(here.count_by)];
     py_nodes.append(self.val(here.iter));
@@ -749,7 +750,11 @@ impl JcirGenPass._scope_cleanup_body(
         return body;
     }
     cleanup = [self._release_name_stmt(name, scope) for name in names];
-    offset = self._docstring_offset(body);
+    doc_body: list[CgItem] = [];
+    for it_ in body {
+        doc_body.append(it_);
+    }
+    offset = self._docstring_offset(doc_body);
     return [
         *body[:offset],
         self.nod(

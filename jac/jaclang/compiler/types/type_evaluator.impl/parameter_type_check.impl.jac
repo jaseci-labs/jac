@@ -1048,7 +1048,9 @@ impl TypeEvaluator.class_constructor_callables(
         raw_type = self.get_type_of_symbol(member.symbol);
         candidates: list[TypeBase] = [];
         if isinstance(raw_type, OverloadedType) and raw_type.overloads {
-            candidates = list(raw_type.overloads);
+            candidates = [
+                raw_type.overloads[i] for i in range(len(raw_type.overloads))
+            ];
         } else {
             candidates = [raw_type];
         }

@@ -151,7 +151,7 @@ def serve_program(
     }
     import from jaclang.scale.server.inprocess { prepare_inprocess_runtime }
     _ensure_jac_meta_importer();
-    broker = DesktopBrokerExtension(store=store, host=host);
+    broker: ServerExtension = DesktopBrokerExtension(store=store, host=host);
     remote = backend != EMBEDDED;
     pinned = _pinned_port();
     attempts = [(pinned, 0)]
