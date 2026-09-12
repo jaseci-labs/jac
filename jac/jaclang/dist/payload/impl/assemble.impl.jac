@@ -59,8 +59,6 @@ impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
 
     run_precompile_stage(py, python_dir, site, opts);
 
-    run_stubcat_stage(py, python_dir, site, opts);
-
     log("==> bundling watchdog (jac run --dev) + tomlkit");
     delete_tree(os.path.join(site, "__pycache__"));
     run_child(
@@ -256,6 +254,7 @@ impl write_dist_info(repo_root: str, site: str) {
 
 impl run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts) {
     if opts.skip_precompile or opts.link_source is not None {
+        run_stubcat_stage(py, python_dir, site, opts);
         log("==> skipping JIR precompile; modules compile on first run");
         return;
     }
@@ -265,7 +264,10 @@ impl run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOp
         log(f"==> seeding JIR precompile from {pc}");
         copy_tree(pc, site_pre, skip_none);
     }
-    precompile(py, python_dir, site, opts.seal, opts.debug_src);
+
+    delete_file(os.path.join(site_pre, "MANIFEST.json"));
+    run_stubcat_stage(py, python_dir, site, opts);
+    precompile(py, python_dir, site, opts.seal, opts.debug_src, opts.skip_stubcat);
     if pc is not None {
         delete_tree(pc);
         copy_tree(site_pre, pc, skip_none);
@@ -276,6 +278,7 @@ impl run_stubcat_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts)
     out_copy = opts.stubcat_out;
     if opts.skip_stubcat or opts.skip_precompile or opts.link_source is not None {
         log("==> skipping the stub catalog; the type checker builds it on first use");
+        delete_file(os.path.join(site, "jaclang", "_precompiled", "stubcat.bin"));
         if out_copy is not None {
             write_bytes(out_copy, b"");
         }
@@ -318,11 +321,25 @@ impl precompile_env(python_dir: str, site: str) -> dict[str, str] {
     env["HOME"] = scratch_home;
     env["PATH"] = "/usr/bin:/bin";
     env["JAC_NO_DEV_SOURCE"] = "1";
-    env["JAC_STUBCAT_BUILDING"] = "1";
+    for name in (
+        "JAC_STUBCAT_BUILDING",
+        "JAC_STUBCAT_FILE",
+        "JAC_STUBCAT_OFF",
+        "JAC_STUBCAT_LEN"
+    ) {
+        env.pop(name, None);
+    }
     return env;
 }
 
-impl precompile(py: str, python_dir: str, site: str, seal: bool, debug_src: bool) {
+impl precompile(
+    py: str,
+    python_dir: str,
+    site: str,
+    seal: bool,
+    debug_src: bool,
+    skip_stubcat: bool = False
+) {
     pc = os.path.join(site, "jaclang", "dist", "precompile_bytecode.jac");
     if not file_exists(pc) {
         return;
@@ -344,6 +361,9 @@ impl precompile(py: str, python_dir: str, site: str, seal: bool, debug_src: bool
     }
 
     env = precompile_env(python_dir, site);
+    if skip_stubcat {
+        env["JAC_STUBCAT_BUILDING"] = "1";
+    }
     run_child(argv, env, True);
 
     pre_dir = os.path.join(site, "jaclang", "_precompiled");

@@ -1,3 +1,4 @@
+import type from jaclang.compiler.driver.program { JacProgram }
 import json;
 import os;
 import sys;
@@ -138,27 +139,30 @@ def build_catalog(
     quiet: bool = False
 ) -> dict[str, any] {
     started = time.monotonic();
+    import from jaclang.compiler.driver.program { JacProgram }
+    prog = JacProgram();
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+
+    prog._compiler = JacCompiler(
+        stub_catalog_disabled=True, _selfhost=SelfHostCache(_program=prog)
+    );
     previous_building = os.environ.get(ENV_BUILDING);
-    previous_evict = os.environ.get("JAC_NO_UNIT_EVICT");
     os.environ[ENV_BUILDING] = "1";
-    os.environ["JAC_NO_UNIT_EVICT"] = "1";
     try {
-        return _build_catalog_inner(out_path, only, pkg_dir, quiet, started);
+        return _build_catalog_inner(prog, out_path, only, pkg_dir, quiet, started);
     } finally {
         if previous_building is None {
             os.environ.pop(ENV_BUILDING, None);
         } else {
             os.environ[ENV_BUILDING] = previous_building;
         }
-        if previous_evict is None {
-            os.environ.pop("JAC_NO_UNIT_EVICT", None);
-        } else {
-            os.environ["JAC_NO_UNIT_EVICT"] = previous_evict;
-        }
+        prog.release_compile_closure(retain_stubs=False);
     }
 }
 
 def _build_catalog_inner(
+    prog: JacProgram,
     out_path: str,
     only: (list[str] | None),
     pkg_dir: (str | None),
@@ -166,10 +170,6 @@ def _build_catalog_inner(
     started: float
 ) -> dict[str, any] {
     pkg = pkg_dir or jaclang_pkg_dir();
-    import from jaclang.compiler.driver.program { JacProgram }
-    prog = JacProgram();
-    compiler = prog._get_compiler();
-    compiler.stub_catalog_disabled = True;
     ev = prog.get_type_evaluator();
     writer = CatalogWriter(evaluator=ev, pkg_dir=pkg);
 

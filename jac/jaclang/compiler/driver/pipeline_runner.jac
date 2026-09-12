@@ -271,13 +271,21 @@ obj ModuleCompilation {
     }
 
     def interface {
+        import from jaclang.compiler.driver.jir { is_compiler_tree_path }
         closure = self.compiler._closure_opts or self.options;
         if not self.parse_failed
             and not self.blocked
             and self.source is None
             and (
                 (self.options.no_cgen and not self.options.symtab_ir_only)
-                or (closure.no_cgen and not closure.symtab_ir_only)
+                or (
+                    closure.no_cgen
+                    and not closure.symtab_ir_only
+                    and not (
+                        self.compiler.selfhost.is_selfhost(self.program)
+                        and is_compiler_tree_path(self.path)
+                    )
+                )
             ) {
             import from jaclang.compiler.driver.pipeline {
                 require_product,

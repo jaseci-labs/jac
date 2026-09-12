@@ -222,3 +222,54 @@ class C:
     }
     assert not collect_member_syms(cls_scope, "future_method") , "dead guard must not resolve";
 }
+
+test "include bindings preserve source declarations and lazy symbol providers" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+    import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
+    import from jaclang.compiler.types.stubcat.modiface {
+        build_module_iface,
+        open_module_iface,
+        iface_module
+    }
+    import from jaclang.compiler.types.types { FunctionType }
+    with TemporaryDirectory() as directory {
+        source_path = Path(directory) / "definitions.jac";
+        source_path.write_text("def answer() -> int { return 42; }\n");
+        prog = JacProgram();
+        source = prog.compile(
+            str(source_path),
+            options=CompileOptions(
+                no_cgen=True,
+                symtab_ir_only=True,
+                need_full_ast=True,
+                default_codespace="server"
+            )
+        );
+        evaluator = prog.get_type_evaluator();
+        payload = build_module_iface(source, evaluator, jaclang_pkg_dir());
+        catalog = open_module_iface(payload, jaclang_pkg_dir());
+        assert catalog is not None;
+        hydrated = iface_module(catalog);
+        assert hydrated is not None;
+        for imported in (source, hydrated) {
+            original = imported.lookup("answer");
+            assert original is not None;
+            declaration = original.decl;
+            consumer = prog._get_compiler().parse_str(
+                "include definitions;", str(Path(directory) / "consumer.jac"), prog
+            );
+            consumer.get_all_sub_nodes(uni.Import)[0].absorbed_mod = imported;
+            run_pass(SymTabBuildPass, consumer, prog);
+            binding = consumer.lookup("answer");
+            assert binding is not None and binding is not original;
+            assert declaration.sym is original , "include rebound the source declaration";
+            assert binding.decl is not declaration;
+            assert binding.parent_tab is consumer;
+            assert binding.provider is original.provider;
+            assert isinstance(evaluator.get_type_of_symbol(binding), FunctionType);
+        }
+    }
+}

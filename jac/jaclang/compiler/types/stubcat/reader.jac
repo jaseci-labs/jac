@@ -3,6 +3,7 @@ import os;
 import json;
 import struct;
 import from pathlib { Path }
+import from collections.abc { Callable }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     HasVar,
@@ -285,6 +286,7 @@ obj StubCatalog {
         pkg_dir: str,
         keepalive: any = None,
         resolver: any = None,
+        path_mapper: Callable[[str], str] | None = None,
         hdr: Header postinit,
         _str_memo: dict[int, str] postinit,
         _mod_memo: dict[int, Module] postinit,
@@ -370,6 +372,12 @@ obj StubCatalog {
     def abs_path(rel: str) -> str {
         if not rel {
             return "";
+        }
+        if self.path_mapper is not None {
+            mapped = self.path_mapper(rel);
+            if mapped != rel {
+                return mapped;
+            }
         }
         if os.path.isabs(rel) {
             return rel;

@@ -43,6 +43,52 @@ glob SMALL_SET: list[str] = [
      ],
      _built: list = [];
 
+test "catalog export releases its temporary compiler and stub trees" {
+    import gc;
+    import jaclang.compiler.types.stubcat.build as catalog_build;
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from unittest.mock { patch }
+    import from weakref { ReferenceType, ref }
+    if not sources_present() {
+        return;
+    }
+    refs: list[tuple[str, ReferenceType[object]]] = [];
+    original = catalog_build._build_catalog_inner;
+    def capture(
+        prog: JacProgram,
+        out_path: str,
+        only: list[str] | None,
+        pkg_dir: str | None,
+        quiet: bool,
+        started: float
+    ) -> dict[str, any] {
+        refs.append(("program", ref(prog)));
+        result = original(prog, out_path, only, pkg_dir, quiet, started);
+        evaluator = prog.type_evaluator;
+        if evaluator is not None {
+            refs.append(("evaluator", ref(evaluator)));
+        }
+        for (path, mod) in prog.mod.hub.items() {
+            if path.endswith(".pyi") {
+                refs.append((path, ref(mod)));
+            }
+        }
+        return result;
+    }
+    with tempfile.TemporaryDirectory() as work {
+        with patch.object(catalog_build, "_build_catalog_inner", capture) {
+            build_catalog(os.path.join(work, "stubcat.bin"), only=["math"], quiet=True);
+        }
+    }
+    gc.collect();
+    alive = [
+        name
+        for (name, held) in refs
+        if held() is not None
+    ];
+    assert not alive , f"catalog export retained temporary objects: {alive[:8]}";
+}
+
 def sources_present -> bool {
     return os.path.isfile(
         os.path.join(typeshed_stdlib_dir(jaclang_pkg_dir()), "builtins.pyi")
@@ -54,7 +100,21 @@ def small_catalog -> tuple[StubCatalog, str] {
         return (_built[0], _built[1]);
     }
     out = os.path.join(tempfile.mkdtemp(prefix="stubcat-"), "stubcat.bin");
+    import from jaclang.runtime.runtime { JacRuntime }
+    selfhost = JacRuntime.get_selfhost();
+    owner = selfhost.peek_program();
+    before = set(owner.mod.hub) if owner is not None else set();
     manifest = build_catalog(out, only=SMALL_SET, quiet=True);
+    owner = selfhost.peek_program();
+    after = set(owner.mod.hub) if owner is not None else set();
+    leaked = {
+        path
+        for path in after - before
+        if path.endswith(".pyi")
+    };
+    assert not leaked , f"catalog build retained {len(
+        leaked
+    )} stubs in the self-host hub: {sorted(leaked)[:5]}";
     assert manifest["modules"] >= len(SMALL_SET) - 2 , manifest;
     cat = open_catalog_file(out, jaclang_pkg_dir());
     assert cat is not None;
@@ -94,7 +154,9 @@ test "class records carry mro, members and identity" {
     }
     (cat, out) = small_catalog();
     builtins = cat.module("builtins");
+    assert builtins is not None;
     str_sym = builtins.names_in_scope["str"];
+    assert str_sym.provider is not None;
     str_type = str_sym.provider.resolve_type(str_sym);
     assert isinstance(str_type, ClassType) , str_type;
     assert str_type.shared.class_name == "str";
@@ -107,7 +169,9 @@ test "class records carry mro, members and identity" {
     assert key is not None
         and key[3] == "str"
         and key[0].endswith("builtins.pyi") , key;
-    upper_type = members["upper"].provider.resolve_type(members["upper"]);
+    upper_sym = members["upper"];
+    assert upper_sym.provider is not None;
+    upper_type = upper_sym.provider.resolve_type(upper_sym);
     assert isinstance(upper_type, (FunctionType, OverloadedType)) , upper_type;
 }
 
@@ -119,6 +183,7 @@ test "function records keep their signatures" {
     math_mod = cat.module("math");
     assert math_mod is not None;
     sqrt_sym = math_mod.names_in_scope["sqrt"];
+    assert sqrt_sym.provider is not None;
     sqrt_type = sqrt_sym.provider.resolve_type(sqrt_sym);
     assert isinstance(sqrt_type, FunctionType) , sqrt_type;
     ret = sqrt_type.return_type;

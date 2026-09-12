@@ -1,4 +1,5 @@
 import hashlib;
+import ntpath;
 import os;
 import struct;
 import sys;
@@ -7,7 +8,7 @@ import from pathlib { Path }
 import from jaclang.bootstrap_manifest { SOURCE_ONLY_PATHS }
 
 glob MAGIC = b"JIR\x00",
-     FORMAT_VERSION: int = 25,
+     FORMAT_VERSION: int = 26,
      HEADER_SIZE: int = 32,
      HEADER_FMT: str = "<4sHHIIIIII",
      EXTERNAL_REF: int = 0xFFFFFF,
@@ -27,10 +28,94 @@ glob MAGIC = b"JIR\x00",
      SEC_DEPS: int = 0x0E,
      SEC_DIAG: int = 0x0F,
      SEC_CLIENT: int = 0x10,
+     SEC_PATH_ROOT: int = 0x11,
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
      PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
      FLAG_BOOTSTRAP: int = 0x04;
+
+obj JirPaths {
+    has roots: list[str] = [],
+        base_dir: str = "";
+
+    def encode(path: str, package_dir: str) -> str {
+        if not self.base_dir or not package_dir or not os.path.isabs(path) {
+            return path;
+        }
+        if path == package_dir or path.startswith(package_dir + os.sep) {
+            return PRECOMPILE_SENTINEL
+                + "/"
+                + os.path.relpath(path, self.base_dir).replace(os.sep, "/");
+        }
+        return path;
+    }
+
+    def resolve(path: str) -> str {
+        if not self.base_dir or not path {
+            return path;
+        }
+        for source_root in sorted(
+            [PRECOMPILE_SENTINEL] + self.roots, key=len, reverse=True
+        ) {
+            if not source_root {
+                continue;
+            }
+            if path == source_root {
+                return self.base_dir;
+            }
+            separator = "\\"
+                if "\\" in source_root and bool(ntpath.splitdrive(source_root)[0])
+                else "/";
+            prefix = source_root.rstrip(separator) + separator;
+            if path.startswith(prefix) {
+                return os.path.normpath(
+                    os.path.join(self.base_dir, *path[len(prefix):].split(separator))
+                );
+            }
+        }
+        return path;
+    }
+
+    def to_bytes(package_dir: str = "") -> bytes {
+        import json;
+        if package_dir {
+            return json.dumps(
+                {
+                    "roots": [],
+                    "base": "",
+                    "subdir": os.path.relpath(self.base_dir, package_dir).replace(
+                        os.sep, "/"
+                    )
+                }
+            ).encode(
+                "utf-8"
+            );
+        }
+        roots = list(self.roots);
+        if self.base_dir and self.base_dir not in roots {
+            roots.append(self.base_dir);
+        }
+        return json.dumps({"roots": roots, "base": self.base_dir}).encode("utf-8");
+    }
+
+    static def from_bytes(data: bytes | None, base_dir: str = "") -> JirPaths {
+        import json;
+        if not data {
+            return JirPaths(base_dir=base_dir);
+        }
+        payload = json.loads(data.decode("utf-8"));
+        if base_dir and payload.get("subdir") {
+            base_dir = os.path.normpath(
+                os.path.join(base_dir, *payload["subdir"].split("/"))
+            );
+        }
+        return JirPaths(roots=payload["roots"], base_dir=base_dir or payload["base"]);
+    }
+}
+
+def read_jir_paths(data: bytes, base_dir: str = "") -> JirPaths {
+    return JirPaths.from_bytes(read_section_bytes(data, SEC_PATH_ROOT), base_dir);
+}
 
 obj JirHeader {
     has magic: any = b"JIR\x00",
@@ -593,6 +678,7 @@ def read_dep_rows(data: bytes, base_dir: str = "") -> list[tuple[str, str, str]]
     if not raw {
         return out;
     }
+    paths = read_jir_paths(data, base_dir);
     for line in raw.split("\n") {
         if "\t" not in line {
             continue;
@@ -600,17 +686,9 @@ def read_dep_rows(data: bytes, base_dir: str = "") -> list[tuple[str, str, str]]
         parts = line.split("\t");
         digest = parts[1] if len(parts) > 1 else "";
         flags = parts[2] if len(parts) > 2 else "";
-        out.append((_dep_row_path(parts[0], base_dir), digest, flags, ));
+        out.append((paths.resolve(parts[0]), digest, flags, ));
     }
     return out;
-}
-
-def _dep_row_path(stored: str, base_dir: str) -> str {
-    prefix = PRECOMPILE_SENTINEL + "/";
-    if base_dir and stored.startswith(prefix) {
-        return os.path.normpath(os.path.join(base_dir, stored[len(prefix):]));
-    }
-    return stored;
 }
 
 def read_dep_hashes(data: bytes, base_dir: str = "") -> list[tuple[str, str]] {

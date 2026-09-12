@@ -1,4 +1,5 @@
 import hashlib;
+import from collections.abc { Callable }
 import from jaclang.compiler.frontend.unitree { Module }
 import from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import from jaclang.compiler.types.stubcat.writer { CatalogWriter }
@@ -21,13 +22,20 @@ class IncoherentInterface(RuntimeError) {
     }
 }
 
-def build_module_iface(mod: Module, evaluator: any, pkg_dir: str) -> bytes {
-    writer = CatalogWriter(evaluator=evaluator, pkg_dir=pkg_dir, boundary=mod);
+def build_module_iface(
+    mod: Module,
+    evaluator: any,
+    pkg_dir: str,
+    path_mapper: Callable[[str], str] | None = None
+) -> bytes {
+    writer = CatalogWriter(
+        evaluator=evaluator, pkg_dir=pkg_dir, boundary=mod, path_mapper=path_mapper
+    );
     dotted = mod.name or "";
     writer.add_module(mod, dotted);
     writer.force_all();
     key = mod.loc.mod_path if mod.loc else dotted;
-    body = writer.emit(key, {});
+    body = writer.emit(writer.rel_of(key), {});
     if writer.orphans {
         raise IncoherentInterface(key, writer.orphans);
     }
@@ -47,14 +55,20 @@ def read_iface_hash(section: (bytes | None)) -> (str | None) {
 }
 
 def open_module_iface(
-    section: bytes, pkg_dir: str, resolver: any = None
+    section: bytes,
+    pkg_dir: str,
+    resolver: any = None,
+    path_mapper: Callable[[str], str] | None = None
 ) -> (StubCatalog | None) {
     if len(section) <= IFACE_HASH_LEN {
         return None;
     }
     try {
         return StubCatalog(
-            buf=section[IFACE_HASH_LEN:], pkg_dir=pkg_dir, resolver=resolver
+            buf=section[IFACE_HASH_LEN:],
+            pkg_dir=pkg_dir,
+            resolver=resolver,
+            path_mapper=path_mapper
         );
     } except ValueError {
         return None;

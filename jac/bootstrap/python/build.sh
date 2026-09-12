@@ -210,7 +210,17 @@ _curses
 _curses_panel
 readline
 SETUP
+    # CPython runs the compiler itself; dependency-oriented -O2 flags above
+    # must not override the release interpreter's optimization settings.
+    export CFLAGS='-O3 -fPIC -fno-semantic-interposition' LLVM_AR="$AR"
+    # Zig 0.16's Mach-O linker cannot consume LTO objects. Keep the supported
+    # interpreter optimizations there; Linux uses the bundled LLVM linker.
+    case "$platform" in
+        linux-*) python_lto=--with-lto=thin ;;
+        macos-*) python_lto=--without-lto ;;
+    esac
     ./configure --prefix="$prefix" --enable-shared --without-static-libpython \
+        --with-tail-call-interp "$python_lto" \
         --disable-test-modules --with-ensurepip=no --with-pkg-config=no \
         --with-openssl="$deps" --with-openssl-rpath=no \
         --with-system-expat --with-system-libmpdec --without-readline

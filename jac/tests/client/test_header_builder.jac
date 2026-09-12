@@ -10,6 +10,24 @@ nothing the config could not express was emitted.
 import from jaclang.client.serving { HeaderBuilder }
 
 
+test "static head rendering does not load the server runtime" {
+    import subprocess;
+    import sys;
+    script = """
+import sys
+from jaclang.client.serving import HeaderBuilder
+head = HeaderBuilder({'title': 'Static page'}, 'app').build_head()
+assert '<title>Static page</title>' in head, head
+loaded = sorted(name for name in sys.modules if name.startswith('jaclang.server.'))
+assert not loaded, f'static head rendering imported the server runtime: {loaded}'
+""";
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
+    );
+    assert proc.returncode == 0 , proc.stdout + proc.stderr;
+}
+
+
 test "attribute values are quoted so spaces survive crawlers" {
     hb = HeaderBuilder(
         meta_data={

@@ -8,6 +8,7 @@ import multiprocessing
 import platform
 from pathlib import Path
 import sqlite3
+import shlex
 import ssl
 import sys
 import sysconfig
@@ -19,6 +20,19 @@ import zlib
 from compression import zstd
 
 assert sys.version_info[:3] == (3, 14, 6), sys.version
+# Jac executes its compiler on this interpreter. Keep the release runtime's
+# optimization contract explicit so a source-build change cannot silently
+# ship the slower development interpreter.
+assert sysconfig.get_config_var("Py_TAIL_CALL_INTERP") == 1, "Tail-call interpreter is required"
+if sys.platform != "darwin":  # The pinned Zig Mach-O linker does not support LTO.
+    assert "-flto" in sysconfig.get_config_var("PY_CFLAGS_NODIST"), "Release Python requires LTO"
+# The last optimization option wins; CPython's default -O3 can be followed by
+# dependency CFLAGS that silently downgrade it to -O2.
+optimization_flags = [
+    flag for flag in shlex.split(sysconfig.get_config_var("PY_CFLAGS"))
+    if flag.startswith("-O")
+]
+assert optimization_flags[-1:] == ["-O3"], optimization_flags
 if sys.platform == "darwin":
     import _scproxy
 sample = b"Jac source-built runtime" * 100
