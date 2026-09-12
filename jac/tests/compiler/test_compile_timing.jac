@@ -515,20 +515,20 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
         get_effective_default_codespace_override
     }
     files = find_jac_files(pkg);
-    for f in files {
-        cp = artifact_cache_path(f, precompile_context(f, pkg, JacProgram()));
-        if cp.exists() {
-            cp.unlink();
-        }
-    }
-    shutil.rmtree(os.path.join(pkg, "_precompiled"), ignore_errors=True);
-    if rebuild {
-        os.environ["JAC_REBUILD"] = "1";
-    }
     prior_default = get_effective_default_codespace_override();
     set_effective_default_codespace("server");
-    started = time.perf_counter();
     try {
+        for f in files {
+            cp = artifact_cache_path(f, precompile_context(f, pkg, JacProgram()));
+            if cp.exists() {
+                cp.unlink();
+            }
+        }
+        shutil.rmtree(os.path.join(pkg, "_precompiled"), ignore_errors=True);
+        if rebuild {
+            os.environ["JAC_REBUILD"] = "1";
+        }
+        started = time.perf_counter();
         for f in files {
             assert precompile_unit(f, pkg, False, collect=False) is not None , f"{f} did not precompile";
         }
