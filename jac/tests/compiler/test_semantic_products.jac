@@ -41,6 +41,26 @@ test "native speculative parse errors do not contaminate compilation diagnostics
     }
 }
 
+test "native eligibility ignores pruned subtrees and observes their restoration" {
+    import from jaclang.compiler.frontend.parser.frontend { parse_woven }
+    import from jaclang.compiler.analysis.placement.evidence { scan_native_blockers }
+    program = JacProgram();
+    (module, failed) = parse_woven(
+        'async def blocked { return; }\ndef plain -> int { return 1; }',
+        'eligibility.jac',
+        program,
+        []
+    );
+    assert not failed;
+    assert scan_native_blockers(module, '')[0] == 'async ability';
+    module.body[0].ct_pruned = True;
+    module._invalidate_sub_node_tab();
+    assert scan_native_blockers(module, '')[0] == '';
+    module.body[0].ct_pruned = False;
+    module._invalidate_sub_node_tab();
+    assert scan_native_blockers(module, '')[0] == 'async ability';
+}
+
 
 test "import facts include plain imports and drive reverse dependencies" {
     with TemporaryDirectory() as tmp {

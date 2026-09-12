@@ -454,7 +454,7 @@ def _erased_only_import(imp: uni.Import) -> bool {
     return native_erased_import_names(imp.from_loc.dot_path_str, names);
 }
 
-walker NativeBlockerScan(uni.TreeWalker) {
+walker NativeBlockerScan {
     has classify_imports: bool = False,
         signals: set[type] = set(),
         root_access: bool = False,
@@ -532,7 +532,17 @@ def scan_native_blockers(
         }
     }
     scan = NativeBlockerScan(classify_imports=classify_imports);
-    module spawn scan;
+    candidates: list[uni.UniNode] = [
+        *module.get_all_sub_nodes(uni.TypedCtxBlock),
+        *module.get_all_sub_nodes(uni.PyInlineCode),
+        *module.get_all_sub_nodes(uni.JsxElement),
+        *module.get_all_sub_nodes(uni.SpecialVarRef),
+        *module.get_all_sub_nodes(uni.Ability),
+        *module.get_all_sub_nodes(uni.Import)
+    ];
+    if candidates {
+        candidates spawn scan;
+    }
     for (nd_name, typ) in PLACEMENT_SV_SIGNAL_NODES {
         if typ in scan.signals {
             return (f"contains {nd_name}", deps);
