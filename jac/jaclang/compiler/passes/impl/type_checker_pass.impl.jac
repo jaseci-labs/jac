@@ -184,8 +184,6 @@ def _chunks_receiver_type(nd: FuncCall) -> (str | None) {
 }
 
 impl TypeCheckPass.exit_gen_compr with GenCompr exit {
-    # Builtin calls can resolve their return type without inspecting arguments.
-    # The generator still needs its own element and clause types for lowering.
     if self._lambda_depth == 0 {
         self.evaluator.get_type_of_expression(here);
     }
