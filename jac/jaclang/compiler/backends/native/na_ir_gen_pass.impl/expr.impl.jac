@@ -1243,11 +1243,34 @@ impl NaIRGenPass._codegen_compare_link(
             i8p = ir.IntType(8).as_pointer();
             i64 = ir.IntType(64);
             if right.type == i8p and left.type == i8p and not _in_hay_cont {
-                strstr_fn = self._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
-                found = self.builder.call(strstr_fn, [right, left], name="str.in.ptr");
+                memmem_fn = self._get_or_declare_extern(
+                    "memmem", i8p, [i8p, i64, i8p, i64]
+                );
+                needle_parts = self._str_cmp_parts_of(_cmp_left_orig)
+                    or self._str_cmp_parts_of(left);
+                haystack_parts = self._str_cmp_parts_of(_cmp_right_orig)
+                    or self._str_cmp_parts_of(right);
+                assert needle_parts is not None and haystack_parts is not None;
+                found = self.builder.call(
+                    memmem_fn,
+                    [
+                        haystack_parts[0],
+                        haystack_parts[1],
+                        needle_parts[0],
+                        needle_parts[1]
+                    ],
+                    name="str.in.ptr"
+                );
                 null_ptr = ir.Constant(i8p, None);
                 is_found = self.builder.icmp_unsigned(
                     "!=", found, null_ptr, name="str.in.found"
+                );
+                is_found = self.builder.or_(
+                    is_found,
+                    self.builder.icmp_unsigned(
+                        "==", needle_parts[1], ir.Constant(i64, 0)
+                    ),
+                    name="str.in.empty_or_found"
                 );
                 result = self.builder.zext(is_found, i64, name="str.in.i64");
                 if is_not_in {

@@ -520,3 +520,8 @@ test "builtin repr supports native bytes without demotion" {
     (eng, _) = compile_native("bytes_ops.jac");
     assert get_func(eng, "builtin_repr_ok", ctypes.c_int64)() == 1;
 }
+
+test "string containment preserves embedded NUL boundaries" {
+    (eng, _) = compile_native("bytes_ops.jac");
+    assert get_func(eng, "string_contains_nul", ctypes.c_int64)() == 1;
+}

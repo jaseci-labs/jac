@@ -364,3 +364,20 @@ def builtin_repr_ok -> int {
     }
     return 1;
 }
+
+def string_contains_nul -> int {
+    text = b"a\x00bc".decode("utf-8");
+    if "\x00" in "plain" or "\x00" in "" {
+        return 0;
+    }
+    if "\x00" not in text or "bc" not in text {
+        return 0;
+    }
+    if "\x00b" not in text or "\x00d" in text {
+        return 0;
+    }
+    if "" not in text or "" not in "" {
+        return 0;
+    }
+    return 1;
+}
