@@ -112,10 +112,12 @@ test "lazy compiler bytecode does not inherit the caller's analysis request" {
 test "application analysis does not eagerly publish selfhost dependency interfaces" {
     import from pathlib { Path }
     import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
     import from jaclang.compiler.driver.compiler { JacCompiler }
     import from jaclang.compiler.driver.selfhost { SelfHostCache }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     import jaclang.compiler.types.stubcat.modiface;
+    import jaclang.compiler.driver.jir as jir;
     with TemporaryDirectory() as directory {
         base_path = Path(directory);
         toolchain = base_path / "toolchain";
@@ -133,7 +135,16 @@ test "application analysis does not eagerly publish selfhost dependency interfac
         internal._compiler = compiler;
         program = JacProgram();
         program._compiler = compiler;
-        program.compile(str(app), options=CompileOptions(no_cgen=True));
+        tracked = jir.is_compiler_tree_path;
+        api = str(toolchain / "api.jac");
+        # This private toolchain's API stands in for a compiler-digest member.
+        # Other files owned by SelfHostCache remain ordinary dependencies.
+        def compiler_member(path: str) -> bool {
+            return os.path.realpath(path) == api or tracked(path);
+        }
+        with patch.object(jir, "is_compiler_tree_path", side_effect=compiler_member) {
+            program.compile(str(app), options=CompileOptions(no_cgen=True));
+        }
         assert not program.errors_had;
         assert internal.analysis.cache_events.get("iface_encode", 0) == 0 , (
             "a symbol-only selfhost import eagerly encoded its public type closure"
@@ -143,6 +154,18 @@ test "application analysis does not eagerly publish selfhost dependency interfac
             for context in [program] + list(program.contexts.values())
         )
             > 0 , "application analysis must still publish its requested interface";
+        plugin = toolchain / "plugin.jac";
+        plugin.write_text("obj Plugin { has value: int = 42; }\n");
+        consumer = base_path / "plugin_user.jac";
+        consumer.write_text(
+            "import from .toolchain.plugin { Plugin }\n"
+                + "def application() -> int { return Plugin().value; }\n"
+        );
+        program.compile(str(consumer), options=CompileOptions(no_cgen=True));
+        assert not program.errors_had;
+        assert str(plugin) in internal.iface_registry()._iface_bytes , (
+            "bundled libraries outside the compiler fingerprint need dependency interfaces"
+        );
         explicit = internal.iface_registry().ensure(str(toolchain / "api.jac"));
         assert explicit is not None;
         assert internal.analysis.cache_events.get("iface_encode", 0) > 0 , (
