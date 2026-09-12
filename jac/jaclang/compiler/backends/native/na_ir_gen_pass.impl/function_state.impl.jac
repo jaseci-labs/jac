@@ -95,7 +95,7 @@ impl NaIRGenPass._bind_function_parameter(
         slot = self._emit_closure_cell(name, value.type);
         self.builder.store(value, slot);
         self.local_vars[name] = slot;
-        if borrowed and isinstance(value.type, ir.PointerType) {
+        if borrowed and self._elem_kind(value.type) in ("rc_ptr", "str") {
             self._emit_rc_retain(value, op="param_cell", loc=name);
         }
         return;
@@ -103,7 +103,7 @@ impl NaIRGenPass._bind_function_parameter(
     slot = self._entry_alloca(value.type, name);
     self.builder.store(value, slot);
     self.local_vars[name] = slot;
-    if rebound and isinstance(value.type, ir.PointerType) {
+    if rebound and self._elem_kind(value.type) in ("rc_ptr", "str") {
         self._emit_rc_retain(value, op="param_promote", loc=name);
     } elif borrowed {
         self.param_vars.add(name);
