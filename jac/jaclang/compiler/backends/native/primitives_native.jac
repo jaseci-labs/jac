@@ -1676,15 +1676,13 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         b = get_builder(p);
         i8 = ir.IntType(8);
         i64 = ir.IntType(64);
-        rc_alloc_fn = p.rc_alloc_fn;
         p._set_rc_ctx("chr", "");
-        buf = b.call(rc_alloc_fn, [ir.Constant(i64, 2)], name="chr.buf");
+        buf = p._str_alloc(b, ir.Constant(i64, 2), name="chr.buf");
         p._clear_rc_ctx();
         byte_val = b.trunc(arg_val, i8, name="chr.byte");
         b.store(byte_val, buf);
-        null_ptr = b.gep(buf, [ir.Constant(i64, 1)], name="chr.null_ptr");
-        b.store(ir.Constant(i8, 0), null_ptr);
-        return buf;
+        p._str_finish(b, buf, ir.Constant(i64, 1));
+        return p._mark_owned(buf);
     }
 
     def emit_ord(

@@ -178,6 +178,20 @@ jobs:
       - name: Build and smoke-test the native JacPython runtime
         working-directory: jac
         run: zig build build-python -Djacpython=true --summary all
+      - name: Build and probe the packaged native JacPython binary
+        working-directory: jac
+        env:
+          JAC_NO_DEV_SOURCE: "1"
+        run: |
+          zig build -Djacpython=true --summary all
+          zig-out/bin/jac -c '
+          import ast, ctypes, sys
+          assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
+          assert not hasattr(sys, "_jacpython_compile")
+          assert not hasattr(sys, "_jacpython_image")
+          assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42
+          print("Packaged JacPython: native compiler active")
+          '
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
