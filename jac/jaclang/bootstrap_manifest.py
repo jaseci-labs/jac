@@ -23,16 +23,39 @@ from __future__ import annotations
 
 import os
 
+# JacPython now implements the running interpreter's compiler APIs. Its sources
+# participate in the producing compiler identity and the sealed release image.
+SOURCE_ONLY_PATHS: tuple[str, ...] = ()
+
 # Everything the jac0 tier compiles. Directory entries cover subtrees.
 # compiler/passes/ and compiler/backends/ are deliberately listed file by
-# file (or py/-subtree): their siblings (backends/es/, backends/native/,
-# backends/common/primitives.jac, the analysis passes) are full-compiler
-# modules and must never join the seed set by directory accident.
+# file (or implementation/parser subtree): their siblings (backends/es/,
+# backends/native/, backends/common/primitives.jac, the analysis passes)
+# are full-compiler modules and must not join the seed set by accident.
 SEED_PATHS: tuple[str, ...] = (
-    "compiler/frontend/",
+    "compiler/frontend/codeinfo.jac",
+    "compiler/frontend/const_fold.jac",
+    "compiler/frontend/constant.jac",
+    "compiler/frontend/diagnostic_utils.jac",
+    "compiler/frontend/diagnostics.jac",
+    "compiler/frontend/helpers.jac",
+    "compiler/frontend/impl/",
+    "compiler/frontend/module_facts.jac",
+    "compiler/frontend/parser/",
+    "compiler/frontend/relations.jac",
+    "compiler/frontend/roles.jac",
+    "compiler/frontend/srcloc.jac",
+    "compiler/frontend/unitree.impl/",
+    "compiler/frontend/unitree.jac",
     "compiler/driver/",
     "compiler/placement/",
-    "compiler/backends/py/",
+    "compiler/backends/py/codegen_ir.jac",
+    "compiler/backends/py/codegen_shim.jac",
+    "compiler/backends/py/impl/",
+    "compiler/backends/py/jcir_bc_gen_pass.jac",
+    "compiler/backends/py/jcir_facts.jac",
+    "compiler/backends/py/jcir_gen_pass.impl/",
+    "compiler/backends/py/jcir_gen_pass.jac",
     "compiler/backends/common/ast_gen_base.jac",
     "compiler/backends/common/kernel_units.jac",
     "compiler/backends/common/fmt_kernel.jac",

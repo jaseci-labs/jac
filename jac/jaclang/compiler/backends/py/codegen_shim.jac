@@ -157,13 +157,8 @@ def decode_ops(code: bytes, container: CirContainer) -> list {
     return ops;
 }
 
-glob _KW_CALL_CACHE: list = [];
-
 def _call_kw(cls: any, kw: dict) -> any {
-    if not _KW_CALL_CACHE {
-        _KW_CALL_CACHE.append(eval("lambda cls, kw: cls(**kw)"));
-    }
-    return _KW_CALL_CACHE[0](cls, kw);
+    return cls(**kw);
 }
 
 obj CirSplice {
@@ -206,8 +201,16 @@ def cir_bind_keys(key_names: list) -> list {
     return out;
 }
 
-def _parse_splice(src: str, line_offset: int) -> CirSplice {
-    tree = ast.parse(src);
+def _parse_splice(
+    src: str, line_offset: int, python_compiler: any = None
+) -> CirSplice {
+    compiler = python_compiler if python_compiler is not None else compile;
+    tree = compiler(
+        src, "<unknown>", "exec", flags=ast.PyCF_ONLY_AST, dont_inherit=True
+    );
+    if not isinstance(tree, ast.Module) {
+        raise TypeError("Python splice compiler must return an ast.Module");
+    }
     if line_offset {
         for w in ast.walk(tree) {
             for field in ("lineno", "end_lineno") {
@@ -238,7 +241,11 @@ def _pop_values(stack: list, n: int, what: str) -> list {
 }
 
 def transcribe_module(
-    mod: CirModule, classes: list, keys: list, container: CirContainer
+    mod: CirModule,
+    classes: list,
+    keys: list,
+    container: CirContainer,
+    python_compiler: any = None
 ) -> any {
     ops = decode_ops(mod.code, container);
     stack: list = [];
@@ -324,7 +331,7 @@ def transcribe_module(
             }
             stack.append(tuple(vals));
         } elif kind == OP_PARSE_SPLICE {
-            stack.append(_parse_splice(op[1], op[2]));
+            stack.append(_parse_splice(op[1], op[2], python_compiler));
         } elif kind == OP_END {
             if len(stack) != 1 {
                 raise CodegenIrFormatError(
@@ -361,16 +368,21 @@ def transcribe(ir_bytes: bytes) -> tuple {
     return (mods, list(container.diags), );
 }
 
-def compile_ir(ir_bytes: bytes) -> CirResult {
+def compile_ir(ir_bytes: bytes, python_compiler: any = None) -> CirResult {
     container = read_container(ir_bytes);
     classes = cir_bind_classes(container.class_names);
     keys = cir_bind_keys(container.key_names);
     diags = list(container.diags);
     modules: list = [];
+    compile_ast = python_compiler if python_compiler is not None else compile;
     for m in container.modules {
-        built_root: ast.Module = transcribe_module(m, classes, keys, container);
+        built_root: ast.Module = transcribe_module(
+            m, classes, keys, container, python_compiler
+        );
         try {
-            code_obj: types.CodeType = compile(built_root, m.mod_path, "exec");
+            code_obj: types.CodeType = compile_ast(
+                built_root, m.mod_path, "exec", dont_inherit=True
+            );
         } except (ValueError, SyntaxError, TypeError) as e {
             diags.append(
                 CirDiag(

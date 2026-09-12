@@ -74,6 +74,9 @@ exclude = [
     "docs/*",
     "*/examples/*",
     "*/tests/*",
+    "jac/jaclang/compiler/frontend/python/*",
+    "jac/jaclang/compiler/backends/py/jacpython/*",
+    "jac/jaclang/runtime/python/*",
     # Ops scripts keep their usage docstrings; CI's fmt sweep skips ^scripts/
     # for the same reason -- this entry keeps the precommit hook consistent
     # with that (without it, any commit touching a script is blocked on deslop).

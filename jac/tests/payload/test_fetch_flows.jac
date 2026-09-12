@@ -1,5 +1,5 @@
 """The fetch subcommands end to end, offline: `http_get` is swapped for an
-in-memory server so fetch-pbs, fetch-typeshed, and fetch-bun run their real
+in-memory server so fetch-typeshed and fetch-bun run their real
 verify + extract + idempotence logic against synthetic release assets."""
 
 import contextlib;
@@ -13,11 +13,9 @@ import tempfile;
 import zipfile;
 
 import jaclang.dist.payload.fetch as fetch_mod;
-import from compression.zstd { compress }
 import from jaclang.dist.payload.cli { main }
 import from jaclang.dist.payload.fetch { BUN_VERSION, BUN_BASE, TYPESHED_TARBALL_BASE }
 import from jaclang.dist.payload.fsutil { PayloadDie, extract_tar }
-import from jaclang.dist.payload.pins { pins }
 
 # tarfile/zipfile constants are `Final` in typeshed, which the checker cannot
 # assign from; spell them as the values they are (pinned by the first test).
@@ -123,76 +121,6 @@ test "extract_tar: strip_components, exec-bit-only modes, symlinks, parent dirs"
         py2 = os.path.join(dest2, "top", "python", "bin", "python3.14");
         assert (os.stat(py2).st_mode & 0o111) == 0 , "mode-ignoring extract keeps the default";
     } finally {
-        shutil.rmtree(base, ignore_errors=True);
-    }
-}
-
-test "fetch-pbs verifies SHA256SUMS, extracts python/, and is idempotent" {
-    p = pins().pbs;
-    plat = "x86_64-unknown-linux-gnu";
-    asset = f"cpython-{p.python}+{p.tag}-{plat}-{p.flavor}.tar.zst";
-    tar = make_tar(
-        [
-            ("python/", b"", 0),
-            ("python/PYTHON.json", b'{"python_version": "3.14.6"}\n', 0o644),
-            ("python/install/bin/python3.14", b"#!/bin/sh\nexec real python\n", 0o755),
-            ("python/install/bin/python3", "python3.14", "symlink"),
-            ("python/install/lib/libpython3.14.so.1.0", b"\x7fELF", 0o755),
-            ("python/install/lib/libpython3.14.so", "libpython3.14.so.1.0", "symlink")
-        ]
-    );
-    tarzst = compress(tar);
-    sums = (
-        f"{hashlib.sha256(tarzst).hexdigest()}  {asset}\n"
-        f"{'0' * 64}  cpython-other.tar.zst\n"
-    ).encode();
-    http = FakeHttp(
-        table={
-            f"{p.base}/{p.tag}/{asset}": tarzst,
-            f"{p.base}/{p.tag}/SHA256SUMS": sums
-        },
-        calls=[]
-    );
-    base = tempfile.mkdtemp(prefix="jac-payload-pbs-");
-    http.install();
-    try {
-        dest = os.path.join(base, "pbs");
-        err = io.StringIO();
-        with contextlib.redirect_stderr(err) {
-            assert main(["fetch-pbs", "linux-x86_64", dest]) == 0;
-        }
-        assert f"fetch-pbs: downloading {asset}\n" in err.getvalue();
-        assert f"fetch-pbs: ready at {dest}/python\n" in err.getvalue();
-        marker = os.path.join(dest, "python", "PYTHON.json");
-        assert os.path.isfile(marker);
-        py = os.path.join(dest, "python", "install", "bin", "python3.14");
-        assert (os.stat(py).st_mode & 0o111) == 0o111 , "the bundled python keeps its exec bit";
-        assert os.path.islink(
-            os.path.join(dest, "python", "install", "lib", "libpython3.14.so")
-        );
-        assert len(http.calls) == 2;
-
-        # Idempotent: the marker short-circuits before any fetch.
-        err = io.StringIO();
-        with contextlib.redirect_stderr(err) {
-            assert main(["fetch-pbs", "linux-x86_64", dest]) == 0;
-        }
-        assert err.getvalue() == f"fetch-pbs: already present at {dest}/python\n";
-        assert len(http.calls) == 2;
-
-        # A swapped asset is refused.
-        http.table[f"{p.base}/{p.tag}/{asset}"] = tarzst + b"x";
-        dest2 = os.path.join(base, "pbs2");
-        err = io.StringIO();
-        with contextlib.redirect_stderr(err) {
-            assert main(["fetch-pbs", "linux-x86_64", dest2]) == 1;
-        }
-        assert err.getvalue().startswith(
-            f"fetch-pbs: downloading {asset}\npayload: fetch-pbs: checksum mismatch for {asset}\n  expected "
-        );
-        assert not os.path.exists(os.path.join(dest2, "python"));
-    } finally {
-        http.uninstall();
         shutil.rmtree(base, ignore_errors=True);
     }
 }

@@ -95,6 +95,7 @@ def fake_repo(repo: str) {
         b"in-tree-shim-bytes"
     );
     wf(repo, "bootstrap/pins.json", b"{}\n");
+    wf(repo, "bootstrap/python/sources.json", b"{}\n");
     wf(repo, "_jac_finder.py", b"finder\n");
     wf(repo, "sitecustomize.py", b"sitecustomize\n");
     wf(repo, "jac.toml", b"version = \"0.0.0\"\n");
@@ -341,6 +342,11 @@ test "stage_floor stages the floor allow-list + CA bundle, skips non-floor archi
         assert os.path.isfile(os.path.join(floor, osarch, "libssl.a"));
         assert os.path.isfile(os.path.join(floor, "cacert.pem"));
         assert not os.path.exists(os.path.join(floor, osarch, "libX11.a"));
+
+        # Source-built Python supplies certificates independently of pip.
+        wf(pbs, "build/cacert.pem", b"# source CA\n");
+        stage_floor(pbs, stage);
+        assert rf(os.path.join(floor, "cacert.pem")) == b"# source CA\n";
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }

@@ -1,4 +1,4 @@
-//! Shared floor for the Zig bootstrap seeds (`fetch_pbs.zig`,
+//! Shared floor for the Zig bootstrap seeds (`build_python.zig`,
 //! `fetch_typeshed.zig`): the fetch + verify + report primitives every one of
 //! them needs. These programs run before any Python exists, so this is
 //! std-only -- std.http, std.crypto, and two writers to stderr.

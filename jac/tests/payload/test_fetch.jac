@@ -18,7 +18,6 @@ import from jaclang.dist.payload.fetch {
     fetch_llvm_slice,
     parse_central_directory,
     parse_eocd,
-    pbs_platform,
     slice_wanted,
     unzip_member_by_suffix
 }
@@ -266,11 +265,6 @@ test "find_sum_line reads `<hex>  <filename>` lines" {
 }
 
 test "platform tables match the Zig tool" {
-    assert pbs_platform("macos-aarch64") == "aarch64-apple-darwin";
-    assert pbs_platform("macos-x86_64") == "x86_64-apple-darwin";
-    assert pbs_platform("linux-x86_64") == "x86_64-unknown-linux-gnu";
-    assert pbs_platform("linux-aarch64") == "aarch64-unknown-linux-gnu";
-    assert pbs_platform("windows-x86_64") is None;
     assert bun_asset_name("macos-aarch64") == "bun-darwin-aarch64";
     assert bun_asset_name("macos-x86_64") == "bun-darwin-x64";
     assert bun_asset_name("linux-x86_64") == "bun-linux-x64";
@@ -279,14 +273,10 @@ test "platform tables match the Zig tool" {
     assert bun_asset_name("freebsd-x86_64") is None;
 }
 
-test "pins.json carries the pbs + llvm pins and bun stays in lockstep" {
+test "source and LLVM pins agree with the payload" {
     p = pins();
-    assert load_pins().pbs.tag == p.pbs.tag;
-    assert p.pbs.tag == "20260610";
-    assert p.pbs.python == "3.14.6";
-    assert p.pbs.flavor == "pgo+lto-full";
-    assert p.pbs.base
-        == "https://github.com/astral-sh/python-build-standalone/releases/download";
+    assert load_pins().python == p.python;
+    assert p.python == "3.14.6";
     assert py_ver() == "3.14";
     assert py_minor("3.14.6") == "3.14";
     try {

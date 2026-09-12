@@ -34,8 +34,8 @@ import from jaclang.dist.payload.fsutil {
 import from jaclang.dist.payload.pins { py_ver }
 import from jaclang.dist.payload.vendor { MUSL_ARTIFACTS }
 
-impl mk_payload(pbs_py_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) {
-    py = resolve_python(pbs_py_dir);
+impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) {
+    py = resolve_python(python_dir);
     work = out + ".work";
     delete_tree(work);
     make_dirs(work);
@@ -55,11 +55,11 @@ impl mk_payload(pbs_py_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
 
     assemble_site(repo_root, site, opts);
 
-    stage_floor(pbs_py_dir, work);
+    stage_floor(python_dir, work);
 
-    run_precompile_stage(py, pbs_py_dir, site, opts);
+    run_precompile_stage(py, python_dir, site, opts);
 
-    run_stubcat_stage(py, pbs_py_dir, site, opts);
+    run_stubcat_stage(py, python_dir, site, opts);
 
     log("==> bundling watchdog (jac run --dev) + tomlkit");
     delete_tree(os.path.join(site, "__pycache__"));
@@ -79,7 +79,7 @@ impl mk_payload(pbs_py_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
         False
     );
 
-    stage_tree(pbs_py_dir, site, stage, opts.musl_dir, opts.wasm_libc_dir);
+    stage_tree(python_dir, site, stage, opts.musl_dir, opts.wasm_libc_dir);
 
     precompile_pyc(py, stage);
 
@@ -88,16 +88,16 @@ impl mk_payload(pbs_py_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
     delete_tree(work);
 }
 
-impl resolve_python(pbs_py_dir: str) -> str {
-    p1 = os.path.join(pbs_py_dir, "install", "bin", f"python{py_ver()}");
+impl resolve_python(python_dir: str) -> str {
+    p1 = os.path.join(python_dir, "install", "bin", f"python{py_ver()}");
     if file_exists(p1) {
         return p1;
     }
-    p2 = os.path.join(pbs_py_dir, "install", "bin", "python3");
+    p2 = os.path.join(python_dir, "install", "bin", "python3");
     if file_exists(p2) {
         return p2;
     }
-    raise PayloadDie(f"mkpayload: no python at {pbs_py_dir}/install/bin");
+    raise PayloadDie(f"mkpayload: no python at {python_dir}/install/bin");
 }
 
 impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
@@ -111,6 +111,10 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
         copy_file(
             os.path.join(repo_root, "bootstrap", "pins.json"),
             os.path.join(site, "jaclang", "dist", "payload", "pins.json")
+        );
+        copy_file(
+            os.path.join(repo_root, "bootstrap", "python", "sources.json"),
+            os.path.join(site, "jaclang", "dist", "payload", "python-sources.json")
         );
 
         awesome_src = os.path.join(repo_root, "examples", "jaclang_org");
@@ -164,6 +168,11 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
     jc_dst = os.path.join(site, "jaclang", "compiler", jc_name);
     if not file_exists(jc_src) {
         log("==> no compiler kernel unit in this tree; skipping kernel build");
+        _bundle_bun(site, opts);
+        return;
+    }
+    if os.environ.get("JAC_PAYLOAD_SKIP_KERNEL") == "1" {
+        log("==> skipping native compiler kernel (JAC_PAYLOAD_SKIP_KERNEL=1)");
         _bundle_bun(site, opts);
         return;
     }
@@ -245,7 +254,7 @@ impl write_dist_info(repo_root: str, site: str) {
     write_text(os.path.join(di, "entry_points.txt"), ENTRY_POINTS_TXT);
 }
 
-impl run_precompile_stage(py: str, pbs_py_dir: str, site: str, opts: MkPayloadOpts) {
+impl run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts) {
     if opts.skip_precompile or opts.link_source is not None {
         log("==> skipping JIR precompile; modules compile on first run");
         return;
@@ -256,14 +265,14 @@ impl run_precompile_stage(py: str, pbs_py_dir: str, site: str, opts: MkPayloadOp
         log(f"==> seeding JIR precompile from {pc}");
         copy_tree(pc, site_pre, skip_none);
     }
-    precompile(py, pbs_py_dir, site, opts.seal, opts.debug_src);
+    precompile(py, python_dir, site, opts.seal, opts.debug_src);
     if pc is not None {
         delete_tree(pc);
         copy_tree(site_pre, pc, skip_none);
     }
 }
 
-impl run_stubcat_stage(py: str, pbs_py_dir: str, site: str, opts: MkPayloadOpts) {
+impl run_stubcat_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts) {
     out_copy = opts.stubcat_out;
     if opts.skip_stubcat or opts.skip_precompile or opts.link_source is not None {
         log("==> skipping the stub catalog; the type checker builds it on first use");
@@ -275,7 +284,7 @@ impl run_stubcat_stage(py: str, pbs_py_dir: str, site: str, opts: MkPayloadOpts)
     site_pre = os.path.join(site, "jaclang", "_precompiled");
     make_dirs(site_pre);
     out = os.path.join(site_pre, "stubcat.bin");
-    if not run_stubcat(py, pbs_py_dir, site, out) {
+    if not run_stubcat(py, python_dir, site, out) {
         die("mkpayload: stub catalog build failed (see log above).");
     }
     if out_copy is not None {
@@ -283,11 +292,11 @@ impl run_stubcat_stage(py: str, pbs_py_dir: str, site: str, opts: MkPayloadOpts)
     }
 }
 
-impl run_stubcat(py: str, pbs_py_dir: str, site: str, out: str) -> bool {
+impl run_stubcat(py: str, python_dir: str, site: str, out: str) -> bool {
     log("==> building the stub catalog (pre-resolved typeshed types)");
     boot = os.path.join(site, "stubcat_boot.py");
     write_text(boot, STUBCAT_BOOT_SRC);
-    env = precompile_env(pbs_py_dir, site);
+    env = precompile_env(python_dir, site);
     env["JAC_STUBCAT_BUILDING"] = "1";
     ok = run_child([py, "-S", boot, out], env, True);
     delete_file(boot);
@@ -298,9 +307,9 @@ impl run_stubcat(py: str, pbs_py_dir: str, site: str, out: str) -> bool {
     return True;
 }
 
-impl precompile_env(pbs_py_dir: str, site: str) -> dict[str, str] {
+impl precompile_env(python_dir: str, site: str) -> dict[str, str] {
     env = clone_env();
-    env["PYTHONHOME"] = os.path.join(pbs_py_dir, "install");
+    env["PYTHONHOME"] = os.path.join(python_dir, "install");
     env["PYTHONPATH"] = site;
     env["PYTHONUTF8"] = "1";
     env["PYTHONDONTWRITEBYTECODE"] = "1";
@@ -313,7 +322,7 @@ impl precompile_env(pbs_py_dir: str, site: str) -> dict[str, str] {
     return env;
 }
 
-impl precompile(py: str, pbs_py_dir: str, site: str, seal: bool, debug_src: bool) {
+impl precompile(py: str, python_dir: str, site: str, seal: bool, debug_src: bool) {
     pc = os.path.join(site, "jaclang", "dist", "precompile_bytecode.jac");
     if not file_exists(pc) {
         return;
@@ -334,7 +343,7 @@ impl precompile(py: str, pbs_py_dir: str, site: str, seal: bool, debug_src: bool
         argv.append("--debug-src");
     }
 
-    env = precompile_env(pbs_py_dir, site);
+    env = precompile_env(python_dir, site);
     run_child(argv, env, True);
 
     pre_dir = os.path.join(site, "jaclang", "_precompiled");
@@ -368,8 +377,8 @@ impl precompile(py: str, pbs_py_dir: str, site: str, seal: bool, debug_src: bool
     );
 }
 
-impl stage_python_bin(pbs_py_dir: str, stage: str) {
-    py = resolve_python(pbs_py_dir);
+impl stage_python_bin(python_dir: str, stage: str) {
+    py = resolve_python(python_dir);
     bare = os.path.basename(py);
     bin_dst = os.path.join(stage, "python", "bin");
     make_dirs(bin_dst);
@@ -380,7 +389,7 @@ impl stage_python_bin(pbs_py_dir: str, stage: str) {
 }
 
 impl stage_tree(
-    pbs_py_dir: str,
+    python_dir: str,
     site: str,
     stage: str,
     musl_dir: str | None,
@@ -390,13 +399,13 @@ impl stage_tree(
     lib_dst = os.path.join(stage, "python", "lib");
     make_dirs(lib_dst);
 
-    pbs_lib = os.path.join(pbs_py_dir, "install", "lib");
-    found = find_libpython(pbs_lib);
+    python_lib = os.path.join(python_dir, "install", "lib");
+    found = find_libpython(python_lib);
     staged_lib = os.path.join(lib_dst, found.bare);
-    copy_file(os.path.join(pbs_lib, found.src), staged_lib);
+    copy_file(os.path.join(python_lib, found.src), staged_lib);
     strip_best_effort(staged_lib);
 
-    stage_stdlib(pbs_lib, lib_dst);
+    stage_stdlib(python_lib, lib_dst);
 
     copy_tree(site, os.path.join(stage, "site"), skip_stage_site);
     strip_best_effort(site_shim_path(os.path.join(stage, "site")));
@@ -413,9 +422,15 @@ impl stage_tree(
         )
     );
 
-    stage_python_bin(pbs_py_dir, stage);
+    stage_python_bin(python_dir, stage);
 
-    stage_floor(pbs_py_dir, stage);
+    copy_tree(
+        os.path.join(python_dir, "licenses"),
+        os.path.join(stage, "python", "licenses"),
+        skip_none
+    );
+
+    stage_floor(python_dir, stage);
 
     if musl_dir is not None {
         stage_musl(musl_dir, stage);
@@ -425,9 +440,9 @@ impl stage_tree(
     }
 }
 
-impl stage_stdlib(pbs_lib: str, lib_dst: str) {
+impl stage_stdlib(python_lib: str, lib_dst: str) {
     stdlib_dst = os.path.join(lib_dst, f"python{py_ver()}");
-    copy_tree(os.path.join(pbs_lib, f"python{py_ver()}"), stdlib_dst, skip_none);
+    copy_tree(os.path.join(python_lib, f"python{py_ver()}"), stdlib_dst, skip_none);
     for d in STDLIB_PRUNE {
         delete_tree(os.path.join(stdlib_dst, d));
     }
@@ -466,11 +481,11 @@ impl precompile_pyc(py: str, stage: str) {
     );
 }
 
-impl stage_floor(pbs_py_dir: str, stage: str) {
+impl stage_floor(python_dir: str, stage: str) {
     osarch = host_os_arch();
     floor_dst = os.path.join(stage, "python", "floor", osarch);
     make_dirs(floor_dst);
-    src_lib = os.path.join(pbs_py_dir, "build", "lib");
+    src_lib = os.path.join(python_dir, "build", "lib");
 
     staged = 0;
     for name in FLOOR_ARCHIVES {
@@ -483,13 +498,13 @@ impl stage_floor(pbs_py_dir: str, stage: str) {
     }
     log(f"==> staged {staged} C-floor archive(s) -> python/floor/{osarch}");
 
-    ca = find_ca_bundle(pbs_py_dir);
+    ca = find_ca_bundle(python_dir);
     if ca is not None {
         copy_file(ca, os.path.join(stage, "python", "floor", "cacert.pem"));
         log("==> staged CA bundle -> python/floor/cacert.pem");
     } else {
         log(
-            "   no CA bundle found under pbs site-packages; ssl floor will fall back to a system bundle"
+            "   no CA bundle found in the Python distribution; ssl floor will fall back to a system bundle"
         );
     }
 }
@@ -535,9 +550,13 @@ impl stage_wasm_libc(wasm_libc_dir: str, stage: str) {
     }
 }
 
-impl find_ca_bundle(pbs_py_dir: str) -> str | None {
+impl find_ca_bundle(python_dir: str) -> str | None {
+    bundled = os.path.join(python_dir, "build", "cacert.pem");
+    if file_exists(bundled) {
+        return bundled;
+    }
     sp = os.path.join(
-        pbs_py_dir, "install", "lib", f"python{py_ver()}", "site-packages"
+        python_dir, "install", "lib", f"python{py_ver()}", "site-packages"
     );
     direct = os.path.join(sp, "pip", "_vendor", "certifi", "cacert.pem");
     if file_exists(direct) {

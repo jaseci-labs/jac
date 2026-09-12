@@ -4,7 +4,7 @@
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0x125cfde06c37a26a,
     // The launcher, the payload tool and their tests are Jac: the build has no
-    // Zig dependencies. Zig is the bootstrap seed (bootstrap/fetch_pbs.zig) and
+    // Zig dependencies. Zig is the bootstrap seed (bootstrap/build_python.zig) and
     // the C/C++ cross-compiler for the LLVM shim and the vendored runtimes.
     .dependencies = .{},
     .paths = .{

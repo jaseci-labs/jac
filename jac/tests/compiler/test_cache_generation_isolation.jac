@@ -140,3 +140,26 @@ test "a zero TTL disables the sweep" {
     assert removed == 0 , "a zero TTL still swept a generation";
     assert gen.is_dir();
 }
+
+test "JacPython sources participate in the producing compiler identity" {
+    import from jaclang.compiler.driver.jir {
+        compiler_source_digest,
+        _manifest_compiler_digest
+    }
+    prefixes = (
+        "compiler/frontend/python/",
+        "compiler/backends/py/jacpython/",
+        "runtime/python/"
+    );
+    with tempfile.TemporaryDirectory() as pkg {
+        for prefix in prefixes {
+            src = Path(pkg) / prefix / "module.jac";
+            src.parent.mkdir(parents=True, exist_ok=True);
+            src.write_text("def f() -> int { return 1; }\n");
+            before = compiler_source_digest(pkg);
+            src.write_text("def f() -> int { return 2; }\n");
+            assert compiler_source_digest(pkg) != before;
+            assert _manifest_compiler_digest(pkg) != before;
+        }
+    }
+}

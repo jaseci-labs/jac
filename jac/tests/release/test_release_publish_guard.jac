@@ -180,6 +180,37 @@ test "a non-required platform missing: publish the release without it" {
     }
 }
 
+test "both compiler variants are required before publishing" {
+    required = ["linux-x86_64", "linux-x86_64-jacpython"];
+    for missing in required {
+        fx = scaffold(
+            assets_for(
+                [
+                    p
+                    for p in required
+                    if p != missing
+                ]
+            )
+        );
+        try {
+            res = run_guard(fx, required);
+            assert res.returncode != 0;
+            assert f"jac-{VERSION}-{missing}" in res.stdout + res.stderr;
+            assert publish_call(fx) == "";
+        } finally {
+            shutil.rmtree(fx["base"], ignore_errors=True);
+        }
+    }
+    fx = scaffold(assets_for(required));
+    try {
+        res = run_guard(fx, required);
+        assert res.returncode == 0 , res.stdout + res.stderr;
+        assert "--draft=false" in publish_call(fx);
+    } finally {
+        shutil.rmtree(fx["base"], ignore_errors=True);
+    }
+}
+
 test "no required platforms given: refuse rather than publish an unchecked release" {
     fx = scaffold(assets_for(ALL_PLATFORMS));
     try {

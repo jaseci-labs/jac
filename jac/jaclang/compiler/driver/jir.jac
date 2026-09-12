@@ -4,6 +4,7 @@ import struct;
 import sys;
 import zlib;
 import from pathlib { Path }
+import from jaclang.bootstrap_manifest { SOURCE_ONLY_PATHS }
 
 glob MAGIC = b"JIR\x00",
      FORMAT_VERSION: int = 25,
@@ -146,6 +147,9 @@ def is_compiler_tree_path(source_path: str) -> bool {
         return False;
     }
     rel = resolved[len(base):].replace(os.sep, "/");
+    if any(rel.startswith(prefix) for prefix in SOURCE_ONLY_PATHS) {
+        return False;
+    }
     for digest_root in COMPILER_DIGEST_ROOTS {
         if rel == digest_root or rel.startswith(digest_root + "/") {
             return True;
@@ -216,6 +220,9 @@ def compiler_source_files(pkg_dir: str) -> list[str] {
                 rel = os.path.relpath(os.path.join(walk_dir, name), base).replace(
                     os.sep, "/"
                 );
+                if any(rel.startswith(prefix) for prefix in SOURCE_ONLY_PATHS) {
+                    continue;
+                }
                 if rel in COMPILER_DIGEST_SKIP {
                     continue;
                 }

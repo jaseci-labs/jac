@@ -3,22 +3,26 @@
 import sys
 from typing import TYPE_CHECKING
 
-from jaclang.meta_importer import JacMetaImporter  # noqa: E402
+# The embedded Python compiler loads a private, precompiled Jac dependency
+# closure before the public Jac importer is available. Its loader supplies
+# those modules; the ordinary package still installs the source importer.
+if not __name__.startswith("_jacpython_seed."):
+    from jaclang.meta_importer import JacMetaImporter  # noqa: E402
 
-# Register JacMetaImporter BEFORE anything else, so .jac modules can be imported
-if not any(isinstance(f, JacMetaImporter) for f in sys.meta_path):
-    sys.meta_path.insert(0, JacMetaImporter())
+    # Register JacMetaImporter BEFORE anything else, so .jac modules can be imported
+    if not any(isinstance(f, JacMetaImporter) for f in sys.meta_path):
+        sys.meta_path.insert(0, JacMetaImporter())
 
-# Put the current project's .jac/venv on sys.path so per-project dependencies
-# (jac install [-e] <pkg>) and the on-demand feature capabilities (byllm, scale,
-# ...) are importable. In the single binary this already ran via sitecustomize
-# during interpreter startup; this call is the library-use fallback (plain
-# `import jaclang` with no sitecustomize). The helper is idempotent and uses
-# addsitedir, so editable .pth links are processed.
-with __import__("contextlib").suppress(Exception):
-    import _jac_finder as _jf
+    # Put the current project's .jac/venv on sys.path so per-project dependencies
+    # (jac install [-e] <pkg>) and the on-demand feature capabilities (byllm, scale,
+    # ...) are importable. In the single binary this already ran via sitecustomize
+    # during interpreter startup; this call is the library-use fallback (plain
+    # `import jaclang` with no sitecustomize). The helper is idempotent and uses
+    # addsitedir, so editable .pth links are processed.
+    with __import__("contextlib").suppress(Exception):
+        import _jac_finder as _jf
 
-    _jf.add_project_venv_to_path()
+        _jf.add_project_venv_to_path()
 
 
 # --- Lazy compiler/runtime bootstrap -------------------------------------

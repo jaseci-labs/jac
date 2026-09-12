@@ -1216,19 +1216,24 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
                 for _p in here.params
                 if not isinstance(_p, uni.KWPair)
             ];
-            _ctx = self._primitives_es_mod.ESEmitCtx(
-                unparser=_unparser, arg_type_names=_arg_type_names
-            );
             _args_strs: list[str] = [];
             for _a in args {
                 _args_strs.append(_unparser.generate(_a));
             }
 
+            _kwargs: dict[str, str] = {};
             for _p in props {
                 if isinstance(_p, es.Property) and _p.value {
-                    _args_strs.append(_unparser.generate(_p.value));
+                    _val_str = _unparser.generate(_p.value);
+                    _args_strs.append(_val_str);
+                    if isinstance(_p.key, es.Identifier) {
+                        _kwargs[_p.key.name] = _val_str;
+                    }
                 }
             }
+            _ctx = self._primitives_es_mod.ESEmitCtx(
+                unparser=_unparser, arg_type_names=_arg_type_names, kwargs=_kwargs
+            );
 
             _result = None;
             try {
