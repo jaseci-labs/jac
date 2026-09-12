@@ -29,25 +29,25 @@ assert str(decimal.Decimal("0.1") + decimal.Decimal("0.2")) == "0.3"
 assert hashlib.sha256(sample).digest()
 assert ctypes.pythonapi.PyInitConfig_Create
 mode = sys.argv[1] if len(sys.argv) > 1 else None
-if mode in ("host", "jacpython"):
-    assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 2
+if mode == "jacpython":
+    assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
 try:
     required_compiler = ctypes.pythonapi._PyJac_CompilerRequired
 except AttributeError:
-    required_compiler = None  # Default CPython and the seed host retain C.
+    required_compiler = None  # Default CPython and the build host retain C.
 if mode == "jacpython":
     assert required_compiler is not None, "JacPython was requested but is missing"
 elif mode in ("cpython", "host"):
     assert required_compiler is None, "Unexpected JacPython runtime"
     assert getattr(sys, "_jacpython_compile", None) is None
     assert not hasattr(sys, "_jacpython_image"), "Unexpected embedded seed"
-    if mode == "cpython":
-        assert not hasattr(ctypes.pythonapi, "_PyJac_CompilerBridgeVersion")
+    assert not hasattr(ctypes.pythonapi, "_PyJac_CompilerBridgeVersion")
 if required_compiler is not None:
     assert required_compiler() == 1
-    assert sys._jacpython_compile.__module__.startswith("_jacpython_seed.")
-    assert sys._jacpython_symtable.__module__.startswith("_jacpython_seed.")
-    assert sys._jacpython_tokenize.__module__.startswith("_jacpython_seed.")
+    assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
+    for retired in ("_jacpython_compile", "_jacpython_symtable", "_jacpython_tokenize", "_jacpython_image", "_jacpython_code"):
+        assert not hasattr(sys, retired), retired
+    assert not any(name.startswith("_jacpython_seed") for name in sys.modules)
     import io
     import symtable
     import tokenize
@@ -64,7 +64,6 @@ if required_compiler is not None:
                 source = prefix + quote * 3 + body + quote * 3
                 expected = body.encode() if "b" in prefix.lower() else body
                 assert eval(source) == expected, source
-    compiler = sys._jacpython_compile
     namespace = {}
     exec(compile("""
 def checked(ok, values):
@@ -108,36 +107,28 @@ def outer():
     assert namespace["Located"].value == 42
     assert all(end is None or end >= start for start, end, _, _ in located_code.co_positions())
 
+    # Runtime callbacks cannot redirect the shipped native compiler.
     def unavailable(*args, **kwargs):
-        raise RuntimeError("compiler failure must propagate")
+        raise AssertionError("Native JacPython called a retired Python adapter")
 
-    sys._jacpython_compile = unavailable
+    for retired in ("_jacpython_compile", "_jacpython_symtable", "_jacpython_tokenize"):
+        setattr(sys, retired, unavailable)
     try:
-        compile("pass", "<no-c-fallback>", "exec")
-    except RuntimeError as error:
-        assert str(error) == "compiler failure must propagate"
-    else:
-        raise AssertionError("Compilation bypassed the Jac compiler")
+        assert eval("6 * 7") == 42
+        assert symtable.symtable("x=1", "<native>", "exec").lookup("x").is_global()
+        assert list(tokenize.generate_tokens(io.StringIO("x=1\n").readline))
     finally:
-        sys._jacpython_compile = compiler
-    assert "requests" not in sys._jacpython_image
-    sys._jacpython_compile = None
-    try:
-        compile("pass", "<missing-compiler>", "exec")
-    except RuntimeError as error:
-        assert "Missing JacPython callback" in str(error)
-    else:
-        raise AssertionError("Compilation used retired bootstrap code")
-    finally:
-        sys._jacpython_compile = compiler
+        for retired in ("_jacpython_compile", "_jacpython_symtable", "_jacpython_tokenize"):
+            delattr(sys, retired)
     with tempfile.TemporaryDirectory(prefix="jac-python-cold-") as cache:
         for optimization in ([], ["-O"], ["-OO"]):
             subprocess.run(
                 [sys.executable, "-I", "-S", "-B", "-X", "pycache_prefix=" + cache]
-                + optimization + ["-c", "import ast, encodings, sys; assert eval('6 * 7') == 42; "
-                                  "assert isinstance(ast.parse('x=1'), ast.Module); "
-                                  "assert encodings.search_function.__code__.co_filename == encodings.__file__; "
-                                  "assert sys._jacpython_compile.__module__.startswith('_jacpython_seed.')"],
+                + optimization + ["-c", "import ast, ctypes, encodings, sys; "
+                                  "ok = eval('6 * 7') == 42 and isinstance(ast.parse('x=1'), ast.Module); "
+                                  "ok = ok and encodings.search_function.__code__.co_filename == encodings.__file__; "
+                                  "ok = ok and not hasattr(sys, '_jacpython_compile'); "
+                                  "sys.exit(0 if ok and ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3 else 1)"],
                 check=True,
             )
     interactive = subprocess.run(

@@ -1,17 +1,16 @@
 //! Build the release Python before any Jac tooling can run. Sources are
-//! checksum-pinned. JacPython is opt-in; its separate host produces the seed.
+//! checksum-pinned. JacPython is opt-in; its build host emits the native replacement object.
 const std = @import("std");
 const builtin = @import("builtin");
 const seed = @import("seed.zig");
 const Io = std.Io;
 const inputs = [_][]const u8{
-    "bootstrap/build_python.zig",           "bootstrap/seed.zig",
-    "bootstrap/python/sources.json",        "bootstrap/python/cpython-sources.txt",
-    "bootstrap/python/build.sh",            "bootstrap/python/smoke.py",
-    "bootstrap/python/finalize.py",         "bootstrap/python/compiler-bridge.patch",
-    "bootstrap/python/host-compiler.patch", "bootstrap/python/compiler_bridge.c",
-    "bootstrap/python/compiler_bridge.h",   "bootstrap/python/prepare_seed.py",
-    "bootstrap/python/seed_runtime.py",
+    "bootstrap/build_python.zig",          "bootstrap/seed.zig",
+    "bootstrap/python/sources.json",       "bootstrap/python/cpython-sources.txt",
+    "bootstrap/python/build.sh",           "bootstrap/python/smoke.py",
+    "bootstrap/python/finalize.py",        "bootstrap/python/compiler-bridge.patch",
+    "bootstrap/python/compiler_runtime.c", "bootstrap/python/compiler_bridge.c",
+    "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
 const Mode = enum { cpython, host, jacpython };
@@ -135,18 +134,17 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
         hash.update(std.mem.trim(u8, sdk.stdout, " \r\n"));
     }
     for (inputs) |path| {
-        if (mode == .cpython and std.mem.endsWith(u8, path, "/host-compiler.patch")) continue;
         if (mode != .jacpython and (std.mem.endsWith(u8, path, "/compiler-bridge.patch") or
             std.mem.endsWith(u8, path, "/compiler_bridge.c") or std.mem.endsWith(u8, path, "/compiler_bridge.h") or
-            std.mem.endsWith(u8, path, "/prepare_seed.py") or std.mem.endsWith(u8, path, "/seed_runtime.py"))) continue;
+            std.mem.endsWith(u8, path, "/prepare_native.py") or std.mem.endsWith(u8, path, "/compiler_runtime.c"))) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
         const content = try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited);
         hash.update(path);
         hash.update(content);
     }
     if (mode == .jacpython) {
-        // The producing compiler and its Jac/Python inputs are part of the
-        // embedded seed. Source edits must invalidate the reduced runtime.
+        // Rebuild the native replacement when the producing compiler or its
+        // source inputs change; never reuse an object from another generation.
         for ([_][]const u8{ "jaclang/vendor/typeshed/PIN", "jaclang/vendor/typeshed/TARBALL_SHA256" }) |path| {
             hash.update(path);
             hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, path }), a, .limited(1024)));
@@ -340,7 +338,7 @@ test "invalid source manifests fail before pruning" {
     _ = try tmp.dir.statFile(io, "Include/Python.h", .{});
 }
 
-test "compiler modes isolate caches; seed edits invalidate only JacPython" {
+test "compiler modes isolate caches; native adapter edits invalidate only JacPython" {
     const io = std.testing.io;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -371,7 +369,7 @@ test "compiler modes isolate caches; seed edits invalidate only JacPython" {
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
     try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/vendor/generated.py", .data = "materialized vendor data" });
     try std.testing.expectEqual(changed_runtime, try buildKey(io, a, hostPlatform(), root, host, .jacpython));
-    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/seed_runtime.py", .data = "changed seed loader" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/compiler_runtime.c", .data = "changed native adapter" });
     try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
     try std.testing.expectEqual(before_cpython, try buildKey(io, a, hostPlatform(), root, host, .cpython));

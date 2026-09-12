@@ -31,7 +31,9 @@ import from jaclang.compiler.backends.py.jacpython.compiler_codegen {
 }
 import from jaclang.compiler.backends.py.jacpython.flowgraph { verify_cfg }
 import from jaclang.compiler.backends.py.jacpython.assembler { assemble }
-import from jaclang.compiler.frontend.python.ast_bridge { stringify_future_annotations }
+import from jaclang.compiler.frontend.python.annotation_unparse {
+    stringify_future_annotations
+}
 import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context, }
 
 def compile_source(

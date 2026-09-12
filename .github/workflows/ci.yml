@@ -154,10 +154,38 @@ jobs:
           path: jac/.python-build/**/*.log
           include-hidden-files: true
 
+  # Exercise the complete replacement, including a cold interpreter startup.
+  # The ordinary kit below continues to use the default CPython compiler.
+  jacpython-native:
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [blacksmith-4vcpu-ubuntu-2404, ubuntu-24.04-arm, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+      - uses: actions/cache/restore@v4
+        with:
+          path: jac/.llvm-build
+          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+      - name: Build and smoke-test the native JacPython runtime
+        working-directory: jac
+        run: zig build build-python -Djacpython=true --summary all
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: jacpython-native-build-logs-${{ runner.os }}-${{ runner.arch }}
+          path: jac/.python-build/**/*.log
+          include-hidden-files: true
+
   # The kit lane builds this checkout and publishes it for every test lane.
-  # CI exercises the default CPython build. JacPython variants are built
-  # and smoke-tested by build-binaries.yml; its upstream compatibility runner
-  # remains available as scripts/run_cpython_compiler_tests.jac.
   build-kit:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
@@ -1496,6 +1524,7 @@ jobs:
       - changes
       - build-kit
       - python-runtime
+      - jacpython-native
       - macos-native
       - jac-check
       - contribution-checks

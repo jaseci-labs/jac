@@ -205,99 +205,6 @@
      }
 
      str = _Py_SourceAsString(source, "compile", "string, bytes or AST", &cf, &source_copy);
---- a/Python/sysmodule.c
-+++ b/Python/sysmodule.c
-@@ -15,6 +15,7 @@
- */
-
- #include "Python.h"
-+#include "pycore_code.h"         // _PyCodeConstructor
- #include "pycore_audit.h"         // _Py_AuditHookEntry
- #include "pycore_call.h"          // _PyObject_CallNoArgs()
- #include "pycore_ceval.h"         // _PyEval_SetAsyncGenFinalizer()
-@@ -2820,7 +2821,82 @@
- }
-
-
-+/* Preserve locals-plus layout when restoring inlined comprehension names.
-+   PyCode_New's public tuple interface merges cells and locals by name; it
-+   cannot represent hidden locals or duplicate names in distinct slots. */
-+static PyObject *
-+sys_jacpython_code(PyObject *self, PyObject *args)
-+{
-+    PyCodeObject *prototype;
-+    PyObject *metadata;
-+    if (!PyArg_ParseTuple(args, "O!O!:_jacpython_code",
-+                          &PyCode_Type, &prototype, &PyDict_Type, &metadata)) {
-+        return NULL;
-+    }
-+    Py_ssize_t count = prototype->co_nlocalsplus;
-+    PyObject *names = PyTuple_New(count);
-+    PyObject *kinds = PyBytes_FromStringAndSize(
-+        PyBytes_AS_STRING(prototype->co_localspluskinds), count);
-+    PyObject *code = PyCode_GetCode(prototype);
-+    if (names == NULL || kinds == NULL || code == NULL) goto error;
-+    for (Py_ssize_t i = 0; i < count; i++) {
-+        PyObject *name = PyTuple_GET_ITEM(prototype->co_localsplusnames, i);
-+        PyObject *entry = PyDict_GetItemWithError(metadata, name);
-+        if (entry == NULL && PyErr_Occurred()) goto error;
-+        if (entry != NULL) {
-+            if (!PyTuple_Check(entry) || PyTuple_GET_SIZE(entry) != 2 ||
-+                !PyUnicode_Check(PyTuple_GET_ITEM(entry, 0))) {
-+                PyErr_SetString(PyExc_TypeError, "invalid JacPython local metadata");
-+                goto error;
-+            }
-+            name = PyTuple_GET_ITEM(entry, 0);
-+            int hidden = PyObject_IsTrue(PyTuple_GET_ITEM(entry, 1));
-+            if (hidden < 0) goto error;
-+            if (hidden) {
-+                _PyLocals_Kind kind = _PyLocals_GetKind(kinds, i);
-+                if (!(kind & CO_FAST_LOCAL)) {
-+                    PyErr_SetString(PyExc_ValueError, "only local slots can be hidden");
-+                    goto error;
-+                }
-+                _PyLocals_SetKind(kinds, i, kind | CO_FAST_HIDDEN);
-+            }
-+        }
-+        PyTuple_SET_ITEM(names, i, Py_NewRef(name));
-+    }
-+    struct _PyCodeConstructor con = {
-+        .filename = prototype->co_filename,
-+        .name = prototype->co_name,
-+        .qualname = prototype->co_qualname,
-+        .flags = prototype->co_flags,
-+        .code = code,
-+        .firstlineno = prototype->co_firstlineno,
-+        .linetable = prototype->co_linetable,
-+        .consts = prototype->co_consts,
-+        .names = prototype->co_names,
-+        .localsplusnames = names,
-+        .localspluskinds = kinds,
-+        .argcount = prototype->co_argcount,
-+        .posonlyargcount = prototype->co_posonlyargcount,
-+        .kwonlyargcount = prototype->co_kwonlyargcount,
-+        .stacksize = prototype->co_stacksize,
-+        .exceptiontable = prototype->co_exceptiontable,
-+    };
-+    if (_PyCode_Validate(&con) < 0) goto error;
-+    PyObject *result = (PyObject *)_PyCode_New(&con);
-+    Py_DECREF(names);
-+    Py_DECREF(kinds);
-+    Py_DECREF(code);
-+    return result;
-+error:
-+    Py_XDECREF(names);
-+    Py_XDECREF(kinds);
-+    Py_XDECREF(code);
-+    return NULL;
-+}
-+
- static PyMethodDef sys_methods[] = {
-+    {"_jacpython_code", sys_jacpython_code, METH_VARARGS,
-+     "Construct code with JacPython local-variable metadata."},
-     /* Might as well keep this in alphabetic order */
-     SYS_ADDAUDITHOOK_METHODDEF
-     SYS_AUDIT_METHODDEF
 --- a/Objects/object.c
 +++ b/Objects/object.c
 @@ -15,7 +15,6 @@
@@ -334,7 +241,7 @@
      &_PyLineIterator,
 --- a/Modules/Setup.bootstrap.in
 +++ b/Modules/Setup.bootstrap.in
-@@ -36,7 +36,17 @@
+@@ -36,7 +36,6 @@
  _opcode _opcode.c
  _operator _operator.c
  _stat _stat.c
@@ -342,46 +249,6 @@
 
  # for systems without $HOME env, used by site._getuserbase()
  @MODULE_PWD_TRUE@pwd pwdmodule.c
-+
-+# JacPython's seed needs these before pybuilddir.txt and shared-module paths
-+# exist. Their C implementations remain part of the retained object runtime.
-+_struct _struct.c
-+_pickle _pickle.c
-+_json _json.c
-+_interpreters _interpretersmodule.c
-+_heapq _heapqmodule.c
-+_queue _queuemodule.c
-+grp grpmodule.c
-+fcntl fcntlmodule.c
---- a/Modules/Setup.stdlib.in
-+++ b/Modules/Setup.stdlib.in
-@@ -35,17 +35,11 @@
- @MODULE__ASYNCIO_TRUE@_asyncio _asynciomodule.c
- @MODULE__BISECT_TRUE@_bisect _bisectmodule.c
- @MODULE__CSV_TRUE@_csv _csv.c
--@MODULE__HEAPQ_TRUE@_heapq _heapqmodule.c
--@MODULE__JSON_TRUE@_json _json.c
- @MODULE__LSPROF_TRUE@_lsprof _lsprof.c rotatingtree.c
--@MODULE__PICKLE_TRUE@_pickle _pickle.c
--@MODULE__QUEUE_TRUE@_queue _queuemodule.c
- @MODULE__RANDOM_TRUE@_random _randommodule.c
- @MODULE__REMOTE_DEBUGGING_TRUE@_remote_debugging _remote_debugging_module.c
--@MODULE__STRUCT_TRUE@_struct _struct.c
-
- # build supports subinterpreters
--@MODULE__INTERPRETERS_TRUE@_interpreters _interpretersmodule.c
- @MODULE__INTERPCHANNELS_TRUE@_interpchannels _interpchannelsmodule.c
- @MODULE__INTERPQUEUES_TRUE@_interpqueues _interpqueuesmodule.c
-
-@@ -121,8 +115,6 @@
- # Modules with some UNIX dependencies
- #
-
--@MODULE_FCNTL_TRUE@fcntl fcntlmodule.c
--@MODULE_GRP_TRUE@grp grpmodule.c
- @MODULE_MMAP_TRUE@mmap mmapmodule.c
- # needs sys/soundcard.h or linux/soundcard.h (Linux, FreeBSD)
- @MODULE__POSIXSUBPROCESS_TRUE@_posixsubprocess _posixsubprocess.c
 --- a/Modules/config.c.in
 +++ b/Modules/config.c.in
 @@ -19,6 +19,7 @@
@@ -446,9 +313,11 @@
 -		$(TOKENIZER_HEADERS)
 +PARSER_OBJS= Parser/myreadline.o
 +PARSER_HEADERS= $(srcdir)/Include/internal/pycore_parser.h
-@@ -427 +391 @@
+@@ -427,1 +391,3 @@
 -		Python/Python-tokenize.o \
 +		Python/jac_compile.o \
++		Python/jac_runtime.o \
++		Python/jacpython.o \
 @@ -429,3 +392,0 @@
 -		Python/assemble.o \
 -		Python/ast.o \
@@ -456,13 +325,13 @@
 @@ -437,2 +397,0 @@
 -		Python/codegen.o \
 -		Python/compile.o \
-@@ -444 +402,0 @@
+@@ -444,1 +402,0 @@
 -		Python/flowgraph.o \
-@@ -447 +404,0 @@
+@@ -447,1 +404,0 @@
 -		Python/future.o \
-@@ -465 +421,0 @@
+@@ -465,1 +421,0 @@
 -		Python/instruction_sequence.o \
-@@ -495 +450,0 @@
+@@ -495,1 +450,0 @@
 -		Python/symtable.o \
 @@ -1986,8 +1941,2 @@
 -	@$(MKDIR_P) $(srcdir)/Parser
@@ -499,7 +368,7 @@
 -		$(srcdir)/Lib/token.py
 +	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
 +	@false
-@@ -2065 +1995 @@
+@@ -2065,1 +1995,1 @@
 -Python/compile.o Python/codegen.o Python/symtable.o Python/ast_unparse.o Python/ast.o Python/future.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
 +Python/ast_unparse.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
 @@ -2201,7 +2130,0 @@
@@ -514,14 +383,15 @@
 -
 -Python/flowgraph.o: \
 -		$(srcdir)/Include/internal/pycore_opcode_metadata.h
-@@ -2817 +2737 @@
+@@ -2817,1 +2737,1 @@
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -2822 +2742 @@
+@@ -2822,1 +2742,1 @@
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -3422,0 +3343,4 @@
+@@ -3422,0 +3343,5 @@
 +
-+# Compiler/parser objects are supplied by JacPython's frozen seed and ABI adapter.
-+Python/jac_compile.o: $(srcdir)/Python/jac_compile.c $(srcdir)/Python/jac_compile.h $(srcdir)/Python/jac_seed.h
++# Compiler/parser objects are supplied by native Jac and retained-runtime ABI adapters.
++Python/jac_compile.o: $(srcdir)/Python/jac_compile.c $(srcdir)/Python/jac_compile.h
++Python/jac_runtime.o: $(srcdir)/Python/jac_runtime.c
 +Python/pythonrun.o Python/bltinmodule.o: $(srcdir)/Python/jac_compile.h

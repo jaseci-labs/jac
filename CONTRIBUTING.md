@@ -214,11 +214,11 @@ Verify the active compiler and exercise Python source and AST compilation:
 
 ```bash
 JAC_NO_DEV_SOURCE=1 "$JACPYTHON" -c '
-import ast, sys
-compiler = getattr(sys, "_jacpython_compile", None)
-assert callable(compiler)
-assert compiler.__module__.startswith("_jacpython_seed.")
-print("Python compiler:", compiler.__module__)
+import ast, ctypes, sys
+assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
+assert not hasattr(sys, "_jacpython_compile")
+assert not hasattr(sys, "_jacpython_image")
+print("Python compiler: native JacPython")
 assert eval("6 * 7") == 42
 exec(compile(ast.parse("print(6 * 7)"), "<jacpython-trial>", "exec"))
 '
@@ -227,8 +227,10 @@ printf 'with entry { print(6 * 7); }\n' > "$TRIAL/hello.jac"
 JAC_NO_DEV_SOURCE=1 "$JACPYTHON" run "$TRIAL/hello.jac"
 ```
 
-Both examples should print `42`; the compiler probe should name a module under
-`_jacpython_seed`. The `-c` probe exercises the Python replacement directly;
+Both examples should print `42`; the compiler probe should report native
+JacPython. The replacement executes as native machine code, while CPython
+provides the object runtime and executes the resulting Python bytecode.
+The `-c` probe exercises the Python replacement directly;
 `run` retains Jac's normal backend selection. Keep `JAC_NO_DEV_SOURCE=1` when
 testing a downloaded release inside this repository so its `[dev]` setting
 does not substitute the checkout's Jac compiler.
@@ -241,8 +243,8 @@ reporting a JacPython issue.
 
 For changes to the JacPython implementation, rebuild with
 `cd jac && zig build -Djacpython=true` and use the resulting `zig-out/bin/jac`.
-Its compiler seed is embedded at build time: editing source through the dev
-loop does not replace the private seed in an existing binary. Plain `zig build`
+Its native compiler object is linked at build time: editing source through the
+dev loop does not replace that object in an existing binary. Plain `zig build`
 defaults to CPython. See [the build guide](jac/launcher/README.md#build) for cache
 details and the runtime build prerequisites.
 

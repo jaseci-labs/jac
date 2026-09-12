@@ -41,6 +41,15 @@ import from jaclang.compiler.frontend.python.token_model {
     tok_no_loc,
 }
 
+import from jaclang.runtime.python.characters {
+    point_width,
+    point_char,
+    unicode_point,
+    unicode_start,
+    unicode_continue,
+    unicode_printable
+}
+
 glob TABSIZE: int = 8,
      MAXINDENT: int = 100;
 
@@ -74,6 +83,7 @@ obj string_mode {
 
 obj tok_state {
     has source: str,
+        data: bytes = b"",
         pos: int = 0,
         lineno: int = 1,
         col_offset: int = 0,
@@ -98,6 +108,15 @@ obj tok_state {
         paren_stack: list[str] = [],
         comments: dict[int, list[tuple[int, int]]] = {},
         string_modes: list[string_mode] = [];
+
+    def postinit {
+        self.data = self.source.encode("utf-8");
+    }
+}
+
+def _starts(st: tok_state, spelling: str) -> bool {
+    prefix = spelling.encode("utf-8");
+    return st.data[st.pos:st.pos + len(prefix)] == prefix;
 }
 
 def _indent_error(st: tok_state, msg: str, kind: str = "IndentationError") -> tok_diag {
@@ -129,7 +148,9 @@ def _flush_pending_indent(st: tok_state) -> tok_token | None {
         st.pending = st.pending - 1;
         return tok_token(
             tok_type=INDENT,
-            spelling=st.source[st.line_start:st.pos] if st.extra_tokens else "",
+            spelling=st.data[st.line_start:st.pos].decode("utf-8")
+                if st.extra_tokens
+                else "",
             lineno=st.lineno,
             col_offset=0 if st.extra_tokens else TOK_NO_COLUMN,
             end_lineno=st.lineno,
@@ -141,14 +162,14 @@ def _flush_pending_indent(st: tok_state) -> tok_token | None {
 
 def _skip_comment_line(st: tok_state) -> bool {
     i = st.pos;
-    while i < len(st.source) {
-        ch = st.source[i];
+    while i < len(st.data) {
+        ch = chr(st.data[i]);
         if ch == "\n" or ch == "\r" {
             return False;
         }
         if ch == "#" {
-            while i < len(st.source) {
-                ch2 = st.source[i];
+            while i < len(st.data) {
+                ch2 = chr(st.data[i]);
                 if ch2 == "\n" or ch2 == "\r" {
                     break;
                 }
@@ -173,10 +194,10 @@ def _type_comment_start(st: tok_state) -> int {
     pos = st.pos;
     for ch in "# type: " {
         if ch == " " {
-            while pos < len(st.source) and st.source[pos] in " \t" {
+            while pos < len(st.data) and chr(st.data[pos]) in " \t" {
                 pos += 1;
             }
-        } elif pos < len(st.source) and st.source[pos] == ch {
+        } elif pos < len(st.data) and chr(st.data[pos]) == ch {
             pos += 1;
         } else {
             return -1;
@@ -190,7 +211,7 @@ def _measure_indent(st: tok_state) -> tuple[int, int] {
     altcol = 0;
     continuation_col = 0;
     while _has_source(st) {
-        ch = st.source[st.pos];
+        ch = chr(st.data[st.pos]);
         if ch == " " {
             col = col + 1;
             altcol += 1;
@@ -212,7 +233,7 @@ def _measure_indent(st: tok_state) -> tuple[int, int] {
             st.col_offset = st.col_offset + 1;
             continue;
         }
-        if st.source.startswith("\\\n", st.pos) {
+        if _starts(st, "\\\n") {
             # The first nonzero indentation before a continuation determines
             # the logical line's indentation. Blank continuations stay blank.
             continuation_col = continuation_col or col;
@@ -231,13 +252,13 @@ def _measure_indent(st: tok_state) -> tuple[int, int] {
 }
 
 def _consume_bol_newline(st: tok_state) -> None {
-    if st.pos >= len(st.source) {
+    if st.pos >= len(st.data) {
         return;
     }
-    ch = st.source[st.pos];
+    ch = chr(st.data[st.pos]);
     if ch == "\r" {
         st.pos = st.pos + 1;
-        if st.pos < len(st.source) and st.source[st.pos] == "\n" {
+        if st.pos < len(st.data) and chr(st.data[st.pos]) == "\n" {
             st.pos = st.pos + 1;
         }
     } elif ch == "\n" {
@@ -262,8 +283,8 @@ def _process_bol_indent(st: tok_state) -> int {
     if st.error is not None {
         return -1;
     }
-    if st.pos < len(st.source) {
-        ch = st.source[st.pos];
+    if st.pos < len(st.data) {
+        ch = chr(st.data[st.pos]);
         if ch == "#" {
             if st.extra_tokens or _type_comment_start(st) >= 0 {
                 st.at_bol = False;
@@ -355,7 +376,7 @@ def _is_id_start(ch: str) -> bool {
     if ch == "_" {
         return True;
     }
-    return ch.isidentifier();
+    return unicode_start(ch);
 }
 
 def _is_id_continue(ch: str) -> bool {
@@ -365,7 +386,7 @@ def _is_id_continue(ch: str) -> bool {
     if ch >= "0" and ch <= "9" {
         return True;
     }
-    return ch != "" and ("_" + ch).isidentifier();
+    return unicode_continue(ch);
 }
 
 def:priv _is_digit(ch: str) -> bool {
@@ -373,7 +394,7 @@ def:priv _is_digit(ch: str) -> bool {
 }
 
 def _has_source(st: tok_state) -> bool {
-    if st.pos < len(st.source) {
+    if st.pos < len(st.data) {
         return True;
     }
     return st.input is not None and st.input.refill();
@@ -384,32 +405,32 @@ def _peek(st: tok_state) -> str {
         st.eof_reached = True;
         return "";
     }
-    return st.source[st.pos];
+    return point_char(st.data, st.pos);
 }
 
 def _advance(st: tok_state) -> str {
     if not _has_source(st) {
         return "";
     }
-    ch = st.source[st.pos];
-    st.pos = st.pos + 1;
+    ch = point_char(st.data, st.pos);
+    width = point_width(st.data, st.pos);
+    st.pos += width;
     if ch == "\n" {
         st.lineno += 1;
         st.col_offset = 0;
         st.line_start = st.pos;
     } else {
-        # Python AST columns are UTF-8 byte offsets, even for decoded source.
-        point = ord(ch);
-        st.col_offset += 1
-            if point < 128
-            else (2 if point < 2048 else (3 if point < 65536 else 4));
+        st.col_offset += width;
     }
     return ch;
 }
 
 def _match_operator(st: tok_state) -> tok_token | None {
-    rest = st.source[st.pos:st.pos + 3];
-    if st.pos + 1 >= len(st.source) {
+    if unicode_point(_peek(st)) >= 128 {
+        return None;
+    }
+    rest = st.data[st.pos:st.pos + 3].decode("utf-8", "ignore");
+    if st.pos + 1 >= len(st.data) {
         st.eof_reached = True;
     }
     if st.string_modes and st.string_modes[-1].fields {
@@ -440,7 +461,7 @@ def _match_operator(st: tok_state) -> tok_token | None {
     if len(rest) >= 2 {
         spell = rest[0:2];
         if spell in EXACT_TOKEN_TYPES {
-            if st.pos + 2 >= len(st.source) {
+            if st.pos + 2 >= len(st.data) {
                 st.eof_reached = True;
             }
             start_col = st.col_offset;
@@ -459,7 +480,7 @@ def _match_operator(st: tok_state) -> tok_token | None {
     if len(rest) >= 1 {
         spell = rest[0:1];
         if spell not in EXACT_TOKEN_TYPES
-            and (spell == "\\" or not spell.isprintable() or ord(spell) >= 128) {
+            and (spell == "\\" or not unicode_printable(spell) or ord(spell) >= 128) {
             return None;
         }
         typ = exact_token_type(spell);
@@ -579,7 +600,7 @@ def _read_number(st: tok_state) -> tok_token | tok_diag {
             _advance(st);
         }
     }
-    spell = st.source[start:st.pos];
+    spell = st.data[start:st.pos].decode("utf-8");
     if _is_id_start(_peek(st)) and not st.extra_tokens {
         kind = "decimal";
         if spell.lower().startswith("0x") {
@@ -594,8 +615,10 @@ def _read_number(st: tok_state) -> tok_token | tok_diag {
         keyword_boundary = False;
         for keyword in ("and", "else", "for", "if", "in", "is", "or", "not") {
             end = st.pos + len(keyword);
-            if st.source[st.pos:end] == keyword
-                and (end == len(st.source) or not _is_id_continue(st.source[end])) {
+            if st.data[st.pos:end].decode("utf-8") == keyword
+                and (
+                    end == len(st.data) or not _is_id_continue(point_char(st.data, end))
+                ) {
                 keyword_boundary = True;
                 st.warnings.append(
                     mk_diag(
@@ -628,12 +651,13 @@ def _read_name(st: tok_state) -> tok_token {
     _advance(st);
     while _has_source(st) {
         c = _peek(st);
-        if not _is_id_continue(c) and not (st.extra_tokens and ord(c) >= 128) {
+        if not _is_id_continue(c)
+            and not (st.extra_tokens and unicode_point(c) >= 128) {
             break;
         }
         _advance(st);
     }
-    spell = st.source[start:st.pos];
+    spell = st.data[start:st.pos].decode("utf-8");
     _peek(st);
     return tok_token(
         tok_type=NAME,
@@ -670,8 +694,8 @@ def _is_string_start(st: tok_state) -> bool {
         return False;
     }
     p = st.pos + 1;
-    while p < len(st.source) {
-        c = st.source[p];
+    while p < len(st.data) {
+        c = chr(st.data[p]);
         if _is_string_prefix_char(c) {
             p = p + 1;
             continue;
@@ -682,7 +706,7 @@ def _is_string_start(st: tok_state) -> bool {
 }
 
 def _string_syntax_error(st: tok_state, msg: str, start_col: int) -> tok_diag {
-    st.eof_reached = st.pos >= len(st.source)
+    st.eof_reached = st.pos >= len(st.data)
         and (
             msg.startswith("unterminated")
             or msg == "EOL while scanning string literal"
@@ -794,9 +818,9 @@ def _fstring_scan_format_spec(st: tok_state) -> tok_token | tok_diag | None {
         }
         if ch == "\\" {
             buf += _advance(st);
-            if not mode.raw and st.source.startswith("N{", st.pos) {
+            if not mode.raw and _starts(st, "N{") {
                 while _has_source(st) {
-                    if st.source.startswith(mode.quote * mode.qlen, st.pos) {
+                    if _starts(st, mode.quote * mode.qlen) {
                         break;
                     }
                     escaped = _advance(st);
@@ -805,7 +829,7 @@ def _fstring_scan_format_spec(st: tok_state) -> tok_token | tok_diag | None {
                         break;
                     }
                 }
-            } elif st.pos < len(st.source) and _peek(st) not in ("{", "}") {
+            } elif st.pos < len(st.data) and _peek(st) not in ("{", "}") {
                 buf += _advance(st);
             }
             continue;
@@ -851,10 +875,10 @@ def _fstring_next_segment(st: tok_state) -> tok_token | tok_diag | None {
             }
         } else {
             if ch == quote
-                and st.pos + 1 < len(st.source)
-                and st.source[st.pos + 1] == quote
-                and st.pos + 2 < len(st.source)
-                and st.source[st.pos + 2] == quote {
+                and st.pos + 1 < len(st.data)
+                and chr(st.data[st.pos + 1]) == quote
+                and st.pos + 2 < len(st.data)
+                and chr(st.data[st.pos + 2]) == quote {
                 end_col = st.col_offset;
                 if len(buf) > 0 {
                     mode.resume = True;
@@ -871,7 +895,9 @@ def _fstring_next_segment(st: tok_state) -> tok_token | tok_diag | None {
                 return _fstring_emit_end(st, triple, start_lineno, start_col);
             }
         }
-        if ch == "{" and st.pos + 1 < len(st.source) and st.source[st.pos + 1] == "{" {
+        if ch == "{"
+            and st.pos + 1 < len(st.data)
+            and chr(st.data[st.pos + 1]) == "{" {
             buf = buf + "{";
             _advance(st);
             end_col = st.col_offset;
@@ -879,7 +905,9 @@ def _fstring_next_segment(st: tok_state) -> tok_token | tok_diag | None {
             mode.resume = True;
             return _fstring_emit_middle(st, buf, start_lineno, start_col, end_col);
         }
-        if ch == "}" and st.pos + 1 < len(st.source) and st.source[st.pos + 1] == "}" {
+        if ch == "}"
+            and st.pos + 1 < len(st.data)
+            and chr(st.data[st.pos + 1]) == "}" {
             buf = buf + "}";
             _advance(st);
             end_col = st.col_offset;
@@ -904,9 +932,9 @@ def _fstring_next_segment(st: tok_state) -> tok_token | tok_diag | None {
         }
         if ch == "\\" {
             buf += _advance(st);
-            if not mode.raw and st.source.startswith("N{", st.pos) {
+            if not mode.raw and _starts(st, "N{") {
                 while _has_source(st) {
-                    if st.source.startswith(mode.quote * mode.qlen, st.pos) {
+                    if _starts(st, mode.quote * mode.qlen) {
                         break;
                     }
                     escaped = _advance(st);
@@ -915,7 +943,7 @@ def _fstring_next_segment(st: tok_state) -> tok_token | tok_diag | None {
                         break;
                     }
                 }
-            } elif st.pos < len(st.source) and _peek(st) not in ("{", "}") {
+            } elif st.pos < len(st.data) and _peek(st) not in ("{", "}") {
                 buf += _advance(st);
             }
             continue;
@@ -929,7 +957,7 @@ def _fstring_next_segment(st: tok_state) -> tok_token | tok_diag | None {
 def _read_fstring_start(
     st: tok_state, start: int, start_col: int, raw: bool, quote: str, qlen: int
 ) -> tok_token | tok_diag {
-    spell = st.source[start:st.pos];
+    spell = st.data[start:st.pos].decode("utf-8");
     if len(st.string_modes) >= 150 {
         return _string_syntax_error(st, "too many nested f-strings", start_col);
     }
@@ -978,7 +1006,7 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
         }
         break;
     }
-    prefix = st.source[start:st.pos].lower();
+    prefix = st.data[start:st.pos].decode("utf-8").lower();
     if prefix
         not in ("", "u", "r", "b", "br", "rb", "f", "fr", "rf", "t", "tr", "rt") {
         return _string_syntax_error(st, "string prefixes are incompatible", start_col);
@@ -993,13 +1021,13 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
     # the second quote is the CLOSING quote of an empty single-quoted string, not
     # part of a 2-char opener (Python has no 2-quote delimiter).
     if _peek(st) == quote
-        and st.pos + 1 < len(st.source)
-        and st.source[st.pos + 1] == quote {
+        and st.pos + 1 < len(st.data)
+        and chr(st.data[st.pos + 1]) == quote {
         _advance(st);
         _advance(st);
         qlen = 3;
     }
-    if has_f or "t" in st.source[start:st.pos].lower() {
+    if has_f or "t" in st.data[start:st.pos].decode("utf-8").lower() {
         return _read_fstring_start(st, start, start_col, raw, quote, qlen);
     }
     while _has_source(st) {
@@ -1007,7 +1035,7 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
         if qlen == 1 {
             if ch == quote {
                 _advance(st);
-                spell = st.source[start:st.pos];
+                spell = st.data[start:st.pos].decode("utf-8");
                 tok = tok_token(
                     tok_type=STRING,
                     spelling=spell,
@@ -1033,7 +1061,7 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
                 # strings too (r'\'' is not closed by the escaped quote); the raw
                 # flag only affects decoding, handled later.
                 _advance(st);
-                if st.pos < len(st.source) {
+                if st.pos < len(st.data) {
                     _advance(st);
                 }
                 continue;
@@ -1045,7 +1073,7 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
             matched = 1;
             i = 1;
             while i < qlen {
-                if st.pos + i >= len(st.source) or st.source[st.pos + i] != quote {
+                if st.pos + i >= len(st.data) or chr(st.data[st.pos + i]) != quote {
                     matched = 0;
                     break;
                 }
@@ -1057,7 +1085,7 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
                     _advance(st);
                     j = j + 1;
                 }
-                spell = st.source[start:st.pos];
+                spell = st.data[start:st.pos].decode("utf-8");
                 tok = tok_token(
                     tok_type=STRING,
                     spelling=spell,
@@ -1074,7 +1102,7 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
         # cannot begin the closing delimiter, including for triple quotes.
         if ch == "\\" {
             _advance(st);
-            if st.pos < len(st.source) {
+            if st.pos < len(st.data) {
                 _advance(st);
             }
             continue;
@@ -1154,7 +1182,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
                 return pending;
             }
         }
-        if st.pos >= len(st.source) {
+        if st.pos >= len(st.data) {
             break;
         }
         ch = _peek(st);
@@ -1168,7 +1196,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
             comment_start = st.col_offset;
             start_pos = st.pos;
             type_start = _type_comment_start(st);
-            blankline = not st.source[st.line_start:st.pos].strip();
+            blankline = not st.data[st.line_start:st.pos].decode("utf-8").strip();
             while _has_source(st) and _peek(st) != "\n" and _peek(st) != "\r" {
                 _advance(st);
             }
@@ -1178,7 +1206,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
             if st.extra_tokens {
                 return tok_token(
                     tok_type=COMMENT,
-                    spelling=st.source[start_pos:st.pos],
+                    spelling=st.data[start_pos:st.pos].decode("utf-8"),
                     lineno=st.lineno,
                     col_offset=comment_start,
                     end_lineno=st.lineno,
@@ -1186,7 +1214,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
                 );
             }
             if type_start >= 0 {
-                payload = st.source[type_start:st.pos];
+                payload = st.data[type_start:st.pos].decode("utf-8");
                 kind = TYPE_COMMENT;
                 if payload.startswith("ignore")
                     and (
@@ -1216,8 +1244,10 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
             continue;
         }
         if ch == "\\"
-            and st.pos + 1 < len(st.source)
-            and (st.source[st.pos + 1] == "\n" or st.source[st.pos + 1] == "\r") {
+            and st.pos + 1 < len(st.data)
+            and (
+                chr(st.data[st.pos + 1]) == "\n" or chr(st.data[st.pos + 1]) == "\r"
+            ) {
             # Explicit line continuation: backslash-newline joins physical lines,
             # emitting no NEWLINE and doing no indentation processing.
             _advance(st);
@@ -1290,7 +1320,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
         # anything else ('.', '..', '...') falls through to the operator path.
         if ch == "." {
             nxt = st.pos + 1;
-            if nxt < len(st.source) and _is_digit(st.source[nxt]) {
+            if nxt < len(st.data) and _is_digit(chr(st.data[nxt])) {
                 return _read_number(st);
             }
         }
@@ -1307,7 +1337,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
             }
             return str_tok as tok_token;
         }
-        if _is_id_start(ch) or (st.extra_tokens and ord(ch) >= 128) {
+        if _is_id_start(ch) or (st.extra_tokens and unicode_point(ch) >= 128) {
             tok = _read_name(st);
             st.paren_level = st.paren_level + _track_paren_delta(tok.tok_type);
             return tok;
@@ -1383,17 +1413,18 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
             "SyntaxError",
             "unexpected character after line continuation character"
                 if ch == "\\"
-                else "invalid non-printable character U+" + format(ord(ch), "04X")
-                    if not ch.isprintable()
+                else "invalid non-printable character U+"
+                    + format(unicode_point(ch), "04X")
+                    if not unicode_printable(ch)
                     else "invalid character in identifier",
             tok_loc_span(st.lineno, st.lineno, st.col_offset, st.col_offset + 1),
             st.filename
         );
         st.error = bad;
         st.done = True;
-        st.eof_reached = ch.isprintable()
+        st.eof_reached = unicode_printable(ch)
             and ch != "\\"
-            and st.pos + 1 == len(st.source);
+            and st.pos + 1 == len(st.data);
         return bad;
     }
     st.eof_reached = True;

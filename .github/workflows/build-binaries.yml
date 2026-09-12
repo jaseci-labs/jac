@@ -512,10 +512,14 @@ jobs:
           cat > "$WORK/variant.jac" <<'EOF'
           import os;
           import sys;
+          import ctypes;
           with entry {
               expected = os.environ["EXPECT_JACPYTHON"] == "true";
-              assert bool(getattr(sys, "_jacpython_compile", None)) == expected;
-              assert hasattr(sys, "_jacpython_image") == expected;
+              bridge = getattr(ctypes.pythonapi, "_PyJac_CompilerBridgeVersion", None);
+              assert (bridge is not None) == expected;
+              if expected { assert bridge() == 3; }
+              assert not hasattr(sys, "_jacpython_compile");
+              assert not hasattr(sys, "_jacpython_image");
               print("compiler variant verified");
           }
           EOF

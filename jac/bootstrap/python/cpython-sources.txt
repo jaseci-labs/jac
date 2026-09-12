@@ -12,7 +12,7 @@
 # Total: 36 files / 66,293 source lines excluded with -Djacpython=true.
 # The default CPython build restores these marked entries and ships its C
 # compiler. JacPython's separate build-time host also restores them to produce
-# the frozen seed; the opt-in JacPython runtime ships none of these inputs.
+# the native object; the opt-in JacPython runtime ships none of these inputs.
 # Keep build dependencies and ABI adapters aligned with these exclusions.
 # Split a directory entry before removing only part of its contents.
 # CI hashes this manifest and rebuilds/verifies Python when it changes.

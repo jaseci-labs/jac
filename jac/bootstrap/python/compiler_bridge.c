@@ -14,111 +14,70 @@
 #include "marshal.h"
 #include "errcode.h"
 #include "jac_compile.h"
-#include "jac_seed.h"
 #include <unistd.h>
-#include <zlib.h>
+#include <stdint.h>
 
-PyAPI_FUNC(int) _PyJac_CompilerBridgeVersion(void) { return 2; }
-PyAPI_FUNC(int) _PyJac_SymtableBridgeVersion(void) { return 1; }
-PyAPI_FUNC(int) _PyJac_TokenizeBridgeVersion(void) { return 1; }
+/* These entry points are Jac-generated native code. No replacement bytecode
+ * or Python callback is loaded by this adapter. String ABI arguments carry
+ * owner, data, and explicit UTF-8 byte length. */
+extern void *jac_str_new(const char *, int64_t);
+extern void jac_release(void *);
+extern void *jacpy_compile_object(uint64_t, uint64_t, void *, const char *, int64_t, int64_t, int64_t, int64_t);
+extern int64_t jacpy_result_kind(void *);
+extern int64_t jacpy_packet_size(void *);
+extern int64_t jacpy_packet_byte(void *, int64_t);
+extern uint64_t jacpy_ast_result(void *);
+extern uint64_t jacpy_take_value(void *);
+extern uint64_t jacpy_mangle(uint64_t, uint64_t);
+extern int64_t jacpy_stack_effect(int64_t, int64_t, int64_t);
+
+PyAPI_FUNC(int) _PyJac_CompilerBridgeVersion(void) { return 3; }
+PyAPI_FUNC(int) _PyJac_SymtableBridgeVersion(void) { return 2; }
+PyAPI_FUNC(int) _PyJac_TokenizeBridgeVersion(void) { return 2; }
 PyAPI_FUNC(int) _PyJac_CompilerRequired(void) { return 1; }
 
-static PyObject *
-jac_image(void)
+static PyObject *jac_result(void *result)
 {
-    PyObject *image = PySys_GetObject("_jacpython_image");
-    if (image != NULL) return image;
-    unsigned char *data = PyMem_Malloc(JAC_SEED_SIZE);
-    if (data == NULL) { PyErr_NoMemory(); return NULL; }
-    uLongf size = JAC_SEED_SIZE;
-    int status = uncompress(data, &size, jac_seed_data, sizeof(jac_seed_data));
-    if (status != Z_OK || size != JAC_SEED_SIZE) {
-        PyMem_Free(data);
-        PyErr_SetString(PyExc_RuntimeError, "Corrupt JacPython seed image");
-        return NULL;
-    }
-    image = PyMarshal_ReadObjectFromString((const char *)data, (Py_ssize_t)size);
-    PyMem_Free(data);
-    if (image == NULL) return NULL;
-    if (!PyDict_Check(image)) {
-        Py_DECREF(image);
-        PyErr_SetString(PyExc_RuntimeError, "Invalid JacPython seed image");
-        return NULL;
-    }
-    status = PySys_SetObject("_jacpython_image", image);
-    Py_DECREF(image);
-    return status < 0 ? NULL : PySys_GetObject("_jacpython_image");
-}
-
-static int
-jac_initialize(void)
-{
-    PyObject *image = jac_image();
-    if (image == NULL) return -1;
-    if (PyDict_GetItemString(image, "ready") != NULL) return 0;
-    if (PyDict_GetItemString(image, "loading") != NULL) {
-        PyErr_SetString(PyExc_RuntimeError, "Unprepared compilation during JacPython bootstrap");
-        return -1;
-    }
-    PyObject *code = PyDict_GetItemString(image, "loader");
-    if (code == NULL || !PyCode_Check(code)) {
-        PyErr_SetString(PyExc_RuntimeError, "Missing JacPython seed loader");
-        return -1;
-    }
-    if (PyDict_SetItemString(image, "loading", Py_True) < 0) return -1;
-    PyObject *module = PyImport_AddModuleRef("_jacpython_seed");
-    PyObject *scope = module ? PyModule_GetDict(module) : NULL;
-    PyObject *result = NULL;
-    if (scope != NULL && PyDict_SetItemString(scope, "image", image) == 0 &&
-        PyDict_SetItemString(scope, "__builtins__", PyEval_GetBuiltins()) == 0) {
-        result = PyEval_EvalCode(code, scope, scope);
-    }
-    Py_XDECREF(module);
     if (result == NULL) {
-        /* Preserve the original failure, and never retry a partial bootstrap. */
-        return -1;
-    }
-    Py_DECREF(result);
-    if (PyDict_DelItemString(image, "loading") < 0 ||
-        PyDict_SetItemString(image, "ready", Py_True) < 0) return -1;
-    /* Prepared code is only for startup; retire it once Jac can compile. */
-    return PyDict_DelItemString(image, "requests");
-}
-
-static PyObject *
-jac_callback(const char *name)
-{
-    PyObject *callback = PySys_GetObject(name);
-    if (callback == NULL || callback == Py_None) {
-        if (jac_initialize() < 0) return NULL;
-        callback = PySys_GetObject(name);
-    }
-    if (callback == NULL || callback == Py_None) {
-        PyErr_Format(PyExc_RuntimeError, "Missing JacPython callback: %s", name);
+        if (!PyErr_Occurred()) PyErr_SetString(PyExc_SystemError,"native JacPython returned no result");
         return NULL;
     }
-    return Py_NewRef(callback);
-}
-
-static PyObject *
-jac_prepared_code(PyObject *source, const char *mode, int flags, int optimize, int feature)
-{
-    if (!PyUnicode_Check(source) && !PyBytes_Check(source)) return NULL;
-    PyObject *image = jac_image();
-    if (image == NULL) return NULL;
-    if (PyDict_GetItemString(image, "ready") != NULL) return NULL;
-    PyObject *requests = PyDict_GetItemString(image, "requests");
-    if (requests == NULL || !PyDict_Check(requests)) {
-        PyErr_SetString(PyExc_RuntimeError, "Missing JacPython bootstrap requests");
+    int64_t kind=jacpy_result_kind(result);
+    PyObject *value=NULL;
+    if (kind == 1) value=(PyObject *)(uintptr_t)jacpy_ast_result(result);
+    else if (kind == 2) value=(PyObject *)(uintptr_t)jacpy_take_value(result);
+    else if (kind == 0) {
+        int64_t size=jacpy_packet_size(result);
+        if (size < 0) PyErr_SetString(PyExc_SystemError,"native JacPython could not encode its result");
+        else {
+            char *data=PyMem_Malloc((size_t)size);
+            if (data == NULL) PyErr_NoMemory();
+            else {
+                for (int64_t i=0;i<size;i++) data[i]=(char)jacpy_packet_byte(result,i);
+                value=PyMarshal_ReadObjectFromString(data,(Py_ssize_t)size);
+                PyMem_Free(data);
+            }
+        }
+    }
+    jac_release(result);
+    if (value == NULL) {
+        if (!PyErr_Occurred()) PyErr_SetString(PyExc_SystemError,"native JacPython failed without an exception");
         return NULL;
     }
-    if (optimize < 0) optimize = _PyInterpreterState_GetConfig(_PyInterpreterState_GET())->optimization_level;
-    PyObject *key = Py_BuildValue("(Osiii)", source, mode, flags, optimize, feature);
-    if (key == NULL) return NULL;
-    PyObject *code = PyDict_GetItemWithError(requests, key);
-    Py_XINCREF(code);
-    Py_DECREF(key);
-    return code;
+    if (PyTuple_Check(value) && PyTuple_GET_SIZE(value) == 8) {
+        /* Native Jac has classified and positioned the diagnostic. Construct
+         * the corresponding retained CPython exception value at the ABI. */
+        PyObject *type=PyDict_GetItemWithError(PyEval_GetBuiltins(),PyTuple_GET_ITEM(value,0));
+        if (type == NULL) { Py_DECREF(value); if (!PyErr_Occurred()) PyErr_SetString(PyExc_SystemError,"unknown native diagnostic"); return NULL; }
+        if (PyObject_IsSubclass(type,PyExc_SyntaxError) > 0) {
+            PyObject *location=PyTuple_GetSlice(value,2,8);
+            PyObject *args=location ? PyTuple_Pack(2,PyTuple_GET_ITEM(value,1),location) : NULL;
+            Py_XDECREF(location);
+            if (args) { PyErr_SetObject(type,args); Py_DECREF(args); }
+        } else PyErr_SetObject(type,PyTuple_GET_ITEM(value,1));
+        Py_DECREF(value); return NULL;
+    }
+    return value;
 }
 
 PyObject *
@@ -127,53 +86,28 @@ _PyJac_CompileObject(PyObject *source, PyObject *filename, int start,
 {
     const char *mode;
     switch (start) {
-        case Py_file_input: mode = "exec"; break;
-        case Py_eval_input: mode = "eval"; break;
-        case Py_single_input: mode = "single"; break;
-        case Py_func_type_input: mode = "func_type"; break;
-        default:
-            PyErr_SetString(PyExc_ValueError, "invalid compilation mode");
-            return NULL;
+        case Py_file_input: mode="exec"; break;
+        case Py_eval_input: mode="eval"; break;
+        case Py_single_input: mode="single"; break;
+        case Py_func_type_input: mode="func_type"; break;
+        default: PyErr_SetString(PyExc_ValueError,"invalid compilation mode"); return NULL;
     }
-    if (PySys_Audit("compile", "OO", source, filename) < 0) return NULL;
-    int options = flags ? flags->cf_flags : 0;
+    if (PySys_Audit("compile","OO",source,filename) < 0) return NULL;
+    int options=flags ? flags->cf_flags : 0;
     options &= ~(PyCF_SOURCE_IS_UTF8 | PyCF_IGNORE_COOKIE);
-    int feature = flags ? flags->cf_feature_version : -1;
-    PyObject *result = NULL;
-    PyObject *compiler = PySys_GetObject("_jacpython_compile");
-    if (compiler == NULL || compiler == Py_None) {
-        result = jac_prepared_code(source, mode, options, optimize, feature);
-        if (result == NULL && PyErr_Occurred()) return NULL;
-        if (result != NULL) {
-            /* Startup bytecode carries virtual build-independent filenames.
-               Restore the importing runtime's path, including nested code,
-               just as importlib does when loading a relocated bytecode file. */
-            PyObject *fix = PyImport_ImportModuleAttrString("_imp", "_fix_co_filename");
-            PyObject *fixed = fix ? PyObject_CallFunctionObjArgs(fix, result, filename, NULL) : NULL;
-            Py_XDECREF(fix);
-            if (fixed == NULL) { Py_DECREF(result); return NULL; }
-            Py_DECREF(fixed);
-        }
-    }
-    if (result == NULL) {
-        compiler = jac_callback("_jacpython_compile");
-        if (compiler == NULL) return NULL;
-        PyObject *args = Py_BuildValue("(OOsiii)", source, filename, mode, options, 1, optimize);
-        PyObject *kwargs = args ? Py_BuildValue("{s:i}", "_feature_version", feature) : NULL;
-        if (kwargs != NULL) result = PyObject_Call(compiler, args, kwargs);
-        Py_XDECREF(args);
-        Py_XDECREF(kwargs);
-        Py_DECREF(compiler);
-    }
+    int feature=flags ? flags->cf_feature_version : -1;
+    if (optimize < 0) optimize=_PyInterpreterState_GetConfig(_PyInterpreterState_GET())->optimization_level;
+    void *mode_string=jac_str_new(mode,(int64_t)strlen(mode));
+    if (mode_string == NULL) return PyErr_NoMemory();
+    void *native=jacpy_compile_object((uint64_t)(uintptr_t)source,(uint64_t)(uintptr_t)filename,
+        mode_string,(const char *)mode_string,(int64_t)strlen(mode),optimize,options,feature);
+    jac_release(mode_string);
+    PyObject *result=jac_result(native);
     if (result == NULL) return NULL;
     if (!(options & PyCF_ONLY_AST) && !PyCode_Check(result)) {
-        Py_DECREF(result);
-        PyErr_SetString(PyExc_TypeError, "JacPython compiler must return a code object");
-        return NULL;
+        Py_DECREF(result); PyErr_SetString(PyExc_TypeError,"JacPython compiler must return a code object"); return NULL;
     }
-    if (flags && PyCode_Check(result)) {
-        flags->cf_flags |= ((PyCodeObject *)result)->co_flags & PyCF_MASK;
-    }
+    if (flags && PyCode_Check(result)) flags->cf_flags |= ((PyCodeObject *)result)->co_flags & PyCF_MASK;
     return result;
 }
 
@@ -357,30 +291,15 @@ _PyAST_Compile(mod_ty tree, PyObject *filename, PyCompilerFlags *flags,
 PyObject *
 _Py_Mangle(PyObject *privateobj, PyObject *name)
 {
-    Py_ssize_t size = PyUnicode_GET_LENGTH(name);
-    if (privateobj == NULL || !PyUnicode_Check(privateobj) || size < 2 ||
-        PyUnicode_READ_CHAR(name, 0) != '_' || PyUnicode_READ_CHAR(name, 1) != '_' ||
-        (PyUnicode_READ_CHAR(name, size-1) == '_' && PyUnicode_READ_CHAR(name, size-2) == '_')) {
-        return Py_NewRef(name);
-    }
-    PyObject *callback = jac_callback("_jacpython_mangle");
-    if (callback == NULL) return NULL;
-    PyObject *result = PyObject_CallFunctionObjArgs(callback, privateobj, name, NULL);
-    Py_DECREF(callback);
-    return result;
+    /* A missing/non-string private value means there is no class context. */
+    if (privateobj == NULL || !PyUnicode_Check(privateobj)) return Py_NewRef(name);
+    return (PyObject *)(uintptr_t)jacpy_mangle((uint64_t)(uintptr_t)privateobj,(uint64_t)(uintptr_t)name);
 }
 
 int
 PyCompile_OpcodeStackEffectWithJump(int opcode, int oparg, int jump)
 {
-    PyObject *callback = jac_callback("_jacpython_stack_effect");
-    if (callback == NULL) return PY_INVALID_STACK_EFFECT;
-    PyObject *result = PyObject_CallFunction(callback, "iii", opcode, oparg, jump);
-    Py_DECREF(callback);
-    if (result == NULL) return PY_INVALID_STACK_EFFECT;
-    int effect = result == Py_None ? PY_INVALID_STACK_EFFECT : PyLong_AsInt(result);
-    Py_DECREF(result);
-    return effect;
+    return (int)jacpy_stack_effect(opcode,oparg,jump);
 }
 
 int PyCompile_OpcodeStackEffect(int opcode, int oparg)
@@ -391,21 +310,10 @@ int PyCompile_OpcodeStackEffect(int opcode, int oparg)
 char *
 _PyTokenizer_FindEncodingFilename(int fd, PyObject *filename)
 {
-    PyObject *io = PyImport_ImportModule("io");
-    PyObject *open = io ? PyObject_GetAttrString(io, "FileIO") : NULL;
-    Py_XDECREF(io);
-    if (open == NULL) return NULL;
-    PyObject *args = Py_BuildValue("(is)", fd, "r");
-    PyObject *kwargs = args ? Py_BuildValue("{s:O}", "closefd", Py_False) : NULL;
-    PyObject *stream = kwargs ? PyObject_Call(open, args, kwargs) : NULL;
-    Py_XDECREF(args); Py_XDECREF(kwargs); Py_DECREF(open);
-    if (stream == NULL) return NULL;
-    PyObject *reader = PyObject_GetAttrString(stream, "readline");
-    PyObject *detect = reader ? PyImport_ImportModuleAttrString("tokenize", "detect_encoding") : NULL;
-    PyObject *result = detect ? PyObject_CallOneArg(detect, reader) : NULL;
-    Py_XDECREF(detect); Py_XDECREF(reader); Py_DECREF(stream);
+    extern uint64_t jacpy_fd_encoding(int64_t);
+    PyObject *result=(PyObject *)(uintptr_t)jacpy_fd_encoding(fd);
     if (result == NULL) return NULL;
-    PyObject *encoding = PyTuple_GetItem(result, 0);
+    PyObject *encoding=result;
     Py_ssize_t length;
     const char *text = encoding ? PyUnicode_AsUTF8AndSize(encoding, &length) : NULL;
     char *copy = NULL;
@@ -420,20 +328,81 @@ _PyTokenizer_FindEncodingFilename(int fd, PyObject *filename)
 
 static PyObject *jac_symtable(PyObject *self, PyObject *args)
 {
-    PyObject *callback = jac_callback("_jacpython_symtable");
-    if (callback == NULL) return NULL;
-    PyObject *result = PyObject_CallObject(callback, args);
-    Py_DECREF(callback);
-    return result;
+    extern void *jacpy_symtable_object(uint64_t,uint64_t,void *,const char *,int64_t);
+    PyObject *source,*filename;
+    const char *mode;
+    if (!PyArg_ParseTuple(args,"OO&s:symtable",&source,PyUnicode_FSDecoder,&filename,&mode)) return NULL;
+    int64_t length=(int64_t)strlen(mode);
+    void *text=jac_str_new(mode,length);
+    if (!text) { Py_DECREF(filename); return PyErr_NoMemory(); }
+    void *native=jacpy_symtable_object((uint64_t)(uintptr_t)source,(uint64_t)(uintptr_t)filename,text,(const char *)text,length);
+    jac_release(text); Py_DECREF(filename);
+    return jac_result(native);
 }
-static PyObject *jac_tokenize(PyObject *self, PyObject *args, PyObject *kwargs)
-{
-    PyObject *callback = jac_callback("_jacpython_tokenize");
-    if (callback == NULL) return NULL;
-    PyObject *result = PyObject_Call(callback, args, kwargs);
-    Py_DECREF(callback);
-    return result;
+/* Retained Python iterator value around the native Jac stream state. */
+extern void *jacpy_token_create(uint64_t, void *, const char *, int64_t, _Bool, _Bool);
+extern void *jacpy_token_step(void *);
+extern void jacpy_token_dispose(void *);
+typedef struct { PyObject_HEAD PyObject *reader; void *iterator; } JacTokenizer;
+static int jac_token_traverse(PyObject *object, visitproc visit, void *arg) {
+    Py_VISIT(((JacTokenizer *)object)->reader); return 0;
 }
+static int jac_token_clear(PyObject *object) {
+    JacTokenizer *self=(JacTokenizer *)object;
+    if (self->iterator) { jacpy_token_dispose(self->iterator); jac_release(self->iterator); self->iterator=NULL; }
+    Py_CLEAR(self->reader); return 0;
+}
+static void jac_token_dealloc(PyObject *object) {
+    PyTypeObject *type=Py_TYPE(object); PyObject_GC_UnTrack(object);
+    jac_token_clear(object); type->tp_free(object); Py_DECREF(type);
+}
+static PyObject *jac_token_next(PyObject *object) {
+    JacTokenizer *self=(JacTokenizer *)object;
+    if (self->iterator == NULL) return NULL;
+    void *result=jacpy_token_step(self->iterator);
+    if (result && jacpy_result_kind(result) == 3) { jac_release(result); return NULL; }
+    return jac_result(result);
+}
+static PyType_Slot jac_token_slots[] = {
+    {Py_tp_dealloc,jac_token_dealloc},{Py_tp_traverse,jac_token_traverse},
+    {Py_tp_clear,jac_token_clear},{Py_tp_iter,PyObject_SelfIter},
+    {Py_tp_iternext,jac_token_next},{0,NULL}
+};
+static PyType_Spec jac_token_spec = {
+    .name="_tokenize.TokenizerIter",.basicsize=sizeof(JacTokenizer),
+    .flags=Py_TPFLAGS_DEFAULT|Py_TPFLAGS_HAVE_GC,.slots=jac_token_slots
+};
+static PyObject *jac_tokenize(PyObject *module, PyObject *args, PyObject *kwargs) {
+    PyObject *reader,*extra,*encoding=NULL;
+    static char *keywords[]={"readline","extra_tokens","encoding",NULL};
+    if (!PyArg_ParseTupleAndKeywords(args,kwargs,"O$O|O:TokenizerIter",keywords,&reader,&extra,&encoding)) return NULL;
+    if (encoding && !PyUnicode_Check(encoding)) { PyErr_SetString(PyExc_TypeError,"tokenizeriter() argument 'encoding' must be str"); return NULL; }
+    Py_ssize_t size=0;
+    const char *text=encoding ? PyUnicode_AsUTF8AndSize(encoding,&size) : "";
+    if (!text) return NULL;
+    if (memchr(text,0,(size_t)size)) { PyErr_SetString(PyExc_ValueError,"embedded null character"); return NULL; }
+    int extra_flag=PyObject_IsTrue(extra);
+    if (extra_flag < 0) return NULL;
+    PyObject *type=PyObject_GetAttrString(module,"_Iterator");
+    if (!type) return NULL;
+    JacTokenizer *result=(JacTokenizer *)PyType_GenericAlloc((PyTypeObject *)type,0);
+    Py_DECREF(type);
+    if (!result) return NULL;
+    result->reader=Py_NewRef(reader);
+    void *enc=jac_str_new(text,size);
+    if (!enc) { Py_DECREF(result); return PyErr_NoMemory(); }
+    result->iterator=jacpy_token_create((uint64_t)(uintptr_t)reader,enc,(const char *)enc,size,encoding!=NULL,extra_flag!=0);
+    jac_release(enc);
+    if (!result->iterator) { Py_DECREF(result); if (!PyErr_Occurred()) PyErr_NoMemory(); return NULL; }
+    return (PyObject *)result;
+}
+static int jac_token_exec(PyObject *module) {
+    PyObject *type=PyType_FromModuleAndSpec(module,&jac_token_spec,NULL);
+    if (!type) return -1;
+    int status=PyModule_AddObjectRef(module,"_Iterator",type);
+    Py_DECREF(type); return status;
+}
+
 static int jac_symtable_constants(PyObject *module)
 {
 #define ADD(name) if (PyModule_AddIntConstant(module, #name, name) < 0) return -1
@@ -465,6 +434,7 @@ static PyModuleDef_Slot symtable_slots[] = {
     {0, NULL}
 };
 static PyModuleDef_Slot tokenize_slots[] = {
+    {Py_mod_exec, jac_token_exec},
     {Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},
     {0, NULL}
 };

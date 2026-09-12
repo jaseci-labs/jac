@@ -1,6 +1,6 @@
 """Python's streaming token iterator backed by the shared Jac scanner."""
 
-import from typing { Never }
+import type from typing { Never }
 import from jaclang.compiler.frontend.python.compiler_diagnostics {
     report_token_warnings
 }
@@ -23,17 +23,40 @@ import from jaclang.compiler.frontend.python.token_model {
     tok_diag
 }
 
-glob _encoding_unset: object = object();
+import from jaclang.runtime.python.native_services {
+    take_buffer,
+    runtime_failure,
+    parse_integer,
+    parse_float
+}
+import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
+import from c { def jacpy_readline(reader: u64, encoding: str, decode: i64) -> u64;  }
+obj native_token {
+    has kind: int,
+        spelling: str,
+        start_line: int,
+        start: int,
+        end_line: int,
+        end: int,
+        line: str;
+}
 
 def _character_column(line: str, column: int) -> int {
     if column < 0 {
         return column;
     }
-    return len(line.encode("utf-8")[:column].decode("utf-8"));
+    data = line.encode("utf-8");
+    result = 0;
+    for index in range(min(column, len(data))) {
+        if (data[index] & 192) != 128 {
+            result += 1;
+        }
+    }
+    return result;
 }
 
-obj _TokenizerIter(token_source) {
-    has reader: any,
+obj token_iterator_state(token_source) {
+    has reader: u64,
         encoding: str | None,
         scanner: tok_state,
         lines: list[str] = [],
@@ -42,7 +65,7 @@ obj _TokenizerIter(token_source) {
         last_line: str = "",
         last_line_number: int = 0;
 
-    def __iter__ -> _TokenizerIter {
+    def __iter__ -> token_iterator_state {
         return self;
     }
 
@@ -50,22 +73,10 @@ obj _TokenizerIter(token_source) {
         if self.input_finished {
             return False;
         }
-        try {
-            line = self.reader();
-        } except StopIteration {
-            self.input_finished = True;
-            return False;
-        }
-        if self.encoding is None {
-            if not isinstance(line, str) {
-                raise TypeError("readline() returned a non-string");
-            }
-        } else {
-            if not isinstance(line, bytes) {
-                raise TypeError("readline() returned a non-bytes object");
-            }
-            line = line.decode(self.encoding, "replace");
-        }
+        handle = jacpy_readline(
+            self.reader, self.encoding or "", i64(0 if self.encoding is None else 1)
+        );
+        line = bytes(take_buffer(handle)).decode("utf-8", "surrogatepass");
         if not line {
             self.input_finished = True;
             return False;
@@ -80,6 +91,7 @@ obj _TokenizerIter(token_source) {
             decoded += "\n";
         }
         self.scanner.source += decoded;
+        self.scanner.data = self.scanner.source.encode("utf-8");
         return True;
     }
 
@@ -92,31 +104,29 @@ obj _TokenizerIter(token_source) {
     ) -> Never {
         self.finished = True;
         line = self.source_line(lineno).rstrip("\r\n");
-        error_type = IndentationError
-            if kind == "IndentationError"
-            else TabError if kind == "TabError" else SyntaxError;
-        raise error_type(message, ("<string>", lineno, offset, line, None, None));
+        raise syntax_failure(
+            message,
+            filename="<string>",
+            lineno=lineno,
+            offset=offset,
+            text=line,
+            kind=kind
+        );
     }
 
-    def __next__ -> tuple {
+    def next_token -> native_token | None {
         if self.finished {
-            raise StopIteration("EOF");
+            return None;
         }
         item = tokenizer_next(self.scanner);
-        import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
-        try {
-            report_token_warnings(self.scanner);
-        } except syntax_failure as error {
-            import from jaclang.compiler.backends.py.jacpython.code_object {
-                raise_syntax_failure
-            }
-            raise_syntax_failure(error);
-        }
+        report_token_warnings(self.scanner);
         if isinstance(item, tok_diag) {
             line = self.source_line(item.loc.lineno);
             column = _character_column(line, item.loc.col_offset);
             if item.kind in ("IndentationError", "TabError") {
-                column = len(line.rstrip("\r\n"));
+                column = _character_column(
+                    line, len(line.rstrip("\r\n").encode("utf-8"))
+                );
             }
             self.syntax_error(item.message, item.loc.lineno, column + 1, item.kind);
         }
@@ -130,9 +140,13 @@ obj _TokenizerIter(token_source) {
         if kind in (STRING, FSTRING_MIDDLE, TSTRING_MIDDLE) {
             line = "".join(self.lines[start_line - 1:end_line]);
             if end_line > start_line {
-                spelling = self.source_line(start_line)[start:]
+                spelling = self.source_line(start_line).encode("utf-8")[item.col_offset:].decode(
+                    "utf-8"
+                )
                     + "".join(self.lines[start_line:end_line - 1])
-                    + self.source_line(end_line)[:end];
+                    + self.source_line(end_line).encode("utf-8")[:item.end_col_offset].decode(
+                        "utf-8"
+                    );
             }
         }
         trailing = kind == ENDMARKER or (kind == DEDENT and self.input_finished);
@@ -144,7 +158,7 @@ obj _TokenizerIter(token_source) {
                 );
             }
             if not self.scanner.extra_tokens and not self.lines {
-                raise StopIteration("EOF");
+                return None;
             }
         }
         if trailing {
@@ -170,7 +184,11 @@ obj _TokenizerIter(token_source) {
                 comments = self.scanner.comments.get(start_line, []);
                 if comments {
                     start = _character_column(original, comments[-1][0]);
-                    spelling = original[start:].removesuffix("\n");
+                    spelling = original.encode("utf-8")[comments[-1][0]:].decode(
+                        "utf-8"
+                    ).removesuffix(
+                        "\n"
+                    );
                 }
                 end = start + len(spelling);
             }
@@ -185,7 +203,15 @@ obj _TokenizerIter(token_source) {
             self.last_line = self.source_line(end_line);
             self.last_line_number = end_line;
         }
-        return (kind, spelling, (start_line, start), (end_line, end), line);
+        return native_token(
+            kind=kind,
+            spelling=spelling,
+            start_line=start_line,
+            start=start,
+            end_line=end_line,
+            end=end,
+            line=line
+        );
     }
 
     def validate_number(spelling: str, lineno: int, column: int) {
@@ -195,34 +221,73 @@ obj _TokenizerIter(token_source) {
         );
         try {
             if base in ("0x", "0b", "0o") {
-                int(spelling, 0);
+                parse_integer(spelling);
             } elif spelling.endswith(("j", "J")) {
-                complex(spelling);
-            } elif any(ch in spelling for ch in ".eE") {
-                float(spelling);
+                parse_float(spelling[:-1]);
+            } elif ("." in spelling or "e" in spelling or "E" in spelling) {
+                parse_float(spelling);
             } else {
-                int(spelling, 10 if self.scanner.extra_tokens else 0);
+                parse_integer(
+                    spelling.lstrip("0") or "0"
+                        if self.scanner.extra_tokens
+                        else spelling
+                );
             }
-        } except ValueError {
+        } except syntax_failure {
             self.syntax_error(f"invalid {description} literal", lineno, column + 1);
         }
     }
 }
 
-def TokenizerIter(
-    readline: any, /, *, extra_tokens: any, encoding: any = _encoding_unset
-) -> _TokenizerIter {
-    if encoding is _encoding_unset {
-        encoding = None;
-    } elif not isinstance(encoding, str) {
-        raise TypeError("tokenizeriter() argument 'encoding' must be str");
-    } elif "\x00" in encoding {
-        raise ValueError("embedded null character");
-    }
-    scanner = tok_state(
-        source="", filename="<string>", extra_tokens=bool(extra_tokens)
+def:pub token_iterator(
+    reader: u64, encoding: str, decode: bool, extra: bool
+) -> token_iterator_state {
+    scanner = tok_state(source="", filename="<string>", extra_tokens=extra);
+    result = token_iterator_state(
+        reader=reader, encoding=encoding if decode else None, scanner=scanner
     );
-    result = _TokenizerIter(reader=readline, encoding=encoding, scanner=scanner);
     scanner.input = result;
     return result;
+}
+
+import from jaclang.compiler.backends.py.jacpython.request_result {
+    native_result,
+    error_packet
+}
+import from jaclang.compiler.backends.py.jacpython.marshal_writer { marshal_constant }
+import from jaclang.runtime.python.objects { PyObj, PyInt, PyStr, PyTuple }
+def:pub jacpy_token_next(iterator: token_iterator_state) -> native_result {
+    try {
+        value = iterator.next_token();
+        if value is None {
+            return native_result(eof=True);
+        }
+        start: list[PyObj] = [
+            PyInt(t="int", val=value.start_line),
+            PyInt(t="int", val=value.start)
+        ];
+        end: list[PyObj] = [
+            PyInt(t="int", val=value.end_line),
+            PyInt(t="int", val=value.end)
+        ];
+        parts: list[PyObj] = [
+            PyInt(t="int", val=value.kind),
+            PyStr(t="str", val=value.spelling),
+            PyTuple(t="tuple", items=start),
+            PyTuple(t="tuple", items=end),
+            PyStr(t="str", val=value.line)
+        ];
+        return native_result(packet=marshal_constant(PyTuple(t="tuple", items=parts)));
+    } except syntax_failure as error {
+        return error_packet(error);
+    } except runtime_failure {
+        return native_result(runtime_error=True);
+    } except Exception as error {
+        return error_packet(syntax_failure(str(error), kind="SystemError"));
+    }
+}
+
+def:pub jacpy_token_close(iterator: token_iterator_state) {
+    iterator.scanner.input = None;
+    iterator.finished = True;
 }

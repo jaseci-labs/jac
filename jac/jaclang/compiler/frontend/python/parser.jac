@@ -1977,22 +1977,22 @@ def rule__loop1_132(p: peg_parser) -> list[expr] | None {
     return children as list[expr];
 }
 
-def rule__loop1_133(p: peg_parser) -> list[stmt] | None {
+def rule__loop1_133(p: peg_parser) -> list[list[stmt]] | None {
     mark = peg_mark(p);
-    children: list[object] = [];
+    children: list[list[stmt]] = [];
     while True {
         comma_mark = peg_mark(p);
         statement = rule_statement(p);
         if statement is None {
             break;
         }
-        children.append(statement as stmt);
+        children.append(statement);
         mark = peg_mark(p);
     }
     if len(children) == 0 {
         return None;
     }
-    return children as list[stmt];
+    return children;
 }
 
 def rule__loop1_14(p: peg_parser) -> list[expr] | None {
@@ -8430,20 +8430,16 @@ def rule_invalid_def_raw(p: peg_parser) -> object | None {
                         func_type_comment = rule_func_type_comment(p);
                         block = rule_block(p);
                         if block is not None {
-                            res = [
-                                kw,
-                                kw_1,
-                                name_var,
-                                type_params,
-                                forced,
-                                params,
-                                lit,
-                                rhs,
-                                forced_1,
-                                func_type_comment,
-                                block
-                            ];
-                            return res;
+                            # This error-pass alternative only probes forced
+                            # delimiters. finish_parse discards its result;
+                            # use a typed statement sentinel instead of the
+                            # generator's heterogeneous dummy-value list.
+                            return Pass(
+                                lineno=kw_1.lineno,
+                                col_offset=kw_1.col_offset,
+                                end_lineno=kw_1.end_lineno,
+                                end_col_offset=kw_1.end_col_offset
+                            );
                         }
                     }
                 }

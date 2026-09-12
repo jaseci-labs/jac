@@ -1,5 +1,4 @@
 import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
-
 # P0.7 parser action helpers (PLAN.md).
 #
 # Lowers CPython grammar actions (_PyAST_*, _PyPegen_*) into ast_nodes.jac
@@ -170,8 +169,8 @@ def pa_name_from_token(tok: peg_token | None) -> Name | None {
     }
     identifier = tok.spelling;
     if not identifier.isascii() {
-        import unicodedata;
-        identifier = unicodedata.normalize("NFKC", identifier);
+        import from jaclang.runtime.python.native_services { normalize_identifier }
+        identifier = normalize_identifier(identifier);
     }
     if not isinstance(identifier, str) {
         raise TypeError("identifier must be of type str");
@@ -196,7 +195,7 @@ def pa_warn_escape(escape: str, tok: peg_token | None) {
     if tok is not None {
         tok.warned = True;
     }
-    import warnings;
+    import from jaclang.runtime.python.native_services { warn }
     kind = "octal escape sequence" if len(escape) == 3 else "escape sequence";
     escaped = "\\" + escape;
     message = '"'
@@ -206,79 +205,77 @@ def pa_warn_escape(escape: str, tok: peg_token | None) {
         + '. Such sequences will not work in the future. Did you mean "\\'
         + escaped
         + '"? A raw string is also an option.';
-    try {
-        warnings.warn_explicit(
-            message,
-            SyntaxWarning,
-            tok.filename if tok is not None else "<unknown>",
-            tok.lineno if tok is not None else 1
-        );
-    } except SyntaxWarning as error {
-        raise syntax_failure(str(error));
-    }
+    warn(
+        message,
+        tok.filename if tok is not None else "<unknown>",
+        tok.lineno if tok is not None else 1
+    );
 }
 
 # Escape decoding uses the retained string/bytes object runtime, just as
 # CPython's string_parser.c does. No parser or compiler API is called here.
 def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
-    import codecs;
+    import from jaclang.runtime.python.characters {
+        point_width,
+        point_char,
+        unicode_point
+    }
+    import from jaclang.runtime.python.native_services { decode_unicode }
+    data = body.encode("utf-8");
     encoded: list[str] = [];
     i = 0;
-    while i < len(body) {
-        ch = body[i];
-        if ch == "\\" and i + 1 < len(body) {
-            following = body[i + 1];
-            if ord(following) < 128 {
+    while i < len(data) {
+        ch = point_char(data, i);
+        width = point_width(data, i);
+        if ch == "\\" and i + 1 < len(data) {
+            following = point_char(data, i + 1);
+            if data[i + 1] < 128 {
                 if following not in "\\\"'abfnrtv\n\r01234567xuUN" {
                     pa_warn_escape(following, tok);
-                } elif following in "4567"
-                    and len(body[i + 1:i + 4]) == 3
-                    and all(c in "01234567" for c in body[i + 1:i + 4]) {
-                    pa_warn_escape(body[i + 1:i + 4], tok);
+                } elif following in "4567" and i + 3 < len(data) {
+                    tail = data[i + 1:i + 4].decode("utf-8");
+                    if data[i + 2] >= 48
+                        and data[i + 2] <= 55
+                        and data[i + 3] >= 48
+                        and data[i + 3] <= 55 {
+                        pa_warn_escape(tail, tok);
+                    }
                 }
                 encoded.append(ch + following);
                 i += 2;
                 continue;
             }
-            # A backslash before a literal non-ASCII character must not consume
-            # the escape we introduce when encoding that character below.
             encoded.append("\\u005c");
-        } elif ord(ch) >= 128 {
-            encoded.append("\\U" + format(ord(ch), "08x"));
+        } elif data[i] >= 128 {
+            point = unicode_point(ch);
+            digits = "0123456789abcdef";
+            escape = "\\U";
+            for shift in range(7, -1, -1) {
+                escape += digits[(point >> (shift * 4)) & 15];
+            }
+            encoded.append(escape);
         } else {
             encoded.append(ch);
         }
-        i += 1;
+        i += width;
     }
-    try {
-        import warnings;
-        with warnings.catch_warnings() {
-            warnings.simplefilter("ignore", DeprecationWarning);
-            # Invoke the retained Unicode decoder directly. Codec lookup can
-            # import encodings.unicode_escape while its source is being parsed
-            # during a cold compiler startup.
-            return codecs.unicode_escape_decode("".join(encoded).encode("ascii"))[0];
-        }
-    } except UnicodeError as error {
-        raise syntax_failure("(unicode error) " + str(error));
-    }
+    return decode_unicode("".join(encoded));
 }
 
 def pa_decode_bytes_escape_body(body: str, raw: bool) -> list[int] {
-    import codecs;
-    try {
-        data = body.encode("ascii");
-    } except UnicodeEncodeError {
-        raise syntax_failure("bytes can only contain ASCII literal characters");
+    import from jaclang.runtime.python.native_services { decode_bytes }
+    data = body.encode("utf-8");
+    values: list[int] = [];
+    for item in data {
+        if item >= 128 {
+            raise syntax_failure("bytes can only contain ASCII literal characters");
+        }
+        values.append(item);
     }
     if raw {
-        return list(data);
+        return values;
     }
-    try {
-        return list(codecs.escape_decode(data)[0]);
-    } except ValueError as error {
-        raise syntax_failure(str(error));
-    }
+    return decode_bytes(body);
 }
 
 def pa_decode_string_literal_spelling(
@@ -388,7 +385,7 @@ def pa_constant_from_string(tok: peg_token | None) -> Constant | None {
     );
 }
 
-def pa_concatenate_strings(parts: list[object]) -> expr | None {
+def pa_concatenate_strings(parts: list[expr]) -> expr | None {
     if len(parts) == 0 {
         return None;
     }
@@ -570,26 +567,17 @@ def _has_float_marker(s: str) -> bool {
 }
 
 def pa_py_number_from_spelling(spelling: str) -> PyObj {
-    # Number conversion belongs to the retained numeric object runtime. Keep
-    # underscores intact so its converters reject invalid literal spellings.
-    try {
-        if _is_prefixed_int(spelling) {
-            return PyInt(t="int", val=int(spelling, 0));
-        }
-        if spelling.endswith(("j", "J")) {
-            return PyComplex(t="complex", real=0.0, imag=float(spelling[:-1]));
-        }
-        if _has_float_marker(spelling) {
-            return PyFloat(t="float", val=float(spelling));
-        }
-        return PyInt(t="int", val=int(spelling, 0));
-    } except ValueError as error {
-        message = str(error);
-        if message.startswith("Exceeds the limit ") {
-            message += " Consider hexadecimal for huge integer literals to avoid decimal conversion limits.";
-        }
-        raise syntax_failure(message);
+    import from jaclang.runtime.python.native_services { parse_integer, parse_float }
+    if _is_prefixed_int(spelling) {
+        return parse_integer(spelling);
     }
+    if spelling.endswith("j") or spelling.endswith("J") {
+        return PyComplex(t="complex", real=0.0, imag=parse_float(spelling[:-1]));
+    }
+    if _has_float_marker(spelling) {
+        return PyFloat(t="float", val=parse_float(spelling));
+    }
+    return parse_integer(spelling);
 }
 
 def pa_number_from_token(tok: peg_token | None) -> Constant | None {
@@ -1093,7 +1081,7 @@ def pa_collect_call_seqs(
             c.func, args, c.keywords, lineno, col_offset, end_lineno, end_col_offset
         );
     }
-    kw_list = kwargs as list[object];
+    kw_list = kwargs as list[keyword_or_starred_node];
     starred = pa_seq_extract_starred_exprs(kw_list);
     keywords = pa_seq_delete_starred_exprs(kw_list);
     merged: list[expr] = args;
@@ -1164,23 +1152,12 @@ def pa_make_module(body: list[stmt] | None) -> Module {
 # statements: statement+ -> flatten list[list[stmt]] into list[stmt]. Each
 # `statement` result is itself a seq (compound -> singleton, simple_stmts -> the
 # ';' separated list). _PyPegen_seq_flatten concatenates them in source order.
-def pa_seq_flatten(parts: list[object]) -> list[stmt] {
+def pa_seq_flatten(parts: list[list[stmt]]) -> list[stmt] {
     out: list[stmt] = [];
-    i = 0;
-    while i < len(parts) {
-        chunk = parts[i];
-        if isinstance(chunk, list) {
-            inner = chunk as list[object];
-            j = 0;
-            while j < len(inner) {
-                s = inner[j];
-                if isinstance(s, stmt) {
-                    out.append(s as stmt);
-                }
-                j = j + 1;
-            }
+    for chunk in parts {
+        for item in chunk {
+            out.append(item);
         }
-        i = i + 1;
     }
     return out;
 }
@@ -1632,7 +1609,7 @@ def pa_args_from_list(seq: object | None) -> list[arg] {
         return [];
     }
     out: list[arg] = [];
-    raw = seq as list[object];
+    raw = seq as list[arg];
     i = 0;
     while i < len(raw) {
         out.append(raw[i] as arg);
@@ -1647,7 +1624,7 @@ def pa_append_args_from_pairs(
     if pairs is None {
         return (args, defaults);
     }
-    raw = pairs as list[object];
+    raw = pairs as list[name_default_pair];
     if len(raw) == 0 {
         return (args, defaults);
     }
@@ -1868,37 +1845,25 @@ def pa_check_legacy_stmt_or_raise(p: peg_parser, a: object, b: object) -> None {
 
 def pa_checked_future_import(
     p: peg_parser,
-    module: object,
-    names: object,
-    level: object,
+    module: str,
+    names: list[alias],
+    level: int,
     lineno: int,
     col_offset: int,
     end_lineno: int | None,
     end_col_offset: int | None
 ) -> ImportFrom {
-    mod: str | None = None;
-    if isinstance(module, str) {
-        mod = module as str;
-    }
-    lvl: int | None = None;
-    if isinstance(level, int) {
-        lvl = level as int;
-    }
-    alist: list[alias] = [];
-    if isinstance(names, list) {
-        alist = names as list[alias];
-    }
-    if mod == "__future__" and not lvl {
-        for item in alist {
+    if module == "__future__" and not level {
+        for item in names {
             if item.name == "barry_as_FLUFL" {
                 p.flags |= 0x400000;
             }
         }
     }
     return ImportFrom(
-        module=mod,
-        names=alist,
-        level=lvl,
+        module=module,
+        names=names,
+        level=level,
         lineno=lineno,
         col_offset=col_offset,
         end_lineno=end_lineno,
@@ -1918,8 +1883,8 @@ def pa_check_legacy_stmt(p: peg_parser, `node: object) -> bool {
     return False;
 }
 
-def pa_concatenate_tstrings(parts: list[object]) -> expr | None {
-    strings: list[object] = [];
+def pa_concatenate_tstrings(parts: list[expr]) -> expr | None {
+    strings: list[expr] = [];
     for part in parts {
         if not isinstance(part, TemplateStr) {
             return None;
@@ -2096,7 +2061,7 @@ def pa_add_type_comment_to_arg(arg: arg, comment: object) -> arg {
     return arg;
 }
 
-def pa_seq_number_of_starred_exprs(seq: list[object]) -> int {
+def pa_seq_number_of_starred_exprs(seq: list[keyword_or_starred_node]) -> int {
     n = 0;
     i = 0;
     while i < len(seq) {
@@ -2109,7 +2074,7 @@ def pa_seq_number_of_starred_exprs(seq: list[object]) -> int {
     return n;
 }
 
-def pa_seq_delete_starred_exprs(seq: list[object]) -> list[keyword] {
+def pa_seq_delete_starred_exprs(seq: list[keyword_or_starred_node]) -> list[keyword] {
     new_len = len(seq) - pa_seq_number_of_starred_exprs(seq);
     if new_len == 0 {
         return [];
@@ -2126,7 +2091,7 @@ def pa_seq_delete_starred_exprs(seq: list[object]) -> list[keyword] {
     return out;
 }
 
-def pa_seq_extract_starred_exprs(seq: list[object]) -> list[expr] {
+def pa_seq_extract_starred_exprs(seq: list[keyword_or_starred_node]) -> list[expr] {
     new_len = pa_seq_number_of_starred_exprs(seq);
     if new_len == 0 {
         return [];
@@ -2416,7 +2381,7 @@ def pa_star_etc(
     kwonlyargs: list[arg] = [];
     kw_defaults: list[expr | None] = [];
     if b is not None {
-        raw = b as list[object];
+        raw = b as list[name_default_pair];
         pi = 0;
         while pi < len(raw) {
             pair = raw[pi] as name_default_pair;
