@@ -1196,7 +1196,7 @@ impl UnparsePass.exit_match_k_v_pair with uni.MatchKVPair exit {
 }
 
 impl UnparsePass.exit_match_star with uni.MatchStar exit {
-    result = "*";
+    result = "*" if here.is_list else "**";
     if here.name {
         result = result + here.name.gen.jac;
     }

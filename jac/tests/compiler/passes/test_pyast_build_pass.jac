@@ -216,3 +216,38 @@ test "py2jac binop operator precedence" {
     assert "(w - title_len - 2) // 2" in code , f"Expected correct floor-div grouping in: {code}";
     assert "(w - title_len - 1) // 2" in code , f"Expected correct floor-div grouping in: {code}";
 }
+
+"""Mapping star patterns (PEP 634 `{k: v, **rest}`) must unparse with a `**`
+rest marker so the emitted Jac re-parses. #8641: UnparsePass emitted `*` for
+both MatchStar flavors, and the mapping rest pattern failed to re-parse with
+cascading E0045 errors."""
+test "py2jac mapping star pattern round-trips" {
+    file_source = (
+        "def handle(d):\n"
+        "    match d:\n"
+        "        case {\"k\": key, **rest}:\n"
+        "            return key, rest\n"
+        "        case {1: first, **others}:\n"
+        "            return first, others\n"
+        "    return None\n"
+    );
+    code = unparse_module(
+        PyastBuildPass(
+            ir_in=PythonModuleAst(
+                py_ast.parse(file_source),
+                orig_src=Source(file_source, "py2jac_match_mapping_star.py")
+            )
+        ).ir_out,
+        requires_format=False
+    );
+
+    assert "**rest" in code , f"Expected '**rest' mapping rest marker in:\n{code}";
+
+    # The emitted Jac must round-trip: re-parsing it produces no errors.
+    prog = JacProgram.jac_str_formatter(
+        source_str=code, file_path="py2jac_match_mapping_star.py", auto_lint=False
+    );
+    assert len(prog.errors_had) == 0 , (
+        f"Re-parse errors: {[str(e) for e in prog.errors_had]}\ncode:\n{code}"
+    );
+}
