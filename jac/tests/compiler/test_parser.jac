@@ -805,6 +805,81 @@ test "docstring attaches to all member types inside archetype body" {
     }
 }
 
+test "docstring attaches to module-level import and include" {
+    (mod, err) = rd_parse(load_fixture("docstring_before_import.jac"), "");
+    assert not err , "Parser reported errors for docstrings before import/include";
+
+    def collect_imports(nd: uni.UniNode) -> list[uni.Import] {
+        results: list[uni.Import] = [];
+        if isinstance(nd, uni.Import) {
+            results.append(nd);
+        }
+        for k in nd.kid {
+            results.extend(collect_imports(k));
+        }
+        return results;
+    }
+
+    imports = collect_imports(mod);
+    assert len(imports) == 3 , (
+        f"Expected 3 module-level imports but got {len(imports)}: "
+        f"{[type(n).__name__ for n in imports]}"
+    );
+
+    assert mod.doc is not None , "Leading module docstring must set mod.doc";
+    assert "Module doc." in str(mod.doc.lit_value) , (
+        f"mod.doc must carry the leading module docstring, got "
+        f"{str(mod.doc.lit_value)!r}"
+    );
+
+    assert imports[0].doc is None , (
+        "The string at the very top of the module belongs to the module, "
+        "not to the first import"
+    );
+
+    imp_doc = imports[1].doc;
+    assert imp_doc is not None , (
+        "Import #2 (import from) is preceded by a section docstring and "
+        "must carry it as .doc"
+    );
+    assert "Helpers for registration." in str(imp_doc.lit_value) , (
+        f"import's attached doc must be its section docstring, got "
+        f"{str(imp_doc.lit_value)!r}"
+    );
+
+    inc_doc = imports[2].doc;
+    assert inc_doc is not None , (
+        "Import #3 is preceded by a section docstring and " "must carry it as .doc"
+    );
+    assert "Registration extras." in str(inc_doc.lit_value) , (
+        f"import's attached doc must be its section docstring, got "
+        f"{str(inc_doc.lit_value)!r}"
+    );
+
+    # The KW_INCLUDE peek path is covered separately with an inline source
+    # string: `include from X { Y }` trips an unrelated pre-existing codegen
+    # ICE in JcirGenPass (absorb branch assumes items[0] is a ModulePath), so
+    # the shared fixture cannot carry an include. Parsing must still accept a
+    # docstring directly before an include and attach it.
+    (inc_mod, inc_err) = rd_parse(
+        "def base() -> int { return 1; }\n"
+        "\"\"\"Inline include doc.\"\"\"\ninclude from some_mod { SomeName }",
+        ""
+    );
+    assert not inc_err , "Parser reported errors for a docstring before include";
+    inc_imports = collect_imports(inc_mod);
+    assert len(inc_imports) == 1 , (
+        f"Expected 1 include import but got {len(inc_imports)}"
+    );
+    assert inc_imports[0].doc is not None , (
+        "include preceded by a section docstring must carry it as .doc"
+    );
+    assert "Inline include doc." in str(inc_imports[0].doc.lit_value) , (
+        f"include's attached doc must be its section docstring, got "
+        f"{str(inc_imports[0].doc.lit_value)!r}"
+    );
+}
+
 with entry {
     parametrize(
         "parser",

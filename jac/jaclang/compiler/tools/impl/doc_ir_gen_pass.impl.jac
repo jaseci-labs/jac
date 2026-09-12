@@ -2171,7 +2171,10 @@ impl DocIRGenPass.exit_import with uni.Import exit {
     mod_items: list[doc.DocType] = [];
     is_in_items: bool = False;
     for i in here.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
+        if (i == here.doc) {
+            parts.append(i.gen.doc_ir);
+            parts.append(self.hard_line());
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
             if is_in_items {
                 mod_items.pop();
                 mod_items.append(i.gen.doc_ir);

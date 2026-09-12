@@ -280,7 +280,7 @@ comptime_stmt ::=
 
 docstring_target ::=
     STRING
-    (test | enum | type_alias | global_var | comptime_element | impl_def | module_code)?
+    ( test | enum | type_alias | global_var | comptime_element | impl_def | module_code | import_stmt )?
 
 module_code ::=
     "with" ("exit" | "entry")? (":" (NAME | KWESC_NAME))? "{" code_block_stmts "}"
