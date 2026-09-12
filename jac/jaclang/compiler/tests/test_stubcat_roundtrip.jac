@@ -62,7 +62,7 @@ def small_catalog -> tuple[StubCatalog, str] {
     owner = selfhost.peek_program();
     after = set(owner.mod.hub) if owner is not None else set();
     leaked = {path for path in after - before if path.endswith(".pyi")};
-    assert not leaked , f"catalog build retained stubs in the self-host hub: {leaked}";
+    assert not leaked , f"catalog build retained {len(leaked)} stubs in the self-host hub: {sorted(leaked)[:5]}";
     assert manifest["modules"] >= len(SMALL_SET) - 2 , manifest;
     cat = open_catalog_file(out, jaclang_pkg_dir());
     assert cat is not None;

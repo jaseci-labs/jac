@@ -212,7 +212,7 @@ readline
 SETUP
     # CPython runs the compiler itself; dependency-oriented -O2 flags above
     # must not override the release interpreter's optimization settings.
-    export CFLAGS='-O3 -fPIC -fno-semantic-interposition'
+    export CFLAGS='-O3 -fPIC -fno-semantic-interposition' LLVM_AR="$AR"
     ./configure --prefix="$prefix" --enable-shared --without-static-libpython \
         --with-tail-call-interp --with-lto=thin \
         --disable-test-modules --with-ensurepip=no --with-pkg-config=no \
