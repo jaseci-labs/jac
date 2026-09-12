@@ -779,7 +779,8 @@ fn macosShim(
     // so ld64 must lower them to native code at link time via libLTO. Apple's
     // bundled libLTO tracks Xcode and is too old on the CI runners ("Invalid
     // summary version 12, should be in [1-10]" -> segfault), so point ld64 at
-    // the release's OWN libLTO.dylib (kept by payload.zig fetchLlvmSlice) -- it
+    // the release's OWN libLTO.dylib (kept by the payload tool's
+    // `fetch_llvm_slice`) -- it
     // matches the bitcode it produced. This is link-time only; the output dylib
     // gains no libLTO runtime dep.
     //
