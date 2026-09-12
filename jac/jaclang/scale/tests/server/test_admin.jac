@@ -423,7 +423,7 @@ test "admin graph requires auth" {
     client = make_client();
     try {
         response = client.get("/admin/graph");
-        assert response.status_code in [401, 403, 422];
+        assert response.status_code == 403 , response.text;
     } finally {
         client.close();
     }
@@ -437,7 +437,8 @@ test "admin graph data" {
         response = client.get(
             "/admin/graph", headers={"Authorization": f"Bearer {token}"}
         );
-        assert response.status_code in [200, 404, 422];
+        assert response.status_code == 200 , response.text;
+        assert "nodes" in response.json() , response.text;
     } finally {
         client.close();
     }
@@ -461,10 +462,8 @@ test "admin index page" {
     client = make_client();
     try {
         response = client.get("/admin/");
-        assert response.status_code in [200, 503];
-        if response.status_code == 200 {
-            assert "text/html" in response.headers.get("content-type", "");
-        }
+        assert response.status_code == 200 , response.text[:400];
+        assert "text/html" in response.headers.get("content-type", "");
     } finally {
         client.close();
     }
