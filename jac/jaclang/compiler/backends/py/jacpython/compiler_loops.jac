@@ -310,7 +310,7 @@ def visit_if(
 ) -> stmt_cont {
     import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     iloc = nloc(i.lineno, i.end_lineno, i.col_offset, i.end_col_offset);
-    constant_test = None;
+    constant_test: bool | None = None;
     if isinstance(i.`test, Constant) {
         constant_test = i.`test.value.tp_bool();
     } elif isinstance(i.`test, Name) and i.`test.id == "__debug__" {

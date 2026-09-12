@@ -98,6 +98,23 @@ def outer():
     assert sequence[0] is namespace["scalar"]()
     namespace["set_global"]()
     assert namespace["declared"] == namespace["outer"]() == 42
+    for optimize in (0, 1, 2):
+        constants = {}
+        exec(compile("""
+if True:
+    truth = 1
+else:
+    truth = 2
+if False:
+    falsehood = 1
+else:
+    falsehood = 2
+if __debug__:
+    debug = True
+else:
+    debug = False
+""", "<constant-conditions>", "exec", optimize=optimize), constants)
+        assert (constants["truth"], constants["falsehood"], constants["debug"]) == (1, 2, optimize == 0)
     import ast
     tree = ast.parse("class Located:\n    value = 42\n")
     tree.body[0].lineno = 10
