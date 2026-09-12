@@ -38,28 +38,28 @@ test "an installed precompiled interface resolves paths without rebuilding its s
         base_path = Path(directory);
         package = _package(base_path / "build");
         source = package / "api.jac";
+        (package / "model.jac").write_text("obj Box { has value: int; }\n");
         source.write_text(
-            "obj Box { has value: int; }\n" + "def make() -> Box { return Box(42); }\n"
+            "import from .model { Box }\n" + "def make() -> Box { return Box(42); }\n"
         );
-        data = precompile_unit(str(source), str(package), collect=False);
-        assert data is not None;
         pre = package / "_precompiled";
         out = pre / sealed.python_tag();
         out.mkdir(parents=True);
-        (out / "api.jir").write_bytes(data);
-        write_manifest(
-            pre,
-            "library",
-            sealed.python_tag(),
-            {
-                "api.jac": {
-                    "module": "library.api",
-                    "jir": "api.jir",
-                    "package": False,
-                    "sha256": hashlib.sha256(data).hexdigest()
-                }
-            }
-        );
+        modules: dict[str, dict[str, any]] = {};
+        for name in ("model", "api") {
+            data = precompile_unit(
+                str(package / (name + ".jac")), str(package), collect=False
+            );
+            assert data is not None;
+            (out / (name + ".jir")).write_bytes(data);
+            modules[name + ".jac"] = {
+                "module": "library." + name,
+                "jir": name + ".jir",
+                "package": False,
+                "sha256": hashlib.sha256(data).hexdigest()
+            };
+        }
+        write_manifest(pre, "library", sealed.python_tag(), modules);
         installed = base_path / "installed" / "library";
         installed.parent.mkdir();
         shutil.move(str(package), str(installed));
@@ -74,6 +74,7 @@ test "an installed precompiled interface resolves paths without rebuilding its s
             module = registry._materialize(iface_entry);
             assert module is not None and module.stub_only;
             assert module.loc.mod_path == path;
+            assert not program.analysis.pass_runs , "installation rebuilt the dependency";
             evaluator = program.get_type_evaluator();
             function = evaluator.get_type_of_symbol(module.lookup("make"));
             assert isinstance(function, FunctionType);
@@ -81,8 +82,7 @@ test "an installed precompiled interface resolves paths without rebuilding its s
             box = evaluator.get_type_of_symbol(module.lookup("Box"));
             assert isinstance(box, ClassType);
             identity = box.shared.canonical_key();
-            assert identity is not None and identity[0] == path;
-            assert not program.analysis.pass_runs , "installation rebuilt the dependency";
+            assert identity is not None and identity[0] == str(installed / "model.jac");
             code = program.get_bytecode(path);
             assert code is not None and code.co_filename == path;
             import from jaclang.compiler.placement.placement { summary_store }

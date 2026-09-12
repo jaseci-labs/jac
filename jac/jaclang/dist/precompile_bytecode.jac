@@ -357,7 +357,7 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
     extra: dict[int, bytes] = {};
     try {
         cache_path = get_module_cache_path(jac_path);
-        if cache_path.exists() {
+        if cache_path.exists() and is_module_cache_valid(jac_path, cache_path) {
             data = cache_path.read_bytes();
             for section in (SEC_IFACE, SEC_DEPS, SEC_DIAG, SEC_PLACEMENT) {
                 raw = read_section_bytes(data, section);
