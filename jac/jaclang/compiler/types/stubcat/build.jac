@@ -157,7 +157,7 @@ def build_catalog(
         } else {
             os.environ[ENV_BUILDING] = previous_building;
         }
-        prog.release_compile_closure();
+        prog.release_compile_closure(retain_stubs=False);
     }
 }
 

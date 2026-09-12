@@ -42,22 +42,29 @@ impl JacCompiler.ensure_stub_catalog -> StubCatalog | None {
         return None;
     }
     found = self.stub_catalog();
-    if found is not None {
-        return found;
+    if found is None {
+        import from jaclang.jac0core.stubcat_hook { env_disabled }
+        if env_disabled() or self._stub_catalog_tried {
+            return None;
+        }
+        self._stub_catalog_tried = True;
+        import jaclang.compiler.types.stubcat.format;
+        import jaclang.compiler.types.stubcat.reader;
+        import from jaclang.compiler.types.stubcat.locate { ensure_catalog }
+        found = ensure_catalog();
+        self._stub_catalog = found;
     }
-    import from jaclang.jac0core.stubcat_hook { env_disabled }
-    if env_disabled() {
-        return None;
+    # Bootstrap can parse stubs before the catalog reader is importable. Once
+    # that reader is active, retire the bootstrap closure at a safe boundary.
+    # Per-unit release still retains stubs for compilations using the AST lens.
+    internal = self._selfhost.peek_program() if self._selfhost is not None else None;
+    if found is not None
+        and internal is not None
+        and not self._reentrant_depth
+        and not internal.scratch.compile_depth
+        and any(path.endswith('.pyi') for path in internal.mod.hub) {
+        self.release_compile_state(internal);
     }
-    if self._stub_catalog_tried {
-        return None;
-    }
-    self._stub_catalog_tried = True;
-    import jaclang.compiler.types.stubcat.format;
-    import jaclang.compiler.types.stubcat.reader;
-    import from jaclang.compiler.types.stubcat.locate { ensure_catalog }
-    found = ensure_catalog();
-    self._stub_catalog = found;
     return found;
 }
 
@@ -2102,9 +2109,9 @@ impl JacCompiler.release_compile_state(target_program: JacProgram) -> None {
         or (internal is not None and internal.scratch.compile_depth) {
         raise RuntimeError("Cannot release compiler state during compilation");
     }
-    owner.release_compile_closure(collect=False);
+    owner.release_compile_closure(collect=False, retain_stubs=False);
     if internal is not None and internal is not owner {
-        internal.release_compile_closure(collect=False);
+        internal.release_compile_closure(collect=False, retain_stubs=False);
     }
 
     import gc;
