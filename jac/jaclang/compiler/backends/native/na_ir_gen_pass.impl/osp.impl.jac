@@ -659,8 +659,8 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
     edge_tag = -1;
     edge_obj: (ir.Value | None) = None;
+    _etname: (str | None) = None;
     if co.conn_type is not None {
-        _etname: (str | None) = None;
         if isinstance(co.conn_type, uni.Name) {
             edge_obj = self._codegen_instantiation(co.conn_type);
 
@@ -683,7 +683,7 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
             E5092,
             node_override=nd,
             kind="edge constructor",
-            name=self._spawn_operand_name(co.conn_type) or "dynamic edge",
+            name=_etname or "dynamic edge",
             help_text="Native connections require a statically known edge "
             "constructor; a runtime edge class cannot be instantiated here."
         );
