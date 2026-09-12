@@ -417,11 +417,11 @@ impl NodeAnchor.detach_light(self: NodeAnchor) -> None {
     }
 }
 
-impl Anchor.persistent.getter -> bool {
+impl Anchor.persistent.getter(self: Anchor) -> bool {
     return self._persistent;
 }
 
-impl Anchor.persistent.setter(persistent: bool) -> None {
+impl Anchor.persistent.setter(self: Anchor, persistent: bool) -> None {
     self._persistent = persistent;
 
     if persistent and 'archetype' in self.__dict__ {

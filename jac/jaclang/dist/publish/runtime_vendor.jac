@@ -27,7 +27,6 @@ glob _SEEDS: list[str] = [
          "jaclang.cli",
          "jaclang.vendor",
          "jaclang.byllm.cli",
-         "jaclang.jac0core",
          "jaclang.runtime.interop_bridge",
          "jaclang.client",
          "jaclang.server.hmr",
@@ -158,19 +157,6 @@ def scan_jaclang_imports(py_src: str) -> set[str] {
 def _compile_runtime_module(pkg_root: Path, path: Path, prog: JacProgram) -> str {
     if path.suffix == ".py" {
         return path.read_text(encoding="utf-8");
-    }
-    import from jaclang.bootstrap_manifest { is_seed_source }
-    rel_posix = path.relative_to(pkg_root).as_posix();
-    if is_seed_source(rel_posix) {
-        import from jaclang.jac0 { compile_jac, discover_impl_files }
-        jac_source = path.read_text(encoding="utf-8");
-        impl_sources: list[tuple[str, str]] = [];
-        for impl_path in discover_impl_files(str(path)) {
-            impl_sources.append(
-                (Path(impl_path).read_text(encoding="utf-8"), impl_path)
-            );
-        }
-        return compile_jac(jac_source, str(path), impl_sources=impl_sources or None);
     }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     ir = prog.compile(

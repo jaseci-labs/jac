@@ -9,8 +9,7 @@ import from jaclang.compiler.driver.extensions {
 }
 
 glob _project_root_cache: dict = {},
-     _import_base_stack: list = [],
-     COMPILER_PACKAGE: str = 'jaclang';
+     _import_base_stack: list = [];
 
 def push_import_base(base_dir: str) {
     _import_base_stack.append(base_dir);
@@ -212,7 +211,6 @@ def _namespace_candidate(base: str, parts: list[str]) -> (tuple[(str, str)] | No
 def _self_tree_candidate(
     base_dir: str, actual_parts: list[str]
 ) -> (tuple[(str, str)] | None) {
-    is_compiler_pkg = actual_parts[0] == COMPILER_PACKAGE;
     cur = os.path.abspath(base_dir);
     while True {
         parent = os.path.dirname(cur);
@@ -220,15 +218,13 @@ def _self_tree_candidate(
             return None;
         }
         if os.path.basename(cur) == actual_parts[0] {
-            if not is_compiler_pkg or os.path.isdir(os.path.join(cur, 'compiler')) {
-                res = resolve_local_module(parent, actual_parts);
-                if res {
-                    return res;
-                }
-                res = _namespace_candidate(parent, actual_parts);
-                if res {
-                    return res;
-                }
+            res = resolve_local_module(parent, actual_parts);
+            if res {
+                return res;
+            }
+            res = _namespace_candidate(parent, actual_parts);
+            if res {
+                return res;
             }
         }
         cur = parent;

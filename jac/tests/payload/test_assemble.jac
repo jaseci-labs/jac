@@ -353,67 +353,62 @@ test "stage_floor stages the floor allow-list + CA bundle, skips non-floor archi
     }
 }
 
-test "assemble_site bundles a content-keyed shim under the canonical name" {
-    base = tempfile.mkdtemp(prefix="jac-payload-shim-");
+test "payload assembly consumes and verifies a compiler image without source writes" {
+    import hashlib;
+    import json;
+    import jaclang.compiler.driver.image as images;
+    base = tempfile.mkdtemp(prefix="jac-payload-image-");
     try {
         repo = os.path.join(base, "repo");
         fake_repo(repo);
-
-        # What the release channel hands mkpayload: the deps-release asset,
-        # whose name embeds the platform and the shim-input hash.
-        ext = shim_file_name().rsplit(".", 1)[-1];
-        keyed = os.path.join(base, f"libjacllvm-{host_os_arch()}-deadbeefcafe.{ext}");
-        wf(base, os.path.basename(keyed), b"prebuilt-shim-bytes");
-
-        site = os.path.join(base, "site");
-        os.makedirs(site, exist_ok=True);
-        assemble_site(repo, site, MkPayloadOpts(shim_so=keyed));
-
-        # Exactly the path _find_shim() scans for on every sys.path entry.
-        llvm_dir = os.path.join(
-            site, "jaclang", "compiler", "backends", "native", "llvm"
-        );
-        staged = sorted(os.listdir(llvm_dir));
-        assert shim_file_name() == _shim_name() , "payload and loader must spell one shim name";
-        assert staged == [_shim_name()] , f"site shim dir holds {staged}";
-        shim = rf(os.path.join(llvm_dir, _shim_name()));
-        assert shim == b"prebuilt-shim-bytes" , "the --shim asset, not the in-tree copy";
-    } finally {
-        shutil.rmtree(base, ignore_errors=True);
-    }
-}
-
-
-test "payload assembly consumes a kernel artifact without writing into sources" {
-    base = tempfile.mkdtemp(prefix="jac-payload-kernel-");
-    try {
-        repo = os.path.join(base, "repo");
-        fake_repo(repo);
-        wf(repo, "jaclang/compiler/jc_unit.jac", b"with entry {}");
-        shim = os.path.join(base, shim_file_name());
-        wf(base, shim_file_name(), b"shim");
-        kernel = os.path.join(base, "compiler-kernel");
-        wf(base, "compiler-kernel", b"prebuilt-kernel");
-        wf(base, "compiler-kernel.layout.json", b'{"classes": {}}');
-        site = os.path.join(base, "site");
-        os.makedirs(site, exist_ok=True);
-        assemble_site(repo, site, MkPayloadOpts(shim_so=shim, compiler_kernel=kernel));
+        image_site = os.path.join(base, "image");
+        package = os.path.join(image_site, "jaclang");
+        wf(package, "dist/payload/__init__.py", b"");
         name = "libjac_compiler.dylib"
             if sys.platform == "darwin"
             else "libjac_compiler.so";
-        staged = os.path.join(site, "jaclang", "compiler", name);
-        assert rf(staged) == b"prebuilt-kernel";
-        assert rf(staged + ".layout.json") == b'{"classes": {}}';
-        assert not os.path.exists(os.path.join(repo, "jaclang", "compiler", name));
-        os.unlink(kernel + ".layout.json");
-        try {
-            assemble_site(
-                repo, site, MkPayloadOpts(shim_so=shim, compiler_kernel=kernel)
-            );
-        } except PayloadDie {
-            return;
+        payloads = {
+            "compiler/" + name: b"prebuilt-kernel",
+            "compiler/" + name + ".layout.json": b'{"classes": {}}',
+            "compiler/backends/native/llvm/" + _shim_name(): b"prebuilt-shim"
+        };
+        for (path, data) in payloads.items() {
+            wf(package, path, data);
         }
-        assert False , "assembly accepted a missing kernel layout";
+        wf(
+            package,
+            "_precompiled/MANIFEST.json",
+            json.dumps(
+                {
+                    "format": images.MANIFEST_FORMAT,
+                    "package": "jaclang",
+                    "python_tag": images.python_tag(),
+                    "jir_format_version": images.JIR_FORMAT_VERSION,
+                    "modules": {},
+                    "payloads": {
+                        p: hashlib.sha256(v).hexdigest() for (p, v) in payloads.items()
+                    }
+                }
+            ).encode()
+        );
+        catalog = os.path.join(base, "stubcat.bin");
+        wf(base, "stubcat.bin", b"compiled-catalog");
+        site = os.path.join(base, "site");
+        opts = MkPayloadOpts(compiler_image=image_site, stub_catalog=catalog);
+        assemble_site(repo, site, opts);
+        for (path, data) in payloads.items() {
+            assert rf(os.path.join(site, "jaclang", path)) == data;
+        }
+        assert rf(os.path.join(site, "jaclang", "_precompiled", "stubcat.bin"))
+            == b"compiled-catalog";
+        assert not os.path.exists(os.path.join(repo, "jaclang", "compiler", name));
+        os.unlink(os.path.join(package, "compiler", name + ".layout.json"));
+        with testraises(RuntimeError) {
+            assemble_site(repo, site, opts);
+        }
+        with testraises(PayloadDie) {
+            assemble_site(repo, site, MkPayloadOpts());
+        }
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }

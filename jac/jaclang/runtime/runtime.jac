@@ -1,3 +1,5 @@
+import from typing { Protocol as ModelProtocol, Literal as StatusLiteral }
+import from typing { TypeVar as RuntimeTypeVar }
 import fnmatch;
 import html;
 import inspect;
@@ -6,13 +8,12 @@ import os;
 import sys;
 import types;
 import from collections { deque }
-import from collections.abc { Callable, Coroutine, Iterable, Mapping, Sequence }
 import from concurrent.futures { Future, ThreadPoolExecutor }
 import from contextvars { ContextVar }
 import from jaclang.runtime.object_model { field }
 import from inspect { getfile }
 import from logging { getLogger }
-import from typing { TYPE_CHECKING, Literal, ParamSpec, Protocol, TypeAlias, TypeVar }
+import from typing { TYPE_CHECKING, ParamSpec, TypeAlias }
 import from uuid { UUID }
 import from jaclang.runtime.archetype {
     GenericEdge,
@@ -68,7 +69,7 @@ import type from jaclang.server.identity.user_manager { UserManager }
 import type from jaclang.server.server { ModuleIntrospector, ServerExtension }
 
 glob logger = getLogger(__name__),
-     T = TypeVar('T'),
+     T = RuntimeTypeVar('T'),
      P = ParamSpec('P'),
      JsonValue: TypeAlias = None
          | str
@@ -77,7 +78,7 @@ glob logger = getLogger(__name__),
          | bool
          | `list['JsonValue']
          | `dict[(str, 'JsonValue')],
-     StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)],
+     StatusCode: TypeAlias = StatusLiteral[(200, 201, 400, 401, 404, 500, 503)],
      _request_context: ContextVar[ExecutionContext | None] = ContextVar(
          'request_context', `default=None
      ),
@@ -194,7 +195,7 @@ class JacClassReferences {
     }
 }
 
-class LLMModel(Protocol) {
+class LLMModel(ModelProtocol) {
     has call_params: dict[(str, object)];
 
     def __call__(self: LLMModel, **kwargs: object) -> LLMModel;

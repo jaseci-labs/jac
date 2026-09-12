@@ -1,6 +1,5 @@
 import os;
 import time;
-import from collections.abc { Callable }
 import type from threading { Event }
 import from contextvars { ContextVar }
 import type from jaclang.compiler.driver.compiler { JacCompiler }

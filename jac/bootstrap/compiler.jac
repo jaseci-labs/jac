@@ -10,6 +10,7 @@ import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.modresolver { push_import_base, pop_import_base }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.placement.placement_facts { toolchain_native_by_policy }
 import from jaclang.compiler.driver.jir {
     FLAG_PRECOMPILED,
     PRECOMPILE_SENTINEL,
@@ -46,7 +47,9 @@ def compile_module(source: Path, package: Path, output: Path) -> dict[str, any] 
         foreign = [
             path
             for path in program.mod.hub
-            if path.endswith(".jac") and Path(path).is_relative_to(producer)
+            if path.endswith(".jac")
+                and Path(path).is_relative_to(producer)
+                and not toolchain_native_by_policy(str(producer), path)
         ];
         if foreign {
             raise RuntimeError(f"Target compilation read producer sources: {foreign}");
@@ -100,9 +103,6 @@ def compile_image(
         write_manifest,
         _nested_project_dirs,
         _precompile_retire
-    }
-    import from jaclang.compiler.placement.placement_facts {
-        toolchain_native_by_policy
     }
     import from jaclang.compiler.driver.jir {
         compiler_source_digest,
@@ -180,7 +180,7 @@ def compile_image(
             source = Path(sources[index]).relative_to(snapshot).as_posix();
             if not isinstance(result, dict) {
                 failures.append(source);
-                sys.stderr.write(json.dumps(message) + "\n");
+                sys.stderr.write(json.dumps({** message, "source": source}) + "\n");
                 return;
             }
             relative_jir = Path(source).with_suffix(".jir").as_posix();

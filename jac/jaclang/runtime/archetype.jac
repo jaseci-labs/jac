@@ -1,5 +1,5 @@
+import from typing { TypeVar as RuntimeTypeVar }
 import from collections { OrderedDict }
-import from collections.abc { Callable }
 import from jaclang.runtime.object_model {
     asdict,
     field,
@@ -13,15 +13,14 @@ import from logging { getLogger }
 import from pickle { dumps }
 import from threading { Lock }
 import from types { UnionType }
-import from typing { ClassVar, TypeVar }
 import from uuid { UUID, uuid4 }
 import weakref;
 import from jaclang.runtime.access_level { AccessLevel }
 import from jaclang.compiler.frontend.constant { EdgeDir }
 glob logger = getLogger(__name__),
-     TARCH = TypeVar('TARCH', bound='Archetype'),
-     TANCH = TypeVar('TANCH', bound='Anchor'),
-     T = TypeVar('T');
+     TARCH = RuntimeTypeVar('TARCH', bound='Archetype'),
+     TANCH = RuntimeTypeVar('TANCH', bound='Anchor'),
+     T = RuntimeTypeVar('T');
 
 glob _NO_TRIGGER = object(),
      _subclass_hook_lock = Lock();
@@ -116,7 +115,7 @@ class Anchor {
         destroyed: bool = field(`init=False, `default=False),
         hash: int = field(`init=False, `default=0);
 
-    has persistent: bool { getter; setter(persistent: bool); }
+    has persistent: bool { getter; setter(self: Anchor, persistent: bool); }
 
     def ensure_id(self: Anchor) -> UUID;
     def own_access(self: Anchor) -> Permission;

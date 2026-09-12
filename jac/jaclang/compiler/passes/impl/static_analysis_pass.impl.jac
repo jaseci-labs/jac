@@ -572,8 +572,7 @@ impl StaticAnalysisPass._check_typing_import_refusals(mod: Module) -> None {
 
 impl StaticAnalysisPass._check_redundant_imports(mod: Module) -> None {
     import from jaclang.compiler.passes.static_analysis_pass {
-        is_ambient_provider_module,
-        is_bootstrap_compiled_module
+        is_ambient_provider_module
     }
     if not self.prog.type_evaluator {
         return;
@@ -583,8 +582,7 @@ impl StaticAnalysisPass._check_redundant_imports(mod: Module) -> None {
         return;
     }
     mod_path = mod.loc.mod_path or "";
-    advisory_only = is_bootstrap_compiled_module(mod_path)
-        or is_ambient_provider_module(mod_path);
+    advisory_only = is_ambient_provider_module(mod_path);
     for nd in mod.get_all_sub_nodes(typ=Import) {
         if (nd.loc.mod_path or "").endswith(".pyi") {
             continue;

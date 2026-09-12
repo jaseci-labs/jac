@@ -67,12 +67,6 @@ impl dispatch(argv: list[str]) {
     } elif cmd == "typeshed-sha" {
         _need(argv, 2, "usage: payload typeshed-sha <commit>");
         typeshed_sha(argv[1]);
-    } elif cmd == "stubcat" {
-        _need(argv, 4, "usage: payload stubcat <python-dir> <site-dir> <out.bin>");
-        import from jaclang.dist.payload.assemble { resolve_python, run_stubcat }
-        if not run_stubcat(resolve_python(argv[1]), argv[1], argv[2], argv[3]) {
-            die("stubcat: build failed (see log above)");
-        }
     } elif cmd == "pack" {
         _need(
             argv, 4, "usage: payload pack <stub> <payload.tar.zst> <out> [stubcat.bin]"
@@ -84,38 +78,24 @@ impl dispatch(argv: list[str]) {
 impl parse_mkpayload_flags(flags: list[str]) -> MkPayloadOpts {
     opts = MkPayloadOpts();
     valued = {
-        "--shim=": "shim_so",
-        "--compiler-kernel=": "compiler_kernel",
+        "--compiler-image=": "compiler_image",
+        "--stub-catalog=": "stub_catalog",
         "--bun=": "bun_bin",
-        "--link-source=": "link_source",
         "--musl=": "musl_dir",
         "--wasm-libc=": "wasm_libc_dir",
-        "--precompiled-cache=": "precompiled_cache",
-        "--layer-cache=": "layer_cache",
-        "--stubcat-out=": "stubcat_out"
+        "--layer-cache=": "layer_cache"
     };
     for arg in flags {
-        if arg == "--skip-precompile" {
-            opts.skip_precompile = True;
-            continue;
-        }
-        if arg == "--seal" {
-            opts.seal = True;
-            continue;
-        }
-        if arg == "--debug-src" {
-            opts.debug_src = True;
-            continue;
-        }
-        if arg == "--skip-stubcat" {
-            opts.skip_stubcat = True;
-            continue;
-        }
+        matched = False;
         for (prefix, field) in valued.items() {
-            if arg.startswith(prefix) {
+            if arg.startswith(prefix) and len(arg) > len(prefix) {
                 setattr(opts, field, arg[len(prefix):]);
+                matched = True;
                 break;
             }
+        }
+        if not matched {
+            die(f"mkpayload: unknown or empty option '{arg}'");
         }
     }
     return opts;

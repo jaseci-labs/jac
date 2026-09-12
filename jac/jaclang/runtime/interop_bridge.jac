@@ -1,6 +1,5 @@
 import ctypes;
 import logging;
-import from collections.abc { Callable }
 import type from jaclang.compiler.frontend.codeinfo { InteropManifest }
 
 glob logger = logging.getLogger(__name__),

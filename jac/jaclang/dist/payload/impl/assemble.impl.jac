@@ -3,10 +3,8 @@ import os;
 import tarfile;
 
 import from compression.zstd { CompressionParameter, compress, decompress }
-import from jaclang.dist.payload.fetch { TYPESHED_VENDOR, fetch_typeshed }
 import from jaclang.dist.payload.fsutil {
     PayloadDie,
-    clone_env,
     copy_file,
     copy_into,
     copy_tree,
@@ -20,7 +18,6 @@ import from jaclang.dist.payload.fsutil {
     read_bytes,
     run_child,
     sha256_hex,
-    skip_jaclang,
     skip_none,
     skip_site_template,
     skip_stage_site,
@@ -43,12 +40,7 @@ impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
     site = os.path.join(work, "site");
     stage = os.path.join(work, "stage");
 
-    ts_versions = os.path.join(repo_root, TYPESHED_VENDOR, "stdlib", "VERSIONS");
-    if not file_exists(ts_versions) {
-        fetch_typeshed(repo_root);
-    }
-
-    log("==> assembling jaclang site from source (no pyproject build)");
+    log("==> assembling runtime from the compiled compiler image");
     run_child([py, "-m", "ensurepip", "--upgrade"], None, True);
     run_child([py, "-m", "pip", "install", "--quiet", "--upgrade", "pip"], None, True);
     make_dirs(site);
@@ -56,10 +48,6 @@ impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
     assemble_site(repo_root, site, opts);
 
     stage_floor(python_dir, work);
-
-    run_precompile_stage(py, python_dir, site, opts);
-
-    run_stubcat_stage(py, python_dir, site, opts);
 
     log("==> bundling watchdog (jac run --dev) + tomlkit");
     delete_tree(os.path.join(site, "__pycache__"));
@@ -101,89 +89,44 @@ impl resolve_python(python_dir: str) -> str {
 }
 
 impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
-    if opts.link_source is None {
+    import from jaclang.compiler.driver.image { load_image }
+    image_site = opts.compiler_image;
+    if image_site is None {
+        raise PayloadDie(
+            "mkpayload: --compiler-image is required; run zig build compiler-image"
+        );
+    }
+    compiled = load_image(os.path.join(image_site, "jaclang", "_precompiled"));
+    if compiled is None {
+        raise PayloadDie("mkpayload: --compiler-image has no compiled image manifest");
+    }
+    compiled.verify();
+    catalog = opts.stub_catalog;
+    if catalog is None or not file_exists(catalog) or os.path.getsize(catalog) == 0 {
+        raise PayloadDie(
+            "mkpayload: --stub-catalog requires a prebuilt catalog; run zig build stub-catalog"
+        );
+    }
+    copy_tree(image_site, site, skip_none);
+    copy_file(catalog, os.path.join(site, "jaclang", "_precompiled", "stubcat.bin"));
+    copy_file(
+        os.path.join(repo_root, "bootstrap", "pins.json"),
+        os.path.join(site, "jaclang", "dist", "payload", "pins.json")
+    );
+    copy_file(
+        os.path.join(repo_root, "bootstrap", "python", "sources.json"),
+        os.path.join(site, "jaclang", "dist", "payload", "python-sources.json")
+    );
+    awesome_src = os.path.join(repo_root, "examples", "jaclang_org");
+    if os.path.isdir(awesome_src) {
+        log("==> bundling the jaclang.org site as the --awesome template");
         copy_tree(
-            os.path.join(repo_root, "jaclang"),
-            os.path.join(site, "jaclang"),
-            skip_jaclang
-        );
-
-        copy_file(
-            os.path.join(repo_root, "bootstrap", "pins.json"),
-            os.path.join(site, "jaclang", "dist", "payload", "pins.json")
-        );
-        copy_file(
-            os.path.join(repo_root, "bootstrap", "python", "sources.json"),
-            os.path.join(site, "jaclang", "dist", "payload", "python-sources.json")
-        );
-
-        awesome_src = os.path.join(repo_root, "examples", "jaclang_org");
-        if os.path.isdir(awesome_src) {
-            log("==> bundling the jaclang.org site as the --awesome template");
-            copy_tree(
-                awesome_src, os.path.join(site, "awesome_template"), skip_site_template
-            );
-        } else {
-            log(f"==> no {awesome_src}; --awesome template not bundled");
-        }
-    } else {
-        log(
-            f"==> linked-source mode: NOT bundling jaclang (compiler served from {opts.link_source})"
+            awesome_src, os.path.join(site, "awesome_template"), skip_site_template
         );
     }
     copy_into(repo_root, "_jac_finder.py", site);
     copy_into(repo_root, "sitecustomize.py", site);
-    if opts.link_source is not None {
-        write_text(os.path.join(site, "jac_linked_source"), opts.link_source);
-    }
-
     write_dist_info(repo_root, site);
-
-    if opts.link_source is not None {
-        return;
-    }
-    so = opts.shim_so;
-    if so is None {
-        raise PayloadDie(
-            "mkpayload: no LLVM shim (--shim). Run `zig build fetch-llvm` once so the"
-            " build can compile + statically link the LLVMPY_* shim."
-        );
-    }
-    dst = site_shim_path(site);
-    make_dirs(os.path.dirname(dst));
-    log(f"==> bundling Zig-built LLVMPY_* shim ({so})");
-    copy_file(so, dst);
-    if not file_exists(dst) {
-        raise PayloadDie(
-            f"mkpayload: bundled {so} but no shim at {dst}; the JIR seal and the"
-            " shipped binary both locate it by that exact path."
-        );
-    }
-
-    import sys;
-    jc_name = (
-        "libjac_compiler.dylib" if sys.platform == "darwin" else "libjac_compiler.so"
-    );
-    jc_src = os.path.join(repo_root, "jaclang", "compiler", "jc_unit.jac");
-    jc_dst = os.path.join(site, "jaclang", "compiler", jc_name);
-    if not file_exists(jc_src) {
-        log("==> no compiler kernel unit in this tree; skipping kernel build");
-        _bundle_bun(site, opts);
-        return;
-    }
-    kernel = opts.compiler_kernel;
-    if kernel is None
-        or not file_exists(kernel)
-        or not file_exists(kernel + ".layout.json") {
-        raise PayloadDie(
-            "mkpayload: --compiler-kernel must name a prebuilt compiler library "
-            "with its .layout.json sidecar; run zig build compiler-kernel."
-        );
-    }
-    log(f"==> bundling compiler kernel ({kernel})");
-    copy_file(kernel, jc_dst);
-    copy_file(kernel + ".layout.json", jc_dst + ".layout.json");
-
     _bundle_bun(site, opts);
 }
 
@@ -228,129 +171,6 @@ impl write_dist_info(repo_root: str, site: str) {
     write_text(os.path.join(di, "entry_points.txt"), ENTRY_POINTS_TXT);
 }
 
-impl run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts) {
-    if opts.skip_precompile or opts.link_source is not None {
-        log("==> skipping JIR precompile; modules compile on first run");
-        return;
-    }
-    site_pre = os.path.join(site, "jaclang", "_precompiled");
-    pc = opts.precompiled_cache;
-    if pc is not None and os.path.isdir(pc) {
-        log(f"==> seeding JIR precompile from {pc}");
-        copy_tree(pc, site_pre, skip_none);
-    }
-    precompile(py, python_dir, site, opts.seal, opts.debug_src);
-    if pc is not None {
-        delete_tree(pc);
-        copy_tree(site_pre, pc, skip_none);
-    }
-}
-
-impl run_stubcat_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts) {
-    out_copy = opts.stubcat_out;
-    if opts.skip_stubcat or opts.skip_precompile or opts.link_source is not None {
-        log("==> skipping the stub catalog; the type checker builds it on first use");
-        if out_copy is not None {
-            write_bytes(out_copy, b"");
-        }
-        return;
-    }
-    site_pre = os.path.join(site, "jaclang", "_precompiled");
-    make_dirs(site_pre);
-    out = os.path.join(site_pre, "stubcat.bin");
-    if not run_stubcat(py, python_dir, site, out) {
-        die("mkpayload: stub catalog build failed (see log above).");
-    }
-    if out_copy is not None {
-        copy_file(out, out_copy);
-    }
-}
-
-impl run_stubcat(py: str, python_dir: str, site: str, out: str) -> bool {
-    log("==> building the stub catalog (pre-resolved typeshed types)");
-    boot = os.path.join(site, "stubcat_boot.py");
-    write_text(boot, STUBCAT_BOOT_SRC);
-    env = precompile_env(python_dir, site);
-    env["JAC_STUBCAT_BUILDING"] = "1";
-    ok = run_child([py, "-S", boot, out], env, True);
-    delete_file(boot);
-    if not ok or not file_exists(out) {
-        return False;
-    }
-    log(f"   stub catalog: {os.path.getsize(out)} bytes");
-    return True;
-}
-
-impl precompile_env(python_dir: str, site: str) -> dict[str, str] {
-    env = clone_env();
-    env["PYTHONHOME"] = os.path.join(python_dir, "install");
-    env["PYTHONPATH"] = site;
-    env["PYTHONUTF8"] = "1";
-    env["PYTHONDONTWRITEBYTECODE"] = "1";
-    scratch_home = site + ".home";
-    make_dirs(scratch_home);
-    env["HOME"] = scratch_home;
-    env["PATH"] = "/usr/bin:/bin";
-    env["JAC_NO_DEV_SOURCE"] = "1";
-    env["JAC_STUBCAT_BUILDING"] = "1";
-    return env;
-}
-
-impl precompile(py: str, python_dir: str, site: str, seal: bool, debug_src: bool) {
-    pc = os.path.join(site, "jaclang", "dist", "precompile_bytecode.jac");
-    if not file_exists(pc) {
-        return;
-    }
-    if seal {
-        log("==> precompiling + SEALING jaclang (JIR-authoritative image, #7135)");
-    } else {
-        log("==> precompiling jaclang -> _precompiled JIR (fast first run)");
-    }
-
-    boot = os.path.join(site, "precompile_boot.py");
-    write_text(boot, PRECOMPILE_BOOT_SRC);
-    argv = [py, "-S", boot, site];
-    if seal {
-        argv.append("--seal-compile");
-    }
-    if seal and debug_src {
-        argv.append("--debug-src");
-    }
-
-    env = precompile_env(python_dir, site);
-    run_child(argv, env, True);
-
-    pre_dir = os.path.join(site, "jaclang", "_precompiled");
-    result = os.path.join(pre_dir, "PRECOMPILE_RESULT.json");
-    if not file_exists(result) {
-        die(
-            f"mkpayload: precompiler did not run to completion (no {result}); it likely crashed. Fail rather than ship a slow cold-start binary."
-        );
-    }
-    delete_file(result);
-    log("   _precompiled: compile pass ran to completion");
-
-    if not seal {
-        return;
-    }
-    fin = [py, "-S", boot, site, "--seal-finalize"];
-    if debug_src {
-        fin.append("--debug-src");
-    }
-    log("==> sealing (finalize): completeness check + manifest + freeze bootstrap");
-    if not run_child(fin, env, True) {
-        die("mkpayload: seal-finalize failed (see log above).");
-    }
-    if not file_exists(os.path.join(pre_dir, "MANIFEST.json")) {
-        die(
-            "mkpayload: seal produced no MANIFEST.json; the seal failed (see log above)."
-        );
-    }
-    log(
-        "   sealed: MANIFEST.json present; payload boots from JIR (sources ship for tracebacks, never compiled)."
-    );
-}
-
 impl stage_python_bin(python_dir: str, stage: str) {
     py = resolve_python(python_dir);
     bare = os.path.basename(py);
@@ -382,7 +202,6 @@ impl stage_tree(
     stage_stdlib(python_lib, lib_dst);
 
     copy_tree(site, os.path.join(stage, "site"), skip_stage_site);
-    strip_best_effort(site_shim_path(os.path.join(stage, "site")));
     import sys as _sys;
     strip_best_effort(
         os.path.join(

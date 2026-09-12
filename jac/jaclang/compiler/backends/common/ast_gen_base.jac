@@ -1,8 +1,8 @@
-import from typing { TypeVar }
+import from typing { TypeVar as RuntimeTypeVar }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.passes.uni_pass { UniPass }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-glob ChildPassT = TypeVar('ChildPassT', bound='BaseAstGenPass[Any]');
+glob ChildPassT = RuntimeTypeVar('ChildPassT', bound='BaseAstGenPass[Any]');
 
 walker BaseAstGenPass[AstNodeT](UniPass) {
     def _merge_module_bodies(nd: uni.Module) -> list;

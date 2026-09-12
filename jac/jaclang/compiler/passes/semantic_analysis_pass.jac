@@ -1,4 +1,4 @@
-import from collections.abc { Sequence }
+import collections.abc as runtime_abc;
 import from jaclang.compiler.frontend.unitree {
     Ability,
     ArchHas,
