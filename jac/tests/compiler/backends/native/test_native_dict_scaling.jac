@@ -16,6 +16,9 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
+import ctypes;
+import time;
+import from tests.support { compile_native, get_func }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      PROG = "dict_hash_scaling.jac";
@@ -40,4 +43,27 @@ test "native dict inserts stay O(1) when N doubles (hash-table scaling guard)" {
         proc.stderr or proc.stdout or '(empty)'
     )[-500:]}";
     assert proc.stdout.strip() == "OK dict_hash_scaling" , f"unexpected output: {proc.stdout.strip()!r}";
+}
+
+test "native dict deletion scales linearly in both insertion orders" {
+    (eng, _) = compile_native("dict_delete_scaling.jac");
+    erase = get_func(eng, "erase_keys", ctypes.c_int64, ctypes.c_int64, ctypes.c_bool);
+    for reverse in [False, True] {
+        assert erase(1000, reverse) == 499500;
+        timings: list[float] = [];
+        for n in [32000, 128000] {
+            samples: list[float] = [];
+            for trial in range(3) {
+                started = time.process_time();
+                result = erase(n, reverse);
+                samples.append(time.process_time() - started);
+                assert result == n * (n - 1) // 2;
+            }
+            timings.append(sorted(samples)[1]);
+        }
+        assert timings[1] < timings[0] * 8.0 + 0.02 , (
+            f"native dict deletion is quadratic (reverse={reverse}): "
+            f"32k={timings[0]:.3f}s, 128k={timings[1]:.3f}s"
+        );
+    }
 }
