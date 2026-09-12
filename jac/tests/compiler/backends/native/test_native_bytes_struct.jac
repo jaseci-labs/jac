@@ -525,3 +525,8 @@ test "string containment preserves embedded NUL boundaries" {
     (eng, _) = compile_native("bytes_ops.jac");
     assert get_func(eng, "string_contains_nul", ctypes.c_int64)() == 1;
 }
+
+test "reused object locals preserve narrowed string operations" {
+    (eng, _) = compile_native("rebound_string.jac");
+    assert get_func(eng, "rebound_string", ctypes.c_int64)() == 0;
+}

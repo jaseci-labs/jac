@@ -526,7 +526,16 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     }
     if var_name in self.local_vars {
         alloca = self.local_vars[var_name];
-        return self.builder.load(alloca, name=var_name);
+        value = self.builder.load(alloca, name=var_name);
+
+        if self._type_key_of(nd) == "str"
+            and isinstance(value.type, ir.PointerType)
+            and value.type != ir.IntType(8).as_pointer() {
+            return self.builder.bitcast(
+                value, ir.IntType(8).as_pointer(), name=f"{var_name}.str"
+            );
+        }
+        return value;
     }
     if var_name in self.func_symtab {
         return self.func_symtab[var_name];
