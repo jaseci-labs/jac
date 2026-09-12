@@ -5,6 +5,20 @@
 # internals must not use runtime py_error as control flow.
 
 import from jaclang.runtime.python.objects { PyObj, PyInt, PyError, py_error }
+import from jaclang.compiler.frontend.python.tokenizer { tok_state }
+
+def report_token_warnings(scanner: tok_state) {
+    pending = scanner.warnings;
+    scanner.warnings = [];
+    for warning in pending {
+        syntax_warning(
+            warning.message,
+            warning.filename,
+            warning.loc.lineno,
+            warning.loc.col_offset
+        );
+    }
+}
 
 def syntax_warning(message: str, filename: str, lineno: int, column: int = 0) {
     import warnings;

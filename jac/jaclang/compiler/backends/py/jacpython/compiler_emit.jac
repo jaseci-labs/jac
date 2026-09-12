@@ -1,11 +1,9 @@
-import from jaclang.compiler.backends.py.jacpython.compiler_dispatch { stmt_handlers }
 # Expression-side lowering: visit_expr, expression/comprehension/lambda
 # visitors, call/slice/await emission primitives, and the shared name/
 # const/cell plumbing used by both expression and statement lowering.
 
-# Split from compiler_codegen.jac (band-11 modularization): statement
-# dispatch stays in compiler_codegen.jac and imports this module; this
-# module only imports lower layers (no cycles).
+# Statement dispatch lives in compiler_codegen.jac. Imports of statement and
+# exception helpers stay at their call sites to allow module initialization.
 
 import from jaclang.runtime.python.objects {
     PyFloat,
@@ -502,7 +500,15 @@ def cellvars_from_sym(block: sym_block) -> list[str] {
 
 def freevars_from_sym(block: sym_block) -> list[str] {
     names = sym_block_tuple_names(block.symbols, SCOPE_FREE);
-    return sorted(set(names + block.class_free_names));
+    seen = set(names);
+    for name in block.class_free_names {
+        if name not in seen {
+            seen.add(name);
+            names.append(name);
+        }
+    }
+    names.sort();
+    return names;
 }
 
 def varname_index(u: unverified_cfg, name: str) -> int {
@@ -903,6 +909,7 @@ def emit_await_send_except_regions(
 def emit_control_unwind(
     g: cfg_builder, wloc: cloc, preserve_value: bool, stop_depth: int = 0
 ) -> control_unwind {
+    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     frames = g.cleanup_stack[:];
     if len(frames) <= stop_depth {
         return control_unwind();
@@ -937,7 +944,7 @@ def emit_control_unwind(
                     );
                     g.handler_nest_depth += 1;
                 }
-                cont = stmt_handlers["visit_cleanup_stmts"](g, fb.body, fb.ann_ctx);
+                cont = dispatch_exc.visit_cleanup_stmts(g, fb.body, fb.ann_ctx);
                 if preserve_value {
                     g.handler_nest_depth -= 1;
                 }
@@ -959,9 +966,7 @@ def emit_control_unwind(
                     g.emit_op(OP_POP_EXCEPT, 0, wloc);
                     g.handler_nest_depth -= 1;
                     if fb.exception_name is not None {
-                        stmt_handlers["clear_exception_name"](
-                            g, fb.exception_name, wloc
-                        );
+                        dispatch_exc.clear_exception_name(g, fb.exception_name, wloc);
                     }
                 }
             } elif fb.kind == "with" {
@@ -1788,10 +1793,7 @@ def visit_expr(
     if isinstance(e, Name) {
         n = e as Name;
         if n.id == "__debug__" {
-            import from jaclang.compiler.backends.py.jacpython.compiler_context {
-                current_optimization_level
-            }
-            value = PyBool(t="bool", val=current_optimization_level() == 0);
+            value = PyBool(t="bool", val=g.u.context.optimize == 0);
             g.emit_op(OP_LOAD_CONST, g.u.add_const(value), expr_loc(n));
             return None;
         }
@@ -3536,7 +3538,10 @@ def visit_inline_comprehension(
     parent_names = g.scope_names;
     parent_classdict_names = g.u.classdict_names;
     g.sym_top = scope;
-    g.scope_names = parent_names | scope.inline_aliases;
+    aliases: dict[str, str] = {};
+    aliases.update(parent_names);
+    aliases.update(scope.inline_aliases);
+    g.scope_names = aliases;
     g.u.classdict_names = False;
     try {
         slots: list[int] = [];
@@ -3758,6 +3763,7 @@ def compile_lambda_cfg(
     in_class: bool = False,
     qualname: str | None = None
 ) -> unverified_cfg {
+    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     (argcount, posonly, kwonly) = function_argcounts(lam.args);
     u = unverified_cfg(
         filename=filename,
@@ -3790,7 +3796,7 @@ def compile_lambda_cfg(
     # unit, interning the const after all body consts (kept at index 0 by
     # remove_unused_consts, dropped otherwise).
     u.add_const(py_none());
-    stmt_handlers["deferred_comp_handlers"](g);
+    dispatch_exc.emit_deferred_comp_handlers(g);
     if sym_fn.generator {
         emit_generator_except_handler(g, protect_start);
     }
@@ -3863,6 +3869,7 @@ def visit_genexp(g: cfg_builder, ge: GeneratorExp) -> None {
 def compile_genexp_cfg(
     ge: GeneratorExp, filename: str, sym_fn: sym_block, private: str | None = None
 ) -> unverified_cfg {
+    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     u = unverified_cfg(
         filename=filename, name="<genexpr>", qualname="<genexpr>", firstlineno=ge.lineno
     );
@@ -3882,7 +3889,7 @@ def compile_genexp_cfg(
     elt_loc = expr_loc(ge.elt);
     g.emit_op(OP_LOAD_CONST, u.add_const(py_none()), elt_loc);
     g.emit_op(OP_RETURN_VALUE, 0, elt_loc);
-    stmt_handlers["deferred_comp_handlers"](g);
+    dispatch_exc.emit_deferred_comp_handlers(g);
     emit_generator_except_handler(g, protect_start);
     u.flush_late_consts();
     return u;

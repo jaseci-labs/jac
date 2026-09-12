@@ -3499,7 +3499,8 @@ def rule__tmp_94(p: peg_parser) -> object | None {
     expression = rule_expression(p);
     if expression is not None {
         rhs = rule__tmp_19(p);
-        res = [expression, rhs];
+        items: list[object] = [expression, rhs];
+        res = items;
         return res;
     }
     peg_reset(p, mark);

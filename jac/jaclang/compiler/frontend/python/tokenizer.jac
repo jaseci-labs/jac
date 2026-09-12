@@ -44,6 +44,16 @@ import from jaclang.compiler.frontend.python.token_model {
 glob TABSIZE: int = 8,
      MAXINDENT: int = 100;
 
+# Streaming input is supplied by the API boundary. The scanner itself calls a
+# typed virtual method, rather than retaining a Python callable.
+obj token_input {}
+
+obj token_source(token_input) {
+    def refill -> bool {
+        return False;
+    }
+}
+
 # ---------------- tokenizer state ----------------
 obj string_field {
     has paren: int,
@@ -73,11 +83,12 @@ obj tok_state {
         single_input: bool = False,
         type_comments: bool = False,
         extra_tokens: bool = False,
-        refill: any = None,
+        input: token_source | None = None,
         blankline: bool = False,
         done: bool = False,
         eof_reached: bool = False,
         error: tok_diag | None = None,
+        warnings: list[tok_diag] = [],
         at_bol: bool = True,
         indent: int = 0,
         indstack: list[int] = [0],
@@ -365,7 +376,7 @@ def _has_source(st: tok_state) -> bool {
     if st.pos < len(st.source) {
         return True;
     }
-    return st.refill is not None and bool(st.refill());
+    return st.input is not None and st.input.refill();
 }
 
 def _peek(st: tok_state) -> str {
@@ -585,12 +596,14 @@ def _read_number(st: tok_state) -> tok_token | tok_diag {
             end = st.pos + len(keyword);
             if st.source[st.pos:end] == keyword
                 and (end == len(st.source) or not _is_id_continue(st.source[end])) {
-                import from jaclang.compiler.frontend.python.compiler_diagnostics {
-                    syntax_warning
-                }
                 keyword_boundary = True;
-                syntax_warning(
-                    f"invalid {kind} literal", st.filename, st.lineno, start_col
+                st.warnings.append(
+                    mk_diag(
+                        "SyntaxWarning",
+                        f"invalid {kind} literal",
+                        tok_loc_span(st.lineno, st.lineno, start_col, st.col_offset),
+                        st.filename
+                    )
                 );
                 break;
             }

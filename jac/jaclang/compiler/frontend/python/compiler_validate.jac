@@ -1,3 +1,5 @@
+import from jaclang.compiler.frontend.python.ast_walk { ast_children }
+
 # AST validation for the P4 back track (INTEGRATION_PLAN Phase 2).
 #
 # Owns language legality independent of scope resolution: placement of return,
@@ -62,8 +64,16 @@ import from jaclang.compiler.frontend.python.ast_nodes {
     SetComp,
     DictComp,
     GeneratorExp,
+    MatMult,
+    Match,
+    ParamSpec,
+    TemplateStr,
+    TypeVar,
+    TypeVarTuple,
+    arguments,
+    comprehension,
+    type_param,
 }
-import jaclang.compiler.frontend.python.ast_nodes as nodes;
 
 # Feature versions constrain source grammar; AST inputs are already parsed.
 def validate_feature_version(value: any, version: int) {
@@ -76,73 +86,76 @@ def validate_feature_version(value: any, version: int) {
         }
         return;
     }
-    if not isinstance(value, nodes.ast_node) {
+    if not isinstance(value, ast_node) {
         return;
     }
     minimum = 0;
     feature = "";
-    if isinstance(value, nodes.AsyncFunctionDef) {
+    if isinstance(value, AsyncFunctionDef) {
         minimum = 5;
         feature = "Async functions are";
-    } elif isinstance(value, nodes.AsyncFor) {
+    } elif isinstance(value, AsyncFor) {
         minimum = 5;
         feature = "Async for loops are";
-    } elif isinstance(value, nodes.AsyncWith) {
+    } elif isinstance(value, AsyncWith) {
         minimum = 5;
         feature = "Async with statements are";
-    } elif isinstance(value, nodes.Await) {
+    } elif isinstance(value, Await) {
         minimum = 5;
         feature = "Await expressions are";
-    } elif isinstance(value, (nodes.BinOp, nodes.AugAssign))
-        and isinstance(value.op, nodes.MatMult) {
+    } elif isinstance(value, (BinOp, AugAssign)) and isinstance(value.op, MatMult) {
         minimum = 5;
         feature = "The '@' operator is";
-    } elif isinstance(value, nodes.AnnAssign) {
+    } elif isinstance(value, AnnAssign) {
         minimum = 6;
         feature = "Variable annotation syntax is";
-    } elif isinstance(value, nodes.comprehension) and value.is_async {
+    } elif isinstance(value, comprehension) and value.is_async {
         minimum = 6;
         feature = "Async comprehensions are";
-    } elif isinstance(value, nodes.arguments) and value.posonlyargs {
+    } elif isinstance(value, arguments) and value.posonlyargs {
         minimum = 8;
         feature = "Positional-only parameters are";
-    } elif isinstance(value, nodes.NamedExpr) {
+    } elif isinstance(value, NamedExpr) {
         minimum = 8;
         feature = "Assignment expressions are";
-    } elif isinstance(value, nodes.Match) {
+    } elif isinstance(value, Match) {
         minimum = 10;
         feature = "Pattern matching is";
-    } elif isinstance(value, nodes.TryStar) {
+    } elif isinstance(value, TryStar) {
         minimum = 11;
         feature = "Exception groups are";
-    } elif isinstance(value, nodes.TypeAlias) {
+    } elif isinstance(value, TypeAlias) {
         minimum = 12;
         feature = "Type statement is";
-    } elif isinstance(value, nodes.TemplateStr) {
+    } elif isinstance(value, TemplateStr) {
         minimum = 14;
         feature = "t-strings are";
     }
-    if isinstance(value, (nodes.FunctionDef, nodes.AsyncFunctionDef, nodes.ClassDef))
+    if isinstance(value, (FunctionDef, AsyncFunctionDef, ClassDef))
         and value.type_params
         and minimum < 12 {
         minimum = 12;
         feature = "Type parameter lists are";
     }
-    if isinstance(value, (nodes.TypeVar, nodes.TypeVarTuple, nodes.ParamSpec))
+    if isinstance(value, (TypeVar, TypeVarTuple, ParamSpec))
         and value.default_value is not None {
         minimum = 13;
         feature = "Type parameter defaults are";
     }
     if version < minimum {
-        line = getattr(value, "lineno", 1);
-        column = getattr(value, "col_offset", 0);
+        line = 1;
+        column = 0;
+        if isinstance(value, (stmt, expr, type_param)) {
+            line = value.lineno;
+            column = value.col_offset;
+        }
         raise SyntaxError(
             f"{feature} only supported in Python 3.{minimum} and greater",
             ("<unknown>", line, column + 1, None)
         );
     }
-    for child in vars(value).values() {
-        validate_feature_version(child, version);
+    for child in ast_children(value) {
+        validate_feature_version(child.value, version);
     }
 }
 
@@ -211,7 +224,8 @@ def check_ast_warnings(tree: ast_node, filename: str) {
             );
         }
         children = [];
-        for (key, value) in vars(item_node).items() {
+        for child in ast_children(item_node) {
+            key = child.field;
             child_return = return_in_finally;
             child_loop_exit = loop_exit_in_finally;
             if isinstance(item_node, (FunctionDef, AsyncFunctionDef, ClassDef)) {
@@ -223,15 +237,7 @@ def check_ast_warnings(tree: ast_node, filename: str) {
             } elif isinstance(item_node, (For, AsyncFor, While)) and key == "body" {
                 child_loop_exit = False;
             }
-            if isinstance(value, ast_node) {
-                children.append((value, child_return, child_loop_exit));
-            } elif isinstance(value, list) {
-                children.extend(
-                    (item, child_return, child_loop_exit)
-                    for item in value
-                    if isinstance(item, ast_node)
-                );
-            }
+            children.append((child.value, child_return, child_loop_exit));
         }
         pending.extend(reversed(children));
     }
@@ -840,7 +846,8 @@ def validate_except_star_exits(body: list[stmt]) -> validation_result {
             );
         }
         children: list[tuple[ast_node, bool, bool]] = [];
-        for (key, value) in vars(item).items() {
+        for child in ast_children(item) {
+            key = child.field;
             no_return = return_forbidden;
             no_loop_exit = loop_exit_forbidden;
             if isinstance(item, (FunctionDef, AsyncFunctionDef, ClassDef)) {
@@ -852,15 +859,7 @@ def validate_except_star_exits(body: list[stmt]) -> validation_result {
             } elif isinstance(item, (For, AsyncFor, While)) and key == "body" {
                 no_loop_exit = False;
             }
-            if isinstance(value, ast_node) {
-                children.append((value, no_return, no_loop_exit));
-            } elif isinstance(value, list) {
-                children.extend(
-                    (child, no_return, no_loop_exit)
-                    for child in value
-                    if isinstance(child, ast_node)
-                );
-            }
+            children.append((child.value, no_return, no_loop_exit));
         }
         pending.extend(reversed(children));
     }
@@ -942,7 +941,8 @@ def validate_suspensions(
             continue;
         }
         children: list[tuple[ast_node, bool, bool, bool, bool]] = [];
-        for (field, value) in vars(item).items() {
+        for child in ast_children(item) {
+            field = child.field;
             fn = in_function;
             asynchronous = in_async;
             comp = in_comp;
@@ -958,15 +958,7 @@ def validate_suspensions(
                 comp = False;
                 annotation = False;
             }
-            if isinstance(value, ast_node) {
-                children.append((value, fn, asynchronous, comp, annotation));
-            } elif isinstance(value, list) {
-                children.extend(
-                    (child, fn, asynchronous, comp, annotation)
-                    for child in value
-                    if isinstance(child, ast_node)
-                );
-            }
+            children.append((child.value, fn, asynchronous, comp, annotation));
         }
         pending.extend(reversed(children));
     }
@@ -1068,19 +1060,7 @@ def future_features(
                 )
             );
         }
-        children: list[ast_node] = [];
-        for value in vars(item).values() {
-            if isinstance(value, ast_node) {
-                children.append(value);
-            } elif isinstance(value, list) {
-                children.extend(
-                    child
-                    for child in value
-                    if isinstance(child, ast_node)
-                );
-            }
-        }
-        pending.extend(reversed(children));
+        pending.extend(child.value for child in reversed(ast_children(item)));
     }
     return (flags, validation_ok());
 }

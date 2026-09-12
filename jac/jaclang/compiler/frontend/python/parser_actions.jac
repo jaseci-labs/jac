@@ -136,6 +136,11 @@ obj name_default_pair {
         `default: expr | None;
 }
 
+obj slash_default_group {
+    has plain: object,
+        defaults: object;
+}
+
 obj star_etc_node {
     has vararg: arg | None = None,
         kwonlyargs: list[arg] = [],
@@ -1591,7 +1596,12 @@ def pa_map_names_to_ids(names: list[expr]) -> list[str] {
 }
 
 def pa_seq_count_dots(seq: object) -> int {
-    return sum(len(token.spelling) for token in (seq as list[peg_token]));
+    tokens = seq as list[peg_token];
+    count = 0;
+    for index in range(len(tokens)) {
+        count += len(tokens[index].spelling);
+    }
+    return count;
 }
 
 def pa_body_end_span(body: list[stmt]) -> tuple[int, int] {
@@ -1669,10 +1679,10 @@ def pa_make_arguments(
     posonlyargs = pa_args_from_list(slash_no_default);
     defaults: list[expr] = [];
     if slash_with_default is not None {
-        split = slash_with_default as tuple;
-        posonlyargs = pa_args_from_list(split[0]);
+        split = slash_with_default as slash_default_group;
+        posonlyargs = pa_args_from_list(split.plain);
         (posonlyargs, defaults) = pa_append_args_from_pairs(
-            posonlyargs, defaults, split[1]
+            posonlyargs, defaults, split.defaults
         );
     }
     args = pa_args_from_list(plain_names);
@@ -2203,10 +2213,26 @@ def interpolation_text(
         end_col = format.col_offset;
     }
     if not p.source_lines {
-        p.source_lines = p.tok.source.encode("utf-8").splitlines(keepends=True);
+        data = p.tok.source.encode("utf-8");
+        start_byte = 0;
+        end_byte = 0;
+        while end_byte < len(data) {
+            byte = data[end_byte];
+            end_byte += 1;
+            if byte == 13 and end_byte < len(data) and data[end_byte] == 10 {
+                end_byte += 1;
+            }
+            if byte == 10 or byte == 13 {
+                p.source_lines.append(data[start_byte:end_byte]);
+                start_byte = end_byte;
+            }
+        }
+        if start_byte < len(data) {
+            p.source_lines.append(data[start_byte:]);
+        }
     }
     lines = p.source_lines;
-    fragments: list[bytes] = [];
+    text = b"";
     for line in range(lineno, end_line + 1) {
         start = col_offset + 1 if line == lineno else 0;
         end = end_col if line == end_line else len(lines[line - 1]);
@@ -2214,12 +2240,12 @@ def interpolation_text(
             if comment_end <= start or comment_start >= end {
                 continue;
             }
-            fragments.append(lines[line - 1][start:max(start, comment_start)]);
+            text += lines[line - 1][start:max(start, comment_start)];
             start = min(end, comment_end);
         }
-        fragments.append(lines[line - 1][start:end]);
+        text += lines[line - 1][start:end];
     }
-    return b"".join(fragments).decode("utf-8");
+    return text.decode("utf-8");
 }
 
 def _interpolation_conversion(
@@ -2412,7 +2438,7 @@ def pa_slash_with_default(
     end_lineno: int,
     end_col_offset: int
 ) -> object {
-    return (a, b);
+    return slash_default_group(plain=a, defaults=b);
 }
 
 def pa_joined_str(
@@ -2559,6 +2585,7 @@ def pa_interpolation(
     debug = pa_formatted_value(
         p, a, b, c, d, e, lineno, col_offset, end_lineno, end_col_offset
     ) as JoinedStr;
-    debug.values[-1] = interpolation;
+    values: list[expr] = debug.values;
+    values[-1] = interpolation;
     return debug;
 }

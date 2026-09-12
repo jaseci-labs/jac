@@ -1,3 +1,5 @@
+import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context }
+
 # Compiler IR for the P4 back track (PLAN.md P0.10).
 #
 # Source-location, instruction, basic-block, and compile-unit objects shared by
@@ -158,17 +160,6 @@ obj loop_frame {
         cleanup_depth: int = 0,
         # Per-break emission sites recorded by visit_stmt (Break).
         break_sites: list[break_site] = [];
-}
-
-# Deferred break-edge finish job (see compiler_loops.jac). Lives here so the
-# per-compilation context holder can type its queue without importing loops.
-obj pending_break_finish {
-    has frame: loop_frame,
-        join: basicblock,
-        allow_nop: bool,
-        test_blk: basicblock | None = None,
-        branch_idx: int = -1,
-        body_hdr: basicblock | None = None;
 }
 
 # Enclosing with / async-with frame tracked for return unwinding (mirrors
@@ -391,6 +382,9 @@ def new_cfg_builder(
     sym_top: sym_block | None = None,
     private: str | None = None
 ) -> cfg_builder {
+    if sym_top is not None {
+        u.context = sym_top.context;
+    }
     return cfg_builder(u=u, cur=start_blk, sym_top=sym_top, private=private);
 }
 
@@ -456,6 +450,7 @@ obj unverified_cfg {
         name: str,
         qualname: str,
         firstlineno: int,
+        context: compile_context = compile_context(),
         argcount: int = 0,
         posonlyargcount: int = 0,
         # Total bound-at-entry parameter slots (posonly + pos-or-kw + kwonly +

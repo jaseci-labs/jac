@@ -592,3 +592,92 @@ def validate_ast_value(value_node: any, context: str = "Load", star_ok: bool = F
         }
     }
 }
+
+
+# Python object interoperability stays at this boundary; bytecode generation
+# consumes the typed Jac AST independently of these adapters.
+import from jaclang.compiler.frontend.python.ast_nodes {
+    ast_node,
+    expr,
+    arg,
+    AnnAssign,
+    FunctionDef,
+    AsyncFunctionDef,
+    Constant
+}
+import from _ast_unparse { Unparser, _Precedence }
+
+# The stdlib unparser inserts optional parentheses for readability. Annotation
+# strings use the compiler's canonical spelling for Boolean operators and a
+# sole generator argument instead.
+obj annotation_unparser(Unparser) {
+    def postinit {
+        Unparser.__init__(self);
+    }
+
+    def visit_BoolOp(`node: any) {
+        operator = self.boolops[`node.op.__class__.__name__];
+        precedence = self.boolop_precedence[operator] as int;
+        parens = (self.get_precedence(`node) as int) > precedence;
+        if parens {
+            self.write("(");
+        }
+        for (index, value) in enumerate(`node.values) {
+            if index {
+                self.write(" " + operator + " ");
+            }
+            self.set_precedence(precedence + 1, value);
+            self.traverse(value);
+        }
+        if parens {
+            self.write(")");
+        }
+    }
+
+    def visit_Call(`node: any) {
+        import ast;
+        if len(`node.args) == 1
+            and not `node.keywords
+            and isinstance(`node.args[0], ast.GeneratorExp) {
+            self.set_precedence(_Precedence.ATOM, `node.func);
+            self.traverse(`node.func);
+            self.traverse(`node.args[0]);
+        } else {
+            Unparser.visit_Call(self, `node);
+        }
+    }
+}
+
+# PEP 563 spelling currently uses the retained stdlib unparser at the Python
+# boundary. The native compiler sees only the resulting Constant nodes.
+def annotation_constant(value: expr) -> Constant {
+    import from jaclang.compiler.backends.py.jacpython.code_object { constant_value }
+    rendered = annotation_unparser().visit(to_python_ast(value, constant_value)) as str;
+    return Constant(
+        value=PyStr(t="str", val=rendered),
+        kind=None,
+        lineno=value.lineno,
+        col_offset=value.col_offset,
+        end_lineno=value.end_lineno,
+        end_col_offset=value.end_col_offset
+    );
+}
+
+def stringify_future_annotations(tree: ast_node, filename: str) {
+    import from jaclang.compiler.frontend.python.ast_walk { ast_children }
+    pending: list[ast_node] = [tree];
+    while pending {
+        item = pending.pop();
+        if isinstance(item, AnnAssign) {
+            item.annotation = annotation_constant(item.annotation);
+        } elif isinstance(item, arg) and item.annotation is not None {
+            item.annotation = annotation_constant(item.annotation);
+        } elif isinstance(item, (FunctionDef, AsyncFunctionDef))
+            and item.returns is not None {
+            item.returns = annotation_constant(item.returns);
+        }
+        for child in ast_children(item) {
+            pending.append(child.value);
+        }
+    }
+}

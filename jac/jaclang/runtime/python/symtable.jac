@@ -16,10 +16,7 @@ import from jaclang.compiler.frontend.python.compiler_symtable {
     sym_block
 }
 import from jaclang.compiler.frontend.python.compiler_validate { future_features }
-import from jaclang.compiler.backends.py.jacpython.compiler_context {
-    enter_compile_context,
-    exit_compile_context
-}
+import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context }
 import from jaclang.compiler.backends.py.jacpython.code_object { raise_compiler_error }
 
 glob USE: int = 16,
@@ -263,12 +260,7 @@ def symtable(source: any, filename: any, startstr: any, /) -> SymtableEntry {
     if validation.diag is not None {
         raise_compiler_error(compiler_diag_to_pyobj(validation.diag), src, filename);
     }
-    enter_compile_context(0, flags);
-    try {
-        result = build_module_symtable(body);
-    } finally {
-        exit_compile_context();
-    }
+    result = build_module_symtable(body, compile_context(flags=flags));
     if result.diag is not None {
         raise_compiler_error(compiler_diag_to_pyobj(result.diag), src, filename);
     }

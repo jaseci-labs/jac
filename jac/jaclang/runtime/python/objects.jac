@@ -4265,12 +4265,7 @@ def _trunc(s: str, prec: int) -> str {
     return out;
 }
 
-def str_mod_format(
-    fmt: str, args: PyObj, str_fn: any = None, repr_fn: any = None
-) -> PyObj {
-    # str_fn/repr_fn: optional native slot dispatchers (ceval's py_str/py_repr)
-    # so %s/%r consult user __str__/__repr__; None keeps the lifted scalar
-    # stringifier (na-clean leaf callers).
+def str_mod_format(fmt: str, args: PyObj) -> PyObj {
     argv: list[PyObj] = [];
     mapping = False;
     if isinstance(args, PyTuple) {
@@ -4413,27 +4408,9 @@ def str_mod_format(
                 return py_error("TypeError", "%c requires int or char");
             }
         } elif conv == "s" {
-            if str_fn is not None {
-                # Callback path (native __str__ slot dispatch from ceval); a
-                # raised exception propagates as an error result.
-                sv = str_fn(arg) as PyObj;
-                if is_error(sv) {
-                    return sv;
-                }
-                piece = _trunc(expect_str(sv), prec);
-            } else {
-                piece = _trunc(_pyobj_str(arg), prec);
-            }
+            piece = _trunc(_pyobj_str(arg), prec);
         } elif conv == "r" {
-            if repr_fn is not None {
-                rv = repr_fn(arg) as PyObj;
-                if is_error(rv) {
-                    return rv;
-                }
-                piece = _trunc(expect_str(rv), prec);
-            } else {
-                piece = _trunc(_pyobj_repr(arg), prec);
-            }
+            piece = _trunc(_pyobj_repr(arg), prec);
         } else {
             return py_error("ValueError", "unsupported format character");
         }

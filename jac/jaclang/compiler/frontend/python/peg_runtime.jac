@@ -187,10 +187,15 @@ def peg_fill_token(p: peg_parser) -> bool {
     if p.mark < len(p.tokens) {
         return True;
     }
+    import from jaclang.compiler.frontend.python.compiler_diagnostics {
+        report_token_warnings
+    }
     raw = tokenizer_next(p.tok);
+    report_token_warnings(p.tok);
     while isinstance(raw, tok_token) and raw.tok_type == TYPE_IGNORE {
         p.type_ignores.append((raw.lineno, raw.spelling));
         raw = tokenizer_next(p.tok);
+        report_token_warnings(p.tok);
     }
     if isinstance(raw, tok_diag) {
         p.error = raw;

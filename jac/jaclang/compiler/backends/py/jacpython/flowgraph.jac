@@ -1815,7 +1815,11 @@ def normalize_except_regions(u: unverified_cfg) {
         boundaries.add(start);
         boundaries.add(end);
     }
-    ordered = sorted(boundaries);
+    ordered: list[int] = [];
+    for boundary in boundaries {
+        ordered.append(boundary);
+    }
+    ordered.sort();
     result: list[except_region] = [];
     for index in range(len(ordered) - 1) {
         start = ordered[index];
@@ -1905,6 +1909,7 @@ def verify_cfg(u: unverified_cfg) -> verified_cfg {
     # Constant remapping and LOAD_SMALL_INT change instruction widths. Resolve
     # jumps only after those passes, then repeat while EXTENDED_ARG growth moves
     # block boundaries. Exception tables must use this same final layout.
+    block_starts: list[int] = fr.block_starts;
     changed = True;
     while changed {
         fr = flatten_blocks(u);

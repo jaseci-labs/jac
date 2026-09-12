@@ -1,7 +1,14 @@
 """Python's streaming token iterator backed by the shared Jac scanner."""
 
 import from typing { Never }
-import from jaclang.compiler.frontend.python.tokenizer { tok_state, tokenizer_next }
+import from jaclang.compiler.frontend.python.compiler_diagnostics {
+    report_token_warnings
+}
+import from jaclang.compiler.frontend.python.tokenizer {
+    tok_state,
+    token_source,
+    tokenizer_next
+}
 import from jaclang.compiler.frontend.python.token_model {
     ENDMARKER,
     NEWLINE,
@@ -25,7 +32,7 @@ def _character_column(line: str, column: int) -> int {
     return len(line.encode("utf-8")[:column].decode("utf-8"));
 }
 
-obj _TokenizerIter {
+obj _TokenizerIter(token_source) {
     has reader: any,
         encoding: str | None,
         scanner: tok_state,
@@ -96,6 +103,7 @@ obj _TokenizerIter {
             raise StopIteration("EOF");
         }
         item = tokenizer_next(self.scanner);
+        report_token_warnings(self.scanner);
         if isinstance(item, tok_diag) {
             line = self.source_line(item.loc.lineno);
             column = _character_column(line, item.loc.col_offset);
@@ -207,6 +215,6 @@ def TokenizerIter(
         source="", filename="<string>", extra_tokens=bool(extra_tokens)
     );
     result = _TokenizerIter(reader=readline, encoding=encoding, scanner=scanner);
-    scanner.refill = result.refill;
+    scanner.input = result;
     return result;
 }
