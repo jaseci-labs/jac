@@ -1,4 +1,5 @@
 import hashlib;
+import from collections.abc { Callable }
 import from jaclang.compiler.frontend.unitree { Module }
 import from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import from jaclang.compiler.types.stubcat.writer { CatalogWriter }
@@ -47,14 +48,20 @@ def read_iface_hash(section: (bytes | None)) -> (str | None) {
 }
 
 def open_module_iface(
-    section: bytes, pkg_dir: str, resolver: any = None
+    section: bytes,
+    pkg_dir: str,
+    resolver: any = None,
+    path_mapper: Callable[[str], str] | None = None
 ) -> (StubCatalog | None) {
     if len(section) <= IFACE_HASH_LEN {
         return None;
     }
     try {
         return StubCatalog(
-            buf=section[IFACE_HASH_LEN:], pkg_dir=pkg_dir, resolver=resolver
+            buf=section[IFACE_HASH_LEN:],
+            pkg_dir=pkg_dir,
+            resolver=resolver,
+            path_mapper=path_mapper
         );
     } except ValueError {
         return None;

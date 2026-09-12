@@ -122,7 +122,7 @@ obj JacCompiler {
 
     static def _check_native_abi(layout: NativeModuleLayout, full_target: str) -> None;
     def get_bytecode(
-        full_target: str, target_program: JacProgram
+        full_target: str, target_program: JacProgram, emit_interface: bool = False
     ) -> (types.CodeType | None);
 
     def get_client_artifact(
@@ -130,7 +130,7 @@ obj JacCompiler {
     ) -> (ClientArtifact | None);
 
     def _get_bytecode(
-        full_target: str, target_program: JacProgram
+        full_target: str, target_program: JacProgram, emit_interface: bool = False
     ) -> (types.CodeType | None);
 
     def _get_client_artifact(
@@ -161,7 +161,10 @@ obj JacCompiler {
     ) -> None;
 
     def _restore_sections(
-        full_target: str, actual_program: JacProgram, secs: dict[int, bytes]
+        full_target: str,
+        actual_program: JacProgram,
+        secs: dict[int, bytes],
+        base_dir: str = ""
     ) -> None;
 
     def _get_precompiled_jir_bytecode(

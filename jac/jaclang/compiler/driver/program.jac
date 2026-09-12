@@ -49,6 +49,7 @@ class JacProgram {
     def release_compile_closure(
         self: JacProgram, collect: bool = True, retain_stubs: bool = True
     ) -> None;
+
     def release_native_dep_units(self: JacProgram) -> None;
     def release_check_caches(self: JacProgram) -> None;
     def hub_cache_stamp(self: JacProgram, resolved_path: str) -> None;

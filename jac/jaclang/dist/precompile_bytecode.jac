@@ -7,6 +7,8 @@ import shutil;
 import sys;
 import time;
 import zlib;
+import from contextlib { contextmanager }
+import from collections.abc { Iterator }
 
 import from pathlib { Path }
 import from jaclang.cli.console { console }
@@ -21,6 +23,11 @@ import from jaclang.compiler.driver.jir {
     SEC_BYTECODE,
     SEC_CTDEPS,
     SEC_DEBUG_SRC,
+    SEC_IFACE,
+    SEC_DEPS,
+    SEC_DIAG,
+    SEC_PLACEMENT,
+    SEC_PATH_ROOT,
     FORMAT_VERSION,
     compute_precompile_module_key,
     get_module_cache_path,
@@ -344,28 +351,33 @@ def _emit_unit_diagnostics(jac_path: str, programs: list) {
     }
 }
 
-glob _unit_program: list = [];
-
-def _ct_deps_extra(jac_path: str, pkg_root: str) -> dict[int, bytes] {
-    try {
-        cache_path = get_module_cache_path(jac_path);
-        if not cache_path.exists() {
-            return {};
-        }
-        raw = read_section_bytes(cache_path.read_bytes(), SEC_CTDEPS);
-        if not raw {
-            return {};
-        }
-        return {
-            int(SEC_CTDEPS): rebase_ct_deps_section(raw, os.path.normpath(pkg_root))
-        };
-    } except Exception {
-        return {};
-    }
-}
+glob _unit_program: list[JacProgram] = [];
 
 def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, bytes] {
-    extra: dict[int, bytes] = _ct_deps_extra(jac_path, pkg_root);
+    extra: dict[int, bytes] = {};
+    try {
+        cache_path = get_module_cache_path(jac_path);
+        if cache_path.exists() {
+            data = cache_path.read_bytes();
+            for section in (SEC_IFACE, SEC_DEPS, SEC_DIAG, SEC_PLACEMENT) {
+                raw = read_section_bytes(data, section);
+                if raw is not None {
+                    extra[section] = raw;
+                }
+            }
+            if extra {
+                # Preserve interface hashes across installation. Only path
+                # fields are relocated by readers; literals stay untouched.
+                extra[SEC_PATH_ROOT] = os.path.realpath(pkg_root).encode("utf-8");
+            }
+            raw = read_section_bytes(data, SEC_CTDEPS);
+            if raw is not None {
+                extra[SEC_CTDEPS] = rebase_ct_deps_section(
+                    raw, os.path.normpath(pkg_root)
+                );
+            }
+        }
+    } except OSError {}
     if embed_src {
         extra[int(SEC_DEBUG_SRC)] = zlib.compress(Path(jac_path).read_bytes(), 9);
     }
@@ -402,15 +414,13 @@ def precompile_context(
     return context_program(program, options);
 }
 
-def precompile_unit(
-    jac_path: str,
-    pkg_root: str,
-    embed_src: bool = False,
-    collect: bool = True,
-    app: str = ""
-) -> bytes | None {
+@contextmanager
+def precompile_unit_context(
+    jac_path: str, pkg_root: str, collect: bool = True, app: str = ""
+) -> Iterator[JacProgram] {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compilation_context { cache_scope }
+    import from jaclang.cli.workpool { maybe_malloc_trim }
     if not _unit_program {
         _unit_program.append(JacProgram());
     }
@@ -421,29 +431,47 @@ def precompile_unit(
     );
     selected = precompile_context(jac_path, pkg_root, program, source_app);
     identity = '' if compiler.selfhost.is_selfhost(selected) else selected.context_key;
+    compiler.unit_collect = collect;
     with cache_scope(identity, selected.options) {
-        return _precompile_unit(jac_path, pkg_root, selected, embed_src, collect);
+        try {
+            yield selected;
+        } finally {
+            owner = selected.context_root
+                if selected.context_root is not None
+                else selected;
+            owner.release_compile_closure(collect=collect);
+            if owner is not compiler.selfhost.program {
+                compiler.selfhost.program.release_compile_closure(collect=collect);
+            }
+            maybe_malloc_trim();
+        }
+    }
+}
+
+def precompile_unit(
+    jac_path: str,
+    pkg_root: str,
+    embed_src: bool = False,
+    collect: bool = True,
+    app: str = ""
+) -> bytes | None {
+    with precompile_unit_context(jac_path, pkg_root, collect, app) as program {
+        return _precompile_unit(jac_path, pkg_root, program, embed_src);
     }
 }
 
 def _precompile_unit(
-    jac_path: str,
-    pkg_root: str,
-    program: JacProgram,
-    embed_src: bool = False,
-    collect: bool = True
+    jac_path: str, pkg_root: str, program: JacProgram, embed_src: bool = False
 ) -> bytes | None {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.cli.workpool { maybe_malloc_trim }
-
     try {
         import from jaclang.compiler.driver.jir { cache_mode }
         (rebuild_units, _np) = cache_mode();
         cache_path = get_module_cache_path(jac_path);
         if (not rebuild_units) and is_module_cache_valid(jac_path, cache_path) {
-            cached_bc = read_section_bytes(cache_path.read_bytes(), SEC_BYTECODE);
-            if cached_bc is not None {
+            cached_data = cache_path.read_bytes();
+            cached_bc = read_section_bytes(cached_data, SEC_BYTECODE);
+            if cached_bc is not None
+                and read_section_bytes(cached_data, SEC_IFACE) is not None {
                 rewrapped = patch_co_filenames_bytes(
                     cached_bc, pkg_root, PRECOMPILE_SENTINEL
                 );
@@ -458,17 +486,16 @@ def _precompile_unit(
     } except Exception {}
 
     compiler = program._get_compiler();
-    compiler.unit_collect = collect;
-    code = compiler.get_bytecode(full_target=jac_path, target_program=program);
+    code = compiler.get_bytecode(
+        full_target=jac_path, target_program=program, emit_interface=True
+    );
     if code is None {
         _emit_unit_diagnostics(jac_path, [program, compiler.selfhost.program]);
+    } elif SEC_IFACE not in _unit_extra(jac_path, pkg_root, False) {
+        # A bootstrap or older bytecode cache can lack the symbol interface.
+        # Produce it through the same registry used by dependency compilation.
+        program.iface_registry().ensure(jac_path);
     }
-    owner = program.context_root if program.context_root is not None else program;
-    owner.release_compile_closure(collect=collect);
-    if owner is not compiler.selfhost.program {
-        compiler.selfhost.program.release_compile_closure(collect=collect);
-    }
-    maybe_malloc_trim();
     if code is None {
         return None;
     }
@@ -534,9 +561,9 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
             bc = patch_co_filenames_bytes(
                 marshal.dumps(code), str(pkg_dir), PRECOMPILE_SENTINEL
             );
-            extra: dict[int, bytes] | None = None;
-            if embed_src {
-                extra = {int(SEC_DEBUG_SRC): zlib.compress(jac_file.read_bytes(), 9)};
+            with precompile_unit_context(str(jac_file), str(pkg_dir)) as program {
+                program.iface_registry().ensure(str(jac_file));
+                extra = _unit_extra(str(jac_file), str(pkg_dir), embed_src);
             }
             jir_rel = jac_file.relative_to(pkg_dir).with_suffix(".jir");
             jir_path = out_dir / jir_rel;

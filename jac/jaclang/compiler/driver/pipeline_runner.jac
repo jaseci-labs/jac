@@ -276,7 +276,10 @@ obj ModuleCompilation {
             and not self.blocked
             and self.source is None
             and (
-                (self.options.no_cgen and not self.options.symtab_ir_only)
+                (
+                    (self.options.no_cgen or self.options.emit_interface)
+                    and not self.options.symtab_ir_only
+                )
                 or (closure.no_cgen and not closure.symtab_ir_only)
             ) {
             import from jaclang.compiler.driver.pipeline {

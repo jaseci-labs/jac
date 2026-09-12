@@ -125,7 +125,7 @@ impl JacCompiler._check_native_abi(
 }
 
 impl JacCompiler.get_bytecode(
-    full_target: str, target_program: JacProgram
+    full_target: str, target_program: JacProgram, emit_interface: bool = False
 ) -> (types.CodeType | None) {
     import from jaclang.compiler.driver.compilation_context {
         bind_options,
@@ -140,12 +140,12 @@ impl JacCompiler.get_bytecode(
     with compilation_scope(
         '' if self.selfhost.is_selfhost(actual) else actual.context_key, actual.options
     ) {
-        return self._get_bytecode(full_target, actual);
+        return self._get_bytecode(full_target, actual, emit_interface=emit_interface);
     }
 }
 
 impl JacCompiler._get_bytecode(
-    full_target: str, target_program: JacProgram
+    full_target: str, target_program: JacProgram, emit_interface: bool = False
 ) -> (types.CodeType | None) {
     actual_program = self.selfhost.resolve(full_target, target_program);
     (rebuild, no_precompile) = cache_mode();
@@ -192,7 +192,8 @@ impl JacCompiler._get_bytecode(
                     self._restore_sections(
                         full_target,
                         actual_program,
-                        read_sections(sealed_data, sp0 + len(magic0))
+                        read_sections(sealed_data, sp0 + len(magic0)),
+                        base_dir=sealed_root
                     );
                 }
                 return marshal.loads(
@@ -267,7 +268,7 @@ impl JacCompiler._get_bytecode(
         setup_progress.on_internal_compile(full_target);
         self.selfhost.enter_bytecode();
     }
-    options = CompileOptions();
+    options = CompileOptions(emit_interface=emit_interface);
     result: (uni.Module | None) = None;
     try {
         result = self.compile(
@@ -423,7 +424,10 @@ impl JacCompiler._load_native_from_bitcode(
 }
 
 impl JacCompiler._restore_sections(
-    full_target: str, actual_program: JacProgram, secs: dict[int, bytes]
+    full_target: str,
+    actual_program: JacProgram,
+    secs: dict[int, bytes],
+    base_dir: str = ""
 ) -> None {
     import pickle;
     client_bytes = secs.get(SEC_CLIENT);
@@ -449,7 +453,10 @@ impl JacCompiler._restore_sections(
                 summary_from_bytes,
                 summary_store
             }
-            restored = summary_from_bytes(placement_bytes);
+            import from jaclang.compiler.driver.jir { JirPaths, SEC_PATH_ROOT }
+            source_root = secs.get(SEC_PATH_ROOT, b"").decode("utf-8");
+            paths = JirPaths(source_root=source_root, base_dir=base_dir);
+            restored = summary_from_bytes(placement_bytes, path_mapper=paths.resolve);
             if restored is not None {
                 summary_store(actual_program)[os.path.abspath(full_target)] = restored;
             }

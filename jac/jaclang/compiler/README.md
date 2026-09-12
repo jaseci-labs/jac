@@ -81,6 +81,27 @@ the container field offsets still come from the backend's ABI metadata.
 The native dictionary scaling, mutation, and materialization tests cover these
 contracts.
 
+## Packaged interfaces and compilation lifetimes
+
+Precompilation requests both bytecode and a module interface through the
+existing pipeline. Sealing preserves the interface, dependency hashes,
+diagnostic profiles, and placement facts, including for bootstrap modules
+whose executable bytecode is produced by jac0. A bytecode-only cache is
+upgraded through `IfaceRegistry` instead of introducing a second analyzer.
+Normal code generation keeps its existing interface policy.
+
+JIR's `SEC_PATH_ROOT` records the build package root. The dependency,
+interface, diagnostic, and placement readers relocate path fields to the
+installed root without changing interface hashes or literal text. Diagnostic
+profile and dependency checks still govern reuse. Dependencies outside the
+package retain their existing validation and source fallback.
+
+Per-unit release keeps parsed stub trees while a compilation uses them.
+At a completed compilation boundary, `release_compile_state` releases both
+source and stub roots. Activating the stub catalog also retires the private
+selfhost bootstrap closure before application compilation starts; it never
+changes the stub lens of an active application compilation.
+
 ## Rules
 
 **Backends consume facts, they do not compute them.** Types are read from
