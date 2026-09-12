@@ -72,31 +72,31 @@ obj TarEntry {
         is_dir: bool;
 }
 
-def mk_payload(pbs_py_dir: str, repo_root: str, out: str, opts: MkPayloadOpts);
-def resolve_python(pbs_py_dir: str) -> str;
+def mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts);
+def resolve_python(python_dir: str) -> str;
 def assemble_site(repo_root: str, site: str, opts: MkPayloadOpts);
 def _bundle_bun(site: str, opts: MkPayloadOpts);
 def write_dist_info(repo_root: str, site: str);
-def run_precompile_stage(py: str, pbs_py_dir: str, site: str, opts: MkPayloadOpts);
-def run_stubcat_stage(py: str, pbs_py_dir: str, site: str, opts: MkPayloadOpts);
-def run_stubcat(py: str, pbs_py_dir: str, site: str, out: str) -> bool;
-def precompile(py: str, pbs_py_dir: str, site: str, seal: bool, debug_src: bool);
-def precompile_env(pbs_py_dir: str, site: str) -> dict[str, str];
-def stage_python_bin(pbs_py_dir: str, stage: str);
+def run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts);
+def run_stubcat_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts);
+def run_stubcat(py: str, python_dir: str, site: str, out: str) -> bool;
+def precompile(py: str, python_dir: str, site: str, seal: bool, debug_src: bool);
+def precompile_env(python_dir: str, site: str) -> dict[str, str];
+def stage_python_bin(python_dir: str, stage: str);
 def stage_tree(
-    pbs_py_dir: str,
+    python_dir: str,
     site: str,
     stage: str,
     musl_dir: str | None,
     wasm_libc_dir: str | None
 );
 
-def stage_stdlib(pbs_lib: str, lib_dst: str);
+def stage_stdlib(python_lib: str, lib_dst: str);
 def precompile_pyc(py: str, stage: str);
-def stage_floor(pbs_py_dir: str, stage: str);
+def stage_floor(python_dir: str, stage: str);
 def stage_musl(musl_dir: str, stage: str);
 def stage_wasm_libc(wasm_libc_dir: str, stage: str);
-def find_ca_bundle(pbs_py_dir: str) -> str | None;
+def find_ca_bundle(python_dir: str) -> str | None;
 def shim_file_name -> str;
 def site_shim_path(site: str) -> str;
 def find_libpython(lib_dir: str) -> FoundLib;

@@ -1,0 +1,47 @@
+{
+  "openssl": {
+    "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.8/openssl-3.5.8.tar.gz",
+    "sha256": "a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2"
+  },
+  "zlib": {
+    "url": "https://zlib.net/fossils/zlib-1.3.1.tar.gz",
+    "sha256": "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
+  },
+  "zstd": {
+    "url": "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz",
+    "sha256": "eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3"
+  },
+  "sqlite": {
+    "url": "https://www.sqlite.org/2026/sqlite-autoconf-3530400.tar.gz",
+    "sha256": "0e9483900e92cd5de8fd48d16bf9200145a61f7fd5be542a5ac81d8a9516eb9c"
+  },
+  "bzip2": {
+    "url": "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz",
+    "sha256": "ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269"
+  },
+  "xz": {
+    "url": "https://github.com/tukaani-project/xz/releases/download/v5.8.1/xz-5.8.1.tar.gz",
+    "sha256": "507825b599356c10dca1cd720c9d0d0c9d5400b9de300af00e4d1ea150795543"
+  },
+  "libffi": {
+    "url": "https://github.com/libffi/libffi/releases/download/v3.4.8/libffi-3.4.8.tar.gz",
+    "sha256": "bc9842a18898bfacb0ed1252c4febcc7e78fa139fd27fdc7a3e30d9d9356119b"
+  },
+  "mpdecimal": {
+    "url": "https://www.bytereef.org/software/mpdecimal/releases/mpdecimal-4.0.1.tar.gz",
+    "sha256": "96d33abb4bb0070c7be0fed4246cd38416188325f820468214471938545b1ac8"
+  },
+  "expat": {
+    "url": "https://github.com/libexpat/libexpat/releases/download/R_2_7_3/expat-2.7.3.tar.gz",
+    "sha256": "821ac9710d2c073eaf13e1b1895a9c9aa66c1157a99635c639fbff65cdbdd732"
+  },
+  "cpython": {
+    "url": "https://www.python.org/ftp/python/3.14.6/Python-3.14.6.tgz",
+    "sha256": "74d0d71d0600e477651a077101d6e62d1e2e69b8e992ba18c993dd643b7ba222",
+    "version": "3.14.6"
+  },
+  "certifi": {
+    "url": "https://github.com/certifi/python-certifi/archive/9d0a8f1f3a0d6b2e38d5773db7afe1a37e4527b6.tar.gz",
+    "sha256": "74a1dcf5983616dfb07972e8b26f065497879c551f6457e197f1409b824e60c1"
+  }
+}

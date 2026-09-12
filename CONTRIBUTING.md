@@ -26,7 +26,7 @@ git remote -v
 
 **1. Install Zig**
 
-The binary is built with [Zig](https://ziglang.org/) **0.16.0** (the version is pinned -- newer/older majors will fail to build). Zig plus a network connection are the only build-time deps: `launcher/payload.zig` does all the HTTP fetching, integrity checks, and (de)compression in Zig's std, so there's nothing else to install (the old `curl`/`git`/`zstd`/`tar` shellouts are gone).
+The binary is built with [Zig](https://ziglang.org/) **0.16.0** (the version is pinned -- newer/older majors will fail to build). Building the bundled Python from source also requires **make, Perl, a POSIX shell, and network access**; macOS needs the SDK from Xcode command line tools. No installed Python or Jac is required. The Zig bootstrap downloads and verifies pinned source archives, then uses Zig's C compiler with the retained upstream configure/make recipes. See [the launcher build guide](jac/launcher/README.md#build) for runtime caching and supported targets.
 
 ```bash
 # Zig: download the 0.16.0 tarball for your platform and put it on PATH
@@ -35,7 +35,7 @@ The binary is built with [Zig](https://ziglang.org/) **0.16.0** (the version is 
 zig version          # must print 0.16.0
 ```
 
-(One optional host tool: if `strip` is on PATH the build shrinks the bundled libpython from ~245 MiB to ~20 MiB; without it the build still succeeds, the binary is just larger.)
+(One optional host tool: if `strip` is on PATH the build removes debug symbols from the bundled libpython; without it the build still succeeds, the binary is larger.)
 
 (The vendored typeshed stdlib stubs are not committed -- `zig build` fetches them at the pinned commit on first build, so there is nothing to check out manually.)
 
@@ -165,6 +165,86 @@ Every PR that changes package code must include a release note fragment file:
 To skip this check, add the `skip-release-notes-check` label to your PR.
 
 **Example PR with a release note fragment**: [#5573](https://github.com/jaseci-labs/jaseci/pull/5573)
+
+## Trying the JacPython release binary
+
+Once a release includes JacPython assets, you can try the replacement Python
+compiler without building Jac locally. Choose a release that lists an asset
+ending in `-jacpython` on the [releases page](https://github.com/jaseci-labs/jac/releases).
+The standard installer and binaries continue to use CPython's C compiler.
+JacPython is experimental: compilation and startup are currently slower, and
+compiler compatibility is still being expanded. Both variants execute Python
+bytecode with CPython's VM and retain its object runtime and standard library.
+
+Choose the platform token for your machine:
+
+| Machine | `PLATFORM` |
+| --- | --- |
+| Linux x86-64 | `linux-x86_64` |
+| Linux ARM64 | `linux-aarch64` |
+| Apple Silicon Mac | `macos-aarch64` |
+| Intel Mac | `macos-x86_64` (only when the manual release lane has published it) |
+
+In Bash, replace `vX.Y.Z` with a released tag containing JacPython assets and
+set `PLATFORM` from the table. Use `TAG=dev` for the rolling development release
+once it carries these assets. The commands download into a temporary directory,
+verify the checksum, and keep your installed `jac` unchanged:
+
+```bash
+TAG=vX.Y.Z
+PLATFORM=linux-x86_64
+TRIAL=$(mktemp -d)
+ASSET="jac-${TAG#v}-${PLATFORM}-jacpython"
+BASE="https://github.com/jaseci-labs/jac/releases/download/$TAG"
+
+curl -fL --retry 3 "$BASE/$ASSET" -o "$TRIAL/$ASSET" &&
+curl -fL --retry 3 "$BASE/$ASSET.sha256" -o "$TRIAL/$ASSET.sha256" &&
+(cd "$TRIAL" && shasum -a 256 -c "$ASSET.sha256") &&
+chmod +x "$TRIAL/$ASSET" &&
+JACPYTHON="$TRIAL/$ASSET" &&
+JAC_NO_DEV_SOURCE=1 "$JACPYTHON" --version
+```
+
+Continue only if the download and checksum check succeed. A 404 means the
+selected tag/platform does not have that asset; check the release's asset list.
+`shasum` is available on macOS; on Linux, `sha256sum -c` can replace
+`shasum -a 256 -c`. First use extracts the bundled runtime into Jac's cache.
+
+Verify the active compiler and exercise Python source and AST compilation:
+
+```bash
+JAC_NO_DEV_SOURCE=1 "$JACPYTHON" -c '
+import ast, sys
+compiler = getattr(sys, "_jacpython_compile", None)
+assert callable(compiler)
+assert compiler.__module__.startswith("_jacpython_seed.")
+print("Python compiler:", compiler.__module__)
+assert eval("6 * 7") == 42
+exec(compile(ast.parse("print(6 * 7)"), "<jacpython-trial>", "exec"))
+'
+
+printf 'with entry { print(6 * 7); }\n' > "$TRIAL/hello.jac"
+JAC_NO_DEV_SOURCE=1 "$JACPYTHON" run "$TRIAL/hello.jac"
+```
+
+Both examples should print `42`; the compiler probe should name a module under
+`_jacpython_seed`. The `-c` probe exercises the Python replacement directly;
+`run` retains Jac's normal backend selection. Keep `JAC_NO_DEV_SOURCE=1` when
+testing a downloaded release inside this repository so its `[dev]` setting
+does not substitute the checkout's Jac compiler.
+
+Use the explicit `$JACPYTHON` path for further experiments. To compare behavior,
+download the standard asset from the same tag/platform by omitting the
+`-jacpython` suffix, verify its checksum, and run the same reproducer with it.
+Include the tag, platform, compiler-probe output, and a minimal reproducer when
+reporting a JacPython issue.
+
+For changes to the JacPython implementation, rebuild with
+`cd jac && zig build -Djacpython=true` and use the resulting `zig-out/bin/jac`.
+Its compiler seed is embedded at build time: editing source through the dev
+loop does not replace the private seed in an existing binary. Plain `zig build`
+defaults to CPython. See [the build guide](jac/launcher/README.md#build) for cache
+details and the runtime build prerequisites.
 
 ## Code Rules and Guidelines
 

@@ -1,0 +1,527 @@
+--- a/Python/pythonrun.c
++++ b/Python/pythonrun.c
+@@ -28,6 +28,7 @@
+ #include "pycore_unicodeobject.h" // _PyUnicode_Equal()
+
+ #include "errcode.h"              // E_EOF
++#include "jac_compile.h"
+ #include "marshal.h"              // PyMarshal_ReadLongFromFile()
+
+ #include <stdbool.h>
+@@ -42,6 +43,25 @@
+ #endif
+
+ /* Forward */
++static PyObject *run_eval_code_obj(PyThreadState *, PyCodeObject *, PyObject *, PyObject *);
++static PyObject *get_interactive_filename(PyObject *, Py_ssize_t);
++static PyObject *
++jac_eval_compiled(PyObject *code, PyObject *globals, PyObject *locals)
++{
++    if (code == NULL) return NULL;
++    if (!PyCode_Check(code)) {
++        Py_DECREF(code);
++        PyErr_SetString(PyExc_TypeError, "execution requires a code object");
++        return NULL;
++    }
++    PyObject *result = NULL;
++    if (PySys_Audit("exec", "O", code) == 0) {
++        result = run_eval_code_obj(_PyThreadState_GET(), (PyCodeObject *)code, globals, locals);
++    }
++    Py_DECREF(code);
++    return result;
++}
++
+ static void flush_io(void);
+ static PyObject *run_mod(mod_ty, PyObject *, PyObject *, PyObject *,
+                           PyCompilerFlags *, PyArena *, PyObject*, int);
+@@ -1234,34 +1254,31 @@
+                            PyObject *globals, PyObject *locals, PyCompilerFlags *flags,
+                            int generate_new_source)
+ {
+-    PyObject *ret = NULL;
+-    mod_ty mod;
+-    PyArena *arena;
+-
+-    arena = _PyArena_New();
+-    if (arena == NULL)
+-        return NULL;
+-
+-    PyObject* source = NULL;
+-    _Py_DECLARE_STR(anon_string, "<string>");
+-
+-    if (name) {
+-        source = PyUnicode_FromString(str);
+-        if (!source) {
++    PyObject *filename = name
++        ? (generate_new_source
++            ? get_interactive_filename(name, _PyThreadState_GET()->interp->_interactive_src_count++)
++            : Py_NewRef(name))
++        : PyUnicode_FromString("<string>");
++    if (filename == NULL) return NULL;
++    PyObject *code = _PyJac_CompileString(str, filename, start, flags, -1);
++    Py_DECREF(filename);
++    if (code == NULL) return NULL;
++    if (name != NULL) {
++        PyObject *source = PyUnicode_FromString(str);
++        if (source == NULL) {
+             PyErr_Clear();
+         }
+-    } else {
+-        name = &_Py_STR(anon_string);
+-    }
+-
+-    mod = _PyParser_ASTFromString(str, name, start, flags, arena);
+-
+-   if (mod != NULL) {
+-        ret = run_mod(mod, name, globals, locals, flags, arena, source, generate_new_source);
+-    }
+-    Py_XDECREF(source);
+-    _PyArena_Free(arena);
+-    return ret;
++        else {
++            PyObject *register_code = PyImport_ImportModuleAttrString("linecache", "_register_code");
++            PyObject *registered = register_code
++                ? PyObject_CallFunctionObjArgs(register_code, code, source, name, NULL) : NULL;
++            Py_XDECREF(register_code);
++            Py_DECREF(source);
++            if (registered == NULL) { Py_DECREF(code); return NULL; }
++            Py_DECREF(registered);
++        }
++    }
++    return jac_eval_compiled(code, globals, locals);
+ }
+
+
+@@ -1276,29 +1293,9 @@
+ pyrun_file(FILE *fp, PyObject *filename, int start, PyObject *globals,
+            PyObject *locals, int closeit, PyCompilerFlags *flags)
+ {
+-    PyArena *arena = _PyArena_New();
+-    if (arena == NULL) {
+-        return NULL;
+-    }
+-
+-    mod_ty mod;
+-    mod = _PyParser_ASTFromFile(fp, filename, NULL, start, NULL, NULL,
+-                                flags, NULL, arena);
+-
+-    if (closeit) {
+-        fclose(fp);
+-    }
+-
+-    PyObject *ret;
+-    if (mod != NULL) {
+-        ret = run_mod(mod, filename, globals, locals, flags, arena, NULL, 0);
+-    }
+-    else {
+-        ret = NULL;
+-    }
+-    _PyArena_Free(arena);
+-
+-    return ret;
++    PyObject *code = _PyJac_CompileFile(fp, filename, start, flags);
++    if (closeit) fclose(fp);
++    return jac_eval_compiled(code, globals, locals);
+ }
+
+
+@@ -1509,30 +1506,7 @@
+ Py_CompileStringObject(const char *str, PyObject *filename, int start,
+                        PyCompilerFlags *flags, int optimize)
+ {
+-    PyCodeObject *co;
+-    mod_ty mod;
+-    PyArena *arena = _PyArena_New();
+-    if (arena == NULL)
+-        return NULL;
+-
+-    mod = _PyParser_ASTFromString(str, filename, start, flags, arena);
+-    if (mod == NULL) {
+-        _PyArena_Free(arena);
+-        return NULL;
+-    }
+-    if (flags && (flags->cf_flags & PyCF_ONLY_AST)) {
+-        int syntax_check_only = ((flags->cf_flags & PyCF_OPTIMIZED_AST) == PyCF_ONLY_AST); /* unoptiomized AST */
+-        if (_PyCompile_AstPreprocess(mod, filename, flags, optimize, arena, syntax_check_only) < 0) {
+-            _PyArena_Free(arena);
+-            return NULL;
+-        }
+-        PyObject *result = PyAST_mod2obj(mod);
+-        _PyArena_Free(arena);
+-        return result;
+-    }
+-    co = _PyAST_Compile(mod, filename, flags, optimize, arena);
+-    _PyArena_Free(arena);
+-    return (PyObject *)co;
++    return _PyJac_CompileString(str, filename, start, flags, optimize);
+ }
+
+ PyObject *
+--- a/Python/bltinmodule.c
++++ b/Python/bltinmodule.c
+@@ -1,6 +1,7 @@
+ /* Built-in functions */
+
+ #include "Python.h"
++#include "jac_compile.h"
+ #include "pycore_ast.h"           // _PyAST_Validate()
+ #include "pycore_call.h"          // _PyObject_CallNoArgs()
+ #include "pycore_ceval.h"         // _PyEval_Vector()
+@@ -836,36 +837,7 @@
+     if (is_ast == -1)
+         goto error;
+     if (is_ast) {
+-        PyArena *arena = _PyArena_New();
+-        if (arena == NULL) {
+-            goto error;
+-        }
+-
+-        if (flags & PyCF_ONLY_AST) {
+-            mod_ty mod = PyAST_obj2mod(source, arena, compile_mode);
+-            if (mod == NULL || !_PyAST_Validate(mod)) {
+-                _PyArena_Free(arena);
+-                goto error;
+-            }
+-            int syntax_check_only = ((flags & PyCF_OPTIMIZED_AST) == PyCF_ONLY_AST); /* unoptiomized AST */
+-            if (_PyCompile_AstPreprocess(mod, filename, &cf, optimize,
+-                                           arena, syntax_check_only) < 0) {
+-                _PyArena_Free(arena);
+-                goto error;
+-            }
+-            result = PyAST_mod2obj(mod);
+-        }
+-        else {
+-            mod_ty mod = PyAST_obj2mod(source, arena, compile_mode);
+-            if (mod == NULL || !_PyAST_Validate(mod)) {
+-                _PyArena_Free(arena);
+-                goto error;
+-            }
+-            result = (PyObject*)_PyAST_Compile(mod, filename,
+-                                               &cf, optimize, arena);
+-        }
+-        _PyArena_Free(arena);
+-        goto finally;
++        return _PyJac_CompileObject(source, filename, start[compile_mode], &cf, optimize);
+     }
+
+     str = _Py_SourceAsString(source, "compile", "string, bytes or AST", &cf, &source_copy);
+--- a/Python/sysmodule.c
++++ b/Python/sysmodule.c
+@@ -15,6 +15,7 @@
+ */
+
+ #include "Python.h"
++#include "pycore_code.h"         // _PyCodeConstructor
+ #include "pycore_audit.h"         // _Py_AuditHookEntry
+ #include "pycore_call.h"          // _PyObject_CallNoArgs()
+ #include "pycore_ceval.h"         // _PyEval_SetAsyncGenFinalizer()
+@@ -2820,7 +2821,82 @@
+ }
+
+
++/* Preserve locals-plus layout when restoring inlined comprehension names.
++   PyCode_New's public tuple interface merges cells and locals by name; it
++   cannot represent hidden locals or duplicate names in distinct slots. */
++static PyObject *
++sys_jacpython_code(PyObject *self, PyObject *args)
++{
++    PyCodeObject *prototype;
++    PyObject *metadata;
++    if (!PyArg_ParseTuple(args, "O!O!:_jacpython_code",
++                          &PyCode_Type, &prototype, &PyDict_Type, &metadata)) {
++        return NULL;
++    }
++    Py_ssize_t count = prototype->co_nlocalsplus;
++    PyObject *names = PyTuple_New(count);
++    PyObject *kinds = PyBytes_FromStringAndSize(
++        PyBytes_AS_STRING(prototype->co_localspluskinds), count);
++    PyObject *code = PyCode_GetCode(prototype);
++    if (names == NULL || kinds == NULL || code == NULL) goto error;
++    for (Py_ssize_t i = 0; i < count; i++) {
++        PyObject *name = PyTuple_GET_ITEM(prototype->co_localsplusnames, i);
++        PyObject *entry = PyDict_GetItemWithError(metadata, name);
++        if (entry == NULL && PyErr_Occurred()) goto error;
++        if (entry != NULL) {
++            if (!PyTuple_Check(entry) || PyTuple_GET_SIZE(entry) != 2 ||
++                !PyUnicode_Check(PyTuple_GET_ITEM(entry, 0))) {
++                PyErr_SetString(PyExc_TypeError, "invalid JacPython local metadata");
++                goto error;
++            }
++            name = PyTuple_GET_ITEM(entry, 0);
++            int hidden = PyObject_IsTrue(PyTuple_GET_ITEM(entry, 1));
++            if (hidden < 0) goto error;
++            if (hidden) {
++                _PyLocals_Kind kind = _PyLocals_GetKind(kinds, i);
++                if (!(kind & CO_FAST_LOCAL)) {
++                    PyErr_SetString(PyExc_ValueError, "only local slots can be hidden");
++                    goto error;
++                }
++                _PyLocals_SetKind(kinds, i, kind | CO_FAST_HIDDEN);
++            }
++        }
++        PyTuple_SET_ITEM(names, i, Py_NewRef(name));
++    }
++    struct _PyCodeConstructor con = {
++        .filename = prototype->co_filename,
++        .name = prototype->co_name,
++        .qualname = prototype->co_qualname,
++        .flags = prototype->co_flags,
++        .code = code,
++        .firstlineno = prototype->co_firstlineno,
++        .linetable = prototype->co_linetable,
++        .consts = prototype->co_consts,
++        .names = prototype->co_names,
++        .localsplusnames = names,
++        .localspluskinds = kinds,
++        .argcount = prototype->co_argcount,
++        .posonlyargcount = prototype->co_posonlyargcount,
++        .kwonlyargcount = prototype->co_kwonlyargcount,
++        .stacksize = prototype->co_stacksize,
++        .exceptiontable = prototype->co_exceptiontable,
++    };
++    if (_PyCode_Validate(&con) < 0) goto error;
++    PyObject *result = (PyObject *)_PyCode_New(&con);
++    Py_DECREF(names);
++    Py_DECREF(kinds);
++    Py_DECREF(code);
++    return result;
++error:
++    Py_XDECREF(names);
++    Py_XDECREF(kinds);
++    Py_XDECREF(code);
++    return NULL;
++}
++
+ static PyMethodDef sys_methods[] = {
++    {"_jacpython_code", sys_jacpython_code, METH_VARARGS,
++     "Construct code with JacPython local-variable metadata."},
+     /* Might as well keep this in alphabetic order */
+     SYS_ADDAUDITHOOK_METHODDEF
+     SYS_AUDIT_METHODDEF
+--- a/Objects/object.c
++++ b/Objects/object.c
+@@ -15,7 +15,6 @@
+ #include "pycore_genobject.h"     // _PyAsyncGenAThrow_Type
+ #include "pycore_hamt.h"          // _PyHamtItems_Type
+ #include "pycore_initconfig.h"    // _PyStatus_OK()
+-#include "pycore_instruction_sequence.h" // _PyInstructionSequence_Type
+ #include "pycore_interpframe.h"   // _PyFrame_Stackbase()
+ #include "pycore_interpolation.h" // _PyInterpolation_Type
+ #include "pycore_list.h"          // _PyList_DebugMallocStats()
+@@ -27,7 +26,6 @@
+ #include "pycore_pyerrors.h"      // _PyErr_Occurred()
+ #include "pycore_pymem.h"         // _PyMem_IsPtrFreed()
+ #include "pycore_pystate.h"       // _PyThreadState_GET()
+-#include "pycore_symtable.h"      // PySTEntry_Type
+ #include "pycore_template.h"      // _PyTemplate_Type _PyTemplateIter_Type
+ #include "pycore_tuple.h"         // _PyTuple_DebugMallocStats()
+ #include "pycore_typeobject.h"    // _PyBufferWrapper_Type
+@@ -2512,7 +2510,6 @@
+     &PyRangeIter_Type,
+     &PyRange_Type,
+     &PyReversed_Type,
+-    &PySTEntry_Type,
+     &PySeqIter_Type,
+     &PySetIter_Type,
+     &PySet_Type,
+@@ -2543,7 +2540,6 @@
+     &_PyHamt_BitmapNode_Type,
+     &_PyHamt_CollisionNode_Type,
+     &_PyHamt_Type,
+-    &_PyInstructionSequence_Type,
+     &_PyInterpolation_Type,
+     &_PyLegacyEventHandler_Type,
+     &_PyLineIterator,
+--- a/Modules/Setup.bootstrap.in
++++ b/Modules/Setup.bootstrap.in
+@@ -36,7 +36,17 @@
+ _opcode _opcode.c
+ _operator _operator.c
+ _stat _stat.c
+-_symtable symtablemodule.c
+
+ # for systems without $HOME env, used by site._getuserbase()
+ @MODULE_PWD_TRUE@pwd pwdmodule.c
++
++# JacPython's seed needs these before pybuilddir.txt and shared-module paths
++# exist. Their C implementations remain part of the retained object runtime.
++_struct _struct.c
++_pickle _pickle.c
++_json _json.c
++_interpreters _interpretersmodule.c
++_heapq _heapqmodule.c
++_queue _queuemodule.c
++grp grpmodule.c
++fcntl fcntlmodule.c
+--- a/Modules/Setup.stdlib.in
++++ b/Modules/Setup.stdlib.in
+@@ -35,17 +35,11 @@
+ @MODULE__ASYNCIO_TRUE@_asyncio _asynciomodule.c
+ @MODULE__BISECT_TRUE@_bisect _bisectmodule.c
+ @MODULE__CSV_TRUE@_csv _csv.c
+-@MODULE__HEAPQ_TRUE@_heapq _heapqmodule.c
+-@MODULE__JSON_TRUE@_json _json.c
+ @MODULE__LSPROF_TRUE@_lsprof _lsprof.c rotatingtree.c
+-@MODULE__PICKLE_TRUE@_pickle _pickle.c
+-@MODULE__QUEUE_TRUE@_queue _queuemodule.c
+ @MODULE__RANDOM_TRUE@_random _randommodule.c
+ @MODULE__REMOTE_DEBUGGING_TRUE@_remote_debugging _remote_debugging_module.c
+-@MODULE__STRUCT_TRUE@_struct _struct.c
+
+ # build supports subinterpreters
+-@MODULE__INTERPRETERS_TRUE@_interpreters _interpretersmodule.c
+ @MODULE__INTERPCHANNELS_TRUE@_interpchannels _interpchannelsmodule.c
+ @MODULE__INTERPQUEUES_TRUE@_interpqueues _interpqueuesmodule.c
+
+@@ -121,8 +115,6 @@
+ # Modules with some UNIX dependencies
+ #
+
+-@MODULE_FCNTL_TRUE@fcntl fcntlmodule.c
+-@MODULE_GRP_TRUE@grp grpmodule.c
+ @MODULE_MMAP_TRUE@mmap mmapmodule.c
+ # needs sys/soundcard.h or linux/soundcard.h (Linux, FreeBSD)
+ @MODULE__POSIXSUBPROCESS_TRUE@_posixsubprocess _posixsubprocess.c
+--- a/Modules/config.c.in
++++ b/Modules/config.c.in
+@@ -19,6 +19,7 @@
+ extern PyObject* PyInit_gc(void);
+ extern PyObject* PyInit__ast(void);
+ extern PyObject* PyInit__tokenize(void);
++extern PyObject* PyInit__symtable(void);
+ extern PyObject* PyInit__contextvars(void);
+ extern PyObject* _PyWarnings_Init(void);
+ extern PyObject* PyInit__string(void);
+@@ -36,8 +37,9 @@
+     /* This lives in Python/Python-ast.c */
+     {"_ast", PyInit__ast},
+
+-    /* This lives in Python/Python-tokenize.c */
++    /* Jac-backed compiler APIs live in Python/jac_compile.c. */
+     {"_tokenize", PyInit__tokenize},
++    {"_symtable", PyInit__symtable},
+
+     /* These entries are here for sys.builtin_module_names */
+     {"builtins", NULL},
+--- a/Makefile.pre.in
++++ b/Makefile.pre.in
+@@ -381,38 +381,2 @@
+-PEGEN_OBJS=		\
+-		Parser/pegen.o \
+-		Parser/pegen_errors.o \
+-		Parser/action_helpers.o \
+-		Parser/parser.o \
+-		Parser/string_parser.o \
+-		Parser/peg_api.o
+-
+-TOKENIZER_OBJS=		\
+-		Parser/lexer/buffer.o \
+-		Parser/lexer/lexer.o \
+-		Parser/lexer/state.o \
+-		Parser/tokenizer/file_tokenizer.o \
+-		Parser/tokenizer/readline_tokenizer.o \
+-		Parser/tokenizer/string_tokenizer.o \
+-		Parser/tokenizer/utf8_tokenizer.o \
+-		Parser/tokenizer/helpers.o
+-
+-PEGEN_HEADERS= \
+-		$(srcdir)/Include/internal/pycore_parser.h \
+-		$(srcdir)/Parser/pegen.h \
+-		$(srcdir)/Parser/string_parser.h
+-
+-TOKENIZER_HEADERS= \
+-		Parser/lexer/buffer.h \
+-		Parser/lexer/lexer.h \
+-		Parser/lexer/state.h \
+-		Parser/tokenizer/tokenizer.h \
+-		Parser/tokenizer/helpers.h
+-
+-POBJS=		\
+-		Parser/token.o \
+-
+-PARSER_OBJS=	$(POBJS) $(PEGEN_OBJS) $(TOKENIZER_OBJS) Parser/myreadline.o
+-
+-PARSER_HEADERS= \
+-		$(PEGEN_HEADERS) \
+-		$(TOKENIZER_HEADERS)
++PARSER_OBJS= Parser/myreadline.o
++PARSER_HEADERS= $(srcdir)/Include/internal/pycore_parser.h
+@@ -427 +391 @@
+-		Python/Python-tokenize.o \
++		Python/jac_compile.o \
+@@ -429,3 +392,0 @@
+-		Python/assemble.o \
+-		Python/ast.o \
+-		Python/ast_preprocess.o \
+@@ -437,2 +397,0 @@
+-		Python/codegen.o \
+-		Python/compile.o \
+@@ -444 +402,0 @@
+-		Python/flowgraph.o \
+@@ -447 +404,0 @@
+-		Python/future.o \
+@@ -465 +421,0 @@
+-		Python/instruction_sequence.o \
+@@ -495 +450,0 @@
+-		Python/symtable.o \
+@@ -1986,8 +1941,2 @@
+-	@$(MKDIR_P) $(srcdir)/Parser
+-	@$(MKDIR_P) $(srcdir)/Parser/tokenizer
+-	@$(MKDIR_P) $(srcdir)/Parser/lexer
+-	PYTHONPATH=$(srcdir)/Tools/peg_generator $(PYTHON_FOR_REGEN) -m pegen -q c \
+-		$(srcdir)/Grammar/python.gram \
+-		$(srcdir)/Grammar/Tokens \
+-		-o $(srcdir)/Parser/parser.c.new
+-	$(UPDATE_FILE) --create $(srcdir)/Parser/parser.c $(srcdir)/Parser/parser.c.new
++	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
++	@false
+@@ -2015,21 +1964,2 @@
+-	# Regenerate Doc/library/token-list.inc from Grammar/Tokens
+-	# using Tools/build/generate_token.py
+-	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/build/generate_token.py rst \
+-		$(srcdir)/Grammar/Tokens \
+-		$(srcdir)/Doc/library/token-list.inc \
+-		$(srcdir)/Doc/library/token.rst
+-	# Regenerate Include/internal/pycore_token.h from Grammar/Tokens
+-	# using Tools/build/generate_token.py
+-	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/build/generate_token.py h \
+-		$(srcdir)/Grammar/Tokens \
+-		$(srcdir)/Include/internal/pycore_token.h
+-	# Regenerate Parser/token.c from Grammar/Tokens
+-	# using Tools/build/generate_token.py
+-	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/build/generate_token.py c \
+-		$(srcdir)/Grammar/Tokens \
+-		$(srcdir)/Parser/token.c
+-	# Regenerate Lib/token.py from Grammar/Tokens
+-	# using Tools/build/generate_token.py
+-	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/build/generate_token.py py \
+-		$(srcdir)/Grammar/Tokens \
+-		$(srcdir)/Lib/token.py
++	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
++	@false
+@@ -2065 +1995 @@
+-Python/compile.o Python/codegen.o Python/symtable.o Python/ast_unparse.o Python/ast.o Python/future.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
++Python/ast_unparse.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
+@@ -2201,7 +2130,0 @@
+-Python/compile.o Python/codegen.o Python/assemble.o Python/flowgraph.o Python/instruction_sequence.o: \
+-                $(srcdir)/Include/internal/pycore_compile.h \
+-                $(srcdir)/Include/internal/pycore_flowgraph.h \
+-                $(srcdir)/Include/internal/pycore_instruction_sequence.h \
+-                $(srcdir)/Include/internal/pycore_opcode_metadata.h \
+-                $(srcdir)/Include/internal/pycore_opcode_utils.h
+-
+@@ -2214,3 +2136,0 @@
+-
+-Python/flowgraph.o: \
+-		$(srcdir)/Include/internal/pycore_opcode_metadata.h
+@@ -2817 +2737 @@
+-	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
++	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
+@@ -2822 +2742 @@
+-	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
++	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
+@@ -3422,0 +3343,4 @@
++
++# Compiler/parser objects are supplied by JacPython's frozen seed and ABI adapter.
++Python/jac_compile.o: $(srcdir)/Python/jac_compile.c $(srcdir)/Python/jac_compile.h $(srcdir)/Python/jac_seed.h
++Python/pythonrun.o Python/bltinmodule.o: $(srcdir)/Python/jac_compile.h

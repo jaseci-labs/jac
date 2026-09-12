@@ -1832,13 +1832,13 @@ impl ESBuiltinEmitter.emit_round(
 impl ESBuiltinEmitter.emit_min(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
-    return _fcall("Math.min", args);
+    return _min_max_call("min", ctx, args);
 }
 
 impl ESBuiltinEmitter.emit_max(
     self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
-    return _fcall("Math.max", args);
+    return _min_max_call("max", ctx, args);
 }
 
 impl ESBuiltinEmitter.emit_sum(

@@ -40,14 +40,27 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       installer: ${{ steps.filter.outputs.installer }}
       native: ${{ steps.filter.outputs.native }}
+      python: ${{ steps.filter.outputs.python }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
+            python:
+              - 'jac/bootstrap/build_python.zig'
+              - 'jac/bootstrap/seed.zig'
+              - 'jac/build.zig'
+              - 'jac/bootstrap/python/sources.json'
+              - 'jac/bootstrap/python/cpython-sources.txt'
+              - 'jac/bootstrap/python/build.sh'
+              - 'jac/bootstrap/python/finalize.py'
+              - 'jac/bootstrap/python/smoke.py'
+              - '.github/actions/setup-jac/action.yml'
+              - '.github/workflows/ci.yml'
             core:
               - 'jac/**'
+              - 'scripts/run_cpython_compiler_tests.jac'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
             scale:
@@ -91,9 +104,60 @@ jobs:
               - 'jac/jaclang/cli/commands/impl/precompile.impl.jac'
               - '.github/actions/**'
 
-  # The kit lane: build the binary from this checkout, smoke it, vendor the
-  # runtime trees, publish the kit. Every test lane waits on it, so the suite
-  # runs through the binary a PR would ship.
+  # Linux x86-64 is exercised by build-kit. Source changes also validate the
+  # regular release platforms without rebuilding Jac on every platform. The
+  # bootstrap/python/** cache input includes the CPython source allowlist;
+  # removing a source entry therefore triggers a new runtime build and smoke.
+  # Intel macOS is verified by its manually selected build-binaries release leg.
+  python-runtime:
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+      - name: Resolve Python SDK cache input
+        id: python-sdk
+        shell: bash
+        run: |
+          sdk=zig-libc
+          if [ "$RUNNER_OS" = macOS ]; then sdk=$(xcrun --sdk macosx --show-sdk-version); fi
+          echo "version=$sdk" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@v4
+        id: python-cache
+        with:
+          path: jac/.python-build/cpython
+          key: python-build-v3-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ hashFiles('jac/bootstrap/build_python.zig', 'jac/bootstrap/seed.zig', 'jac/bootstrap/python/sources.json', 'jac/bootstrap/python/cpython-sources.txt', 'jac/bootstrap/python/build.sh', 'jac/bootstrap/python/finalize.py', 'jac/bootstrap/python/smoke.py') }}
+          restore-keys: |
+            python-build-v3-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
+      - name: Build and verify relocatable Python
+        working-directory: jac
+        run: zig build build-python --summary all
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/main' && steps.python-cache.outputs.cache-hit != 'true'
+        with:
+          path: jac/.python-build/cpython
+          key: python-build-v3-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ hashFiles('jac/bootstrap/build_python.zig', 'jac/bootstrap/seed.zig', 'jac/bootstrap/python/sources.json', 'jac/bootstrap/python/cpython-sources.txt', 'jac/bootstrap/python/build.sh', 'jac/bootstrap/python/finalize.py', 'jac/bootstrap/python/smoke.py') }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: python-build-logs-${{ runner.os }}-${{ runner.arch }}
+          path: jac/.python-build/**/*.log
+          include-hidden-files: true
+
+  # The kit lane builds this checkout and publishes it for every test lane.
+  # CI exercises the default CPython build. JacPython variants are built
+  # and smoke-tested by build-binaries.yml; its upstream compatibility runner
+  # remains available as scripts/run_cpython_compiler_tests.jac.
   build-kit:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
@@ -462,15 +526,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash scripts/check-release-notes.sh
 
-  # Compiler suite, one chunk per runner; chunking parallelizes the suite.
-  # The native-backend chunk and the na/sv equivalence pins are chunks here.
-  # The swap steps and worker caps these lanes used to carry treated real
-  # leaks: stub symbols recorded use-sites from every program compiled in
-  # the process (fixed in Symbol.add_use; test_stub_use_retention.jac pins
-  # it), and the evaluator's _pass hook pinned whole compilation units
-  # (#8666). Workers also retire on RSS now (JAC_TEST_RECYCLE_MB), so the
-  # pools run at auto and JAC_TEST_RSS_LOG leaves a per-file trail if a
-  # box ever dies again.
   test-compiler:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
@@ -897,7 +952,7 @@ jobs:
         run: jac test jac/tests/client/test_fused_runtime_boot.jac
 
   # Bootstrap unit tests: the Zig seed that fetches the pbs CPython before any
-  # Python exists (bootstrap/fetch_pbs.zig). Cross-platform on purpose. The
+  # Python exists (bootstrap/build_python.zig). Cross-platform on purpose. The
   # launcher itself is Jac; its trailer codec, payload tool and boot path are
   # covered by `jac test` in the kit lanes below.
   test-bootstrap:
@@ -1437,6 +1492,7 @@ jobs:
     needs:
       - changes
       - build-kit
+      - python-runtime
       - macos-native
       - jac-check
       - contribution-checks

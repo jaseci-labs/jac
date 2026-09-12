@@ -1,0 +1,372 @@
+--- a/Python/pythonrun.c
++++ b/Python/pythonrun.c
+@@ -31,6 +31,7 @@
+ #include "marshal.h"              // PyMarshal_ReadLongFromFile()
+
+ #include <stdbool.h>
++#include "jac_compile.h"
+
+ #ifdef MS_WINDOWS
+ #  include "malloc.h"             // alloca()
+@@ -41,7 +42,29 @@
+ #  include "windows.h"
+ #endif
+
++/* Dispatch is opt-in until compiler compatibility and bootstrap gates pass. */
++PyAPI_FUNC(int) _PyJac_CompilerBridgeVersion(void) { return 2; }
++
+ /* Forward */
++static PyObject *run_eval_code_obj(PyThreadState *, PyCodeObject *, PyObject *, PyObject *);
++static PyObject *
++jac_eval_compiled(PyObject *code, PyObject *globals, PyObject *locals)
++{
++    if (code == NULL) return NULL;
++    if (!PyCode_Check(code)) {
++        Py_DECREF(code);
++        PyErr_SetString(PyExc_TypeError, "execution requires a code object");
++        return NULL;
++    }
++    PyObject *result = NULL;
++    if (PySys_Audit("exec", "O", code) == 0) {
++        result = run_eval_code_obj(_PyThreadState_GET(), (PyCodeObject *)code,
++                                  globals, locals);
++    }
++    Py_DECREF(code);
++    return result;
++}
++
+ static void flush_io(void);
+ static PyObject *run_mod(mod_ty, PyObject *, PyObject *, PyObject *,
+                           PyCompilerFlags *, PyArena *, PyObject*, int);
+@@ -1234,6 +1257,13 @@
+                            PyObject *globals, PyObject *locals, PyCompilerFlags *flags,
+                            int generate_new_source)
+ {
++    if (jac_compiler_enabled()) {
++        PyObject *filename = name ? Py_NewRef(name) : PyUnicode_FromString("<string>");
++        if (filename == NULL) return NULL;
++        PyObject *code = jac_compile_string(str, filename, start, flags, -1);
++        Py_DECREF(filename);
++        return jac_eval_compiled(code, globals, locals);
++    }
+     PyObject *ret = NULL;
+     mod_ty mod;
+     PyArena *arena;
+@@ -1276,6 +1306,11 @@
+ pyrun_file(FILE *fp, PyObject *filename, int start, PyObject *globals,
+            PyObject *locals, int closeit, PyCompilerFlags *flags)
+ {
++    if (jac_compiler_enabled()) {
++        PyObject *code = jac_compile_file(fp, filename, start, flags);
++        if (closeit) fclose(fp);
++        return jac_eval_compiled(code, globals, locals);
++    }
+     PyArena *arena = _PyArena_New();
+     if (arena == NULL) {
+         return NULL;
+@@ -1509,6 +1544,9 @@
+ Py_CompileStringObject(const char *str, PyObject *filename, int start,
+                        PyCompilerFlags *flags, int optimize)
+ {
++    if (jac_compiler_enabled()) {
++        return jac_compile_string(str, filename, start, flags, optimize);
++    }
+     PyCodeObject *co;
+     mod_ty mod;
+     PyArena *arena = _PyArena_New();
+--- a/Python/bltinmodule.c
++++ b/Python/bltinmodule.c
+@@ -1,6 +1,7 @@
+ /* Built-in functions */
+
+ #include "Python.h"
++#include "jac_compile.h"
+ #include "pycore_ast.h"           // _PyAST_Validate()
+ #include "pycore_call.h"          // _PyObject_CallNoArgs()
+ #include "pycore_ceval.h"         // _PyEval_Vector()
+@@ -835,6 +836,9 @@
+     is_ast = PyAST_Check(source);
+     if (is_ast == -1)
+         goto error;
++    if (is_ast && jac_compiler_enabled()) {
++        return jac_compile_object(source, filename, start[compile_mode], &cf, optimize);
++    }
+     if (is_ast) {
+         PyArena *arena = _PyArena_New();
+         if (arena == NULL) {
+--- a/Makefile.pre.in
++++ b/Makefile.pre.in
+@@ -2064,4 +2064,6 @@
+
++Python/pythonrun.o Python/bltinmodule.o: $(srcdir)/Python/jac_compile.h
++
+ Python/compile.o Python/codegen.o Python/symtable.o Python/ast_unparse.o Python/ast.o Python/future.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
+
+ Python/getplatform.o: $(srcdir)/Python/getplatform.c
+--- /dev/null
++++ b/Python/jac_compile.h
+@@ -0,0 +1,111 @@
++/* Development dispatch to Jac's Python compiler; no fallback once enabled. */
++#ifndef Py_JAC_COMPILE_H
++#define Py_JAC_COMPILE_H
++
++static int
++jac_compiler_enabled(void)
++{
++    PyObject *compiler = PySys_GetObject("_jacpython_compile");
++    return compiler != NULL && compiler != Py_None;
++}
++
++static PyObject *
++jac_compile_object(PyObject *source, PyObject *filename, int start,
++                   PyCompilerFlags *flags, int optimize)
++{
++    PyObject *compiler = PySys_GetObject("_jacpython_compile");
++    if (compiler == NULL || compiler == Py_None) {
++        PyErr_SetString(PyExc_RuntimeError, "JacPython compiler is not installed");
++        return NULL;
++    }
++    Py_INCREF(compiler);
++    const char *mode;
++    switch (start) {
++        case Py_file_input: mode = "exec"; break;
++        case Py_eval_input: mode = "eval"; break;
++        case Py_single_input: mode = "single"; break;
++        case Py_func_type_input: mode = "func_type"; break;
++        default:
++            Py_DECREF(compiler);
++            PyErr_SetString(PyExc_ValueError, "invalid compilation mode");
++            return NULL;
++    }
++    if (PySys_Audit("compile", "OO", source, filename) < 0) {
++        Py_DECREF(compiler);
++        return NULL;
++    }
++    int options = flags ? flags->cf_flags : 0;
++    options &= ~(PyCF_SOURCE_IS_UTF8 | PyCF_IGNORE_COOKIE);
++    PyObject *call_args = Py_BuildValue("(OOsiii)", source, filename,
++                                        mode, options, 1, optimize);
++    PyObject *kwargs = call_args == NULL ? NULL : Py_BuildValue(
++        "{s:i}", "_feature_version", flags ? flags->cf_feature_version : -1);
++    PyObject *result = NULL;
++    if (kwargs != NULL) {
++        result = PyObject_Call(compiler, call_args, kwargs);
++    }
++    Py_XDECREF(call_args);
++    Py_XDECREF(kwargs);
++    Py_DECREF(compiler);
++    if (result == NULL) {
++        return NULL;
++    }
++    if (!(options & PyCF_ONLY_AST) && !PyCode_Check(result)) {
++        Py_DECREF(result);
++        PyErr_SetString(PyExc_TypeError, "JacPython compiler must return a code object");
++        return NULL;
++    }
++    if (flags && PyCode_Check(result)) {
++        flags->cf_flags |= ((PyCodeObject *)result)->co_flags & PyCF_MASK;
++    }
++    return result;
++}
++
++static PyObject *
++jac_compile_string(const char *str, PyObject *filename, int start,
++                   PyCompilerFlags *flags, int optimize)
++{
++    PyObject *source;
++    if (flags && (flags->cf_flags & PyCF_IGNORE_COOKIE)) {
++        source = PyUnicode_FromString(str);
++    }
++    else {
++        source = PyBytes_FromString(str);
++    }
++    if (source == NULL) {
++        return NULL;
++    }
++    PyObject *result = jac_compile_object(source, filename, start, flags, optimize);
++    Py_DECREF(source);
++    return result;
++}
++
++static PyObject *
++jac_compile_file(FILE *fp, PyObject *filename, int start,
++                 PyCompilerFlags *flags)
++{
++    PyObject *source = PyByteArray_FromStringAndSize(NULL, 0);
++    if (source == NULL) {
++        return NULL;
++    }
++    char buffer[8192];
++    size_t count;
++    while ((count = fread(buffer, 1, sizeof(buffer), fp)) != 0) {
++        Py_ssize_t previous = PyByteArray_GET_SIZE(source);
++        if (previous > PY_SSIZE_T_MAX - (Py_ssize_t)count ||
++            PyByteArray_Resize(source, previous + (Py_ssize_t)count) < 0) {
++            Py_DECREF(source);
++            if (!PyErr_Occurred()) PyErr_NoMemory();
++            return NULL;
++        }
++        memcpy(PyByteArray_AS_STRING(source) + previous, buffer, count);
++    }
++    if (ferror(fp)) {
++        Py_DECREF(source);
++        return PyErr_SetFromErrno(PyExc_OSError);
++    }
++    PyObject *result = jac_compile_object(source, filename, start, flags, -1);
++    Py_DECREF(source);
++    return result;
++}
++#endif
+--- a/Python/sysmodule.c
++++ b/Python/sysmodule.c
+@@ -15,6 +15,7 @@
+ */
+
+ #include "Python.h"
++#include "pycore_code.h"         // _PyCodeConstructor
+ #include "pycore_audit.h"         // _Py_AuditHookEntry
+ #include "pycore_call.h"          // _PyObject_CallNoArgs()
+ #include "pycore_ceval.h"         // _PyEval_SetAsyncGenFinalizer()
+@@ -2820,7 +2821,82 @@
+ }
+
+
++/* Preserve locals-plus layout when restoring inlined comprehension names.
++   PyCode_New's public tuple interface merges cells and locals by name; it
++   cannot represent hidden locals or duplicate names in distinct slots. */
++static PyObject *
++sys_jacpython_code(PyObject *self, PyObject *args)
++{
++    PyCodeObject *prototype;
++    PyObject *metadata;
++    if (!PyArg_ParseTuple(args, "O!O!:_jacpython_code",
++                          &PyCode_Type, &prototype, &PyDict_Type, &metadata)) {
++        return NULL;
++    }
++    Py_ssize_t count = prototype->co_nlocalsplus;
++    PyObject *names = PyTuple_New(count);
++    PyObject *kinds = PyBytes_FromStringAndSize(
++        PyBytes_AS_STRING(prototype->co_localspluskinds), count);
++    PyObject *code = PyCode_GetCode(prototype);
++    if (names == NULL || kinds == NULL || code == NULL) goto error;
++    for (Py_ssize_t i = 0; i < count; i++) {
++        PyObject *name = PyTuple_GET_ITEM(prototype->co_localsplusnames, i);
++        PyObject *entry = PyDict_GetItemWithError(metadata, name);
++        if (entry == NULL && PyErr_Occurred()) goto error;
++        if (entry != NULL) {
++            if (!PyTuple_Check(entry) || PyTuple_GET_SIZE(entry) != 2 ||
++                !PyUnicode_Check(PyTuple_GET_ITEM(entry, 0))) {
++                PyErr_SetString(PyExc_TypeError, "invalid JacPython local metadata");
++                goto error;
++            }
++            name = PyTuple_GET_ITEM(entry, 0);
++            int hidden = PyObject_IsTrue(PyTuple_GET_ITEM(entry, 1));
++            if (hidden < 0) goto error;
++            if (hidden) {
++                _PyLocals_Kind kind = _PyLocals_GetKind(kinds, i);
++                if (!(kind & CO_FAST_LOCAL)) {
++                    PyErr_SetString(PyExc_ValueError, "only local slots can be hidden");
++                    goto error;
++                }
++                _PyLocals_SetKind(kinds, i, kind | CO_FAST_HIDDEN);
++            }
++        }
++        PyTuple_SET_ITEM(names, i, Py_NewRef(name));
++    }
++    struct _PyCodeConstructor con = {
++        .filename = prototype->co_filename,
++        .name = prototype->co_name,
++        .qualname = prototype->co_qualname,
++        .flags = prototype->co_flags,
++        .code = code,
++        .firstlineno = prototype->co_firstlineno,
++        .linetable = prototype->co_linetable,
++        .consts = prototype->co_consts,
++        .names = prototype->co_names,
++        .localsplusnames = names,
++        .localspluskinds = kinds,
++        .argcount = prototype->co_argcount,
++        .posonlyargcount = prototype->co_posonlyargcount,
++        .kwonlyargcount = prototype->co_kwonlyargcount,
++        .stacksize = prototype->co_stacksize,
++        .exceptiontable = prototype->co_exceptiontable,
++    };
++    if (_PyCode_Validate(&con) < 0) goto error;
++    PyObject *result = (PyObject *)_PyCode_New(&con);
++    Py_DECREF(names);
++    Py_DECREF(kinds);
++    Py_DECREF(code);
++    return result;
++error:
++    Py_XDECREF(names);
++    Py_XDECREF(kinds);
++    Py_XDECREF(code);
++    return NULL;
++}
++
+ static PyMethodDef sys_methods[] = {
++    {"_jacpython_code", sys_jacpython_code, METH_VARARGS,
++     "Construct code with JacPython local-variable metadata."},
+     /* Might as well keep this in alphabetic order */
+     SYS_ADDAUDITHOOK_METHODDEF
+     SYS_AUDIT_METHODDEF
+--- a/Modules/symtablemodule.c
++++ b/Modules/symtablemodule.c
+@@ -3,6 +3,8 @@
+ #include "pycore_symtable.h"      // struct symtable
+
+ #include "clinic/symtablemodule.c.h"
++
++PyAPI_FUNC(int) _PyJac_SymtableBridgeVersion(void) { return 1; }
+ /*[clinic input]
+ module _symtable
+ [clinic start generated code]*/
+@@ -25,6 +27,14 @@
+                         PyObject *filename, const char *startstr)
+ /*[clinic end generated code: output=59eb0d5fc7285ac4 input=436ffff90d02e4f6]*/
+ {
++    /* The callback is opt-in until the bootstrap and replacement gates pass. */
++    PyObject *compiler = PySys_GetObject("_jacpython_symtable");
++    if (compiler != NULL && compiler != Py_None) {
++        Py_INCREF(compiler);
++        PyObject *result = PyObject_CallFunction(compiler, "OOs", source, filename, startstr);
++        Py_DECREF(compiler);
++        return result;
++    }
+     struct symtable *st;
+     PyObject *t;
+     int start;
+--- a/Python/Python-tokenize.c
++++ b/Python/Python-tokenize.c
+@@ -6,6 +6,8 @@
+ #include "../Parser/tokenizer/tokenizer.h"
+ #include "../Parser/pegen.h"                    // _PyPegen_byte_offset_to_character_offset()
+
++PyAPI_FUNC(int) _PyJac_TokenizeBridgeVersion(void) { return 1; }
++
+ static struct PyModuleDef _tokenizemodule;
+
+ typedef struct {
+@@ -57,6 +59,22 @@
+                        int extra_tokens, const char *encoding)
+ /*[clinic end generated code: output=7501a1211683ce16 input=f7dddf8a613ae8bd]*/
+ {
++    /* The callback is opt-in until the bootstrap and replacement gates pass. */
++    PyObject *factory = PySys_GetObject("_jacpython_tokenize");
++    if (factory != NULL && factory != Py_None) {
++        Py_INCREF(factory);
++        PyObject *args = PyTuple_Pack(1, readline);
++        PyObject *kwargs = encoding == NULL
++            ? Py_BuildValue("{s:O}", "extra_tokens", extra_tokens ? Py_True : Py_False)
++            : Py_BuildValue("{s:O,s:s}", "extra_tokens", extra_tokens ? Py_True : Py_False,
++                            "encoding", encoding);
++        PyObject *result = args != NULL && kwargs != NULL
++            ? PyObject_Call(factory, args, kwargs) : NULL;
++        Py_XDECREF(args);
++        Py_XDECREF(kwargs);
++        Py_DECREF(factory);
++        return result;
++    }
+     tokenizeriterobject *self = (tokenizeriterobject *)type->tp_alloc(type, 0);
+     if (self == NULL) {
+         return NULL;

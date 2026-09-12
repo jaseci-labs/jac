@@ -5,7 +5,7 @@
 # here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.37.12"
+version = "0.37.13"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "jac/README.md"
@@ -74,6 +74,9 @@ exclude = [
     "docs/*",
     "*/examples/*",
     "*/tests/*",
+    "jac/jaclang/compiler/frontend/python/*",
+    "jac/jaclang/compiler/backends/py/jacpython/*",
+    "jac/jaclang/runtime/python/*",
     # Ops scripts keep their usage docstrings; CI's fmt sweep skips ^scripts/
     # for the same reason -- this entry keeps the precommit hook consistent
     # with that (without it, any commit touching a script is blocked on deslop).

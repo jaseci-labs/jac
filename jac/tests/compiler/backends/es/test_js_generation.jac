@@ -2863,7 +2863,7 @@ test "imported JS/TS class constructs with new (#8017)" {
     assert_balanced_syntax(js_code, "ts_class_new.jac");
 }
 
-test "client artifact request schedules builtin inference (#7480)" {
+test "client artifact request schedules builtin inference (#7480, #8589)" {
     # A symbol-only module has no inferred call_kind. Requesting its client
     # artifact must schedule inference before the backend so builtins lower to their
     # _jac.builtin.* helpers rather than bare, undefined identifiers.
@@ -2912,10 +2912,16 @@ test "client artifact request schedules builtin inference (#7480)" {
     }
     wrapper = (
         js_code
+        + "\nlet _emptyErr = null;"
+        + "\ntry { min_of_empty(); } catch (e) { _emptyErr = e.message; }"
         + "\nconsole.log(JSON.stringify({"
         + "  summarize: summarize([3, 1, 2]),"
         + "  numeric: numeric(5),"
-        + "  zipped: combined([1, 2], [3, 4])[2]"
+        + "  combined: combined([1, 2], [3, 4]),"
+        + "  min_max_key: min_max_by_key([\"ccc\", \"a\", \"bb\"]),"
+        + "  min_spread: min_of_spread([5, 1, 3]),"
+        + "  min_max_varargs: min_max_varargs(3, 1, 2),"
+        + "  empty_error: _emptyErr"
         + "}));\n"
     );
     result = subprocess.run(
@@ -2938,7 +2944,36 @@ test "client artifact request schedules builtin inference (#7480)" {
     assert got["summarize"]["ranged"] == [0, 1, 2] , got["summarize"];
     assert got["numeric"]["abs"] == 5 , got["numeric"];
     assert got["numeric"]["round"] == 3.14 , got["numeric"];
-    assert got["zipped"] == [[1, 3], [2, 4]] , got["zipped"];
+    assert got["combined"][2] == [[1, 3], [2, 4]] , got["combined"];
+
+    # `combined([1, 2], [3, 4])` calls `min(a)`/`max(a)` in the single-
+    # iterable form (#8589): `Math.min([1, 2])` used to silently return NaN
+    # here, but only index 2 (zip) was ever checked. `min_max_varargs`
+    # covers the other branch of the same fix -- `min(a, b, c)` with several
+    # separate values, which must keep working as a direct comparison, not
+    # collapse into the iterable path. `min_max_by_key` covers the `key=`
+    # form, `min_of_empty` covers the empty-sequence error, and
+    # `min_of_spread` covers `min(*xs)`: a single spread argument lowers to
+    # one `...xs` entry, which the fix must wrap in `[...]` rather than pass
+    # straight through -- otherwise xs's elements splice into the runtime
+    # helper's own argument list instead of forming the array it expects.
+    expected_scalars = {
+        "combined min(a)": (got["combined"][0], 1),
+        "combined max(a)": (got["combined"][1], 2),
+        "min(items, key=)": (got["min_max_key"][0], "a"),
+        "max(items, key=)": (got["min_max_key"][1], "ccc"),
+        "min(*xs)": (got["min_spread"], 1),
+        "min(a, b, c)": (got["min_max_varargs"][0], 1),
+        "max(a, b, c)": (got["min_max_varargs"][1], 3)
+    };
+    for (label, (actual, expected)) in expected_scalars.items() {
+        assert actual == expected , (
+            f"{label}: expected {expected!r}, got {actual!r}\njs:\n{js_code}"
+        );
+    }
+    assert got["empty_error"] and "empty" in got["empty_error"].lower() , (
+        f"min([]) without a default must raise, got: {got['empty_error']}\njs:\n{js_code}"
+    );
 
     assert_balanced_syntax(js_code, "builtin_func_untyped.jac");
 }

@@ -11,13 +11,6 @@ glob _REPO_PINS: str = os.path.join(
      ),
      PINS_FILE: str = _PKG_PINS if os.path.exists(_PKG_PINS) else _REPO_PINS;
 
-obj PbsPins {
-    has tag: str,
-        python: str,
-        flavor: str,
-        base: str;
-}
-
 obj LlvmSlice {
     has dirname: str,
         triple: str,
@@ -33,7 +26,7 @@ obj LlvmPins {
 }
 
 obj Pins {
-    has pbs: PbsPins,
+    has python: str,
         llvm: LlvmPins;
 }
 

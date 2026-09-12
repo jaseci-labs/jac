@@ -15,7 +15,8 @@ import from jaclang.compiler.backends.common.primitives {
 
 obj ESEmitCtx {
     has unparser: object,
-        arg_type_names: (list[str] | None) = None;
+        arg_type_names: (list[str] | None) = None,
+        kwargs: (dict[str, str] | None) = None;
 }
 
 def _mcall(target: str, method: str, args: list[str]) -> str {
@@ -65,6 +66,19 @@ def _one_arg_cb(fn: str, seq: str, method: str, cb_body: str) -> str {
         + ", "
         + seq
         + ")";
+}
+
+def _min_max_call(rt_name: str, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+    n_pos = len(ctx.arg_type_names) if ctx.arg_type_names is not None else len(args);
+    positional = args[:n_pos];
+    if not positional {
+        return None;
+    }
+    items = positional[0]
+        if len(positional) == 1 and not positional[0].startswith("...")
+        else "[" + ", ".join(positional) + "]";
+    key = (ctx.kwargs or {}).get("key", "undefined");
+    return _rt("builtin", rt_name, [items, key]);
 }
 
 

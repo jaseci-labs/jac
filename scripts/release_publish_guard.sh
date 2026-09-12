@@ -3,6 +3,8 @@
 # to carry, and it publishes without the ones it is not.
 #
 # Usage: release_publish_guard.sh <version> <required-platform>...
+# Each required suffix identifies a compiler variant, e.g. linux-x86_64 or
+# linux-x86_64-jacpython; build-binaries.yml emits both from its build matrix.
 #
 #   every required asset attached -> flip the draft to published
 #   a required asset missing      -> refuse; the draft stays a draft
