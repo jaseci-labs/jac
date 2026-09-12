@@ -277,7 +277,11 @@ obj ModuleCompilation {
             and self.source is None
             and (
                 (self.options.no_cgen and not self.options.symtab_ir_only)
-                or (closure.no_cgen and not closure.symtab_ir_only)
+                or (
+                    closure.no_cgen
+                    and not closure.symtab_ir_only
+                    and not self.compiler.selfhost.is_selfhost(self.program)
+                )
             ) {
             import from jaclang.compiler.driver.pipeline {
                 require_product,

@@ -103,6 +103,9 @@ Bytecode loads establish their own compilation request, including when a
 type check lazily loads compiler code. The caller's analysis and full-tree
 requirements resume after the bytecode load and do not force interface
 encoding into that executable build.
+An application's analysis request also does not implicitly publish interfaces
+for symbol-only compiler dependencies. Their types remain available on demand;
+packaging requests the interface product explicitly through the same registry.
 Loading a dependency-validated interface also seeds the registry's encoding
 memo. A consumer that needs the source tree can still run its requested
 passes without re-encoding that unchanged interface and its dependency closure.
