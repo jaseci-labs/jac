@@ -1774,7 +1774,7 @@ walker NaIRGenPass(Transform) {
 
     def _release_owned_args(call_args: list[ir.Value], op: str = "call_arg") -> None;
     def _rc_call_with_ctx(
-        fn: ir.Function, args: list, op: str, loc: str = "", name: str = ""
+        fn: (ir.Function | None), args: list, op: str, loc: str = "", name: str = ""
     ) -> ir.Value;
 
     def _emit_scope_cleanup(

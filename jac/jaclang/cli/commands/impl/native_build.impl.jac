@@ -214,7 +214,8 @@ def _finalize_native_ir(
     shared: bool,
     is_windows: bool,
     is_macos: bool,
-    static_musl: bool
+    static_musl: bool,
+    emit_entry_stub: bool = False
 ) -> tuple[str, list[str]] {
     import from jaclang.compiler.backends.native.shared_emit {
         aarch64_floor_atomics_ir,
@@ -222,7 +223,9 @@ def _finalize_native_ir(
     }
     extra_exports: list[str] = [];
     if shared {
-        (llvm_ir_str, extra_exports) = inject_shared_init(llvm_ir_str, manifest);
+        (llvm_ir_str, extra_exports) = inject_shared_init(
+            llvm_ir_str, manifest, emit_entry_stub=emit_entry_stub
+        );
     } elif is_windows {
         llvm_ir_str = _inject_entry_pe(llvm_ir_str);
     } elif is_macos {
@@ -236,14 +239,15 @@ def _finalize_native_ir(
 }
 
 
-impl native_build(
+impl native_build(  # jac:ignore[W3030]
     filename: str,
     output: str = "",
     lib: bool = False,
     target: str = "",
     debug: bool = False,
     memory: str = "",
-    no_ir_cache: bool = False
+    no_ir_cache: bool = False,
+    entry_lib: bool = False
 ) -> int {
     import from jaclang.jac0core.ext_registry {
         is_jac,
@@ -264,6 +268,9 @@ impl native_build(
         return 1;
     }
     shared = lib;
+    if entry_lib {
+        shared = True;
+    }
     assert_no_rc = memory == "nogc";
     if not is_jac(filename) {
         console.error("Input must be a .jac file.");
@@ -486,6 +493,7 @@ impl native_build(
     console.print("  LLVM IR generated successfully.");
 
     import jaclang.compiler.backends.native.llvm.binding as llvm;
+    import jaclang.compiler.backends.native.shared_emit as _shared_emit;
     import from jaclang.compiler.backends.native.shared_emit { init_object_codegen }
     init_object_codegen();
 
@@ -525,10 +533,19 @@ impl native_build(
         shared,
         is_windows,
         is_macos,
-        _static_musl
+        _static_musl,
+        emit_entry_stub=entry_lib
     );
     if shared {
-        init_funcs = ["__jac_shared_init"];
+        _had_entry = _shared_emit.jac_entry_defined(llvm_ir_str);
+        if entry_lib and not _had_entry {
+            console.print(
+                "  No 'with entry { }' block; synthesized an empty jac_entry"
+                " for the entry-lib host protocol."
+            );
+        }
+
+        init_funcs = [] if entry_lib else ["__jac_shared_init"];
         for _s in ir_module.gen._exported_symbols {
             if _s not in export_symbols {
                 export_symbols.append(_s);
@@ -537,6 +554,18 @@ impl native_build(
         for _s in _extra_exports {
             if _s not in export_symbols {
                 export_symbols.append(_s);
+            }
+        }
+        if entry_lib {
+            if "__jac_argc" not in llvm_ir_str {
+                llvm_ir_str += (
+                    "\n@__jac_argc = global i32 0\n" + "@__jac_argv = global ptr null\n"
+                );
+            }
+            for _s in ["jac_entry", "__jac_argc", "__jac_argv", "__jac_shared_init"] {
+                if _s not in export_symbols {
+                    export_symbols.append(_s);
+                }
             }
         }
         if not export_symbols {
@@ -922,4 +951,80 @@ def _collect_musl_static(obj_bytes: bytes, triple: str) -> (tuple | None) {
     }
 
     return (member_bytes, crt_objects);
+}
+
+
+impl native_build_sealed_pair(filename: str, exe_output: str, lib_output: str) -> int {
+    """Build the sealed-artifact native pair: standalone exe + entry library.
+
+    Compiles once up front only to learn whether the app's native closure
+    calls back into Python (``native_imports``). An interop app cannot be
+    self-contained, so the standalone executable is dropped and the fact is
+    recorded in the ``<lib>.interop.json`` sidecar the jab host reads.
+    Otherwise both artifacts are built: the entry library last, since the
+    sealed bundle still runs via the standalone exe if the lib link fails.
+    """;
+    import json;
+    import os;
+    import from jaclang.server.sealed_serve { interop_record_path }
+    import from jaclang.cli.console { console }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.cli.commands.native_build { native_build }
+
+    try {
+        probe = JacProgram();
+        probe_ir = probe.compile(
+            file_path=os.path.abspath(filename),
+            options=CompileOptions(
+                aot_mode=True, default_codespace='native', force_target_program=True
+            )
+        );
+    } except Exception as e {
+        console.error(f"Jac compilation failed: {e}");
+        return 1;
+    }
+    if probe_ir is None {
+        console.error("Jac compilation produced no module; seal aborted.");
+        return 1;
+    }
+    _mf = probe_ir.gen.interop_manifest;
+    _pair_imports = [b.name for b in _mf.native_imports]
+        if _mf and _mf.native_imports
+        else [];
+    _interop_record = interop_record_path(lib_output);
+    if _pair_imports {
+        console.warning(
+            "App calls from native code into Python (native_imports): "
+            "dropping the standalone executable (it cannot be "
+            "self-contained) and sealing the host-driven native library only."
+        );
+        _interop_record.parent.mkdir(parents=True, exist_ok=True);
+        _interop_record.write_text(
+            json.dumps({"interop": True, "unresolved": _pair_imports}, sort_keys=True)
+                + "\n",
+            encoding="utf-8"
+        );
+    } else {
+        if _interop_record.exists() {
+            _interop_record.unlink();
+        }
+        rc = native_build(filename=filename, output=exe_output);
+        if rc != 0 {
+            console.error("Native compilation failed; seal aborted.");
+            return rc;
+        }
+    }
+
+    console.print("  Compiling in-process native library", style="muted");
+    lib_rc = native_build(
+        filename=filename, output=lib_output, lib=True, entry_lib=True
+    );
+    if lib_rc != 0 {
+        console.warning(
+            "In-process native library compilation failed; the sealed bundle "
+            "will run via the standalone binary only."
+        );
+    }
+    return 0;
 }

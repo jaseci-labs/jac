@@ -75,12 +75,9 @@ impl NaIRGenPass._clib_alloc_box(name: str) -> ir.Value {
         null_ptr, [ir.Constant(ir.IntType(32), 1)], name="clib.box.sizeof.gep"
     );
     size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="clib.box.sizeof");
-    if self.rc_alloc_fn is None {
-        self._emit_rc_helpers();
-    }
-    _alloc_fn = self.rc_alloc_fn;
-    assert _alloc_fn is not None , "rc helpers are emitted before allocation";
-    raw_ptr = self._rc_call_with_ctx(_alloc_fn, [size], op="box", name="clib.box.raw");
+    raw_ptr = self._rc_call_with_ctx(
+        self.rc_alloc_fn, [size], op="box", name="clib.box.raw"
+    );
     typed_ptr = self.builder.bitcast(raw_ptr, sptype, name="clib.box.ptr");
 
     self._emit_struct_release_fn(name);

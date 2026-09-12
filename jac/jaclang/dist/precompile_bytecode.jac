@@ -609,7 +609,11 @@ def app_metadata(pkg_path: Path, pkg_name: str, app: str = "") -> dict[str, any]
     }
     import from jaclang.project.config { get_config_for_path }
     import from jaclang.project.kinds { resolve_app_kind, resolve_entry }
-    import from jaclang.server.sealed_serve { CLIENT_DIST_REL, NATIVE_DIR_REL }
+    import from jaclang.server.sealed_serve {
+        CLIENT_DIST_REL,
+        NATIVE_DIR_REL,
+        native_lib_suffix
+    }
 
     config = get_config_for_path(pkg_path);
     if config is None {
@@ -666,6 +670,26 @@ def app_metadata(pkg_path: Path, pkg_name: str, app: str = "") -> dict[str, any]
         if triples {
             caps.append("platform-locked");
             meta["triples"] = triples;
+        }
+        _sidecars = sorted(native_dir.glob("*/*.interop.json"));
+        _libs = [
+            f
+            for f in native_dir.glob("*/*")
+            if f.is_file() and f.name.endswith(native_lib_suffix())
+        ];
+        if _sidecars {
+            try {
+                _rec = json.loads(_sidecars[0].read_text(encoding="utf-8"));
+            } except Exception {
+                _rec = {};
+            }
+            native_meta: dict[str, any] = {"interop": bool(_rec.get("interop", True))};
+            if _rec.get("unresolved") {
+                native_meta["unresolved"] = list(_rec.get("unresolved"));
+            }
+            meta["native"] = native_meta;
+        } elif _libs {
+            meta["native"] = {"interop": False};
         }
     }
     return meta;

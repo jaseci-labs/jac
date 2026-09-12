@@ -9,7 +9,6 @@ venv
 _precompiled/
 _dist/
 _planning/
-jac-seal/
 
 # Distribution / packaging
 .Python
@@ -108,4 +107,6 @@ jactastic/**
 # Zig 0.16 project-local package cache (fetched, hash-pinned deps)
 zig-pkg/
 
+# Seal-time generated materializer root (see jaclang/dist/gen_native_materialize.jac)
+jac/jaclang/compiler/native_materialize.jac
 .xdg-cache/

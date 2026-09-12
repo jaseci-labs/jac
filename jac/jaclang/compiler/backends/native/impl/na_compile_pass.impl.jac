@@ -893,16 +893,16 @@ impl NativeCompilePass._compile_and_link_native_imports(
                     break;
                 }
                 _uv_attempts += 1;
-                import from jaclang.cli.console { console }
+                import sys as _uv_sys;
                 _uv_what = "; ".join(
                     f"{os.path.basename(_uv_c)} demotes " + ", ".join(sorted(_uv_n))
                     for (_uv_c, _uv_n) in sorted(_uv_conflicts.items())
                 );
-                console.warning(
-                    f"native seam -- re-emitting "
+                _uv_sys.stderr.write(
+                    f"warning: native seam -- re-emitting "
                     f"{os.path.basename(real_path)}: it declared callables "
                     f"live while their module's verdict was pending, and the "
-                    f"landed verdict disagrees ({_uv_what})"
+                    f"landed verdict disagrees ({_uv_what})\n"
                 );
                 self.prog.scratch.na_unverified_live.pop(real_path, None);
                 self.prog.scratch.na_dep_units.pop(real_path, None);

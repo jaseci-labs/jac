@@ -1156,11 +1156,11 @@ impl NaIRGenPass._demote_method_if_unlowerable(
 
     _na_debug = self._na_debug_on();
     if self._seam_warnings_on() {
-        import from jaclang.cli.console { console }
+        import sys;
         _why = "; ".join(str(e) for e in _own);
-        console.warning(
-            f"native seam -- demoting {full_name} to Python-only "
-            f"(un-lowerable): {_why}"
+        sys.stderr.write(
+            f"warning: native seam -- demoting {full_name} to Python-only "
+            f"(un-lowerable): {_why}\n"
         );
     }
     if _na_debug {
@@ -1250,11 +1250,12 @@ impl NaIRGenPass._opaque_field_if_unlowerable(
     _why = str(_first).split('\n')[0];
 
     if self._seam_warnings_on() {
-        import from jaclang.cli.console { console }
-        console.warning(
-            f"native seam -- erasing field {arch_name}.{fname} to an "
+        import sys;
+        sys.stderr.write(
+            f"warning: native seam -- erasing field {arch_name}.{fname} to an "
             f"opaque slot (un-lowerable declaration): "
                 + "; ".join(str(e) for e in _own)
+                + "\n"
         );
     }
     try {
