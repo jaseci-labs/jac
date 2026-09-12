@@ -24,9 +24,9 @@ impl EmbeddedGateway._call_member(
     name: str = parts[1];
     try {
         if kind == "function" {
-            result = self.transport.call_function(service, name, payload);
+            data = {"result": self.transport.call_function(service, name, payload)};
         } elif kind == "walker" {
-            result = self.transport.call_walker(service, name, payload);
+            data = self.transport.call_walker(service, name, payload);
         } else {
             return None;
         }
@@ -52,9 +52,7 @@ impl EmbeddedGateway._call_member(
             }
         );
     }
-    return JSONResponse(
-        content={"ok": True, "type": "response", "data": {"result": result}}
-    );
+    return JSONResponse(content={"ok": True, "type": "response", "data": data});
 }
 
 

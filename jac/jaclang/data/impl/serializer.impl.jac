@@ -11,6 +11,9 @@ impl Serializer._serialize_attrs(
     ref_mode: bool = False,
     _seen: (tuple[set, set] | None) = None
 ) -> dict[str, object] {
+    omitted: set[str] = (
+        {'reports'} if api_mode and isinstance(`obj, WalkerArchetype) else set()
+    );
     result = {
         a: Serializer._serialize_value(
             getattr(`obj, a),
@@ -21,7 +24,9 @@ impl Serializer._serialize_attrs(
             Serializer._declared_of(`obj, a)
         )
         for a in dir(`obj)
-        if not a.startswith('_') and not callable(getattr(`obj, a, None))
+        if not a.startswith('_')
+            and a not in omitted
+            and not callable(getattr(`obj, a, None))
     };
 
     if include_type and not api_mode {

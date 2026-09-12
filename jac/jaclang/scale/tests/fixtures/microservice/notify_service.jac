@@ -20,15 +20,12 @@ walker:pub Greet {
 }
 
 walker:pub Notify {
-    has channel: str;
-    has subject: str;
-    has body: str = "";
+    has channel: str,
+        subject: str,
+        body: str = "";
 
     can send with Root entry {
-        report NotifyResult(
-            channel=self.channel,
-            delivered=True,
-            message=f"[{self.channel}] {self.subject}"
-        );
+        self.body = f"[{self.channel}] {self.subject}";
+        report NotifyResult(channel=self.channel, delivered=True, message=self.body);
     }
 }

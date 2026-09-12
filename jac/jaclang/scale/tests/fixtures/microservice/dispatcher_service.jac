@@ -33,3 +33,9 @@ async def:pub greet_via_walker(who: str) -> str {
     rg = await Greet(name=who);
     return rg.reports[0];
 }
+
+async def:pub remote_walker_fields(who: str) -> dict {
+    rg = await Greet(name=who);
+    rn = await Notify(channel="ops", subject="hello");
+    return {"name": rg.name, "greeting": rg.reports[0], "body": rn.body};
+}
