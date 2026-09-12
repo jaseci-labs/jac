@@ -374,6 +374,81 @@ test "a deployed gateway keeps its own shell: is_root alone does not own the roo
 }
 
 
+test "a deployed gateway serves its shell to every client, and only for page paths" {
+    app_seen: list[str] = [];
+    (srv_stop, port) = _spawn_stub("main", ["/walker/ping"], app_seen, [True]);
+    dist_dir: str = tempfile.mkdtemp();
+    base_dir: str = tempfile.mkdtemp();
+    (Path(dist_dir) / "index.html").write_text("<html>staged-shell</html>");
+
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="main",
+            file="main.jac",
+            prefix="/",
+            port=port,
+            url=f"http://127.0.0.1:{port}",
+            status=ServiceStatus.HEALTHY,
+            is_root=True,
+            serves_client=False
+        )
+    );
+    gw = MicroserviceGateway(
+        registry=reg, client_dist_dir=dist_dir, base_path=base_dir
+    );
+    gw.setup();
+    client = ServingTestClient(gw.app);
+    try {
+        curl = client.get("/leaderboard", headers={"Accept": "*/*"});
+        assert curl.status_code == 200 and "staged-shell" in curl.text , (
+            "a client route is a page whoever asks: curl, a crawler or an "
+            f"uptime probe gets the shell a browser gets; got {curl.status_code}"
+        );
+        assert client.get("/docs/latest").status_code == 200;
+        for probed in ("/", "/leaderboard", "/docs") {
+            assert client.head(probed).status_code == 200 , (
+                f"HEAD {probed} must answer like GET so a HEAD health check "
+                "does not report a serving fleet as down"
+            );
+        }
+        api = client.get("/leaderboard", headers={"Accept": "application/json"});
+        assert api.status_code == 404 , (
+            "a client that asks for JSON only keeps the JSON 404 envelope"
+        );
+        stale = client.get(
+            "/client.stale.js", headers={"Accept": "text/html,*/*;q=0.8"}
+        );
+        assert stale.status_code == 404 , (
+            "a path with a file extension is an asset, never a page: a chunk "
+            f"the image did not stage is a 404, not the shell; got {stale.status_code}"
+        );
+        api_miss = client.get("/walker/missing");
+        assert api_miss.status_code == 404 and "staged-shell" not in api_miss.text , (
+            "a gateway-owned API segment is never answered with the shell"
+        );
+        graph_page = client.get("/graph", headers={"Accept": "text/html"});
+        assert graph_page.text == "main /graph" , (
+            "/graph is delivered to the app, whose own server decides between "
+            "its graph viewer and a client route the app declares; the staged "
+            f"shell is never part of that decision; got {graph_page.text!r}"
+        );
+        assert not [
+            s
+            for s in app_seen
+            if "/leaderboard" in s
+        ] , (
+            "the root stays with the staged shell: no page request reaches "
+            f"the app service; it saw {app_seen}"
+        );
+    } finally {
+        srv_stop();
+        shutil.rmtree(dist_dir, ignore_errors=True);
+        shutil.rmtree(base_dir, ignore_errors=True);
+    }
+}
+
+
 test "a client page the app does not have still reaches the service that does" {
     fleet = _fleet();
     try {

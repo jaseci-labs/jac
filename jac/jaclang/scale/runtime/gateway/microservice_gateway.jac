@@ -96,7 +96,6 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
 
     def service_base_url(service_entry: ServiceEntry) -> str;
     def handle_static(request: Request, path: str) -> Response | None;
-    def handle_spa_fallback(request: Request, path: str) -> Response | None;
     def handle_metrics -> Response;
     async def handle_openapi -> Response;
     def handle_docs -> Response;
