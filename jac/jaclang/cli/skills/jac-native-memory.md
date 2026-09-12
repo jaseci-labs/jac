@@ -12,6 +12,12 @@ jac build main.jac --native --memory nogc
 jac explain memory main.jac
 ```
 
+## Deep-release contract
+
+Releasing a managed value is **deep and synchronous**. When an object's refcount reaches zero its destructor releases every managed field (and, for containers, every managed element), and any field whose count in turn reaches zero is destructed immediately, so the entire acyclic subgraph rooted at a dropped value is reclaimed, in full, before the release call returns. There is no deferred or lazy teardown: acyclic finalization order stays deterministic (this is the property jacpython depends on for CPython-faithful `__del__` / file-close / weakref timing), and only cyclic garbage is ever handled asynchronously by the `--gc cycles` collector.
+
+Deep release is **O(1)-stack**. The transitive release is driven by an explicit heap worklist inside `__rc_release_simple`, not by C-stack recursion: the first release on an idle call becomes the drain driver, and any release re-entered from a destructor merely appends its pointer to the worklist and returns. A chain, deep AST, or other long acyclic graph therefore tears down in constant stack space regardless of depth, a million-node linked list is reclaimed under a sub-megabyte stack. (Reclaiming a **reference cycle** still requires `--gc cycles`; RC alone cannot, because each cycle member pins its neighbour's count.)
+
 ## Contracts to preserve
 
 - `own` is affine: transfer consumes the binding; unused values may be dropped. `lin` requires consumption on every accepted path. `imm` is deeply immutable.
