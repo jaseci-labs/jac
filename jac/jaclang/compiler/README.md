@@ -93,6 +93,10 @@ diagnostic profiles, and placement facts, including for bootstrap modules
 whose executable bytecode is produced by jac0. A bytecode-only cache is
 upgraded through `IfaceRegistry` instead of introducing a second analyzer.
 Normal code generation keeps its existing interface policy.
+Bytecode loads establish their own compilation request, including when a
+type check lazily loads compiler code. The caller's analysis and full-tree
+requirements resume after the bytecode load and do not force interface
+encoding into that executable build.
 Loading a dependency-validated interface also seeds the registry's encoding
 memo. A consumer that needs the source tree can still run its requested
 passes without re-encoding that unchanged interface and its dependency closure.

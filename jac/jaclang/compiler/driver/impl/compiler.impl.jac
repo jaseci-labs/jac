@@ -268,6 +268,8 @@ impl JacCompiler._get_bytecode(
     }
     options = CompileOptions();
     result: (uni.Module | None) = None;
+    enclosing_closure = self._closure_opts;
+    self._closure_opts = options;
     try {
         result = self.compile(
             file_path=full_target, target_program=actual_program, options=options
@@ -289,6 +291,7 @@ impl JacCompiler._get_bytecode(
         }
         return None;
     } finally {
+        self._closure_opts = enclosing_closure;
         if is_internal {
             if self.selfhost.at_outermost_bytecode() {
                 self.selfhost.evict_unit(

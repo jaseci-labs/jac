@@ -51,3 +51,60 @@ test "the self-host program keeps its own native stdlib imports" {
     sock = _pkg_path("runtime/na_stdlib/socket.jac");
     assert cache.resolve(sock, cache.program) is cache.program;
 }
+
+test "lazy compiler bytecode does not inherit the caller's analysis request" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import jaclang.compiler.driver.pass_driver as driver;
+    # Ensure the codec is available so unnecessary interface work is observable.
+    import jaclang.compiler.types.stubcat.modiface;
+    with TemporaryDirectory() as directory {
+        base_path = Path(directory);
+        toolchain = base_path / "toolchain";
+        toolchain.mkdir();
+        helper = toolchain / "helper.jac";
+        helper.write_text("def answer() -> int { return 42; }\n");
+        app = base_path / "main.jac";
+        app.write_text("def application() -> int { return 1; }\n");
+        internal = JacProgram();
+        compiler = JacCompiler(
+            _selfhost=SelfHostCache(_program=internal, _jaclang_root=str(toolchain))
+        );
+        internal._compiler = compiler;
+        program = JacProgram();
+        program._compiler = compiler;
+        loaded: list[any] = [];
+        original: any = driver.run_pass;
+        def load_helper(pass_cls: any, ir_in: any, prog: any, **kwargs: any) -> any {
+            if pass_cls.__name__ == "SymTabBuildPass"
+                and ir_in.loc.mod_path == str(app)
+                and not loaded {
+                assert compiler._reentrant_depth > 0;
+                loaded.append(
+                    compiler.get_bytecode(str(helper), target_program=program)
+                );
+            }
+            return original(pass_cls, ir_in, prog, **kwargs);
+        }
+        with patch.object(driver, "run_pass", load_helper) {
+            program.compile(
+                str(app), options=CompileOptions(no_cgen=True, need_full_ast=True)
+            );
+        }
+        assert len(loaded) == 1 and loaded[0] is not None;
+        assert internal.analysis.cache_events.get("iface_encode", 0) == 0 , (
+            "the caller's type check forced interfaces into lazy compiler code generation"
+        );
+        assert sum(
+            context.analysis.cache_events.get("iface_encode", 0)
+            for context in [program] + list(program.contexts.values())
+        )
+            > 0 , "the outer application analysis lost its interface request";
+        assert compiler._closure_opts is None;
+        assert not program.errors_had;
+    }
+}
