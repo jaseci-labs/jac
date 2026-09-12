@@ -1016,13 +1016,16 @@ walker NaIRGenPass(Transform) {
     def _hash_order_extent_ptr(
         b: ir.IRBuilder, order: ir.Value, capacity: ir.Value
     ) -> ir.Value;
+
     def _hash_order_position_ptr(
         b: ir.IRBuilder, order: ir.Value, capacity: ir.Value, slot: ir.Value
     ) -> ir.Value;
+
     def _hash_order_alloc(b: ir.IRBuilder, capacity: ir.Value) -> ir.Value;
     def _emit_hash_order_compact_fn(
         name: str, container_type: ir.Type, layout: dict
     ) -> ir.Function;
+
     def _emit_hash_order_remove_fn(
         name: str, container_type: ir.Type, layout: dict
     ) -> ir.Function;
