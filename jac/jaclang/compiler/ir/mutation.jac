@@ -19,19 +19,24 @@ def validate_connection(source: object, relation: type, target: object) {
 
 def validate_relations(source: GraphNode) {
     import from jaclang.compiler.ir.schema { relation_catalog }
-    relations = relation_catalog();
-    outgoing: dict[type, list[GraphNode]] = {};
     anchor = source.__jac__;
-    if anchor.out_light is not None {
-        for (relation, targets) in anchor.out_light.items() {
-            outgoing[relation] = list(targets);
+    outgoing: dict[type, list[GraphNode]] = anchor.out_light or {};
+    if anchor.edges {
+        outgoing = {
+            relation: list(targets) for (relation, targets) in outgoing.items()
+        };
+        for edge in anchor.edges {
+            if edge.source is anchor and edge.target is not None {
+                outgoing.setdefault(type(edge.archetype), []).append(
+                    edge.target.archetype
+                );
+            }
         }
     }
-    for edge in anchor.edges {
-        if edge.source is anchor and edge.target is not None {
-            outgoing.setdefault(type(edge.archetype), []).append(edge.target.archetype);
-        }
+    if not outgoing and not (isinstance(source, UniNode) and source._role_shapes) {
+        return;
     }
+    relations = relation_catalog();
     for (relation, targets) in outgoing.items() {
         spec = relations.get(relation);
         if spec is None {
@@ -40,8 +45,17 @@ def validate_relations(source: GraphNode) {
         if spec.multiplicity == Multiplicity.OPTIONAL and len(targets) > 1 {
             raise ValueError(f"{spec.schema_id} permits at most one target");
         }
+        if targets and not isinstance(source, spec.source_types) {
+            raise TypeError(
+                f"{spec.schema_id} has an invalid source: {type(source).__name__}"
+            );
+        }
         for target in targets {
-            validate_connection(source, relation, target);
+            if not isinstance(target, spec.target_types) {
+                raise TypeError(
+                    f"{spec.schema_id} has an invalid target: {type(target).__name__}"
+                );
+            }
         }
     }
     if isinstance(source, UniNode) {

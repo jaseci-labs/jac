@@ -449,6 +449,31 @@ test "native graph validation adopts a complete graph atomically" {
     assert second.mutation_permit is permit;
 }
 
+test "validation combines heavy and light edges without changing the graph" {
+    import from jaclang.compiler.ir.symbols.edges { ScopeParent }
+    import from jaclang.compiler.ir.mutation { validate_relations }
+    import from jaclang.runtime.archetype { EdgeAnchor }
+    source = Module.make_stub();
+    first = Module.make_stub();
+    second = Module.make_stub();
+    source +>:ScopeParent:+> first;
+    targets = source.__jac__.out_light[ScopeParent];
+    source.__jac__.edges.append(
+        EdgeAnchor(
+            archetype=ScopeParent(),
+            source=source.__jac__,
+            target=second.__jac__,
+            is_undirected=False
+        )
+    );
+    try {
+        validate_relations(source);
+        assert False , 'both storage tiers must count toward multiplicity';
+    } except ValueError {}
+    assert source.__jac__.out_light[ScopeParent] is targets;
+    assert targets == [first];
+}
+
 
 test "syntax copies preserve typed edges while isolating context and locations" {
     import copy;
