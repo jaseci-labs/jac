@@ -73,6 +73,8 @@ obj KubernetesConfig(BaseConfig) {
         service_dependencies: list[str] = [],
         monitoring_enabled: bool = False,
         k8s_metrics_enabled: bool = True,
+        observability_namespace: str = 'jac-observability',
+        app_grafana_metrics: bool = False,
         loki_enabled: bool = False,
         tracing_enabled: bool = False,
         prometheus_admin_password: str = 'Adminpassword123',

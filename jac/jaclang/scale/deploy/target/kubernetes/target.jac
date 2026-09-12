@@ -15,8 +15,6 @@ import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     delete_namespace,
     get_cluster_provider,
     namespace_is_owned,
-    privileged_pss_labels,
-    PSS_ENFORCE_LABEL,
     _resolve_current_rs_hashes,
     _refresh_rs_hashes
 }
@@ -839,7 +837,6 @@ obj KubernetesTarget(KubernetesTargetBase) {
 
         obs_config = self._build_observability_config();
 
-        self._ensure_privileged_namespace(core_v1, obs_config.namespace);
         if self.logger {
             self.logger.info(
                 f"Deploying observability stack (Prometheus + Grafana + "
@@ -890,51 +887,6 @@ obj KubernetesTarget(KubernetesTargetBase) {
                     f"readiness gates ({e}); rollouts may briefly serve 502s "
                     f"from the ALB while new targets pass health checks.",
                     {"label": gate_label}
-                );
-            }
-        }
-    }
-
-    def _ensure_privileged_namespace(core_v1: any, namespace: str) -> None {
-        try {
-            ns = core_v1.read_namespace(name=namespace);
-            labels: dict = dict(getattr(ns.metadata, "labels", {}) or {});
-            new_labels = privileged_pss_labels(labels);
-            if new_labels is None {
-                if self.logger {
-                    current = labels.get(PSS_ENFORCE_LABEL, "");
-                    self.logger.warn(
-                        f"namespace '{namespace}' has "
-                        f"{PSS_ENFORCE_LABEL}={current} from outside jac-scale; "
-                        f"hostPath DaemonSets (node-exporter, Alloy) may be "
-                        f"rejected. Relabel manually with `kubectl label "
-                        f"namespace {namespace} "
-                        f"{PSS_ENFORCE_LABEL}=privileged "
-                        f"--overwrite` if you want to enable them."
-                    );
-                }
-                return;
-            }
-            if not new_labels {
-                return;
-            }
-            patch = {"metadata": {"labels": new_labels}};
-            core_v1.patch_namespace(name=namespace, body=patch);
-            if self.logger {
-                self.logger.info(
-                    f"Labeled namespace '{namespace}' with "
-                    "pod-security.kubernetes.io/enforce=privileged "
-                    "(required for hostPath DaemonSets)"
-                );
-            }
-        } except Exception as e {
-            if self.logger {
-                self.logger.warn(
-                    f"Could not label namespace '{namespace}' privileged - "
-                    f"hostPath DaemonSets may be rejected by PodSecurity. "
-                    f"Run `kubectl label namespace {namespace} "
-                    f"pod-security.kubernetes.io/enforce=privileged "
-                    f"--overwrite` manually. Cause: {e}"
                 );
             }
         }

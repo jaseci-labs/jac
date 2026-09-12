@@ -1069,7 +1069,7 @@ obj ManifestBuilder {
             env.append(
                 {
                     "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
-                    "value": f"http://{self.k8s_config.app_name}-alloy-service:4318"
+                    "value": f"http://{self.k8s_config.app_name}-tempo-service:4318"
                 }
             );
         }
