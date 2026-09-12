@@ -39,6 +39,11 @@ fail() {
     jac browse snapshot | head -n 60 || true
     echo "--- console at failure ---"
     jac browse console || true
+    echo "--- script requests at failure ---"
+    jac browse eval 'performance.getEntriesByType("resource")
+      .filter(entry => entry.initiatorType === "script")
+      .map(entry => ({url: entry.name, status: entry.responseStatus,
+                     durationMs: Math.round(entry.duration)}))' || true
     exit 1
 }
 
