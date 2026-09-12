@@ -1,5 +1,5 @@
 import from contextlib { contextmanager }
-import from collections.abc { Iterator }
+import from collections.abc { Callable, Iterator }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import os;
 import time;
@@ -618,8 +618,8 @@ obj IfaceRegistry {
         self.prog.analysis.analyses_run.mark(mod, _symtab_provides());
     }
 
-    def _profiles_of(
-        diag_bytes: (bytes | None), paths: JirPaths | None = None
+    static def _profiles_of(
+        diag_bytes: (bytes | None), path_mapper: Callable[[str], str] | None = None
     ) -> (dict | None) {
         import json;
         if diag_bytes is None {
@@ -634,16 +634,16 @@ obj IfaceRegistry {
             return None;
         }
         profiles = payload.get("profiles", {}) or {};
-        if paths is not None {
+        if path_mapper is not None {
             for profile in profiles.values() {
                 for kind in ("errors", "warnings") {
                     for record in profile.get(kind, []) {
                         span = record.get("span");
                         if span {
-                            span[0] = paths.resolve(span[0]);
+                            span[0] = path_mapper(span[0]);
                         }
                         for related in record.get("related", []) {
-                            related[1][0] = paths.resolve(related[1][0]);
+                            related[1][0] = path_mapper(related[1][0]);
                         }
                     }
                 }
@@ -734,7 +734,9 @@ obj IfaceRegistry {
         }
         prof: (dict | None) = None;
         if profile_key is not None {
-            profiles = self._profiles_of(ent.diags, ent.paths);
+            profiles = self._profiles_of(
+                ent.diags, ent.paths.resolve if ent.paths is not None else None
+            );
             prof = profiles.get(profile_key) if profiles is not None else None;
             if prof is None {
                 self._event("dep_profile_miss");
@@ -771,7 +773,7 @@ obj IfaceRegistry {
         }
         (data, base_dir) = found;
         paths = read_jir_paths(data, base_dir);
-        profiles = self._profiles_of(read_section_bytes(data, SEC_DIAG), paths);
+        profiles = self._profiles_of(read_section_bytes(data, SEC_DIAG), paths.resolve);
         if profiles is None {
             return None;
         }
@@ -878,13 +880,19 @@ obj IfaceRegistry {
         self._event("iface_cfg");
     }
 
-    def _encode_iface(codec: IfaceCodec, mod: any) -> (bytes | None) {
+    def _encode_iface(codec: IfaceCodec, mod: any, paths: JirPaths) -> (bytes | None) {
         import from jaclang.compiler.types.stubcat.modiface { IncoherentInterface }
         self._event("iface_encode");
         self._ensure_flow_graph(mod);
         try {
+            package_dir = os.path.realpath(
+                self.prog.options.project_root or paths.base_dir
+            );
+            def encode_path(path: str) -> str {
+                return paths.encode(path, package_dir);
+            }
             return codec.build_module_iface(
-                mod, self.prog.get_type_evaluator(), self._pkg_dir()
+                mod, self.prog.get_type_evaluator(), self._pkg_dir(), encode_path
             );
         } except IncoherentInterface {
             self._event("iface_incoherent");
@@ -908,14 +916,15 @@ obj IfaceRegistry {
         if memo is not None and memo.module_key == key {
             return True;
         }
-        encoded = self._encode_iface(codec, mod);
+        paths = JirPaths(base_dir=os.path.dirname(resolved));
+        encoded = self._encode_iface(codec, mod, paths);
         if encoded is None {
             self._incoherent.add(resolved);
             return False;
         }
         self._incoherent.discard(resolved);
         self._iface_bytes[resolved] = EncodedInterface(
-            key, encoded, codec.read_iface_hash(encoded) or ''
+            key, encoded, codec.read_iface_hash(encoded) or '', paths
         );
         return True;
     }
@@ -1039,7 +1048,8 @@ obj IfaceRegistry {
         try {
             (data, base_dir) = found;
             return self._profiles_of(
-                read_section_bytes(data, SEC_DIAG), read_jir_paths(data, base_dir)
+                read_section_bytes(data, SEC_DIAG),
+                read_jir_paths(data, base_dir).resolve
             )
                 or {};
         } except Exception {
@@ -1186,8 +1196,8 @@ obj IfaceRegistry {
             codec = iface_codec();
             assert codec is not None;
             fresh_digest = codec.read_iface_hash(
-                codec.build_module_iface(
-                    fresh, prog2.get_type_evaluator(), self._pkg_dir()
+                prog2.iface_registry()._encode_iface(
+                    codec, fresh, JirPaths(base_dir=os.path.dirname(resolved))
                 )
             )
                 or "";

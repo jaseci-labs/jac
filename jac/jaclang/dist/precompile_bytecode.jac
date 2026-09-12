@@ -35,6 +35,8 @@ import from jaclang.compiler.driver.jir {
     precompiled_jir_matches_source,
     read_section_bytes,
     read_jir_paths,
+    read_dep_rows,
+    deps_section,
     rebase_ct_deps_section,
     running_compiler_digest,
     PRECOMPILE_SENTINEL
@@ -355,6 +357,7 @@ def _emit_unit_diagnostics(jac_path: str, programs: list) {
 glob _unit_program: list[JacProgram] = [];
 
 def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, bytes] {
+    pkg_root = os.path.realpath(pkg_root);
     extra: dict[int, bytes] = {};
     try {
         cache_path = get_module_cache_path(jac_path);
@@ -368,8 +371,45 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
             }
             if extra {
                 paths = read_jir_paths(data);
-                paths.base_dir = os.path.realpath(pkg_root);
-                extra[SEC_PATH_ROOT] = paths.to_bytes();
+                if not paths.base_dir {
+                    paths.base_dir = os.path.dirname(os.path.realpath(jac_path));
+                }
+                def encode_path(path: str) -> str {
+                    return paths.encode(paths.resolve(path), pkg_root);
+                }
+                if SEC_DEPS in extra {
+                    extra[SEC_DEPS] = deps_section(
+                        [
+                            (encode_path(path), digest, flags)
+                            for (path, digest, flags) in read_dep_rows(data)
+                        ]
+                    );
+                }
+                if SEC_DIAG in extra {
+                    import from jaclang.compiler.driver.ifacecache {
+                        IfaceRegistry,
+                        DIAG_SCHEMA
+                    }
+                    profiles = IfaceRegistry._profiles_of(extra[SEC_DIAG], encode_path);
+                    if profiles is not None {
+                        extra[SEC_DIAG] = json.dumps(
+                            {"schema": DIAG_SCHEMA, "profiles": profiles}
+                        ).encode(
+                            "utf-8"
+                        );
+                    }
+                }
+                if SEC_PLACEMENT in extra {
+                    import from jaclang.compiler.placement.placement {
+                        summary_from_bytes,
+                        summary_to_bytes
+                    }
+                    summary = summary_from_bytes(extra[SEC_PLACEMENT], encode_path);
+                    if summary is not None {
+                        extra[SEC_PLACEMENT] = summary_to_bytes(summary);
+                    }
+                }
+                extra[SEC_PATH_ROOT] = paths.to_bytes(os.path.realpath(pkg_root));
             }
             raw = read_section_bytes(data, SEC_CTDEPS);
             if raw is not None {

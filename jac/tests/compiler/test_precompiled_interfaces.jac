@@ -15,6 +15,31 @@ def _package(base_path: Path) -> Path {
     return package;
 }
 
+test "precompiled interfaces are independent of the staging directory" {
+    with TemporaryDirectory() as directory {
+        artifacts: list[bytes] = [];
+        for stage in ("first", "second-longer-path") {
+            package = _package(Path(directory) / stage);
+            nested = package / "nested";
+            nested.mkdir();
+            (nested / "__init__.jac").write_text("");
+            (package / "model.jac").write_text("obj Box { has value: int; }\n");
+            source = nested / "api.jac";
+            source.write_text(
+                "import from ..model { Box }\n"
+                    + "def make() -> Box { return Box(42); }\n"
+            );
+            data = precompile_unit(str(source), str(package), collect=False);
+            assert data is not None;
+            assert read_section_bytes(data, SEC_IFACE) is not None;
+            artifacts.append(data);
+        }
+        assert artifacts[0] == artifacts[1] , (
+            "identical sources produced different sealed interfaces after relocation"
+        );
+    }
+}
+
 test "precompiled modules carry their type interface on cold and cached builds" {
     with TemporaryDirectory() as directory {
         package = _package(Path(directory));
@@ -130,7 +155,7 @@ test "relocation changes path fields without rewriting diagnostic messages" {
             }
         }
     ).encode();
-    profiles = JacProgram().iface_registry()._profiles_of(raw, paths);
+    profiles = JacProgram().iface_registry()._profiles_of(raw, paths.resolve);
     assert profiles is not None;
     warning = profiles["profile"]["warnings"][0];
     assert warning["msg"] == original;

@@ -101,9 +101,12 @@ lazy provider. They never rebind a foreign declaration's symbol. Interface
 encoding takes an alias category from its resolved definition, keeping hashes
 stable when later imports refine that definition.
 
-JIR's `SEC_PATH_ROOT` records the build package root. The dependency,
-interface, diagnostic, and placement readers relocate path fields to the
-installed root without changing interface hashes or literal text. Reused bytes
+Interface paths are encoded relative to their source module before hashing.
+JIR's `SEC_PATH_ROOT` records the local base directory; sealed packages store
+only its relative location inside the package. The dependency, interface,
+diagnostic, and placement readers relocate path fields to the installed root
+without changing interface hashes or literal text. Identical staged packages
+therefore produce identical artifacts. Reused bytes
 keep their path mapping through local cache writes and subsequent packaging. Diagnostic
 profile and dependency checks still govern reuse. Dependencies outside the
 package retain their existing validation and source fallback.

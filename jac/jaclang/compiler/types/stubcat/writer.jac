@@ -1,6 +1,7 @@
 import os;
 import json;
 import struct;
+import from collections.abc { Callable }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -313,6 +314,7 @@ obj CatalogWriter {
         base_dir: str postinit,
         external_modules: set[any] postinit,
         boundary: (Module | None) = None,
+        path_mapper: Callable[[str], str] | None = None,
         failures: int = 0,
         evaluated: int = 0,
         failure_log: list[str] = [],
@@ -499,7 +501,7 @@ obj CatalogWriter {
         if real.startswith(prefix) {
             return real[len(prefix):].replace(os.sep, "/");
         }
-        return real;
+        return self.path_mapper(real) if self.path_mapper is not None else real;
     }
 
     def add_module(mod: Module, dotted: str) -> None {

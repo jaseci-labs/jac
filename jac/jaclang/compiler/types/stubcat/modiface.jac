@@ -22,13 +22,20 @@ class IncoherentInterface(RuntimeError) {
     }
 }
 
-def build_module_iface(mod: Module, evaluator: any, pkg_dir: str) -> bytes {
-    writer = CatalogWriter(evaluator=evaluator, pkg_dir=pkg_dir, boundary=mod);
+def build_module_iface(
+    mod: Module,
+    evaluator: any,
+    pkg_dir: str,
+    path_mapper: Callable[[str], str] | None = None
+) -> bytes {
+    writer = CatalogWriter(
+        evaluator=evaluator, pkg_dir=pkg_dir, boundary=mod, path_mapper=path_mapper
+    );
     dotted = mod.name or "";
     writer.add_module(mod, dotted);
     writer.force_all();
     key = mod.loc.mod_path if mod.loc else dotted;
-    body = writer.emit(key, {});
+    body = writer.emit(writer.rel_of(key), {});
     if writer.orphans {
         raise IncoherentInterface(key, writer.orphans);
     }

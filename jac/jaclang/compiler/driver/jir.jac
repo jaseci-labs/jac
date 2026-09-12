@@ -38,6 +38,18 @@ obj JirPaths {
     has roots: list[str] = [],
         base_dir: str = "";
 
+    def encode(path: str, package_dir: str) -> str {
+        if not self.base_dir or not package_dir or not os.path.isabs(path) {
+            return path;
+        }
+        if path == package_dir or path.startswith(package_dir + os.sep) {
+            return PRECOMPILE_SENTINEL
+                + "/"
+                + os.path.relpath(path, self.base_dir).replace(os.sep, "/");
+        }
+        return path;
+    }
+
     def resolve(path: str) -> str {
         if not self.base_dir or not path {
             return path;
@@ -64,8 +76,21 @@ obj JirPaths {
         return path;
     }
 
-    def to_bytes -> bytes {
+    def to_bytes(package_dir: str = "") -> bytes {
         import json;
+        if package_dir {
+            return json.dumps(
+                {
+                    "roots": [],
+                    "base": "",
+                    "subdir": os.path.relpath(self.base_dir, package_dir).replace(
+                        os.sep, "/"
+                    )
+                }
+            ).encode(
+                "utf-8"
+            );
+        }
         roots = list(self.roots);
         if self.base_dir and self.base_dir not in roots {
             roots.append(self.base_dir);
@@ -79,6 +104,11 @@ obj JirPaths {
             return JirPaths(base_dir=base_dir);
         }
         payload = json.loads(data.decode("utf-8"));
+        if base_dir and payload.get("subdir") {
+            base_dir = os.path.normpath(
+                os.path.join(base_dir, *payload["subdir"].split("/"))
+            );
+        }
         return JirPaths(roots=payload["roots"], base_dir=base_dir or payload["base"]);
     }
 }
