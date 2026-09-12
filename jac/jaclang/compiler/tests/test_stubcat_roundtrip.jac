@@ -102,7 +102,9 @@ test "class records carry mro, members and identity" {
     }
     (cat, out) = small_catalog();
     builtins = cat.module("builtins");
+    assert builtins is not None;
     str_sym = builtins.names_in_scope["str"];
+    assert str_sym.provider is not None;
     str_type = str_sym.provider.resolve_type(str_sym);
     assert isinstance(str_type, ClassType) , str_type;
     assert str_type.shared.class_name == "str";
@@ -115,7 +117,9 @@ test "class records carry mro, members and identity" {
     assert key is not None
         and key[3] == "str"
         and key[0].endswith("builtins.pyi") , key;
-    upper_type = members["upper"].provider.resolve_type(members["upper"]);
+    upper_sym = members["upper"];
+    assert upper_sym.provider is not None;
+    upper_type = upper_sym.provider.resolve_type(upper_sym);
     assert isinstance(upper_type, (FunctionType, OverloadedType)) , upper_type;
 }
 
@@ -127,6 +131,7 @@ test "function records keep their signatures" {
     math_mod = cat.module("math");
     assert math_mod is not None;
     sqrt_sym = math_mod.names_in_scope["sqrt"];
+    assert sqrt_sym.provider is not None;
     sqrt_type = sqrt_sym.provider.resolve_type(sqrt_sym);
     assert isinstance(sqrt_type, FunctionType) , sqrt_type;
     ret = sqrt_type.return_type;

@@ -35,7 +35,8 @@ obj SelfHostCache {
     def resolve(
         file_path: str, target_program: JacProgram, force: bool = False
     ) -> JacProgram {
-        if not force and self.owns(file_path) {
+        if not (force or target_program.options.force_target_program)
+            and self.owns(file_path) {
             if self.is_selfhost(target_program) {
                 return self.program;
             }
