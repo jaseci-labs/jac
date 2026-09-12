@@ -46,6 +46,16 @@ comptime SPEC_PRECOMPILE: CommandSpec = CommandSpec(
                  )
              ),
              Arg.create(
+                 "force",
+                 kind=ArgKind.FLAG,
+                 `default=False,
+                 short="",
+                 help=(
+                     "Delete the previous _precompiled output first and rewrite "
+                     "every unit (the warm module cache is still used)"
+                 )
+             ),
+             Arg.create(
                  "debug-src",
                  kind=ArgKind.FLAG,
                  `default=False,
@@ -88,6 +98,7 @@ def precompile(
     seal: bool = False,
     seal_compile: bool = False,
     seal_finalize: bool = False,
+    force: bool = False,
     debug_src: bool = False,
     jobs: str = "",
     app: str = ""
