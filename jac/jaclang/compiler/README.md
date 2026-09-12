@@ -88,6 +88,9 @@ before generating bytecode through the existing pipeline. Packaging explicitly
 initializes the existing interface codec: the separate bootstrap finalization
 process does not otherwise load it during symbol-only compilation. The registry's
 non-importing readiness check remains safe during compiler bootstrapping.
+The precompiler also activates the existing stub catalog before sealing
+symbol-only selfhost units, so cross-references to conditional stub classes
+resolve through the same authority used by application analysis.
 Sealing preserves the interface, dependency hashes,
 diagnostic profiles, and placement facts, including for bootstrap modules
 whose executable bytecode is produced by jac0. A bytecode-only cache is

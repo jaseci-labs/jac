@@ -469,6 +469,7 @@ def precompile_unit_context(
     }
     program = _unit_program[0];
     compiler = program._get_compiler();
+    compiler.ensure_stub_catalog();
     source_app = _source_apps.get((os.path.abspath(pkg_root), app), {}).get(
         os.path.realpath(jac_path), app
     );
