@@ -41,6 +41,9 @@ def verify(library_path: Path) {
     library.packet_byte.argtypes = [ctypes.c_void_p, ctypes.c_int64];
     library.packet_byte.restype = ctypes.c_int64;
     library.jac_release.argtypes = [ctypes.c_void_p];
+    library.diagnostic_probe.argtypes = [];
+    library.diagnostic_probe.restype = ctypes.c_int64;
+    assert library.diagnostic_probe() == 0;
     constants = marshal.loads(read_packet(library, "probe_packet"));
     assert constants[:6] == (None, True, 0, -1, -(1 << 63), (1 << 63) - 1);
     assert math.copysign(1, constants[6]) == -1;
@@ -77,6 +80,7 @@ def main -> int {
         for relative in [
             "runtime/python/objects.jac",
             "runtime/python/opcode_meta.jac",
+            "compiler/frontend/python/syntax_error.jac",
             "compiler/backends/py/jacpython/marshal_writer.jac"
         ] {
             destination = stage / "native_subject" / relative;

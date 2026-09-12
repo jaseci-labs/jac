@@ -1,3 +1,5 @@
+import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
+
 import from jaclang.compiler.frontend.python.ast_walk { ast_children }
 
 # AST validation for the P4 back track (INTEGRATION_PLAN Phase 2).
@@ -149,9 +151,11 @@ def validate_feature_version(value: any, version: int) {
             line = value.lineno;
             column = value.col_offset;
         }
-        raise SyntaxError(
+        raise syntax_failure(
             f"{feature} only supported in Python 3.{minimum} and greater",
-            ("<unknown>", line, column + 1, None)
+            filename="<unknown>",
+            lineno=line,
+            offset=column + 1
         );
     }
     for child in ast_children(value) {

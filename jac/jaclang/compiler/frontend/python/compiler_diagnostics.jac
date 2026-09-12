@@ -1,3 +1,5 @@
+import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
+
 # Compiler-owned diagnostics (INTEGRATION_PLAN Phase 2).
 #
 # Internal compiler phases record structured diagnostics here. product_compile.jac
@@ -26,7 +28,9 @@ def syntax_warning(message: str, filename: str, lineno: int, column: int = 0) {
         # No shared registry: a new compilation must report warnings again.
         warnings.warn_explicit(message, SyntaxWarning, filename, lineno);
     } except SyntaxWarning {
-        raise SyntaxError(message, (filename, lineno, column + 1, None));
+        raise syntax_failure(
+            message, filename=filename, lineno=lineno, offset=column + 1
+        );
     }
 }
 

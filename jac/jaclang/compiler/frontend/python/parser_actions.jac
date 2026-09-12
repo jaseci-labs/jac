@@ -1,3 +1,5 @@
+import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
+
 # P0.7 parser action helpers (PLAN.md).
 #
 # Lowers CPython grammar actions (_PyAST_*, _PyPegen_*) into ast_nodes.jac
@@ -212,7 +214,7 @@ def pa_warn_escape(escape: str, tok: peg_token | None) {
             tok.lineno if tok is not None else 1
         );
     } except SyntaxWarning as error {
-        raise SyntaxError(str(error));
+        raise syntax_failure(str(error));
     }
 }
 
@@ -258,7 +260,7 @@ def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
             return codecs.unicode_escape_decode("".join(encoded).encode("ascii"))[0];
         }
     } except UnicodeError as error {
-        raise SyntaxError("(unicode error) " + str(error));
+        raise syntax_failure("(unicode error) " + str(error));
     }
 }
 
@@ -267,7 +269,7 @@ def pa_decode_bytes_escape_body(body: str, raw: bool) -> list[int] {
     try {
         data = body.encode("ascii");
     } except UnicodeEncodeError {
-        raise SyntaxError("bytes can only contain ASCII literal characters");
+        raise syntax_failure("bytes can only contain ASCII literal characters");
     }
     if raw {
         return list(data);
@@ -275,7 +277,7 @@ def pa_decode_bytes_escape_body(body: str, raw: bool) -> list[int] {
     try {
         return list(codecs.escape_decode(data)[0]);
     } except ValueError as error {
-        raise SyntaxError(str(error));
+        raise syntax_failure(str(error));
     }
 }
 
@@ -397,7 +399,7 @@ def pa_concatenate_strings(parts: list[object]) -> expr | None {
     ];
     if byte_parts {
         if len(byte_parts) != len(parts) {
-            raise SyntaxError("cannot mix bytes and nonbytes literals");
+            raise syntax_failure("cannot mix bytes and nonbytes literals");
         }
         first = byte_parts[0];
         last = byte_parts[-1];
@@ -586,7 +588,7 @@ def pa_py_number_from_spelling(spelling: str) -> PyObj {
         if message.startswith("Exceeds the limit ") {
             message += " Consider hexadecimal for huge integer literals to avoid decimal conversion limits.";
         }
-        raise SyntaxError(message);
+        raise syntax_failure(message);
     }
 }
 
@@ -596,17 +598,13 @@ def pa_number_from_token(tok: peg_token | None) -> Constant | None {
     }
     try {
         val = pa_py_number_from_spelling(tok.spelling);
-    } except SyntaxError as error {
-        raise SyntaxError(
-            str(error),
-            (
-                None,
-                tok.lineno,
-                tok.col_offset + 1,
-                None,
-                tok.end_lineno,
-                tok.end_col_offset + 1
-            )
+    } except syntax_failure as error {
+        raise syntax_failure(
+            error.msg,
+            lineno=tok.lineno,
+            offset=tok.col_offset + 1,
+            end_lineno=tok.end_lineno,
+            end_offset=tok.end_col_offset + 1
         );
     }
     return Constant(
@@ -2177,7 +2175,13 @@ def pa_check_fstring_conversion(
             + ": expected 's', 'r', or 'a'";
     }
     if message {
-        raise SyntaxError(message, (p.filename, conv.lineno, conv.col_offset + 1, ""));
+        raise syntax_failure(
+            message,
+            filename=p.filename,
+            lineno=conv.lineno,
+            offset=conv.col_offset + 1,
+            text=""
+        );
     }
     return conv;
 }

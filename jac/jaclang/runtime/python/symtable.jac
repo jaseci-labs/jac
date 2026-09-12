@@ -1,5 +1,7 @@
 """Python's public symbol-table entry surface backed by Jac scope analysis."""
 
+import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
+
 import os;
 import builtins;
 import from jaclang.compiler.frontend.python.ast_nodes { stmt, Expr }
@@ -17,7 +19,10 @@ import from jaclang.compiler.frontend.python.compiler_symtable {
 }
 import from jaclang.compiler.frontend.python.compiler_validate { future_features }
 import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context }
-import from jaclang.compiler.backends.py.jacpython.code_object { raise_compiler_error }
+import from jaclang.compiler.backends.py.jacpython.code_object {
+    raise_compiler_error,
+    raise_syntax_failure
+}
 
 glob USE: int = 16,
      DEF_GLOBAL: int = 1,
@@ -217,55 +222,61 @@ def _source_as_str(source: any) -> str {
 }
 
 def symtable(source: any, filename: any, startstr: any, /) -> SymtableEntry {
-    filename = os.fsdecode(os.fspath(filename));
-    if "\x00" in filename {
-        raise ValueError("embedded null character");
-    }
-    if not isinstance(startstr, str) {
-        raise TypeError("symtable() argument 3 must be str");
-    }
-    if startstr not in ("exec", "eval", "single") {
-        raise ValueError("symtable() arg 3 must be 'exec' or 'eval' or 'single'");
-    }
-    src = _source_as_str(source);
-    body: list[stmt];
-    if startstr == "eval" {
-        value = parse_eval_expr(src, filename);
-        if value is None {
-            raise SyntaxError("invalid syntax");
+    try {
+        filename = os.fsdecode(os.fspath(filename));
+        if "\x00" in filename {
+            raise ValueError("embedded null character");
         }
-        body = [
-            Expr(
-                value=value,
-                lineno=value.lineno,
-                col_offset=value.col_offset,
-                end_lineno=value.end_lineno,
-                end_col_offset=value.end_col_offset
-            )
-        ];
-    } elif startstr == "single" {
-        tree = parse_interactive(src, filename);
-        if tree is None {
-            raise SyntaxError("invalid syntax");
+        if not isinstance(startstr, str) {
+            raise TypeError("symtable() argument 3 must be str");
         }
-        body = tree.body;
-    } else {
-        module_tree = parse_file(src, filename);
-        if module_tree is None {
-            raise SyntaxError("invalid syntax");
+        if startstr not in ("exec", "eval", "single") {
+            raise ValueError("symtable() arg 3 must be 'exec' or 'eval' or 'single'");
         }
-        body = module_tree.body;
+        src = _source_as_str(source);
+        body: list[stmt];
+        if startstr == "eval" {
+            value = parse_eval_expr(src, filename);
+            if value is None {
+                raise SyntaxError("invalid syntax");
+            }
+            body = [
+                Expr(
+                    value=value,
+                    lineno=value.lineno,
+                    col_offset=value.col_offset,
+                    end_lineno=value.end_lineno,
+                    end_col_offset=value.end_col_offset
+                )
+            ];
+        } elif startstr == "single" {
+            tree = parse_interactive(src, filename);
+            if tree is None {
+                raise SyntaxError("invalid syntax");
+            }
+            body = tree.body;
+        } else {
+            module_tree = parse_file(src, filename);
+            if module_tree is None {
+                raise SyntaxError("invalid syntax");
+            }
+            body = module_tree.body;
+        }
+        (flags, validation) = future_features(body, False);
+        if validation.diag is not None {
+            raise_compiler_error(
+                compiler_diag_to_pyobj(validation.diag), src, filename
+            );
+        }
+        result = build_module_symtable(body, compile_context(flags=flags));
+        if result.diag is not None {
+            raise_compiler_error(compiler_diag_to_pyobj(result.diag), src, filename);
+        }
+        if result.top is None {
+            raise SystemError("symbol table has no module table");
+        }
+        return _entry_from_block(result.top);
+    } except syntax_failure as error {
+        raise_syntax_failure(error);
     }
-    (flags, validation) = future_features(body, False);
-    if validation.diag is not None {
-        raise_compiler_error(compiler_diag_to_pyobj(validation.diag), src, filename);
-    }
-    result = build_module_symtable(body, compile_context(flags=flags));
-    if result.diag is not None {
-        raise_compiler_error(compiler_diag_to_pyobj(result.diag), src, filename);
-    }
-    if result.top is None {
-        raise SystemError("symbol table has no module table");
-    }
-    return _entry_from_block(result.top);
 }

@@ -63,6 +63,50 @@ def:pub code_packet -> marshal_output {
     return marshal_constant(code);
 }
 
+def:pub diagnostic_probe -> int {
+    import from jaclang.compiler.frontend.python.syntax_error {
+        syntax_failure,
+        split_source_lines,
+        source_character_column
+    }
+    lines = split_source_lines("á\r\n中\rx\ny");
+    if len(lines) != 4
+        or lines[0] != "á\r\n"
+        or lines[1] != "中\r"
+        or lines[2] != "x\n"
+        or lines[3] != "y" {
+        return 1;
+    }
+    if source_character_column("á中x", 1) != 0
+        or source_character_column("á中x", 2) != 1
+        or source_character_column("á中x", 4) != 1
+        or source_character_column("á中x", 5) != 2 {
+        return 2;
+    }
+    try {
+        raise syntax_failure(
+            "invalid input",
+            filename="probe.py",
+            lineno=2,
+            offset=3,
+            end_lineno=2,
+            end_offset=4,
+            kind="IndentationError"
+        );
+    } except syntax_failure as error {
+        if error.msg != "invalid input"
+            or error.filename != "probe.py"
+            or error.lineno != 2
+            or error.offset != 3
+            or error.end_offset != 4
+            or error.kind != "IndentationError" {
+            return 3;
+        }
+        return 0;
+    }
+    return 4;
+}
+
 def:pub packet_size(value: marshal_output) -> int {
     return len(value.data) if not value.error else -1;
 }
