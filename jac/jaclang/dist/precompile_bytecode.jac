@@ -421,6 +421,11 @@ def precompile_context(
 def precompile_unit_context(
     jac_path: str, pkg_root: str, collect: bool = True, app: str = ""
 ) -> Iterator[JacProgram] {
+    # The registry's codec probe deliberately never imports during bootstrap.
+    # Packaging is an explicit interface consumer, including in the separate
+    # finalization process where symbol-only seed compiles cannot load it.
+    import jaclang.compiler.types.type_evaluator;
+    import jaclang.compiler.types.stubcat.modiface;
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compilation_context { cache_scope }
     import from jaclang.cli.workpool { maybe_malloc_trim }
