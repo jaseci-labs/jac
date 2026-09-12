@@ -31,7 +31,7 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         v = self._str_norm(v);
 
         if declared_fields {
-            v = self._coerce_type(v, declared_fields[len(elem_vals)]);
+            v = self._coerce_container_element(v, declared_fields[len(elem_vals)]);
         }
 
         _owns = self._is_owned(v);

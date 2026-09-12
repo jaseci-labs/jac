@@ -138,11 +138,25 @@ jobs:
           assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42
           print("Packaged JacPython: native compiler active")
           '
+      - name: Diagnose macOS native startup failures
+        if: failure() && runner.os == 'macOS'
+        continue-on-error: true
+        working-directory: jac
+        env:
+          JAC_NO_DEV_SOURCE: "1"
+        run: |
+          if [ -x zig-out/bin/jac ]; then
+            lldb --batch -o 'settings set target.disable-aslr false' -o run \
+              -k 'thread backtrace all' -k 'image list -o -f' \
+              -- zig-out/bin/jac -c 'import ast, ctypes; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3; assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42'
+          fi
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: jacpython-native-build-logs-${{ runner.os }}-${{ runner.arch }}
-          path: jac/.python-build/**/*.log
+          path: |
+            jac/.python-build/**/*.log
+            jac/zig-out/bin/jac
           include-hidden-files: true
 
   # The kit lane builds this checkout and publishes it for every test lane.

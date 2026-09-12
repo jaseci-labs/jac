@@ -478,7 +478,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         ) {
             return list_val;
         }
-        append_val = self._coerce_list_element(first_val, helpers["elem_type"]);
+        append_val = self._coerce_container_element(first_val, helpers["elem_type"]);
         if elem_type_name == "ptr" and isinstance(first_val.type, ir.PointerType) {
             append_val = self.builder.bitcast(append_val, i8p, name="elem.cast");
         } else {
@@ -568,7 +568,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
             val = self.builder.bitcast(val, i8p, name="elem.cast");
         } else {
-            val = self._coerce_list_element(val, helpers["elem_type"]);
+            val = self._coerce_container_element(val, helpers["elem_type"]);
         }
         self._rc_call_with_ctx(
             helpers["append"], [list_val, val], op="list_init", loc=_linit_loc
@@ -961,20 +961,4 @@ impl NaIRGenPass._container_is_view(nd: uni.UniNode) -> bool {
         return type_tag_borrows(_p.type_tag);
     }
     return False;
-}
-
-impl NaIRGenPass._coerce_list_element(
-    value: ir.Value, element_type: ir.Type
-) -> ir.Value {
-    payload_type = self._opt_ptr_payload_of(value.type);
-    if payload_type is not None and isinstance(element_type, ir.PointerType) {
-        tag = self.builder.extract_value(value, 0, name="elem.optional.tag");
-        payload = self.builder.extract_value(value, 1, name="elem.optional.payload");
-        present = self.builder.icmp_unsigned("!=", tag, ir.Constant(ir.IntType(8), 0));
-        nullable = self.builder.select(
-            present, payload, ir.Constant(payload_type, None)
-        );
-        return self._coerce_type(nullable, element_type);
-    }
-    return self._coerce_type(value, element_type);
 }

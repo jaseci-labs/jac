@@ -1,6 +1,6 @@
 """Run pinned CPython tests against the shipped native JacPython runtime.
 
-Use the experimental binary: jac run scripts/run_cpython_compiler_tests.jac.
+Run with the Jac binary: jac run scripts/run_cpython_compiler_tests.jac.
 The runner requires the native compiler bridge. It does not import or install
 an interpreted replacement. Python audit events count native compiler calls;
 optional public API wrappers only count calls into the native entry points.
@@ -91,7 +91,7 @@ def main -> int {
     bridge = ctypes.pythonapi?._PyJac_CompilerBridgeVersion;
     if bridge is None or bridge() != 3 {
         raise RuntimeError(
-            "Use a Jac binary built with -Djacpython=true and the native compiler bridge (version 3)"
+            "Use a current Jac binary with the native compiler bridge (version 3)"
         );
     }
     for retired in (

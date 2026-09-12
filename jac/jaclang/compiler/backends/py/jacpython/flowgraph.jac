@@ -1870,6 +1870,9 @@ def normalize_except_regions(u: unverified_cfg) {
 }
 
 def verify_cfg(u: unverified_cfg) -> verified_cfg {
+    if u.diag is not None {
+        return verified_cfg(unit=u, flat=[], stacksize=0, diag=u.diag);
+    }
     # Every code unit, including lambdas and comprehensions, must resolve its
     # staged constants before optimization or operand encoding.
     u.flush_late_consts();

@@ -52,6 +52,21 @@ if required_compiler is not None:
     import io
     import symtable
     import tokenize
+    import ast
+    match_source = "def match_alias(value):\n match value:\n  case str() as text: return text\n  case _: return None\n"
+    match_tree = ast.parse(match_source)
+    assert isinstance(match_tree.body[0].body[0].cases[0].pattern.pattern, ast.MatchClass)
+    for match_input in (match_source, match_tree):
+        match_scope = {}
+        exec(compile(match_input, "<match-alias>", "exec"), match_scope)
+        assert match_scope["match_alias"]("retained") == "retained"
+        assert match_scope["match_alias"](42) is None
+    try:
+        compile("def invalid_match(value):\n match value:\n  case captured: return captured\n  case _: return None\n", "<nested-diagnostic>", "exec")
+    except SyntaxError:
+        pass
+    else:
+        raise AssertionError("Nested codegen diagnostic was discarded")
     assert symtable.symtable("x=1", "<smoke>", "exec").lookup("x").is_global()
     assert list(tokenize.generate_tokens(io.StringIO("x=1\n").readline))
     for source in ('f"{value:{width}}"', 't"{value:{width}}"'):
