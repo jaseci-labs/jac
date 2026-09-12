@@ -35,6 +35,7 @@ import from jaclang.compiler.session.cache.artifact_codec {
     HEADER_SIZE
 }
 import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.sources { SourceCache }
 import type from jaclang.compiler.backends.common.artifacts {
     ClientArtifact,
     NativeModuleLayout
@@ -79,7 +80,8 @@ import from jaclang.compiler.analysis.placement.native_fallback {
 glob COMPILE_GC_THRESHOLDS: tuple[int, int, int] = (100000, 50, 100);
 
 obj JacCompiler {
-    has _selfhost: (SelfHostCache | None) = None,
+    has source_cache: SourceCache = SourceCache(),
+        _selfhost: (SelfHostCache | None) = None,
         _reentrant_depth: int = 0,
         _closure_opts: (CompileOptions | None) = None,
         _stub_catalog: StubCatalog | None = None,

@@ -75,8 +75,11 @@ Context and import facts are explicit scheduled passes. Backend and tooling
 consumers request named products through this pipeline rather than invoking passes.
 
 `session/sources.jac` holds parsed source revisions and `session/context.jac`
-selects contextual programs. A source revision is parsed once per session and cloned before semantic
-mutation. App, entry, UI, codespace, and target settings distinguish compilation
+selects contextual programs. The compiler keeps a bounded cache of frozen source
+revisions, keyed by source path, contents and annexes. Programs reuse these parse
+results and clone syntax and diagnostics before semantic mutation. Eviction only
+removes the cache reference; live programs retain their revisions.
+App, entry, UI, codespace, and target settings distinguish compilation
 contexts and disk artifact namespaces. A symbol-only dependency can progress
 through the remaining passes without reparsing or repeating completed passes.
 Native and client outputs retain target-specific analysis and code generation.

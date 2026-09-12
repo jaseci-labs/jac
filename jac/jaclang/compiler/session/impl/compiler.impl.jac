@@ -657,6 +657,7 @@ impl JacCompiler.parse_str(
                         else ''
                 );
             } else {
+                target_program.source_store.shared = self.source_cache;
                 (mod, had_error) = target_program.source_store.parse(
                     source_str, file_path, target_program, annex_sources(file_path)
                 );
@@ -1522,6 +1523,7 @@ impl JacCompiler.release_compile_state(target_program: JacProgram) -> None {
     if internal is not None and internal is not owner {
         internal.release_compile_closure(collect=False);
     }
+    self.source_cache.clear();
 
     import gc;
     gc.collect();

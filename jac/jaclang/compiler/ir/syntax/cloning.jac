@@ -4,7 +4,7 @@ import from jaclang.compiler.ir.base { UniNode }
 import from jaclang.compiler.ir.identity { MutationPermit }
 import from jaclang.compiler.ir.syntax.edges { Role, Kid }
 
-def freeze_source(source: UniNode, permit: MutationPermit) {
+def freeze_source(source: UniNode, permit: MutationPermit) -> int {
     nodes = source._unclaimed_nodes(permit);
     for current in nodes {
         if isinstance(current, UniNode) {
@@ -12,6 +12,7 @@ def freeze_source(source: UniNode, permit: MutationPermit) {
         }
         current.mutation_permit = permit;
     }
+    return len(nodes);
 }
 
 def copy_syntax_edges(source: UniNode, target: UniNode, memo: dict) {
