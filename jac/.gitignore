@@ -77,6 +77,7 @@ zig-out/
 /dist/
 .pbs-build/
 .python-build/
+.toolchains/
 # Pinned bun fetched per target by the payload tool's fetch-bun subcommand
 # (jaclang/dist/payload/) and bundled into the payload (never committed). See
 # build.zig's fetch-bun step.

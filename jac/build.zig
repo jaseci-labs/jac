@@ -138,6 +138,24 @@ pub fn build(b: *std.Build) void {
         // Unsupported build host: only the shim/test steps are available.
         return;
     };
+    const fetch_jac_step = b.step("fetch-jac", "Acquire and verify the pinned stage-0 Jac compiler");
+    if (pins.jacRelease(b, host_osarch)) |release| {
+        const module = b.createModule(.{
+            .root_source_file = b.path("bootstrap/fetch_jac.zig"),
+            .target = b.graph.host,
+            .optimize = .ReleaseSafe,
+            .link_libc = true,
+        });
+        const executable = b.addExecutable(.{ .name = "fetch_jac", .root_module = module });
+        const acquire = b.addRunArtifact(executable);
+        acquire.addArgs(&.{ release.url, release.sha256, b.pathFromRoot(b.fmt(".toolchains/jac/{s}/{s}/jac", .{ release.version, host_osarch })) });
+        if (b.option(bool, "offline", "Require the pinned bootstrap compiler to be cached") orelse false) acquire.addArg("--offline");
+        acquire.has_side_effects = true;
+        fetch_jac_step.dependOn(&acquire.step);
+    } else {
+        const unavailable = b.addFail(b.fmt("No pinned Jac bootstrap compiler for {s}", .{host_osarch}));
+        fetch_jac_step.dependOn(&unavailable.step);
+    }
     const seed_mod = b.createModule(.{
         .root_source_file = b.path("bootstrap/build_python.zig"),
         .target = b.graph.host,
@@ -478,6 +496,14 @@ fn addTreeInputs(b: *std.Build, run: *std.Build.Step.Run, sub_path: []const u8) 
 
 fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
     const test_step = b.step("test", "Run the bootstrap unit tests (no network or Python needed)");
+    const jac_mod = b.createModule(.{
+        .root_source_file = b.path("bootstrap/fetch_jac.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    const jac_tests = b.addTest(.{ .name = "fetch-jac-tests", .root_module = jac_mod });
+    test_step.dependOn(&b.addRunArtifact(jac_tests).step);
     const seed_mod = b.createModule(.{
         .root_source_file = b.path("bootstrap/build_python.zig"),
         .target = target,
