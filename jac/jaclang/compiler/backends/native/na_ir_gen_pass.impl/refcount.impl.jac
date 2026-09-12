@@ -1002,7 +1002,6 @@ impl NaIRGenPass._emit_str_cmp_helper -> None {
     }
     i8_ptr = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    strcmp_fn = self._get_or_declare_extern("strcmp", i32, [i8_ptr, i8_ptr]);
     cmp_fn = self._define_function(
         "__jac_str_cmp", ir.FunctionType(i32, [i8_ptr, i8_ptr])
     );
@@ -1041,7 +1040,13 @@ impl NaIRGenPass._emit_str_cmp_helper -> None {
     b = ir.IRBuilder(_c_bgt);
     b.ret(ir.Constant(i32, 1));
     b = ir.IRBuilder(_c_body);
-    b.ret(b.call(strcmp_fn, [cmp_fn.args[0], cmp_fn.args[1]], name="sc.cmp"));
+    left_len = self._call_str_len(b, cmp_fn.args[0], name="sc.left.len");
+    right_len = self._call_str_len(b, cmp_fn.args[1], name="sc.right.len");
+    b.ret(
+        self._call_str_cmp3(
+            b, cmp_fn.args[0], left_len, cmp_fn.args[1], right_len, name="sc.cmp"
+        )
+    );
     self.str_cmp_fn = cmp_fn;
 }
 

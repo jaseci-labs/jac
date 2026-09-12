@@ -87,15 +87,18 @@ zig build -Ddev                      # editable dev binary: link the compiler fr
 
 `zig build` first builds CPython from the checksum-pinned sources in
 `bootstrap/python/sources.json` and fetches the pinned typeshed stubs. The
-Python seed uses Zig for C compilation and archiving, with the upstream
+Python bootstrap uses Zig for C compilation and archiving, with the upstream
 configure/make recipes retained for platform probes and generated files.
 No installed Python, Jac, or python-build-standalone distribution is needed.
 Build hosts need Zig 0.16.0, make, Perl, a POSIX shell, and network access.
 macOS also needs the SDK provided by Xcode command line tools.
 
 `zig build` defaults to CPython's C parser/compiler. `-Djacpython=true` replaces
-that compiler with JacPython and embeds its bootstrap seed; the CPython VM and
-object runtime are retained in both variants. The flag also applies to
+that compiler with a JacPython native object; the CPython VM and object runtime
+are retained in both variants. A separate build-time CPython runs Jac's native
+compiler to emit that object. The build rejects interpreted demotions, and no
+replacement bytecode, compiler seed, or Python adapter ships in the payload.
+The flag also applies to
 `zig build build-python`, which builds only the Python distribution.
 Its cache in `.python-build/<cpython|jacpython>/<platform>` contains the interpreter, shared library, stdlib,
 licenses, CA certificates, and static archives for Jac's native backend.
@@ -113,8 +116,9 @@ each line names a file or a directory ending in `/`, relative to the pinned
 CPython archive. Only those paths survive extraction into the build tree;
 the default CPython build also restores the entries marked `# removed:`.
 Those marked exclusions apply only with `-Djacpython=true`. Its separate
-build-time host restores them to generate the seed, then the reduced runtime
-build omits them. JacPython source changes invalidate that runtime's cache;
+build-time host restores them to compile the native object, then the reduced
+runtime build omits them. Changes to JacPython or the Jac compiler that produces
+its native object invalidate that runtime's cache;
 they do not invalidate the default CPython distribution.
 Blank lines and full-line comments are allowed; globs, missing paths, and
 overlapping entries fail the build. The archive is still downloaded and

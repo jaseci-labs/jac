@@ -1037,14 +1037,15 @@ impl NaIRGenPass._str_fnv_fn -> ir.Function {
     idx_a = b.alloca(i64, name="idx");
     b.store(ir.Constant(i64, HASH_FNV_BASIS), h_a);
     b.store(ir.Constant(i64, 0), idx_a);
+    length = self._call_str_len(b, fn.args[0], name="s.len");
     b.cbranch(
         b.icmp_unsigned("==", fn.args[0], ir.Constant(i8p, None), name="s.null"), rt, lc
     );
     b = ir.IRBuilder(lc);
     idx = b.load(idx_a, name="idx");
-    ch = b.load(b.gep(fn.args[0], [idx], name="cp"), name="ch");
-    b.cbranch(b.icmp_signed("==", ch, ir.Constant(i8, 0), name="end"), rt, lb);
+    b.cbranch(b.icmp_unsigned(">=", idx, length, name="end"), rt, lb);
     b = ir.IRBuilder(lb);
+    ch = b.load(b.gep(fn.args[0], [idx], name="cp"), name="ch");
     cur = b.load(h_a, name="h");
     ce = b.zext(ch, i64, name="ce");
     b.store(
