@@ -68,8 +68,6 @@ walker InterfaceFactsPass(ProgramTransform) {
         registry.building.add(path);
         try {
             for dependency in sorted(dependencies) {
-                # External class references also depend on their Python provider.
-                # Validate its content before hydration without compiling a target.
                 if is_stub_like_path(dependency) {
                     try {
                         digest = compute_stub_module_key(dependency);
