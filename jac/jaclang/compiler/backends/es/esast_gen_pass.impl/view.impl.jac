@@ -434,7 +434,7 @@ impl EsastGenPass._setter_name_taken(has_var: uni.HasVar, setter_name: str) -> b
     if scope is None {
         return False;
     }
-    existing = scope.names_in_scope.get(setter_name);
+    existing = scope.lookup_local(setter_name);
     if existing is None {
         return False;
     }

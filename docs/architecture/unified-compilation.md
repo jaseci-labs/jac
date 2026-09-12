@@ -99,6 +99,15 @@ source path, including annex contents. Requests in another context clone the
 syntax before semantic mutation. Parsed source is shared; app-specific analyzed
 IR and target artifacts are distinct.
 
+Stub catalogs also keep mutable declarations private to each compilation context.
+`CatalogScope` in `session/cache/catalog_reader.jac` materializes a requested name
+through the typed `lookup_local` and `lookup_overloads` abilities. Enumerating
+`names_in_scope` materializes the complete namespace and returns the ordinary
+graph-derived dictionary. Loading a declaration creates canonical scope edges;
+the pending catalog IDs are input data, not a second symbol table. This avoids
+reconstructing every builtin declaration for every context while preserving
+overload order, namespace replacement, and declaration isolation.
+
 Context identity includes the selected entry and app, UI and codespace settings,
 and analysis/code-generation options. In-memory programs and disk artifact slots
 use that identity. Imported symbol trees can progress through remaining passes

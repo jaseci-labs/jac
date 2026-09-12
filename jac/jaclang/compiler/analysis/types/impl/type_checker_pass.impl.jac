@@ -1288,7 +1288,7 @@ impl TypeCheckPass._install_client_state_setters -> None {
             continue;
         }
         scope = nd.sym_tab;
-        if (scope is None) or (scope.names_in_scope.get(setter_name) is not None) {
+        if (scope is None) or (scope.lookup_local(setter_name) is not None) {
             continue;
         }
         sym = nd.sym;
@@ -1357,13 +1357,13 @@ impl TypeCheckPass.exit_has_var with HasVar exit {
         if postinit_nd.sym is None {
             arch = here.parent.parent if isinstance(here.parent, ArchHas) else None;
             if isinstance(arch, Archetype) {
-                postinit_sym = arch.names_in_scope.get("__post_init__");
+                postinit_sym = arch.lookup_local("__post_init__");
                 if postinit_sym is not None {
                     postinit_nd.sym = postinit_sym;
                 }
             } elif isinstance(arch, ImplDef)
                 and isinstance(arch.decl_link, Archetype) {
-                if (postinit_sym := arch.decl_link.names_in_scope.get("__post_init__"))
+                if (postinit_sym := arch.decl_link.lookup_local("__post_init__"))
                     is not None {
                     postinit_nd.sym = postinit_sym;
                 }

@@ -242,7 +242,7 @@ impl SymTabBuildPass.exit_module_item with ModuleItem exit {
 
 impl SymTabBuildPass.enter_archetype with Archetype entry {
     if self.cur_sym_tab {
-        existing_sym = self.cur_scope.names_in_scope.get(here.sym_name, None);
+        existing_sym = self.cur_scope.lookup_local(here.sym_name);
         if existing_sym {
             nd_native = here.in_native_context();
             nd_client = here.in_client_context();

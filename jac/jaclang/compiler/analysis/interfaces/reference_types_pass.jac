@@ -36,7 +36,7 @@ walker InterfaceReferenceTypesPass(ProgramTransform) {
             if scope is None {
                 continue;
             }
-            symbol = scope.names_in_scope.get(parts[-1]);
+            symbol = scope.lookup_local(parts[-1]);
             if symbol is not None and symbol.decl.type is None {
                 if symbol.provider is not None {
                     symbol.provider.resolve_type(symbol);

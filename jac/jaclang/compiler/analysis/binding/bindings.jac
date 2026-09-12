@@ -164,7 +164,7 @@ def collect_capture_facts(module: Module, scopes: list[UniScopeNode]) {
             declaration_scope = declaration_scope.parent_scope;
         }
         if name.value == "super" and declaration_scope is not None {
-            receiver = declaration_scope.names_in_scope.get("self");
+            receiver = declaration_scope.lookup_local("self");
             if receiver is not None {
                 symbol = receiver;
                 declaration_scope = symbol.parent_tab;
@@ -328,14 +328,14 @@ def lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | N
     scope = find_python_scope_node_of(from_scope);
     while scope is not None {
         if isinstance(scope, Module) {
-            sym = scope.names_in_scope.get(name);
+            sym = scope.lookup_local(name);
             if sym is not None and sym.sym_type == SymbolType.MOD_VAR {
                 return sym;
             }
             return None;
         }
         if isinstance(scope, (Ability, ImplDef, Test, LambdaExpr)) {
-            sym = scope.names_in_scope.get(name);
+            sym = scope.lookup_local(name);
             if sym is not None {
                 return sym;
             }

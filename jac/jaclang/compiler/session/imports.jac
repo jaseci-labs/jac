@@ -988,7 +988,7 @@ obj IfaceRegistry(CatalogResolver) {
             }
             scope = child_scope;
         }
-        sym = scope.names_in_scope.get(parts[-1]);
+        sym = scope.lookup_local(parts[-1]);
         if sym is None {
             return None;
         }

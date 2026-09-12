@@ -905,7 +905,7 @@ obj CtEvaluator {
                 return sym;
             }
         }
-        found = target.names_in_scope.get(sym.sym_name);
+        found = target.lookup_local(sym.sym_name);
         return found if found is not None else sym;
     }
 

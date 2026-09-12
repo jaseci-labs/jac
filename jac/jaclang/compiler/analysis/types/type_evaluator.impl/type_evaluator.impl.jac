@@ -2075,7 +2075,7 @@ impl TypeEvaluator._get_type_of_expression_core(
 
                 if self._in_native_context()
                     and (symbol is None or symbol.parent_tab is self.builtins_module) {
-                    na_sym = self.na_builtins_module.names_in_scope.get(expr.value);
+                    na_sym = self.na_builtins_module.lookup_local(expr.value);
                     if na_sym is not None {
                         symbol = na_sym;
                     }
@@ -2096,7 +2096,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if _js_name == "import" {
                         _js_name = "__import_meta__";
                     }
-                    js_sym = self.js_globals_module.names_in_scope.get(_js_name);
+                    js_sym = self.js_globals_module.lookup_local(_js_name);
                     if js_sym is not None and expr.in_client_context() {
                         symbol = js_sym;
                     }
@@ -4207,7 +4207,7 @@ impl TypeEvaluator._init_prelude_from_sources -> list[Module] {
         if jac_allowed is not None and name not in jac_allowed {
             continue;
         }
-        existing = builtins_mod.names_in_scope.get(name);
+        existing = builtins_mod.lookup_local(name);
         if existing is None or existing.imported {
             builtins_mod.adopt_primary(sym, name);
         }
@@ -4225,7 +4225,7 @@ impl TypeEvaluator._init_prelude_from_sources -> list[Module] {
     }
 
     for (name, sym) in dom_types_mod.names_in_scope.items() {
-        existing = builtins_mod.names_in_scope.get(name);
+        existing = builtins_mod.lookup_local(name);
         if existing is None or existing.imported {
             builtins_mod.adopt_primary(sym, name);
         }
@@ -4241,11 +4241,11 @@ impl TypeEvaluator._init_prelude_from_sources -> list[Module] {
     self.ambient_typing_names_by_module = raw_groups;
     self.ambient_typing_names_by_module["typing"] = typing_ambient_flat;
     for typing_name in typing_ambient_flat {
-        typing_sym = typing_mod.names_in_scope.get(typing_name);
+        typing_sym = typing_mod.lookup_local(typing_name);
         if typing_sym is None {
             continue;
         }
-        existing_typing = builtins_mod.names_in_scope.get(typing_name);
+        existing_typing = builtins_mod.lookup_local(typing_name);
         if existing_typing is None or existing_typing.imported {
             builtins_mod.adopt_primary(typing_sym, typing_name);
         }

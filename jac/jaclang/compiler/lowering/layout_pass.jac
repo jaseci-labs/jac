@@ -549,7 +549,7 @@ def class_form_enum_members(scope: any) -> list[tuple[(str, (UniNode | None))]] 
     _placed: list[tuple[(int, int, str)]] = [];
     _values: dict[str, UniNode] = {};
     for mname in scope.names_in_scope {
-        _sym = scope.names_in_scope.get(mname);
+        _sym = scope.lookup_local(mname);
         _decl = _sym.decl if _sym is not None else None;
         _asn = _decl.parent if (_decl is not None) else None;
         if not isinstance(_asn, Assignment) or _asn.value is None {

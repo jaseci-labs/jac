@@ -336,7 +336,7 @@ def _is_jac_builtin_fn(evaluator: TypeEvaluator, callee: Expr, name: str) -> boo
     if not isinstance(callee, Name) or callee.sym_name != name {
         return False;
     }
-    stub_sym = evaluator.jac_builtins_module.names_in_scope.get(name);
+    stub_sym = evaluator.jac_builtins_module.lookup_local(name);
     return stub_sym is not None and callee.sym is stub_sym;
 }
 

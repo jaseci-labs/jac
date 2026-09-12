@@ -94,6 +94,10 @@ node UniScopeNode(UniNode) {
     has names_in_scope: dict[(str, Symbol)] { getter; }
     has names_in_scope_overload: dict[(str, list[Symbol])] { getter; }
 
+    def primary_names -> dict[str, Symbol];
+    def overload_names -> dict[str, list[Symbol]];
+    def lookup_local(name: str) -> Symbol | None;
+    def lookup_overloads(name: str) -> list[Symbol];
     def _init_scope(name: str, parent_scope: (UniScopeNode | None) = None) -> None;
     static def is_python_scoping(nd: (UniNode | None)) -> bool {
         import from jaclang.compiler.ir.syntax.nodes {

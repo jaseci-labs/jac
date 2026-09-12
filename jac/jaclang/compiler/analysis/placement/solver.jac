@@ -133,7 +133,7 @@ def _is_sv_import(elem: uni.UniNode) -> bool {
 }
 
 def _named_top_element(target: uni.Module, name: str) -> (uni.UniNode | None) {
-    sym = target.names_in_scope.get(name) if target.names_in_scope else None;
+    sym = target.lookup_local(name);
     decl = sym.decl if sym is not None else None;
     if decl is None {
         return None;

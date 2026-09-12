@@ -170,6 +170,10 @@ impl UniScopeNode.kid_scope.getter -> list[UniScopeNode] {
 }
 
 impl UniScopeNode.names_in_scope.getter -> dict[(str, Symbol)] {
+    return self.primary_names();
+}
+
+impl UniScopeNode.primary_names -> dict[str, Symbol] {
     import from jaclang.compiler.ir.symbols.edges { ScopePrimary }
     if self._names_index is None or self._names_generation != self.primary_revision {
         self._names_index = {
@@ -181,6 +185,10 @@ impl UniScopeNode.names_in_scope.getter -> dict[(str, Symbol)] {
 }
 
 impl UniScopeNode.names_in_scope_overload.getter -> dict[(str, list[Symbol])] {
+    return self.overload_names();
+}
+
+impl UniScopeNode.overload_names -> dict[str, list[Symbol]] {
     import from jaclang.compiler.ir.symbols.edges { ScopeOverload }
     if self._overload_index is None
         or self._overload_generation != self.overload_revision {
@@ -194,13 +202,21 @@ impl UniScopeNode.names_in_scope_overload.getter -> dict[(str, list[Symbol])] {
     return self._overload_index;
 }
 
+impl UniScopeNode.lookup_local(name: str) -> Symbol | None {
+    return self.primary_names().get(name);
+}
+
+impl UniScopeNode.lookup_overloads(name: str) -> list[Symbol] {
+    return self.overload_names().get(name, []);
+}
+
 impl UniScopeNode.lookup(
     name: str, deep: bool = True, incl_inner_scope: bool = False
 ) -> (Symbol | None) {
     import from jaclang.compiler.ir.syntax.nodes { ImplDef }
 
-    if (name in self.names_in_scope) {
-        return self.names_in_scope[name];
+    if (local := self.lookup_local(name)) is not None {
+        return local;
     }
     if (
         (deep and self.parent_scope)
@@ -232,12 +248,10 @@ impl UniScopeNode.lookup(
 
 impl UniScopeNode.lookup_all(name: str, deep: bool = True) -> list[Symbol] {
     result: list[Symbol] = [];
-    if name in self.names_in_scope {
-        result.append(self.names_in_scope[name]);
+    if (local := self.lookup_local(name)) is not None {
+        result.append(local);
     }
-    if name in self.names_in_scope_overload {
-        result.extend(self.names_in_scope_overload[name]);
-    }
+    result.extend(self.lookup_overloads(name));
     if result {
         return result;
     }
@@ -256,9 +270,8 @@ impl UniScopeNode.insert(
 ) -> (UniNode | None) {
     import from jaclang.compiler.ir.enums { SymbolAccess }
 
-    collision = self.names_in_scope[nd.sym_name].defn[-1]
-        if (single and (nd.sym_name in self.names_in_scope))
-        else None;
+    current = self.lookup_local(nd.sym_name);
+    collision = current.defn[-1] if single and current is not None else None;
     symbol = nd.name_spec.create_symbol(
         access=access_spec
             if isinstance(access_spec, SymbolAccess)
@@ -266,14 +279,13 @@ impl UniScopeNode.insert(
         parent_tab=self,
         imported=imported
     );
-    current = self.names_in_scope;
-    if nd.sym_name in current {
+    if current is not None {
         self.adopt_overload(symbol, nd.sym_name);
     }
-    if force_overwrite or nd.sym_name not in current {
+    if force_overwrite or current is None {
         self.adopt_primary(symbol, nd.sym_name);
     } else {
-        current[nd.sym_name].add_defn(nd.name_spec);
+        current.add_defn(nd.name_spec);
     }
     return collision;
 }
@@ -309,7 +321,7 @@ impl UniScopeNode.adopt_primary(sym: Symbol, alias: str = "") -> None {
     import from jaclang.compiler.ir.symbols.edges { ScopePrimary }
     key = alias or sym.name;
     binding = ScopeBinding.create(key, sym);
-    if key in self.names_in_scope {
+    if self.lookup_local(key) is not None {
         self._drop_primary(key);
     }
     self +>:ScopePrimary:+> binding;

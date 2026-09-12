@@ -152,9 +152,42 @@ obj CatProvider(SymbolProvider) {
     }
 }
 
-node CatScope(UniScopeNode) {
-    has cat: StubCatalog,
-        cat_id: int,
+node CatalogScope(UniScopeNode) {
+    has cat: StubCatalog;
+
+    override def primary_names -> dict[str, Symbol] {
+        self.cat.load_scope(self);
+        return super.primary_names();
+    }
+
+    override def overload_names -> dict[str, list[Symbol]] {
+        self.cat.load_scope(self);
+        return super.overload_names();
+    }
+
+    override def lookup_local(name: str) -> Symbol | None {
+        self.cat.load_name(self, name);
+        return super.primary_names().get(name);
+    }
+
+    override def lookup_overloads(name: str) -> list[Symbol] {
+        self.cat.load_name(self, name);
+        return super.overload_names().get(name, []);
+    }
+
+    override def set_primary_names(syms: dict[str, Symbol]) {
+        self.cat.load_scope(self);
+        super.set_primary_names(syms);
+    }
+
+    override def adopt_overload(sym: Symbol, alias: str = "") {
+        self.cat.load_name(self, alias or sym.name);
+        super.adopt_overload(sym, alias);
+    }
+}
+
+node CatScope(CatalogScope) {
+    has cat_id: int,
         cat_kind: int,
         cat_name: str,
         cat_arch_kind: int,
@@ -215,9 +248,8 @@ node CatScope(UniScopeNode) {
     }
 }
 
-node CatModule(Module) {
-    has cat: StubCatalog,
-        cat_id: int,
+node CatModule(Module, CatalogScope) {
+    has cat_id: int,
         cat_kids: dict[str, int];
 
     def init(
@@ -296,6 +328,11 @@ obj CatalogResolver {
     ) -> ClassDetailsShared | None abst;
 }
 
+obj PendingScope {
+    has members: dict[str, int],
+        overloads: dict[str, list[int]];
+}
+
 obj StubCatalog {
     has buf: bytes | memoryview,
         pkg_dir: str,
@@ -309,6 +346,8 @@ obj StubCatalog {
         _type_memo: dict[int, TypeBase] postinit,
         _shared_memo: dict[int, ClassDetailsShared] postinit,
         _sources: dict[int, Source] postinit,
+        _pending_scopes: dict[UniScopeNode, PendingScope] postinit,
+        _loading_scopes: set[UniScopeNode] postinit,
         _mod_names: dict[str, int] postinit,
         _mod_rel: dict[str, int] postinit,
         _mod_recs: list[tuple[str, str, int, int, str]] postinit,
@@ -333,6 +372,8 @@ obj StubCatalog {
         self._type_memo = {};
         self._shared_memo = {};
         self._sources = {};
+        self._pending_scopes = {};
+        self._loading_scopes = set();
         self._mod_names = {};
         self._mod_rel = {};
         self._mod_recs = [];
@@ -445,7 +486,7 @@ obj StubCatalog {
         if mod is None {
             return None;
         }
-        return mod.names_in_scope.get(name);
+        return mod.lookup_local(name);
     }
 
     def _source(mid: int) -> Source {
@@ -599,24 +640,57 @@ obj StubCatalog {
     }
 
     def _populate(scope: UniScopeNode, rec: ScopeRec) {
-        for (name, sym_id) in rec.members {
-            sym = self.symbol_of(sym_id);
-            if sym is not None {
-                scope.adopt_primary(sym, name);
-            }
+        self._pending_scopes[scope] = PendingScope(
+            members=dict(rec.members), overloads=dict(rec.overloads)
+        );
+    }
+
+    def load_name(scope: UniScopeNode, name: str) {
+        pending = self._pending_scopes.get(scope);
+        if pending is None {
+            return;
         }
-        if rec.overloads {
-            for (name, ids) in rec.overloads {
-                extra: list[Symbol] = [];
-                for sym_id in ids {
-                    sym = self.symbol_of(sym_id);
+        primary = pending.members.pop(name, None);
+        extras = pending.overloads.pop(name, []);
+        if not pending.members and not pending.overloads {
+            del self._pending_scopes[scope];
+        }
+        if primary is None and not extras {
+            return;
+        }
+        nested = scope in self._loading_scopes;
+        self._loading_scopes.add(scope);
+        try {
+            with MutationScope(scope.mutation_permit or MutationPermit(), 7) {
+                if primary is not None {
+                    sym = self.symbol_of(primary);
                     if sym is not None {
-                        extra.append(sym);
+                        scope.adopt_primary(sym, name);
                     }
                 }
-                for symbol in extra {
-                    scope.adopt_overload(symbol, name);
+                for sym_id in extras {
+                    sym = self.symbol_of(sym_id);
+                    if sym is not None {
+                        scope.adopt_overload(sym, name);
+                    }
                 }
+            }
+        } finally {
+            if not nested {
+                self._loading_scopes.discard(scope);
+            }
+        }
+    }
+
+    def load_scope(scope: UniScopeNode) {
+        if scope in self._loading_scopes {
+            return;
+        }
+        pending = self._pending_scopes.get(scope);
+        if pending is not None {
+            names = list(dict.fromkeys([*pending.members, *pending.overloads]));
+            for name in names {
+                self.load_name(scope, name);
             }
         }
     }
