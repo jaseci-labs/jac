@@ -371,6 +371,18 @@ obj IfaceRegistry {
         }
         if remember {
             self.entries[resolved] = ent;
+            if section is not None {
+                # Dependency validation has established that these bytes still
+                # describe the module. Tree consumers may need to parse it,
+                # but must not force and serialize its public types again.
+                try {
+                    self._iface_bytes[resolved] = (
+                        module_cache_key(resolved),
+                        section,
+                        digest
+                    );
+                } except OSError {}
+            }
         }
         return ent;
     }

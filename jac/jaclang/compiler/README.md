@@ -89,6 +89,9 @@ diagnostic profiles, and placement facts, including for bootstrap modules
 whose executable bytecode is produced by jac0. A bytecode-only cache is
 upgraded through `IfaceRegistry` instead of introducing a second analyzer.
 Normal code generation keeps its existing interface policy.
+Loading a dependency-validated interface also seeds the registry's encoding
+memo. A consumer that needs the source tree can still run its requested
+passes without re-encoding that unchanged interface and its dependency closure.
 
 JIR's `SEC_PATH_ROOT` records the build package root. The dependency,
 interface, diagnostic, and placement readers relocate path fields to the
