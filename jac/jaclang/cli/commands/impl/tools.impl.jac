@@ -52,7 +52,13 @@ impl tool(tool: str, args: list = []) -> int {
             );
             return 0;
         } except Exception as e {
-            console.error(f"Error while running ast tool {tool}, check args: {e}");
+            import from jaclang.cli.errmap { humanize_error }
+            mapped = humanize_error(e);
+            if mapped is not None {
+                console.error(mapped[0], hint=mapped[1]);
+            } else {
+                console.error(f"Error while running ast tool {tool}, check args: {e}");
+            }
             return 1;
         }
     } else {

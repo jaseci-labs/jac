@@ -386,6 +386,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Unsupported escape sequence '\\N{{...}}'",
          help="Resolving a Unicode character name needs the name database, which the compiler does not carry. Write the code point as \\uXXXX or \\UXXXXXXXX, or prefix the string with r to keep the backslash."
      ),
+     E0111 = _err(
+         "E0111",
+         Category.SYNTAX,
+         "Expression is too deeply nested for the compiler to process",
+         help="A long chain of operators nests one level per operator, so a chain of a few thousand exhausts the compiler's working stack. Split it across several statements, or build the value in a loop."
+     ),
      W0100 = _warn(
          "W0100",
          Category.SYNTAX,
