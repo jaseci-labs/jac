@@ -54,7 +54,15 @@ def small_catalog -> tuple[StubCatalog, str] {
         return (_built[0], _built[1]);
     }
     out = os.path.join(tempfile.mkdtemp(prefix="stubcat-"), "stubcat.bin");
+    import from jaclang.runtime.runtime { JacRuntime }
+    selfhost = JacRuntime.get_selfhost();
+    owner = selfhost.peek_program();
+    before = set(owner.mod.hub) if owner is not None else set();
     manifest = build_catalog(out, only=SMALL_SET, quiet=True);
+    owner = selfhost.peek_program();
+    after = set(owner.mod.hub) if owner is not None else set();
+    leaked = {path for path in after - before if path.endswith(".pyi")};
+    assert not leaked , f"catalog build retained stubs in the self-host hub: {leaked}";
     assert manifest["modules"] >= len(SMALL_SET) - 2 , manifest;
     cat = open_catalog_file(out, jaclang_pkg_dir());
     assert cat is not None;

@@ -51,3 +51,14 @@ test "the self-host program keeps its own native stdlib imports" {
     sock = _pkg_path("runtime/na_stdlib/socket.jac");
     assert cache.resolve(sock, cache.program) is cache.program;
 }
+
+
+test "forced program ownership also applies to stub dependencies" {
+    prog = JacProgram();
+    prog.options.force_target_program = True;
+    cache = prog._get_compiler().selfhost;
+    stub = _pkg_path("vendor/typeshed/stdlib/builtins.pyi");
+    assert cache.resolve(stub, prog) is prog , (
+        "a scratch program's type stubs escaped into the process-global hub"
+    );
+}
