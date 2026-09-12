@@ -103,7 +103,7 @@ test "a file that needed formatting is cached clean only after it is written" {
         reset_state();
         stats1: dict = {};
         r1 = fmt_cmd([str(f)], cache=True, cache_stats=stats1);
-        assert r1 == 1 , "a changed file exits 1";
+        assert r1 == 0 , "a successful reformat exits 0 (issue #8536)";
         assert f.read_text() == CLEAN , "the file must actually be rewritten";
         assert stats1.get("misses", 0) == 1 , f"first run is a miss, got {stats1}";
         # Run 2: disk now holds CLEAN -> must be a HIT (proves post-write caching).
@@ -158,7 +158,7 @@ test "content change invalidates the cache" {
         reset_state();
         stats: dict = {};
         r = fmt_cmd([str(f)], cache=True, cache_stats=stats);
-        assert r == 1 , "changed content must miss and reformat (exit 1)";
+        assert r == 0 , "changed content must miss and reformat, exiting 0 (issue #8536)";
         assert stats.get("hits", 0) == 0 and stats.get("misses", 0) == 1 , (
             f"content change must invalidate, got {stats}"
         );
@@ -234,7 +234,7 @@ test "to_screen with cache still prints formatted source" {
         with redirect_stdout(buf) {
             stats: dict = {};
             rc = fmt_cmd([str(f)], to_screen=True, cache=True, cache_stats=stats);
-            assert rc == 1 , "needs-fmt under to_screen still reports changed";
+            assert rc == 0 , "needs-fmt under to_screen is still a success (issue #8536)";
         }
         out = buf.getvalue();
         assert "def f" in out , (

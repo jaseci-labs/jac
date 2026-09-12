@@ -1001,6 +1001,9 @@ impl format(
     total_files = len(all_files);
 
     if total_files == 0 {
+        if cache_stats is not None {
+            cache_stats["changed"] = 0;
+        }
         return 1 if had_path_errors else 0;
     }
 
@@ -1169,6 +1172,10 @@ impl format(
         }
     }
 
+    if cache_stats is not None {
+        cache_stats["changed"] = changed_files;
+    }
+
     if failed_results {
         import from jaclang.cli.check_report { separator }
         console.print("");
@@ -1220,13 +1227,11 @@ impl format(
             console.success(summary_msg);
         }
     }
+
     if failed_files > 0 or had_path_errors {
         return 1;
     }
     if total_errors > 0 {
-        return 1;
-    }
-    if changed_files > 0 {
         return 1;
     }
     return 0;
@@ -1373,6 +1378,8 @@ impl precommit(
         }
     }
     console.print("precommit: formatting (--lintfix)", style="muted");
+
+    stats: dict = cache_stats if cache_stats is not None else {};
     fmt_ret = format(
         fmt_targets,
         to_screen=False,
@@ -1381,21 +1388,20 @@ impl precommit(
         cache=True,
         cache_anchor=git_root,
         path_map=path_map,
-        cache_stats=cache_stats
+        cache_stats=stats
     );
     if tmp_root {
         shutil.rmtree(tmp_root, ignore_errors=True);
     }
     console.print("[precommit] Running check...");
     check_ret = check(targets);
-    if not verify
-        and check_ret == 0
-        and fmt_ret == 0
-        and staged
-        and _staged_dirty_files(git_root, rel_targets) {
-        fmt_ret = 1;
-    }
-    if not verify and check_ret == 0 and fmt_ret != 0 {
+
+    fixes_applied = (
+        int(stats.get("changed", 0)) > 0
+        or (staged and _staged_dirty_files(git_root, rel_targets))
+        or fmt_ret != 0
+    );
+    if not verify and check_ret == 0 and fixes_applied {
         console.warning(
             "Pre-commit applied formatting/lint fixes — review the changes, "
             "re-stage them, and commit again."

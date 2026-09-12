@@ -196,3 +196,75 @@ test "precommit gates the commit on type errors" {
     }
     assert rc != 0 , "a staged type error must fail the precommit gate";
 }
+
+test "staged fmt applies fixes and still gates the commit when fmt succeeds" {
+    # Regression pin for issue #8536: `jac fmt` is changing to exit 0 after
+    # successfully reformatting files (previously it exited 1 whenever
+    # anything changed). The precommit gate must NOT silently disappear with
+    # that change: a non-verify staged run that applies formatting fixes
+    # must still block the commit (nonzero exit + re-stage guidance) and
+    # rewrite the worktree copy. The gate must be driven by "did fmt apply
+    # changes", not by fmt's exit code.
+    import from jaclang.project { config as config_mod }
+    repo = tempfile.mkdtemp(prefix="jac-precommit-fmtfix-");
+    subprocess.run(["git", "init", "-q", repo], check=True);
+    (Path(repo) / "jac.toml").write_text(
+        '[project]\nname = "pcf"\nversion = "0.0.1"\n\n'
+        '[precommit]\ntypecheck = false\n'
+    );
+    old = os.getcwd();
+    os.chdir(repo);
+    try {
+        f = Path(repo) / "a.jac";
+        f.write_text(UNFORMATTED);
+        subprocess.run(["git", "add", "a.jac"], check=True, cwd=repo);
+        config_mod._config = None;
+        config_mod._config_explicit = False;
+        config_mod._config_by_root = {};
+        ret = precommit(staged=True);
+        rewritten = f.read_text();
+        config_mod._config = None;
+        config_mod._config_explicit = False;
+        config_mod._config_by_root = {};
+    } finally {
+        os.chdir(old);
+        shutil.rmtree(repo, ignore_errors=True);
+    }
+    assert rewritten == FORMATTED , f"the non-verify run must fix the worktree copy, got:\n{rewritten!r}";
+    assert ret != 0 , "a precommit run that applied formatting fixes must block "
+    "the commit so the fixes get re-staged -- even once fmt exits 0 on success";
+}
+
+test "non-staged fmt applies fixes and still gates the commit when fmt succeeds" {
+    # Companion to the staged regression pin above: with staged=False there
+    # is no _staged_dirty_files backstop, so the gate MUST come from the
+    # stats channel (format() reporting changed > 0). This pins the wiring
+    # where precommit owns the stats dict it hands to format().
+    import from jaclang.project { config as config_mod }
+    repo = tempfile.mkdtemp(prefix="jac-precommit-fmtfix-nostage-");
+    subprocess.run(["git", "init", "-q", repo], check=True);
+    (Path(repo) / "jac.toml").write_text(
+        '[project]\nname = "pcfn"\nversion = "0.0.1"\n\n'
+        '[precommit]\ntypecheck = false\n'
+    );
+    old = os.getcwd();
+    os.chdir(repo);
+    try {
+        f = Path(repo) / "a.jac";
+        f.write_text(UNFORMATTED);
+        config_mod._config = None;
+        config_mod._config_explicit = False;
+        config_mod._config_by_root = {};
+        ret = precommit(staged=False, paths=[str(f)]);
+        rewritten = f.read_text();
+        config_mod._config = None;
+        config_mod._config_explicit = False;
+        config_mod._config_by_root = {};
+    } finally {
+        os.chdir(old);
+        shutil.rmtree(repo, ignore_errors=True);
+    }
+    assert rewritten == FORMATTED , f"the non-verify run must fix the worktree copy, got:\n{rewritten!r}";
+    assert ret != 0 , "a non-staged run that applied formatting fixes must still block "
+    "via the stats channel -- fmt exits 0 on success and there is no staged backstop";
+}
