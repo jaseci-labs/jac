@@ -1,5 +1,5 @@
 import from jaclang.compiler.ir.identity { Multiplicity }
-import from jaclang.compiler.ir.identity { GraphNode }
+import from jaclang.compiler.ir.identity { GraphNode, MutationPermit }
 import from jaclang.compiler.ir.base { UniNode }
 
 def validate_connection(source: object, relation: type, target: object) {
@@ -58,13 +58,23 @@ def validate_relations(source: GraphNode) {
 }
 
 walker ValidateGraph {
-    has seen: set[int] = set();
+    has permit: MutationPermit | None = None,
+        nodes: list[GraphNode] = [],
+        seen: set[int] = set();
 
     can check with GraphNode entry {
         self.seen.add(id(here));
         validate_relations(here);
-        # Multiple relations may reach one node; validate all relations but
-        # enqueue each endpoint only once.
+        if self.permit is not None {
+            if here.mutation_permit is not None
+                and here.mutation_permit is not self.permit {
+                raise ValueError(
+                    "Mutable compiler graphs cannot be shared across contexts"
+                );
+            }
+            self.nodes.append(here);
+        }
+
         pending: list[GraphNode] = [];
         for target in [here-->] {
             if id(target) not in self.seen {
@@ -76,6 +86,10 @@ walker ValidateGraph {
     }
 }
 
-def validate_graph(origin: GraphNode) {
-    origin spawn ValidateGraph();
+def validate_graph(origin: GraphNode, permit: MutationPermit | None = None) {
+    validation = ValidateGraph(permit=permit);
+    origin spawn validation;
+    for element in validation.nodes {
+        element.mutation_permit = permit;
+    }
 }

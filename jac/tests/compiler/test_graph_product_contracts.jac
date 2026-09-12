@@ -426,6 +426,29 @@ test "graph walkers terminate on cycles and reject foreign descendants atomicall
     assert other.generation == before;
 }
 
+test "native graph validation adopts a complete graph atomically" {
+    import from jaclang.compiler.ir.symbols.edges { ScopeParent }
+    first = Module.make_stub(inject_name='first');
+    second = Module.make_stub(inject_name='second');
+    first +>:ScopeParent:+> second;
+    second +>:ScopeParent:+> first;
+    permit = MutationPermit();
+    validate_graph(first, permit);
+    assert first.mutation_permit is permit;
+    assert second.mutation_permit is permit;
+    assert permit.generation == 0;
+
+    unclaimed = Module.make_stub(inject_name='unclaimed');
+    # Model an invalid native bridge result before its ingress validation.
+    unclaimed.__jac__.out_light = {ScopeParent: [second]};
+    try {
+        validate_graph(unclaimed, MutationPermit());
+        assert False , 'foreign graph must be rejected';
+    } except ValueError {}
+    assert unclaimed.mutation_permit is None;
+    assert second.mutation_permit is permit;
+}
+
 
 test "syntax copies preserve typed edges while isolating context and locations" {
     import copy;

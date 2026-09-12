@@ -146,7 +146,9 @@ def _native_parse_woven(
     if kernel.run(source_str, file_path) != 0 {
         return None;
     }
-    module = kernel.take_module();
+    module = kernel.take_module(
+        prog.analysis.mutations if prog is not None and early_context else None
+    );
     if module is None {
         return None;
     }

@@ -198,8 +198,7 @@ walker CollectUnclaimed {
         }
         self.seen.add(id(here));
         self.nodes.append(here);
-        # Kid and role edges can reach the same node. Mark it when queued so
-        # the OSP engine dispatches each node once, including cyclic graphs.
+
         pending: list[GraphNode] = [];
         for target in [here-->] {
             if id(target) not in self.seen {

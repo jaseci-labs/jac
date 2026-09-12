@@ -148,8 +148,6 @@ impl UniScopeNode.parent_scope.getter -> (UniScopeNode | None) {
 impl UniScopeNode.parent_scope.setter(parent_scope: (UniScopeNode | None)) {
     import from jaclang.compiler.ir.symbols.edges { ScopeChild, ScopeParent }
 
-    # Replacements need preflight before deleting their old relation. Initial
-    # connections are validated and claimed atomically by the connect operator.
     replacing = bool([self<-:ScopeChild:<-] or [self->:ScopeParent:->]);
     if replacing and parent_scope is not None {
         self.check_connection(parent_scope, RelationFamily.BINDING);

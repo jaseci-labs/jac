@@ -79,6 +79,11 @@ selects contextual programs. The compiler keeps a bounded cache of frozen source
 revisions, keyed by source path, contents and annexes. Programs reuse these parse
 results and clone syntax and diagnostics before semantic mutation. Eviction only
 removes the cache reference; live programs retain their revisions.
+Symbol-only imports of the compiler's own server modules instead create fresh
+graphs through the native parser and its scheduled early passes. They retain the
+requesting program's context, avoiding a frozen-source copy without sharing mutable
+host IR. Native ingress validates relations and context compatibility in one walk;
+it assigns the context permit only after the entire graph passes validation.
 App, entry, UI, codespace, and target settings distinguish compilation
 contexts and disk artifact namespaces. A symbol-only dependency can progress
 through the remaining passes without reparsing or repeating completed passes.

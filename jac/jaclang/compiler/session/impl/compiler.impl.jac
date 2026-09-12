@@ -643,7 +643,8 @@ impl JacCompiler.parse_str(
                 annex_sources,
                 parse_woven
             }
-            if self.selfhost.is_selfhost(target_program) {
+            if self.selfhost.is_selfhost(target_program)
+                or self.selfhost.can_prepare_symbols(file_path, target_program) {
                 (mod, had_error) = parse_woven(
                     source_str,
                     file_path,

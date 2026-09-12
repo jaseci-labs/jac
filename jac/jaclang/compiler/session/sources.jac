@@ -16,7 +16,6 @@ obj SourceUnit {
         node_count: int = 0;
 }
 
-"""Bounded reuse of immutable syntax across programs owned by one compiler."""
 obj SourceCache {
     has limit: int = 100000,
         nodes: int = 0,

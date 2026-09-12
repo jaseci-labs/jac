@@ -33,6 +33,26 @@ obj SelfHostCache {
         return normalized_path.startswith((self.jaclang_root() + os.sep));
     }
 
+    def can_prepare_symbols(file_path: str, program: JacProgram) -> bool {
+        options = program.options;
+        if not options.symtab_ir_only
+            or options.aot_mode
+            or options.force_codespace
+            or options.default_codespace
+            or not self.owns(file_path) {
+            return False;
+        }
+        import from jaclang.compiler.analysis.placement.pins {
+            config_kind_space,
+            effective_module_pin
+        }
+        if config_kind_space(file_path, options.app_kind) in ('client', 'native')
+            or effective_module_pin(file_path) in ('client', 'native') {
+            return False;
+        }
+        return self.is_selfhost(self.resolve(file_path, program));
+    }
+
     def resolve(
         file_path: str, target_program: JacProgram, force: bool = False
     ) -> JacProgram {

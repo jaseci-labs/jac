@@ -106,3 +106,38 @@ test "cached parse diagnostics belong to the receiving program" {
     first.errors_had[0].msg = 'changed by first program';
     assert second.errors_had[0].msg == original;
 }
+
+test "host symbol imports use fresh graphs and retain their program context" {
+    import from jaclang.compiler.session.compiler { JacCompiler }
+    import from jaclang.compiler.session.options { CompileOptions }
+    with TemporaryDirectory() as td {
+        source = Path(td) / 'api.jac';
+        source.write_text('def answer -> int { return 42; }\n');
+        compiler = JacCompiler();
+        compiler.selfhost._jaclang_root = td;
+        first = JacProgram();
+        second = JacProgram();
+        first._compiler = compiler;
+        second._compiler = compiler;
+        options = CompileOptions(
+            no_cgen=True, symtab_ir_only=True, force_target_program=True
+        );
+        left = first.compile(str(source), options=options);
+        right_options = options.for_symbols();
+        right_options.force_target_program = True;
+        right = second.compile(str(source), options=right_options);
+        assert not first.errors_had and not second.errors_had;
+        assert left is not right and left.body[0] is not right.body[0];
+        assert left.mutation_permit is first.analysis.mutations;
+        assert right.mutation_permit is second.analysis.mutations;
+        assert 'answer' in left.names_in_scope and 'answer' in right.names_in_scope;
+        assert compiler.selfhost.program.find_module(str(source)) is None;
+        assert first.source_store.parses == 0 and second.source_store.parses == 0;
+        assert compiler.selfhost.can_prepare_symbols(str(source), first);
+        first.options.force_codespace = 'client';
+        assert not compiler.selfhost.can_prepare_symbols(str(source), first);
+        first.options.force_codespace = '';
+        first.options.aot_mode = True;
+        assert not compiler.selfhost.can_prepare_symbols(str(source), first);
+    }
+}

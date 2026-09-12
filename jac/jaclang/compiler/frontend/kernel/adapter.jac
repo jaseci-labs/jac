@@ -7,6 +7,7 @@ import from ctypes { c_char_p, c_double, c_int64, c_void_p, cast, py_object }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 import type from jaclang.compiler.pipeline.pass_base { PassResult }
 import type from jaclang.compiler.pipeline.contracts { PassIdentity }
+import type from jaclang.compiler.ir.identity { MutationPermit }
 
 glob CODE_INT: int = 1,
      CODE_BOOL: int = 2,
@@ -483,7 +484,9 @@ class NativeCompiler {
         return out;
     }
 
-    def take_module(self: NativeCompiler) -> Module | None {
+    def take_module(
+        self: NativeCompiler, permit: MutationPermit | None = None
+    ) -> Module | None {
         import from jaclang.compiler.ir.schema { Module }
         import from jaclang.compiler.ir.mutation { validate_graph }
         module = self._take(self.lib.jc_take_module());
@@ -491,7 +494,7 @@ class NativeCompiler {
             if not isinstance(module, Module) {
                 raise TypeError("Native kernel returned an invalid module");
             }
-            validate_graph(module);
+            validate_graph(module, permit);
         }
         return module;
     }

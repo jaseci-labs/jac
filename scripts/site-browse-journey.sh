@@ -44,6 +44,21 @@ fail() {
       .filter(entry => entry.initiatorType === "script")
       .map(entry => ({url: entry.name, status: entry.responseStatus,
                      durationMs: Math.round(entry.duration)}))' || true
+    echo "--- failed script responses ---"
+    jac browse eval 'Promise.all(performance.getEntriesByType("resource")
+      .filter(entry => entry.initiatorType === "script" &&
+                       (entry.responseStatus === 0 || entry.responseStatus >= 400) &&
+                       new URL(entry.name).origin === location.origin)
+      .map(async entry => {
+        try {
+          const response = await fetch(entry.name, {signal: AbortSignal.timeout(5000)});
+          return {url: entry.name, status: response.status,
+                  contentType: response.headers.get("content-type"),
+                  body: (await response.text()).slice(0, 1000)};
+        } catch (error) {
+          return {url: entry.name, error: String(error)};
+        }
+      }))' || true
     exit 1
 }
 
