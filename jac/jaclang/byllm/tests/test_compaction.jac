@@ -21,9 +21,8 @@ glob FIXTURE_DIR = os.path.join(
      COMPACTION_TOML_FIXTURE = os.path.join(FIXTURE_DIR, "compaction_config");
 
 
-# MockLLM.dispatch_no_streaming adds the assistant message as a string, which
-# _default_compact's role-detection cannot recognise. So pipeline tests use a
-# hook; structural correctness of _default_compact is verified separately.
+# Pipeline tests compact through a hook so they check when compaction fires,
+# not how _default_compact slices; that is verified separately.
 test "above threshold compacts and next iteration sees shortened messages" {
     def step_a -> str {
         return "stepped";
@@ -33,15 +32,12 @@ test "above threshold compacts and next iteration sees shortened messages" {
     }
 
     llm = MockLLM(
-        model_name="mockllm",
         ctx_window=1000,
-        config={
-            "outputs": [
-                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100}),
-                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
-                (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
-            ]
-        }
+        outputs=[
+            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100}),
+            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
+            (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
+        ]
     );
 
     hook_call_count = [0];
@@ -98,7 +94,7 @@ test "default compactor produces system user summary and kept-tail structure" {
 
     messages = [sys_msg, user_msg] + make_round(1) + make_round(2) + make_round(3);
     summary_text = "Steps 1, 2, and 3 searched for q1/q2/q3.";
-    summariser = MockLLM(model_name="mockllm", config={"outputs": [summary_text]});
+    summariser = MockLLM(outputs=[summary_text]);
 
     result: list = list(_byllm_llm_mod._default_compact(messages, 1, summariser));
 
@@ -123,16 +119,13 @@ test "below threshold does not trigger compaction" {
     }
 
     llm = MockLLM(
-        model_name="mockllm",
         ctx_window=1000,
-        config={
-            "outputs": [
-                (
-                    MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
-                    {"prompt_tokens": 100}
-                )
-            ]
-        }
+        outputs=[
+            (
+                MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
+                {"prompt_tokens": 100}
+            )
+        ]
     );
 
     def my_task(q: str) -> str by llm(tools=[step_a], threshold_ratio=0.80);
@@ -153,14 +146,11 @@ test "ctx_window priority - call_params beats self.ctx_window" {
     }
 
     llm = MockLLM(
-        model_name="mockllm",
         ctx_window=10000,
-        config={
-            "outputs": [
-                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
-                (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
-            ]
-        }
+        outputs=[
+            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
+            (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
+        ]
     );
 
     compaction_fired = [False];
@@ -189,7 +179,7 @@ test "ctx_window priority - self.ctx_window beats jac.toml" {
         loaded = get_byllm_config().get_compaction_config();
         assert loaded["ctx_window"] == 10000 , f"Fixture not loaded: {loaded}";
 
-        llm = MockLLM(model_name="mockllm", ctx_window=1000);
+        llm = MockLLM(ctx_window=1000);
         assert llm._get_ctx_window({}) == 1000;
     } finally {
         reset_byllm_config();
@@ -221,14 +211,12 @@ test "ctx_window fallback - unknown model with no override disables threshold" {
 
     llm = MockLLM(
         model_name="definitely-not-a-real-model-zzz",
-        config={
-            "outputs": [
-                (
-                    MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
-                    {"prompt_tokens": 999_999}
-                )
-            ]
-        }
+        outputs=[
+            (
+                MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
+                {"prompt_tokens": 999_999}
+            )
+        ]
     );
 
     compaction_fired = [False];
@@ -255,16 +243,13 @@ test "compaction_enabled false suppresses proactive and emergency paths" {
     }
 
     llm1 = MockLLM(
-        model_name="mockllm",
         ctx_window=1000,
-        config={
-            "outputs": [
-                (
-                    MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
-                    {"prompt_tokens": 950}
-                )
-            ]
-        }
+        outputs=[
+            (
+                MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
+                {"prompt_tokens": 950}
+            )
+        ]
     );
 
     proactive_fired = [False];
@@ -283,7 +268,7 @@ test "compaction_enabled false suppresses proactive and emergency paths" {
     assert task1("test") == "ok";
     assert not proactive_fired[0];
 
-    llm2 = MockLLM(model_name="mockllm", config={"outputs": []});
+    llm2 = MockLLM(outputs=[]);
 
     call_count = [0];
     def fake_raises(mt_run: MTRuntime) -> CompletionResult {
@@ -311,18 +296,8 @@ test "compaction_enabled false suppresses proactive and emergency paths" {
 # Hook used instead of default compactor: at first dispatch mt_run has only
 # [system, user] = 2 messages, too few for the default slice to be non-empty.
 test "ContextWindowExceededError triggers emergency compaction and retries" {
-    def finish_tool(final_output: str) -> str {
-        return final_output;
-    }
-
-    llm = MockLLM(
-        model_name="mockllm",
-        config={
-            "outputs": [
-                (MockToolCall(tool=finish_tool, args={"final_output": "recovered"}), {})
-            ]
-        }
-    );
+    # No tools are offered, so the retried call answers in plain text.
+    llm = MockLLM(outputs=["recovered"]);
 
     hook_called = [False];
     def hook(msgs: list, keep_recent: int) -> list {
@@ -364,14 +339,11 @@ test "compaction with no reduction raises CompactionNotEffectiveError" {
     }
 
     llm = MockLLM(
-        model_name="mockllm",
         ctx_window=1000,
-        config={
-            "outputs": [
-                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100}),
-                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 900})
-            ]
-        }
+        outputs=[
+            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100}),
+            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 900})
+        ]
     );
 
     def noop_hook(msgs: list, keep_recent: int) -> list {
@@ -400,13 +372,8 @@ test "on_compaction hook returning invalid types raises ConfigurationError" {
 
     def run_with_hook(hook: object) -> any {
         llm = MockLLM(
-            model_name="mockllm",
             ctx_window=1000,
-            config={
-                "outputs": [
-                    (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 900})
-                ]
-            }
+            outputs=[(MockToolCall(tool=step_a, args={}), {"prompt_tokens": 900})]
         );
 
         def my_task(q: str) -> str by llm(
@@ -454,15 +421,12 @@ test "streaming path triggers compaction and respects compaction_enabled" {
     }
 
     llm1 = MockLLM(
-        model_name="mockllm",
         ctx_window=1000,
-        config={
-            "outputs": [
-                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
-                (MockToolCall(tool=finish_tool, args={"final_output": "done"}), {}),
-                "done"
-            ]
-        }
+        outputs=[
+            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
+            (MockToolCall(tool=finish_tool, args={"final_output": "done"}), {}),
+            "done"
+        ]
     );
 
     fired1 = [False];
@@ -483,17 +447,14 @@ test "streaming path triggers compaction and respects compaction_enabled" {
     assert fired1[0];
 
     llm2 = MockLLM(
-        model_name="mockllm",
         ctx_window=1000,
-        config={
-            "outputs": [
-                (
-                    MockToolCall(tool=finish_tool, args={"final_output": "done"}),
-                    {"prompt_tokens": 950}
-                ),
-                "done"
-            ]
-        }
+        outputs=[
+            (
+                MockToolCall(tool=finish_tool, args={"final_output": "done"}),
+                {"prompt_tokens": 950}
+            ),
+            "done"
+        ]
     );
 
     fired2 = [False];

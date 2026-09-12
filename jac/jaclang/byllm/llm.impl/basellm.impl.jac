@@ -273,13 +273,22 @@ def _apply_prompt_caching(messages: list[object], tools: list | None) {
 }
 
 
-def _litellm_ctx_window(model_name: str) -> int {
+def _quiet_lookup(lookup: Callable, fallback: any) -> any {
     try {
+        return lookup();
+    } except Exception {
+        return fallback;
+    }
+}
+
+
+def _litellm_ctx_window(model_name: str) -> int {
+    def lookup -> int {
         info = dict(litellm.get_model_info(model_name));
         return int(info.get("max_input_tokens") or info.get("max_tokens") or 0);
-    } except Exception {
-        return 0;
     }
+    window: int = _quiet_lookup(lookup, 0);
+    return window;
 }
 
 
@@ -312,8 +321,8 @@ def _attach_call_cost(
     if _existing_cost(usage_obj) is not None {
         return;
     }
-    try {
-        cost = litellm.completion_cost(
+    def lookup -> object {
+        return litellm.completion_cost(
             completion_response=(
                 response
                     if response is not None
@@ -321,7 +330,9 @@ def _attach_call_cost(
             ),
             model=model_name
         );
-    } except Exception {
+    }
+    cost = _quiet_lookup(lookup, None);
+    if cost is None {
         return;
     }
     if isinstance(usage_obj, dict) {
@@ -1541,11 +1552,13 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
     params.pop("api_key", None);
     attempt = 0;
     usage_base = len(mt_run._usage_history);
+    stream_model: str = self.model_name;
     while True {
         finish_reason = "";
         try {
             response = self.model_call_with_stream(params);
             for chunk in response {
+                stream_model = chunk?.model or stream_model;
                 if chunk?.choices and chunk?.choices?[0]?.finish_reason {
                     finish_reason = str(chunk.choices[0].finish_reason);
                 }
@@ -1571,6 +1584,10 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
             }
             raise;
         }
+    }
+
+    if len(mt_run._usage_history) == usage_base {
+        _record_usage(mt_run, {}, stream_model, finish_reason=finish_reason);
     }
 }
 
@@ -1765,11 +1782,13 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) {
     params.pop("api_key", None);
     attempt = 0;
     usage_base = len(mt_run._usage_history);
+    stream_model: str = self.model_name;
     while True {
         finish_reason = "";
         try {
             response = await self.model_call_with_stream_async(params);
             async for chunk in response {
+                stream_model = chunk?.model or stream_model;
                 if chunk?.choices and chunk?.choices?[0]?.finish_reason {
                     finish_reason = str(chunk.choices[0].finish_reason);
                 }
@@ -1795,6 +1814,10 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) {
             }
             raise;
         }
+    }
+
+    if len(mt_run._usage_history) == usage_base {
+        _record_usage(mt_run, {}, stream_model, finish_reason=finish_reason);
     }
 }
 

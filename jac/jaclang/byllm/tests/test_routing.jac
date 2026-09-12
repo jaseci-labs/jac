@@ -197,7 +197,7 @@ test "a supervisor routes to the agent whose speciality matches the request" {
             if ("Poem" in x[0]) == wants_poem
         ][:1];
     }
-    llm = RoutingLLM(replies=[say(poem), say("35")], pick=by_topic);
+    llm = RoutingLLM(outputs=[say(poem), say("35")], pick=by_topic);
     ag.llm = llm;
     team = root ++> Team();
     team ++> PoemAgent();

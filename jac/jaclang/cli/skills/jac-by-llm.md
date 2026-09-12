@@ -92,20 +92,28 @@ def stream_story(topic: str) -> str by llm(stream=True);
 
 ## Testing with MockLLM
 
-Runs without API keys - mock outputs are consumed sequentially, one per `by` call. For typed returns put pre-built instances in `outputs` (e.g. `Priority.HIGH`, `[Task(...)]`). See `jac-testing` for `jac test` mechanics.
+No API keys needed. `MockLLM` replaces only the network call, so byLLM still builds the real request and parses the reply.
+
+- Outputs are consumed in order, one per model call; a tool loop takes one per step.
+- For a typed return, queue the value (`Priority.HIGH`, `[Task(...)]`). A bare string is parsed like model text.
+- `MockToolCall(tool=fn_or_name, args={...})` must name a tool the function offers.
+- Assert on what was sent with `llm.sent("messages")` or `llm.sent("tools")`.
 
 ```jac
 import from jaclang.byllm.lib { MockLLM }
 
-glob llm = MockLLM(model_name="mockllm", config={"outputs": ["Bonjour", "Salut"]});
+glob llm = MockLLM(outputs=["Bonjour", "Salut"]);
 
 def translate(text: str) -> str by llm();
 
 test "mock outputs consumed in order" {
     assert translate("Hello") == "Bonjour";
     assert translate("Hi") == "Salut";
+    assert "Hello" in str(llm.sent("messages")[0]);
 }
 ```
+
+See `jac-testing` for `jac test` mechanics.
 
 ## Errors & retries
 

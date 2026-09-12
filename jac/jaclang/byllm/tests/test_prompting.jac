@@ -6,7 +6,8 @@ returns, enums and scalars on the way back. Assert on both directions.
 
 import os;
 import from jaclang { JacRuntimeInterface as Jac }
-import from support_tests { FakeLLM, call, prompt_text, roles, say, tool_names, typed }
+import from jaclang.byllm.lib { MockLLM }
+import from support_tests { call, prompt_text, roles, say, tool_names }
 
 
 glob FIXTURE_DIR: str = os.path.join(os.path.dirname(__file__), "fixtures");
@@ -35,7 +36,7 @@ glob _METHOD_PERSONALITIES: set[_MethodPersonality] = {
          _MethodPersonality.INTROVERT,
          _MethodPersonality.EXTROVERT
      },
-     _sem_llm = FakeLLM(replies=[typed(120597), say("R8@jL3pQ")]);
+     _sem_llm = MockLLM(outputs=[120597, say("R8@jL3pQ")]);
 
 
 def _generate_specific_number -> int by _sem_llm();
@@ -55,7 +56,7 @@ test "incl_info examples and temperature reach the model" {
         },
         {"input": "Mime Person", "output": "\U0001f464\U0001f932\U0001f6b7"}
     ];
-    llm = FakeLLM(replies=[say("\U0001f464\u27a1\ufe0f\U0001f5fc")]);
+    llm = MockLLM(outputs=[say("\U0001f464\u27a1\ufe0f\U0001f5fc")]);
 
     def get_emoji(input: str) -> str by llm(
         temperature=0.7, incl_info={"examples": emoji_examples}
@@ -71,7 +72,7 @@ test "incl_info examples and temperature reach the model" {
 
 
 test "a method's own object reaches the prompt as context" {
-    llm = FakeLLM(replies=[typed(86.75)]);
+    llm = MockLLM(outputs=[86.75]);
 
     obj Student {
         has name: str,
@@ -109,8 +110,8 @@ test "a sem string reaches the prompt and a typed return is converted" {
 
 
 test "a typed object return is parsed, enum member and all" {
-    llm = FakeLLM(
-        replies=[
+    llm = MockLLM(
+        outputs=[
             say(
                 '{"schema_object_wrapper": {"full_name": "J. Robert Oppenheimer", '
                 '"yod": 1967, "personality": "Introvert"}}'
@@ -131,7 +132,7 @@ test "a typed object return is parsed, enum member and all" {
 
 
 test "a nested method's incl_info and receiver state reach the prompt" {
-    llm = FakeLLM(replies=[typed(_MethodPersonality.INTROVERT.value)]);
+    llm = MockLLM(outputs=[_MethodPersonality.INTROVERT]);
 
     obj _Diarist {
         has diary_entries: list[str];
@@ -162,7 +163,7 @@ test "a nested method's incl_info and receiver state reach the prompt" {
 
 
 test "an enum return is reconstructed as the member" {
-    llm = FakeLLM(replies=[typed(_Sentiment.POSITIVE.value)]);
+    llm = MockLLM(outputs=[_Sentiment.POSITIVE]);
 
     def classify(text: str) -> _Sentiment by llm();
 
@@ -184,10 +185,9 @@ sem _wind_speed = "Get the current wind speed of a given city.";
 
 """One tool-using turn, so the recorded params carry a real tools array and a
 real tool result. `extra` is merged into the by-llm call params."""
-def _wind_report(llm: FakeLLM, extra: dict) -> str {
+def _wind_report(llm: MockLLM, extra: dict) -> str {
     answer = "The current wind speed in Puttalam is about 18-22 km/h.";
-    llm.replies.extend([call("_wind_speed", {"city": "Puttalam"}), say(answer)]);
-    llm.postinit();
+    llm.outputs.extend([call("_wind_speed", {"city": "Puttalam"}), say(answer)]);
 
     def wind_report(city: str) -> str by llm(tools=[_wind_speed], **extra);
 
@@ -196,7 +196,7 @@ def _wind_report(llm: FakeLLM, extra: dict) -> str {
 
 
 test "an outgoing request carries the model, messages, tools and response format" {
-    llm = FakeLLM();
+    llm = MockLLM();
     _wind_report(llm, {});
     params = llm.seen[0];
 
@@ -227,7 +227,7 @@ test "an outgoing request carries the model, messages, tools and response format
 
 
 test "the second turn replays the tool result back to the model" {
-    llm = FakeLLM();
+    llm = MockLLM();
     _wind_report(llm, {});
     assert len(llm.seen) == 2 , f"expected a tool turn then an answer turn, got {len(
         llm.seen
@@ -248,7 +248,7 @@ test "the second turn replays the tool result back to the model" {
 
 
 test "temperature is sent when the caller sets one" {
-    llm = FakeLLM();
+    llm = MockLLM();
     _wind_report(llm, {"temperature": 0.3});
     assert llm.seen[0]["temperature"] == 0.3 , f"got {llm.seen[0].get(
         'temperature'
@@ -278,11 +278,11 @@ test "a nested obj return is parsed, including the obj it nests" {
     # University.Department nests a Person. Both levels have to come back as
     # real instances, and the same call has to work twice.
     person = {"name": "Jason Mars", "dob": "1994-01-01", "age": 30};
-    llm = FakeLLM(
-        replies=[
-            typed({"name": "Albert Einstein", "dob": "14/03/1879", "age": 76}),
-            typed({"name": "Computer Science", "head": person}),
-            typed({"name": "Computer Science", "head": person})
+    llm = MockLLM(
+        outputs=[
+            {"name": "Albert Einstein", "dob": "14/03/1879", "age": 76},
+            {"name": "Computer Science", "head": person},
+            {"name": "Computer Science", "head": person}
         ]
     );
 
@@ -320,7 +320,7 @@ obj Email {
 
 
 # `sem` is module-level, so these sit beside their test.
-glob _mail_llm = FakeLLM();
+glob _mail_llm = MockLLM();
 
 def _generate_mails -> list[Email] by _mail_llm();
 
@@ -344,10 +344,9 @@ test "a list-of-obj return parses, and each element feeds the next call" {
             "body": "We detected a login from a new device in Berlin."
         }
     ];
-    _mail_llm.replies.extend(
-        [typed(inbox), say("A travel discount offer."), say("A security alert.")]
+    _mail_llm.outputs.extend(
+        [inbox, say("A travel discount offer."), say("A security alert.")]
     );
-    _mail_llm.postinit();
 
     mails = _generate_mails();
     assert len(mails) == 2 , f"expected the whole list back, got {len(mails)}";
@@ -383,11 +382,11 @@ test "the model can be any expression, and a bound call keeps its tools" {
         return "Code executed successfully.";
     }
     code = "name = 'Alice'; print(name)";
-    # Held by name as FakeLLM: calling one with tools= returns a BaseLLM, which
+    # Held by name as MockLLM: calling one with tools= is typed as BaseLLM, which
     # carries no seen/sent, so the recorder needs its own binding.
-    text_llm = FakeLLM(replies=[say("Hello, Alice! It is great to see you!")]);
-    code_llm = FakeLLM(
-        replies=[call("run_and_test_python_code", {"code": code}), say(code)]
+    text_llm = MockLLM(outputs=[say("Hello, Alice! It is great to see you!")]);
+    code_llm = MockLLM(
+        outputs=[call("run_and_test_python_code", {"code": code}), say(code)]
     );
     models = {
         "text-gen": text_llm,
@@ -420,8 +419,8 @@ test "a jac.toml system prompt reaches the model, and a per-call one extends it"
         "direct_http_model_call",
         base_path=os.path.join(FIXTURE_DIR, "system_prompt_override/")
     )[0];
-    llm = FakeLLM(
-        replies=[
+    llm = MockLLM(
+        outputs=[
             say("Hello, Alice! It is great to meet you."),
             say("Hi Alice, welcome!")
         ]

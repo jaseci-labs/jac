@@ -1,3 +1,18 @@
+def _configure_litellm {
+    import from jaclang.byllm._optdeps.litellm { HAS_LITELLM }
+    logging.getLogger("httpx").setLevel(logging.WARNING);
+    if HAS_LITELLM {
+        if not _litellm_config.get("debug", False) {
+            _disable_debugging();
+        }
+        litellm.drop_params = _litellm_config.get("drop_params", True);
+        litellm.include_cost_in_streaming_usage = _litellm_config.get(
+            "include_cost_in_streaming_usage", True
+        );
+    }
+}
+
+
 impl Model.postinit -> None {
     self.proxy = bool(self.config.get("proxy", _model_config.get("proxy", False)));
     self.http_client = bool(
@@ -22,17 +37,7 @@ impl Model.postinit -> None {
         );
     }
     if not self._mock_delegate and not self._local_delegate {
-        import from jaclang.byllm._optdeps.litellm { HAS_LITELLM }
-        logging.getLogger("httpx").setLevel(logging.WARNING);
-        if HAS_LITELLM {
-            if not _litellm_config.get("debug", False) {
-                _disable_debugging();
-            }
-            litellm.drop_params = _litellm_config.get("drop_params", True);
-            litellm.include_cost_in_streaming_usage = _litellm_config.get(
-                "include_cost_in_streaming_usage", True
-            );
-        }
+        _configure_litellm();
 
         native_override = self.config.get(
             "native_tools", _model_config.get("native_tools")
