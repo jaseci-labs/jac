@@ -123,6 +123,25 @@ impl SymTabBuildPass.exit_test with Test exit {
     self.pop_scope();
 }
 
+impl SymTabBuildPass._import_absorbed_symbol(
+    scope: UniScopeNode, symbol: Symbol
+) -> None {
+    if symbol.access == SymbolAccess.PRIVATE {
+        return;
+    }
+    # A binding belongs to the importing scope. Inserting the foreign Name
+    # directly would rebind its .sym and corrupt every other importer's aliases.
+    declaration = Name.gen_stub_from_node(
+        symbol.decl, symbol.sym_name, set_name_of=symbol.decl.name_of
+    );
+    declaration.bind_sym(symbol.decl.name_of, symbol.sym_name, symbol.sym_type);
+    declaration.set_parent(scope);
+    binding = scope.def_insert(declaration, single_decl='import absorb', imported=True);
+    if binding is not None {
+        binding.provider = symbol.provider;
+    }
+}
+
 impl SymTabBuildPass._exit_import_absorb(nd: Import) -> None {
     sym_table_to_update = find_python_scope_node_of(nd);
     if (sym_table_to_update is None) {
@@ -138,23 +157,12 @@ impl SymTabBuildPass._exit_import_absorb(nd: Import) -> None {
         return;
     }
     self._bind_import_path_symbols(import_all_module_path_node);
-    if module {
-        for sym in module.names_in_scope.values() {
-            if (sym.access != SymbolAccess.PRIVATE) {
-                sym_table_to_update.def_insert(
-                    sym.defn[0], single_decl='import absorb', imported=True
-                );
-            }
-        }
-
-        for (name, overload_syms) in module.names_in_scope_overload.items() {
-            for sym in overload_syms {
-                if (sym.access != SymbolAccess.PRIVATE) {
-                    sym_table_to_update.def_insert(
-                        sym.defn[0], single_decl='import absorb', imported=True
-                    );
-                }
-            }
+    for symbol in module.names_in_scope.values() {
+        self._import_absorbed_symbol(sym_table_to_update, symbol);
+    }
+    for overloads in module.names_in_scope_overload.values() {
+        for symbol in overloads {
+            self._import_absorbed_symbol(sym_table_to_update, symbol);
         }
     }
 }

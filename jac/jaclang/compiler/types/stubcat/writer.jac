@@ -1098,9 +1098,17 @@ obj CatalogWriter {
         if self._sym_ident(sym) not in self.sym_types {
             self.force_symbol(sym);
         }
+        target = sym;
+        if sym.imported {
+            try {
+                target = self.evaluator.resolve_to_definition_symbol(sym);
+            } except Exception {}
+        }
         out = bytearray();
         put_uvar(out, self.sid(sym.sym_name));
-        put_uvar(out, self.sid(str(sym.sym_type.value)));
+        # Import resolution can refine the definition's category after the
+        # local binding was created. Serialize that final category consistently.
+        put_uvar(out, self.sid(str(target.sym_type.value)));
         access = ACCESS_PUBLIC;
         if sym.access.value == "private" {
             access = ACCESS_PRIVATE;
@@ -1121,11 +1129,6 @@ obj CatalogWriter {
         alias_mod = -1;
         alias_name = "";
         if sym.imported {
-            try {
-                target = self.evaluator.resolve_to_definition_symbol(sym);
-            } except Exception {
-                target = sym;
-            }
             if target is not sym {
                 target_mod = module_of(home_scope(target));
                 alias_mod = self.ref_module(target_mod);

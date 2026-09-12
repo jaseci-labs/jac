@@ -35,6 +35,7 @@ import from jaclang.compiler.frontend.unitree {
     SemDef,
     SetCompr,
     SwitchCase,
+    Symbol,
     Test,
     Token,
     TryStmt,
@@ -119,6 +120,7 @@ walker SymTabBuildPass(UniPass) {
     can exit_binary_expr with BinaryExpr exit;
     can enter_test with Test entry;
     can exit_test with Test exit;
+    def _import_absorbed_symbol(scope: UniScopeNode, symbol: Symbol) -> None;
     def _exit_import_absorb(nd: Import) -> None;
     can exit_import with Import exit;
     def import_binding_scope(nd: AstSymbolNode) -> UniScopeNode;

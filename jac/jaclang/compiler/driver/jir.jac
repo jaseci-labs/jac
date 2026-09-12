@@ -73,8 +73,7 @@ obj JirPaths {
         return json.dumps({"roots": roots, "base": self.base_dir}).encode("utf-8");
     }
 
-    @staticmethod
-    def from_bytes(data: bytes | None, base_dir: str = "") -> JirPaths {
+    static def from_bytes(data: bytes | None, base_dir: str = "") -> JirPaths {
         import json;
         if not data {
             return JirPaths(base_dir=base_dir);
