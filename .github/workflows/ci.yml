@@ -1226,9 +1226,12 @@ jobs:
             sudo env "PATH=$PATH" py-spy dump --pid "$p" --nonblocking || true
           done
 
-      - name: Screenshot browse state on failure
+      - name: Capture browser and module requests on failure
         if: failure()
-        run: jac browse screenshot /tmp/site-browse-failure.png || true
+        run: |
+          jac browse screenshot /tmp/site-browse-failure.png || true
+          jac browse eval 'JSON.stringify(performance.getEntriesByType("resource").filter(r => r.responseStatus !== 200 || r.name.includes("/web/compiled/")).map(r => ({url: r.name, status: r.responseStatus, duration: r.duration})))' || true
+          curl --max-time 10 -sS -D - -o /tmp/site-entry.js http://localhost:8000/web/compiled/_entry.js || true
 
       - name: Upload browse failure screenshots
         if: failure()
