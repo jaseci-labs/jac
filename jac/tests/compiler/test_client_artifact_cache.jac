@@ -12,9 +12,12 @@ serves bytecode, and rejected once the module or any file it imports changes.
 import os;
 import tempfile;
 import time;
-import from jaclang.compiler.driver.jir { SEC_CLIENT, read_section_bytes }
-import from jaclang.compiler.driver.pass_driver { compile_progress }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.cache.artifact_codec {
+    SEC_CLIENT,
+    read_section_bytes
+}
+import from jaclang.compiler.pipeline.progress { compile_progress }
+import from jaclang.compiler.session.session { JacProgram }
 
 
 glob _HELPER_SRC: str = (
@@ -79,7 +82,7 @@ test "the first client build persists the artifact beside the bytecode" {
         "the cold build must produce the module's JS"
     );
     assert "widget.jac" in compiled , f"the cold build compiles the module, saw {compiled}";
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    import from jaclang.compiler.session.context { artifact_cache_path }
     cached = read_section_bytes(
         artifact_cache_path(widget, program).read_bytes(), SEC_CLIENT
     );
@@ -144,7 +147,7 @@ test "an artifact built for another framework is not served" {
     held = other.get_client_artifact(widget);
     assert held is not None;
     held.framework = "solid";
-    import from jaclang.compiler.driver.compilation_context { cache_scope }
+    import from jaclang.compiler.session.context { cache_scope }
     with cache_scope(other.context_key, other.options) {
         other._get_compiler()._persist_client_artifact(widget, held);
     }

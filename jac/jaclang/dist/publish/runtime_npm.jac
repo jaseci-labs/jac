@@ -1,3 +1,4 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from pathlib { Path }
 
 glob RUNTIME_PKG_NAME: str = "@jaseci/runtime",

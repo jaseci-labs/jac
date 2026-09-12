@@ -6,7 +6,7 @@ import from typing { cast }
 import from uuid { UUID }
 
 import from jaclang.runtime.archetype { NodeAnchor, PermissionDenied, Root }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.compiler.ir.enums { Constants as Con }
 import from jaclang.runtime.memory { Memory }
 
 glob __all__ = ['ExecutionContext'],

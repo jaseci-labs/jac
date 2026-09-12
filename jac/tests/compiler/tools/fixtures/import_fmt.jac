@@ -1,6 +1,6 @@
 import from datetime { datetime }
 import from uuid { UUID, uuid4 }
-import from jaclang.compiler.frontend.constant { EdgeDir }
+import from jaclang.compiler.ir.enums { EdgeDir }
 import from jaclang.jac0core.plugin {
     Archetype,
     ArchetypeProtocol,

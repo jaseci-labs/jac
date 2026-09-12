@@ -1,12 +1,13 @@
 """Boundary classes and codecs must resolve types in their declaring modules."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import re;
 import subprocess;
 import from tempfile { TemporaryDirectory }
 import from tests.support { JAC_ROOT }
 import from jaclang.client.bun_installer { get_bun }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 test "JavaScript boundary types preserve provider scopes and aliases" {
     path = os.path.join(
@@ -21,7 +22,7 @@ test "JavaScript boundary types preserve provider scopes and aliases" {
     prog = JacProgram();
     mod = prog.compile(path);
     assert not prog.errors_had , str(prog.errors_had);
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     bun = get_bun();
     if bun is None {
         testskip("Bun is required to execute generated JavaScript");

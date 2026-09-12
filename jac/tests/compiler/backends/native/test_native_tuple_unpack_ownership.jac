@@ -12,13 +12,14 @@ of `Res` per shape and counts destructions in a module glob through
 of reasoning about which retain the codegen happened to emit.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, compile_native_ir }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import jaclang.compiler.ir.schema as uni;
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
@@ -35,7 +36,7 @@ def compile_fixture -> tuple[ExecutionEngine, uni.Module] {
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, FIXTURE)), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {FIXTURE}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {FIXTURE}";
     return (eng, ir);
 }
@@ -135,7 +136,7 @@ test "the same field bound twice is destroyed exactly once" {
 # --- The box destructor is what makes the borrows balance ---
 test "a boxed tuple carries a destructor that releases its fields" {
     ir = compile_native_ir(FIXTURE);
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     assert '__rc_release_tuple0' in text , (
         "no tuple-box destructor was emitted; boxed tuple fields would be "
         "abandoned when the box dies"

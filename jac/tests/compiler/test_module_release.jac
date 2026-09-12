@@ -7,7 +7,7 @@ This is the memory contract per-module release relies on.
 """
 import gc;
 import weakref;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob SRC = "def area(r: float) -> float { return 3.14 * r * r; }\n";
 

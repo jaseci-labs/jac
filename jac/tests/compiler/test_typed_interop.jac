@@ -11,14 +11,15 @@ Tests with SkipTest document DESIRED behavior that will pass once
 the boundary type manifest and hydration codegen are implemented.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import unittest;
 import tempfile;
 import from tests.support { JAC_ROOT }
 import from tempfile { NamedTemporaryFile, TemporaryDirectory }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.analysis.boundaries.identity { endpoint_key }
 
 glob FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
@@ -73,13 +74,13 @@ test "all typed fixtures compile with correct stubs" {
     ];
     for name in function_fixtures {
         mod = compile_fixture(name);
-        js = mod.gen.js;
+        js = artifact_for(mod).js;
         assert js.strip() , f"{name} should generate JavaScript";
         assert "__jacCallFunction" in js , f"{name} should have __jacCallFunction";
     }
     for name in spawn_fixtures {
         mod = compile_fixture(name);
-        js = mod.gen.js;
+        js = artifact_for(mod).js;
         assert js.strip() , f"{name} should generate JavaScript";
         assert "__jacSpawn" in js , f"{name} should have __jacSpawn";
     }
@@ -88,13 +89,13 @@ test "all typed fixtures compile with correct stubs" {
 # Existing non-typed fixtures still compile (regression guard)
 test "existing fixtures still compile" {
     mod = compile_fixture("separated_client.jac");
-    assert "__jacSpawn" in mod.gen.js;
+    assert "__jacSpawn" in artifact_for(mod).js;
     mod = compile_fixture("separated_defpub_client.jac");
-    assert "__jacCallFunction" in mod.gen.js;
+    assert "__jacCallFunction" in artifact_for(mod).js;
     mod = compile_fixture("mixed_cl_default.jac");
-    assert mod.gen.js.strip();
+    assert artifact_for(mod).js.strip();
     mod = compile_fixture("mixed_sv_default.jac");
-    assert mod.gen.js.strip();
+    assert artifact_for(mod).js.strip();
 }
 
 # A *relative* `sv import from .provider` must lower to the same HTTP client
@@ -105,7 +106,7 @@ test "existing fixtures still compile" {
 # generated and the consumer module failed to import — silently dropping every
 # one of its own endpoints.
 test "sv-to-sv: relative sv import generates HTTP stubs (#6507)" {
-    py = compile_fixture("sv_relative_consumer.jac").gen.py;
+    py = artifact_for(compile_fixture("sv_relative_consumer.jac")).py;
     # The provider must NOT be a plain Python import (that is the broken
     # fallthrough that crashes the module at load time).
     assert "from .sv_relative_provider import" not in py , (
@@ -126,7 +127,7 @@ test "sv-to-sv: relative sv import generates HTTP stubs (#6507)" {
     assert "spawn_walker('sv_relative_provider', 'Analyze'" in py;
     # The module's own endpoints survive: the consumer compiles to importable
     # Python (the plain-import crash is gone).
-    py_mod = compile_fixture("sv_relative_consumer.jac").gen.py_ast[0];
+    py_mod = artifact_for(compile_fixture("sv_relative_consumer.jac")).py_ast[0];
     compiled = compile(py_mod, filename="<sv_relative_consumer>", mode="exec");
     assert compiled is not None;
 }
@@ -140,7 +141,7 @@ test "sv-to-sv: relative sv import generates HTTP stubs (#6507)" {
 # return arrived as a raw `_jac_type` dict and the imported type degraded into a
 # bogus callable stub (#6710).
 test "sv-to-sv: typed archetype return is rehydrated, not a raw dict (#6710)" {
-    py = compile_fixture("sv_relative_consumer.jac").gen.py;
+    py = artifact_for(compile_fixture("sv_relative_consumer.jac")).py;
     # The function stub must wrap the remote call in the return type's
     # `_from_wire`, not hand the wire dict straight back.
     assert (
@@ -165,7 +166,7 @@ test "sv-to-sv: typed archetype return is rehydrated, not a raw dict (#6710)" {
 # bundle time with `The symbol "<Type>" has already been declared` (#6795 -- the
 # cl->sv analog of the Python-path #6710 fix). Only the function gets a stub.
 test "cl->sv: sv-imported type does not become a callable stub (#6795)" {
-    js = compile_fixture("svc_kwargs/sv_import_type_client.jac").gen.js;
+    js = artifact_for(compile_fixture("svc_kwargs/sv_import_type_client.jac")).js;
     assert "async function Todo(" not in js , (
         "an sv-imported type must not degrade into a callable RPC function stub"
     );
@@ -179,7 +180,7 @@ test "cl->sv: sv-imported type does not become a callable stub (#6795)" {
 test "inline cl block with defpub generates stubs" {
     code = '"""Test."""\n\nimport os;\n\ndef:pub get_data(name: str) -> dict {\n    return {"message": "Hello " + name + os.sep};\n}\n\nasync def:pub app() -> Any {\n    data = await get_data("World");\n    return <div>{data}</div>;\n}\n';
     mod = compile_inline(code);
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "__jacCallFunction" in js;
     assert '"get_data"' in js or "'get_data'" in js;
 }
@@ -188,7 +189,7 @@ test "inline cl block with defpub generates stubs" {
 test "endpoint effects classify readers and writers" {
     code = '"""Test."""\n\nnode Item { has name: str; }\n\nwalker read_items {\n    can visit_root with Root entry { report [-->]; }\n}\n\nwalker add_item {\n    has name: str;\n    can do_add with Root entry { here ++> Item(name=self.name); }\n}\n\ndef:pub get_count() -> int { return 0; }\n\ndef:pub delete_all() -> None { items = []; del items; }\n\nasync def:pub app() -> Any {\n    root spawn read_items();\n    root spawn add_item(name="x");\n    c = await get_count();\n    await delete_all();\n    return <div>{c}</div>;\n}\n';
     mod = compile_inline(code);
-    effects = mod.gen.client_manifest.endpoint_effects;
+    effects = artifact_for(mod).client_manifest.endpoint_effects;
     assert endpoint_key(mod, "walker", "read_items") in effects;
     assert not effects[endpoint_key(mod, "walker", "read_items")]["writes"];
     assert endpoint_key(mod, "walker", "add_item") in effects;
@@ -202,7 +203,7 @@ test "endpoint effects classify readers and writers" {
 # Client manifest tracks exports from typed return fixture
 test "client manifest tracks exports" {
     mod = compile_fixture("typed_return_obj.jac");
-    manifest = mod.gen.client_manifest;
+    manifest = artifact_for(mod).client_manifest;
     assert "app" in manifest.exports;
 }
 
@@ -214,7 +215,7 @@ test "client manifest tracks exports" {
 # Plain obj return should generate JS class stub + hydration wrapper
 test "hydration: plain obj return" {
     mod = compile_fixture("typed_return_obj.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "class Todo" in js , "Should emit JS class stub for Todo";
     assert "__from_wire" in js , "Should wrap return with hydration";
 }
@@ -222,7 +223,7 @@ test "hydration: plain obj return" {
 # Nested obj (Person.address: Address) should chain hydration recursively
 test "hydration: nested obj return" {
     mod = compile_fixture("typed_return_nested.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "class Person" in js;
     assert "class Address" in js;
     assert "__from_wire" in js;
@@ -231,7 +232,7 @@ test "hydration: nested obj return" {
 # Enum fields should be hydrated as proper enum instances
 test "hydration: enum values preserved" {
     mod = compile_fixture("typed_return_enum.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "Priority" in js , "Should emit JS enum stub for Priority";
     assert "Status" in js , "Should emit JS enum stub for Status";
 }
@@ -239,7 +240,7 @@ test "hydration: enum values preserved" {
 # Optional[T] should hydrate non-null and pass through null
 test "hydration: optional handles null" {
     mod = compile_fixture("typed_optional_union.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "class UserProfile" in js;
     assert "__from_wire" in js;
 }
@@ -247,7 +248,7 @@ test "hydration: optional handles null" {
 # list[Obj] should hydrate each element individually
 test "hydration: list elements individually hydrated" {
     mod = compile_fixture("typed_collection_return.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "class Metric" in js;
     assert "class Dashboard" in js;
 }
@@ -255,14 +256,14 @@ test "hydration: list elements individually hydrated" {
 # Walker reports containing typed nodes should be hydrated
 test "hydration: walker reports as typed nodes" {
     mod = compile_fixture("typed_walker_spawn.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "class Project" in js or "__from_wire" in js;
 }
 
 # Nodes should be hydrated with _jac_id and graph identity
 test "hydration: graph nodes preserve identity" {
     mod = compile_fixture("typed_graph_return.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "class Department" in js or "class Employee" in js;
     assert "__from_wire" in js;
 }
@@ -275,21 +276,21 @@ test "hydration: graph nodes preserve identity" {
 # Typed obj arguments should be serialized with __to_wire
 test "serialization: obj argument uses to_wire" {
     mod = compile_fixture("typed_args_obj.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "__to_wire" in js;
 }
 
 # Typed objects in walker has fields should be serialized
 test "serialization: walker has fields use to_wire" {
     mod = compile_fixture("typed_walker_fields.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "__to_wire" in js;
 }
 
 # Full round-trip: __to_wire on send AND __from_wire on receive
 test "serialization: bidirectional round trip" {
     mod = compile_fixture("typed_bidirectional.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "class CartItem" in js;
     assert "class ShippingInfo" in js;
     assert "class OrderSummary" in js;
@@ -305,7 +306,7 @@ test "serialization: bidirectional round trip" {
 # InteropManifest should collect boundary types with param + return types
 test "manifest: boundary types with params and returns" {
     mod = compile_fixture("typed_bidirectional.jac");
-    manifest = mod.gen.interop_manifest;
+    manifest = artifact_for(mod).interop_manifest;
     exports = manifest.server_exports_to_client;
     func_names = [b.name for b in exports];
     assert "place_order" in func_names;
@@ -321,7 +322,7 @@ test "manifest: boundary types with params and returns" {
 # Nested types (Person -> Address) should be transitively collected
 test "manifest: nested types transitively collected" {
     mod = compile_fixture("typed_return_nested.jac");
-    manifest = mod.gen.interop_manifest;
+    manifest = artifact_for(mod).interop_manifest;
     exports = manifest.server_exports_to_client;
     func_names = [b.name for b in exports];
     assert "get_person" in func_names;
@@ -344,7 +345,7 @@ test "manifest: nested types transitively collected" {
 # Single-obj return MUST wrap the call site with __from_wire, not just define it
 test "tight: single obj return wraps call site with __from_wire" {
     mod = compile_fixture("typed_return_obj.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     # create_todo returns Todo — the call must be wrapped
     assert "Todo.__from_wire(" in js , "Call to create_todo should be wrapped with Todo.__from_wire()";
 }
@@ -352,7 +353,7 @@ test "tight: single obj return wraps call site with __from_wire" {
 # Nested obj hydration: __from_wire for inner type called INSIDE outer __from_wire
 test "tight: nested obj __from_wire chains inner type" {
     mod = compile_fixture("typed_return_nested.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     # Person.__from_wire should call Address.__from_wire on the address field
     assert "Address.__from_wire(d.address)" in js , "Person.__from_wire should hydrate nested Address field";
 }
@@ -360,14 +361,14 @@ test "tight: nested obj __from_wire chains inner type" {
 # __to_wire should embed __type__ metadata for round-trip identity
 test "tight: __to_wire includes __type__ metadata" {
     mod = compile_fixture("typed_return_obj.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert '"__type__": "Todo"' in js or "'__type__': 'Todo'" in js , "__to_wire should include __type__ key for server deserialization";
 }
 
 # Nested __to_wire serializes inner typed fields
 test "tight: nested __to_wire serializes inner fields" {
     mod = compile_fixture("typed_return_nested.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "this.address.__to_wire()" in js
         or "this.address ? this.address.__to_wire()" in js , "Person.__to_wire should serialize nested Address field";
 }
@@ -375,7 +376,7 @@ test "tight: nested __to_wire serializes inner fields" {
 # list[Obj] field in __from_wire should .map each element
 test "tight: list field in __from_wire maps inner type" {
     mod = compile_fixture("typed_collection_return.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     # Dashboard has metrics: list[Metric] — __from_wire should map
     assert "Metric.__from_wire(x)" in js , "Dashboard.__from_wire should map Metric.__from_wire over list elements";
 }
@@ -383,14 +384,14 @@ test "tight: list field in __from_wire maps inner type" {
 # Enum stubs use Object.freeze
 test "tight: enum stubs are frozen objects" {
     mod = compile_fixture("typed_return_enum.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "Object.freeze" in js , "Enum stubs should use Object.freeze for immutability";
 }
 
 # Return type wrapping on call site for get_person (single obj via sv import)
 test "tight: sv import return wraps call site" {
     mod = compile_fixture("typed_return_nested.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "Person.__from_wire(" in js , "Call to get_person should be wrapped with Person.__from_wire()";
 }
 
@@ -401,9 +402,9 @@ test "tight: sv import return wraps call site" {
 # get_todos returns list[Todo] — call site should wrap with .map
 test "gap: list return wraps call site with map and __from_wire" {
     mod = compile_fixture("typed_return_obj.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     # The manifest knows the return type
-    exports = mod.gen.interop_manifest.server_exports_to_client;
+    exports = artifact_for(mod).interop_manifest.server_exports_to_client;
     for b in exports {
         if b.name == "get_todos" {
             assert b.ret_type == "list[Todo]" , f"Manifest should have list[Todo] return type, got: {b.ret_type}";
@@ -423,7 +424,7 @@ test "gap: list return wraps call site with map and __from_wire" {
 # is not yet implemented. This test documents the desired behavior.
 test "gap: union return type wraps call site" {
     mod = compile_fixture("typed_optional_union.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     # Class stubs ARE generated (verified)
     assert "class UserProfile" in js , "UserProfile stub should be generated";
     assert "class ErrorResponse" in js , "ErrorResponse stub should be generated";
@@ -446,7 +447,7 @@ test "gap: union return type wraps call site" {
 # get_metrics_map returns dict[str, Metric] — values should be hydrated
 test "gap: dict return type preserves generic in manifest" {
     mod = compile_fixture("typed_dict_return.jac");
-    exports = mod.gen.interop_manifest.server_exports_to_client;
+    exports = artifact_for(mod).interop_manifest.server_exports_to_client;
     for b in exports {
         if b.name == "get_metrics_map" {
             assert "Metric" in b.ret_type , f"Manifest should preserve dict[str, Metric] return type, got: {b.ret_type}";
@@ -456,7 +457,7 @@ test "gap: dict return type preserves generic in manifest" {
 
 test "gap: dict return type wraps values with __from_wire" {
     mod = compile_fixture("typed_dict_return.jac");
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     # get_single_metric returns Metric (single obj) — should wrap (control check)
     assert "Metric.__from_wire(" in js , "Single Metric return should be wrapped (control check)";
     # get_metrics_map returns dict[str, Metric] — values should be hydrated
@@ -473,7 +474,7 @@ test "gap: dict return type wraps values with __from_wire" {
 # ---------------------------------------------------------------------------
 test "gap: nested_types field populated in manifest" {
     mod = compile_fixture("typed_return_nested.jac");
-    bt = mod.gen.interop_manifest.boundary_types_for(mod.loc.mod_path);
+    bt = artifact_for(mod).interop_manifest.boundary_types_for(mod.loc.mod_path);
     assert "Person" in bt , "Person should be a boundary type";
     assert "Address" in bt , "Address should be a boundary type";
     # nested_types tracks transitive dependencies
@@ -490,7 +491,7 @@ test "gap: nested_types field populated in manifest" {
 test "gap: walker spawn fixture compiles without error" {
     try {
         mod = compile_fixture("typed_walker_spawn.jac");
-        assert mod.gen.js.strip() , "Walker spawn fixture should generate JS";
+        assert artifact_for(mod).js.strip() , "Walker spawn fixture should generate JS";
     } except RecursionError {
         assert False , "typed_walker_spawn.jac crashes with RecursionError during compilation";
     }
@@ -499,7 +500,7 @@ test "gap: walker spawn fixture compiles without error" {
 test "gap: walker fields fixture compiles without error" {
     try {
         mod = compile_fixture("typed_walker_fields.jac");
-        assert mod.gen.js.strip() , "Walker fields fixture should generate JS";
+        assert artifact_for(mod).js.strip() , "Walker fields fixture should generate JS";
     } except RecursionError {
         assert False , "typed_walker_fields.jac crashes with RecursionError during compilation";
     }
@@ -508,7 +509,7 @@ test "gap: walker fields fixture compiles without error" {
 test "gap: typed args fixture compiles without error" {
     try {
         mod = compile_fixture("typed_args_obj.jac");
-        assert mod.gen.js.strip() , "Typed args fixture should generate JS";
+        assert artifact_for(mod).js.strip() , "Typed args fixture should generate JS";
     } except RecursionError {
         assert False , "typed_args_obj.jac crashes with RecursionError during compilation";
     }
@@ -517,7 +518,7 @@ test "gap: typed args fixture compiles without error" {
 test "gap: bidirectional fixture compiles without error" {
     try {
         mod = compile_fixture("typed_bidirectional.jac");
-        assert mod.gen.js.strip() , "Bidirectional fixture should generate JS";
+        assert artifact_for(mod).js.strip() , "Bidirectional fixture should generate JS";
     } except RecursionError {
         assert False , "typed_bidirectional.jac crashes with RecursionError during compilation";
     }
@@ -526,7 +527,7 @@ test "gap: bidirectional fixture compiles without error" {
 test "gap: graph return fixture compiles without error" {
     try {
         mod = compile_fixture("typed_graph_return.jac");
-        assert mod.gen.js.strip() , "Graph return fixture should generate JS";
+        assert artifact_for(mod).js.strip() , "Graph return fixture should generate JS";
     } except RecursionError {
         assert False , "typed_graph_return.jac crashes with RecursionError during compilation";
     }

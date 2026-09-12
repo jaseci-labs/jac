@@ -1,5 +1,5 @@
 def component() -> JsxElement {
-    root.render();
+    root.__str__();
     return
         <div class="box">
             <h1>Hello</h1>

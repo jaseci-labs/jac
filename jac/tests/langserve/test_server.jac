@@ -1,5 +1,5 @@
 """Tests for Jac Language Server."""
-import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+import from jaclang.compiler.session.context { artifact_cache_path }
 
 import contextlib;
 import os;
@@ -113,10 +113,8 @@ test "test_impl_stay_connected" {
         );
         lsp.type_check_file(circle_impl_file);
         pos = lspt.Position(8, 11);
-        assert (
-            "ability) calculate_area\n( radius : float ) -> float"
-            in _as_any(lsp.get_hover_info(circle_impl_file, pos)).contents.value
-        );
+        hover = _as_any(lsp.get_hover_info(circle_impl_file, pos)).contents.value;
+        assert "ability) calculate_area\n(radius: float) -> float" in hover , hover;
     } finally {
         teardown_test();
     }
@@ -130,10 +128,9 @@ test "test_impl_auto_discover" {
         assert circle_impl_file is not None;
         lsp.type_check_file(circle_impl_file);
         pos = lspt.Position(8, 11);
-        assert (
-            "(public ability) calculate_area\n( radius : float ) -> float"
-            in _as_any(lsp.get_hover_info(circle_impl_file, pos)).contents.value
-        );
+        hover = _as_any(lsp.get_hover_info(circle_impl_file, pos)).contents.value;
+        assert "(public ability) calculate_area\n(radius: float) -> float"
+            in hover , hover;
     } finally {
         teardown_test();
     }
@@ -272,17 +269,17 @@ test "test_go_to_definition_md_path" {
             (6, 28, "concurrent/futures/__init__.pyi:0:0-0:0"),
             (7, 17, "typing.pyi:0:0-0:0"),
             (9, 18, "jaclang/compiler/__init__.py:0:0-0:0"),
-            (9, 34, "jaclang/compiler/frontend/unitree.jac:0:0-0:0"),
+            (9, 34, "jaclang/compiler/ir/schema.jac:0:0-0:0"),
             # jaclang/__init__.py now exposes JacRuntimeInterface lazily via
             # PEP 562 __getattr__ (no static import binding), so go-to-def
             # resolves to the module file at 0:0-0:0 instead of a line.
             (10, 34, "jaclang/__init__.py:"),
-            (11, 40, "jaclang/compiler/frontend/constant.jac:0:0-0:0"),
-            (11, 51, "jaclang/compiler/frontend/constant.jac:2:5-2:15"),
+            (11, 33, "jaclang/compiler/ir/enums.jac:0:0-0:0"),
+            (11, 43, "jaclang/compiler/ir/enums.jac:2:5-2:15"),
             (13, 32, "jaclang/lsp/server/utils.jac:0:0-0:0"),
-            (14, 34, "jaclang/compiler/types/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/types/types.jac:59:5-59:13"),
-            (20, 40, "jaclang/compiler/frontend/unitree.jac:0:0-0:0"),
+            (14, 40, "jaclang/compiler/ir/types/nodes.jac:0:0-0:0"),
+            (18, 5, "compiler/ir/types/nodes.jac:41:5-41:13"),
+            (20, 34, "jaclang/compiler/ir/schema.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 37, "jaclang/lsp/protocol/uris.jac:0:0-0:0"),
             (24, 44, "jaclang/lsp/protocol/server.jac:93:4-93:18"),
@@ -915,13 +912,13 @@ test "test_go_to_definition_nested_impl_symbols" {
         lsp.type_check_file(impl_file);
 
         positions = [
-            (2, 5, "unitree.jac"),
-            (3, 8, "unitree.jac"),
-            (4, 18, "unitree.jac"),
-            (6, 11, "unitree.jac"),
-            (7, 15, "unitree.jac"),
-            (9, 22, "unitree.jac"),
-            (10, 15, "unitree.jac"),
+            (2, 5, "compiler/ir/schema.jac"),
+            (3, 8, "compiler/ir/schema.jac"),
+            (4, 18, "compiler/ir/schema.jac"),
+            (6, 11, "compiler/ir/schema.jac"),
+            (7, 15, "compiler/ir/schema.jac"),
+            (9, 22, "compiler/ir/schema.jac"),
+            (10, 15, "compiler/ir/schema.jac"),
 
         ];
 
@@ -957,7 +954,7 @@ test "test_go_to_definition_stub_param_compound_types" {
         for (line, col, desc) in positions {
             result = lsp.get_definition(stub_file, lspt.Position(line - 1, col - 1));
             assert result is not None , f"go-to-def returned None for {desc}";
-            assert "unitree.jac" in str(result) , f"Expected unitree.jac for {desc}, got: {result}";
+            assert "compiler/ir/schema.jac" in str(result) , f"Expected compiler/ir/schema.jac for {desc}, got: {result}";
         }
     } finally {
         teardown_test();
@@ -1400,7 +1397,7 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
     import struct;
     import tempfile;
     import shutil;
-    import from jaclang.compiler.driver.jir {
+    import from jaclang.compiler.session.cache.artifact_codec {
         is_module_cache_valid,
         HEADER_FMT,
         HEADER_SIZE
@@ -1410,10 +1407,10 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
     try {
         # A full compile writes the bytecode module cache; dependency loads
         # derive trees per process and persist nothing (#8190).
-        import from jaclang.compiler.driver.compiler { JacCompiler }
-        import from jaclang.compiler.driver.program { JacProgram }
+        import from jaclang.compiler.session.compiler { JacCompiler }
+        import from jaclang.compiler.session.session { JacProgram }
         dep_src = fixture_path("cross_module_func.jac");
-        import from jaclang.compiler.driver.compilation_context { cache_scope }
+        import from jaclang.compiler.session.context { cache_scope }
         program = JacProgram();
         JacCompiler().get_bytecode(dep_src, program);
         cache_path = artifact_cache_path(dep_src, program);
@@ -1442,7 +1439,7 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
 }
 
 test "test_cross_module_imported_func_sem_token" {
-    import from jaclang.compiler.frontend.constant { JacSemTokenType }
+    import from jaclang.compiler.ir.enums { JacSemTokenType }
     setup_test();
     try {
         lsp = create_server();

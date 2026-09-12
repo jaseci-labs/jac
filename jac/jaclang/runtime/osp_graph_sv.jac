@@ -96,7 +96,7 @@ def obj_of(h: int) -> (Anchor | None) {
 def tag_of_cls(cls: type) -> int {
     t = _tag_of_cls.get(cls);
     if t is None {
-        import from jaclang.runtime.osp_model { stable_osp_tag }
+        import from jaclang.runtime.osp_tag { stable_osp_tag }
         t = stable_osp_tag(cls.__name__);
         _tag_of_cls[cls] = t;
         _cls_of_tag_map[t] = cls;

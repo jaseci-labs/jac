@@ -15,9 +15,9 @@ The tokens now live directly in the element's kid list, so one element is one
 node and neither ambiguity exists to be worked around.
 """
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.frontend.unitree { JsxElement }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.ir.schema { JsxElement }
 
 def _compile(src: str) -> tuple[any, list[str]] {
     prog = JacProgram();

@@ -1,5 +1,6 @@
 """Tests for the centralized source mapping utility."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import json;
 import os;
 import from pathlib { Path }
@@ -311,10 +312,10 @@ test "es compiler produces exact line mapping for function body statements" {
         program = Jac.get_program();
         mod = program.compile(str(jac_file));
         assert mod is not None , "Compilation failed";
-        assert mod.gen.es_ast is not None , "No ES AST generated";
+        assert artifact_for(mod).es_ast is not None , "No ES AST generated";
         # Get JS code and line map
         import from jaclang.compiler.backends.es.es_unparse { es_to_js_with_map }
-        (js_code, segments) = es_to_js_with_map(_as_any(mod.gen.es_ast));
+        (js_code, segments) = es_to_js_with_map(_as_any(artifact_for(mod).es_ast));
         assert len(segments) > 0 , "No mappings generated";
         # Build a lookup: output_line -> jac_line. Segments are column
         # granular, so take the leftmost one on each generated line, which is

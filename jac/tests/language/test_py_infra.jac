@@ -17,14 +17,17 @@ import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import from unittest.mock { patch }
 import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
+import jaclang.compiler.ir.schema as uni;
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution, transform }
-import from jaclang.compiler.driver.jir { get_jir_cache_dir, get_module_cache_path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
+import from jaclang.compiler.session.cache.artifact_codec {
+    get_jir_cache_dir,
+    get_module_cache_path
+}
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.frontend.pyast_load_pass { PyastBuildPass }
 import from jaclang.compiler.tools.unparse_pass { unparse_module }
-import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+import from jaclang.compiler.frontend.source_io { read_file_with_encoding }
 import from jaclang.project.tomlio { read_toml_with_encoding }
 import tomllib;
 

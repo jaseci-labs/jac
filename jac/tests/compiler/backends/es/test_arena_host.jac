@@ -1,10 +1,11 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import subprocess;
 import tempfile;
 import from pathlib { Path }
 import from tests.support { TESTS_DIR }
 import from jaclang.client.bun_installer { get_bun }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.project.config { JacConfig, get_config, set_config }
 
 test "arena host scalar boundary input and asynchronous lifecycle" {
@@ -23,13 +24,13 @@ test "arena host scalar boundary input and asynchronous lifecycle" {
             str(source), options=CompileOptions(force_target_program=True)
         );
         assert not program.errors_had , str(program.errors_had);
-        js = module.gen.js;
+        js = artifact_for(module).js;
         webgl = program.compile(
             str(Path(TESTS_DIR).parent / "jaclang" / "client" / "webgl.jac"),
             options=CompileOptions(force_target_program=True)
         );
         assert not program.errors_had , str(program.errors_had);
-        webgl_js = webgl.gen.js;
+        webgl_js = artifact_for(webgl).js;
     } finally {
         set_config(previous);
     }

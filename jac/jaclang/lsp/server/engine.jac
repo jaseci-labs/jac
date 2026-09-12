@@ -1,3 +1,6 @@
+import from jaclang.compiler.session.import_paths { resolve_import_path }
+import from jaclang.compiler.session.import_paths { resolve_import_chain }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import asyncio;
 import logging;
 import os;
@@ -8,24 +11,27 @@ import from collections { deque }
 import from concurrent.futures { Future }
 import from typing { Optional }
 
-import jaclang.compiler.frontend.unitree as uni;
+import jaclang.compiler.ir.schema as uni;
 import from jaclang { JacRuntimeInterface as Jac }
-import from jaclang.compiler.frontend.constant { SymbolType }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.ir.enums { SymbolType }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.cli.console { console }
-import from jaclang.compiler.driver.bccache { discover_base_file, discover_annex_files }
+import from jaclang.compiler.session.cache.annexes {
+    discover_base_file,
+    discover_annex_files
+}
 import from jaclang.lsp.server.utils { doc_of_sym, get_completion_items }
-import from jaclang.compiler.types.types {
+import from jaclang.compiler.ir.types.nodes {
     ClassType,
     FunctionType,
     OverloadedType,
     ModuleType,
     TypeBase
 }
-import from jaclang.compiler.frontend.constant { TOKEN_MAP }
+import from jaclang.compiler.ir.enums { TOKEN_MAP }
 import from jaclang.compiler.frontend.parser.lexer { tokenize_full }
 import from jaclang.compiler.frontend.parser.tokens { TokenKind }
-import from jaclang.compiler.frontend.unitree { UniScopeNode }
+import from jaclang.compiler.ir.schema { UniScopeNode }
 import from .sem_manager { SemTokManager }
 import from jaclang.lsp.protocol { uris }
 import from jaclang.lsp.protocol.server { LanguageServer }

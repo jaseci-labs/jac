@@ -12,8 +12,8 @@ PredictableInstr declares no init, so the real C3 next-with-init is
 Terminator's three-parameter one, not Instruction's five.
 """
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 def check_src(src: str) -> list[str] {
     prog = JacProgram();

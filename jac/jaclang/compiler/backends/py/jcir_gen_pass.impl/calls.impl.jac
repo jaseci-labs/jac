@@ -409,7 +409,10 @@ impl JcirGenPass._lower_swap(nd: FuncCall) -> (CgNode | None) {
 
 impl JcirGenPass._exit_func_call_impl(nd: FuncCall) -> None {
     if isinstance(nd.target, Name) and nd.target.sym_name in ('take', 'swap') {
-        import from jaclang.compiler.symbol_utils { CallKind, classify_call }
+        import from jaclang.compiler.analysis.binding.symbol_utils {
+            CallKind,
+            classify_call
+        }
         lowered = (
             (
                 self._lower_take(nd)

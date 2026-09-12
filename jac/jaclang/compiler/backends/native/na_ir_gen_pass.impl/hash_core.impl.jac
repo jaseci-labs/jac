@@ -18,13 +18,6 @@ impl NaIRGenPass._hash_key_spec(key_type: ir.Type) -> tuple[str, int] {
     return ("i64", 0);
 }
 
-glob HASH_CTRL_EMPTY: int = 0,
-     HASH_CTRL_TOMBSTONE: int = 1,
-     HASH_INIT_CAP: int = 8,
-     HASH_FNV_BASIS: int = -3750763034362895579,
-     HASH_FNV_PRIME: int = 1099511628211,
-     HASH_MUL_K: int = -7046029254386353131;
-
 impl NaIRGenPass._emit_hash_core_helpers(
     family: str,
     type_key: str,

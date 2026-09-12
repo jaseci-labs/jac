@@ -12,8 +12,8 @@ declarations merge across a guard: version-gated `__new__`/`__init__` pairs
 are alternatives, not additions, and merging those would break construction.
 """
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 def check_src(src: str) -> list[str] {
     prog = JacProgram();

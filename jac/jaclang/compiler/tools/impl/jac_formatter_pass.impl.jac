@@ -7,7 +7,7 @@ impl JacFormatPass.format_doc_ir(
     trailing_width: int = 0
 ) -> str {
     if (doc_node is None) {
-        doc_node = self.ir_in.gen.doc_ir;
+        doc_node = artifact_for(self.ir_in).doc_ir;
     }
     if (width_remaining is None) {
         width_remaining = self.MAX_LINE_LENGTH;
@@ -179,7 +179,7 @@ impl JacFormatPass._run_impl(ir_in: uni.Module) -> uni.Module {
     out = ('\n'.join(lines) + '\n') if lines else '';
     if (
         isinstance(ir_in, uni.Module)
-        and (ir_in.gen.doc_comments is not None)
+        and (artifact_for(ir_in).doc_comments is not None)
         and ir_in.source
         and ir_in.source.comments
     ) {
@@ -203,7 +203,7 @@ impl JacFormatPass._run_impl(ir_in: uni.Module) -> uni.Module {
             self.emit(E5051, count=len(missing));
         }
     }
-    ir_in.gen.jac = out;
+    artifact_for(ir_in).jac = out;
     return ir_in;
 }
 

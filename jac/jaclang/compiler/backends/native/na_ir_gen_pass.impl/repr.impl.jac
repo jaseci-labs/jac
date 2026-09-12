@@ -160,7 +160,7 @@ impl NaIRGenPass._repr_leaf_fn(kind: str) -> (ir.Function | None) {
     if _cached is not None {
         return _cached;
     }
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+    import from jaclang.compiler.backends.native.naming { native_safe_sym }
     i8p: any = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
@@ -205,7 +205,7 @@ impl NaIRGenPass._repr_str_fn -> ir.Function {
     if _cached is not None {
         return _cached;
     }
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+    import from jaclang.compiler.backends.native.naming { native_safe_sym }
     i1 = ir.IntType(1);
     i8 = ir.IntType(8);
     i8p: any = i8.as_pointer();
@@ -361,7 +361,7 @@ impl NaIRGenPass._repr_obj_fn(arch_name: str) -> ir.Function {
     if _cached is not None {
         return _cached;
     }
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+    import from jaclang.compiler.backends.native.naming { native_safe_sym }
     i8p: any = ir.IntType(8).as_pointer();
     _pst: any = self.struct_types[arch_name];
     pty = _pst.as_pointer();
@@ -485,7 +485,7 @@ impl NaIRGenPass._repr_seq_fn(
 }
 
 impl NaIRGenPass._repr_list_fn(type_key: str) -> (ir.Function | None) {
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+    import from jaclang.compiler.backends.native.naming { native_safe_sym }
     _inner = type_key[5:-1];
     _spec = self._repr_elem_spec_of_key(_inner);
     if _spec is None {
@@ -511,7 +511,7 @@ impl NaIRGenPass._repr_list_fn(type_key: str) -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._repr_set_fn(type_key: str) -> (ir.Function | None) {
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+    import from jaclang.compiler.backends.native.naming { native_safe_sym }
     _inner = type_key[4:-1] if type_key.startswith("set[") else type_key[10:-1];
     _spec = self._repr_elem_spec_of_key(_inner);
     if _spec is None {
@@ -538,7 +538,7 @@ impl NaIRGenPass._repr_set_fn(type_key: str) -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._repr_dict_fn(type_key: str) -> (ir.Function | None) {
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+    import from jaclang.compiler.backends.native.naming { native_safe_sym }
     _args = self._split_type_args(type_key[5:-1]);
     if len(_args) != 2 {
         return None;
@@ -627,7 +627,7 @@ impl NaIRGenPass._repr_dict_fn(type_key: str) -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._repr_tuple_fn(type_key: str) -> (ir.Function | None) {
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+    import from jaclang.compiler.backends.native.naming { native_safe_sym }
     _fkeys = self._split_type_args(type_key[6:-1]);
     if not _fkeys or _fkeys == [""] {
         return None;

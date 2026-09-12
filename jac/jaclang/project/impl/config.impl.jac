@@ -29,7 +29,7 @@ impl interpolate_env_vars(value: str) -> str {
 }
 
 impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
-    import from jaclang.compiler.driver.modresolver {
+    import from jaclang.compiler.session.resolver {
         find_project_root as _find_project_root
     }
     return _find_project_root(start);
@@ -455,7 +455,7 @@ impl JacConfig.save -> None {
     old_doc: dict[str, any] = {};
     if self.toml_path.exists() {
         import tomllib;
-        import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+        import from jaclang.compiler.frontend.source_io { read_file_with_encoding }
         import from jaclang.project.tomlio { MalformedJacTomlError }
         text = read_file_with_encoding(str(self.toml_path));
         try {

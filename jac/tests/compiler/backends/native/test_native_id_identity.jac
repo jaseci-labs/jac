@@ -24,9 +24,10 @@ The scalar tests assert both halves deliberately -- equal scalars share an id
 AND unequal ones do not -- so the rule is pinned rather than half-observed.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from tests.support { JAC_ROOT, native_force_opts }
 
 glob FIXTURES = os.path.join(
@@ -45,7 +46,7 @@ def engine -> any {
         file_path=os.path.join(FIXTURES, "id_identity.jac"), options=native_force_opts()
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine for the id fixture";
     _ENGINE.append(eng);
     return eng;

@@ -495,7 +495,7 @@ def _parses_clean(src: str, file_path: str) -> bool {
 
 
 def _format_source(src: str, file_path: str) -> (str | None) {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     try {
         prog = JacProgram.jac_str_formatter(
             source_str=src, file_path=file_path, auto_lint=False
@@ -503,7 +503,7 @@ def _format_source(src: str, file_path: str) -> (str | None) {
         if prog.errors_had {
             return None;
         }
-        formatted = prog.mod.main.gen.jac;
+        formatted = artifact_for(prog.mod.main).jac;
         return formatted;
     } except Exception {
         return None;
@@ -517,10 +517,10 @@ def _verify_claims(
     pins: dict[str, str],
     unverified: list[str]
 ) {
-    import from jaclang.compiler.placement.placement { element_display_name }
-    import from jaclang.compiler.placement.placement_pins { _module_dot_path }
-    import from jaclang.compiler.driver.modresolver { find_jac_project_root }
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.analysis.placement.evidence { element_display_name }
+    import from jaclang.compiler.analysis.placement.pins { _module_dot_path }
+    import from jaclang.compiler.session.resolver { find_jac_project_root }
+    import from jaclang.compiler.session.session { JacProgram }
     proj_root = find_jac_project_root(file_path);
     if not proj_root {
         unverified.append(f"{file_path} (no jac.toml found)");
@@ -661,7 +661,7 @@ impl fix(
         }
     }
 
-    import from jaclang.compiler.driver.modresolver { find_jac_project_root }
+    import from jaclang.compiler.session.resolver { find_jac_project_root }
     pins_by_root: dict[str, dict[str, str]] = {};
     unverified: list[str] = [];
     if strip_only {

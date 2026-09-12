@@ -46,11 +46,11 @@ cycles come out right.
 """
 
 import os;
-import jaclang.compiler.frontend.unitree as uni;
+import jaclang.compiler.ir.schema as uni;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "passes", "fixtures", "layout_acyclicity.jac"

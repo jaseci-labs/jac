@@ -180,7 +180,7 @@ impl RouteScanner._detect_collisions(routes: list[RouteEntry]) -> None {
 
 impl resolve_route_exports(module_path: Path) -> tuple[((str | None), (str | None))] {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.compiler.driver.pipeline { route_exports }
+    import from jaclang.compiler.api { route_exports }
     return route_exports(Jac.get_program(), str(module_path));
 }
 

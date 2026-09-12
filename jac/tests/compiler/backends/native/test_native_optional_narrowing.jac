@@ -13,6 +13,7 @@ narrowing disabled the same fixture emits checked unwraps, and with it on the
 proven uses emit none.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support {
@@ -209,7 +210,7 @@ test "a callee that rebinds the attribute keeps the checked unwrap" {
     sv = sv_module();
     vals = congruent(eng, sv, "callee_rebinds_attr", [0]);
     assert vals == [1] , f"unexpected callee_rebinds_attr results: {vals}";
-    body = func_ir(str(ir.gen.llvm_ir), "callee_rebinds_attr");
+    body = func_ir(str(artifact_for(ir).llvm_ir), "callee_rebinds_attr");
     assert "opt.isnone" in body , (
         "an attribute a callee can rebind must keep its checked unwrap"
     );
@@ -224,7 +225,7 @@ test "a value live across a loop back edge keeps the checked unwrap" {
     sv = sv_module();
     vals = congruent(eng, sv, "back_edge_rewiden", [0, 6]);
     assert vals == [-1, 21] , f"unexpected back_edge_rewiden results: {vals}";
-    body = func_ir(str(ir.gen.llvm_ir), "back_edge_rewiden");
+    body = func_ir(str(artifact_for(ir).llvm_ir), "back_edge_rewiden");
     assert "opt.isnone" in body , (
         "a use the loop body rebinds after must keep its checked unwrap"
     );
@@ -241,7 +242,7 @@ test "the narrowed in-loop use keeps its tag check elided" {
     # `scalar_continue_guard` assigns at the top of the body, so the guard's
     # proof is fresh every iteration and the loop rule must still allow it.
     ir = compile_native_ir(FIXTURE);
-    body = func_ir(str(ir.gen.llvm_ir), "scalar_continue_guard");
+    body = func_ir(str(artifact_for(ir).llvm_ir), "scalar_continue_guard");
     assert "opt.isnone" not in body , (
         "assign-then-guard inside a loop must still narrow"
     );
@@ -255,12 +256,12 @@ test "narrowing removes the tag check from the proven use" {
     _napatch._narrowed_flow_type = _no_narrowing;
     try {
         base_ir = compile_native_ir("optional_scalar.jac");
-        base = str(base_ir.gen.llvm_ir);
+        base = str(artifact_for(base_ir).llvm_ir);
     } finally {
         NaIRGenPass._narrowed_flow_type = orig;
     }
     narrowed_ir = compile_native_ir("optional_scalar.jac");
-    narrowed = str(narrowed_ir.gen.llvm_ir);
+    narrowed = str(artifact_for(narrowed_ir).llvm_ir);
 
     for name in ["use_pick", "opt_local", "opt_param"] {
         assert "opt.isnone" in func_ir(base, name) , (
@@ -274,7 +275,7 @@ test "narrowing removes the tag check from the proven use" {
 
 test "a proven pointer-optional use emits no unwrap branch" {
     narrowed_ir = compile_native_ir(FIXTURE);
-    body = func_ir(str(narrowed_ir.gen.llvm_ir), "ptr_guard_is_none");
+    body = func_ir(str(artifact_for(narrowed_ir).llvm_ir), "ptr_guard_is_none");
     assert "opt.isnone" not in body , (
         "the guarded len(ids) must read the payload with no tag check"
     );

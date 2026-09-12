@@ -1,11 +1,15 @@
 """Previously crashing argument shapes either execute or report a checked refusal."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import ctypes;
 import from tests.support { native_str_func }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.analysis.placement.native_fallback {
+    na_coverage_begin,
+    na_coverage_end
+}
+import from jaclang.compiler.session.session { JacProgram }
 import from tests.support { JAC_ROOT }
 
 glob FIXTURES = os.path.join(
@@ -56,7 +60,10 @@ test "tuple prefixes lower and match the correct strings" {
     assert not seam_for(seams, "tuple_startswith") , str(seams);
     assert not prog.errors_had , [str(e) for e in prog.errors_had];
     check = native_str_func(
-        ir.gen.native_engine, "tuple_startswith", ctypes.c_int64, ctypes.c_char_p
+        artifact_for(ir).native_engine,
+        "tuple_startswith",
+        ctypes.c_int64,
+        ctypes.c_char_p
     );
     assert check(b"'quoted") == 1;
     assert check(b'"quoted') == 1;
@@ -108,9 +115,11 @@ test "a mismatched call argument is the checker's refusal, not the emitter's" {
 
 test "the refusals are granular: their neighbours still lower" {
     (_seams, _prog, ir) = measured();
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
     for fn in ["plain_startswith", "takes_holder"] {
-        assert fn in ir.gen.native_layout.functions , (
+        ir_layout = artifact_for(ir).native_layout;
+        assert ir_layout is not None , "native layout was not produced";
+        assert fn in ir_layout.functions , (
             f"{fn} lowers on its own and must not be taxed by its neighbour's "
             "refusal"
         );

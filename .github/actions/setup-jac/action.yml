@@ -130,7 +130,7 @@ runs:
         key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/bun_installer.jac') }}
 
     # Identity of the compiler this build runs, as git blob ids over the same
-    # file set jir.jac hashes for its module keys (jaclang.compiler.driver.jir:
+    # file set jir.jac hashes for its module keys (jaclang.compiler.session.cache.artifact_codec:
     # COMPILER_DIGEST_ROOTS, .jac/.py only, test material excluded). Keep the
     # two rules in lockstep. Git ids rather than hashFiles: git enumerates the
     # roots exhaustively, and the listing is immune to step ordering and to
@@ -159,7 +159,7 @@ runs:
         # A moved root would silently fingerprint nothing, which is the
         # unsoundness this scoping exists to remove. ~289 files today.
         if [ "$n" -lt 100 ]; then
-          echo "::error::compiler fingerprint listed only $n file(s): the roots moved. Update this step and COMPILER_DIGEST_ROOTS in jaclang/compiler/driver/jir.jac together."
+          echo "::error::compiler fingerprint listed only $n file(s): the roots moved. Update this step and COMPILER_DIGEST_ROOTS in jaclang/compiler/session/cache/artifact_codec.jac together."
           exit 1
         fi
         fp="$(printf '%s\n' "$list" | git hash-object --stdin)"

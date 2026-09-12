@@ -3,7 +3,7 @@ import from enum { Enum }
 import from types { FunctionType, MethodType, UnionType }
 import from typing { Union, get_args, get_origin, get_type_hints }
 import from jaclang.byllm._optdeps.pydantic { TypeAdapter }
-import from jaclang.compiler.driver.mtp {
+import from jaclang.compiler.lowering.mtir {
     Info,
     VarInfo,
     FieldInfo,

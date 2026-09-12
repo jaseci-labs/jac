@@ -3,6 +3,7 @@
 Tests for the file watcher and HotReloader functionality.
 """
 
+import from jaclang.compiler.pipeline.keys { SPACES }
 import tempfile;
 import threading;
 import time;
@@ -21,7 +22,7 @@ def _as_any(v: any) -> any {
 test "prepared namespaced modules reload through their source source_path" {
     import sys;
     import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.build.preparation { prepare_application }
     import from jaclang.runtime.prepared {
         initialize_application,
         load_prepared_module,
@@ -221,10 +222,15 @@ test "classify declarations server only" {
         reloader = HotReloader(
             base_path=str(temp_dir), module_name="test", watcher=watcher
         );
-        (has_client, has_server, has_native) = reloader._classify_declarations(
-            str(test_file)
-        );
-        # Server code should be detected
+        import from jaclang.compiler.session.session { JacProgram }
+        import from jaclang.compiler.pipeline.products { require_product }
+        import from jaclang.compiler.pipeline.contracts { CompilationProduct }
+        import from jaclang.compiler.ir.enums { CodeContext }
+        program = JacProgram();
+        module = program.compile(str(test_file), no_cgen=True);
+        require_product(program, module, CompilationProduct.SPACES);
+        has_server = CodeContext.SERVER
+            in program.analysis.result(str(test_file), SPACES).spaces;
         assert has_server is True;
     }
 }
@@ -429,17 +435,17 @@ test "recompile signals a full reload only when the export set changes" {
         );
         signal = compiled.parent / ".jac-force-reload";
         # An edit that leaves the export set alone stays hot-swappable
-        reloader._recompile_client_unified(str(src));
+        reloader._recompile_client_code(str(src));
         assert not signal.exists() , "a body-only edit must not force a reload";
         # Dropping `:pub` removes the export: importers hold a stale reference,
         # so the reloader must force a reload for the error to surface
         jcc.next_code = "function Widget() {}\n";
-        reloader._recompile_client_unified(str(src));
+        reloader._recompile_client_code(str(src));
         assert signal.exists() , "a removed export must force a reload";
         # Renaming the component is a removal plus an addition
         signal.unlink();
         jcc.next_code = "function Renamed() {}\nexport {Renamed};\n";
-        reloader._recompile_client_unified(str(src));
+        reloader._recompile_client_code(str(src));
         assert signal.exists() , "a renamed export must force a reload";
     }
 }

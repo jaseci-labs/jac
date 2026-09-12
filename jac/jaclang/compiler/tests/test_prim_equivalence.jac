@@ -1,3 +1,4 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import from jaclang.testing.test { parametrize }
 import from jaclang.compiler.tests.xbackend_equiv {
@@ -658,7 +659,7 @@ test "native print renders bools as True and False" {
     # The native print of an i1 must go through the True/False string
     # select, not the %lld integer path that rendered bools as 1/0.
     (eng, na_ir) = compile_native("prim_print_bool.jac");
-    llvm_txt = str(na_ir.gen.llvm_ir);
+    llvm_txt = str(artifact_for(na_ir).llvm_ir);
     assert (".repr.true" in llvm_txt) and (".repr.false" in llvm_txt) , (
         "print(bool) must select the True/False repr strings natively"
     );

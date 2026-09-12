@@ -1,9 +1,3 @@
-glob _MT_N: int = 624,
-     _MT_M: int = 397,
-     _MT_MATRIX_A: int = 0x9908B0DF,
-     _MT_UPPER: int = 0x80000000,
-     _MT_LOWER: int = 0x7FFFFFFF;
-
 impl NaIRGenPass._mt_ensure -> None {
     if "mt19937" in self._stdlib_helpers_emitted {
         return;

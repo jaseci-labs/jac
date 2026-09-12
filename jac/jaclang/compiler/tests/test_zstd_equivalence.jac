@@ -17,12 +17,13 @@ either backend is a hard failure). A second test pins the exact launcher decode
 path -- `ZstdFile(io.BytesIO(payload))` over two frames -- byte-for-byte with a
 sha256 on the sv side. ES/JS opts out (no zstd floor)."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import hashlib;
 import io;
 import os;
 import from compression.zstd { compress as _zc, decompress as _zd, ZstdFile }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.tests.xbackend_equiv {
     FIXTURES,
     run_py_fixture,
@@ -42,7 +43,7 @@ def _compile_native_forced(fixture: str) -> tuple {
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);
 }

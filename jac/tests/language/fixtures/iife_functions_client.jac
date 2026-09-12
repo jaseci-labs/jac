@@ -1,6 +1,5 @@
 """Test Immediately Invoked Function Expressions (IIFE) for client-side (JavaScript) execution."""
 
-
 with entry {
     # Test 1: Basic IIFE with no parameters
     result1 = (
@@ -75,7 +74,7 @@ with entry {
 
     # Test 6: IIFE returning a function
     adder = (
-        def make_adder(x: int) {
+        def make_adder(x: int) -> Callable[[int], int] {
             return lambda (y: int) { x + y; };
         }
     )(
@@ -124,13 +123,14 @@ with entry {
 
     # Test 9: IIFE used in assignment chain
     x = 5;
-    result9 = x + (
-        def double(n: int) -> int {
-            return n * 2;
-        }
-    )(
-        x
-    );
+    result9 = x
+        + (
+            def double(n: int) -> int {
+                return n * 2;
+            }
+        )(
+            x
+        );
 
     print("Test 9 - IIFE in expression (5 + double(5)):", result9);
     # Expected: 15
@@ -162,7 +162,7 @@ with entry {
 
     # Test 12: IIFE with closure
     counter = (
-        def create_counter() {
+        def create_counter() -> Callable[[], int] {
             count = 0;
             return lambda -> int {
                 count = count + 1;

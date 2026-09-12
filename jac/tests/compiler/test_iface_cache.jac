@@ -2,7 +2,7 @@
 
 Acceptance shape of jaseci-labs/jac#8836, asserted through the pass and
 cache-event counters rather than timing: a warm no-edit check replays
-persisted diagnostics with zero passes; dependency ingestion hydrates
+persisted diagnostics without reanalyzing source; dependency ingestion hydrates
 from SEC_IFACE without touching the dep's source pipeline; a body-only
 dep edit recompiles the dep but does not cascade (interface hash
 cutoff); an interface edit does cascade; JAC_REBUILD recomputes and
@@ -14,13 +14,20 @@ lands in <srcdir>/.jac/cache, so tests are isolated from each other and
 from the user's real cache.
 """
 
+import from jaclang.compiler.pipeline.contracts {
+    CompilationProduct,
+    ProductUnavailable
+}
+import from jaclang.compiler.pipeline.products { require_product, invalidate_product }
+import from jaclang.compiler.pipeline.keys { INTERFACE }
+import from jaclang.compiler.ir.identity { MutationScope }
 import json;
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.jir {
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.cache.artifact_codec {
     HEADER_SIZE,
     SEC_BYTECODE,
     SEC_DEPS,
@@ -35,7 +42,7 @@ import from jaclang.compiler.driver.jir {
     write_precompiled_jir,
     _manifest_compiler_digest
 }
-import from jaclang.compiler.types.stubcat.modiface { read_iface_hash }
+import from jaclang.compiler.session.cache.interface_codec { read_iface_hash }
 
 glob DEP_V1: str = "def f() -> int { return 1; }\n",
      DEP_V1_BODY_EDIT: str = "def f() -> int { return 2; }\n",
@@ -43,10 +50,7 @@ glob DEP_V1: str = "def f() -> int { return 1; }\n",
      MAIN_SRC: str = "import from depmod { f }\n\nwith entry { print(f()); }\n";
 
 def _context(entry_path: str) -> JacProgram {
-    import from jaclang.compiler.driver.compilation_context {
-        bind_options,
-        context_program
-    }
+    import from jaclang.compiler.session.context { bind_options, context_program }
     program = JacProgram();
     options = _check_opts();
     options.entry_point = entry_path;
@@ -54,7 +58,7 @@ def _context(entry_path: str) -> JacProgram {
 }
 
 def _cache_path(path: str, entry_path: str = '') -> Path {
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    import from jaclang.compiler.session.context { artifact_cache_path }
     return artifact_cache_path(path, _context(entry_path or path));
 }
 
@@ -113,7 +117,7 @@ test "a checked module persists interface, deps, and diagnostics sections" {
     assert dep_iface is not None , "the dependency persisted no interface";
 }
 
-test "a warm no-edit check replays diagnostics and runs zero passes" {
+test "a warm no-edit check replays diagnostics and only restores interface context" {
     (main, dep) = _project();
     (cold_prog, cold_diags) = _check(main);
     assert cold_prog.analysis.pass_runs , "the cold run should have run passes";
@@ -122,8 +126,9 @@ test "a warm no-edit check replays diagnostics and runs zero passes" {
     assert events.get("analysis_replay", 0) == 1 , (
         f"warm check did not replay (events: {events})"
     );
-    assert not warm_prog.analysis.pass_runs , (
-        f"warm no-edit check ran passes: {sorted(warm_prog.analysis.pass_runs)}"
+    assert set(warm_prog.analysis.pass_runs)
+        == {"AppContextPass", "InterfaceReferenceTypesPass"} , (
+        f"warm no-edit check reanalyzed source: {sorted(warm_prog.analysis.pass_runs)}"
     );
     assert warm_diags == cold_diags , "warm diagnostics diverge from cold";
 }
@@ -232,7 +237,7 @@ test "JAC_REBUILD recomputes, rewrites, and matches the cold results" {
 test "bytecode and analysis sections share one merged cache JIR" {
     (main, _dep) = _project();
     _check(main);
-    import from jaclang.compiler.driver.compilation_context { cache_scope }
+    import from jaclang.compiler.session.context { cache_scope }
     context = _context(main);
     with cache_scope(context.context_key, context.options) {
         wrote = write_module_cache(main, b"fake-bytecode");
@@ -326,7 +331,9 @@ test "a third-party Python dependency is fingerprinted, never compiled as a targ
     # row carries a content digest, no miss ever compiles it, and it is
     # never served or persisted as an interface target.
     import sys;
-    import from jaclang.compiler.driver.jir { compute_stub_module_key }
+    import from jaclang.compiler.session.cache.artifact_codec {
+        compute_stub_module_key
+    }
     tmp = tempfile.mkdtemp();
     sp = os.path.join(tmp, "site-packages");
     pkg = os.path.join(sp, "thirdmod");
@@ -385,6 +392,64 @@ test "a third-party Python dependency is fingerprinted, never compiled as a targ
     }
 }
 
+test "external Python class providers invalidate interfaces when moved or edited" {
+    import sys;
+    import importlib;
+    import from jaclang.compiler.session.cache.artifact_codec {
+        compute_stub_module_key,
+        read_dep_hashes
+    }
+    with tempfile.TemporaryDirectory() as tmp {
+        site = Path(tmp) / 'old' / 'site-packages';
+        package = site / 'iface_provider';
+        package.mkdir(parents=True);
+        (package / 'py.typed').touch();
+        (package / '__init__.py').write_text('from .models import Result\n');
+        provider = package / 'models.py';
+        provider.write_text('class Result:\n    value: int\n');
+        main = str(Path(tmp) / 'main.jac');
+        Path(main).write_text(
+            'import from iface_provider { Result }\n'
+            'def value(result: Result) -> int { return result.value; }\n'
+        );
+        sys.path.insert(0, str(site));
+        try {
+            (cold, diagnostics) = _check(main);
+            assert not cold.errors_had , str(diagnostics);
+            dependencies = dict(read_dep_hashes(_cache_path(main).read_bytes()));
+            assert dependencies.get(str(provider))
+                == compute_stub_module_key(str(provider)) , (
+                f'The interface must fingerprint the re-exported class provider: {dependencies}'
+            );
+            (warm, warm_diagnostics) = _check(main);
+            assert warm.analysis.cache_events.get('analysis_replay', 0) == 1;
+            assert warm_diagnostics == diagnostics;
+
+            moved = Path(tmp) / 'new' / 'site-packages';
+            moved.parent.mkdir();
+            site.rename(moved);
+            sys.path[0] = str(moved);
+            importlib.invalidate_caches();
+            (relocated, relocated_diagnostics) = _check(main);
+            assert relocated.analysis.cache_events.get('analysis_replay', 0) == 0;
+            assert not relocated.errors_had , str(relocated_diagnostics);
+            provider = moved / 'iface_provider' / 'models.py';
+            dependencies = dict(read_dep_hashes(_cache_path(main).read_bytes()));
+            assert dependencies.get(str(provider))
+                == compute_stub_module_key(str(provider));
+
+            _rewrite(str(provider), 'class Result:\n    value: str\n');
+            (edited, edited_diagnostics) = _check(main);
+            assert edited.errors_had , (
+                f'A changed Python member type must be checked again: {edited_diagnostics}'
+            );
+        } finally {
+            sys.path.pop(0);
+            importlib.invalidate_caches();
+        }
+    }
+}
+
 test "an analysis that ended in errors is not memoized for replay" {
     (main, dep) = _project();
     _rewrite(
@@ -434,7 +499,9 @@ test "a compile acting on an inferred native verdict persists no interface" {
     # reaches it through the analysis flavor; codegen never encodes.
     reg = gen.iface_registry();
     encodes = reg.prog.analysis.cache_events.get("iface_encode", 0);
-    mod.decided_codespace = "native";
+    with MutationScope(gen.analysis.mutations, 16) {
+        mod.decided_codespace = "native";
+    }
     mod.codespace_inferred = True;
     reg.persist_after_compile(dep, mod, CompileOptions(), 0, 0);
     assert reg.prog.analysis.cache_events.get("iface_encode", 0) == encodes , "an inferred verdict was encoded into an interface";
@@ -445,7 +512,8 @@ test "a compile acting on an inferred native verdict persists no interface" {
     assert read_iface_hash(read_section_bytes(_cache_path(dep).read_bytes(), SEC_IFACE))
         == before , "a codegen persist of a declared placement encoded an interface";
     reg.forget(dep);
-    reg.prepare_interface(dep, mod);
+    invalidate_product(gen, mod, CompilationProduct.INTERFACE);
+    assert require_product(gen, mod, CompilationProduct.INTERFACE);
     reg.persist_after_compile(dep, mod, _check_opts(), 0, 0);
     assert read_iface_hash(read_section_bytes(_cache_path(dep).read_bytes(), SEC_IFACE))
         != before , "a declared native placement must reach the interface";
@@ -502,8 +570,11 @@ test "persisting a dependency interface neither reports nor mistypes its narrowi
     assert events.get("iface_encode", 0) >= 2 , (
         f"expected both modules to be encoded on a cold cache (events: {events})"
     );
-    assert events.get("iface_cfg", 0) >= 1 , (
-        f"the dependency's flow graph must be built before its interface is forced (events: {events})"
+    import from jaclang.compiler.pipeline.contracts { AnalysisFact }
+    dependency = prog.find_module(dep);
+    assert dependency is not None;
+    assert prog.analysis.provides(dependency, AnalysisFact.CFG_SUCC) , (
+        "the scheduled dependency interface requires a completed flow graph"
     );
 }
 
@@ -554,9 +625,8 @@ test "an interface is identical however many twins of its module are reachable" 
     # while judging the boundary by path, so both twins were emitted and the
     # second interface carried every name twice with a different digest.
     import from tests.support { JAC_ROOT }
-    import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
-    import from jaclang.compiler.types.stubcat.modiface {
-        build_module_iface,
+    import from jaclang.compiler.session.cache.catalog_paths { jaclang_pkg_dir }
+    import from jaclang.compiler.session.cache.interface_codec {
         open_module_iface,
         iface_module
     }
@@ -584,7 +654,9 @@ test "an interface is identical however many twins of its module are reachable" 
                 need_full_ast=True
             )
         );
-        payload = build_module_iface(mod, prog.get_type_evaluator(), pkg);
+        assert require_product(prog, mod, CompilationProduct.INTERFACE);
+        payload = prog.analysis.result(target, INTERFACE).data;
+        assert payload is not None;
         digests.append(read_iface_hash(payload) or "");
         cat = open_module_iface(payload, pkg);
         served = iface_module(cat) if cat is not None else None;
@@ -663,6 +735,11 @@ glob TWIN_MODEL: str = (
 
 def _twin_project -> dict[str, str] {
     tmp = tempfile.mkdtemp();
+    # Exercise interface hydration independently of opportunistic native lowering,
+    # whose inferred modules deliberately do not publish reusable interfaces.
+    (Path(tmp) / "jac.toml").write_text(
+        '[project]\nname = "interface-twins"\n[placement.pins]\nmodels = "server"\n'
+    );
     paths: dict[str, str] = {};
     for (name, body) in (
         ("models", TWIN_MODEL),
@@ -680,7 +757,7 @@ def _twin_project -> dict[str, str] {
 }
 
 def _class_scope(prog: JacProgram, path: str, name: str) -> any {
-    import from jaclang.compiler.types.types { ClassType }
+    import from jaclang.compiler.ir.types.nodes { ClassType }
     mod = prog.mod.hub[path];
     sym = mod.names_in_scope[name];
     typ = prog.get_type_evaluator().get_type_of_symbol(sym);
@@ -732,36 +809,28 @@ test "an interface that cannot place a class is not persisted" {
     # record, and a record with an empty scope is a lie every later compile
     # would trust (the dependency digests still match). The builder refuses,
     # and the persist step leaves the cache untouched for this compile.
-    import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
-    import from jaclang.compiler.types.stubcat.modiface {
-        IncoherentInterface,
-        build_module_iface
-    }
+    import from jaclang.compiler.session.cache.catalog_paths { jaclang_pkg_dir }
+    import from jaclang.compiler.analysis.interfaces.facts { IncoherentInterface }
     paths = _twin_project();
     prog = JacProgram();
     prog.compile(
         paths["provider"],
         options=CompileOptions(no_cgen=True, force_target_program=True)
     );
-    _class_scope(prog, paths["models"], "Cfg").parent_scope = None;
-    provider = prog.mod.hub[paths["provider"]];
-    refused = False;
-    try {
-        build_module_iface(provider, prog.get_type_evaluator(), jaclang_pkg_dir());
-    } except IncoherentInterface as exc {
-        refused = True;
-        assert any("Cfg" in o for o in exc.orphans) , f"the refusal does not name the unplaceable class: {exc.orphans}";
+    with MutationScope(prog.analysis.mutations, 2) {
+        _class_scope(prog, paths["models"], "Cfg").parent_scope = None;
     }
-    assert refused , "an interface with an unplaceable class was built";
+    provider = prog.mod.hub[paths["provider"]];
     cache_path = _cache_path(paths["provider"]);
     before = cache_path.read_bytes() if cache_path.exists() else b"";
     reg = prog.iface_registry();
     reg.forget(paths["provider"]);
-    reg.prepare_interface(paths["provider"], provider);
+    invalidate_product(prog, provider, CompilationProduct.INTERFACE);
+    assert require_product(prog, provider, CompilationProduct.INTERFACE);
+    assert prog.analysis.result(paths["provider"], INTERFACE).data is None;
+    assert provider not in prog.analysis.invalid_graphs;
     reg.persist_after_compile(paths["provider"], provider, prog.options, 0, 0);
-    assert prog.analysis.cache_events.get("iface_incoherent", 0) == 1 , (
-        f"interface construction did not record the refusal (events: {prog.analysis.cache_events})"
-    );
+    assert prog.analysis.cache_events.get("iface_incoherent", 0) == 1;
     after = cache_path.read_bytes() if cache_path.exists() else b"";
     assert after == before , "an incoherent interface was written to the cache";
 }
@@ -771,7 +840,7 @@ test "a cross-reference into a stub is answered by the catalog" {
     # own bootstrap keeps those); its module scope lacks the names a
     # version guard declares, so resolving a cross-reference through it
     # produced an orphan class. The catalog is the authority for stubs.
-    import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
+    import from jaclang.compiler.session.cache.catalog_paths { jaclang_pkg_dir }
     stub = os.path.join(jaclang_pkg_dir(), "vendor", "typeshed", "stdlib", "types.pyi");
     prog = JacProgram();
     served = prog.iface_registry().resolve_module(stub);
@@ -803,4 +872,393 @@ test "a codegen compile records dependency rows but encodes no interface" {
     assert read_section_bytes(data, SEC_DEPS) is not None , (
         "the frontier merge dropped the dependency rows"
     );
+}
+
+test "external type references preserve classification without a resolver" {
+    import from jaclang.compiler.api { query_type }
+    import from jaclang.compiler.analysis.interfaces.catalog_builder { CatalogBuilder }
+    import from jaclang.compiler.ir.schema { Module }
+    import from jaclang.compiler.ir.types.nodes { ClassDetailsShared }
+    import from jaclang.compiler.session.cache.catalog_codec { encode_catalog }
+    import from jaclang.compiler.session.cache.catalog_reader { StubCatalog }
+    import from jaclang.compiler.session.cache.catalog_paths { jaclang_pkg_dir }
+    (main, _) = _project();
+    (prog, errors) = _check(main);
+    assert not errors;
+    source = ClassDetailsShared(
+        class_name="Any",
+        symbol_table=Module.make_stub(inject_name="external"),
+        is_builtin_class=True,
+        is_from_stdlib_stub=True,
+        declaration_identity=("/tmp/external.jac", 1, 0, "Any")
+    );
+    writer = CatalogBuilder(
+        evaluator=prog.get_type_evaluator(),
+        pkg_dir=jaclang_pkg_dir(),
+        boundary=Module.make_stub(inject_name="main")
+    );
+    reference = writer.ref_shared(source);
+    catalog = StubCatalog(
+        buf=encode_catalog(writer.prepare("xref-flags", {})), pkg_dir=jaclang_pkg_dir()
+    );
+    restored = catalog.shared_of(reference);
+    assert restored is not None;
+    assert restored.is_builtin_class;
+    assert restored.is_from_stdlib_stub;
+    restored.mro = [];
+    assert restored.canonical_key() == source.canonical_key();
+}
+
+
+test "a prepared interface records the modules defining its exported return types" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    with TemporaryDirectory() as directory {
+        base = Path(directory);
+        models = base / 'models.jac';
+        provider = base / 'provider.jac';
+        consumer = base / 'consumer.jac';
+        models.write_text('obj Payload { has value: int = 7; }\n');
+        provider.write_text(
+            'import from models { Payload }\n'
+                + 'def:pub payload -> Payload { return Payload(); }\n'
+        );
+        consumer.write_text(
+            'import from provider { payload }\n'
+                + 'with entry { print(payload().value); }\n'
+        );
+        program = _context(str(consumer));
+        registry = program.iface_registry();
+        prepared = registry.ensure(str(provider));
+        assert prepared is not None;
+        rows = registry.dep_rows(str(provider));
+        assert any(path == str(models) and digest for (path, digest, flags) in rows);
+        program.release_compile_closure(collect=False);
+        (warm, diagnostics) = _check(str(consumer));
+        assert not warm.errors_had , diagnostics;
+        assert warm.analysis.cache_events.get('dep_hydrate', 0) > 0;
+    }
+}
+
+test "interface lookup uses loaded stubs when no catalog is available" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.ir.schema { Module, Source }
+    program = JacProgram();
+    path = os.path.realpath('/tmp/loaded-stub.pyi');
+    module = Module.make_stub(inject_src=Source('', path));
+    program.install_module(path, module);
+    with patch.object(JacProgram, 'stub_catalog', return_value=None) {
+        assert program.iface_registry().resolve_module(path) is module;
+    }
+}
+
+test "interface preparation does not compile imports used only inside a function" {
+    with tempfile.TemporaryDirectory() as directory {
+        base = Path(directory);
+        dependency = base / 'body_dependency.jac';
+        dependency.write_text('def:pub value -> int { return 7; }\n');
+        provider = base / 'provider.jac';
+        provider.write_text(
+            'def:pub value -> int { import from body_dependency { value as inner } return inner(); }\n'
+        );
+        program = _context(str(provider));
+        registry = program.iface_registry();
+        assert registry.ensure(str(provider)) is not None;
+        assert str(dependency) not in registry.entries;
+    }
+}
+
+test "an uncacheable interface leaves its analyzed graph usable" {
+    import from jaclang.compiler.pipeline.contracts { AnalysisFact }
+    program = JacProgram();
+    path = '/tmp/in-memory-interface.jac';
+    module = program.compile(
+        path,
+        use_str='def answer -> int { return 42; }',
+        options=CompileOptions(
+            symtab_ir_only=True, no_cgen=True, force_target_program=True
+        )
+    );
+    assert require_product(program, module, CompilationProduct.INTERFACE);
+    assert program.analysis.result(path, INTERFACE).data is None;
+    assert module not in program.analysis.invalid_graphs;
+    assert program.analysis.provides(module, AnalysisFact.CFG_SUCC);
+    assert require_product(program, module, CompilationProduct.ANALYSIS);
+}
+
+test "external class references are deduplicated across compilation graphs" {
+    import from jaclang.compiler.api { query_type }
+    import from jaclang.compiler.analysis.interfaces.catalog_builder { CatalogBuilder }
+    import from jaclang.compiler.ir.schema { Module }
+    import from jaclang.compiler.ir.types.nodes { ClassType }
+    import from jaclang.compiler.session.cache.catalog_paths { jaclang_pkg_dir }
+    (main, dependency) = _project('obj Payload { has value: int = 7; }\n');
+    programs = [JacProgram(), JacProgram()];
+    types: list[ClassType] = [];
+    for program in programs {
+        module = program.compile(dependency, options=_check_opts());
+        resolved = query_type(program, module.names_in_scope['Payload']);
+        assert isinstance(resolved, ClassType);
+        types.append(resolved);
+    }
+    writer = CatalogBuilder(
+        evaluator=programs[0].get_type_evaluator(),
+        pkg_dir=jaclang_pkg_dir(),
+        boundary=Module.make_stub(inject_name='consumer')
+    );
+    assert writer.ref_shared(types[0].shared) == writer.ref_shared(types[1].shared);
+}
+
+test "reusing a released program revalidates interface dependencies" {
+    (main, dependency) = _project();
+    Path(main).write_text(
+        'import from depmod { f }\ndef value -> int { return f(); }\n'
+    );
+    program = _context(main);
+    program.compile(main, options=_check_opts());
+    assert not program.errors_had;
+    program.release_compile_closure(collect=False);
+    _rewrite(dependency, 'def f -> str { return "changed"; }\n');
+    program.compile(main, options=_check_opts());
+    assert any('expected int' in error.msg for error in program.errors_had);
+}
+
+test "cached diagnostics preserve their owner and replay once" {
+    import from jaclang.compiler.session.imports { _alert_record }
+    import from jaclang.compiler.pipeline.pass_base { Alert, Transform }
+    import from jaclang.compiler.frontend.source_locations { Span }
+    program = JacProgram();
+    location = Span.make('/tmp/helper.impl.jac', 'x', (1, 1), (1, 2), (0, 1));
+    alert = Alert('cached warning', location, Transform, owner='/tmp/helper.jac');
+    record = _alert_record(alert);
+    profile = {'warnings': [record, record]};
+    registry = program.iface_registry();
+    registry._replay_records(profile);
+    registry._replay_records(profile);
+    assert len(program.warnings_had) == 1;
+    assert program.warnings_had[0].owner == '/tmp/helper.jac';
+    assert program.diags._owned(program.warnings_had[0], '/tmp/helper.jac');
+    assert not program.diags._owned(program.warnings_had[0], '/tmp/consumer.jac');
+}
+
+test "hydrated interfaces prepare source-stub classes before resolving references" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.session.compiler { JacCompiler }
+    (main, dep) = _project('def f -> frozenset { return frozenset(["x"]); }');
+    Path(main).parent.joinpath('jac.toml').write_text(
+        '[project]\nname = "stub-interface"\n'
+        '[placement.pins]\ndepmod = "server"\nmainmod = "server"\n'
+    );
+    Path(main).write_text('import from depmod { f }\nglob present = "x" in f();');
+    with patch.object(JacCompiler, 'stub_catalog', return_value=None), patch.object(
+        JacCompiler, 'ensure_stub_catalog', return_value=None
+    ) {
+        (cold, cold_diags) = _check(main);
+        assert not cold.errors_had , cold_diags;
+        cold.release_compile_closure(collect=False);
+        _rewrite(main, Path(main).read_text() + '\n# Recheck the consumer.\n');
+        (warm, warm_diags) = _check(main);
+        assert warm.analysis.cache_events.get('dep_hydrate', 0) >= 1;
+        assert 'InterfaceReferenceTypesPass' in warm.analysis.pass_runs;
+        assert not warm.errors_had , warm_diags;
+    }
+}
+
+
+test "symbol and codegen requests preserve a checked interface's dependencies" {
+    import from jaclang.compiler.session.cache.artifact_codec { read_dep_hashes }
+    (main, dependency) = _project();
+    Path(main).write_text(
+        'import from depmod { f }\ndef value -> int { return f(); }\n'
+    );
+    (program, diagnostics) = _check(main);
+    assert not program.errors_had , diagnostics;
+    original = list(read_dep_hashes(_cache_path(main).read_bytes()));
+    assert any(row[0] == dependency for row in original);
+    for options in [
+        CompileOptions(symtab_ir_only=True, force_target_program=True, iface_ok=True),
+        _check_opts(),
+        CompileOptions(force_target_program=True, iface_ok=True)
+    ] {
+        program.compile(main, options=options);
+        assert list(read_dep_hashes(_cache_path(main).read_bytes())) == original;
+    }
+    program.release_compile_closure(collect=False);
+    _rewrite(dependency, 'def f -> str { return "changed"; }\n');
+    (changed, _) = _check(main);
+    assert any('expected int' in error.msg for error in changed.errors_had);
+}
+
+
+test "hydrated user functions retain precedence over builtin names" {
+    (main, dependency) = _project('def take(value: int) -> int { return value; }\n');
+    Path(main).parent.joinpath('jac.toml').write_text(
+        '[project]\nname = "user-function"\n'
+        '[placement.pins]\ndepmod = "server"\nmainmod = "server"\n'
+    );
+    source = 'import from depmod { take }\ndef value -> int { return take(42); }\n';
+    Path(main).write_text(source);
+    (cold, cold_diags) = _check(main);
+    assert not cold.errors_had , cold_diags;
+    cold.release_compile_closure(collect=False);
+    _rewrite(main, source + '\n# Recheck the caller.\n');
+    (warm, warm_diags) = _check(main);
+    assert warm.analysis.cache_events.get('dep_hydrate', 0) >= 1;
+    assert not warm.errors_had , warm_diags;
+}
+
+test "cached import cycles preserve transitive base classes" {
+    for base in ["base.jac", "base/__init__.jac"] {
+        with tempfile.TemporaryDirectory() as tmp {
+            files: dict[str, str] = {
+                base: "import type from child { Child }\nobj Base { def echo(value: Child) -> Child { return value; } }",
+                "mid.jac": "import from base { Base }\nobj Mid(Base) {}",
+                "child.jac": "import from mid { Mid }\nobj Child(Mid) {}",
+                "main.jac": "import from child { Child }\nimport from base { Base }\ndef accept(value: Base) -> int { return 1; }\nwith entry { print(accept(Child())); }"
+            };
+            for (name, source) in files.items() {
+                path = Path(tmp) / name;
+                path.parent.mkdir(parents=True, exist_ok=True);
+                path.write_text(source);
+            }
+            main = str(Path(tmp) / "main.jac");
+            (cold, expected) = _check(main);
+            assert not cold.errors_had , expected;
+            cold.release_compile_closure(collect=False);
+            _cache_path(main).unlink(missing_ok=True);
+            (warm, actual) = _check(main);
+            assert not warm.errors_had , actual;
+            assert actual == expected;
+            warm.release_compile_closure(collect=False);
+            for name in files {
+                _cache_path(str(Path(tmp) / name), main).unlink(missing_ok=True);
+            }
+            (recomputed, actual) = _check(main);
+            assert not recomputed.errors_had , actual;
+            assert actual == expected;
+        }
+    }
+}
+
+
+test "hydrated interfaces resolve class types on symbol-only source modules" {
+    import from jaclang.compiler.session.context { artifact_cache_path }
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        data = str(base / "data.jac");
+        main = str(base / "main.jac");
+        Path(data).write_text("obj Data { has value: int = 1; }");
+        (base / "provider.jac").write_text(
+            "import from data { Data }\ndef make -> Data { return Data(); }"
+        );
+        Path(main).write_text(
+            "import from provider { make }\nwith entry { print(make().value); }"
+        );
+        options = _check_opts();
+        options.entry_point = main;
+        options.project_root = tmp;
+        cold = JacProgram();
+        mod = cold.compile(main, options=options);
+        assert not cold.errors_had;
+        context = cold.module_context(mod);
+        assert isinstance(context, JacProgram);
+        cache = artifact_cache_path(main, context);
+        cold.release_compile_closure(collect=False);
+        cache.unlink(missing_ok=True);
+        warm = JacProgram();
+        symbols = options.for_symbols();
+        symbols.need_full_ast = True;
+        source = warm.compile(data, options=symbols);
+        assert source.names_in_scope["Data"].decl.type is None;
+        warm.compile(main, options=options);
+        assert warm.analysis.cache_events.get("dep_hydrate", 0) >= 1;
+        assert not warm.errors_had , [e.pretty_print() for e in warm.errors_had];
+        assert source.names_in_scope["Data"].decl.type is not None;
+    }
+}
+
+test "compiler references use the compiler fingerprint without expanding interface dependencies" {
+    import from jaclang.compiler.session.cache.artifact_codec { is_compiler_tree_path }
+    with tempfile.TemporaryDirectory() as tmp {
+        path = str(Path(tmp) / "main.jac");
+        Path(path).write_text(
+            "import type from jaclang.compiler.session.options { CompileOptions }\ndef echo(value: CompileOptions) -> CompileOptions { return value; }"
+        );
+        program = JacProgram();
+        module = program.compile(path, options=_check_opts());
+        assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
+        assert require_product(program, module, CompilationProduct.INTERFACE);
+        interface = program.analysis.lookup(path, INTERFACE);
+        assert interface is not None and interface.data is not None;
+        dependencies = program.iface_registry().direct_deps.get(path, {});
+        assert not any(
+            is_compiler_tree_path(dep) for dep in dependencies
+        ) , dependencies;
+    }
+}
+
+test "prepared interface references survive full-tree provider replacement" {
+    import from jaclang.compiler.session.cache.catalog_reader { CatModule }
+    import from jaclang.compiler.session.context { artifact_cache_path }
+    import from jaclang.compiler.ir.types.nodes { ClassType, FunctionType }
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        main = str(base / "main.jac");
+        provider = str(base / "provider.jac");
+        data = str(base / "data.jac");
+        detail = str(base / "detail.jac");
+        Path(detail).write_text('obj Detail { has text: str = "ready"; }');
+        Path(data).write_text(
+            'import from detail { Detail }\n'
+            'obj Data { has detail: Detail = Detail(); }'
+        );
+        Path(provider).write_text(
+            'import from data { Data }\ndef make -> Data { return Data(); }'
+        );
+        Path(main).write_text(
+            'import from provider { make }\ndef read -> str { return make().detail.text; }'
+        );
+        options = _check_opts();
+        options.entry_point = main;
+        options.project_root = tmp;
+        cold = JacProgram();
+        mod = cold.compile(main, options=options);
+        assert not cold.errors_had , [e.pretty_print() for e in cold.errors_had];
+        context = cold.module_context(mod);
+        assert isinstance(context, JacProgram);
+        cache = artifact_cache_path(main, context);
+        cold.release_compile_closure(collect=False);
+        cache.unlink(missing_ok=True);
+        warm = JacProgram();
+        symbols = options.for_symbols();
+        cached = warm.compile(provider, options=symbols);
+        assert isinstance(cached, CatModule) , "the provider must come from its interface";
+        assert warm.analysis.cache_events.get("dep_hydrate", 0) >= 1;
+        context = warm.module_context(cached);
+        make = cached.lookup("make");
+        assert make is not None;
+        assert make.decl.type is None , "the return type must still be lazy";
+        symbols.need_full_ast = True;
+        for path in [data, detail] {
+            source = warm.compile(path, options=symbols);
+            assert not source.stub_only , "the provider must be replaced by syntax";
+        }
+        # Decode the retained interface directly: recompiling main would
+        # prepare its dependencies again and conceal the lost references.
+        evaluator = context.get_type_evaluator();
+        make_type = evaluator.get_type_of_symbol(make);
+        assert isinstance(make_type, FunctionType);
+        data_type = make_type.return_type;
+        assert isinstance(data_type, ClassType);
+        data_scope = data_type.shared.symbol_table;
+        assert data_scope is not None;
+        detail_symbol = data_scope.lookup("detail");
+        assert detail_symbol is not None , "the retained Data reference lost its fields";
+        detail_type = evaluator.get_type_of_symbol(detail_symbol);
+        assert isinstance(detail_type, ClassType);
+        detail_scope = detail_type.shared.symbol_table;
+        assert detail_scope is not None;
+        assert detail_scope.lookup("text") is not None , "the transitive Detail reference lost its fields";
+        assert not warm.errors_had , [e.pretty_print() for e in warm.errors_had];
+    }
 }

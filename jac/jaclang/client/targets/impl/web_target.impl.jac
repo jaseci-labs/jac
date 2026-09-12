@@ -157,7 +157,7 @@ def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
     if not mod {
         return DEFAULT_FUNCTION_NAME;
     }
-    gen = mod?.gen;
+    gen = artifact_for(mod) if mod is not None else None;
     if not gen {
         return DEFAULT_FUNCTION_NAME;
     }

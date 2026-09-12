@@ -6,17 +6,15 @@ it owns through a per-instance element-drop slot -- all with zero RC calls in
 the emitted IR (the zero-RC contract of --memory nogc).
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
+import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures" / "nogc"),
      PROG = "str_container_prog.jac";
@@ -30,8 +28,8 @@ def _compile_ir(entry_path: str) -> str {
             options=CompileOptions(aot_mode=True, memory_profile="nogc")
         );
         assert not prog.errors_had , [str(e) for e in prog.errors_had];
-        assert ir is not None and ir.gen.llvm_ir is not None;
-        return str(ir.gen.llvm_ir);
+        assert ir is not None and artifact_for(ir).llvm_ir is not None;
+        return str(artifact_for(ir).llvm_ir);
     } finally {
         pop_native_target(prev);
     }

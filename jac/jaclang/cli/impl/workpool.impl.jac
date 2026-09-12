@@ -431,6 +431,15 @@ impl pool_available -> bool {
 impl worker_rss_mb -> int {
     import resource;
     import sys;
+
+    if sys.platform == "linux" {
+        try {
+            with open("/proc/self/statm") as status {
+                resident_pages = int(status.read().split()[1]);
+            }
+            return resident_pages * os.sysconf("SC_PAGE_SIZE") // (1024 * 1024);
+        } except (OSError, ValueError, IndexError) {}
+    }
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss;
     return int(peak // (1024 * 1024))
         if sys.platform == "darwin"

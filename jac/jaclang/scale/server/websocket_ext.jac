@@ -3,7 +3,7 @@ import logging;
 import time;
 import from inspect { isgenerator }
 import from typing { AsyncGenerator }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.compiler.ir.enums { Constants as Con }
 import from jaclang.runtime.builtin { APIProtocol }
 import from jaclang.server.server { JacAPIServer, ServerExtension }
 import from jaclang.server.serving.datatypes { WebSocketDisconnect }

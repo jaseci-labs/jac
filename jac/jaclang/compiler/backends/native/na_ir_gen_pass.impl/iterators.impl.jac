@@ -1002,7 +1002,7 @@ impl NaIRGenPass._make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None) {
 impl NaIRGenPass._resolve_method_owner(
     arch_name: str, method_name: str
 ) -> (str | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
     owner = get_layout_registry(self.ir_in, self.prog).resolve_method_owner(
         arch_name, method_name
     );
@@ -1024,7 +1024,7 @@ impl NaIRGenPass._resolve_method_owner(
 impl NaIRGenPass._resolve_method(
     arch_name: str, method_name: str
 ) -> (ir.Function | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
     _reg = get_layout_registry(self.ir_in, self.prog);
     cur: (str | None) = arch_name;
     _guard = 0;
@@ -1307,7 +1307,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         self.builder.store(self.builder.extract_value(tup, 0, name="iterf.t0"), a0);
         self.builder.store(self.builder.extract_value(tup, 1, name="iterf.t1"), a1);
     }
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+    import from jaclang.compiler.analysis.ownership.rc_facts_pass { loop_body_locals }
     _saved = loop_body_locals(nd.body if isinstance(nd.body, (list, tuple)) else None);
 
     _iter_prebody = set(self.local_vars.keys());

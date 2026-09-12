@@ -1,0 +1,156 @@
+impl is_excluded_enum_member_name(name: str) -> bool {
+    return name.startswith('__') or name in ENUM_RESERVED_NAMES;
+}
+
+impl create_enum_member_info(
+    assignment: Assignment, evaluator: TypeEvaluator
+) -> (EnumMemberInfo | None) {
+    if (
+        not assignment.target
+        or len(assignment.target) == 0
+        or not isinstance(target := assignment.target[0], Name)
+        or is_excluded_enum_member_name(member_name := target.value)
+    ) {
+        return None;
+    }
+
+    value_type: TypeBase | None = None;
+    literal_value: int | str | None = None;
+    if val := assignment.value {
+        if isinstance(val, Int) {
+            value_type = evaluator.prefetch.int_class if evaluator.prefetch else None;
+            literal_value = val.lit_value;
+        } elif isinstance(val, String) {
+            value_type = evaluator.prefetch.str_class if evaluator.prefetch else None;
+            literal_value = val.value;
+        } else {
+            value_type = evaluator.get_type_of_expression(val);
+            (folded, fval) = fold_const(val);
+            if folded and not isinstance(fval, bool) and isinstance(fval, (int, str)) {
+                literal_value = fval;
+            }
+        }
+    }
+
+    return EnumMemberInfo(
+        member_name=member_name, value_type=value_type, literal_value=literal_value
+    );
+}
+
+impl validate_enum_member_annotation(
+    assignment: Assignment, member_info: EnumMemberInfo, evaluator: TypeEvaluator
+) -> None {
+    if assignment.type_tag is None or member_info.value_type is None {
+        return;
+    }
+    annotation_type = evaluator.get_type_of_expression(assignment.type_tag.tag);
+    if (
+        isinstance(annotation_type, ClassType)
+        and isinstance(member_info.value_type, ClassType)
+        and not annotation_type.shared.same_class(member_info.value_type.shared)
+    ) {
+        evaluator.emit_diag(
+            E1001,
+            assignment,
+            actual=str(member_info.value_type),
+            expected=str(annotation_type)
+        );
+    }
+}
+
+impl build_enum_members(
+    enum_node: Enum | Archetype,
+    evaluator: TypeEvaluator,
+    enum_value_type: TypeBase | None = None
+) -> dict[str, EnumMemberInfo] {
+    members: dict[str, EnumMemberInfo] = {};
+    if not enum_node.body {
+        return members;
+    }
+
+    int_type = evaluator.prefetch.int_class if evaluator.prefetch else None;
+    auto_value = 1;
+
+    all_stmts: list[UniNode] = [
+        sym.decl.parent if isinstance(sym.decl.parent, Assignment) else sym.decl
+        for (name, sym) in enum_node.names_in_scope.items()
+        if not is_excluded_enum_member_name(name)
+            and not isinstance(sym.decl.name_of, Ability)
+    ];
+    for stmt in all_stmts {
+        if isinstance(stmt, Assignment) {
+            if member_info := create_enum_member_info(stmt, evaluator) {
+                if member_info.value_type is None {
+                    member_info.value_type = int_type;
+                    member_info.literal_value = auto_value;
+                }
+
+                if enum_value_type
+                    and isinstance(enum_value_type, ClassType)
+                    and isinstance(member_info.value_type, ClassType)
+                    and not member_info.value_type.shared.same_class(
+                        enum_value_type.shared
+                    ) {
+                    evaluator.emit_diag(
+                        E1001,
+                        stmt,
+                        actual=str(member_info.value_type),
+                        expected=str(enum_value_type)
+                    );
+                }
+
+                validate_enum_member_annotation(stmt, member_info, evaluator);
+                members[member_info.member_name] = member_info;
+
+                auto_value = member_info.literal_value + 1
+                    if isinstance(member_info.literal_value, int)
+                    else auto_value;
+            }
+        } elif (
+            isinstance(stmt, Name)
+            and not is_excluded_enum_member_name(member_name := stmt.value)
+        ) {
+            members[member_name] = EnumMemberInfo(
+                member_name=member_name, value_type=int_type, literal_value=auto_value
+            );
+            auto_value += 1;
+        }
+    }
+    return members;
+}
+
+impl get_special_enum_value_type_from_bases(
+    base_classes: list[TypeBase], prefetch: PrefetchedTypes
+) -> (TypeBase | None) {
+    if not prefetch
+        or not prefetch.enum_class
+        or not prefetch.int_class
+        or not prefetch.str_class {
+        return None;
+    }
+
+    has_enum = False;
+    has_int = False;
+    has_str = False;
+    for base in base_classes {
+        if isinstance(base, ClassType) {
+            for mro_cls in base.shared.mro {
+                has_enum = has_enum
+                    or mro_cls.shared.same_class(prefetch.enum_class.shared);
+                has_int = has_int
+                    or mro_cls.shared.same_class(prefetch.int_class.shared);
+                has_str = has_str
+                    or mro_cls.shared.same_class(prefetch.str_class.shared);
+            }
+        }
+    }
+
+    if has_enum {
+        if has_str {
+            return prefetch.str_class;
+        } elif has_int {
+            return prefetch.int_class;
+        }
+    }
+    return None;
+}

@@ -1,8 +1,9 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from tests.support { native_force_opts }
 import ctypes;
 import os;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
@@ -50,7 +51,7 @@ test "ptr subscript read returns correct field values (#6708)" {
     assert not prog.errors_had , f"compile errors block execution: {[
         str(e) for e in prog.errors_had
     ]}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine produced";
 
     # Color[4] as raw bytes: element i .r at byte 4*i, .g at byte 4*i+1.
@@ -97,7 +98,7 @@ test "ptr subscript write stores into the right element, neighbors intact (#6707
     assert not prog.errors_had , f"compile errors block execution: {[
         str(e) for e in prog.errors_had
     ]}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine produced";
 
     cbuf = (ctypes.c_uint8 * 16)();

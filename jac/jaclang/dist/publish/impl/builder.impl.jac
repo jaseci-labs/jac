@@ -8,7 +8,7 @@ import tarfile;
 import zipfile;
 import from pathlib { Path }
 import from jaclang.jac0core.ext_registry { is_annex }
-import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.session.session { JacProgram }
 import from jaclang.project.config { JacConfig }
 import from jaclang.dist.publish.metadata { generate_metadata, generate_pyproject_toml }
 import from jaclang.dist.publish.py_imports { rewrite_imports, wheel_module_name }
@@ -88,9 +88,9 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
 
 
 def _module_is_client_source(source_path: Path) -> bool {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.frontend.constant { CodeContext }
-    import from jaclang.compiler.driver.program { JacProgram as JacProgramRt }
+    import from jaclang.compiler.session.options { CompileOptions }
+    import from jaclang.compiler.ir.enums { CodeContext }
+    import from jaclang.compiler.session.session { JacProgram as JacProgramRt }
     try {
         mod = JacProgramRt().compile(
             str(source_path), options=CompileOptions(symtab_ir_only=True)
@@ -116,7 +116,7 @@ def _transpile_jac_to_py(program: JacProgram, source_path: Path) -> str {
             f"Transpilation failed for {source_path}: compiler returned no module."
         );
     }
-    code = ir.gen.py;
+    code = artifact_for(ir).py;
     if not code {
         raise ValueError(f"{source_path} produced no Python (not a valid Jac module).");
     }
@@ -228,7 +228,7 @@ impl WheelBuilder._assemble_src_data -> dict[str, bytes] {
                 raise ValueError(f"Cannot transpile '{wp}': source path is not set.");
             }
             if program is None {
-                import from jaclang.compiler.driver.program {
+                import from jaclang.compiler.session.session {
                     JacProgram as JacProgramRt
                 }
                 program = JacProgramRt();

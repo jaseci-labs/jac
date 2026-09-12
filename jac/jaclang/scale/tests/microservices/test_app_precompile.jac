@@ -61,7 +61,7 @@ test "staging writes sanitized root and nested jac.toml before the seal runs" {
 test "placement pins are readable from inside the seal stage (issue 7866)" {
     base = Path(_pinned_app());
     stage_root = _stage_app(base, sanitized_jac_toml(base));
-    import from jaclang.compiler.placement.placement_pins { config_module_pin }
+    import from jaclang.compiler.analysis.placement.pins { config_module_pin }
     staged_page = stage_root / "app" / "ui" / "page.jac";
     assert config_module_pin(str(staged_page)) == "client";
 }

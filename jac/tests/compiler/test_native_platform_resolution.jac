@@ -1,11 +1,11 @@
 """Native source paths must retain the OS variant through dependency linking."""
 
 import os;
-import from jaclang.compiler.frontend.codeinfo {
+import from jaclang.compiler.session.native_resolution {
     native_stdlib_root,
-    resolve_native_module,
-    set_native_target_override
+    resolve_native_module
 }
+import from jaclang.compiler.session.target_options { set_native_target_override }
 
 test "sibling native errno import retains its platform filename" {
     stdlib_dir = native_stdlib_root();

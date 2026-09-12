@@ -1,18 +1,24 @@
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+import from unittest.mock { patch }
+import from jaclang.compiler.ir.identity { MutationScope }
+import from jaclang.compiler.analysis.types.member_lookup { lookup_member_symbol }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.frontend.source_io { read_file_with_encoding }
 
 test "builtin extensions preserve the original stub source" {
     program = JacProgram();
-    program._get_compiler().stub_catalog_disabled = True;
-    evaluator = program.get_type_evaluator();
+    with patch.object(program._get_compiler(), "stub_catalog_disabled", True) {
+        with MutationScope(program.analysis.mutations, 6) {
+            evaluator = program.get_type_evaluator();
+        }
+    }
     dict_type = evaluator.prefetch.dict_class;
     assert dict_type is not None;
     source = dict_type.shared.symbol_table.loc.orig_src;
     assert source.code == read_file_with_encoding(source.file_path);
     list_type = evaluator.prefetch.list_class;
     assert list_type is not None;
-    assert list_type.lookup_member_symbol("chunks") is not None;
+    assert lookup_member_symbol(list_type, "chunks") is not None;
 }
 
 test "chunk signatures preserve list element types" {

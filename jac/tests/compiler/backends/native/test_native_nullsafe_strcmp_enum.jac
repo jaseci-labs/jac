@@ -14,7 +14,7 @@ import ctypes;
 import os;
 import from pathlib { Path }
 import from tests.support { compile_native, get_func, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 test "optional string equality is tag arithmetic, matching Python" {

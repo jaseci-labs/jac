@@ -13,6 +13,8 @@ the companion spec branch -- see PR #6088. That PR is deliberately RED
 in CI as an executable spec; this PR keeps CI green.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import re;
 import from tests.support { JAC_ROOT }
@@ -20,8 +22,8 @@ import jaclang;
 import from jaclang.compiler.backends.es { EsastGenPass }
 import jaclang.compiler.backends.es.estree as es;
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob SLOT_EXT = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures", "slot_extensions"
@@ -35,8 +37,8 @@ def compile_to_esast(filename: str) -> es.Program {
     assert not prog.errors_had , (
         f"Compilation errors in {filename}: " + str([str(e) for e in prog.errors_had])
     );
-    es_pass = run_pass(EsastGenPass, ir, prog);
-    return es_pass.ir_out.gen.es_ast;
+    es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog);
+    return artifact_for(es_pass.ir_out).es_program();
 }
 
 """Compile a fixture, returning the JacProgram so diagnostics can be inspected."""
@@ -153,9 +155,9 @@ test "rec 9: a .style.css annex is auto-scoped and rewrites JSX className refs" 
     assert not prog.errors_had , (
         "Compilation errors: " + str([str(e) for e in prog.errors_had])
     );
-    es_pass = run_pass(EsastGenPass, ir, prog);
+    es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog);
     mod = es_pass.ir_out;
-    js_code = es_to_js(mod.gen.es_ast);
+    js_code = es_to_js(artifact_for(mod).es_program());
 
     # Declared class names are hashed to `card-<8 hex>` and the bare form
     # must not survive in the bundle.
@@ -169,7 +171,7 @@ test "rec 9: a .style.css annex is auto-scoped and rewrites JSX className refs" 
 
     # The rewritten CSS sidecar is emitted, its selectors hashed with the
     # same digest as the JSX refs, and `:global(...)` is unwrapped verbatim.
-    css = mod.gen.css;
+    css = artifact_for(mod).css;
     card_match = re.search(r'"className":\s*"(card-[0-9a-f]{8})"', js_code);
     assert (card_match and ("." + card_match.group(1)) in css) , (
         "CSS selector must be hashed to match the JSX className ref:\n" + css

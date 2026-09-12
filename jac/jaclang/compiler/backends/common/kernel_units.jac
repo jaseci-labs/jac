@@ -28,7 +28,7 @@ def _jaclang_dir -> str {
 
 def kernel_unit_owner(path: str, module_name: str = "") -> str {
     """Canonical native unit supplying a directly imported runtime source.""";
-    import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
+    import from jaclang.compiler.session.native_resolution { resolve_native_module }
     resolved = os.path.realpath(path);
     for part in OSP_CORE_PARTS {
         if module_name == "jaclang." + part[:-4].replace("/", ".") {
@@ -68,7 +68,7 @@ def unit_source(parts: list[str]) -> str {
 }
 
 def _region_layout_facts -> dict[str, int] {
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.backends.common.artifacts {
         HDR_ALLOC_ID_OFF,
         HDR_DTOR_OFF,
         HDR_MAGIC,
@@ -99,14 +99,14 @@ def verify_region_layout(source: str) {
         if m is None {
             raise RuntimeError(
                 f"region kernel unit does not declare {name}; the header layout "
-                f"is defined once in compiler/frontend/codeinfo.jac and restated "
+                f"is defined once in compiler/backends/common/artifacts.jac and restated "
                 f"in runtime/region_native.jac"
             );
         }
         if int(m.group(1)) != want {
             raise RuntimeError(
                 f"region kernel unit declares {name} = {m.group(1)} but "
-                f"compiler/frontend/codeinfo.jac says {want}; update "
+                f"compiler/backends/common/artifacts.jac says {want}; update "
                 f"runtime/region_native.jac to match"
             );
         }
@@ -126,7 +126,7 @@ glob _RETIRED_UNITS: set[str] = set();
 def _retire_superseded_artifacts(name: str, keep: str) {
     import glob as _g;
     import time;
-    import from jaclang.compiler.driver.jir { generation_ttl_seconds }
+    import from jaclang.compiler.session.cache.artifact_codec { generation_ttl_seconds }
     if name in _RETIRED_UNITS {
         return;
     }
@@ -178,7 +178,9 @@ def region_kernel_unit_path(variant: str) -> str {
 def _artifact_key(unit_path: str, fingerprint: str) -> str {
     import hashlib;
     import from importlib.metadata { version as pkg_version }
-    import from jaclang.compiler.driver.jir { running_compiler_digest }
+    import from jaclang.compiler.session.cache.artifact_codec {
+        running_compiler_digest
+    }
     try {
         jac_ver = pkg_version('jaclang');
     } except Exception {

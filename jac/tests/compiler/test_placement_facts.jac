@@ -4,17 +4,16 @@ import os;
 import sys;
 import tempfile;
 import from tests.support { JAC_ROOT }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.placement.placement_facts {
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.build.inventory {
     client_only_paths,
     discover_spaces,
-    emits_server_code,
-    is_client_only,
-    module_spaces,
     project_root_of,
     require_project_root,
     toolchain_native_by_policy
 }
+import from jaclang.compiler.api { module_spaces }
+import from jaclang.compiler.ir.enums { CodeContext }
 
 glob FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "fixtures", "codespace"
@@ -29,25 +28,20 @@ def _fixture(name: str) -> str {
 test "a markerless inferred client module rolls up client-only" {
     prog = JacProgram();
     mod = prog.compile(_fixture("infer_client_app.jac"), no_cgen=True);
-    assert module_spaces(mod) == {"client"};
-    assert is_client_only(mod);
-    assert not emits_server_code(mod);
+    assert module_spaces(prog, mod).spaces == {CodeContext.CLIENT};
 }
 
 
 test "a mixed module emits server code and is never client-only" {
     prog = JacProgram();
     mod = prog.compile(_fixture("infer_three_spaces.jac"), no_cgen=True);
-    spaces = module_spaces(mod);
-    assert "client" in spaces;
-    assert "server" in spaces;
-    assert emits_server_code(mod);
-    assert not is_client_only(mod);
+    spaces = module_spaces(prog, mod).spaces;
+    assert CodeContext.CLIENT in spaces;
+    assert CodeContext.SERVER in spaces;
 }
 
 
 test "an empty or unreadable module defaults to server" {
-    assert module_spaces(None) == {"server"};
     facts = discover_spaces([_fixture("does_not_exist.jac")]);
     assert facts[os.path.abspath(_fixture("does_not_exist.jac"))] == {"server"};
 }
@@ -94,7 +88,7 @@ test "a module with compile errors is never classified client-only" {
 
 test "sealed images persist placement and expose it without re-derivation" {
     import json;
-    import from jaclang.compiler.placement.placement_facts { sealed_spaces_for }
+    import from jaclang.build.inventory { sealed_spaces_for }
     import from jaclang.jac0core.sealed { SealedImage, MANIFEST_FORMAT }
     d = tempfile.mkdtemp(prefix="jac-sealed-facts-");
     pre = os.path.join(d, "_precompiled");
@@ -124,16 +118,18 @@ test "placement_pins imports stay within the documented allowlist" {
     import from pathlib { Path }
     allow = {
         "jaclang/cli/commands/impl/fix.impl.jac",
-        "jaclang/compiler/driver/boundary_classify.jac",
-        "jaclang/compiler/driver/impl/compiler.impl.jac",
-        "jaclang/compiler/driver/jir.jac",
-        "jaclang/compiler/driver/na_coverage.jac",
-        "jaclang/compiler/driver/modresolver.jac",
-        "jaclang/compiler/passes/impl/boundary_analysis_pass.impl.jac",
-        "jaclang/compiler/placement/placement.jac",
-        "jaclang/compiler/placement/placement_facts.jac",
-        "jaclang/compiler/placement/placement_pins.jac",
-        "jaclang/compiler/placement/placement_solver.jac"
+        "jaclang/compiler/analysis/boundaries/classify.jac",
+        "jaclang/compiler/analysis/placement/module_context_pass.jac",
+        "jaclang/compiler/pipeline/schedule.jac",
+        "jaclang/compiler/session/impl/compiler.impl.jac",
+        "jaclang/compiler/session/cache/artifact_codec.jac",
+        "jaclang/compiler/analysis/placement/native_fallback.jac",
+        "jaclang/compiler/session/resolver.jac",
+        "jaclang/compiler/analysis/boundaries/impl/boundary_analysis_pass.impl.jac",
+        "jaclang/compiler/analysis/placement/evidence.jac",
+        "jaclang/compiler/analysis/placement/facts.jac",
+        "jaclang/compiler/analysis/placement/pins.jac",
+        "jaclang/compiler/analysis/placement/solver.jac"
     };
     pkg = os.path.join(JAC_ROOT, "jaclang");
     offenders: list[str] = [];

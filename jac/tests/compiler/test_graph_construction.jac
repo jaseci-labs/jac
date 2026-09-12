@@ -1,9 +1,11 @@
 """Graph construction syntax and shared lowering contracts."""
 
-import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import jaclang.compiler.ir.schema as uni;
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
-import from jaclang.compiler.passes.graph_lowering_pass { GraphLoweringPass }
-import from jaclang.compiler.tools.unparse_pass { UnparsePass }
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.pipeline.executor { run_pass }
+import from jaclang.compiler.session.session { JacProgram }
 
 test "graph keyword supports escaped identifiers" {
     (module, errors) = rd_parse(
@@ -19,8 +21,9 @@ test "graph preserves its surface for syntax tools" {
         "with entry { f = graph { a ++> [b ++> c, d]; }; }", "graph_roundtrip.jac"
     );
     assert not errors;
-    UnparsePass(ir_in=module);
-    (again, errors2) = rd_parse(module.gen.jac, "graph_again.jac");
+    program = JacProgram();
+    run_pass(PassIdentity.UnparsePass, module, program);
+    (again, errors2) = rd_parse(artifact_for(module).jac, "graph_again.jac");
     assert not errors2;
     assert len(again.get_all_sub_nodes(uni.GraphExpr)) == 1;
     assert len(again.get_all_sub_nodes(uni.ConnectOp)) == 2;
@@ -29,18 +32,20 @@ test "graph preserves its surface for syntax tools" {
 test "graph formatting preserves comments and is stable" {
     import from pathlib { Path }
     import from tempfile { TemporaryDirectory }
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     with TemporaryDirectory() as directory {
         path = Path(directory) / "graph_comments.jac";
         path.write_text(
             "with entry { f = graph { # opening\n a ++> b; # edge\n # closing\n }; }"
         );
-        first = JacProgram.jac_file_formatter(str(path)).mod.main.gen.jac;
+        formatted = JacProgram.jac_file_formatter(str(path));
+        first = artifact_for(formatted.mod.main).jac;
         for comment in ["# opening", "# edge", "# closing"] {
             assert first.count(comment) == 1;
         }
         path.write_text(first);
-        second = JacProgram.jac_file_formatter(str(path)).mod.main.gen.jac;
+        formatted = JacProgram.jac_file_formatter(str(path));
+        second = artifact_for(formatted.mod.main).jac;
         assert first == second;
         (_, errors) = rd_parse(second, str(path));
         assert not errors;
@@ -52,7 +57,7 @@ test "graph lowers into existing control flow and captures connects" {
         "with entry { f = graph { a ++> [b ++> c, d]; }; }", "graph_lower.jac"
     );
     assert not errors;
-    lowered = GraphLoweringPass(ir_in=module);
+    lowered = run_pass(PassIdentity.GraphLoweringPass, module, JacProgram());
     assert not lowered.errors_had;
     assert not module.get_all_sub_nodes(uni.GraphExpr);
     imports = module.get_all_sub_nodes(uni.Import);
@@ -68,28 +73,38 @@ test "graph rejects unsupported directions with a source diagnostic" {
             "with entry { f = graph { a " + arrow + " b; }; }", "graph_direction.jac"
         );
         assert not errors;
-        lowered = GraphLoweringPass(ir_in=module);
+        lowered = run_pass(PassIdentity.GraphLoweringPass, module, JacProgram());
         assert any(e.code?.code == "E0084" for e in lowered.errors_had);
     }
 }
 
 test "generated construction imports inherit their enclosing codespace" {
-    import from jaclang.compiler.frontend.constant { CodeContext }
+    import from jaclang.compiler.ir.enums { CodeContext }
+    import from jaclang.compiler.ir.identity {
+        MutationScope,
+        RelationFamily,
+        relation_bit
+    }
     (module, errors) = rd_parse(
         "def build { return graph { a ++> b; }; }", "graph_context.jac"
     );
     assert not errors;
-    GraphLoweringPass(ir_in=module);
+    program = JacProgram();
+    run_pass(PassIdentity.GraphLoweringPass, module, program);
     ability = module.get_all_sub_nodes(uni.Ability)[0];
     imp = module.get_all_sub_nodes(uni.Import)[0];
-    for context in [CodeContext.CLIENT, CodeContext.NATIVE, CodeContext.SERVER] {
-        ability.code_context = context;
-        assert imp.code_context == context;
+    with MutationScope(
+        program.analysis.mutations, relation_bit(RelationFamily.PLACEMENT)
+    ) {
+        for context in [CodeContext.CLIENT, CodeContext.NATIVE, CodeContext.SERVER] {
+            ability.code_context = context;
+            assert imp.code_context == context;
+        }
     }
 }
 
 test "graph roots retain their node type" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     prog = JacProgram();
     prog.compile(
         "graph_root_type.jac",
@@ -100,7 +115,7 @@ test "graph roots retain their node type" {
 }
 
 test "graph refuses non-node roots" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     prog = JacProgram();
     prog.compile(
         "graph_bad_root.jac", use_str="with entry { f = graph { 42; }; }", no_cgen=True
@@ -109,7 +124,7 @@ test "graph refuses non-node roots" {
 }
 
 test "parameterless lambda bodies validate bounded generic calls" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     prog = JacProgram();
     prog.compile(
         "lambda_bound.jac",
@@ -124,34 +139,33 @@ test "root projection does not capture membership" {
         "with entry { n = (graph { a ++> b; }).root; }", "graph_project.jac"
     );
     assert not errors;
-    lowered = GraphLoweringPass(ir_in=module);
+    lowered = run_pass(PassIdentity.GraphLoweringPass, module, JacProgram());
     assert not lowered.errors_had;
     assert all(not op.capture_edges for op in module.get_all_sub_nodes(uni.ConnectOp));
 }
 
 test "client regeneration retains construction imports" {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.session.options { CompileOptions }
     prog = JacProgram();
     module = prog.compile(
         "graph_client_regeneration.jac",
         use_str="import type from jaclang.runtime.graph_fragment { GraphFragment } node N { has value: int; } def build -> GraphFragment[N] { return graph { N(1) ++> N(2); }; }",
         options=CompileOptions(force_codespace="client", no_cgen=True)
     );
-    EsastGenPass(ir_in=module, prog=prog);
-    first = module.gen.js;
+    run_pass(PassIdentity.EsastGenPass, module, prog);
+    first = artifact_for(module).js;
     assert not prog.errors_had , [str(error) for error in prog.errors_had];
     assert "import { GraphBuilder" in first;
-    module.gen.js = "";
-    module.gen.es_ast = None;
-    EsastGenPass(ir_in=module, prog=prog);
+    artifact_for(module).js = "";
+    artifact_for(module).es_ast = None;
+    run_pass(PassIdentity.EsastGenPass, module, prog);
     assert not prog.errors_had , [str(error) for error in prog.errors_had];
-    assert module.gen.js == first;
+    assert artifact_for(module).js == first;
 }
 
 test "native construction runtime does not admit compiler internals" {
-    import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
+    import from jaclang.compiler.session.native_resolution { resolve_native_module }
     import from tempfile { gettempdir }
     (_, runtime) = resolve_native_module(
         "jaclang.runtime.graph_fragment", gettempdir()
@@ -166,7 +180,7 @@ test "graph rejects suspension before backend lowering" {
         "async def build { f = graph { await child(); }; }", "graph_async.jac"
     );
     assert not errors;
-    lowered = GraphLoweringPass(ir_in=module);
+    lowered = run_pass(PassIdentity.GraphLoweringPass, module, JacProgram());
     assert any(e.code?.code == "E0085" for e in lowered.errors_had);
 }
 

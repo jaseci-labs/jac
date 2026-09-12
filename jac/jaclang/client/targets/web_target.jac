@@ -1,3 +1,4 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.client.targets.registry { ClientTarget }

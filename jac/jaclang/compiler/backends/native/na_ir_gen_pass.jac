@@ -1,4 +1,18 @@
-import jaclang.compiler.frontend.unitree as uni;
+import type from jaclang.compiler.session.services { AnalysisServices }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+
+import from jaclang.compiler.pipeline.contracts { AnalysisFact }
+import from jaclang.compiler.backends.native.abi { classify_foreign_fn }
+
+import from jaclang.compiler.backends.native.llvm { ir }
+import from jaclang.compiler.frontend.diagnostics { E9002 }
+import from jaclang.compiler.ir.enums { OwnershipKind }
+
+import from jaclang.compiler.analysis.types.expr_keys { type_tag_borrows }
+import from jaclang.cli.console { console }
+import from jaclang.compiler.backends.native.llvm { binding as llvm }
+import from jaclang.compiler.backends.common.kernel_units { REGION_KERNEL_ABI }
+import jaclang.compiler.ir.schema as uni;
 import os;
 import sys;
 import from jaclang.compiler.backends.native.llvm { binding as llvm, ir }
@@ -14,8 +28,8 @@ import from jaclang.compiler.backends.native.lowering {
     NativeLoweringKind
 }
 import from jaclang.runtime.scalars { ScalarShape }
-import from jaclang.compiler.passes.transform { Transform }
-import from jaclang.compiler.frontend.codeinfo {
+import from jaclang.compiler.pipeline.pass_base { Transform }
+import from jaclang.compiler.backends.common.artifacts {
     HDR_ALLOC_ID_OFF,
     HDR_DTOR_OFF,
     HDR_MAGIC,
@@ -29,7 +43,7 @@ import from jaclang.compiler.frontend.codeinfo {
     STR_LEN_TAG_BIT,
     STR_LEN_TAG_SHIFT
 }
-import from jaclang.compiler.frontend.constant {
+import from jaclang.compiler.ir.enums {
     CodeContext,
     OwnershipKind,
     SymbolAccess,
@@ -47,8 +61,8 @@ import from jaclang.compiler.frontend.diagnostics {
     E9001,
     E9002
 }
-import from jaclang.compiler.intrinsic_registry { IntrinsicEntry }
-import from jaclang.compiler.passes.layout_pass {
+import from jaclang.compiler.analysis.types.intrinsic_registry { IntrinsicEntry }
+import from jaclang.compiler.lowering.layout_pass {
     accessor_slot_name,
     ACCESSOR_SLOT_SUFFIX,
     archetype_accessors,
@@ -56,17 +70,17 @@ import from jaclang.compiler.passes.layout_pass {
     EnumLayout,
     VTABLE_HEADER_SLOTS
 }
-import from jaclang.compiler.type_registry { JacTypeEntry }
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.types.types {
+import from jaclang.compiler.analysis.types.type_registry { JacTypeEntry }
+import from jaclang.compiler.analysis.binding.module_facts { ModuleFacts }
+import from jaclang.compiler.ir.types.nodes {
     ClassType,
     TypeBase,
     UnionType,
     FunctionType as SemanticFunctionType
 }
-import from jaclang.compiler.frontend.const_fold { fold_const }
-import from jaclang.runtime.osp_model { stable_osp_tag }
-import type from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.analysis.comptime.const_fold { fold_const }
+import from jaclang.runtime.osp_tag { stable_osp_tag }
+import type from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.backends.native.na_constants {
     LIVE_NODE_NEXT_OFF,
     LIVE_NODE_RC_OFF,
@@ -154,9 +168,8 @@ obj NativeFunctionState {
 }
 
 walker NaIRGenPass(Transform) {
-    has prog: JacProgram;
-    static has HOST_PASS: bool = True;
-    has ir_in: uni.Module,
+    has prog: AnalysisServices,
+        ir_in: uni.Module,
         _llvm_module: (ir.Module | None) = None,
         _type_map: (dict[str, ir.Type] | None) = None,
         _complex_struct_type: (ir.IdentifiedStructType | None) = None,
@@ -1604,6 +1617,7 @@ walker NaIRGenPass(Transform) {
     def _emit_os_environ_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None);
+    def _osp_pointer_list(handles: ir.Value) -> ir.Value;
     def _compute_osp_model(archetypes: list[uni.Archetype]) -> None;
     def _osp_active -> bool;
     def _xmod_osp_help(names: list) -> (str | None);
@@ -2259,3 +2273,156 @@ walker NaIRGenPass(Transform) {
     def _lower_view_container(t: any) -> (ir.Type | None);
     def _program_has_subclasses(arch_name: str) -> bool;
 }
+
+glob _NA_ABC_REDUCTIONS: dict[str, tuple] = {
+         "Sequence": ("list", "tuple", "str", "bytes", "bytearray"),
+         "MutableSequence": ("list", "bytearray"),
+         "Mapping": ("dict", ),
+         "MutableMapping": ("dict", ),
+         "Set": ("set", "frozenset"),
+         "AbstractSet": ("set", "frozenset"),
+         "MutableSet": ("set", ),
+         "ByteString": ("bytes", "bytearray")
+     },
+     _NA_ABC_OPAQUE: tuple = (
+         "Iterable",
+         "Iterator",
+         "Reversible",
+         "Generator",
+         "Container",
+         "Collection",
+         "Sized",
+         "Hashable",
+         "Callable",
+         "Awaitable",
+         "Coroutine",
+         "AsyncIterable",
+         "AsyncIterator",
+         "AsyncGenerator",
+         "MappingView",
+         "KeysView",
+         "ItemsView",
+         "ValuesView",
+         "Buffer"
+     );
+
+glob _NA_FMT_KERNEL_MOD: list = [];
+
+glob HASH_CTRL_EMPTY: int = 0,
+     HASH_CTRL_TOMBSTONE: int = 1,
+     HASH_INIT_CAP: int = 8,
+     HASH_FNV_BASIS: int = -3750763034362895579,
+     HASH_FNV_PRIME: int = 1099511628211,
+     HASH_MUL_K: int = -7046029254386353131;
+
+glob _MATH_CONSTS: dict[str, float] = {
+         "pi": 3.141592653589793,
+         "e": 2.718281828459045,
+         "tau": 6.283185307179586,
+         "inf": float("inf"),
+         "nan": float("nan"),
+
+     },
+     _MATH_UNARY: dict[str, str] = {
+         "sqrt": "sqrt",
+         "sin": "sin",
+         "cos": "cos",
+         "tan": "tan",
+         "asin": "asin",
+         "acos": "acos",
+         "atan": "atan",
+         "sinh": "sinh",
+         "cosh": "cosh",
+         "tanh": "tanh",
+         "asinh": "asinh",
+         "acosh": "acosh",
+         "atanh": "atanh",
+         "exp": "exp",
+         "expm1": "expm1",
+         "log2": "log2",
+         "log10": "log10",
+         "log1p": "log1p",
+         "fabs": "fabs",
+         "cbrt": "cbrt",
+         "erf": "erf",
+         "erfc": "erfc",
+         "gamma": "tgamma",
+         "lgamma": "lgamma",
+
+     },
+     _MATH_BINARY: dict[str, str] = {
+         "pow": "pow",
+         "atan2": "atan2",
+         "hypot": "hypot",
+         "fmod": "fmod",
+         "copysign": "copysign",
+         "remainder": "remainder",
+
+     },
+     _MATH_TO_INT: set[str] = {"floor", "ceil", "trunc"};
+
+glob _OS_CONSTS: dict[str, str] = {
+         "sep": "/",
+         "extsep": ".",
+         "pardir": "..",
+         "curdir": ".",
+         "pathsep": ":",
+         "linesep": "\n",
+         "devnull": "/dev/null",
+
+     };
+
+glob _PYB_BRIDGE_MODULE: str = "jaclang.runtime.interop_bridge";
+
+glob _MT_N: int = 624,
+     _MT_M: int = 397,
+     _MT_MATRIX_A: int = 0x9908B0DF,
+     _MT_UPPER: int = 0x80000000,
+     _MT_LOWER: int = 0x7FFFFFFF;
+
+glob _NOGC_OSP_ENGINE_STRUCTS: tuple = (
+         "Slot",
+         "Plan",
+         "WalkerDesc",
+         "NodeDesc",
+         "WalkScope",
+         "OspRuntime",
+         "Frame",
+         "OspEngine",
+         "OspGraph",
+         "Adj",
+         "EdgeRow"
+     ),
+     _NOGC_CONTAINER_DROP_OPS: tuple = (
+         "scope_exit",
+         "field_set",
+         "iter_end",
+         "overwrite",
+         "fori_coll",
+         "binop_lhs",
+         "binop_rhs",
+         "binop_list",
+         "for_reset",
+         "call_arg",
+         "list_method_arg",
+         "last_use",
+         "del_stmt"
+     ),
+     _NOGC_TEMP_FREE_OPS: tuple = (
+         "binop_lhs",
+         "binop_rhs",
+         "binop_list",
+         "str_rhs",
+         "ba_aug"
+     );
+
+glob REGION_TLS_GLOBAL: str = "__jac_region_tls",
+     REGION_TLS_GET: str = "__jac_region_tls_get",
+     REGION_TLS_SET: str = "__jac_region_tls_set",
+     REGION_GBL_GET: str = "__jac_region_gbl_get";
+
+glob OVERFLOW_MSG: str = "integer overflow",
+     SHIFT_MSG: str = "shift count out of range";
+
+glob _CLOCK_REALTIME: int = 0,
+     _CLOCK_MONOTONIC: int = 1;

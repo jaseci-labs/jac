@@ -1,4 +1,3 @@
-import from jaclang.compiler.expr_keys { type_tag_borrows }
 impl NaIRGenPass._devirt_closed_world(arch_name: str) -> bool {
     arch = self.arch_ast_map.get(arch_name);
     if arch is None {
@@ -20,14 +19,19 @@ impl NaIRGenPass._native_archetypes(module: uni.Module) -> list[uni.Archetype] {
         }
     }
 
-    for arch in ModuleFacts.shared_archetypes_for_context(module, CodeContext.NATIVE) {
+    for arch in ModuleFacts.shared_type_declarations_for_context(
+        module, CodeContext.NATIVE
+    ) {
+        if not isinstance(arch, uni.Archetype) {
+            continue;
+        }
         aname = arch.name.value if arch.name else "unknown";
         if aname not in result {
             result[aname] = arch;
         }
     }
 
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
     layout_reg = get_layout_registry(self.ir_in, self.prog);
     out: list[uni.Archetype] = [];
     for a in result.values() {
@@ -68,7 +72,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
 
     self._compute_osp_model(archetypes);
 
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
     layout_reg = get_layout_registry(self.ir_in, self.prog);
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
@@ -145,7 +149,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
         }
     }
 
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry as _no_glr }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry as _no_glr }
     _no_reg = _no_glr(self.ir_in, self.prog);
     for (base_name, layout) in self.vtable_layouts.items() {
         if not self._devirt_closed_world(base_name) {
@@ -229,9 +233,9 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
 
     self._register_osp_kernel_module();
     self._emit_osp_setup();
-    import from jaclang.compiler.native_scope { scope_lowering_active }
+    import from jaclang.compiler.bootstrap.native_scope { scope_lowering_active }
     if scope_lowering_active() {
-        self.ir_in.gen.jc_layout = self._build_jc_layout();
+        artifact_for(self.ir_in).jc_layout = self._build_jc_layout();
     }
 
     self._predemote_capability_constructors();
@@ -388,8 +392,8 @@ impl NaIRGenPass._demoted_init_of(type_name: str) -> (str | None) {
 impl NaIRGenPass._visit_nonprimary_ancestor_methods(
     arch: uni.Archetype, declare: bool
 ) -> None {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-    import from jaclang.compiler.symbol_utils { collect_method_names }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
+    import from jaclang.compiler.analysis.binding.symbol_utils { collect_method_names }
     layout_reg = get_layout_registry(self.ir_in, self.prog);
     arch_name = arch.name.value if arch.name else "unknown";
     mro = self._mro_of(arch_name);
@@ -454,7 +458,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     if struct_type is None {
         return;
     }
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
     _owner_mod = nd.find_parent_of_type(uni.Module) or self.ir_in;
     layout = get_layout_registry(_owner_mod, self.prog).get_layout(arch_name);
     if layout is None {
@@ -504,7 +508,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
             if finfo.owner in self.clib_struct_names {
                 _cf_fnty = False;
                 try {
-                    import from jaclang.compiler.types.types {
+                    import from jaclang.compiler.ir.types.nodes {
                         FunctionType as _ClibFnType
                     }
                     _cf_fnty = isinstance(var?.type, _ClibFnType);
@@ -607,7 +611,9 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     }
     self.struct_field_indices[arch_name] = field_index_map;
     self.struct_field_order[arch_name] = [f.name for f in layout.fields];
-    import from jaclang.compiler.field_semantics { positional_field_names }
+    import from jaclang.compiler.analysis.types.field_semantics {
+        positional_field_names
+    }
     constructor_fields: list[uni.HasVar] = [];
     for field in layout.fields {
         declaration = field.decl_node;
@@ -743,6 +749,14 @@ impl NaIRGenPass._register_static_fields(arch_name: str, archhas: uni.ArchHas) -
         }
         gv = ir.GlobalVariable(self.llvm_module, ftype, name=full_name);
 
+        if archhas.find_parent_of_type(uni.Module) is not self.ir_in {
+            gv.linkage = "external";
+            self.static_fields[full_name] = gv;
+            self.static_field_types[full_name] = ftype;
+            self.global_vars[full_name] = gv;
+            self.global_var_types[full_name] = ftype;
+            continue;
+        }
         gv.linkage = "";
         const_init = self._codegen_const_expr(var.value, ftype)
             if var.value is not None
@@ -770,7 +784,7 @@ impl NaIRGenPass._register_static_fields(arch_name: str, archhas: uni.ArchHas) -
 impl NaIRGenPass._register_class_consts(
     nd: uni.Archetype, arch_name: str, block: uni.ModuleCode
 ) -> None {
-    import from jaclang.compiler.passes.layout_pass { class_form_enum_scalar }
+    import from jaclang.compiler.lowering.layout_pass { class_form_enum_scalar }
     if nd.name is None or class_form_enum_scalar(nd.name.type) is not None {
         return;
     }
@@ -1078,7 +1092,7 @@ impl NaIRGenPass._codegen_method(
         _bound_params: list[tuple[(str, bool)]] = [
             (
                 (p.name.value if p.name else f"arg{i}"),
-                bool(p.name?.sym?.param_rebound),
+                bool(p.name?.sym?.memory?.param_rebound),
 
             ) for (i, p) in enumerate(_body_params)
         ];
@@ -1172,7 +1186,9 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     }
     if stub_body {
         try {
-            import from jaclang.compiler.driver.na_coverage { na_coverage_seam }
+            import from jaclang.compiler.analysis.placement.native_fallback {
+                na_coverage_seam
+            }
             _first_code = _own[0].code.code if _own[0].code is not None else "";
             _code_tag = f"[{_first_code}] " if _first_code else "";
             na_coverage_seam(
@@ -1258,7 +1274,9 @@ impl NaIRGenPass._opaque_field_if_unlowerable(
         );
     }
     try {
-        import from jaclang.compiler.driver.na_coverage { na_coverage_seam }
+        import from jaclang.compiler.analysis.placement.native_fallback {
+            na_coverage_seam
+        }
         na_coverage_seam(
             self.ir_in.loc.mod_path,
             f"{arch_name}.{fname}: " + (f"[{_code}] " if _code else "") + _why
@@ -1495,7 +1513,7 @@ impl NaIRGenPass._emit_field_access_refusal(
 impl NaIRGenPass._class_const_declarer(
     arch_name: str, field_name: str
 ) -> (str | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
     _seen: list[str] = list(self._mro_of(arch_name));
     for _cls in get_layout_registry(self.ir_in, self.prog).mro_order {
         if arch_name in self._mro_of(_cls) and _cls not in _seen {
@@ -1530,13 +1548,13 @@ impl NaIRGenPass._class_const_declarer(
 }
 
 impl NaIRGenPass._mro_of(arch_name: str) -> list[str] {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
     mro = get_layout_registry(self.ir_in, self.prog).get_mro(arch_name);
     return mro or [arch_name];
 }
 
 impl NaIRGenPass._arch_layout(arch_name: str) -> (ArchetypeLayout | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
 
     _owner = None;
     _arch_nd = self.arch_ast_map.get(arch_name);
@@ -1745,7 +1763,7 @@ impl NaIRGenPass._stack_alloc_target_ok(nd: uni.UniNode) -> bool {
         return False;
     }
     sym = targets[0].sym;
-    return sym is not None and sym.na_stack_ok;
+    return sym is not None and sym.memory.stack_ok;
 }
 
 impl NaIRGenPass._empty_container_for_field(
@@ -2202,7 +2220,7 @@ impl NaIRGenPass._codegen_instantiation(
         }
     }
     if init_fn is not None and _init_owner != type_name {
-        import from jaclang.compiler.passes.layout_pass {
+        import from jaclang.compiler.lowering.layout_pass {
             get_layout_registry as _ci_glr
         }
         if not _ci_glr(self.ir_in, self.prog).is_primary_ancestor(
@@ -2398,7 +2416,7 @@ impl NaIRGenPass._unregistered_class_target(target: uni.UniNode) -> (str | None)
     if not isinstance(target, uni.Expr) {
         return None;
     }
-    import from jaclang.compiler.symbol_utils { resolve_expr_symbol }
+    import from jaclang.compiler.analysis.binding.symbol_utils { resolve_expr_symbol }
     sym = resolve_expr_symbol(target);
     decl = sym.decl if sym is not None else None;
     if decl is None {
@@ -2437,7 +2455,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     if not isinstance(trailer, uni.AtomTrailer) or not trailer.is_attr {
         return None;
     }
-    import from jaclang.compiler.symbol_utils { imported_module_name }
+    import from jaclang.compiler.analysis.binding.symbol_utils { imported_module_name }
     module_name = imported_module_name(trailer.target);
     target_name = module_name or self._get_name(trailer.target);
     method_name = self._get_name(trailer.right);
@@ -2492,7 +2510,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         return None;
     }
     if method_name == "partition" {
-        import from jaclang.compiler.expr_keys { is_builtin_region_type }
+        import from jaclang.compiler.analysis.types.expr_keys { is_builtin_region_type }
         if is_builtin_region_type(trailer.target.type) {
             _pt_recv = self._codegen_expr(trailer.target);
             if _pt_recv is None {
@@ -3423,7 +3441,7 @@ impl NaIRGenPass._emit_dispatched_field_ptr(
     ftype: (ir.Type | None),
     parts: (list[str] | None) = None
 ) -> (ir.Value | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry as _df_glr }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry as _df_glr }
     reg = _df_glr(self.ir_in, self.prog);
     _base_lay = reg.get_layout(type_name);
     if _base_lay is None or not _base_lay.has_vtable {
@@ -3620,7 +3638,7 @@ impl NaIRGenPass._class_const_global(
 impl NaIRGenPass._class_const_variants(
     arch_name: str, field_name: str
 ) -> tuple[list[tuple[str, ir.GlobalVariable, ir.GlobalVariable]], bool] {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
     reg = get_layout_registry(self.ir_in, self.prog);
     out: list[tuple[str, ir.GlobalVariable, ir.GlobalVariable]] = [];
     _whole = True;
@@ -4140,7 +4158,7 @@ impl NaIRGenPass._receiver_routed_method_fn(
         and _recv_cls in self.struct_types
         and _sfull not in self.static_methods
     ) {
-        import from jaclang.compiler.passes.layout_pass {
+        import from jaclang.compiler.lowering.layout_pass {
             get_layout_registry as _sc_glr
         }
         _sc_reg = _sc_glr(self.ir_in, self.prog);
@@ -4390,8 +4408,9 @@ impl NaIRGenPass._build_jc_layout -> str {
     import json;
     import from jaclang.compiler.backends.native.abi { struct_layouts }
     layouts = struct_layouts(self.llvm_module);
-    out: dict = {"classes": {}};
-    _model = self.ir_in.gen.osp_model;
+    import from jaclang.compiler.ir.identity { SCHEMA_VERSION }
+    out: dict = {"schema_version": SCHEMA_VERSION, "classes": {}};
+    _model = artifact_for(self.ir_in).osp_models.get(CodeContext.NATIVE);
     _tags = _model.tags if _model is not None else {};
     for arch_name in self.struct_field_indices {
         st = self.struct_types.get(arch_name);

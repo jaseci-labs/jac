@@ -1108,6 +1108,14 @@ impl JacGraph.connect(
             }
         }
     }
+    import from jaclang.runtime.archetype { validate_edge_endpoints }
+    relation = `edge or GenericEdge;
+    relation_type = relation if isinstance(relation, `type) else `type(relation);
+    for source in left {
+        for target in right {
+            validate_edge_endpoints(source, relation_type, target);
+        }
+    }
     edges = [];
     for i in left {
         _left = i.__jac__;
@@ -1340,7 +1348,11 @@ impl JacGraph.heavy_edge(
     conn_assign: (tuple[(tuple, tuple)] | None)
 ) -> EdgeArchetype {
     import from jaclang.runtime.osp_graph_sv { sv_conn }
+    import from jaclang.runtime.archetype { validate_edge_endpoints }
     ct = conn_type or GenericEdge;
+    validate_edge_endpoints(
+        source.archetype, ct if isinstance(ct, `type) else `type(ct), target.archetype
+    );
     `edge = ct() if isinstance(ct, `type) else ct;
     eanch = `edge.__jac__=EdgeAnchor(
         archetype=`edge, source=source, target=target, is_undirected=is_undirected
@@ -1596,7 +1608,7 @@ impl JacLLM.get_mtir(
     args: dict[((int | str), object)],
     call_params: dict[(str, object)]
 ) -> MTRuntime {
-    import from jaclang.compiler.driver.mtp { fetch_mtir }
+    import from jaclang.compiler.lowering.mtir { fetch_mtir }
     import from jaclang.byllm.mtir { MTIR }
     return MTIR(caller, args, call_params, fetch_mtir(caller)).runtime;
 }
@@ -1621,7 +1633,7 @@ impl JacLLM.acall_llm(model: LLMModel, mt_run: MTRuntime) -> any {
 impl JacLLM.`by(model: LLMModel) -> Callable {
     def _decorator(caller: Callable) -> Callable {
         def _wrapped_caller(*args: object, **kwargs: object) -> object {
-            import from jaclang.compiler.driver.mtp { fetch_mtir }
+            import from jaclang.compiler.lowering.mtir { fetch_mtir }
             import from jaclang.byllm.mtir { MTIR }
             invoke_args: dict[((int | str), object)] = {};
             for (i, arg) in enumerate(args) {
@@ -2015,7 +2027,7 @@ impl JacRuntime.reset_process_state(cls: any, clear_modules: bool = True) -> Non
 
 impl JacRuntime.get_compiler(cls: any) -> JacCompiler {
     if (cls.compiler is None) {
-        import from jaclang.compiler.driver.compiler { JacCompiler }
+        import from jaclang.compiler.session.compiler { JacCompiler }
         cls.compiler = JacCompiler();
         if cls.program is not None and cls.program._compiler is None {
             cls.program._compiler = cls.compiler;
@@ -2026,7 +2038,7 @@ impl JacRuntime.get_compiler(cls: any) -> JacCompiler {
 
 impl JacRuntime.get_program(cls: any) -> JacProgram {
     if (cls.program is None) {
-        import from jaclang.compiler.driver.program { JacProgram }
+        import from jaclang.compiler.session.session { JacProgram }
         prog = JacProgram();
 
         prog._compiler = cls.get_compiler();
@@ -2037,7 +2049,7 @@ impl JacRuntime.get_program(cls: any) -> JacProgram {
 
 impl JacRuntime.get_selfhost(cls: any) -> SelfHostCache {
     if (cls.selfhost is None) {
-        import from jaclang.compiler.driver.selfhost { SelfHostCache }
+        import from jaclang.compiler.bootstrap.selfhost { SelfHostCache }
         cls.selfhost = SelfHostCache();
     }
     return cls.selfhost;

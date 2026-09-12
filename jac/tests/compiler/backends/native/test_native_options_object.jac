@@ -7,6 +7,7 @@ stamped options fingerprint disagrees with the current build is a hard E5027,
 never a silent mixed-options link.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import glob;
 import json;
 import os;
@@ -14,9 +15,9 @@ import shutil;
 import tempfile;
 import uuid;
 import from pathlib { Path }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.jir { get_native_cache_dir }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.cache.artifact_codec { get_native_cache_dir }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
@@ -108,8 +109,8 @@ test "rc debug trace gate is driven by the options object, not env" {
                 assert not prog.errors_had , (
                     f"compile errors: {[str(e) for e in prog.errors_had]}"
                 );
-                assert ir_mod.gen.llvm_ir is not None;
-                ir_text = str(ir_mod.gen.llvm_ir);
+                assert artifact_for(ir_mod).llvm_ir is not None;
+                ir_text = str(artifact_for(ir_mod).llvm_ir);
                 if gate_on {
                     assert "RC MALLOC" in ir_text , (
                         "options-object gate ON compiled the trace out"

@@ -1,12 +1,16 @@
 """Import pass tests – migrated from test_import_pass.py."""
 
+import from jaclang.compiler.session.import_paths { annex_base }
 import os;
 import io;
 import sys;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.bccache { discover_annex_files, discover_base_file }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.cache.annexes {
+    discover_annex_files,
+    discover_base_file
+}
 import from jaclang.compiler.tools.treeprinter { node_to_dict }
 import from jaclang.cli.commands { execution }
 
@@ -73,7 +77,7 @@ test "annexable by discovery" {
     hub_names = [m.name for m in prog.mod.hub.values()];
     assert "incautoimpl" in hub_names and "autoimpl" in hub_names;
     # Every annex autoimpl owns is attributed back to autoimpl.jac (this is what
-    # Module.annexable_by resolves to via discover_base_file).
+    # annex_base(Module) resolves to via discover_base_file).
     annexes = discover_annex_files(os.path.join(FIXTURES, "autoimpl.jac"), ".impl.jac");
     assert len(annexes) == 5;
     for a in annexes {

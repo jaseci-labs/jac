@@ -22,13 +22,12 @@ reading, and merged they read a list three pushes deep.
 So: if a new fixture declares a glob anything writes, or imports one that
 does, give each of its cases its own test.
 """
-import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from jaclang.compiler.session.context { artifact_cache_path }
 
 import ctypes;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
+import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import from _ctypes { CFuncPtr }
 import io;
 import os;
@@ -44,10 +43,10 @@ import from tests.support {
     native_force_opts
 }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.session.options { CompileOptions }
+import jaclang.compiler.ir.schema as uni;
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
@@ -354,7 +353,7 @@ test "native partial class: un-lowerable method skipped, sibling stays native" {
     measure = get_sfunc(eng, "measure", ctypes.c_int64, ctypes.c_char_p);
     assert measure(b"hello") == 5;
     assert measure(b"") == 0;
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "native layout missing";
     # The native-eligible method is exported; the eval-using one is skipped.
     assert "Literal.length" in layout.methods;
@@ -427,8 +426,8 @@ test "native partial class: un-lowerable virtual method demotes to a stub slot" 
         if e.code
     ];
     assert codes == [] , (f"virtual demotion must not leave hard errors, got {codes}");
-    assert ir_mod is not None and ir_mod.gen.llvm_ir is not None;
-    layout = ir_mod.gen.native_layout;
+    assert ir_mod is not None and artifact_for(ir_mod).llvm_ir is not None;
+    layout = artifact_for(ir_mod).native_layout;
     assert layout is not None;
     assert "Derived.render" not in layout.methods , (
         "demoted virtual must not be exported in the layout"
@@ -636,7 +635,7 @@ test "context isolation native excluded from python" {
     prog = JacProgram();
     ir = prog.compile(str(os.path.join(FIXTURES, "mixed_contexts.jac")));
     # Python source should NOT contain native_add
-    py_src = ir.gen.py;
+    py_src = artifact_for(ir).py;
     assert "native_add" not in py_src;
     # Python source should contain server_hello
     assert "server_hello" in py_src;
@@ -1483,7 +1482,7 @@ test "na_method_import" {
 # native lowering with E5092 ("type 'int'") under inferred-native, while a
 # flat diamond (a imports b and c directly) lowered fine.
 test "cross-module transitive chain executes via native inference" {
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.target_options {
         set_effective_default_codespace,
         get_effective_default_codespace_override
     }
@@ -1504,7 +1503,7 @@ test "cross-module transitive chain executes via native inference" {
         set_effective_default_codespace(_prev);
     }
     assert not prog.errors_had , (f"errors: {[str(e) for e in prog.errors_had]}");
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "transitive chain did not produce a native engine";
     f = get_func(eng, "fa", ctypes.c_int64);
     assert f() == 5;
@@ -1763,7 +1762,7 @@ test "aug_assign" {
 
 test "chess compiles" {
     (eng, ir) = compile_native("chess.jac");
-    assert ir.gen.llvm_ir is not None;
+    assert artifact_for(ir).llvm_ir is not None;
 }
 
 test "chess opposite color" {
@@ -1915,7 +1914,7 @@ test "class_name" {
 # --- TestNativeIsinstanceUserArchetype (issue #6930, workstream A1) ---
 """isinstance user compiles"""
 def _isinstance_user__isinstance_user_compiles(eng: any, ir: any) {
-    assert ir.gen.llvm_ir is not None;
+    assert artifact_for(ir).llvm_ir is not None;
 }
 
 """isinstance user exact and subclass match"""
@@ -2674,8 +2673,8 @@ test "py interop py function not defined in native ir" {
         str(os.path.join(FIXTURES, "na_py_interop.jac")),
         options=CompileOptions(default_codespace='server')
     );
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    assert artifact_for(ir).llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(artifact_for(ir).llvm_ir);
     # Must not have a define (body) for py_double -- it lives in Python
     assert 'define i64 @"py_double"' not in llvm_ir_str;
     # Should have an external declare so the native code can call it
@@ -2689,7 +2688,7 @@ test "py interop py functions in python codegen" {
         str(os.path.join(FIXTURES, "na_py_interop.jac")),
         options=CompileOptions(default_codespace='server')
     );
-    py_src = ir.gen.py;
+    py_src = artifact_for(ir).py;
     assert "py_double" in py_src;
     assert "call_native" in py_src;
 }
@@ -2701,7 +2700,7 @@ test "py interop native function has stub in python" {
         str(os.path.join(FIXTURES, "na_py_interop.jac")),
         options=CompileOptions(default_codespace='server')
     );
-    py_src = ir.gen.py;
+    py_src = artifact_for(ir).py;
     # Stub for the native function should exist
     assert "native_add_one_to_doubled" in py_src;
     # The native function body should NOT appear as executable code in Python
@@ -2718,7 +2717,7 @@ test "py interop interop manifest built" {
         str(os.path.join(FIXTURES, "na_py_interop.jac")),
         options=CompileOptions(default_codespace='server')
     );
-    manifest = ir.gen.interop_manifest;
+    manifest = artifact_for(ir).interop_manifest;
     assert manifest is not None;
     # py_double: defined in SERVER, called from NATIVE
     assert "py_double" in manifest.bindings;
@@ -2737,10 +2736,10 @@ test "py interop native calls python function" {
         str(os.path.join(FIXTURES, "na_py_interop.jac")),
         options=CompileOptions(default_codespace='server')
     );
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None;
     # Register the Python function in the interop callback table
-    py_func_table = ir.gen.interop_py_funcs;
+    py_func_table = artifact_for(ir).interop_py_funcs;
     py_func_table["py_double"] = lambda (x: int) { x * 2; };
     # Now call the native function
     f = get_func(eng, "native_add_one_to_doubled", ctypes.c_int64, ctypes.c_int64);
@@ -2762,11 +2761,11 @@ test "py interop full entry chain" {
     assert not prog.errors_had;
     # Execute the compiled module with interop context injected
     py_code = compile(
-        ir.gen.py, str(os.path.join(FIXTURES, "na_py_interop.jac")), "exec"
+        artifact_for(ir).py, str(os.path.join(FIXTURES, "na_py_interop.jac")), "exec"
     );
     namespace = {
-        "__jac_native_engine__": ir.gen.native_engine,
-        "__jac_interop_py_funcs__": ir.gen.interop_py_funcs
+        "__jac_native_engine__": artifact_for(ir).native_engine,
+        "__jac_interop_py_funcs__": artifact_for(ir).interop_py_funcs
     };
     buf = io.StringIO();
     with contextlib.redirect_stdout(buf) {
@@ -2784,8 +2783,8 @@ test "multi module na module compiles" {
         str(os.path.join(FIXTURES, "na_math_utils.jac")), options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    assert artifact_for(ir).llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(artifact_for(ir).llvm_ir);
     assert "triple" in llvm_ir_str;
     assert "square" in llvm_ir_str;
 }
@@ -2801,7 +2800,7 @@ test "multi module module level na import" {
     assert ir is not None;
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     # triple should be in manifest as a cross-module import
-    manifest = ir.gen.interop_manifest;
+    manifest = artifact_for(ir).interop_manifest;
     assert "triple" in manifest.bindings;
     assert manifest.bindings["triple"].source_module == "na_math_utils.jac";
 }
@@ -2815,7 +2814,7 @@ test "multi module na scoped import" {
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     # The na-scoped import should be tracked in manifest
-    manifest = ir.gen.interop_manifest;
+    manifest = artifact_for(ir).interop_manifest;
     # add_ten should be recognized as a NATIVE->NATIVE binding
     assert "add_ten" in manifest.bindings;
     assert manifest.bindings["add_ten"].source_module == "na_transformers.jac";
@@ -2829,7 +2828,7 @@ test "multi module native module linking" {
         options=CompileOptions(default_codespace='server')
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "No native engine created";
     # Imported native functions should be resolvable
     triple_addr = eng.get_function_address("triple");
@@ -2847,14 +2846,16 @@ test "multi module full multi module chain" {
         options=CompileOptions(default_codespace='server')
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.native_engine is not None , "No native engine created";
+    assert artifact_for(ir).native_engine is not None , "No native engine created";
 
     py_code = compile(
-        ir.gen.py, str(os.path.join(FIXTURES, "na_py_interop_multi.jac")), "exec"
+        artifact_for(ir).py,
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
+        "exec"
     );
     namespace = {
-        "__jac_native_engine__": ir.gen.native_engine,
-        "__jac_interop_py_funcs__": ir.gen.interop_py_funcs
+        "__jac_native_engine__": artifact_for(ir).native_engine,
+        "__jac_interop_py_funcs__": artifact_for(ir).interop_py_funcs
     };
     buf = io.StringIO();
     with contextlib.redirect_stdout(buf) {
@@ -2873,7 +2874,7 @@ test "cross module struct compile" {
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir is not None;
-    assert ir.gen.native_engine is not None , "No native engine created";
+    assert artifact_for(ir).native_engine is not None , "No native engine created";
 }
 
 test "cross module struct function call" {
@@ -2883,7 +2884,7 @@ test "cross module struct function call" {
         str(os.path.join(FIXTURES, "na_struct_import.jac")), options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None;
     # make_point and get_x should be linked
     make_point_addr = eng.get_function_address("make_point");
@@ -2899,7 +2900,7 @@ test "cross module struct execution" {
         str(os.path.join(FIXTURES, "na_struct_import.jac")), options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None;
     use_imported_point = get_func(
         eng, "use_imported_point", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
@@ -2923,7 +2924,7 @@ test "unstamped imported struct return: entry module compiles without errors (is
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir is not None;
-    assert ir.gen.native_engine is not None , "No native engine created";
+    assert artifact_for(ir).native_engine is not None , "No native engine created";
 }
 
 test "unstamped imported struct return: field sum is correct (issue #6822)" {
@@ -2951,7 +2952,7 @@ test "cross module global linkage compile" {
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir is not None;
-    assert ir.gen.native_engine is not None , "No native engine created";
+    assert artifact_for(ir).native_engine is not None , "No native engine created";
 }
 
 test "cross module global direct read" {
@@ -2962,7 +2963,7 @@ test "cross module global direct read" {
         str(os.path.join(FIXTURES, "na_glob_import.jac")), options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None;
     read_magic = get_func(eng, "read_magic", ctypes.c_int64);
     result = read_magic();
@@ -2976,7 +2977,7 @@ test "cross module global via function" {
         str(os.path.join(FIXTURES, "na_glob_import.jac")), options=native_force_opts()
     );
     assert not prog.errors_had;
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None;
     read_via_func = get_func(eng, "read_magic_via_func", ctypes.c_int64);
     result = read_via_func();
@@ -2991,7 +2992,7 @@ test "cross module global arithmetic" {
         str(os.path.join(FIXTURES, "na_glob_import.jac")), options=native_force_opts()
     );
     assert not prog.errors_had;
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None;
     sum_g = get_func(eng, "sum_globals", ctypes.c_int64);
     result = sum_g();
@@ -3007,7 +3008,7 @@ test "cache marker non native file has no llvmir section in jir" {
     import tempfile;
     import time;
     import shutil;
-    import from jaclang.compiler.driver.jir {
+    import from jaclang.compiler.session.cache.artifact_codec {
         read_sections,
         SECTIONS_MAGIC,
         HEADER_SIZE,
@@ -3025,7 +3026,7 @@ test "cache marker non native file has no llvmir section in jir" {
     os.utime(jac_file, (past, past));
 
     try {
-        import from jaclang.compiler.driver.compiler { JacCompiler }
+        import from jaclang.compiler.session.compiler { JacCompiler }
         prog = JacProgram();
         JacCompiler().get_bytecode(jac_file, prog);
 
@@ -3055,8 +3056,8 @@ test "llvmir ir has function definitions" {
     ir = prog.compile(
         str(os.path.join(FIXTURES, "arithmetic.jac")), options=native_force_opts()
     );
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    assert artifact_for(ir).llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(artifact_for(ir).llvm_ir);
     assert 'define i64 @"add"' in llvm_ir_str;
     assert 'define i64 @"multiply"' in llvm_ir_str;
     assert 'define i64 @"negate"' in llvm_ir_str;
@@ -3070,8 +3071,8 @@ test "clib import produces extern declares" {
         str(os.path.join(FIXTURES, "clib_import.jac")), options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    assert artifact_for(ir).llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(artifact_for(ir).llvm_ir);
     # Extern C functions should be 'declare' (no body), not 'define'
     assert 'declare double @"sqrt"' in llvm_ir_str;
     assert 'declare double @"pow"' in llvm_ir_str;
@@ -3080,8 +3081,8 @@ test "clib import produces extern declares" {
     # Native Jac function should be 'define' (has body)
     assert 'define double @"hypotenuse"' in llvm_ir_str;
     # Library path should be stored for the compile pass
-    assert ir.gen._clib_paths is not None;
-    assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
+    assert artifact_for(ir)._clib_paths is not None;
+    assert "/usr/lib/libm.so.6" in artifact_for(ir)._clib_paths;
 }
 
 test "single-file clib: _clib_symbol_lib attributes each symbol to its source lib" {
@@ -3098,7 +3099,7 @@ test "single-file clib: _clib_symbol_lib attributes each symbol to its source li
         str(os.path.join(FIXTURES, "clib_import.jac")), options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    sym_lib = ir.gen._clib_symbol_lib;
+    sym_lib = artifact_for(ir)._clib_symbol_lib;
     assert sym_lib , "_clib_symbol_lib not set on single-file module IR";
     assert "sqrt" in sym_lib , f"'sqrt' missing from _clib_symbol_lib: {sym_lib}";
     assert "pow" in sym_lib , f"'pow' missing from _clib_symbol_lib: {sym_lib}";
@@ -3120,7 +3121,7 @@ test "clib decl with no return arrow lowers to void, not i64" {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    s = str(ir.gen.llvm_ir);
+    s = str(artifact_for(ir).llvm_ir);
     assert 'declare void @"no_arrow"(double' in s , f"omitted return arrow did not lower to void: {s}";
     assert 'declare i64 @"no_arrow"' not in s , "omitted return arrow silently lowered to i64";
     # Parity with the explicit `-> None` spelling.
@@ -3134,16 +3135,16 @@ test "clib import inside na block" {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    assert artifact_for(ir).llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(artifact_for(ir).llvm_ir);
     # Extern C functions from na {} block should be 'declare'
     assert 'declare double @"ceil"' in llvm_ir_str;
     assert 'declare double @"floor"' in llvm_ir_str;
     # Native Jac function should be 'define'
     assert 'define double @"round_up"' in llvm_ir_str;
     # Library path should be stored
-    assert ir.gen._clib_paths is not None;
-    assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
+    assert artifact_for(ir)._clib_paths is not None;
+    assert "/usr/lib/libm.so.6" in artifact_for(ir)._clib_paths;
 }
 
 test "clib bytes argument lowers to a raw data pointer (issue #6940 Phase 2)" {
@@ -3159,8 +3160,8 @@ test "clib bytes argument lowers to a raw data pointer (issue #6940 Phase 2)" {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    assert artifact_for(ir).llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(artifact_for(ir).llvm_ir);
     # The extern's bytes parameter is declared as a raw i8*, not jacbytes*.
     assert 'declare i64 @"crc32_z"(i64 %"crc", i8* %"buf", i64 %"len")'
         in llvm_ir_str , (f"clib bytes param not declared as i8*: {llvm_ir_str}");
@@ -3182,12 +3183,14 @@ test "clib extensionless logical import produces extern declares (issue #6387)" 
         options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    s = str(ir.gen.llvm_ir);
+    s = str(artifact_for(ir).llvm_ir);
     assert 'declare void @"InitWindow"(i32' in s , "InitWindow not externed";
     assert 'declare void @"CloseWindow"()' in s , "CloseWindow not externed";
     assert 'define void @"open_then_close"' in s , "wrapper not defined";
-    assert ir.gen._clib_paths is not None;
-    assert len(ir.gen._clib_paths) == 1 , f"unexpected clib paths: {ir.gen._clib_paths}";
+    assert artifact_for(ir)._clib_paths is not None;
+    assert len(artifact_for(ir)._clib_paths) == 1 , f"unexpected clib paths: {artifact_for(
+        ir
+    )._clib_paths}";
     # Managed inertness: the bare-name `raylib` must NOT be resolved as a managed
     # module, so the type-checker emits no W1100 "module not found" for it. (A
     # W5021 "C library not found" at JIT time is expected here and unrelated --
@@ -3207,7 +3210,7 @@ test "clib extensionless import resolves per platform (issue #6387)" {
     # libraylib.so (ELF) / libraylib.dylib (Mach-O) / raylib.dll (PE). Cross-
     # targets through push_native_target, mirroring the AArch64 ABI test below.
     import os as _os;
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     _saved = push_native_target("");
     _fix = str(os.path.join(FIXTURES, "clib_logical_import.jac"));
     try {
@@ -3222,7 +3225,9 @@ test "clib extensionless import resolves per platform (issue #6387)" {
             prog = JacProgram();
             ir = prog.compile(_fix, options=CompileOptions());
             assert not prog.errors_had , f"{tgt}: {prog.errors_had}";
-            assert list(ir.gen._clib_paths) == [want] , f"{tgt}: got {ir.gen._clib_paths}, want [{want}]";
+            assert list(artifact_for(ir)._clib_paths) == [want] , f"{tgt}: got {artifact_for(
+                ir
+            )._clib_paths}, want [{want}]";
         }
     } finally {
         pop_native_target(_saved);
@@ -3234,16 +3239,21 @@ test "clib dotted logical import maps to origin-relative subdir (issue #6387)" {
     # lookup to the binary's directory via the loader token, composing with the
     # $ORIGIN / @loader_path runpath from #6380.
     import os as _os;
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     _saved = push_native_target("");
     _fix = str(os.path.join(FIXTURES, "clib_logical_dotted.jac"));
     try {
         push_native_target("x86_64-unknown-linux-gnu");
         ir = JacProgram().compile(_fix, options=CompileOptions());
-        assert list(ir.gen._clib_paths) == ["$ORIGIN/libs/libraylib.so"] , f"ELF: {ir.gen._clib_paths}";
+        assert list(artifact_for(ir)._clib_paths) == ["$ORIGIN/libs/libraylib.so"] , f"ELF: {artifact_for(
+            ir
+        )._clib_paths}";
         push_native_target("arm64-apple-darwin");
         ir2 = JacProgram().compile(_fix, options=CompileOptions());
-        assert list(ir2.gen._clib_paths) == ["@loader_path/libs/libraylib.dylib"] , f"Mach-O: {ir2.gen._clib_paths}";
+        assert list(artifact_for(ir2)._clib_paths)
+            == ["@loader_path/libs/libraylib.dylib"] , f"Mach-O: {artifact_for(
+            ir2
+        )._clib_paths}";
     } finally {
         pop_native_target(_saved);
     }
@@ -3251,8 +3261,8 @@ test "clib dotted logical import maps to origin-relative subdir (issue #6387)" {
 
 test "clib struct value-type coercion" {
     ir = compile_native_ir("clib_struct_coerce.jac");
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    assert artifact_for(ir).llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(artifact_for(ir).llvm_ir);
     # --- Large struct (Vec2: 128-bit, float fields) ---
     # Extern sqrt should use value type (f64 -> f64)
     assert 'declare double @"sqrt"' in llvm_ir_str;
@@ -3291,8 +3301,8 @@ test "clib System V AMD64 ABI lowering" {
         return;
     }
     ir = compile_native_ir("clib_sysv_abi.jac");
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    s = str(ir.gen.llvm_ir);
+    assert artifact_for(ir).llvm_ir is not None , "No LLVM IR generated";
+    s = str(artifact_for(ir).llvm_ir);
     # SSE eightbytes: float fields pack into <2 x float> / trailing float.
     assert 'declare float @"v2_sum"(<2 x float> %"v")' in s , "V2 -> <2 x float>";
     assert 'declare {<2 x float>, float} @"v3_scale"(<2 x float> %"v.0", float %"v.1", float %"s")'
@@ -3388,13 +3398,14 @@ test "clib AArch64 AAPCS ABI lowering" {
     # Cross-targets aarch64 (works from any host) and asserts the emitted
     # foreign-call ABI matches what clang produces under AAPCS (Phase 2 of #6353).
     import os as _os;
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     _saved = push_native_target("aarch64-unknown-linux-gnu");
     try {
         ir = compile_native_ir("clib_sysv_abi.jac");
-        assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-        s = str(ir.gen.llvm_ir);
-        assert "aarch64" in str(ir.gen.llvm_ir.triple) , "module not retargeted";
+        llvm_ir = artifact_for(ir).llvm_ir;
+        assert llvm_ir is not None , "No LLVM IR generated";
+        s = str(llvm_ir);
+        assert "aarch64" in str(llvm_ir.triple) , "module not retargeted";
         # Homogeneous float aggregates pass/return in SIMD regs as [N x float].
         assert 'declare float @"v2_sum"([2 x float] %"v")' in s , "V2 -> [2 x float]";
         assert 'declare [3 x float] @"v3_scale"([3 x float] %"v", float %"s")' in s , "V3 HFA arg + return";
@@ -3608,8 +3619,10 @@ glob CHESS_JAC = os.path.join(JAC_ROOT, "examples", "chess", "chess.jac");
 
 """Compile a regular .jac file under a native default and return the engine."""
 def compile_auto_native(file_path: str) -> tuple[uni.Module, JacProgram] {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.frontend.codeinfo { set_effective_default_codespace }
+    import from jaclang.compiler.session.options { CompileOptions }
+    import from jaclang.compiler.session.target_options {
+        set_effective_default_codespace
+    }
     prog = JacProgram();
     try {
         ir = prog.compile(
@@ -3629,14 +3642,14 @@ test "native default infers chess.jac native" {
     assert ir.decided_codespace == 'native' , (
         "chess.jac should infer native under a native default"
     );
-    assert ir.gen.native_engine is not None , (
+    assert artifact_for(ir).native_engine is not None , (
         "Inferred-native chess.jac should have a native engine"
     );
 }
 
 test "inferred-native chess.jac has entry and key functions" {
     (ir, _) = compile_auto_native(CHESS_JAC);
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None;
     # jac_entry must exist
     assert eng.get_function_address("jac_entry") != 0;
@@ -4558,8 +4571,8 @@ test "switch_stmt" {
 # --- TestJIRBitcodeCaching ---
 test "jir bitcode cache round-trip" {
     import struct;
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.jir {
+    import from jaclang.compiler.session.compiler { JacCompiler }
+    import from jaclang.compiler.session.cache.artifact_codec {
         SECTIONS_MAGIC,
         HEADER_SIZE,
         read_sections,
@@ -4617,7 +4630,7 @@ test "jir bitcode cache round-trip" {
 # --- CType struct contract: layout metadata and field types ---
 """struct layout exports correct field types"""
 def _func_ptr_fields__struct_layout_exports_correct_field_types(eng: any, ir: any) {
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "Native layout should be exported";
     assert "AllFields" in layout.structs , "AllFields struct should be in layout";
     af = layout.structs["AllFields"];
@@ -4631,7 +4644,7 @@ def _func_ptr_fields__struct_layout_exports_correct_field_types(eng: any, ir: an
 
 """struct layout tracks field indices correctly"""
 def _func_ptr_fields__struct_layout_tracks_field_indices_correctly(eng: any, ir: any) {
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None;
     af = layout.structs["AllFields"];
     indices = [f.index for f in af.fields];
@@ -4643,7 +4656,7 @@ def _func_ptr_fields__struct_layout_tracks_field_indices_correctly(eng: any, ir:
 def _func_ptr_fields__optional_field_compiles_to_a_tagged_optional_slot(
     eng: any, ir: any
 ) {
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None;
     assert "MaybePoint" in layout.structs;
     mp = layout.structs["MaybePoint"];
@@ -4699,7 +4712,7 @@ def _func_ptr_fields__maybe_point_struct_round_trip(eng: any, ir: any) {
 
 """NativeFieldInfo func_ptr defaults to False"""
 def _func_ptr_fields__nativefieldinfo_func_ptr_defaults_to_false(eng: any, ir: any) {
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None;
     af = layout.structs["AllFields"];
     for f in af.fields {
@@ -4713,7 +4726,7 @@ def _func_ptr_fields__nativefieldinfo_func_ptr_defaults_to_false(eng: any, ir: a
 def _func_ptr_fields__function_layout_exports_param_and_return_types(
     eng: any, ir: any
 ) {
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None;
     assert "add" in layout.functions;
     add_layout = layout.functions["add"];
@@ -4723,7 +4736,7 @@ def _func_ptr_fields__function_layout_exports_param_and_return_types(
 
 """layout exports all expected functions"""
 def _func_ptr_fields__layout_exports_all_expected_functions(eng: any, ir: any) {
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None;
     expected = {
         "add",
@@ -4837,7 +4850,7 @@ test "fnptr_null_default" {
 def _clib_vtable_trampoline__clib_vtable_slot_store_emits_c_abi_trampoline_issue_6570(
     _eng: any, ir: any
 ) {
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    llvm_ir_str = str(artifact_for(ir).llvm_ir);
     # The Jac def has native signature i64(i64, i64); the slot declares
     # i32(i32, i32). Storing it must go through a __clibcb trampoline with
     # the C signature, not a raw bitcast of the Jac function.
@@ -4851,7 +4864,7 @@ def _clib_vtable_trampoline__clib_vtable_slot_store_emits_c_abi_trampoline_issue
 def _clib_vtable_trampoline__clib_vtable_trampolines_are_cached_per_fn_type_pair_issue_6570(
     _eng: any, ir: any
 ) {
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    llvm_ir_str = str(artifact_for(ir).llvm_ir);
     # One store site → exactly one trampoline definition.
     assert llvm_ir_str.count("define internal i32 @\"_on_event.__clibcb.0\"") == 1;
     assert "_on_event.__clibcb.1" not in llvm_ir_str;
@@ -4862,7 +4875,7 @@ def _clib_vtable_trampoline__clib_vtable_trampolines_are_cached_per_fn_type_pair
 def _clib_vtable_trampoline__clib_vtable_structs_allocate_flat_without_rc_header_issue_6571(
     _eng: any, ir: any
 ) {
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    llvm_ir_str = str(artifact_for(ir).llvm_ir);
     # C reads the vtable starting at field 0 (CEF validates struct->size
     # there) and owns its lifetime, so the instance must be plain zeroed C
     # memory — no RC header, no destructor, no type tag.
@@ -4956,7 +4969,7 @@ test "clib vtable: C invokes Jac callback through trampoline (issue #6570)" {
     ir = prog.compile(jac_src_path, options=native_force_opts());
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "No native engine produced";
     # C calls back into the Jac def via the trampoline: i32 args widen to
     # the Jac i64 params, the i64 result narrows to the slot's i32.
@@ -4998,7 +5011,7 @@ test "cross module glob init compiles without errors" {
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir is not None;
-    assert ir.gen.native_engine is not None , "No native engine created";
+    assert artifact_for(ir).native_engine is not None , "No native engine created";
 }
 
 test "cross module glob init: imported glob is non-null on first access" {
@@ -5101,7 +5114,7 @@ test "mixed transitive dup: unique symbol from B resolves after A was linked" {
 # distinct, and the result must stay LLVM-identifier-safe.
 test "native_safe_sym disambiguates flat vs dotted path collision" {
     import re;
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+    import from jaclang.compiler.backends.native.naming { native_safe_sym }
     flat = "math_utils.na";
     dotted = "math/utils.na";
     # Document the pre-existing collision under the legacy transform: both
@@ -5248,7 +5261,7 @@ test "third module struct: compiles without type errors" {
         str(os.path.join(FIXTURES, "fix_third_entry.jac")), options=native_force_opts()
     );
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
-    assert ir.gen.native_engine is not None , "No native engine";
+    assert artifact_for(ir).native_engine is not None , "No native engine";
 }
 
 """third module struct: value field survives cross-module round-trip"""
@@ -5292,7 +5305,7 @@ test "cross-module subscript: compiles without errors" {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
-    assert ir.gen.native_engine is not None , "No native engine";
+    assert artifact_for(ir).native_engine is not None , "No native engine";
 }
 
 test "cross-module subscript: inline ITEMS[0].value returns correct value" {
@@ -5335,7 +5348,7 @@ test "transitive glob init: compiles without errors" {
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir is not None;
-    assert ir.gen.native_engine is not None , "No native engine created";
+    assert artifact_for(ir).native_engine is not None , "No native engine created";
 }
 
 test "transitive glob init: glob list in deep module is not null (no segfault)" {
@@ -5371,7 +5384,7 @@ test "transitive clib: compiles without errors when dep imports a .so" {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.native_engine is not None , "No native engine created";
+    assert artifact_for(ir).native_engine is not None , "No native engine created";
 }
 
 test "transitive clib: _clib_paths of dep module propagated to entry module" {
@@ -5383,7 +5396,7 @@ test "transitive clib: _clib_paths of dep module propagated to entry module" {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    clib_paths = ir.gen._clib_paths;
+    clib_paths = artifact_for(ir)._clib_paths;
     assert clib_paths , "_clib_paths not set on entry module IR";
     assert any("/libm" in p or "libm" in p for p in clib_paths) , f"libm not found in transitive _clib_paths: {clib_paths}";
 }
@@ -5402,7 +5415,7 @@ test "transitive clib: _clib_symbol_lib of dep module propagated to entry module
         options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    sym_lib = ir.gen._clib_symbol_lib;
+    sym_lib = artifact_for(ir)._clib_symbol_lib;
     assert sym_lib , "_clib_symbol_lib not propagated to entry module IR";
     assert "sqrt" in sym_lib , f"transitive symbol 'sqrt' missing from _clib_symbol_lib: {sym_lib}";
     assert "libm" in sym_lib["sqrt"] , f"sqrt attributed to wrong library: {sym_lib[
@@ -5435,7 +5448,7 @@ test "dup clib: importing compiler-internal symbols compiles without DuplicatedN
         str(os.path.join(FIXTURES, "fix_dup_clib.jac")), options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors (expected none, DuplicatedNameError before fix): {prog.errors_had}";
-    assert ir.gen.native_engine is not None , "No native engine created";
+    assert artifact_for(ir).native_engine is not None , "No native engine created";
 }
 
 """dup clib: user-declared strlen returns correct length for 'hello'"""
@@ -5482,7 +5495,7 @@ test "ptr-to-int coerce: compiles without IR type mismatch" {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.native_engine is not None , "No native engine created";
+    assert artifact_for(ir).native_engine is not None , "No native engine created";
 }
 
 """ptr-to-int coerce: strlen(int-param) called with str returns correct length"""
@@ -6274,7 +6287,7 @@ test "union_field_access" {
 # --- TestNativeTestBlocks ---
 """native test blocks compile to pass/fail functions"""
 def _test_blocks__native_test_blocks_compile_to_pass_fail_functions(eng: any, ir: any) {
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None;
     tests = layout.tests;
     assert len(tests) == 3 , f"expected 3 test entries in layout, got {len(tests)}";
@@ -6313,7 +6326,7 @@ def _test_blocks__a_failing_native_test_must_not_abort_the_host_process(
     # The implicit per-test handler is what stands between a failing assert
     # and the no-handler abort() path -- calling the failing test twice in
     # one process proves the handler is popped/re-armed correctly too.
-    blocks_layout = ir.gen.native_layout;
+    blocks_layout = artifact_for(ir).native_layout;
     assert blocks_layout is not None , "native layout missing";
     by_name = {t.name: t for t in blocks_layout.tests};
     failing = get_func(eng, by_name["test_deliberate_failure"].symbol, ctypes.c_char_p);
@@ -6396,8 +6409,8 @@ test "jac test runs inferred-native test blocks natively (item #19)" {
 test "restore-failure falls back to recompile for inferred modules (item #19)" {
     import shutil;
     import from unittest.mock { patch }
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.compiler { JacCompiler }
+    import from jaclang.compiler.session.target_options {
         set_effective_default_codespace,
         get_effective_default_codespace_override
     }
@@ -6453,8 +6466,8 @@ test "ptr subscript read/write: no E5090 and correct GEP IR (#6707, #6708)" {
         if e.code and e.code.code == "E5090"
     ];
     assert not e5090 , f"Unexpected E5090 errors: {e5090}";
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    s = str(ir.gen.llvm_ir);
+    assert artifact_for(ir).llvm_ir is not None , "No LLVM IR generated";
+    s = str(artifact_for(ir).llvm_ir);
     # Read path (#6708): single-index GEP on the StructName* base yields the
     # element pointer, which is returned as-is (aliases the buffer, no copy).
     assert "ptr.elem.ptr" in s , "Expected array-element GEP (ptr.elem.ptr)";

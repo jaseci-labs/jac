@@ -23,15 +23,18 @@ audit reports a bare builtin (`E5103`) rather than shipping it, so this class
 cannot go silent again.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import shutil;
 import tempfile;
-import from jaclang.client.client_bundle { _client_target_module, _ensure_js_generated }
+import from jaclang.compiler.pipeline.products { require_product }
+import from jaclang.compiler.pipeline.contracts { CompilationProduct, AnalysisFact }
 import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pass_driver { run_pass }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.unitree { Module }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.pipeline.executor { run_pass }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.ir.schema { Module }
 
 
 glob _HELPER_SRC: str = (
@@ -100,40 +103,98 @@ def _codes(prog: JacProgram) -> list[str] {
     ];
 }
 
+test "cached walker imports retain their client endpoint contract" {
+    import json;
+    import from pathlib { Path }
+    import from jaclang.compiler.session.context { artifact_cache_path }
+    with tempfile.TemporaryDirectory() as base {
+        project = Path(base);
+        (project / "jac.toml").write_text(
+            "[project]\nname = 'walker-contract'\n"
+            "[apps.service]\nkind = 'service'\nentry-point = 'provider'\n"
+            "[placement.pins]\nclient = 'client'\n"
+        );
+        provider = str(project / "provider.jac");
+        Path(provider).write_text(
+            "walker:pub Report { has value: int; "
+            "can run with Root entry { report self.value; } }\n"
+        );
+        client = str(project / "client.jac");
+        Path(client).write_text(
+            "import from provider { Report as RemoteReport }\n"
+            "async def invoke -> any { return root spawn RemoteReport(value=3); }\n"
+        );
+        options = CompileOptions(
+            no_cgen=True,
+            native_parity=True,
+            force_target_program=True,
+            iface_ok=True,
+            entry_point=client,
+            project_root=base
+        );
+        cold = JacProgram();
+        cold_mod = cold.compile(client, options=options);
+        assert not cold.errors_had , _codes(cold);
+        context = cold.module_context(cold_mod);
+        assert isinstance(context, JacProgram);
+        cache = artifact_cache_path(client, context);
+        cold.release_compile_closure(collect=False);
+        cache.unlink(missing_ok=True);
+        warm = JacProgram();
+        mod = warm.compile(client, options=options);
+        assert not warm.errors_had , _codes(warm);
+        assert warm.analysis.cache_events.get('dep_hydrate', 0) > 0 , (
+            "the regression must exercise a cached provider interface"
+        );
+        binding = artifact_for(mod).interop_manifest.bindings.get('RemoteReport');
+        assert binding is not None , "walker binding was not prepared";
+        expected = '["service","provider.jac","walker","Report"]';
+        assert binding.endpoint_id == expected;
+        assert require_product(warm, mod, CompilationProduct.CLIENT);
+        assert json.dumps(expected) in artifact_for(mod).js , (
+            "client code generation dropped the prepared endpoint contract"
+        );
+    }
+}
+
 
 test "a second client build lowers exactly what the first one did" {
     (base, widget) = _project();
     try {
         cold = JacProgram();
         cold_mod = cold.compile(widget, options=CompileOptions(no_cgen=True));
-        run_pass(EsastGenPass, cold_mod, cold);
+        run_pass(PassIdentity.EsastGenPass, cold_mod, cold);
         assert _codes(cold) == [] , _codes(cold);
-        assert _client_target_module(widget, cold) is cold_mod , (
+        assert cold._get_compiler().client_codegen_target(widget, cold) is cold_mod , (
             "a fully compiled module is the client codegen target for its source"
         );
 
         warm = JacProgram();
         warm_dep = _ingest_as_dependency(warm, widget);
-        assert not warm.analysis.analyses_run.provides(warm_dep, "TypeOf") , (
+        assert not warm.analysis.provides(warm_dep, AnalysisFact.TYPE_OF) , (
             "the dependency schedule is supposed to leave the module unanalyzed;"
             " this test no longer reproduces the warm shape"
         );
-        assert _client_target_module(widget, warm) is None , (
+        assert warm._get_compiler().client_codegen_target(widget, warm) is None , (
             "an analysis-free hub entry was handed to client codegen as a target"
         );
 
         warm_mod = warm.compile(widget, options=CompileOptions(no_cgen=True));
-        assert _client_target_module(widget, warm) is warm_mod , (
+        assert warm._get_compiler().client_codegen_target(widget, warm) is warm_mod , (
             "the warm build never reached a module carrying checker facts"
         );
-        _ensure_js_generated(warm_mod, warm);
+        assert require_product(warm, warm_mod, CompilationProduct.CLIENT);
         assert _codes(warm) == [] , _codes(warm);
-        assert warm_mod.gen.js == cold_mod.gen.js , (
+        assert artifact_for(warm_mod).js == artifact_for(cold_mod).js , (
             "the warm bundle differs from the cold one:\n"
-            + _first_delta(cold_mod.gen.js, warm_mod.gen.js)
+            + _first_delta(artifact_for(cold_mod).js, artifact_for(warm_mod).js)
         );
-        assert "_jac.builtin.enumerate(" in warm_mod.gen.js , warm_mod.gen.js;
-        assert "_jac.builtin.range(" in warm_mod.gen.js , warm_mod.gen.js;
+        assert "_jac.builtin.enumerate(" in artifact_for(warm_mod).js , artifact_for(
+            warm_mod
+        ).js;
+        assert "_jac.builtin.range(" in artifact_for(warm_mod).js , artifact_for(
+            warm_mod
+        ).js;
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }
@@ -156,11 +217,11 @@ test "an unlowered builtin in the bundle is an error, never silence" {
     try {
         prog = JacProgram();
         mod = _ingest_as_dependency(prog, widget);
-        run_pass(EsastGenPass, mod, prog);
+        run_pass(PassIdentity.EsastGenPass, mod, prog);
         codes = _codes(prog);
         assert "E5103" in codes , (
             f"a bare builtin call shipped without a diagnostic: {codes}\n"
-            f"{mod.gen.js}"
+            f"{artifact_for(mod).js}"
         );
         named = [
             str(e)

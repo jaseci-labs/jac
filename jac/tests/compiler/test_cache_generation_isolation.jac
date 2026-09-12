@@ -18,8 +18,8 @@ import os;
 import tempfile;
 import time;
 import from pathlib { Path }
-import jaclang.compiler.driver.jir as jir;
-import from jaclang.compiler.driver.jir {
+import jaclang.compiler.session.cache.artifact_codec as jir;
+import from jaclang.compiler.session.cache.artifact_codec {
     get_module_cache_path,
     get_native_cache_dir,
     sweep_stale_generations
@@ -142,7 +142,7 @@ test "a zero TTL disables the sweep" {
 }
 
 test "JacPython sources participate in the producing compiler identity" {
-    import from jaclang.compiler.driver.jir {
+    import from jaclang.compiler.session.cache.artifact_codec {
         compiler_source_digest,
         _manifest_compiler_digest
     }

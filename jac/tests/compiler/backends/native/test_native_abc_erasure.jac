@@ -4,7 +4,7 @@
 solver treats as an all-or-nothing verdict on the whole module: one such line
 demotes the file and, through `_native_deps_ok`, every module whose import
 closure reaches it. Two of the compiler's most widely-reached modules carry
-exactly that line -- `types/types.jac` and `compiler/passes/transform.jac`,
+exactly that line -- `types/types.jac` and `compiler/pipeline/pass_base.jac`,
 the base every pass inherits -- so the reach was most of the pass tree.
 
 Nothing about `ABC` needs to survive to run time. Jac models abstractness with
@@ -23,11 +23,12 @@ subclassing a native unit cannot honor. Those refusals are pinned below
 alongside the acceptance, so the boundary cannot drift in either direction.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
-import from jaclang.compiler.placement.placement { scan_native_blockers }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.analysis.placement.evidence { scan_native_blockers }
+import from jaclang.compiler.session.session { JacProgram }
 import from tests.support { JAC_ROOT, native_force_opts }
 
 glob FIXTURES = os.path.join(
@@ -98,7 +99,7 @@ test "an ABC base over an abst method lowers natively" {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the abc fixture";
+    assert ir is not None and artifact_for(ir).llvm_ir , "no native IR for the abc fixture";
 }
 
 
@@ -109,7 +110,7 @@ test "the erased base leaves the archetype's behavior intact" {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine for the abc fixture";
     addr = eng.get_function_address("run");
     assert addr != 0 , "'run' is absent from the JIT engine";

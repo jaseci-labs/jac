@@ -664,7 +664,7 @@ test "--serve is a plain serve: the kind's dev default does not ride along" {
 }
 
 test "python backend overrides a native project and restores compiler context" {
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.target_options {
         get_effective_default_codespace_override
     }
     d = _mk_project("kind = \"cli-native\"\n", "main.jac");
@@ -724,7 +724,7 @@ test "backend override rejects unsupported execution modes" {
 }
 
 test "python backend restores compiler context when compilation fails" {
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.target_options {
         get_effective_default_codespace_override
     }
     d = _mk_project("kind = \"cli\"\n", "broken.jac", "with entry { print(");

@@ -288,16 +288,18 @@ def _dedup_edges(edges: list[tuple[str, str]]) -> list[tuple[str, str]] {
 def _compiled_app_edges(
     entry_path: str, app_name: str, app_kind: str, project_root: str
 ) -> list[tuple[str, str]] {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.session.options { CompileOptions }
+    import from jaclang.compiler.api { compile_application }
     prog = JacProgram();
-    prog.compile(
+    compile_application(
+        prog,
         entry_path,
-        options=CompileOptions(
+        CompileOptions(
             no_cgen=True,
             target_app=app_name,
             app_kind=app_kind,
+            entry_point=entry_path,
             project_root=project_root
         )
     );
@@ -308,42 +310,15 @@ def _compiled_app_edges(
         );
     }
     edges: list[tuple[str, str]] = [];
-    seen: set[int] = set();
-    while True {
-        fresh: list[any] = [];
-        for hub in list(prog._search_hubs()) {
-            for mod in list(hub.values()) {
-                if id(mod) not in seen {
-                    seen.add(id(mod));
-                    fresh.append(mod);
-                }
-            }
+    for mod in prog.mod.hub.values() {
+        context = prog.module_context(mod);
+        record = context.analysis.artifacts.records.get(mod);
+        if record is None {
+            continue;
         }
-        if not fresh {
-            break;
-        }
-        for mod in fresh {
-            if not (mod and mod.gen) {
-                continue;
-            }
-            man = mod.gen.interop_manifest;
-            if man is None {
-                continue;
-            }
-            if not man.app_edges and not (man.walker_access or man.func_access) {
-                try {
-                    require_product(prog, mod, CompilationProduct.BOUNDARIES);
-                    man = mod.gen.interop_manifest;
-                } except Exception {
-                    continue;
-                }
-                if man is None {
-                    continue;
-                }
-            }
-            for (consumer, provider) in list(man.app_edges) {
-                edges.append((str(consumer), str(provider)));
-            }
+        manifest = record.peek_interop();
+        if manifest is not None {
+            edges.extend(manifest.app_edges);
         }
     }
     return edges;

@@ -1,6 +1,6 @@
 """Field declarations validate values and synthesized constructor contracts."""
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 def check_fields(source: str) -> list[str] {
     program = JacProgram();
@@ -23,8 +23,8 @@ test "an aliased field marker preserves the declared value type" {
 }
 
 test "field markers retain import provenance before type analysis" {
-    import from jaclang.compiler.field_semantics { is_field_marker }
-    import from jaclang.compiler.frontend.unitree { FuncCall, HasVar }
+    import from jaclang.compiler.analysis.types.field_semantics { is_field_marker }
+    import from jaclang.compiler.ir.schema { FuncCall, HasVar }
     program = JacProgram();
     module = program.compile(
         file_path="early_field_marker.jac",

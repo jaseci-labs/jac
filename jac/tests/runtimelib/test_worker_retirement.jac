@@ -12,6 +12,8 @@ carries the memory bound; either can be disabled with 0.
 """
 
 import from jaclang.testing.test_runner { _should_retire, _worker_rss_mb }
+import mmap;
+import sys;
 
 test "a worker under both bounds keeps serving" {
     assert not _should_retire(served=3, recycle=25, rss_mb=400, rss_cap=2048);
@@ -39,4 +41,20 @@ test "the worker can read its own footprint" {
     mb = _worker_rss_mb();
     assert mb > 0 , "a live worker reports no resident memory";
     assert mb < 1024 * 1024 , f"implausible footprint {mb} MB: check the unit";
+}
+
+test "released Linux memory no longer counts toward worker retirement" {
+    if sys.platform != "linux" {
+        return;
+    }
+    before = _worker_rss_mb();
+    with mmap.mmap(-1, 64 * 1024 * 1024) as allocation {
+        for offset in range(0, len(allocation), 4096) {
+            allocation[offset] = 1;
+        }
+        during = _worker_rss_mb();
+        assert during >= before + 48 , (before, during);
+    }
+    after = _worker_rss_mb();
+    assert after <= during - 48 , (before, during, after);
 }

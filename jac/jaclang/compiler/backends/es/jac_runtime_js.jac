@@ -1,3 +1,4 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 glob JAC_RUNTIME_JS_OBJECT: str = r"""{
   int: {
     bit_length(n) {
@@ -1560,7 +1561,7 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
      _JS_RESERVED_EXC_NAMES: set[str] = {"TypeError", "ReferenceError"};
 
 def _build_exc_runtime_js -> str {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import from jaclang.compiler.analysis.types.type_registry { JAC_TYPE_REGISTRY }
     lines: list[str] = ["(() => {"];
     exports: list[str] = [];
     for (name, parent) in JAC_TYPE_REGISTRY.exception_entries() {
@@ -1599,8 +1600,8 @@ def _build_exc_runtime_js -> str {
 }
 
 def _build_types_runtime_js -> str {
-    import from jaclang.compiler.frontend.constant { TOKEN_MAP }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import from jaclang.compiler.ir.enums { TOKEN_MAP }
+    import from jaclang.compiler.analysis.types.type_registry { JAC_TYPE_REGISTRY }
     import from jaclang.compiler.backends.es.es_unparse { JSCodeGenerator }
     import from jaclang.compiler.backends.es.primitives_es {
         ESBuiltinEmitter,
@@ -1899,11 +1900,11 @@ def build_osp_core_js -> str {
         osp_core_unit_path,
         store_unit_artifact
     }
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
     import from jaclang.compiler.backends.es.es_unparse { es_to_js }
     import from jaclang.compiler.backends.es { estree as es }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     fp = es_pass_fingerprint();
     cl_copy = osp_core_unit_path('cl');
     cached = load_unit_artifact(cl_copy, "mjs", fp);
@@ -1916,11 +1917,12 @@ def build_osp_core_js -> str {
         file_path=cl_copy,
         options=CompileOptions(force_codespace='client', no_cgen=True)
     );
-    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
+    import from jaclang.compiler.pipeline.products { require_product }
+    import from jaclang.compiler.pipeline.contracts { CompilationProduct }
     if not require_product(prog, ir, CompilationProduct.CLIENT) {
         raise RuntimeError("Could not compile OSP client runtime");
     }
-    program = ir.gen.es_ast;
+    program = artifact_for(ir).es_ast;
     kept: list = [];
     if isinstance(program, es.Program) {
         for stmt in program.body {

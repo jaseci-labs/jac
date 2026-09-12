@@ -1,5 +1,5 @@
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes { UniPass }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.pipeline.uni_pass { UniPass }
 import from jaclang.compiler.frontend.parser.tokens { BUILTIN_TYPE_KINDS, TokenKind }
 import from jaclang.runtime.osp_kernel { osp_skip_rest }
 

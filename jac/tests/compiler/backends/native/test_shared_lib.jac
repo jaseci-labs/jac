@@ -11,19 +11,17 @@ cases are validated structurally (filetype + export table + init mechanism),
 since those binaries cannot be executed on a Linux host.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
+import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import struct;
 import sys;
 import tempfile;
 import from pathlib { Path }
 import from tests.support { TESTS_DIR }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.compiler.backends.native.na_compile_pass { native_linked_ir_text }
 import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
 import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
@@ -64,7 +62,7 @@ def emit_shared_object(fixture: str, triple: str) -> tuple {
             str(e) for e in prog.errors_had
         ]}";
         ir_txt = native_linked_ir_text(ir);
-        exports = list(ir.gen._exported_symbols);
+        exports = list(artifact_for(ir)._exported_symbols);
         # Delegate to the production emitter so shared-init + RC-wrapper
         # injection is identical to `jac build --native --lib` (no divergence).
         (src, _extra_exports) = _inject_shared_init(ir_txt, []);

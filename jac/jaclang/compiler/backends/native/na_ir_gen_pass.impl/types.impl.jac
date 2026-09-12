@@ -1,10 +1,9 @@
-import from jaclang.compiler.expr_keys { type_tag_borrows }
 impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
     if t is None {
         return None;
     }
     try {
-        import from jaclang.compiler.types.types {
+        import from jaclang.compiler.ir.types.nodes {
             ClassType as _ClassType,
             UnionType as _UnionType,
             FunctionType as _FunctionType,
@@ -194,7 +193,7 @@ impl NaIRGenPass._enum_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     if not isinstance(expr, uni.Expr) {
         return None;
     }
-    import from jaclang.compiler.types.types {
+    import from jaclang.compiler.ir.types.nodes {
         ClassType as EnumClassType,
         EnumMemberType,
         TypeBase,
@@ -308,7 +307,7 @@ impl NaIRGenPass._spec_name_match(tk: str, names: tuple) -> bool {
 
 impl NaIRGenPass._opt_sole_member(t: any) -> (TypeBase | None) {
     try {
-        import from jaclang.compiler.types.types {
+        import from jaclang.compiler.ir.types.nodes {
             ClassType as _OsClassType,
             UnionType as _OsUnionType
         }
@@ -336,7 +335,7 @@ impl NaIRGenPass._opt_sole_member(t: any) -> (TypeBase | None) {
 
 impl NaIRGenPass._spec_union_agreement(t: any, names: tuple) -> (any | None) {
     try {
-        import from jaclang.compiler.types.types {
+        import from jaclang.compiler.ir.types.nodes {
             ClassType as _SuClassType,
             UnionType as _SuUnionType
         }
@@ -587,7 +586,7 @@ impl NaIRGenPass._elem_storage_llvm(t: any) -> (ir.Type | None) {
         return None;
     }
     try {
-        import from jaclang.compiler.types.types {
+        import from jaclang.compiler.ir.types.nodes {
             ClassType as _EsClassType,
             UnionType as _EsUnionType
         }
@@ -707,7 +706,7 @@ impl NaIRGenPass._elem_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
 
 impl NaIRGenPass._lower_view_container(t: any) -> (ir.Type | None) {
     try {
-        import from jaclang.compiler.types.types { ClassType as _VcClassType }
+        import from jaclang.compiler.ir.types.nodes { ClassType as _VcClassType }
     } except ImportError {
         return None;
     }
@@ -933,7 +932,7 @@ impl NaIRGenPass._aos_elem_name(t: any) -> (str | None) {
         return None;
     }
     try {
-        import from jaclang.compiler.types.types {
+        import from jaclang.compiler.ir.types.nodes {
             ClassType as _AeClassType,
             TypeVarType as _AeTypeVarType
         }
@@ -1137,7 +1136,7 @@ impl NaIRGenPass._widened_tuple_decl_type(
         }
     } else {
         try {
-            import from jaclang.compiler.types.types { ClassType as _WdClassType }
+            import from jaclang.compiler.ir.types.nodes { ClassType as _WdClassType }
         } except ImportError {
             return None;
         }
@@ -1165,7 +1164,7 @@ impl NaIRGenPass._resolve_field_type(var: uni.UniNode) -> ir.Type {
     _ptb = var?.type;
     if _ptb is not None {
         try {
-            import from jaclang.compiler.types.types { FunctionType as _FieldFnType }
+            import from jaclang.compiler.ir.types.nodes { FunctionType as _FieldFnType }
             if isinstance(_ptb, _FieldFnType) {
                 return self._lower_function_type_raw(_ptb);
             }
@@ -1184,7 +1183,9 @@ impl NaIRGenPass._resolve_field_type(var: uni.UniNode) -> ir.Type {
             return ir.IntType(8).as_pointer();
         }
         try {
-            import from jaclang.compiler.types.types { TypeVarType as _RfTypeVarType }
+            import from jaclang.compiler.ir.types.nodes {
+                TypeVarType as _RfTypeVarType
+            }
             if isinstance(_ptb, _RfTypeVarType) {
                 return ir.IntType(8).as_pointer();
             }
@@ -1242,7 +1243,7 @@ impl NaIRGenPass._resolve_field_type(var: uni.UniNode) -> ir.Type {
 
 impl NaIRGenPass._foreign_optional_field(tb: any) -> bool {
     try {
-        import from jaclang.compiler.types.types {
+        import from jaclang.compiler.ir.types.nodes {
             ClassType as _FofClassType,
             UnionType as _FofUnionType,
             UnknownType as _FofUnknownType
@@ -1267,7 +1268,7 @@ impl NaIRGenPass._foreign_optional_field(tb: any) -> bool {
         return False;
     }
     try {
-        import from jaclang.compiler.types.types { TypeVarType as _FofTypeVarType }
+        import from jaclang.compiler.ir.types.nodes { TypeVarType as _FofTypeVarType }
     } except ImportError {
         return False;
     }
@@ -1288,7 +1289,7 @@ impl NaIRGenPass._foreign_optional_field(tb: any) -> bool {
 
 impl NaIRGenPass._erased_typevar_names(tb: any) -> list[str] {
     try {
-        import from jaclang.compiler.types.types { TypeVarType as _EtvTypeVarType }
+        import from jaclang.compiler.ir.types.nodes { TypeVarType as _EtvTypeVarType }
     } except ImportError {
         return [];
     }
@@ -1309,7 +1310,7 @@ impl NaIRGenPass._erased_typevar_names(tb: any) -> list[str] {
 
 impl NaIRGenPass._typevar_optional_field(tb: any) -> bool {
     try {
-        import from jaclang.compiler.types.types {
+        import from jaclang.compiler.ir.types.nodes {
             ClassType as _TvoClassType,
             UnionType as _TvoUnionType,
             TypeVarType as _TvoTypeVarType
@@ -1351,7 +1352,7 @@ impl NaIRGenPass._erased_seq_type(tb: any) -> (ir.Type | None) {
     else that fails to lower deserves.
     """;
     try {
-        import from jaclang.compiler.types.types { ClassType as _EsqClassType }
+        import from jaclang.compiler.ir.types.nodes { ClassType as _EsqClassType }
     } except ImportError {
         return None;
     }
@@ -1371,7 +1372,7 @@ impl NaIRGenPass._erased_seq_type(tb: any) -> (ir.Type | None) {
 
 impl NaIRGenPass._type_base_is_unknown(tb: any) -> bool {
     try {
-        import from jaclang.compiler.types.types { UnknownType as _UnknownType }
+        import from jaclang.compiler.ir.types.nodes { UnknownType as _UnknownType }
         return isinstance(tb, _UnknownType);
     } except ImportError {
         return True;
@@ -1951,7 +1952,7 @@ impl NaIRGenPass._apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Val
         return val;
     }
     try {
-        import from jaclang.compiler.types.types { ClassType as _ClassType }
+        import from jaclang.compiler.ir.types.nodes { ClassType as _ClassType }
     } except ImportError {
         return val;
     }
@@ -2035,7 +2036,7 @@ impl NaIRGenPass._unbox_narrowed_member(
     }
     _nt = nd.narrowed_type;
     try {
-        import from jaclang.compiler.types.types { ClassType as _ClassType }
+        import from jaclang.compiler.ir.types.nodes { ClassType as _ClassType }
     } except ImportError {
         return val;
     }
@@ -3068,7 +3069,7 @@ impl NaIRGenPass._emit_binary_op(
 impl NaIRGenPass._emit_arch_dunder_binop(
     op: str, left: ir.Value, right: ir.Value
 ) -> (ir.Value | None) {
-    import from jaclang.compiler.types.operations { BINARY_OPERATOR_MAP }
+    import from jaclang.compiler.analysis.types.operations { BINARY_OPERATOR_MAP }
     _pair = BINARY_OPERATOR_MAP.get(op);
     if _pair is None {
         return None;

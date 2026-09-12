@@ -38,14 +38,15 @@ PY_BOOT_MODULES = {
 
 
 _STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
-_COMPTIME_RE = re.compile(r"(?<![\w`])comptime\b")
+_COMPTIME_RE = re.compile(r"(?<![\w`.])comptime\b")
 
 
 def _comptime_keyword_lines(source: str) -> list[tuple[int, str]]:
     """Lines where `comptime` appears as a keyword, not inside a string.
 
     Comments and string literals are blanked before matching; a triple-quoted
-    block spanning several lines is skipped as a whole.
+    block spanning several lines is skipped as a whole. A dotted module/member
+    name such as analysis.comptime is an identifier, not a comptime operation.
     """
     hits: list[tuple[int, str]] = []
     in_block = False

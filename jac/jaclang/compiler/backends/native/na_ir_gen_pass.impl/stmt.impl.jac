@@ -228,7 +228,7 @@ impl NaIRGenPass._del_target_holds_graph(target: uni.Expr) -> bool {
     if uni.DeleteStmt.type_has_graph_member(target.type) {
         return True;
     }
-    _model = self.ir_in.gen.osp_model;
+    _model = artifact_for(self.ir_in).osp_models.get(CodeContext.NATIVE);
     _type_key = self._type_key_of(target);
     if (_model is None) or (_type_key is None) {
         return False;
@@ -653,7 +653,7 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     self.loop_stack.append((cond_bb, end_bb));
     self.builder.position_at_end(body_bb);
 
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+    import from jaclang.compiler.analysis.ownership.rc_facts_pass { loop_body_locals }
     _while_body_locals = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
@@ -682,7 +682,7 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
 }
 
 impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+    import from jaclang.compiler.analysis.ownership.rc_facts_pass { loop_body_locals }
     _region_body_locals = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
@@ -740,7 +740,7 @@ impl NaIRGenPass._codegen_forever(nd: uni.ForeverStmt) -> None {
     self.loop_stack.append((body_bb, end_bb));
     self.builder.position_at_end(body_bb);
 
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+    import from jaclang.compiler.analysis.ownership.rc_facts_pass { loop_body_locals }
     _forever_body_locals = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
@@ -788,7 +788,7 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
 
     self.loop_stack.append((step_bb, end_bb));
     self.builder.position_at_end(body_bb);
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+    import from jaclang.compiler.analysis.ownership.rc_facts_pass { loop_body_locals }
     _saved_locals = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
@@ -947,7 +947,9 @@ impl NaIRGenPass._match_subj_ty(expr: (uni.UniNode | None)) -> (TypeBase | None)
     tag_expr = tag.tag if tag is not None else None;
     if isinstance(tag_expr, uni.Expr) and tag_expr.type is not None {
         try {
-            import from jaclang.compiler.types.type_utils { convert_to_instance }
+            import from jaclang.compiler.analysis.types.type_utils {
+                convert_to_instance
+            }
             return convert_to_instance(tag_expr.type);
         } except ImportError {
             return tag_expr.type;
@@ -2454,7 +2456,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 and not is_inplace_set_op
                 and not _is_raw_int_ptr
             ) {
-                import from jaclang.compiler.frontend.constant { OwnershipKind }
+                import from jaclang.compiler.ir.enums { OwnershipKind }
                 _own_str_re = (
                     self._nogc_headerless()
                     and len(nd.target) == 1
@@ -2711,7 +2713,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } else {
                     self.rc_ops_elided += 1;
                 }
-                import from jaclang.compiler.frontend.constant { OwnershipKind }
+                import from jaclang.compiler.ir.enums { OwnershipKind }
                 _own_str_glob = (
                     self._nogc_headerless()
                     and self._str_desc_ty is not None
@@ -2900,7 +2902,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 if getattr(value, 'opname', '') == 'inttoptr' {
                     self.param_vars.add(var_name);
                 } else {
-                    import from jaclang.compiler.frontend.constant { OwnershipKind }
+                    import from jaclang.compiler.ir.enums { OwnershipKind }
                     _own_str_tgt = (
                         self._nogc_headerless()
                         and self._str_desc_ty is not None
@@ -3449,7 +3451,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
 }
 
 impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
+    import from jaclang.compiler.ir.enums { Tokens as Tok }
     _is_flow = False;
     for k in nd.kid {
         if isinstance(k, uni.Token) and k.name == Tok.KW_FLOW {
@@ -3460,7 +3462,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
     if not _is_flow {
         return False;
     }
-    _par_ok = (self.ir_in.gen.nogc_enforced and self._gc_mode() == "none")
+    _par_ok = (artifact_for(self.ir_in).nogc_enforced and self._gc_mode() == "none")
         or (self._gc_mode() == "rc" and not self._rc_debug_codegen);
     if not _par_ok {
         return False;
@@ -3715,7 +3717,9 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
             self.builder.store(_elem, _lv_alloca);
         }
 
-        import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+        import from jaclang.compiler.analysis.ownership.rc_facts_pass {
+            loop_body_locals
+        }
         _ff_saved = loop_body_locals(
             nd.body if isinstance(nd.body, (list, tuple)) else None
         );
@@ -4343,7 +4347,7 @@ impl NaIRGenPass._codegen_for_indexed(
             return;
         }
     }
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+    import from jaclang.compiler.analysis.ownership.rc_facts_pass { loop_body_locals }
     _for_saved = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
@@ -4525,7 +4529,7 @@ impl NaIRGenPass._try_chunked_for(nd: uni.InForStmt) -> bool {
     self._emit_chunk_header(coll, _nv, _ci, _hdr, helpers["len"]);
     self.builder.store(_hdr, _lv_alloca);
 
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+    import from jaclang.compiler.analysis.ownership.rc_facts_pass { loop_body_locals }
     _ch_saved = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );

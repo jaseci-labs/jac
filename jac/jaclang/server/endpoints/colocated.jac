@@ -1,7 +1,7 @@
 import from jaclang.server.endpoint_contract { check_endpoint_contract }
 import logging;
 import os;
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.compiler.ir.enums { Constants as Con }
 import from jaclang.project.config { get_config }
 import from jaclang.server.endpoints.walkers { idempotency_key, request_caller }
 import from jaclang.server.outbox { remember_response, replay_cached }

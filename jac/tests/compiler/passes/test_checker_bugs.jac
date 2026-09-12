@@ -122,17 +122,18 @@ Bug index:
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.transform { Alert }
-import from jaclang.compiler.types.type_utils { compute_mro_linearization }
-import from jaclang.compiler.types.types {
+import from jaclang.compiler.analysis.types.type_checker_pass { TypeCheckPass }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.pass_base { Alert }
+import from jaclang.compiler.analysis.types.type_utils { compute_mro_linearization }
+import from jaclang.compiler.ir.types.nodes {
     ClassDetailsShared,
     ClassType,
     TypeFlags,
     UnknownType
 }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.pipeline.executor { run_pass }
+import from jaclang.compiler.api { query_type }
 
 glob CHECKER_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "checker"
@@ -140,7 +141,7 @@ glob CHECKER_FIXTURES = os.path.join(
 
 """Compile a checker fixture and run the type check pass."""
 def compile_and_check(fixture_name: str) -> JacProgram {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, fixture_name),
@@ -199,29 +200,41 @@ test "bug_3_list_element_type_first_only" {
 # Buggy DFS gives: [D, B, A, object, C] (A appears before C)
 # =========================================================================
 test "bug_6_mro_not_c3_diamond" {
-    # Build a diamond hierarchy manually to check MRO order; these hand-built
-    # classes deliberately carry no symbol table.
-    _no_symtab: any = None;
+    # Synthetic classes still require typed declaration scopes.
+    import from jaclang.compiler.ir.schema { Module }
+
     a_shared = ClassDetailsShared(
-        class_name="A", symbol_table=_no_symtab, mro=[], base_classes=[]
+        class_name="A",
+        symbol_table=Module.make_stub(inject_name="A"),
+        mro=[],
+        base_classes=[]
     );
     a_type = ClassType(_shared=a_shared, flags=TypeFlags.Instantiable);
     a_type.shared.mro = [a_type];
 
     b_shared = ClassDetailsShared(
-        class_name="B", symbol_table=_no_symtab, mro=[], base_classes=[a_type]
+        class_name="B",
+        symbol_table=Module.make_stub(inject_name="B"),
+        mro=[],
+        base_classes=[a_type]
     );
     b_type = ClassType(_shared=b_shared, flags=TypeFlags.Instantiable);
     compute_mro_linearization(b_type);
 
     c_shared = ClassDetailsShared(
-        class_name="C", symbol_table=_no_symtab, mro=[], base_classes=[a_type]
+        class_name="C",
+        symbol_table=Module.make_stub(inject_name="C"),
+        mro=[],
+        base_classes=[a_type]
     );
     c_type = ClassType(_shared=c_shared, flags=TypeFlags.Instantiable);
     compute_mro_linearization(c_type);
 
     d_shared = ClassDetailsShared(
-        class_name="D", symbol_table=_no_symtab, mro=[], base_classes=[b_type, c_type]
+        class_name="D",
+        symbol_table=Module.make_stub(inject_name="D"),
+        mro=[],
+        base_classes=[b_type, c_type]
     );
     d_type = ClassType(_shared=d_shared, flags=TypeFlags.Instantiable);
     compute_mro_linearization(d_type);
@@ -246,11 +259,14 @@ test "bug_6_mro_not_c3_diamond" {
 # to a best-effort MRO. The fix adds an in-progress guard keyed on the class.
 # =========================================================================
 test "cyclic_heritage_mro_does_not_recurse" {
-    # Hand-built classes deliberately carry no symbol table.
-    _no_symtab: any = None;
+    # Give each synthetic class its own typed declaration scope.
+    import from jaclang.compiler.ir.schema { Module }
     # Self-referential: A lists itself as a base.
     a_shared = ClassDetailsShared(
-        class_name="A", symbol_table=_no_symtab, mro=[], base_classes=[]
+        class_name="A",
+        symbol_table=Module.make_stub(inject_name="A"),
+        mro=[],
+        base_classes=[]
     );
     a_type = ClassType(_shared=a_shared, flags=TypeFlags.Instantiable);
     a_type.shared.base_classes = [a_type];
@@ -259,11 +275,17 @@ test "cyclic_heritage_mro_does_not_recurse" {
 
     # Mutual cycle: B -> C -> B.
     b_shared = ClassDetailsShared(
-        class_name="B", symbol_table=_no_symtab, mro=[], base_classes=[]
+        class_name="B",
+        symbol_table=Module.make_stub(inject_name="B"),
+        mro=[],
+        base_classes=[]
     );
     b_type = ClassType(_shared=b_shared, flags=TypeFlags.Instantiable);
     c_shared = ClassDetailsShared(
-        class_name="C", symbol_table=_no_symtab, mro=[], base_classes=[]
+        class_name="C",
+        symbol_table=Module.make_stub(inject_name="C"),
+        mro=[],
+        base_classes=[]
     );
     c_type = ClassType(_shared=c_shared, flags=TypeFlags.Instantiable);
     b_type.shared.base_classes = [c_type];
@@ -891,7 +913,7 @@ test "bug_jsx_slot_narrowing" {
 # Python property pattern — and must not be reported as duplicates.
 #
 # Impact: any archetype declaring a property setter (e.g. JacProgram.doc_ir
-# in compiler/frontend/codeinfo.jac) triggered a spurious E0076 syntax error.
+# in compiler/backends/common/artifacts.jac) triggered a spurious E0076 syntax error.
 #
 # The fix is *semantic*, not just structural: the dup-check first collects
 # names declared with `@property` in the class body, then skips a method
@@ -1217,14 +1239,14 @@ test "bug_cycimp1_cyclic_import_pair_checks_clean" {
 # stack (tracked in `_modules_in_compile`) and the partial tree is not in
 # any hub yet -- reachable organically only through the narrow window
 # before parse publishes the module (e.g. a parse-failed member of a
-# native cyclic pair) -- it must answer with a stub instead of re-entering
+# native cyclic pair) -- it must defer the answer instead of re-entering
 # program.compile for the same path (unbounded mutual recursion). This
 # test drives the branch directly: it marks the path as in-compile and
-# asserts the stub answer, that no compile happened (no diagnostics, path
+# asserts the pending answer, that no compile happened (no diagnostics, path
 # still absent from the hub), and that a later, non-re-entrant query does
 # compile and resolve the real module.
 # =========================================================================
-test "bug_cycimp1_reentrant_import_guard_returns_stub" {
+test "bug_cycimp1_reentrant_import_guard_defers_pending_module" {
     import from pathlib { Path }
     program = JacProgram();
     evaluator = program.get_type_evaluator();
@@ -1234,13 +1256,13 @@ test "bug_cycimp1_reentrant_import_guard_returns_stub" {
     pre_errs = len(program.errors_had);
     evaluator._modules_in_compile.add(target);
     try {
-        stub = evaluator._import_module_from_path(target);
+        pending = evaluator._import_module_from_path(target);
     } finally {
         evaluator._modules_in_compile.discard(target);
     }
-    assert stub.stub_only , (
+    assert pending is None , (
         "Bug #CYCLE-IMPORT-1: a re-entrant import of a mid-compile module "
-        "absent from every hub must return a stub module."
+        "absent from every hub must remain pending."
     );
     assert target not in program.mod.hub , (
         "Bug #CYCLE-IMPORT-1: the re-entrant import guard must not compile "
@@ -1251,7 +1273,19 @@ test "bug_cycimp1_reentrant_import_guard_returns_stub" {
         f"Got errors: {[str(e) for e in program.errors_had[pre_errs:]]}"
     );
 
-    settled = evaluator._import_module_from_path(target);
+    # This white-box test drives the evaluator's import guard directly. Give
+    # that internal operation the binding permit normally supplied by its pass.
+    import from jaclang.compiler.ir.identity {
+        MutationScope,
+        RelationFamily,
+        relation_bit
+    }
+    with MutationScope(
+        program.analysis.mutations, relation_bit(RelationFamily.BINDING)
+    ) {
+        settled = evaluator._import_module_from_path(target);
+    }
+    assert settled is not None;
     assert not settled.stub_only and settled.name == "checker_cycle_guard_target" , (
         "Bug #CYCLE-IMPORT-1: once the module is no longer mid-compile, the "
         "same query must compile and return the real module."
@@ -1278,7 +1312,7 @@ test "bug_cycimp1_reentrant_import_guard_returns_stub" {
 # noise, and get_type_of_symbol(CONFIG) stayed <Unknown> after the pass.
 # =========================================================================
 test "bug_cyctaint1_settling_cycle_checks_clean_and_resolves" {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_cycle_taint_main.jac"),
@@ -1328,7 +1362,7 @@ test "bug_cyctaint1_settling_cycle_checks_clean_and_resolves" {
 # fires while every cycle-transient suppression still holds.
 # =========================================================================
 test "bug_cycprec1_genuine_error_in_cycle_window_still_fires" {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_cycle_precision_main.jac"),
@@ -1371,7 +1405,7 @@ test "bug_cycprec1_genuine_error_in_cycle_window_still_fires" {
 # =========================================================================
 test "bug_cycprec1_node_type_never_stores_incomplete_result" {
     import from pathlib { Path }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_cycle_taint_main.jac"),
@@ -1385,6 +1419,7 @@ test "bug_cycprec1_node_type_never_stores_incomplete_result" {
         Path(os.path.join(CHECKER_FIXTURES, "checker_cycle_taint_reg.jac")).resolve()
     );
     reg_mod = evaluator._import_module_from_path(reg_path);
+    assert reg_mod is not None , "REGISTRY module did not resolve";
     registry_sym = reg_mod.names_in_scope.get("REGISTRY");
     assert registry_sym is not None , "REGISTRY symbol missing from reg module";
     _reg_assign: any = registry_sym.decl.name_of.parent;
@@ -1397,7 +1432,7 @@ test "bug_cycprec1_node_type_never_stores_incomplete_result" {
         "pushing a symbol not on the resolution stack must succeed"
     );
     try {
-        during = evaluator.get_type_of_expression(config_use);
+        during = query_type(program, config_use);
     } finally {
         evaluator.pop_symbol_resolution(config_sym);
     }
@@ -1410,7 +1445,7 @@ test "bug_cycprec1_node_type_never_stores_incomplete_result" {
         f"in node_.type. Got: {config_use.type}"
     );
 
-    settled = evaluator.get_type_of_expression(config_use);
+    settled = query_type(program, config_use);
     assert not isinstance(settled, UnknownType) and str(settled) == "dict" , (
         "Bug #CYCLE-PRECISION-1: after the stack unwinds, the same query "
         f"must resolve the settled type. Got: {settled}"

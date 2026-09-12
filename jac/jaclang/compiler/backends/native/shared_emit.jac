@@ -11,7 +11,7 @@ def inject_shared_init(llvm_ir_str: str, manifest: any) -> tuple[str, list[str]]
     if ('@"__jac_glob_init"' in llvm_ir_str) or ("@__jac_glob_init(" in llvm_ir_str) {
         init_calls.append("  call void @__jac_glob_init()");
     }
-    import from jaclang.compiler.frontend.codeinfo { native_glob_init_name }
+    import from jaclang.compiler.backends.native.naming { native_glob_init_name }
     import re as _re;
 
     _defined: list[str] = [];

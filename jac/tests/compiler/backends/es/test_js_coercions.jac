@@ -1,10 +1,10 @@
 """JavaScript primitive conversions retain callable rather than constructor semantics."""
 
-import from jaclang.compiler.backends.es { EsastGenPass }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.contracts { CompilationProduct }
+import from jaclang.compiler.pipeline.products { require_product }
 import shutil;
 import subprocess;
 
@@ -15,12 +15,11 @@ def compile_client(source: str) -> str {
         use_str=source,
         options=CompileOptions(force_codespace="client", no_cgen=True)
     );
-    run_pass(TypeCheckPass, module, program);
-    EsastGenPass(ir_in=module, prog=program);
+    assert require_product(program, module, CompilationProduct.CLIENT);
     assert not program.errors_had , "\n".join(
         str(error) for error in program.errors_had
     );
-    return module.gen.js;
+    return artifact_for(module).js;
 }
 
 def run_client(source: str, assertions: str) {

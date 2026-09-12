@@ -25,11 +25,15 @@ all along. It did not: it refused for exactly the same reason, which is what
 identifies the header decision rather than the override as the cause.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.analysis.placement.native_fallback {
+    na_coverage_begin,
+    na_coverage_end
+}
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -74,7 +78,7 @@ def _all_seams(coverage: dict) -> list[str] {
 
 test "a child of a flat imported base carries the same header its base does" {
     (ir, _coverage) = _compile(CHILD);
-    reg = ir.gen.layout_registry;
+    reg = artifact_for(ir).layout_registry;
     assert reg is not None , "no layout registry was built";
     base = reg.layouts.get("SlotBase");
     child = reg.layouts.get("SlotChild");
@@ -95,9 +99,11 @@ test "a child of a flat imported base carries the same header its base does" {
 
 test "the child adopts the base's slot assignment verbatim" {
     (ir, _coverage) = _compile(CHILD);
-    reg = ir.gen.layout_registry;
+    reg = artifact_for(ir).layout_registry;
+    assert reg is not None;
     base = reg.layouts.get("SlotBase");
     child = reg.layouts.get("SlotChild");
+    assert base is not None and child is not None;
     for finfo in base.fields {
         assert finfo.name in child.field_index , (
             f"the child's layout is missing the inherited field "
@@ -143,9 +149,11 @@ test "the no-override control lowers too, which places the fault on the header" 
     # overriding one did, so the override was never what forced the vtable --
     # the header decision was.
     (ir, coverage) = _compile(NOVT);
-    reg = ir.gen.layout_registry;
+    reg = artifact_for(ir).layout_registry;
+    assert reg is not None;
     base = reg.layouts.get("SlotBase");
     child = reg.layouts.get("SlotChildFlat");
+    assert base is not None and child is not None;
     assert base.vtable_ptr_slot == child.vtable_ptr_slot , (
         f"base {base.vtable_ptr_slot} != child {child.vtable_ptr_slot}"
     );

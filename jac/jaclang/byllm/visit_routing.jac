@@ -4,12 +4,12 @@ import from jaclang.runtime.object_interop { fields, is_record }
 import from types { UnionType }
 import from jaclang.byllm._optdeps.loguru { logger }
 import from jaclang.byllm.llm { BaseLLM }
-import from jaclang.compiler.driver.mtp { ClassInfo }
+import from jaclang.compiler.lowering.mtir { ClassInfo }
 import from jaclang.runtime.archetype { Anchor, Archetype, ObjectSpatialFunction }
 
 
 def _class_info(arch: object) -> (ClassInfo | None) {
-    import from jaclang.compiler.driver.mtp { fetch_mtir }
+    import from jaclang.compiler.lowering.mtir { fetch_mtir }
     try {
         info = fetch_mtir(type(arch));
         return info if isinstance(info, ClassInfo) else None;

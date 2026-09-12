@@ -12,10 +12,7 @@ and the indirect-call table.
 """
 
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
+import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import subprocess;
 import sys;
 import shutil;
@@ -23,8 +20,8 @@ import tempfile;
 import from pathlib { Path }
 import from tests.support { TESTS_DIR }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.compiler.backends.native.na_compile_pass { native_linked_ir_text }
 import from jaclang.compiler.backends.native.wasm_linker { WasmLinker, _u32le }
 import from jaclang.compiler.backends.native.linker_common {

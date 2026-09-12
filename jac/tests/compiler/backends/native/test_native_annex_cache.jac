@@ -4,7 +4,7 @@ import os;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.compiler.backends.native.na_compile_pass { native_dep_cache_paths }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.options { CompileOptions }
 
 test "editing an implementation invalidates its native dependency artifact" {
     with tempfile.TemporaryDirectory() as directory {

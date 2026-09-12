@@ -8,8 +8,8 @@ import os;
 import from difflib { unified_diff }
 import from tests.support { JAC_ROOT }
 import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.tools.jac_formatter_pass { format_module }
 import from jaclang.compiler.tools.unparse_pass { unparse_module, unparse_node }
 
@@ -64,7 +64,7 @@ test "typed enum base unparse roundtrip" {
 test "the tooling printers keep the surface Module.unparse/format had" {
     # `Module.unparse`/`Module.format`/`UniNode.unparse` left the node types
     # so `unitree` can seal (they orchestrate tool passes and read `gen.jac`,
-    # a `CodeGenTarget` field). The three behaviours they had have to survive
+    # a `NodeArtifacts` field). The three behaviours they had have to survive
     # the move, and they are distinct: the formatted rendering, the raw
     # `UnparsePass` rendering, and the per-node rendering.
     src = "obj C { has x: int = 1; }\nwith entry { c = C(); }\n";

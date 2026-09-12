@@ -18,8 +18,8 @@ import shutil;
 import from pathlib { Path }
 import from subprocess { run }
 import from jaclang.project.config { JacConfig }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.dist.publish.package_json {
     generate_package_json,
     npm_package_name,

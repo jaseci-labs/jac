@@ -31,6 +31,7 @@ from jaclang.runtime.archetype import (
     is_light_edge_type,
     light_clear_hop,
     light_connect,
+    validate_edge_endpoints,
     light_edge_views,
     light_hop,
     light_hop_answers,
@@ -46,6 +47,7 @@ __all__ = [
     "disconnect0",
     "refs0",
     "hop0",
+    "hop_at0",
     "clear0",
     "spawn0",
     "visit0",
@@ -98,6 +100,9 @@ def connect0(
     rights = right if isinstance(right, list) else [right]
     ct = edge or GenericEdge
     cls = ct if isinstance(ct, type) else type(ct)
+    for source in lefts:
+        for target in rights:
+            validate_edge_endpoints(source, cls, target)
     light = conn_assign is None and is_light_edge_type(cls)
     for l_arch in lefts:
         src = l_arch.__jac__
@@ -120,7 +125,7 @@ def connect0(
 
 
 def disconnect0(left: Any, right: Any, dir: int = 2) -> bool:
-    from jaclang.compiler.frontend.constant import EdgeDir
+    from jaclang.compiler.ir.enums import EdgeDir
 
     return _rt().disconnect(left=left, right=right, dir=EdgeDir(dir))
 
@@ -275,6 +280,35 @@ def hop0(origin: Any, dir: int, edge: Any = None, edges_only: bool = False) -> l
     if not light_hop_answers(me, edge):
         return refs0(origin, dir, edge, edges_only)
     return light_hop(me, dir, edge, edges_only)
+
+
+def hop_at0(origin: Any, dir: int, edge: Any, index: int) -> Any:
+    """First/last node of a reference, without allocating the intermediate list.
+
+    The seed lowers `[node ->:Edge:->][0]` and `[-1]` here. Persistent,
+    polymorphic and multi-origin references retain the normal hop semantics.
+    Incoming light adjacency holds weak references, so skip expired endpoints.
+    """
+    if edge is not None and dir in (1, 2) and not isinstance(origin, list):
+        me = origin.__jac__
+        if not me.persistent and (
+            not me.edges or (not me.mixed and _light_edge_types.get(edge))
+        ):
+            subs = _edge_subtypes.get(edge)
+            if subs is None:
+                subs = edge_subtypes(edge)
+            if len(subs) == 1:
+                adjacency = me.out_light if dir == 2 else me.in_light
+                targets = adjacency.get(edge) if adjacency else None
+                if targets:
+                    if dir == 2:
+                        return targets[index]
+                    for ref in targets if index == 0 else reversed(targets):
+                        value = ref()
+                        if value is not None:
+                            return value
+                raise IndexError("list index out of range")
+    return hop0(origin, dir, edge)[index]
 
 
 def clear0(origin: Any, dir: int, edge: Any = None) -> bool:

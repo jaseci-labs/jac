@@ -339,7 +339,7 @@ impl NaIRGenPass._variadic_tuple_seq_type(type_args: list) -> (ir.Type | None) {
     arguments, which is the same signal `_tuple_has_variadic_arg` reads.
     """;
     try {
-        import from jaclang.compiler.types.types { UnknownType as _VtUnknown }
+        import from jaclang.compiler.ir.types.nodes { UnknownType as _VtUnknown }
     } except ImportError {
         return None;
     }

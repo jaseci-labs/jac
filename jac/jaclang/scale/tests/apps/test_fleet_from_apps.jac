@@ -265,7 +265,7 @@ test "root paths forward to the served app and 503 while it boots" {
 
 test "reading app edges compiles for analysis only, never codegen" {
     import unittest.mock;
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     d = _workspace();
     sv_client.clear_consumer_providers();
     real_compile = JacProgram.compile;
@@ -360,38 +360,53 @@ test "a compiled cross-app import is reported as a consumer/provider edge" {
 }
 
 
-test "edge analysis visits modules registered while analyzing either hub" {
-    import from types { SimpleNamespace }
+test "fleet reads completed application products without starting more analysis" {
     import from unittest.mock { patch }
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.ir.schema { Module }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.session.options { CompileOptions }
+    import from jaclang.compiler.backends.common.artifact_store {
+        artifact_scope,
+        artifact_for
+    }
+    import from jaclang.compiler.pipeline.products { ProductStore }
+    import from jaclang.compiler.backends.common.artifacts { InteropManifest }
     import from jaclang.scale.runtime.fleet { _compiled_app_edges }
-    def module(edges: list) -> any {
-        return SimpleNamespace(
-            gen=SimpleNamespace(
-                interop_manifest=SimpleNamespace(
-                    app_edges=edges, walker_access={}, func_access={}
-                )
-            )
-        );
+    def module(name: str, edges: list[tuple[str, str]]) -> Module {
+        mod = Module.make_stub(inject_name=name);
+        artifact_for(mod).interop_manifest = InteropManifest(app_edges=edges);
+        return mod;
     }
-    first = module([]);
-    added = module([("web", "orders")]);
-    internal = module([]);
-    final = module([("orders", "db")]);
-    user_hub = {"first": first};
-    compiler_hub = {"internal": internal};
-    def analyze(prog: any, mod: any, schedule: any) {
-        if mod is first {
-            user_hub["added"] = added;
+    products = ProductStore();
+    with artifact_scope(products.artifacts) {
+        first = module('first', []);
+        added = module('added', [("web", "orders")]);
+        final = module('final', [("orders", "db")]);
+        interface = Module.make_stub(inject_name='interface');
+        interface_output = products.artifacts.output(interface);
+        compiled: list[str] = [];
+        def compile_context(
+            prog: JacProgram, file_path: str, options: CompileOptions
+        ) -> Module {
+            assert options.target_app == 'web';
+            compiled.append(file_path);
+            prog.analysis = products;
+            prog.mod.hub = {
+                'first': first,
+                'added': added,
+                'final': final,
+                'interface': interface
+            };
+            return first;
         }
-        if mod is internal {
-            compiler_hub["final"] = final;
+        with patch('jaclang.compiler.api.compile_application', compile_context), patch(
+            'jaclang.compiler.pipeline.products.require_product',
+            side_effect=AssertionError('fleet must consume completed products')
+        ) {
+            edges = _compiled_app_edges("main.jac", "web", "web-app", "/tmp");
+            assert set(edges) == {("web", "orders"), ("orders", "db")};
+            assert compiled == ['main.jac'];
+            assert interface_output.peek_interop() is None;
         }
-    }
-    with patch.object(JacProgram, "compile"), patch.object(
-        JacProgram, "_search_hubs", return_value=[user_hub, compiler_hub]
-    ), patch.object(JacProgram, "run_schedule", analyze) {
-        edges = _compiled_app_edges("main.jac", "web", "web-app", "/tmp");
-        assert set(edges) == {("web", "orders"), ("orders", "db")};
     }
 }

@@ -30,12 +30,13 @@ tests: each one names the structure, the thing it must not hold, and the
 seam that releases it.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import gc;
 import os;
 import tempfile;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 
 """Write a throwaway project and answer its directory."""
 def write_mods(mods: dict[(str, str)]) -> str {
@@ -124,10 +125,10 @@ test "boundary facts carry extracted signatures, never module trees" {
         "module reference there pins a second tree (and its Source text) per "
         "boundary import. Stamp the extracted decls, not the tree"
     );
-    binding = mod.gen.interop_manifest.bindings.get("hello");
+    binding = artifact_for(mod).interop_manifest.bindings.get("hello");
     assert binding is not None , (
         "dropping the tree must not drop the binding it was read for; got "
-        f"keys {list(mod.gen.interop_manifest.bindings.keys())}"
+        f"keys {list(artifact_for(mod).interop_manifest.bindings.keys())}"
     );
     assert binding.param_names == ["who"] , "the extracted signature survives";
     assert binding.param_types == ["str"];
@@ -177,7 +178,7 @@ test "no boundary fact anywhere in the process holds a module tree" {
         assert importer_mod is not None , (
             f"{stem} is not in the hub under the path it was compiled from"
         );
-        binding = importer_mod.gen.interop_manifest.bindings.get("hello");
+        binding = artifact_for(importer_mod).interop_manifest.bindings.get("hello");
         assert binding is not None and binding.ret_type == "str" , (
             f"{stem} lost its cl->sv binding when the tree stopped being stamped"
         );
@@ -267,9 +268,9 @@ test "a verdict query's dep units do not outlive the compile that asked" {
             continue;
         }
         if (
-            unit.gen.llvm_ir is not None
-            or unit.gen.native_engine is not None
-            or unit.gen.native_bitcode is not None
+            artifact_for(unit).llvm_ir is not None
+            or artifact_for(unit).native_engine is not None
+            or artifact_for(unit).native_bitcode is not None
         ) {
             stranded.append(os.path.basename(path));
         }

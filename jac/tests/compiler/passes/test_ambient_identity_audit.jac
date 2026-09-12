@@ -12,12 +12,9 @@ remedy is a rewrite to `X | None` / `X | Y` rather than an ambient name.
 Harness design notes (why this probe is trustworthy where earlier
 attempts were not):
 
-* Types are never stamped onto AST nodes in this compiler -- there is no
-  `.type` attribute on unitree expressions. The TypeEvaluator computes
-  types on demand. A probe that reads `node.type` measures the harness
-  (getattr fallback), not the language. The observable channel is
-  `program.get_type_evaluator().get_type_of_symbol(sym)` after
-  TypeCheckPass has run.
+* Type inspection goes through the scheduled `query_type` compiler API.
+  Queries may complete lazy type facts; callers never mutate the type graph
+  by invoking the evaluator outside its producer scope.
 * An import of an ambient name shadows the ambient binding for the whole
   module, so "both spellings in one file" is not measurable for a single
   name: every reference resolves through the import. Each spelling gets
@@ -60,14 +57,20 @@ Audit verdicts this file pins (2026-08-18):
 
 import os;
 import tempfile;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pass_driver { run_pass }
-import from jaclang.compiler.types.types { ClassType, FunctionType, UnionType }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.api { query_type }
+import from jaclang.compiler.pipeline.products { require_product }
+import from jaclang.compiler.pipeline.contracts { CompilationProduct }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.ir.types.nodes { ClassType, FunctionType, UnionType }
 
-glob NO_TC = CompileOptions(default_codespace='server');
+glob NO_TC = CompileOptions(
+         default_codespace='server',
+         symtab_ir_only=True,
+         no_cgen=True,
+         force_target_program=True
+     );
 
 def fingerprint(t: object, base_dir: str, depth: int = 0) -> str {
     if depth > 5 {
@@ -122,7 +125,6 @@ def run_probe(header: str, body: str, probe_syms: list[str]) -> ProbeResult {
     }
     program = JacProgram();
     mod = program.compile(path, options=NO_TC);
-    evaluator = program.get_type_evaluator();
     result = ProbeResult();
     for name in probe_syms {
         sym = None;
@@ -139,9 +141,10 @@ def run_probe(header: str, body: str, probe_syms: list[str]) -> ProbeResult {
         if sym is None {
             result.fps[name] = "<no-symbol>";
         } else {
-            result.fps[name] = fingerprint(evaluator.get_type_of_symbol(sym), tmpdir);
+            result.fps[name] = fingerprint(query_type(program, sym), tmpdir);
         }
     }
+    require_product(program.module_context(mod), mod, CompilationProduct.ANALYSIS);
     rp = os.path.realpath(tmpdir);
     for alert in (program.errors_had + program.warnings_had) {
         code = alert.code.code if alert.code is not None else "?";
@@ -602,8 +605,10 @@ test "audit_optional_pep604" {
 }
 
 test "typing_import_flips_native_placement" {
-    import from jaclang.compiler.placement.placement_solver { native_default_verdict }
-    import from jaclang.compiler.driver.pipeline { native_pipeline_available }
+    import from jaclang.compiler.analysis.placement.module_context_pass {
+        native_default_verdict
+    }
+    import from jaclang.compiler.pipeline.schedule { native_pipeline_available }
     (env_ok, env_reason) = native_pipeline_available();
     if not env_ok {
         print("skipping placement audit: " + env_reason);
@@ -628,7 +633,7 @@ test "typing_import_flips_native_placement" {
         }
         program = JacProgram();
         mod = program.compile(path, options=NO_TC);
-        (na_ok, na_why) = native_default_verdict(mod);
+        (na_ok, na_why) = native_default_verdict(mod, program);
         REPORT.append(
             "placement: " + header + " -> ok=" + str(na_ok) + " why=" + na_why
         );
@@ -647,7 +652,7 @@ test "typing_import_flips_native_placement" {
 }
 
 test "optional_layout_signal" {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
     native_body = (
         "obj Point {\n"
         + "    has x: int = 0;\n"
@@ -688,10 +693,7 @@ test "optional_layout_signal" {
                     ann = var.type_tag.tag if var.type_tag else None;
                     on_demand = "<no-sym>";
                     if var.sym is not None {
-                        on_demand = fingerprint(
-                            program.get_type_evaluator().get_type_of_symbol(var.sym),
-                            tmpdir
-                        );
+                        on_demand = fingerprint(query_type(program, var.sym), tmpdir);
                     }
                     stamped = (
                         "var.type="
@@ -725,7 +727,7 @@ test "optional_layout_signal" {
     (native_fields, native_codes) = results["native"];
     (typed_fields, typed_codes) = results["typing"];
     assert ("inner", "Point | None") in native_fields;
-    assert ("inner", "Optional [ Point ]") in typed_fields;
+    assert ("inner", "Optional[Point]") in typed_fields;
     assert native_codes == typed_codes , (
         "layout diagnostic streams diverge: native="
         + str(native_codes)

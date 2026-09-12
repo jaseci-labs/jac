@@ -23,6 +23,10 @@ granular half of the decorator contract is pinned.
 Tracks the front-end native idiom work in #8039.
 """
 
+import from jaclang.compiler.backends.common.artifact_store {
+    artifact_for,
+    existing_artifact
+}
 import ctypes;
 import os;
 import from tests.support {
@@ -33,9 +37,9 @@ import from tests.support {
     native_force_opts
 }
 import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -128,7 +132,8 @@ test "guardrail: @abstractmethod refuses where abst is accepted" {
         "a seam. `import abc;` has always refused the whole module here; "
         f"the `from` spelling is classified on the same terms: {errs}"
     );
-    assert ir.gen.llvm_ir is None , (
+    remaining = existing_artifact(ir);
+    assert remaining is None or remaining.llvm_ir is None , (
         "a module-fatal violation must withhold the LLVM IR"
     );
     kw = check_na_inline(
@@ -157,7 +162,7 @@ test "guardrail: @classmethod demotes at the capability gate" {
     assert not has_error_code(prog, "E5090") , (
         f"a @classmethod method must demote, not fail the module: {fmt_errors(prog)}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "Holder.make" not in layout.methods , (
         "the @classmethod method must be demoted out of the native layout"

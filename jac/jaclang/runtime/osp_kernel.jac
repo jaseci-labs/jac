@@ -7,12 +7,10 @@ obj Slot {
 
 obj Plan {
     has ctag: int,
-        w_entry: list[Slot],
-        n_entry_u: list[Slot],
-        n_entry_t: list[Slot],
-        n_exit_t: list[Slot],
-        n_exit_u: list[Slot],
-        w_exit: list[Slot];
+        enter: list[tuple[Slot, bool]],
+        leave: list[tuple[Slot, bool]],
+        enter_first: bool,
+        leave_first: bool;
 }
 
 obj WalkerDesc {
@@ -31,7 +29,6 @@ obj NodeDesc {
 obj Frame {
     has loc: int,
         phase: int = 0,
-        band: int = 0,
         idx: int = 0,
         budget: int = 0,
         plan: (Plan | None) = None;
@@ -90,41 +87,49 @@ def _new_plans -> dict[int, Plan] {
 def _plan_for(
     rt: OspRuntime, wdesc: WalkerDesc, wtag: int, ndesc: NodeDesc, ctag: int
 ) -> Plan {
-    plan = Plan(
+    w_entry = [
+        s
+        for s in wdesc.`entry
+        if s.trig_tag != UNTYPED and rt.is_a(ctag, s.trig_tag)
+    ];
+    w_exit = [
+        s
+        for s in wdesc.`exit
+        if s.trig_tag != UNTYPED and rt.is_a(ctag, s.trig_tag)
+    ];
+    n_entry_u = [
+        s
+        for s in ndesc.`entry
+        if s.trig_tag == UNTYPED
+    ];
+    n_entry_t = [
+        s
+        for s in ndesc.`entry
+        if s.trig_tag != UNTYPED and rt.is_a(wtag, s.trig_tag)
+    ];
+    n_exit_t = [
+        s
+        for s in ndesc.`exit
+        if s.trig_tag != UNTYPED and rt.is_a(wtag, s.trig_tag)
+    ];
+    n_exit_u = [
+        s
+        for s in ndesc.`exit
+        if s.trig_tag == UNTYPED
+    ];
+    return Plan(
         ctag=ctag,
-        w_entry=[],
-        n_entry_u=[],
-        n_entry_t=[],
-        n_exit_t=[],
-        n_exit_u=[],
-        w_exit=[]
+        enter=[(s, True) for s in w_entry]
+            + [(s, False) for s in n_entry_u]
+            + [(s, False) for s in n_entry_t],
+        leave=[(s, False) for s in n_exit_t]
+            + [(s, False) for s in n_exit_u]
+            + [(s, True) for s in w_exit],
+        enter_first=bool(w_entry),
+        leave_first=bool(n_exit_t)
     );
-    for s in wdesc.`entry {
-        if s.trig_tag != UNTYPED and rt.is_a(ctag, s.trig_tag) {
-            plan.w_entry.append(s);
-        }
-    }
-    for s in wdesc.`exit {
-        if s.trig_tag != UNTYPED and rt.is_a(ctag, s.trig_tag) {
-            plan.w_exit.append(s);
-        }
-    }
-    for s in ndesc.`entry {
-        if s.trig_tag == UNTYPED {
-            plan.n_entry_u.append(s);
-        } elif rt.is_a(wtag, s.trig_tag) {
-            plan.n_entry_t.append(s);
-        }
-    }
-    for s in ndesc.`exit {
-        if s.trig_tag == UNTYPED {
-            plan.n_exit_u.append(s);
-        } elif rt.is_a(wtag, s.trig_tag) {
-            plan.n_exit_t.append(s);
-        }
-    }
-    return plan;
 }
+
 
 def _dequeue(scope: WalkScope) -> (int | None) {
     while scope.front {
@@ -335,54 +340,19 @@ obj OspEngine {
                         scope.pending_fence = 0;
                     }
                     plan: Plan = f.plan;
-                    if f.band == 0 {
-                        if f.idx > 0 and scope.skip_node {
-                            f.idx = 0;
-                            f.band = 1;
-                            continue;
-                        }
-                        if f.idx < len(plan.w_entry) {
-                            s = plan.w_entry[f.idx];
-                            f.idx += 1;
-                            scope.cur_a = scope.wlk;
-                            scope.cur_b = f.loc;
-                            return s;
-                        }
-                        f.idx = 0;
-                        f.band = 1;
-                        continue;
-                    }
-                    if f.band == 1 {
-                        if scope.skip_node {
-                            f.idx = 0;
-                            f.band = 2;
-                            continue;
-                        }
-                        if f.idx < len(plan.n_entry_u) {
-                            s = plan.n_entry_u[f.idx];
-                            f.idx += 1;
-                            scope.cur_a = f.loc;
-                            scope.cur_b = scope.wlk;
-                            return s;
-                        }
-                        f.idx = 0;
-                        f.band = 2;
-                        continue;
-                    }
-                    if scope.skip_node {
-                        f.idx = 0;
-                    } elif f.idx < len(plan.n_entry_t) {
-                        s = plan.n_entry_t[f.idx];
+                    if f.idx < len(plan.enter)
+                        and (
+                            not scope.skip_node or (f.idx == 0 and plan.enter_first)
+                        ) {
+                        (s, on_walker) = plan.enter[f.idx];
                         f.idx += 1;
-                        scope.cur_a = f.loc;
-                        scope.cur_b = scope.wlk;
+                        scope.cur_a = scope.wlk if on_walker else f.loc;
+                        scope.cur_b = f.loc if on_walker else scope.wlk;
                         return s;
-                    } else {
-                        f.idx = 0;
                     }
                     scope.skip_node = False;
                     f.phase = 1;
-                    f.band = 0;
+                    f.idx = 0;
                     f.budget = scope.pending_fence;
                     continue;
                 } elif f.phase == 1 {
@@ -426,50 +396,15 @@ obj OspEngine {
                         continue;
                     }
                     plan: Plan = f.plan;
-                    if f.band == 0 {
-                        if f.idx > 0 and scope.skip_node {
-                            f.idx = 0;
-                            f.band = 1;
-                            continue;
-                        }
-                        if f.idx < len(plan.n_exit_t) {
-                            s = plan.n_exit_t[f.idx];
-                            f.idx += 1;
-                            scope.cur_a = f.loc;
-                            scope.cur_b = scope.wlk;
-                            return s;
-                        }
-                        f.idx = 0;
-                        f.band = 1;
-                        continue;
-                    }
-                    if f.band == 1 {
-                        if scope.skip_node {
-                            f.idx = 0;
-                            f.band = 2;
-                            continue;
-                        }
-                        if f.idx < len(plan.n_exit_u) {
-                            s = plan.n_exit_u[f.idx];
-                            f.idx += 1;
-                            scope.cur_a = f.loc;
-                            scope.cur_b = scope.wlk;
-                            return s;
-                        }
-                        f.idx = 0;
-                        f.band = 2;
-                        continue;
-                    }
-                    if scope.skip_node {
-                        f.idx = 0;
-                    } elif f.idx < len(plan.w_exit) {
-                        s = plan.w_exit[f.idx];
+                    if f.idx < len(plan.leave)
+                        and (
+                            not scope.skip_node or (f.idx == 0 and plan.leave_first)
+                        ) {
+                        (s, on_walker) = plan.leave[f.idx];
                         f.idx += 1;
-                        scope.cur_a = scope.wlk;
-                        scope.cur_b = f.loc;
+                        scope.cur_a = scope.wlk if on_walker else f.loc;
+                        scope.cur_b = f.loc if on_walker else scope.wlk;
                         return s;
-                    } else {
-                        f.idx = 0;
                     }
                     scope.skip_node = False;
                     frames.pop();

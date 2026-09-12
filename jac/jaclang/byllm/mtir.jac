@@ -1,6 +1,6 @@
 import inspect;
 import json;
-import from jaclang.compiler.driver.mtp { Info, MethodInfo, FunctionInfo }
+import from jaclang.compiler.lowering.mtir { Info, MethodInfo, FunctionInfo }
 import from types { MethodType }
 import from typing { get_type_hints }
 import from jaclang.byllm.schema { json_to_instance, type_to_schema }
@@ -41,6 +41,8 @@ obj MTRuntime {
         _stream_reset_count: int = 0,
         _tool_arg_deltas: list[dict] = [],
         _usage_history: list[dict] = [],
+        _invocation_id: str | None = None,
+        _parent_invocation_id: str | None = None,
         _call_kind: str = "react_iteration";
 
     static def factory(mtir: MTIR) -> MTRuntime;

@@ -12,7 +12,7 @@ literals -- not a width heuristic -- so it is sound by construction: an
 interval that does not fit is simply not marked, and the check stays.
 """
 
-import from jaclang.compiler.types.fixed_width { interval_of_op }
+import from jaclang.compiler.analysis.types.fixed_width { interval_of_op }
 
 test "widening makes the result provably in range" {
     assert interval_of_op("+", (-128, 127), (-128, 127), "i16");
@@ -48,9 +48,9 @@ test "an unknown operand interval is never provable" {
 test "an operation at the operand width is never marked, whatever it flows into" {
     import os;
     import from tests.support { TESTS_DIR }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.frontend.unitree { BinaryExpr }
+    import from jaclang.compiler.session.options { CompileOptions }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.ir.schema { BinaryExpr }
     src = (
         "with entry {\n"
         "    a: i8 = 100;\n"

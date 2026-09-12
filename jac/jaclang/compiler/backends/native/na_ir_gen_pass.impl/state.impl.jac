@@ -1,5 +1,3 @@
-import from jaclang.compiler.backends.native.llvm { ir }
-
 impl NaIRGenPass.builder.getter -> ir.IRBuilder {
     if self._builder is None {
         raise RuntimeError(

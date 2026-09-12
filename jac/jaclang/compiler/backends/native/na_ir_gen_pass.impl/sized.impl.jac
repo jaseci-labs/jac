@@ -7,9 +7,6 @@ impl NaIRGenPass._int_width_of(val: ir.Value) -> int {
 
 import from jaclang.runtime.scalars { range_of, shape_of, wrap_value }
 
-glob OVERFLOW_MSG: str = "integer overflow",
-     SHIFT_MSG: str = "shift count out of range";
-
 def _signed_repr(width: int, value: int) -> int {
     mask = (1 << width) - 1;
     out = value & mask;
@@ -33,7 +30,7 @@ impl NaIRGenPass._scalar_shape(nd: (uni.UniNode | None)) -> (ScalarShape | None)
     if not isinstance(nd, uni.Expr) {
         return None;
     }
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
+    import from jaclang.compiler.analysis.types.type_utils { primitive_type_name_of }
     if nd.coerce_to is not None {
         coerced = self._scalar_shape_named(nd.coerce_to);
         if coerced is not None {
@@ -104,7 +101,7 @@ impl NaIRGenPass._convert_scalar(
 }
 
 impl NaIRGenPass._lower_coercion(nd: uni.Expr, val: ir.Value) -> ir.Value {
-    import from jaclang.compiler.types.type_utils { primitive_type_name_of }
+    import from jaclang.compiler.analysis.types.type_utils { primitive_type_name_of }
     dst = self._scalar_shape_named(nd.coerce_to);
     if dst is None {
         return val;

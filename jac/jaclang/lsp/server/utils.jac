@@ -1,13 +1,13 @@
 import builtins;
-import from jaclang.compiler.types.types { TypeBase, ClassType, ModuleType }
-import from jaclang.compiler.types.type_utils { compute_mro_linearization }
+import from jaclang.compiler.ir.types.nodes { TypeBase, ClassType, ModuleType }
+import from jaclang.compiler.analysis.types.type_utils { compute_mro_linearization }
 import from typing { Optional }
 
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.codeinfo { CodeLocInfo }
-import from jaclang.compiler.frontend.srcloc { Span }
-import from jaclang.compiler.passes.transform { Alert }
-import from jaclang.compiler.frontend.unitree { Symbol, UniScopeNode }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.backends.common.artifacts { CodeLocInfo }
+import from jaclang.compiler.frontend.source_locations { Span }
+import from jaclang.compiler.pipeline.pass_base { Alert }
+import from jaclang.compiler.ir.schema { Symbol, UniScopeNode }
 import from jaclang.lsp.protocol { uris }
 
 import jaclang.lsp.protocol.types as lspt;

@@ -1,52 +1,32 @@
-glob _NA_OSP_KERNEL_MOD: list = [];
-
-def _load_native_osp_kernel_module -> (uni.Module | None) {
-    if _NA_OSP_KERNEL_MOD {
-        return _NA_OSP_KERNEL_MOD[0];
-    }
+def _load_native_osp_kernel_module(prog: AnalysisServices) -> uni.Module {
     import from jaclang.compiler.backends.common.kernel_units { osp_core_unit_path }
-    import from jaclang.compiler.driver.program { JacProgram }
-    mod = None;
-    try {
-        import from jaclang.compiler.driver.compile_options {
-            CompileOptions as _KernelOpts
-        }
-        prog = JacProgram();
-        mod = prog.compile(
-            osp_core_unit_path('na'),
-            options=_KernelOpts(
-                no_cgen=True,
-                symtab_ir_only=True,
-                aot_mode=True,
-                default_codespace='native',
-                force_codespace='native',
-                force_target_program=True
-            )
-        );
-    } except Exception {
-        mod = None;
-    }
-    if mod is not None {
-        _NA_OSP_KERNEL_MOD.append(mod);
-    }
-    return mod;
+    options = prog.options.for_symbols(need_tree=True);
+    options.aot_mode = True;
+    options.default_codespace = 'native';
+    options.force_codespace = 'native';
+    options.force_target_program = True;
+    return prog.compile(osp_core_unit_path('na'), options=options);
 }
 
 impl NaIRGenPass._register_osp_kernel_module -> None {
     if not self._osp_active() {
         return;
     }
-    kernel_mod = _load_native_osp_kernel_module();
+    kernel_mod = _load_native_osp_kernel_module(self.prog);
     if kernel_mod is None {
         return;
     }
-    kernel_mod.gen.nogc_enforced = getattr(self.ir_in.gen, "nogc_enforced", False);
+    artifact_for(kernel_mod).nogc_enforced = getattr(
+        artifact_for(self.ir_in), "nogc_enforced", False
+    );
     self._walk_imported_module_type_names(kernel_mod);
     self._walk_imported_module_types(kernel_mod);
     self._walk_imported_module_abilities(kernel_mod, with_fn_verdicts=False);
     self._osp_kernel_mod = kernel_mod;
 
-    _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
+    _manifest = artifact_for(self.ir_in).interop_manifest
+        if ((artifact_for(self.ir_in) if self.ir_in is not None else None))
+        else None;
     if (_manifest is not None)
         and ("osp_kernel" not in _manifest.native_transitive_sources) {
         _manifest.native_transitive_sources.append("osp_kernel");
@@ -60,8 +40,8 @@ impl NaIRGenPass._compute_osp_model(archetypes: list[uni.Archetype]) -> None {
             self.arch_ast_map[_n] = arch;
         }
     }
-    import from jaclang.runtime.osp_model { get_osp_model }
-    _model = get_osp_model(
+    import from jaclang.compiler.analysis.binding.osp_model { prepare_osp_model }
+    _model = prepare_osp_model(
         self.ir_in,
         archetypes=(list(archetypes) + list(self.arch_ast_map.values())),
         context=CodeContext.NATIVE
@@ -77,13 +57,13 @@ impl NaIRGenPass._compute_osp_model(archetypes: list[uni.Archetype]) -> None {
 }
 
 impl NaIRGenPass._osp_active -> bool {
-    _model = self.ir_in.gen.osp_model;
+    _model = artifact_for(self.ir_in).osp_models.get(CodeContext.NATIVE);
     return (_model is not None)
         and (_model.has_event_ability() or _model.uses_construct);
 }
 
 impl NaIRGenPass._xmod_osp_help(names: list) -> (str | None) {
-    _model = self.ir_in.gen.osp_model;
+    _model = artifact_for(self.ir_in).osp_models.get(CodeContext.NATIVE);
     _tags = _model.tags if (_model is not None) else {};
     for _n in names {
         if (
@@ -205,7 +185,7 @@ impl NaIRGenPass._osp_make_immortal(ptr: ir.Value) -> None {
 
 impl NaIRGenPass._osp_collect_slots(arch_name: str, is_entry: bool) -> list {
     slots: list = [];
-    _model = self.ir_in.gen.osp_model;
+    _model = artifact_for(self.ir_in).osp_models.get(CodeContext.NATIVE);
     if _model is None {
         return slots;
     }
@@ -408,7 +388,7 @@ impl NaIRGenPass._osp_emit_callbacks -> dict {
 }
 
 impl NaIRGenPass._emit_osp_setup -> None {
-    _model = self.ir_in.gen.osp_model;
+    _model = artifact_for(self.ir_in).osp_models.get(CodeContext.NATIVE);
     if (_model is None) or (not self._osp_active()) {
         return;
     }
@@ -679,8 +659,8 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
     edge_tag = -1;
     edge_obj: (ir.Value | None) = None;
+    _etname: (str | None) = None;
     if co.conn_type is not None {
-        _etname: (str | None) = None;
         if isinstance(co.conn_type, uni.Name) {
             edge_obj = self._codegen_instantiation(co.conn_type);
 
@@ -690,7 +670,7 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
             _etname = self._spawn_operand_name(co.conn_type);
         }
         if _etname is not None {
-            _ce_model = self.ir_in.gen.osp_model;
+            _ce_model = artifact_for(self.ir_in).osp_models.get(CodeContext.NATIVE);
             edge_tag = _ce_model.tags.get(_etname, -1)
                 if (_ce_model is not None)
                 else -1;
@@ -699,7 +679,15 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
         edge_obj = self._osp_generic_edge();
     }
     if edge_obj is None {
-        return tgt;
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="edge constructor",
+            name=_etname or "dynamic edge",
+            help_text="Native connections require a statically known edge "
+            "constructor; a runtime edge class cannot be instantiated here."
+        );
+        return None;
     }
 
     self._osp_make_immortal(edge_obj);
@@ -751,7 +739,7 @@ impl NaIRGenPass._osp_disc_list_operand(expr: (uni.UniNode | None)) -> bool {
         return False;
     }
     try {
-        import from jaclang.compiler.types.types { ClassType as _DiscClassType }
+        import from jaclang.compiler.ir.types.nodes { ClassType as _DiscClassType }
     } except ImportError {
         return False;
     }
@@ -829,7 +817,7 @@ impl NaIRGenPass._codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     i64 = ir.IntType(64);
     edge_tag = -1;
     if (_fcond is not None) and (_fcond.f_type is not None) {
-        _dc_model = self.ir_in.gen.osp_model;
+        _dc_model = artifact_for(self.ir_in).osp_models.get(CodeContext.NATIVE);
         _dc_tags = _dc_model.tags if (_dc_model is not None) else {};
         edge_tag = _dc_tags.get(_etname, -1) if (_etname is not None) else -1;
         if edge_tag < 0 {
@@ -963,7 +951,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         return None;
     }
 
-    _er_model = self.ir_in.gen.osp_model;
+    _er_model = artifact_for(self.ir_in).osp_models.get(CodeContext.NATIVE);
     _er_tags = _er_model.tags if (_er_model is not None) else {};
     _many_fn = self.func_symtab.get("osp_refs_many");
     _cur: (ir.Value | None) = None;
@@ -1152,7 +1140,47 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         self.emit(E5092, node_override=nd, kind="expression", name="EdgeRefTrailer");
         return None;
     }
-    return _cur;
+    return self._osp_pointer_list(_cur);
+}
+
+impl NaIRGenPass._osp_pointer_list(handles: ir.Value) -> ir.Value {
+    """Convert the kernel's integer handles to a language list of graph objects.
+
+    Kernel handles are an ABI detail. Leaving their list representation on a
+    graph expression makes native iteration bind integers even when the typed
+    edge promises nodes. Copy into a pointer list so both element lowering and
+    container ownership use the language representation.
+    """;
+    i64 = ir.IntType(64);
+    pointer = ir.IntType(8).as_pointer();
+    self._emit_list_helpers("i64", i64);
+    self._emit_list_helpers("ptr", pointer);
+    source = self.list_helpers["i64"];
+    target = self.list_helpers["ptr"];
+    handles = self._coerce_type(handles, source["len"].function_type.args[0]);
+    result = self._rc_call_with_ctx(
+        target["new"], [], op="new", loc="", name="osp.objects"
+    );
+    length = self.builder.call(source["len"], [handles], name="osp.objects.len");
+    index = self._entry_alloca(i64, "osp.objects.index");
+    self.builder.store(ir.Constant(i64, 0), index);
+    condition = self.builder.append_basic_block(name="osp.objects.condition");
+    body = self.builder.append_basic_block(name="osp.objects.body");
+    done = self.builder.append_basic_block(name="osp.objects.done");
+    self.builder.branch(condition);
+    self.builder.position_at_end(condition);
+    position = self.builder.load(index);
+    self.builder.cbranch(self.builder.icmp_signed("<", position, length), body, done);
+    self.builder.position_at_end(body);
+    handle = self.builder.call(source["get"], [handles, position]);
+    value = self.builder.inttoptr(handle, pointer, name="osp.object");
+    self.builder.call(target["append"], [result, value]);
+    self.builder.store(self.builder.add(position, ir.Constant(i64, 1)), index);
+    self.builder.branch(condition);
+    self.builder.position_at_end(done);
+    self._emit_rc_release_simple(handles, op="osp_handles", loc="");
+    self._mark_owned(result);
+    return result;
 }
 
 impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None) {
@@ -1182,7 +1210,7 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
     _result = target_val;
     _filter_fn = self.func_symtab.get("osp_filter");
     if _f.f_type is not None {
-        _model = self.ir_in.gen.osp_model;
+        _model = artifact_for(self.ir_in).osp_models.get(CodeContext.NATIVE);
         _tags = _model.tags if _model is not None else {};
         _ntag = _tags.get(_fname, -1);
         _tpair = self._osp_type_pair(_ntag) if _ntag >= 0 else None;
@@ -1247,7 +1275,7 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
         _result = _pred;
     }
     self._mark_owned(_result);
-    return _result;
+    return self._osp_pointer_list(_result);
 }
 
 impl NaIRGenPass._elem_arch_name_of(expr: (uni.UniNode | None)) -> (str | None) {
@@ -1255,7 +1283,7 @@ impl NaIRGenPass._elem_arch_name_of(expr: (uni.UniNode | None)) -> (str | None) 
         return None;
     }
     try {
-        import from jaclang.compiler.types.types { ClassType as _ClassType }
+        import from jaclang.compiler.ir.types.nodes { ClassType as _ClassType }
     } except ImportError {
         return None;
     }

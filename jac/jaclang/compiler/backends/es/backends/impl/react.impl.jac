@@ -1,12 +1,3 @@
-import jaclang.compiler.backends.es.estree as es;
-import from jaclang.compiler.backends.es.reactive_intent {
-    StateField,
-    RefField,
-    StateUpdate,
-    Effect,
-    AsyncBoundary
-}
-
 impl ReactBackend.name -> str {
     return "react";
 }

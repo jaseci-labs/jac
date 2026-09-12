@@ -16,12 +16,13 @@ Shortcoming index:
   #34 - Functions with non-None return type can implicitly return None
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.analysis.types.type_checker_pass { TypeCheckPass }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob CHECKER_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "checker"
@@ -31,7 +32,7 @@ glob CHECKER_FIXTURES = os.path.join(
 def compile_and_check(fixture_name: str) -> JacProgram {
     program = JacProgram();
     mod = program.compile(os.path.join(CHECKER_FIXTURES, fixture_name));
-    run_pass(TypeCheckPass, mod, program);
+    run_pass(PassIdentity.TypeCheckPass, mod, program);
     return program;
 }
 

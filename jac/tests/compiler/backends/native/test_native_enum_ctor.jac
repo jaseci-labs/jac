@@ -22,6 +22,7 @@ print the same lines, and CPython's own answers for the same six calls are
 `2 1 25 4 rejected rejected 0`.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import contextlib;
 import io;
 import os;
@@ -34,8 +35,8 @@ import from tests.support {
     python_run,
     compile_native_ir
 }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -105,13 +106,13 @@ def na_lines(fixture: str) -> list {
 test "the enum-constructor fixture lowers with no seam" {
     (prog, ir) = compile_native("enum_ctor.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the fixture";
+    assert ir is not None and artifact_for(ir).llvm_ir , "no native IR for the fixture";
 }
 
 
 test "the call validates against every declared member" {
     ir = compile_native_ir("enum_ctor.jac");
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     for member in ("Null", "Instantiable", "Instance", "Ambiguous") {
         assert f"ec.Flags.{member}" in text , (
             f"'{member}' is missing from the validation table, so a value it "
@@ -127,7 +128,7 @@ test "the call validates against every declared member" {
 
 test "the declared-enum spelling validates the same way" {
     ir = compile_native_ir("enum_ctor.jac");
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     for member in ("LOW", "MID", "HIGH") {
         assert f"ec.Level.{member}" in text , (
             f"'{member}' is missing from the declared enum's table"
@@ -159,7 +160,9 @@ test "string enum constructors resolve values and reject missing members" {
     import from tests.support { get_func }
     (prog, ir) = compile_native("enum_ctor_string.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    probe = get_func(ir.gen.native_engine, "probe", ctypes.c_int64, ctypes.c_int64);
+    probe = get_func(
+        artifact_for(ir).native_engine, "probe", ctypes.c_int64, ctypes.c_int64
+    );
     assert [probe(i) for i in range(4)] == [1, 1, 1, -1];
 }
 
@@ -167,7 +170,7 @@ test "string enum constructors resolve values and reject missing members" {
 test "a same-named local function is not read as the enum" {
     (prog, ir) = compile_native("enum_ctor_shadow_main.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     assert "ec.Tone.SOFT" not in text , (
         "the hook matched the imported enum by spelling, so this module's own "
         "`Tone` function was replaced by a member lookup"

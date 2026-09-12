@@ -4,11 +4,12 @@ These tests verify that the Jac compiler can successfully compile various
 fixture files without errors, and test compilation-level behaviour.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from jaclang.compiler.tools.treeprinter { print_ast_tree }
 import from tests.support { JAC_ROOT }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.tools.jac_formatter_pass { format_module }
 import from jaclang.compiler.tools.unparse_pass { unparse_module }
 import from jaclang.cli.commands { analysis }
@@ -65,7 +66,7 @@ test "arith precedence" {
         buf = io.StringIO();
         sys.stdout = buf;
         try {
-            pyexec(pycompile(prog.gen.py_ast[0], "test.jac", "exec"));
+            pyexec(pycompile(artifact_for(prog).py_ast[0], "test.jac", "exec"));
         } finally {
             sys.stdout = old;
         }
@@ -92,8 +93,8 @@ test "multiline single tok" {
 
 test "annotation tuple issue" {
     mypass = JacProgram().compile(os.path.join(LANG_FIXTURES, "slice_vals.jac"));
-    assert "Annotated[Str, INT, BLAH]" in mypass.gen.py;
-    assert "tuple[int, Optional[type], Optional[tuple]]" in mypass.gen.py;
+    assert "Annotated[Str, INT, BLAH]" in artifact_for(mypass).py;
+    assert "tuple[int, Optional[type], Optional[tuple]]" in artifact_for(mypass).py;
 }
 
 test "obj hasvar initialization" {

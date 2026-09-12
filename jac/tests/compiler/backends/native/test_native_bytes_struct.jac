@@ -7,12 +7,13 @@ These exercise the sv↔na-congruent surface a binary parser needs:
   - `open(path, "rb").read()` returning that length-aware bytes buffer.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from tests.support { compile_native, get_func, native_force_opts }
 import ctypes;
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
@@ -336,8 +337,10 @@ test "struct pack wrong arg count is a compile error" {
         f"the bad struct.pack is owned by bad_pack(), which must demote to "
         f"a seam, got: {[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "bad_pack" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "bad_pack" not in ir_layout.functions , (
         "a struct.pack with the wrong argument count must demote its "
         "function out of the native layout, never pack uninitialized tail "
         "bytes"

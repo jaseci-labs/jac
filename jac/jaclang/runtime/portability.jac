@@ -1,4 +1,6 @@
-import from jaclang.compiler.frontend.codeinfo { NATIVE_SUPPORTED_STDLIB }
+import from jaclang.compiler.analysis.capabilities.native_policy {
+    NATIVE_SUPPORTED_STDLIB
+}
 
 glob PY_STDLIB_BY_KIND: dict[str, (set[str] | None)] = {
          "web-app": set(),

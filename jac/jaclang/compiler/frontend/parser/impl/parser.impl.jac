@@ -1,9 +1,3 @@
-import from jaclang.compiler.frontend.constant {
-    Tokens as Tok,
-    SymbolAccess,
-    SymbolType
-}
-
 impl Parser.current -> LexToken {
     if self.pos < self._tokens_len {
         return self.tokens[self.pos];

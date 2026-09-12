@@ -1,100 +1,165 @@
-# The Jac compiler
+# Compiler infrastructure
 
-This directory is the compiler: parsing, analysis, placement, and three code
-generators. The pipeline, pass by pass, is documented in
-[`cli/docs/internals/compiler_architecture.md`](../cli/docs/internals/compiler_architecture.md);
-this file is the map of the tree and the rules that keep it organized.
+Start at `api.jac` for consumer requests and `pipeline/schedule.jac` for execution
+order. The graph vocabulary starts at `ir/schema.jac`. Pass implementations live
+with the algorithms they execute, rather than in one flat pass directory.
 
-## Layout
+| Package | Responsibility |
+| --- | --- |
+| `pipeline` | Typed pass/product contracts, registration, execution, progress and result ownership |
+| `session` | Application and target contexts, source revisions, module loading, dependency records and persistence |
+| `ir` | Shared graph schema, checked mutation and graph-derived accessors |
+| `frontend` | Parsing, source positions, native parser adapter and graph materialization |
+| `analysis` | Binding, placement, types, flow, memory ownership, capabilities, boundaries, interfaces and compile-time evaluation |
+| `lowering` | Structural lowering, layout and MTIR |
+| `backends` | Python, ES and native code generation and target artifacts |
+| `bootstrap` | Compiler self-loading, catalog acquisition and native kernel scope |
+| `tools` | Formatting, linting, documentation and graph inspection |
+| `jaclang/build` | Application inventory and assembly/publication of prepared artifacts |
 
-| Directory | Holds | Depends on |
-|---|---|---|
-| `frontend/` | Lexer, parser, the unified tree (`unitree`), roles and relations, source locations, diagnostics, per-node code info, and the module facts every later layer reads (`module_facts`, `const_fold`, `constant`) | nothing above it |
-| `passes/` | Pass infrastructure (`transform`, `uni_pass`, `annex_weave`, `dataflow`) and the analysis passes: symbol tables, declaration matching, semantics, CFG, types, ownership, regions, capabilities, layout | `frontend`, `types` |
-| `types/` | The type system and evaluator, compile-time values, the stub catalog, and the ambient `.pyi` surfaces | `frontend` |
-| `placement/` | The placement solver: which module runs where, pins, workspaces | `frontend`, `passes` |
-| `driver/` | `JacProgram`, `JacCompiler`, the schedules, module resolution, the caches (bytecode, interface, JIR), compile options | everything |
-| `backends/common/` | What the generators share: the AST-gen base, the primitive emitter interfaces, the kernel unit lists, the format kernel | `frontend`, `passes` |
-| `backends/py/` | Jac to JCIR to CPython bytecode | `backends/common` |
-| `backends/es/` | Jac to ESTree to JavaScript, the client framework backends, view IR | `backends/common` |
-| `backends/native/` | Jac to LLVM IR, the linkers (ELF, Mach-O, PE, wasm), the wasm runtime, and the in-tree LLVM binding (`llvm/`, a translation of llvmlite, see `llvm/LICENSE.llvmlite`) | `backends/common` |
-| `tools/` | Formatter, linter, unparser, normalizer, doc IR, grammar extraction, code intelligence | `frontend`, `passes` |
-| `tests/` | Cross-backend equivalence fixtures that ship with the package | |
+## Requests and passes
 
-The loose modules at this level are the native frontend kernel
-(`jc_unit`, `jc_materialize`, `native_compiler`, `native_scope`: the parser
-and its early analysis passes compiled natively and loaded as a shared library)
-and registries shared by analysis and codegen (`symbol_utils`, `expr_keys`, `type_registry`,
-`intrinsic_registry`).
+```mermaid
+flowchart TD
+    Consumer[CLI / LSP / build / HMR] --> API[compiler.api]
+    API --> Session[Selected application and target context]
+    Session --> Source[Reuse pristine source revision]
+    Source --> Graph[Contextual analyzed graph]
+    API --> Registry[pipeline.schedule]
+    Registry --> Executor[pipeline.executor]
+    Executor --> Pass[Registered analysis / lowering / backend pass]
+    Pass --> Graph
+    Pass --> Prerequisite[Require prerequisite product]
+    Prerequisite --> Executor
+    Executor --> Store[pipeline.products]
+    Store --> Consumer
+```
 
-## Native early analysis
+`schedule.jac` owns phase ordering, product prerequisites, pass factories and
+query factories. A consumer requests a product; it does not instantiate a pass
+or assemble a private list. `executor.jac` establishes diagnostic, artifact and
+mutation scopes and reports progress. `products.jac` tracks task outcomes,
+dependencies, versions and invalidation. `request.jac` advances a module request
+through the selected schedule.
 
-When the driver knows a module's codespace before parsing, `jc_unit` runs the
-existing `ASTValidationPass` and `SymTabBuildPass` after annex weaving, inside
-the parse region. The tree and symbol graph cross into the host together.
-Modules with wildcard imports defer symbol construction until the driver's
-dependency resolver has made the imported names available. Parsing without a
-compiler program, or without a known codespace, keeps the ordinary host schedule.
+`PassIdentity`, `CompilationProduct`, `AnalysisFact`, `PassSpec` and `QuerySpec`
+make the execution contract explicit. `ProductKey[T]` pairs a product identity
+with its result type. Analyses receive `AnalysisServices`; application
+orchestration uses `JacProgram`. Semantic service interfaces do not expose an
+unrestricted compiler implementation.
 
-`PassResult` carries completed diagnostics and timing through the ordinary pass
-driver, which applies diagnostic policy and records each pass once. Native field
-and reference-container layouts come from the backend's ABI metadata;
-`jc_materialize` preserves object identity when copying symbol indexes and edges.
-Keep pass algorithms in `passes/`, and extend this shared boundary when another
-pass moves into the kernel.
+## Graph domains
 
-`scripts/native_compile_bench.jac` at the repository root measures uncached AOT
-application builds with a warm compiler. Set `JAC_COMPILER_LIB` to each built
-kernel when comparing revisions.
+```mermaid
+flowchart LR
+    Syntax[ir/syntax] -->|binding relations| Symbols[ir/symbols]
+    Syntax -->|type relations| Types[ir/types]
+    Syntax -->|placement relations| Placement[ir/placement]
+    Flow[ir/flow] -->|control-flow relations| Flow
+    Schema[ir/schema catalog] -. validates .-> Syntax
+    Schema -. validates .-> Symbols
+    Schema -. validates .-> Types
+    Schema -. validates .-> Placement
+    Schema -. validates .-> Flow
+```
 
-Measured on 2026-09-06 with `examples/chess/chess.jac`, Linux x86-64 on a
-Threadripper 9980X: ten builds per kernel in two fresh-process batches, two
-excluded warmups per batch, ordered baseline/new/new/baseline. Both kernels used
-the same host compiler source; the baseline kernel predates native early passes.
-Startup was excluded; application IR caching was disabled and linking included.
+These are domains of one shared graph. Node declarations define capabilities;
+edge declarations name their Jac endpoint types. The schema catalog derives
+endpoint descriptors and adds multiplicity, ordering, lifetime and relation
+family metadata. Graph identity and mutation permits live in `ir/identity.jac`.
+Accessors check graph ownership and write authority before changing relations.
+Their generation-tagged caches are derived views, not semantic producers.
 
-| Median | Parser-only kernel | Early-analysis kernel |
-| --- | ---: | ---: |
-| Full AOT build | 3.646 s | 3.537 s |
-| AST validation (pass ledger) | 34.25 ms | 11.22 ms |
-| Symbol construction (pass ledger) | 38.19 ms | 14.00 ms |
-| Both passes combined (pass ledger) | 72.45 ms | 25.04 ms |
+Declaration identity reconstructed from an interface or library catalog is
+persistent semantic data. `ClassDetailsShared.declaration_identity` preserves
+that origin even when the catalog supplies a placeholder scope. The separate
+`_identity_key` cache is only a derived view of a live declaration; clearing it
+or changing unrelated type relations cannot change a catalog type's identity.
 
-The observed total median improvement is 3.0%; the migrated passes are 2.9x
-faster together. Total build ranges overlap (3.423–4.193 s baseline,
-3.340–4.145 s new), so the end-to-end figure is a local measurement rather than a
-guaranteed speedup. Both generated executables completed an automatic game.
+Structural role replacement checks every proposed connection before removing
+the previous edges. Its validation phase uses the same typed endpoint checks
+as insertion. Product cleanup also tolerates nested graph collection: a
+weak-reference callback queues its removal while another sweep is active.
 
-## Rules
+IR code may navigate existing structure and facts. It may not import analysis
+implementations, acquire a compiler session, resolve dependencies or infer a
+missing type. A property that needs new semantic work becomes a scheduled query.
+Backend output belongs to the context's artifact store, not to the syntax base.
 
-**Backends consume facts, they do not compute them.** Types are read from
-`Expr.type`, symbols from `.sym`, layouts from the layout registry, and
-module structure from `ModuleFacts`. `tests/compiler/test_backend_purity.jac`
-scans the backends for analysis APIs and fails on any read that is not
-sanctioned there with a reason. If a backend needs a fact, a pass stamps it.
+`session/sources.jac` shares pristine syntax by content revision, including
+annexes. Different application or target contexts receive distinct mutable
+graphs. A graph cannot be silently adopted by an unrelated session. Releasing a
+context releases its products and artifacts without invalidating another
+context's graph.
 
-**Shared code lives with the lowest layer that needs it, never in a sibling.**
-A helper the passes and two backends all import belongs in `frontend/` or
-`backends/common/`, not in the backend that happened to write it first.
+Application **context** selects the app's entry and boundary rules. **Placement**
+describes participating codespaces. **Ownership** is reserved for memory and
+borrowing analysis.
 
-**Every generator has the same shape.** One walker declaration
-(`jcir_gen_pass.jac`, `esast_gen_pass.jac`, `na_ir_gen_pass.jac`) holds the
-state fields and every method signature; the bodies live in
-`<name>.impl/<concern>.impl.jac`, one file per concern (expressions,
-statements, calls, declarations, module, and so on). There are no mixins and
-no redeclared signatures.
+## Persistence and bootstrap
 
-**Where bodies go.** A declaration with one body file keeps it in
-`impl/<module>.impl.jac`. A declaration with several keeps them in
-`<module>.impl/<part>.impl.jac`. Nothing else.
+Interface and artifact codecs under `session/cache` consume prepared records.
+Interface preparation belongs to `analysis/interfaces`; dependency loading
+belongs to `session/imports`. Cache decoding reconstructs graph data within the
+selected mutation scope and does not substitute a graph from another context.
 
-**The bootstrap tier constrains imports.** `jaclang/bootstrap_manifest.py`
-lists the modules the seed transpiler (`jac0`) compiles: the frontend, the
-driver, placement, the Python backend and the pass bases. A seed module may
-import a non-seed module only inside a function body, because a hoisted
-import deadlocks bootstrap. That is why many imports in this tree are local
-to the function that uses them; `scripts/check_seed_manifest.py` enforces it.
+The native parser adapter consumes the central schema and registered early-pass
+bits. `jaclang/bootstrap_manifest.py` is the minimal Python seed boundary needed
+before Jac imports work. Bootstrap support does not create another semantic
+schedule. Native kernel runtime units are compiled in the requesting context;
+their analyzed graphs are not process-global cached objects.
 
-**Type checking.** `jac check .` runs in CI over the whole repository with
-the exclusions in the root `.jacignore`. Every entry there is a debt with a
-stated reason; the target is an empty file.
+Known server-hosted library sources use the native early passes for symbol
+imports, including imports in explicit server compilations. Each request
+receives a fresh graph and its own mutation authority. Full compilation
+targets, client/native imports, and nested applications keep the ordinary
+source pipeline. The executor consumes early results under the same pass
+contracts rather than repeating those passes in Python.
+
+OSP records and analysis helpers live in `analysis/binding/osp_facts.jac` and
+`osp_model.jac`. Scheduled ES and native passes produce separate models for
+their codespaces. The runtime owns dispatch and graph operations, not compiler
+analysis. Its native graph ABI uses integer object handles; native code
+generation converts traversal results to language pointer lists before
+iteration, filtering or field access.
+
+The full design and acceptance requirements are in
+[`docs/architecture/compiler-reorganization.md`](../../../docs/architecture/compiler-reorganization.md).
+
+## OSP algorithms and graph storage
+
+Declare endpoint types on the edge, then express relationships through OSP
+references and connections. For example, `scope +>:ScopePrimary:+> binding`
+and `binding +>:BindingTarget:+> symbol` construct a named binding;
+`[scope->:ScopePrimary:->->:BindingTarget:->]` reads its symbols. Name lookup
+retains a graph-derived index because repeated lookup must not scan a scope.
+
+Connections have one commit hook on `GraphNode`, which checks relation
+cardinality and mutation authority and adopts previously unclaimed nodes.
+Replacement accessors preflight every proposed target before deleting existing
+relations. `CollectUnclaimed` validates a reachable graph through typed walker
+abilities, then its caller commits the collected claims. `ValidateGraph` also
+uses an OSP traversal with an explicit visited set. These operations enforce IR
+integrity; they do not perform semantic analysis or schedule compiler passes.
+
+Semantic node handling belongs in abilities on the relevant node types.
+`NativeBlockerScan`, invoked by scheduled placement work, receives candidates
+from the syntax index and handles imports, abilities, root references, and
+server-only constructs through typed abilities. The enclosing analysis preserves diagnostic priority
+and publishes the result through the scheduled product/query infrastructure.
+`ElementReferenceScan` resolves each name once to collect both references and
+function escapes. Its declaration-to-element map lives only for that summary,
+so a later binding or structure change cannot reuse stale associations.
+`BindingFactsPass` uses the same syntax index to collect scopes and names for
+storage and capture analysis, avoiding a separate walk of every syntax node.
+
+`ir/syntax/cloning.jac` is the storage boundary for copying validated syntax.
+It preserves endpoint types, edge ordering, and shared children while creating
+fresh anchors and incoming weak references. It excludes analysis relations.
+Copying assigns the destination context and clears derived state, avoiding
+separate adoption and thaw traversals. Pristine source freezing and authority
+assignment likewise share one checked traversal.
+
+Runtime optimizations preserve the OSP surface: the traversal kernel caches
+ordered callback plans, and the seed compiler lowers indexed first/last graph
+references without allocating an intermediate list for simple transient hops.

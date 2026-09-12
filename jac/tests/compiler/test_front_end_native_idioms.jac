@@ -13,14 +13,18 @@ front end -- they are the object-spatial runtime and the driver -- so their
 closure and are deliberately untouched.
 """
 
+import from jaclang.compiler.backends.common.artifact_store {
+    artifact_for,
+    existing_artifact
+}
 import os;
 import types;
-import jaclang.compiler.frontend.helpers as helpers_mod;
+import jaclang.compiler.frontend.source_io as helpers_mod;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
-import from jaclang.compiler.frontend.helpers { pascal_to_snake }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.backends.native.naming { native_safe_sym }
+import from jaclang.compiler.frontend.source_io { pascal_to_snake }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -172,12 +176,12 @@ test "helpers module scope binds os and nothing else" {
 # genuinely cannot lower become seams instead of a whole-module refusal.
 test "helpers.jac lowers when a native unit reaches it" {
     import jaclang;
-    import from jaclang.compiler.driver.na_coverage {
+    import from jaclang.compiler.analysis.placement.native_fallback {
         na_coverage_begin,
         na_coverage_end
     }
     helpers_path = os.path.join(
-        os.path.dirname(jaclang.__file__), "compiler", "frontend", "helpers.jac"
+        os.path.dirname(jaclang.__file__), "compiler", "frontend", "source_io.jac"
     );
     prog = JacProgram();
     opts = CompileOptions(
@@ -196,7 +200,7 @@ test "helpers.jac lowers when a native unit reaches it" {
         f"helpers.jac must reach the backend, not refuse on a signature no "
         f"callable owns: {[str(e) for e in prog.errors_had]}"
     );
-    assert ir is not None and ir.gen.llvm_ir is not None , (
+    assert ir is not None and artifact_for(ir).llvm_ir is not None , (
         "no LLVM IR for helpers.jac, so every consumer that links it inherits "
         "a module-level refusal"
     );
@@ -286,7 +290,7 @@ test "MalformedJacTomlError keeps its identity and its tomllib base" {
 # fail here with the exact delta, and the tables get regenerated.
 test "the frozen builtins table matches the running interpreter" {
     import builtins;
-    import from jaclang.compiler.passes.static_analysis_pass { BUILTIN_NAMES }
+    import from jaclang.compiler.analysis.types.static_analysis_pass { BUILTIN_NAMES }
     live = set(dir(builtins));
     assert BUILTIN_NAMES == live , (
         f"regenerate BUILTIN_NAMES: missing {sorted(live - BUILTIN_NAMES)}, "
@@ -296,7 +300,9 @@ test "the frozen builtins table matches the running interpreter" {
 
 test "the frozen TestCase assert table matches the running interpreter" {
     import from unittest { TestCase }
-    import from jaclang.compiler.passes.sym_tab_build_pass { TEST_ASSERT_METHOD_NAMES }
+    import from jaclang.compiler.analysis.binding.sym_tab_build_pass {
+        TEST_ASSERT_METHOD_NAMES
+    }
     live = [
         j
         for j in dir(TestCase())
@@ -308,7 +314,7 @@ test "the frozen TestCase assert table matches the running interpreter" {
 }
 
 test "a test block still binds the assert names to symbols" {
-    import from jaclang.compiler.frontend.unitree { Name }
+    import from jaclang.compiler.ir.schema { Name }
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, "_idiom_test_asserts.jac"),
@@ -338,9 +344,9 @@ test "a test block still binds the assert names to symbols" {
 test "version-condition comparisons match the operator table they replaced" {
     import sys;
     import ast as py_ast;
-    import from jaclang.compiler.frontend.unitree { IfStmt, PythonModuleAst, Source }
-    import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-    import from jaclang.compiler.frontend.helpers { evaluate_version_condition }
+    import from jaclang.compiler.ir.schema { IfStmt, PythonModuleAst, Source }
+    import from jaclang.compiler.frontend.pyast_load_pass { PyastBuildPass }
+    import from jaclang.compiler.frontend.source_io { evaluate_version_condition }
     code = "import sys\n"
     "if sys.version_info >= (3, 11):\n    a = 1\n"
     "if sys.version_info > (3, 11):\n    b = 1\n"
@@ -379,11 +385,11 @@ test "version-condition comparisons match the operator table they replaced" {
 # mapping beside the new one, so every CI platform proves the pair agrees.
 test "native_target_os agrees with the platform.system mapping it replaced" {
     import platform;
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.target_options {
         native_target_os,
-        set_native_target_override,
-        _native_target_ctx
+        set_native_target_override
     }
+    import from jaclang.compiler.session.target_options { _native_target_ctx }
     prior = set_native_target_override("");
     try {
         sysname = platform.system();
@@ -403,11 +409,11 @@ test "native_target_os agrees with the platform.system mapping it replaced" {
 }
 
 test "native_target_os honors the native target override" {
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.target_options {
         native_target_os,
-        set_native_target_override,
-        _native_target_ctx
+        set_native_target_override
     }
+    import from jaclang.compiler.session.target_options { _native_target_ctx }
     prior = set_native_target_override("");
     try {
         for (raw, want) in [
@@ -441,7 +447,7 @@ test "Jdb.has_breakpoint still reads the compiled bytecode" {
 # beside the type so the runtime does no reflection. Reflection is fine HERE --
 # a test is never lowered natively -- so this pins the pair against drift.
 test "placement blocker tables carry the real class name" {
-    import from jaclang.compiler.placement.placement {
+    import from jaclang.compiler.analysis.placement.evidence {
         PLACEMENT_NATIVE_REJECT_NODES,
         PLACEMENT_SV_SIGNAL_NODES
     }
@@ -459,7 +465,7 @@ test "placement blocker tables carry the real class name" {
 }
 
 test "scan_native_blockers names the offending node from the table" {
-    import from jaclang.compiler.placement.placement { scan_native_blockers }
+    import from jaclang.compiler.analysis.placement.evidence { scan_native_blockers }
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, "_idiom_jsx_blocker.jac"),
@@ -490,7 +496,8 @@ test "guardrail: @lru_cache refuses where a dict cache does not" {
         "a seam, so it refuses the module exactly as a bare "
         f"`import functools;` does: {errs}"
     );
-    assert dec_ir.gen.llvm_ir is None , (
+    rejected_artifact = existing_artifact(dec_ir);
+    assert rejected_artifact is None or rejected_artifact.llvm_ir is None , (
         "a module-fatal violation must withhold the LLVM IR"
     );
     memo = check_na_inline(

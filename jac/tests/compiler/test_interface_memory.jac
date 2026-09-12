@@ -3,9 +3,9 @@ import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.types.stubcat.writer { CatalogWriter }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.analysis.interfaces.catalog_builder { CatalogBuilder }
 
 test "interface symbol identities resolve each module path once" {
     program = JacProgram();
@@ -14,7 +14,9 @@ test "interface symbol identities resolve each module path once" {
     boundary = program.compile('identity.jac', use_str=source, options=options);
     twin = JacProgram().compile('identity.jac', use_str=source, options=options);
     external = JacProgram().compile('external.jac', use_str=source, options=options);
-    writer = CatalogWriter(evaluator=None, pkg_dir=os.getcwd(), boundary=boundary);
+    writer = CatalogBuilder(
+        evaluator=program.get_type_evaluator(), pkg_dir=os.getcwd(), boundary=boundary
+    );
     with patch('os.path.realpath', wraps=os.path.realpath) as resolve {
         for mod in [boundary, twin, external] {
             for sym in mod.names_in_scope.values() {
@@ -46,11 +48,15 @@ test "interface path identities expire with the writer" {
         }
         alias = base / 'alias';
         alias.symlink_to(base / 'first', target_is_directory=True);
-        writer = CatalogWriter(evaluator=None, pkg_dir=td);
+        writer = CatalogBuilder(
+            evaluator=JacProgram().get_type_evaluator(), pkg_dir=td
+        );
         assert writer.rel_of(str(alias / 'unit.jac')) == 'first/unit.jac';
         alias.unlink();
         alias.symlink_to(base / 'second', target_is_directory=True);
-        next_writer = CatalogWriter(evaluator=None, pkg_dir=td);
+        next_writer = CatalogBuilder(
+            evaluator=JacProgram().get_type_evaluator(), pkg_dir=td
+        );
         assert next_writer.rel_of(str(alias / 'unit.jac')) == 'second/unit.jac';
     }
 }

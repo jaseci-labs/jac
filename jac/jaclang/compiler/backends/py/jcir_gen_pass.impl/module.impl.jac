@@ -169,7 +169,7 @@ impl JcirGenPass.exit_module with Module exit {
     self.set_out(here, [module]);
     self._module_root = module;
     self._module_path = here.loc.mod_path;
-    here.gen.jcir = module_container_bytes(self._module_path, module);
+    artifact_for(here).jcir = module_container_bytes(self._module_path, module);
 }
 
 impl JcirGenPass.exit_type_param with TypeParam exit {
@@ -385,13 +385,13 @@ impl JcirGenPass.exit_py_inline_code with PyInlineCode exit {
 }
 
 impl JcirGenPass.exit_import with Import exit {
-    import from jaclang.compiler.driver.boundary_classify {
+    import from jaclang.compiler.analysis.boundaries.classify {
         CrossAppKind,
         classify_cross_app_import,
         import_binds_client_native
     }
     if (
-        import_binds_client_native(here, self.ir_in.gen.interop_manifest)
+        import_binds_client_native(here, artifact_for(self.ir_in).interop_manifest)
         or here.native_only_drop
     ) {
         self.set_out(here, []);
@@ -411,7 +411,7 @@ impl JcirGenPass.exit_import with Import exit {
     if (
         here.from_loc
         and here.items
-        and classify_cross_app_import(here, self.ir_in.gen.interop_manifest)
+        and classify_cross_app_import(here, artifact_for(self.ir_in).interop_manifest)
             == CrossAppKind.SERVICE_BRIDGE
         and self._generate_sv_to_sv_stubs(here)
     ) {

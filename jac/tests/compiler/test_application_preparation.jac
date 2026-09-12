@@ -5,9 +5,9 @@ import shutil;
 import tempfile;
 import from pathlib { Path }
 import from unittest.mock { patch }
-import from jaclang.compiler.driver.application { prepare_application }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compiler { JacCompiler }
+import from jaclang.build.preparation { prepare_application }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.compiler { JacCompiler }
 import from jaclang.runtime.prepared {
     forget,
     prepared_manifest,
@@ -163,7 +163,7 @@ test "source changes invalidate a prepared revision and replace its access metad
 }
 
 test "runtime logs and toolchain directories do not become application inputs" {
-    import jaclang.compiler.driver.application as preparation;
+    import jaclang.build.preparation as preparation;
     import from jaclang.runtime.prepared { containing_application }
     with tempfile.TemporaryDirectory(prefix='jac-prepared-log-') as tmp {
         base = Path(tmp);
@@ -207,7 +207,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
     import site;
     site_before = sys.modules['site'];
     images_before = list(sealed._images);
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.session.cache.artifact_codec { get_module_cache_path }
     import from jaclang.server.sealed_serve { client_dist_for }
     for package_name in ['prepared_sealed_test', 'site'] {
         with tempfile.TemporaryDirectory(prefix='jac-prepared-sealed-') as tmp {
@@ -221,9 +221,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 first = prepare_application(
                     str(path), source_program, tmp, services=[str(package_init)]
                 );
-                import from jaclang.compiler.driver.compilation_context {
-                    artifact_cache_path
-                }
+                import from jaclang.compiler.session.context { artifact_cache_path }
                 data = artifact_cache_path(str(path), source_program).read_bytes();
                 init_data = artifact_cache_path(
                     str(package_init), source_program
@@ -341,7 +339,7 @@ test "preparation infrastructure compiles through the binary bootstrap" {
     import from jaclang.jac0 { compile_jac }
     package = Path(__file__).resolve().parents[2] / 'jaclang';
     for relative in [
-        'compiler/driver/application.jac',
+        'build/preparation.jac',
         'compiler/backends/py/artifact_imports.jac',
         'runtime/prepared.jac'
     ] {

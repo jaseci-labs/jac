@@ -15,6 +15,7 @@ compare_results uses intersection semantics: only keys present in both dicts
 are checked, so a backend that returns {} (unimplemented) is silently skipped.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import importlib;
 import json;
@@ -24,12 +25,13 @@ import subprocess;
 import sys;
 import from pathlib { Path }
 import jaclang;
-import from jaclang.compiler.backends.es { EsastGenPass }
+import from jaclang.compiler.pipeline.executor { run_pass }
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.estree { Node as EsNode }
-import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.backends.native.naming { native_safe_sym }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURES = str(
          Path(jaclang.__file__).parent / "compiler" / "tests" / "fixtures"
@@ -94,7 +96,7 @@ def encode_py_wire(value: any) -> str {
 # ES (ECMAScript / JavaScript) helpers
 # -----------------------------------------------------------------------
 def compile_fixture_to_js(fixture_name: str) -> str {
-    import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
+    import from jaclang.compiler.analysis.types.type_checker_pass { TypeCheckPass }
     fixture_path = os.path.join(FIXTURES, fixture_name);
     prog = JacProgram();
     # EsastGenPass consumes core call facts (call_kind/
@@ -108,10 +110,10 @@ def compile_fixture_to_js(fixture_name: str) -> str {
     assert not fatal , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in fatal]}"
     );
-    es_pass = EsastGenPass(ir_in=ir, prog=prog);
+    es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog);
     es_ir = es_pass.ir_out;
-    assert isinstance(es_ir.gen.es_ast, EsNode) , "es_ast should be an EsNode";
-    return es_to_js(es_ir.gen.es_ast);
+    assert isinstance(artifact_for(es_ir).es_ast, EsNode) , "es_ast should be an EsNode";
+    return es_to_js(artifact_for(es_ir).es_ast);
 }
 
 def run_js_function(js_code: str, func_name: str) -> dict {
@@ -136,7 +138,10 @@ def run_js_function(js_code: str, func_name: str) -> dict {
 def run_js_module_fixture(fixture: str, func_name: str) -> dict {
     import from tempfile { TemporaryDirectory }
     import from jaclang.client.jac_client_compiler { JacClientCompiler }
-    import from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
+    import from jaclang.compiler.backends.common.artifacts {
+        ClientArtifact,
+        ClientManifest
+    }
     prog = JacProgram();
     source = (Path(_fixture_shadow_dir()) / fixture).resolve();
     prog.compile(str(source), no_cgen=True);
@@ -202,7 +207,7 @@ def compile_native(fixture: str, *, no_ir_cache: bool = False) -> tuple {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);
 }
@@ -359,7 +364,7 @@ def run_native_function(eng: object, func_name: str, ir: object = None) -> dict 
         # runtime-initialized globals (e.g. the bytes alphabets in
         # na_stdlib/base64.jac) are read as null pointers and the JIT'd
         # fixture segfaults.
-        manifest = ir.gen.interop_manifest if (ir is not None) else None;
+        manifest = artifact_for(ir).interop_manifest if (ir is not None) else None;
         sources = manifest.native_transitive_sources if manifest else [];
         seen_srcs: set = set();
         for src_mod in sources {

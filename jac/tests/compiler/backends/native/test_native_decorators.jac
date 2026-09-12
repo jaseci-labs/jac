@@ -7,10 +7,11 @@ gate: decoration in a native context must either lower faithfully or be rejected
 with a structured error — never dropped.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from tests.support { TESTS_DIR, native_force_opts }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES_DIR = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -59,7 +60,7 @@ def compile_fixture(fixture: str) -> any {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     gi_addr = eng.get_function_address("__jac_glob_init");
     if gi_addr {
@@ -130,7 +131,7 @@ test "guardrail: non-static decorator expression demotes its function" {
         f"a dynamically-computed decorator must demote its function to the "
         f"Python implementation (which applies it), got: {fmt_errors(prog)}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "val" not in layout.functions , (
         "the dynamically-decorated function must be demoted out of the "
@@ -156,7 +157,7 @@ test "guardrail: decorated method demotes, native callers demote with it" {
     assert not has_error_code(prog, "E5090") , (
         f"a decorated method must demote, not fail the module: {fmt_errors(prog)}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "Box.get" not in layout.methods , (
         "the decorated method must be demoted out of the native layout, "

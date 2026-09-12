@@ -8,12 +8,13 @@ is present, and compares the materialized tree against the store parser's
 tree for the same source.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 
 glob SHAPE_EXPORTED: set[str] = {"BodyRole", "SpecRole", "AccessorsRole"};
 
-def _frontend_dir -> (str | None) {
-    import jaclang.compiler.frontend as fe;
+def _ir_dir -> (str | None) {
+    import jaclang.compiler.ir.schema as fe;
     f = fe?.__file__;
     if f is None {
         return None;
@@ -23,13 +24,16 @@ def _frontend_dir -> (str | None) {
 
 def _shape_consulted_roles -> (set[str] | None) {
     import re;
-    base = _frontend_dir();
+    base = _ir_dir();
     if base is None {
         return None;
     }
     pat = re.compile(r"_role_shaped\(\s*(\w+)");
     found: set[str] = set();
-    for rel in ("unitree.impl/roles.impl.jac", "unitree.impl/nodes.impl.jac") {
+    for rel in (
+        "syntax/nodes.impl/roles.impl.jac",
+        "syntax/nodes.impl/nodes.impl.jac"
+    ) {
         path = os.path.join(base, rel);
         if not os.path.isfile(path) {
             continue;
@@ -99,7 +103,7 @@ def _profile(nd: any) -> list {
 }
 
 test "kernel parse materializes the store parser's tree" {
-    import from jaclang.compiler.native_compiler { ensure_loaded }
+    import from jaclang.compiler.frontend.kernel.adapter { ensure_loaded }
     kernel = ensure_loaded();
     if kernel is None {
         # No built kernel lib in this tree; nothing to compare against.
@@ -109,9 +113,8 @@ test "kernel parse materializes the store parser's tree" {
         (nat_mod, nat_err) = parse_woven(SNIPPET, "kernel_eq.jac", None, []);
         (py_mod, py_err) = parse(SNIPPET, "kernel_eq.jac");
         assert nat_err == py_err;
-        assert nat_mod._gen is None;
-        import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
-        assert isinstance(nat_mod.gen, CodeGenTarget);
+        assert not hasattr(nat_mod, "_gen");
+        assert not hasattr(nat_mod, "gen");
         assert kernel.skipped() == 0 , (
             "kernel skipped objects during materialization"
         );
@@ -140,8 +143,8 @@ def _rss_kb -> (int | None) {
 
 test "kernel materialization releases every borrowed input reference" {
     import ctypes;
-    import from jaclang.compiler.native_compiler { ensure_loaded }
-    import from jaclang.compiler.frontend.codeinfo { HDR_RC_OFF }
+    import from jaclang.compiler.frontend.kernel.adapter { ensure_loaded }
+    import from jaclang.compiler.backends.common.artifacts { HDR_RC_OFF }
     kernel = ensure_loaded();
     if kernel is None {
         return;
@@ -198,10 +201,10 @@ def _kernel_growth_mb(src: str, path: str, rounds: int) -> (float | None) {
 }
 
 test "kernel parses retain no native memory once the tree is handed over" {
-    import from jaclang.compiler.native_compiler { ensure_loaded }
+    import from jaclang.compiler.frontend.kernel.adapter { ensure_loaded }
     kernel = ensure_loaded();
-    base = _frontend_dir();
-    src_path = os.path.join(base, "unitree.jac") if base is not None else "";
+    base = _ir_dir();
+    src_path = os.path.join(base, "syntax", "nodes.jac") if base is not None else "";
     if kernel is None or not src_path or not os.path.isfile(src_path) {
         # No built kernel or no source tree to parse; the guard runs in checkouts.
         assert True;
@@ -215,7 +218,7 @@ test "kernel parses retain no native memory once the tree is handed over" {
             assert True;
         } else {
             assert grown < 40.0 , (
-                f"four kernel parses of unitree.jac grew RSS by {grown:.0f} MB; "
+                f"four kernel parses of syntax/nodes.jac grew RSS by {grown:.0f} MB; "
                 "the parse region is not being dropped at the end of jc_run"
             );
         }

@@ -1,8 +1,6 @@
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
-
 impl JacAutoLintPass.postinit -> None {
-    import from jaclang.compiler.driver.compilation_context { context_app }
-    import from jaclang.compiler.driver.pass_driver { diagnostic_policy_for }
+    import from jaclang.compiler.session.context { context_app }
+    import from jaclang.compiler.session.diagnostics { diagnostic_policy_for }
     import from jaclang.project.config {
         JacConfig,
         get_config_for_path,
@@ -36,7 +34,7 @@ impl JacAutoLintPass.postinit -> None {
 }
 
 impl JacAutoLintPass._is_file_excluded(file_path: str) -> bool {
-    import from jaclang.compiler.frontend.helpers { path_matches_exclude }
+    import from jaclang.compiler.frontend.source_io { path_matches_exclude }
     return path_matches_exclude(file_path, self._exclude_patterns, self._project_root);
 }
 
@@ -1356,10 +1354,10 @@ impl JacAutoLintPass._base_decl_archetypes(annex_path: str) -> list[uni.Archetyp
         return self._base_decl_cache;
     }
     self._base_decls_loaded = True;
-    import from jaclang.compiler.driver.bccache { discover_base_file }
+    import from jaclang.compiler.session.cache.annexes { discover_base_file }
     import from jaclang.compiler.frontend.parser { parse as rd_parse }
-    import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.frontend.source_io { read_file_with_encoding }
+    import from jaclang.compiler.session.session { JacProgram }
     base_path = discover_base_file(annex_path);
     if base_path is None {
         return self._base_decl_cache;
@@ -1936,7 +1934,7 @@ impl JacAutoLintPass._walk_for_has_uses(
     writes: list[tuple[int, int, str]],
     reads: list[tuple[int, int, str, uni.Name]]
 ) -> None {
-    import from jaclang.compiler.frontend.constant { ExprCtx }
+    import from jaclang.compiler.ir.enums { ExprCtx }
     if isinstance(nd, (uni.LambdaExpr, uni.Ability, uni.Archetype)) {
         return;
     }

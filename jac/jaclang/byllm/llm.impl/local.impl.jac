@@ -27,7 +27,7 @@ impl LocalLLM.postinit -> None {
     self.supports_native_tools = False;
 }
 
-impl LocalLLM._ensure_llama -> object {
+impl LocalLLM._ensure_llama -> any {
     if self._llama is not None {
         return self._llama;
     }

@@ -1,13 +1,14 @@
 """Early native analysis preserves scopes, diagnostics, and pass scheduling."""
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass, execute_passes }
 import from jaclang.compiler.frontend.parser.frontend { parse, parse_woven }
-import from jaclang.compiler.frontend.unitree { Module, UniScopeNode }
-import from jaclang.compiler.native_compiler { ensure_loaded }
-import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
-import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
-import from jaclang.compiler.passes.graph_lowering_pass { GraphLoweringPass }
+import from jaclang.compiler.ir.schema { Module, UniScopeNode }
+import from jaclang.compiler.frontend.kernel.adapter { ensure_loaded }
+import from jaclang.compiler.analysis.binding.ast_validation_pass { ASTValidationPass }
+import from jaclang.compiler.analysis.binding.sym_tab_build_pass { SymTabBuildPass }
+import from jaclang.compiler.lowering.graph_lowering_pass { GraphLoweringPass }
 
 test "native early symbols wait for construction lowering" {
     kernel = ensure_loaded();
@@ -22,9 +23,9 @@ test "native early symbols wait for construction lowering" {
         );
         assert not failed;
         assert id(mod) not in prog.analysis.early_passes;
-        run_pass(GraphLoweringPass, mod, prog);
-        run_pass(ASTValidationPass, mod, prog);
-        run_pass(SymTabBuildPass, mod, prog);
+        run_pass(PassIdentity.GraphLoweringPass, mod, prog);
+        run_pass(PassIdentity.ASTValidationPass, mod, prog);
+        run_pass(PassIdentity.SymTabBuildPass, mod, prog);
         assert not prog.errors_had;
         imports = [
             name
@@ -51,7 +52,7 @@ test "native validation preserves client code context" {
                 early_context=context
             );
             assert not failed;
-            run_pass(ASTValidationPass, mod, prog);
+            run_pass(PassIdentity.ASTValidationPass, mod, prog);
             errors = [
                 e
                 for e in prog.errors_had
@@ -86,6 +87,8 @@ def total(items: list[int]) -> int {
 @overload def choose(value: str) -> str;
 """;
 
+import from jaclang.compiler.ir.ownership.facts { SymbolMemory }
+
 def scope_profile(mod: Module) -> list {
     out: list = [];
     for scope in [mod]
@@ -99,6 +102,7 @@ def scope_profile(mod: Module) -> list {
             names.append((name, symbol.imported, [d.sym_name for d in symbol.defn]));
             assert symbol.parent_tab is scope;
             assert symbol.provider is None;
+            assert isinstance(symbol.memory, SymbolMemory);
         }
         overloads: list = [];
         for (name, symbols) in scope.names_in_scope_overload.items() {
@@ -132,8 +136,11 @@ test "native early passes preserve the store parser's symbol graph" {
         assert not failed;
         assert "SymTabBuildPass" in native.analysis.early_passes[id(nat_mod)].results;
         before = scope_profile(nat_mod);
-        run_pass(ASTValidationPass, nat_mod, native);
-        run_pass(SymTabBuildPass, nat_mod, native);
+        execute_passes(
+            native,
+            nat_mod,
+            [PassIdentity.ASTValidationPass, PassIdentity.SymTabBuildPass]
+        );
         assert id(nat_mod) not in native.analysis.early_passes;
         assert native.analysis.pass_runs["SymTabBuildPass"] == 1;
         assert scope_profile(nat_mod) == before;
@@ -141,8 +148,8 @@ test "native early passes preserve the store parser's symbol graph" {
         store = JacProgram();
         (store_mod, store_failed) = parse(SOURCE, "early_scopes.jac", store);
         assert not store_failed;
-        run_pass(ASTValidationPass, store_mod, store);
-        run_pass(SymTabBuildPass, store_mod, store);
+        run_pass(PassIdentity.ASTValidationPass, store_mod, store);
+        run_pass(PassIdentity.SymTabBuildPass, store_mod, store);
         assert scope_profile(nat_mod) == scope_profile(store_mod);
         assert not native.errors_had;
         assert not store.errors_had;
@@ -160,7 +167,7 @@ test "native validation diagnostics retain inline suppression" {
                 source, "early_diagnostic.jac", prog, [], early_context="server"
             );
             assert not failed;
-            run_pass(ASTValidationPass, mod, prog);
+            run_pass(PassIdentity.ASTValidationPass, mod, prog);
             errors = [
                 e
                 for e in prog.errors_had

@@ -325,8 +325,8 @@ impl native_build(
 
     console.print(f"Compiling {filename} to native binary");
 
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options {
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.session.options {
         CompileOptions,
         push_native_target,
         pop_native_target
@@ -370,7 +370,7 @@ impl native_build(
         return 1;
     }
 
-    if ir_module is None or ir_module.gen.llvm_ir is None {
+    if ir_module is None or artifact_for(ir_module).llvm_ir is None {
         if auto_promote
             and not (ir_module and ir_module.decided_codespace == 'native') {
             console.error(
@@ -422,7 +422,7 @@ impl native_build(
         return 0;
     }
 
-    manifest = ir_module.gen.interop_manifest;
+    manifest = artifact_for(ir_module).interop_manifest;
     if not lib and manifest and manifest.native_imports {
         console.error(
             "Cannot compile to standalone binary: "
@@ -495,9 +495,9 @@ impl native_build(
     export_symbols: list[str] = [];
     init_funcs: list[str] = [];
 
-    clib_paths = ir_module.gen._clib_paths;
+    clib_paths = artifact_for(ir_module)._clib_paths;
     (archive_members, _floor_handled) = collect_floor_archives(
-        clib_paths or [], ir_module.gen._clib_symbol_lib, triple, is_macos
+        clib_paths or [], artifact_for(ir_module)._clib_symbol_lib, triple, is_macos
     );
     if archive_members {
         console.print(
@@ -521,7 +521,7 @@ impl native_build(
         llvm_ir_str,
         triple,
         clib_paths or [],
-        ir_module.gen.interop_manifest,
+        artifact_for(ir_module).interop_manifest,
         shared,
         is_windows,
         is_macos,
@@ -529,7 +529,7 @@ impl native_build(
     );
     if shared {
         init_funcs = ["__jac_shared_init"];
-        for _s in ir_module.gen._exported_symbols {
+        for _s in artifact_for(ir_module)._exported_symbols {
             if _s not in export_symbols {
                 export_symbols.append(_s);
             }
@@ -564,7 +564,11 @@ impl native_build(
     }
 
     symbol_lib_map = clib_symbol_lib_map(
-        ir_module.gen._clib_symbol_lib, _floor_handled, _lib_norm, shared, is_macos
+        artifact_for(ir_module)._clib_symbol_lib,
+        _floor_handled,
+        _lib_norm,
+        shared,
+        is_macos
     );
 
     try {
@@ -713,10 +717,11 @@ impl native_build(
     file_size = os.path.getsize(output);
     if shared {
         console.print(f"  Shared library written to {output} ({file_size} bytes).");
-        if ir_module.gen.jc_layout is not None {
+        layout = artifact_for(ir_module).jc_layout;
+        if layout is not None {
             _lay_path = f"{output}.layout.json";
             with open(_lay_path, "w") as _lf {
-                _lf.write(ir_module.gen.jc_layout);
+                _lf.write(layout);
             }
             console.print(f"  Class layout written to {_lay_path}.");
         }

@@ -13,9 +13,10 @@ is what a fresh process does; other tests in the same worker recompile on
 demand, the hub being transient by contract."""
 import os;
 import jaclang;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.jir { get_module_cache_path }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.session.cache.artifact_codec { get_module_cache_path }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 
 glob JACLANG_DIR: str = os.path.dirname(os.path.realpath(str(jaclang.__file__))),
@@ -49,7 +50,7 @@ def _forget_verdict(path: str) {
 }
 
 def _check(path: str) -> list[str] {
-    prog = JacProgram();
+    prog = _selfhost() if path.startswith(JACLANG_DIR + os.sep) else JacProgram();
     prog.compile(
         path,
         options=CompileOptions(
@@ -57,8 +58,9 @@ def _check(path: str) -> list[str] {
         )
     );
     return sorted(
-        [a.pretty_print() for a in prog.errors_had]
-            + [a.pretty_print() for a in prog.warnings_had]
+        a.pretty_print()
+        for a in prog.errors_had + prog.warnings_had
+        if prog.diags._owned(a, path)
     );
 }
 
@@ -78,13 +80,13 @@ def _check_recomputed(path: str) -> list[str] {
 
 test "a compiler-tree analysis hydrates its dependencies instead of re-ingesting them" {
     import from unittest.mock { patch }
-    import jaclang.compiler.driver.pass_driver as driver;
+    import jaclang.compiler.pipeline.executor as driver;
     target = _tree_path(HYDRATION_TARGET);
     dependency = _tree_path('server/serving/app.jac');
     paths: set[str] = set();
     original: any = getattr(driver, 'run_pass');
     def record(pass_cls: any, ir_in: any, prog: any, **kwargs: any) -> any {
-        if pass_cls.__name__ == 'SymTabBuildPass' and prog is _selfhost() {
+        if pass_cls == PassIdentity.SymTabBuildPass and prog is _selfhost() {
             paths.add(os.path.realpath(ir_in.loc.mod_path));
         }
         return original(pass_cls, ir_in, prog, **kwargs);
@@ -161,7 +163,24 @@ test "bundled app dependencies retain their compilation context" {
     program = JacProgram();
     app_source = _tree_path('scale/admin/ui/constants/users.jac');
     assert compiler.selfhost.resolve(app_source, program) is program;
-    compiler_source = _tree_path('compiler/driver/pipeline.jac');
+    compiler_source = _tree_path('compiler/pipeline/schedule.jac');
     assert compiler.selfhost.resolve(compiler_source, program)
         is compiler.selfhost.program;
+}
+
+
+test "interface lookup preserves the requesting compilation context" {
+    path = _tree_path('server/serving/datatypes.jac');
+    program = JacProgram();
+    options = CompileOptions(
+        no_cgen=True, native_parity=True, force_target_program=True, iface_ok=True
+    );
+    program.compile(path, options=options);
+    assert not program.errors_had , [str(error) for error in program.errors_had];
+    registry = program.iface_registry();
+    iface_entry = registry.ensure(path);
+    assert iface_entry is not None;
+    assert registry.entries[path] is iface_entry;
+    assert program is not _selfhost();
+    program.release_compile_closure(collect=False);
 }

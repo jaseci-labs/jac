@@ -56,7 +56,7 @@ def kernel_bench(n: int = 8000) -> None:
 
 
 def parse_bench(paths: list[str]) -> None:
-    from jaclang.compiler.driver.program import JacProgram
+    from jaclang.compiler.session.session import JacProgram
 
     prog = JacProgram()
     for path in paths:
