@@ -125,6 +125,7 @@ test "host symbol imports use fresh graphs and retain their program context" {
         left = first.compile(str(source), options=options);
         right_options = options.for_symbols();
         right_options.force_target_program = True;
+        right_options.force_codespace = 'server';
         right = second.compile(str(source), options=right_options);
         assert not first.errors_had and not second.errors_had;
         assert left is not right and left.body[0] is not right.body[0];
@@ -134,6 +135,12 @@ test "host symbol imports use fresh graphs and retain their program context" {
         assert compiler.selfhost.program.find_module(str(source)) is None;
         assert first.source_store.parses == 0 and second.source_store.parses == 0;
         assert compiler.selfhost.can_prepare_symbols(str(source), first);
+        assert compiler.selfhost.can_prepare_symbols(str(source), second);
+        first.options.default_codespace = 'server';
+        assert compiler.selfhost.can_prepare_symbols(str(source), first);
+        first.options.default_codespace = 'client';
+        assert not compiler.selfhost.can_prepare_symbols(str(source), first);
+        first.options.default_codespace = '';
         first.options.force_codespace = 'client';
         assert not compiler.selfhost.can_prepare_symbols(str(source), first);
         first.options.force_codespace = '';

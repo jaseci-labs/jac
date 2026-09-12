@@ -109,6 +109,13 @@ before Jac imports work. Bootstrap support does not create another semantic
 schedule. Native kernel runtime units are compiled in the requesting context;
 their analyzed graphs are not process-global cached objects.
 
+Known server-hosted library sources use the native early passes for symbol
+imports, including imports in explicit server compilations. Each request
+receives a fresh graph and its own mutation authority. Full compilation
+targets, client/native imports, and nested applications keep the ordinary
+source pipeline. The executor consumes early results under the same pass
+contracts rather than repeating those passes in Python.
+
 OSP records and analysis helpers live in `analysis/binding/osp_facts.jac` and
 `osp_model.jac`. Scheduled ES and native passes produce separate models for
 their codespaces. The runtime owns dispatch and graph operations, not compiler
@@ -136,10 +143,13 @@ uses an OSP traversal with an explicit visited set. These operations enforce IR
 integrity; they do not perform semantic analysis or schedule compiler passes.
 
 Semantic node handling belongs in abilities on the relevant node types.
-`NativeBlockerScan`, invoked by scheduled placement work, visits syntax once
-and handles imports, abilities, root references, and server-only constructs
-through typed abilities. The enclosing analysis preserves diagnostic priority
+`NativeBlockerScan`, invoked by scheduled placement work, receives candidates
+from the syntax index and handles imports, abilities, root references, and
+server-only constructs through typed abilities. The enclosing analysis preserves diagnostic priority
 and publishes the result through the scheduled product/query infrastructure.
+`ElementReferenceScan` resolves each name once to collect both references and
+function escapes. Its declaration-to-element map lives only for that summary,
+so a later binding or structure change cannot reuse stale associations.
 
 `ir/syntax/cloning.jac` is the storage boundary for copying validated syntax.
 It preserves endpoint types, edge ordering, and shared children while creating

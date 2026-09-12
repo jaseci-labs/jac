@@ -37,11 +37,12 @@ obj SelfHostCache {
         options = program.options;
         if not options.symtab_ir_only
             or options.aot_mode
-            or options.force_codespace
-            or options.default_codespace
+            or options.force_codespace not in ('', 'server')
+            or options.default_codespace not in ('', 'server')
             or not self.owns(file_path) {
             return False;
         }
+
         import from jaclang.compiler.analysis.placement.pins {
             config_kind_space,
             effective_module_pin

@@ -643,18 +643,21 @@ impl JacCompiler.parse_str(
                 annex_sources,
                 parse_woven
             }
-            if self.selfhost.is_selfhost(target_program)
-                or self.selfhost.can_prepare_symbols(file_path, target_program) {
+            native_symbols = self.selfhost.can_prepare_symbols(
+                file_path, target_program
+            );
+            if self.selfhost.is_selfhost(target_program) or native_symbols {
                 (mod, had_error) = parse_woven(
                     source_str,
                     file_path,
                     target_program,
                     annex_sources(file_path),
                     early_context='server'
-                        if not (
-                            target_program.options.force_codespace
-                            or target_program.options.aot_mode
-                        )
+                        if native_symbols
+                            or not (
+                                target_program.options.force_codespace
+                                or target_program.options.aot_mode
+                            )
                         else ''
                 );
             } else {
