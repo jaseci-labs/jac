@@ -35,23 +35,15 @@ glob MAGIC = b"JIR\x00",
      FLAG_BOOTSTRAP: int = 0x04;
 
 obj JirPaths {
-    has source_root: str = "",
-        base_dir: str = "",
-        source_separator: str postinit;
-
-    def postinit {
-        self.source_separator = "\\"
-            if "\\" in self.source_root and bool(ntpath.splitdrive(self.source_root)[0])
-            else "/";
-    }
+    has roots: list[str] = [],
+        base_dir: str = "";
 
     def resolve(path: str) -> str {
         if not self.base_dir or not path {
             return path;
         }
-        for (source_root, separator) in (
-            (PRECOMPILE_SENTINEL, "/"),
-            (self.source_root, self.source_separator)
+        for source_root in sorted(
+            [PRECOMPILE_SENTINEL] + self.roots, key=len, reverse=True
         ) {
             if not source_root {
                 continue;
@@ -59,6 +51,9 @@ obj JirPaths {
             if path == source_root {
                 return self.base_dir;
             }
+            separator = "\\"
+                if "\\" in source_root and bool(ntpath.splitdrive(source_root)[0])
+                else "/";
             prefix = source_root.rstrip(separator) + separator;
             if path.startswith(prefix) {
                 return os.path.normpath(
@@ -68,13 +63,29 @@ obj JirPaths {
         }
         return path;
     }
+
+    def to_bytes -> bytes {
+        import json;
+        roots = list(self.roots);
+        if self.base_dir and self.base_dir not in roots {
+            roots.append(self.base_dir);
+        }
+        return json.dumps({"roots": roots, "base": self.base_dir}).encode("utf-8");
+    }
+
+    @staticmethod
+    def from_bytes(data: bytes | None, base_dir: str = "") -> JirPaths {
+        import json;
+        if not data {
+            return JirPaths(base_dir=base_dir);
+        }
+        payload = json.loads(data.decode("utf-8"));
+        return JirPaths(roots=payload["roots"], base_dir=base_dir or payload["base"]);
+    }
 }
 
 def read_jir_paths(data: bytes, base_dir: str = "") -> JirPaths {
-    source_root = read_section_bytes(data, SEC_PATH_ROOT);
-    return JirPaths(
-        source_root.decode("utf-8") if source_root is not None else "", base_dir
-    );
+    return JirPaths.from_bytes(read_section_bytes(data, SEC_PATH_ROOT), base_dir);
 }
 
 obj JirHeader {

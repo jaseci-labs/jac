@@ -34,6 +34,7 @@ import from jaclang.compiler.driver.jir {
     is_module_cache_valid,
     precompiled_jir_matches_source,
     read_section_bytes,
+    read_jir_paths,
     rebase_ct_deps_section,
     running_compiler_digest,
     PRECOMPILE_SENTINEL
@@ -368,7 +369,9 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
             if extra {
                 # Preserve interface hashes across installation. Only path
                 # fields are relocated by readers; literals stay untouched.
-                extra[SEC_PATH_ROOT] = os.path.realpath(pkg_root).encode("utf-8");
+                paths = read_jir_paths(data);
+                paths.base_dir = os.path.realpath(pkg_root);
+                extra[SEC_PATH_ROOT] = paths.to_bytes();
             }
             raw = read_section_bytes(data, SEC_CTDEPS);
             if raw is not None {

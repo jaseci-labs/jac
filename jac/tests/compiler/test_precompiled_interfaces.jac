@@ -111,7 +111,7 @@ test "relocation changes path fields without rewriting diagnostic messages" {
     import from jaclang.compiler.driver.jir { JirPaths }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.ifacecache { DIAG_SCHEMA }
-    paths = JirPaths(source_root="/build/library", base_dir="/installed/library");
+    paths = JirPaths(roots=["/build/library"], base_dir="/installed/library");
     original = "/build/library/api.jac";
     raw = json.dumps(
         {
@@ -138,14 +138,17 @@ test "relocation changes path fields without rewriting diagnostic messages" {
     assert warning["related"][0][1][0] == "/installed/library/api.jac";
     assert paths.resolve("/build/library_extra/api.jac")
         == "/build/library_extra/api.jac";
+    local = JirPaths.from_bytes(paths.to_bytes());
+    assert local.resolve(original) == "/installed/library/api.jac";
+    relocated = JirPaths.from_bytes(local.to_bytes(), "/second/library");
+    assert relocated.resolve(original) == "/second/library/api.jac";
+    assert relocated.resolve("/installed/library/api.jac") == "/second/library/api.jac";
     import os;
     if os.sep == "/" {
         # A POSIX filename may contain a literal backslash.
         assert paths.resolve("/build/library/file\\name.jac")
             == "/installed/library/file\\name.jac";
-        windows = JirPaths(
-            source_root="C:\\build\\library", base_dir="/installed/library"
-        );
+        windows = JirPaths(roots=["C:\\build\\library"], base_dir="/installed/library");
         assert windows.resolve("C:\\build\\library\\api.jac")
             == "/installed/library/api.jac";
     }

@@ -9,6 +9,7 @@ import from jaclang.compiler.driver.jir {
     SEC_DIAG,
     SEC_IFACE,
     SEC_PLACEMENT,
+    SEC_PATH_ROOT,
     JirPaths,
     cache_mode,
     ct_deps_section,
@@ -168,6 +169,13 @@ obj IfaceEntry {
         replayed_token: int = -1;
 }
 
+obj EncodedInterface {
+    has module_key: str,
+        section: bytes,
+        digest: str,
+        paths: JirPaths | None = None;
+}
+
 obj IfaceRegistry {
     has prog: any,
         entries: dict[str, IfaceEntry] = {},
@@ -175,7 +183,7 @@ obj IfaceRegistry {
         checking: set[str] postinit,
         frames: list[str] postinit,
         direct_deps: dict[str, dict[str, str]] = {},
-        _iface_bytes: dict[str, tuple[str, bytes, str]] = {},
+        _iface_bytes: dict[str, EncodedInterface] = {},
         _incoherent: set[str] = set(),
         verifying: bool = False,
         closure_token: int = 0,
@@ -376,10 +384,8 @@ obj IfaceRegistry {
                 # describe the module. Tree consumers may need to parse it,
                 # but must not force and serialize its public types again.
                 try {
-                    self._iface_bytes[resolved] = (
-                        module_cache_key(resolved),
-                        section,
-                        digest
+                    self._iface_bytes[resolved] = EncodedInterface(
+                        module_cache_key(resolved), section, digest, paths
                     );
                 } except OSError {}
             }
@@ -902,7 +908,7 @@ obj IfaceRegistry {
         }
         key = module_cache_key(resolved);
         memo = self._iface_bytes.get(resolved);
-        if memo is not None and memo[0] == key {
+        if memo is not None and memo.module_key == key {
             return True;
         }
         encoded = self._encode_iface(codec, mod);
@@ -911,10 +917,8 @@ obj IfaceRegistry {
             return False;
         }
         self._incoherent.discard(resolved);
-        self._iface_bytes[resolved] = (
-            key,
-            encoded,
-            codec.read_iface_hash(encoded) or ''
+        self._iface_bytes[resolved] = EncodedInterface(
+            key, encoded, codec.read_iface_hash(encoded) or ''
         );
         return True;
     }
@@ -943,14 +947,20 @@ obj IfaceRegistry {
         payload: (bytes | None) = None;
         if inferred {
             digest = self._disk_iface_digest(resolved);
-        } elif modkey and memo is not None and memo[0] == modkey {
-            payload = memo[1];
-            digest = memo[2];
+        } elif modkey and memo is not None and memo.module_key == modkey {
+            payload = memo.section;
+            digest = memo.digest;
         } else {
             digest = self._disk_iface_digest(resolved);
         }
         if payload is not None {
             sections[SEC_IFACE] = payload;
+            # Reused sealed bytes can still name the original build root.
+            # Carry their relocation map into the local cache; a fresh encoding
+            # clears any map left by a previous sealed payload.
+            sections[SEC_PATH_ROOT] = memo.paths.to_bytes()
+                if memo is not None and memo.paths is not None
+                else b"";
         }
         sections[SEC_DEPS] = deps_section(self.dep_rows(resolved, mod));
         try {
@@ -1003,7 +1013,8 @@ obj IfaceRegistry {
                 digest,
                 sections.get(SEC_IFACE),
                 sections.get(SEC_PLACEMENT),
-                diags=sections.get(SEC_DIAG)
+                diags=sections.get(SEC_DIAG),
+                paths=memo.paths if memo is not None else None
             );
         }
         if digest {

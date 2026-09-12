@@ -454,8 +454,7 @@ impl JacCompiler._restore_sections(
                 summary_store
             }
             import from jaclang.compiler.driver.jir { JirPaths, SEC_PATH_ROOT }
-            source_root = secs.get(SEC_PATH_ROOT, b"").decode("utf-8");
-            paths = JirPaths(source_root=source_root, base_dir=base_dir);
+            paths = JirPaths.from_bytes(secs.get(SEC_PATH_ROOT), base_dir);
             restored = summary_from_bytes(placement_bytes, path_mapper=paths.resolve);
             if restored is not None {
                 summary_store(actual_program)[os.path.abspath(full_target)] = restored;

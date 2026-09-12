@@ -83,8 +83,8 @@ contracts.
 
 ## Packaged interfaces and compilation lifetimes
 
-Precompilation requests both bytecode and a module interface through the
-existing pipeline. Sealing preserves the interface, dependency hashes,
+Precompilation requests an analysis interface through the dependency registry
+before generating bytecode through the existing pipeline. Sealing preserves the interface, dependency hashes,
 diagnostic profiles, and placement facts, including for bootstrap modules
 whose executable bytecode is produced by jac0. A bytecode-only cache is
 upgraded through `IfaceRegistry` instead of introducing a second analyzer.
@@ -95,7 +95,8 @@ passes without re-encoding that unchanged interface and its dependency closure.
 
 JIR's `SEC_PATH_ROOT` records the build package root. The dependency,
 interface, diagnostic, and placement readers relocate path fields to the
-installed root without changing interface hashes or literal text. Diagnostic
+installed root without changing interface hashes or literal text. Reused bytes
+keep their path mapping through local cache writes and subsequent packaging. Diagnostic
 profile and dependency checks still govern reuse. Dependencies outside the
 package retain their existing validation and source fallback.
 
