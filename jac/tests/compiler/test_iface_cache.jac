@@ -470,6 +470,23 @@ test "the interface-bytes memo outlives the compile closure" {
     assert events.get("iface_encode", 0) == 1 , f"the unchanged module was re-encoded after closure release (events: {events})";
 }
 
+test "a validated disk interface seeds the encoding memo for tree consumers" {
+    (main, dep) = _project();
+    _check(main);
+    prog = _context(main);
+    reg = prog.iface_registry();
+    cached = reg.ensure(dep, compile_on_miss=False);
+    assert cached is not None;
+    options = _check_opts();
+    options.need_full_ast = True;
+    prog.compile(dep, options=options);
+    assert prog.analysis.pass_runs , "the consumer did not request a source tree";
+    assert prog.analysis.cache_events.get("iface_encode", 0) == 0 , (
+        "a validated, unchanged interface was encoded again for a tree consumer"
+    );
+    assert reg.entries[dep].digest == cached.digest;
+}
+
 glob NARROW_DEP: str = """
 obj Info {
     has help_text: str = "";
