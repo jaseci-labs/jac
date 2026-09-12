@@ -232,17 +232,22 @@ jobs:
           env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_TEST_JOBS=0 JAC_NO_DEV_SOURCE=1 "$BIN" test "$WORK/test_smoke.jac"
 
       # if-no-files-found only fires when NO path matches, so a single missing
-      # tree ships a quietly incomplete kit to every consumer. Assert each one.
-      - name: Verify the kit is complete
+      # tree ships a quietly incomplete kit to every consumer. Assert each one,
+      # then seal a manifest of every kit file into the kit: the jac-kit
+      # action checks its download against it, because download-artifact can
+      # hand over a truncated kit and still report success.
+      - name: Verify the kit is complete and write its manifest
         working-directory: jac
         run: |
           set -euo pipefail
-          for p in zig-out/bin/jac jaclang/vendor/typeshed/stdlib \
-                   .pbs-build/linux-x86_64/musl/lib \
-                   .pbs-build/linux-aarch64/musl/lib \
-                   .pbs-build/wasm32/libc; do
+          kit=(zig-out/bin/jac jaclang/vendor/typeshed/stdlib
+               .pbs-build/linux-x86_64/musl/lib
+               .pbs-build/linux-aarch64/musl/lib
+               .pbs-build/wasm32/libc)
+          for p in "${kit[@]}"; do
             [ -e "$p" ] || { echo "::error::kit is missing $p"; exit 1; }
           done
+          bash "$GITHUB_WORKSPACE/.github/actions/jac-kit/manifest.sh" write "${kit[@]}"
 
       - name: Upload the kit
         uses: actions/upload-artifact@v4
@@ -250,6 +255,8 @@ jobs:
           name: jac-kit
           path: |
             jac/zig-out/bin/jac
+            jac/zig-out/kit.sha256
+            jac/zig-out/kit.sha256.sha256
             jac/jaclang/vendor/typeshed/stdlib
             jac/.pbs-build/linux-x86_64/musl/lib
             jac/.pbs-build/linux-aarch64/musl/lib

@@ -49,14 +49,17 @@ jobs:
           zig build fetch-typeshed --summary all
           zig build vendor-wasm-libc --summary all
 
-      - name: Verify the kit is complete
+      # Same shape as build-kit in ci.yml: assert each tree, then seal the
+      # manifest the jac-kit action checks its download against.
+      - name: Verify the kit is complete and write its manifest
         working-directory: jac
         run: |
           set -euo pipefail
-          for p in zig-out/bin/jac jaclang/vendor/typeshed/stdlib \
-                   .pbs-build/wasm32/libc; do
+          kit=(zig-out/bin/jac jaclang/vendor/typeshed/stdlib .pbs-build/wasm32/libc)
+          for p in "${kit[@]}"; do
             [ -e "$p" ] || { echo "::error::kit is missing $p"; exit 1; }
           done
+          bash "$GITHUB_WORKSPACE/.github/actions/jac-kit/manifest.sh" write "${kit[@]}"
 
       - name: Upload the kit
         uses: actions/upload-artifact@v4
@@ -64,6 +67,8 @@ jobs:
           name: jac-kit-macos
           path: |
             jac/zig-out/bin/jac
+            jac/zig-out/kit.sha256
+            jac/zig-out/kit.sha256.sha256
             jac/jaclang/vendor/typeshed/stdlib
             jac/.pbs-build/wasm32/libc
           include-hidden-files: true

@@ -1,11 +1,12 @@
 name: Get jac kit
 description: >
   Download the kit artifact into the checkout (binary, typeshed stubs, vendored
-  musl/wasm runtimes land at their in-tree paths), put jac on PATH, and warm
-  its runtime cache. The kit is the binary built from this checkout
-  (build-kit); the job's JAC_NO_DEV_SOURCE decides whether it runs sealed
-  ("1") or through the [dev] reroute (""). upload-artifact strips the
-  executable bit; restore it.
+  musl/wasm runtimes land at their in-tree paths), check it against the
+  manifest build-kit sealed into it, put jac on PATH, and warm its runtime
+  cache. The kit is the binary built from this checkout (build-kit); the
+  job's JAC_NO_DEV_SOURCE decides whether it runs sealed ("1") or through
+  the [dev] reroute (""). upload-artifact strips the executable bit; restore
+  it.
 inputs:
   name:
     description: Kit artifact name
@@ -18,6 +19,38 @@ runs:
       with:
         name: ${{ inputs.name }}
         path: jac
+
+    # download-artifact can report success on a download it never finished:
+    # when the blob stream stalls mid-extraction the step exits 0 with the
+    # files extracted so far, the last of them cut short, and without its
+    # "download completed" line (main run 33816389635: four jobs spent 70s on
+    # a kit the other jobs fetched in 7s, then died on a jac binary with no
+    # payload trailer). Check every file against the manifest; on a miss,
+    # fetch once more and check again, so a stall costs a retry, not the job.
+    - name: Check the kit against its manifest
+      id: check
+      shell: bash
+      working-directory: jac
+      run: |
+        if bash "$GITHUB_ACTION_PATH/manifest.sh" check; then
+          echo "ok=1" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning::kit download is incomplete; fetching it again"
+          echo "ok=0" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Fetch the kit again
+      if: steps.check.outputs.ok != '1'
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.name }}
+        path: jac
+
+    - name: Check the kit again
+      if: steps.check.outputs.ok != '1'
+      shell: bash
+      working-directory: jac
+      run: bash "$GITHUB_ACTION_PATH/manifest.sh" check
 
     - shell: bash
       run: |
