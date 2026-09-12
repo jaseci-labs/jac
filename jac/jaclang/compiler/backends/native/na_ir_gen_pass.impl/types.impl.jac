@@ -2097,7 +2097,9 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
                 self._emit_str_desc_helpers();
             }
 
-            return self.builder.call(self.str_wrap_raw_fn, [val], name="s.desc");
+            # Language strings retain their length when loaded from containers.
+            # Raw C strings are copied at the explicit foreign-call boundary.
+            return self.builder.call(self.str_wrap_fn, [val], name="s.desc");
         }
         if val.type == _sd and target_type == _i8p_sd {
             return self._str_materialize(val);
@@ -2107,9 +2109,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
                 self._emit_str_desc_helpers();
             }
             return self.builder.call(
-                self.str_wrap_raw_fn,
-                [self._unbox_from_jacval(val, _i8p_sd)],
-                name="s.desc"
+                self.str_wrap_fn, [self._unbox_from_jacval(val, _i8p_sd)], name="s.desc"
             );
         }
         if target_type == _sd
@@ -2119,7 +2119,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
                 self._emit_str_desc_helpers();
             }
             return self.builder.call(
-                self.str_wrap_raw_fn,
+                self.str_wrap_fn,
                 [self.builder.inttoptr(val, _i8p_sd, name="s.unbox")],
                 name="s.desc"
             );
