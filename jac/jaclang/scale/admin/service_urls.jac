@@ -14,7 +14,7 @@ def service_base_url(env_var: str, svc_suffix: str, port: int) -> str {
             k8s_cfg = get_scale_config().get_kubernetes_config();
             raw = str(k8s_cfg.get("app_name", "") or "").strip();
             expanded = os.path.expandvars(raw);
-            if expanded and "${" not in expanded {
+            if expanded {
                 app_name = expanded;
             }
         } except Exception {

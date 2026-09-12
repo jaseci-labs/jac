@@ -44,6 +44,22 @@ def make_temp_project(temp_dir: Path) -> Path {
     return project_dir;
 }
 
+"""Load a secret value through jac.toml, optionally via a profile overlay."""
+def _load_secret_value(tmpdir: Path, value: str, through_overlay: bool) -> None {
+    section = f"[scale.secrets]\nSOME_API_KEY = \"{value}\"\n";
+    if through_overlay {
+        project_dir = make_temp_project(tmpdir);
+        config = JacConfig.load(project_dir / "jac.toml");
+        overlay_path = project_dir / "jac.prod.toml";
+        overlay_path.write_text(section);
+        config.merge_from_toml_file(overlay_path);
+        return;
+    }
+    toml_path = tmpdir / "jac.toml";
+    toml_path.write_text("[project]\nname = \"test-project\"\n\n" + section);
+    JacConfig.load(toml_path);
+}
+
 """Write base, prod, and local TOML files into project_dir."""
 def write_multi_profile(project_dir: Path) {
     (project_dir / "jac.toml").write_text(BASE_TOML);
@@ -117,6 +133,46 @@ test "interpolate non string passthrough" {
     config_mod._config = None;
     assert interpolate_env_vars(_as_any(123)) == 123;
     assert interpolate_env_vars(_as_any(None)) is None;
+}
+
+test "config load rejects unset environment variables" {
+    config_mod._config = None;
+    var_name = "JAC_TEST_ENV_MISSING";
+    setting = "scale.secrets.SOME_API_KEY";
+    cases = [
+        (f"${{{var_name}}}", False, [setting, "JAC_TEST_ENV_MISSING is not set"]),
+        (
+            f"${{{var_name}:?set {var_name}}}",
+            False,
+            [setting, "JAC_TEST_ENV_MISSING", "set JAC_TEST_ENV_MISSING"]
+        ),
+        (
+            f"${{{var_name}:?set {var_name}}}",
+            True,
+            [setting, "JAC_TEST_ENV_MISSING", "set JAC_TEST_ENV_MISSING"]
+        )
+    ];
+    previous = os.environ.pop(var_name, None);
+    try {
+        for (value, through_overlay, expected) in cases {
+            with TemporaryDirectory() as tmpdir {
+                raised = False;
+                try {
+                    _load_secret_value(Path(tmpdir), value, through_overlay);
+                } except ValueError as e {
+                    raised = True;
+                    for fragment in expected {
+                        assert fragment in str(e);
+                    }
+                }
+                assert raised , f"Expected {value} to reject the config";
+            }
+        }
+    } finally {
+        if previous is not None {
+            os.environ[var_name] = previous;
+        }
+    }
 }
 
 # ===========================================================================

@@ -4,6 +4,7 @@ import sys;
 import types;
 import from pathlib { Path }
 import from jaclang.cli.console { console, use_line_buffered_output }
+import from jaclang.cli.config_errors { apply_overlay_or_exit, exit_on_config_error }
 import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 import from jaclang.server.assembly {
     gateway_colocates as _gateway_colocates,
@@ -40,7 +41,9 @@ def _discover_config_from_file(filename: str) -> None {
 
     try {
         config = get_config(start_path=file_dir, force_discover=True);
-    } except (OSError, KeyError, ValueError) as e {
+    } except ValueError as e {
+        exit_on_config_error(e);
+    } except (OSError, KeyError) as e {
         console.print(
             f"Warning: Failed to discover config from {file_dir}: {e}", style="warning"
         );
@@ -48,7 +51,7 @@ def _discover_config_from_file(filename: str) -> None {
     }
     if config is not None {
         if active_profile {
-            config.apply_profile_overlay(active_profile);
+            apply_overlay_or_exit(config, active_profile);
         }
         add_venv_to_path(config);
     }
@@ -127,7 +130,9 @@ def _pin_run_scope(filename: str, takeover: (bool | None)) -> None {
     try {
         owner = JacConfig.discover(start_path=file_path.parent);
         ambient = JacConfig.discover(start_path=Path.cwd());
-    } except (OSError, KeyError, ValueError) as e {
+    } except ValueError as e {
+        exit_on_config_error(e);
+    } except (OSError, KeyError) as e {
         console.warning(f"Failed to discover config from {file_path.parent}: {e}");
         return;
     }
@@ -171,7 +176,7 @@ def _pin_run_scope(filename: str, takeover: (bool | None)) -> None {
     }
 
     if chosen is not None and active_profile {
-        chosen.apply_profile_overlay(active_profile);
+        apply_overlay_or_exit(chosen, active_profile);
     }
     pin_project_scope(chosen);
     if chosen is not None {
@@ -617,7 +622,7 @@ def _load_cwd_config -> any {
     active_profile = existing_config.active_profile if existing_config else None;
     cfg = get_config(start_path=Path.cwd(), force_discover=True);
     if cfg is not None and active_profile {
-        cfg.apply_profile_overlay(active_profile);
+        apply_overlay_or_exit(cfg, active_profile);
     }
     return cfg;
 }

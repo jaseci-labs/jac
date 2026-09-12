@@ -22,6 +22,8 @@ import tempfile;
 import from contextlib { redirect_stderr, redirect_stdout }
 import from pathlib { Path }
 
+import from jaclang.cli { dispatch as dispatch_cmds }
+import from jaclang.cli.command { CommandSpec }
 import from jaclang.cli.commands { execution as execution_cmds }
 
 
@@ -82,6 +84,110 @@ def show_from(cwd: str, filename: str, takeover: (bool | None) = None) -> str {
         reset_config();
     }
     return buf.getvalue();
+}
+
+
+"""Put the ambient config on *profile*, the way dispatch does before a command."""
+def _activate_profile(profile: str) {
+    import from jaclang.project { config as config_mod }
+    ambient = config_mod.get_config();
+    if ambient is not None {
+        ambient.apply_profile_overlay(profile);
+    }
+}
+
+
+"""Run *filename* from *cwd* and return the exit code it raised, or 0 if it ran.
+
+Config failures surface as a clean `SystemExit(2)` from the discovery helpers
+rather than a traceback, so the code is the whole assertion."""
+def exit_code_from(cwd: str, filename: str, profile: str = "") -> int {
+    buf = io.StringIO();
+    old = os.getcwd();
+    os.chdir(cwd);
+    reset_config();
+    try {
+        if profile {
+            _activate_profile(profile);
+        }
+        with redirect_stdout(buf), redirect_stderr(buf) {
+            execution_cmds.run(target=filename, show=True);
+        }
+    } except SystemExit as exc {
+        return int(exc.code or 0);
+    } finally {
+        os.chdir(old);
+        reset_config();
+    }
+    return 0;
+}
+
+
+"""Exit code from the dispatch profile hook when a prod overlay sets *namespace*."""
+def dispatch_profile_exit(namespace: str) -> int {
+    world = tempfile.mkdtemp(prefix="jacscope-dispatch-");
+    old = os.getcwd();
+    buf = io.StringIO();
+    try {
+        write(
+            os.path.join(world, "jac.toml"),
+            '[project]\nname = "overlay"\nentry-point = "main"\n'
+        );
+        write(
+            os.path.join(world, "jac.prod.toml"),
+            f'[scale.kubernetes]\nnamespace = "{namespace}"\n'
+        );
+        os.chdir(world);
+        reset_config();
+        with redirect_stdout(buf), redirect_stderr(buf) {
+            dispatch_cmds._apply_profile(
+                CommandSpec(name="run", help="run a target"), {"profile": "prod"}
+            );
+        }
+    } except SystemExit as exc {
+        return int(exc.code or 0);
+    } finally {
+        os.chdir(old);
+        reset_config();
+        shutil.rmtree(world, ignore_errors=True);
+    }
+    return 0;
+}
+
+
+"""Exit code from `jac run` when the entry-point resolves into another project."""
+def cross_project_entry_exit(namespace: str) -> int {
+    # Not a file target: scope stays unpinned, so _discover_config_from_file runs.
+    world = tempfile.mkdtemp(prefix="jacscope-entry-");
+    old = os.getcwd();
+    buf = io.StringIO();
+    try {
+        write(
+            os.path.join(world, "outer", "jac.toml"),
+            '[project]\nname = "outer"\nentry-point = "inner.main"\n'
+        );
+        write(
+            os.path.join(world, "outer", "inner", "jac.toml"),
+            '[project]\nname = "inner"\nentry-point = "main"\n'
+            f'\n[scale.kubernetes]\nnamespace = "{namespace}"\n'
+        );
+        write(
+            os.path.join(world, "outer", "inner", "main.jac"),
+            'with entry {\n    print("inner");\n}\n'
+        );
+        os.chdir(os.path.join(world, "outer"));
+        reset_config();
+        with redirect_stdout(buf), redirect_stderr(buf) {
+            execution_cmds.run(target="");
+        }
+    } except SystemExit as exc {
+        return int(exc.code or 0);
+    } finally {
+        os.chdir(old);
+        reset_config();
+        shutil.rmtree(world, ignore_errors=True);
+    }
+    return 0;
 }
 
 
@@ -237,4 +343,90 @@ test "an in-tree file keeps its project when the shell is somewhere else" {
     assert "kind         : web-app" in out , (
         f"a file's own project follows it wherever the shell is; got:\n{out}"
     );
+}
+
+
+test "a target project whose config cannot load stops the run" {
+    # The named file's project is discovered outside the main dispatch path,
+    # so an unresolvable ${VAR} there must exit 2 like it does for the cwd.
+    var_name = "JAC_TEST_SCOPE_UNSET";
+    base = '[project]\nname = "target"\nentry-point = "main"\n';
+    bad = f'\n[scale.kubernetes]\nnamespace = "${{{var_name}:?export {var_name}}}"\n';
+    cases = [
+        ("unresolvable base file", base + bad, "", "", 2),
+        ("unresolvable profile overlay", base, bad, "prod", 2),
+        (
+            "resolvable default",
+            base + f'\n[scale.kubernetes]\nnamespace = "${{{var_name}:-fallback}}"\n',
+            "",
+            "",
+            0
+        )
+    ];
+    previous = os.environ.pop(var_name, None);
+    try {
+        for (label, base_toml, overlay_toml, profile, expected) in cases {
+            world = tempfile.mkdtemp(prefix="jacscope-config-");
+            try {
+                target = os.path.join(world, "target");
+                write(os.path.join(target, "jac.toml"), base_toml);
+                if overlay_toml {
+                    write(os.path.join(target, "jac.prod.toml"), overlay_toml);
+                }
+                write(
+                    os.path.join(target, "main.jac"),
+                    'with entry {\n    print("target");\n}\n'
+                );
+                write(
+                    os.path.join(world, "shell", "jac.toml"),
+                    '[project]\nname = "shell"\nentry-point = "main"\n'
+                );
+                write(
+                    os.path.join(world, "shell", "main.jac"),
+                    'with entry {\n    print("shell");\n}\n'
+                );
+                code = exit_code_from(
+                    os.path.join(world, "shell"),
+                    os.path.join(target, "main.jac"),
+                    profile=profile
+                );
+            } finally {
+                shutil.rmtree(world, ignore_errors=True);
+            }
+            assert code == expected , (
+                f"{label}: expected exit {expected}, got {code}"
+            );
+        }
+    } finally {
+        if previous is not None {
+            os.environ[var_name] = previous;
+        }
+    }
+}
+
+
+test "each config-load guard exits rather than warning" {
+    # Reverting either guard must turn this red; _pin_run_scope is pinned above.
+    var_name = "JAC_TEST_GUARD_UNSET";
+    unresolvable = f"${{{var_name}:?export {var_name}}}";
+    fallback = f"${{{var_name}:-fallback-ns}}";
+    cases = [
+        ("dispatch overlay, unresolvable", "dispatch", unresolvable, 2),
+        ("dispatch overlay, resolvable", "dispatch", fallback, 0),
+        ("cross-project entry, unresolvable", "entry", unresolvable, 2),
+        ("cross-project entry, resolvable", "entry", fallback, 0)
+    ];
+    previous = os.environ.pop(var_name, None);
+    try {
+        for (label, guard, namespace, expected) in cases {
+            code = dispatch_profile_exit(namespace)
+                if guard == "dispatch"
+                else cross_project_entry_exit(namespace);
+            assert code == expected , f"{label}: expected exit {expected}, got {code}";
+        }
+    } finally {
+        if previous is not None {
+            os.environ[var_name] = previous;
+        }
+    }
 }

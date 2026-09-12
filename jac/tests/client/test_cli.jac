@@ -979,6 +979,8 @@ test "raw template config files from jac toml" {
 test "npmrc from jac toml" {
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
+        auth_token_previous = os.environ.get("NODE_AUTH_TOKEN");
+        os.environ["NODE_AUTH_TOKEN"] = "npmrc-test-token";
         try {
             os.chdir(temp_dir);
 
@@ -1015,11 +1017,17 @@ test "npmrc from jac toml" {
             assert "@mycompany:registry=https://npm.pkg.github.com" in npmrc_content;
             assert "@myorg:registry=https://registry.example.com" in npmrc_content;
 
-            # Verify auth entry - env var should pass through as literal
-            # (interpolation swallows ValueError when env var is unset)
-            assert "//npm.pkg.github.com/:_authToken=" in npmrc_content;
+            # Verify auth entry resolves the environment variable
+            assert (
+                "//npm.pkg.github.com/:_authToken=npmrc-test-token" in npmrc_content
+            );
         } finally {
             os.chdir(original_cwd);
+            if auth_token_previous is None {
+                os.environ.pop("NODE_AUTH_TOKEN", None);
+            } else {
+                os.environ["NODE_AUTH_TOKEN"] = auth_token_previous;
+            }
         }
     }
 }

@@ -97,7 +97,7 @@ test "empty app_name in config falls back to http://localhost:<port>" {
 }
 
 
-test "an unresolved ${VAR} app_name is rejected and falls back to localhost" {
+test "an unset ${VAR} app_name fails the config load and falls back to localhost" {
     prev_app = os.environ.pop("K8S_APP_NAME", None);
     prev_env = os.environ.pop("SVCURL_UNSET", None);
     prev_var = os.environ.pop("JAC_SVCURL_NONEXISTENT", None);
@@ -105,7 +105,6 @@ test "an unresolved ${VAR} app_name is rejected and falls back to localhost" {
         "[scale.kubernetes]\napp_name = \"${JAC_SVCURL_NONEXISTENT}\"\n"
     );
     try {
-        # expandvars leaves an unresolved ${VAR} intact, so the "${" guard rejects it.
         assert service_base_url("SVCURL_UNSET", "worker", 6000)
             == "http://localhost:6000";
     } finally {

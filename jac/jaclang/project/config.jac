@@ -351,7 +351,9 @@ def _parse_persons(raw: list[any]) -> list[PersonConfig];
 
 def _parse_include(raw: dict[str, any]) -> PackageIncludeConfig;
 
-def _interpolate_recursive(`obj: any) -> any;
+def _interpolate_recursive(`obj: any, path: str = "") -> any;
+
+def _child_config_path(parent: str, key: str) -> str;
 
 glob _config: JacConfig | None = None,
      _config_explicit: bool = False,

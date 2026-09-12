@@ -1344,19 +1344,32 @@ impl _parse_toml_data(
     return config;
 }
 
-impl _interpolate_recursive(`obj: any) -> any {
+impl _interpolate_recursive(`obj: any, path: str = "") -> any {
     if isinstance(`obj, str) {
         try {
             return interpolate_env_vars(`obj);
-        } except ValueError {
-            return `obj;
+        } except ValueError as e {
+            if not path {
+                raise;
+            }
+            raise ValueError(f"{path}: {e}") from e;
         }
     } elif isinstance(`obj, dict) {
-        return {k: _interpolate_recursive(v) for (k, v) in `obj.items()};
+        return {
+            k: _interpolate_recursive(v, _child_config_path(path, k))
+            for (k, v) in `obj.items()
+        };
     } elif isinstance(`obj, list) {
-        return [_interpolate_recursive(item) for item in `obj];
+        return [
+            _interpolate_recursive(item, f"{path}[{i}]")
+            for (i, item) in enumerate(`obj)
+        ];
     }
     return `obj;
+}
+
+impl _child_config_path(parent: str, key: str) -> str {
+    return f"{parent}.{key}" if parent else key;
 }
 
 impl get_config(
