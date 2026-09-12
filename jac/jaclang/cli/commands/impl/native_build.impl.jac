@@ -741,23 +741,21 @@ def _resolve_ca_bundle(pkg_root: str) -> (str | None) {
     }
 
     import glob;
-    for variant in ["cpython", "jacpython"] {
-        bundles = sorted(
-            `glob.`glob(
-                os.path.join(
-                    pkg_root,
-                    ".python-build",
-                    variant,
-                    "*",
-                    "python",
-                    "build",
-                    "cacert.pem"
-                )
+    bundles = sorted(
+        `glob.`glob(
+            os.path.join(
+                pkg_root,
+                ".python-build",
+                "jacpython",
+                "*",
+                "python",
+                "build",
+                "cacert.pem"
             )
-        );
-        if bundles {
-            return bundles[0];
-        }
+        )
+    );
+    if bundles {
+        return bundles[0];
     }
     source_bundles = sorted(
         `glob.`glob(

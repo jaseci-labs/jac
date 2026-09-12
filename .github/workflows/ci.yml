@@ -40,27 +40,16 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       installer: ${{ steps.filter.outputs.installer }}
       native: ${{ steps.filter.outputs.native }}
-      python: ${{ steps.filter.outputs.python }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
-            python:
-              - 'jac/bootstrap/build_python.zig'
-              - 'jac/bootstrap/seed.zig'
-              - 'jac/build.zig'
-              - 'jac/bootstrap/python/sources.json'
-              - 'jac/bootstrap/python/cpython-sources.txt'
-              - 'jac/bootstrap/python/build.sh'
-              - 'jac/bootstrap/python/finalize.py'
-              - 'jac/bootstrap/python/smoke.py'
-              - '.github/actions/setup-jac/action.yml'
-              - '.github/workflows/ci.yml'
             core:
               - 'jac/**'
               - 'scripts/run_cpython_compiler_tests.jac'
+              - '.github/workflows/build-binaries.yml'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
             scale:
@@ -104,58 +93,9 @@ jobs:
               - 'jac/jaclang/cli/commands/impl/precompile.impl.jac'
               - '.github/actions/**'
 
-  # Linux x86-64 is exercised by build-kit. Source changes also validate the
-  # regular release platforms without rebuilding Jac on every platform. The
-  # bootstrap/python/** cache input includes the CPython source allowlist;
-  # removing a source entry therefore triggers a new runtime build and smoke.
-  # Intel macOS is verified by its manually selected build-binaries release leg.
-  python-runtime:
-    needs: changes
-    if: needs.changes.outputs.python == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04-arm, macos-14]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v5
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.16.0
-          use-cache: false
-      - name: Resolve Python SDK cache input
-        id: python-sdk
-        shell: bash
-        run: |
-          sdk=zig-libc
-          if [ "$RUNNER_OS" = macOS ]; then sdk=$(xcrun --sdk macosx --show-sdk-version); fi
-          echo "version=$sdk" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache/restore@v4
-        id: python-cache
-        with:
-          path: jac/.python-build/cpython
-          key: python-build-v3-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ hashFiles('jac/bootstrap/build_python.zig', 'jac/bootstrap/seed.zig', 'jac/bootstrap/python/sources.json', 'jac/bootstrap/python/cpython-sources.txt', 'jac/bootstrap/python/build.sh', 'jac/bootstrap/python/finalize.py', 'jac/bootstrap/python/smoke.py') }}
-          restore-keys: |
-            python-build-v3-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
-      - name: Build and verify relocatable Python
-        working-directory: jac
-        run: zig build build-python --summary all
-      - uses: actions/cache/save@v4
-        if: github.ref == 'refs/heads/main' && steps.python-cache.outputs.cache-hit != 'true'
-        with:
-          path: jac/.python-build/cpython
-          key: python-build-v3-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ hashFiles('jac/bootstrap/build_python.zig', 'jac/bootstrap/seed.zig', 'jac/bootstrap/python/sources.json', 'jac/bootstrap/python/cpython-sources.txt', 'jac/bootstrap/python/build.sh', 'jac/bootstrap/python/finalize.py', 'jac/bootstrap/python/smoke.py') }}
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: python-build-logs-${{ runner.os }}-${{ runner.arch }}
-          path: jac/.python-build/**/*.log
-          include-hidden-files: true
-
-  # Exercise the complete replacement, including a cold interpreter startup.
-  # The ordinary kit below continues to use the default CPython compiler.
+  # Validate the native runtime on the other automatic release platforms.
+  # Linux x86-64 is built and exercised by build-kit and its consumers.
+  # Intel macOS remains in the manually selected release leg.
   jacpython-native:
     name: jacpython-native (${{ matrix.os }})
     needs: changes
@@ -164,8 +104,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: blacksmith-4vcpu-ubuntu-2404
-            zig_target: x86_64-linux-gnu.2.17
           - os: ubuntu-24.04-arm
             zig_target: aarch64-linux-gnu.2.17
           - os: macos-14
@@ -185,13 +123,13 @@ jobs:
           key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
       - name: Build and smoke-test the native JacPython runtime
         working-directory: jac
-        run: zig build build-python $DTARGET -Djacpython=true --summary all
+        run: zig build build-python $DTARGET --summary all
       - name: Build and probe the packaged native JacPython binary
         working-directory: jac
         env:
           JAC_NO_DEV_SOURCE: "1"
         run: |
-          zig build $DTARGET -Djacpython=true --summary all
+          zig build $DTARGET --summary all
           zig-out/bin/jac -c '
           import ast, ctypes, sys
           assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
@@ -243,6 +181,7 @@ jobs:
           BIN="$PWD/zig-out/bin/jac"
           ldd "$BIN" || true
           ! ldd "$BIN" | grep -qi python
+          JAC_NO_DEV_SOURCE=1 "$BIN" -c 'import ctypes; assert ctypes.pythonapi._PyJac_CompilerRequired() == 1; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3'
           WORK="$(mktemp -d)"
           printf 'obj P { has x:int=0; def sq->int { return self.x*self.x; } }\nwith entry { print(P(x=7).sq()); }\n' > "$WORK/obj.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" --version
@@ -1545,7 +1484,6 @@ jobs:
     needs:
       - changes
       - build-kit
-      - python-runtime
       - jacpython-native
       - macos-native
       - jac-check

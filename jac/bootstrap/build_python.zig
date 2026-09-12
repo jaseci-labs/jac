@@ -1,5 +1,5 @@
 //! Build the release Python before any Jac tooling can run. Sources are
-//! checksum-pinned. JacPython is opt-in; its build host emits the native replacement object.
+//! checksum-pinned. A build-only CPython host emits the native JacPython replacement object.
 const std = @import("std");
 const builtin = @import("builtin");
 const seed = @import("seed.zig");
@@ -13,13 +13,12 @@ const inputs = [_][]const u8{
     "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
-const Mode = enum { cpython, host, jacpython };
+const Mode = enum { host, jacpython };
 
 fn parseMode(args: []const []const u8) !Mode {
-    if (args.len == 5) return .cpython;
+    if (args.len == 5) return .jacpython;
     if (args.len == 6) {
         if (std.mem.eql(u8, args[5], "--host")) return .host;
-        if (std.mem.eql(u8, args[5], "--jacpython")) return .jacpython;
     }
     return error.InvalidBuildMode;
 }
@@ -51,7 +50,7 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
     const a = init.arena.allocator();
     const args = try init.minimal.args.toSlice(a);
-    const mode = parseMode(args) catch seed.die("usage: build_python <os-arch> <destination> <jac-root> <zig> [--jacpython|--host]", .{});
+    const mode = parseMode(args) catch seed.die("usage: build_python <os-arch> <destination> <jac-root> <zig> [--host]", .{});
     const platform = args[1];
     if (!supported(platform)) seed.die("build-python: unsupported platform {s}", .{platform});
     if (!std.mem.eql(u8, platform, hostPlatform()))
@@ -181,8 +180,8 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
     return std.fmt.bytesToHex(digest, .lower);
 }
 
-// The default CPython runtime and JacPython's build-time host retain the C
-// compiler. Only the opt-in JacPython runtime applies the marked exclusions.
+// Only the build-time host retains the C compiler. Every shipped runtime
+// applies the marked replacement exclusions.
 fn cSourceManifest(a: std.mem.Allocator, manifest: []const u8) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     var lines = std.mem.splitScalar(u8, manifest, '\n');
@@ -276,10 +275,10 @@ test "only release targets are accepted" {
     try std.testing.expect(!supported("windows-x86_64"));
 }
 
-test "CPython is the default and JacPython must be explicitly selected" {
+test "JacPython is mandatory except for the build-only host" {
     const args = [_][]const u8{ "build_python", "linux-x86_64", "out", "root", "zig" };
-    try std.testing.expectEqual(Mode.cpython, try parseMode(&args));
-    try std.testing.expectEqual(Mode.jacpython, try parseMode(&(args ++ .{"--jacpython"})));
+    try std.testing.expectEqual(Mode.jacpython, try parseMode(&args));
+    try std.testing.expectError(error.InvalidBuildMode, parseMode(&(args ++ .{"--jacpython"})));
     try std.testing.expectEqual(Mode.host, try parseMode(&(args ++ .{"--host"})));
     try std.testing.expectError(error.InvalidBuildMode, parseMode(&(args ++ .{"--typo"})));
     try std.testing.expectError(error.InvalidBuildMode, parseMode(args[0..4]));
@@ -358,10 +357,8 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "compiler" });
     const root = try tmp.dir.realPathFileAlloc(io, ".", a);
     const host = try std.fs.path.join(a, &.{ root, "host" });
-    const before_cpython = try buildKey(io, a, hostPlatform(), root, host, .cpython);
     const before_host = try buildKey(io, a, hostPlatform(), root, host, .host);
     const before_runtime = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
-    try std.testing.expect(!std.mem.eql(u8, &before_cpython, &before_host));
     try std.testing.expect(!std.mem.eql(u8, &before_host, &before_runtime));
     try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "changed compiler" });
     const changed_runtime = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
@@ -372,7 +369,6 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/compiler_runtime.c", .data = "changed native adapter" });
     try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
-    try std.testing.expectEqual(before_cpython, try buildKey(io, a, hostPlatform(), root, host, .cpython));
     const before_recipe = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
     try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/cpython-sources.txt", .data = "changed C source selection" });
     try std.testing.expect(!std.mem.eql(u8, &before_host, &(try buildKey(io, a, hostPlatform(), root, host, .host))));

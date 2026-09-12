@@ -9,7 +9,7 @@ host=${5:-}
 root=$6
 mode=$7
 case "$mode:$host" in
-    cpython:|host:|jacpython:?*) ;;
+    host:|jacpython:?*) ;;
     *) echo "Invalid Python build mode/host: $mode" >&2; exit 1 ;;
 esac
 jobs=${JAC_PYTHON_JOBS:-4}
