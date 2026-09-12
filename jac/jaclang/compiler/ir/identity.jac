@@ -188,7 +188,7 @@ walker CollectUnclaimed {
         seen: set[int] = set();
 
     can collect with GraphNode entry {
-        if here.mutation_permit is self.permit or id(here) in self.seen {
+        if here.mutation_permit is self.permit {
             return;
         }
         if here.mutation_permit is not None {
@@ -198,6 +198,15 @@ walker CollectUnclaimed {
         }
         self.seen.add(id(here));
         self.nodes.append(here);
-        visit [here-->];
+        # Kid and role edges can reach the same node. Mark it when queued so
+        # the OSP engine dispatches each node once, including cyclic graphs.
+        pending: list[GraphNode] = [];
+        for target in [here-->] {
+            if id(target) not in self.seen {
+                self.seen.add(id(target));
+                pending.append(target);
+            }
+        }
+        visit pending;
     }
 }

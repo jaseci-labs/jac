@@ -61,12 +61,18 @@ walker ValidateGraph {
     has seen: set[int] = set();
 
     can check with GraphNode entry {
-        if id(here) in self.seen {
-            return;
-        }
         self.seen.add(id(here));
         validate_relations(here);
-        visit [here-->];
+        # Multiple relations may reach one node; validate all relations but
+        # enqueue each endpoint only once.
+        pending: list[GraphNode] = [];
+        for target in [here-->] {
+            if id(target) not in self.seen {
+                self.seen.add(id(target));
+                pending.append(target);
+            }
+        }
+        visit pending;
     }
 }
 
