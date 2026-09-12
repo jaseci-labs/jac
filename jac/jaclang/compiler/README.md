@@ -127,6 +127,13 @@ profile and dependency checks still govern reuse. Dependencies outside the
 package retain their existing validation and source fallback.
 
 Per-unit release keeps parsed stub trees while a compilation uses them.
+The runtime graph driver indexes anchors with non-owning handles, including
+inside an execution context. Node and edge references keep reachable topology
+alive, and the persistence store owns stored anchors. When the last owner
+releases a component, weak-handle callbacks retire its kernel rows and recycle
+its handles. Closing a context also retires its region, even for graph objects
+still held by callers. Handle metadata uses a slotted weak reference with a
+shared callback, avoiding a closure and captured cells for every anchor.
 At a completed compilation boundary, `release_compile_state` releases both
 source and stub roots. Activating the stub catalog also retires the private
 selfhost bootstrap closure before application compilation starts; it never

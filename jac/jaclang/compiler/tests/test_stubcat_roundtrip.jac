@@ -43,6 +43,52 @@ glob SMALL_SET: list[str] = [
      ],
      _built: list = [];
 
+test "catalog export releases its temporary compiler and stub trees" {
+    import gc;
+    import jaclang.compiler.types.stubcat.build as catalog_build;
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from unittest.mock { patch }
+    import from weakref { ReferenceType, ref }
+    if not sources_present() {
+        return;
+    }
+    refs: list[tuple[str, ReferenceType[object]]] = [];
+    original = catalog_build._build_catalog_inner;
+    def capture(
+        prog: JacProgram,
+        out_path: str,
+        only: list[str] | None,
+        pkg_dir: str | None,
+        quiet: bool,
+        started: float
+    ) -> dict[str, any] {
+        refs.append(("program", ref(prog)));
+        result = original(prog, out_path, only, pkg_dir, quiet, started);
+        evaluator = prog.type_evaluator;
+        if evaluator is not None {
+            refs.append(("evaluator", ref(evaluator)));
+        }
+        for (path, mod) in prog.mod.hub.items() {
+            if path.endswith(".pyi") {
+                refs.append((path, ref(mod)));
+            }
+        }
+        return result;
+    }
+    with tempfile.TemporaryDirectory() as work {
+        with patch.object(catalog_build, "_build_catalog_inner", capture) {
+            build_catalog(os.path.join(work, "stubcat.bin"), only=["math"], quiet=True);
+        }
+    }
+    gc.collect();
+    alive = [
+        name
+        for (name, held) in refs
+        if held() is not None
+    ];
+    assert not alive , f"catalog export retained temporary objects: {alive[:8]}";
+}
+
 def sources_present -> bool {
     return os.path.isfile(
         os.path.join(typeshed_stdlib_dir(jaclang_pkg_dir()), "builtins.pyi")
