@@ -357,6 +357,9 @@ impl NaIRGenPass._dict_key_reconcile(
 }
 
 impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
+    if any(pair.key is None for pair in nd.kv_pairs) {
+        return self._codegen_dict_unpack(nd);
+    }
     if not nd.kv_pairs {
         _dk = self._peer_dict_key() or self._dict_key_of(nd);
         _helpers = self.dict_helpers.get(_dk) if _dk is not None else None;
@@ -493,6 +496,77 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     }
 
     return dict_val;
+}
+
+impl NaIRGenPass._codegen_dict_unpack(nd: uni.DictVal) -> (ir.Value | None) {
+    dict_key = self._dict_key_of(nd);
+    if dict_key is None {
+        return None;
+    }
+    helpers = self.dict_helpers.get(dict_key);
+    emitter = self._ensure_emitters().get("dict");
+    if helpers is None or not isinstance(emitter, NativeDictEmitter) {
+        return None;
+    }
+    ctx = NativeEmitCtx(pass_ref=self, type_key=dict_key);
+    result = self._rc_call_with_ctx(helpers["new"], [], op="new", name="dict.unpack");
+    self._nogc_stamp_elem_drops(result, self._nogc_type_arg_mangles(nd));
+    args = nd.type.private.type_args
+        if isinstance(nd.type, ClassType) and nd.type.private is not None
+        else [];
+    semantic_value = self._lower_type(args[1]) if args and len(args) >= 2 else None;
+    tuple_type = semantic_value.pointee
+        if isinstance(semantic_value, ir.PointerType)
+            and isinstance(semantic_value.pointee, ir.LiteralStructType)
+        else None;
+    for pair in nd.kv_pairs {
+        if pair.key is None {
+            other = self._codegen_expr(pair.value);
+            if other is None {
+                return None;
+            }
+            if other.type != result.type {
+                self.emit(
+                    E5092,
+                    node_override=pair.value,
+                    kind="expression",
+                    name="dictionary unpack with incompatible storage"
+                );
+                return None;
+            }
+            emitter.emit_update(ctx, result, [other]);
+            self._release_owned_args([other], op="dict_unpack");
+        } else {
+            key = self._codegen_expr(pair.key);
+            value = self._str_norm_optional(self._codegen_expr(pair.value));
+            if key is None or value is None {
+                return None;
+            }
+            if tuple_type is not None {
+                value = self._coerce_tuple_to_struct(value, tuple_type);
+            }
+            value = self._nogc_elem_prep(pair.value, value);
+            if value is None {
+                return None;
+            }
+            if not dict_key.endswith(":jacval")
+                and self._reject_ptr_into_raw_slot(
+                    nd, value, helpers["val_type"], "dict value"
+                ) {
+                return None;
+            }
+            key = self._coerce_type(key, helpers["key_type"]);
+            value = self._coerce_type(value, helpers["val_type"]);
+            (set_fn, hash_value) = self._static_key_op(helpers, "set", pair.key);
+            setter_args = [result, key, value];
+            if hash_value is not None {
+                setter_args.append(hash_value);
+            }
+            self._rc_call_with_ctx(set_fn, setter_args, op="dict_init");
+            self._release_owned_args([key, value], op="dict_init");
+        }
+    }
+    return result;
 }
 
 impl NaIRGenPass._codegen_dict_access(
