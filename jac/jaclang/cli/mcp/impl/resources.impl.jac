@@ -13,7 +13,7 @@ impl find_repo_root -> str | None {
     for start in starts {
         chain = [start] + list(start.parents);
         for parent in chain {
-            if (parent / "docs" / "docs").is_dir()
+            if (parent / "jac" / "examples").is_dir()
                 and (parent / "jac" / "jaclang").is_dir() {
                 return str(parent);
             }

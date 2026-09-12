@@ -265,11 +265,23 @@ test "examples index exists" {
 }
 
 test "examples index content" {
-    rp = ResourceProvider();
-    rp.index_resources();
-    content = rp.read_resource("jac://examples/index");
-    assert content;
-    assert "chess" in content;
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    with TemporaryDirectory() as directory {
+        checkout = Path(directory);
+        (checkout / "jac" / "jaclang").mkdir(parents=True);
+        (checkout / "jac" / "examples" / "chess").mkdir(parents=True);
+        with patch("pathlib.Path.cwd", return_value=checkout), patch(
+            "jaclang.cli.mcp.resources._github_api_get",
+            side_effect=AssertionError("local examples must not require GitHub")
+        ) {
+            rp = ResourceProvider();
+            rp.index_resources();
+            content = rp.read_resource("jac://examples/index");
+            assert "jac://examples/chess" in content;
+        }
+    }
 }
 
 test "invalid uri returns error" {

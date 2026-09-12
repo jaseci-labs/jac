@@ -231,12 +231,11 @@ class _JSON:
 
 JSON: _JSON
 
-# JS `Number`/`String`/`Boolean`/`Array` are callable coercions that also
-# carry static helpers. Model them as primitive subclasses (the same pattern
-# as the fixed-width numeric types in jac_builtins.pyi) so `Number(x)` stays
-# usable as the underlying primitive while `Number.isInteger(x)` resolves.
+# Primitive conversions are callable values, not class instantiations.
+# Their call signatures return primitives; their members describe the helpers
+# carried by the same JavaScript function object. Aliases retain both facts.
 
-class Number(float):
+class _Number:
     """The `Number` global (coercion call + static helpers)."""
 
     MAX_SAFE_INTEGER: float
@@ -247,6 +246,7 @@ class Number(float):
     POSITIVE_INFINITY: float
     NEGATIVE_INFINITY: float
     NaN: float
+    def __call__(self, value: object = ...) -> float: ...
     @staticmethod
     def isInteger(value: object) -> bool: ...
     @staticmethod
@@ -260,16 +260,25 @@ class Number(float):
     @staticmethod
     def parseInt(value: str, radix: float = ...) -> float: ...
 
-class String(str):
+Number: _Number
+
+class _String:
     """The `String` global (coercion call + static helpers)."""
 
+    def __call__(self, value: object = ...) -> str: ...
     @staticmethod
     def fromCharCode(*codes: float) -> str: ...
     @staticmethod
     def fromCodePoint(*codes: float) -> str: ...
 
-class Boolean(int):
+String: _String
+
+class _Boolean:
     """The `Boolean` global (coercion call)."""
+
+    def __call__(self, value: object = ...) -> bool: ...
+
+Boolean: _Boolean
 
 class Array(list[object]):
     """The `Array` global (constructor + static helpers)."""

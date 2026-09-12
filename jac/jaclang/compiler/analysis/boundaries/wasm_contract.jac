@@ -121,12 +121,7 @@ def _host_type(name: str) -> str {
 }
 
 def check_host_call(call: any, program: AnalysisServices) -> None {
-    import from jaclang.compiler.ir.schema {
-        Name,
-        Module,
-        Archetype,
-        ability_of_symbol
-    }
+    import from jaclang.compiler.ir.schema { Name, Module, ability_of_symbol }
     if not isinstance(call.target, Name) or call.target.value != "bind_na_host" {
         return;
     }
@@ -142,49 +137,37 @@ def check_host_call(call: any, program: AnalysisServices) -> None {
     }
     export = call.params[0];
     provider = ability_of_symbol(export.sym) if isinstance(export, Name) else None;
-    import from jaclang.compiler.ir.types.nodes { ClassType }
+    import from jaclang.compiler.ir.types.nodes { ClassType, FunctionType }
     host = call.params[1];
     host_type = host.narrowed_type or host.type;
-    scope = host_type.shared.symbol_table if isinstance(host_type, ClassType) else None;
-    if provider is None or scope is None {
+    if provider is None or not isinstance(host_type, ClassType) {
         raise ValueError(
             "Host binding requires statically known export and host types"
         );
     }
-    methods: dict = {};
-    todo = [scope];
-    seen: set[int] = set();
-    while todo {
-        current = todo.pop();
-        if id(current) in seen {
-            continue;
-        }
-        seen.add(id(current));
-        for method in current.get_all_sub_nodes(Ability) {
-            if method.sym_name not in methods {
-                methods[method.sym_name] = method;
-            }
-        }
-        if isinstance(current, Archetype) {
-            for base in current.base_classes or [] {
-                base_type = base.type;
-                if isinstance(base_type, ClassType) {
-                    todo.append(base_type.shared.symbol_table);
-                }
-            }
-        }
-    }
+    evaluator = program.get_type_evaluator();
     for (name, required) in host_contracts(
         provider.find_parent_of_type(Module), program
     ).items() {
-        if name not in methods {
+        member = evaluator._lookup_class_member(host_type, name);
+        if member is None {
             raise ValueError(f"Host is missing native import '{name}'");
         }
-        supplied = function_contract(methods[name], host=True);
+        supplied = evaluator.get_type_of_member(member, host_type);
+        if not isinstance(supplied, FunctionType) {
+            raise ValueError(f"Host import '{name}' must be a function");
+        }
         expected = [_host_type(p["type"]) for p in required["params"]];
-        actual = [p["type"] for p in supplied["params"]];
-        if expected != actual
-            or _host_type(required["result"]["type"]) != supplied["result"]["type"] {
+        expected_return = _host_type(required["result"]["type"]);
+        if expected_return == "None" {
+            expected_return = "NoneType";
+        }
+        actual = [
+            str(p.param_type)
+            for p in supplied.parameters
+            if not p.is_self and not p.is_cls
+        ];
+        if expected != actual or expected_return != str(supplied.return_type) {
             raise ValueError(
                 f"Host import '{name}' has incompatible signature: expected {expected} -> {_host_type(
                     required['result']['type']
