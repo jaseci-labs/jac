@@ -1104,18 +1104,9 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
     return True;
 }
 
-impl JacAutoLintPass.exit_if_else_expr with uni.IfElseExpr exit {
-    if not self.lint_enabled or self.report_only {
-        return;
-    }
-    if not self._is_suppressed(W3008) and self._convert_ternary_to_or(here) {
-        return;
-    }
-    if self._is_suppressed(W3007) {
-        return;
-    }
+impl JacAutoLintPass._propagate_null_ok_siblings(container: uni.UniNode) -> None {
     trailers: list[uni.AtomTrailer] = [];
-    self._collect_atom_trailers(here, trailers);
+    self._collect_atom_trailers(container, trailers);
     if len(trailers) < 2 {
         return;
     }
@@ -1141,35 +1132,24 @@ impl JacAutoLintPass.exit_if_else_expr with uni.IfElseExpr exit {
     }
 }
 
+impl JacAutoLintPass.exit_if_else_expr with uni.IfElseExpr exit {
+    if not self.lint_enabled or self.report_only {
+        return;
+    }
+    if not self._is_suppressed(W3008) and self._convert_ternary_to_or(here) {
+        return;
+    }
+    if self._is_suppressed(W3007) {
+        return;
+    }
+    self._propagate_null_ok_siblings(here);
+}
+
 impl JacAutoLintPass.exit_bool_expr with uni.BoolExpr exit {
     if not self.lint_enabled or self.report_only or self._is_suppressed(W3007) {
         return;
     }
-    trailers: list[uni.AtomTrailer] = [];
-    self._collect_atom_trailers(here, trailers);
-    if len(trailers) < 2 {
-        return;
-    }
-    null_ok_keys: set = set();
-    for trailer in trailers {
-        if isinstance(trailer, uni.AtomTrailer) and trailer.is_null_ok {
-            key = self._expr_to_key(trailer);
-            if key is not None {
-                null_ok_keys.add(key);
-            }
-        }
-    }
-    if not null_ok_keys {
-        return;
-    }
-    for trailer in trailers {
-        if isinstance(trailer, uni.AtomTrailer) and not trailer.is_null_ok {
-            key = self._expr_to_key(trailer);
-            if key is not None and key in null_ok_keys {
-                self._make_null_ok(trailer);
-            }
-        }
-    }
+    self._propagate_null_ok_siblings(here);
 }
 
 impl JacAutoLintPass._is_future_annotations_import(stmt: uni.UniNode) -> bool {

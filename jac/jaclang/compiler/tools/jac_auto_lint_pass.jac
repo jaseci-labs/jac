@@ -118,6 +118,7 @@ walker JacAutoLintPass(UniPass) {
     def _expr_to_key(expr: uni.Expr) -> (str | None);
     def _exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> bool;
     def _convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> bool;
+    def _propagate_null_ok_siblings(container: uni.UniNode) -> None;
     can exit_if_else_expr with uni.IfElseExpr exit;
     can exit_bool_expr with uni.BoolExpr exit;
     def _is_future_annotations_import(stmt: uni.UniNode) -> bool;
