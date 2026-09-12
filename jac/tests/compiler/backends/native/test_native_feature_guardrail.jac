@@ -770,6 +770,19 @@ test "guardrail: inline Python block demotes its function, native callers stay l
 # event ability", so a graph-builder module that only CONNECTS nodes (defining
 # no walker) was E5090 while the byte-identical connects compiled fine next to
 # an unrelated walker. The gate must key on OSP *usage*, not walker presence.
+test "osp guardrail: a dynamic edge constructor cannot silently drop a connection" {
+    prog = compile_na_inline(
+        "dynamic_edge_constructor",
+        "node Point {}\n"
+        "edge Link {}\n"
+        "def connect_by_type(src: Point, dst: Point, kind: type[Link]) {\n"
+        "    src +>:kind:+> dst;\n"
+        "}\n"
+        "with entry { connect_by_type(Point(), Point(), Link); }\n"
+    );
+    assert has_error_code(prog, "E5092") , fmt_errors(prog);
+}
+
 test "osp gate: connect-only module (no walker) lowers without E5090" {
     prog = compile_na_inline(
         "connect_no_walker",

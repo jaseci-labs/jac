@@ -679,7 +679,15 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
         edge_obj = self._osp_generic_edge();
     }
     if edge_obj is None {
-        return tgt;
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="edge constructor",
+            name=self._spawn_operand_name(co.conn_type) or "dynamic edge",
+            help_text="Native connections require a statically known edge "
+            "constructor; a runtime edge class cannot be instantiated here."
+        );
+        return None;
     }
 
     self._osp_make_immortal(edge_obj);
