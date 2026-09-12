@@ -75,7 +75,8 @@ obj DependencyPlan {
 obj InstallContext {
     has verbose: bool = False,
         install_flags: list[str] = [],
-        target: str = "project";
+        target: str = "project",
+        frozen: bool = False;
 
     def is_dry_run -> bool {
         return "--dry-run" in self.install_flags;
@@ -644,6 +645,8 @@ def get_provider_registry -> ProviderRegistry {
     if _registry is None {
         _registry = ProviderRegistry();
         _registry.register(PythonProvider());
+        import from jaclang.project.jac_provider { JacGitProvider }
+        _registry.register(JacGitProvider());
         initialize_provider_registry();
     }
     return _registry;

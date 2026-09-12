@@ -148,6 +148,12 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     if project_root {
         paths.append(project_root);
     }
+    try {
+        import from jaclang.project.jac_provider { read_deps_roots }
+        for dep_root in read_deps_roots(Path(str(project_root or os.getcwd()))) {
+            paths.append(dep_root);
+        }
+    } except Exception {}
     paths.append(os.getcwd());
     if ('JACPATH' in os.environ) {
         paths.extend(
