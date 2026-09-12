@@ -5652,6 +5652,12 @@ def _lambdas__lambda_closure_as_scaler(eng: any, _ir: any) {
     assert f(7, -2) == -14 , f"Expected -14, got {f(7, -2)}";
 }
 
+"""lambda untyped parameter infers its real type from context (#7139)"""
+def _lambdas__untyped_param_infers_str(eng: any, _ir: any) {
+    f = get_sfunc(eng, "untyped_param_infers_str", ctypes.c_char_p);
+    assert f() == b"hello" , f"Expected b'hello', got {f()}";
+}
+
 test "lambdas" {
     (_eng, _ir) = compile_native("lambdas.jac");
     _lambdas__lambda_simple_add(_eng, _ir);
@@ -5660,6 +5666,7 @@ test "lambdas" {
     _lambdas__lambda_closure_captures_local(_eng, _ir);
     _lambdas__lambda_closure_captures_multiple_vars(_eng, _ir);
     _lambdas__lambda_closure_as_scaler(_eng, _ir);
+    _lambdas__untyped_param_infers_str(_eng, _ir);
 }
 
 # --- Multi-statement lambda callback parity (P2 cross-target probe) ---
