@@ -1,3 +1,4 @@
+import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
 # Compiler-owned diagnostics (INTEGRATION_PLAN Phase 2).
 #
 # Internal compiler phases record structured diagnostics here. product_compile.jac
@@ -5,15 +6,24 @@
 # internals must not use runtime py_error as control flow.
 
 import from jaclang.runtime.python.objects { PyObj, PyInt, PyError, py_error }
+import from jaclang.compiler.frontend.python.tokenizer { tok_state }
+
+def report_token_warnings(scanner: tok_state) {
+    pending = scanner.warnings;
+    scanner.warnings = [];
+    for warning in pending {
+        syntax_warning(
+            warning.message,
+            warning.filename,
+            warning.loc.lineno,
+            warning.loc.col_offset
+        );
+    }
+}
 
 def syntax_warning(message: str, filename: str, lineno: int, column: int = 0) {
-    import warnings;
-    try {
-        # No shared registry: a new compilation must report warnings again.
-        warnings.warn_explicit(message, SyntaxWarning, filename, lineno);
-    } except SyntaxWarning {
-        raise SyntaxError(message, (filename, lineno, column + 1, None));
-    }
+    import from jaclang.runtime.python.native_services { warn }
+    warn(message, filename, lineno, column);
 }
 
 def located_error(kind: str, message: str, lineno: int, column: int) -> PyObj {

@@ -2,17 +2,16 @@
 # Paths are relative to the checksum-pinned CPython archive in sources.json.
 # One exact file per line; a trailing / includes a directory recursively.
 # Blank lines and full-line # comments are ignored, except marked removals
-# restored by the default C compiler build (see below). No globs.
+# restored by the build-only host (see below). No globs.
 # Unlisted archive contents are discarded before configure/make. Missing,
 # overlapping, or incorrectly typed entries fail the build.
 #
 # Commented source paths record exclusions for the JacPython replacement.
 # Counts use pinned CPython 3.14.6 source lines, including comments and blanks.
 # Excluded: 26 C files / 65,217 lines; 10 headers / 1,076 lines.
-# Total: 36 files / 66,293 source lines excluded with -Djacpython=true.
-# The default CPython build restores these marked entries and ships its C
-# compiler. JacPython's separate build-time host also restores them to produce
-# the frozen seed; the opt-in JacPython runtime ships none of these inputs.
+# Total: 36 files / 66,293 source lines excluded from every shipped runtime.
+# A separate build-only CPython host restores these marked entries to produce
+# the native object. The shipped JacPython runtime includes none of them.
 # Keep build dependencies and ABI adapters aligned with these exclusions.
 # Split a directory entry before removing only part of its contents.
 # CI hashes this manifest and rebuilds/verifies Python when it changes.

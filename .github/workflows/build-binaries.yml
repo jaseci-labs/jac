@@ -1,7 +1,7 @@
 name: Build jac native binaries
 
 # Builds the self-contained `jac` binary per platform and attaches it to a
-# GitHub Release, with CPython and opt-in JacPython variants on every target.
+# GitHub Release, with native JacPython on every target.
 # One parameterized workflow serves both channels:
 #   - channel=release (default): cold, glibc-2.17-pinned builds attached to a
 #     versioned release. Called by release.yml after it cuts the release (a
@@ -56,7 +56,7 @@ on:
         # demanded there, hanging the release on an asset nothing was
         # building. `plan` derives this from the same array the matrix comes
         # from, so the two can no longer disagree.
-        description: "Space-separated binary suffixes (platform and platform-jacpython) required to publish; non-blocking legs are excluded."
+        description: "Space-separated platform suffixes required to publish; non-blocking legs are excluded."
         value: ${{ jobs.plan.outputs.required }}
     # Called workflows do not see the caller's repo secrets unless passed
     # explicitly; without these the docker-image job skips its push steps.
@@ -187,16 +187,12 @@ jobs:
               exit 1
             fi
           fi
-          # Every selected target ships both compilers. Keep the normal asset
-          # names for installers; opt-in binaries carry a -jacpython suffix.
-          LEGS="$(jq -c '[.[] | . + {jacpython: false, variant: "cpython", asset_platform: .platform},
-            . + {jacpython: true, variant: "jacpython", asset_platform: (.platform + "-jacpython")}]' <<<"$LEGS")"
           echo "include=$(jq -c . <<<"$LEGS")" >> "$GITHUB_OUTPUT"
 
           # The platforms a release is obliged to ship, read off the same array
           # the matrix was. Absence of both flags means blocking, so a new leg
           # is required until someone says otherwise.
-          REQUIRED="$(jq -r 'map(select(.optional != true and .manual != true)) | map(.asset_platform) | join(" ")' <<<"$LEGS")"
+          REQUIRED="$(jq -r 'map(select(.optional != true and .manual != true)) | map(.platform) | join(" ")' <<<"$LEGS")"
           # A release whose every leg is optional has nothing to verify, and
           # publishing it would reveal whatever the draft happened to hold.
           # Only the unfiltered matrix feeds a publish (release.yml); the
@@ -207,11 +203,11 @@ jobs:
             exit 1
           fi
           echo "required=$REQUIRED" >> "$GITHUB_OUTPUT"
-          echo "Building: $(jq -r 'map(.asset_platform) | join(" ")' <<<"$LEGS")"
+          echo "Building: $(jq -r 'map(.platform) | join(" ")' <<<"$LEGS")"
           echo "Required to publish: ${REQUIRED:-(none)}"
 
   build:
-    name: ${{ matrix.asset_platform }}
+    name: ${{ matrix.platform }}
     needs: plan
     strategy:
       fail-fast: false
@@ -324,14 +320,12 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.precompiled-build/${{ matrix.variant }}
-          key: jac-precompiled-${{ matrix.variant }}-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-${{ hashFiles('jac/jaclang/**') }}
+          path: jac/.precompiled-build/jacpython
+          key: jac-precompiled-jacpython-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-${{ hashFiles('jac/jaclang/**') }}
           restore-keys: |
-            jac-precompiled-${{ matrix.variant }}-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-
+            jac-precompiled-jacpython-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-
 
-      # Cache each compiler variant separately. Only JacPython needs the Jac
-      # sources in its key; CPython shares setup-jac's C-only cache key.
-      # Release builds remain cold to verify reproducibility.
+      # Cache the native compiler and its build host. Release builds remain cold.
       - name: Resolve Python SDK cache input
         id: python-sdk
         shell: bash
@@ -344,8 +338,8 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.python-build/${{ matrix.variant }}
-          key: python-build-v3-${{ matrix.variant }}-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ matrix.jacpython && hashFiles('jac/bootstrap/build_python.zig', 'jac/bootstrap/seed.zig', 'jac/bootstrap/python/**', 'jac/jaclang/**/*.jac', 'jac/jaclang/**/*.py', 'jac/jaclang/vendor/typeshed/PIN', 'jac/jaclang/vendor/typeshed/TARBALL_SHA256') || hashFiles('jac/bootstrap/build_python.zig', 'jac/bootstrap/seed.zig', 'jac/bootstrap/python/sources.json', 'jac/bootstrap/python/cpython-sources.txt', 'jac/bootstrap/python/build.sh', 'jac/bootstrap/python/finalize.py', 'jac/bootstrap/python/smoke.py') }}
+          path: jac/.python-build/jacpython
+          key: python-build-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ hashFiles('jac/bootstrap/build_python.zig', 'jac/bootstrap/seed.zig', 'jac/bootstrap/python/**', 'jac/jaclang/**/*.jac', 'jac/jaclang/**/*.py', 'jac/jaclang/vendor/typeshed/PIN', 'jac/jaclang/vendor/typeshed/TARBALL_SHA256') }}
 
       - name: Restore cached bun runtime (dev channel)
         if: inputs.channel == 'dev'
@@ -362,10 +356,10 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.payload-layers/${{ matrix.variant }}
-          key: payload-layers-${{ matrix.variant }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/bootstrap/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/jaclang/client/bun_installer.jac', 'jac/jaclang/compiler/backends/native/wasm_rt/**') }}
+          path: jac/.payload-layers/jacpython
+          key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/bootstrap/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/jaclang/client/bun_installer.jac', 'jac/jaclang/compiler/backends/native/wasm_rt/**') }}
           restore-keys: |
-            payload-layers-${{ matrix.variant }}-${{ runner.os }}-${{ runner.arch }}-
+            payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-
 
       # Release channel: fetch the prebuilt, target-pinned shim that
       # build-shims.yml publishes on the rolling `deps` prerelease instead of
@@ -487,7 +481,7 @@ jobs:
           elif [ "${{ steps.shim-fetch.outputs.hit }}" = "true" ]; then
             SHIM_ARG=(-Dshim-bin="${{ steps.shim-fetch.outputs.file }}")
           fi
-          zig build $DTARGET -Djacpython=${{ matrix.jacpython }} "${SHIM_ARG[@]}" --summary all
+          zig build $DTARGET "${SHIM_ARG[@]}" --summary all
 
       # Launcher unit tests (`zig build test`) live in ci.yml's `test-launcher`
       # job so they gate every PR on Linux + macOS, not just release time. The
@@ -502,24 +496,23 @@ jobs:
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
 
-      - name: Verify the shipped Python compiler variant
+      - name: Verify the shipped native JacPython compiler
         working-directory: jac
-        env:
-          EXPECT_JACPYTHON: ${{ matrix.jacpython }}
         run: |
           set -euo pipefail
           WORK="$(mktemp -d)"
-          cat > "$WORK/variant.jac" <<'EOF'
-          import os;
+          cat > "$WORK/native_compiler.jac" <<'EOF'
           import sys;
+          import ctypes;
           with entry {
-              expected = os.environ["EXPECT_JACPYTHON"] == "true";
-              assert bool(getattr(sys, "_jacpython_compile", None)) == expected;
-              assert hasattr(sys, "_jacpython_image") == expected;
-              print("compiler variant verified");
+              assert ctypes.pythonapi._PyJac_CompilerRequired() == 1;
+              assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3;
+              assert not hasattr(sys, "_jacpython_compile");
+              assert not hasattr(sys, "_jacpython_image");
+              print("native JacPython verified");
           }
           EOF
-          JAC_NO_DEV_SOURCE=1 zig-out/bin/jac run "$WORK/variant.jac"
+          JAC_NO_DEV_SOURCE=1 zig-out/bin/jac run "$WORK/native_compiler.jac"
 
       # Guards #7047: the binary must not leak PYTHONHOME/PYTHONPATH (or any
       # interpreter config) into subprocesses -- a python-based child spawned
@@ -628,7 +621,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: macos-crash-evidence-${{ matrix.asset_platform }}
+          name: macos-crash-evidence-${{ matrix.platform }}
           path: ${{ runner.temp }}/jac-crash-evidence
           if-no-files-found: ignore
 
@@ -695,7 +688,7 @@ jobs:
       # floor checks on purpose: a floor regression fails the job before
       # anything is published.
       - name: Seed the deps release with the built shim (release channel)
-        if: inputs.channel != 'dev' && !matrix.jacpython && steps.shim-fetch.outputs.hit != 'true'
+        if: inputs.channel != 'dev' && steps.shim-fetch.outputs.hit != 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -718,9 +711,9 @@ jobs:
         run: |
           set -euxo pipefail
           if [ "${{ inputs.channel }}" = "dev" ]; then
-            ASSET="jac-dev-${{ matrix.asset_platform }}"
+            ASSET="jac-dev-${{ matrix.platform }}"
           else
-            ASSET="jac-${{ steps.ver.outputs.version }}-${{ matrix.asset_platform }}"
+            ASSET="jac-${{ steps.ver.outputs.version }}-${{ matrix.platform }}"
           fi
           mkdir -p dist
           cp zig-out/bin/jac "dist/$ASSET"

@@ -154,6 +154,17 @@ impl skip_none(p: str) -> bool {
 }
 
 impl skip_jaclang(p: str) -> bool {
+    if p != "runtime/python/LICENSE.cpython" {
+        for replacement in (
+            "compiler/frontend/python",
+            "compiler/backends/py/jacpython",
+            "runtime/python"
+        ) {
+            if p == replacement or p.startswith(replacement + "/") {
+                return True;
+            }
+        }
+    }
     return (
         "__pycache__" in p
         or "node_modules" in p

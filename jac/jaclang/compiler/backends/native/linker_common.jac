@@ -62,11 +62,7 @@ def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
 
     python_build = os.path.join(pkg_root, ".python-build");
     fallback: (str | None) = None;
-    for build_root in [
-        os.path.join(python_build, "cpython"),
-        os.path.join(python_build, "jacpython"),
-        python_build
-    ] {
+    for build_root in [os.path.join(python_build, "jacpython"), python_build] {
         if not os.path.isdir(build_root) {
             continue;
         }

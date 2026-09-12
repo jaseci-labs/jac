@@ -3953,6 +3953,26 @@ impl NaIRGenPass._codegen_field_assign(
         obj_val = self._opt_unwrap_attr(obj_val);
     }
     type_name: (str | None) = self._struct_name_of(target.target);
+    union_parts = self._receiver_union_parts(target);
+    if union_parts is not None and field_name is not None {
+        first = union_parts[0];
+        shared_type = self.struct_field_types.get(first, {}).get(field_name);
+        shared_borrow = field_name in self.struct_field_borrow.get(first, set());
+
+        if shared_type is not None
+            and all(
+                self.struct_field_types.get(part, {}).get(field_name) == shared_type
+                    and (field_name in self.struct_field_borrow.get(part, set()))
+                        == shared_borrow
+                    and field_name not in self.struct_field_inline.get(part, set())
+                    and self._accessor_slot_of(part, field_name, "setter") is None
+                for part in union_parts
+            ) {
+            type_name = first;
+        } else {
+            union_parts = None;
+        }
+    }
     if (
         obj_val is not None
         and self?.jacval_type
@@ -4076,7 +4096,7 @@ impl NaIRGenPass._codegen_field_assign(
     field_ptr: (ir.Value | None) = None;
     if not _vt_struct {
         field_ptr = self._emit_dispatched_field_ptr(
-            obj_val, type_name, field_name, ftype
+            obj_val, type_name, field_name, ftype, union_parts
         );
     }
     if field_ptr is None {

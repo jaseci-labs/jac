@@ -48,8 +48,6 @@ import from jaclang.runtime.python.opcode_meta {
     compare_oparg,
 }
 import from jaclang.compiler.frontend.python.ast_nodes {
-    ast_node,
-    arg,
     stmt,
     expr,
     AnnAssign,
@@ -150,52 +148,6 @@ import from jaclang.compiler.backends.py.jacpython.compiler_emit {
     fast_varnames_from_sym,
     freevars_from_sym,
     cellvars_from_sym,
-}
-
-import from jaclang.compiler.backends.py.jacpython.compiler_context {
-    current_compile_flags
-}
-import from _ast_unparse { Unparser, _Precedence }
-
-# The stdlib unparser inserts optional parentheses for readability. Annotation
-# strings use the compiler's canonical spelling for Boolean operators and a
-# sole generator argument instead.
-obj annotation_unparser(Unparser) {
-    def postinit {
-        Unparser.__init__(self);
-    }
-
-    def visit_BoolOp(`node: any) {
-        operator = self.boolops[`node.op.__class__.__name__];
-        precedence = self.boolop_precedence[operator] as int;
-        parens = (self.get_precedence(`node) as int) > precedence;
-        if parens {
-            self.write("(");
-        }
-        for (index, value) in enumerate(`node.values) {
-            if index {
-                self.write(" " + operator + " ");
-            }
-            self.set_precedence(precedence + 1, value);
-            self.traverse(value);
-        }
-        if parens {
-            self.write(")");
-        }
-    }
-
-    def visit_Call(`node: any) {
-        import ast;
-        if len(`node.args) == 1
-            and not `node.keywords
-            and isinstance(`node.args[0], ast.GeneratorExp) {
-            self.set_precedence(_Precedence.ATOM, `node.func);
-            self.traverse(`node.func);
-            self.traverse(`node.args[0]);
-        } else {
-            Unparser.visit_Call(self, `node);
-        }
-    }
 }
 
 # One deferred annotation: an annotated name plus its expression, in
@@ -533,7 +485,7 @@ def visit_ann_assign(
         tloc = ann_store_target_tos(g, an.target);
         return stmt_cont(loc=tloc);
     }
-    if current_compile_flags() & 0x1000000 {
+    if g.u.context.flags & 0x1000000 {
         if an.value is not None {
             visit_expr(g, an.value);
             if codegen_busy(g) {
@@ -682,7 +634,7 @@ def ann_emit_index_int(g: cfg_builder, v: int, lc: cloc) {
 # finish_module_annotations patches them post-body, mirroring the host's
 # deferred const/name slot allocation.
 def emit_module_annotation_setup(g: cfg_builder, plan: ann_scope_plan, lc: cloc) {
-    if current_compile_flags() & 0x1000000 {
+    if g.u.context.flags & 0x1000000 {
         if plan.any_annotation {
             g.emit_op(OP_BUILD_SET, 0, lc);
             g.emit_op(OP_STORE_NAME, g.u.add_name("__conditional_annotations__"), lc);
@@ -707,7 +659,7 @@ def emit_module_annotation_setup(g: cfg_builder, plan: ann_scope_plan, lc: cloc)
 # Build the synthetic __annotate__ code object now that the whole body (and
 # its const/name pools) is emitted, then patch the two placeholder opargs.
 def finish_module_annotations(g: cfg_builder, plan: ann_scope_plan) {
-    if current_compile_flags() & 0x1000000 {
+    if g.u.context.flags & 0x1000000 {
         return;
     }
     lci = plan.load_const_ins;
@@ -777,7 +729,7 @@ def finish_module_annotations(g: cfg_builder, plan: ann_scope_plan) {
 # prologue's LOAD_LOCALS/STORE_DEREF __classdict__. The caller has already
 # appended "__conditional_annotations__" to u.cellvars so MAKE_CELL ran for it.
 def emit_class_annotation_setup(g: cfg_builder, plan: ann_scope_plan, lc: cloc) {
-    if current_compile_flags() & 0x1000000 {
+    if g.u.context.flags & 0x1000000 {
         if plan.any_annotation {
             g.emit_op(OP_SETUP_ANNOTATIONS, 0, lc);
         }
@@ -801,7 +753,7 @@ def emit_class_annotation_setup(g: cfg_builder, plan: ann_scope_plan, lc: cloc) 
 # appending to the const pool here is already in host order (class bodies
 # cannot contain return statements, so no duplicated return-None joins exist).
 def finish_class_annotations(g: cfg_builder, plan: ann_scope_plan) {
-    if current_compile_flags() & 0x1000000 {
+    if g.u.context.flags & 0x1000000 {
         return;
     }
     if len(plan.entries) == 0 {
@@ -1170,57 +1122,12 @@ def ann_unsupported_in_annotation(e: expr) -> str {
     return "unsupported " + kind + " inside deferred annotation";
 }
 
-# PEP 563 annotations use the retained stdlib AST unparser. The compiler still
-# owns parsing and validation; no call to Python compile/eval is involved.
-def stringify_future_annotations(tree: ast_node, filename: str) {
-    import from jaclang.compiler.frontend.python.ast_bridge { to_python_ast }
-    import from jaclang.compiler.backends.py.jacpython.code_object { constant_value }
-    pending: list[ast_node] = [tree];
-    while pending {
-        item = pending.pop();
-        fields: list[str] = [];
-        if isinstance(item, (arg, AnnAssign)) {
-            fields.append("annotation");
-        } elif isinstance(item, (FunctionDef, AsyncFunctionDef)) {
-            fields.append("returns");
-        }
-        for field in fields {
-            value = vars(item).get(field);
-            if isinstance(value, expr) {
-                rendered = annotation_unparser().visit(
-                    to_python_ast(value, constant_value)
-                ) as str;
-                replacement = Constant(
-                    value=PyStr(t="str", val=rendered),
-                    kind=None,
-                    lineno=value.lineno,
-                    col_offset=value.col_offset,
-                    end_lineno=value.end_lineno,
-                    end_col_offset=value.end_col_offset
-                );
-                setattr(item, field, replacement);
-            }
-        }
-        for value in vars(item).values() {
-            if isinstance(value, ast_node) {
-                pending.append(value);
-            } elif isinstance(value, list) {
-                pending.extend(
-                    child
-                    for child in value
-                    if isinstance(child, ast_node)
-                );
-            }
-        }
-    }
-}
-
 # Function annotations remain lazy even with the future enabled in 3.14:
 # __annotate__ returns the strings for formats VALUE and FORWARDREF.
 def emit_future_function_annotations(
     g: cfg_builder, fd: FunctionDef | AsyncFunctionDef
 ) {
-    if not (current_compile_flags() & 0x1000000) {
+    if not (g.u.context.flags & 0x1000000) {
         return;
     }
     plan = ann_scope_plan(

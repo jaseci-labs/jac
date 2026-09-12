@@ -4,6 +4,12 @@ Originally generated from CPython 3.14.6 Grammar/python.gram (starts: eval, file
 Maintained directly in Jac.
 """
 
+import from jaclang.compiler.frontend.python.syntax_error {
+    syntax_failure,
+    split_source_lines,
+    source_character_column
+}
+
 import from jaclang.compiler.frontend.python.token_model {
     ENDMARKER,
     NAME,
@@ -1971,22 +1977,22 @@ def rule__loop1_132(p: peg_parser) -> list[expr] | None {
     return children as list[expr];
 }
 
-def rule__loop1_133(p: peg_parser) -> list[stmt] | None {
+def rule__loop1_133(p: peg_parser) -> list[list[stmt]] | None {
     mark = peg_mark(p);
-    children: list[object] = [];
+    children: list[list[stmt]] = [];
     while True {
         comma_mark = peg_mark(p);
         statement = rule_statement(p);
         if statement is None {
             break;
         }
-        children.append(statement as stmt);
+        children.append(statement);
         mark = peg_mark(p);
     }
     if len(children) == 0 {
         return None;
     }
-    return children as list[stmt];
+    return children;
 }
 
 def rule__loop1_14(p: peg_parser) -> list[expr] | None {
@@ -3499,7 +3505,8 @@ def rule__tmp_94(p: peg_parser) -> object | None {
     expression = rule_expression(p);
     if expression is not None {
         rhs = rule__tmp_19(p);
-        res = [expression, rhs];
+        items: list[object] = [expression, rhs];
+        res = items;
         return res;
     }
     peg_reset(p, mark);
@@ -3611,7 +3618,7 @@ def rule_args(p: peg_parser) -> expr | None {
 def rule_arguments(p: peg_parser) -> expr | None {
     hit = peg_check_memo(p, RULE_arguments);
     if hit.hit {
-        return hit.result as expr;
+        return hit.result as expr | None;
     }
     mark = peg_mark(p);
     res: expr | None = None;
@@ -4050,7 +4057,7 @@ def rule_attr(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr;
+    return peg_left_rec_finish(p, resmark, res) as expr | None;
 }
 
 def rule_attr_raw(p: peg_parser) -> expr | None {
@@ -4183,7 +4190,7 @@ def rule_augassign(p: peg_parser) -> operator | None {
 def rule_await_primary(p: peg_parser) -> expr | None {
     hit = peg_check_memo(p, RULE_await_primary);
     if hit.hit {
-        return hit.result as expr;
+        return hit.result as expr | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -4252,7 +4259,7 @@ def rule_bitwise_and(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr;
+    return peg_left_rec_finish(p, resmark, res) as expr | None;
 }
 
 def rule_bitwise_and_raw(p: peg_parser) -> expr | None {
@@ -4325,7 +4332,7 @@ def rule_bitwise_or(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr;
+    return peg_left_rec_finish(p, resmark, res) as expr | None;
 }
 
 def rule_bitwise_or_raw(p: peg_parser) -> expr | None {
@@ -4398,7 +4405,7 @@ def rule_bitwise_xor(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr;
+    return peg_left_rec_finish(p, resmark, res) as expr | None;
 }
 
 def rule_bitwise_xor_raw(p: peg_parser) -> expr | None {
@@ -4453,7 +4460,7 @@ def rule_bitwise_xor_raw(p: peg_parser) -> expr | None {
 def rule_block(p: peg_parser) -> list[stmt] | None {
     hit = peg_check_memo(p, RULE_block);
     if hit.hit {
-        return hit.result as list[stmt];
+        return hit.result as list[stmt] | None;
     }
     mark = peg_mark(p);
     res: list[stmt] | None = None;
@@ -4880,7 +4887,7 @@ def rule_class_pattern(p: peg_parser) -> pattern | None {
 def rule_closed_pattern(p: peg_parser) -> pattern | None {
     hit = peg_check_memo(p, RULE_closed_pattern);
     if hit.hit {
-        return hit.result as pattern;
+        return hit.result as pattern | None;
     }
     mark = peg_mark(p);
     res: pattern | None = None;
@@ -5210,7 +5217,7 @@ def rule_compound_stmt(p: peg_parser) -> stmt | None {
 def rule_conjunction(p: peg_parser) -> expr | None {
     hit = peg_check_memo(p, RULE_conjunction);
     if hit.hit {
-        return hit.result as expr;
+        return hit.result as expr | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -5451,7 +5458,7 @@ def rule_del_t_atom(p: peg_parser) -> expr | None {
 def rule_del_target(p: peg_parser) -> expr | None {
     hit = peg_check_memo(p, RULE_del_target);
     if hit.hit {
-        return hit.result as expr;
+        return hit.result as expr | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -5668,7 +5675,7 @@ def rule_dictcomp(p: peg_parser) -> expr | None {
 def rule_disjunction(p: peg_parser) -> expr | None {
     hit = peg_check_memo(p, RULE_disjunction);
     if hit.hit {
-        return hit.result as expr;
+        return hit.result as expr | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -5793,7 +5800,7 @@ def rule_dotted_name(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr;
+    return peg_left_rec_finish(p, resmark, res) as expr | None;
 }
 
 def rule_dotted_name_raw(p: peg_parser) -> expr | None {
@@ -6138,9 +6145,11 @@ def rule_except_block(p: peg_parser) -> excepthandler | None {
                         end_col_offset=end_col_offset
                     );
                     if p.feature_version < 14 {
-                        raise SyntaxError(
+                        raise syntax_failure(
                             "except expressions without parentheses are only supported in Python 3.14 and greater",
-                            (p.filename, start_lineno, start_col_offset + 1, None)
+                            filename=p.filename,
+                            lineno=start_lineno,
+                            offset=start_col_offset + 1
                         );
                     }
                     return res;
@@ -6306,9 +6315,11 @@ def rule_except_star_block(p: peg_parser) -> excepthandler | None {
                             end_col_offset=end_col_offset
                         );
                         if p.feature_version < 14 {
-                            raise SyntaxError(
+                            raise syntax_failure(
                                 "except expressions without parentheses are only supported in Python 3.14 and greater",
-                                (p.filename, start_lineno, start_col_offset + 1, None)
+                                filename=p.filename,
+                                lineno=start_lineno,
+                                offset=start_col_offset + 1
                             );
                         }
                         return res;
@@ -6330,7 +6341,7 @@ def rule_except_star_block(p: peg_parser) -> excepthandler | None {
 def rule_expression(p: peg_parser) -> expr | None {
     hit = peg_check_memo(p, RULE_expression);
     if hit.hit {
-        return hit.result as expr;
+        return hit.result as expr | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -6544,7 +6555,7 @@ def rule_expressions(p: peg_parser) -> expr | None {
 def rule_factor(p: peg_parser) -> expr | None {
     hit = peg_check_memo(p, RULE_factor);
     if hit.hit {
-        return hit.result as expr;
+        return hit.result as expr | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -8419,20 +8430,16 @@ def rule_invalid_def_raw(p: peg_parser) -> object | None {
                         func_type_comment = rule_func_type_comment(p);
                         block = rule_block(p);
                         if block is not None {
-                            res = [
-                                kw,
-                                kw_1,
-                                name_var,
-                                type_params,
-                                forced,
-                                params,
-                                lit,
-                                rhs,
-                                forced_1,
-                                func_type_comment,
-                                block
-                            ];
-                            return res;
+                            # This error-pass alternative only probes forced
+                            # delimiters. finish_parse discards its result;
+                            # use a typed statement sentinel instead of the
+                            # generator's heterogeneous dummy-value list.
+                            return Pass(
+                                lineno=kw_1.lineno,
+                                col_offset=kw_1.col_offset,
+                                end_lineno=kw_1.end_lineno,
+                                end_col_offset=kw_1.end_col_offset
+                            );
                         }
                     }
                 }
@@ -10158,7 +10165,7 @@ def rule_invalid_named_expression(p: peg_parser) -> object | None {
     }
     hit = peg_check_memo(p, RULE_invalid_named_expression);
     if hit.hit {
-        return hit.result as object;
+        return hit.result as object | None;
     }
     mark = peg_mark(p);
     res: object | None = None;
@@ -11067,7 +11074,7 @@ def rule_invalid_with_stmt_indent(p: peg_parser) -> object | None {
 def rule_inversion(p: peg_parser) -> expr | None {
     hit = peg_check_memo(p, RULE_inversion);
     if hit.hit {
-        return hit.result as expr;
+        return hit.result as expr | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -13279,7 +13286,7 @@ def rule_primary(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr;
+    return peg_left_rec_finish(p, resmark, res) as expr | None;
 }
 
 def rule_primary_raw(p: peg_parser) -> expr | None {
@@ -13697,7 +13704,7 @@ def rule_shift_expr(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr;
+    return peg_left_rec_finish(p, resmark, res) as expr | None;
 }
 
 def rule_shift_expr_raw(p: peg_parser) -> expr | None {
@@ -13871,7 +13878,7 @@ def rule_signed_real_number(p: peg_parser) -> expr | None {
 def rule_simple_stmt(p: peg_parser) -> stmt | None {
     hit = peg_check_memo(p, RULE_simple_stmt);
     if hit.hit {
-        return hit.result as stmt;
+        return hit.result as stmt | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -14500,7 +14507,7 @@ def rule_star_etc(p: peg_parser) -> object | None {
 def rule_star_expression(p: peg_parser) -> expr | None {
     hit = peg_check_memo(p, RULE_star_expression);
     if hit.hit {
-        return hit.result as expr;
+        return hit.result as expr | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -14670,7 +14677,7 @@ def rule_star_named_expressions(p: peg_parser) -> list[expr] | None {
 def rule_star_pattern(p: peg_parser) -> pattern | None {
     hit = peg_check_memo(p, RULE_star_pattern);
     if hit.hit {
-        return hit.result as pattern;
+        return hit.result as pattern | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -14738,7 +14745,7 @@ def rule_star_pattern(p: peg_parser) -> pattern | None {
 def rule_star_target(p: peg_parser) -> expr | None {
     hit = peg_check_memo(p, RULE_star_target);
     if hit.hit {
-        return hit.result as expr;
+        return hit.result as expr | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -15018,7 +15025,7 @@ def rule_string(p: peg_parser) -> expr | None {
 def rule_strings(p: peg_parser) -> expr | None {
     hit = peg_check_memo(p, RULE_strings);
     if hit.hit {
-        return hit.result as expr;
+        return hit.result as expr | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -15139,7 +15146,7 @@ def rule_sum(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr;
+    return peg_left_rec_finish(p, resmark, res) as expr | None;
 }
 
 def rule_sum_raw(p: peg_parser) -> expr | None {
@@ -15267,7 +15274,7 @@ def rule_t_primary(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr;
+    return peg_left_rec_finish(p, resmark, res) as expr | None;
 }
 
 def rule_t_primary_raw(p: peg_parser) -> expr | None {
@@ -15417,7 +15424,7 @@ def rule_t_primary_raw(p: peg_parser) -> expr | None {
 def rule_target_with_star_atom(p: peg_parser) -> expr | None {
     hit = peg_check_memo(p, RULE_target_with_star_atom);
     if hit.hit {
-        return hit.result as expr;
+        return hit.result as expr | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -15527,7 +15534,7 @@ def rule_term(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr;
+    return peg_left_rec_finish(p, resmark, res) as expr | None;
 }
 
 def rule_term_raw(p: peg_parser) -> expr | None {
@@ -15821,7 +15828,7 @@ def rule_try_stmt(p: peg_parser) -> stmt | None {
 def rule_tstring(p: peg_parser) -> expr | None {
     hit = peg_check_memo(p, RULE_tstring);
     if hit.hit {
-        return hit.result as expr;
+        return hit.result as expr | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -16229,7 +16236,7 @@ def rule_type_expressions(p: peg_parser) -> list[expr] | None {
 def rule_type_param(p: peg_parser) -> type_param | None {
     hit = peg_check_memo(p, RULE_type_param);
     if hit.hit {
-        return hit.result as type_param;
+        return hit.result as type_param | None;
     }
     mark = peg_mark(p);
     start_lineno = 1;
@@ -16915,7 +16922,7 @@ def parse_eval_source(
     peg_set_soft_keywords(p, SOFT_KEYWORDS);
     try {
         result = parse_eval_module(p);
-    } except SyntaxError as error {
+    } except syntax_failure as error {
         raise_source_error(p, error);
     }
     return finish_parse(p, result, "eval");
@@ -16953,7 +16960,7 @@ def parse_file_source(
     peg_set_soft_keywords(p, SOFT_KEYWORDS);
     try {
         result = parse_file_module(p);
-    } except SyntaxError as error {
+    } except syntax_failure as error {
         raise_source_error(p, error);
     }
     return finish_parse(p, result, "exec");
@@ -16981,7 +16988,7 @@ def parse_interactive(
     peg_set_soft_keywords(p, SOFT_KEYWORDS);
     try {
         body = rule_statement_newline(p);
-    } except SyntaxError as error {
+    } except syntax_failure as error {
         raise_source_error(p, error);
     }
     if not body {
@@ -16991,7 +16998,7 @@ def parse_interactive(
     # A complete interactive statement may be followed only by whitespace or
     # comments. This check must not turn a second statement into incomplete input.
     extra = any(t.tok_type not in (NEWLINE, ENDMARKER) for t in p.tokens[p.mark:]);
-    for line in p.tok.source[p.tok.pos:].splitlines() {
+    for line in split_source_lines(p.tok.source[p.tok.pos:]) {
         if line.strip() and not line.lstrip().startswith("#") {
             extra = True;
         }
@@ -17000,7 +17007,9 @@ def parse_interactive(
         p.tok.eof_reached = False;
         raise_source_error(
             p,
-            SyntaxError("multiple statements found while compiling a single statement")
+            syntax_failure(
+                "multiple statements found while compiling a single statement"
+            )
         );
     }
     return finish_parse(p, Interactive(body=body), "single") as Interactive;
@@ -17008,14 +17017,12 @@ def parse_interactive(
 
 def source_column(lines: list[str], line: int, column: int) -> int {
     if line > 0 and line <= len(lines) {
-        return len(
-            lines[line - 1].encode("utf-8")[:column].decode("utf-8", errors="ignore")
-        );
+        return source_character_column(lines[line - 1], column);
     }
     return column;
 }
 
-def raise_source_error(p: peg_parser, error: SyntaxError) {
+def raise_source_error(p: peg_parser, error: syntax_failure) {
     token = p.tokens[-1] if p.tokens else None;
     if p.flags & 0x4000
         and p.tok.eof_reached
@@ -17024,36 +17031,39 @@ def raise_source_error(p: peg_parser, error: SyntaxError) {
     }
     line = error.lineno or (token.lineno if token is not None else 1);
     column = error.offset - 1
-        if error.offset is not None
+        if error.offset >= 0
         else (token.col_offset if token is not None else 0);
     end_line = error.end_lineno or line;
-    end_column = error.end_offset - 1 if error.end_offset is not None else column + 1;
-    lines = p.tok.source.splitlines(keepends=True);
+    end_column = error.end_offset - 1 if error.end_offset >= 0 else column + 1;
+    lines = split_source_lines(p.tok.source);
     text = lines[line - 1] if line <= len(lines) else None;
-    error_type: type[SyntaxError] = type(error);
-    raise error_type(
+    raise syntax_failure(
         error.msg,
-        (
-            p.filename,
-            line,
-            source_column(lines, line, column) + 1,
-            text,
-            end_line,
-            source_column(lines, end_line, end_column) + 1
-        )
-    ) from None;
+        filename=p.filename,
+        lineno=line,
+        offset=source_column(lines, line, column) + 1,
+        text=text,
+        end_lineno=end_line,
+        end_offset=source_column(lines, end_line, end_column) + 1,
+        kind=error.kind
+    );
 }
 
 def raise_incomplete_input(p: peg_parser) {
-    import builtins;
-    error_type = vars(builtins)["_IncompleteInputError"];
-    lines = p.tok.source.splitlines(keepends=True);
+    lines = split_source_lines(p.tok.source);
     line = max(1, p.tok.lineno);
     text = lines[line - 1] if line <= len(lines) else "";
     column = source_column(lines, line, p.tok.col_offset) + 1;
-    raise error_type(
-        "incomplete input", (p.filename, line, column, text, line, column)
-    ) as SyntaxError;
+    raise syntax_failure(
+        "incomplete input",
+        filename=p.filename,
+        lineno=line,
+        offset=column,
+        text=text,
+        end_lineno=line,
+        end_offset=column,
+        kind="_IncompleteInputError"
+    );
 }
 
 def finish_parse(p: peg_parser, result: mod | None, mode: str) -> mod | None {
@@ -17069,7 +17079,7 @@ def finish_parse(p: peg_parser, result: mod | None, mode: str) -> mod | None {
         }
         try {
             validate_feature_version(result, p.feature_version);
-        } except SyntaxError as error {
+        } except syntax_failure as error {
             raise_source_error(p, error);
         }
         return result;
@@ -17112,17 +17122,22 @@ def finish_parse(p: peg_parser, result: mod | None, mode: str) -> mod | None {
         end_line = max(line, p.error.loc.end_lineno);
         end_column = max(column + 1, p.error.loc.end_col_offset);
     }
-    lines = p.tok.source.splitlines(keepends=True);
+    lines = split_source_lines(p.tok.source);
     text = lines[line - 1] if line > 0 and line <= len(lines) else "";
     if message.startswith("unterminated") {
         text = text.rstrip("\r\n");
     }
     column = source_column(lines, line, column);
     end_column = source_column(lines, end_line, end_column);
-    import builtins;
-    error_type: type[SyntaxError] = vars(builtins).get(kind, SyntaxError);
-    raise error_type(
-        message, (p.filename, line, column + 1, text, end_line, end_column + 1)
+    raise syntax_failure(
+        message,
+        filename=p.filename,
+        lineno=line,
+        offset=column + 1,
+        text=text,
+        end_lineno=end_line,
+        end_offset=end_column + 1,
+        kind=kind
     );
 }
 
@@ -17135,7 +17150,7 @@ def parse_func_type(
     peg_set_soft_keywords(p, SOFT_KEYWORDS);
     try {
         result = rule_func_type(p);
-    } except SyntaxError as error {
+    } except syntax_failure as error {
         raise_source_error(p, error);
     }
     return finish_parse(p, result, "func_type");

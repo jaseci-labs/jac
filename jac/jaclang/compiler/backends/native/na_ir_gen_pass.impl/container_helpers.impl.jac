@@ -1218,3 +1218,22 @@ impl NaIRGenPass._emit_tuple_box_lifecycle(
     }
     self._require_trace_fn("tuple", True, has_trace);
 }
+
+impl NaIRGenPass._coerce_container_element(
+    value: ir.Value, element_type: ir.Type
+) -> ir.Value {
+    payload_type = self._opt_ptr_payload_of(value.type);
+    if payload_type is not None and isinstance(element_type, ir.PointerType) {
+        tag = self.builder.extract_value(value, 0, name="elem.optional.tag");
+        payload = self.builder.extract_value(value, 1, name="elem.optional.payload");
+        present = self.builder.icmp_unsigned("!=", tag, ir.Constant(ir.IntType(8), 0));
+        nullable = self.builder.select(
+            present, payload, ir.Constant(payload_type, None)
+        );
+        if self._is_owned(value) {
+            self._mark_owned(nullable);
+        }
+        return self._coerce_type(nullable, element_type);
+    }
+    return self._coerce_type(value, element_type);
+}

@@ -116,8 +116,6 @@ pub fn build(b: *std.Build) void {
     else
         b.resolveTargetQuery(.{ .cpu_model = .baseline });
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSmall });
-    const jacpython = b.option(bool, "jacpython", "Replace CPython's C compiler with JacPython (experimental)") orelse false;
-    const python_variant = if (jacpython) "jacpython" else "cpython";
 
     // --- LLVMPY_* shim: compile jac/native/*.cpp + statically link host LLVM ---
     // Replaces the bundled libllvmlite.so (llvmlite wheel). Gated on -Dllvm-dir
@@ -146,10 +144,9 @@ pub fn build(b: *std.Build) void {
     });
     const seed = b.addExecutable(.{ .name = "build_python", .root_module = seed_mod });
     const pins_path = b.pathFromRoot(pins.PINS_PATH);
-    const host_python_dir = b.pathFromRoot(b.fmt(".python-build/{s}/{s}", .{ python_variant, host_osarch }));
+    const host_python_dir = b.pathFromRoot(b.fmt(".python-build/jacpython/{s}", .{host_osarch}));
     const fetch_host = b.addRunArtifact(seed);
     fetch_host.addArgs(&.{ host_osarch, host_python_dir, b.pathFromRoot("."), b.graph.zig_exe });
-    if (jacpython) fetch_host.addArg("--jacpython");
     fetch_host.has_side_effects = true;
     b.step("build-python", "Build the source-pinned Python runtime and native libraries").dependOn(&fetch_host.step);
     const root = b.pathFromRoot(".");
@@ -165,7 +162,8 @@ pub fn build(b: *std.Build) void {
     });
     const ts_seed = b.addExecutable(.{ .name = "fetch_typeshed", .root_module = ts_seed_mod });
     const fetch_ts = b.addRunArtifact(ts_seed);
-    if (jacpython) fetch_host.step.dependOn(&fetch_ts.step);
+    fetch_host.step.dependOn(&fetch_ts.step);
+    if (jacllvm) |shim| fetch_host.step.dependOn(shim.place);
     fetch_ts.addArg(b.pathFromRoot("jaclang/vendor/typeshed"));
     // has_side_effects: the output lands in the source tree, not the cache, so
     // the step must run even when its (unchanging) argv would otherwise cache
@@ -266,12 +264,11 @@ pub fn build(b: *std.Build) void {
     // The TARGET's source-built Python tree: the payload input, and the C floor archives
     // (libzstd.a, libcrypto.a, ...) the stub static-links. Same tree as the
     // host's whenever host == target, which is every CI lane.
-    const python_dir = b.pathFromRoot(b.fmt(".python-build/{s}/{s}", .{ python_variant, osarch }));
+    const python_dir = b.pathFromRoot(b.fmt(".python-build/jacpython/{s}", .{osarch}));
     const python_tree = b.fmt("{s}/python", .{python_dir});
     const fetch_target: *std.Build.Step = if (std.mem.eql(u8, osarch, host_osarch)) &fetch_host.step else blk: {
         const fetch = b.addRunArtifact(seed);
         fetch.addArgs(&.{ osarch, python_dir, root, b.graph.zig_exe });
-        if (jacpython) fetch.addArg("--jacpython");
         fetch.has_side_effects = true;
         break :blk &fetch.step;
     };
@@ -352,12 +349,12 @@ pub fn build(b: *std.Build) void {
         // before the precompile and is refreshed after, so only changed modules
         // recompile. Content-keyed per module, so a stale dir can never change
         // the payload -- only how fast it builds. NOT a tracked input.
-        mk.addArg(b.fmt("--precompiled-cache={s}", .{b.pathFromRoot(b.fmt(".precompiled-build/{s}", .{python_variant}))}));
+        mk.addArg(b.fmt("--precompiled-cache={s}", .{b.pathFromRoot(".precompiled-build/jacpython")}));
         // Persistent compressed-frame cache for the payload's deps layer: the
         // level-19 zstd frame over the rarely-changing deps tree is reused when
         // its content is unchanged. Verified by decompress + compare on reuse,
         // so it can never change the payload either.
-        mk.addArg(b.fmt("--layer-cache={s}", .{b.pathFromRoot(b.fmt(".payload-layers/{s}", .{python_variant}))}));
+        mk.addArg(b.fmt("--layer-cache={s}", .{b.pathFromRoot(".payload-layers/jacpython")}));
 
         // Seal the runtime (issue #7135): a bundled release payload boots from
         // the JIR image + frozen jac0core bootstrap. This is the ONLY bundled

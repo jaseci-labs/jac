@@ -2040,6 +2040,24 @@ impl TypeEvaluator._get_type_of_expression_core(
             if scope := self._resolution_scope_for(expr) {
                 symbol = lookup_symtab(scope, expr.value, self.builtins_module);
 
+                if symbol is not None
+                    and symbol.decl is not None
+                    and isinstance(symbol.decl.name_of, HasVar) {
+                    field = symbol.decl.name_of;
+                    if field.type_tag is not None
+                        and expr.find_parent_of_type(SubTag) is field.type_tag {
+                        owner = field.find_parent_of_type(Archetype);
+                        if owner is not None
+                            and owner.sym_tab.parent_scope is not None {
+                            symbol = lookup_symtab(
+                                owner.sym_tab.parent_scope,
+                                expr.value,
+                                self.builtins_module
+                            );
+                        }
+                    }
+                }
+
                 if (
                     symbol is not None
                     and symbol.decl is not None

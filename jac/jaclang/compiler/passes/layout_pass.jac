@@ -302,6 +302,21 @@ def adopt_imported_bases(module: Module) -> list[str] {
                 }
             }
         }
+
+        inherited_methods: set[str] = set();
+        inherited_index = 0;
+        for anc_lay in ancestors {
+            for mslot in anc_lay.methods {
+                if mslot.name in inherited_methods {
+                    continue;
+                }
+                inherited_methods.add(mslot.name);
+                if lay.method_index.get(mslot.name, -1) != inherited_index {
+                    absent = True;
+                }
+                inherited_index += 1;
+            }
+        }
         if not absent {
             continue;
         }

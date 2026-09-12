@@ -15,6 +15,11 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
+test "isinstance recognizes native string fields locals parameters and optionals" {
+    (eng, _) = compile_native("isinstance_mixed.jac");
+    assert get_func(eng, "chk_string_representations", ctypes.c_int64)() == 127;
+}
+
 test "isinstance mixed: builtin arm matches int and bool, rejects str/None" {
     (eng, _) = compile_native("isinstance_mixed.jac");
     f = get_func(eng, "chk_int_foo", ctypes.c_int64, ctypes.c_int64);

@@ -1,3 +1,5 @@
+import from jaclang.runtime.python.compiler_integer { PyBigInt, integer_add }
+
 # Pure leaf helpers extracted from compiler_codegen.jac (no cfg_builder,
 # no visit_*/emit_* calls) so the recursive codegen core is smaller to read.
 # Imports mirror the header of compiler_codegen.jac (foundational modules only).
@@ -821,16 +823,14 @@ def try_fold_binop(left: expr, op: PyObj, right: expr) -> PyObj | None {
     }
     lc = left as Constant;
     rc = right as Constant;
-    if not isinstance(lc.value, PyInt) {
+    if not isinstance(lc.value, (PyInt, PyBigInt)) {
         return None;
     }
-    if not isinstance(rc.value, PyInt) {
+    if not isinstance(rc.value, (PyInt, PyBigInt)) {
         return None;
     }
-    lv = (lc.value as PyInt).val;
-    rv = (rc.value as PyInt).val;
     if isinstance(op, Add) {
-        return PyInt(t="int", val=lv + rv);
+        return integer_add(lc.value, rc.value);
     }
     return None;
 }

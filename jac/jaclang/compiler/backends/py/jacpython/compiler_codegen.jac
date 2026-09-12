@@ -23,8 +23,6 @@ import from jaclang.runtime.python.objects {
     PyCode,
     PyTuple
 }
-# Statement-dispatch handler registry (leaf module; see compiler_dispatch.jac).
-import from jaclang.compiler.backends.py.jacpython.compiler_dispatch { stmt_handlers }
 import from jaclang.runtime.python.opcode_meta {
     is_scope_exit_opcode,
     is_unconditional_jump_opcode,
@@ -322,9 +320,6 @@ import from jaclang.compiler.backends.py.jacpython.flowgraph {
     optimize_swap_range
 }
 import from jaclang.compiler.backends.py.jacpython.assembler { assemble }
-import from jaclang.compiler.backends.py.jacpython.compiler_context {
-    current_compile_flags
-}
 import from jaclang.compiler.backends.py.jacpython.compiler_emit {
     emit_suspendable_prologue,
     emit_generator_except_handler,
@@ -844,10 +839,7 @@ def emit_unit_loop_exit_epilogue(g: cfg_builder, lc: cloc, with_end_for: bool) {
 # Lower assert (test + optional message).
 def visit_assert_stmt(g: cfg_builder, a: Assert) -> stmt_cont {
     aloc = nloc(a.lineno, a.end_lineno, a.col_offset, a.end_col_offset);
-    import from jaclang.compiler.backends.py.jacpython.compiler_context {
-        current_optimization_level
-    }
-    if current_optimization_level() > 0 {
+    if g.u.context.optimize > 0 {
         return stmt_cont(loc=aloc);
     }
     test_loc = expr_loc(a.`test);
@@ -998,6 +990,10 @@ def visit_stmt(
     tail_join: basicblock | None = None,
     ann_ctx: ann_scope_plan | None = None
 ) -> stmt_cont {
+    import jaclang.compiler.backends.py.jacpython.compiler_defs as dispatch_defs;
+    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
+    import jaclang.compiler.backends.py.jacpython.compiler_loops as dispatch_loops;
+    import jaclang.compiler.backends.py.jacpython.compiler_match as dispatch_match;
     if codegen_busy(g) {
         return stmt_cont(loc=stmt_loc(s));
     }
@@ -1198,32 +1194,16 @@ def visit_stmt(
         return stmt_cont(loc=stmt_loc(s));
     }
     if isinstance(s, If) {
-        # tail stays None in loop-body contexts: the continuation is the
-        # enclosing loop's back edge / the caller's own statement list.
-        return stmt_handlers["visit_if"](
-            g, s as If, more_code_follows, tail, tail_idx, tail_join, ann_ctx
-        );
+        return dispatch_loops.visit_if(g, s as If, ann_ctx);
     }
     if isinstance(s, While) {
-        # tail stays None in loop-body contexts: the continuation is the
-        # enclosing loop's back edge / the caller's own statement list.
-        return stmt_handlers["visit_while"](
-            g, s as While, more_code_follows, tail, tail_idx, ann_ctx
-        );
+        return dispatch_loops.visit_while(g, s as While, ann_ctx);
     }
     if isinstance(s, For) {
-        # tail stays None in loop-body contexts: the continuation is the
-        # enclosing loop's back edge / the caller's own statement list.
-        return stmt_handlers["visit_for"](
-            g, s as For, more_code_follows, tail, tail_idx, ann_ctx
-        );
+        return dispatch_loops.visit_for(g, s as For, ann_ctx);
     }
     if isinstance(s, AsyncFor) {
-        # tail stays None in loop-body contexts: the continuation is the
-        # enclosing loop's back edge / the caller's own statement list.
-        return stmt_handlers["visit_async_for"](
-            g, s as AsyncFor, more_code_follows, tail, tail_idx, ann_ctx
-        );
+        return dispatch_loops.visit_async_for(g, s as AsyncFor, ann_ctx);
     }
     if isinstance(s, Break) {
         b = s as Break;
@@ -1275,29 +1255,29 @@ def visit_stmt(
         return stmt_cont(loc=stmt_loc(s), terminated=True);
     }
     if isinstance(s, FunctionDef) {
-        return stmt_handlers["visit_function_def"](g, s as FunctionDef);
+        return dispatch_defs.visit_function_def(g, s as FunctionDef);
     }
     if isinstance(s, AsyncFunctionDef) {
-        return stmt_handlers["visit_async_function_def"](g, s as AsyncFunctionDef);
+        return dispatch_defs.visit_async_function_def(g, s as AsyncFunctionDef);
     }
     if isinstance(s, ClassDef) {
-        return stmt_handlers["visit_class_def"](g, s as ClassDef);
+        return dispatch_defs.visit_class_def(g, s as ClassDef);
     }
     if isinstance(s, TypeAlias) {
-        return stmt_handlers["visit_type_alias"](g, s as TypeAlias);
+        return dispatch_defs.visit_type_alias(g, s as TypeAlias);
     }
     if isinstance(s, Import) {
-        return stmt_handlers["visit_import"](g, s as Import);
+        return dispatch_defs.visit_import(g, s as Import);
     }
     if isinstance(s, ImportFrom) {
-        return stmt_handlers["visit_import_from"](g, s as ImportFrom);
+        return dispatch_defs.visit_import_from(g, s as ImportFrom);
     }
     if isinstance(s, Try) {
         t = tail;
         if t is None {
             t = [];
         }
-        return stmt_handlers["visit_try"](
+        return dispatch_exc.visit_try(
             g, s as Try, more_code_follows, t, tail_idx, tail_join, ann_ctx
         );
     }
@@ -1306,19 +1286,19 @@ def visit_stmt(
         if t is None {
             t = [];
         }
-        return stmt_handlers["visit_try_star"](
+        return dispatch_exc.visit_try_star(
             g, s as TryStar, more_code_follows, t, tail_idx, tail_join, ann_ctx
         );
     }
     if isinstance(s, Raise) {
-        return stmt_handlers["visit_raise_stmt"](g, s as Raise);
+        return dispatch_exc.visit_raise_stmt(g, s as Raise);
     }
     if isinstance(s, With) {
         t = tail;
         if t is None {
             t = [];
         }
-        return stmt_handlers["visit_with"](
+        return dispatch_exc.visit_with(
             g, s as With, more_code_follows, t, tail_idx, tail_join, ann_ctx
         );
     }
@@ -1327,7 +1307,7 @@ def visit_stmt(
         if t is None {
             t = [];
         }
-        return stmt_handlers["visit_async_with"](
+        return dispatch_exc.visit_async_with(
             g, s as AsyncWith, more_code_follows, t, tail_idx, tail_join, ann_ctx
         );
     }
@@ -1336,7 +1316,7 @@ def visit_stmt(
         if t is None {
             t = [];
         }
-        return stmt_handlers["visit_match"](
+        return dispatch_match.visit_match(
             g, s as Match, more_code_follows, t, tail_idx, tail_join, ann_ctx
         );
     }
@@ -1447,10 +1427,7 @@ def compile_exec(
     si = 0;
     doc = body_docstring(body) if not interactive else None;
     if doc is not None {
-        import from jaclang.compiler.backends.py.jacpython.compiler_context {
-            current_optimization_level
-        }
-        if current_optimization_level() < 2 {
+        if g.u.context.optimize < 2 {
             last = expr_loc((body[0] as Expr).value);
             g.emit_op(OP_LOAD_CONST, u.add_const(doc), last);
             emit_name_store(g, "__doc__", last);
@@ -1517,21 +1494,13 @@ def compile_exec(
     return u;
 }
 
-# Statement dispatch for compound statements goes through the handler slots
-# in compiler_dispatch (a leaf module), not through imports of the split-out
-# sibling modules: those siblings import shared lowering helpers (visit_stmts,
-# emit_name_store, ...) from THIS module, so a static edge in either direction
-# would close an import cycle. Each sibling registers its visitors at module
-# load; entry drivers (product_compile, compiler_slice) import the siblings so
-# registration runs before the first compile. See compiler_dispatch.jac.
-
 # Module and eval code keep mapping locals, even when they produce a coroutine.
 # Scope analysis runs before optimization, so elided awaits still set CO_COROUTINE.
 def emit_source_resume(
     g: cfg_builder, scope: sym_block | None, firstlineno: int
 ) -> int {
     protect_start = -1;
-    if scope is not None and scope.coroutine and current_compile_flags() & 0x2000 {
+    if scope is not None and scope.coroutine and g.u.context.flags & 0x2000 {
         g.u.flags |= CO_COROUTINE;
         protect_start = emit_suspendable_prologue(g, firstlineno, False);
     }
@@ -1540,7 +1509,8 @@ def emit_source_resume(
 }
 
 def finish_source_scope(g: cfg_builder, protect_start: int) {
+    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     flush_pending_await_footers(g);
-    stmt_handlers["deferred_comp_handlers"](g);
+    dispatch_exc.emit_deferred_comp_handlers(g);
     emit_generator_except_handler(g, protect_start);
 }

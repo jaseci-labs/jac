@@ -97,6 +97,9 @@ impl NaIRGenPass._bind_function_parameter(
         self.local_vars[name] = slot;
         if borrowed and self._elem_kind(value.type) in ("rc_ptr", "str") {
             self._emit_rc_retain(value, op="param_cell", loc=name);
+        } elif borrowed and self._opt_ptr_payload_of(value.type) is not None {
+            payload = self.builder.extract_value(value, 1, name="param.cell.payload");
+            self._emit_rc_retain(payload, op="param_cell", loc=name);
         }
         return;
     }
@@ -105,6 +108,9 @@ impl NaIRGenPass._bind_function_parameter(
     self.local_vars[name] = slot;
     if rebound and self._elem_kind(value.type) in ("rc_ptr", "str") {
         self._emit_rc_retain(value, op="param_promote", loc=name);
+    } elif rebound and self._opt_ptr_payload_of(value.type) is not None {
+        payload = self.builder.extract_value(value, 1, name="param.promote.payload");
+        self._emit_rc_retain(payload, op="param_promote", loc=name);
     } elif borrowed {
         self.param_vars.add(name);
     }

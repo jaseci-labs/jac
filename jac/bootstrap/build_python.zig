@@ -1,26 +1,24 @@
 //! Build the release Python before any Jac tooling can run. Sources are
-//! checksum-pinned. JacPython is opt-in; its separate host produces the seed.
+//! checksum-pinned. A build-only CPython host emits the native JacPython replacement object.
 const std = @import("std");
 const builtin = @import("builtin");
 const seed = @import("seed.zig");
 const Io = std.Io;
 const inputs = [_][]const u8{
-    "bootstrap/build_python.zig",           "bootstrap/seed.zig",
-    "bootstrap/python/sources.json",        "bootstrap/python/cpython-sources.txt",
-    "bootstrap/python/build.sh",            "bootstrap/python/smoke.py",
-    "bootstrap/python/finalize.py",         "bootstrap/python/compiler-bridge.patch",
-    "bootstrap/python/host-compiler.patch", "bootstrap/python/compiler_bridge.c",
-    "bootstrap/python/compiler_bridge.h",   "bootstrap/python/prepare_seed.py",
-    "bootstrap/python/seed_runtime.py",
+    "bootstrap/build_python.zig",          "bootstrap/seed.zig",
+    "bootstrap/python/sources.json",       "bootstrap/python/cpython-sources.txt",
+    "bootstrap/python/build.sh",           "bootstrap/python/smoke.py",
+    "bootstrap/python/finalize.py",        "bootstrap/python/compiler-bridge.patch",
+    "bootstrap/python/compiler_runtime.c", "bootstrap/python/compiler_bridge.c",
+    "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
-const Mode = enum { cpython, host, jacpython };
+const Mode = enum { host, jacpython };
 
 fn parseMode(args: []const []const u8) !Mode {
-    if (args.len == 5) return .cpython;
+    if (args.len == 5) return .jacpython;
     if (args.len == 6) {
         if (std.mem.eql(u8, args[5], "--host")) return .host;
-        if (std.mem.eql(u8, args[5], "--jacpython")) return .jacpython;
     }
     return error.InvalidBuildMode;
 }
@@ -52,7 +50,7 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
     const a = init.arena.allocator();
     const args = try init.minimal.args.toSlice(a);
-    const mode = parseMode(args) catch seed.die("usage: build_python <os-arch> <destination> <jac-root> <zig> [--jacpython|--host]", .{});
+    const mode = parseMode(args) catch seed.die("usage: build_python <os-arch> <destination> <jac-root> <zig> [--host]", .{});
     const platform = args[1];
     if (!supported(platform)) seed.die("build-python: unsupported platform {s}", .{platform});
     if (!std.mem.eql(u8, platform, hostPlatform()))
@@ -82,14 +80,12 @@ pub fn main(init: std.process.Init) !void {
     const manifest_path = try std.fs.path.join(a, &.{ root, "bootstrap/python/sources.json" });
     const manifest = try Io.Dir.cwd().readFileAlloc(io, manifest_path, a, .unlimited);
     const sources = try std.json.parseFromSliceLeaky(std.json.ArrayHashMap(Source), a, manifest, .{});
+    const source_cache = try std.fs.path.join(a, &.{ root, ".python-build/jacpython/sources" });
     for (sources.map.keys(), sources.map.values()) |name, source| {
         if (mode == .jacpython and !std.mem.eql(u8, name, "cpython")) continue;
-        seed.log("build-python: fetch {s}", .{name});
-        const gz = try seed.httpGetAlloc(io, init.gpa, source.url);
+        seed.log("build-python: source {s}", .{name});
+        const gz = try sourceArchive(io, init.gpa, source_cache, source, seed.httpGetAlloc);
         defer init.gpa.free(gz);
-        const actual = seed.sha256Hex(gz);
-        if (!std.mem.eql(u8, &actual, source.sha256))
-            seed.die("build-python: checksum mismatch for {s}", .{name});
         const source_dir = try std.fs.path.join(a, &.{ work, "src", name });
         try Io.Dir.cwd().createDirPath(io, source_dir);
         var dir = try Io.Dir.cwd().openDir(io, source_dir, .{ .iterate = true });
@@ -124,6 +120,31 @@ pub fn main(init: std.process.Init) !void {
     try Io.Dir.cwd().writeFile(io, .{ .sub_path = stamp_path, .data = &key });
 }
 
+// Host and native builds consume the same pinned archive. Keep it outside the
+// disposable work trees, and recheck its digest on every use.
+fn sourceArchive(io: Io, a: std.mem.Allocator, cache_dir: []const u8, source: Source, comptime fetch: anytype) ![]u8 {
+    const path = try std.fmt.allocPrint(a, "{s}/{s}.tar.gz", .{ cache_dir, source.sha256 });
+    defer a.free(path);
+    const cached = Io.Dir.cwd().readFileAlloc(io, path, a, .unlimited) catch |err| switch (err) {
+        error.FileNotFound => null,
+        else => return err,
+    };
+    if (cached) |bytes| {
+        const digest = seed.sha256Hex(bytes);
+        if (std.mem.eql(u8, &digest, source.sha256)) return bytes;
+        a.free(bytes);
+    }
+    const bytes = try fetch(io, a, source.url);
+    errdefer a.free(bytes);
+    const digest = seed.sha256Hex(bytes);
+    if (!std.mem.eql(u8, &digest, source.sha256)) return error.SourceChecksumMismatch;
+    var file = try Io.Dir.cwd().createFileAtomic(io, path, .{ .make_path = true, .replace = true });
+    defer file.deinit(io);
+    try file.file.writeStreamingAll(io, bytes);
+    try file.replace(io);
+    return bytes;
+}
+
 fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8, host_dest: []const u8, mode: Mode) ![64]u8 {
     var hash = std.crypto.hash.sha2.Sha256.init(.{});
     hash.update(@tagName(mode));
@@ -135,18 +156,17 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
         hash.update(std.mem.trim(u8, sdk.stdout, " \r\n"));
     }
     for (inputs) |path| {
-        if (mode == .cpython and std.mem.endsWith(u8, path, "/host-compiler.patch")) continue;
         if (mode != .jacpython and (std.mem.endsWith(u8, path, "/compiler-bridge.patch") or
             std.mem.endsWith(u8, path, "/compiler_bridge.c") or std.mem.endsWith(u8, path, "/compiler_bridge.h") or
-            std.mem.endsWith(u8, path, "/prepare_seed.py") or std.mem.endsWith(u8, path, "/seed_runtime.py"))) continue;
+            std.mem.endsWith(u8, path, "/prepare_native.py") or std.mem.endsWith(u8, path, "/compiler_runtime.c"))) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
         const content = try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited);
         hash.update(path);
         hash.update(content);
     }
     if (mode == .jacpython) {
-        // The producing compiler and its Jac/Python inputs are part of the
-        // embedded seed. Source edits must invalidate the reduced runtime.
+        // Rebuild the native replacement when the producing compiler or its
+        // source inputs change; never reuse an object from another generation.
         for ([_][]const u8{ "jaclang/vendor/typeshed/PIN", "jaclang/vendor/typeshed/TARBALL_SHA256" }) |path| {
             hash.update(path);
             hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, path }), a, .limited(1024)));
@@ -183,8 +203,8 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
     return std.fmt.bytesToHex(digest, .lower);
 }
 
-// The default CPython runtime and JacPython's build-time host retain the C
-// compiler. Only the opt-in JacPython runtime applies the marked exclusions.
+// Only the build-time host retains the C compiler. Every shipped runtime
+// applies the marked replacement exclusions.
 fn cSourceManifest(a: std.mem.Allocator, manifest: []const u8) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     var lines = std.mem.splitScalar(u8, manifest, '\n');
@@ -278,10 +298,10 @@ test "only release targets are accepted" {
     try std.testing.expect(!supported("windows-x86_64"));
 }
 
-test "CPython is the default and JacPython must be explicitly selected" {
+test "JacPython is mandatory except for the build-only host" {
     const args = [_][]const u8{ "build_python", "linux-x86_64", "out", "root", "zig" };
-    try std.testing.expectEqual(Mode.cpython, try parseMode(&args));
-    try std.testing.expectEqual(Mode.jacpython, try parseMode(&(args ++ .{"--jacpython"})));
+    try std.testing.expectEqual(Mode.jacpython, try parseMode(&args));
+    try std.testing.expectError(error.InvalidBuildMode, parseMode(&(args ++ .{"--jacpython"})));
     try std.testing.expectEqual(Mode.host, try parseMode(&(args ++ .{"--host"})));
     try std.testing.expectError(error.InvalidBuildMode, parseMode(&(args ++ .{"--typo"})));
     try std.testing.expectError(error.InvalidBuildMode, parseMode(args[0..4]));
@@ -340,7 +360,7 @@ test "invalid source manifests fail before pruning" {
     _ = try tmp.dir.statFile(io, "Include/Python.h", .{});
 }
 
-test "compiler modes isolate caches; seed edits invalidate only JacPython" {
+test "compiler modes isolate caches; native adapter edits invalidate only JacPython" {
     const io = std.testing.io;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -360,10 +380,8 @@ test "compiler modes isolate caches; seed edits invalidate only JacPython" {
     try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "compiler" });
     const root = try tmp.dir.realPathFileAlloc(io, ".", a);
     const host = try std.fs.path.join(a, &.{ root, "host" });
-    const before_cpython = try buildKey(io, a, hostPlatform(), root, host, .cpython);
     const before_host = try buildKey(io, a, hostPlatform(), root, host, .host);
     const before_runtime = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
-    try std.testing.expect(!std.mem.eql(u8, &before_cpython, &before_host));
     try std.testing.expect(!std.mem.eql(u8, &before_host, &before_runtime));
     try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "changed compiler" });
     const changed_runtime = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
@@ -371,10 +389,9 @@ test "compiler modes isolate caches; seed edits invalidate only JacPython" {
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
     try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/vendor/generated.py", .data = "materialized vendor data" });
     try std.testing.expectEqual(changed_runtime, try buildKey(io, a, hostPlatform(), root, host, .jacpython));
-    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/seed_runtime.py", .data = "changed seed loader" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/compiler_runtime.c", .data = "changed native adapter" });
     try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
-    try std.testing.expectEqual(before_cpython, try buildKey(io, a, hostPlatform(), root, host, .cpython));
     const before_recipe = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
     try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/cpython-sources.txt", .data = "changed C source selection" });
     try std.testing.expect(!std.mem.eql(u8, &before_host, &(try buildKey(io, a, hostPlatform(), root, host, .host))));
@@ -382,4 +399,38 @@ test "compiler modes isolate caches; seed edits invalidate only JacPython" {
     const before_host_key = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
     try tmp.dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "rebuilt host" });
     try std.testing.expect(!std.mem.eql(u8, &before_host_key, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
+}
+
+test "pinned source archives survive host builds and reject corrupt cached or fetched bytes" {
+    const Fetch = struct {
+        fn archive(_: Io, a: std.mem.Allocator, _: []const u8) ![]u8 {
+            return a.dupe(u8, "pinned archive");
+        }
+        fn forbidden(_: Io, _: std.mem.Allocator, _: []const u8) anyerror![]u8 {
+            return error.UnexpectedFetch;
+        }
+    };
+    const io = std.testing.io;
+    const a = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(io, ".", a);
+    defer a.free(root);
+    const digest = seed.sha256Hex("pinned archive");
+    const source = Source{ .url = "https://example.invalid/source.tgz", .sha256 = &digest };
+    const first = try sourceArchive(io, a, root, source, Fetch.archive);
+    defer a.free(first);
+    const again = try sourceArchive(io, a, root, source, Fetch.forbidden);
+    defer a.free(again);
+    try std.testing.expectEqualStrings(first, again);
+    const filename = try std.fmt.allocPrint(a, "{s}.tar.gz", .{digest});
+    defer a.free(filename);
+    try tmp.dir.writeFile(io, .{ .sub_path = filename, .data = "corrupt cache" });
+    try std.testing.expectError(error.UnexpectedFetch, sourceArchive(io, a, root, source, Fetch.forbidden));
+    const repaired = try sourceArchive(io, a, root, source, Fetch.archive);
+    defer a.free(repaired);
+    try std.testing.expectEqualStrings("pinned archive", repaired);
+    const other_digest = seed.sha256Hex("different pin");
+    const other = Source{ .url = source.url, .sha256 = &other_digest };
+    try std.testing.expectError(error.SourceChecksumMismatch, sourceArchive(io, a, root, other, Fetch.archive));
 }
