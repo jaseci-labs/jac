@@ -96,6 +96,13 @@ walker ComptimeResolvePass(TypeCheckPass) {
             return;
         }
         self.ir_in.ct_resolved = True;
+        # Comptime evaluation can prune branches and resolve bindings after the
+        # module placement pass. Only that work makes its summary stale; merely
+        # draining the program placement queue must preserve the existing facts.
+        import from jaclang.compiler.analysis.placement.solver {
+            refresh_placement_module
+        }
+        refresh_placement_module(self.ir_in, self.prog);
     }
 
     can enter_walk with UniNode entry {

@@ -376,6 +376,31 @@ test "one typed connection commits one generation and claims its target" {
     assert target.mutation_permit is permit;
 }
 
+test "initial scope assignment commits once and rejects a foreign graph" {
+    source = Module.make_stub(inject_name='source');
+    target = Module.make_stub(inject_name='target');
+    permit = MutationPermit();
+    source.attach_permit(permit);
+    generation = permit.generation;
+    with MutationScope(permit, 2) {
+        source.parent_scope = target;
+    }
+    assert source.parent_scope is target;
+    assert target.mutation_permit is permit;
+    assert permit.generation == generation + 1;
+    foreign = Module.make_stub(inject_name='foreign');
+    other = MutationPermit();
+    foreign.attach_permit(other);
+    with MutationScope(other, 2) {
+        try {
+            foreign.parent_scope = target;
+            assert False , 'foreign context must be rejected';
+        } except ValueError {}
+    }
+    assert foreign.parent_scope is None;
+    assert other.generation == 0;
+}
+
 
 test "graph walkers terminate on cycles and reject foreign descendants atomically" {
     import from jaclang.compiler.ir.symbols.edges { ScopeParent }

@@ -208,6 +208,37 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
         );
     }
 
+    log("==> checking native compiler kernel before sealing the payload");
+    jc_smoke = (
+        "import sys, faulthandler\n"
+        + "faulthandler.enable()\n"
+        + "sys.path.insert(0, sys.argv[1])\n"
+        + "import _jac_finder\n"
+        + "_jac_finder.install()\n"
+        + "from jaclang.compiler.frontend.kernel.adapter import NativeCompiler\n"
+        + "from jaclang.compiler.pipeline.schedule import early_pipeline\n"
+        + "kernel = NativeCompiler(sys.argv[2])\n"
+        + "source = 'obj P { has x: int = 0; def sq -> int { return self.x * self.x; } }'\n"
+        + "for context in ('', 'server'):\n"
+        + "    kernel.prepare_early(context)\n"
+        + "    assert kernel.run(source, 'kernel_smoke.jac') == 0\n"
+        + "    module = kernel.take_module()\n"
+        + "    assert module is not None and len(module.body) == 1\n"
+        + "    assert kernel.err_count() == 0 and kernel.lex_errs() == 0\n"
+        + "    assert kernel.skipped() == 0\n"
+        + "    results = kernel.take_pass_results()\n"
+        + "    if context:\n"
+        + "        assert len(results) == len(early_pipeline())\n"
+        + "        assert not any(r.errors_had for r in results.values())\n"
+    );
+    if not run_child(
+        [sys.executable, "-I", "-c", jc_smoke, repo_root, jc_dst], jc_env, True
+    ) {
+        raise PayloadDie(
+            "mkpayload: native compiler kernel failed its execution check"
+        );
+    }
+
     jc_tree = os.path.join(
         repo_root, "jaclang", "compiler", "frontend", "kernel", jc_name
     );

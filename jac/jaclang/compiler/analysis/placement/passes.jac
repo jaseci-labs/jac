@@ -23,10 +23,8 @@ walker PlacementSummaryPass(ProgramTransform) {
 walker ProgramPlacementPass(ProgramTransform) {
     def transform(ir_in: uni.Module) -> uni.Module {
         import from jaclang.compiler.analysis.placement.solver {
-            refresh_placement_module,
             solve_program_placement
         }
-        refresh_placement_module(ir_in, self.prog);
         solve_program_placement(ir_in, self.prog);
         return ir_in;
     }

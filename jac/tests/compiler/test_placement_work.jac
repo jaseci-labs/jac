@@ -9,6 +9,32 @@ import jaclang.compiler.analysis.placement.solver as solver;
 import jaclang.compiler.analysis.placement.evidence as placement;
 import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.ir.enums { CodeContext }
+import from jaclang.compiler.session.options { CompileOptions }
+
+test "ordinary compilation reuses its module summary through program placement" {
+    with tempfile.TemporaryDirectory(prefix="jac-placement-summary-") as tmp {
+        path = os.path.join(tmp, "main.jac");
+        prog = JacProgram();
+        with patch.object(
+            placement, "summarize_module", wraps=placement.summarize_module
+        ) as summaries {
+            mod = prog.compile(
+                path,
+                use_str="def square(x: int) -> int { return x * x; }",
+                options=CompileOptions(
+                    no_cgen=True, no_ir_cache=True, force_target_program=True
+                )
+            );
+            assert not prog.errors_had , [str(e) for e in prog.errors_had];
+            before = summaries.call_count;
+            assert before == 1 , before;
+            placement.get_module_summary(mod, prog);
+            solver.solve_program_placement(mod, prog);
+            placement.get_module_summary(mod, prog);
+            assert summaries.call_count == before;
+        }
+    }
+}
 
 def _compile -> tuple[JacProgram, uni.Module] {
     prog = JacProgram();
