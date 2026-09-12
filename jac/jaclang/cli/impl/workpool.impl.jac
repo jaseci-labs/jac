@@ -431,8 +431,7 @@ impl pool_available -> bool {
 impl worker_rss_mb -> int {
     import resource;
     import sys;
-    # Retirement depends on memory still held after the job. A lifetime peak
-    # cannot fall after a compilation releases its graph or native buffers.
+
     if sys.platform == "linux" {
         try {
             with open("/proc/self/statm") as status {
