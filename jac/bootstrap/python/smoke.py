@@ -19,6 +19,12 @@ import zlib
 from compression import zstd
 
 assert sys.version_info[:3] == (3, 14, 6), sys.version
+# Jac executes its compiler on this interpreter. Keep the release runtime's
+# optimization contract explicit so a source-build change cannot silently
+# ship the slower development interpreter.
+assert sysconfig.get_config_var("Py_TAIL_CALL_INTERP") == 1, "Tail-call interpreter is required"
+assert "-flto" in sysconfig.get_config_var("PY_CFLAGS_NODIST"), "Release Python requires LTO"
+assert "-O3" in sysconfig.get_config_var("PY_CFLAGS"), "Release Python requires optimized code"
 if sys.platform == "darwin":
     import _scproxy
 sample = b"Jac source-built runtime" * 100
