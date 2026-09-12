@@ -141,10 +141,14 @@ def build_catalog(
     started = time.monotonic();
     import from jaclang.compiler.driver.program { JacProgram }
     prog = JacProgram();
-    # A catalog is a temporary compilation, including its package-owned stubs.
-    # Never publish those mutable trees in the running compiler's self-host hub.
-    prog.options.force_target_program = True;
-    prog._get_compiler().stub_catalog_disabled = True;
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+    # The catalog's package-owned stubs belong to this temporary compilation.
+    # Its compiler must not share the running compiler's self-host hub.
+    prog._compiler = JacCompiler(
+        stub_catalog_disabled=True,
+        _selfhost=SelfHostCache(_program=prog)
+    );
     previous_building = os.environ.get(ENV_BUILDING);
     os.environ[ENV_BUILDING] = "1";
     try {
