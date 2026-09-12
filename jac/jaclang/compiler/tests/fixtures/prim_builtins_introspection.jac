@@ -6,14 +6,17 @@ emit_callable, emit_hash, emit_id, emit_iter, emit_next,
 emit_hasattr, emit_getattr, emit_setattr, emit_vars, emit_delattr,
 emit_dir, emit_print, emit_input, emit_open.
 
-Python/SV only — CL and NA return {} (not yet implemented).
+Python/SV only, except the type_*/isinstance_dict rows below, which also
+run on CL to lock in #6149 (`type(x) is <T>` compared a string tag against
+a runtime object, so it was always false). NA is untouched — the bug was
+ES-only.
 """
 
 class _I {
     has x: int = 0;
 }
 
-def builtins_introspection_py() -> dict {
+def builtins_introspection_py -> dict {
     # emit_enumerate
     enum_pairs: list = list(enumerate(["a", "b", "c"]));
 
@@ -32,9 +35,9 @@ def builtins_introspection_py() -> dict {
     setattr_ok: int = 1 if o.x == 99 else 0;
     vars_ok: int = 1 if isinstance(vars(o), dict) else 0;
     setattr(o, "_d", "tmp");
-    has_dyn: int = 1 if hasattr(o, "_d") else 0;
+    has_dyn: int = 1 if o?._d else 0;
     delattr(o, "_d");
-    del_ok: int = 0 if hasattr(o, "_d") else 1;
+    del_ok: int = 0 if o?._d else 1;
 
     return {
         # emit_enumerate
@@ -60,6 +63,15 @@ def builtins_introspection_py() -> dict {
         "type_int": type(42).__name__,
         "type_str": type("hi").__name__,
         "type_list": type([]).__name__,
+        # type() identity (#6149): `is`/`is not` compare the object type()
+        # returns, not a name for it. bool_isnot_int pins exact-type
+        # semantics (isinstance(True, int) is true; this must stay false).
+        "type_is_str": 1 if type("s") is str else 0,
+        "type_isnot_dict": 1 if type(7) is not dict else 0,
+        "type_bool_isnot_int": 1 if type(True) is not int else 0,
+        "type_arch_is": 1 if type(o) is _I else 0,
+        "type_arch_name": type(o).__name__,
+        "isinstance_dict_t": 1 if isinstance({"a": 1}, dict) else 0,
         # emit_repr
         "repr_42": repr(42),
         "repr_neg5": repr(-5),
@@ -77,8 +89,8 @@ def builtins_introspection_py() -> dict {
         "iter_next_10": next(iter([10, 20, 30])),
         "iter_next_99": next(iter([99])),
         # emit_hasattr / emit_getattr
-        "hasattr_t": 1 if hasattr([], "append") else 0,
-        "hasattr_f": 1 if hasattr([], "_missing_xxx") else 0,
+        "hasattr_t": 1 if []?.append else 0,
+        "hasattr_f": 1 if []?._missing_xxx else 0,
         "getattr_ok": getattr("hello", "upper")(),
         # emit_setattr / emit_vars
         "setattr_ok": setattr_ok,
@@ -98,11 +110,19 @@ def builtins_introspection_py() -> dict {
     };
 }
 
-def builtins_introspection_cl() -> dict {
-    return {};
+def builtins_introspection_cl -> dict {
+    o: _I = _I();
+    return {
+        "type_is_str": 1 if type("s") is str else 0,
+        "type_isnot_dict": 1 if type(7) is not dict else 0,
+        "type_bool_isnot_int": 1 if type(True) is not int else 0,
+        "type_arch_is": 1 if type(o) is _I else 0,
+        "type_arch_name": type(o).__name__,
+        "isinstance_dict_t": 1 if isinstance({"a": 1}, dict) else 0
+    };
 }
 
 
-def builtins_introspection_na() -> dict[str, any] {
+def builtins_introspection_na -> dict[str, any] {
     return {};
 }
