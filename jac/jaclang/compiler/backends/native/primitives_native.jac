@@ -1680,8 +1680,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         p._clear_rc_ctx();
         byte_val = b.trunc(arg_val, i8, name="chr.byte");
         b.store(byte_val, buf);
-        null_ptr = b.gep(buf, [ir.Constant(i64, 1)], name="chr.null_ptr");
-        b.store(ir.Constant(i8, 0), null_ptr);
+        p._str_finish(b, buf, ir.Constant(i64, 1));
         return buf;
     }
 

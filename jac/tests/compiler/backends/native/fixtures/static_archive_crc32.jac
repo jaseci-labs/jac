@@ -5,6 +5,7 @@
 import from lzma { def lzma_crc32(buf: bytes, size: u64, crc: u64) -> u64;  }
 
 glob data = b"123456789";
+
 with entry {
     r: u64 = lzma_crc32(data, u64(len(data)), 0) & 0xFFFFFFFF;
     print(r);

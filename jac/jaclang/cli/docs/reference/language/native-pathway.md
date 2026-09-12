@@ -354,6 +354,21 @@ Native compilation maps Jac types to LLVM types:
 | `str` | `i8*` | pointer | Null-terminated byte string |
 | `None` | -- | -- | Null pointer |
 
+!!! note "Native `str` is length-aware -- embedded NULs survive"
+    Although native `str` lowers to a NUL-terminated C string (`i8*`), every
+    string value carries its length in the runtime header (literals,
+    `chr()`, concatenation, and slicing all stamp it). Operations measure
+    lengths from that header, not with `strlen`, so an embedded `chr(0)`
+    (NUL) byte survives: `chr(65) + chr(0) + chr(66)` has length `3` on
+    both `na` and `sv`. Only strings received from foreign C code through
+    FFI are bounded by their terminator.
+
+    Prefer `bytes` for binary data anyway: it is the explicit binary type
+    (`b"A" + bytes([0]) + b"B"` keeps all three bytes). When an FFI
+    declaration insists on `i8*`, allocate the buffer with `calloc` and poke
+    bytes with `memset`/`memcpy` rather than building it with `str` +
+    `chr()`.
+
 ### Fixed-Width Types
 
 For C interop and precise control, Jac provides fixed-width integer and float types:

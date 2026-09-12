@@ -1171,6 +1171,7 @@ impl NaIRGenPass._emit_str_desc_helpers -> None {
     _di = _dfields.index("data");
     _li = _dfields.index("len");
     _z = ir.Constant(i32, 0);
+
     for (fname, len_fn) in (
         ("__jac_str_wrap", self.str_len_fn),
         ("__jac_str_wrap_raw", self.str_len_raw_fn)
