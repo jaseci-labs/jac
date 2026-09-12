@@ -150,6 +150,8 @@ and publishes the result through the scheduled product/query infrastructure.
 `ElementReferenceScan` resolves each name once to collect both references and
 function escapes. Its declaration-to-element map lives only for that summary,
 so a later binding or structure change cannot reuse stale associations.
+`BindingFactsPass` uses the same syntax index to collect scopes and names for
+storage and capture analysis, avoiding a separate walk of every syntax node.
 
 `ir/syntax/cloning.jac` is the storage boundary for copying validated syntax.
 It preserves endpoint types, edge ordering, and shared children while creating
