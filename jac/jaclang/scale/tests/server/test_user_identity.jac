@@ -146,7 +146,102 @@ test "add_identity_contract" {
 }
 
 # =============================================================================
-# Test 2: forgot-password never leaks existence + reset-password rejects bad tokens
+# Test 2: an email-shaped username may attach the same address as an email (#9103)
+# =============================================================================
+test "email_shaped_username_contract" {
+    _cleanup();
+    port = get_free_port();
+    base = f"http://localhost:{port}";
+    proc: subprocess.Popen | None = None;
+    try {
+        proc = start_server(
+            FIXTURES_DIR, FIXTURES_DIR / "test_api.jac", port, env=_emailer_pythonpath()
+        );
+        addr = f"{_unique_user('carol')}@example.com";
+        alt = f"{_unique_user('carol_alt')}@example.com";
+        token = register_user(base, addr, "pw12345");
+        auth = {"Authorization": f"Bearer {token}"};
+
+        # 1. The owner attaches their own username's value as an email → 200.
+        rj = requests.post(
+            f"{base}/user/add-identity",
+            json={"identity": {"type": "email", "value": addr}},
+            headers=auth,
+            timeout=5
+        ).json();
+        assert extract(rj)["status"] == "added";
+        assert extract(rj)["verified"] == False;
+
+        # 2. /user/me shows the value under both types.
+        me = extract(requests.get(f"{base}/user/me", headers=auth, timeout=5).json());
+        held = [
+            i["type"]
+            for i in me["identities"]
+            if i["value"] == addr
+        ];
+        assert held == ["username", "email"];
+
+        # 3. The new email identity goes through verification like any other.
+        rj = requests.post(
+            f"{base}/user/send-verification",
+            json={"identity": {"type": "email", "value": addr}},
+            headers=auth,
+            timeout=5
+        ).json();
+        assert extract(rj)["status"] == "pending_verification";
+        assert extract(rj)["email_sent"] == True;
+
+        # 4. Re-adding the same email → 409 (same type, same value, same account).
+        r = requests.post(
+            f"{base}/user/add-identity",
+            json={"identity": {"type": "email", "value": addr}},
+            headers=auth,
+            timeout=5
+        );
+        assert r.status_code == 409;
+        assert r.json()["error"]["code"] == "IDENTITY_TAKEN";
+
+        # 5. Another account still cannot take the value → 409.
+        other_token = register_user(base, _unique_user("dave"), "pw12345");
+        r = requests.post(
+            f"{base}/user/add-identity",
+            json={"identity": {"type": "email", "value": addr}},
+            headers={"Authorization": f"Bearer {other_token}"},
+            timeout=5
+        );
+        assert r.status_code == 409;
+        assert r.json()["error"]["code"] == "IDENTITY_TAKEN";
+
+        # 6. Renaming the username to the account's own second email → 200, and
+        #    the first address stays resolvable through its email identity.
+        rj = requests.post(
+            f"{base}/user/add-identity",
+            json={"identity": {"type": "email", "value": alt}},
+            headers=auth,
+            timeout=5
+        ).json();
+        assert extract(rj)["status"] == "added";
+        r = requests.put(
+            f"{base}/user/username", json={"new_username": alt}, headers=auth, timeout=5
+        );
+        assert r.status_code == 200 , r.text;
+        r = requests.post(
+            f"{base}/user/login",
+            json={
+                "identity": {"type": "email", "value": addr},
+                "credential": {"type": "password", "password": "pw12345"}
+            },
+            timeout=5
+        );
+        assert r.status_code == 200 , r.text;
+    } finally {
+        stop_server(proc);
+        _cleanup();
+    }
+}
+
+# =============================================================================
+# Test 3: forgot-password never leaks existence + reset-password rejects bad tokens
 # =============================================================================
 test "forgot_and_reset_password_contract" {
     _cleanup();

@@ -854,6 +854,8 @@ The `{token}` placeholder in each template is replaced with the raw token before
 
 Attach a new identity to the authenticated user. **This endpoint never sends mail** -- it just adds the identity (email identities are stored as `verified=false`). To dispatch a verification email afterwards, call `/user/send-verification`.
 
+A value is refused only when a **different** account holds it. An address you already use as your username can be attached as an `email` identity too: it is a separate identity on the same account, starts `verified=false`, and unlocks the email features (verification, password reset) once verified.
+
 ```bash
 curl -X POST http://localhost:8000/user/add-identity \
   -H "Authorization: Bearer <token>" \
@@ -874,7 +876,7 @@ Returns HTTP 200:
 }
 ```
 
-Errors: `401 UNAUTHORIZED`, `409 IDENTITY_TAKEN`, `404 NOT_FOUND`.
+Errors: `401 UNAUTHORIZED`, `409 IDENTITY_TAKEN` (another account holds the value, or this account already holds it under the same type), `404 NOT_FOUND`.
 
 #### Send Verification
 
