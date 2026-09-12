@@ -486,17 +486,13 @@ def _precompile_unit(
     } except Exception {}
 
     compiler = program._get_compiler();
-    code = compiler.get_bytecode(
-        full_target=jac_path, target_program=program, emit_interface=True
-    );
+    # Analyze before code generation: inferred native code exports a different
+    # type flavor, and bytecode cache hits need not retain a source tree. The
+    # dependency registry produces the interface and its diagnostic profile.
+    program.iface_registry().ensure(jac_path);
+    code = compiler.get_bytecode(full_target=jac_path, target_program=program);
     if code is None {
         _emit_unit_diagnostics(jac_path, [program, compiler.selfhost.program]);
-    } elif SEC_IFACE not in _unit_extra(jac_path, pkg_root, False) {
-        # A bootstrap or older bytecode cache can lack the symbol interface.
-        # Produce it through the same registry used by dependency compilation.
-        program.iface_registry().ensure(jac_path);
-    }
-    if code is None {
         return None;
     }
     patched = patch_co_filenames_bytes(

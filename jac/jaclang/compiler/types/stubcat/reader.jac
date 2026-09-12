@@ -373,8 +373,14 @@ obj StubCatalog {
         if not rel {
             return "";
         }
+        if self.path_mapper is not None {
+            mapped = self.path_mapper(rel);
+            if mapped != rel {
+                return mapped;
+            }
+        }
         if os.path.isabs(rel) {
-            return self.path_mapper(rel) if self.path_mapper is not None else rel;
+            return rel;
         }
         return os.path.join(self._base_dir, *rel.split("/"));
     }

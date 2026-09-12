@@ -2,7 +2,7 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import hashlib;
 import shutil;
-import from jaclang.compiler.driver.jir { SEC_IFACE, read_section_bytes }
+import from jaclang.compiler.driver.jir { SEC_IFACE, SEC_DIAG, read_section_bytes }
 import from jaclang.dist.precompile_bytecode { precompile_unit, write_manifest }
 
 def _package(base_path: Path) -> Path {
@@ -25,6 +25,9 @@ test "precompiled modules carry their type interface on cold and cached builds" 
             assert data is not None , "precompilation produced no artifact";
             assert read_section_bytes(data, SEC_IFACE) is not None , (
                 "precompilation discarded the dependency's type interface"
+            );
+            assert read_section_bytes(data, SEC_DIAG) is not None , (
+                "precompilation discarded the interface's analysis diagnostics"
             );
         }
     }
@@ -78,11 +81,14 @@ test "an installed precompiled interface resolves paths without rebuilding its s
             evaluator = program.get_type_evaluator();
             function = evaluator.get_type_of_symbol(module.lookup("make"));
             assert isinstance(function, FunctionType);
-            assert str(function.file_uri) == path;
+            assert module.lookup("make").decl.loc.mod_path == path;
             box = evaluator.get_type_of_symbol(module.lookup("Box"));
             assert isinstance(box, ClassType);
             identity = box.shared.canonical_key();
             assert identity is not None and identity[0] == str(installed / "model.jac");
+            returned = function.return_type;
+            assert isinstance(returned, ClassType);
+            assert returned.shared.same_class(box.shared);
             code = program.get_bytecode(path);
             assert code is not None and code.co_filename == path;
             import from jaclang.compiler.placement.placement { summary_store }
@@ -125,11 +131,23 @@ test "relocation changes path fields without rewriting diagnostic messages" {
     assert warning["related"][0][1][0] == "/installed/library/api.jac";
     assert paths.resolve("/build/library_extra/api.jac")
         == "/build/library_extra/api.jac";
+    import os;
+    if os.sep == "/" {
+        # A POSIX filename may contain a literal backslash.
+        assert paths.resolve("/build/library/file\\name.jac")
+            == "/installed/library/file\\name.jac";
+        windows = JirPaths(
+            source_root="C:\\build\\library", base_dir="/installed/library"
+        );
+        assert windows.resolve("C:\\build\\library\\api.jac")
+            == "/installed/library/api.jac";
+    }
 }
 
 test "freezing bootstrap bytecode preserves the module interface" {
     import from jaclang.dist.precompile_bytecode { seal_bootstrap }
     import from jaclang.jac0core { sealed }
+    import from unittest.mock { patch }
     with TemporaryDirectory() as directory {
         package = Path(directory) / "jaclang";
         driver = package / "compiler" / "driver";
@@ -138,7 +156,13 @@ test "freezing bootstrap bytecode preserves the module interface" {
         source = driver / "example.jac";
         source.write_text("def answer() -> int { return 42; }\n");
         out = package / "_precompiled" / sealed.python_tag();
-        assert seal_bootstrap(package, out, False) == 0;
+        # Exercise the real sealer on one seed unit, not the entire compiler.
+        with patch(
+            "jaclang.bootstrap_manifest.seed_abs_entries",
+            return_value=([], [str(source)])
+        ) {
+            assert seal_bootstrap(package, out, False) == 0;
+        }
         data = (out / "compiler" / "driver" / "example.jir").read_bytes();
         assert read_section_bytes(data, SEC_IFACE) is not None , (
             "bootstrap sealing lost the dependency's type interface"

@@ -122,7 +122,7 @@ obj JacCompiler {
 
     static def _check_native_abi(layout: NativeModuleLayout, full_target: str) -> None;
     def get_bytecode(
-        full_target: str, target_program: JacProgram, emit_interface: bool = False
+        full_target: str, target_program: JacProgram
     ) -> (types.CodeType | None);
 
     def get_client_artifact(
@@ -130,7 +130,7 @@ obj JacCompiler {
     ) -> (ClientArtifact | None);
 
     def _get_bytecode(
-        full_target: str, target_program: JacProgram, emit_interface: bool = False
+        full_target: str, target_program: JacProgram
     ) -> (types.CodeType | None);
 
     def _get_client_artifact(

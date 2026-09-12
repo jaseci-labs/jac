@@ -1,4 +1,5 @@
 import hashlib;
+import ntpath;
 import os;
 import struct;
 import sys;
@@ -35,24 +36,33 @@ glob MAGIC = b"JIR\x00",
 
 obj JirPaths {
     has source_root: str = "",
-        base_dir: str = "";
+        base_dir: str = "",
+        source_separator: str postinit;
+
+    def postinit {
+        self.source_separator = "\\"
+            if "\\" in self.source_root and bool(ntpath.splitdrive(self.source_root)[0])
+            else "/";
+    }
 
     def resolve(path: str) -> str {
         if not self.base_dir or not path {
             return path;
         }
-        for source_root in (PRECOMPILE_SENTINEL, self.source_root) {
+        for (source_root, separator) in (
+            (PRECOMPILE_SENTINEL, "/"),
+            (self.source_root, self.source_separator)
+        ) {
             if not source_root {
                 continue;
             }
             if path == source_root {
                 return self.base_dir;
             }
-            prefix = source_root.rstrip("/\\") + "/";
-            normalized = path.replace("\\", "/");
-            if normalized.startswith(prefix.replace("\\", "/")) {
+            prefix = source_root.rstrip(separator) + separator;
+            if path.startswith(prefix) {
                 return os.path.normpath(
-                    os.path.join(self.base_dir, normalized[len(prefix):])
+                    os.path.join(self.base_dir, *path[len(prefix):].split(separator))
                 );
             }
         }

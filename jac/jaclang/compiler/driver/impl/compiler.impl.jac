@@ -125,7 +125,7 @@ impl JacCompiler._check_native_abi(
 }
 
 impl JacCompiler.get_bytecode(
-    full_target: str, target_program: JacProgram, emit_interface: bool = False
+    full_target: str, target_program: JacProgram
 ) -> (types.CodeType | None) {
     import from jaclang.compiler.driver.compilation_context {
         bind_options,
@@ -140,12 +140,12 @@ impl JacCompiler.get_bytecode(
     with compilation_scope(
         '' if self.selfhost.is_selfhost(actual) else actual.context_key, actual.options
     ) {
-        return self._get_bytecode(full_target, actual, emit_interface=emit_interface);
+        return self._get_bytecode(full_target, actual);
     }
 }
 
 impl JacCompiler._get_bytecode(
-    full_target: str, target_program: JacProgram, emit_interface: bool = False
+    full_target: str, target_program: JacProgram
 ) -> (types.CodeType | None) {
     actual_program = self.selfhost.resolve(full_target, target_program);
     (rebuild, no_precompile) = cache_mode();
@@ -268,7 +268,7 @@ impl JacCompiler._get_bytecode(
         setup_progress.on_internal_compile(full_target);
         self.selfhost.enter_bytecode();
     }
-    options = CompileOptions(emit_interface=emit_interface);
+    options = CompileOptions();
     result: (uni.Module | None) = None;
     try {
         result = self.compile(
