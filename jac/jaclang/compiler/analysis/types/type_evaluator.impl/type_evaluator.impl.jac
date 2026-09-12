@@ -980,10 +980,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                             expr.right.value in ('init', '__init__')
                             and base_type.is_data_class()
                         ) {
+                            init_scope = base_type.shared.symbol_table;
                             has_explicit_init = (
-                                'init' in base_type.shared.symbol_table.names_in_scope
-                                or '__init__'
-                                    in base_type.shared.symbol_table.names_in_scope
+                                init_scope.lookup_local('init') is not None
+                                or init_scope.lookup_local('__init__') is not None
                             );
 
                             has_any_has_vars = any(

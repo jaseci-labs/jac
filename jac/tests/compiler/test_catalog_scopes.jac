@@ -2,6 +2,10 @@ import from jaclang.compiler.session.compiler { JacCompiler }
 import from jaclang.compiler.ir.schema { Name }
 import from jaclang.compiler.ir.identity { MutationPermit }
 import from jaclang.compiler.ir.mutation { validate_graph }
+import from jaclang.compiler.ir.types.nodes { ClassType }
+import from jaclang.compiler.analysis.types.builtin_extensions {
+    install_builtin_extensions
+}
 
 test "a catalog lookup materializes only the requested declaration" {
     catalog = JacCompiler().stub_catalog();
@@ -71,4 +75,26 @@ test "lazy catalog declarations join their compilation graph" {
     assert permit.mask == 0;
     validate_graph(module);
     assert module.lookup_local('int') is integer;
+}
+
+test "installing builtin extensions leaves unrelated list methods unloaded" {
+    catalog = JacCompiler().stub_catalog();
+    assert catalog is not None;
+    isolated = catalog.fork();
+    module = isolated.module('builtins');
+    assert module is not None;
+    lists = module.lookup_local('list');
+    integers = module.lookup_local('int');
+    assert lists is not None and integers is not None;
+    assert lists.provider is not None and integers.provider is not None;
+    list_type = lists.provider.resolve_type(lists);
+    int_type = integers.provider.resolve_type(integers);
+    assert isinstance(list_type, ClassType) and isinstance(int_type, ClassType);
+    scope = list_type.shared.symbol_table;
+    assert scope is not None;
+    append_id = isolated._pending_scopes[scope].members['append'];
+    assert append_id not in isolated._sym_memo;
+    install_builtin_extensions(list_type, int_type);
+    assert scope.lookup_local('chunks') is not None;
+    assert append_id not in isolated._sym_memo;
 }

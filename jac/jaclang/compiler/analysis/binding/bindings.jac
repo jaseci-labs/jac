@@ -441,10 +441,7 @@ def bind_assignment_targets(nd: Assignment) {
         if isinstance(i, AstSymbolNode) {
             if isinstance(i, (ListVal, TupleVal)) {
                 def_insert_unpacking(i, i.sym_tab, rebind_in_python_scope=True);
-            } elif (
-                (i.sym_name in i.sym_tab.names_in_scope)
-                and ((sym := i.sym_tab.names_in_scope[i.sym_name]) is not None)
-            ) {
+            } elif (sym := i.sym_tab.lookup_local(i.sym_name)) is not None {
                 if sym.imported and isinstance(nd.value, Null) {
                     sym.add_defn(i.name_spec);
                 }

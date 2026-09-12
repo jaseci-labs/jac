@@ -111,7 +111,8 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
             continue;
         }
 
-        if mod.parent_scope and name_nd.value in mod.parent_scope.names_in_scope {
+        if mod.parent_scope
+            and mod.parent_scope.lookup_local(name_nd.value) is not None {
             continue;
         }
 

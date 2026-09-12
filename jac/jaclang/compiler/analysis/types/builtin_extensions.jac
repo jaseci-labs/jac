@@ -17,7 +17,7 @@ def install_builtin_extensions(
         return;
     }
     scope = list_class.shared.symbol_table;
-    if scope is None or "chunks" in scope.names_in_scope {
+    if scope is None or scope.lookup_local("chunks") is not None {
         return;
     }
     element_types: list[TypeBase] = [t for t in list_class.shared.type_params];
