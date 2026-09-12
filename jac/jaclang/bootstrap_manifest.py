@@ -76,6 +76,7 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/passes/uni_pass.jac",
     "compiler/tools/treeprinter.jac",
     "runtime/runtime.jac",
+    "runtime/access_level.jac",
     "runtime/object_model.jac",
     "runtime/object_interop.jac",
     "runtime/region.jac",

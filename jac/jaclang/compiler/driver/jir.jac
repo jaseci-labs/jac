@@ -6,31 +6,36 @@ import zlib;
 import from pathlib { Path }
 import from jaclang.bootstrap_manifest { SOURCE_ONLY_PATHS }
 
-glob MAGIC = b"JIR\x00",
-     FORMAT_VERSION: int = 25,
-     HEADER_SIZE: int = 32,
-     HEADER_FMT: str = "<4sHHIIIIII",
-     EXTERNAL_REF: int = 0xFFFFFF,
-     SECTIONS_MAGIC: any = b"JIRX",
-     SEC_BYTECODE: int = 0x02,
-     SEC_MTIR: int = 0x03,
-     SEC_LLVM_IR: int = 0x04,
-     SEC_INTEROP: int = 0x05,
-     SEC_NATIVE_OBJ: int = 0x06,
-     SEC_SYMINDEX: int = 0x07,
-     SEC_MODKEY: int = 0x08,
-     SEC_DEBUG_SRC: int = 0x09,
-     SEC_PLACEMENT: int = 0x0A,
-     SEC_ENVKEY: int = 0x0B,
-     SEC_CTDEPS: int = 0x0C,
-     SEC_IFACE: int = 0x0D,
-     SEC_DEPS: int = 0x0E,
-     SEC_DIAG: int = 0x0F,
-     SEC_CLIENT: int = 0x10,
-     SEC_TERMINATOR: int = 0xFF,
-     FLAG_PRECOMPILED: int = 0x02,
-     PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
-     FLAG_BOOTSTRAP: int = 0x04;
+import from jaclang.compiler.driver.image {
+    MAGIC,
+    FORMAT_VERSION,
+    HEADER_SIZE,
+    HEADER_FMT,
+    EXTERNAL_REF,
+    SECTIONS_MAGIC,
+    SEC_BYTECODE,
+    SEC_MTIR,
+    SEC_LLVM_IR,
+    SEC_INTEROP,
+    SEC_NATIVE_OBJ,
+    SEC_SYMINDEX,
+    SEC_MODKEY,
+    SEC_DEBUG_SRC,
+    SEC_PLACEMENT,
+    SEC_ENVKEY,
+    SEC_CTDEPS,
+    SEC_IFACE,
+    SEC_DEPS,
+    SEC_DIAG,
+    SEC_CLIENT,
+    SEC_TERMINATOR,
+    FLAG_PRECOMPILED,
+    PRECOMPILE_SENTINEL,
+    FLAG_BOOTSTRAP,
+    read_sections,
+    read_section_bytes,
+    patch_co_filenames_bytes
+}
 
 obj JirHeader {
     has magic: any = b"JIR\x00",
@@ -436,20 +441,6 @@ def compute_module_key(source_path: str) -> str {
         h.update(digest.encode());
     }
     return h.hexdigest();
-}
-
-def read_section_bytes(data: bytes, sec_type: int) -> (bytes | None) {
-    try {
-        magic: any = SECTIONS_MAGIC;
-        pos = data.find(magic, HEADER_SIZE);
-        if pos < 0 {
-            return None;
-        }
-        sections = read_sections(data, pos + len(magic));
-        return sections.get(sec_type);
-    } except Exception {
-        return None;
-    }
 }
 
 def _read_key_section(data: bytes, sec_type: int) -> (str | None) {
@@ -888,43 +879,8 @@ def write_sections(sections: (dict[int, bytes] | None)) -> bytes {
     return bytes(buf);
 }
 
-def read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
-    result: dict[int, bytes] = {};
-    pos = start_pos;
-    try {
-        while pos < len(data) {
-            sec_type = data[pos];
-            pos += 1;
-            if sec_type == SEC_TERMINATOR {
-                break;
-            }
-            if pos + 4 > len(data) {
-                break;
-            }
-            (sec_len, ) = struct.unpack_from('<I', data, pos);
-            pos += 4;
-            if pos + sec_len > len(data) {
-                break;
-            }
-            result[sec_type] = bytes(data[pos:pos + sec_len]);
-            pos += sec_len;
-        }
-    } except Exception {}
-    return result;
-}
-
 def read_bytecode_only(data: bytes) -> (bytes | None) {
-    try {
-        magic_bytes: any = SECTIONS_MAGIC;
-        pos = data.find(magic_bytes, HEADER_SIZE);
-        if pos < 0 {
-            return None;
-        }
-        sections = read_sections(data, pos + len(magic_bytes));
-        return sections.get(SEC_BYTECODE);
-    } except Exception {
-        return None;
-    }
+    return read_section_bytes(data, SEC_BYTECODE);
 }
 
 def write_precompiled_jir(
@@ -1099,23 +1055,5 @@ def write_module_cache(
         return True;
     } except Exception {
         return False;
-    }
-}
-
-def patch_co_filenames_bytes(raw_bc: bytes, find: str, replace: str) -> bytes {
-    try {
-        import marshal;
-        import types as _types;
-        code = marshal.loads(raw_bc);
-        def _patch(c: _types.CodeType) -> _types.CodeType {
-            new_filename = c.co_filename.replace(find, replace);
-            new_consts = tuple(
-                _patch(x) if isinstance(x, _types.CodeType) else x for x in c.co_consts
-            );
-            return c.replace(co_filename=new_filename, co_consts=new_consts);
-        }
-        return marshal.dumps(_patch(code));
-    } except Exception {
-        return raw_bc;
     }
 }

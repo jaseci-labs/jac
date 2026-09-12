@@ -1,4 +1,5 @@
 import threading;
+import from jaclang.runtime.object_model { make_object }
 import weakref;
 
 glob _region_tls: any = threading.local();
@@ -12,11 +13,12 @@ def _stack -> list {
     return s;
 }
 
-obj JacRegion {
+@make_object
+class JacRegion {
     has _drops: list[any] = [],
         _parent: any = None;
 
-    def partition(n: int = 0) -> any {
+    def partition(self: JacRegion, n: int = 0) -> any {
         if n <= 0 {
             c = JacRegion();
             c._parent = self;
@@ -31,11 +33,11 @@ obj JacRegion {
         return tuple(out);
     }
 
-    def _jac_open {
+    def _jac_open(self: JacRegion) {
         _stack().append(self);
     }
 
-    def _jac_close {
+    def _jac_close(self: JacRegion) {
         s = _stack();
         i = len(s) - 1;
         while i >= 0 {
@@ -47,11 +49,11 @@ obj JacRegion {
         }
     }
 
-    def _jac_register(item: any) {
+    def _jac_register(self: JacRegion, item: any) {
         self._drops.append(item);
     }
 
-    def _jac_drop {
+    def _jac_drop(self: JacRegion) {
         _pending = self._drops;
         self._drops = [];
         _p = self._parent;
@@ -69,7 +71,7 @@ obj JacRegion {
         }
     }
 
-    def __del__ {
+    def __del__(self: JacRegion) {
         self._jac_drop();
     }
 }

@@ -28,7 +28,7 @@ JACLANG = os.path.join(REPO, "jac", "jaclang")
 # Pure-Python boot modules a seed module may import at module scope, plus
 # the manifest itself and the seed transpiler.
 PY_BOOT_MODULES = {
-    "jaclang.jac0core.sealed",
+    "jaclang.compiler.driver.image",
     "jaclang.jac0core.cache_paths",
     "jaclang.jac0core.ext_registry",
     "jaclang.jac0core.osp0",

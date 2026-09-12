@@ -1,8 +1,8 @@
-impl Access.check(anchor: str) -> (AccessLevel | None) {
+impl Access.check(self: Access, anchor: str) -> (AccessLevel | None) {
     return self.anchors.get(anchor);
 }
 
-impl PermissionDenied.to_dict -> dict[(str, any)] {
+impl PermissionDenied.to_dict(self: PermissionDenied) -> dict[(str, any)] {
     return {
         "operation": self.operation,
         "target_id": self.target_id,
@@ -14,7 +14,7 @@ impl PermissionDenied.to_dict -> dict[(str, any)] {
     };
 }
 
-impl PermissionDenied.message -> str {
+impl PermissionDenied.message(self: PermissionDenied) -> str {
     owner = self.target_owner or "<system>";
     return (
         f"Permission denied: {self.operation} on "
@@ -29,7 +29,7 @@ impl PermissionDenied.message -> str {
     );
 }
 
-impl Anchor.ensure_id -> UUID {
+impl Anchor.ensure_id(self: Anchor) -> UUID {
     aid = self.id;
     if aid is None {
         aid = uuid4();
@@ -38,7 +38,7 @@ impl Anchor.ensure_id -> UUID {
     return aid;
 }
 
-impl Anchor.own_access -> Permission {
+impl Anchor.own_access(self: Anchor) -> Permission {
     perm = self.access;
     if perm is None {
         perm = Permission();
@@ -47,11 +47,11 @@ impl Anchor.own_access -> Permission {
     return perm;
 }
 
-impl Anchor.is_populated -> bool {
+impl Anchor.is_populated(self: Anchor) -> bool {
     return ('archetype' in self.__dict__);
 }
 
-impl Anchor.make_stub -> TANCH {
+impl Anchor.make_stub(self: Anchor) -> TANCH {
     if self.is_populated() {
         unloaded = object.__new__(self.__class__);
         unloaded.id = self.ensure_id();
@@ -60,7 +60,7 @@ impl Anchor.make_stub -> TANCH {
     return self;
 }
 
-impl Anchor.populate -> None {
+impl Anchor.populate(self: Anchor) -> None {
     aid = self.id;
     if aid is None {
         return;
@@ -73,7 +73,7 @@ impl Anchor.populate -> None {
     }
 }
 
-impl Anchor.__getattr__(name: str) -> object {
+impl Anchor.__getattr__(self: Anchor, name: str) -> object {
     if not self.is_populated() {
         self.populate();
         if not self.is_populated() {
@@ -88,7 +88,7 @@ impl Anchor.__getattr__(name: str) -> object {
     );
 }
 
-impl Anchor.__getstate__ -> dict[(str, any)] {
+impl Anchor.__getstate__(self: Anchor) -> dict[(str, any)] {
     if self.is_populated() {
         unlinked = object.__new__(untracked_class(self.archetype.__class__));
         unlinked.__dict__.update(self.archetype.__dict__);
@@ -96,7 +96,7 @@ impl Anchor.__getstate__ -> dict[(str, any)] {
         return {
             'id': self.ensure_id(),
             'archetype': unlinked,
-            'root': self.root,
+            'root': self.`root,
             'access': self.access,
             'persistent': self.persistent
         };
@@ -105,7 +105,7 @@ impl Anchor.__getstate__ -> dict[(str, any)] {
     }
 }
 
-impl Anchor.__setstate__(state: dict[(str, any)]) -> None {
+impl Anchor.__setstate__(self: Anchor, state: dict[(str, any)]) -> None {
     persistent = bool(state.pop('persistent', False));
     self.__dict__.update(state);
     self.__dict__.setdefault('destroyed', False);
@@ -122,7 +122,7 @@ impl Anchor.__setstate__(state: dict[(str, any)]) -> None {
     }
 }
 
-impl Anchor.__repr__ -> str {
+impl Anchor.__repr__(self: Anchor) -> str {
     if self.is_populated() {
         attrs = '';
         for f in fields(self) {
@@ -137,7 +137,7 @@ impl Anchor.__repr__ -> str {
     return f"{self.__class__.__name__}({attrs})";
 }
 
-impl Anchor.`report -> AnchorReport {
+impl Anchor.`report(self: Anchor) -> AnchorReport {
     return AnchorReport(
         id=self.ensure_id().hex,
         context=asdict(self.archetype)
@@ -146,12 +146,12 @@ impl Anchor.`report -> AnchorReport {
     );
 }
 
-impl Anchor.__hash__ -> int {
+impl Anchor.__hash__(self: Anchor) -> int {
     aid = self.id;
     return hash(aid) if aid is not None else id(self);
 }
 
-impl Anchor.__eq__(other: object) -> bool {
+impl Anchor.__eq__(self: Anchor, other: object) -> bool {
     if self is other {
         return True;
     }
@@ -162,17 +162,17 @@ impl Anchor.__eq__(other: object) -> bool {
     return False;
 }
 
-impl NodeAnchor.is_populated -> bool {
+impl NodeAnchor.is_populated(self: NodeAnchor) -> bool {
     d = self.__dict__;
     return 'edges' in d and 'archetype' in d;
 }
 
-impl EdgeAnchor.is_populated -> bool {
+impl EdgeAnchor.is_populated(self: EdgeAnchor) -> bool {
     d = self.__dict__;
     return 'source' in d and 'target' in d and 'archetype' in d;
 }
 
-impl NodeAnchor.__getstate__ -> dict[(str, object)] {
+impl NodeAnchor.__getstate__(self: NodeAnchor) -> dict[(str, object)] {
     state = super.__getstate__();
     if self.is_populated() {
         if self.persistent {
@@ -186,7 +186,7 @@ impl NodeAnchor.__getstate__ -> dict[(str, object)] {
     return state;
 }
 
-impl NodeAnchor.edge_delta -> (tuple[(set[UUID], set[UUID])] | None) {
+impl NodeAnchor.edge_delta(self: NodeAnchor) -> (tuple[(set[UUID], set[UUID])] | None) {
     initial_fs: (frozenset | None) = self.__dict__.get('_initial_edge_ids');
     if initial_fs is None {
         return None;
@@ -196,7 +196,7 @@ impl NodeAnchor.edge_delta -> (tuple[(set[UUID], set[UUID])] | None) {
     return (current - initial, initial - current);
 }
 
-impl EdgeAnchor.__getstate__ -> dict[(str, object)] {
+impl EdgeAnchor.__getstate__(self: EdgeAnchor) -> dict[(str, object)] {
     state = super.__getstate__();
     if self.is_populated() {
         state.update(
@@ -210,7 +210,7 @@ impl EdgeAnchor.__getstate__ -> dict[(str, object)] {
     return state;
 }
 
-impl NodeAnchor.remove_edge(`edge: EdgeAnchor) -> None {
+impl NodeAnchor.remove_edge(self: NodeAnchor, `edge: EdgeAnchor) -> None {
     for (idx, ed) in enumerate(self.edges) {
         if same_anchor(ed, `edge) {
             self.edges.pop(idx);
@@ -219,7 +219,7 @@ impl NodeAnchor.remove_edge(`edge: EdgeAnchor) -> None {
     }
 }
 
-impl EdgeAnchor.detach -> None {
+impl EdgeAnchor.detach(self: EdgeAnchor) -> None {
     if self.light {
         light_disconnect(self.source, `type(self.archetype), self.target);
         return;
@@ -238,7 +238,7 @@ impl EdgeAnchor.detach -> None {
 }
 
 @cached_property
-impl Archetype.__jac__ -> Anchor {
+impl Archetype.__jac__(self: Archetype) -> Anchor {
     return Anchor(archetype=self);
 }
 
@@ -246,8 +246,7 @@ impl Archetype.__init_subclass__(cls: any, **kwargs: object) -> None {
     super.__init_subclass__(**kwargs);
     _edge_subtypes.clear();
     if not cls.__dict__.get('__jac_base__', False) {
-        import from jaclang { JacRuntimeInterface as _ }
-        _.make_archetype(cls);
+        make_archetype(cls);
         if 'drop' in cls.__dict__ {
             import from jaclang.runtime.builtin { _jac_region_instrument }
             _jac_region_instrument(cls);
@@ -305,29 +304,29 @@ impl Archetype.uninstall_subclass_hook(hook: Callable[[type], None]) -> None {
     }
 }
 
-impl Archetype.postinit -> None {}
+impl Archetype.postinit(self: Archetype) -> None {}
 
-impl Archetype.__repr__ -> str {
+impl Archetype.__repr__(self: Archetype) -> str {
     return f"{self.__class__.__name__}";
 }
 
-impl Archetype.__jac_access__ -> (AccessLevel | str | int | None) {
+impl Archetype.__jac_access__(self: Archetype) -> (AccessLevel | str | int | None) {
     return None;
 }
 
-impl GenericEdge.__repr__ -> str {
+impl GenericEdge.__repr__(self: GenericEdge) -> str {
     return f"{self.__class__.__name__}()";
 }
 
 @cached_property
-impl Root.__jac__ -> NodeAnchor {
+impl Root.__jac__(self: Root) -> NodeAnchor {
     anchor = NodeAnchor(archetype=self, edges=[]);
     anchor.persistent = True;
     anchor.ensure_id();
     return anchor;
 }
 
-impl Root.__getattr__(name: str) -> Root {
+impl Root.__getattr__(self: Root, name: str) -> Root {
     if name == 'shared' {
         import from jaclang.runtime.runtime { JacRuntime }
         import from typing { cast }
@@ -336,14 +335,14 @@ impl Root.__getattr__(name: str) -> Root {
     raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'");
 }
 
-impl Root.__repr__ -> str {
+impl Root.__repr__(self: Root) -> str {
     return f"{self.__class__.__name__}()";
 }
 
 @cached_property
-impl ObjectSpatialFunction.trigger -> (
-    type | UnionType | tuple[((type | UnionType), ...)] | None
-) {
+impl ObjectSpatialFunction.trigger(
+    self: ObjectSpatialFunction
+) -> (type | UnionType | tuple[((type | UnionType), ...)] | None) {
     if self.trigger_override is not _NO_TRIGGER {
         ty = self.trigger_override();
     } else {
@@ -369,7 +368,7 @@ impl ObjectSpatialFunction.trigger -> (
     return ty;
 }
 
-impl NodeAnchor.all_edges -> list[EdgeAnchor] {
+impl NodeAnchor.all_edges(self: NodeAnchor) -> list[EdgeAnchor] {
     out = self.out_light;
     inn = self.in_light;
     if out is None and inn is None {
@@ -401,7 +400,7 @@ impl NodeAnchor.all_edges -> list[EdgeAnchor] {
     return self.edges;
 }
 
-impl NodeAnchor.detach_light -> None {
+impl NodeAnchor.detach_light(self: NodeAnchor) -> None {
     out = self.out_light;
     if out is not None {
         for cls in `list(out.keys()) {
@@ -430,6 +429,6 @@ impl Anchor.persistent.setter(persistent: bool) -> None {
     }
 }
 
-impl NodeAnchor.has_heavy_edges -> bool {
+impl NodeAnchor.has_heavy_edges(self: NodeAnchor) -> bool {
     return bool(self.edges);
 }

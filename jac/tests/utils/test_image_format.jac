@@ -1,17 +1,11 @@
-"""Guards the hand-copied twins that keep the sealed bootstrap importable.
+# The boot-safe image codec is shared by compiler-side JIR operations and
+# sealed image loading. Exercise real containers and relocated code objects.
 
-jaclang/jac0core/sealed.py must import before any .jac module can load, so it
-re-declares the JIR container constants and re-implements the section reader
-and co_filename patcher as pure Python (see its module docstring). These tests
-pin each twin to its jir.jac / compiler.jac original so drift fails in CI
-instead of at a sealed boot. The seal build enforces the constant half of this
-at build time too (precompile_bytecode.jac seal_finalize).
-"""
 
 import marshal;
 import zlib;
 
-import from jaclang.jac0core { sealed }
+import from jaclang.compiler.driver { image as sealed }
 import from jaclang.compiler.driver.jir { patch_co_filenames_bytes }
 import from jaclang.compiler.driver.jir {
     FORMAT_VERSION,
@@ -26,7 +20,7 @@ import from jaclang.compiler.driver.jir {
     write_precompiled_jir
 }
 
-test "sealed.py container constants match jir.jac" {
+test "compiler exports the shared image wire contract" {
     assert sealed.JIR_FORMAT_VERSION == FORMAT_VERSION;
     assert sealed.HEADER_SIZE == HEADER_SIZE;
     assert sealed.SECTIONS_MAGIC == SECTIONS_MAGIC;
@@ -36,18 +30,18 @@ test "sealed.py container constants match jir.jac" {
     assert sealed.PRECOMPILE_SENTINEL == PRECOMPILE_SENTINEL;
 }
 
-test "pure-python section reader agrees with jir.jac on a real JIR" {
+test "shared section reader opens a real compiler JIR" {
     code = compile("X = 41 + 1", "<twin>", "exec");
     raw = marshal.dumps(code);
     src = zlib.compress(b"with entry { X = 42; }");
     data = write_precompiled_jir(
         raw, "twin-key", FLAG_PRECOMPILED, {SEC_DEBUG_SRC: src}
     );
-    assert sealed._read_section(data, SEC_BYTECODE) == raw;
-    assert sealed._read_section(data, SEC_DEBUG_SRC) == src;
-    assert sealed._read_section(data, 0x7E) is None;
+    assert sealed.read_section_bytes(data, SEC_BYTECODE) == raw;
+    assert sealed.read_section_bytes(data, SEC_DEBUG_SRC) == src;
+    assert sealed.read_section_bytes(data, 0x7E) is None;
     assert read_debug_source(data) == "with entry { X = 42; }";
-    assert sealed._read_section(data[:40], SEC_BYTECODE) is None;
+    assert sealed.read_section_bytes(data[:40], SEC_BYTECODE) is None;
 }
 
 """Recursive code-object equality on the fields the patchers touch or must
@@ -73,7 +67,7 @@ def _same_code(x: any, y: any) -> bool {
     return len(xs) == len(ys) and all(_same_code(a, b) for (a, b) in zip(xs, ys));
 }
 
-test "co_filename patcher twins are exact inverses" {
+test "code filenames rebase recursively and round trip" {
     import types;
     py_src = "def f():\n    def g():\n        return 1\n    return g\n";
     code = compile(py_src, "/repo/pkg/mod.jac", "exec");
@@ -90,7 +84,7 @@ test "co_filename patcher twins are exact inverses" {
     ];
     assert nested
         and all(c.co_filename == f"{PRECOMPILE_SENTINEL}/mod.jac" for c in nested);
-    back = sealed._patch_code_filenames(
+    back = sealed.patch_code_filenames(
         sentinel_code, PRECOMPILE_SENTINEL, "/repo/pkg"
     );
     assert _same_code(back, code);
@@ -132,6 +126,11 @@ test "register_image hash-verifies its JIRs (fail-closed)" {
         );
         img = sealed.register_image(pre);
         assert img is not None;
+        code = img.code("sealed_twin_test_pkg.mod");
+        assert code is not None;
+        namespace: dict = {};
+        exec(code, namespace);
+        assert namespace["Y"] == 1;
         sealed._images.remove(img);
 
         (jdir / "mod.jir").write_bytes(data + b"tampered");
@@ -140,5 +139,61 @@ test "register_image hash-verifies its JIRs (fail-closed)" {
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "compiler images execute without invoking the compiler or seed transpiler" {
+    import hashlib;
+    import importlib.util;
+    import tempfile;
+    import types;
+    import from pathlib { Path }
+    import from unittest.mock { patch }
+    import from jaclang.meta_importer { JacMetaImporter }
+    import from jaclang.runtime.runtime { JacRuntime }
+
+    with tempfile.TemporaryDirectory() as work {
+        pre = Path(work) / "_precompiled";
+        jdir = pre / sealed.python_tag();
+        jdir.mkdir(parents=True);
+        fullname = "jaclang._compiled_image_probe";
+        data = write_precompiled_jir(
+            marshal.dumps(compile("answer = 42", "__PKG_ROOT__/probe.jac", "exec")),
+            "image-probe",
+            FLAG_PRECOMPILED
+        );
+        (jdir / "probe.jir").write_bytes(data);
+        img = sealed.SealedImage(pre, {
+            "package": "jaclang",
+            "python_tag": sealed.python_tag(),
+            "modules": {
+                "probe.jac": {
+                    "module": fullname,
+                    "jir": "probe.jir",
+                    "package": False,
+                    "sha256": hashlib.sha256(data).hexdigest()
+                }
+            }
+        });
+        img.verify();
+        sealed._images.insert(0, img);
+        try {
+            loader = JacMetaImporter();
+            module = types.ModuleType(fullname);
+            module.__spec__ = importlib.util.spec_from_loader(
+                fullname, loader, origin=img.virtual_origin("probe.jac")
+            );
+            with patch.object(
+                JacRuntime, "get_compiler", side_effect=AssertionError("compiler invoked")
+            ), patch.object(
+                loader, "_exec_seed_source", side_effect=AssertionError("seed invoked")
+            ) {
+                loader.exec_module(module);
+                assert module.answer == 42;
+                assert loader.get_code(fullname) is not None;
+            }
+        } finally {
+            sealed._images.remove(img);
+        }
     }
 }

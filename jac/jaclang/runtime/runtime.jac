@@ -5,11 +5,11 @@ import json;
 import os;
 import sys;
 import types;
-import from collections { OrderedDict, deque }
+import from collections { deque }
 import from collections.abc { Callable, Coroutine, Iterable, Mapping, Sequence }
 import from concurrent.futures { Future, ThreadPoolExecutor }
 import from contextvars { ContextVar }
-import from jaclang.runtime.object_model { field, make_object }
+import from jaclang.runtime.object_model { field }
 import from inspect { getfile }
 import from logging { getLogger }
 import from typing { TYPE_CHECKING, Literal, ParamSpec, Protocol, TypeAlias, TypeVar }

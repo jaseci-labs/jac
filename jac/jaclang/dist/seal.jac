@@ -294,7 +294,7 @@ def make_sealed_image(
 
 def vendor_jab_deps(config: any, img: Path) -> bool {
     import from jaclang.project.providers { resolve_plan, get_python_provider }
-    import from jaclang.jac0core.sealed { python_tag }
+    import from jaclang.compiler.driver.image { python_tag }
     import from jaclang.dist.jab_vendor {
         wheels_dir,
         download_wheels,

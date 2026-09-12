@@ -5,7 +5,7 @@ equivalence fixture exists. The built image's manifest must agree with the
 file exactly; an empty scope is an image with no `native` record at all.
 """
 import from jaclang.compiler.native_scope { NATIVE_SCOPE, NativeScopeEntry }
-import from jaclang.jac0core.sealed { _jaclang_image }
+import from jaclang.compiler.driver.image { _jaclang_image }
 
 def _served_by_image -> set[str] {
     image = _jaclang_image();

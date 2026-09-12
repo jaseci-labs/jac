@@ -2,7 +2,7 @@
 
 A single-file compiler that reads the Jac subset used in jac0core
 and emits equivalent Python source code. Called in-memory by
-meta_importer._exec_bootstrap() at import time — no disk I/O needed.
+meta_importer._exec_seed_source() at import time — no disk I/O needed.
 
 The object-spatial seed subset (lowered onto jaclang.jac0core.osp0, which
 reaches the same runtime statics the full compiler targets): node/edge/walker

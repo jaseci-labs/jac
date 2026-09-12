@@ -612,45 +612,8 @@ impl JacPersistence.object_ref(`obj: Archetype) -> str {
 }
 
 impl JacArchetype.make_archetype(cls: type[Archetype]) -> type[Archetype] {
-    entries: OrderedDict[(str, ObjectSpatialFunction)] = OrderedDict(
-        (fn.name, fn) for fn in cls._jac_entry_funcs_
-    );
-    exits: OrderedDict[(str, ObjectSpatialFunction)] = OrderedDict(
-        (fn.name, fn) for fn in cls._jac_exit_funcs_
-    );
-    for func in cls.__dict__.values() {
-        if callable(func) and (func?.__jac_entry or func?.__jac_exit) {
-            dsfunc = JacRuntimeInterface.DSFunc(
-                func.__name__, func, func.__jac_trigger__
-            )
-                if func?.__jac_trigger__
-                else JacRuntimeInterface.DSFunc(func.__name__, func);
-            if func?.__jac_entry {
-                entries[func.__name__] = dsfunc;
-            }
-            if func?.__jac_exit {
-                exits[func.__name__] = dsfunc;
-            }
-        }
-    }
-    cls._jac_entry_funcs_ = [*entries.values()];
-    cls._jac_exit_funcs_ = [*exits.values()];
-    if issubclass(cls, WalkerArchetype)
-        and 'reports' not in cls.__dict__.get('__annotations__', {}) {
-        if not hasattr(cls, '__annotations__') {
-            cls.__annotations__ = {};
-        }
-        cls.__annotations__['reports'] = list;
-        setattr(
-            cls,
-            'reports',
-            field(default_factory=`list, init=False, repr=False, compare=False)
-        );
-    }
-    if cls.__dict__.get('__annotations__') and not cls.__doc__ {
-        cls.__doc__ = cls.__name__;
-    }
-    return make_object(cls);
+    import from jaclang.runtime.archetype { make_archetype }
+    return make_archetype(cls);
 }
 
 impl JacModule.impl_patch_filename(

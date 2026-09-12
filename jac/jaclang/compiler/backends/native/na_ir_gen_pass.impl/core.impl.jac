@@ -896,7 +896,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
             and (_wl_os2.sep + "na_stdlib" + _wl_os2.sep) not in _wl_abs;
         if _wl_jac_internal {
             try {
-                import from jaclang.jac0core { sealed as _wl_sealed }
+                import from jaclang.compiler.driver { image as _wl_sealed }
                 _wl_internal = _wl_sealed._jaclang_image() is not None;
             } except Exception {
                 _wl_internal = False;

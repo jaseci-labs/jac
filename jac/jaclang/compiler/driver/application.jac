@@ -205,7 +205,7 @@ def _prepare_sealed(
         runtime_sources,
         package_sources
     }
-    import from jaclang.jac0core.sealed { image_for_bundle_dir, register_image }
+    import from jaclang.compiler.driver.image { image_for_bundle_dir, register_image }
     bundle_dir = Path(image_root) / '_precompiled';
     image = image_for_bundle_dir(bundle_dir) or register_image(bundle_dir);
     if image is None {
