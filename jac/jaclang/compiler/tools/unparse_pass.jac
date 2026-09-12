@@ -1,10 +1,12 @@
 import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.frontend.unitree { fstring_escape_interior }
 import from jaclang.compiler.passes { UniPass }
 import from jaclang.compiler.frontend.constant { OwnershipKind, is_mut_kind }
 import from jaclang.compiler.frontend.roles { BodyRole }
 
 walker UnparsePass(UniPass) {
     def _comma_sep(nodes: Sequence[uni.UniNode]) -> str;
+    def _call_target_needs_parens(target: uni.Expr) -> bool;
     can unparse_prepare_exit with uni.UniNode exit;
     can unparse_default_exit with uni.UniNode exit;
     can exit_token with uni.Token exit;

@@ -1427,7 +1427,10 @@ impl NaIRGenPass._codegen_synthetic_call(
 
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     import from jaclang.compiler.intrinsic_registry { INTRINSIC_REGISTRY }
-    import from jaclang.compiler.symbol_utils { erased_identity_call_arg }
+    import from jaclang.compiler.symbol_utils {
+        erased_identity_call_arg,
+        qualified_builtin_name
+    }
     import from jaclang.compiler.field_semantics {
         field_initialization,
         is_field_marker
@@ -1461,7 +1464,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
     func_name: str | None = None;
     _mod_qual: (str | None) = None;
-    if _call_kind == "method" {
+    _qualified_builtin = qualified_builtin_name(nd.target);
+    if _qualified_builtin is not None {
+        func_name = _qualified_builtin;
+        _call_kind = "builtin";
+    } elif _call_kind == "method" {
         _mod_fn = self._native_module_call_target(nd);
         if _mod_fn is None {
             return self._codegen_method_call(nd);

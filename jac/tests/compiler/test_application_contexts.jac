@@ -59,9 +59,9 @@ test "a sealed entry loads without a package initializer" {
         helper_path = str(Path(td) / 'helper.jac');
         Path(helper_path).write_text('');
         app = PreparedApplication(td, path);
-        app.code[path] = builtins.compile('values = []', path, 'exec');
+        app.code[path] = builtins.compile('values = []', path, 'exec', 0);
         app.code[helper_path] = builtins.compile(
-            'from .main import values', helper_path, 'exec'
+            'from .main import values', helper_path, 'exec', 0
         );
         name = 'prepared_namespace_fixture';
         info = {'module': name + '.main'};
@@ -112,13 +112,14 @@ test "prepared app imports cannot share mutable module state" {
                     ('from . import b\n' if name == 'a' else '')
                         + 'from helper import values\nvalues.append(__name__)\n',
                     path,
-                    'exec'
+                    'exec',
+                    0
                 );
-                app.code[helper] = builtins.compile('values = []\n', helper, 'exec');
+                app.code[helper] = builtins.compile('values = []\n', helper, 'exec', 0);
                 initializer = str(base / '__init__.jac');
                 Path(initializer).write_text('');
                 app.code[initializer] = builtins.compile(
-                    'initialized = True\n', initializer, 'exec'
+                    'initialized = True\n', initializer, 'exec', 0
                 );
                 applications.append(app);
                 names.append(application_namespace(app));

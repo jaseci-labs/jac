@@ -319,17 +319,9 @@ impl DocIRGenPass.exit_special_var_ref with uni.SpecialVarRef exit {
 }
 
 impl DocIRGenPass.exit_string with uni.String exit {
-    is_escaped_curly = (
-        (here.lit_value in ['{', '}'])
-        and here.parent
-        and isinstance(here.parent, uni.FString)
-    );
-    if is_escaped_curly {
-        here.gen.doc_ir = self.concat(
-            [
-                self.text(here.value, source_token=here),
-                self.text(here.value, source_token=here)
-            ]
+    if here.parent and isinstance(here.parent, uni.FString) {
+        here.gen.doc_ir = self.text(
+            fstring_escape_interior(here.value), source_token=here
         );
         return;
     }
