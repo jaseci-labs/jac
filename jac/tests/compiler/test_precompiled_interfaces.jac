@@ -89,6 +89,13 @@ test "an installed precompiled interface resolves paths without rebuilding its s
             returned = function.return_type;
             assert isinstance(returned, ClassType);
             assert returned.shared.same_class(box.shared);
+            program.compile(path, options=program.options.for_symbols(need_tree=True));
+            reloaded = JacProgram().iface_registry();
+            cached = reloaded.ensure(path, compile_on_miss=False);
+            assert cached is not None , "local persistence lost the installed interface";
+            assert reloaded._materialize(cached).loc.mod_path == path , (
+                "persisting a reused interface lost its relocation metadata"
+            );
             code = program.get_bytecode(path);
             assert code is not None and code.co_filename == path;
             import from jaclang.compiler.placement.placement { summary_store }
