@@ -1128,7 +1128,7 @@ obj PySlice(PyObj) {
         fields: list[PyObj] = [self.start, self.stop, self.step];
         other_fields: list[PyObj] = [os.start, os.stop, os.step];
         for i in range(len(fields)) {
-            eq = PyObject_RichCompare(fields[i], other_fields[i], Py_EQ);
+            eq = py_rich_compare(fields[i], other_fields[i], Py_EQ);
             if is_error(eq) {
                 return eq;
             }
@@ -1225,9 +1225,9 @@ obj PyTuple(PyObj) {
         wlen = len(w.items);
         i = 0;
         while i < vlen and i < wlen {
-            k = PyObject_RichCompareBool(self.items[i], w.items[i], Py_EQ);
+            k = py_rich_compare_bool(self.items[i], w.items[i], Py_EQ);
             if k < 0 {
-                return PyObject_RichCompare(self.items[i], w.items[i], Py_EQ);
+                return py_rich_compare(self.items[i], w.items[i], Py_EQ);
             }
             if k == 0 {
                 break;
@@ -1243,7 +1243,7 @@ obj PyTuple(PyObj) {
         if kind == Py_NE {
             return PyBool(t="bool", val=True);
         }
-        return PyObject_RichCompare(self.items[i], w.items[i], kind);
+        return py_rich_compare(self.items[i], w.items[i], kind);
     }
 }
 
@@ -1566,7 +1566,7 @@ obj PyList(PyObj) {
                 i = i + 1;
                 continue;
             }
-            keq = PyObject_RichCompare(vitem, witem, Py_EQ);
+            keq = py_rich_compare(vitem, witem, Py_EQ);
             if is_error(keq) {
                 return keq;
             }
@@ -1586,7 +1586,7 @@ obj PyList(PyObj) {
         if kind == Py_NE {
             return PyBool(t="bool", val=True);
         }
-        return PyObject_RichCompare(self.items[i], w.items[i], kind);
+        return py_rich_compare(self.items[i], w.items[i], kind);
     }
 
     def tp_bool -> bool {
@@ -1949,7 +1949,7 @@ def _dict_find_entry(d: PyDict, key: PyObj) -> PyObj {
         if hashkey_str(skr) != hk {
             continue;
         }
-        eq = PyObject_RichCompare(key, stored, Py_EQ);
+        eq = py_rich_compare(key, stored, Py_EQ);
         if is_error(eq) {
             return eq;
         }
@@ -1998,7 +1998,7 @@ def _set_find_entry(s: PySet, member: PyObj) -> PyObj {
         if hashkey_str(skr) != hk {
             continue;
         }
-        eq = PyObject_RichCompare(member, stored, Py_EQ);
+        eq = py_rich_compare(member, stored, Py_EQ);
         if is_error(eq) {
             return eq;
         }
@@ -2154,7 +2154,7 @@ obj PyDict(PyObj) {
             bsk = expect_str(bfound);
             bv = b.items[bsk].value;
             if av is not bv {
-                veq = PyObject_RichCompare(av, bv, Py_EQ);
+                veq = py_rich_compare(av, bv, Py_EQ);
                 if is_error(veq) {
                     return veq;
                 }
@@ -2498,7 +2498,7 @@ def _richcompare_truth(res: PyObj) -> int {
 # slot raises the standard TypeError. Lives on the leaf so container
 # tp_richcompare slots below can run element comparisons through the same
 # protocol -- user dunders ride along via PyUserObj.tp_richcompare.
-def PyObject_RichCompare(v: PyObj, w: PyObj, op: int) -> PyObj {
+def py_rich_compare(v: PyObj, w: PyObj, op: int) -> PyObj {
     res = v.tp_richcompare(op, w);
     if is_error(res) {
         return res;
@@ -2557,7 +2557,7 @@ def py_ordering_type_error(
 }
 
 # Integer tri-state: 1 true, 0 false, -1 error (matches C API).
-def PyObject_RichCompareBool(v: PyObj, w: PyObj, op: int) -> int {
+def py_rich_compare_bool(v: PyObj, w: PyObj, op: int) -> int {
     if v is w {
         if op == Py_EQ {
             return 1;
@@ -2566,7 +2566,7 @@ def PyObject_RichCompareBool(v: PyObj, w: PyObj, op: int) -> int {
             return 0;
         }
     }
-    res = PyObject_RichCompare(v, w, op);
+    res = py_rich_compare(v, w, op);
     return _richcompare_truth(res);
 }
 
