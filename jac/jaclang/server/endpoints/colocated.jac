@@ -61,7 +61,6 @@ def _outcome(result: any, fallback: str) -> TransportResponse {
         return TransportResponse.fail(
             code=str(result.get('error_code') or 'EXECUTION_ERROR').upper(),
             message=result.get('error', fallback),
-            details=result.get('traceback') if 'traceback' in result else None,
             meta=Meta(extra={'http_status': int(result.get('http_status') or 500)})
         );
     }
