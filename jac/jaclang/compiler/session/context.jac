@@ -53,6 +53,18 @@ def active_program -> AnalysisServices | None {
 }
 
 
+@contextmanager
+def compilation_scope(
+    identity: str,
+    options: CompileOptions | None = None,
+    program: AnalysisServices | None = None
+) -> Iterator[None] {
+    import from jaclang.compiler.session.workspace { workspace_scope }
+    with cache_scope(identity, options, program), workspace_scope() {
+        yield ;
+    }
+}
+
 def cache_identity -> str {
     return _cache_context.get();
 }

@@ -130,14 +130,14 @@ impl JacCompiler.get_bytecode(
     import from jaclang.compiler.session.context {
         bind_options,
         context_program,
-        cache_scope
+        compilation_scope
     }
     actual = self.selfhost.resolve(full_target, target_program);
     if not self.selfhost.is_selfhost(actual) {
         options = bind_options(full_target, actual, actual.options);
         actual = context_program(actual, options);
     }
-    with cache_scope(
+    with compilation_scope(
         '' if self.selfhost.is_selfhost(actual) else actual.context_key,
         actual.options,
         actual
@@ -705,11 +705,11 @@ impl JacCompiler.compile(
     }
     context_errors = len(target_program.errors_had);
     context_warnings = len(target_program.warnings_had);
-    import from jaclang.compiler.session.context { cache_scope }
+    import from jaclang.compiler.session.context { compilation_scope }
     identity = ''
         if self.selfhost.is_selfhost(target_program)
         else target_program.context_key;
-    with cache_scope(identity, options, target_program) {
+    with compilation_scope(identity, options, target_program) {
         import from jaclang.compiler.bootstrap.native_scope {
             activate_scope_lowering,
             deactivate_scope_lowering,
@@ -1432,14 +1432,14 @@ impl JacCompiler.get_client_artifact(
     import from jaclang.compiler.session.context {
         bind_options,
         context_program,
-        cache_scope
+        compilation_scope
     }
     actual = self.selfhost.resolve(full_target, target_program);
     if not self.selfhost.is_selfhost(actual) {
         options = bind_options(full_target, actual, actual.options);
         actual = context_program(actual, options);
     }
-    with cache_scope(
+    with compilation_scope(
         '' if self.selfhost.is_selfhost(actual) else actual.context_key,
         actual.options,
         actual

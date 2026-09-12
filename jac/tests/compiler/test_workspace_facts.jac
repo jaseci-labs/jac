@@ -39,6 +39,70 @@ test "only declared entries have a filesystem app identity" {
     }
 }
 
+test "workspace probes scale with modules within a compilation request" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.session.context { compilation_scope, context_app }
+    with TemporaryDirectory() as td {
+        base = Path(td);
+        workspace(base);
+        path = str(base / 'shared.jac');
+        options = CompileOptions(project_root=td, target_app='web');
+        with compilation_scope('web', options) {
+            with patch('os.lstat', wraps=os.lstat) as probe {
+                app = context_app(path);
+                assert app is not None and app.name == 'web';
+                first = probe.call_count;
+                for i in range(40) {
+                    assert context_app(path) is app;
+                }
+                assert probe.call_count == first , (
+                    f'repeated module facts made {probe.call_count
+                        - first} extra filesystem probes'
+                );
+            }
+            with compilation_scope(
+                'api', CompileOptions(project_root=td, target_app='api')
+            ) {
+                other = context_app(path);
+                assert other is not None and other.name == 'api';
+            }
+            assert context_app(path) is app;
+        }
+        toml = base / 'jac.toml';
+        stamp = os.path.getmtime(toml) + 2.0;
+        toml.write_text(CONFIG.replace('web-app', 'desktop'));
+        os.utime(toml, (stamp, stamp));
+        with compilation_scope('web', options) {
+            refreshed = context_app(path);
+            assert refreshed is not None and refreshed.kind == 'desktop' , (
+                f'workspace edit was not observed: {refreshed}'
+            );
+        }
+    }
+}
+
+test "application identity scopes observe workspace edits between requests" {
+    import from jaclang.compiler.session.context { context_app }
+    with TemporaryDirectory() as td {
+        base = Path(td);
+        workspace(base);
+        path = str(base / 'shared.jac');
+        options = CompileOptions(project_root=td, target_app='web');
+        with cache_scope('web', options) {
+            first = context_app(path);
+            assert first is not None and first.kind == 'web-app';
+            toml = base / 'jac.toml';
+            stamp = os.path.getmtime(toml) + 2.0;
+            toml.write_text(CONFIG.replace('web-app', 'desktop'));
+            os.utime(toml, (stamp, stamp));
+            refreshed = context_app(path);
+            assert refreshed is not None and refreshed.kind == 'desktop' , (
+                'an application identity scope must not retain old workspace facts'
+            );
+        }
+    }
+}
+
 test "a normal import inherits its app and an entry import changes context" {
     with TemporaryDirectory() as td {
         base = Path(td);

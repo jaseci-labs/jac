@@ -318,24 +318,27 @@ obj IfaceRegistry(CatalogResolver) {
     }
 
     @contextmanager
-    def _cache_scope -> Iterator[None] {
-        import from jaclang.compiler.session.context { cache_scope, context_identity }
+    def _compilation_scope -> Iterator[None] {
+        import from jaclang.compiler.session.context {
+            compilation_scope,
+            context_identity
+        }
         identity = ''
             if self.prog.is_bootstrap()
             else self.prog.context_key or context_identity(self.prog.options);
-        with cache_scope(identity, self.prog.options, self.prog) {
+        with compilation_scope(identity, self.prog.options, self.prog) {
             yield ;
         }
     }
 
     def _module_jir(resolved: str) -> tuple[bytes, str] | None {
-        with self._cache_scope() {
+        with self._compilation_scope() {
             return self._module_jir_in_context(resolved);
         }
     }
 
     def ensure(path: str, compile_on_miss: bool = True) -> IfaceEntry | None {
-        with self._cache_scope() {
+        with self._compilation_scope() {
             return self._ensure_in_context(path, compile_on_miss);
         }
     }
@@ -343,7 +346,7 @@ obj IfaceRegistry(CatalogResolver) {
     def serve(
         compiler: JacCompiler, resolved: str, options: CompileOptions
     ) -> Module | None {
-        with self._cache_scope() {
+        with self._compilation_scope() {
             return self._serve_in_context(compiler, resolved, options);
         }
     }
@@ -355,7 +358,7 @@ obj IfaceRegistry(CatalogResolver) {
         err_start: int,
         warn_start: int
     ) {
-        with self._cache_scope() {
+        with self._compilation_scope() {
             self._persist_in_context(resolved, mod, options, err_start, warn_start);
         }
     }
@@ -1118,7 +1121,7 @@ obj IfaceRegistry(CatalogResolver) {
     }
 
     def interface_is_current(path: str) -> bool {
-        with self._cache_scope() {
+        with self._compilation_scope() {
             memo = self._interfaces.get(path);
             return memo is not None and memo.cache_key == module_cache_key(path);
         }
@@ -1138,7 +1141,7 @@ obj IfaceRegistry(CatalogResolver) {
 
     def publish_interface(path: str, encoded: bytes) {
         import from jaclang.compiler.session.cache.interface_codec { read_iface_hash }
-        with self._cache_scope() {
+        with self._compilation_scope() {
             self._incoherent.discard(path);
             self._interfaces[path] = InterfaceSnapshot(
                 cache_key=module_cache_key(path),
