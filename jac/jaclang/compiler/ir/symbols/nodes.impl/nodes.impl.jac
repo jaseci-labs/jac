@@ -320,9 +320,12 @@ impl UniScopeNode.adopt_primary(sym: Symbol, alias: str = "") -> None {
 impl UniScopeNode._drop_primary(key: str) -> None {
     self.changed_relations(RelationFamily.BINDING);
     import from jaclang.compiler.ir.symbols.edges { ScopePrimary }
-    for binding in [self->:ScopePrimary:->] {
-        if binding.spelling == key {
-            del [edge self->:ScopePrimary:->binding];
+    edges = [edge self->:ScopePrimary:->];
+    bindings = [self->:ScopePrimary:->];
+    for i in range(len(bindings)) {
+        if bindings[i].spelling == key {
+            edge_to_drop = edges[i];
+            del edge_to_drop;
         }
     }
     self.primary_revision += 1;
