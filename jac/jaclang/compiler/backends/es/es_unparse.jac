@@ -21,6 +21,7 @@ obj JSCodeGenerator {
     def gen_for_of_statement(nd: es.ForOfStatement) -> str;
     def gen_break_statement(nd: es.BreakStatement) -> str;
     def gen_continue_statement(nd: es.ContinueStatement) -> str;
+    def gen_labeled_statement(nd: es.LabeledStatement) -> str;
     def gen_throw_statement(nd: es.ThrowStatement) -> str;
     def gen_try_statement(nd: es.TryStatement) -> str;
     def gen_catch_clause(nd: es.CatchClause) -> str;

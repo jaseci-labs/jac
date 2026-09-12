@@ -74,6 +74,12 @@ obj ContinueStatement(Node) {
         `type: TypingLiteral['ContinueStatement'] = 'ContinueStatement';
 }
 
+obj LabeledStatement(Node) {
+    has label: Identifier,
+        body: Statement,
+        `type: TypingLiteral['LabeledStatement'] = 'LabeledStatement';
+}
+
 obj IfStatement(Node) {
     has `test: (Expression | None) = None,
         consequent: (Statement | None) = None,
@@ -457,6 +463,7 @@ glob Statement = ExpressionStatement
          | WhileStatement
          | ForStatement
          | ForOfStatement
+         | LabeledStatement
          | FunctionDeclaration
          | VariableDeclaration
          | ClassDeclaration,

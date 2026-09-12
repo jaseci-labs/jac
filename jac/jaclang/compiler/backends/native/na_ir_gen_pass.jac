@@ -1864,6 +1864,18 @@ walker NaIRGenPass(Transform) {
     ) -> tuple[(ir.Value, ir.Value)];
 
     def _codegen_body(stmts: Sequence[uni.UniNode]) -> None;
+    def _loop_exit_blocks(
+        func: ir.Function,
+        nd: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt),
+        prefix: str
+    ) -> tuple;
+
+    def _emit_loop_else(
+        nd: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt),
+        else_bb: (ir.Block | None),
+        end_bb: ir.Block
+    ) -> None;
+
     def _codegen_stmt(nd: uni.UniNode) -> None;
     def _codegen_return(nd: uni.ReturnStmt) -> None;
     def _codegen_delete(nd: uni.DeleteStmt) -> None;

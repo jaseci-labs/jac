@@ -255,6 +255,9 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         _view_acc_high: dict[(str, int)] = {},
         _view_branch_base: dict[(int, int)] = {},
         _view_slot_loops: set[int] = set(),
+        _loop_label_stack: list[(str | None)] = [],
+        _used_loop_labels: set[str] = set(),
+        _loop_label_seq: int = 0,
         sv_import_stubs: list[es.Statement] = [],
         na_import_stubs: list[es.Statement] = [],
         needs_jac_runtime: bool = False,
@@ -487,6 +490,8 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
 
     def _view_open_loop_acc(nd: uni.UniNode) -> None;
     def _view_loop_stmt(nd: uni.UniNode, loop_stmt: es.Statement) -> es.Statement;
+    def _push_loop_label(nd: uni.UniNode) -> None;
+    def _finish_loop(nd: uni.UniNode, loop_stmt: es.Statement) -> es.Statement;
     def _view_chain_open(nd: uni.UniNode) -> None;
     def _view_chain_arm(nd: uni.UniNode) -> None;
     def _view_chain_close(nd: uni.UniNode) -> None;

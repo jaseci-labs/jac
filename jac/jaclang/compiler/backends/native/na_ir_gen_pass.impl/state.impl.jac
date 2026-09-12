@@ -57,3 +57,35 @@ impl NaIRGenPass.jacval_type.getter -> ir.IdentifiedStructType {
     }
     return self._jacval_type;
 }
+
+impl NaIRGenPass._loop_exit_blocks(
+    func: ir.Function,
+    nd: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt),
+    prefix: str
+) -> tuple {
+    else_bb = (
+        func.append_basic_block(name=f"{prefix}.else")
+            if nd.else_body is not None
+            else None
+    );
+    end_bb = func.append_basic_block(name=f"{prefix}.end");
+    return (else_bb, end_bb);
+}
+
+impl NaIRGenPass._emit_loop_else(
+    nd: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt),
+    else_bb: (ir.Block | None),
+    end_bb: ir.Block
+) -> None {
+    if else_bb is not None {
+        self.builder.position_at_end(else_bb);
+        loop_else = nd.else_body;
+        if loop_else is not None and isinstance(loop_else.body, (list, tuple)) {
+            self._codegen_body(loop_else.body);
+        }
+        if not self.builder.block.is_terminated {
+            self.builder.branch(end_bb);
+        }
+    }
+    self.builder.position_at_end(end_bb);
+}

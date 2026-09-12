@@ -571,6 +571,10 @@ impl JSCodeGenerator.gen_break_statement(nd: es.BreakStatement) -> str {
     return f"{self.indent()}break;";
 }
 
+impl JSCodeGenerator.gen_labeled_statement(nd: es.LabeledStatement) -> str {
+    return f"{self.indent()}{self.generate(nd.label)}: {self.generate(nd.body)}";
+}
+
 impl JSCodeGenerator.gen_for_of_statement(nd: es.ForOfStatement) -> str {
     await_str = 'await ' if nd.await_ else '';
     if isinstance(nd.left, es.VariableDeclaration) {
