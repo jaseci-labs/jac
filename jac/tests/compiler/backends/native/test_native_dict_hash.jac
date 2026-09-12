@@ -63,6 +63,12 @@ test "dict popitem drains in LIFO order" {
     assert f() == 0;
 }
 
+test "dict order survives bounded tombstone churn and sparse rehash" {
+    (eng, _) = compile_native(PROG);
+    f = get_func(eng, "order_after_churn", ctypes.c_int64);
+    assert f() == 0;
+}
+
 test "dict f64 keys hash and compare" {
     (eng, _) = compile_native(PROG);
     f = get_func(eng, "f64_keys", ctypes.c_int64);

@@ -1013,25 +1013,19 @@ walker NaIRGenPass(Transform) {
         key_size: int = 0
     ) -> None;
 
-    def _emit_dict_order_compact(
-        b: ir.IRBuilder,
-        fn: ir.Function,
-        d_ptr: ir.Value,
-        removed_slot: ir.Value,
-        new_len: ir.Value,
-        i32: ir.Type,
-        i64: ir.Type,
-        order_idx: int
-    ) -> ir.IRBuilder;
-
-    def _emit_order_scan_incr_block(
-        b: ir.IRBuilder,
-        idx_slot: ir.Value,
-        i_cur: ir.Value,
-        i64: ir.Type,
-        fn: ir.Function,
-        scan_bb: ir.Block
-    ) -> ir.Block;
+    def _hash_order_extent_ptr(
+        b: ir.IRBuilder, order: ir.Value, capacity: ir.Value
+    ) -> ir.Value;
+    def _hash_order_position_ptr(
+        b: ir.IRBuilder, order: ir.Value, capacity: ir.Value, slot: ir.Value
+    ) -> ir.Value;
+    def _hash_order_alloc(b: ir.IRBuilder, capacity: ir.Value) -> ir.Value;
+    def _emit_hash_order_compact_fn(
+        name: str, container_type: ir.Type, layout: dict
+    ) -> ir.Function;
+    def _emit_hash_order_remove_fn(
+        name: str, container_type: ir.Type, layout: dict
+    ) -> ir.Function;
 
     def _box_to_jacval(value: ir.Value) -> ir.Value;
     def _unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value;

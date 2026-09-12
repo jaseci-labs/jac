@@ -994,9 +994,9 @@ impl NaIRGenPass._emit_rc_alloc_container(
                 name="used.ptr"
             )
         );
-        _ord0 = b.call(malloc_fn, [ir.Constant(i64, initial_cap * 8)], name="order0");
+        _ord0 = self._hash_order_alloc(b, ir.Constant(i64, initial_cap));
         b.store(
-            b.bitcast(_ord0, i64.as_pointer(), name="order0.p"),
+            _ord0,
             b.gep(
                 container_ptr,
                 [ir.Constant(i32, 0), ir.Constant(i32, layout["order_idx"])],

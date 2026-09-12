@@ -65,6 +65,22 @@ faster together. Total build ranges overlap (3.423–4.193 s baseline,
 3.340–4.145 s new), so the end-to-end figure is a local measurement rather than a
 guaranteed speedup. Both generated executables completed an automatic game.
 
+## Native hash containers
+
+Dictionaries and sets share `backends/native/na_ir_gen_pass.impl/hash_core.impl.jac`
+and `hash_order.impl.jac`. The order allocation contains `capacity` hash-slot
+indices, `capacity` inverse slot-to-position indices, then one extent word.
+Deletion marks its order position as -1 and trims trailing holes. Ordered reads
+compact holes once; insertion also compacts when the order allocation fills.
+Rehashing rebuilds both indices. This makes deletion amortized constant time,
+preserves insertion order, and bounds order storage during repeated mutations.
+
+`jc_materialize` decodes this private order storage when copying native
+dictionaries. Keep its decoder synchronized with changes to this allocation;
+the container field offsets still come from the backend's ABI metadata.
+The native dictionary scaling, mutation, and materialization tests cover these
+contracts.
+
 ## Rules
 
 **Backends consume facts, they do not compute them.** Types are read from

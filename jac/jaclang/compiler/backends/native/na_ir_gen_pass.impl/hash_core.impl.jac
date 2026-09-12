@@ -61,6 +61,12 @@ impl NaIRGenPass._emit_hash_core_helpers(
     CTRL_F = layout["ctrl_idx"];
     USED_F = layout["used_idx"];
     ORDER_F = layout["order_idx"];
+    compact_order_fn = self._emit_hash_order_compact_fn(
+        f"{_pre}_order_compact_{_safe}", cont_ptr_type, layout
+    );
+    remove_order_fn = self._emit_hash_order_remove_fn(
+        f"{_pre}_order_remove_{_safe}", cont_ptr_type, layout
+    );
 
     malloc_fn = self._get_or_declare_extern("malloc", i8p, [i64]);
     calloc_fn = self._get_or_declare_extern("calloc", i8p, [i64, i64]);
@@ -247,6 +253,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
     rehash_fn.args[0].name = "cont";
     brh = ir.IRBuilder(rehash_fn.append_basic_block("entry"));
     d_rh = rehash_fn.args[0];
+    brh.call(compact_order_fn, [d_rh]);
 
     ok_a = brh.alloca(key_type, name="ok");
     ov_a = brh.alloca(val_type, name="ov") if has_vals else None;
@@ -299,9 +306,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
     }
     ncr = brh.call(calloc_fn, [new_cap, ir.Constant(i64, 1)], name="ncr");
 
-    _nord_bytes = brh.mul(new_cap, ir.Constant(i64, 8), name="nordb");
-    nordr = brh.call(malloc_fn, [_nord_bytes], name="nordr");
-    new_order = brh.bitcast(nordr, i64.as_pointer(), name="norder");
+    new_order = self._hash_order_alloc(brh, new_cap);
 
     brh.store(new_cap, cap_prh);
     brh.store(new_keys, keys_prh);
@@ -368,6 +373,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
     cl_d = brd.load(len_prh, name="cl");
 
     brd.store(rsl, brd.gep(new_order, [cl_d], name="nordp"));
+    brd.store(cl_d, self._hash_order_position_ptr(brd, new_order, new_cap, rsl));
     brd.store(brd.add(cl_d, ir.Constant(i64, 1), name="nl"), len_prh);
     cu_d = brd.load(used_prh, name="cu");
     brd.store(brd.add(cu_d, ir.Constant(i64, 1), name="nu"), used_prh);
@@ -375,6 +381,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
     brd.branch(rl_bb);
 
     brf = ir.IRBuilder(rf_bb);
+    brf.store(old_len, self._hash_order_extent_ptr(brf, new_order, new_cap));
     if _hl {
         brf.call(_free_hl, [brf.bitcast(old_keys, i8p, name="oki8")]);
         if has_vals {
@@ -526,7 +533,21 @@ impl NaIRGenPass._emit_hash_core_helpers(
     cl_s = bi.load(len_rp, name="cl");
     ord_ip = bi.gep(d_s, [ir.Constant(i32, 0), ir.Constant(i32, ORDER_F)], name="orp");
     ord_a = bi.load(ord_ip, name="ora");
-    bi.store(isl, bi.gep(ord_a, [cl_s], name="oslp"));
+    ord_cap = bi.load(cap_rp);
+    extent_ptr = self._hash_order_extent_ptr(bi, ord_a, ord_cap);
+    order_full = ins_fn.append_basic_block("order.full");
+    order_append = ins_fn.append_basic_block("order.append");
+    bi.cbranch(
+        bi.icmp_unsigned("==", bi.load(extent_ptr), ord_cap), order_full, order_append
+    );
+    bo_full = ir.IRBuilder(order_full);
+    bo_full.call(compact_order_fn, [d_s]);
+    bo_full.branch(order_append);
+    bi = ir.IRBuilder(order_append);
+    position = bi.load(extent_ptr);
+    bi.store(isl, bi.gep(ord_a, [position], name="oslp"));
+    bi.store(position, self._hash_order_position_ptr(bi, ord_a, ord_cap, isl));
+    bi.store(bi.add(position, ir.Constant(i64, 1)), extent_ptr);
     bi.store(bi.add(cl_s, ir.Constant(i64, 1), name="nl"), len_rp);
 
     ntb = bi.not_(was_tb, name="ntb");
@@ -621,10 +642,8 @@ impl NaIRGenPass._emit_hash_core_helpers(
     _new_len_rm: any = bdel.sub(cl_rm, ir.Constant(i64, 1), name="nl");
     bdel.store(_new_len_rm, lp_rm);
 
-    bdel2 = self._emit_dict_order_compact(
-        bdel, remove_fn, d_rm, res_rm, _new_len_rm, i32, i64, ORDER_F
-    );
-    bdel2.branch(done_rm);
+    bdel.call(remove_order_fn, [d_rm, res_rm]);
+    bdel.branch(done_rm);
     ir.IRBuilder(done_rm).ret_void();
 
     pop_fn: any = None;
@@ -686,10 +705,8 @@ impl NaIRGenPass._emit_hash_core_helpers(
         _new_len_p: any = bdp.sub(cl_p, ir.Constant(i64, 1), name="nl");
         bdp.store(_new_len_p, lp_p);
 
-        bdp2 = self._emit_dict_order_compact(
-            bdp, pop_fn, d_pop, res_p, _new_len_p, i32, i64, ORDER_F
-        );
-        bdp2.ret(v_out);
+        bdp.call(remove_order_fn, [d_pop, res_p]);
+        bdp.ret(v_out);
         bmp = ir.IRBuilder(miss_p);
         if isinstance(val_type, ir.PointerType) {
             bmp.ret(ir.Constant(val_type, None));
@@ -793,6 +810,12 @@ impl NaIRGenPass._emit_hash_core_helpers(
         ir.Constant(i64, 0),
         bdn_cl.gep(d_cl, [ir.Constant(i32, 0), ir.Constant(i32, USED_F)], name="up")
     );
+    order_cl = bdn_cl.load(
+        bdn_cl.gep(d_cl, [ir.Constant(i32, 0), ir.Constant(i32, ORDER_F)])
+    );
+    bdn_cl.store(
+        ir.Constant(i64, 0), self._hash_order_extent_ptr(bdn_cl, order_cl, cap_cl)
+    );
     bdn_cl.ret_void();
 
     _gk_op = "get_key" if has_vals else "get";
@@ -805,6 +828,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
     get_key_fn.args[1].name = "i";
     bgk = ir.IRBuilder(get_key_fn.append_basic_block("entry"));
     d_gk = get_key_fn.args[0];
+    bgk.call(compact_order_fn, [d_gk]);
     tgt_gk = get_key_fn.args[1];
     len_gk = bgk.load(
         bgk.gep(d_gk, [ir.Constant(i32, 0), ir.Constant(i32, LEN_F)], name="lp"),
@@ -896,6 +920,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
         get_val_fn.args[1].name = "i";
         bgv = ir.IRBuilder(get_val_fn.append_basic_block("entry"));
         d_gv = get_val_fn.args[0];
+        bgv.call(compact_order_fn, [d_gv]);
         tgt_gv = get_val_fn.args[1];
         len_gv = bgv.load(
             bgv.gep(d_gv, [ir.Constant(i32, 0), ir.Constant(i32, LEN_F)], name="lp"),

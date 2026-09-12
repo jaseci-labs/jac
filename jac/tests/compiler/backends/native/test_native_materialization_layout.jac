@@ -34,3 +34,29 @@ test "string fields retain their schema while foreign pointers remain opaque" {
         deactivate_scope_lowering();
     }
 }
+
+test "materialization skips deleted native dictionary entries and preserves order" {
+    import ctypes;
+    import from tests.support { compile_native }
+    activate_scope_lowering();
+    try {
+        (eng, module) = compile_native("dict_materialization.jac");
+        assert module.gen.jc_layout is not None;
+        schema = json.loads(module.gen.jc_layout)["classes"]["DictionaryOwner"][
+            "fields"
+        ]["values"]["schema"];
+        address = eng.get_function_address("copy_sparse_dictionary");
+        assert address != 0;
+        copy_dictionary = ctypes.PYFUNCTYPE(
+            ctypes.py_object, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+        )(
+            address
+        );
+        result = copy_dictionary(
+            schema["key_offset"], schema["data_offset"], schema["order_offset"]
+        );
+        assert list(result.items()) == [("one", "A"), ("three", "C"), ("five", "E")];
+    } finally {
+        deactivate_scope_lowering();
+    }
+}
