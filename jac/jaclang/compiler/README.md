@@ -91,6 +91,9 @@ non-importing readiness check remains safe during compiler bootstrapping.
 The precompiler also activates the existing stub catalog before sealing
 symbol-only selfhost units, so cross-references to conditional stub classes
 resolve through the same authority used by application analysis.
+Payload assembly builds this catalog from staged sources before precompilation
+and bootstrap finalization. Its recursion guard belongs only to catalog
+construction; interface encoding must be able to open the completed catalog.
 Sealing preserves the interface, dependency hashes,
 diagnostic profiles, and placement facts, including for bootstrap modules
 whose executable bytecode is produced by jac0. A bytecode-only cache is
