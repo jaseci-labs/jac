@@ -86,7 +86,7 @@ impl StaticAnalysisPass._check_unused_symbols(scope: UniScopeNode) -> None {
             continue;
         }
 
-        if len(sym.uses) == 0 {
+        if not self._has_genuine_read(sym) {
             self.emit(W2003, node_override=sym.decl, name=name);
         }
     }
@@ -94,6 +94,43 @@ impl StaticAnalysisPass._check_unused_symbols(scope: UniScopeNode) -> None {
     for kid in scope.kid_scope {
         self._check_unused_symbols(kid);
     }
+}
+
+impl StaticAnalysisPass._is_write_target(nd: NameAtom) -> bool {
+    cur: UniNode = nd;
+    parent = cur.parent;
+
+    for _ in range(8) {
+        if parent is None {
+            return False;
+        }
+        if isinstance(parent, Assignment) {
+            if parent.aug_op is not None {
+                return False;
+            }
+            for tgt in parent.target {
+                if tgt is cur {
+                    return True;
+                }
+            }
+            return False;
+        }
+        if not (isinstance(parent, ListVal) or isinstance(parent, TupleVal)) {
+            return False;
+        }
+        cur = parent;
+        parent = cur.parent;
+    }
+    return False;
+}
+
+impl StaticAnalysisPass._has_genuine_read(sym: Symbol) -> bool {
+    for use_nd in sym.uses {
+        if not self._is_write_target(use_nd) {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
