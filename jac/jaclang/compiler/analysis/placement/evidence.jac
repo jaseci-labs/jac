@@ -234,34 +234,6 @@ def _summary_top_element(module: uni.Module, nd: uni.UniNode) -> (uni.UniNode | 
     return cur;
 }
 
-def _element_ref_ids(module: uni.Module, elem: uni.UniNode) -> set[int] {
-    refs: set[int] = set();
-    for nm in elem.get_all_sub_nodes(uni.Name) {
-        par = nm.parent;
-        if (isinstance(par, uni.AtomTrailer) and par.is_attr and par.right is nm) {
-            continue;
-        }
-        tab = nm?.sym_tab;
-        if tab is None {
-            continue;
-        }
-        sym = tab.lookup(name=nm.value, deep=True);
-        if sym is None {
-            continue;
-        }
-        decl = sym.decl;
-        if decl is None {
-            continue;
-        }
-        top = _summary_top_element(module, decl);
-        if (top is None or top is elem) {
-            continue;
-        }
-        refs.add(id(top));
-    }
-    return refs;
-}
-
 def _escape_kind(nm: uni.Name, elem: uni.UniNode) -> str {
     prev: uni.UniNode = nm;
     cur = nm.parent;
@@ -290,45 +262,62 @@ def _escape_kind(nm: uni.Name, elem: uni.UniNode) -> str {
     return '';
 }
 
-def _element_escape_edges(
-    module: uni.Module, elem: uni.UniNode
-) -> list[tuple[int, str]] {
-    edges: list[tuple[int, str]] = [];
-    seen: set[tuple] = set();
-    for nm in elem.get_all_sub_nodes(uni.Name) {
-        par = nm.parent;
-        if (isinstance(par, uni.AtomTrailer) and par.is_attr and par.right is nm) {
-            continue;
+walker ElementReferenceScan {
+    has module: uni.Module,
+        element: uni.UniNode,
+        top_by_decl: dict[uni.UniNode, uni.UniNode | None],
+        refs: set[int] = set(),
+        escapes: list[tuple[int, str]] = [],
+        seen_escapes: set[tuple[int, str]] = set();
+
+    can reference with uni.Name entry {
+        par = here.parent;
+        if isinstance(par, uni.AtomTrailer) and par.is_attr and par.right is here {
+            return;
         }
-        tab = nm?.sym_tab;
+        tab = here?.sym_tab;
         if tab is None {
-            continue;
+            return;
         }
-        sym = tab.lookup(name=nm.value, deep=True);
+        sym = tab.lookup(name=here.value, deep=True);
         if sym is None or sym.decl is None {
-            continue;
+            return;
         }
-        top = _summary_top_element(module, sym.decl);
-        if (
-            top is None
-            or top is elem
-            or not isinstance(top, uni.Ability)
-            or top.is_method
-        ) {
-            continue;
+        decl = sym.decl;
+        if decl not in self.top_by_decl {
+            self.top_by_decl[decl] = _summary_top_element(self.module, decl);
         }
-        kind = _escape_kind(nm, elem);
+        top = self.top_by_decl[decl];
+        if top is None or top is self.element {
+            return;
+        }
+        self.refs.add(id(top));
+        if not isinstance(top, uni.Ability) or top.is_method {
+            return;
+        }
+        kind = _escape_kind(here, self.element);
         if not kind {
-            continue;
+            return;
         }
         key = (id(top), kind);
-        if key in seen {
-            continue;
+        if key not in self.seen_escapes {
+            self.seen_escapes.add(key);
+            self.escapes.append(key);
         }
-        seen.add(key);
-        edges.append((id(top), kind));
     }
-    return edges;
+}
+
+def _element_references(
+    module: uni.Module,
+    element: uni.UniNode,
+    top_by_decl: dict[uni.UniNode, uni.UniNode | None]
+) -> ElementReferenceScan {
+    scan = ElementReferenceScan(module, element, top_by_decl);
+    names = element.get_all_sub_nodes(uni.Name);
+    if names {
+        names spawn scan;
+    }
+    return scan;
 }
 
 def _element_glob_write_ids(module: uni.Module, elem: uni.UniNode) -> set[int] {
@@ -682,6 +671,7 @@ def summarize_module(module: uni.Module, with_refs: bool = True) -> PlacementSum
         index_by_id[id(stmt)] = idx;
     }
     server_anchored = bool(ps.anchors);
+    top_by_decl: dict[uni.UniNode, uni.UniNode | None] = {};
     for (idx, stmt) in enumerate(module.body) {
         if not isinstance(stmt, uni.UniNode) {
             continue;
@@ -711,7 +701,8 @@ def summarize_module(module: uni.Module, with_refs: bool = True) -> PlacementSum
                     es.reqs.append(['DOM', f"browser global '{seed_global}'"]);
                 }
             }
-            for rid in _element_ref_ids(module, stmt) {
+            references = _element_references(module, stmt, top_by_decl);
+            for rid in references.refs {
                 ridx = index_by_id.get(rid);
                 if ridx is not None {
                     es.refs.append(ridx);
@@ -725,7 +716,7 @@ def summarize_module(module: uni.Module, with_refs: bool = True) -> PlacementSum
                 }
             }
             es.glob_writes.sort();
-            for esc in _element_escape_edges(module, stmt) {
+            for esc in references.escapes {
                 eidx = index_by_id.get(esc[0]);
                 if eidx is not None {
                     es.escapes.append([eidx, esc[1]]);

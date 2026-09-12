@@ -46,6 +46,48 @@ def _compile -> tuple[JacProgram, uni.Module] {
     return (prog, mod);
 }
 
+test "placement distinguishes calls, escaping functions, shadowing and attributes" {
+    with tempfile.TemporaryDirectory(prefix="jac-placement-references-") as tmp {
+        prog = JacProgram();
+        mod = prog.compile(
+            os.path.join(tmp, "main.jac"),
+            use_str=(
+                "def target(value: int) -> int { return value; }\n"
+                "def direct -> int { return target(1); }\n"
+                "def returned -> any { return target; }\n"
+                "def assigned -> any { alias = target; return alias; }\n"
+                "def stored -> any { return [target, target]; }\n"
+                "def consume(callback: any) -> any { return callback; }\n"
+                "def passed -> any { return consume(target); }\n"
+                "def shadowed(target: int) -> int { return target; }\n"
+                "def attribute(value: any) -> any { return value.target; }\n"
+            ),
+            options=CompileOptions(
+                no_cgen=True, no_ir_cache=True, force_target_program=True
+            )
+        );
+        assert not prog.errors_had , [str(e) for e in prog.errors_had];
+        summary = placement.get_module_summary(mod, prog);
+        elements = {element.name: element for element in summary.elements};
+        target = elements['target'].index;
+        assert elements['direct'].refs == [target];
+        assert not elements['direct'].escapes;
+        for (name, kind) in (
+            ('returned', 'returned'),
+            ('assigned', 'assigned'),
+            ('stored', 'container'),
+            ('passed', 'call-arg')
+        ) {
+            assert target in elements[name].refs;
+            assert elements[name].escapes == [[target, kind]];
+        }
+        for name in ('shadowed', 'attribute') {
+            assert not elements[name].refs;
+            assert not elements[name].escapes;
+        }
+    }
+}
+
 test "unchanged and unrelated modules do not rescan the solved import graph" {
     (prog, mod) = _compile();
     solver.solve_program_placement(mod, prog);
@@ -53,7 +95,7 @@ test "unchanged and unrelated modules do not rescan the solved import graph" {
         solver, "_pull_boundary_import", wraps=solver._pull_boundary_import
     ) as pulls {
         with patch.object(
-            placement, "_element_ref_ids", wraps=placement._element_ref_ids
+            placement, "_element_references", wraps=placement._element_references
         ) as refs {
             solver.solve_program_placement(mod, prog);
             solver.solve_program_placement(mod, prog);
@@ -71,7 +113,7 @@ test "symbol refresh invalidates references while placement changes reuse them" 
     (prog, mod) = _compile();
     work = solver.placement_work(prog);
     with patch.object(
-        placement, "_element_ref_ids", wraps=placement._element_ref_ids
+        placement, "_element_references", wraps=placement._element_references
     ) as refs {
         work.refresh(mod);
         before = work.refs(mod);
