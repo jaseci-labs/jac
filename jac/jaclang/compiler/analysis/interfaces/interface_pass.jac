@@ -9,6 +9,7 @@ walker InterfaceFactsPass(ProgramTransform) {
         }
         import from jaclang.compiler.analysis.interfaces.facts { InterfaceProduct }
         import from jaclang.compiler.session.cache.artifact_codec {
+            compute_stub_module_key,
             is_compiler_tree_path,
             is_stub_like_path
         }
@@ -60,7 +61,6 @@ walker InterfaceFactsPass(ProgramTransform) {
             for module in writer.modules
             if not writer.in_boundary(module)
                 and module.loc.mod_path
-                and not is_stub_like_path(module.loc.mod_path)
                 and not is_compiler_tree_path(module.loc.mod_path)
         );
         dependencies.discard(path);
@@ -68,6 +68,17 @@ walker InterfaceFactsPass(ProgramTransform) {
         registry.building.add(path);
         try {
             for dependency in sorted(dependencies) {
+                # External class references also depend on their Python provider.
+                # Validate its content before hydration without compiling a target.
+                if is_stub_like_path(dependency) {
+                    try {
+                        digest = compute_stub_module_key(dependency);
+                    } except OSError {
+                        digest = '';
+                    }
+                    registry.direct_deps.setdefault(path, {})[dependency] = digest;
+                    continue;
+                }
                 dependency_entry = registry.ensure(dependency);
                 registry.direct_deps.setdefault(path, {})[dependency] = dependency_entry.digest
                     if dependency_entry is not None

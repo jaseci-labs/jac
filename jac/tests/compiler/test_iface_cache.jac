@@ -392,6 +392,64 @@ test "a third-party Python dependency is fingerprinted, never compiled as a targ
     }
 }
 
+test "external Python class providers invalidate interfaces when moved or edited" {
+    import sys;
+    import importlib;
+    import from jaclang.compiler.session.cache.artifact_codec {
+        compute_stub_module_key,
+        read_dep_hashes
+    }
+    with tempfile.TemporaryDirectory() as tmp {
+        site = Path(tmp) / 'old' / 'site-packages';
+        package = site / 'iface_provider';
+        package.mkdir(parents=True);
+        (package / 'py.typed').touch();
+        (package / '__init__.py').write_text('from .models import Result\n');
+        provider = package / 'models.py';
+        provider.write_text('class Result:\n    value: int\n');
+        main = str(Path(tmp) / 'main.jac');
+        Path(main).write_text(
+            'import from iface_provider { Result }\n'
+            'def value(result: Result) -> int { return result.value; }\n'
+        );
+        sys.path.insert(0, str(site));
+        try {
+            (cold, diagnostics) = _check(main);
+            assert not cold.errors_had , str(diagnostics);
+            dependencies = dict(read_dep_hashes(_cache_path(main).read_bytes()));
+            assert dependencies.get(str(provider))
+                == compute_stub_module_key(str(provider)) , (
+                f'The interface must fingerprint the re-exported class provider: {dependencies}'
+            );
+            (warm, warm_diagnostics) = _check(main);
+            assert warm.analysis.cache_events.get('analysis_replay', 0) == 1;
+            assert warm_diagnostics == diagnostics;
+
+            moved = Path(tmp) / 'new' / 'site-packages';
+            moved.parent.mkdir();
+            site.rename(moved);
+            sys.path[0] = str(moved);
+            importlib.invalidate_caches();
+            (relocated, relocated_diagnostics) = _check(main);
+            assert relocated.analysis.cache_events.get('analysis_replay', 0) == 0;
+            assert not relocated.errors_had , str(relocated_diagnostics);
+            provider = moved / 'iface_provider' / 'models.py';
+            dependencies = dict(read_dep_hashes(_cache_path(main).read_bytes()));
+            assert dependencies.get(str(provider))
+                == compute_stub_module_key(str(provider));
+
+            _rewrite(str(provider), 'class Result:\n    value: str\n');
+            (edited, edited_diagnostics) = _check(main);
+            assert edited.errors_had , (
+                f'A changed Python member type must be checked again: {edited_diagnostics}'
+            );
+        } finally {
+            sys.path.pop(0);
+            importlib.invalidate_caches();
+        }
+    }
+}
+
 test "an analysis that ended in errors is not memoized for replay" {
     (main, dep) = _project();
     _rewrite(
