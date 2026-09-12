@@ -1155,6 +1155,10 @@ impl NaIRGenPass._widened_tuple_decl_type(
 }
 
 impl NaIRGenPass._tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStructType {
+    elem_types = [
+        ir.IntType(8).as_pointer() if isinstance(t, ir.VoidType) else t
+        for t in elem_types
+    ];
     tuple_key = f"Tuple.{len(elem_types)}." + ".".join([str(x) for x in elem_types]);
     if tuple_key not in self.tuple_types {
         self.tuple_types[tuple_key] = ir.LiteralStructType(elem_types);
