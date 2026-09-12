@@ -130,6 +130,68 @@ test "a normal import inherits its app and an entry import changes context" {
     }
 }
 
+test "context identity resolves implicit defaults without merging distinct targets" {
+    import copy;
+    import from unittest.mock { patch }
+    import jaclang.compiler.session.target_options as targets;
+    import from jaclang.compiler.session.context { context_identity }
+    implicit = CompileOptions(aot_mode=True, entry_point='/tmp/context-entry.jac');
+    explicit = copy.copy(implicit);
+    explicit.default_codespace = 'native';
+    with patch.object(targets, 'effective_default_codespace', return_value='native') {
+        assert context_identity(implicit) == context_identity(explicit);
+        program = JacProgram();
+        selected = context_program(program, implicit);
+        assert context_program(program, explicit) is selected;
+        for name in (
+            'default_codespace',
+            'force_codespace',
+            'target_app',
+            'entry_point'
+        ) {
+            distinct = copy.copy(explicit);
+            setattr(distinct, name, 'client');
+            assert context_program(program, distinct) is not selected;
+        }
+    }
+    with patch.object(targets, 'effective_default_codespace', return_value='server') {
+        assert context_identity(implicit) != context_identity(explicit);
+    }
+    assert implicit.default_codespace == '';
+}
+
+test "native imports reuse the context selected by the effective project default" {
+    import from unittest.mock { patch }
+    import jaclang.compiler.session.target_options as targets;
+    import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+    with TemporaryDirectory() as td {
+        entry_path = Path(td) / 'entry.jac';
+        helper = Path(td) / 'helper.jac';
+        entry_path.write_text(
+            'import from helper { increment }\n'
+            'def answer(value: int) -> int { return increment(value); }\n'
+        );
+        helper.write_text('def increment(value: int) -> int { return value + 1; }\n');
+        program = JacProgram();
+        compiler = program._get_compiler();
+        with patch.object(
+            targets, 'effective_default_codespace', return_value='native'
+        ), patch.object(compiler, 'parse_str', wraps=compiler.parse_str) as parse {
+            module = program.compile(
+                str(entry_path),
+                options=CompileOptions(
+                    aot_mode=True, force_target_program=True, no_ir_cache=True
+                )
+            );
+            assert not program.errors_had , [str(e) for e in program.errors_had];
+            assert artifact_for(module).llvm_ir is not None;
+            assert len(program.contexts) == 1;
+            assert sum(call.args[1] == str(helper) for call in parse.call_args_list)
+                == 1;
+        }
+    }
+}
+
 test "shared syntax produces distinct app facts in either request order" {
     for names in [('web', 'api'), ('api', 'web')] {
         with TemporaryDirectory() as td {

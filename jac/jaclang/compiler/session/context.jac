@@ -129,6 +129,7 @@ def bind_options(
 }
 
 def context_identity(options: CompileOptions) -> str {
+    import from jaclang.compiler.session.target_options { effective_default_codespace }
     return hashlib.sha256(
         repr(
             (
@@ -136,7 +137,7 @@ def context_identity(options: CompileOptions) -> str {
                 options.codegen_identity(),
                 options.aot_mode,
                 options.force_codespace,
-                options.default_codespace,
+                options.default_codespace or effective_default_codespace(),
                 options.ui,
                 options.project_root,
                 options.entry_point
