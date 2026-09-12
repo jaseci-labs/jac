@@ -367,8 +367,6 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
                 }
             }
             if extra {
-                # Preserve interface hashes across installation. Only path
-                # fields are relocated by readers; literals stay untouched.
                 paths = read_jir_paths(data);
                 paths.base_dir = os.path.realpath(pkg_root);
                 extra[SEC_PATH_ROOT] = paths.to_bytes();
@@ -421,9 +419,6 @@ def precompile_context(
 def precompile_unit_context(
     jac_path: str, pkg_root: str, collect: bool = True, app: str = ""
 ) -> Iterator[JacProgram] {
-    # The registry's codec probe deliberately never imports during bootstrap.
-    # Packaging is an explicit interface consumer, including in the separate
-    # finalization process where symbol-only seed compiles cannot load it.
     import jaclang.compiler.types.type_evaluator;
     import jaclang.compiler.types.stubcat.modiface;
     import from jaclang.compiler.driver.program { JacProgram }
@@ -494,9 +489,7 @@ def _precompile_unit(
     } except Exception {}
 
     compiler = program._get_compiler();
-    # Analyze before code generation: inferred native code exports a different
-    # type flavor, and bytecode cache hits need not retain a source tree. The
-    # dependency registry produces the interface and its diagnostic profile.
+
     program.iface_registry().ensure(jac_path);
     code = compiler.get_bytecode(full_target=jac_path, target_program=program);
     if code is None {

@@ -84,7 +84,11 @@ contracts.
 ## Packaged interfaces and compilation lifetimes
 
 Precompilation requests an analysis interface through the dependency registry
-before generating bytecode through the existing pipeline. Sealing preserves the interface, dependency hashes,
+before generating bytecode through the existing pipeline. Packaging explicitly
+initializes the existing interface codec: the separate bootstrap finalization
+process does not otherwise load it during symbol-only compilation. The registry's
+non-importing readiness check remains safe during compiler bootstrapping.
+Sealing preserves the interface, dependency hashes,
 diagnostic profiles, and placement facts, including for bootstrap modules
 whose executable bytecode is produced by jac0. A bytecode-only cache is
 upgraded through `IfaceRegistry` instead of introducing a second analyzer.
@@ -92,6 +96,10 @@ Normal code generation keeps its existing interface policy.
 Loading a dependency-validated interface also seeds the registry's encoding
 memo. A consumer that needs the source tree can still run its requested
 passes without re-encoding that unchanged interface and its dependency closure.
+Include bindings own local declaration nodes and retain the original symbol's
+lazy provider. They never rebind a foreign declaration's symbol. Interface
+encoding takes an alias category from its resolved definition, keeping hashes
+stable when later imports refine that definition.
 
 JIR's `SEC_PATH_ROOT` records the build package root. The dependency,
 interface, diagnostic, and placement readers relocate path fields to the

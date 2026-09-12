@@ -1106,8 +1106,7 @@ obj CatalogWriter {
         }
         out = bytearray();
         put_uvar(out, self.sid(sym.sym_name));
-        # Import resolution can refine the definition's category after the
-        # local binding was created. Serialize that final category consistently.
+
         put_uvar(out, self.sid(str(target.sym_type.value)));
         access = ACCESS_PUBLIC;
         if sym.access.value == "private" {

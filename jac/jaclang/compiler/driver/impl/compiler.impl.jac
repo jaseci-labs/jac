@@ -54,9 +54,7 @@ impl JacCompiler.ensure_stub_catalog -> StubCatalog | None {
         found = ensure_catalog();
         self._stub_catalog = found;
     }
-    # Bootstrap can parse stubs before the catalog reader is importable. Once
-    # that reader is active, retire the bootstrap closure at a safe boundary.
-    # Per-unit release still retains stubs for compilations using the AST lens.
+
     internal = self._selfhost.peek_program() if self._selfhost is not None else None;
     if found is not None
         and internal is not None

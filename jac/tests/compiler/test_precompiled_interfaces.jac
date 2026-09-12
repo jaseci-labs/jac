@@ -192,7 +192,10 @@ with TemporaryDirectory() as directory:
     env = dict(os.environ);
     env["JAC_STUBCAT_BUILDING"] = "1";
     result = subprocess.run(
-        [sys.executable, "-c", script], env=env, capture_output=True, text=True,
+        [sys.executable, "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
         timeout=600
     );
     assert result.returncode == 0 , result.stdout + result.stderr;

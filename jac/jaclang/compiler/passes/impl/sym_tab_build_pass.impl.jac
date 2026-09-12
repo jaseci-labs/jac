@@ -129,8 +129,7 @@ impl SymTabBuildPass._import_absorbed_symbol(
     if symbol.access == SymbolAccess.PRIVATE {
         return;
     }
-    # A binding belongs to the importing scope. Inserting the foreign Name
-    # directly would rebind its .sym and corrupt every other importer's aliases.
+
     declaration = Name.gen_stub_from_node(
         symbol.decl, symbol.sym_name, set_name_of=symbol.decl.name_of
     );

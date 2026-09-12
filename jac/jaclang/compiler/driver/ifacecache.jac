@@ -380,9 +380,6 @@ obj IfaceRegistry {
         if remember {
             self.entries[resolved] = ent;
             if section is not None {
-                # Dependency validation has established that these bytes still
-                # describe the module. Tree consumers may need to parse it,
-                # but must not force and serialize its public types again.
                 try {
                     self._iface_bytes[resolved] = EncodedInterface(
                         module_cache_key(resolved), section, digest, paths
@@ -955,9 +952,7 @@ obj IfaceRegistry {
         }
         if payload is not None {
             sections[SEC_IFACE] = payload;
-            # Reused sealed bytes can still name the original build root.
-            # Carry their relocation map into the local cache; a fresh encoding
-            # clears any map left by a previous sealed payload.
+
             sections[SEC_PATH_ROOT] = memo.paths.to_bytes()
                 if memo is not None and memo.paths is not None
                 else b"";
