@@ -70,6 +70,7 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
                 and len(_members) == 1
                 and _mlow is not None
                 and not isinstance(_mlow, ir.VoidType)
+                and _mlow != self.jacval_type
             ) {
                 lowered = self._jac_optional_type(_mlow);
             } else {
@@ -2134,14 +2135,63 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
 
     _opt_tgt = self._opt_payload_of(target_type);
     if _opt_tgt is not None {
+        _source_payload_type = self._opt_payload_of(val.type);
+        if _source_payload_type is not None {
+            _source_tag = self.builder.extract_value(val, 0, name="opt.cast.tag");
+            _source_present = self.builder.icmp_unsigned(
+                "!=", _source_tag, ir.Constant(ir.IntType(8), 0), name="opt.cast.has"
+            );
+            _source_block = self.builder.block;
+            _present_block = self.builder.function.append_basic_block(
+                "opt.cast.present"
+            );
+            _merge_block = self.builder.function.append_basic_block("opt.cast.end");
+            self.builder.cbranch(_source_present, _present_block, _merge_block);
+            self.builder.position_at_end(_present_block);
+            _source_payload = self.builder.extract_value(
+                val, 1, name="opt.cast.payload"
+            );
+            _converted_payload = self._coerce_type_inner(_source_payload, _opt_tgt);
+            _converted = self.builder.insert_value(
+                ir.Constant(target_type, None),
+                ir.Constant(ir.IntType(8), 1),
+                0,
+                name="opt.cast.tagset"
+            );
+            _converted = self.builder.insert_value(
+                _converted, _converted_payload, 1, name="opt.cast.wrap"
+            );
+            if isinstance(_opt_tgt, ir.PointerType) {
+                _nonnull = self.builder.icmp_unsigned(
+                    "!=", _converted_payload, ir.Constant(_opt_tgt, None)
+                );
+                _converted = self.builder.select(
+                    _nonnull, _converted, ir.Constant(target_type, None)
+                );
+            }
+            _converted_block = self.builder.block;
+            self.builder.branch(_merge_block);
+            self.builder.position_at_end(_merge_block);
+            _optional_result = self.builder.phi(target_type, name="opt.cast.result");
+            _optional_result.add_incoming(
+                ir.Constant(target_type, None), _source_block
+            );
+            _optional_result.add_incoming(_converted, _converted_block);
+            return _optional_result;
+        }
         _tgt_is_ptr = isinstance(_opt_tgt, ir.PointerType);
+        _tgt_is_jacval = bool(self?.jacval_type) and _opt_tgt == self.jacval_type;
         _val_is_none = isinstance(val.type, ir.VoidType)
             or (
                 isinstance(val, ir.Constant)
                 and isinstance(val.type, ir.PointerType)
                 and val.constant is None
             )
-            or (isinstance(val.type, ir.PointerType) and not _tgt_is_ptr);
+            or (
+                isinstance(val.type, ir.PointerType)
+                and not _tgt_is_ptr
+                and not _tgt_is_jacval
+            );
         if _val_is_none {
             return ir.Constant(target_type, None);
         }
@@ -2178,6 +2228,17 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             );
             return self.builder.select(
                 _pv_nn, _ov, ir.Constant(target_type, None), name="opt.wrap.sel"
+            );
+        }
+        if _tgt_is_jacval and isinstance(val.type, ir.PointerType) {
+            _object_present = self.builder.icmp_unsigned(
+                "!=", val, ir.Constant(val.type, None), name="opt.object.has"
+            );
+            return self.builder.select(
+                _object_present,
+                _ov,
+                ir.Constant(target_type, None),
+                name="opt.object.wrap"
             );
         }
         return _ov;

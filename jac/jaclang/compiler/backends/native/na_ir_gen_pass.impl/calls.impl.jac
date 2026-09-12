@@ -2831,8 +2831,25 @@ impl NaIRGenPass._emit_isinstance_core(
     unresolved: list[str] = [];
     static_seen = False;
     static_hit = False;
+    source_type = params[0].type;
+    source_members = source_type.types
+        if isinstance(source_type, UnionType)
+        else [source_type];
+    present_members = [
+        member
+        for member in source_members
+        if not (
+            isinstance(member, ClassType)
+            and member.shared.class_name in ("None", "NoneType")
+        )
+    ];
+    known_string = len(present_members) == 1
+        and isinstance(present_members[0], ClassType)
+        and present_members[0].shared.class_name == "str";
     for nm in names {
-        verdict = self._isinstance_static_verdict(nm, operand);
+        verdict = True
+            if nm == "str" and known_string
+            else self._isinstance_static_verdict(nm, operand);
         if verdict is not None {
             static_seen = True;
             static_hit = static_hit or verdict;

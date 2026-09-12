@@ -49,6 +49,18 @@ test "pointer optional: construct, narrow, and unwrap at every seam" {
     assert oo(0) == -1 , "None obj optional narrows to the None branch";
 }
 
+test "optional casts preserve absent and false-valued payloads" {
+    (eng, _) = compile_native("optional_ptr.jac");
+    memo = get_func(eng, "memo_cast", ctypes.c_int64, ctypes.c_int64);
+    assert memo(0) == -1;
+    assert memo(1) == 7;
+    number = get_func(eng, "numeric_optional_cast", ctypes.c_int64, ctypes.c_int64);
+    assert number(0) == -1;
+    assert number(1) == 0;
+    assert get_func(eng, "required_cast_still_raises", ctypes.c_int64)() == 1;
+    assert get_func(eng, "memo_keeps_returned_object", ctypes.c_int64)() == 7;
+}
+
 test "pointer optional equality is tag arithmetic matching Python" {
     (eng, _) = compile_native("optional_ptr.jac");
     assert get_func(eng, "eq_matrix", ctypes.c_int64)() == 11101 , (
