@@ -85,6 +85,7 @@ impl parse_mkpayload_flags(flags: list[str]) -> MkPayloadOpts {
     opts = MkPayloadOpts();
     valued = {
         "--shim=": "shim_so",
+        "--compiler-kernel=": "compiler_kernel",
         "--bun=": "bun_bin",
         "--link-source=": "link_source",
         "--musl=": "musl_dir",

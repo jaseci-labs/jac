@@ -171,44 +171,18 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
         _bundle_bun(site, opts);
         return;
     }
-    if os.environ.get("JAC_PAYLOAD_SKIP_KERNEL") == "1" {
-        log("==> skipping native compiler kernel (JAC_PAYLOAD_SKIP_KERNEL=1)");
-        _bundle_bun(site, opts);
-        return;
-    }
-    log(f"==> building native compiler kernel (jac build --native --lib {jc_src})");
-    jc_boot = (
-        "import os, sys\n"
-        + "root, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]\n"
-        + "sys.path.insert(0, root)\n"
-        + "import _jac_finder\n"
-        + "_jac_finder.install()\n"
-        + "from jaclang.cli.commands.native_build import native_build\n"
-        + "rc = int(native_build(src, output=dst, lib=True) or 0)\n"
-        + "sys.stdout.flush()\n"
-        + "sys.stderr.flush()\n"
-        + "os._exit(rc)\n"
-    );
-    jc_env = clone_env();
-    jc_env["JAC_LLVM_SHIM"] = os.path.abspath(so);
-    jc_env["JAC_COMPILER_LIB"] = "off";
-    jc_env["JAC_NO_DEV_SOURCE"] = "1";
-    jc_env["JAC_STUBCAT_BUILDING"] = "1";
-    jc_ok = run_child(
-        [sys.executable, "-I", "-c", jc_boot, repo_root, jc_src, jc_dst], jc_env, True
-    );
-    if (
-        not jc_ok or not file_exists(jc_dst) or not file_exists(jc_dst + ".layout.json")
-    ) {
+    kernel = opts.compiler_kernel;
+    if kernel is None
+        or not file_exists(kernel)
+        or not file_exists(kernel + ".layout.json") {
         raise PayloadDie(
-            f"mkpayload: native compiler kernel build failed; the shipped"
-            f" binary requires {jc_dst} and its .layout.json sidecar."
+            "mkpayload: --compiler-kernel must name a prebuilt compiler library "
+            "with its .layout.json sidecar; run zig build compiler-kernel."
         );
     }
-
-    jc_tree = os.path.join(repo_root, "jaclang", "compiler", jc_name);
-    copy_file(jc_dst, jc_tree);
-    copy_file(jc_dst + ".layout.json", jc_tree + ".layout.json");
+    log(f"==> bundling compiler kernel ({kernel})");
+    copy_file(kernel, jc_dst);
+    copy_file(kernel + ".layout.json", jc_dst + ".layout.json");
 
     _bundle_bun(site, opts);
 }

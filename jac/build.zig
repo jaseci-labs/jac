@@ -156,6 +156,10 @@ pub fn build(b: *std.Build) void {
         const unavailable = b.addFail(b.fmt("No pinned Jac bootstrap compiler for {s}", .{host_osarch}));
         fetch_jac_step.dependOn(&unavailable.step);
     }
+    const stage0_path = if (pins.jacRelease(b, host_osarch)) |release|
+        b.pathFromRoot(b.fmt(".toolchains/jac/{s}/{s}/jac", .{ release.version, host_osarch }))
+    else
+        b.pathFromRoot(".toolchains/unavailable/jac");
     const seed_mod = b.createModule(.{
         .root_source_file = b.path("bootstrap/build_python.zig"),
         .target = b.graph.host,
@@ -191,6 +195,28 @@ pub fn build(b: *std.Build) void {
     fetch_ts.has_side_effects = true;
     fetch_ts.addFileInput(b.path("jaclang/vendor/typeshed/PIN"));
     fetch_ts.addFileInput(b.path("jaclang/vendor/typeshed/TARBALL_SHA256"));
+
+    // Native compiler artifacts belong to the build graph. The pinned compiler
+    // owns its runtime and LLVM; payload assembly only consumes the library.
+    const kernel_build = b.addSystemCommand(&.{ stage0_path, "build", "--native", "--lib" });
+    kernel_build.step.dependOn(fetch_jac_step);
+    kernel_build.step.dependOn(&fetch_ts.step);
+    kernel_build.setEnvironmentVariable("JAC_NO_DEV_SOURCE", "1");
+    for ([_][]const u8{ "JAC_DEV_SOURCE", "JAC_COMPILER_LIB", "JAC_LLVM_SHIM", "JAC_STUBCAT_BUILDING" }) |name| {
+        kernel_build.removeEnvironmentVariable(name);
+    }
+    kernel_build.addArgs(&.{ "--target", b.fmt("{s}-{s}", .{
+        @tagName(target.result.cpu.arch),
+        if (target.result.os.tag == .macos) "apple-darwin" else "unknown-linux-gnu",
+    }) });
+    kernel_build.addFileArg(b.path("jaclang/compiler/jc_unit.jac"));
+    kernel_build.addArg("-o");
+    const kernel_name = if (target.result.os.tag == .macos) "libjac_compiler.dylib" else "libjac_compiler.so";
+    const compiler_kernel = kernel_build.addOutputFileArg(kernel_name);
+    addTreeInputs(b, kernel_build, "jaclang");
+    kernel_build.addFileInput(b.path("bootstrap/pins.json"));
+    const kernel_step = b.step("compiler-kernel", "Build the compiler kernel with the pinned stage-0 toolchain");
+    kernel_step.dependOn(&kernel_build.step);
 
     const tool = JacTool{
         .b = b,
@@ -326,6 +352,7 @@ pub fn build(b: *std.Build) void {
         // the tradeoff is .inherit marks the step as having side-effects, so it
         // ALWAYS repacks (no caching) while the flag is on.
         const mk = tool.run("payload", &.{ "mkpayload", python_tree, root });
+        mk.addPrefixedFileArg("--compiler-kernel=", compiler_kernel);
         if (b.option(bool, "payload-progress", "Stream the payload build (mkpayload) live; disables its caching") orelse false) {
             mk.stdio = .inherit;
         }

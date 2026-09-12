@@ -12,7 +12,7 @@ glob SUBCOMMANDS: tuple[str, ...] = (
          "pack"
      ),
      MKPAYLOAD_USAGE: str = (
-         "usage: payload mkpayload <python-dir> <repo-root> <out.tar.zst> [--shim=PATH]"
+         "usage: payload mkpayload <python-dir> <repo-root> <out.tar.zst> [--compiler-kernel=PATH --shim=PATH]"
          " [--skip-precompile] [--link-source=PATH] [--precompiled-cache=DIR] [--layer-cache=DIR]"
          " [--bun=PATH] [--musl=DIR] [--wasm-libc=DIR] [--seal] [--debug-src]"
          " [--stubcat-out=PATH] [--skip-stubcat]\n"

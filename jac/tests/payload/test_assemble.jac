@@ -3,6 +3,7 @@ split, the content-addressed layer cache with decompress-and-compare
 verification, and the floor staging allow-list."""
 
 import io;
+import sys;
 import os;
 import shutil;
 import tarfile;
@@ -29,7 +30,7 @@ import from jaclang.dist.payload.assemble {
     tar_stage,
     tar_zst_dir
 }
-import from jaclang.dist.payload.fsutil { host_os_arch }
+import from jaclang.dist.payload.fsutil { host_os_arch, PayloadDie }
 import from jaclang.dist.payload.pins { py_ver }
 
 def wf(stage: str, rel: str, data: bytes, mode: int = 0o644) {
@@ -377,6 +378,42 @@ test "assemble_site bundles a content-keyed shim under the canonical name" {
         assert staged == [_shim_name()] , f"site shim dir holds {staged}";
         shim = rf(os.path.join(llvm_dir, _shim_name()));
         assert shim == b"prebuilt-shim-bytes" , "the --shim asset, not the in-tree copy";
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "payload assembly consumes a kernel artifact without writing into sources" {
+    base = tempfile.mkdtemp(prefix="jac-payload-kernel-");
+    try {
+        repo = os.path.join(base, "repo");
+        fake_repo(repo);
+        wf(repo, "jaclang/compiler/jc_unit.jac", b"with entry {}");
+        shim = os.path.join(base, shim_file_name());
+        wf(base, shim_file_name(), b"shim");
+        kernel = os.path.join(base, "compiler-kernel");
+        wf(base, "compiler-kernel", b"prebuilt-kernel");
+        wf(base, "compiler-kernel.layout.json", b'{"classes": {}}');
+        site = os.path.join(base, "site");
+        os.makedirs(site, exist_ok=True);
+        assemble_site(repo, site, MkPayloadOpts(shim_so=shim, compiler_kernel=kernel));
+        name = "libjac_compiler.dylib"
+            if sys.platform == "darwin"
+            else "libjac_compiler.so";
+        staged = os.path.join(site, "jaclang", "compiler", name);
+        assert rf(staged) == b"prebuilt-kernel";
+        assert rf(staged + ".layout.json") == b'{"classes": {}}';
+        assert not os.path.exists(os.path.join(repo, "jaclang", "compiler", name));
+        os.unlink(kernel + ".layout.json");
+        try {
+            assemble_site(
+                repo, site, MkPayloadOpts(shim_so=shim, compiler_kernel=kernel)
+            );
+        } except PayloadDie {
+            return;
+        }
+        assert False , "assembly accepted a missing kernel layout";
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }

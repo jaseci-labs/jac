@@ -1,5 +1,5 @@
 import threading;
-import from jaclang.runtime.object_model { make_object }
+import from jaclang.runtime.object_model { make_object, field }
 import weakref;
 
 glob _region_tls: any = threading.local();
@@ -15,7 +15,7 @@ def _stack -> list {
 
 @make_object
 class JacRegion {
-    has _drops: list[any] = [],
+    has _drops: list[any] = field(default_factory=`list),
         _parent: any = None;
 
     def partition(self: JacRegion, n: int = 0) -> any {
