@@ -1378,6 +1378,7 @@ walker NaIRGenPass(Transform) {
     def _emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> None;
     def _emit_aos_list_helpers(tname: str) -> ir.Type;
     def _codegen_list_val(nd: uni.ListVal) -> (ir.Value | None);
+    def _coerce_list_element(value: ir.Value, element_type: ir.Type) -> ir.Value;
     def _codegen_index(
         target_val: ir.Value, index_val: ir.Value, elem_type_name: str
     ) -> (ir.Value | None);
