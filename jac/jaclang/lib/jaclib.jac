@@ -93,8 +93,8 @@ def __getattr__(name: str) -> any {
         return getattr(importlib.import_module(owner[0]), owner[1]);
     }
     if name in __all__ {
-        runtime = importlib.import_module("jaclang.runtime.runtime");
-        return getattr(runtime.JacRuntimeInterface, name);
+        import from jaclang.runtime.exports { runtime_function }
+        return runtime_function(name);
     }
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}");
 }

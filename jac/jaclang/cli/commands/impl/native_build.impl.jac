@@ -245,7 +245,7 @@ impl native_build(
     memory: str = "",
     no_ir_cache: bool = False
 ) -> int {
-    import from jaclang.jac0core.ext_registry {
+    import from jaclang.compiler.driver.extensions {
         is_jac,
         is_retired_native_marker,
         base_stem

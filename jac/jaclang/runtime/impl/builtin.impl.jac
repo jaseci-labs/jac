@@ -130,15 +130,15 @@ impl __getattr__(name: str) -> object {
 }
 
 impl _get_commit -> Callable[..., any] {
-    return _get_jac().commit;
+    return runtime_function("commit");
 }
 
 impl _get_on_commit -> Callable[..., any] {
-    return _get_jac().on_commit;
+    return runtime_function("on_commit");
 }
 
 impl _get_store -> Callable[..., any] {
-    return _get_jac().store;
+    return runtime_function("store");
 }
 
 impl _get_llm -> LLMModel {
@@ -166,23 +166,23 @@ impl _get_schema_builder(name: str) -> Callable[..., any] {
 }
 
 impl _get_save -> Callable[..., any] {
-    return _get_jac().save;
+    return runtime_function("save");
 }
 
 impl _get_allroots -> Callable[..., any] {
-    return _get_jac().get_all_root;
+    return runtime_function("get_all_root");
 }
 
 impl _get_revoke -> Callable[..., any] {
-    return _get_jac().perm_revoke;
+    return runtime_function("perm_revoke");
 }
 
 impl _get_grant -> Callable[..., any] {
-    return _get_jac().perm_grant;
+    return runtime_function("perm_grant");
 }
 
 impl _get_jobj -> Callable[..., any] {
-    return _get_jac().get_object;
+    return runtime_function("get_object");
 }
 
 impl _get_jref -> Callable[..., any] {
@@ -197,7 +197,7 @@ impl jref(id_or_obj: any) -> any {
 }
 
 impl _get_jid -> Callable[..., any] {
-    return _get_jac().object_ref;
+    return runtime_function("object_ref");
 }
 
 impl _get_access_level -> type[AccessLevel] {

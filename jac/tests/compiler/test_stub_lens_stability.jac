@@ -24,7 +24,7 @@ import tempfile;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.jir { get_module_cache_path }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.jac0core.stubcat_hook { active, set_active }
+import from jaclang.compiler.types.stubcat.state { active, set_active }
 
 glob IMPORTER: str = (
          "import from pathlib { Path }\n"

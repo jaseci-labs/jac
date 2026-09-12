@@ -1,6 +1,6 @@
 """base_stem strips annex suffixes from a module path and keeps codespace markers."""
 
-import from jaclang.jac0core.ext_registry { base_stem }
+import from jaclang.compiler.driver.extensions { base_stem }
 
 
 test "module stem strips annex suffixes but keeps retired codespace markers" {

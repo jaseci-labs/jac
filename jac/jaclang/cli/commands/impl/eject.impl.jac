@@ -3,7 +3,7 @@ import shutil;
 import json;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
-import from jaclang.jac0core.ext_registry { base_stem, is_annex }
+import from jaclang.compiler.driver.extensions { base_stem, is_annex }
 import type from jaclang.project.config { JacConfig }
 
 glob _SKIP_DIRS: set = {

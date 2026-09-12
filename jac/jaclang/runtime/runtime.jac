@@ -194,12 +194,12 @@ class JacClassReferences {
     }
 }
 
-obj LLMModel(Protocol) {
+class LLMModel(Protocol) {
     has call_params: dict[(str, object)];
 
-    def __call__(**kwargs: object) -> LLMModel;
-    def invoke(mt_run: MTRuntime) -> object;
-    async def ainvoke(mt_run: MTRuntime) -> object;
+    def __call__(self: LLMModel, **kwargs: object) -> LLMModel;
+    def invoke(self: LLMModel, mt_run: MTRuntime) -> object;
+    async def ainvoke(self: LLMModel, mt_run: MTRuntime) -> object;
 }
 
 class JacContext {
@@ -313,7 +313,7 @@ class JacGraph {
         target: list[T], attr_val: tuple[(tuple[str], tuple[any])]
     ) -> list[T];
 
-    static def root -> Root;
+    static def `root -> Root;
     static def get_all_root -> list[Root];
     static def build_edge(
         is_undirected: bool,

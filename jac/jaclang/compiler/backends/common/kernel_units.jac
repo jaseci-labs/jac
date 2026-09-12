@@ -50,7 +50,7 @@ def kernel_unit_owner(path: str, module_name: str = "") -> str {
 }
 
 def _units_dir -> str {
-    import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
+    import from jaclang.compiler.driver.cache_paths { get_jir_cache_dir }
     d = os.path.join(str(get_jir_cache_dir()), "kernel_units");
     os.makedirs(d, exist_ok=True);
     return d;

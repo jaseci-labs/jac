@@ -265,7 +265,7 @@ def add_project_venv_to_path() -> None:
         pass
 
 
-# The canonical extension registry lives in jaclang/jac0core/ext_registry.py.
+# The canonical extension registry lives in jaclang/compiler/driver/extensions.py.
 # Importing it via the ``jaclang`` package would trigger the heavy
 # ``jaclang/__init__`` bootstrap, defeating this lazy finder — so it is loaded
 # by file path on first use and cached. This keeps the suffix lists in one
@@ -288,7 +288,7 @@ def _ext_registry() -> ModuleType:
             or _baked_source_dir()
             or os.path.dirname(__file__)
         )
-        path = os.path.join(base, "jaclang", "jac0core", "ext_registry.py")
+        path = os.path.join(base, "jaclang", "compiler", "driver", "extensions.py")
         spec = importlib.util.spec_from_file_location("_jac_ext_registry", path)
         if spec is None or spec.loader is None:
             raise ImportError(f"cannot load extension registry from {path}")

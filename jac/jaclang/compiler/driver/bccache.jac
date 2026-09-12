@@ -1,6 +1,6 @@
 import os;
 import from pathlib { Path }
-import from jaclang.jac0core.ext_registry { ANNEX_FOLDER, MODULE_SUFFIXES }
+import from jaclang.compiler.driver.extensions { ANNEX_FOLDER, MODULE_SUFFIXES }
 
 def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[str] {
     src = Path(source_path).resolve();

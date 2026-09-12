@@ -6,7 +6,7 @@ import shutil;
 import tarfile;
 
 import from pathlib { Path }
-import from jaclang.jac0core.cache_paths { get_app_cache_dir }
+import from jaclang.compiler.driver.cache_paths { get_app_cache_dir }
 import from jaclang.compiler.driver.image {
     MANIFEST_NAME,
     register_image,

@@ -218,6 +218,37 @@ pub fn build(b: *std.Build) void {
     const kernel_step = b.step("compiler-kernel", "Build the compiler kernel with the pinned stage-0 toolchain");
     kernel_step.dependOn(&kernel_build.step);
 
+    // Stage 1 is an ordinary compiled image produced by the pinned release.
+    // Its output is immutable and separate from both producer and target sources.
+    const image_step = b.step("compiler-image", "Build the current compiler image with the pinned stage-0 compiler");
+    if (jacllvm) |shim| {
+        const image_build = b.addSystemCommand(&.{ stage0_path, "run" });
+        image_build.step.dependOn(fetch_jac_step);
+        image_build.step.dependOn(&fetch_ts.step);
+        image_build.setEnvironmentVariable("JAC_NO_DEV_SOURCE", "1");
+        for ([_][]const u8{ "JAC_DEV_SOURCE", "JAC_COMPILER_LIB", "JAC_LLVM_SHIM", "JAC_STUBCAT_BUILDING", "JACPATH" }) |name| {
+            image_build.removeEnvironmentVariable(name);
+        }
+        image_build.addFileArg(b.path("bootstrap/compiler.jac"));
+        image_build.addArgs(&.{ "image", b.pathFromRoot("jaclang") });
+        const compiler_image = image_build.addOutputDirectoryArg("compiler-site");
+        image_build.addFileArg(compiler_kernel);
+        image_build.addFileArg(shim.bin);
+        image_build.addArg(b.fmt("{d}", .{b.option(u32, "compiler-jobs", "Parallel compiler-image workers") orelse 4}));
+        image_build.addArgs(&.{ "compiler/jc_unit.jac", "compiler/jc_materialize.jac" });
+        addTreeInputs(b, image_build, "jaclang");
+        image_build.addFileInput(b.path("_jac_finder.py"));
+        image_build.addFileInput(b.path("bootstrap/pins.json"));
+        const install_image = b.addInstallDirectory(.{
+            .source_dir = compiler_image,
+            .install_dir = .prefix,
+            .install_subdir = "compiler-site",
+        });
+        image_step.dependOn(&install_image.step);
+    } else {
+        image_step.dependOn(&b.addFail("compiler-image requires the pinned LLVM shim; run zig build fetch-llvm").step);
+    }
+
     const tool = JacTool{
         .b = b,
         .python = b.fmt("{s}/python/install/bin/python{s}", .{ host_python_dir, pins.pyMinor(b) }),

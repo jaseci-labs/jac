@@ -1,5 +1,5 @@
 import os;
-import from jaclang.jac0core.ext_registry { base_stem }
+import from jaclang.compiler.driver.extensions { base_stem }
 import from jaclang.project.apps { AppConfig, implicit_app }
 import from jaclang.project.config { JacConfig }
 

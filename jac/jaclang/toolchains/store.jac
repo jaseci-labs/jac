@@ -12,7 +12,7 @@ import from http.client { HTTPResponse }
 import from urllib.request { Request, urlopen }
 import from urllib.parse { urlsplit }
 import from jaclang.cli.console { console }
-import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
+import from jaclang.compiler.driver.cache_paths { get_jir_cache_dir }
 
 obj Artifact {
     has name: str,

@@ -73,7 +73,7 @@ import types
 import zlib
 from pathlib import Path
 
-from jaclang.jac0core import ext_registry
+from jaclang.compiler.driver import extensions as ext_registry
 
 MANIFEST_NAME = "MANIFEST.json"
 MANIFEST_FORMAT = 8
@@ -418,6 +418,20 @@ def find_module(fullname: str) -> tuple[SealedImage, dict, str] | None:
         if found is not None:
             return (img, *found)
     return None
+
+
+def rebase_source_filename(filename: str) -> str:
+    """Relocate an annex filename embedded by code generation in an image."""
+    for image in _images:
+        source_root = image.manifest.get("source_root")
+        if not isinstance(source_root, str) or not source_root:
+            continue
+        try:
+            relative = Path(filename).relative_to(source_root)
+        except ValueError:
+            continue
+        return str(image.pkg_dir / relative)
+    return filename
 
 
 def source_for(fullname: str) -> str | None:

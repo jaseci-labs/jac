@@ -18,7 +18,7 @@ import from jaclang.compiler.driver.jir {
     get_module_cache_path
 }
 import from jaclang.compiler.driver.bccache { discover_annex_files }
-import from jaclang.jac0core.ext_registry {
+import from jaclang.compiler.driver.extensions {
     ANNEX_SUFFIXES,
     ANNEX_FOLDER,
     IMPL_SUFFIX,

@@ -22,21 +22,10 @@ from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
 
-# Cache jac0 transpiler hash for bootstrap cache invalidation
-import jaclang.jac0 as _jac0_mod
-from jaclang.jac0 import compile_jac as _jac0_compile  # noqa: E402
-from jaclang.jac0 import discover_impl_files as _jac0_discover_impls  # noqa: E402
-from jaclang import bootstrap_manifest as _bootstrap_manifest  # noqa: E402
-from jaclang.jac0core import ext_registry  # noqa: E402
-from jaclang.compiler.driver import image as _sealed  # noqa: E402
-from jaclang.jac0core.cache_paths import get_bootstrap_cache_dir  # noqa: E402
+from jaclang.compiler.driver import extensions as ext_registry
+from jaclang.compiler.driver import image as _sealed
 
-_jac0_source_path = getattr(_jac0_mod, "__file__", "")
-_jac0_hash = (
-    hashlib.sha256(Path(_jac0_source_path).read_bytes()).digest()
-    if _jac0_source_path and os.path.isfile(_jac0_source_path)
-    else b""
-)
+_jac0_hash: bytes | None = None
 
 # Inline logging config (previously in jaclang.compiler.driver.log)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
@@ -51,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 # marshalled code objects: the cache *filename* already encodes a digest over
 # the Python version, the jac0 transpiler, and all source/impl contents, so no
 # in-file header or validation is needed.  The directory is resolved by the
-# pure-Python `jaclang.jac0core.cache_paths` (importable here, before the JIR
+# pure-Python `jaclang.compiler.driver.cache_paths` (importable here, before the JIR
 # Jac modules are bootstrapped), so it shares one platform-resolution rule with
 # `jaclang.compiler.driver.jir`; the cache *key*, however, stays independent of that
 # module's `compute_module_key` since it must work before the seed tier compiles.
@@ -64,6 +53,13 @@ def _bootstrap_compile(
     impl_sources: list[tuple[str, str]] | None = None,
 ) -> types.CodeType:
     """Compile a bootstrap .jac file, using a marshalled bytecode disk cache."""
+    from jaclang import jac0
+    from jaclang.compiler.driver.cache_paths import get_bootstrap_cache_dir
+
+    global _jac0_hash
+    if _jac0_hash is None:
+        _jac0_hash = hashlib.sha256(Path(jac0.__file__).read_bytes()).digest()
+
     # Build the hash key from all source inputs + Python version + transpiler.
     h = hashlib.sha256()
     h.update(sys.version.encode())
@@ -85,7 +81,7 @@ def _bootstrap_compile(
             cache_file.unlink(missing_ok=True)
 
     # Cache miss — transpile with jac0, compile, and cache (best-effort).
-    py_source = _jac0_compile(jac_source, file_path, impl_sources=impl_sources)
+    py_source = jac0.compile_jac(jac_source, file_path, impl_sources=impl_sources)
     code = compile(py_source, file_path, "exec")
     try:
         cache_file.parent.mkdir(parents=True, exist_ok=True)
@@ -202,7 +198,9 @@ class JacMetaImporter(MetaPathFinder, Loader):
         if _sealed._jaclang_image() is not None:
             return False
         if self._seed_dirs is None:
-            self._seed_dirs, self._seed_files = _bootstrap_manifest.seed_abs_entries(
+            from jaclang import bootstrap_manifest
+
+            self._seed_dirs, self._seed_files = bootstrap_manifest.seed_abs_entries(
                 self._jaclang_dir
             )
         if file_path in self._seed_files:
@@ -324,7 +322,9 @@ class JacMetaImporter(MetaPathFinder, Loader):
             jac_source = f.read()
 
         impl_sources: list[tuple[str, str]] = []
-        for impl_path in _jac0_discover_impls(file_path):
+        from jaclang.jac0 import discover_impl_files
+
+        for impl_path in discover_impl_files(file_path):
             with open(impl_path, encoding="utf-8") as f:
                 impl_sources.append((f.read(), impl_path))
 

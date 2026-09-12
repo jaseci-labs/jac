@@ -1795,7 +1795,7 @@ def _iter_jac_files(
 def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
     import os;
     import from jaclang.compiler.driver.bccache { discover_base_file }
-    import from jaclang.jac0core.ext_registry { is_annex }
+    import from jaclang.compiler.driver.extensions { is_annex }
     modules = {
         os.path.realpath(f)
         for f in files

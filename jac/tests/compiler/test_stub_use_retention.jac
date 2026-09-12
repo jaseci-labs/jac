@@ -39,7 +39,7 @@ def _write_fixture -> str {
 }
 
 def _memoized_builtins_module -> (uni.Module | None) {
-    import from jaclang.jac0core.stubcat_hook { active }
+    import from jaclang.compiler.types.stubcat.state { active }
     catalog: any = active();
     if catalog is None {
         return None;

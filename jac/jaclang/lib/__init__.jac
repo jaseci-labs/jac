@@ -1,5 +1,11 @@
 import jaclang.lib.jaclib as _jaclib;
-include jaclang.lib.jaclib;
+import typing;
+
+with entry {
+    if typing.TYPE_CHECKING {
+        include jaclang.lib.jaclib;
+    }
+}
 
 glob __all__ = _jaclib.__all__;
 

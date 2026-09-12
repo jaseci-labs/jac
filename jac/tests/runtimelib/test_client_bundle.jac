@@ -34,6 +34,19 @@ test "base builder compiles a client module to JS and extracts its manifest surf
     assert isinstance(globals_map, dict);
 }
 
+test "client compilation initializes a program without import side effects" {
+    previous = Jac.program;
+    try {
+        Jac.program = None;
+        builder = ClientBundleBuilder();
+        artifact = builder._compile_to_js(Path(FIXTURES) / "client_app.jac");
+        assert artifact.js;
+        assert Jac.program is not None;
+    } finally {
+        Jac.program = previous;
+    }
+}
+
 test "base builder bundling requires the built-in client framework" {
     (module, ) = Jac.jac_import("client_app", FIXTURES);
     builder = ClientBundleBuilder();

@@ -77,7 +77,7 @@ def graft_runtime(self_path: str, host_path: str) -> bool {
 
 
 def materialized_runtime_dir(path: str = "") -> (str | None) {
-    import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
+    import from jaclang.compiler.driver.cache_paths { get_jir_cache_dir }
     exe = path
         or os.environ.get("JAC_EXECUTABLE", "")
         or os.path.realpath(sys.executable);

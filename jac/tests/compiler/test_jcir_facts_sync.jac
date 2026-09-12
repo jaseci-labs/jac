@@ -22,7 +22,7 @@ import jaclang.runtime.builtin as builtin_mod;
 import from pathlib { Path }
 import from jaclang.compiler.backends.py.codegen_ir { cir_python_version }
 import from jaclang.compiler.frontend.constant { Tokens }
-import from jaclang.jac0core.ext_registry { is_test }
+import from jaclang.compiler.driver.extensions { is_test }
 import from jaclang.compiler.backends.py.jcir_gen_pass {
     TOKEN_CLS_BY_NAME,
     UNARY_CLS_BY_NAME

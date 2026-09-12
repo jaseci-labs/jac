@@ -1,4 +1,5 @@
 import json;
+import from jaclang.runtime.exports { runtime_function }
 import from jaclang.runtime.object_model { make_object }
 import from abc { abstractmethod }
 import from collections.abc { Callable }

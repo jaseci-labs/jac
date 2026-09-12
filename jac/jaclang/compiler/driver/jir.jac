@@ -4,7 +4,6 @@ import struct;
 import sys;
 import zlib;
 import from pathlib { Path }
-import from jaclang.bootstrap_manifest { SOURCE_ONLY_PATHS }
 
 import from jaclang.compiler.driver.image {
     MAGIC,
@@ -100,7 +99,7 @@ def parse_header(data: (bytes | memoryview)) -> (JirHeader | None) {
 }
 
 def get_jir_cache_dir -> Path {
-    import from jaclang.jac0core.cache_paths { get_jir_cache_dir as _root }
+    import from jaclang.compiler.driver.cache_paths { get_jir_cache_dir as _root }
     return _root();
 }
 
@@ -152,9 +151,6 @@ def is_compiler_tree_path(source_path: str) -> bool {
         return False;
     }
     rel = resolved[len(base):].replace(os.sep, "/");
-    if any(rel.startswith(prefix) for prefix in SOURCE_ONLY_PATHS) {
-        return False;
-    }
     for digest_root in COMPILER_DIGEST_ROOTS {
         if rel == digest_root or rel.startswith(digest_root + "/") {
             return True;
@@ -225,9 +221,6 @@ def compiler_source_files(pkg_dir: str) -> list[str] {
                 rel = os.path.relpath(os.path.join(walk_dir, name), base).replace(
                     os.sep, "/"
                 );
-                if any(rel.startswith(prefix) for prefix in SOURCE_ONLY_PATHS) {
-                    continue;
-                }
                 if rel in COMPILER_DIGEST_SKIP {
                     continue;
                 }

@@ -47,7 +47,7 @@ glob _SEEDS: list[str] = [
          "jaclang.compiler.frontend.helpers",
          "jaclang.compiler.driver.modresolver",
          "jaclang.compiler.driver.mtp",
-         "jaclang.jac0core.ext_registry",
+         "jaclang.compiler.driver.extensions",
          "jaclang.client.client_bundle"
      ],
      _VENDORED_INIT: str = '''"""Vendored jaclang runtime.

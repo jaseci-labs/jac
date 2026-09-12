@@ -1,7 +1,6 @@
 # The boot-safe image codec is shared by compiler-side JIR operations and
 # sealed image loading. Exercise real containers and relocated code objects.
 
-
 import marshal;
 import zlib;
 
@@ -84,9 +83,7 @@ test "code filenames rebase recursively and round trip" {
     ];
     assert nested
         and all(c.co_filename == f"{PRECOMPILE_SENTINEL}/mod.jac" for c in nested);
-    back = sealed.patch_code_filenames(
-        sentinel_code, PRECOMPILE_SENTINEL, "/repo/pkg"
-    );
+    back = sealed.patch_code_filenames(sentinel_code, PRECOMPILE_SENTINEL, "/repo/pkg");
     assert _same_code(back, code);
 }
 
@@ -163,18 +160,21 @@ test "compiler images execute without invoking the compiler or seed transpiler" 
             FLAG_PRECOMPILED
         );
         (jdir / "probe.jir").write_bytes(data);
-        img = sealed.SealedImage(pre, {
-            "package": "jaclang",
-            "python_tag": sealed.python_tag(),
-            "modules": {
-                "probe.jac": {
-                    "module": fullname,
-                    "jir": "probe.jir",
-                    "package": False,
-                    "sha256": hashlib.sha256(data).hexdigest()
+        img = sealed.SealedImage(
+            pre,
+            {
+                "package": "jaclang",
+                "python_tag": sealed.python_tag(),
+                "modules": {
+                    "probe.jac": {
+                        "module": fullname,
+                        "jir": "probe.jir",
+                        "package": False,
+                        "sha256": hashlib.sha256(data).hexdigest()
+                    }
                 }
             }
-        });
+        );
         img.verify();
         sealed._images.insert(0, img);
         try {
@@ -184,7 +184,9 @@ test "compiler images execute without invoking the compiler or seed transpiler" 
                 fullname, loader, origin=img.virtual_origin("probe.jac")
             );
             with patch.object(
-                JacRuntime, "get_compiler", side_effect=AssertionError("compiler invoked")
+                JacRuntime,
+                "get_compiler",
+                side_effect=AssertionError("compiler invoked")
             ), patch.object(
                 loader, "_exec_seed_source", side_effect=AssertionError("seed invoked")
             ) {
@@ -195,5 +197,33 @@ test "compiler images execute without invoking the compiler or seed transpiler" 
         } finally {
             sealed._images.remove(img);
         }
+    }
+}
+
+
+test "image relocation preserves annex traceback filenames" {
+    import from pathlib { Path }
+    import from jaclang.runtime.function_metadata { impl_patch_filename }
+    image = sealed.SealedImage(
+        Path("/installed/jaclang/_precompiled"),
+        {"package": "jaclang", "source_root": "/build/site/jaclang"}
+    );
+    sealed._images.insert(0, image);
+    try {
+        def probe -> int {
+            return 42;
+        }
+        patched = impl_patch_filename(
+            "/build/site/jaclang/runtime/impl/probe.impl.jac"
+        )(
+            probe
+        );
+        assert patched.__code__.co_filename
+            == "/installed/jaclang/runtime/impl/probe.impl.jac";
+        assert patched() == 42;
+        assert sealed.rebase_source_filename("/build/site/jaclang-other/file.jac")
+            == "/build/site/jaclang-other/file.jac";
+    } finally {
+        sealed._images.remove(image);
     }
 }

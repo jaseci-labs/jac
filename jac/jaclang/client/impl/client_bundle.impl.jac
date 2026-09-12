@@ -62,12 +62,7 @@ impl ClientBundleBuilder.build(
         return prebuilt;
     }
     import from jaclang { JacRuntime as Jac }
-    program = Jac.program;
-    if program is None {
-        raise ClientBundleError(
-            f"No active Jac program; cannot build client bundle for '{source_path}'."
-        );
-    }
+    program = Jac.get_program();
     mod = program.find_module(str(source_path));
     manifest = (
         mod.gen.client_manifest if mod else self._compile_to_js(source_path).manifest
@@ -128,12 +123,7 @@ impl ClientBundleBuilder._compile_bundle(
 
 impl ClientBundleBuilder._compile_to_js(source_path: Path) -> ClientArtifact {
     import from jaclang { JacRuntime as Jac }
-    program = Jac.program;
-    if program is None {
-        raise ClientBundleError(
-            f"No active Jac program; cannot compile '{source_path}' for client bundle."
-        );
-    }
+    program = Jac.get_program();
     diagnostic_program = program._get_compiler().selfhost.resolve(
         str(source_path), program
     );

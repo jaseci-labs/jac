@@ -7,7 +7,7 @@ import os;
 import tarfile;
 import zipfile;
 import from pathlib { Path }
-import from jaclang.jac0core.ext_registry { is_annex }
+import from jaclang.compiler.driver.extensions { is_annex }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.project.config { JacConfig }
 import from jaclang.dist.publish.metadata { generate_metadata, generate_pyproject_toml }

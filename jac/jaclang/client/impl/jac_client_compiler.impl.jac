@@ -72,7 +72,7 @@ impl JacClientCompiler._jac_path_to_js(self: JacClientCompiler, rel_str: str) ->
 }
 
 impl JacClientCompiler._native_variant(self: JacClientCompiler, path: Path) -> Path {
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.compiler.driver.extensions { base_stem }
     name = path.name;
     if ".native." in name {
         return path;

@@ -35,7 +35,7 @@ impl JacAccessValidation._check_access(
                 operation=operation,
                 target_id=str(to.id),
                 target_type=to.archetype.__class__.__name__,
-                target_owner=str(to.root) if to.root else None,
+                target_owner=str(to.`root) if to.`root else None,
                 required=required,
                 actual=actual
             );
@@ -176,7 +176,7 @@ impl JacAccessValidation.check_access_level(
         return AccessLevel.NO_ACCESS;
     }
     jroot: NodeAnchor = _jroot;
-    if ((jroot == jctx.system_root) or (jroot.id == to.root) or (jroot == to)) {
+    if ((jroot == jctx.system_root) or (jroot.id == to.`root) or (jroot == to)) {
         return AccessLevel.WRITE;
     }
     if (
@@ -192,7 +192,7 @@ impl JacAccessValidation.check_access_level(
     } elif JacAccessValidation._is_shared_root(to) {
         access_level = AccessLevel.CONNECT;
     }
-    if (to.root and isinstance((to_root := jctx.mem.get(to.root)), Anchor)) {
+    if (to.`root and isinstance((to_root := jctx.mem.get(to.`root)), Anchor)) {
         root_access = to_root.access;
         if root_access is not None {
             if (root_access.all.value > access_level.value) {
@@ -550,7 +550,7 @@ impl JacContext.reset_graph(root_node: (Root | None) = None) -> int {
     }
     for anchor in mem.get_mem().values() {
         if anchor.id is not None {
-            cand_map[anchor.id] = str(anchor.root) if anchor.root else None;
+            cand_map[anchor.id] = str(anchor.`root) if anchor.`root else None;
         }
     }
     candidates = list(cand_map.items());
@@ -808,7 +808,7 @@ impl JacTest.run_test(
         run_cl_test_file,
         register_results_into_jactestcheck
     }
-    import from jaclang.jac0core.ext_registry { base_stem, is_annex }
+    import from jaclang.compiler.driver.extensions { base_stem, is_annex }
     test_file = False;
     ret_count = 0;
     if filepath {
@@ -1308,7 +1308,7 @@ impl JacPersistence.save(`obj: (Archetype | Anchor)) -> None {
     anchor = `obj.__jac__ if isinstance(`obj, Archetype) else `obj;
     jctx = JacRuntimeInterface.get_context();
     anchor.ensure_id();
-    if (not anchor.persistent and not anchor.root) {
+    if (not anchor.persistent and not anchor.`root) {
         anchor.persistent = True;
         anchor.`root = jctx.user_root.id;
     }
@@ -1578,12 +1578,12 @@ impl JacLLM.`by(model: LLMModel) -> Callable {
 }
 
 impl JacLLM.by_operator(lhs: any, rhs: any) -> any {
-    import from jaclang.byllm.llm { BaseLLM }
+    import from jaclang.byllm { llm as model_module }
     import from jaclang.runtime.archetype { NodeArchetype, EdgeArchetype }
 
     lhs_list = lhs if isinstance(lhs, list) else [lhs];
     if all(isinstance(element, (NodeArchetype, EdgeArchetype)) for element in lhs_list)
-        and isinstance(rhs, BaseLLM) {
+        and isinstance(rhs, model_module.BaseLLM) {
         import from jaclang.byllm.visit_routing { route_visit }
         return route_visit(lhs_list, rhs);
     }
@@ -1598,7 +1598,7 @@ impl JacLLM.default_llm -> LLMModel {
     if (_cache is not None) {
         return _cache;
     }
-    import from jaclang.byllm.llm { Model }
+    import from jaclang.byllm { llm as model_module }
     import from jaclang.byllm.config_loader { get_byllm_config }
     import from jaclang.byllm.exceptions { ConfigurationError }
     config = get_byllm_config();
@@ -1654,7 +1654,7 @@ impl JacLLM.default_llm -> LLMModel {
         }
     }
 
-    instance = Model(
+    instance = model_module.Model(
         model_name=chosen, config=merged_config, call_params=call_params_config
     );
     JacLLM._default_llm_instance = instance;

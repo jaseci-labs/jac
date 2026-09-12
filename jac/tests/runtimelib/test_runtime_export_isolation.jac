@@ -54,6 +54,7 @@ test "implementation filename updates preserve callable behavior and metadata" {
 test "full compiler output initializes the runtime foundation without a seed" {
     package = Path(str(jaclang.__file__)).parent;
     sources = [
+        "runtime/exports",
         "runtime/access_level",
         "runtime/object_model",
         "runtime/function_metadata",
@@ -62,6 +63,7 @@ test "full compiler output initializes the runtime foundation without a seed" {
         "runtime/scalars",
         "runtime/archetype",
         "lib/jaclib",
+        "lib/__init__",
         "compiler/frontend/constant"
     ];
     with tempfile.TemporaryDirectory() as directory {
@@ -85,7 +87,9 @@ test "full compiler output initializes the runtime foundation without a seed" {
                 output.parent.mkdir(parents=True, exist_ok=True);
                 parent = output.parent;
                 while parent != destination {
-                    (parent / "__init__.py").write_text("");
+                    if not (parent / "__init__.py").exists() {
+                        (parent / "__init__.py").write_text("");
+                    }
                     parent = parent.parent;
                 }
                 output.write_text(str(module.gen.py));
@@ -104,7 +108,15 @@ test "full compiler output initializes the runtime foundation without a seed" {
             "    value: int = 42\n"
             "assert Record().value == 42\n"
             "assert Record(value=7).value == 7\n"
+            "from jaclang.runtime.exports import runtime_function\n"
+            "operation = runtime_function('example')\n"
+            "assert operation is runtime_function('example')\n"
             "assert 'jaclang.runtime.runtime' not in sys.modules\n"
+            "import types\n"
+            "owner = types.ModuleType('jaclang.runtime.runtime')\n"
+            "owner.JacRuntimeInterface = types.SimpleNamespace(example=lambda value: value + 1)\n"
+            "sys.modules[owner.__name__] = owner\n"
+            "assert operation(41) == 42\n"
             "assert not any(n.startswith('jaclang.jac0') for n in sys.modules)\n"
         );
         result = subprocess.run(

@@ -3039,7 +3039,7 @@ def _ext_registry() -> ModuleType:
     if _ext_registry_mod is None:
         import importlib.util
 
-        path = os.path.join(os.path.dirname(__file__), "jac0core", "ext_registry.py")
+        path = os.path.join(os.path.dirname(__file__), "compiler", "driver", "extensions.py")
         spec = importlib.util.spec_from_file_location("_jac_ext_registry", path)
         if spec is None or spec.loader is None:
             raise ImportError(f"cannot load extension registry from {path}")
