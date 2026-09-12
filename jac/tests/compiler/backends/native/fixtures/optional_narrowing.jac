@@ -15,13 +15,12 @@ tag read rather than a comparison against the bare payload -- for a float
 payload that comparison becomes `fcmp une x, 0.0` and calls a non-zero float
 None. Truthiness of an already-proven container must stay `len > 0`.
 
-The last three pin holes the checker's proof does not cover, so narrowing has
+The last two pin holes the checker's proof does not cover, so narrowing has
 to decline: `callee_rebinds_attr` (the callee sets the attribute to None, which
-the intra-procedural walk cannot see), `back_edge_rewiden` (the loop body
-rebinds after the use, and the walk skips back edges at loop headers), and
-`match_narrowed_subject` (a `case None` arm over a subject whose lowered type
-cannot represent None). sv raises TypeError on the first two, so native must
-keep its checked unwrap there rather than read a payload.
+the intra-procedural walk cannot see) and `match_narrowed_subject` (a `case
+None` arm over a subject whose lowered type cannot represent None). sv raises
+TypeError for the first, so native must keep its checked unwrap there rather
+than read a payload.
 """
 
 def make(n: int) -> list[int] | None {
@@ -256,9 +255,12 @@ def back_edge_rewiden(n: int) -> int {
     total = 0;
     i = 0;
     while i < 2 {
+        i += 1;
+        if v is None {
+            continue;
+        }
         total = total + v;
         v = pick(n - 5);
-        i += 1;
     }
     return total;
 }

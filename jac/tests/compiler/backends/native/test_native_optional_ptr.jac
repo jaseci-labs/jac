@@ -121,11 +121,19 @@ test "un-narrowed optional use at strict sites is E1121, never runtime UB" {
         for m in msgs
         if "used where a subscript index is required" in m
     ];
+    arithmetic = [
+        m
+        for m in msgs
+        if "used where a binary operand is required" in m
+    ];
     assert len(ordering) == 2 , (
         f"expected E1121 for the str and int ordering vectors, got: {msgs}"
     );
     assert len(subscript) == 1 , (
         f"expected E1121 for the dict-key vector (segfaulted on old main), got: {msgs}"
+    );
+    assert len(arithmetic) == 2 , (
+        f"expected E1121 for both forward and reflected arithmetic vectors, got: {msgs}"
     );
 }
 
