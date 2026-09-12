@@ -190,6 +190,7 @@ impl NaIRGenPass._emit_hash_core_helpers(
     bf.store(s0, slot_a);
     bf.store(ir.Constant(i64, -1), itomb_a);
 
+    cap0_bb = find_fn.append_basic_block("cap0");
     probe_bb = find_fn.append_basic_block("probe");
     empty_bb = find_fn.append_basic_block("empty");
     fp_bb = find_fn.append_basic_block("fp");
@@ -197,7 +198,9 @@ impl NaIRGenPass._emit_hash_core_helpers(
     tomb_bb = find_fn.append_basic_block("tomb");
     next_bb = find_fn.append_basic_block("next");
     found_bb = find_fn.append_basic_block("found");
-    bf.branch(probe_bb);
+    _cap_is0 = bf.icmp_unsigned("==", capf, ir.Constant(i64, 0), name="cap.is0");
+    bf.cbranch(_cap_is0, cap0_bb, probe_bb);
+    ir.IRBuilder(cap0_bb).ret(ir.Constant(i64, -1));
 
     bp = ir.IRBuilder(probe_bb);
     sl = bp.load(slot_a, name="sl");
@@ -277,7 +280,11 @@ impl NaIRGenPass._emit_hash_core_helpers(
     old_vals = brh.load(vals_prh, name="ovals") if has_vals else None;
     old_ctrl = brh.load(ctrl_prh, name="octrl");
     old_order = brh.load(ord_prh, name="oorder");
-    new_cap = brh.mul(old_cap, ir.Constant(i64, 2), name="ncap");
+    _ncap_dbl = brh.mul(old_cap, ir.Constant(i64, 2), name="ncap.dbl");
+    _ocap_is0 = brh.icmp_unsigned("==", old_cap, ir.Constant(i64, 0), name="ocap.is0");
+    new_cap = brh.select(
+        _ocap_is0, ir.Constant(i64, HASH_INIT_CAP), _ncap_dbl, name="ncap"
+    );
     new_mask = brh.sub(new_cap, ir.Constant(i64, 1), name="nmask");
 
     kgnr = brh.gep(
@@ -412,6 +419,21 @@ impl NaIRGenPass._emit_hash_core_helpers(
     k_s = ins_fn.args[1];
     v_s: any = ins_fn.args[2] if has_vals else None;
     h_ins: any = ins_fn.args[3 if has_vals else 2];
+    _sz_cap = bs.load(
+        bs.gep(d_s, [ir.Constant(i32, 0), ir.Constant(i32, CAP_F)], name="szc.p"),
+        name="szc"
+    );
+    _sz0_bb = ins_fn.append_basic_block("cap0.grow");
+    _sfind_bb = ins_fn.append_basic_block("find");
+    bs.cbranch(
+        bs.icmp_unsigned("==", _sz_cap, ir.Constant(i64, 0), name="szc.is0"),
+        _sz0_bb,
+        _sfind_bb
+    );
+    _bs0 = ir.IRBuilder(_sz0_bb);
+    _bs0.call(rehash_fn, [d_s]);
+    _bs0.branch(_sfind_bb);
+    bs = ir.IRBuilder(_sfind_bb);
     res_s = bs.call(find_fn, [d_s, k_s, h_ins], name="res");
     is_fnd = bs.icmp_signed(">=", res_s, ir.Constant(i64, 0), name="found");
     upd_bb = ins_fn.append_basic_block("upd");
