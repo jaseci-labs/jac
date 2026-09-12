@@ -1635,17 +1635,19 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         b = get_builder(p);
         i8p = ir.IntType(8).as_pointer();
         i64 = ir.IntType(64);
-        rc_alloc_fn = p.rc_alloc_fn;
-        buf_ptr = b.call(rc_alloc_fn, [ir.Constant(i64, 64)], name="repr.buf");
-        snprintf = p._get_or_declare_extern(
-            "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
-        );
+        if p._is_bytes_value(arg_val) {
+            return p._mark_owned(p._emit_bytes_repr(arg_val));
+        }
         if isinstance(arg_val.type, ir.IntType) {
+            buf_ptr = b.call(p.rc_alloc_fn, [ir.Constant(i64, 64)], name="repr.buf");
+            snprintf = p._get_or_declare_extern(
+                "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
+            );
             fmt = p._get_snprintf_fmt("%ld");
             fmt_ptr = b.bitcast(fmt, i8p, name="repr.fmt.ptr");
             coerced = p._coerce_type(arg_val, i64);
             b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_ptr, coerced]);
-            return buf_ptr;
+            return p._mark_owned(buf_ptr);
         }
         if isinstance(arg_val.type, ir.DoubleType) {
             return p._emit_float_repr(arg_val);

@@ -354,3 +354,13 @@ def both_none_ne -> int {
     b = _none_bytes();
     return 1 if a != b else 0;
 }
+
+# Builtin repr must dispatch to the same length-aware formatter as str(bytes).
+def builtin_repr_ok -> int {
+    for value in [b"", b"a\x00b", b"'\"\\", b"\t\r\n\xff"] {
+        if repr(value) != str(value) {
+            return 0;
+        }
+    }
+    return 1;
+}

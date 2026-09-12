@@ -515,3 +515,8 @@ test "bytes vs None comparison is null-safe (#6751)" {
     # ordering (< > <= >=) against an un-narrowed None operand is rejected
     # at check time (E1121, pinned in test_native_optional_ptr.jac)
 }
+
+test "builtin repr supports native bytes without demotion" {
+    (eng, _) = compile_native("bytes_ops.jac");
+    assert get_func(eng, "builtin_repr_ok", ctypes.c_int64)() == 1;
+}
