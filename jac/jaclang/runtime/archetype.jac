@@ -1,19 +1,26 @@
-import from collections.abc { Callable }
-import from jaclang.runtime.object_model { asdict, field, fields, is_jac_object }
+import from typing { TypeVar as RuntimeTypeVar }
+import from collections { OrderedDict }
+import from jaclang.runtime.object_model {
+    asdict,
+    field,
+    fields,
+    is_jac_object,
+    make_object
+}
 import from functools { cached_property }
 import from inspect { _empty, signature }
 import from logging { getLogger }
 import from pickle { dumps }
 import from threading { Lock }
 import from types { UnionType }
-import from typing { ClassVar, TypeVar }
 import from uuid { UUID, uuid4 }
 import weakref;
+import from jaclang.runtime.access_level { AccessLevel }
 import from jaclang.compiler.frontend.constant { EdgeDir }
 glob logger = getLogger(__name__),
-     TARCH = TypeVar('TARCH', bound='Archetype'),
-     TANCH = TypeVar('TANCH', bound='Anchor'),
-     T = TypeVar('T');
+     TARCH = RuntimeTypeVar('TARCH', bound='Archetype'),
+     TANCH = RuntimeTypeVar('TANCH', bound='Anchor'),
+     T = RuntimeTypeVar('T');
 
 glob _NO_TRIGGER = object(),
      _subclass_hook_lock = Lock();
@@ -21,8 +28,6 @@ glob _NO_TRIGGER = object(),
 glob _light_edge_types: dict[type, bool] = {},
      _edge_subtypes: dict[type, tuple] = {},
      _tracked_classes: dict[type, type] = {};
-
-enum AccessLevel { NO_ACCESS = -1, READ = 0, CONNECT = 1, WRITE = 2 }
 
 def access_level_cast(val: int | str | AccessLevel) -> AccessLevel {
     if isinstance(val, AccessLevel) {
@@ -44,19 +49,22 @@ def access_level_cast(val: int | str | AccessLevel) -> AccessLevel {
     return _map[val];
 }
 
-obj Access {
+@make_object
+class Access {
     has anchors: dict[(str, AccessLevel)] = field(default_factory=`dict);
 
-    def check(anchor: str) -> (AccessLevel | None);
+    def check(self: Access, anchor: str) -> (AccessLevel | None);
 }
 
-obj Permission {
+@make_object
+class Permission {
     has all: AccessLevel = AccessLevel.NO_ACCESS,
         roots: Access = field(default_factory=Access),
         groups: Access = field(default_factory=Access);
 }
 
-obj PermissionDenied {
+@make_object
+class PermissionDenied {
     has operation: str,
         target_id: str,
         target_type: str,
@@ -64,7 +72,7 @@ obj PermissionDenied {
         required: AccessLevel,
         actual: AccessLevel;
 
-    def __eq__(other: object) -> bool {
+    def __eq__(self: PermissionDenied, other: object) -> bool {
         if not isinstance(other, PermissionDenied) or type(other) is not type(self) {
             return False;
         }
@@ -86,17 +94,19 @@ obj PermissionDenied {
             );
     }
 
-    def to_dict -> dict[(str, any)];
-    def message -> str;
+    def to_dict(self: PermissionDenied) -> dict[(str, any)];
+    def message(self: PermissionDenied) -> str;
 }
 
-obj AnchorReport {
+@make_object
+class AnchorReport {
     has id: str,
         context: dict[(str, any)];
 }
 
 
-obj Anchor {
+@make_object
+class Anchor {
     has archetype: Archetype,
         id: (UUID | None) = field(`init=False, `default=None),
         `root: (UUID | None) = field(`init=False, `default=None),
@@ -105,23 +115,24 @@ obj Anchor {
         destroyed: bool = field(`init=False, `default=False),
         hash: int = field(`init=False, `default=0);
 
-    has persistent: bool { getter; setter(persistent: bool); }
+    has persistent: bool { getter; setter(self: Anchor, persistent: bool); }
 
-    def ensure_id -> UUID;
-    def own_access -> Permission;
-    def is_populated -> bool;
-    def make_stub -> TANCH;
-    def populate -> None;
-    def __getattr__(name: str) -> object;
-    def __getstate__ -> dict[(str, any)];
-    def __setstate__(state: dict[(str, any)]) -> None;
-    def __repr__ -> str;
-    def `report -> AnchorReport;
-    def __hash__ -> int;
-    def __eq__(other: object) -> bool;
+    def ensure_id(self: Anchor) -> UUID;
+    def own_access(self: Anchor) -> Permission;
+    def is_populated(self: Anchor) -> bool;
+    def make_stub(self: Anchor) -> TANCH;
+    def populate(self: Anchor) -> None;
+    def __getattr__(self: Anchor, name: str) -> object;
+    def __getstate__(self: Anchor) -> dict[(str, any)];
+    def __setstate__(self: Anchor, state: dict[(str, any)]) -> None;
+    def __repr__(self: Anchor) -> str;
+    def `report(self: Anchor) -> AnchorReport;
+    def __hash__(self: Anchor) -> int;
+    def __eq__(self: Anchor, other: object) -> bool;
 }
 
-obj NodeAnchor(Anchor) {
+@make_object
+class NodeAnchor(Anchor) {
     has archetype: NodeArchetype,
         edges: list[EdgeAnchor],
         version: int = field(`init=False, `default=0),
@@ -129,28 +140,30 @@ obj NodeAnchor(Anchor) {
         in_light: (dict[type, list] | None) = field(`init=False, `default=None),
         mixed: bool = field(`init=False, `default=False);
 
-    def __getstate__ -> dict[(str, object)];
-    def is_populated -> bool;
-    def edge_delta -> (tuple[(set[UUID], set[UUID])] | None);
-    def remove_edge(`edge: EdgeAnchor) -> None;
-    def all_edges -> list[EdgeAnchor];
-    def has_heavy_edges -> bool;
-    def detach_light -> None;
+    def __getstate__(self: NodeAnchor) -> dict[(str, object)];
+    def is_populated(self: NodeAnchor) -> bool;
+    def edge_delta(self: NodeAnchor) -> (tuple[(set[UUID], set[UUID])] | None);
+    def remove_edge(self: NodeAnchor, `edge: EdgeAnchor) -> None;
+    def all_edges(self: NodeAnchor) -> list[EdgeAnchor];
+    def has_heavy_edges(self: NodeAnchor) -> bool;
+    def detach_light(self: NodeAnchor) -> None;
 }
 
-obj EdgeAnchor(Anchor) {
+@make_object
+class EdgeAnchor(Anchor) {
     has archetype: EdgeArchetype,
         source: NodeAnchor,
         target: NodeAnchor,
         is_undirected: bool,
         light: bool = field(`init=False, `default=False);
 
-    def is_populated -> bool;
-    def __getstate__ -> dict[(str, object)];
-    def detach -> None;
+    def is_populated(self: EdgeAnchor) -> bool;
+    def __getstate__(self: EdgeAnchor) -> dict[(str, object)];
+    def detach(self: EdgeAnchor) -> None;
 }
 
-obj WalkerAnchor(Anchor) {
+@make_object
+class WalkerAnchor(Anchor) {
     has archetype: WalkerArchetype,
         path: list[(NodeAnchor | EdgeAnchor)] = field(default_factory=`list),
         next: list[(NodeAnchor | EdgeAnchor)] = field(default_factory=`list),
@@ -158,7 +171,8 @@ obj WalkerAnchor(Anchor) {
         disengaged: bool = False;
 }
 
-obj ObjectAnchor(Anchor) {
+@make_object
+class ObjectAnchor(Anchor) {
     has archetype: ObjectArchetype;
 }
 
@@ -178,7 +192,8 @@ def anchor_key(anchor: Anchor) -> any {
     return aid if aid is not None else id(anchor);
 }
 
-obj Archetype {
+@make_object
+class Archetype {
     with entry {
         _jac_entry_funcs_: ClassVar[list[ObjectSpatialFunction]] = [];
         _jac_exit_funcs_: ClassVar[list[ObjectSpatialFunction]] = [];
@@ -186,15 +201,15 @@ obj Archetype {
     }
 
     @cached_property
-    def __jac__ -> Anchor;
+    def __jac__(self: Archetype) -> Anchor;
 
     def __init_subclass__(cls: any, **kwargs: object) -> None;
     static def install_subclass_hook(hook: Callable[[type], None]) -> None;
     static def uninstall_subclass_hook(hook: Callable[[type], None]) -> None;
     static def _subclass_tree -> list[type];
-    def postinit -> None;
-    def __repr__ -> str;
-    def __jac_access__ -> (AccessLevel | str | int | None);
+    def postinit(self: Archetype) -> None;
+    def __repr__(self: Archetype) -> str;
+    def __jac_access__(self: Archetype) -> (AccessLevel | str | int | None);
 }
 
 class NodeArchetype(Archetype) {
@@ -214,7 +229,7 @@ class EdgeArchetype(Archetype) {
         __jac__: EdgeAnchor;
     }
 
-    def __eq__(other: object) -> bool {
+    def __eq__(self: EdgeArchetype, other: object) -> bool {
         if self is other {
             return True;
         }
@@ -232,7 +247,7 @@ class EdgeArchetype(Archetype) {
         );
     }
 
-    def __hash__ -> int {
+    def __hash__(self: EdgeArchetype) -> int {
         mine = self.__dict__.get('__jac__');
         if mine is not None and mine.light {
             return hash((`type(self), id(mine.source), id(mine.target)));
@@ -266,36 +281,42 @@ class ObjectArchetype(Archetype) {
     }
 }
 
-obj GenericEdge(EdgeArchetype) {
+@make_object
+class GenericEdge(EdgeArchetype) {
     with entry {
         __jac_base__: ClassVar[bool] = True;
     }
 
-    def __repr__ -> str;
+    def __repr__(self: GenericEdge) -> str;
 }
 
-obj Root(NodeArchetype) {
+@make_object
+class Root(NodeArchetype) {
     with entry {
         __jac_base__: ClassVar[bool] = True;
     }
 
     @cached_property
-    def __jac__ -> NodeAnchor;
+    def __jac__(self: Root) -> NodeAnchor;
 
-    def __getattr__(name: str) -> Root;
-    def __repr__ -> str;
+    def __getattr__(self: Root, name: str) -> Root;
+    def __repr__(self: Root) -> str;
 }
 
-obj ObjectSpatialFunction {
+@make_object
+class ObjectSpatialFunction {
     has name: str,
         func: Callable[([any, any], any)],
         trigger_override: any = _NO_TRIGGER;
 
     @cached_property
-    def trigger -> (type | UnionType | tuple[((type | UnionType), ...)] | None);
+    def trigger(
+        self: ObjectSpatialFunction
+    ) -> (type | UnionType | tuple[((type | UnionType), ...)] | None);
 }
 
-obj JsxElement {
+@make_object
+class JsxElement {
     has tag: object,
         `props: dict[(str, object)],
         children: list;
@@ -656,4 +677,44 @@ def track_writes(arch: Archetype) -> None {
         _tracked_classes[cls] = tracked;
     }
     object.__setattr__(arch, '__class__', tracked);
+}
+
+def make_archetype(cls: type[Archetype]) -> type[Archetype] {
+    entries: OrderedDict[(str, ObjectSpatialFunction)] = OrderedDict(
+        (fn.name, fn) for fn in cls._jac_entry_funcs_
+    );
+    exits: OrderedDict[(str, ObjectSpatialFunction)] = OrderedDict(
+        (fn.name, fn) for fn in cls._jac_exit_funcs_
+    );
+    for func in cls.__dict__.values() {
+        if callable(func) and (func?.__jac_entry or func?.__jac_exit) {
+            dsfunc = ObjectSpatialFunction(func.__name__, func, func.__jac_trigger__)
+                if func?.__jac_trigger__
+                else ObjectSpatialFunction(func.__name__, func);
+            if func?.__jac_entry {
+                entries[func.__name__] = dsfunc;
+            }
+            if func?.__jac_exit {
+                exits[func.__name__] = dsfunc;
+            }
+        }
+    }
+    cls._jac_entry_funcs_ = [*entries.values()];
+    cls._jac_exit_funcs_ = [*exits.values()];
+    if issubclass(cls, WalkerArchetype)
+        and 'reports' not in cls.__dict__.get('__annotations__', {}) {
+        if not hasattr(cls, '__annotations__') {
+            cls.__annotations__ = {};
+        }
+        cls.__annotations__['reports'] = list;
+        setattr(
+            cls,
+            'reports',
+            field(default_factory=`list, init=False, repr=False, compare=False)
+        );
+    }
+    if cls.__dict__.get('__annotations__') and not cls.__doc__ {
+        cls.__doc__ = cls.__name__;
+    }
+    return make_object(cls);
 }

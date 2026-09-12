@@ -2,7 +2,7 @@ import json;
 import os;
 
 import from pathlib { Path }
-import from jaclang.jac0core.sealed { MANIFEST_NAME }
+import from jaclang.compiler.driver.image { MANIFEST_NAME }
 
 glob SERVE_MANIFEST_REL: str = os.path.join(".jac", "serve_manifest.json"),
      CLIENT_DIST_REL: str = os.path.join(".jac", "client", "dist"),

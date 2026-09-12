@@ -355,7 +355,7 @@ impl MTIRGenPass._extract_method_info(
 }
 
 impl MTIRGenPass._get_scope_str(nd: UniScopeNode) -> str {
-    import from jaclang.jac0core.ext_registry { STEM_REKEY_SUFFIXES }
+    import from jaclang.compiler.driver.extensions { STEM_REKEY_SUFFIXES }
 
     if isinstance(nd, Module) {
         mod_path = nd.loc.mod_path;

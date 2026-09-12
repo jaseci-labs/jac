@@ -221,12 +221,12 @@ impl _under_fixtures(path: str) -> bool {
 }
 
 impl _is_named_test_file(filename: str) -> bool {
-    import from jaclang.jac0core.ext_registry { is_jac, is_test }
+    import from jaclang.compiler.driver.extensions { is_jac, is_test }
     return (filename.startswith("test_") and is_jac(filename)) or is_test(filename);
 }
 
 impl _suite_source(filepath: str) -> str {
-    import from jaclang.jac0core.ext_registry { is_test }
+    import from jaclang.compiler.driver.extensions { is_test }
     if is_test(os.path.basename(filepath)) {
         try {
             import from jaclang.compiler.driver.bccache { discover_base_file }
@@ -240,7 +240,7 @@ impl _suite_source(filepath: str) -> str {
 }
 
 impl _iter_candidate_files(start: str, ignore: (list[str] | None) = None) -> list[str] {
-    import from jaclang.jac0core.ext_registry { is_impl, is_jac }
+    import from jaclang.compiler.driver.extensions { is_impl, is_jac }
     ignored = ignore or [];
     found: list[str] = [];
     for (dirpath, dirnames, filenames) in os.walk(start, topdown=True) {
@@ -269,7 +269,7 @@ impl discover(
     directory: (str | list[str]) = "",
     ignore: (list[str] | None) = None
 ) -> TestPlan {
-    import from jaclang.jac0core.ext_registry { is_jac }
+    import from jaclang.compiler.driver.extensions { is_jac }
     targets = paths or [];
     ignored = ignore or [];
     explicit: set[str] = set();
@@ -601,7 +601,7 @@ impl run_file(
     import time;
     import from jaclang.testing.test { JacTestCheck }
     import from jaclang.testing.cl_test_runner { module_is_client, run_cl_test_file }
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.compiler.driver.extensions { base_stem }
     abs_path = os.path.abspath(filepath);
     outcomes: list[TestOutcome] = [];
     is_client = False;

@@ -1,5 +1,4 @@
 import from contextlib { contextmanager }
-import from collections.abc { Iterator }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import os;
 import time;

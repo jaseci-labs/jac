@@ -1,5 +1,4 @@
 import hashlib;
-import from collections.abc { Sequence }
 import from contextvars { ContextVar }
 import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.constant {

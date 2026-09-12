@@ -101,7 +101,7 @@ def bundled_catalog_path(pkg_dir: str) -> str {
 }
 
 def dev_catalog_path(pkg_dir: str) -> str {
-    import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
+    import from jaclang.compiler.driver.cache_paths { get_jir_cache_dir }
     return os.path.join(
         str(get_jir_cache_dir()), "stubcat", catalog_key(pkg_dir) + ".bin"
     );
@@ -186,7 +186,7 @@ def _find_catalog -> StubCatalog | None {
 }
 
 def _publish(cat: StubCatalog | None) -> StubCatalog | None {
-    import from jaclang.jac0core.stubcat_hook { set_active }
+    import from jaclang.compiler.types.stubcat.state { set_active }
     if cat is not None and not _CATALOG_CACHE {
         _CATALOG_CACHE.append(cat);
         set_active(cat);
@@ -230,7 +230,7 @@ def ensure_catalog -> StubCatalog | None {
 }
 
 def reset_catalog_cache {
-    import from jaclang.jac0core.stubcat_hook { set_active }
+    import from jaclang.compiler.types.stubcat.state { set_active }
     _CATALOG_CACHE.clear();
     _DIGEST_CACHE.clear();
     set_active(None);

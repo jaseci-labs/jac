@@ -5,7 +5,6 @@ import hashlib;
 import os;
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
-import from collections.abc { Iterator }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree { Module }

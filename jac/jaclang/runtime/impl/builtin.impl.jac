@@ -130,15 +130,15 @@ impl __getattr__(name: str) -> object {
 }
 
 impl _get_commit -> Callable[..., any] {
-    return _get_jac().commit;
+    return runtime_function("commit");
 }
 
 impl _get_on_commit -> Callable[..., any] {
-    return _get_jac().on_commit;
+    return runtime_function("on_commit");
 }
 
 impl _get_store -> Callable[..., any] {
-    return _get_jac().store;
+    return runtime_function("store");
 }
 
 impl _get_llm -> LLMModel {
@@ -166,23 +166,23 @@ impl _get_schema_builder(name: str) -> Callable[..., any] {
 }
 
 impl _get_save -> Callable[..., any] {
-    return _get_jac().save;
+    return runtime_function("save");
 }
 
 impl _get_allroots -> Callable[..., any] {
-    return _get_jac().get_all_root;
+    return runtime_function("get_all_root");
 }
 
 impl _get_revoke -> Callable[..., any] {
-    return _get_jac().perm_revoke;
+    return runtime_function("perm_revoke");
 }
 
 impl _get_grant -> Callable[..., any] {
-    return _get_jac().perm_grant;
+    return runtime_function("perm_grant");
 }
 
 impl _get_jobj -> Callable[..., any] {
-    return _get_jac().get_object;
+    return runtime_function("get_object");
 }
 
 impl _get_jref -> Callable[..., any] {
@@ -197,11 +197,11 @@ impl jref(id_or_obj: any) -> any {
 }
 
 impl _get_jid -> Callable[..., any] {
-    return _get_jac().object_ref;
+    return runtime_function("object_ref");
 }
 
 impl _get_access_level -> type[AccessLevel] {
-    import from jaclang.runtime.constructs { AccessLevel }
+    import from jaclang.runtime.access_level { AccessLevel }
     return AccessLevel;
 }
 
@@ -243,11 +243,13 @@ impl testraises(*excs: type, `match: (str | None) = None) -> RaisesContext {
     return RaisesContext(excs=tuple(excs), pattern=`match);
 }
 
-impl RaisesContext.__enter__ -> RaisesContext {
+impl RaisesContext.__enter__(self: RaisesContext) -> RaisesContext {
     return self;
 }
 
-impl RaisesContext.__exit__(exc_type: any, exc: any, tb: any) -> bool {
+impl RaisesContext.__exit__(
+    self: RaisesContext, exc_type: any, exc: any, tb: any
+) -> bool {
     names = ", ".join([e.__name__ for e in self.excs]);
     if exc_type is None {
         raise AssertionError(f"DID NOT RAISE {names}");
@@ -262,7 +264,7 @@ impl RaisesContext.__exit__(exc_type: any, exc: any, tb: any) -> bool {
     return True;
 }
 
-impl RaisesContext.`match(regexp: str) -> bool {
+impl RaisesContext.`match(self: RaisesContext, regexp: str) -> bool {
     import re;
     return re.search(regexp, str(self.value)) is not None;
 }
@@ -384,11 +386,11 @@ impl schedule(**kwargs: any) -> Callable {
     return decorator;
 }
 
-impl JacListView.__len__ -> int {
+impl JacListView.__len__(self: JacListView) -> int {
     return self.stop - self.start;
 }
 
-impl JacListView.__getitem__(i: any) -> any {
+impl JacListView.__getitem__(self: JacListView, i: any) -> any {
     _n = self.stop - self.start;
     if i < 0 {
         i = i + _n;
@@ -399,7 +401,7 @@ impl JacListView.__getitem__(i: any) -> any {
     return self.backing[self.start + i];
 }
 
-impl JacListView.__setitem__(i: any, v: any) -> None {
+impl JacListView.__setitem__(self: JacListView, i: any, v: any) -> None {
     _n = self.stop - self.start;
     if i < 0 {
         i = i + _n;
@@ -410,7 +412,7 @@ impl JacListView.__setitem__(i: any, v: any) -> None {
     self.backing[self.start + i] = v;
 }
 
-impl JacListView.__iter__ -> any {
+impl JacListView.__iter__(self: JacListView) -> any {
     return iter([self.backing[k] for k in range(self.start, self.stop)]);
 }
 

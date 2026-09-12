@@ -576,7 +576,7 @@ impl run_jab_image(
 }
 
 def _jab_native_bin(img_root: Path, entry_rel: str) -> (str | None) {
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.compiler.driver.extensions { base_stem }
     import from jaclang.server.sealed_serve { NATIVE_DIR_REL }
     try {
         import jaclang.compiler.backends.native.llvm.binding as llvm;

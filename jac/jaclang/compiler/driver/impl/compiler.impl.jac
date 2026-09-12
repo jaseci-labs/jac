@@ -18,7 +18,7 @@ impl JacCompiler.stub_catalog -> StubCatalog | None {
     if found is not None {
         return found;
     }
-    import from jaclang.jac0core.stubcat_hook { active }
+    import from jaclang.compiler.types.stubcat.state { active }
     found = active();
     self._stub_catalog = found;
     return found;
@@ -45,7 +45,7 @@ impl JacCompiler.ensure_stub_catalog -> StubCatalog | None {
     if found is not None {
         return found;
     }
-    import from jaclang.jac0core.stubcat_hook { env_disabled }
+    import from jaclang.compiler.types.stubcat.state { env_disabled }
     if env_disabled() {
         return None;
     }
@@ -485,7 +485,7 @@ impl JacCompiler._restore_sections(
 
 impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None) {
     import from pathlib { Path as _Path }
-    import from jaclang.jac0core { sealed as _sealed }
+    import from jaclang.compiler.driver { image as _sealed }
     norm_file = os.path.normpath(os.path.abspath(full_target));
     d = os.path.dirname(norm_file);
     pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
@@ -530,7 +530,7 @@ impl JacCompiler._get_precompiled_jir_bytecode(
         absolutize_ct_deps_section,
         cache_mode
     }
-    import from jaclang.jac0core { sealed as _sealed }
+    import from jaclang.compiler.driver { image as _sealed }
     (rebuild_flag, no_precompile) = cache_mode();
     if rebuild_flag or no_precompile {
         return None;
@@ -680,7 +680,7 @@ impl JacCompiler.parse_str(
         assert isinstance(converted, uni.Module);
         mod = converted;
     } else {
-        import from jaclang.jac0core.ext_registry {
+        import from jaclang.compiler.driver.extensions {
             is_retired_client_marker,
             is_retired_native_marker
         }
@@ -1563,7 +1563,7 @@ impl JacCompiler._compile_once(
     use_str: (str | None) = None,
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
-    import from jaclang.jac0core.ext_registry { is_annex }
+    import from jaclang.compiler.driver.extensions { is_annex }
     if (use_str is None and options.resolve_annex_parent and is_annex(file_path)) {
         import from jaclang.compiler.driver.bccache { discover_base_file }
         base_path = discover_base_file(file_path);

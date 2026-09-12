@@ -203,7 +203,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
     import json;
     import hashlib;
     import sys;
-    import from jaclang.jac0core { sealed }
+    import from jaclang.compiler.driver { image as sealed }
     import site;
     site_before = sys.modules['site'];
     images_before = list(sealed._images);

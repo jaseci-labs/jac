@@ -1,10 +1,13 @@
 import json;
+import from jaclang.runtime.exports { runtime_function }
+import from jaclang.runtime.object_model { make_object }
 import from abc { abstractmethod }
 import from collections.abc { Callable }
 import from enum { StrEnum }
 import from typing { ClassVar, NoReturn, `override }
 import type from enum { IntEnum }
-import type from jaclang.runtime.constructs { AccessLevel, NodeArchetype }
+import type from jaclang.runtime.access_level { AccessLevel }
+import type from jaclang.runtime.constructs { NodeArchetype }
 import type from jaclang.runtime.runtime { LLMModel }
 import type from jaclang { JacRuntimeInterface }
 
@@ -80,25 +83,27 @@ def testfail(reason: str = "") -> NoReturn;
 
 def testraises(*excs: type, `match: (str | None) = None) -> RaisesContext;
 
-obj RaisesContext {
+@make_object
+class RaisesContext {
     has excs: tuple[type, ...],
         pattern: (str | None) = None,
         value: (BaseException | None) = None;
 
-    def __enter__ -> RaisesContext;
-    def __exit__(exc_type: any, exc: any, tb: any) -> bool;
-    def `match(regexp: str) -> bool;
+    def __enter__(self: RaisesContext) -> RaisesContext;
+    def __exit__(self: RaisesContext, exc_type: any, exc: any, tb: any) -> bool;
+    def `match(self: RaisesContext, regexp: str) -> bool;
 }
 
-obj JacListView {
+@make_object
+class JacListView {
     has backing: any = None,
         start: int = 0,
         stop: int = 0;
 
-    def __len__ -> int;
-    def __getitem__(i: any) -> any;
-    def __setitem__(i: any, v: any) -> None;
-    def __iter__ -> any;
+    def __len__(self: JacListView) -> int;
+    def __getitem__(self: JacListView, i: any) -> any;
+    def __setitem__(self: JacListView, i: any, v: any) -> None;
+    def __iter__(self: JacListView) -> any;
 }
 
 def _jac_chunks(xs: any, n: int) -> list;

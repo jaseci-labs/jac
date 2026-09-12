@@ -2339,7 +2339,7 @@ impl Import.is_jac.getter -> bool {
 }
 
 impl Import.__jac_detected.getter -> bool {
-    import from jaclang.jac0core.ext_registry { is_jac, INIT_FILES }
+    import from jaclang.compiler.driver.extensions { is_jac, INIT_FILES }
     if self.from_loc {
         if is_jac(self.from_loc.resolve_relative_path()) {
             return True;

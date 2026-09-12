@@ -1,7 +1,6 @@
 import atexit;
 import os;
 import sys;
-import from collections.abc { Callable, Iterator, Sequence }
 import from contextlib { contextmanager }
 import from jaclang.compiler.passes.transform { Alert, DiagnosticPolicy }
 import from jaclang.compiler.driver.program { JacProgram }

@@ -10,14 +10,12 @@ import zlib;
 
 import from pathlib { Path }
 import from jaclang.cli.console { console }
-import from jaclang.jac0core { ext_registry }
+import from jaclang.compiler.driver { extensions as ext_registry }
 import from jaclang.compiler.driver.jir { patch_co_filenames_bytes }
 import from jaclang.compiler.driver.jir {
     write_precompiled_jir,
     FLAG_PRECOMPILED,
     FLAG_BOOTSTRAP,
-    HEADER_SIZE,
-    SECTIONS_MAGIC,
     SEC_BYTECODE,
     SEC_CTDEPS,
     SEC_DEBUG_SRC,
@@ -31,16 +29,7 @@ import from jaclang.compiler.driver.jir {
     running_compiler_digest,
     PRECOMPILE_SENTINEL
 }
-import from jaclang.jac0core.sealed {
-    MANIFEST_NAME,
-    MANIFEST_FORMAT,
-    JIR_FORMAT_VERSION as SEALED_JIR_FORMAT_VERSION,
-    PRECOMPILE_SENTINEL as SEALED_SENTINEL,
-    HEADER_SIZE as SEALED_HEADER_SIZE,
-    SECTIONS_MAGIC as SEALED_SECTIONS_MAGIC,
-    SEC_BYTECODE as SEALED_SEC_BYTECODE,
-    SEC_DEBUG_SRC as SEALED_SEC_DEBUG_SRC
-}
+import from jaclang.compiler.driver.image { MANIFEST_NAME, MANIFEST_FORMAT }
 
 glob RESULT_NAME: str = "PRECOMPILE_RESULT.json";
 
@@ -99,7 +88,6 @@ def _nested_project_dirs(package_dir: str) -> list[str] {
 }
 
 def find_jac_files(package_dir: str) -> list[str] {
-    import from jaclang.bootstrap_manifest { SOURCE_ONLY_PATHS }
     result: list[str] = [];
     pkg = Path(package_dir);
     for jac_file in sorted(pkg.rglob("*.jac")) {
@@ -108,14 +96,6 @@ def find_jac_files(package_dir: str) -> list[str] {
         }
         rel_path = jac_file.relative_to(pkg);
         rel = str(rel_path);
-
-        if pkg.name == "jaclang"
-            and any(
-                rel.replace(os.sep, "/").startswith(prefix)
-                for prefix in SOURCE_ONLY_PATHS
-            ) {
-            continue;
-        }
 
         if any(
             part.startswith(".") or part == "__pycache__" for part in rel_path.parts
@@ -772,30 +752,6 @@ def seal_finalize(
     embed_src: bool,
     app: str = ""
 ) -> int {
-    writes = (
-        FORMAT_VERSION,
-        HEADER_SIZE,
-        SECTIONS_MAGIC,
-        SEC_BYTECODE,
-        SEC_DEBUG_SRC,
-        PRECOMPILE_SENTINEL
-    );
-    reads = (
-        SEALED_JIR_FORMAT_VERSION,
-        SEALED_HEADER_SIZE,
-        SEALED_SECTIONS_MAGIC,
-        SEALED_SEC_BYTECODE,
-        SEALED_SEC_DEBUG_SRC,
-        SEALED_SENTINEL
-    );
-    if reads != writes {
-        console.error(
-            f"JIR format drift: jir.jac writes {writes} but sealed.py "
-            f"reads {reads}. Update jaclang/jac0core/sealed.py."
-        );
-        return 1;
-    }
-
     if pkg_name != "jaclang"
         and not seal_runtime_closure(
             pkg_path, precompiled_dir / pyver, embed_src, app

@@ -1,5 +1,5 @@
 import from jaclang.cli.console { console }
-import from jaclang.jac0core.ext_registry { strip_suffix }
+import from jaclang.compiler.driver.extensions { strip_suffix }
 
 impl JacTestCheck.add_test(
     filepath: str, func_name: str, test_func: Callable, display_name: str = ""

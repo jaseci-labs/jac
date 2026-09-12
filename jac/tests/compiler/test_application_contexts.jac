@@ -52,7 +52,7 @@ test "sealed service contracts use the target module app identity" {
 }
 
 test "a sealed entry loads without a package initializer" {
-    import jaclang.jac0core.sealed as sealed;
+    import jaclang.compiler.driver.image as sealed;
     with TemporaryDirectory() as td {
         path = str(Path(td) / 'main.jac');
         Path(path).write_text('');

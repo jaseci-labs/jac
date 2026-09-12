@@ -1,5 +1,4 @@
 import os;
-import type from collections.abc { Sequence }
 import type from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
 import from jaclang.compiler.frontend.srcloc { CodeLocInfo }
 import from jaclang.compiler.frontend.constant {

@@ -1662,7 +1662,7 @@ def _bundle_sealed(config: any, output: str, app: str = "") -> int {
         style="success"
     );
     console.print(
-        "  Load in a host jac via jaclang.jac0core.sealed.register_image(<dir>/_precompiled).",
+        "  Load in a host jac via jaclang.compiler.driver.image.register_image(<dir>/_precompiled).",
         style="muted"
     );
     return 0;
@@ -1692,7 +1692,7 @@ def _bundle_binary(config: any, output: str, fat: bool = False, app: str = "") -
     import shutil;
     import subprocess;
     import tempfile;
-    import from jaclang.jac0core.sealed { MANIFEST_NAME }
+    import from jaclang.compiler.driver.image { MANIFEST_NAME }
     import from jaclang.dist.jab { jab_app_meta }
 
     name = config.project.name;

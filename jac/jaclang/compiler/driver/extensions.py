@@ -12,7 +12,7 @@ bootstrap (``_jac_finder.py``, ``jac0.py``, ``meta_importer.py``) can import it,
 exactly like the sibling ``cache_paths.py``. Jac code consumes it as a normal
 ``.py`` import::
 
-    import from jaclang.jac0core.ext_registry { base_stem, is_annex }
+    import from jaclang.compiler.driver.extensions { base_stem, is_annex }
 """
 
 from __future__ import annotations

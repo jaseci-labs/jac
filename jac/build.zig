@@ -72,6 +72,9 @@ const JACBOOT_SRC =
     "os.environ['JAC_STUBCAT_BUILDING'] = '1'\n" ++
     "import _jac_finder\n" ++
     "_jac_finder.install()\n" ++
+    "if mode == 'stubcat':\n" ++
+    "    from jaclang.compiler.types.stubcat.build import main\n" ++
+    "    sys.exit(int(main(argv) or 0))\n" ++
     "if mode == 'payload':\n" ++
     "    from jaclang.dist.payload.cli import main\n" ++
     "    sys.exit(int(main(argv) or 0))\n" ++
@@ -89,12 +92,14 @@ const JACBOOT_SRC =
 const JacTool = struct {
     b: *std.Build,
     python: []const u8,
-    root: []const u8,
+    image: std.Build.LazyPath,
     build_python: *std.Build.Step,
     fetch_typeshed: *std.Build.Step,
 
     fn run(self: JacTool, mode: []const u8, args: []const []const u8) *std.Build.Step.Run {
-        const cmd = self.b.addSystemCommand(&.{ self.python, "-I", "-c", JACBOOT_SRC, self.root, mode });
+        const cmd = self.b.addSystemCommand(&.{ self.python, "-I", "-S", "-c", JACBOOT_SRC });
+        cmd.addDirectoryArg(self.image);
+        cmd.addArg(mode);
         const python_dir = std.fs.path.dirname(std.fs.path.dirname(std.fs.path.dirname(self.python).?).?).?;
         cmd.setEnvironmentVariable("SSL_CERT_FILE", self.b.fmt("{s}/build/cacert.pem", .{python_dir}));
         cmd.addArgs(args);
@@ -103,6 +108,43 @@ const JacTool = struct {
         return cmd;
     }
 };
+
+fn isolateCompilerRun(run: *std.Build.Step.Run) void {
+    run.setEnvironmentVariable("JAC_NO_DEV_SOURCE", "1");
+    for ([_][]const u8{ "JAC_DEV_SOURCE", "JAC_COMPILER_IMAGE", "JAC_COMPILER_LIB", "JAC_LLVM_SHIM", "JAC_STUBCAT_BUILDING", "JACPATH" }) |name| {
+        run.removeEnvironmentVariable(name);
+    }
+}
+
+fn configureCompilerKernel(b: *std.Build, run: *std.Build.Step.Run, target: std.Build.ResolvedTarget) std.Build.LazyPath {
+    isolateCompilerRun(run);
+    run.addArgs(&.{ "--target", b.fmt("{s}-{s}", .{
+        @tagName(target.result.cpu.arch),
+        if (target.result.os.tag == .macos) "apple-darwin" else "unknown-linux-gnu",
+    }) });
+    run.addFileArg(b.path("jaclang/compiler/jc_unit.jac"));
+    run.addArg("-o");
+    const name = if (target.result.os.tag == .macos) "libjac_compiler.dylib" else "libjac_compiler.so";
+    const kernel = run.addOutputFileArg(name);
+    addTreeInputs(b, run, "jaclang");
+    run.addFileInput(b.path("bootstrap/pins.json"));
+    return kernel;
+}
+
+fn configureCompilerImage(b: *std.Build, run: *std.Build.Step.Run, kernel: std.Build.LazyPath, shim: std.Build.LazyPath, jobs: u32) std.Build.LazyPath {
+    isolateCompilerRun(run);
+    run.addFileArg(b.path("bootstrap/compiler.jac"));
+    run.addArgs(&.{ "image", b.pathFromRoot("jaclang") });
+    const image = run.addOutputDirectoryArg("compiler-site");
+    run.addFileArg(kernel);
+    run.addFileArg(shim);
+    run.addArg(b.fmt("{d}", .{jobs}));
+    run.addArgs(&.{ "compiler/jc_unit.jac", "compiler/jc_materialize.jac" });
+    addTreeInputs(b, run, "jaclang");
+    run.addFileInput(b.path("_jac_finder.py"));
+    run.addFileInput(b.path("bootstrap/pins.json"));
+    return image;
+}
 
 pub fn build(b: *std.Build) void {
     // Build for a BASELINE CPU of the host arch, not the build machine's native
@@ -138,6 +180,28 @@ pub fn build(b: *std.Build) void {
         // Unsupported build host: only the shim/test steps are available.
         return;
     };
+    const fetch_jac_step = b.step("fetch-jac", "Acquire and verify the pinned stage-0 Jac compiler");
+    if (pins.jacRelease(b, host_osarch)) |release| {
+        const module = b.createModule(.{
+            .root_source_file = b.path("bootstrap/fetch_jac.zig"),
+            .target = b.graph.host,
+            .optimize = .ReleaseSafe,
+            .link_libc = true,
+        });
+        const executable = b.addExecutable(.{ .name = "fetch_jac", .root_module = module });
+        const acquire = b.addRunArtifact(executable);
+        acquire.addArgs(&.{ release.url, release.sha256, b.pathFromRoot(b.fmt(".toolchains/jac/{s}/{s}/jac", .{ release.version, host_osarch })) });
+        if (b.option(bool, "offline", "Require the pinned bootstrap compiler to be cached") orelse false) acquire.addArg("--offline");
+        acquire.has_side_effects = true;
+        fetch_jac_step.dependOn(&acquire.step);
+    } else {
+        const unavailable = b.addFail(b.fmt("No pinned Jac bootstrap compiler for {s}", .{host_osarch}));
+        fetch_jac_step.dependOn(&unavailable.step);
+    }
+    const stage0_path = if (pins.jacRelease(b, host_osarch)) |release|
+        b.pathFromRoot(b.fmt(".toolchains/jac/{s}/{s}/jac", .{ release.version, host_osarch }))
+    else
+        b.pathFromRoot(".toolchains/unavailable/jac");
     const seed_mod = b.createModule(.{
         .root_source_file = b.path("bootstrap/build_python.zig"),
         .target = b.graph.host,
@@ -174,13 +238,67 @@ pub fn build(b: *std.Build) void {
     fetch_ts.addFileInput(b.path("jaclang/vendor/typeshed/PIN"));
     fetch_ts.addFileInput(b.path("jaclang/vendor/typeshed/TARBALL_SHA256"));
 
+    // Native compiler artifacts belong to the build graph. The pinned compiler
+    // owns its runtime and LLVM; payload assembly only consumes the library.
+    const kernel_build = b.addSystemCommand(&.{ stage0_path, "build", "--native", "--lib" });
+    kernel_build.step.dependOn(fetch_jac_step);
+    kernel_build.step.dependOn(&fetch_ts.step);
+    const compiler_kernel = configureCompilerKernel(b, kernel_build, target);
+    const kernel_step = b.step("compiler-kernel", "Build the compiler kernel with the pinned stage-0 toolchain");
+    kernel_step.dependOn(&kernel_build.step);
+
+    // Stage 1 is an ordinary compiled image produced by the pinned release.
+    // Its output is immutable and separate from both producer and target sources.
+    const compiler_jobs = b.option(u32, "compiler-jobs", "Parallel compiler-image workers") orelse 4;
+    const image_step = b.step("compiler-image", "Build the current compiler image with the pinned stage-0 compiler");
+    const compiler_image: std.Build.LazyPath = if (jacllvm) |shim| image: {
+        const image_build = b.addSystemCommand(&.{ stage0_path, "run" });
+        image_build.step.dependOn(fetch_jac_step);
+        image_build.step.dependOn(&fetch_ts.step);
+        const compiler_image = configureCompilerImage(b, image_build, compiler_kernel, shim.bin, compiler_jobs);
+        const install_image = b.addInstallDirectory(.{
+            .source_dir = compiler_image,
+            .install_dir = .prefix,
+            .install_subdir = "compiler-site",
+        });
+        image_step.dependOn(&install_image.step);
+        break :image compiler_image;
+    } else image: {
+        image_step.dependOn(&b.addFail("compiler-image requires the pinned LLVM shim; run zig build fetch-llvm").step);
+        break :image b.path(".unavailable-compiler-image");
+    };
+
     const tool = JacTool{
         .b = b,
         .python = b.fmt("{s}/python/install/bin/python{s}", .{ host_python_dir, pins.pyMinor(b) }),
-        .root = root,
+        .image = compiler_image,
         .build_python = &fetch_host.step,
         .fetch_typeshed = &fetch_ts.step,
     };
+
+    if (jacllvm) |shim| {
+        const rebuild_kernel = tool.run("jac", &.{ "build", "--native", "--lib" });
+        const stage2_kernel = configureCompilerKernel(b, rebuild_kernel, target);
+        const rebuild_image = tool.run("jac", &.{"run"});
+        const stage2_image = configureCompilerImage(b, rebuild_image, stage2_kernel, shim.bin, compiler_jobs);
+        const install_stage2 = b.addInstallDirectory(.{
+            .source_dir = stage2_image,
+            .install_dir = .prefix,
+            .install_subdir = "stage2-site",
+        });
+        b.step("compiler-stage2", "Rebuild the compiler kernel and image using stage 1")
+            .dependOn(&install_stage2.step);
+    }
+
+    const verify_image = tool.run("jac", &.{"test"});
+    verify_image.addFileArg(b.path("tests/compiler/test_compiler_image.jac"));
+    b.step("verify-compiler-image", "Verify the staged compiler in an isolated interpreter")
+        .dependOn(&verify_image.step);
+
+    const build_catalog = tool.run("stubcat", &.{});
+    const stub_catalog = build_catalog.addOutputFileArg("stubcat.bin");
+    b.step("stub-catalog", "Build the typeshed catalog with the current compiler image")
+        .dependOn(&build_catalog.step);
 
     // Standalone step: materialize the gitignored typeshed stdlib stubs at the
     // pinned commit, without building a binary. Used by CI (test-binary) and
@@ -288,7 +406,6 @@ pub fn build(b: *std.Build) void {
     const stub = build_stub.addOutputFileArg("jac-stub");
     build_stub.setCwd(b.path("launcher"));
     build_stub.step.dependOn(fetch_target);
-    if (jacllvm) |shim| build_stub.step.dependOn(shim.place);
     addTreeInputs(b, build_stub, "jaclang");
     build_stub.addFileInput(b.path("launcher/launcher.jac"));
     b.step("stub", "Build just the launcher stub (no payload)")
@@ -313,82 +430,25 @@ pub fn build(b: *std.Build) void {
         }
         mk.step.dependOn(fetch_target);
         const out = mk.addOutputFileArg("payload.tar.zst");
-        stubcat_region = mk.addPrefixedOutputFileArg("--stubcat-out=", "stubcat.bin");
-        if (b.option(bool, "skip-stubcat", "mkpayload: skip the stub catalog build (the type checker builds it on first use)") orelse false) {
-            mk.addArg("--skip-stubcat");
-        }
-        // Optional trailing flags (parsed after the positional python/root/out):
-        // --shim ships the Zig-built LLVMPY_* shim; --skip-precompile drops the
-        // JIR precompile (fast link validation; first run compiles on demand).
-        if (jacllvm) |shim| {
-            mk.addPrefixedFileArg("--shim=", shim.bin);
-            // A plain `zig build` also drops the shim into the source tree so the
-            // editable dev loop works without any manual step.
-            b.getInstallStep().dependOn(shim.place);
-        }
-        const skip_precompile = b.option(bool, "skip-precompile", "mkpayload: skip the JIR precompile (faster link validation)") orelse false;
-        if (skip_precompile) {
-            mk.addArg("--skip-precompile");
-        }
-        // Editable dev binary: ship a payload WITHOUT the bundled compiler and
-        // reroute `import jaclang` to a live source dir at startup (see
-        // _jac_finder.py apply_dev_source_override). Skips the tree copy AND
-        // the JIR precompile, so the build is much faster. The resulting binary
-        // is NOT distributable: it hard-depends on `link_dir`.
-        //   -Ddev            link the build root (jaclang/ in THIS tree)
-        //   -Djaclang-dir=P  link an explicit dir containing jaclang/
-        const opt_jaclang_dir = b.option([]const u8, "jaclang-dir", "Editable dev binary: link the compiler from this dir (containing jaclang/) instead of bundling it");
-        const opt_dev = b.option(bool, "dev", "Editable dev binary: link the compiler from the build root instead of bundling it (implies skip-precompile)") orelse false;
-        const link_dir: ?[]const u8 = if (opt_jaclang_dir) |d|
-            (if (std.fs.path.isAbsolute(d)) d else b.pathFromRoot(d))
-        else if (opt_dev)
-            root
-        else
-            null;
-        if (link_dir) |d| {
-            mk.addArg(b.fmt("--link-source={s}", .{d}));
-        }
-        // Persistent JIR precompile cache: seeds site/jaclang/_precompiled
-        // before the precompile and is refreshed after, so only changed modules
-        // recompile. Content-keyed per module, so a stale dir can never change
-        // the payload -- only how fast it builds. NOT a tracked input.
-        mk.addArg(b.fmt("--precompiled-cache={s}", .{b.pathFromRoot(b.fmt(".precompiled-build/{s}", .{python_variant}))}));
+        mk.addPrefixedDirectoryArg("--compiler-image=", compiler_image);
+        mk.addPrefixedFileArg("--stub-catalog=", stub_catalog);
+        stubcat_region = stub_catalog;
         // Persistent compressed-frame cache for the payload's deps layer: the
         // level-19 zstd frame over the rarely-changing deps tree is reused when
         // its content is unchanged. Verified by decompress + compare on reuse,
         // so it can never change the payload either.
         mk.addArg(b.fmt("--layer-cache={s}", .{b.pathFromRoot(b.fmt(".payload-layers/{s}", .{python_variant}))}));
 
-        // Seal the runtime (issue #7135): a bundled release payload boots from
-        // the JIR image + frozen jac0core bootstrap. This is the ONLY bundled
-        // shape; it just needs a real bundled precompile, so it is inert under
-        // -Ddev/-Djaclang-dir (link-source) and -Dskip-precompile.
-        const debug_src = b.option(bool, "debug-src", "Sealed build: embed source text in JIR so tracebacks show source lines (larger payload)") orelse false;
-        if (link_dir == null and !skip_precompile) {
-            mk.addArg("--seal");
-            if (debug_src) mk.addArg("--debug-src");
-        }
-
-        // Contained bun runtime: fetch the pinned bun for the target and bundle
-        // it inside the client package via --bun. In linked-source/dev mode
-        // there is no bundled copy to fall back on -- get_bun() resolves from
-        // the linked tree -- so place bun INTO that tree instead.
-        if (link_dir == null) {
-            const bun_dir = b.pathFromRoot(b.fmt(".bun-build/{s}", .{osarch}));
-            const fetch_bun = tool.run("payload", &.{ "fetch-bun", osarch, bun_dir });
-            fetch_bun.has_side_effects = true;
-            mk.step.dependOn(&fetch_bun.step);
-            mk.addArg(b.fmt("--bun={s}/bun", .{bun_dir}));
-        } else {
-            const fetch_bun = tool.run("payload", &.{ "fetch-bun", host_osarch, b.fmt("{s}/jaclang/client/_bun", .{link_dir.?}) });
-            fetch_bun.has_side_effects = true;
-            mk.step.dependOn(&fetch_bun.step);
-        }
+        const bun_dir = b.pathFromRoot(b.fmt(".bun-build/{s}", .{osarch}));
+        const fetch_bun = tool.run("payload", &.{ "fetch-bun", osarch, bun_dir });
+        fetch_bun.has_side_effects = true;
+        mk.step.dependOn(&fetch_bun.step);
+        mk.addArg(b.fmt("--bun={s}/bun", .{bun_dir}));
 
         // Linux: harvest a static-musl runtime for the target and bundle it so
         // the shipped binary can fully static-link Linux executables against
         // musl at native build time -- no glibc/loader dep.
-        if (link_dir == null and std.mem.startsWith(u8, osarch, "linux-")) {
+        if (std.mem.startsWith(u8, osarch, "linux-")) {
             const musl_lib = b.pathFromRoot(b.fmt(".pbs-build/{s}/musl/lib", .{osarch}));
             const vendor_musl = tool.run("payload", &.{ "build-musl", osarch, musl_lib, b.graph.zig_exe });
             vendor_musl.has_side_effects = true;
@@ -413,22 +473,12 @@ pub fn build(b: *std.Build) void {
             vendor_wasm.has_side_effects = true;
             addTreeInputs(b, vendor_wasm, "jaclang/compiler/backends/native/wasm_rt");
             mk.step.dependOn(&vendor_wasm.step);
-            if (link_dir == null) {
-                mk.addArg(b.fmt("--wasm-libc={s}", .{wasm_libc}));
-            }
+            mk.addArg(b.fmt("--wasm-libc={s}", .{wasm_libc}));
         }
 
-        // Track the payload's real inputs so it repacks when any source changes.
-        // NOTE: addDirectoryArg hashes only the directory PATH, not its
-        // contents. addFileInput content-hashes each file, so enumerate the
-        // tree. In linked-source mode none of jaclang/typeshed is bundled, so
-        // tracking it would only force needless repacks -- skip it; the
-        // --link-source arg itself is the cache key for that mode.
-        if (link_dir == null) {
-            addTreeInputs(b, mk, "jaclang");
-            mk.addFileInput(b.path("jaclang/vendor/typeshed/PIN"));
-            mk.addFileInput(b.path("jaclang/vendor/typeshed/TARBALL_SHA256"));
-        }
+        // The compiler image is already a tracked artifact. Track packaging
+        // metadata and the independently bundled example template here.
+        addTreeInputs(b, mk, "examples/jaclang_org");
         mk.addFileInput(b.path("_jac_finder.py"));
         mk.addFileInput(b.path("sitecustomize.py"));
         // The project manifest (version stamped into dist-info) lives at the
@@ -471,6 +521,17 @@ fn addTreeInputs(b: *std.Build, run: *std.Build.Step.Run, sub_path: []const u8) 
         if (entry.kind != .file) continue;
         if (std.mem.indexOf(u8, entry.path, "__pycache__") != null) continue;
         if (std.mem.indexOf(u8, entry.path, "node_modules") != null) continue;
+        var components = std.mem.splitScalar(u8, entry.path, std.fs.path.sep);
+        var generated = false;
+        while (components.next()) |component| {
+            if (std.mem.eql(u8, component, ".jac") or std.mem.eql(u8, component, ".git") or std.mem.eql(u8, component, "_precompiled")) {
+                generated = true;
+                break;
+            }
+        }
+        if (generated) continue;
+        if (std.mem.startsWith(u8, entry.path, "compiler/libjac_compiler.")) continue;
+        if (std.mem.indexOf(u8, entry.path, "libjacllvm.") != null) continue;
         if (std.mem.endsWith(u8, entry.path, ".pyc")) continue;
         run.addFileInput(b.path(b.fmt("{s}/{s}", .{ sub_path, entry.path })));
     }
@@ -478,6 +539,14 @@ fn addTreeInputs(b: *std.Build, run: *std.Build.Step.Run, sub_path: []const u8) 
 
 fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
     const test_step = b.step("test", "Run the bootstrap unit tests (no network or Python needed)");
+    const jac_mod = b.createModule(.{
+        .root_source_file = b.path("bootstrap/fetch_jac.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    const jac_tests = b.addTest(.{ .name = "fetch-jac-tests", .root_module = jac_mod });
+    test_step.dependOn(&b.addRunArtifact(jac_tests).step);
     const seed_mod = b.createModule(.{
         .root_source_file = b.path("bootstrap/build_python.zig"),
         .target = target,

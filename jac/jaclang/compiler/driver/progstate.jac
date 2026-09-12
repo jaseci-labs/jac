@@ -222,7 +222,7 @@ obj DiagLedger {
 
     def _owned(alert: Alert, path: str) -> bool {
         import os;
-        import from jaclang.jac0core.ext_registry { is_annex_path_of }
+        import from jaclang.compiler.driver.extensions { is_annex_path_of }
         try {
             norm = os.path.realpath(path);
         } except OSError {

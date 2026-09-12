@@ -180,7 +180,7 @@ obj _ClientHmrHandler {
 
 def dev_proxy_paths(project_dir: Path, entry_file: Path) -> tuple {
     import from jaclang.client.vite_bundler { DEV_PROXY_PREFIXES }
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.compiler.driver.extensions { base_stem }
     try {
         import from jaclang.runtime.prepared { prepared_manifest }
         if prepared_manifest(str(entry_file)) is None {

@@ -35,7 +35,7 @@ impl JacAccessValidation._check_access(
                 operation=operation,
                 target_id=str(to.id),
                 target_type=to.archetype.__class__.__name__,
-                target_owner=str(to.root) if to.root else None,
+                target_owner=str(to.`root) if to.`root else None,
                 required=required,
                 actual=actual
             );
@@ -176,7 +176,7 @@ impl JacAccessValidation.check_access_level(
         return AccessLevel.NO_ACCESS;
     }
     jroot: NodeAnchor = _jroot;
-    if ((jroot == jctx.system_root) or (jroot.id == to.root) or (jroot == to)) {
+    if ((jroot == jctx.system_root) or (jroot.id == to.`root) or (jroot == to)) {
         return AccessLevel.WRITE;
     }
     if (
@@ -192,7 +192,7 @@ impl JacAccessValidation.check_access_level(
     } elif JacAccessValidation._is_shared_root(to) {
         access_level = AccessLevel.CONNECT;
     }
-    if (to.root and isinstance((to_root := jctx.mem.get(to.root)), Anchor)) {
+    if (to.`root and isinstance((to_root := jctx.mem.get(to.`root)), Anchor)) {
         root_access = to_root.access;
         if root_access is not None {
             if (root_access.all.value > access_level.value) {
@@ -550,7 +550,7 @@ impl JacContext.reset_graph(root_node: (Root | None) = None) -> int {
     }
     for anchor in mem.get_mem().values() {
         if anchor.id is not None {
-            cand_map[anchor.id] = str(anchor.root) if anchor.root else None;
+            cand_map[anchor.id] = str(anchor.`root) if anchor.`root else None;
         }
     }
     candidates = list(cand_map.items());
@@ -612,78 +612,15 @@ impl JacPersistence.object_ref(`obj: Archetype) -> str {
 }
 
 impl JacArchetype.make_archetype(cls: type[Archetype]) -> type[Archetype] {
-    entries: OrderedDict[(str, ObjectSpatialFunction)] = OrderedDict(
-        (fn.name, fn) for fn in cls._jac_entry_funcs_
-    );
-    exits: OrderedDict[(str, ObjectSpatialFunction)] = OrderedDict(
-        (fn.name, fn) for fn in cls._jac_exit_funcs_
-    );
-    for func in cls.__dict__.values() {
-        if callable(func) and (func?.__jac_entry or func?.__jac_exit) {
-            dsfunc = JacRuntimeInterface.DSFunc(
-                func.__name__, func, func.__jac_trigger__
-            )
-                if func?.__jac_trigger__
-                else JacRuntimeInterface.DSFunc(func.__name__, func);
-            if func?.__jac_entry {
-                entries[func.__name__] = dsfunc;
-            }
-            if func?.__jac_exit {
-                exits[func.__name__] = dsfunc;
-            }
-        }
-    }
-    cls._jac_entry_funcs_ = [*entries.values()];
-    cls._jac_exit_funcs_ = [*exits.values()];
-    if issubclass(cls, WalkerArchetype)
-        and 'reports' not in cls.__dict__.get('__annotations__', {}) {
-        if not hasattr(cls, '__annotations__') {
-            cls.__annotations__ = {};
-        }
-        cls.__annotations__['reports'] = list;
-        setattr(
-            cls,
-            'reports',
-            field(default_factory=`list, init=False, repr=False, compare=False)
-        );
-    }
-    if cls.__dict__.get('__annotations__') and not cls.__doc__ {
-        cls.__doc__ = cls.__name__;
-    }
-    return make_object(cls);
+    import from jaclang.runtime.archetype { make_archetype }
+    return make_archetype(cls);
 }
 
 impl JacModule.impl_patch_filename(
     file_loc: str
 ) -> Callable[([Callable[(P, T)]], Callable[(P, T)])] {
-    def decorator(func: Callable[(P, T)]) -> Callable[(P, T)] {
-        try {
-            code = func.__code__;
-            new_code = types.CodeType(
-                code.co_argcount,
-                code.co_posonlyargcount,
-                code.co_kwonlyargcount,
-                code.co_nlocals,
-                code.co_stacksize,
-                code.co_flags,
-                code.co_code,
-                code.co_consts,
-                code.co_names,
-                code.co_varnames,
-                file_loc,
-                code.co_name,
-                code.co_qualname,
-                code.co_firstlineno,
-                code.co_linetable,
-                code.co_exceptiontable,
-                code.co_freevars,
-                code.co_cellvars
-            );
-            func.__code__ = new_code;
-        } except AttributeError {}
-        return func;
-    }
-    return decorator;
+    import from jaclang.runtime.function_metadata { impl_patch_filename }
+    return impl_patch_filename(file_loc);
 }
 
 impl JacModule.jac_import(
@@ -871,7 +808,7 @@ impl JacTest.run_test(
         run_cl_test_file,
         register_results_into_jactestcheck
     }
-    import from jaclang.jac0core.ext_registry { base_stem, is_annex }
+    import from jaclang.compiler.driver.extensions { base_stem, is_annex }
     test_file = False;
     ret_count = 0;
     if filepath {
@@ -1371,7 +1308,7 @@ impl JacPersistence.save(`obj: (Archetype | Anchor)) -> None {
     anchor = `obj.__jac__ if isinstance(`obj, Archetype) else `obj;
     jctx = JacRuntimeInterface.get_context();
     anchor.ensure_id();
-    if (not anchor.persistent and not anchor.root) {
+    if (not anchor.persistent and not anchor.`root) {
         anchor.persistent = True;
         anchor.`root = jctx.user_root.id;
     }
@@ -1641,12 +1578,12 @@ impl JacLLM.`by(model: LLMModel) -> Callable {
 }
 
 impl JacLLM.by_operator(lhs: any, rhs: any) -> any {
-    import from jaclang.byllm.llm { BaseLLM }
+    import from jaclang.byllm { llm as model_module }
     import from jaclang.runtime.archetype { NodeArchetype, EdgeArchetype }
 
     lhs_list = lhs if isinstance(lhs, list) else [lhs];
     if all(isinstance(element, (NodeArchetype, EdgeArchetype)) for element in lhs_list)
-        and isinstance(rhs, BaseLLM) {
+        and isinstance(rhs, model_module.BaseLLM) {
         import from jaclang.byllm.visit_routing { route_visit }
         return route_visit(lhs_list, rhs);
     }
@@ -1661,7 +1598,7 @@ impl JacLLM.default_llm -> LLMModel {
     if (_cache is not None) {
         return _cache;
     }
-    import from jaclang.byllm.llm { Model }
+    import from jaclang.byllm { llm as model_module }
     import from jaclang.byllm.config_loader { get_byllm_config }
     import from jaclang.byllm.exceptions { ConfigurationError }
     config = get_byllm_config();
@@ -1717,7 +1654,7 @@ impl JacLLM.default_llm -> LLMModel {
         }
     }
 
-    instance = Model(
+    instance = model_module.Model(
         model_name=chosen, config=merged_config, call_params=call_params_config
     );
     JacLLM._default_llm_instance = instance;

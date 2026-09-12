@@ -2,15 +2,14 @@ import from importlib.machinery { ModuleSpec }
 import os;
 import sys;
 import from pathlib { Path }
-import from jaclang.jac0core.ext_registry {
+import from jaclang.compiler.driver.extensions {
     MODULE_SUFFIXES,
     is_jac_namespace_package,
     language_of
 }
 
 glob _project_root_cache: dict = {},
-     _import_base_stack: list = [],
-     COMPILER_PACKAGE: str = 'jaclang';
+     _import_base_stack: list = [];
 
 def push_import_base(base_dir: str) {
     _import_base_stack.append(base_dir);
@@ -212,7 +211,6 @@ def _namespace_candidate(base: str, parts: list[str]) -> (tuple[(str, str)] | No
 def _self_tree_candidate(
     base_dir: str, actual_parts: list[str]
 ) -> (tuple[(str, str)] | None) {
-    is_compiler_pkg = actual_parts[0] == COMPILER_PACKAGE;
     cur = os.path.abspath(base_dir);
     while True {
         parent = os.path.dirname(cur);
@@ -220,15 +218,13 @@ def _self_tree_candidate(
             return None;
         }
         if os.path.basename(cur) == actual_parts[0] {
-            if not is_compiler_pkg or os.path.isdir(os.path.join(cur, 'jac0core')) {
-                res = resolve_local_module(parent, actual_parts);
-                if res {
-                    return res;
-                }
-                res = _namespace_candidate(parent, actual_parts);
-                if res {
-                    return res;
-                }
+            res = resolve_local_module(parent, actual_parts);
+            if res {
+                return res;
+            }
+            res = _namespace_candidate(parent, actual_parts);
+            if res {
+                return res;
             }
         }
         cur = parent;
@@ -1024,7 +1020,7 @@ def _in_typeshed_tree(path: str) -> bool {
 }
 
 def _stub_catalog_active -> bool {
-    import from jaclang.jac0core.stubcat_hook { active }
+    import from jaclang.compiler.types.stubcat.state { active }
     return active() is not None;
 }
 
@@ -1032,7 +1028,7 @@ def _candidate_from_stub_catalog(parts: list[str]) -> (tuple[(str, str)] | None)
     if not parts {
         return None;
     }
-    import from jaclang.jac0core.stubcat_hook { active }
+    import from jaclang.compiler.types.stubcat.state { active }
     catalog: any = active();
     if catalog is None {
         return None;

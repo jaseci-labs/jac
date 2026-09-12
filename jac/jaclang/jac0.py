@@ -2,7 +2,7 @@
 
 A single-file compiler that reads the Jac subset used in jac0core
 and emits equivalent Python source code. Called in-memory by
-meta_importer._exec_bootstrap() at import time — no disk I/O needed.
+meta_importer._exec_seed_source() at import time — no disk I/O needed.
 
 The object-spatial seed subset (lowered onto jaclang.jac0core.osp0, which
 reaches the same runtime statics the full compiler targets): node/edge/walker
@@ -3039,7 +3039,7 @@ def _ext_registry() -> ModuleType:
     if _ext_registry_mod is None:
         import importlib.util
 
-        path = os.path.join(os.path.dirname(__file__), "jac0core", "ext_registry.py")
+        path = os.path.join(os.path.dirname(__file__), "compiler", "driver", "extensions.py")
         spec = importlib.util.spec_from_file_location("_jac_ext_registry", path)
         if spec is None or spec.loader is None:
             raise ImportError(f"cannot load extension registry from {path}")

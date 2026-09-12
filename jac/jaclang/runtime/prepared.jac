@@ -92,8 +92,8 @@ def containing_application(
 
 def load_prepared_module(path: str) -> types.ModuleType {
     import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.jac0core.ext_registry { base_stem }
-    import from jaclang.jac0core.sealed { image_for_bundle_dir }
+    import from jaclang.compiler.driver.extensions { base_stem }
+    import from jaclang.compiler.driver.image { image_for_bundle_dir }
     import from pathlib { Path }
     import hashlib;
     import sys;
@@ -209,7 +209,7 @@ def ensure_namespace(application: PreparedApplication, name: str = '') -> str {
 }
 
 def qualified_module(path: str, application: PreparedApplication) -> str {
-    import from jaclang.jac0core.ext_registry { base_stem }
+    import from jaclang.compiler.driver.extensions { base_stem }
     relative = os.path.relpath(os.path.dirname(path), application.root);
     stem = base_stem(path);
     parts = [] if relative == '.' else relative.split(os.sep);

@@ -23,10 +23,6 @@ from __future__ import annotations
 
 import os
 
-# JacPython now implements the running interpreter's compiler APIs. Its sources
-# participate in the producing compiler identity and the sealed release image.
-SOURCE_ONLY_PATHS: tuple[str, ...] = ()
-
 # Everything the jac0 tier compiles. Directory entries cover subtrees.
 # compiler/passes/ and compiler/backends/ are deliberately listed file by
 # file (or implementation/parser subtree): their siblings (backends/es/,
@@ -76,7 +72,9 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/passes/uni_pass.jac",
     "compiler/tools/treeprinter.jac",
     "runtime/runtime.jac",
+    "runtime/access_level.jac",
     "runtime/object_model.jac",
+    "runtime/exports.jac",
     "runtime/object_interop.jac",
     "runtime/region.jac",
     "runtime/archetype.jac",

@@ -23,7 +23,7 @@ test "no subcommand and unknown subcommand are usage errors" {
     (rc, err) = run([]);
     assert rc == 1;
     assert err.startswith("payload: usage: payload <fetch-typeshed|");
-    assert "|mkpayload|typeshed-sha|stubcat|pack> ..." in err;
+    assert "|mkpayload|typeshed-sha|pack> ..." in err;
 
     (rc, err) = run(["bogus"]);
     assert rc == 1;
@@ -49,10 +49,6 @@ test "every subcommand reports its usage when positional args are missing" {
         (["mkpayload", "/pbs", "/root"], MKPAYLOAD_USAGE),
         (["typeshed-sha"], "usage: payload typeshed-sha <commit>"),
         (
-            ["stubcat", "/pbs", "/site"],
-            "usage: payload stubcat <python-dir> <site-dir> <out.bin>"
-        ),
-        (
             ["pack", "/stub", "/payload"],
             "usage: payload pack <stub> <payload.tar.zst> <out> [stubcat.bin]"
         )
@@ -62,7 +58,8 @@ test "every subcommand reports its usage when positional args are missing" {
         assert rc == 1 , argv;
         assert err == f"payload: {usage}\n" , (argv, err);
     }
-    assert "--shim=PATH" in MKPAYLOAD_USAGE and "--seal" in MKPAYLOAD_USAGE;
+    assert "--compiler-image=DIR" in MKPAYLOAD_USAGE
+        and "--stub-catalog=PATH" in MKPAYLOAD_USAGE;
     assert "--nvim" not in MKPAYLOAD_USAGE and "--pyembed" not in MKPAYLOAD_USAGE;
 }
 
@@ -112,39 +109,33 @@ test "offline argument validation dies before any network or subprocess" {
     }
 }
 
-test "mkpayload trailing flags parse into MkPayloadOpts; unknown flags are ignored" {
-    opts = parse_mkpayload_flags([]);
-    assert opts.shim_so is None and opts.bun_bin is None and opts.link_source is None;
-    assert opts.musl_dir is None and opts.wasm_libc_dir is None;
-    assert opts.precompiled_cache is None and opts.layer_cache is None;
-    assert not opts.skip_precompile and not opts.seal and not opts.debug_src;
-
+test "payload flags describe artifact inputs and reject obsolete build modes" {
+    import from jaclang.dist.payload.fsutil { PayloadDie }
     opts = parse_mkpayload_flags(
         [
-            "--shim=/b/libjacllvm.so",
-            "--skip-precompile",
-            "--link-source=/repo/jac",
-            "--precompiled-cache=/c/pre",
-            "--layer-cache=/c/layers",
-            "--bun=/b/bun",
-            "--musl=/m",
-            "--wasm-libc=/w",
-            "--seal",
-            "--debug-src",
-            "--nvim=/ignored",
-            "--pyembed=/ignored",
-            "--ninja-link=/ignored",
-            "--what-is-this"
+            "--compiler-image=/build/site",
+            "--stub-catalog=/build/stubcat.bin",
+            "--bun=/build/bun",
+            "--musl=/build/musl",
+            "--wasm-libc=/build/wasm",
+            "--layer-cache=/cache/layers"
         ]
     );
-    assert opts.shim_so == "/b/libjacllvm.so";
-    assert opts.skip_precompile;
-    assert opts.link_source == "/repo/jac";
-    assert opts.precompiled_cache == "/c/pre";
-    assert opts.layer_cache == "/c/layers";
-    assert opts.bun_bin == "/b/bun";
-    assert opts.musl_dir == "/m";
-    assert opts.wasm_libc_dir == "/w";
-    assert opts.seal and opts.debug_src;
-    assert not hasattr(opts, "nvim_dir") and not hasattr(opts, "pyembed_so");
+    assert opts.compiler_image == "/build/site";
+    assert opts.stub_catalog == "/build/stubcat.bin";
+    assert opts.bun_bin == "/build/bun";
+    assert opts.musl_dir == "/build/musl";
+    assert opts.wasm_libc_dir == "/build/wasm";
+    assert opts.layer_cache == "/cache/layers";
+    for arg in (
+        "--skip-precompile",
+        "--link-source=/checkout",
+        "--seal",
+        "--compiler-image=",
+        "--unknown"
+    ) {
+        with testraises(PayloadDie) {
+            parse_mkpayload_flags([arg]);
+        }
+    }
 }

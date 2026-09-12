@@ -1,23 +1,26 @@
+import from jaclang.runtime.object_model { make_object }
+
 glob F32_MAX: float = 3.4028234663852886e38,
      F32_OVERFLOW: float = 3.4028236692093846e38,
      F64_MAX: float = 1.7976931348623157e308;
 
-obj ScalarShape {
+@make_object
+class ScalarShape {
     has name: str,
         width: int,
         signed: bool = False,
         is_float: bool = False,
         sized: bool = False;
 
-    def size_bytes -> int {
+    def size_bytes(self: ScalarShape) -> int {
         return max(1, self.width // 8);
     }
 
-    def align -> int {
+    def align(self: ScalarShape) -> int {
         return self.size_bytes();
     }
 
-    def is_int_kind -> bool {
+    def is_int_kind(self: ScalarShape) -> bool {
         return not self.is_float;
     }
 }

@@ -4,7 +4,7 @@ import sys;
 import from jaclang { JacRuntime as Jac }
 import from jaclang.compiler.frontend.constant { Constants as Con }
 import type from jaclang.runtime.context { ExecutionContext }
-import from jaclang.jac0core.ext_registry { base_stem }
+import from jaclang.compiler.driver.extensions { base_stem }
 import from jaclang.server.server { JacAPIServer, ServerExtension }
 import from jaclang.server.settings { ServeSettings }
 

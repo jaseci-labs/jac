@@ -106,7 +106,7 @@ obj ModuleCompilation {
             or str(self.path).endswith('.py')
             or (self.module is not None and self.module.stub_only)
             or (self.module is not None and self.module.is_raised_from_py);
-        import from jaclang.jac0core.ext_registry { is_annex as _cc_is_annex }
+        import from jaclang.compiler.driver.extensions { is_annex as _cc_is_annex }
         _annex_of_base = False;
         if _cc_is_annex(self.path) {
             import from jaclang.compiler.driver.bccache {
