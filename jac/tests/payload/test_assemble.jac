@@ -29,7 +29,7 @@ import from jaclang.dist.payload.assemble {
     tar_stage,
     tar_zst_dir
 }
-import from jaclang.dist.payload.fsutil { host_os_arch }
+import from jaclang.dist.payload.fsutil { host_os_arch, copy_tree, skip_jaclang }
 import from jaclang.dist.payload.pins { py_ver }
 
 def wf(stage: str, rel: str, data: bytes, mode: int = 0o644) {
@@ -44,6 +44,31 @@ def wf(stage: str, rel: str, data: bytes, mode: int = 0o644) {
 def rf(path: str) -> bytes {
     with open(path, "rb") as f {
         return f.read();
+    }
+}
+
+test "payload excludes interpreted JacPython modules and keeps their license" {
+    with tempfile.TemporaryDirectory() as tmp {
+        source = os.path.join(tmp, "source");
+        target = os.path.join(tmp, "target");
+        removed = [
+            "compiler/frontend/python/parser.jac",
+            "compiler/backends/py/jacpython/native_api.jac",
+            "runtime/python/objects.jac",
+            "runtime/python/_precompiled/objects.jir"
+        ];
+        for path in removed {
+            wf(source, path, b"implementation");
+        }
+        wf(source, "runtime/python/LICENSE.cpython", b"license");
+        wf(source, "compiler/frontend/parser.jac", b"Jac parser");
+        copy_tree(source, target, skip_jaclang);
+        for path in removed {
+            assert not os.path.exists(os.path.join(target, path));
+        }
+        assert rf(os.path.join(target, "runtime/python/LICENSE.cpython")) == b"license";
+        assert rf(os.path.join(target, "compiler/frontend/parser.jac"))
+            == b"Jac parser";
     }
 }
 
