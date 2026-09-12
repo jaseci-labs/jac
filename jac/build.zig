@@ -352,12 +352,12 @@ pub fn build(b: *std.Build) void {
         // the tradeoff is .inherit marks the step as having side-effects, so it
         // ALWAYS repacks (no caching) while the flag is on.
         const mk = tool.run("payload", &.{ "mkpayload", python_tree, root });
-        mk.addPrefixedFileArg("--compiler-kernel=", compiler_kernel);
         if (b.option(bool, "payload-progress", "Stream the payload build (mkpayload) live; disables its caching") orelse false) {
             mk.stdio = .inherit;
         }
         mk.step.dependOn(fetch_target);
         const out = mk.addOutputFileArg("payload.tar.zst");
+        mk.addPrefixedFileArg("--compiler-kernel=", compiler_kernel);
         stubcat_region = mk.addPrefixedOutputFileArg("--stubcat-out=", "stubcat.bin");
         if (b.option(bool, "skip-stubcat", "mkpayload: skip the stub catalog build (the type checker builds it on first use)") orelse false) {
             mk.addArg("--skip-stubcat");
