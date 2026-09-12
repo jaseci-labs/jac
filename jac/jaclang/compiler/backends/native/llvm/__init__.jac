@@ -47,9 +47,7 @@ def _find_shim -> str {
         if os.path.isfile(alt) {
             return alt;
         }
-        # Pre-reorg site layout: a host binary built before #8681 bundles
-        # the shim under compiler/passes/native/, and the dev-source
-        # reroute must still find it there.
+
         legacy = os.path.join(
             p, 'jaclang', 'compiler', 'passes', 'native', 'llvm', shim
         );

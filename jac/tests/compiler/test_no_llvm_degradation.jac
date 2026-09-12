@@ -86,8 +86,7 @@ with tempfile.TemporaryDirectory() as directory:
         assert not loaded, f'availability probe imported compiler backends: {loaded}'
 """;
     proc = subprocess.run(
-        [sys.executable, "-c", script],
-        capture_output=True, text=True, timeout=600
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
     );
     assert proc.returncode == 0 , proc.stdout + proc.stderr;
 }

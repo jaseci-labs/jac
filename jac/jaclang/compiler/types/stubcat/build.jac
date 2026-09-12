@@ -143,11 +143,9 @@ def build_catalog(
     prog = JacProgram();
     import from jaclang.compiler.driver.compiler { JacCompiler }
     import from jaclang.compiler.driver.selfhost { SelfHostCache }
-    # The catalog's package-owned stubs belong to this temporary compilation.
-    # Its compiler must not share the running compiler's self-host hub.
+
     prog._compiler = JacCompiler(
-        stub_catalog_disabled=True,
-        _selfhost=SelfHostCache(_program=prog)
+        stub_catalog_disabled=True, _selfhost=SelfHostCache(_program=prog)
     );
     previous_building = os.environ.get(ENV_BUILDING);
     os.environ[ENV_BUILDING] = "1";

@@ -3,7 +3,6 @@ import os;
 import ctypes;
 import from jaclang.compiler.backends.native.llvm.binding.common { _is_shutting_down }
 
-
 import from jaclang.compiler.backends.native.llvm { _find_shim, _shim_name }
 
 
