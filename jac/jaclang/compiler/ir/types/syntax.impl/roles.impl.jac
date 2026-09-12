@@ -19,11 +19,7 @@ impl AstTypedVarNode.init(
     type: (TypeBase | None) = None,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from jaclang.compiler.ir.types.nodes { TypeBase }
     import from jaclang.compiler.ir.syntax.edges { TypeTagRole }
-    import from collections.abc { Sequence }
 
     self.type = type;
     self._link(kid, {TypeTagRole: type_tag});
@@ -31,10 +27,6 @@ impl AstTypedVarNode.init(
 }
 
 impl Expr.init(*, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from collections.abc { Sequence }
-
     self._link(kid, {});
     self.postinit();
 }

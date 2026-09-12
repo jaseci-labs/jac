@@ -115,6 +115,15 @@ obj CodeLocInfo {
     has pos_start: int { getter; }
     has pos_end: int { getter; }
 
+    def __deepcopy__(memo: dict) -> CodeLocInfo {
+        import copy;
+        duplicate = object.__new__(type(self));
+        memo[id(self)] = duplicate;
+        duplicate.first_tok = copy.deepcopy(self.first_tok, memo);
+        duplicate.last_tok = copy.deepcopy(self.last_tok, memo);
+        return duplicate;
+    }
+
     def update_token_range(first_tok: Token, last_tok: Token) {
         self.first_tok = first_tok;
         self.last_tok = last_tok;

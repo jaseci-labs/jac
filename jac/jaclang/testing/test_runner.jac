@@ -98,8 +98,9 @@ import from jaclang.cli.workpool {
     worker_rss_mb as _worker_rss_mb
 }
 
-def _test_retire(served: int, rss_mb: int) -> bool;
+def _test_retire(served: int, rss_mb: int, budget_mb: int = 0) -> bool;
 def _test_rss_cap_mb -> int;
+def _test_worker_budget_mb -> int;
 
 def _run_plan(
     plan: TestPlan,
@@ -109,7 +110,8 @@ def _run_plan(
     maxfail: (int | None),
     jobs: int,
     isolate: (set[str] | None),
-    inline: bool
+    inline: bool,
+    budget_mb: int = 0
 ) -> None;
 
 def discover(

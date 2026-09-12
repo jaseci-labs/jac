@@ -114,28 +114,20 @@ node GraphNode {
     }
 
     def _unclaimed_nodes(permit: MutationPermit) -> list[GraphNode] {
-        pending: list[GraphNode] = [self];
-        unclaimed: list[GraphNode] = [];
-        seen: set[int] = set();
-        while pending {
-            current = pending.pop();
-            if id(current) in seen or current.mutation_permit is permit {
-                continue;
-            }
-            seen.add(id(current));
-            if current.mutation_permit is not None {
-                raise ValueError(
-                    "Mutable compiler graphs cannot be shared across contexts"
-                );
-            }
-            unclaimed.append(current);
-            for child in [current-->] {
-                if isinstance(child, GraphNode) {
-                    pending.append(child);
-                }
-            }
+        if self.mutation_permit is permit {
+            return [];
         }
-        return unclaimed;
+        if self.mutation_permit is not None {
+            raise ValueError(
+                "Mutable compiler graphs cannot be shared across contexts"
+            );
+        }
+        if not [self-->] {
+            return [self];
+        }
+        collect = CollectUnclaimed(permit);
+        self spawn collect;
+        return collect.nodes;
     }
 
     def attach_permit(permit: MutationPermit) {
@@ -151,8 +143,12 @@ node GraphNode {
         permit = self.mutation_permit or target.mutation_permit;
         if permit is not None {
             permit.require(family);
-            self._unclaimed_nodes(permit);
-            target._unclaimed_nodes(permit);
+            if self.mutation_permit is not permit {
+                self._unclaimed_nodes(permit);
+            }
+            if target.mutation_permit is not permit {
+                target._unclaimed_nodes(permit);
+            }
         }
     }
 
@@ -172,11 +168,36 @@ node GraphNode {
         permit = self.mutation_permit or target.mutation_permit;
         if permit is not None {
             permit.require(family);
-            unclaimed = self._unclaimed_nodes(permit) + target._unclaimed_nodes(permit);
-            for current in unclaimed {
-                current.mutation_permit = permit;
+            if self.mutation_permit is not permit
+                or target.mutation_permit is not permit {
+                unclaimed = self._unclaimed_nodes(permit)
+                    + target._unclaimed_nodes(permit);
+                for current in unclaimed {
+                    current.mutation_permit = permit;
+                }
             }
+            permit.generation += 1;
         }
-        self.changed_relations(family);
+        self.relation_generation += 1;
+    }
+}
+
+walker CollectUnclaimed {
+    has permit: MutationPermit,
+        nodes: list[GraphNode] = [],
+        seen: set[int] = set();
+
+    can collect with GraphNode entry {
+        if here.mutation_permit is self.permit or id(here) in self.seen {
+            return;
+        }
+        if here.mutation_permit is not None {
+            raise ValueError(
+                "Mutable compiler graphs cannot be shared across contexts"
+            );
+        }
+        self.seen.add(id(here));
+        self.nodes.append(here);
+        visit [here-->];
     }
 }

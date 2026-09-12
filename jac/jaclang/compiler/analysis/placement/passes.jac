@@ -61,17 +61,12 @@ walker NativeEligibilityPass(QueryTransform[NativeEligibility]) {
         import from jaclang.compiler.analysis.placement.evidence {
             scan_native_blockers
         }
-        import from jaclang.compiler.analysis.binding.import_classification {
-            detect_jac_import
-        }
-        for imp in ir_in.get_all_sub_nodes(uni.Import) {
-            imp.jac_detected = detect_jac_import(imp);
-        }
         (reason, dependencies) = scan_native_blockers(
             ir_in,
             os.path.dirname(os.path.abspath(ir_in.loc.mod_path)),
             allow_pub=True,
-            hold_exempt=self.hold_exempt
+            hold_exempt=self.hold_exempt,
+            classify_imports=True
         );
         self.result = NativeEligibility(reason, dependencies);
         return ir_in;

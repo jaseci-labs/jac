@@ -57,20 +57,19 @@ def validate_relations(source: GraphNode) {
     }
 }
 
-def validate_graph(origin: GraphNode) {
-    pending: list[GraphNode] = [origin];
-    seen: set[int] = set();
-    while pending {
-        current = pending.pop();
-        if id(current) in seen {
-            continue;
+walker ValidateGraph {
+    has seen: set[int] = set();
+
+    can check with GraphNode entry {
+        if id(here) in self.seen {
+            return;
         }
-        seen.add(id(current));
-        validate_relations(current);
-        for child in [current-->] {
-            if isinstance(child, GraphNode) {
-                pending.append(child);
-            }
-        }
+        self.seen.add(id(here));
+        validate_relations(here);
+        visit [here-->];
     }
+}
+
+def validate_graph(origin: GraphNode) {
+    origin spawn ValidateGraph();
 }

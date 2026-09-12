@@ -46,7 +46,6 @@ impl WalkerStmtOnlyNode.__repr__ -> str {
 }
 
 impl CfgExpr.expr.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
 
     return [self->:ExprRole:->][0];
@@ -70,10 +69,7 @@ impl NameAtom.__repr__ -> str {
 }
 
 impl ArchSpec.decorators.getter -> (Sequence[Expr] | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { DecoratorsRole }
-    import from collections.abc { Sequence }
 
     return [self->:DecoratorsRole:->];
 }
@@ -88,9 +84,7 @@ impl SubTag.__repr__ -> str {
 }
 
 impl Module.body.getter -> Sequence[ElementStmt | String | EmptyToken] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [
         _child
@@ -125,7 +119,6 @@ impl TypeParam.name.getter -> Name {
 
 
 impl TypeParam.bound.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { BoundRole }
 
     found = [self->:BoundRole:->];
@@ -134,7 +127,6 @@ impl TypeParam.bound.getter -> (Expr | None) {
 
 
 impl TypeParam.default_val.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { DefaultValRole }
 
     found = [self->:DefaultValRole:->];
@@ -175,9 +167,7 @@ impl TypeAlias.__repr__ -> str {
 }
 
 impl GlobalVars.assignments.getter -> Sequence[Assignment] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { AssignmentsRole }
-    import from collections.abc { Sequence }
 
     return [self->:AssignmentsRole:->];
 }
@@ -195,9 +185,7 @@ impl Test.name.getter -> Name {
 
 
 impl Test.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -212,10 +200,7 @@ impl Test.description.getter -> (String | None) {
 
 
 impl Test.decorators.getter -> (Sequence[Expr] | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { DecoratorsRole }
-    import from collections.abc { Sequence }
 
     return [self->:DecoratorsRole:->];
 }
@@ -236,9 +221,7 @@ impl ModuleCode.name.getter -> (Name | None) {
 
 
 impl ModuleCode.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -268,9 +251,7 @@ impl Import.from_loc.getter -> (ModulePath | None) {
 
 
 impl Import.items.getter -> Sequence[(ModuleItem | ModulePath)] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ItemsRole }
-    import from collections.abc { Sequence }
 
     return [
         _child
@@ -281,10 +262,7 @@ impl Import.items.getter -> Sequence[(ModuleItem | ModulePath)] {
 
 
 impl Import.clib_decls.getter -> (Sequence[UniNode] | None) {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ClibDeclsRole }
-    import from collections.abc { Sequence }
 
     return [self->:ClibDeclsRole:->];
 }
@@ -302,9 +280,7 @@ impl Import.__repr__ -> str {
 }
 
 impl ModulePath.path.getter -> (Sequence[(Name | String)] | None) {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { PathRole }
-    import from collections.abc { Sequence }
 
     return [
         _child
@@ -372,9 +348,7 @@ impl Archetype.base_classes.getter -> list[Expr] {
 
 
 impl Archetype.keywords.getter -> (Sequence[KWPair] | None) {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { KeywordsRole }
-    import from collections.abc { Sequence }
 
     return [self->:KeywordsRole:->];
 }
@@ -388,7 +362,6 @@ impl Archetype.type_params.getter -> list[TypeParam] {
 
 
 impl Archetype.src_endpoint.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { SrcEndpointRole }
 
     found = [self->:SrcEndpointRole:->];
@@ -397,7 +370,6 @@ impl Archetype.src_endpoint.getter -> (Expr | None) {
 
 
 impl Archetype.tgt_endpoint.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { TgtEndpointRole }
 
     found = [self->:TgtEndpointRole:->];
@@ -412,7 +384,6 @@ impl Archetype.__repr__ -> str {
 }
 
 impl ImplDef.decl_link.getter -> (UniNode | None) {
-    import from jaclang.compiler.ir.base { UniNode }
     import from jaclang.compiler.ir.symbols.edges { ImplOf }
 
     found = [self<-:ImplOf:<-];
@@ -420,19 +391,14 @@ impl ImplDef.decl_link.getter -> (UniNode | None) {
 }
 
 impl ImplDef.decorators.getter -> (Sequence[Expr] | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { DecoratorsRole }
-    import from collections.abc { Sequence }
 
     return [self->:DecoratorsRole:->];
 }
 
 
 impl ImplDef.target.getter -> Sequence[NameAtom] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
-    import from collections.abc { Sequence }
 
     return [self->:TargetRole:->][?:NameAtom];
 }
@@ -440,9 +406,7 @@ impl ImplDef.target.getter -> Sequence[NameAtom] {
 
 impl ImplDef.spec.getter -> (Sequence[Expr] | FuncSignature | EventSignature | None) {
     import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { SpecRole }
-    import from collections.abc { Sequence }
 
     value = self._role_shaped(SpecRole, [self->:SpecRole:->]);
     if isinstance(value, list) {
@@ -465,9 +429,7 @@ impl ImplDef.spec.getter -> (Sequence[Expr] | FuncSignature | EventSignature | N
 
 impl ImplDef.body.getter -> Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | Expr {
     import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     value = self._role_shaped(BodyRole, [self->:BodyRole:->]);
     if isinstance(value, Expr) {
@@ -502,9 +464,7 @@ impl ImplDef.__repr__ -> str {
 }
 
 impl SemDef.target.getter -> Sequence[NameAtom] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
-    import from collections.abc { Sequence }
 
     return [self->:TargetRole:->][?:NameAtom];
 }
@@ -531,7 +491,6 @@ impl Enum.name.getter -> Name {
 
 
 impl Enum.value_type.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ValueTypeRole }
 
     found = [self->:ValueTypeRole:->];
@@ -574,10 +533,7 @@ impl Ability.signature.getter -> FuncSignature | EventSignature | None {
 
 
 impl Ability.decorators.getter -> (Sequence[Expr] | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { DecoratorsRole }
-    import from collections.abc { Sequence }
 
     return [self->:DecoratorsRole:->];
 }
@@ -597,18 +553,14 @@ impl Ability.__repr__ -> str {
 }
 
 impl FuncSignature.posonly_params.getter -> Sequence[ParamVar] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { PosonlyParamsRole }
-    import from collections.abc { Sequence }
 
     return [self->:PosonlyParamsRole:->];
 }
 
 
 impl FuncSignature.params.getter -> (Sequence[ParamVar] | None) {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ParamsRole }
-    import from collections.abc { Sequence }
 
     return [self->:ParamsRole:->][?:ParamVar];
 }
@@ -623,9 +575,7 @@ impl FuncSignature.varargs.getter -> (ParamVar | None) {
 
 
 impl FuncSignature.kwonlyargs.getter -> Sequence[ParamVar] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { KwonlyargsRole }
-    import from collections.abc { Sequence }
 
     return [self->:KwonlyargsRole:->];
 }
@@ -640,7 +590,6 @@ impl FuncSignature.kwargs.getter -> (ParamVar | None) {
 
 
 impl FuncSignature.return_type.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ReturnTypeRole }
 
     found = [self->:ReturnTypeRole:->];
@@ -660,7 +609,6 @@ impl EventSignature.event.getter -> Token {
 
 
 impl EventSignature.arch_tag_info.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ArchTagInfoRole }
 
     found = [self->:ArchTagInfoRole:->];
@@ -701,9 +649,7 @@ impl ParamVar.__repr__ -> str {
 }
 
 impl ArchHas.vars.getter -> Sequence[HasVar] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { VarsRole }
-    import from collections.abc { Sequence }
 
     return [self->:VarsRole:->];
 }
@@ -730,9 +676,7 @@ impl HasVar.value.getter -> (Expr | None) {
 
 
 impl HasVar.accessors.getter -> (Sequence[Ability] | None) {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { AccessorsRole }
-    import from collections.abc { Sequence }
 
     value = self._role_shaped(AccessorsRole, [self->:AccessorsRole:->]);
     if value is None {
@@ -758,7 +702,6 @@ impl HasVar.__repr__ -> str {
 }
 
 impl TypedCtxBlock.type_ctx.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { TypeCtxRole }
 
     return [self->:TypeCtxRole:->][0];
@@ -766,9 +709,7 @@ impl TypedCtxBlock.type_ctx.getter -> Expr {
 
 
 impl TypedCtxBlock.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -781,7 +722,6 @@ impl TypedCtxBlock.__repr__ -> str {
 }
 
 impl OpenStmt.target.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
 
     return [self->:TargetRole:->][0];
@@ -789,9 +729,7 @@ impl OpenStmt.target.getter -> Expr {
 
 
 impl OpenStmt.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -804,7 +742,6 @@ impl OpenStmt.__repr__ -> str {
 }
 
 impl IfStmt.condition.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ConditionRole }
 
     return [self->:ConditionRole:->][0];
@@ -812,9 +749,7 @@ impl IfStmt.condition.getter -> Expr {
 
 
 impl IfStmt.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -833,9 +768,7 @@ impl ElseIf.__repr__ -> str {
 }
 
 impl ElseStmt.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -848,7 +781,6 @@ impl ElseStmt.__repr__ -> str {
 }
 
 impl ExprStmt.expr.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
 
     return [self->:ExprRole:->][0];
@@ -860,18 +792,14 @@ impl ExprStmt.__repr__ -> str {
 }
 
 impl TryStmt.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
 
 
 impl TryStmt.excepts.getter -> Sequence[Except] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ExceptsRole }
-    import from collections.abc { Sequence }
 
     return [self->:ExceptsRole:->];
 }
@@ -900,9 +828,7 @@ impl TryStmt.__repr__ -> str {
 }
 
 impl AwaitingClause.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -915,7 +841,6 @@ impl AwaitingClause.__repr__ -> str {
 }
 
 impl Except.ex_type.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ExTypeRole }
 
     return [self->:ExTypeRole:->][0];
@@ -931,9 +856,7 @@ impl Except.name.getter -> (Name | None) {
 
 
 impl Except.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -946,9 +869,7 @@ impl Except.__repr__ -> str {
 }
 
 impl FinallyStmt.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -968,7 +889,6 @@ impl IterForStmt.iter.getter -> Assignment {
 
 
 impl IterForStmt.condition.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ConditionRole }
 
     return [self->:ConditionRole:->][0];
@@ -983,9 +903,7 @@ impl IterForStmt.count_by.getter -> Assignment {
 
 
 impl IterForStmt.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -998,7 +916,6 @@ impl IterForStmt.__repr__ -> str {
 }
 
 impl InForStmt.target.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
 
     return [self->:TargetRole:->][0];
@@ -1006,7 +923,6 @@ impl InForStmt.target.getter -> Expr {
 
 
 impl InForStmt.collection.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { CollectionRole }
 
     return [self->:CollectionRole:->][0];
@@ -1014,9 +930,7 @@ impl InForStmt.collection.getter -> Expr {
 
 
 impl InForStmt.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -1029,7 +943,6 @@ impl InForStmt.__repr__ -> str {
 }
 
 impl WhileStmt.condition.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ConditionRole }
 
     return [self->:ConditionRole:->][0];
@@ -1037,9 +950,7 @@ impl WhileStmt.condition.getter -> Expr {
 
 
 impl WhileStmt.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -1052,9 +963,7 @@ impl WhileStmt.__repr__ -> str {
 }
 
 impl ForeverStmt.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -1067,18 +976,14 @@ impl ForeverStmt.__repr__ -> str {
 }
 
 impl WithStmt.exprs.getter -> Sequence[ExprAsItem] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ExprsRole }
-    import from collections.abc { Sequence }
 
     return [self->:ExprsRole:->][?:ExprAsItem];
 }
 
 
 impl WithStmt.body.getter -> Sequence[CodeBlockStmt] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     return [self->:BodyRole:->][?:CodeBlockStmt];
 }
@@ -1091,7 +996,6 @@ impl WithStmt.__repr__ -> str {
 }
 
 impl ExprAsItem.expr.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
 
     return [self->:ExprRole:->][0];
@@ -1099,7 +1003,6 @@ impl ExprAsItem.expr.getter -> Expr {
 
 
 impl ExprAsItem.alias.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { AliasRole }
 
     found = [self->:AliasRole:->];
@@ -1112,7 +1015,6 @@ impl ExprAsItem.__repr__ -> str {
 }
 
 impl RaiseStmt.cause.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { CauseRole }
 
     found = [self->:CauseRole:->];
@@ -1121,7 +1023,6 @@ impl RaiseStmt.cause.getter -> (Expr | None) {
 
 
 impl RaiseStmt.from_target.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { FromTargetRole }
 
     found = [self->:FromTargetRole:->];
@@ -1134,7 +1035,6 @@ impl RaiseStmt.__repr__ -> str {
 }
 
 impl AssertStmt.condition.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ConditionRole }
 
     return [self->:ConditionRole:->][0];
@@ -1142,7 +1042,6 @@ impl AssertStmt.condition.getter -> Expr {
 
 
 impl AssertStmt.error_msg.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ErrorMsgRole }
 
     found = [self->:ErrorMsgRole:->];
@@ -1166,7 +1065,6 @@ impl CtrlStmt.__repr__ -> str {
 }
 
 impl DeleteStmt.targets.getter -> list[Expr] {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
 
     return [self->:TargetRole:->];
@@ -1178,7 +1076,6 @@ impl DeleteStmt.__repr__ -> str {
 }
 
 impl ReportStmt.expr.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
 
     return [self->:ExprRole:->][0];
@@ -1190,7 +1087,6 @@ impl ReportStmt.__repr__ -> str {
 }
 
 impl ReturnStmt.expr.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
 
     found = [self->:ExprRole:->];
@@ -1203,7 +1099,6 @@ impl ReturnStmt.__repr__ -> str {
 }
 
 impl VisitStmt.insert_loc.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { InsertLocRole }
 
     found = [self->:InsertLocRole:->];
@@ -1212,7 +1107,6 @@ impl VisitStmt.insert_loc.getter -> (Expr | None) {
 
 
 impl VisitStmt.target.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
 
     return [self->:TargetRole:->][0];
@@ -1228,7 +1122,6 @@ impl DisengageStmt.__repr__ -> str {
 }
 
 impl AwaitExpr.target.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
 
     return [self->:TargetRole:->][0];
@@ -1248,7 +1141,6 @@ impl CastExpr.value.getter -> Expr {
 
 
 impl CastExpr.cast_type.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { CastTypeRole }
 
     return [self->:CastTypeRole:->][0];
@@ -1260,10 +1152,7 @@ impl CastExpr.__repr__ -> str {
 }
 
 impl Assignment.target.getter -> Sequence[Expr] {
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
-    import from collections.abc { Sequence }
 
     return [self->:TargetRole:->];
 }
@@ -1303,7 +1192,6 @@ impl ConcurrentExpr.tok.getter -> (Token | None) {
 
 
 impl ConcurrentExpr.target.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
 
     return [self->:TargetRole:->][0];
@@ -1315,7 +1203,6 @@ impl ConcurrentExpr.__repr__ -> str {
 }
 
 impl BinaryExpr.left.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { LeftRole }
 
     return [self->:LeftRole:->][0];
@@ -1323,7 +1210,6 @@ impl BinaryExpr.left.getter -> Expr {
 
 
 impl BinaryExpr.right.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { RightRole }
 
     return [self->:RightRole:->][0];
@@ -1346,7 +1232,6 @@ impl BinaryExpr.__repr__ -> str {
 }
 
 impl CompareExpr.left.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { LeftRole }
 
     return [self->:LeftRole:->][0];
@@ -1354,7 +1239,6 @@ impl CompareExpr.left.getter -> Expr {
 
 
 impl CompareExpr.rights.getter -> list[Expr] {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { RightsRole }
 
     return [self->:RightsRole:->];
@@ -1392,9 +1276,7 @@ impl BoolExpr.__repr__ -> str {
 
 impl LambdaExpr.body.getter -> (Expr | Sequence[CodeBlockStmt]) {
     import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     value = self._role_shaped(BodyRole, [self->:BodyRole:->]);
     if isinstance(value, Expr) {
@@ -1429,7 +1311,6 @@ impl LambdaExpr.__repr__ -> str {
 }
 
 impl UnaryExpr.operand.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { OperandRole }
 
     return [self->:OperandRole:->][0];
@@ -1473,9 +1354,7 @@ impl IfElseExpr.__repr__ -> str {
 }
 
 impl MultiString.strings.getter -> Sequence[(String | FString)] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { StringsRole }
-    import from collections.abc { Sequence }
 
     return [
         _child
@@ -1498,9 +1377,7 @@ impl FString.start.getter -> (Token | None) {
 
 
 impl FString.parts.getter -> Sequence[(String | FormattedValue)] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { PartsRole }
-    import from collections.abc { Sequence }
 
     return [
         _child
@@ -1523,7 +1400,6 @@ impl FString.__repr__ -> str {
 }
 
 impl FormattedValue.format_part.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { FormatPartRole }
 
     return [self->:FormatPartRole:->][0];
@@ -1531,7 +1407,6 @@ impl FormattedValue.format_part.getter -> Expr {
 
 
 impl FormattedValue.format_spec.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { FormatSpecRole }
 
     found = [self->:FormatSpecRole:->];
@@ -1545,9 +1420,7 @@ impl FormattedValue.__repr__ -> str {
 
 impl ListVal.values.getter -> Sequence[Expr] {
     import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ValuesRole }
-    import from collections.abc { Sequence }
 
     return [self->:ValuesRole:->][?:Expr];
 }
@@ -1559,9 +1432,7 @@ impl ListVal.__repr__ -> str {
 
 impl SetVal.values.getter -> (Sequence[Expr] | None) {
     import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ValuesRole }
-    import from collections.abc { Sequence }
 
     return [self->:ValuesRole:->][?:Expr];
 }
@@ -1573,9 +1444,7 @@ impl SetVal.__repr__ -> str {
 
 impl TupleVal.values.getter -> Sequence[(Expr | KWPair)] {
     import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ValuesRole }
-    import from collections.abc { Sequence }
 
     return [
         _child
@@ -1590,9 +1459,7 @@ impl TupleVal.__repr__ -> str {
 }
 
 impl DictVal.kv_pairs.getter -> Sequence[KVPair] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { KvPairsRole }
-    import from collections.abc { Sequence }
 
     return [self->:KvPairsRole:->];
 }
@@ -1644,7 +1511,6 @@ impl KWPair.__repr__ -> str {
 }
 
 impl InnerCompr.target.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
 
     return [self->:TargetRole:->][0];
@@ -1652,7 +1518,6 @@ impl InnerCompr.target.getter -> Expr {
 
 
 impl InnerCompr.collection.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { CollectionRole }
 
     return [self->:CollectionRole:->][0];
@@ -1660,7 +1525,6 @@ impl InnerCompr.collection.getter -> Expr {
 
 
 impl InnerCompr.conditional.getter -> (list[Expr] | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ConditionalRole }
 
     return [self->:ConditionalRole:->];
@@ -1674,7 +1538,6 @@ impl InnerCompr.__repr__ -> str {
 }
 
 impl ListCompr.out_expr.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { OutExprRole }
 
     return [self->:OutExprRole:->][0];
@@ -1727,7 +1590,6 @@ impl DictCompr.__repr__ -> str {
 }
 
 impl AtomTrailer.target.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
 
     return [self->:TargetRole:->][0];
@@ -1767,7 +1629,6 @@ impl AtomUnit.__repr__ -> str {
 }
 
 impl YieldExpr.expr.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
 
     found = [self->:ExprRole:->];
@@ -1780,7 +1641,6 @@ impl YieldExpr.__repr__ -> str {
 }
 
 impl FuncCall.target.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
 
     return [self->:TargetRole:->][0];
@@ -1789,9 +1649,7 @@ impl FuncCall.target.getter -> Expr {
 
 impl FuncCall.params.getter -> (Sequence[(Expr | KWPair)] | None) {
     import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ParamsRole }
-    import from collections.abc { Sequence }
 
     return [
         _child
@@ -1815,7 +1673,6 @@ impl Slice.start.getter -> (Expr | None) {
 
 
 impl Slice.stop.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { StopRole }
 
     found = [self->:StopRole:->];
@@ -1824,7 +1681,6 @@ impl Slice.stop.getter -> (Expr | None) {
 
 
 impl Slice.step.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { StepRole }
 
     found = [self->:StepRole:->];
@@ -1887,7 +1743,6 @@ impl DisconnectOp.__repr__ -> str {
 }
 
 impl ConnectOp.conn_type.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ConnTypeRole }
 
     found = [self->:ConnTypeRole:->];
@@ -1908,7 +1763,6 @@ impl ConnectOp.__repr__ -> str {
 }
 
 impl FilterCompr.f_type.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { FTypeRole }
 
     found = [self->:FTypeRole:->];
@@ -1917,10 +1771,7 @@ impl FilterCompr.f_type.getter -> (Expr | None) {
 
 
 impl FilterCompr.compares.getter -> Sequence[Expr] {
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ComparesRole }
-    import from collections.abc { Sequence }
 
     return [self->:ComparesRole:->];
 }
@@ -1931,9 +1782,7 @@ impl FilterCompr.__repr__ -> str {
 }
 
 impl AssignCompr.assigns.getter -> Sequence[KWPair] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { AssignsRole }
-    import from collections.abc { Sequence }
 
     return [self->:AssignsRole:->];
 }
@@ -1952,18 +1801,14 @@ impl JsxElement.name.getter -> (JsxElementName | None) {
 
 
 impl JsxElement.attributes.getter -> (Sequence[JsxAttribute] | None) {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { AttributesRole }
-    import from collections.abc { Sequence }
 
     return [self->:AttributesRole:->];
 }
 
 
 impl JsxElement.children.getter -> (Sequence[(JsxChild | JsxElement)] | None) {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ChildrenRole }
-    import from collections.abc { Sequence }
 
     return [
         _child
@@ -1974,7 +1819,6 @@ impl JsxElement.children.getter -> (Sequence[(JsxChild | JsxElement)] | None) {
 
 
 impl JsxElement.dynamic_tag.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { DynamicTagRole }
 
     found = [self->:DynamicTagRole:->];
@@ -1987,9 +1831,7 @@ impl JsxElement.__repr__ -> str {
 }
 
 impl JsxElementName.parts.getter -> Sequence[(Name | Token)] {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { PartsRole }
-    import from collections.abc { Sequence }
 
     return [
         _child
@@ -2008,7 +1850,6 @@ impl JsxAttribute.__repr__ -> str {
 }
 
 impl JsxSpreadAttribute.expr.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
 
     return [self->:ExprRole:->][0];
@@ -2056,7 +1897,6 @@ impl JsxText.__repr__ -> str {
 }
 
 impl JsxExpression.expr.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
 
     return [self->:ExprRole:->][0];
@@ -2068,7 +1908,6 @@ impl JsxExpression.__repr__ -> str {
 }
 
 impl JsxSlot.body.getter -> list[UniNode] {
-    import from jaclang.compiler.ir.base { UniNode }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
 
     return [self->:BodyRole:->];
@@ -2091,7 +1930,6 @@ impl JsxComment.__repr__ -> str {
 }
 
 impl MatchStmt.target.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
 
     return [self->:TargetRole:->][0];
@@ -2117,7 +1955,6 @@ impl MatchCase.pattern.getter -> MatchPattern {
 
 
 impl MatchCase.guard.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { GuardRole }
 
     found = [self->:GuardRole:->];
@@ -2139,7 +1976,6 @@ impl MatchCase.__repr__ -> str {
 }
 
 impl SwitchStmt.target.getter -> Expr {
-    import from jaclang.compiler.ir.types.syntax { Expr }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
 
     return [self->:TargetRole:->][0];
@@ -2310,18 +2146,14 @@ impl MatchArch.name.getter -> (AtomTrailer | NameAtom) {
 
 
 impl MatchArch.arg_patterns.getter -> (Sequence[MatchPattern] | None) {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ArgPatternsRole }
-    import from collections.abc { Sequence }
 
     return [self->:ArgPatternsRole:->];
 }
 
 
 impl MatchArch.kw_patterns.getter -> (Sequence[MatchKVPair] | None) {
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { KwPatternsRole }
-    import from collections.abc { Sequence }
 
     return [self->:KwPatternsRole:->];
 }
@@ -2395,10 +2227,7 @@ impl PythonModuleAst.__repr__ -> str {
 impl AstAccessNode.init(
     *, access: (SubTag[Token] | None) = None, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { AccessRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {AccessRole: access});
     self.postinit();
@@ -2407,20 +2236,13 @@ impl AstAccessNode.init(
 impl AstDocNode.init(
     *, doc: (String | None) = None, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { DocRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {DocRole: doc});
     self.postinit();
 }
 
 impl AstAsyncNode.init(*, is_async: bool = False, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from collections.abc { Sequence }
-
     self.is_async = is_async;
     self._link(kid, {});
     self.postinit();
@@ -2429,20 +2251,13 @@ impl AstAsyncNode.init(*, is_async: bool = False, kid: Sequence[UniNode] = []) -
 impl AstElseBodyNode.init(
     *, else_body: (ElseStmt | ElseIf | None) = None, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ElseBodyRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ElseBodyRole: else_body});
     self.postinit();
 }
 
 impl WalkerStmtOnlyNode.init(*, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from collections.abc { Sequence }
-
     self._link(kid, {});
     self.postinit();
 }
@@ -2454,12 +2269,7 @@ impl CfgExpr.init(
     expr: Expr,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.flow.nodes { UniCFGNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
-    import from collections.abc { Sequence }
 
     self.sc_true_target = sc_true_target;
     self.sc_false_target = sc_false_target;
@@ -2470,20 +2280,12 @@ impl CfgExpr.init(
 impl EnumBlockStmt.init(
     *, is_enum_stmt: bool = False, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from collections.abc { Sequence }
-
     self.is_enum_stmt = is_enum_stmt;
     self._link(kid, {});
     self.postinit();
 }
 
 impl CodeBlockStmt.init(*, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from collections.abc { Sequence }
-
     self._link(kid, {});
     self.postinit();
 }
@@ -2494,10 +2296,6 @@ impl NameAtom.init(
     is_getattr_resolved: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from collections.abc { Sequence }
-
     self.is_enum_stmt = is_enum_stmt;
     self.is_getattr_resolved = is_getattr_resolved;
     self._link(kid, {});
@@ -2511,11 +2309,7 @@ impl ArchSpec.init(
     decorators: (Sequence[Expr] | None),
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { DecoratorsRole, DocRole }
-    import from collections.abc { Sequence }
 
     self.is_async = is_async;
     self._link(kid, {DocRole: doc, DecoratorsRole: decorators});
@@ -2529,11 +2323,6 @@ impl SubTag.init(
     linear: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from jaclang.compiler.ir.enums { OwnershipKind }
-    import from collections.abc { Sequence }
-
     self.tag = tag;
     self.ownership = ownership;
     self.linear = linear;
@@ -2560,10 +2349,7 @@ impl Module.init(
     client_viols_reported: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole, DocRole }
-    import from collections.abc { Sequence }
 
     self.name = name;
     self.source = source;
@@ -2585,10 +2371,7 @@ impl Module.init(
 impl ProgramModule.init(
     *, main_mod: (Module | None) = None, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { MainRole }
-    import from collections.abc { Sequence }
 
     target = main_mod or Module.make_stub();
     self._link([*kid, target], {MainRole: target});
@@ -2620,11 +2403,7 @@ impl TypeParam.init(
     is_comptime: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BoundRole, DefaultValRole, NameRole }
-    import from collections.abc { Sequence }
 
     self.is_comptime = is_comptime;
     self._link(kid, {NameRole: name, BoundRole: bound, DefaultValRole: default_val});
@@ -2642,9 +2421,6 @@ impl TypeAlias.init(
     is_distinct: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         AccessRole,
         DocRole,
@@ -2652,7 +2428,6 @@ impl TypeAlias.init(
         TypeParamsRole,
         ValueRole
     }
-    import from collections.abc { Sequence }
 
     self.codespace_dual = codespace_dual;
     self.is_distinct = is_distinct;
@@ -2678,14 +2453,11 @@ impl GlobalVars.init(
     is_frozen: bool,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         AccessRole,
         AssignmentsRole,
         DocRole
     }
-    import from collections.abc { Sequence }
 
     self.codespace_dual = codespace_dual;
     self.is_frozen = is_frozen;
@@ -2703,9 +2475,6 @@ impl Test.init(
     decorators: (Sequence[Expr] | None) = None,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         BodyRole,
         DecoratorsRole,
@@ -2713,7 +2482,6 @@ impl Test.init(
         DocRole,
         NameRole
     }
-    import from collections.abc { Sequence }
 
     self.codespace_dual = codespace_dual;
     self._link(
@@ -2738,10 +2506,7 @@ impl ModuleCode.init(
     body: Sequence[CodeBlockStmt],
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole, DocRole, NameRole }
-    import from collections.abc { Sequence }
 
     self.is_enum_stmt = is_enum_stmt;
     self.codespace_dual = codespace_dual;
@@ -2756,10 +2521,7 @@ impl PyInlineCode.init(
     code: Token,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { CodeRole, DocRole }
-    import from collections.abc { Sequence }
 
     self.is_enum_stmt = is_enum_stmt;
     self._link(kid, {DocRole: doc, CodeRole: code});
@@ -2778,15 +2540,12 @@ impl Import.init(
     is_comptime: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         ClibDeclsRole,
         DocRole,
         FromLocRole,
         ItemsRole
     }
-    import from collections.abc { Sequence }
 
     self.codespace_dual = codespace_dual;
     self.is_absorb = is_absorb;
@@ -2811,10 +2570,7 @@ impl ModulePath.init(
     alias: (Name | None),
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { AliasRole, PathRole }
-    import from collections.abc { Sequence }
 
     self.level = level;
     self._link(kid, {PathRole: path, AliasRole: alias});
@@ -2824,10 +2580,7 @@ impl ModulePath.init(
 impl ModuleItem.init(
     *, name: (Name | Token), alias: (Name | None), kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { AliasRole, NameRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {NameRole: name, AliasRole: alias});
     self.postinit();
@@ -2850,9 +2603,6 @@ impl Archetype.init(
     tgt_endpoint: (Expr | None) = None,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         AccessRole,
         ArchTypeRole,
@@ -2866,7 +2616,6 @@ impl Archetype.init(
         TgtEndpointRole,
         TypeParamsRole
     }
-    import from collections.abc { Sequence }
 
     self.is_async = is_async;
     self.codespace_dual = codespace_dual;
@@ -2899,9 +2648,6 @@ impl ImplDef.init(
     body: Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | Expr,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         BodyRole,
         DecoratorsRole,
@@ -2909,7 +2655,6 @@ impl ImplDef.init(
         SpecRole,
         TargetRole
     }
-    import from collections.abc { Sequence }
 
     self.codespace_dual = codespace_dual;
     self._link(
@@ -2932,10 +2677,7 @@ impl SemDef.init(
     value: MultiString,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { DocRole, TargetRole, ValueRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {DocRole: doc, TargetRole: target, ValueRole: value});
     self.postinit();
@@ -2954,9 +2696,6 @@ impl Enum.init(
     base_classes: (Sequence[Expr] | None),
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         AccessRole,
         BaseClassesRole,
@@ -2966,7 +2705,6 @@ impl Enum.init(
         NameRole,
         ValueTypeRole
     }
-    import from collections.abc { Sequence }
 
     self.is_async = is_async;
     self.codespace_dual = codespace_dual;
@@ -3005,10 +2743,6 @@ impl Ability.init(
     event_triggers: (list[TypeBase] | None) = None,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
-    import from jaclang.compiler.ir.types.nodes { TypeBase }
     import from jaclang.compiler.ir.syntax.edges {
         AccessRole,
         BodyRole,
@@ -3018,7 +2752,6 @@ impl Ability.init(
         SignatureRole,
         TypeParamsRole
     }
-    import from collections.abc { Sequence }
 
     self.is_async = is_async;
     self.codespace_dual = codespace_dual;
@@ -3054,9 +2787,6 @@ impl FuncSignature.init(
     return_type: (Expr | None),
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         KwargsRole,
         KwonlyargsRole,
@@ -3065,7 +2795,6 @@ impl FuncSignature.init(
         ReturnTypeRole,
         VarargsRole
     }
-    import from collections.abc { Sequence }
 
     self._link(
         kid,
@@ -3084,11 +2813,7 @@ impl FuncSignature.init(
 impl EventSignature.init(
     *, event: Token, arch_tag_info: (Expr | None), kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ArchTagInfoRole, EventRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {EventRole: event, ArchTagInfoRole: arch_tag_info});
     self.postinit();
@@ -3104,17 +2829,12 @@ impl ParamVar.init(
     is_comptime: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
-    import from jaclang.compiler.ir.types.nodes { TypeBase }
     import from jaclang.compiler.ir.syntax.edges {
         NameRole,
         TypeTagRole,
         UnpackRole,
         ValueRole
     }
-    import from collections.abc { Sequence }
 
     self.type = type;
     self.is_comptime = is_comptime;
@@ -3134,10 +2854,7 @@ impl ArchHas.init(
     is_frozen: bool,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { AccessRole, DocRole, VarsRole }
-    import from collections.abc { Sequence }
 
     self.is_static = is_static;
     self.is_frozen = is_frozen;
@@ -3155,17 +2872,12 @@ impl HasVar.init(
     accessors: (Sequence[Ability] | None) = None,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
-    import from jaclang.compiler.ir.types.nodes { TypeBase }
     import from jaclang.compiler.ir.syntax.edges {
         AccessorsRole,
         NameRole,
         TypeTagRole,
         ValueRole
     }
-    import from collections.abc { Sequence }
 
     self.type = type;
     self.defer = defer;
@@ -3184,11 +2896,7 @@ impl HasVar.init(
 impl TypedCtxBlock.init(
     *, type_ctx: Expr, body: Sequence[CodeBlockStmt], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole, TypeCtxRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {TypeCtxRole: type_ctx, BodyRole: body});
     self.postinit();
@@ -3197,11 +2905,7 @@ impl TypedCtxBlock.init(
 impl OpenStmt.init(
     *, target: Expr, body: Sequence[CodeBlockStmt], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole, TargetRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {TargetRole: target, BodyRole: body});
     self.postinit();
@@ -3216,15 +2920,11 @@ impl IfStmt.init(
     ct_taken: (bool | None) = None,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         BodyRole,
         ConditionRole,
         ElseBodyRole
     }
-    import from collections.abc { Sequence }
 
     self.is_comptime = is_comptime;
     self.ct_taken = ct_taken;
@@ -3241,15 +2941,11 @@ impl ElseIf.init(
     body: Sequence[CodeBlockStmt],
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         BodyRole,
         ConditionRole,
         ElseBodyRole
     }
-    import from collections.abc { Sequence }
 
     self._link(
         kid, {ElseBodyRole: else_body, ConditionRole: condition, BodyRole: body}
@@ -3260,10 +2956,7 @@ impl ElseIf.init(
 impl ElseStmt.init(
     *, body: Sequence[CodeBlockStmt], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {BodyRole: body});
     self.postinit();
@@ -3272,11 +2965,7 @@ impl ElseStmt.init(
 impl ExprStmt.init(
     *, expr: Expr, in_fstring: bool, has_semi: bool = True, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
-    import from collections.abc { Sequence }
 
     self.in_fstring = in_fstring;
     self.has_semi = has_semi;
@@ -3293,8 +2982,6 @@ impl TryStmt.init(
     finally_body: (FinallyStmt | None),
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         AwaitingBodyRole,
         BodyRole,
@@ -3302,7 +2989,6 @@ impl TryStmt.init(
         ExceptsRole,
         FinallyBodyRole
     }
-    import from collections.abc { Sequence }
 
     self._link(
         kid,
@@ -3320,10 +3006,7 @@ impl TryStmt.init(
 impl AwaitingClause.init(
     *, body: Sequence[CodeBlockStmt], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {BodyRole: body});
     self.postinit();
@@ -3336,11 +3019,7 @@ impl Except.init(
     body: Sequence[CodeBlockStmt],
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole, ExTypeRole, NameRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ExTypeRole: ex_type, NameRole: name, BodyRole: body});
     self.postinit();
@@ -3349,10 +3028,7 @@ impl Except.init(
 impl FinallyStmt.init(
     *, body: Sequence[CodeBlockStmt], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {BodyRole: body});
     self.postinit();
@@ -3368,9 +3044,6 @@ impl IterForStmt.init(
     body: Sequence[CodeBlockStmt],
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         BodyRole,
         ConditionRole,
@@ -3378,7 +3051,6 @@ impl IterForStmt.init(
         ElseBodyRole,
         IterRole
     }
-    import from collections.abc { Sequence }
 
     self.is_async = is_async;
     self._link(
@@ -3404,16 +3076,12 @@ impl InForStmt.init(
     is_comptime: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         BodyRole,
         CollectionRole,
         ElseBodyRole,
         TargetRole
     }
-    import from collections.abc { Sequence }
 
     self.is_async = is_async;
     self.is_comptime = is_comptime;
@@ -3436,15 +3104,11 @@ impl WhileStmt.init(
     body: Sequence[CodeBlockStmt],
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         BodyRole,
         ConditionRole,
         ElseBodyRole
     }
-    import from collections.abc { Sequence }
 
     self._link(
         kid, {ElseBodyRole: else_body, ConditionRole: condition, BodyRole: body}
@@ -3455,10 +3119,7 @@ impl WhileStmt.init(
 impl ForeverStmt.init(
     *, body: Sequence[CodeBlockStmt], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {BodyRole: body});
     self.postinit();
@@ -3471,10 +3132,7 @@ impl WithStmt.init(
     body: Sequence[CodeBlockStmt],
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole, ExprsRole }
-    import from collections.abc { Sequence }
 
     self.is_async = is_async;
     self._link(kid, {ExprsRole: exprs, BodyRole: body});
@@ -3484,11 +3142,7 @@ impl WithStmt.init(
 impl ExprAsItem.init(
     *, expr: Expr, alias: (Expr | None), kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { AliasRole, ExprRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ExprRole: expr, AliasRole: alias});
     self.postinit();
@@ -3497,11 +3151,7 @@ impl ExprAsItem.init(
 impl RaiseStmt.init(
     *, cause: (Expr | None), from_target: (Expr | None), kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { CauseRole, FromTargetRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {CauseRole: cause, FromTargetRole: from_target});
     self.postinit();
@@ -3514,11 +3164,7 @@ impl AssertStmt.init(
     is_comptime: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ConditionRole, ErrorMsgRole }
-    import from collections.abc { Sequence }
 
     self.is_comptime = is_comptime;
     self._link(kid, {ConditionRole: condition, ErrorMsgRole: error_msg});
@@ -3526,32 +3172,21 @@ impl AssertStmt.init(
 }
 
 impl CtrlStmt.init(*, ctrl: Token, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { CtrlRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {CtrlRole: ctrl});
     self.postinit();
 }
 
 impl DeleteStmt.init(*, targets: list[Expr], kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {TargetRole: targets});
     self.postinit();
 }
 
 impl ReportStmt.init(*, expr: Expr, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ExprRole: expr});
     self.postinit();
@@ -3560,11 +3195,7 @@ impl ReportStmt.init(*, expr: Expr, kid: Sequence[UniNode] = []) -> None {
 impl ReturnStmt.init(
     *, expr: (Expr | None), is_implicit: bool = False, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
-    import from collections.abc { Sequence }
 
     self.is_implicit = is_implicit;
     self._link(kid, {ExprRole: expr});
@@ -3578,15 +3209,11 @@ impl VisitStmt.init(
     target: Expr,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         ElseBodyRole,
         InsertLocRole,
         TargetRole
     }
-    import from collections.abc { Sequence }
 
     self._link(
         kid, {ElseBodyRole: else_body, InsertLocRole: insert_loc, TargetRole: target}
@@ -3595,20 +3222,12 @@ impl VisitStmt.init(
 }
 
 impl DisengageStmt.init(*, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from collections.abc { Sequence }
-
     self._link(kid, {});
     self.postinit();
 }
 
 impl AwaitExpr.init(*, target: Expr, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { TargetRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {TargetRole: target});
     self.postinit();
@@ -3617,11 +3236,7 @@ impl AwaitExpr.init(*, target: Expr, kid: Sequence[UniNode] = []) -> None {
 impl CastExpr.init(
     *, value: Expr, cast_type: Expr, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { CastTypeRole, ValueRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ValueRole: value, CastTypeRole: cast_type});
     self.postinit();
@@ -3642,17 +3257,12 @@ impl Assignment.init(
     is_comptime: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
-    import from jaclang.compiler.ir.types.nodes { TypeBase }
     import from jaclang.compiler.ir.syntax.edges {
         AugOpRole,
         TargetRole,
         TypeTagRole,
         ValueRole
     }
-    import from collections.abc { Sequence }
 
     self.is_enum_stmt = is_enum_stmt;
     self.type = type;
@@ -3671,11 +3281,7 @@ impl Assignment.init(
 impl ConcurrentExpr.init(
     *, tok: (Token | None), target: Expr, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { TargetRole, TokRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {TokRole: tok, TargetRole: target});
     self.postinit();
@@ -3688,11 +3294,7 @@ impl BinaryExpr.init(
     op: Token | DisconnectOp | ConnectOp,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { LeftRole, OpRole, RightRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {LeftRole: left, RightRole: right, OpRole: op});
     self.postinit();
@@ -3701,11 +3303,7 @@ impl BinaryExpr.init(
 impl CompareExpr.init(
     *, left: Expr, rights: list[Expr], ops: list[Token], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { LeftRole, OpsRole, RightsRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {LeftRole: left, RightsRole: rights, OpsRole: ops});
     self.postinit();
@@ -3714,10 +3312,7 @@ impl CompareExpr.init(
 impl BoolExpr.init(
     *, op: Token, values: list[CfgExpr], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { OpRole, ValuesRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {OpRole: op, ValuesRole: values});
     self.postinit();
@@ -3729,11 +3324,7 @@ impl LambdaExpr.init(
     signature: (FuncSignature | None) = None,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole, SignatureRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {BodyRole: body, SignatureRole: signature});
     self.postinit();
@@ -3746,12 +3337,7 @@ impl UnaryExpr.init(
     ownership: OwnershipKind = OwnershipKind.NONE,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
-    import from jaclang.compiler.ir.enums { OwnershipKind }
     import from jaclang.compiler.ir.syntax.edges { OpRole, OperandRole }
-    import from collections.abc { Sequence }
 
     self.ownership = ownership;
     self._link(kid, {OperandRole: operand, OpRole: op});
@@ -3765,14 +3351,11 @@ impl IfElseExpr.init(
     else_value: CfgExpr,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         ConditionRole,
         ElseValueRole,
         ValueRole
     }
-    import from collections.abc { Sequence }
 
     self._link(
         kid, {ConditionRole: condition, ValueRole: value, ElseValueRole: else_value}
@@ -3783,10 +3366,7 @@ impl IfElseExpr.init(
 impl MultiString.init(
     *, strings: Sequence[(String | FString)], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { StringsRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {StringsRole: strings});
     self.postinit();
@@ -3799,10 +3379,7 @@ impl FString.init(
     end: (Token | None),
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { EndRole, PartsRole, StartRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {StartRole: start, PartsRole: parts, EndRole: end});
     self.postinit();
@@ -3815,11 +3392,7 @@ impl FormattedValue.init(
     format_spec: (Expr | None),
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { FormatPartRole, FormatSpecRole }
-    import from collections.abc { Sequence }
 
     self.conversion = conversion;
     self._link(kid, {FormatPartRole: format_part, FormatSpecRole: format_spec});
@@ -3827,11 +3400,7 @@ impl FormattedValue.init(
 }
 
 impl ListVal.init(*, values: Sequence[Expr], kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ValuesRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ValuesRole: values});
     self.postinit();
@@ -3840,11 +3409,7 @@ impl ListVal.init(*, values: Sequence[Expr], kid: Sequence[UniNode] = []) -> Non
 impl SetVal.init(
     *, values: (Sequence[Expr] | None), kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ValuesRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ValuesRole: values});
     self.postinit();
@@ -3853,21 +3418,14 @@ impl SetVal.init(
 impl TupleVal.init(
     *, values: Sequence[(Expr | KWPair)], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ValuesRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ValuesRole: values});
     self.postinit();
 }
 
 impl DictVal.init(*, kv_pairs: Sequence[KVPair], kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { KvPairsRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {KvPairsRole: kv_pairs});
     self.postinit();
@@ -3876,11 +3434,7 @@ impl DictVal.init(*, kv_pairs: Sequence[KVPair], kid: Sequence[UniNode] = []) ->
 impl KVPair.init(
     *, key: (Expr | None), value: Expr, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { KeyRole, ValueRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {KeyRole: key, ValueRole: value});
     self.postinit();
@@ -3889,11 +3443,7 @@ impl KVPair.init(
 impl KWPair.init(
     *, key: (NameAtom | None), value: Expr, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { KeyRole, ValueRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {KeyRole: key, ValueRole: value});
     self.postinit();
@@ -3907,15 +3457,11 @@ impl InnerCompr.init(
     conditional: (list[Expr] | None),
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         CollectionRole,
         ConditionalRole,
         TargetRole
     }
-    import from collections.abc { Sequence }
 
     self.is_async = is_async;
     self._link(
@@ -3928,11 +3474,7 @@ impl InnerCompr.init(
 impl ListCompr.init(
     *, out_expr: Expr, compr: list[InnerCompr], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ComprRole, OutExprRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {OutExprRole: out_expr, ComprRole: compr});
     self.postinit();
@@ -3941,11 +3483,7 @@ impl ListCompr.init(
 impl GenCompr.init(
     *, out_expr: Expr, compr: list[InnerCompr], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ComprRole, OutExprRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {OutExprRole: out_expr, ComprRole: compr});
     self.postinit();
@@ -3954,11 +3492,7 @@ impl GenCompr.init(
 impl SetCompr.init(
     *, out_expr: Expr, compr: list[InnerCompr], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ComprRole, OutExprRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {OutExprRole: out_expr, ComprRole: compr});
     self.postinit();
@@ -3967,10 +3501,7 @@ impl SetCompr.init(
 impl DictCompr.init(
     *, kv_pair: KVPair, compr: list[InnerCompr], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ComprRole, KvPairRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {KvPairRole: kv_pair, ComprRole: compr});
     self.postinit();
@@ -3985,11 +3516,7 @@ impl AtomTrailer.init(
     is_genai: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { RightRole, TargetRole }
-    import from collections.abc { Sequence }
 
     self.is_attr = is_attr;
     self.is_null_ok = is_null_ok;
@@ -4001,22 +3528,14 @@ impl AtomTrailer.init(
 impl AtomUnit.init(
     *, value: Expr | YieldExpr | Ability, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ValueRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ValueRole: value});
     self.postinit();
 }
 
 impl GraphExpr.init(*, exprs: Sequence[Expr], kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ExprsRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ExprsRole: exprs});
     self.postinit();
@@ -4024,9 +3543,7 @@ impl GraphExpr.init(*, exprs: Sequence[Expr], kid: Sequence[UniNode] = []) -> No
 
 impl GraphExpr.exprs.getter -> Sequence[Expr] {
     import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ExprsRole }
-    import from collections.abc { Sequence }
 
     return [self->:ExprsRole:->][?:Expr];
 }
@@ -4039,11 +3556,7 @@ impl GraphExpr.__repr__ -> str {
 impl YieldExpr.init(
     *, expr: (Expr | None), with_from: bool, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
-    import from collections.abc { Sequence }
 
     self.with_from = with_from;
     self._link(kid, {ExprRole: expr});
@@ -4059,11 +3572,7 @@ impl FuncCall.init(
     chunks_recv_type: (str | None) = None,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ParamsRole, TargetRole }
-    import from collections.abc { Sequence }
 
     self.genai_call = genai_call;
     self.call_kind = call_kind;
@@ -4079,11 +3588,7 @@ impl Slice.init(
     step: (Expr | None),
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { StartRole, StepRole, StopRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {StartRole: start, StopRole: stop, StepRole: step});
     self.postinit();
@@ -4092,10 +3597,7 @@ impl Slice.init(
 impl IndexSlice.init(
     *, slices: list[Slice], is_range: bool, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { SlicesRole }
-    import from collections.abc { Sequence }
 
     self.is_range = is_range;
     self._link(kid, {SlicesRole: slices});
@@ -4109,11 +3611,7 @@ impl EdgeRefTrailer.init(
     is_async: bool,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ChainRole }
-    import from collections.abc { Sequence }
 
     self.edges_only = edges_only;
     self.is_async = is_async;
@@ -4124,11 +3622,7 @@ impl EdgeRefTrailer.init(
 impl EdgeOpRef.init(
     *, filter_cond: (FilterCompr | None), edge_dir: EdgeDir, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from jaclang.compiler.ir.enums { EdgeDir }
     import from jaclang.compiler.ir.syntax.edges { FilterCondRole }
-    import from collections.abc { Sequence }
 
     self.edge_dir = edge_dir;
     self._link(kid, {FilterCondRole: filter_cond});
@@ -4136,10 +3630,7 @@ impl EdgeOpRef.init(
 }
 
 impl DisconnectOp.init(*, edge_spec: EdgeOpRef, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { EdgeSpecRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {EdgeSpecRole: edge_spec});
     self.postinit();
@@ -4152,12 +3643,7 @@ impl ConnectOp.init(
     edge_dir: EdgeDir,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
-    import from jaclang.compiler.ir.enums { EdgeDir }
     import from jaclang.compiler.ir.syntax.edges { ConnAssignRole, ConnTypeRole }
-    import from collections.abc { Sequence }
 
     self.edge_dir = edge_dir;
     self._link(kid, {ConnTypeRole: conn_type, ConnAssignRole: conn_assign});
@@ -4167,11 +3653,7 @@ impl ConnectOp.init(
 impl FilterCompr.init(
     *, f_type: (Expr | None), compares: Sequence[Expr], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ComparesRole, FTypeRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {FTypeRole: f_type, ComparesRole: compares});
     self.postinit();
@@ -4180,10 +3662,7 @@ impl FilterCompr.init(
 impl AssignCompr.init(
     *, assigns: Sequence[KWPair], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { AssignsRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {AssignsRole: assigns});
     self.postinit();
@@ -4199,16 +3678,12 @@ impl JsxElement.init(
     dynamic_tag: (Expr | None) = None,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         AttributesRole,
         ChildrenRole,
         DynamicTagRole,
         NameRole
     }
-    import from collections.abc { Sequence }
 
     self.is_self_closing = is_self_closing;
     self.is_fragment = is_fragment;
@@ -4227,30 +3702,19 @@ impl JsxElement.init(
 impl JsxElementName.init(
     *, parts: Sequence[(Name | Token)], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { PartsRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {PartsRole: parts});
     self.postinit();
 }
 
 impl JsxAttribute.init(*, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from collections.abc { Sequence }
-
     self._link(kid, {});
     self.postinit();
 }
 
 impl JsxSpreadAttribute.init(*, expr: Expr, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ExprRole: expr});
     self.postinit();
@@ -4263,11 +3727,7 @@ impl JsxNormalAttribute.init(
     is_shorthand: bool = False,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { NameRole, ValueRole }
-    import from collections.abc { Sequence }
 
     self.is_shorthand = is_shorthand;
     self._link(kid, {NameRole: name, ValueRole: value});
@@ -4275,50 +3735,32 @@ impl JsxNormalAttribute.init(
 }
 
 impl JsxChild.init(*, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from collections.abc { Sequence }
-
     self._link(kid, {});
     self.postinit();
 }
 
 impl JsxText.init(*, value: (str | Token), kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from collections.abc { Sequence }
-
     self.value = value;
     self._link(kid, {});
     self.postinit();
 }
 
 impl JsxExpression.init(*, expr: Expr, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ExprRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ExprRole: expr});
     self.postinit();
 }
 
 impl JsxSlot.init(*, body: list[UniNode], kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {BodyRole: body});
     self.postinit();
 }
 
 impl JsxComment.init(*, value: Token, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ValueRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ValueRole: value});
     self.postinit();
@@ -4327,11 +3769,7 @@ impl JsxComment.init(*, value: Token, kid: Sequence[UniNode] = []) -> None {
 impl MatchStmt.init(
     *, target: Expr, cases: list[MatchCase], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { CasesRole, TargetRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {TargetRole: target, CasesRole: cases});
     self.postinit();
@@ -4344,11 +3782,7 @@ impl MatchCase.init(
     body: list[CodeBlockStmt],
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole, GuardRole, PatternRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {PatternRole: pattern, GuardRole: guard, BodyRole: body});
     self.postinit();
@@ -4357,11 +3791,7 @@ impl MatchCase.init(
 impl SwitchStmt.init(
     *, target: Expr, cases: list[SwitchCase], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { CasesRole, TargetRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {TargetRole: target, CasesRole: cases});
     self.postinit();
@@ -4373,10 +3803,7 @@ impl SwitchCase.init(
     body: list[CodeBlockStmt],
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole, PatternRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {PatternRole: pattern, BodyRole: body});
     self.postinit();
@@ -4385,10 +3812,7 @@ impl SwitchCase.init(
 impl MatchOr.init(
     *, patterns: list[MatchPattern], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { PatternsRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {PatternsRole: patterns});
     self.postinit();
@@ -4397,40 +3821,26 @@ impl MatchOr.init(
 impl MatchAs.init(
     *, name: NameAtom, pattern: (MatchPattern | None), kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { NameRole, PatternRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {NameRole: name, PatternRole: pattern});
     self.postinit();
 }
 
 impl MatchWild.init(*, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
-    import from collections.abc { Sequence }
-
     self._link(kid, {});
     self.postinit();
 }
 
 impl MatchValue.init(*, value: Expr, kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.types.syntax { Expr }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ValueRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ValueRole: value});
     self.postinit();
 }
 
 impl MatchSingleton.init(*, value: (Bool | Null), kid: Sequence[UniNode] = []) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ValueRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ValueRole: value});
     self.postinit();
@@ -4439,10 +3849,7 @@ impl MatchSingleton.init(*, value: (Bool | Null), kid: Sequence[UniNode] = []) -
 impl MatchSequence.init(
     *, values: list[MatchPattern], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ValuesRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ValuesRole: values});
     self.postinit();
@@ -4451,10 +3858,7 @@ impl MatchSequence.init(
 impl MatchMapping.init(
     *, values: list[(MatchKVPair | MatchStar)], kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { ValuesRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {ValuesRole: values});
     self.postinit();
@@ -4466,10 +3870,7 @@ impl MatchKVPair.init(
     value: MatchPattern,
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { KeyRole, ValueRole }
-    import from collections.abc { Sequence }
 
     self._link(kid, {KeyRole: key, ValueRole: value});
     self.postinit();
@@ -4478,10 +3879,7 @@ impl MatchKVPair.init(
 impl MatchStar.init(
     *, name: NameAtom, is_list: bool, kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { NameRole }
-    import from collections.abc { Sequence }
 
     self.is_list = is_list;
     self._link(kid, {NameRole: name});
@@ -4495,14 +3893,11 @@ impl MatchArch.init(
     kw_patterns: (Sequence[MatchKVPair] | None),
     kid: Sequence[UniNode] = []
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges {
         ArgPatternsRole,
         KwPatternsRole,
         NameRole
     }
-    import from collections.abc { Sequence }
 
     self._link(
         kid,

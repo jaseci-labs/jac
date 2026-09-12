@@ -1,7 +1,5 @@
 import from jaclang.compiler.ir.identity { RelationFamily }
 impl Module.absorb_annex_body(stmts: Sequence[UniNode]) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.ir.syntax.edges { BodyRole }
 
     self.add_kids_right(stmts, pos_update=False, parent_update=True, role=BodyRole);
@@ -28,7 +26,6 @@ impl Module.declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool {
 
 impl Module.set_code_context(context: CodeContext) -> None {
     import from jaclang.compiler.ir.placement.nodes { ContextAwareNode }
-    import from jaclang.compiler.ir.enums { CodeContext }
 
     self.decided_codespace = context.value;
     for elem in self.body {
@@ -46,8 +43,6 @@ impl Module.set_code_context(context: CodeContext) -> None {
 }
 
 impl same_lexical_scope(left: UniNode | None, right: UniNode | None) -> bool {
-    import from jaclang.compiler.ir.base { UniNode }
-
     if left is None or right is None {
         return False;
     }
@@ -66,9 +61,6 @@ impl AstDocNode.set_doc(elem_doc: (String | None)) -> None {
 impl NameAtom.bind_sym(
     name_of: AstSymbolNode, sym_name: str, sym_category: SymbolType
 ) -> None {
-    import from jaclang.compiler.ir.symbols.nodes { AstSymbolNode }
-    import from jaclang.compiler.ir.enums { SymbolType }
-
     self.name_of = name_of;
     self._sym_name = sym_name;
     self._sym_category = sym_category;
@@ -156,8 +148,6 @@ impl NameAtom.sym_name.getter -> str {
 }
 
 impl NameAtom.sym_category.getter -> SymbolType {
-    import from jaclang.compiler.ir.enums { SymbolType }
-
     return self._sym_category;
 }
 
@@ -166,8 +156,7 @@ impl NameAtom.create_symbol(
     parent_tab: (UniScopeNode | None) = None,
     imported: bool = False
 ) -> Symbol {
-    import from jaclang.compiler.ir.symbols.nodes { Symbol, UniScopeNode }
-    import from jaclang.compiler.ir.enums { SymbolAccess }
+    import from jaclang.compiler.ir.symbols.nodes { Symbol }
 
     sym = Symbol(defn=self, access=access, parent_tab=parent_tab, imported=imported);
     return sym;
@@ -1177,8 +1166,6 @@ impl DeleteStmt.unwrap_target(target: Expr) -> Expr {
 
 
 impl DeleteStmt.is_location(target: Expr) -> bool {
-    import from jaclang.compiler.ir.types.syntax { Expr }
-
     inner = DeleteStmt.unwrap_target(target);
     if isinstance(inner, Name) {
         return True;
@@ -1189,8 +1176,6 @@ impl DeleteStmt.is_location(target: Expr) -> bool {
 
 
 impl DeleteStmt.type_has_graph_member(t: (TypeBase | None)) -> bool {
-    import from jaclang.compiler.ir.types.nodes { TypeBase }
-
     import from jaclang.compiler.ir.types.nodes { ClassType, TypeVarType, UnionType }
     if isinstance(t, TypeVarType) {
         return DeleteStmt.type_has_graph_member(t.bound);
@@ -1216,8 +1201,6 @@ impl DeleteStmt.type_has_graph_member(t: (TypeBase | None)) -> bool {
 }
 
 impl DeleteStmt.type_may_hold_graph(t: (TypeBase | None)) -> bool {
-    import from jaclang.compiler.ir.types.nodes { TypeBase }
-
     import from jaclang.compiler.ir.types.nodes { ClassType, UnionType }
     if DeleteStmt.type_has_graph_member(t) {
         return True;
@@ -1265,8 +1248,6 @@ impl DeleteStmt.type_may_hold_graph(t: (TypeBase | None)) -> bool {
 
 
 impl DeleteStmt.target_may_hold_graph(target: Expr) -> bool {
-    import from jaclang.compiler.ir.types.syntax { Expr }
-
     return DeleteStmt.type_may_hold_graph(target.type);
 }
 
@@ -1377,8 +1358,6 @@ impl LambdaExpr.postinit -> None {
 }
 
 impl LambdaExpr.captures.getter -> list[Symbol] {
-    import from jaclang.compiler.ir.symbols.nodes { Symbol }
-
     return list(self.capture_symbols);
 }
 
@@ -2232,8 +2211,6 @@ impl CommentToken.init(
     pos_end: int,
     kid: Sequence[UniNode]
 ) -> None {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from collections.abc { Sequence }
     import from jaclang.compiler.frontend.source_locations { CodeLocInfo }
 
     Token.init(
@@ -2297,14 +2274,6 @@ impl FuncCall.callee_decl.setter(callee_decl: (Ability | None)) {
     self.changed_relations(RelationFamily.BINDING);
     del [edge self->:CalleeDecl:->];
     if callee_decl is not None {
-        import from jaclang.compiler.ir.syntax.nodes { Ability, FuncCall }
-        if not isinstance(self, FuncCall) {
-            raise TypeError("CalleeDecl requires a valid source");
-        }
-        if not isinstance(callee_decl, Ability) {
-            raise TypeError("CalleeDecl requires a valid target");
-        }
-        self.prepare_connection(callee_decl, RelationFamily.BINDING);
         self +>:CalleeDecl:+> callee_decl;
     }
 }
@@ -2322,20 +2291,11 @@ impl Import.absorbed_mod.setter(absorbed_mod: (Module | None)) {
     self.changed_relations(RelationFamily.BINDING);
     del [edge self->:Absorbs:->];
     if absorbed_mod is not None {
-        import from jaclang.compiler.ir.syntax.nodes { Import, Module }
-        if not isinstance(self, Import) {
-            raise TypeError("Absorbs requires a valid source");
-        }
-        if not isinstance(absorbed_mod, Module) {
-            raise TypeError("Absorbs requires a valid target");
-        }
-        self.prepare_connection(absorbed_mod, RelationFamily.BINDING);
         self +>:Absorbs:+> absorbed_mod;
     }
 }
 
 impl NameAtom.sym.getter -> (Symbol | None) {
-    import from jaclang.compiler.ir.symbols.nodes { Symbol }
     import from jaclang.compiler.ir.symbols.edges { SymOf }
 
     found = [self->:SymOf:->];
@@ -2343,40 +2303,24 @@ impl NameAtom.sym.getter -> (Symbol | None) {
 }
 
 impl NameAtom.sym.setter(sym: Symbol | None) {
-    import from jaclang.compiler.ir.symbols.nodes { Symbol }
     import from jaclang.compiler.ir.symbols.edges { SymOf }
 
     self.changed_relations(RelationFamily.BINDING);
     del [edge self->:SymOf:->];
     if sym is not None {
-        import from jaclang.compiler.ir.syntax.nodes { NameAtom }
-        import from jaclang.compiler.ir.symbols.nodes { Symbol }
-        if not isinstance(self, NameAtom) {
-            raise TypeError("SymOf requires a valid source");
-        }
-        if not isinstance(sym, Symbol) {
-            raise TypeError("SymOf requires a valid target");
-        }
-        self.prepare_connection(sym, RelationFamily.BINDING);
         self +>:SymOf:+> sym;
     }
 }
 
 impl NameAtom.expr_ctx.getter -> ExprCtx {
-    import from jaclang.compiler.ir.enums { ExprCtx }
-
     return self._expr_ctx;
 }
 
 impl NameAtom.expr_ctx.setter(expr_ctx: ExprCtx) {
-    import from jaclang.compiler.ir.enums { ExprCtx }
-
     self._expr_ctx = expr_ctx;
 }
 
 impl is_identifier_slot(nd: UniNode) -> bool {
-    import from jaclang.compiler.ir.base { UniNode }
-
     par = nd.parent;
     if isinstance(par, KWPair) {
         return par.key is nd;
@@ -2397,7 +2341,6 @@ impl is_identifier_slot(nd: UniNode) -> bool {
 }
 
 impl find_python_scope_node_of(nd: UniNode) -> (UniScopeNode | None) {
-    import from jaclang.compiler.ir.base { UniNode }
     import from jaclang.compiler.ir.symbols.nodes { UniScopeNode }
 
     while nd.parent {
@@ -2412,7 +2355,7 @@ impl find_python_scope_node_of(nd: UniNode) -> (UniScopeNode | None) {
 }
 
 impl find_typed_decl_scope_of(nd: AstSymbolNode) -> UniScopeNode {
-    import from jaclang.compiler.ir.symbols.nodes { AstSymbolNode, UniScopeNode }
+    import from jaclang.compiler.ir.symbols.nodes { UniScopeNode }
 
     if UniScopeNode.is_python_scoping(nd.sym_tab) {
         return nd.sym_tab;
@@ -2425,8 +2368,6 @@ impl find_typed_decl_scope_of(nd: AstSymbolNode) -> UniScopeNode {
 }
 
 impl _ability_of_defn(defn_node: UniNode) -> (Ability | None) {
-    import from jaclang.compiler.ir.base { UniNode }
-
     if isinstance(defn_node, Ability) {
         return defn_node;
     }
@@ -2437,8 +2378,6 @@ impl _ability_of_defn(defn_node: UniNode) -> (Ability | None) {
 }
 
 impl ability_of_symbol(sym: (Symbol | None)) -> (Ability | None) {
-    import from jaclang.compiler.ir.symbols.nodes { Symbol }
-
     if sym is None or not sym.defn {
         return None;
     }
@@ -2481,8 +2420,6 @@ impl import_chain_of(sym: Symbol) -> list[Symbol] {
 }
 
 impl resolved_decl_of(sym: Symbol) -> (NameAtom | None) {
-    import from jaclang.compiler.ir.symbols.nodes { Symbol }
-
     for cur in import_chain_of(sym) {
         decl = cur.decl;
         if not isinstance(decl.parent, ModuleItem) {
@@ -2495,7 +2432,7 @@ impl resolved_decl_of(sym: Symbol) -> (NameAtom | None) {
 impl kind_has_runtime_binding(
     kind: BindingKind, decl: (NameAtom | None), space: CodeContext
 ) -> bool {
-    import from jaclang.compiler.ir.enums { BindingKind, CodeContext }
+    import from jaclang.compiler.ir.enums { CodeContext }
 
     if not kind.denotes_value() {
         return False;
@@ -2507,9 +2444,6 @@ impl kind_has_runtime_binding(
 }
 
 impl has_runtime_binding(sym: Symbol, space: CodeContext) -> bool {
-    import from jaclang.compiler.ir.symbols.nodes { Symbol }
-    import from jaclang.compiler.ir.enums { CodeContext }
-
     return kind_has_runtime_binding(sym.binding_kind, resolved_decl_of(sym), space);
 }
 
@@ -2569,28 +2503,17 @@ impl in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool {
 }
 
 impl Ability.event_triggers.getter -> (list[TypeBase] | None) {
-    import from jaclang.compiler.ir.types.nodes { TypeBase }
     import from jaclang.compiler.ir.types.edges { EventTriggerOf }
 
     return [self->:EventTriggerOf:->];
 }
 
 impl Ability.event_triggers.setter(event_triggers: (list[TypeBase] | None)) -> None {
-    import from jaclang.compiler.ir.types.nodes { TypeBase }
     import from jaclang.compiler.ir.types.edges { EventTriggerOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:EventTriggerOf:->];
     for t in (event_triggers or []) {
-        import from jaclang.compiler.ir.syntax.nodes { Ability }
-        import from jaclang.compiler.ir.types.nodes { TypeBase }
-        if not isinstance(self, Ability) {
-            raise TypeError("EventTriggerOf requires a valid source");
-        }
-        if not isinstance(t, TypeBase) {
-            raise TypeError("EventTriggerOf requires a valid target");
-        }
-        self.prepare_connection(t, RelationFamily.TYPES);
         self +>:EventTriggerOf:+> t;
     }
 }

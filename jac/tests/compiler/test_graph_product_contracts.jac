@@ -358,3 +358,85 @@ test "a role replacement validates every target before changing the graph" {
     assert module.relation_generation == generation;
     assert module._role_shapes[DocRole] == "one";
 }
+
+
+test "one typed connection commits one generation and claims its target" {
+    import from jaclang.compiler.ir.symbols.edges { ScopeParent }
+    source = Module.make_stub(inject_name='source');
+    target = Module.make_stub(inject_name='target');
+    permit = MutationPermit();
+    source.attach_permit(permit);
+    before = source.relation_generation;
+    generation = permit.generation;
+    with MutationScope(permit, 2) {
+        source +>:ScopeParent:+> target;
+    }
+    assert source.relation_generation == before + 1;
+    assert permit.generation == generation + 1;
+    assert target.mutation_permit is permit;
+}
+
+
+test "graph walkers terminate on cycles and reject foreign descendants atomically" {
+    import from jaclang.compiler.ir.symbols.edges { ScopeParent }
+    first = Module.make_stub(inject_name='first');
+    second = Module.make_stub(inject_name='second');
+    first +>:ScopeParent:+> second;
+    second +>:ScopeParent:+> first;
+    validate_graph(first);
+    permit = MutationPermit();
+    first.attach_permit(permit);
+    assert second.mutation_permit is permit;
+    other = MutationPermit();
+    before = other.generation;
+    rejected = False;
+    try {
+        second.attach_permit(other);
+    } except ValueError {
+        rejected = True;
+    }
+    assert rejected;
+    assert first.mutation_permit is permit;
+    assert second.mutation_permit is permit;
+    assert other.generation == before;
+}
+
+
+test "syntax copies preserve typed edges while isolating context and locations" {
+    import copy;
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.session.sources { SourceStore }
+    import from jaclang.compiler.ir.syntax.edges { Kid }
+    store = SourceStore();
+    left = JacProgram();
+    right = JacProgram();
+    code = 'def value -> int { return 1; }';
+    (first, failed) = store.parse(code, 'copy.jac', left, []);
+    assert not failed;
+    (second, failed) = store.parse(code, 'copy.jac', right, []);
+    assert not failed;
+    assert store.parses == 1;
+    assert first.mutation_permit is left.analysis.mutations;
+    assert second.mutation_permit is right.analysis.mutations;
+    assert not first._struct_frozen and not second._struct_frozen;
+    first_body = first.body[0];
+    second_body = second.body[0];
+    assert first_body is not second_body;
+    assert first_body.parent is first;
+    assert second_body.parent is second;
+    assert first_body.loc is not second_body.loc;
+    assert first_body.loc.first_tok is not second_body.loc.first_tok;
+    assert first_body.mutation_permit is left.analysis.mutations;
+    assert second_body.mutation_permit is right.analysis.mutations;
+    validate_graph(first);
+    validate_graph(second);
+    detached = copy.deepcopy(first);
+    assert detached.mutation_permit is None;
+    assert detached.body[0].mutation_permit is None;
+    assert detached.body[0].parent is detached;
+    with MutationScope(left.analysis.mutations, 1) {
+        first.set_kids([], pos_update=False);
+    }
+    assert not [first->:Kid:->];
+    assert [second->:Kid:->];
+}

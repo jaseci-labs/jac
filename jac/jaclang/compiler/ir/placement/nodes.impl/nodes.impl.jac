@@ -16,7 +16,6 @@ impl ContextAwareNode.code_context.getter -> CodeContext {
 }
 
 impl ContextAwareNode.code_context.setter(code_context: CodeContext) {
-    import from jaclang.compiler.ir.enums { CodeContext }
     import from jaclang.compiler.ir.placement.edges { PlacedIn }
     import from jaclang.compiler.ir.placement.nodes { codespace_node }
 

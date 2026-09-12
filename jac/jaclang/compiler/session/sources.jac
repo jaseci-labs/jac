@@ -23,6 +23,7 @@ obj SourceStore {
     def unit(source: str, path: str, annexes: list[tuple[str, str]]) -> SourceUnit {
         import from jaclang.compiler.frontend.parser.frontend { parse_woven }
         import from jaclang.compiler.session.session { JacProgram }
+        import from jaclang.compiler.ir.syntax.cloning { freeze_source }
         key = RevisionId(
             hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest()
         );
@@ -30,8 +31,7 @@ obj SourceStore {
         if unit is None {
             diagnostics = JacProgram();
             (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
-            syntax.freeze_structure();
-            syntax.attach_permit(MutationPermit());
+            freeze_source(syntax, MutationPermit());
             unit = SourceUnit(
                 syntax,
                 failed,
@@ -56,9 +56,11 @@ obj SourceStore {
         source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
     ) -> tuple[Module, bool] {
         unit = self.unit(source, path, annexes);
-        syntax = copy.deepcopy(unit.syntax);
+        syntax = copy.deepcopy(
+            unit.syntax, {id(unit.syntax.mutation_permit): program.analysis.mutations}
+        );
         assert isinstance(syntax, Module);
-        syntax.thaw_structure();
+
         program.errors_had.extend(unit.errors);
         program.warnings_had.extend(unit.warnings);
         return (syntax, unit.failed);

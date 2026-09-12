@@ -454,11 +454,66 @@ def _erased_only_import(imp: uni.Import) -> bool {
     return native_erased_import_names(imp.from_loc.dot_path_str, names);
 }
 
+walker NativeBlockerScan(uni.TreeWalker) {
+    has classify_imports: bool = False,
+        signals: set[type] = set(),
+        root_access: bool = False,
+        ability_reason: str = '',
+        imports: list[uni.Import] = [];
+
+    can signal with uni.TypedCtxBlock | uni.PyInlineCode | uni.JsxElement exit {
+        self.signals.add(type(here));
+    }
+
+    can root_reference with uni.SpecialVarRef exit {
+        if here.orig.name == Tok.KW_ROOT {
+            self.root_access = True;
+        }
+    }
+
+    can ability with uni.Ability exit {
+        if self.ability_reason {
+            return;
+        }
+        if here.is_async {
+            self.ability_reason = 'async ability';
+            return;
+        }
+        if isinstance(here.signature, uni.EventSignature) {
+            if here.find_parent_of_type(uni.Archetype) is None {
+                self.ability_reason = 'event ability outside an archetype';
+                return;
+            }
+            tag = here.signature.arch_tag_info;
+            names = [tag]
+                if isinstance(tag, uni.Name)
+                else (tag.get_all_sub_nodes(uni.Name) if tag is not None else []);
+            for name in names {
+                if name.value in ('Root', 'root') {
+                    self.ability_reason = 'root access (persistent graph)';
+                    return;
+                }
+            }
+        }
+    }
+
+    can import_statement with uni.Import exit {
+        if self.classify_imports {
+            import from jaclang.compiler.analysis.binding.import_classification {
+                detect_jac_import
+            }
+            here.jac_detected = detect_jac_import(here);
+        }
+        self.imports.append(here);
+    }
+}
+
 def scan_native_blockers(
     module: uni.Module,
     base_dir: str,
     allow_pub: bool = False,
-    hold_exempt: bool = False
+    hold_exempt: bool = False,
+    classify_imports: bool = False
 ) -> tuple[str, list[str]] {
     import from jaclang.compiler.analysis.capabilities.native_policy {
         NATIVE_SUPPORTED_STDLIB
@@ -476,40 +531,23 @@ def scan_native_blockers(
             }
         }
     }
+    scan = NativeBlockerScan(classify_imports=classify_imports);
+    module spawn scan;
     for (nd_name, typ) in PLACEMENT_SV_SIGNAL_NODES {
-        if module.get_all_sub_nodes(typ) {
+        if typ in scan.signals {
             return (f"contains {nd_name}", deps);
         }
     }
-
     for (nd_name, typ) in PLACEMENT_NATIVE_REJECT_NODES {
         if module.get_all_sub_nodes(typ) {
             return (f"native-unsupported {nd_name}", deps);
         }
     }
-    for svr in module.get_all_sub_nodes(uni.SpecialVarRef) {
-        if svr.orig.name == Tok.KW_ROOT {
-            return ("root access (persistent graph)", deps);
-        }
+    if scan.root_access {
+        return ("root access (persistent graph)", deps);
     }
-    for ab in module.get_all_sub_nodes(uni.Ability) {
-        if ab.is_async {
-            return ("async ability", deps);
-        }
-        if isinstance(ab.signature, uni.EventSignature) {
-            if ab.find_parent_of_type(uni.Archetype) is None {
-                return ("event ability outside an archetype", deps);
-            }
-            _ti = ab.signature.arch_tag_info;
-            _ti_names = [_ti]
-                if isinstance(_ti, uni.Name)
-                else (_ti.get_all_sub_nodes(uni.Name) if _ti is not None else []);
-            for _tn in _ti_names {
-                if _tn.value in ("Root", "root") {
-                    return ("root access (persistent graph)", deps);
-                }
-            }
-        }
+    if scan.ability_reason {
+        return (scan.ability_reason, deps);
     }
     scan_mod_path = module.loc.mod_path or '';
     for stmt in module.body {
@@ -525,7 +563,7 @@ def scan_native_blockers(
             return ("pub access", deps);
         }
     }
-    for imp in module.get_all_sub_nodes(uni.Import) {
+    for imp in scan.imports {
         if imp.has_clib_decls {
             continue;
         }

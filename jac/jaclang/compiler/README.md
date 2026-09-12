@@ -118,3 +118,36 @@ iteration, filtering or field access.
 
 The full design and acceptance requirements are in
 [`docs/architecture/compiler-reorganization.md`](../../../docs/architecture/compiler-reorganization.md).
+
+## OSP algorithms and graph storage
+
+Declare endpoint types on the edge, then express relationships through OSP
+references and connections. For example, `scope +>:ScopePrimary:+> binding`
+and `binding +>:BindingTarget:+> symbol` construct a named binding;
+`[scope->:ScopePrimary:->->:BindingTarget:->]` reads its symbols. Name lookup
+retains a graph-derived index because repeated lookup must not scan a scope.
+
+Connections have one commit hook on `GraphNode`, which checks relation
+cardinality and mutation authority and adopts previously unclaimed nodes.
+Replacement accessors preflight every proposed target before deleting existing
+relations. `CollectUnclaimed` validates a reachable graph through typed walker
+abilities, then its caller commits the collected claims. `ValidateGraph` also
+uses an OSP traversal with an explicit visited set. These operations enforce IR
+integrity; they do not perform semantic analysis or schedule compiler passes.
+
+Semantic node handling belongs in abilities on the relevant node types.
+`NativeBlockerScan`, invoked by scheduled placement work, visits syntax once
+and handles imports, abilities, root references, and server-only constructs
+through typed abilities. The enclosing analysis preserves diagnostic priority
+and publishes the result through the scheduled product/query infrastructure.
+
+`ir/syntax/cloning.jac` is the storage boundary for copying validated syntax.
+It preserves endpoint types, edge ordering, and shared children while creating
+fresh anchors and incoming weak references. It excludes analysis relations.
+Copying assigns the destination context and clears derived state, avoiding
+separate adoption and thaw traversals. Pristine source freezing and authority
+assignment likewise share one checked traversal.
+
+Runtime optimizations preserve the OSP surface: the traversal kernel caches
+ordered callback plans, and the seed compiler lowers indexed first/last graph
+references without allocating an intermediate list for simple transient hops.

@@ -12,19 +12,14 @@ impl Expr.postinit -> None {
 
 
 impl Expr.type_sym_tab.getter -> (UniScopeNode | None) {
-    import from jaclang.compiler.ir.symbols.nodes { UniScopeNode }
-
     return self._type_sym_tab;
 }
 
 impl Expr.type_sym_tab.setter(type_sym_tab: UniScopeNode) {
-    import from jaclang.compiler.ir.symbols.nodes { UniScopeNode }
-
     self._type_sym_tab = type_sym_tab;
 }
 
 impl Expr.type.getter -> (TypeBase | None) {
-    import from jaclang.compiler.ir.types.nodes { TypeBase }
     import from jaclang.compiler.ir.types.edges { TypeOf }
 
     if self._type_cache_ok and self._type_generation == self.relation_generation {
@@ -46,22 +41,13 @@ impl Expr.type.setter(type: (TypeBase | None)) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.nodes { TypeBase }
     import from jaclang.compiler.ir.types.edges { TypeOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:TypeOf:->];
     if type is not None {
-        import from jaclang.compiler.ir.base { TypedNode }
         import from jaclang.compiler.ir.types.nodes { TypeBase }
-        if not isinstance(self, TypedNode) {
-            raise TypeError("TypeOf requires a valid source");
-        }
-        if not isinstance(type, TypeBase) {
-            raise TypeError("TypeOf requires a valid target");
-        }
-        self.prepare_connection(type, RelationFamily.TYPES);
         self +>:TypeOf:+> type;
     }
     self._type_cache = type;
@@ -70,7 +56,6 @@ impl Expr.type.setter(type: (TypeBase | None)) -> None {
 }
 
 impl Expr.narrowed_type.getter -> (TypeBase | None) {
-    import from jaclang.compiler.ir.types.nodes { TypeBase }
     import from jaclang.compiler.ir.types.edges { NarrowedTypeOf }
 
     found = [self->:NarrowedTypeOf:->];
@@ -86,28 +71,18 @@ impl Expr.narrowed_type.setter(narrowed_type: (TypeBase | None)) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.nodes { TypeBase }
     import from jaclang.compiler.ir.types.edges { NarrowedTypeOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:NarrowedTypeOf:->];
     if narrowed_type is not None {
-        import from jaclang.compiler.ir.types.syntax { Expr }
         import from jaclang.compiler.ir.types.nodes { TypeBase }
-        if not isinstance(self, Expr) {
-            raise TypeError("NarrowedTypeOf requires a valid source");
-        }
-        if not isinstance(narrowed_type, TypeBase) {
-            raise TypeError("NarrowedTypeOf requires a valid target");
-        }
-        self.prepare_connection(narrowed_type, RelationFamily.TYPES);
         self +>:NarrowedTypeOf:+> narrowed_type;
     }
 }
 
 impl AstTypedVarNode.type.getter -> (TypeBase | None) {
-    import from jaclang.compiler.ir.types.nodes { TypeBase }
     import from jaclang.compiler.ir.types.edges { TypeOf }
 
     found = [self->:TypeOf:->];
@@ -123,22 +98,13 @@ impl AstTypedVarNode.type.setter(type: (TypeBase | None)) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.nodes { TypeBase }
     import from jaclang.compiler.ir.types.edges { TypeOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:TypeOf:->];
     if type is not None {
-        import from jaclang.compiler.ir.base { TypedNode }
         import from jaclang.compiler.ir.types.nodes { TypeBase }
-        if not isinstance(self, TypedNode) {
-            raise TypeError("TypeOf requires a valid source");
-        }
-        if not isinstance(type, TypeBase) {
-            raise TypeError("TypeOf requires a valid target");
-        }
-        self.prepare_connection(type, RelationFamily.TYPES);
         self +>:TypeOf:+> type;
     }
 }

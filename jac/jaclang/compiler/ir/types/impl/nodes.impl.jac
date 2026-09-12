@@ -21,21 +21,12 @@ impl ModuleType.symbol_table.setter(symbol_table: (SymbolTable | None)) -> None 
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { DeclScopeOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:DeclScopeOf:->];
     if symbol_table is not None {
-        import from jaclang.compiler.ir.types.nodes { ClassDetailsShared, ModuleType }
         import from jaclang.compiler.ir.symbols.nodes { UniScopeNode }
-        if not isinstance(self, (ModuleType, ClassDetailsShared)) {
-            raise TypeError("DeclScopeOf requires a valid source");
-        }
-        if not isinstance(symbol_table, UniScopeNode) {
-            raise TypeError("DeclScopeOf requires a valid target");
-        }
-        self.prepare_connection(symbol_table, RelationFamily.TYPES);
         self +>:DeclScopeOf:+> symbol_table;
     }
     self._cached_symbol_table = RelationCache(self.relation_generation, symbol_table);
@@ -63,20 +54,12 @@ impl TypeVarType.bound.setter(bound: (TypeBase | None)) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { BoundOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:BoundOf:->];
     if bound is not None {
-        import from jaclang.compiler.ir.types.nodes { TypeBase, TypeVarType }
-        if not isinstance(self, TypeVarType) {
-            raise TypeError("BoundOf requires a valid source");
-        }
-        if not isinstance(bound, TypeBase) {
-            raise TypeError("BoundOf requires a valid target");
-        }
-        self.prepare_connection(bound, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { TypeBase }
         self +>:BoundOf:+> bound;
     }
     self._cached_bound = RelationCache(self.relation_generation, bound);
@@ -103,20 +86,12 @@ impl TypeVarType.constraints.setter(constraints: (list[TypeBase] | None)) -> Non
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { ConstraintOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:ConstraintOf:->];
     for t in (constraints or []) {
-        import from jaclang.compiler.ir.types.nodes { TypeBase, TypeVarType }
-        if not isinstance(self, TypeVarType) {
-            raise TypeError("ConstraintOf requires a valid source");
-        }
-        if not isinstance(t, TypeBase) {
-            raise TypeError("ConstraintOf requires a valid target");
-        }
-        self.prepare_connection(t, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { TypeBase }
         self +>:ConstraintOf:+> t;
     }
     self._cached_constraints = RelationCache(
@@ -168,20 +143,12 @@ impl ClassDetailsShared.mro.setter(mro: list[ClassType]) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { MroOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:MroOf:->];
     for t in (mro or []) {
-        import from jaclang.compiler.ir.types.nodes { ClassDetailsShared, ClassType }
-        if not isinstance(self, ClassDetailsShared) {
-            raise TypeError("MroOf requires a valid source");
-        }
-        if not isinstance(t, ClassType) {
-            raise TypeError("MroOf requires a valid target");
-        }
-        self.prepare_connection(t, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { ClassType }
         self +>:MroOf:+> t;
     }
     self._mro_cache = `list(mro or []);
@@ -211,24 +178,12 @@ impl ClassDetailsShared.type_params.setter(
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { TypeParamOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:TypeParamOf:->];
     for t in (type_params or []) {
-        import from jaclang.compiler.ir.types.nodes {
-            ClassDetailsShared,
-            FunctionType,
-            TypeVarType
-        }
-        if not isinstance(self, (ClassDetailsShared, FunctionType)) {
-            raise TypeError("TypeParamOf requires a valid source");
-        }
-        if not isinstance(t, TypeVarType) {
-            raise TypeError("TypeParamOf requires a valid target");
-        }
-        self.prepare_connection(t, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { TypeVarType }
         self +>:TypeParamOf:+> t;
     }
     self._cached_type_params = RelationCache(
@@ -259,20 +214,12 @@ impl ClassDetailsShared.base_classes.setter(
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { BaseOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:BaseOf:->];
     for t in (base_classes or []) {
-        import from jaclang.compiler.ir.types.nodes { ClassDetailsShared, TypeBase }
-        if not isinstance(self, ClassDetailsShared) {
-            raise TypeError("BaseOf requires a valid source");
-        }
-        if not isinstance(t, TypeBase) {
-            raise TypeError("BaseOf requires a valid target");
-        }
-        self.prepare_connection(t, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { TypeBase }
         self +>:BaseOf:+> t;
     }
     self._cached_base_classes = RelationCache(
@@ -304,24 +251,12 @@ impl ClassDetailsShared.enum_value_type.setter(
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { ValueTypeOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:ValueTypeOf:->];
     if enum_value_type is not None {
-        import from jaclang.compiler.ir.types.nodes {
-            ClassDetailsShared,
-            EnumMemberInfo,
-            TypeBase
-        }
-        if not isinstance(self, (ClassDetailsShared, EnumMemberInfo)) {
-            raise TypeError("ValueTypeOf requires a valid source");
-        }
-        if not isinstance(enum_value_type, TypeBase) {
-            raise TypeError("ValueTypeOf requires a valid target");
-        }
-        self.prepare_connection(enum_value_type, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { TypeBase }
         self +>:ValueTypeOf:+> enum_value_type;
     }
     self._cached_enum_value_type = RelationCache(
@@ -350,20 +285,12 @@ impl ClassDetailsShared.typeddict_fields.setter(
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { TypeMemberOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:TypeMemberOf:->];
     for (k, v) in (typeddict_fields or {}).items() {
-        import from jaclang.compiler.ir.types.nodes { ClassDetailsShared, TypeBase }
-        if not isinstance(self, ClassDetailsShared) {
-            raise TypeError("TypeMemberOf requires a valid source");
-        }
-        if not isinstance(v, TypeBase) {
-            raise TypeError("TypeMemberOf requires a valid target");
-        }
-        self.prepare_connection(v, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { TypeBase }
         self +>:TypeMemberOf(name=k):+> v;
     }
 }
@@ -389,23 +316,12 @@ impl ClassDetailsShared.enum_members.setter(
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { EnumMemberOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:EnumMemberOf:->];
     for (k, v) in (enum_members or {}).items() {
-        import from jaclang.compiler.ir.types.nodes {
-            ClassDetailsShared,
-            EnumMemberInfo
-        }
-        if not isinstance(self, ClassDetailsShared) {
-            raise TypeError("EnumMemberOf requires a valid source");
-        }
-        if not isinstance(v, EnumMemberInfo) {
-            raise TypeError("EnumMemberOf requires a valid target");
-        }
-        self.prepare_connection(v, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { EnumMemberInfo }
         self +>:EnumMemberOf(name=k):+> v;
     }
 }
@@ -488,20 +404,12 @@ impl ClassDetailsPrivate.type_args.setter(type_args: (list[TypeBase] | None)) ->
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { TypeArgOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:TypeArgOf:->];
     for t in (type_args or []) {
-        import from jaclang.compiler.ir.types.nodes { ClassDetailsPrivate, TypeBase }
-        if not isinstance(self, ClassDetailsPrivate) {
-            raise TypeError("TypeArgOf requires a valid source");
-        }
-        if not isinstance(t, TypeBase) {
-            raise TypeError("TypeArgOf requires a valid target");
-        }
-        self.prepare_connection(t, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { TypeBase }
         self +>:TypeArgOf:+> t;
     }
     self._targs_cache = `list(type_args or []);
@@ -530,20 +438,12 @@ impl ClassType._shared.setter(_shared: (ClassDetailsShared | None)) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { SharedOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:SharedOf:->];
     if _shared is not None {
-        import from jaclang.compiler.ir.types.nodes { ClassDetailsShared, ClassType }
-        if not isinstance(self, ClassType) {
-            raise TypeError("SharedOf requires a valid source");
-        }
-        if not isinstance(_shared, ClassDetailsShared) {
-            raise TypeError("SharedOf requires a valid target");
-        }
-        self.prepare_connection(_shared, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { ClassDetailsShared }
         self +>:SharedOf:+> _shared;
     }
     self._cached__shared = RelationCache(self.relation_generation, _shared);
@@ -570,19 +470,11 @@ impl ClassType.private.setter(private: ClassDetailsPrivate) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { PrivOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:PrivOf:->];
-    import from jaclang.compiler.ir.types.nodes { ClassDetailsPrivate, ClassType }
-    if not isinstance(self, ClassType) {
-        raise TypeError("PrivOf requires a valid source");
-    }
-    if not isinstance(private, ClassDetailsPrivate) {
-        raise TypeError("PrivOf requires a valid target");
-    }
-    self.prepare_connection(private, RelationFamily.TYPES);
+    import from jaclang.compiler.ir.types.nodes { ClassDetailsPrivate }
     self +>:PrivOf:+> private;
     self._cached_private = RelationCache(self.relation_generation, private);
 }
@@ -681,20 +573,12 @@ impl Parameter.param_type.setter(param_type: (TypeBase | None)) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { ParamTypeOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:ParamTypeOf:->];
     if param_type is not None {
-        import from jaclang.compiler.ir.types.nodes { Parameter, TypeBase }
-        if not isinstance(self, Parameter) {
-            raise TypeError("ParamTypeOf requires a valid source");
-        }
-        if not isinstance(param_type, TypeBase) {
-            raise TypeError("ParamTypeOf requires a valid target");
-        }
-        self.prepare_connection(param_type, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { TypeBase }
         self +>:ParamTypeOf:+> param_type;
     }
     self._cached_param_type = RelationCache(self.relation_generation, param_type);
@@ -722,21 +606,12 @@ impl Parameter.default_value.setter(default_value: (Expr | None)) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { ParamDefaultOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:ParamDefaultOf:->];
     if default_value is not None {
-        import from jaclang.compiler.ir.types.nodes { Parameter }
         import from jaclang.compiler.ir.types.syntax { Expr }
-        if not isinstance(self, Parameter) {
-            raise TypeError("ParamDefaultOf requires a valid source");
-        }
-        if not isinstance(default_value, Expr) {
-            raise TypeError("ParamDefaultOf requires a valid target");
-        }
-        self.prepare_connection(default_value, RelationFamily.TYPES);
         self +>:ParamDefaultOf:+> default_value;
     }
     self._cached_default_value = RelationCache(self.relation_generation, default_value);
@@ -787,20 +662,12 @@ impl FunctionType.return_type.setter(return_type: (TypeBase | None)) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { ReturnsOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:ReturnsOf:->];
     if return_type is not None {
-        import from jaclang.compiler.ir.types.nodes { FunctionType, TypeBase }
-        if not isinstance(self, FunctionType) {
-            raise TypeError("ReturnsOf requires a valid source");
-        }
-        if not isinstance(return_type, TypeBase) {
-            raise TypeError("ReturnsOf requires a valid target");
-        }
-        self.prepare_connection(return_type, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { TypeBase }
         self +>:ReturnsOf:+> return_type;
     }
     self._cached_return_type = RelationCache(self.relation_generation, return_type);
@@ -826,20 +693,12 @@ impl FunctionType.parameters.setter(parameters: (list[Parameter] | None)) -> Non
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { ParamOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:ParamOf:->];
     for t in (parameters or []) {
-        import from jaclang.compiler.ir.types.nodes { FunctionType, Parameter }
-        if not isinstance(self, FunctionType) {
-            raise TypeError("ParamOf requires a valid source");
-        }
-        if not isinstance(t, Parameter) {
-            raise TypeError("ParamOf requires a valid target");
-        }
-        self.prepare_connection(t, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { Parameter }
         self +>:ParamOf:+> t;
     }
     self._params_cache = `list(parameters or []);
@@ -867,24 +726,12 @@ impl FunctionType.type_params.setter(type_params: (list[TypeVarType] | None)) ->
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { TypeParamOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:TypeParamOf:->];
     for t in (type_params or []) {
-        import from jaclang.compiler.ir.types.nodes {
-            ClassDetailsShared,
-            FunctionType,
-            TypeVarType
-        }
-        if not isinstance(self, (ClassDetailsShared, FunctionType)) {
-            raise TypeError("TypeParamOf requires a valid source");
-        }
-        if not isinstance(t, TypeVarType) {
-            raise TypeError("TypeParamOf requires a valid target");
-        }
-        self.prepare_connection(t, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { TypeVarType }
         self +>:TypeParamOf:+> t;
     }
     self._cached_type_params = RelationCache(
@@ -914,20 +761,12 @@ impl FunctionType.type_guard.setter(type_guard: (TypeBase | None)) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { GuardOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:GuardOf:->];
     if type_guard is not None {
-        import from jaclang.compiler.ir.types.nodes { FunctionType, TypeBase }
-        if not isinstance(self, FunctionType) {
-            raise TypeError("GuardOf requires a valid source");
-        }
-        if not isinstance(type_guard, TypeBase) {
-            raise TypeError("GuardOf requires a valid target");
-        }
-        self.prepare_connection(type_guard, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { TypeBase }
         self +>:GuardOf:+> type_guard;
     }
     self._cached_type_guard = RelationCache(self.relation_generation, type_guard);
@@ -954,20 +793,12 @@ impl OverloadedType.overloads.setter(overloads: (list[FunctionType] | None)) -> 
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { OverloadOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:OverloadOf:->];
     for t in (overloads or []) {
-        import from jaclang.compiler.ir.types.nodes { FunctionType, OverloadedType }
-        if not isinstance(self, OverloadedType) {
-            raise TypeError("OverloadOf requires a valid source");
-        }
-        if not isinstance(t, FunctionType) {
-            raise TypeError("OverloadOf requires a valid target");
-        }
-        self.prepare_connection(t, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { FunctionType }
         self +>:OverloadOf:+> t;
     }
     self._cached_overloads = RelationCache(
@@ -1003,20 +834,12 @@ impl UnionType.types.setter(types: (list[TypeBase] | None)) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { UnionMemberOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:UnionMemberOf:->];
     for t in (types or []) {
-        import from jaclang.compiler.ir.types.nodes { TypeBase, UnionType }
-        if not isinstance(self, UnionType) {
-            raise TypeError("UnionMemberOf requires a valid source");
-        }
-        if not isinstance(t, TypeBase) {
-            raise TypeError("UnionMemberOf requires a valid target");
-        }
-        self.prepare_connection(t, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { TypeBase }
         self +>:UnionMemberOf:+> t;
     }
     self._cached_types = RelationCache(self.relation_generation, `list(types or []));
@@ -1059,24 +882,12 @@ impl EnumMemberInfo.value_type.setter(value_type: (TypeBase | None)) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { ValueTypeOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:ValueTypeOf:->];
     if value_type is not None {
-        import from jaclang.compiler.ir.types.nodes {
-            ClassDetailsShared,
-            EnumMemberInfo,
-            TypeBase
-        }
-        if not isinstance(self, (ClassDetailsShared, EnumMemberInfo)) {
-            raise TypeError("ValueTypeOf requires a valid source");
-        }
-        if not isinstance(value_type, TypeBase) {
-            raise TypeError("ValueTypeOf requires a valid target");
-        }
-        self.prepare_connection(value_type, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { TypeBase }
         self +>:ValueTypeOf:+> value_type;
     }
     self._cached_value_type = RelationCache(self.relation_generation, value_type);
@@ -1115,20 +926,12 @@ impl EnumMemberType.enum_class.setter(enum_class: (ClassType | None)) -> None {
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { EnumClassOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:EnumClassOf:->];
     if enum_class is not None {
-        import from jaclang.compiler.ir.types.nodes { ClassType, EnumMemberType }
-        if not isinstance(self, EnumMemberType) {
-            raise TypeError("EnumClassOf requires a valid source");
-        }
-        if not isinstance(enum_class, ClassType) {
-            raise TypeError("EnumClassOf requires a valid target");
-        }
-        self.prepare_connection(enum_class, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { ClassType }
         self +>:EnumClassOf:+> enum_class;
     }
     self._cached_enum_class = RelationCache(self.relation_generation, enum_class);
@@ -1156,20 +959,12 @@ impl EnumMemberType.member_info.setter(member_info: (EnumMemberInfo | None)) -> 
         self.check_connection(proposed_target, RelationFamily.TYPES);
     }
 
-    self.changed_relations();
     import from jaclang.compiler.ir.types.edges { MemberInfoOf }
 
     self.changed_relations(RelationFamily.TYPES);
     del [edge self->:MemberInfoOf:->];
     if member_info is not None {
-        import from jaclang.compiler.ir.types.nodes { EnumMemberInfo, EnumMemberType }
-        if not isinstance(self, EnumMemberType) {
-            raise TypeError("MemberInfoOf requires a valid source");
-        }
-        if not isinstance(member_info, EnumMemberInfo) {
-            raise TypeError("MemberInfoOf requires a valid target");
-        }
-        self.prepare_connection(member_info, RelationFamily.TYPES);
+        import from jaclang.compiler.ir.types.nodes { EnumMemberInfo }
         self +>:MemberInfoOf:+> member_info;
     }
     self._cached_member_info = RelationCache(self.relation_generation, member_info);
@@ -1297,7 +1092,6 @@ impl OverloadedType.__str__ -> str {
 }
 
 impl _class_scope_category(scope: SymbolTable | None) -> SymbolType | None {
-    import from jaclang.compiler.ir.enums { SymbolType }
     import from jaclang.compiler.ir.syntax.nodes { Archetype }
     import from jaclang.compiler.ir.symbols.nodes { UniScopeNode }
     if isinstance(scope, Archetype) {

@@ -5,8 +5,6 @@ impl Symbol.init(
     parent_tab: (UniScopeNode | None) = None,
     imported: bool = False
 ) -> None {
-    import from jaclang.compiler.ir.syntax.nodes { NameAtom }
-    import from jaclang.compiler.ir.enums { SymbolAccess }
     import from jaclang.compiler.ir.symbols.edges { Defines, InScope }
 
     import from jaclang.compiler.ir.ownership.facts { SymbolMemory }
@@ -15,39 +13,20 @@ impl Symbol.init(
     self.imported = imported;
     self.access = access;
     self.semstr = '';
-    import from jaclang.compiler.ir.symbols.nodes { Symbol }
-    import from jaclang.compiler.ir.syntax.nodes { NameAtom }
-    if not isinstance(self, Symbol) {
-        raise TypeError("Defines requires a valid source");
-    }
-    if not isinstance(defn, NameAtom) {
-        raise TypeError("Defines requires a valid target");
-    }
-    self.prepare_connection(defn, RelationFamily.BINDING);
     self +>:Defines:+> defn;
     defn.sym = self;
     if parent_tab is not None {
-        import from jaclang.compiler.ir.symbols.nodes { Symbol, UniScopeNode }
-        if not isinstance(parent_tab, UniScopeNode) {
-            raise TypeError("InScope requires a valid source");
-        }
-        if not isinstance(self, Symbol) {
-            raise TypeError("InScope requires a valid target");
-        }
-        parent_tab.prepare_connection(self, RelationFamily.BINDING);
         parent_tab +>:InScope:+> self;
     }
 }
 
 impl Symbol.defn.getter -> list[NameAtom] {
-    import from jaclang.compiler.ir.syntax.nodes { NameAtom }
     import from jaclang.compiler.ir.symbols.edges { Defines }
 
     return [self->:Defines:->];
 }
 
 impl Symbol.uses.getter -> list[NameAtom] {
-    import from jaclang.compiler.ir.syntax.nodes { NameAtom }
     import from jaclang.compiler.ir.symbols.edges { Uses }
 
     return [self->:Uses:->];
@@ -61,8 +40,6 @@ impl Symbol.parent_tab.getter -> (UniScopeNode | None) {
 }
 
 impl Symbol.decl.getter -> NameAtom {
-    import from jaclang.compiler.ir.syntax.nodes { NameAtom }
-
     return self.defn[0];
 }
 
@@ -71,8 +48,6 @@ impl Symbol.sym_name.getter -> str {
 }
 
 impl Symbol.sym_type.getter -> SymbolType {
-    import from jaclang.compiler.ir.enums { SymbolType }
-
     return self.decl.sym_category;
 }
 
@@ -99,30 +74,17 @@ impl Symbol.binding_kind.getter -> BindingKind {
 }
 
 impl Symbol.binding_kind.setter(binding_kind: BindingKind) -> None {
-    import from jaclang.compiler.ir.enums { BindingKind }
-
     self._binding_kind = binding_kind;
 }
 
 impl Symbol.add_defn(nd: NameAtom) -> None {
-    import from jaclang.compiler.ir.syntax.nodes { NameAtom }
     import from jaclang.compiler.ir.symbols.edges { Defines }
 
-    import from jaclang.compiler.ir.symbols.nodes { Symbol }
-    import from jaclang.compiler.ir.syntax.nodes { NameAtom }
-    if not isinstance(self, Symbol) {
-        raise TypeError("Defines requires a valid source");
-    }
-    if not isinstance(nd, NameAtom) {
-        raise TypeError("Defines requires a valid target");
-    }
-    self.prepare_connection(nd, RelationFamily.BINDING);
     self +>:Defines:+> nd;
     nd.sym = self;
 }
 
 impl Symbol.add_use(nd: NameAtom) -> None {
-    import from jaclang.compiler.ir.syntax.nodes { NameAtom }
     import from jaclang.compiler.ir.symbols.edges { Uses }
 
     nd.sym = self;
@@ -130,15 +92,6 @@ impl Symbol.add_use(nd: NameAtom) -> None {
     if self.in_stub_scope() {
         return;
     }
-    import from jaclang.compiler.ir.symbols.nodes { Symbol }
-    import from jaclang.compiler.ir.syntax.nodes { NameAtom }
-    if not isinstance(self, Symbol) {
-        raise TypeError("Uses requires a valid source");
-    }
-    if not isinstance(nd, NameAtom) {
-        raise TypeError("Uses requires a valid target");
-    }
-    self.prepare_connection(nd, RelationFamily.BINDING);
     self +>:Uses:+> nd;
 }
 
@@ -203,14 +156,6 @@ impl UniScopeNode.parent_scope.setter(parent_scope: (UniScopeNode | None)) {
     self.changed_relations(RelationFamily.BINDING);
     del [edge self->:ScopeParent:->];
     if parent_scope is not None {
-        import from jaclang.compiler.ir.symbols.nodes { UniScopeNode }
-        if not isinstance(self, UniScopeNode) {
-            raise TypeError("ScopeParent requires a valid source");
-        }
-        if not isinstance(parent_scope, UniScopeNode) {
-            raise TypeError("ScopeParent requires a valid target");
-        }
-        self.prepare_connection(parent_scope, RelationFamily.BINDING);
         self +>:ScopeParent:+> parent_scope;
     }
 }
@@ -306,10 +251,7 @@ impl UniScopeNode.insert(
     force_overwrite: bool = False,
     imported: bool = False
 ) -> (UniNode | None) {
-    import from jaclang.compiler.ir.base { UniNode }
-    import from jaclang.compiler.ir.syntax.nodes { AstAccessNode }
     import from jaclang.compiler.ir.enums { SymbolAccess }
-    import from jaclang.compiler.ir.symbols.edges { ScopeOverload, ScopePrimary }
 
     collision = self.names_in_scope[nd.sym_name].defn[-1]
         if (single and (nd.sym_name in self.names_in_scope))
@@ -351,7 +293,6 @@ impl UniScopeNode.set_primary_names(syms: dict[(str, Symbol)]) -> None {
     self.changed_relations(RelationFamily.BINDING);
     del [edge self->:ScopePrimary:->];
     for binding in bindings {
-        self.prepare_connection(binding, RelationFamily.BINDING);
         self +>:ScopePrimary:+> binding;
     }
     self.primary_revision += 1;
@@ -368,7 +309,6 @@ impl UniScopeNode.adopt_primary(sym: Symbol, alias: str = "") -> None {
     if key in self.names_in_scope {
         self._drop_primary(key);
     }
-    self.prepare_connection(binding, RelationFamily.BINDING);
     self +>:ScopePrimary:+> binding;
     self.primary_revision += 1;
     if self._names_index is not None {
@@ -380,12 +320,9 @@ impl UniScopeNode.adopt_primary(sym: Symbol, alias: str = "") -> None {
 impl UniScopeNode._drop_primary(key: str) -> None {
     self.changed_relations(RelationFamily.BINDING);
     import from jaclang.compiler.ir.symbols.edges { ScopePrimary }
-    edges = [edge self->:ScopePrimary:->];
-    bindings = [self->:ScopePrimary:->];
-    for i in range(len(bindings)) {
-        if bindings[i].spelling == key {
-            edge_to_drop = edges[i];
-            del edge_to_drop;
+    for binding in [self->:ScopePrimary:->] {
+        if binding.spelling == key {
+            del [edge self->:ScopePrimary:->binding];
         }
     }
     self.primary_revision += 1;
@@ -402,14 +339,6 @@ impl UniScopeNode.link_kid_scope(key_node: UniScopeNode) -> UniScopeNode {
     del [edge key_node<-:ScopeChild:<-];
     key_node.changed_relations(RelationFamily.BINDING);
     del [edge key_node->:ScopeParent:->];
-    import from jaclang.compiler.ir.symbols.nodes { UniScopeNode }
-    if not isinstance(self, UniScopeNode) {
-        raise TypeError("ScopeChild requires a valid source");
-    }
-    if not isinstance(key_node, UniScopeNode) {
-        raise TypeError("ScopeChild requires a valid target");
-    }
-    self.prepare_connection(key_node, RelationFamily.BINDING);
     self +>:ScopeChild:+> key_node;
     return key_node;
 }
@@ -425,9 +354,6 @@ impl UniScopeNode.__repr__ -> str {
 impl AstSymbolNode._init_symbol(
     sym_name: str, name_spec: NameAtom, sym_category: SymbolType
 ) -> None {
-    import from jaclang.compiler.ir.syntax.nodes { NameAtom }
-    import from jaclang.compiler.ir.enums { SymbolType }
-
     self.name_spec = name_spec;
     self.name_spec.bind_sym(self, sym_name, sym_category);
     self.semstr = '';
@@ -443,14 +369,10 @@ impl AstSymbolNode.sym_name.getter -> str {
 }
 
 impl AstSymbolNode.sym_category.getter -> SymbolType {
-    import from jaclang.compiler.ir.enums { SymbolType }
-
     return self.name_spec.sym_category;
 }
 
 impl AstSymbolNode.expr_ctx.getter -> ExprCtx {
-    import from jaclang.compiler.ir.enums { ExprCtx }
-
     return self.name_spec.expr_ctx;
 }
 
@@ -460,7 +382,6 @@ impl AstSymbolNode.type_sym_tab.getter -> (UniScopeNode | None) {
 
 impl AstSymbolStubNode._init_stub(sym_type: SymbolType) -> None {
     import from jaclang.compiler.ir.syntax.nodes { Name }
-    import from jaclang.compiler.ir.enums { SymbolType }
 
     AstSymbolNode._init_symbol(
         self,
@@ -478,15 +399,6 @@ impl AstImplNeedingNode.needs_impl.getter -> bool {
 
 impl AstImplNeedingNode.link_impl(impl_node: ImplDef) -> None {
     import from jaclang.compiler.ir.symbols.edges { ImplOf }
-    import from jaclang.compiler.ir.symbols.nodes { AstImplNeedingNode }
-    import from jaclang.compiler.ir.syntax.nodes { ImplDef }
-    if not isinstance(self, AstImplNeedingNode) {
-        raise TypeError("ImplOf requires a valid source");
-    }
-    if not isinstance(impl_node, ImplDef) {
-        raise TypeError("ImplOf requires a valid target");
-    }
-    self.prepare_connection(impl_node, RelationFamily.BINDING);
     self +>:ImplOf:+> impl_node;
 }
 
@@ -496,7 +408,6 @@ impl UniScopeNode.adopt_overload(sym: Symbol, alias: str = "") -> None {
     import from jaclang.compiler.ir.symbols.edges { ScopeOverload }
     key = alias or sym.name;
     binding = ScopeBinding.create(key, sym);
-    self.prepare_connection(binding, RelationFamily.BINDING);
     self +>:ScopeOverload:+> binding;
     self.overload_revision += 1;
     if self._overload_index is not None {

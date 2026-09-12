@@ -1043,6 +1043,12 @@ impl run_tests(
         if (jobs not in (None, ""))
         else os.environ.get("JAC_TEST_JOBS", "");
     forced_serial = str(raw_jobs).strip() == "0";
+    budget_mb = 0;
+    try {
+        int(str(raw_jobs).strip());
+    } except ValueError {
+        budget_mb = _test_worker_budget_mb();
+    }
     use_pool = hasattr(os, "fork")
         and not forced_serial
         and (len(plan.files) > 1 or bool(iso_set) or bool(ser_set));
@@ -1070,7 +1076,8 @@ impl run_tests(
                 maxfail,
                 jobs=min(workers, len(par_files)),
                 isolate=iso_set,
-                inline=False
+                inline=False,
+                budget_mb=budget_mb
             );
         }
         fails = reporter.failure_count();
@@ -1104,7 +1111,7 @@ impl resolve_jobs(requested: (str | int | None) = None) -> int {
     return _resolve_pool_jobs(
         requested,
         env_var="JAC_TEST_JOBS",
-        worker_bytes=_test_rss_cap_mb() * 1024 * 1024
+        worker_bytes=_test_worker_budget_mb() * 1024 * 1024
     );
 }
 
@@ -1113,11 +1120,18 @@ impl _test_rss_cap_mb -> int {
     return env_int("JAC_TEST_RECYCLE_MB", 8192);
 }
 
-impl _test_retire(served: int, rss_mb: int) -> bool {
+impl _test_worker_budget_mb -> int {
+    import from jaclang.cli.workpool { env_int, WORKER_MEM_BYTES }
+    return max(WORKER_MEM_BYTES // (1024 * 1024), env_int("JAC_TEST_WORKER_MB", 2048));
+}
+
+impl _test_retire(served: int, rss_mb: int, budget_mb: int = 0) -> bool {
     import from jaclang.cli.workpool { env_int }
-    return _should_retire(
-        served, env_int("JAC_TEST_RECYCLE", 25), rss_mb, _test_rss_cap_mb()
-    );
+    cap = _test_rss_cap_mb();
+    if budget_mb > 0 {
+        cap = min(cap, budget_mb) if cap > 0 else budget_mb;
+    }
+    return _should_retire(served, env_int("JAC_TEST_RECYCLE", 25), rss_mb, cap);
 }
 
 impl _run_plan(
@@ -1128,7 +1142,8 @@ impl _run_plan(
     maxfail: (int | None),
     jobs: int,
     isolate: (set[str] | None),
-    inline: bool
+    inline: bool,
+    budget_mb: int = 0
 ) -> None {
     def job(request: dict[(str, any)]) -> list[dict[(str, any)]] {
         _CRASH_LOG[0] = str(request.get("crashlog", ""));
@@ -1176,6 +1191,9 @@ impl _run_plan(
             reporter.record(TestOutcome.from_wire(item));
         }
     }
+    def retire_worker(served: int, rss_mb: int) -> bool {
+        return _test_retire(served, rss_mb, budget_mb);
+    }
     pool = WorkPool(
         items=list(plan.files),
         job=job,
@@ -1183,7 +1201,7 @@ impl _run_plan(
         jobs=jobs,
         request_extra=request_extra,
         should_stop=should_stop,
-        retire=_test_retire,
+        retire=retire_worker,
         worker_init=install_warning_filters,
         worker_exit=_cleanup_test_bases,
         isolate=isolate,

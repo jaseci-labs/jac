@@ -178,7 +178,6 @@ node ScopeBinding(GraphNode) {
     static def create(spelling: str, symbol: Symbol) -> ScopeBinding {
         import from jaclang.compiler.ir.symbols.edges { BindingTarget }
         binding = ScopeBinding(spelling=spelling);
-        binding.prepare_connection(symbol, RelationFamily.BINDING);
         binding +>:BindingTarget:+> symbol;
         return binding;
     }

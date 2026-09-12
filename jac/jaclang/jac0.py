@@ -1005,6 +1005,7 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
         if not origin:
             raise ParseError(f"line {tok.line}: edge reference needs an origin")
         cur = origin
+        after = j + 1
         for n, (k, length, direction, etype, flt) in enumerate(hops):
             end = k + length
             nxt = hops[n + 1][0] if n + 1 < len(hops) else len(inner)
@@ -1020,14 +1021,24 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
                         f"line {tok.line}: filter comprehensions are outside the seed subset"
                     )
             if len(hops) == 1 and not flt and not trailing:
+                index: int | None = None
+                if not edges_only and after < len(tokens) and tokens[after].type == TT.LBRACKET:
+                    end_index = after + 1
+                    while end_index < len(tokens) and tokens[end_index].type != TT.RBRACKET:
+                        end_index += 1
+                    raw_index = "".join(t.value for t in tokens[after + 1:end_index])
+                    if end_index < len(tokens) and raw_index in ("0", "-1"):
+                        index = int(raw_index)
+                        after = end_index + 1
                 # One hop, no predicate, no node filter: the direct adjacency read.
                 cur = _osp_call(
-                    "hop0",
+                    "hop0" if index is None else "hop_at0",
                     [
                         cur,
                         [_tok(TT.NUMBER, str(direction), tok)],
                         [_tok(TT.NAME, etype or "None", tok)],
-                        [_tok(TT.NAME, "True" if edges_only else "False", tok)],
+                        [_tok(TT.NAME, "True" if edges_only else "False", tok)]
+                        if index is None else [_tok(TT.NUMBER, str(index), tok)],
                     ],
                     tok,
                 )
@@ -1043,7 +1054,7 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
                 args.append(_lower_edge_refs(trailing))
             cur = _osp_call("refs0", args, tok)
         out.extend(cur)
-        i = j + 1
+        i = after
     return out
 
 
