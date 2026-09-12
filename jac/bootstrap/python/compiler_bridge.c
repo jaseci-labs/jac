@@ -373,9 +373,10 @@ static PyType_Spec jac_token_spec = {
     .flags=Py_TPFLAGS_DEFAULT|Py_TPFLAGS_HAVE_GC,.slots=jac_token_slots
 };
 static PyObject *jac_tokenize(PyObject *module, PyObject *args, PyObject *kwargs) {
-    PyObject *reader,*extra,*encoding=NULL;
+    PyObject *reader,*extra=NULL,*encoding=NULL;
     static char *keywords[]={"readline","extra_tokens","encoding",NULL};
-    if (!PyArg_ParseTupleAndKeywords(args,kwargs,"O$O|O:TokenizerIter",keywords,&reader,&extra,&encoding)) return NULL;
+    if (!PyArg_ParseTupleAndKeywords(args,kwargs,"O|$OO:TokenizerIter",keywords,&reader,&extra,&encoding)) return NULL;
+    if (!extra) { PyErr_SetString(PyExc_TypeError,"tokenizeriter() missing required argument 'extra_tokens' (pos 2)"); return NULL; }
     if (encoding && !PyUnicode_Check(encoding)) { PyErr_SetString(PyExc_TypeError,"tokenizeriter() argument 'encoding' must be str"); return NULL; }
     Py_ssize_t size=0;
     const char *text=encoding ? PyUnicode_AsUTF8AndSize(encoding,&size) : "";
