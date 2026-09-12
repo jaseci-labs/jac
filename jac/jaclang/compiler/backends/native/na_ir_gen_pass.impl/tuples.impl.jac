@@ -2,6 +2,13 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
     elem_vals: list[ir.Value] = [];
     elem_types: list[ir.Type] = [];
     elem_owned: list[bool] = [];
+    declared = self._lower_type(nd.type) if nd.type is not None else None;
+    declared_fields: list[ir.Type] = [];
+    if isinstance(declared, ir.PointerType)
+        and isinstance(declared.pointee, ir.LiteralStructType)
+        and len(declared.pointee.elements) == len(nd.values) {
+        declared_fields = list(declared.pointee.elements);
+    }
 
     _in_return = False;
     _anc = nd.parent;
@@ -22,6 +29,11 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
             return None;
         }
         v = self._str_norm(v);
+        # Comparisons may produce i64 even when their semantic type is bool.
+        # Boxed tuples must use the same field layout as their typed readers.
+        if declared_fields {
+            v = self._coerce_type(v, declared_fields[len(elem_vals)]);
+        }
 
         _owns = self._is_owned(v);
         if _in_return and isinstance(v.type, ir.PointerType) and not _owns {
