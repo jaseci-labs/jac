@@ -1,4 +1,5 @@
 import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
+import from jaclang.runtime.python.compiler_integer { PyBigInt, integer_decimal }
 
 import from typing { Never }
 import sys;
@@ -45,6 +46,9 @@ def _constant_value(value: PyObj, constants: dict[str, any]) -> any {
     }
     if isinstance(value, PyInt) {
         return value.val;
+    }
+    if isinstance(value, PyBigInt) {
+        return int(integer_decimal(value));
     }
     if isinstance(value, PyFloat) {
         return value.val;

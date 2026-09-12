@@ -103,7 +103,15 @@ obj _TokenizerIter(token_source) {
             raise StopIteration("EOF");
         }
         item = tokenizer_next(self.scanner);
-        report_token_warnings(self.scanner);
+        import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
+        try {
+            report_token_warnings(self.scanner);
+        } except syntax_failure as error {
+            import from jaclang.compiler.backends.py.jacpython.code_object {
+                raise_syntax_failure
+            }
+            raise_syntax_failure(error);
+        }
         if isinstance(item, tok_diag) {
             line = self.source_line(item.loc.lineno);
             column = _character_column(line, item.loc.col_offset);

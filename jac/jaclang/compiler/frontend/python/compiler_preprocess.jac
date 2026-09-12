@@ -1,5 +1,12 @@
 """AST preprocessing for CPython 3.14 source and AST compilation."""
 
+import from jaclang.runtime.python.compiler_integer {
+    PyBigInt,
+    integer_add,
+    integer_negate,
+    integer_to_float
+}
+
 import from jaclang.compiler.frontend.python.ast_nodes {
     Add,
     AnnAssign,
@@ -55,15 +62,15 @@ def ast_constant(value: PyObj, location: expr | None = None) -> Constant {
 
 def pattern_number(value: expr) -> PyObj | None {
     if isinstance(value, Constant)
-        and isinstance(value.value, (PyInt, PyFloat, PyComplex)) {
+        and isinstance(value.value, (PyInt, PyBigInt, PyFloat, PyComplex)) {
         return value.value;
     }
     return None;
 }
 
 def pattern_real(value: PyObj) -> float {
-    if isinstance(value, PyInt) {
-        return float(value.val);
+    if isinstance(value, (PyInt, PyBigInt)) {
+        return integer_to_float(value);
     }
     if isinstance(value, PyFloat) {
         return value.val;
@@ -72,10 +79,8 @@ def pattern_real(value: PyObj) -> float {
 }
 
 def pattern_sum(left: PyObj, right: PyObj, subtract: bool) -> PyObj {
-    if isinstance(left, PyInt) and isinstance(right, PyInt) {
-        return PyInt(
-            t="int", val=left.val - right.val if subtract else left.val + right.val
-        );
+    if isinstance(left, (PyInt, PyBigInt)) and isinstance(right, (PyInt, PyBigInt)) {
+        return integer_add(left, right, subtract);
     }
     real_left = pattern_real(left);
     real_right = pattern_real(right);
@@ -95,8 +100,8 @@ def pattern_sum(left: PyObj, right: PyObj, subtract: bool) -> PyObj {
 def fold_pattern(value: expr) -> expr {
     if isinstance(value, UnaryOp) and isinstance(value.op, USub) {
         operand = pattern_number(value.operand);
-        if isinstance(operand, PyInt) {
-            return ast_constant(PyInt(t="int", val=-operand.val), value);
+        if isinstance(operand, (PyInt, PyBigInt)) {
+            return ast_constant(integer_negate(operand), value);
         }
         if isinstance(operand, PyFloat) {
             return ast_constant(PyFloat(t="float", val=-operand.val), value);

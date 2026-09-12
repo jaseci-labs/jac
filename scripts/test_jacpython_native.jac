@@ -44,6 +44,9 @@ def verify(library_path: Path) {
     library.diagnostic_probe.argtypes = [];
     library.diagnostic_probe.restype = ctypes.c_int64;
     assert library.diagnostic_probe() == 0;
+    library.integer_probe.argtypes = [];
+    library.integer_probe.restype = ctypes.c_int64;
+    assert library.integer_probe() == 0;
     constants = marshal.loads(read_packet(library, "probe_packet"));
     assert constants[:6] == (None, True, 0, -1, -(1 << 63), (1 << 63) - 1);
     assert math.copysign(1, constants[6]) == -1;
@@ -54,11 +57,33 @@ def verify(library_path: Path) {
     assert constants[11] is constants[12];
     assert constants[13] == frozenset([7]);
     assert constants[14] == slice(None, 3, None);
+    assert constants[15] == 1 << 100;
+    assert constants[16] == -(1 << 100);
+    assert constants[17] == -(1 << 63);
+    assert constants[18] is constants[11];
+    assert constants[19] is constants[7];
+    assert constants[20] == 1.2345678901234569;
+    assert constants[20] != constants[19];
+    assert math.copysign(1, constants[21]) == 1;
     code = marshal.loads(read_packet(library, "code_packet"));
     assert code.co_filename == "probe.py";
     assert code.co_name == "<module>";
     assert code.co_consts == (1, );
     assert eval(code) == 3;
+    nested = marshal.loads(read_packet(library, "nested_code_packet"));
+    assert nested[0] is not nested[1];
+    assert nested[0].co_consts is nested[1].co_consts;
+    arithmetic = marshal.loads(read_packet(library, "integer_arithmetic_packet"));
+    assert arithmetic
+        == (
+            1 << 63,
+            1 << 63,
+            0,
+            (1 << 100) - 1,
+            -(1 << 100) + 1,
+            float((1 << 100) + (1 << 47)),
+            float((1 << 100) + (1 << 47) + 1)
+        );
     print("Native JacPython constants and code-object boundary passed.", flush=True);
 }
 
@@ -79,8 +104,10 @@ def main -> int {
         # program. Preserve the package hierarchy and never edit the checkout.
         for relative in [
             "runtime/python/objects.jac",
+            "runtime/python/compiler_integer.jac",
             "runtime/python/opcode_meta.jac",
             "compiler/frontend/python/syntax_error.jac",
+            "compiler/backends/py/jacpython/constant_keys.jac",
             "compiler/backends/py/jacpython/marshal_writer.jac"
         ] {
             destination = stage / "native_subject" / relative;

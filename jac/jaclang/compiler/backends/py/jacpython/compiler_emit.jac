@@ -1,3 +1,5 @@
+import from jaclang.runtime.python.compiler_integer { PyBigInt, integer_negate }
+
 # Expression-side lowering: visit_expr, expression/comprehension/lambda
 # visitors, call/slice/await emission primitives, and the shared name/
 # const/cell plumbing used by both expression and statement lowering.
@@ -1550,6 +1552,10 @@ def register_int_literal_const(g: cfg_builder, e: expr, register_int_const: bool
         return;
     }
     c = e as Constant;
+    if isinstance(c.value, PyBigInt) {
+        g.u.add_const(c.value);
+        return;
+    }
     if not isinstance(c.value, PyInt) {
         return;
     }
@@ -1806,10 +1812,14 @@ def visit_expr(
         b = e as BinOp;
         bl = nloc(b.lineno, b.end_lineno, b.col_offset, b.end_col_offset);
         folded = try_fold_binop(b.left, b.op as PyObj, b.right);
-        if folded is not None and isinstance(folded, PyInt) {
+        if folded is not None {
             register_int_literal_const(g, b.left, register_int_const);
             register_int_literal_const(g, b.right, register_int_const);
-            emit_folded_int(g, (folded as PyInt).val, bl);
+            if isinstance(folded, PyInt) {
+                emit_folded_int(g, folded.val, bl);
+            } else {
+                g.emit_op(OP_LOAD_CONST, g.u.add_const(folded), bl);
+            }
             return None;
         }
         opid = binop_id(b.op);
@@ -1845,7 +1855,7 @@ def visit_expr(
                 g.emit_op(OP_LOAD_CONST, idx, expr_loc(un));
                 return None;
             }
-            if isinstance(cv, PyInt) {
+            if isinstance(cv, (PyInt, PyBigInt)) {
                 uloc = nloc(un.lineno, un.end_lineno, un.col_offset, un.end_col_offset);
                 # The operand's own const is removed by CPython's optimizer
                 # unless it occupies the protected index-0 dead slot.
@@ -1857,9 +1867,7 @@ def visit_expr(
                         g.u.dead_small_int_const = True;
                     }
                 }
-                late_idx = g.u.stage_late_const(
-                    PyInt(t="int", val=-((cv as PyInt).val))
-                );
+                late_idx = g.u.stage_late_const(integer_negate(cv));
                 g.emit_op(OP_LOAD_CONST, late_idx, uloc);
                 return None;
             }
@@ -3069,7 +3077,7 @@ def visit_comp_elt(
         # folds comprehension elements too; negated consts are interned late).
         if isinstance(un.op, USub) and isinstance(un.operand, Constant) {
             cv = (un.operand as Constant).value;
-            if isinstance(cv, PyInt) {
+            if isinstance(cv, (PyInt, PyBigInt)) {
                 ul = nloc(un.lineno, un.end_lineno, un.col_offset, un.end_col_offset);
                 if len(g.u.consts) == 0 {
                     in_class_body = g.sym_top is not None
@@ -3079,9 +3087,7 @@ def visit_comp_elt(
                         g.u.dead_small_int_const = True;
                     }
                 }
-                late_idx = g.u.stage_late_const(
-                    PyInt(t="int", val=-((cv as PyInt).val))
-                );
+                late_idx = g.u.stage_late_const(integer_negate(cv));
                 g.emit_op(OP_LOAD_CONST, late_idx, ul);
                 return;
             }

@@ -19,10 +19,12 @@ import from jaclang.runtime.python.objects {
     PySlice,
     PyCode
 }
+import from jaclang.runtime.python.compiler_integer { PyBigInt }
+import from jaclang.compiler.backends.py.jacpython.constant_keys { constant_key }
 
 obj marshal_output {
     has data: list[int] = [],
-        references: dict[int, int] = {},
+        references: dict[str, int] = {},
         error: str = "";
 }
 
@@ -80,11 +82,7 @@ def write_code(out: marshal_output, code: PyCode) {
     write_word(out, code.stacksize, 4);
     write_word(out, code.flags, 4);
     write_bytes(out, code.co_code);
-    out.data.append(40);
-    write_word(out, len(code.consts), 4);
-    for value in code.consts {
-        write_value(out, value);
-    }
+    write_value(out, PyTuple(t="tuple", items=code.consts));
     write_names(out, code.names);
 
     # CPython merges argument cells into existing local slots, then appends
@@ -137,7 +135,7 @@ def write_value(out: marshal_output, value: PyObj) {
         out.data.append(84 if value.val else 70);
         return;
     }
-    identity = id(value);
+    identity = constant_key(value);
     if identity in out.references {
         out.data.append(114);
         write_word(out, out.references[identity], 4);
@@ -148,6 +146,12 @@ def write_value(out: marshal_output, value: PyObj) {
     if isinstance(value, PyInt) {
         out.data.append(108 | 128);
         write_long(out, value.val);
+    } elif isinstance(value, PyBigInt) {
+        out.data.append(108 | 128);
+        write_word(out, -len(value.digits) if value.negative else len(value.digits), 4);
+        for digit in value.digits {
+            write_word(out, digit, 2);
+        }
     } elif isinstance(value, PyFloat) {
         out.data.append(103 | 128);
         write_word(out, __float_bits(value.val), 8);

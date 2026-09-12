@@ -1,4 +1,5 @@
 import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context }
+import from jaclang.compiler.backends.py.jacpython.constant_keys { constant_key }
 
 # Compiler IR for the P4 back track (PLAN.md P0.10).
 #
@@ -30,52 +31,6 @@ import from jaclang.compiler.frontend.python.compiler_diagnostics {
 import from jaclang.compiler.frontend.python.compiler_symtable { sym_block }
 import from jaclang.compiler.frontend.python.ast_nodes { stmt }
 
-def constant_key(value: PyObj) -> str {
-    if isinstance(value, PyCode) {
-        return "code:" + str(id(value));
-    }
-    if isinstance(value, PyTuple) {
-        keys = [constant_key(item) for item in value.items];
-        return "tuple:" + "".join(str(len(key)) + ":" + key for key in keys);
-    }
-    if isinstance(value, PySet) and value.frozen {
-        keys = sorted([constant_key(item) for item in value.items.values()]);
-        return "frozenset:" + "".join(str(len(key)) + ":" + key for key in keys);
-    }
-    if isinstance(value, PySlice) {
-        keys = [
-            constant_key(value.start),
-            constant_key(value.stop),
-            constant_key(value.step)
-        ];
-        return "slice:" + "".join(str(len(key)) + ":" + key for key in keys);
-    }
-    if isinstance(value, PyFloat) {
-        if value.val != value.val {
-            return "nan:" + str(id(value));
-        }
-        return "float:" + repr(value.val);
-    }
-    if isinstance(value, PyComplex) {
-        if value.real != value.real or value.imag != value.imag {
-            return "complex-nan:" + str(id(value));
-        }
-        return "complex:" + repr(value.real) + ":" + repr(value.imag);
-    }
-    if isinstance(value, PyInt) {
-        return "int:" + str(value.val);
-    }
-    if isinstance(value, PyBool) {
-        return "bool:" + str(value.val);
-    }
-    if isinstance(value, PyStr) {
-        return "str:" + value.val;
-    }
-    if isinstance(value, PyBytes) {
-        return "bytes:" + str(value.val);
-    }
-    return value.t;
-}
 
 # A source location. lineno/end_lineno are 1-based; col_offset/end_col_offset are
 # 0-based. Matches CPython's `location` struct (Python/compile.c).
