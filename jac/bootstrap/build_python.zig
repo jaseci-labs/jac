@@ -80,14 +80,12 @@ pub fn main(init: std.process.Init) !void {
     const manifest_path = try std.fs.path.join(a, &.{ root, "bootstrap/python/sources.json" });
     const manifest = try Io.Dir.cwd().readFileAlloc(io, manifest_path, a, .unlimited);
     const sources = try std.json.parseFromSliceLeaky(std.json.ArrayHashMap(Source), a, manifest, .{});
+    const source_cache = try std.fs.path.join(a, &.{ root, ".python-build/jacpython/sources" });
     for (sources.map.keys(), sources.map.values()) |name, source| {
         if (mode == .jacpython and !std.mem.eql(u8, name, "cpython")) continue;
-        seed.log("build-python: fetch {s}", .{name});
-        const gz = try seed.httpGetAlloc(io, init.gpa, source.url);
+        seed.log("build-python: source {s}", .{name});
+        const gz = try sourceArchive(io, init.gpa, source_cache, source, seed.httpGetAlloc);
         defer init.gpa.free(gz);
-        const actual = seed.sha256Hex(gz);
-        if (!std.mem.eql(u8, &actual, source.sha256))
-            seed.die("build-python: checksum mismatch for {s}", .{name});
         const source_dir = try std.fs.path.join(a, &.{ work, "src", name });
         try Io.Dir.cwd().createDirPath(io, source_dir);
         var dir = try Io.Dir.cwd().openDir(io, source_dir, .{ .iterate = true });
@@ -120,6 +118,31 @@ pub fn main(init: std.process.Init) !void {
     // Verify relocation before allowing a cache hit on the next invocation.
     try runSmoke(io, python, smoke, mode);
     try Io.Dir.cwd().writeFile(io, .{ .sub_path = stamp_path, .data = &key });
+}
+
+// Host and native builds consume the same pinned archive. Keep it outside the
+// disposable work trees, and recheck its digest on every use.
+fn sourceArchive(io: Io, a: std.mem.Allocator, cache_dir: []const u8, source: Source, comptime fetch: anytype) ![]u8 {
+    const path = try std.fmt.allocPrint(a, "{s}/{s}.tar.gz", .{ cache_dir, source.sha256 });
+    defer a.free(path);
+    const cached = Io.Dir.cwd().readFileAlloc(io, path, a, .unlimited) catch |err| switch (err) {
+        error.FileNotFound => null,
+        else => return err,
+    };
+    if (cached) |bytes| {
+        const digest = seed.sha256Hex(bytes);
+        if (std.mem.eql(u8, &digest, source.sha256)) return bytes;
+        a.free(bytes);
+    }
+    const bytes = try fetch(io, a, source.url);
+    errdefer a.free(bytes);
+    const digest = seed.sha256Hex(bytes);
+    if (!std.mem.eql(u8, &digest, source.sha256)) return error.SourceChecksumMismatch;
+    var file = try Io.Dir.cwd().createFileAtomic(io, path, .{ .make_path = true, .replace = true });
+    defer file.deinit(io);
+    try file.file.writeStreamingAll(io, bytes);
+    try file.replace(io);
+    return bytes;
 }
 
 fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8, host_dest: []const u8, mode: Mode) ![64]u8 {
@@ -376,4 +399,38 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     const before_host_key = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
     try tmp.dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "rebuilt host" });
     try std.testing.expect(!std.mem.eql(u8, &before_host_key, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
+}
+
+test "pinned source archives survive host builds and reject corrupt cached or fetched bytes" {
+    const Fetch = struct {
+        fn archive(_: Io, a: std.mem.Allocator, _: []const u8) ![]u8 {
+            return a.dupe(u8, "pinned archive");
+        }
+        fn forbidden(_: Io, _: std.mem.Allocator, _: []const u8) anyerror![]u8 {
+            return error.UnexpectedFetch;
+        }
+    };
+    const io = std.testing.io;
+    const a = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(io, ".", a);
+    defer a.free(root);
+    const digest = seed.sha256Hex("pinned archive");
+    const source = Source{ .url = "https://example.invalid/source.tgz", .sha256 = &digest };
+    const first = try sourceArchive(io, a, root, source, Fetch.archive);
+    defer a.free(first);
+    const again = try sourceArchive(io, a, root, source, Fetch.forbidden);
+    defer a.free(again);
+    try std.testing.expectEqualStrings(first, again);
+    const filename = try std.fmt.allocPrint(a, "{s}.tar.gz", .{digest});
+    defer a.free(filename);
+    try tmp.dir.writeFile(io, .{ .sub_path = filename, .data = "corrupt cache" });
+    try std.testing.expectError(error.UnexpectedFetch, sourceArchive(io, a, root, source, Fetch.forbidden));
+    const repaired = try sourceArchive(io, a, root, source, Fetch.archive);
+    defer a.free(repaired);
+    try std.testing.expectEqualStrings("pinned archive", repaired);
+    const other_digest = seed.sha256Hex("different pin");
+    const other = Source{ .url = source.url, .sha256 = &other_digest };
+    try std.testing.expectError(error.SourceChecksumMismatch, sourceArchive(io, a, root, other, Fetch.archive));
 }
