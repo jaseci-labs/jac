@@ -80,3 +80,8 @@ object_bytes = machine.emit_object(compiled)
 (output / "jacpython.o").write_bytes(object_bytes)
 (output / "sha256").write_text(hashlib.sha256(object_bytes).hexdigest() + "\n")
 print("JacPython: built native compiler object; no interpreted demotions", flush=True)
+# This one-shot emitter has closed both artifact files. Let the OS reclaim its
+# compiler graph and LLVM context rather than traversing them again at Python
+# shutdown; no runtime initialization or cache work is deferred to that phase.
+sys.stderr.flush()
+os._exit(0)
