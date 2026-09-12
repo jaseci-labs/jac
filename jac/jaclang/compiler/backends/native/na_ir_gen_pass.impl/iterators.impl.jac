@@ -1266,27 +1266,15 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     }
 
     elem_slot = self._entry_alloca(elem_type, "iter.elem");
-    a0: (ir.Value | None) = None;
-    a1: (ir.Value | None) = None;
-    if isinstance(nd.target, uni.TupleVal) {
+    if is_tuple_target {
         targets = nd.target.values or [];
-        if len(targets) != 2 {
+        if not isinstance(elem_type, ir.LiteralStructType)
+            or len(targets) != len(elem_type.elements)
+            or any(self._get_name(target) is None for target in targets) {
             return False;
         }
-        t0_type = elem_type.elements[0];
-        t1_type = elem_type.elements[1];
-        n0 = self._get_name(targets[0]);
-        n1 = self._get_name(targets[1]);
-        if n0 is None or n1 is None {
-            return False;
-        }
-        a0 = self._entry_alloca(t0_type, n0);
-        a1 = self._entry_alloca(t1_type, n1);
-        self.local_vars[n0] = a0;
-        self.local_vars[n1] = a1;
-    } else {
-        loop_var_name = self._get_name(nd.target);
-        self.local_vars[loop_var_name] = elem_slot;
+    } elif self._get_name(nd.target) is None {
+        return False;
     }
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="iterf.cond");
@@ -1302,10 +1290,20 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     self.builder.cbranch(got, body_bb, end_bb);
     self.loop_stack.append((cond_bb, end_bb));
     self.builder.position_at_end(body_bb);
+    yielded = self.builder.load(elem_slot, name="iterf.value");
+
     if is_tuple_target {
-        tup = self.builder.load(elem_slot, name="iterf.tup");
-        self.builder.store(self.builder.extract_value(tup, 0, name="iterf.t0"), a0);
-        self.builder.store(self.builder.extract_value(tup, 1, name="iterf.t1"), a1);
+        if not self._codegen_tuple_unpack(nd.target.values, yielded, None) {
+            return False;
+        }
+    } else {
+        binding_type = ir.LiteralStructType([elem_type]);
+        binding = self.builder.insert_value(
+            ir.Constant(binding_type, None), yielded, 0, name="iterf.binding"
+        );
+        if not self._codegen_tuple_unpack([nd.target], binding, None) {
+            return False;
+        }
     }
     import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
     _saved = loop_body_locals(nd.body if isinstance(nd.body, (list, tuple)) else None);

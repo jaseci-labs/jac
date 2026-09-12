@@ -236,3 +236,14 @@ test "user iter inherited from base" {
     f = get_func(eng, "user_inherited_iter", ctypes.c_int64);
     assert f() == 6;
 }
+
+test "iterator bindings retain borrowed objects across cleanup and reassignment" {
+    (engine, _) = compile_native("iterator_object_ownership.jac");
+    for name in [
+        "enumerate_keeps_elements",
+        "iter_keeps_elements",
+        "zip_keeps_elements"
+    ] {
+        assert get_func(engine, name, ctypes.c_int64)() == 42;
+    }
+}
