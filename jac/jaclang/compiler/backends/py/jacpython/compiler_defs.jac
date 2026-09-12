@@ -95,6 +95,7 @@ import from jaclang.compiler.backends.py.jacpython.compiler_emit {
     emit_call_instruction,
     emit_function_defaults,
     emit_function_kwdefaults,
+    emit_generator_except_handler,
     emit_name_load,
     codegen_busy,
     flush_pending_await_footers,
@@ -133,7 +134,6 @@ import from jaclang.compiler.backends.py.jacpython.compiler_codegen {
     visit_stmt
 }
 import from jaclang.compiler.backends.py.jacpython.compiler_exc {
-    emit_generator_except_handler,
     emit_deferred_comp_handlers
 }
 import from jaclang.compiler.backends.py.jacpython.compiler_annotations {

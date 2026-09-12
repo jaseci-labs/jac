@@ -688,6 +688,7 @@ obj ast_rewriter(ast_visitor) {
     def transform(value: ast_node) -> ast_node {
         return value;
     }
+
     def visit_field(owner: ast_node, field: str) -> bool {
         return True;
     }

@@ -580,6 +580,9 @@ jobs:
           set -uxo pipefail
           WORK="$(mktemp -d)"
           HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=${{ matrix.jobs || 'auto' }} JAC_TEST_STRICT=1 jac test ${{ matrix.paths }}
+      - name: Check JacPython native code-object boundary
+        if: matrix.chunk == 'passes-native'
+        run: jac run scripts/test_jacpython_native.jac
 
   # Everything except the compiler tests.
   test-runtime:

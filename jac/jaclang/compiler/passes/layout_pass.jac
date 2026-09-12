@@ -302,9 +302,7 @@ def adopt_imported_bases(module: Module) -> list[str] {
                 }
             }
         }
-        # A child can override every inherited method and still have the
-        # wrong slot order: its first layout only saw its own declarations.
-        # Calls compiled against the base must keep that base's slot order.
+
         inherited_methods: set[str] = set();
         inherited_index = 0;
         for anc_lay in ancestors {

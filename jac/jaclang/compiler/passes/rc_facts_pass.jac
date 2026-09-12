@@ -107,8 +107,7 @@ def loop_body_locals(body: (Sequence[UniNode] | None)) -> list[str] {
         }
         if sym.defn[0] is nm and nm.sym_name not in seen {
             seen.add(nm.sym_name);
-            # Jac locals remain visible after a loop. Releasing and clearing
-            # a value at the iteration boundary would destroy its later use.
+
             if any(id(use) not in body_ids for use in sym.uses) {
                 continue;
             }

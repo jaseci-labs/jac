@@ -598,7 +598,7 @@ def pa_number_from_token(tok: peg_token | None) -> Constant | None {
         val = pa_py_number_from_spelling(tok.spelling);
     } except SyntaxError as error {
         raise SyntaxError(
-            error.msg,
+            str(error),
             (
                 None,
                 tok.lineno,
