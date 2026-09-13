@@ -3393,14 +3393,15 @@ impl NativeDictEmitter.emit_get(
     result = b.phi(result_type, name="dget.result");
     result.add_incoming(val, found_bb);
     result.add_incoming(default_val, notfound_bb);
-    if isinstance(val_type, ir.PointerType) {
-        if p.rc_retain_fn is None {
-            p._emit_rc_helpers();
-        }
-        _res_cast = b.bitcast(result, ir.IntType(8).as_pointer(), name="dget.ret.cast");
-        b.call(p.rc_retain_fn, [_res_cast]);
+    retained = b.extract_value(result, 1, name="dget.payload")
+        if wrap_optional
+        else result;
+    p._emit_elem_retain(b, val_type, retained);
+    p._release_owned_args(args, op="dict_get_arg");
+    p._release_owned_args([target], op="dict_get_receiver");
+    if p._elem_kind(val_type) != "raw" {
+        p._mark_owned(result);
     }
-    p._release_owned_args([key], op="dict_method_key");
     return result;
 }
 
