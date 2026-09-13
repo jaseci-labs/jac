@@ -85,7 +85,7 @@ impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
                 stage_tree(python_dir, site, stage, opts.musl_dir, opts.wasm_libc_dir);
             }
             with opts.measurements.stage("python_bytecode") {
-                precompile_pyc(py, stage);
+                precompile_pyc(py, stage, opts);
             }
             with opts.measurements.stage("archive_and_compress") {
                 tar_zst_dir(stage, out, opts.layer_cache);
@@ -172,6 +172,13 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
         );
     }
 
+    build_compiler_kernel(repo_root, site, opts);
+    _bundle_bun(site, opts);
+}
+
+impl build_compiler_kernel(repo_root: str, site: str, opts: MkPayloadOpts) {
+    so = opts.shim_so;
+    assert so is not None;
     import sys;
     jc_name = (
         "libjac_compiler.dylib" if sys.platform == "darwin" else "libjac_compiler.so"
@@ -180,53 +187,92 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
     jc_dst = os.path.join(site, "jaclang", "compiler", jc_name);
     if not file_exists(jc_src) {
         log("==> no compiler kernel unit in this tree; skipping kernel build");
-        _bundle_bun(site, opts);
         return;
     }
     if os.environ.get("JAC_PAYLOAD_SKIP_KERNEL") == "1" {
         log("==> skipping native compiler kernel (JAC_PAYLOAD_SKIP_KERNEL=1)");
-        _bundle_bun(site, opts);
         return;
     }
-    log(f"==> building native compiler kernel (jac build --native --lib {jc_src})");
-    jc_boot = (
-        "import os, sys\n"
-        + "root, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]\n"
-        + "sys.path.insert(0, root)\n"
-        + "import _jac_finder\n"
-        + "_jac_finder.install()\n"
-        + "from jaclang.cli.commands.native_build import native_build\n"
-        + "rc = int(native_build(src, output=dst, lib=True) or 0)\n"
-        + "sys.stdout.flush()\n"
-        + "sys.stderr.flush()\n"
-        + "os._exit(rc)\n"
+    import hashlib;
+    import json;
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.jir {
+        compiler_source_digest,
+        compute_content_sha256
+    }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.dist.payload.artifacts { ArtifactStore }
+    cache = ArtifactStore(
+        Path(opts.layer_cache or os.path.join(repo_root, ".jac", "cache", "payload"))
+            / "producers"
     );
-    jc_env = clone_env();
-    jc_env["JAC_LLVM_SHIM"] = os.path.abspath(so);
-    jc_env["JAC_COMPILER_LIB"] = "off";
-    jc_env["JAC_NO_DEV_SOURCE"] = "1";
-    jc_env["JAC_STUBCAT_BUILDING"] = "1";
-    with opts.measurements.stage("compiler_kernel") {
-        jc_ok = run_child(
-            [sys.executable, "-I", "-c", jc_boot, repo_root, jc_src, jc_dst],
-            jc_env,
-            True
-        );
+    inputs = [
+        "compiler-kernel-v1",
+        compiler_source_digest(os.path.join(repo_root, "jaclang")),
+        compute_content_sha256(so),
+        host_os_arch(),
+        sys.implementation.cache_tag or "",
+        CompileOptions().codegen_identity(),
+        compute_content_sha256(__file__),
+        compute_content_sha256(
+            os.path.join(os.path.dirname(__file__), "impl", "assemble.impl.jac")
+        )
+    ];
+    for ancestor in [Path(repo_root).resolve(), *Path(repo_root).resolve().parents] {
+        config = ancestor / "jac.toml";
+        if config.is_file() {
+            inputs.append(compute_content_sha256(str(config)));
+        }
     }
-    if (
-        not jc_ok or not file_exists(jc_dst) or not file_exists(jc_dst + ".layout.json")
-    ) {
-        raise PayloadDie(
-            f"mkpayload: native compiler kernel build failed; the shipped"
-            f" binary requires {jc_dst} and its .layout.json sidecar."
+    key = hashlib.sha256(json.dumps(inputs).encode()).hexdigest();
+    outputs = {
+        jc_name: Path(jc_dst),
+        jc_name + ".layout.json": Path(jc_dst + ".layout.json")
+    };
+    with cache.lock("compiler_kernel", key) {
+        if cache.restore("compiler_kernel", key, outputs) {
+            log("==> reusing completed native compiler kernel and layout");
+            opts.measurements.cache_outcome("compiler_kernel", "hit");
+            return;
+        }
+        opts.measurements.cache_outcome("compiler_kernel", "miss");
+        log(f"==> building native compiler kernel (jac build --native --lib {jc_src})");
+        jc_boot = (
+            "import os, sys\n"
+            + "root, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]\n"
+            + "sys.path.insert(0, root)\n"
+            + "import _jac_finder\n"
+            + "_jac_finder.install()\n"
+            + "from jaclang.cli.commands.native_build import native_build\n"
+            + "rc = int(native_build(src, output=dst, lib=True) or 0)\n"
+            + "sys.stdout.flush()\n"
+            + "sys.stderr.flush()\n"
+            + "os._exit(rc)\n"
         );
+        jc_env = clone_env();
+        jc_env["JAC_LLVM_SHIM"] = os.path.abspath(so);
+        jc_env["JAC_COMPILER_LIB"] = "off";
+        jc_env["JAC_NO_DEV_SOURCE"] = "1";
+        jc_env["JAC_STUBCAT_BUILDING"] = "1";
+        with opts.measurements.stage("compiler_kernel") {
+            jc_ok = run_child(
+                [sys.executable, "-I", "-c", jc_boot, repo_root, jc_src, jc_dst],
+                jc_env,
+                True
+            );
+        }
+        if (
+            not jc_ok
+            or not file_exists(jc_dst)
+            or not file_exists(jc_dst + ".layout.json")
+        ) {
+            raise PayloadDie(
+                f"mkpayload: native compiler kernel build failed; the shipped"
+                f" binary requires {jc_dst} and its .layout.json sidecar."
+            );
+        }
+        cache.publish("compiler_kernel", key, outputs);
     }
-
-    jc_tree = os.path.join(repo_root, "jaclang", "compiler", jc_name);
-    copy_file(jc_dst, jc_tree);
-    copy_file(jc_dst + ".layout.json", jc_tree + ".layout.json");
-
-    _bundle_bun(site, opts);
 }
 
 impl _bundle_bun(site: str, opts: MkPayloadOpts) {
@@ -350,6 +396,16 @@ impl precompile_env(python_dir: str, site: str) -> dict[str, str] {
     env["HOME"] = scratch_home;
     env["PATH"] = "/usr/bin:/bin";
     env["JAC_NO_DEV_SOURCE"] = "1";
+    import sys;
+    kernel = os.path.join(
+        site,
+        "jaclang",
+        "compiler",
+        "libjac_compiler.dylib" if sys.platform == "darwin" else "libjac_compiler.so"
+    );
+    env["JAC_COMPILER_LIB"] = kernel
+        if file_exists(kernel) and file_exists(kernel + ".layout.json")
+        else "off";
     for name in (
         "JAC_STUBCAT_BUILDING",
         "JAC_STUBCAT_FILE",
@@ -405,6 +461,10 @@ impl precompile(
         die(
             f"mkpayload: precompiler did not run to completion (no {result}); it likely crashed. Fail rather than ship a slow cold-start binary."
         );
+    }
+    import json;
+    with open(result, "r", encoding="utf-8") as metrics_file {
+        timings.compilation = json.load(metrics_file);
     }
     delete_file(result);
     log("   _precompiled: compile pass ran to completion");
@@ -510,31 +570,20 @@ impl stage_stdlib(python_lib: str, lib_dst: str) {
     }
 }
 
-impl precompile_pyc(py: str, stage: str) {
-    log("==> precompiling stdlib + site -> hash-based .pyc (survives materialize)");
-    stdlib = os.path.join(stage, "python", "lib", f"python{py_ver()}");
-    site_dir = os.path.join(stage, "site");
-    run_child(
-        [
-            py,
-            "-m",
-            "compileall",
-            "--invalidation-mode",
-            "unchecked-hash",
-            "-q",
-            "-f",
-            "-j",
-            "0",
-            "-s",
-            stage,
-            "-p",
-            "/jac-rt",
-            stdlib,
-            site_dir
-        ],
-        None,
-        True
+impl precompile_pyc(py: str, stage: str, opts: MkPayloadOpts | None = None) {
+    import from jaclang.dist.payload.python_bytecode { precompile_tree }
+    cache = opts.layer_cache if opts is not None else None;
+    if cache is None {
+        import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
+        cache = str(get_jir_cache_dir() / "payload");
+    }
+    counts = precompile_tree(py, stage, os.path.join(cache, "producers"));
+    log(
+        f"==> Python bytecode: {counts['compiled']} compiled, {counts['reused']} reused"
     );
+    if opts is not None {
+        opts.measurements.cache_outcomes["python_bytecode"] = counts;
+    }
 }
 
 impl stage_floor(python_dir: str, stage: str) {
@@ -748,8 +797,7 @@ impl tar_zst_dir(stage: str, out: str, layer_cache: str | None) {
 
     deps_frame = deps_frame_cached(layer_cache, deps_tar);
 
-    log(f"==> packing jac layer | zstd -{PAYLOAD_ZSTD_LEVEL}");
-    jac_frame = zstd_compress(jac_tar);
+    jac_frame = compressed_frame_cached(layer_cache, "jac", jac_tar);
 
     with open(out, "wb") as f {
         f.write(deps_frame);
@@ -773,9 +821,15 @@ impl zstd_compress(data: bytes) -> bytes {
 }
 
 impl deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes {
+    return compressed_frame_cached(layer_cache, "deps", tar_bytes);
+}
+
+impl compressed_frame_cached(
+    layer_cache: str | None, name: str, tar_bytes: bytes
+) -> bytes {
     key = sha256_hex(tar_bytes);
     cache_path = (
-        os.path.join(layer_cache, f"deps-{key}.tar.zst")
+        os.path.join(layer_cache, f"{name}-{key}.tar.zst")
             if layer_cache is not None
             else None
     );
@@ -785,26 +839,29 @@ impl deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes {
         try {
             cached = read_bytes(cache_path);
         } except OSError {
-            log(f"==> deps layer: no cached frame (key {key[:16]}); compressing");
+            log(f"==> {name} layer: no cached frame (key {key[:16]}); compressing");
         }
         if cached is not None {
             if frame_decodes_to(cached, tar_bytes) {
-                log(f"==> deps layer: reusing cached frame (key {key[:16]})");
+                log(f"==> {name} layer: reusing cached frame (key {key[:16]})");
                 return cached;
             }
-            log("==> deps layer: cached frame failed verification; recompressing");
+            log(f"==> {name} layer: cached frame failed verification; recompressing");
         }
     }
 
-    log(f"==> packing deps layer | zstd -{PAYLOAD_ZSTD_LEVEL}");
+    log(f"==> packing {name} layer | zstd -{PAYLOAD_ZSTD_LEVEL}");
     fresh = zstd_compress(tar_bytes);
     if cache_path is not None and layer_cache is not None {
         prune_layer_cache(layer_cache, os.path.basename(cache_path));
         try {
             make_dirs(layer_cache);
-            write_bytes(cache_path, fresh);
+            import from jaclang.jac0core.cache_paths { atomic_write }
+            atomic_write(cache_path, fresh);
         } except OSError as e {
-            log(f"==> deps layer: cache write failed ({type(e).__name__}); continuing");
+            log(
+                f"==> {name} layer: cache write failed ({type(e).__name__}); continuing"
+            );
         }
     }
     return fresh;
@@ -820,13 +877,14 @@ impl frame_decodes_to(frame: bytes, expect: bytes) -> bool {
 }
 
 impl prune_layer_cache(dir_path: str, keep: str) {
+    prefix = keep.split("-", 1)[0] + "-";
     try {
         names = os.listdir(dir_path);
     } except OSError {
         return;
     }
     for name in names {
-        if not name.startswith("deps-")
+        if not name.startswith(prefix)
             or not name.endswith(".tar.zst")
             or name == keep {
             continue;

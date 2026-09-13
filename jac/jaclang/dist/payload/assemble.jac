@@ -82,6 +82,7 @@ obj TarEntry {
 def mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts);
 def resolve_python(python_dir: str) -> str;
 def assemble_site(repo_root: str, site: str, opts: MkPayloadOpts);
+def build_compiler_kernel(repo_root: str, site: str, opts: MkPayloadOpts);
 def _bundle_bun(site: str, opts: MkPayloadOpts);
 def write_dist_info(repo_root: str, site: str);
 def run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts);
@@ -108,7 +109,7 @@ def stage_tree(
 );
 
 def stage_stdlib(python_lib: str, lib_dst: str);
-def precompile_pyc(py: str, stage: str);
+def precompile_pyc(py: str, stage: str, opts: MkPayloadOpts | None = None);
 def stage_floor(python_dir: str, stage: str);
 def stage_musl(musl_dir: str, stage: str);
 def stage_wasm_libc(wasm_libc_dir: str, stage: str);
@@ -122,5 +123,9 @@ def tar_stage(stage: str) -> tuple[bytes, bytes];
 def tar_zst_dir(stage: str, out: str, layer_cache: str | None);
 def zstd_compress(data: bytes) -> bytes;
 def deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes;
+def compressed_frame_cached(
+    layer_cache: str | None, name: str, tar_bytes: bytes
+) -> bytes;
+
 def frame_decodes_to(frame: bytes, expect: bytes) -> bool;
 def prune_layer_cache(dir_path: str, keep: str);

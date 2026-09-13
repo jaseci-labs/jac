@@ -1,9 +1,8 @@
 """Producer-side build measurements, independent of buffered progress output."""
 
 import json;
-import os;
-import sys;
 import time;
+import from jaclang.jac0core.resource_usage { child_cpu_seconds, peak_rss_mb }
 import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 
@@ -27,30 +26,15 @@ obj StageMeasurement {
     }
 }
 
-def child_cpu_seconds -> float {
-    try {
-        import resource;
-        usage = resource.getrusage(resource.RUSAGE_CHILDREN);
-        return usage.ru_utime + usage.ru_stime;
-    } except ImportError {
-        return 0.0;
-    }
-}
-
-def peak_rss_mb -> int {
-    try {
-        import resource;
-        usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss;
-        return int(usage // (1024 * 1024))
-            if sys.platform == "darwin"
-            else int(usage // 1024);
-    } except ImportError {
-        return 0;
-    }
-}
-
 obj BuildMeasurements {
-    has stages: list[StageMeasurement] = [];
+    has stages: list[StageMeasurement] = [],
+        cache_outcomes: dict[str, dict[str, int]] = {},
+        compilation: dict[str, any] = {};
+
+    def cache_outcome(producer: str, outcome: str) {
+        outcomes = self.cache_outcomes.setdefault(producer, {});
+        outcomes[outcome] = outcomes.get(outcome, 0) + 1;
+    }
 
     @contextmanager
     def stage(name: str) -> Iterator[None] {
@@ -82,7 +66,9 @@ obj BuildMeasurements {
                 "schema": 1,
                 "timing": "inclusive; nested stages must not be summed",
                 "memory": "process peak RSS, excluding child processes",
-                "stages": [stage.record() for stage in self.stages]
+                "stages": [stage.record() for stage in self.stages],
+                "cache_outcomes": self.cache_outcomes,
+                "compilation": self.compilation
             },
             indent=2
         );

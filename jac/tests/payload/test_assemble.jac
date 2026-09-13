@@ -87,7 +87,7 @@ def sole_cache_entry(cache: str) -> str {
     names = [
         n
         for n in os.listdir(cache)
-        if os.path.isfile(os.path.join(cache, n))
+        if os.path.isfile(os.path.join(cache, n)) and n.startswith("deps-")
     ];
     assert len(names) == 1 , f"expected a single cache entry, got {names}";
     assert names[0].startswith("deps-") and names[0].endswith(".tar.zst");
@@ -396,6 +396,15 @@ test "layer cache: verified reuse, corruption falls back, deps edit rolls the ke
         assert p1[:len(frame1)] == frame1 , "the cached deps frame is the payload's byte prefix";
         extract_payload(out1, os.path.join(base, "x1"));
         assert rf(os.path.join(base, "x1", "site/jaclang/mod.py")) == b"version = 1\n";
+
+        import jaclang.dist.payload.assemble as assembly;
+        with patch.object(
+            assembly, "zstd_compress", side_effect=AssertionError("warm compression")
+        ) {
+            warm = os.path.join(base, "warm.tar.zst");
+            tar_zst_dir(stage, warm, cache);
+            assert rf(warm) == p1;
+        }
 
         # (1) jaclang-only edit: deps frame identical, jac layer picks up the change.
         wf(stage, "site/jaclang/mod.py", b"version = 2\n");
