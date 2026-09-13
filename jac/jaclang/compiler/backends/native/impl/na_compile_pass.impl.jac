@@ -212,6 +212,14 @@ impl native_unit_demotions(
             prog.scratch.na_dep_units[real_path] = `entry;
         }
     }
+    if `entry is None
+        and (
+            _ud_mid_compile
+            or real_path in prog.scratch.na_dep_inflight
+            or real_path in prog.scratch.na_verdict_resolving
+        ) {
+        return None;
+    }
     if `entry is None or isinstance(`entry, str) or `entry.gen.llvm_ir is None {
         prog.scratch.na_verdict_misses += 1;
         _ud_tree = `entry

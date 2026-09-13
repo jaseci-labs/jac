@@ -1220,77 +1220,15 @@ impl NaIRGenPass._ensure_dep_inference(dep_mod: uni.Module) -> None {
 impl NaIRGenPass._imported_function_demotions(
     imported_mod: uni.Module
 ) -> (set | None) {
-    import os as _fd_os;
-    if not (imported_mod?.loc and imported_mod.loc.mod_path) {
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        native_unit_demotions
+    }
+    if not imported_mod.loc.mod_path {
         return None;
     }
-    mod_path = imported_mod.loc.mod_path;
-    real_path = _fd_os.path.realpath(mod_path);
-    units = self.prog.scratch.na_dep_units;
-    `entry: any = None;
-    if real_path in units {
-        `entry = units[real_path];
-    } elif imported_mod.gen.llvm_ir is not None {
-        `entry = imported_mod;
-    } else {
-        import from jaclang.compiler.driver.compile_options {
-            CompileOptions as _FdOpts
-        }
-        _opts_src = self.prog?.options or _FdOpts();
-        import from jaclang.compiler.driver.jir {
-            native_ir_cache_suspended as _fd_suspended
-        }
-        if not (bool(getattr(_opts_src, "no_ir_cache", False)) or _fd_suspended()) {
-            try {
-                import from jaclang.compiler.backends.native.na_compile_pass {
-                    native_dep_cache_paths
-                }
-                (_fd_ir_p, _fd_meta_p) = native_dep_cache_paths(real_path, _opts_src);
-                if _fd_os.path.exists(_fd_ir_p) and _fd_os.path.exists(_fd_meta_p) {
-                    import json as _fd_json;
-                    with open(_fd_meta_p, "r") as _fd_mf {
-                        _fd_meta = _fd_json.loads(_fd_mf.read());
-                    }
-                    if _fd_meta.get("options_fingerprint")
-                        == _opts_src.codegen_fingerprint() {
-                        return set(_fd_meta.get("demoted_symbols") or []);
-                    }
-                }
-            } except Exception {}
-        }
-        if not bool(_opts_src.aot_mode)
-            or real_path in self.prog.scratch.na_dep_inflight
-            or not _fd_os.path.isfile(real_path) {
-            return None;
-        }
-        try {
-            `entry = self.prog.compile(
-                file_path=mod_path, options=_opts_src.clone_for_native_import()
-            );
-        } except Exception as _fd_exc {
-            `entry = f"{type(_fd_exc).__name__}: {_fd_exc}";
-        }
-        units[real_path] = `entry;
-    }
-
-    if `entry is None or isinstance(`entry, str) or `entry.gen.llvm_ir is None {
-        _fd_all: set = set();
-        for _fd_stmt in ModuleFacts.iter_context_stmts(imported_mod) {
-            if (
-                isinstance(_fd_stmt, uni.Ability)
-                and _fd_stmt.name_ref
-                and not _fd_stmt.type_params
-                and isinstance(_fd_stmt.signature, uni.FuncSignature)
-            ) {
-                _fd_all.add(_fd_stmt.name_ref.sym_name);
-            }
-        }
-        return _fd_all;
-    }
-    import from jaclang.compiler.backends.native.na_compile_pass {
-        native_demoted_ir_symbols
-    }
-    return set(native_demoted_ir_symbols(str(`entry.gen.llvm_ir)));
+    return native_unit_demotions(
+        self.prog, os.path.realpath(imported_mod.loc.mod_path), self.prog.options
+    );
 }
 
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
