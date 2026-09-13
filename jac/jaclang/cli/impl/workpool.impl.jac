@@ -38,25 +38,32 @@ impl WorkPool.run_inline -> None {
     if init_hook is not None {
         init_hook();
     }
-    dispatch_hook = self.on_dispatch;
-    for (idx, path) in enumerate(self.items) {
-        if self._should_stop() {
-            break;
+    try {
+        dispatch_hook = self.on_dispatch;
+        for (idx, path) in enumerate(self.items) {
+            if self._should_stop() {
+                break;
+            }
+            request = self._request(idx, path, "");
+            request["inline"] = True;
+            if dispatch_hook is not None {
+                dispatch_hook(idx, path);
+            }
+            record: dict[(str, any)] = {};
+            try {
+                record = {"result": self.job(request)};
+            } except KeyboardInterrupt {
+                raise;
+            } except BaseException as exc {
+                record = {"error": "".join(format_exception(exc)).rstrip()};
+            }
+            self.on_record(idx, record);
         }
-        request = self._request(idx, path, "");
-        request["inline"] = True;
-        if dispatch_hook is not None {
-            dispatch_hook(idx, path);
+    } finally {
+        exit_hook = self.worker_exit;
+        if exit_hook is not None {
+            exit_hook();
         }
-        record: dict[(str, any)] = {};
-        try {
-            record = {"result": self.job(request)};
-        } except KeyboardInterrupt {
-            raise;
-        } except BaseException as exc {
-            record = {"error": "".join(format_exception(exc)).rstrip()};
-        }
-        self.on_record(idx, record);
     }
 }
 
@@ -102,10 +109,13 @@ impl WorkPool._spawn(slot: int) -> dict[(str, any)] {
                     os.close(other["result_fd"]);
                 } except OSError {}
             }
-            self._worker_loop(dispatch_r, result_w);
-            exit_hook = self.worker_exit;
-            if exit_hook is not None {
-                exit_hook();
+            try {
+                self._worker_loop(dispatch_r, result_w);
+            } finally {
+                exit_hook = self.worker_exit;
+                if exit_hook is not None {
+                    exit_hook();
+                }
             }
         } except BaseException {}
         os._exit(0);

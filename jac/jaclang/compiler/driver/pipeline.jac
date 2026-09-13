@@ -155,9 +155,21 @@ def invalidate_client_product(program: JacProgram, module: Module) {
 def require_product(
     program: JacProgram, module: Module, product: CompilationProduct
 ) -> bool {
+    if product == CompilationProduct.INTERFACE
+        and not program.iface_registry().ready() {
+        return False;
+    }
+    if program.options.cancel_token is not None
+        and program.options.cancel_token.is_set() {
+        return False;
+    }
     program.analysis.retain_tasks(module);
     tasks = program.analysis.product_tasks.setdefault(id(module), {});
     task = tasks.get(product);
+    if task is not None and task.state == TaskState.CANCELLED {
+        tasks.pop(product);
+        task = None;
+    }
     if task is not None {
         if task.state == TaskState.RUNNING {
             raise RuntimeError(

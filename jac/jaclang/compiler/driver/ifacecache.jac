@@ -1,4 +1,5 @@
 import from contextlib { contextmanager }
+import type from jaclang.compiler.driver.program { JacProgram }
 import from collections.abc { Callable, Iterator }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import os;
@@ -181,7 +182,7 @@ obj EncodedInterface {
 }
 
 obj IfaceRegistry {
-    has prog: any,
+    has prog: JacProgram,
         entries: dict[str, IfaceEntry] = {},
         building: set[str] postinit,
         checking: set[str] postinit,

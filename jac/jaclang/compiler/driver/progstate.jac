@@ -105,6 +105,7 @@ obj ModuleHub {
 
 obj DepGraph {
     has dependents: dict[str, set[str]] = {},
+        dependencies: dict[str, set[str]] = {},
         tracking: bool = False;
 
     def record(importer_path: str, target_path: str) -> None {
@@ -117,6 +118,7 @@ obj DepGraph {
             self.dependents[target_path] = bucket;
         }
         bucket.add(importer_path);
+        self.dependencies.setdefault(importer_path, set()).add(target_path);
     }
 
     def record_module(mod: uni.Module) -> None {
@@ -172,6 +174,7 @@ obj DepGraph {
     }
 
     def forget(resolved_path: str) {
+        self.dependencies.pop(resolved_path, None);
         for bucket in self.dependents.values() {
             bucket.discard(resolved_path);
         }
@@ -179,6 +182,7 @@ obj DepGraph {
 
     def clear {
         self.dependents.clear();
+        self.dependencies.clear();
     }
 }
 

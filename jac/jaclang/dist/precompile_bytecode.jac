@@ -1,4 +1,5 @@
 import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.driver.compilation_context { CompilationSession }
 import hashlib;
 import json;
 import marshal;
@@ -353,7 +354,25 @@ def _emit_unit_diagnostics(jac_path: str, programs: list) {
     }
 }
 
-glob _unit_program: list[JacProgram] = [];
+glob _unit_session: list[CompilationSession] = [];
+
+def precompile_worker_exit {
+    while _unit_session {
+        _unit_session.pop().close();
+    }
+}
+
+def precompile_worker_init {
+    import from jaclang.compiler.driver.compilation_context { CompilationSession }
+    import from jaclang.cli.workpool { env_int }
+    precompile_worker_exit();
+    _unit_session.append(
+        CompilationSession(
+            max_modules=env_int("JAC_PRECOMPILE_SESSION_MODULES", 256),
+            max_roots=env_int("JAC_PRECOMPILE_SESSION_ROOTS", 32)
+        )
+    );
+}
 
 def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, bytes] {
     pkg_root = os.path.realpath(pkg_root);
@@ -460,13 +479,13 @@ def precompile_unit_context(
 ) -> Iterator[JacProgram] {
     import jaclang.compiler.types.type_evaluator;
     import jaclang.compiler.types.stubcat.modiface;
-    import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compilation_context { cache_scope }
     import from jaclang.cli.workpool { maybe_malloc_trim }
-    if not _unit_program {
-        _unit_program.append(JacProgram());
+    if not _unit_session {
+        precompile_worker_init();
     }
-    program = _unit_program[0];
+    session = _unit_session[0];
+    program = session.program;
     compiler = program._get_compiler();
     compiler.ensure_stub_catalog();
     source_app = _source_apps.get((os.path.abspath(pkg_root), app), {}).get(
@@ -475,18 +494,17 @@ def precompile_unit_context(
     selected = precompile_context(jac_path, pkg_root, program, source_app);
     identity = '' if compiler.selfhost.is_selfhost(selected) else selected.context_key;
     compiler.unit_collect = collect;
+    failed = True;
     with cache_scope(identity, selected.options) {
         try {
             yield selected;
+            failed = bool(selected.errors_had);
         } finally {
-            owner = selected.context_root
-                if selected.context_root is not None
-                else selected;
-            owner.release_compile_closure(collect=collect);
-            if owner is not compiler.selfhost.program {
-                compiler.selfhost.program.release_compile_closure(collect=collect);
+            evictions = session.evictions;
+            session.checkpoint(failed=failed);
+            if session.evictions != evictions {
+                maybe_malloc_trim();
             }
-            maybe_malloc_trim();
         }
     }
 }
@@ -1258,6 +1276,8 @@ def run_precompile(
         on_record=on_record,
         jobs=min(workers, len(jac_files)),
         retire=_precompile_retire,
+        worker_init=precompile_worker_init,
+        worker_exit=precompile_worker_exit,
         on_dispatch=on_dispatch,
         rss_log_env="JAC_PRECOMPILE_RSS_LOG",
         crash_prefix="jac-precompile-crash-"

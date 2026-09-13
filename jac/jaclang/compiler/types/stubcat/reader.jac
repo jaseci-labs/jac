@@ -299,6 +299,13 @@ obj StubCatalog {
         _mod_recs: list[tuple[str, str, int, int, str]] postinit,
         _base_dir: str postinit;
 
+    def for_session -> StubCatalog {
+        """Share immutable bytes; hydrated types and declarations belong to a program.""";
+        return StubCatalog(
+            buf=self.buf, pkg_dir=self.pkg_dir, keepalive=self.keepalive
+        );
+    }
+
     def postinit {
         hdr = unpack_header(self.buf);
         if hdr is None {

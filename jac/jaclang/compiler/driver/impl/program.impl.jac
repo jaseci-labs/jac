@@ -13,7 +13,9 @@ impl JacProgram.init(
     self.mtir_map: dict[(str, Info)] = self.analysis.mtir_map;
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
-    self._iface: any = None;
+    self._iface = None;
+    self._catalog = None;
+    self.session = None;
     import from jaclang.compiler.driver.compilation_context { SourceStore }
     self.source_store = SourceStore();
     self.context_root = None;
@@ -21,7 +23,7 @@ impl JacProgram.init(
     self.contexts = {};
 }
 
-impl JacProgram.iface_registry(self: JacProgram) -> any {
+impl JacProgram.iface_registry(self: JacProgram) -> IfaceRegistry {
     reg = self._iface;
     if reg is None {
         import from jaclang.compiler.driver.ifacecache { IfaceRegistry }
@@ -61,6 +63,9 @@ impl JacProgram.record_dependency(
     self: JacProgram, importer_path: str, target_path: str
 ) -> None {
     self.deps.record(importer_path, target_path);
+    if target_path not in self.hub.stamps {
+        self.hub.stamp(target_path);
+    }
 }
 
 impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set[str] {
@@ -261,7 +266,14 @@ impl JacProgram._get_compiler(self: JacProgram) -> JacCompiler {
 }
 
 impl JacProgram.stub_catalog(self: JacProgram) -> StubCatalog | None {
-    return self._get_compiler().stub_catalog();
+    base = self._get_compiler().stub_catalog();
+    if base is None {
+        return None;
+    }
+    if self._catalog is None {
+        self._catalog = base.for_session();
+    }
+    return self._catalog;
 }
 
 impl JacProgram.get_type_evaluator(self: JacProgram) -> TypeEvaluator {
@@ -350,7 +362,7 @@ impl JacProgram.release_compile_closure(
     self: JacProgram, collect: bool = True, retain_stubs: bool = True
 ) -> None {
     import os;
-    if os.environ.get("JAC_NO_UNIT_EVICT") {
+    if self.session is None and os.environ.get("JAC_NO_UNIT_EVICT") {
         return;
     }
 
@@ -372,6 +384,9 @@ impl JacProgram.release_compile_closure(
     self.mod = self.hub.mod;
     self.deps.clear();
     self.type_evaluator = None;
+    if not retain_stubs {
+        self._catalog = None;
+    }
     self.diags.clear();
     self.scratch.clear();
     self.analysis.analyses_run.clear();
@@ -391,6 +406,9 @@ impl JacProgram.release_compile_closure(
 
 impl JacProgram._search_hubs(self: JacProgram) -> list[dict[(str, uni.Module)]] {
     hubs: list[dict[(str, uni.Module)]] = [self.mod.hub];
+    if self.session is not None {
+        return hubs;
+    }
     internal = self._get_compiler().selfhost.program;
     if internal is not self {
         hubs.append(internal.mod.hub);

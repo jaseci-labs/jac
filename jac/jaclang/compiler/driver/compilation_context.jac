@@ -91,6 +91,109 @@ obj SourceStore {
     }
 }
 
+obj CompilationSession {
+    """Own mutable analysis across roots, bounded by source modules and requests.
+
+    A session is confined to one worker. Context programs share pristine syntax,
+    while their evaluated trees, catalog readers and product ledgers stay local.
+    Completed portable interfaces remain reusable after a checkpoint evicts trees.
+    """
+    has max_modules: int = 256,
+        max_roots: int = 32,
+        program: JacProgram postinit,
+        roots: int = 0,
+        evictions: int = 0,
+        closed: bool = False;
+
+    def postinit {
+        import from jaclang.compiler.driver.program { JacProgram }
+        if self.max_modules < 1 or self.max_roots < 1 {
+            raise ValueError("Compilation session budgets must be positive");
+        }
+        self.program = JacProgram();
+        self.program.session = self;
+    }
+
+    def programs -> list[JacProgram] {
+        return [self.program]
+            + [
+                context
+                for context in self.program.contexts.values()
+                if context is not self.program
+            ];
+    }
+
+    def refresh {
+        if self.closed {
+            raise RuntimeError("Compilation session is closed");
+        }
+        programs = self.programs();
+        stale = {
+            path for program in programs
+            for path in program.hub.stamps
+            if not program.hub.is_fresh(path)
+        };
+        affected = [
+            (
+                program,
+                stale
+                    | set().union(
+                        *[program.transitive_dependents(path) for path in stale]
+                    )
+            ) for program in programs
+        ];
+        for (program, paths) in affected {
+            for path in paths {
+                program.invalidate_module(path);
+                program.drop_module_alerts(path);
+            }
+        }
+    }
+
+    def checkpoint(failed: bool = False) {
+        if self.closed {
+            raise RuntimeError("Compilation session is closed");
+        }
+        self.roots += 1;
+        programs = self.programs();
+        count = sum(
+            1 for program in programs
+            for module in program.mod.hub.values()
+            if not module.stub_only
+        );
+        cancelled = any(
+            program.options.cancel_token is not None
+                and program.options.cancel_token.is_set() for program in programs
+        );
+        if failed
+            or cancelled
+            or count >= self.max_modules
+            or self.roots >= self.max_roots {
+            self.program.release_compile_closure(retain_stubs=False);
+            self.roots = 0;
+            self.evictions += 1;
+        }
+    }
+
+    def close {
+        if not self.closed {
+            self.program.release_compile_closure(retain_stubs=False);
+            self.closed = True;
+        }
+    }
+
+    def __enter__ -> CompilationSession {
+        if self.closed {
+            raise RuntimeError("Compilation session is closed");
+        }
+        return self;
+    }
+
+    def __exit__(_kind: object, _value: object, _traceback: object) {
+        self.close();
+    }
+}
+
 def bind_options(
     path: str, program: JacProgram, options: CompileOptions
 ) -> CompileOptions {
@@ -184,6 +287,7 @@ def context_program(program: JacProgram, options: CompileOptions) -> JacProgram 
         selected.context_root = context_root;
         selected._compiler = context_root._get_compiler();
         selected.source_store = context_root.source_store;
+        selected.session = context_root.session;
         selected.options = options;
     }
     selected.options = options;
