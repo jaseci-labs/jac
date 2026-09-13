@@ -13,6 +13,7 @@ class BuildServices(Protocol) {
     def program(self: BuildServices) -> JacProgram;
     def selfhost(self: BuildServices) -> SelfHostCache;
     def client_builder(self: BuildServices) -> ClientBundleBuilder;
+    def client_runtime_basename(self: BuildServices, framework: str) -> str;
 }
 
 @cache
@@ -20,10 +21,17 @@ def build_services -> BuildServices {
     try {
         provider = importlib.import_module('jaclang.compiler.driver.build_services');
     } except ModuleNotFoundError as error {
-        if error.name not in ('jaclang.compiler', 'jaclang.compiler.driver', 'jaclang.compiler.driver.build_services') {
+        if error.name
+            not in (
+                'jaclang.compiler',
+                'jaclang.compiler.driver',
+                'jaclang.compiler.driver.build_services'
+            ) {
             raise;
         }
-        raise RuntimeError('This application contains executable artifacts; compiler services are not installed.') from error;
+        raise RuntimeError(
+            'This application contains executable artifacts; compiler services are not installed.'
+        ) from error;
     }
     return provider.CompilerBuildServices();
 }

@@ -111,6 +111,8 @@ SEED_PATHS: tuple[str, ...] = (
     "project/source.jac",
     "project/apps.jac",
     "project/modresolver.jac",
+    "project/workspace.jac",
+    "project/placement.jac",
     "project/app_kinds.jac",
 )
 

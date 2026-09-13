@@ -235,7 +235,7 @@ impl JacLangServer.type_check_file(
         if cancel_token and cancel_token.is_set() {
             return False;
         }
-        import from jaclang.compiler.placement.workspace { workspace_for_path }
+        import from jaclang.project.workspace { workspace_for_path }
         ws = workspace_for_path(main_path);
         app = ws.app_for_path(main_path) if ws is not None else None;
         proj_root = ws.project_root if ws is not None else None;

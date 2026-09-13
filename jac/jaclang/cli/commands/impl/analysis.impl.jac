@@ -266,7 +266,7 @@ impl check(
         );
     }
 
-    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    import from jaclang.project.workspace { workspace_for_path }
     ws = workspace_for_path(os.getcwd()) if not paths else None;
     units: list[dict[(str, any)]] = [];
     had_path_errors = False;

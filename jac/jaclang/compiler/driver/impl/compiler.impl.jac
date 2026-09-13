@@ -130,6 +130,13 @@ impl JacCompiler.get_bytecode(
         context_program,
         compilation_scope
     }
+    if full_target.endswith('.py') {
+        import builtins;
+        import from jaclang.project.source { read_file_with_encoding }
+        return builtins.compile(
+            read_file_with_encoding(full_target), full_target, 'exec'
+        );
+    }
     actual = self.selfhost.resolve(full_target, target_program);
     if not self.selfhost.is_selfhost(actual) {
         options = bind_options(full_target, actual, actual.options);
@@ -958,7 +965,7 @@ impl JacCompiler.stamp_native_import_facts(
 
 impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) -> None {
     import from jaclang.project.modresolver { find_jac_project_root }
-    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    import from jaclang.project.workspace { workspace_for_path }
     opts = target_program.options;
     mod_path = mod.loc.mod_path if mod.loc else '';
     mod.jac_project_root = find_jac_project_root(mod_path) if mod_path else None;
@@ -977,7 +984,7 @@ impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) ->
     } else {
         mod.app_kind = '';
     }
-    import from jaclang.compiler.placement.workspace { UI_MOBUI }
+    import from jaclang.project.workspace { UI_MOBUI }
     override_ui = opts.ui if (opts is not None and opts.ui) else '';
     ui = override_ui or (app.ui if app is not None else '');
     if ui == UI_MOBUI {
