@@ -172,10 +172,24 @@ interfaces are published through `IfaceRegistry` before worker eviction. A
 replacement worker hydrates those products; it never borrows another worker's
 mutable tree or evaluator. Cold discovery retains at most the syntax budget,
 so an evicted tree may be parsed again when a later product requires it.
+Discovery and interface hydration use the compiler's common JIR lookup, including
+validated artifacts restored into a fresh staging directory. Discarded syntax
+uses the existing collection budget so cyclic trees do not accumulate behind
+the compilation GC thresholds. The temporary planning session closes before
+workers start, transferring only its bounded pristine syntax store.
+Import discovery traverses the syntax without populating descendant indexes
+on every retained node.
+
+Before forking, precompile loads the shared compiler schedules and catalog once,
+then releases completed compiler execution state. Automatic worker selection
+uses at least the same memory budget as worker retirement; explicit worker
+counts remain available for controlled measurements.
 
 The compiler's execution program has a separate lifetime from owned source
 sessions. Nested importer execution defers cleanup until the outer execution
 returns, preserving live analysis needed by imports in progress.
+A module compiled with the bootstrap IR schedule keeps that tier through
+code generation even if the import cycle ends between those phases.
 
 The runtime graph driver indexes anchors with non-owning handles, including
 inside an execution context. Node and edge references keep reachable topology

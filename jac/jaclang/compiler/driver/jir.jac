@@ -432,7 +432,6 @@ def module_env_fingerprint(source_path: str) -> str {
 }
 
 def module_source_key(source_path: str) -> str {
-    """Content and membership of a source unit, independent of its consumer.""";
     h = hashlib.sha256();
     h.update(compute_content_sha256(source_path).encode());
     for (rel, digest) in _related_files(source_path) {

@@ -68,6 +68,10 @@ CI uploads `jac/.build-metrics` as `build-kit-measurements`.
 - Compiler `exclusive_seconds` subtracts nested phases and passes, including
   dependency work. `frontend:parse` and `frontend:copy` separate parser work from
   copying shared syntax. Product/cache events distinguish reuse from computation.
+  `frontend:collect` records bounded collection of discarded syntax.
+  `frontend:dependencies` records import discovery and resolution.
+- `compilation.dependency_plan` reports planning duration, validated dependency
+  hits, parsed/retained syntax counts, and preparation time before worker launch.
 - `compilation.seal` records compiled, reused, and bytecode-only bootstrap reuse.
 - `compilation.startup` and `compilation.seal.startup` separate process launch
   through the first Python statement from compiler/CLI initialization through
