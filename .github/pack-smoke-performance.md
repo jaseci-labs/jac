@@ -1,24 +1,30 @@
 # Pack smoke performance budgets
 
 `test-jac-pack-smoke` measures the commands it already runs. It adds no repeated
-site builds, cache purges, benchmark jobs, or base-revision builds. The accounting
-tests take a few seconds; the measurement wrapper adds process startup and report
-writing, without sampling, compiler imports, or forced garbage collection.
+site builds, cache purges, benchmark jobs, or base-revision builds. GNU `time`
+records the foreground commands directly, and the existing readiness steps save
+Linux uptime timestamps. `scripts/ci_perf.jac` checks all measurements once at the
+end and publishes the verdict. This avoids repeatedly launching a Jac helper:
+that cost about seven seconds per invocation in the local overhead probe.
 
-`scripts/ci_perf.py` runs on the runner's Python, outside the Jac binary under
-test. It uses GNU `time` for wall time, user/system CPU time, and peak RSS, and GNU
-`timeout` for the wall deadline and process-group termination. A memory budget is
-checked when the command finishes; it is not an allocation limit. On Linux this
-RSS metric is the largest process high-water mark, including waited-for children,
-not the simultaneous sum of a process tree. It catches a large compiler or
-bundler process but does not establish that a long-lived server is leak-free.
+The checker and its targeted tests are written in Jac, using the existing object
+model and CLI. The tests and final report add a small amount of work, but the
+application workload is unchanged. The report's own startup and memory are
+outside the measurements. No memory sampling or forced garbage collection runs.
 
-The three server clocks start immediately before launch and end at the existing
-HTTP readiness probes. They include the existing sleeps and polling resolution.
-The wait loops check the deadline before each probe and check again on success.
-These clocks measure readiness only, not the browser journey or server memory.
-Dependency downloads, apt installation, and browser interactions have separate
-functional checks and are excluded from the performance budgets.
+GNU `time` records wall time, user/system CPU time, exit status, and peak RSS.
+GNU `timeout` enforces each foreground command's configured wall budget and
+terminates its process group. On Linux this RSS metric is the largest process
+high-water mark, including waited-for children, not the simultaneous sum of a
+process tree. Memory gates run in the final Jac check; they are not allocation
+limits and do not establish that a long-lived server is leak-free.
+
+The three server timestamps start immediately before launch and end at the
+existing HTTP readiness probes. They include the existing sleeps and polling
+resolution. The final checker applies the exact startup budgets; the workflow
+also caps the readiness steps to stop a server that never becomes ready. These
+clocks measure startup only, not the browser journey or server memory. Dependency
+downloads, apt installation, and browser interactions are outside these budgets.
 
 ## Workloads and initial limits
 
@@ -49,10 +55,10 @@ memory). Review the new CI measurements when calibrating these limits. Standalon
 client-build measurements are a different workload and must not be used as this
 job's baseline.
 
-Each step gates its own result. The final report also rejects missing or failed
-measurements and uploads `pack-smoke-performance`, including per-phase JSON with
-the commit, run, command, metrics, and limits. The job summary presents the same
-numbers. Original command failures and timeout exit codes are preserved.
+Command timeouts fail their existing steps. The final Jac gate rejects exceeded
+budgets and missing or failed measurements and uploads `pack-smoke-performance`, including per-phase JSON with
+the commit, run, metrics, and limits, alongside the raw accounting files. The job summary presents the same
+numbers. The timed commands preserve their original failure and timeout exit codes.
 
 Budgets are fixed in version control; successful runs do not automatically raise
 them. Change a budget only with a reviewed explanation and relevant runner
@@ -65,15 +71,15 @@ Use the saved CPU and wall measurements together when investigating noise.
 Run the same short subprocess tests locally:
 
 ```sh
-python3 -m unittest discover -s scripts -p test_ci_perf.py -v
+jac test scripts/ci_perf.jac
 ```
 
-To measure one existing command manually, choose a fresh output directory:
+To check a downloaded `pack-smoke-performance` artifact locally:
 
 ```sh
-python3 scripts/ci_perf.py --output /tmp/my-pack-smoke run site-check -- jac check
+jac run scripts/ci_perf.jac -- --output /tmp/downloaded-pack-smoke-performance
 ```
 
-Run this from the intended project, using an absolute path to the script when
-necessary. `report` expects every configured phase; it must not pass after an
-incomplete smoke run.
+The checker expects every configured phase. It must not pass after an incomplete
+smoke run. Use the budget file from the measured revision when comparing older
+artifacts.

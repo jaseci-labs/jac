@@ -58,8 +58,8 @@ jobs:
             byllm:
               - 'jac/jaclang/byllm/**'
             pack_smoke:
-              - 'scripts/ci_perf.py'
-              - 'scripts/test_ci_perf.py'
+              - 'scripts/ci_perf.jac'
+              - 'scripts/ci_perf.test.jac'
               - '.github/pack-smoke-budgets.json'
             docs:
               - 'jac/jaclang/cli/docs/**'
@@ -994,7 +994,8 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
-      JAC_CI_PERF: ${{ github.workspace }}/scripts/ci_perf.py
+      JAC_CI_PERF: ${{ github.workspace }}/scripts/ci_perf.jac
+      JAC_CI_BUDGETS: ${{ github.workspace }}/.github/pack-smoke-budgets.json
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1008,7 +1009,10 @@ jobs:
       - uses: ./.github/actions/jac-kit
 
       - name: Validate performance accounting
-        run: python3 -m unittest discover -s scripts -p test_ci_perf.py
+        timeout-minutes: 2
+        run: |
+          mkdir -p "$RUNNER_TEMP/pack-smoke-performance"
+          jac test scripts/ci_perf.jac
 
       # The kit is already sealed: build-kit ran the precompiler over this
       # tree (or restored the binary main sealed from this exact tree), so this
@@ -1071,7 +1075,11 @@ jobs:
 
       - name: Type check the site
         working-directory: site
-        run: python3 "$JAC_CI_PERF" run site-check -- jac check
+        run: |
+          budget=$(jq -er '."site-check".wall_seconds' "$JAC_CI_BUDGETS")
+          LC_ALL=C /usr/bin/time --quiet -o "$RUNNER_TEMP/pack-smoke-performance/site-check.time.json" \
+            -f '{"wall_seconds":%e,"user_seconds":%U,"system_seconds":%S,"rss_kib":%M,"exit_code":%x}' \
+            timeout --kill-after=5s "${budget}s" jac check
 
       # The site ships as a desktop app too (apps.desktop, backend jaclang.org):
       # the native engine needs WebKitGTK + a C toolchain to build libwebview,
@@ -1097,7 +1105,11 @@ jobs:
 
       - name: Build the desktop app
         working-directory: site
-        run: python3 "$JAC_CI_PERF" run desktop-build -- jac build desktop
+        run: |
+          budget=$(jq -er '."desktop-build".wall_seconds' "$JAC_CI_BUDGETS")
+          LC_ALL=C /usr/bin/time --quiet -o "$RUNNER_TEMP/pack-smoke-performance/desktop-build.time.json" \
+            -f '{"wall_seconds":%e,"user_seconds":%U,"system_seconds":%S,"rss_kib":%M,"exit_code":%x}' \
+            timeout --kill-after=5s "${budget}s" jac build desktop
 
       - name: Desktop artifact audit
         working-directory: site
@@ -1155,7 +1167,7 @@ jobs:
       - name: Start the quickstart with bare jac run
         working-directory: site
         run: |
-          python3 "$JAC_CI_PERF" start quickstart-ready
+          cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/quickstart-ready.start"
           timeout 1200 jac run > /tmp/site-server.log 2>&1 &
           SERVER_PID=$!
           echo "SITE_PID=$SERVER_PID" >> $GITHUB_ENV
@@ -1170,9 +1182,9 @@ jobs:
       # Cold runner budget: embedded-postgres bootstrap plus the site's own
       # compile and client bundle all happen before the port answers.
       - name: Wait for site server to be ready
+        timeout-minutes: 3
         run: |
           for i in $(seq 1 60); do
-            python3 "$JAC_CI_PERF" deadline quickstart-ready
             if ! kill -0 ${{ env.SITE_PID }} 2>/dev/null; then
               echo "Server process exited unexpectedly"
               cat /tmp/site-server.log
@@ -1180,7 +1192,7 @@ jobs:
             fi
             if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
               echo "site server is ready (attempt $i)"
-              python3 "$JAC_CI_PERF" ready quickstart-ready
+              cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/quickstart-ready.ready"
               exit 0
             fi
             echo "Attempt $i/60: not ready, waiting 15s..."
@@ -1283,25 +1295,29 @@ jobs:
 
       - name: Build the production artifact
         working-directory: site
-        run: python3 "$JAC_CI_PERF" run production-build -- jac build --output dist
+        run: |
+          budget=$(jq -er '."production-build".wall_seconds' "$JAC_CI_BUDGETS")
+          LC_ALL=C /usr/bin/time --quiet -o "$RUNNER_TEMP/pack-smoke-performance/production-build.time.json" \
+            -f '{"wall_seconds":%e,"user_seconds":%U,"system_seconds":%S,"rss_kib":%M,"exit_code":%x}' \
+            timeout --kill-after=5s "${budget}s" jac build --output dist
 
       - name: Serve the production artifact outside the source project
         working-directory: ${{ runner.temp }}
         run: |
-          python3 "$JAC_CI_PERF" start production-ready
+          cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/production-ready.start"
           timeout 1200 jac run --port 8000 "${{ github.workspace }}/site/dist/site.jab" > /tmp/site-artifact.log 2>&1 &
           echo "ARTIFACT_PID=$!" >> $GITHUB_ENV
 
       - name: Wait for the production artifact
+        timeout-minutes: 1
         run: |
           for i in $(seq 1 60); do
-            python3 "$JAC_CI_PERF" deadline production-ready
             if ! kill -0 "${{ env.ARTIFACT_PID }}" 2>/dev/null; then
               cat /tmp/site-artifact.log
               exit 1
             fi
             if curl -sf --max-time 10 http://localhost:8000/ -o /dev/null; then
-              python3 "$JAC_CI_PERF" ready production-ready
+              cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/production-ready.ready"
               exit 0
             fi
             sleep 5
@@ -1335,7 +1351,7 @@ jobs:
         env:
           JAC_DOCS_LOCAL: ${{ github.workspace }}
         run: |
-          python3 "$JAC_CI_PERF" start fleet-ready
+          cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/fleet-ready.start"
           timeout 1800 jac run --serve --fleet --port 8000 web \
             > /tmp/site-ms.log 2>&1 &
           MS_PID=$!
@@ -1349,9 +1365,9 @@ jobs:
           fi
 
       - name: Wait for the gateway to be ready
+        timeout-minutes: 4
         run: |
           for i in $(seq 1 90); do
-            python3 "$JAC_CI_PERF" deadline fleet-ready
             if ! kill -0 ${{ env.MS_PID }} 2>/dev/null; then
               echo "Gateway exited unexpectedly"
               tail -100 /tmp/site-ms.log
@@ -1359,7 +1375,7 @@ jobs:
             fi
             if curl -sf --max-time 10 http://localhost:8000/health -o /dev/null; then
               echo "gateway is ready (attempt $i)"
-              python3 "$JAC_CI_PERF" ready fleet-ready
+              cat /proc/uptime > "$RUNNER_TEMP/pack-smoke-performance/fleet-ready.ready"
               exit 0
             fi
             echo "Attempt $i/90: gateway not ready, waiting 15s..."
@@ -1468,8 +1484,9 @@ jobs:
           retention-days: 7
 
       - name: Report performance budgets
+        timeout-minutes: 2
         if: always()
-        run: python3 "$JAC_CI_PERF" report
+        run: jac run "$JAC_CI_PERF"
 
       - name: Upload performance measurements
         if: always()
