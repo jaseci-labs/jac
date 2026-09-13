@@ -271,6 +271,17 @@ assert _heapq.heappop([1, 2, 3]) == 1
     callback_layout.pack_into(callback_buffer, RetainedOffset(), 42)
     assert callback_buffer == b"\0\0\0*"
     assert _struct.Struct("I" * 1000).__sizeof__() > _struct.Struct("I").__sizeof__()
+    iterator_buffer = bytearray(b"abcd")
+    unpack_iterator = _struct.iter_unpack("B", iterator_buffer)
+    assert next(unpack_iterator) == (97,)
+    try:
+        iterator_buffer.append(1)
+    except BufferError:
+        pass
+    else:
+        raise AssertionError("Native unpack iterator released its buffer too soon")
+    assert list(unpack_iterator) == [(98,), (99,), (100,)]
+    iterator_buffer.append(1)
     assert cmath.sqrt(-4) == 2j
     assert cmath.rect(2, 0) == 2
     assert cmath.isclose(a=1j, b=1j)

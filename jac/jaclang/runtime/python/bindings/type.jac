@@ -7,7 +7,8 @@ enum TypeFlags {
     BASETYPE = 1024,
     VECTORCALL = 2048,
     GC = 16384,
-    MANAGED_WEAKREF = 8
+    MANAGED_WEAKREF = 8,
+    DISALLOW_INSTANTIATION = 128
 }
 
 enum TypeSlot { INIT = 60, NEW = 65 }
@@ -21,7 +22,9 @@ import from c {
             clear: Callable[[u64], i32] = 0,
             call: Callable[[u64, u64, u64], u64] = 0,
             repr: Callable[[u64], u64] = 0,
-            vectorcall: Callable[[u64, u64, u64, u64], u64] = 0;
+            vectorcall: Callable[[u64, u64, u64, u64], u64] = 0,
+            iter: Callable[[u64], u64] = 0,
+            next: Callable[[u64], u64] = 0;
     }  def jacpy_binding_type(
         name: str,
         doc: str,

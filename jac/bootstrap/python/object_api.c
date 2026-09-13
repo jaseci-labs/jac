@@ -184,6 +184,19 @@ uint64_t jacpy_buffer_acquire(uint64_t value, int64_t ascii) {
     if (!ok) { PyMem_Free(view); return 0; }
     return HANDLE(view);
 }
+uint64_t jacpy_buffer_acquire_writable(uint64_t value) {
+    Py_buffer *view = PyMem_Calloc(1, sizeof(*view));
+    if (!view) { PyErr_NoMemory(); return 0; }
+    if (!PyArg_Parse(OBJECT(value), "w*", view)) { PyMem_Free(view); return 0; }
+    return HANDLE(view);
+}
+uint64_t jacpy_buffer_owner(uint64_t value) {
+    return value ? HANDLE(((Py_buffer *)(uintptr_t)value)->obj) : 0;
+}
+int64_t jacpy_number_ssize(uint64_t value, const char *overflow) {
+    extern PyObject *jacpy_exception_type(const char *);
+    return PyNumber_AsSsize_t(OBJECT(value), jacpy_exception_type(overflow));
+}
 void jacpy_buffer_release(uint64_t value) {
     if (!value) return;
     Py_buffer *view = (Py_buffer *)(uintptr_t)value;

@@ -222,7 +222,7 @@ _operator -lcrypto
 _queue
 _json
 _csv jac_modules/csv.c
-_struct jac_modules/struct.c
+_struct
 cmath
 math
 _collections jac_modules/collections.c

@@ -5,18 +5,17 @@ const builtin = @import("builtin");
 const seed = @import("seed.zig");
 const Io = std.Io;
 const inputs = [_][]const u8{
-    "bootstrap/build_python.zig",             "bootstrap/seed.zig",
-    "bootstrap/python/sources.json",          "bootstrap/python/cpython-sources.txt",
-    "bootstrap/python/build.sh",              "bootstrap/python/smoke.py",
-    "bootstrap/python/finalize.py",           "bootstrap/python/compiler-bridge.patch",
-    "bootstrap/python/compiler_runtime.c",    "bootstrap/python/compiler_bridge.c",
-    "bootstrap/python/object_api.c",          "bootstrap/python/binding_api.c",
+    "bootstrap/build_python.zig",           "bootstrap/seed.zig",
+    "bootstrap/python/sources.json",        "bootstrap/python/cpython-sources.txt",
+    "bootstrap/python/build.sh",            "bootstrap/python/smoke.py",
+    "bootstrap/python/finalize.py",         "bootstrap/python/compiler-bridge.patch",
+    "bootstrap/python/compiler_runtime.c",  "bootstrap/python/compiler_bridge.c",
+    "bootstrap/python/object_api.c",        "bootstrap/python/binding_api.c",
 
-    "bootstrap/python/compiler_bridge.h",     "bootstrap/python/modules/csv.c",
-    "bootstrap/python/prepare_native.py",     "bootstrap/python/modules/struct.c",
-    "bootstrap/python/modules/collections.c", "bootstrap/python/modules/functools.c",
-    "bootstrap/python/modules/itertools.c",   "bootstrap/python/modules/array.c",
-    "bootstrap/python/modules/pickle.c",
+    "bootstrap/python/compiler_bridge.h",   "bootstrap/python/modules/csv.c",
+    "bootstrap/python/prepare_native.py",   "bootstrap/python/modules/collections.c",
+    "bootstrap/python/modules/functools.c", "bootstrap/python/modules/itertools.c",
+    "bootstrap/python/modules/array.c",     "bootstrap/python/modules/pickle.c",
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
 const Mode = enum { host, jacpython };

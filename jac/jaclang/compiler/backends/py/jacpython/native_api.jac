@@ -149,20 +149,7 @@ import from jaclang.runtime.python.modules.collections {
     jacpy_count_elements,
     jacpy_default_repr
 }
-import from jaclang.runtime.python.modules.struct {
-    jacpy_struct_new,
-    jacpy_struct_compile,
-    jacpy_struct_size,
-    jacpy_struct_items,
-    jacpy_struct_pack,
-    jacpy_struct_unpack,
-    jacpy_struct_offset,
-    jacpy_struct_cursor,
-    jacpy_struct_remaining,
-    jacpy_struct_next,
-    jacpy_struct_cached,
-    jacpy_struct_memory
-}
+import from jaclang.runtime.python.bindings.struct { PyInit__struct }
 import from jaclang.runtime.python.bindings.cmath { PyInit_cmath }
 
 import from jaclang.runtime.python.modules.csv {

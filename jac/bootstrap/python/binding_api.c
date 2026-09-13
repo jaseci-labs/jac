@@ -131,6 +131,8 @@ typedef struct {
     uint64_t (*call)(uint64_t, uint64_t, uint64_t);
     uint64_t (*repr)(uint64_t);
     uint64_t (*vectorcall)(uint64_t, uint64_t, uint64_t, uint64_t);
+    uint64_t (*iter)(uint64_t);
+    uint64_t (*next)(uint64_t);
 } JacTypeHooks;
 
 typedef struct {
@@ -141,7 +143,7 @@ typedef struct {
 typedef struct {
     JacMethodTable table;
     PyType_Spec definition;
-    PyType_Slot slots[13];
+    PyType_Slot slots[15];
     vectorcallfunc vectorcall;
     PyMemberDef members[2];
     PyGetSetDef *properties;
@@ -188,6 +190,8 @@ uint64_t jacpy_binding_type(const char *name, const char *doc, int64_t count,
     SLOT(clear, Py_tp_clear);
     SLOT(call, Py_tp_call);
     SLOT(repr, Py_tp_repr);
+    SLOT(iter, Py_tp_iter);
+    SLOT(next, Py_tp_iternext);
 #undef SLOT
     if (hooks.vectorcall) {
         if (!hooks.call) spec->slots[slot++] = (PyType_Slot){Py_tp_call, PyVectorcall_Call};
@@ -220,6 +224,7 @@ uint64_t jacpy_binding_owner(uint64_t type, uint64_t module_definition) {
     return H(PyType_GetModuleByDef(P(type), &spec->definition));
 }
 uint64_t jacpy_binding_typeof(uint64_t object) { return H(Py_TYPE((PyObject *)P(object))); }
+int64_t jacpy_binding_basicsize(uint64_t object) { return Py_TYPE((PyObject *)P(object))->tp_basicsize; }
 uint64_t jacpy_binding_allocate(uint64_t type) { return H(((PyTypeObject *)P(type))->tp_alloc(P(type), 0)); }
 void jacpy_binding_free(uint64_t object) {
     PyTypeObject *type = Py_TYPE((PyObject *)P(object));
