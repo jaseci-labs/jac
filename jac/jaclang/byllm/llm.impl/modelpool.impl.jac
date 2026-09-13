@@ -106,13 +106,14 @@ impl ModelPool.model_call_no_stream(params: dict) -> dict {
     assert self._router is not None;
     if self.strategy == "cost-based-routing" {
         coro = self._router.acompletion(**params);
-        response: dict;
+        response: object;
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool {
             response = pool.submit(asyncio.run, coro).result();
         }
-        return response;
+    } else {
+        response = self._router.completion(**params);
     }
-    return self._router.completion(**params);
+    return response_dict(response);
 }
 
 impl ModelPool.model_call_with_stream(params: dict) -> Iterable[object] {

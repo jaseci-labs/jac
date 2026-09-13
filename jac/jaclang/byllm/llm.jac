@@ -51,7 +51,12 @@ import from jaclang.byllm.parallel {
     _PARALLEL_TOOL_HINT
 }
 import from jaclang.byllm.schema { inject_schema_hint }
-import from jaclang.byllm.tool_protocol { inject_tool_hint, recover_tool_calls }
+import from jaclang.byllm.tool_protocol {
+    inject_tool_hint,
+    recover_tool_calls,
+    coerce_message_dict,
+    response_field
+}
 
 glob _byllm_config = get_byllm_config(),
      _litellm_config = _byllm_config.get_litellm_config(),

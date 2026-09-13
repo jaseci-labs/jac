@@ -19,7 +19,7 @@ import from jaclang.byllm.exceptions { ByLLMError, FinishToolError }
 import from jaclang.runtime.semantic { Info }
 import from jaclang.byllm.mcp { McpTool }
 
-glob MessageType: TypeAlias = 'Message | LiteLLMMessage';
+glob MessageType: TypeAlias = 'Message | LiteLLMMessage | dict[str, object]';
 
 enum MessageRole(StrEnum) {
     SYSTEM = "system",
