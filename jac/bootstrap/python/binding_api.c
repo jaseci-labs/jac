@@ -15,6 +15,9 @@ _Static_assert(METH_VARARGS == 1 && METH_KEYWORDS == 2 && METH_NOARGS == 4 && ME
 
 typedef struct {
     int32_t (*execute)(uint64_t);
+    int32_t (*traverse)(uint64_t, uint64_t, uint64_t);
+    int32_t (*clear)(uint64_t);
+    void (*free)(uint64_t);
 } JacModuleHooks;
 
 typedef struct {
@@ -36,14 +39,17 @@ void jacpy_binding_discard(uint64_t handle) {
 }
 
 uint64_t jacpy_binding_module(const char *name, const char *doc, int64_t count,
-                             JacModuleHooks hooks) {
+                             JacModuleHooks hooks, int64_t state_count) {
     JacModuleSpec *spec = calloc(1, sizeof(*spec) + (count + 1) * sizeof(PyMethodDef));
     if (!spec) return 0;
     PyModuleDef initial = {PyModuleDef_HEAD_INIT};
     spec->definition = initial;
     spec->definition.m_name = strdup(name);
     spec->definition.m_doc = strdup(doc);
-    spec->definition.m_size = 0;
+    spec->definition.m_size = state_count * sizeof(PyObject *);
+    spec->definition.m_traverse = (traverseproc)hooks.traverse;
+    spec->definition.m_clear = (inquiry)hooks.clear;
+    spec->definition.m_free = (freefunc)hooks.free;
     spec->definition.m_methods = spec->methods;
     spec->definition.m_slots = spec->slots;
     spec->slots[0] = (PyModuleDef_Slot){Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED};
@@ -77,4 +83,26 @@ uint64_t jacpy_binding_init(uint64_t handle) {
 
 int64_t jacpy_binding_add(uint64_t module, const char *name, uint64_t value) {
     return PyModule_AddObjectRef(P(module), name, P(value));
+}
+
+/* Interpreter-local references. The Jac declaration controls their count,
+ * meaning, initialization, traversal, and clearing. Get borrows; set retains. */
+int64_t jacpy_binding_state_count(uint64_t module) {
+    if (!PyModule_GetState(P(module))) return 0;
+    return PyModule_GetDef(P(module))->m_size / sizeof(PyObject *);
+}
+uint64_t jacpy_binding_state_get(uint64_t module, int64_t index) {
+    PyObject **state = PyModule_GetState(P(module));
+    return H(state[index]);
+}
+void jacpy_binding_state_set(uint64_t module, int64_t index, uint64_t value) {
+    PyObject **state = PyModule_GetState(P(module));
+    Py_XSETREF(state[index], Py_XNewRef((PyObject *)P(value)));
+}
+int32_t jacpy_binding_visit(uint64_t value, uint64_t visitor, uint64_t context) {
+    return value ? ((visitproc)P(visitor))(P(value), P(context)) : 0;
+}
+uint64_t jacpy_binding_exception(const char *name, const char *base) {
+    extern PyObject *jacpy_exception_type(const char *);
+    return H(PyErr_NewException(name, *base ? jacpy_exception_type(base) : NULL, NULL));
 }

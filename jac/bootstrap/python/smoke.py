@@ -371,12 +371,16 @@ assert _heapq.heappop([1, 2, 3]) == 1
         def __bool__(self):
             buffer.clear()
             return False
-    try:
-        binascii.b2a_base64(buffer, newline=ResizeDuringArgumentConversion())
-    except BufferError:
-        pass
-    else:
-        raise AssertionError("Native codecs must preserve exported buffers")
+    resize_flag = ResizeDuringArgumentConversion()
+    codec_refs = sys.getrefcount(buffer), sys.getrefcount(resize_flag)
+    for _ in range(100):
+        try:
+            binascii.b2a_base64(buffer, newline=resize_flag)
+        except BufferError:
+            pass
+        else:
+            raise AssertionError("Native codecs must preserve exported buffers")
+    assert (sys.getrefcount(buffer), sys.getrefcount(resize_flag)) == codec_refs
     buffer.clear()  # Failed argument conversion must release its export.
     assert ctypes.pythonapi.jacpy_bisect
     assert ctypes.pythonapi.jacpy_random_bits

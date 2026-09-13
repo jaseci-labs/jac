@@ -245,7 +245,7 @@ import from jaclang.runtime.python.modules.operator {
     jacpy_operator_call,
     jacpy_operator_digest
 }
-import from jaclang.runtime.python.modules.binascii { jacpy_binascii_convert }
+import from jaclang.runtime.python.bindings.binascii { PyInit_binascii }
 import from jaclang.runtime.python.modules.random {
     jacpy_random_new,
     jacpy_random_seed,

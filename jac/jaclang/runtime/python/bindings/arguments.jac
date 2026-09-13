@@ -18,6 +18,7 @@ import from c { def jacpy_ssize(value: u64) -> i64;  }
 
 obj BoundArguments {
     has values: list[u64];
+    has context: u64 = 0;
 
     def drop {
         for value in self.values {
@@ -123,11 +124,12 @@ def invoke(
     signature: CallSignature,
     args: u64,
     kwargs: u64,
-    implementation: Callable[[BoundArguments], u64]
+    implementation: Callable[[BoundArguments], u64],
+    context: u64 = 0
 ) -> u64 {
     # The call frame lives outside the exception region: every exit releases
     # all converted arguments, including a failure in a nested conversion.
-    bound = BoundArguments([u64(0) for _ in signature.names]);
+    bound = BoundArguments([u64(0) for _ in signature.names], context);
     try {
         if not signature.bind(bound, args, kwargs) {
             return 0;

@@ -176,6 +176,22 @@ uint64_t jacpy_buffer_bytes(const Py_buffer *view) {
         && view->len == PyBytes_GET_SIZE(view->obj)) return HANDLE(Py_NewRef(view->obj));
     return HANDLE(PyBytes_FromStringAndSize(view->buf, view->len));
 }
+uint64_t jacpy_buffer_acquire(uint64_t value, int64_t ascii) {
+    Py_buffer *view = PyMem_Calloc(1, sizeof(*view));
+    if (!view) { PyErr_NoMemory(); return 0; }
+    int ok = ascii ? jacpy_ascii_buffer(OBJECT(value), view)
+                   : jacpy_binary_buffer(OBJECT(value), view);
+    if (!ok) { PyMem_Free(view); return 0; }
+    return HANDLE(view);
+}
+void jacpy_buffer_release(uint64_t value) {
+    if (!value) return;
+    Py_buffer *view = (Py_buffer *)(uintptr_t)value;
+    PyBuffer_Release(view);
+    PyMem_Free(view);
+}
+uint64_t jacpy_unsigned_mask(uint64_t value) { return PyLong_AsUnsignedLongMask(OBJECT(value)); }
+int64_t jacpy_unicode_read(uint64_t value, int64_t index) { return PyUnicode_ReadChar(OBJECT(value), index); }
 void jacpy_set_exception(uint64_t type, const char *message, int64_t size) {
     PyObject *text = PyUnicode_DecodeUTF8(message, size, "surrogatepass");
     if (text) { PyErr_SetObject(OBJECT(type), text); Py_DECREF(text); }

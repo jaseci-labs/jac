@@ -53,7 +53,7 @@ method/type registration and argument adapters. The algorithms are native Jac,
 and their C sources and Clinic headers are excluded from shipped runtimes.
 
 `bindings/` provides native Jac module declarations and argument binding. Bisect,
-heapq, math, and cmath use this path, including their `PyInit_*` entry points. The shared
+heapq, math, cmath, and binascii use this path, including their `PyInit_*` entry points. The shared
 `bootstrap/python/binding_api.c` stores opaque CPython ABI records without
 module-specific policy. Declarations contain no Python objects and live for the
 process lifetime; an owned argument frame releases conversions on success and

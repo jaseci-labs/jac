@@ -217,7 +217,7 @@ SETUP
 _bisect
 _heapq
 _random jac_modules/random.c
-binascii jac_modules/binascii.c
+binascii
 _operator jac_modules/operator.c -lcrypto
 _queue jac_modules/queue.c
 _json jac_modules/json.c
