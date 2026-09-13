@@ -309,7 +309,6 @@ materialization reused all 757 modules in 5.14 seconds. Its superseded downstrea
 Required checks and final-revision status are tracked on
 [PR #9149](https://github.com/jaseci-labs/jac/pull/9149).
 
-
 ## Generic annotations and dynamic instance inference
 
 The source-contract rebuild exposed runtime-union flags leaking into fresh
