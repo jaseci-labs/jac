@@ -101,14 +101,14 @@ def _write_application(
 
 
 def _requirements(config: JacConfig, server: bool) -> list[str] {
-    import from jaclang.project.capabilities { resolve_config_closures, RUNTIME }
-    import from jaclang.project.pyvenv { make_pip_spec }
-    closure = resolve_config_closures(config, 'serve' if server else 'run')[RUNTIME];
-    dependencies = dict(closure.deps);
-    dependencies.update(config.dependencies);
-    return [
-        make_pip_spec(name, version) for (name, version) in sorted(dependencies.items())
+    import from jaclang.project.providers { get_python_provider, resolve_plan }
+    plan = resolve_plan(config, action='serve' if server else 'run');
+    dependencies = [
+        dependency
+        for dependency in plan.for_ecosystem('python')
+        if dependency.name.lower().replace('_', '-') != 'jaclang'
     ];
+    return sorted(get_python_provider().specs_for(dependencies));
 }
 
 
