@@ -1,4 +1,5 @@
 import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from contextlib { contextmanager }
 import os;
 import from jaclang.compiler.session.session { JacProgram }
 import jaclang.compiler.ir.schema as uni;
@@ -6,7 +7,8 @@ import jaclang.compiler.ir.schema as uni;
 obj SelfHostCache {
     has _program: (JacProgram | None) = None,
         _jaclang_root: (str | None) = None,
-        _bytecode_depth: int = 0;
+        _bytecode_depth: int = 0,
+        _retained_units: int = 0;
 
     has program: JacProgram { getter; }
 
@@ -112,7 +114,19 @@ obj SelfHostCache {
             slim.interop_manifest = artifact_for(result).interop_manifest;
             self.program.hub.artifacts[full_target] = slim;
         }
-        self.program.release_compile_closure(collect=collect);
+        if not self._retained_units {
+            self.program.release_compile_closure(collect=collect);
+        }
+    }
+
+    @contextmanager
+    def retain_units -> Iterator[None] {
+        self._retained_units += 1;
+        try {
+            yield None;
+        } finally {
+            self._retained_units -= 1;
+        }
     }
 
     def enter_bytecode {

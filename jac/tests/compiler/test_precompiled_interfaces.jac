@@ -295,3 +295,38 @@ test "selfhost sealing resolves conditional stub classes before application anal
         }
     }
 }
+
+test "selfhost packaging keeps the compiled graph until its interface is ready" {
+    import os;
+    import from unittest.mock { patch }
+    import from jaclang.compiler.session.session { JacProgram }
+    import jaclang.compiler.frontend.parser.frontend as frontend;
+    with TemporaryDirectory() as directory {
+        package = _package(Path(directory));
+        source = str(package / "api.jac");
+        Path(source).write_text("def answer -> int { return 42; }\n");
+        cache = JacProgram()._get_compiler().selfhost;
+        original_resolve = cache.resolve;
+        def resolve(path: str, program: JacProgram, force: bool = False) -> JacProgram {
+            if os.path.realpath(path) == source {
+                return cache.program;
+            }
+            return original_resolve(path, program, force);
+        }
+        # Route only this fixture through the same owner as an SDK module.
+        with patch.object(cache, "resolve", resolve), patch.object(
+            frontend, "parse_woven", wraps=frontend.parse_woven
+        ) as parse {
+            data = precompile_unit(source, str(package), collect=False);
+        }
+        assert data is not None;
+        assert read_section_bytes(data, SEC_IFACE) is not None;
+        calls = [
+            call
+            for call in parse.call_args_list
+            if call.args[1] == source
+        ];
+        assert len(calls) == 1 , "packaging rebuilt its module to prepare the interface";
+        assert cache.program.find_module(source) is None , "packaging retained the finished unit";
+    }
+}

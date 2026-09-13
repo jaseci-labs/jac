@@ -115,6 +115,12 @@ An interface lookup prefers a valid local interface, but a local bytecode-only
 record cannot hide the interface in a sealed SDK image. Packaging consumes the
 same selected metadata and rebases its paths for the destination package.
 
+Packaging retains the self-host compilation closure until both bytecode and
+interface metadata are collected. Native artifacts are retained normally;
+only graph release is deferred. A symbol request can reuse the compatible
+compiled graph in that same self-host context, and the packaging unit releases
+its graphs afterward.
+
 Application **context** selects the app's entry and boundary rules. **Placement**
 describes participating codespaces. **Ownership** is reserved for memory and
 borrowing analysis.

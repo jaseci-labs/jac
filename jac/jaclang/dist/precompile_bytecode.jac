@@ -477,7 +477,7 @@ def precompile_unit_context(
     selected = precompile_context(jac_path, pkg_root, program, source_app);
     identity = program_cache_identity(selected);
     compiler.unit_collect = collect;
-    with cache_scope(identity, selected.options, selected) {
+    with cache_scope(identity, selected.options, selected), compiler.selfhost.retain_units() {
         try {
             yield selected;
         } finally {

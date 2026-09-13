@@ -30,7 +30,10 @@ obj ModuleCompilation {
     def parse {
         existing = self.program.mod.hub.get(os.path.realpath(self.path));
         if self.source is None
-            and not self.compiler.selfhost.is_selfhost(self.program)
+            and (
+                not self.compiler.selfhost.is_selfhost(self.program)
+                or self.options.symtab_ir_only
+            )
             and existing is not None
             and not existing.stub_only
             and not existing.parse_failed
