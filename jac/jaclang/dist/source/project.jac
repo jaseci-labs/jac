@@ -106,7 +106,7 @@ def _requirements(config: JacConfig, server: bool) -> list[str] {
     dependencies = [
         dependency
         for dependency in plan.for_ecosystem('python')
-        if dependency.name.lower().replace('_', '-') != 'jaclang'
+        if dependency.name.split('[', 1)[0].lower().replace('_', '-') != 'jaclang'
     ];
     return sorted(get_python_provider().specs_for(dependencies));
 }
