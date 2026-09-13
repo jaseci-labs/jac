@@ -75,7 +75,7 @@ impl _emit_agent_telemetry(
 
     tokens: dict = {"total": {}, "by_kind": {}, "per_call": [], "requests": 0};
     try {
-        history: any = mt_run._usage_history or [];
+        history = mt_run?._usage_history or [];
         tokens = _aggregate_usage(history);
     } except Exception as e {
         logger.debug(f"tokens aggregation failed: {e}");

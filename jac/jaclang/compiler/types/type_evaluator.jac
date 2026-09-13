@@ -262,6 +262,7 @@ import from jaclang.compiler.frontend.diagnostics {
 
 obj PrefetchedTypes {
     has none_type_class: ClassType | None = None,
+        union_type_class: ClassType | None = None,
         object_class: ClassType | None = None,
         type_class: ClassType | None = None,
         coroutine_class: ClassType | None = None,

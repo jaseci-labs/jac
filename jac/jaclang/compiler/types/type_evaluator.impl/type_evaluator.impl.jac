@@ -15,7 +15,15 @@ impl TypeEvaluator._walk_compr_clauses(comprs: list[InnerCompr]) -> None {
 impl TypeEvaluator._null_ok_attr_type(
     expr: AtomTrailer, base_type: (TypeBase | None) = None
 ) -> TypeBase {
-    if base_type is not None and self.is_any_type(base_type) {
+    if base_type is not None
+        and (
+            self.is_any_type(base_type)
+            or (
+                isinstance(base_type, ClassType)
+                and base_type.is_class_instance()
+                and base_type.is_builtin("object")
+            )
+        ) {
         expr.right.type = AnyType();
         return expr.right.type;
     }
@@ -2339,7 +2347,7 @@ impl TypeEvaluator._widen_literal_for_declaration(ty: TypeBase) -> TypeBase {
     }
     if isinstance(ty, UnionType) and ty.types is not None {
         widened = [self._widen_literal_for_declaration(member) for member in ty.types];
-        return UnionType(types=widened);
+        return UnionType(types=widened, flags=ty.flags);
     }
     return ty;
 }
@@ -3403,6 +3411,19 @@ impl TypeEvaluator.assign_type(
         return True;
     }
 
+    if isinstance(dest_type, UnionType)
+        and dest_type.is_instantiable()
+        and self.prefetch.union_type_class is not None {
+        dest_type = self.prefetch.union_type_class.clone_as_instance();
+    }
+    if isinstance(src_type, UnionType)
+        and src_type.is_instantiable()
+        and self.prefetch.union_type_class is not None {
+        return self.assign_type(
+            self.prefetch.union_type_class.clone_as_instance(), dest_type, strict
+        );
+    }
+
     if self.is_explicit_any(dest_type) {
         return True;
     }
@@ -4036,6 +4057,7 @@ impl TypeEvaluator._prefetch_types{
     }
 
     self.prefetch.none_type_class = get_types_class("NoneType");
+    self.prefetch.union_type_class = get_types_class("UnionType");
     self.prefetch.object_class = get_builtin_class("object");
     self.prefetch.type_class = get_builtin_class("type");
     self.prefetch.classmethod_class = get_builtin_class("classmethod");
@@ -5855,11 +5877,16 @@ impl TypeEvaluator._is_callable_type(t: TypeBase) -> bool {
 }
 
 impl TypeEvaluator._filter_union_to_callables(union_type: TypeBase) -> TypeBase {
+    if isinstance(union_type, ClassType)
+        and union_type.is_builtin("object")
+        and union_type.is_class_instance() {
+        return create_callable_type([], AnyType(), is_gradual=True);
+    }
     if isinstance(union_type, UnionType) and union_type.types {
         callables: list[TypeBase] = [
-            t
+            narrowed
             for t in union_type.types
-            if self._is_callable_type(t)
+            if not isinstance(narrowed := self._filter_union_to_callables(t), NeverType)
         ];
         if len(callables) == 0 {
             return NeverType();

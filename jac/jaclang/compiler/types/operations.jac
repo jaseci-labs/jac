@@ -17,6 +17,7 @@ import from .types {
     FunctionType,
     NeverType,
     TypeBase,
+    TypeFlags,
     TypeVarType,
     UnionType,
     UnknownType
@@ -355,6 +356,7 @@ def get_type_of_binary_operation(
             if is_annotation_type(evaluator, left_type)
                 and is_annotation_type(evaluator, right_type) {
                 return UnionType(
+                    flags=TypeFlags.Instantiable,
                     types=[
                         evaluator._convert_to_instance(left_type),
                         evaluator._convert_to_instance(right_type)

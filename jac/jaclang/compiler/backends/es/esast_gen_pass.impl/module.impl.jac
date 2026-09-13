@@ -15,7 +15,7 @@ impl EsastGenPass.exit_test with uni.Test exit {
     self.client_manifest.tests.append(
         {
             'name': here.name.sym_name,
-            'description': here.description.lit_value
+            'description': str(here.description.lit_value)
                 if here.description
                 else here.name.sym_name
         }
@@ -253,13 +253,4 @@ impl EsastGenPass.exit_module with uni.Module exit {
     here.gen.js = es_to_js(here.gen.es_ast);
     here.gen.client_manifest = self.client_manifest;
     self._audit_free_identifiers(here, program);
-}
-
-impl EsastGenPass.get_main_mod -> uni.Module {
-    main_mod_path = self.ir_in.annexable_by or self.ir_in.loc.mod_path;
-    mod = self.prog.mod.hub.get(main_mod_path);
-    if not isinstance(mod, uni.Module) {
-        self.emit(E5012);
-    }
-    return mod;
 }

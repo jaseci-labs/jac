@@ -210,7 +210,7 @@ impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
     if not return_type_is_jsx(rt) {
         return None;
     }
-    name = nd.name_ref.sym_name;
+    name = nd.sym_name;
     if not name or not ('a' <= name[0] and name[0] <= 'z') {
         return None;
     }
@@ -223,7 +223,7 @@ impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
 }
 
 impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
-    cached_abi = ability_node.gen?.component_call_abi;
+    cached_abi = self._component_call_abis.get(ability_node);
     if isinstance(cached_abi, str) and cached_abi {
         return cached_abi;
     }
@@ -254,7 +254,7 @@ impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
             }
         }
     }
-    ability_node.gen.component_call_abi = abi;
+    self._component_call_abis[ability_node] = abi;
     return abi;
 }
 
@@ -351,7 +351,10 @@ impl EsastGenPass._pos_params_from_ability(
     ability_node: uni.Ability
 ) -> list[uni.ParamVar] {
     sig = ability_node.signature;
-    return (sig.posonly_params or []) + (sig.params or []);
+    if not isinstance(sig, uni.FuncSignature) {
+        return [];
+    }
+    return list(sig.posonly_params or []) + list(sig.params or []);
 }
 
 impl EsastGenPass._param_names_from_ability(ability_node: uni.Ability) -> list[str] {
@@ -584,7 +587,7 @@ impl EsastGenPass._resolve_call_arg_slots(
     func_name: str,
     spread_read_source: (es.Expression | None)
 ) -> list[CallArgSlot] {
-    by_name: dict[str, (es.Expression | es.SpreadElement)] = {};
+    by_name: dict[str, (es.Expression | es.SpreadElement | None)] = {};
     extras: list[CallArgSlot] = [];
     spread_sources: list[es.Expression] = [];
     seen_names: set[str] = set();
@@ -603,6 +606,7 @@ impl EsastGenPass._resolve_call_arg_slots(
     }
     for kw in props {
         if isinstance(kw, es.SpreadElement) {
+            assert kw.argument is not None;
             spread_sources.append(kw.argument);
             continue;
         }
@@ -704,6 +708,7 @@ impl EsastGenPass._kwargs_spread_arg(
     sources: list[es.Expression] = [];
     for prop in props {
         if isinstance(prop, es.SpreadElement) {
+            assert prop.argument is not None;
             sources.append(prop.argument);
         }
     }
@@ -730,6 +735,7 @@ impl EsastGenPass._kwargs_spread_needs_temp(
     sources: list[es.Expression] = [];
     for prop in props {
         if isinstance(prop, es.SpreadElement) {
+            assert prop.argument is not None;
             sources.append(prop.argument);
         }
     }
@@ -824,6 +830,7 @@ impl EsastGenPass._try_lower_server_rpc_call(
             continue;
         }
         if slot.name is None {
+            assert isinstance(slot.value, es.SpreadElement);
             rpc_props.append(slot.value);
             continue;
         }
@@ -1135,7 +1142,7 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
             _emit_fn = getattr(_emitter, _emit_fn_name, None) if _emitter else None;
             if _emit_fn {
                 _unparser = JSCodeGenerator();
-                _ctx = self._primitives_es_mod.ESEmitCtx(unparser=_unparser);
+                _ctx = ESEmitCtx(unparser=_unparser);
                 _target_str = _unparser.generate(callee.object);
                 _args_strs: list[str] = [];
                 for _a in args {
@@ -1231,7 +1238,7 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
                     }
                 }
             }
-            _ctx = self._primitives_es_mod.ESEmitCtx(
+            _ctx = ESEmitCtx(
                 unparser=_unparser, arg_type_names=_arg_type_names, kwargs=_kwargs
             );
 
@@ -1360,7 +1367,8 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
 
     _target_type = here.target?.type;
     if _target_type is not None {
-        _emit_new = _target_type.is_instantiable_class()
+        _emit_new = isinstance(_target_type, ClassType)
+            and _target_type.is_instantiable_class()
             and not _target_type.shared.is_builtin_class;
     } else {
         _emit_new = _call_kind == "instantiation";

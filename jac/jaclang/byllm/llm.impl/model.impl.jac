@@ -271,8 +271,13 @@ impl Model.model_call_no_stream(params: dict) -> dict {
             response = client.chat.completions.create(**params);
         } else {
             require_optional("litellm", "llm");
-            response = litellm.completion(
-                api_key=self.api_key or None, api_base=self.api_base or None, **params
+            response = cast(
+                dict,
+                litellm.completion(
+                    api_key=self.api_key or None,
+                    api_base=self.api_base or None,
+                    **params
+                )
             );
         }
     } except Exception as e {
@@ -281,7 +286,13 @@ impl Model.model_call_no_stream(params: dict) -> dict {
     return response;
 }
 
-impl Model.model_call_with_stream(params: dict) {
+impl Model.model_call_with_stream(params: dict) -> Iterator[object] {
+    if self.http_client {
+        raise ConfigurationError(
+            "http_client returns a JSON response and cannot stream; "
+            "disable http_client to use the provider streaming API"
+        );
+    }
     params["stream_options"] = (params.get("stream_options") or {})
         | {"include_usage": True};
     try {
@@ -316,7 +327,7 @@ impl Model.model_call_with_stream(params: dict) {
 
 impl Model.model_call_http(
     url: str, token: str, payload: dict, ca_bundle: (str | bool | None)
-) -> object {
+) -> dict {
     import httpx;
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
     client = httpx.Client(verify=ca_bundle or True, timeout=60.0);
@@ -347,8 +358,13 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
             response = await async_client.chat.completions.create(**params);
         } else {
             require_optional("litellm", "llm");
-            response = await litellm.acompletion(
-                api_key=self.api_key or None, api_base=self.api_base or None, **params
+            response = cast(
+                dict,
+                await litellm.acompletion(
+                    api_key=self.api_key or None,
+                    api_base=self.api_base or None,
+                    **params
+                )
             );
         }
     } except Exception as e {
@@ -357,16 +373,14 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
     return response;
 }
 
-impl Model.model_call_with_stream_async(params: dict) {
+impl Model.model_call_with_stream_async(params: dict) -> AsyncIterator[object] {
     params["stream_options"] = (params.get("stream_options") or {})
         | {"include_usage": True};
     try {
         if self.http_client {
-            response = await self.model_call_http_async(
-                url=self.api_base,
-                token=self.api_key,
-                payload=params | {"stream": True},
-                ca_bundle=self.config.get("ca_bundle", None),
+            raise ConfigurationError(
+                "http_client returns a JSON response and cannot stream; "
+                "disable http_client to use the provider streaming API"
             );
         } elif self.proxy {
             require_optional("openai", "llm");
@@ -397,7 +411,7 @@ impl Model.model_call_with_stream_async(params: dict) {
 
 impl Model.model_call_http_async(
     url: str, token: str, payload: dict, ca_bundle: (str | bool | None)
-) -> object {
+) -> dict {
     import httpx;
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
     client = httpx.AsyncClient(verify=ca_bundle or True, timeout=60.0);

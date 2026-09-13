@@ -273,5 +273,39 @@ rebuilt all 757 modules in 450.70 seconds, versus 761.77 seconds in the precedin
 local build: about 41% less time for that phase, with eight workers in both runs.
 These observed local timings are not a prediction of total CI duration.
 
+## Source contracts and runtime type values
+
+The full source check completed 878 inputs: 875 passed and three failed in
+1,234.62 seconds with eight workers. The failures were in byLLM telemetry,
+provider dispatch, and the ES generation pass. The earlier two-worker check was
+stopped at 25% to use the available local CPUs; it is not counted as completed.
+
+ES generation now initializes its manifest and JSX processor in the pass
+lifecycle, uses its existing backend resolver, and retains component-call ABI
+metadata in the pass. Typed pattern/construction helpers replace overly broad
+node annotations. Redundant module caching and unreachable main-module lookup
+fallbacks were removed. Provider clients use SDK types; stream methods expose
+iterator contracts, invocation IDs are declared fields, and the JSON HTTP
+transport rejects unsupported streaming requests explicitly.
+
+Runtime union values retain their existing type flags through inference,
+substitution, identity and argument matching. They remain distinct from unions
+of instance values. Callable guards narrow object values, and optional attribute
+probes on object preserve unknown runtime values without permitting unchecked
+direct access. These fixes use the existing type representation and prefetch
+infrastructure.
+
+Diagnostic compiler images passed all three previously failing source checks,
+81 type-checker regressions, 44 ES generation tests, four runtime-type regressions,
+and 82 provider/telemetry/streaming tests. The provider tests used a temporary
+project environment with the same SDK version ranges as CI. Initial provider
+runs without those dependencies reported missing-litellm errors and are not
+counted as passing. The final staged rebuild is being verified separately.
+
+CI on `90bdbacc82` completed all three platform builds successfully. Linux
+Stage 1 took 2,243.23 seconds and Stage 2 took 3,099.97 seconds; subsequent warm
+materialization reused all 757 modules in 5.14 seconds. Its downstream checks
+are still running. These precede the compile-time cycle and source-contract fixes.
+
 Required checks and final-revision status are tracked on
 [PR #9149](https://github.com/jaseci-labs/jac/pull/9149).

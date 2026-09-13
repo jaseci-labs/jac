@@ -1,0 +1,96 @@
+"""Runtime type values retain their identity through inference and narrowing."""
+import from jaclang.compiler.driver.program { JacProgram }
+
+test "union aliases are runtime UnionType values and valid class information" {
+    program = JacProgram();
+    program.compile(
+        file_path="runtime_union.jac",
+        use_str='''
+import from types { UnionType as RuntimeUnion }
+obj Left {}
+obj Right {}
+glob Both = Left | Right;
+def accept(value: RuntimeUnion) -> RuntimeUnion { return value; }
+def matches(value: object) -> bool { return isinstance(value, Both); }
+def preserve(value: Left | Right) -> Left | Right { return value; }
+with entry {
+    alias = Both;
+    union_value = accept(alias);
+    value: Left | Right = Left();
+    assert matches(preserve(value));
+    assert isinstance(value, union_value);
+}
+''',
+        no_cgen=True
+    );
+    assert not program.errors_had , "\n".join(
+        error.pretty_print() for error in program.errors_had
+    );
+}
+
+test "union instances remain distinct from runtime union type values" {
+    program = JacProgram();
+    program.compile(
+        file_path="invalid_runtime_union.jac",
+        use_str='''
+import from types { UnionType as RuntimeUnion }
+obj Left {}
+obj Right {}
+glob Both = Left | Right;
+def accept(value: RuntimeUnion) {}
+def invalid_classinfo(value: object, instance: Left | Right) -> bool {
+    return isinstance(value, instance);
+}
+def invalid_return -> Left | Right { return Both; }
+with entry { accept(Left()); }
+''',
+        no_cgen=True
+    );
+    codes = [
+        error.code.code
+        for error in program.errors_had
+        if error.code
+    ];
+    assert codes.count("E1053") == 2 , codes;
+    assert codes.count("E1002") == 1 , codes;
+}
+
+test "callable narrows object without accepting an unchecked object" {
+    program = JacProgram();
+    program.compile(
+        file_path="callable_object.jac",
+        use_str='''
+def accept(callback: Callable) {}
+def guarded(value: object) {
+    if callable(value) { accept(value); }
+}
+def unguarded(value: object) { accept(value); }
+''',
+        no_cgen=True
+    );
+    assert len(program.errors_had) == 1 , "\n".join(
+        error.pretty_print() for error in program.errors_had
+    );
+    code = program.errors_had[0].code;
+    assert code is not None and code.code == "E1053";
+}
+
+test "optional attribute probes on object preserve unknown runtime values" {
+    program = JacProgram();
+    program.compile(
+        file_path="optional_object_attribute.jac",
+        use_str='''
+def optional(value: object) -> str {
+    record = value?.record;
+    return record.name if record else "missing";
+}
+def direct(value: object) -> str { return value.record.name; }
+''',
+        no_cgen=True
+    );
+    messages = [error.pretty_print() for error in program.errors_had];
+    assert messages , "direct object member access must still be rejected";
+    assert all(error.loc.first_line == 6 for error in program.errors_had) , "\n".join(
+        messages
+    );
+}

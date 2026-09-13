@@ -27,7 +27,7 @@ impl LocalLLM.postinit -> None {
     self.supports_native_tools = False;
 }
 
-impl LocalLLM._ensure_llama -> object {
+impl LocalLLM._ensure_llama -> Llama {
     if self._llama is not None {
         return self._llama;
     }
@@ -91,7 +91,7 @@ impl LocalLLM.model_call_no_stream(params: dict) -> dict {
     return resp;
 }
 
-impl LocalLLM.model_call_with_stream(params: dict) -> Generator[object, None, None] {
+impl LocalLLM.model_call_with_stream(params: dict) -> Iterator[object] {
     engine = self._ensure_llama();
     call_params = filter_params(params);
     call_params["stream"] = True;

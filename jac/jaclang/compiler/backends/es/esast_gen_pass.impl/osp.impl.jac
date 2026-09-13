@@ -1,6 +1,6 @@
 impl EsastGenPass._osp_model -> OspModel {
     import from jaclang.runtime.osp_model { get_osp_model }
-    _root = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
+    _root = self.ir_in;
     return get_osp_model(_root);
 }
 
@@ -26,7 +26,7 @@ impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
         "owner": owner.name.sym_name,
         "kind": kind,
         "is_entry": nd.signature.event.name == Tok.KW_ENTRY,
-        "name": nd.name_ref.sym_name
+        "name": nd.sym_name
     };
 }
 
@@ -70,9 +70,7 @@ impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
     );
     nd.gen.es_ast = self.sync_loc(
         es.MethodDefinition(
-            key=self.sync_loc(
-                es.Identifier(name=nd.name_ref.sym_name), jac_node=nd.name_ref
-            ),
+            key=self.sync_loc(es.Identifier(name=nd.sym_name), jac_node=nd.name_ref),
             value=func_expr,
             kind='method',
             `static=False
@@ -153,7 +151,7 @@ impl EsastGenPass._arch_kind_by_name(name: str) -> (str | None) {
     if _local is not None {
         return _local;
     }
-    _mod = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
+    _mod = self.ir_in;
     _sym = _mod.lookup(name);
     if _sym is None {
         return None;
@@ -171,9 +169,7 @@ impl EsastGenPass._osp_var_arch -> dict[str, str] {
     bindings: dict[str, str] = {};
     kinds = self._osp_arch_kinds();
     if kinds {
-        scan_root = self.ir_in
-            if isinstance(self.ir_in, uni.Module)
-            else self.get_main_mod();
+        scan_root = self.ir_in;
         for asn in scan_root.get_all_sub_nodes(uni.Assignment) {
             if isinstance(asn.value, uni.FuncCall) {
                 head = self._ref_head_name(asn.value);
@@ -686,6 +682,14 @@ impl EsastGenPass._build_osp_filter_pred(
         );
     }
     for cmp in filt.compares {
+        if not isinstance(cmp, uni.CompareExpr) {
+            self.emit(
+                E5097,
+                node_override=nd,
+                kind="a graph filter outside 'name <op> value' form"
+            );
+            return None;
+        }
         _lhs = cmp.left;
         _js_op: (str | None) = None;
         if isinstance(_lhs, uni.Name)
@@ -693,7 +697,8 @@ impl EsastGenPass._build_osp_filter_pred(
             and (len(cmp.rights) == 1) {
             _op_name = cmp.ops[0].name;
             _op_tok = Tok(_op_name) if (_op_name in Tok.__members__) else None;
-            if _op_tok in (Tok.EE, Tok.NE, Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
+            if _op_tok is not None
+                and _op_tok in (Tok.EE, Tok.NE, Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
                 _js_op = ES_COMPARISON_OPS.get(_op_tok);
             }
         }

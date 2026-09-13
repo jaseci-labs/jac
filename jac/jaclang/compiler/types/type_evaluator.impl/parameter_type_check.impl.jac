@@ -796,6 +796,12 @@ impl TypeEvaluator.assign_type_to_type_var(
         return True;
     }
 
+    if isinstance(arg_type, UnionType)
+        and arg_type.is_instantiable()
+        and self.prefetch.union_type_class is not None {
+        arg_type = self.prefetch.union_type_class.clone_as_instance();
+    }
+
     if isinstance(arg_type, UnionType) {
         solutions: dict[str, dict[str, TypeBase]] = {};
         for argument in arg_type.types {

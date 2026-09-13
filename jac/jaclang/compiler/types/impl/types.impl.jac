@@ -1288,7 +1288,8 @@ impl TypeBase.mangle -> str {
     }
     if isinstance(self, UnionType) {
         members = sorted(set(ty.mangle() for ty in (self.types or [])));
-        return "|".join(members) if members else "<union>";
+        value = "|".join(members) if members else "<union>";
+        return f"type[{value}]" if self.is_instantiable() else value;
     }
     if isinstance(self, FunctionType) {
         params = ",".join(

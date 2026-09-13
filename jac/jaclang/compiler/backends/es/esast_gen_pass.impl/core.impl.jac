@@ -499,6 +499,12 @@ impl EsastGenPass.enter_walk with uni.UniNode entry {
     }
 }
 
+impl EsastGenPass.postinit -> None {
+    self.client_manifest = ClientManifest();
+    self.jsx_processor = EsJsxProcessor(self);
+    super.postinit();
+}
+
 impl EsastGenPass.before_pass -> None {
     for nd in self.ir_in.flatten() {
         nd.gen.es_ast = None;
@@ -514,7 +520,6 @@ impl EsastGenPass.before_pass -> None {
         self.ir_in.client_viols_reported = True;
     }
     self.child_passes = self._init_child_passes(EsastGenPass);
-    self.client_manifest = ClientManifest();
     self.component_export_names = set();
 
     self.client_manifest.endpoint_effects = dict(
@@ -529,7 +534,6 @@ impl EsastGenPass.before_pass -> None {
         )
         if a.name is not None
     };
-    self.jsx_processor = EsJsxProcessor(self);
 
     self.scoped_styles = load_style_annex(
         self.ir_in.annexable_by or self.ir_in.loc.mod_path

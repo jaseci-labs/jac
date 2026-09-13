@@ -393,7 +393,7 @@ impl EsastGenPass._lower_match_pattern(
                 rest_star = `entry;
                 continue;
             }
-            key_node = `entry.key;
+            key_node: uni.UniNode = `entry.key;
             if isinstance(key_node, uni.MatchValue) {
                 key_node = key_node.value;
             }

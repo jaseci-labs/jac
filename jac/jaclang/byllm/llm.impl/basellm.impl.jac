@@ -342,9 +342,8 @@ def _usage_to_dict(usage_obj: object) -> dict {
         return dict(usage_obj);
     }
     try {
-        return usage_obj.model_dump()
-            if usage_obj?.model_dump
-            else dict(vars(usage_obj));
+        serializer = usage_obj?.model_dump;
+        return dict(serializer()) if callable(serializer) else dict(vars(usage_obj));
     } except Exception as e {
         logger.debug(f"usage serialization failed, recording an empty payload: {e}");
         return {};
@@ -1546,8 +1545,9 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
         try {
             response = self.model_call_with_stream(params);
             for chunk in response {
-                if chunk?.choices and chunk?.choices?[0]?.finish_reason {
-                    finish_reason = str(chunk.choices[0].finish_reason);
+                choices = chunk?.choices;
+                if choices and choices[0]?.finish_reason {
+                    finish_reason = str(choices[0].finish_reason);
                 }
                 chunk_usage = chunk?.usage;
                 if chunk_usage {
@@ -1757,7 +1757,7 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     );
 }
 
-impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) {
+impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) -> AsyncGenerator[str, None] {
     params = self.make_model_params(mt_run);
     log_params = self.format_prompt(params);
     self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
@@ -1770,8 +1770,9 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) {
         try {
             response = await self.model_call_with_stream_async(params);
             async for chunk in response {
-                if chunk?.choices and chunk?.choices?[0]?.finish_reason {
-                    finish_reason = str(chunk.choices[0].finish_reason);
+                choices = chunk?.choices;
+                if choices and choices[0]?.finish_reason {
+                    finish_reason = str(choices[0].finish_reason);
                 }
                 chunk_usage = chunk?.usage;
                 if chunk_usage {
@@ -1781,8 +1782,8 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) {
                         mt_run, chunk_usage, chunk_model, finish_reason=finish_reason
                     );
                 }
-                if chunk?.choices and chunk?.choices?[0]?.delta {
-                    delta = chunk.choices[0].delta;
+                if choices and choices[0]?.delta {
+                    delta = choices[0].delta;
                     yield delta.content or "";
                 }
             }
@@ -1804,7 +1805,7 @@ impl BaseLLM.model_call_no_stream(params: dict) -> dict {
     );
 }
 
-impl BaseLLM.model_call_with_stream(params: dict) -> Generator[object, None, None] {
+impl BaseLLM.model_call_with_stream(params: dict) -> Iterator[object] {
     raise NotImplementedError(
         "Subclasses must implement this method for LLM call with streaming."
     );

@@ -1,10 +1,9 @@
 impl EsastGenPass._ensure_emitters -> None {
-    if self._primitive_emitters is not None {
+    if self._primitive_emitters {
         return;
     }
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     import jaclang.compiler.backends.es.primitives_es as _pes;
-    self._primitives_es_mod = _pes;
     self._primitive_emitters = {};
     for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
         _ecls = getattr(_pes, "ES" + _suffix, None);
@@ -12,7 +11,6 @@ impl EsastGenPass._ensure_emitters -> None {
             self._primitive_emitters[_tn] = _ecls();
         }
     }
-    self._builtin_emitter = _pes.ESBuiltinEmitter();
 
     _poly: set[str] = set();
     for _emitter in self._primitive_emitters.values() {
@@ -25,7 +23,7 @@ impl EsastGenPass._ensure_emitters -> None {
     self._poly_methods = _poly;
 }
 
-impl EsastGenPass._resolve_primitive_type_name(_obj_type: object) -> str {
+impl EsastGenPass._resolve_primitive_type_name(_obj_type: TypeBase | None) -> str {
     import from jaclang.compiler.types.type_utils { primitive_type_name_of }
     self._ensure_emitters();
     return primitive_type_name_of(_obj_type) or "";
@@ -52,7 +50,7 @@ impl EsastGenPass._try_primitive_op(
         return None;
     }
     _unparser = JSCodeGenerator();
-    _ctx = self._primitives_es_mod.ESEmitCtx(unparser=_unparser);
+    _ctx = ESEmitCtx(unparser=_unparser);
 
     _target_str = self._operand_str(_unparser, left_es);
     _args_strs: list[str] = [];
@@ -69,7 +67,9 @@ impl EsastGenPass._try_primitive_op(
     return self.sync_loc(es.RawCode(code=_result), jac_node=jac_node);
 }
 
-impl EsastGenPass._operand_str(unparser: object, es_node: es.Expression) -> str {
+impl EsastGenPass._operand_str(
+    unparser: JSCodeGenerator, es_node: es.Expression
+) -> str {
     rendered = unparser.generate(es_node);
     if isinstance(
         es_node,
@@ -345,7 +345,7 @@ impl EsastGenPass.exit_compare_expr with uni.CompareExpr exit {
             }
             if _prim_result is not None {
                 if op_tok == Tok.KW_NIN {
-                    comparison = self.sync_loc(
+                    comparison: es.Expression = self.sync_loc(
                         es.UnaryExpression(
                             operator='!', prefix=True, argument=_prim_result
                         ),
@@ -518,7 +518,9 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
         return;
     }
     op_name_str = here.op?.name;
-    op_name = Tok(op_name_str) if (op_name_str in Tok.__members__) else None;
+    op_name = Tok(op_name_str)
+        if (op_name_str is not None and op_name_str in Tok.__members__)
+        else None;
     if (op_name == Tok.KW_SPAWN) {
         local_spawn = self._build_local_osp_spawn(here, left, right);
         if local_spawn is not None {
@@ -560,7 +562,7 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
         }
     }
     logical_op = ES_LOGICAL_OPS.get(op_name) if op_name else None;
-    bin_expr: (es.LogicalExpression | es.BinaryExpression);
+    bin_expr: es.Expression;
     if logical_op {
         bin_expr = self.sync_loc(
             es.LogicalExpression(operator=logical_op, left=left, right=right),

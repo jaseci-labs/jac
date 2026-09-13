@@ -41,6 +41,8 @@ obj MTRuntime {
         _stream_reset_count: int = 0,
         _tool_arg_deltas: list[dict] = [],
         _usage_history: list[dict] = [],
+        _invocation_id: str | None = None,
+        _parent_invocation_id: str | None = None,
         _call_kind: str = "react_iteration";
 
     static def factory(mtir: MTIR) -> MTRuntime;
