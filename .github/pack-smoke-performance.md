@@ -48,12 +48,14 @@ The initial wall budgets use successful CI runs
 | Production readiness | 5 | 30 |
 | Fleet readiness | 85 | 180 |
 
-The initial peak-process RSS budgets are 4096 MiB for type checking and 6144 MiB
-for the builds, which also include the bundler. These are explicit resource
-budgets, not peaks measured from the old CI logs (those logs did not capture
-memory). Review the new CI measurements when calibrating these limits. Standalone
-client-build measurements are a different workload and must not be used as this
-job's baseline.
+The type-check RSS budget is 2560 MiB. Its completed instrumented step in
+[run 34765459547](https://github.com/jaseci-labs/jac/actions/runs/34765459547)
+used 2012.4 MiB and 63.65 seconds; that run was subsequently cancelled when the
+Jac checker revision was pushed. The initial build limits are 6144 MiB, including
+the bundler. Those are explicit resource budgets, not peaks inferred from the old
+CI logs, which did not capture memory. Review the recorded workflow measurements
+when calibrating these limits. Standalone client-build measurements are a
+different workload and must not be used as this job's baseline.
 
 Command timeouts fail their existing steps. The final Jac gate rejects exceeded
 budgets and missing or failed measurements and uploads `pack-smoke-performance`, including per-phase JSON with
