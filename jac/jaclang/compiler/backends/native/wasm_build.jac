@@ -377,44 +377,6 @@ def emit_wasm_from_ir(
     );
 }
 
-def wasm_import_map(wasm_bytes: bytes) -> dict {
-    import from jaclang.compiler.backends.native.linker_common {
-        read_leb_name,
-        read_uleb128
-    }
-    out = {};
-    o = 8;
-    while o < len(wasm_bytes) {
-        sid = wasm_bytes[o];
-        o += 1;
-        (size, o) = read_uleb128(wasm_bytes, o);
-        end = o + size;
-        if sid == 2 {
-            (cnt, o) = read_uleb128(wasm_bytes, o);
-            ci = 0;
-            while ci < cnt and o < end {
-                (mod_nm, o) = read_leb_name(wasm_bytes, o);
-                (fld, o) = read_leb_name(wasm_bytes, o);
-                kind = wasm_bytes[o];
-                o += 1;
-                if kind == 0 {
-                    (_t, o) = read_uleb128(wasm_bytes, o);
-                    out.setdefault(mod_nm, []).append(fld);
-                } else {
-                    break;
-                }
-                ci += 1;
-            }
-            break;
-        }
-        o = end;
-    }
-    for k in out {
-        out[k].sort();
-    }
-    return out;
-}
-
 def app_declared_imports(ir_module: UniModule) -> set[str] {
     names: set[str] = set();
     gen = ir_module.gen;

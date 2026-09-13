@@ -33,7 +33,10 @@ def build_native_product(base: Path, record: dict) {
             host_module=WASM_HOST_MODULE,
             app_imports=set(record['imports'])
         );
-        output.write_bytes(content);
+        import from jaclang.compiler.backends.native.wasm_artifact { wasm_assets }
+        for (name, data) in wasm_assets(output.stem, content).items() {
+            (output.parent / name).write_bytes(data);
+        }
         obj_path.unlink();
     } else {
         if record['kind'] == 'shared' {

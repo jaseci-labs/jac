@@ -100,35 +100,9 @@ impl ViteCompiler._compile_wasm_module(
         return {};
     }
     stem = native_wasm_stem(str(module_path));
-    assets: dict[str, bytes] = {f"{stem}.wasm": wasm};
+    import from jaclang.compiler.backends.native.wasm_artifact { wasm_assets }
     console.print(f"  Native wasm module: /static/{stem}.wasm ({len(wasm)} bytes)");
-
-    try {
-        import json;
-        import from jaclang.compiler.backends.native.wasm_build { wasm_import_map }
-        import from jaclang.compiler.backends.native.wasm_host_abi { WASM_HOST_MODULE }
-        imports = wasm_import_map(wasm);
-        assets[f"{stem}.wasm.imports.json"] = json.dumps(
-            {"abi": WASM_HOST_MODULE, "imports": imports}, indent=2
-        ).encode(
-            'utf-8'
-        );
-        app_ffi = [];
-        for mod_nm in imports {
-            if mod_nm != WASM_HOST_MODULE {
-                app_ffi.extend(imports[mod_nm]);
-            }
-        }
-        if app_ffi {
-            console.print(
-                f"    app FFI imports ({len(app_ffi)}): provide via the shim's"
-                    + " env at instantiation (see .wasm.imports.json)"
-            );
-        }
-    } except Exception as e {
-        console.warning(f"Could not write wasm import manifest: {e}");
-    }
-    return assets;
+    return wasm_assets(stem, wasm);
 }
 
 impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> None {
