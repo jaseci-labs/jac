@@ -50,7 +50,7 @@ def _find_spec_no_exec(target: str) -> (ModuleSpec | None) {
         }
     }
     for finder in `list(sys.meta_path) {
-        if finder is PathFinder {
+        if finder is PathFinder or target.split('.')[0] in sys.modules {
             continue;
         }
         fs = finder?.find_spec;

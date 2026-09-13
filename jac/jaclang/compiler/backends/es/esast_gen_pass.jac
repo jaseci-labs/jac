@@ -239,7 +239,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         exports: list[es.ExportNamedDeclaration] = [],
         scope_stack: list[ScopeInfo] = [],
         scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {},
-        _backend: FrameworkBackend | None = None,
+        backend: FrameworkBackend | None = None,
         client_manifest: ClientManifest = ClientManifest(),
         _jsx_processor: EsJsxProcessor | None = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
@@ -270,7 +270,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         _builtin_emitter: ESBuiltinEmitter = ESBuiltinEmitter(),
         _poly_methods: (set[str] | None) = None;
 
-    has backend: FrameworkBackend {
+    has resolved_backend: FrameworkBackend {
         getter {
             return self._ensure_backend();
         }

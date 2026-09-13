@@ -484,12 +484,11 @@ impl EsastGenPass.exit_try_stmt with uni.TryStmt exit {
         async_boundary = AsyncBoundary(
             try_expr=try_iife, awaiting_expr=awaiting_iife, except_exprs=except_iifes
         );
-        self._ensure_backend();
-        for sym in self.backend.async_boundary_symbols(async_boundary) {
+        for sym in self.resolved_backend.async_boundary_symbols(async_boundary) {
             self._inject_runtime_import(sym, here);
         }
         wrapper = self.sync_loc(
-            self.backend.lower_async_boundary(async_boundary), jac_node=here
+            self.resolved_backend.lower_async_boundary(async_boundary), jac_node=here
         );
         outer = self._cur_view_acc();
         if outer is not None {

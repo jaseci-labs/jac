@@ -25,9 +25,8 @@ impl EsastGenPass._exit_name_impl(nd: uni.Name) -> None {
         }
     }
     if (nd.sym_name in self.reactive_vars) and not self._in_identifier_slot(nd) {
-        self._ensure_backend();
         nd.gen.es_ast = self.sync_loc(
-            self.backend.lower_state_read(nd.sym_name), jac_node=nd
+            self.resolved_backend.lower_state_read(nd.sym_name), jac_node=nd
         );
         return;
     }

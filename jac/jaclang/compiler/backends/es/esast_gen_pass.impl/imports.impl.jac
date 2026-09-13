@@ -23,17 +23,15 @@ impl EsastGenPass._register_jac_virtual_import(module_id: str) -> None {
 }
 
 impl EsastGenPass._register_jac_runtime_import -> None {
-    self._ensure_backend();
-    self._register_jac_virtual_import(self.backend.runtime_module());
+    self._register_jac_virtual_import(self.resolved_backend.runtime_module());
 }
 
 impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
     import from jaclang.client.client_surface { runtime_import_source }
-    self._ensure_backend();
     if name in self.injected_imports or self._has_import(name) {
         return;
     }
-    src = runtime_import_source(name, self.backend);
+    src = runtime_import_source(name, self.resolved_backend);
     specifier = self.sync_loc(
         es.ImportSpecifier(
             imported=es.Identifier(name=name), local=es.Identifier(name=name)
