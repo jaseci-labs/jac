@@ -185,7 +185,12 @@ packaged runtime methods excluded by a package-path native-lowering shortcut.
 The updated analysis image passed 33 bootstrap/cache/npm tests, including the
 negative cache-verification oracle. A cold/warm npm warning regression passed,
 and the unchanged precompile work gate passed with interface verification enabled
-in 41.95 seconds. Native import cleanup is still undergoing validation.
+in 41.95 seconds. The native import cleanup passed five strict regressions in 30.71 seconds,
+including graph topology on Python/JavaScript/native, compiler-identity cache
+invalidation, implementation-annex invalidation, and imports through a directory
+symlink at a different depth. Native dependency keys now use the existing running
+compiler identity instead of rescanning a partial source-file list. Generated
+relative dependency paths are normalized before filesystem lookup.
 
 ## Outstanding validation
 
@@ -193,5 +198,6 @@ The normal integration commit hook passed all 261 source checks in 1,738.67
 seconds. The downstream compiler fix commit passed all 11 normal source checks.
 The latest completed Linux installation passed all 21 build steps, with 757 cold
 modules compiled in 2,203.82 seconds, before a newer push cancelled verification.
-The new analysis/native import changes require a final packaged self-rebuild and
-normal commit checks. Required CI checks on the final revision remain pending.
+The analysis changes passed all ten normal commit checks. The native changes passed both normal source checks in 40.95 seconds; a full
+native/tools suite and complete packaged self-rebuild are in progress. The Linux ARM64 native Python CI job passed on `5b14b0a01d`
+in about 92 minutes; the kit and macOS jobs are still running on that revision. Required CI checks on the final revision remain pending.
