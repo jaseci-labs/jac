@@ -130,6 +130,12 @@ target ABI and external native library requirements. Exporting C requires CMake 
 22 development files, or an explicit `JAC_LLVM_CBE` executable. Unsupported lowering
 fails at export instead of substituting a Python implementation.
 
+Prepared applications isolate their project imports under a private namespace.
+Exported runtime packages retain their public package namespace and ordinary
+Python import rules; their artifact records explicitly disable project import
+scoping. Both use the same loader for executable code, native bindings, and
+semantic metadata.
+
 The `jac-pack-eject` CI job rebuilds the full `jaclang_org` site without Jac and runs
 the shared browser journey, including native game frames. It also rebuilds the
 existing native arena replay from C and compares its six state snapshots. This is

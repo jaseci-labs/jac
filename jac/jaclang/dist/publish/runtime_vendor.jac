@@ -291,6 +291,7 @@ def build_runtime_closure(
         {
             'name': 'jaclang',
             'namespace': 'jaclang',
+            'scope_imports': False,
             'root': '.',
             'entry': '__init__.py',
             'modules': modules

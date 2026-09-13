@@ -28,6 +28,7 @@ def _load_application(record: dict, base: Path) -> PreparedApplication {
         str(entry_path),
         name=record['name'],
         namespace=record.get('namespace', ''),
+        scope_imports=record.get('scope_imports', True),
         dev=False,
         client_enabled=bool(record.get('client_dist')),
         client_dist=str(artifact_path(base, record['client_dist']))

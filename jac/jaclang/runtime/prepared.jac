@@ -14,6 +14,7 @@ obj PreparedApplication {
         origins: dict[str, str] = field(default_factory=`dict),
         name: str = '',
         namespace: str = '',
+        scope_imports: bool = True,
         client_compiler: ViteCompiler | None = None,
         client_enabled: bool = False,
         native: dict[str, tuple] = field(default_factory=`dict),
@@ -274,7 +275,9 @@ def entry_alias(fullname: str) -> tuple[str, str] | None {
 def module_builtins(application: PreparedApplication, source: str) -> dict {
     import builtins;
     import importlib;
-    import from pathlib { Path }
+    if not application.scope_imports {
+        return dict(vars(builtins));
+    }
     original = builtins.__import__;
     def scoped_import(
         name: str,
