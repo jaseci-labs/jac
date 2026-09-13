@@ -419,7 +419,7 @@ test "a misspelled deploy target is reported instead of silencing its section" {
 }
 
 test "known targets are exactly the ones the factory can build" {
-    import from jaclang.scale.deploy.target.factory { BUILTIN_TARGET_TYPES }
+    import from jaclang.scale.deploy.target.registry { BUILTIN_TARGET_TYPES }
     for name in BUILTIN_TARGET_TYPES {
         assert name in known_deploy_targets() , name;
     }

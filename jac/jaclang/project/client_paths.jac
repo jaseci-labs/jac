@@ -23,3 +23,29 @@ def client_app_root(
     }
     return Path(app.entry_path(str(config.project_root))).parent;
 }
+
+
+def client_assets_config(
+    config: JacConfig | None, entry_path: str = ""
+) -> dict[str, any] {
+    if config is None {
+        return {};
+    }
+    app = client_workspace_app(config, entry_path);
+    effective = config.effective_for_app(app.name) if app is not None else config;
+    return effective.get_plugin_config('client').get('assets', {});
+}
+
+
+def client_assets_dir(
+    config: JacConfig | None, project_dir: Path, entry_path: str = ""
+) -> Path {
+    configured = str(client_assets_config(config, entry_path).get('dir') or '');
+    if configured {
+        anchor = config.project_root
+            if config is not None and config.project_root is not None
+            else project_dir;
+        return Path(anchor) / configured;
+    }
+    return client_app_root(config, project_dir, entry_path) / 'assets';
+}
