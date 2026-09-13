@@ -137,7 +137,37 @@ keep their path mapping through local cache writes and subsequent packaging. Dia
 profile and dependency checks still govern reuse. Dependencies outside the
 package retain their existing validation and source fallback.
 
-Per-unit release keeps parsed stub trees while a compilation uses them.
+`CompilationSession` owns a bounded set of context programs across roots.
+Contexts share a `SourceStore` of pristine syntax; evaluated trees, type memos,
+catalog decodes, and product tasks belong to one context and worker. The default
+budget is 256 source modules or 32 root requests. At a completed request,
+reaching either budget, cancellation, or failure releases mutable analysis and
+preserves compact interface products. A single dependency closure may exceed
+the module budget while it is active; the precompile pool also retires workers
+at its configured RSS limit. Neither bound interrupts an in-progress pass.
+
+Source changes are checked at outer request boundaries and before publication.
+The dependency graph records both imported modules and compile-time file reads.
+An edit invalidates affected live products and their consumers. Disk replay uses
+interface hashes for ordinary imports and content hashes for compile-time inputs,
+so body-only edits retain the existing interface cutoff. Restored timestamps do
+not establish freshness. Publication holds the JIR lock across validation and
+merge; new dependency revisions cannot relabel older executable or diagnostic
+products. Released trees cannot publish new analysis, even when their encoded
+interfaces remain reusable.
+
+Package precompilation plans work with this same dependency graph and module
+resolver. Strongly connected components run together; the work pool releases a
+consumer only after its prerequisite groups finish. Completed dependency
+interfaces are published through `IfaceRegistry` before worker eviction. A
+replacement worker hydrates those products; it never borrows another worker's
+mutable tree or evaluator. Cold discovery retains at most the syntax budget,
+so an evicted tree may be parsed again when a later product requires it.
+
+The compiler's execution program has a separate lifetime from owned source
+sessions. Nested importer execution defers cleanup until the outer execution
+returns, preserving live analysis needed by imports in progress.
+
 The runtime graph driver indexes anchors with non-owning handles, including
 inside an execution context. Node and edge references keep reachable topology
 alive, and the persistence store owns stored anchors. When the last owner
@@ -149,6 +179,9 @@ At a completed compilation boundary, `release_compile_state` releases both
 source and stub roots. Activating the stub catalog also retires the private
 selfhost bootstrap closure before application compilation starts; it never
 changes the stub lens of an active application compilation.
+
+Build artifact identities, stage measurements, and the cold/warm validation
+procedure are described in [`dist/payload/README.md`](../dist/payload/README.md).
 
 ## Rules
 

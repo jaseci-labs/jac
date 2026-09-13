@@ -1,0 +1,81 @@
+# Payload construction and reuse
+
+`assemble.mk_payload` stages the compiler, builds or restores the native kernel,
+installs the pinned runtime wheels, precompiles and seals the package, compiles
+Python sources, and combines the dependency and Jac compression frames.
+Each producer validates its own inputs and completed outputs before reuse.
+
+## Identities and publication
+
+| Product | Inputs and validation | Owner |
+| --- | --- | --- |
+| CI binary and source snapshots | Tracked Git tree records captured once before restore or build mutations | `scripts/build_cache_keys.sh`, shared `build-inputs` action |
+| Module products | Compiler/toolchain, source and annex contents, compilation context, dependency interfaces, compile-time input contents | Compiler JIR and `IfaceRegistry` |
+| Native kernel and layout | Compiler sources, shim contents, host, interpreter, codegen options, ancestor project configuration, payload producer | `ArtifactStore` |
+| Stub catalog | Compiler source identity, actual stub contents, Python/platform, catalog format, requested module selection | Catalog builder and its manifest |
+| Bootstrap products | Existing jac0 bytecode identity, full precompile identity, dependency facts, debug-source mode | Bootstrap importer and seed sealer |
+| Runtime wheel installation | Hash-locked requirements, target interpreter, bundled pip wheel, staging/archive producer | `ArtifactStore` |
+| Python bytecode | Target interpreter, source contents, normalized filename, optimization mode | `ArtifactStore`, standard `py_compile` |
+| Compressed frames | Deterministic tar contents, compression parameters, interpreter | Existing frame cache with decoded-content verification |
+
+The broad compiler input set remains conservative. Its source authority lives in
+`bootstrap_manifest.py`; both the compiler and the pre-build cache-key script use
+that definition. Generated outputs never participate in tracked CI identities.
+Kernel construction writes its completed library and layout to the staged build,
+without copying them back into compiler sources.
+
+`ArtifactStore` uses the common `FileLock` and `atomic_write` primitives. Its
+manifest is published last and names the content hash and mode of every member.
+Restoring a pair validates both members before replacing either destination.
+Inactive artifact directories expire after 30 days; locked producers are retained.
+Lock files keep stable inodes so concurrent processes continue to coordinate.
+JIR publication uses the same locking primitives around its section merge.
+
+CI cache entries are immutable. The payload cache therefore restores by a source
+prefix and saves changed contents under a new run snapshot, including when the
+restored outer cache lacked a required inner artifact. The producer remains the
+authority for compatibility after a prefix restore.
+
+## Environment and deterministic staging
+
+Kernel construction and catalog construction use their explicit bootstrap
+settings. Module precompile and seal processes select the staged native kernel
+when its library and layout exist; otherwise they select the bootstrap frontend.
+The kernel loader performs its usual compatibility checks.
+
+`python_dependencies.txt` pins wheel versions and SHA-256 hashes. Installation
+uses the target interpreter's bundled pip wheel with hash verification, without
+upgrading the build interpreter's environment. Generated command wrappers are
+removed because they embed temporary paths; runtime tools run as Python modules.
+The floor's existing `site-packages` is excluded from staging. Python bytecode
+uses unchecked source hashes and `/jac-rt/` filenames. A distinct target
+interpreter compiles all cache misses in one subprocess; unchanged files still
+reuse their completed bytecode.
+
+## Measurements
+
+Set `JAC_BUILD_METRICS` to choose the producer report path. Otherwise the report
+is written beside the payload as `<output>.metrics.json`, including on failure.
+CI uploads `jac/.build-metrics` as `build-kit-measurements`.
+
+- `stages` records wall time, process CPU, waited child CPU, process peak RSS,
+  and success. These stages are inclusive; do not sum nested entries.
+- `cache_outcomes` records producer hits, misses, and compiled/reused file counts.
+- `compilation` includes the dependency plan, compiler and Python identities,
+  worker configuration, per-job PID/setup/time/RSS, and per-file compiler work.
+- Compiler `exclusive_seconds` subtracts nested phases and passes, including
+  dependency work. `frontend:parse` and `frontend:copy` separate parser work from
+  copying shared syntax. Product/cache events distinguish reuse from computation.
+- `compilation.seal` records compiled, reused, and bytecode-only bootstrap reuse.
+
+RSS is the process high-water mark, not a sum of live objects or a peak across
+the entire process tree. Worker RSS is recorded separately. Child CPU includes
+children already waited for; it is not a measure of parallel wall time.
+
+For comparisons, keep the source revision, machine, Python/shim/kernel inputs,
+worker count, and session/retirement budgets fixed. Run payload construction with
+fresh producer and precompile caches, then preserve only selected artifacts for
+a partially warm run, then repeat with all caches present. Use a fresh output
+path so the enclosing Zig output cache does not skip the producer being measured.
+Record the cache state with each report. Compare executable behavior and final
+artifacts as well as durations; log gaps in buffered Zig output are not timings.
