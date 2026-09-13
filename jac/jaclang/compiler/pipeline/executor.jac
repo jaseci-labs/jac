@@ -27,6 +27,25 @@ import from contextlib { contextmanager }
 import from jaclang.compiler.pipeline.pass_base { Alert, DiagnosticPolicy }
 import from jaclang.compiler.session.session { JacProgram }
 
+@contextmanager
+def compilation_resources -> Iterator[None] {
+    import gc;
+    import from jaclang.compiler.session.compiler { COMPILE_GC_THRESHOLDS }
+    previous = gc.get_threshold();
+    boosted = not os.environ.get("JAC_GC_NO_COMPILE_BOOST")
+        and previous[0] < COMPILE_GC_THRESHOLDS[0];
+    if boosted {
+        gc.set_threshold(*COMPILE_GC_THRESHOLDS);
+    }
+    try {
+        yield ;
+    } finally {
+        if boosted {
+            gc.set_threshold(*previous);
+        }
+    }
+}
+
 def run_pass(
     step: PassIdentity | PassSpec,
     ir_in: UniNode,
@@ -80,7 +99,7 @@ def run_pass(
     );
     try {
         import from jaclang.compiler.backends.common.artifact_store { artifact_scope }
-        with artifact_scope(prog.analysis.artifacts), MutationScope(
+        with compilation_resources(), artifact_scope(prog.analysis.artifacts), MutationScope(
             prog.analysis.mutations, sum(relation_bit(family) for family in spec.writes)
         ) {
             inst = spec.create(
@@ -290,7 +309,7 @@ def execute_query[A, R](
     );
     try {
         context = QueryContext(program, work_module, build_diagnostic_policy(program));
-        with artifact_scope(program.analysis.artifacts), MutationScope(
+        with compilation_resources(), artifact_scope(program.analysis.artifacts), MutationScope(
             program.analysis.mutations,
             sum(relation_bit(family) for family in spec.writes)
         ) {

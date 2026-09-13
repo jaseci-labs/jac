@@ -377,6 +377,10 @@ impl collect_member_syms(
 
     def descend(s: UniScopeNode) -> list[Symbol] {
         gathered: list[Symbol] = list(s.lookup_all(name, deep=False) or []);
+        # Only overloads merge declarations from conditional child scopes.
+        if gathered and not is_overload_sym(gathered[0]) {
+            return gathered;
+        }
         for kid in s.kid_scope {
             if UniScopeNode.is_python_scoping(kid) {
                 continue;

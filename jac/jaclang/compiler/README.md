@@ -38,7 +38,10 @@ flowchart TD
 `schedule.jac` owns phase ordering, product prerequisites, pass factories and
 query factories. A consumer requests a product; it does not instantiate a pass
 or assemble a private list. `executor.jac` establishes diagnostic, artifact and
-mutation scopes and reports progress. `products.jac` tracks task outcomes,
+mutation scopes and reports progress. Scheduled passes and queries also apply
+the compiler's GC thresholds while they run and restore the caller's settings,
+so catalog preparation receives the same allocation policy as compilation.
+`products.jac` tracks task outcomes,
 dependencies, versions and invalidation. `request.jac` advances a module request
 through the selected schedule.
 
@@ -114,6 +117,10 @@ context; it does not share another context's live objects.
 An interface lookup prefers a valid local interface, but a local bytecode-only
 record cannot hide the interface in a sealed SDK image. Packaging consumes the
 same selected metadata and rebases its paths for the destination package.
+Member lookup stops at an ordinary local declaration. Conditional child scopes
+are searched when the name is absent locally or when a local overload set can
+merge with conditional overloads.
+
 Type lookup consumes these interfaces even for compile-time imports; evaluating
 a compile-time value requests the producer's body separately.
 
