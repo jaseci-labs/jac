@@ -360,3 +360,12 @@ it does not establish the cause of the earlier CI runner communication loss.
 The complete byLLM directory additionally passes 241 tests (one skip). The actual
 Stage-1 image, including its newly generated catalog, passes all six previously
 failing source files with CI's provider SDK dependencies installed.
+
+## Complete provider/compiler staged build
+
+The provider/compiler revision passed all 29 install and verification steps.
+Stage 1 reused 731 modules and compiled 26 in 188.07 seconds. Stage 2 rebuilt
+all 757 modules in 390.74 seconds. Both stages generated catalogs with zero
+evaluation failures (69.43 and 71.05 seconds) and passed image verification.
+This includes all compiler/provider type fixes; the subsequent test-worker
+budget change is undergoing its own final rebuild. CI status is tracked on the PR.
