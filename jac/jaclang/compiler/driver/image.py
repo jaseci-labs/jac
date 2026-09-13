@@ -515,6 +515,21 @@ def source_for(fullname: str) -> str | None:
     return found[0].debug_source(fullname)
 
 
+def find_source(source_path: str) -> tuple[SealedImage, dict, str] | None:
+    """Resolve a source path through the registered, verified image manifests."""
+    _jaclang_image()
+    source = Path(source_path).resolve()
+    for image in _images:
+        try:
+            relative = source.relative_to(image.pkg_dir.resolve()).as_posix()
+        except ValueError:
+            continue
+        entry = image.manifest.get("modules", {}).get(relative)
+        if entry is not None:
+            return image, entry, relative
+    return None
+
+
 def image_for_bundle_dir(bundle_dir: str | Path) -> SealedImage | None:
     """Map a ``_precompiled`` directory back to its loaded sealed image.
 

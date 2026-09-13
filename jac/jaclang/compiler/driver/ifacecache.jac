@@ -456,6 +456,22 @@ obj IfaceRegistry {
                 return (cache_path.read_bytes(), "", );
             }
         } except Exception {}
+        import from jaclang.compiler.driver.image { find_source }
+        import from jaclang.compiler.driver.jir { precompiled_jir_matches_source }
+        found = find_source(resolved);
+        if found is not None {
+            (image, artifact, _) = found;
+            try {
+                data = image.jir_path(artifact).read_bytes();
+                package_root = str(image.pkg_dir);
+                if read_section_bytes(data, SEC_IFACE) is not None
+                    and precompiled_jir_matches_source(
+                        data, resolved, package_root=package_root
+                    ) {
+                    return (data, package_root);
+                }
+            } except OSError {}
+        }
         return None;
     }
 

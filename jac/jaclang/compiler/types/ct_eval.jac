@@ -324,6 +324,11 @@ obj CtEvaluator {
         }
         try {
             self._note_ct_path(os.path.realpath(path), body=body);
+            for dependency in home.ct_file_deps {
+                self._note_ct_path(
+                    os.path.realpath(dependency), body=dependency in home.ct_body_deps
+                );
+            }
         } except OSError {}
     }
 
