@@ -1,5 +1,3 @@
-"""Read-only build status shared by serving and development tooling."""
-
 import from enum { StrEnum }
 import type from jaclang.server.hmr { HotReloader }
 

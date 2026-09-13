@@ -1,5 +1,3 @@
-"""Client bundle artifacts shared by builders and the application server."""
-
 import from pathlib { Path }
 import from types { ModuleType }
 
@@ -23,7 +21,9 @@ def prebuilt_bundle(module: ModuleType, source_path: Path) -> ClientBundle | Non
     }
     candidates = sorted(dist.`glob('client.*.js'));
     if len(candidates) != 1 {
-        raise ClientBundleError(f'Expected one client bundle in {dist}, found {len(candidates)}');
+        raise ClientBundleError(
+            f'Expected one client bundle in {dist}, found {len(candidates)}'
+        );
     }
     bundle_js = candidates[0];
     manifest = serve_manifest_for(str(source_path)) or {};

@@ -503,6 +503,7 @@ def _prepare(
                 or (Path(`entry).parent / 'pages').is_dir()
         );
     if has_client {
+        assert revision.client_compiler is not None;
         console.print('  Compiling client and native artifacts...');
         revision.client_compiler.compile(None, Path(`entry));
         if not dev {
@@ -565,6 +566,7 @@ def _prepare(
     }
     outputs = {};
     if has_client {
+        assert revision.client_compiler is not None;
         for directory in (
             revision.client_compiler.compiled_dir,
             revision.client_compiler.vite_bundler.output_dir

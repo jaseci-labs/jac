@@ -1,5 +1,3 @@
-"""Runtime services for colocated and distributed applications."""
-
 import os;
 import type from jaclang.runtime.context { ExecutionContext }
 import type from jaclang.server.server { JacAPIServer as JacServer, ServerExtension }

@@ -142,7 +142,12 @@ import from jaclang.compiler.frontend.unitree {
 import from jaclang.compiler.frontend.unitree { Ellipsis as EllipsisLit }
 
 import from jaclang.runtime.constants { EdgeDir }
-import from jaclang.compiler.frontend.constant { Tokens as Tok, CodeContext, OwnershipKind, ParamKind }
+import from jaclang.compiler.frontend.constant {
+    Tokens as Tok,
+    CodeContext,
+    OwnershipKind,
+    ParamKind
+}
 
 glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.INT: Tok.INT.value,

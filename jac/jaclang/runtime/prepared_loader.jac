@@ -1,5 +1,3 @@
-"""Import executable artifacts from a prepared application's module closure."""
-
 import importlib;
 import importlib.util;
 import os;
@@ -15,7 +13,7 @@ obj PreparedAliasLoader(Loader) {
         return importlib.import_module(self.target);
     }
 
-    def exec_module(module: ModuleType) -> None {}
+    def exec_module(module: ModuleType) {}
 }
 
 obj PreparedLoader(Loader) {
@@ -25,7 +23,7 @@ obj PreparedLoader(Loader) {
         return None;
     }
 
-    def exec_module(module: ModuleType) -> None {
+    def exec_module(module: ModuleType) {
         import from jaclang.runtime.prepared { execute_module }
         execute_module(module, self.application);
     }

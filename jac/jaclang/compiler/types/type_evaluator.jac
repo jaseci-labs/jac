@@ -113,7 +113,15 @@ import from jaclang.compiler.frontend.unitree {
     YieldExpr
 }
 import from jaclang.runtime.constants { EdgeDir }
-import from jaclang.compiler.frontend.constant { TOKEN_MAP, BindingKind, CodeContext, SymbolType, Tokens as Tok, SymbolAccess, OwnershipKind }
+import from jaclang.compiler.frontend.constant {
+    TOKEN_MAP,
+    BindingKind,
+    CodeContext,
+    SymbolType,
+    Tokens as Tok,
+    SymbolAccess,
+    OwnershipKind
+}
 import from jaclang.compiler.types.types {
     AnyType,
     ClassDetailsPrivate,

@@ -1,5 +1,3 @@
-"""Test discovery and execution using the configured Jac compiler services."""
-
 import fnmatch;
 import os;
 import from jaclang.runtime.runtime { JacRuntimeInterface }

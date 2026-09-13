@@ -1,5 +1,3 @@
-"""Compiler implementation of the runtime's optional build service interface."""
-
 import from jaclang.runtime.build_services { BuildServices }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.program { JacProgram }

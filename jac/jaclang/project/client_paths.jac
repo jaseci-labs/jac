@@ -1,5 +1,3 @@
-"""Resolve per-application client directories from project configuration."""
-
 import from pathlib { Path }
 import type from jaclang.project.config { JacConfig }
 import type from jaclang.project.apps { AppConfig }

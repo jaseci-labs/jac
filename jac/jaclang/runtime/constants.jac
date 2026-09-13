@@ -1,5 +1,3 @@
-"""Shared runtime names and graph direction values."""
-
 import from enum { StrEnum }
 
 class Constants(StrEnum) {

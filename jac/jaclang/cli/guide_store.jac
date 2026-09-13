@@ -1,6 +1,5 @@
 import from pathlib { Path }
 
-# Package resources travel with the module in source and wheel projections.
 glob __jac_resources__: list[str] = ["docs/**/*", "skills/**/*"];
 
 obj Guide {

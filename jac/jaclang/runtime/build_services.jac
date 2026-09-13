@@ -1,5 +1,3 @@
-"""Optional build-time services; executable runtime artifacts do not construct compilers."""
-
 import importlib;
 import from functools { cache }
 import from typing { Protocol }

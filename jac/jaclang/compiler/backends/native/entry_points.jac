@@ -1,5 +1,3 @@
-"""Native entry points and product validation shared by binary and source emission."""
-
 import type from jaclang.compiler.frontend.unitree { Module }
 
 def validate_native_application(module: Module, shared: bool, memory: str) -> str {

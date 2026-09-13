@@ -33,9 +33,18 @@ def colocate_services(
     project_root = str(cfg.project_root) if cfg.project_root else base;
     for svc in services {
         prepared = next(
-            (child for child in application.applications if child.name == svc.name), None
-        ) if application is not None else None;
-        entry_file = prepared.entry if prepared is not None else svc.entry_path(project_root);
+            (
+                child
+                for child in application.applications
+                if child.name == svc.name
+            ),
+            None
+        )
+            if application is not None
+            else None;
+        entry_file = prepared.entry
+            if prepared is not None
+            else svc.entry_path(project_root);
         if not entry_file or not os.path.isfile(entry_file) {
             console.warning(
                 f"Service app '{svc.name}' has no entry_file file; not colocated."

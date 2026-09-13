@@ -1,5 +1,3 @@
-"""C source projection of the native backend's lowered LLVM module."""
-
 import subprocess;
 import tempfile;
 import from pathlib { Path }

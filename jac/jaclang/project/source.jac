@@ -380,5 +380,3 @@ def read_jacignore_patterns(project_root: str) -> list[str] {
         read_file_with_encoding(ignore_file).splitlines()
     );
 }
-
-

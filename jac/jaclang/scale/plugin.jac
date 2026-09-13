@@ -548,4 +548,3 @@ def scale_cmd(
 
     return 0;
 }
-

@@ -1,5 +1,3 @@
-"""Placement pins are project configuration shared by execution and compilation."""
-
 import fnmatch;
 import os;
 import from jaclang.jac0core.ext_registry { base_stem }

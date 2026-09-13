@@ -37,7 +37,7 @@ obj NativeLibrary {
         return address;
     }
 
-    def register_symbol(name: str, address: int) -> None {
+    def register_symbol(name: str, address: int) {
         bind_function = getattr(self.handle(), '__jac_bind_' + name);
         bind_function.argtypes = [ctypes.c_void_p];
         bind_function.restype = None;
