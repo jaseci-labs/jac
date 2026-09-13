@@ -76,9 +76,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                         return binding.type;
                     }
                     mod = self._import_module_from_path(
-                        path_str,
-                        importer_path=self._resolve_importer_path(node_),
-                        need_tree=import_node.is_comptime
+                        path_str, importer_path=self._resolve_importer_path(node_)
                     );
                     if mod is None {
                         return UnknownType(is_incomplete=True);
@@ -399,11 +397,8 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
                 self._module_type_cache[mod_path] = mod_type;
                 continue;
             }
-            _imp = node_.find_parent_of_type(Import);
             mod = self._import_module_from_path(
-                mod_path,
-                importer_path=self._resolve_importer_path(node_),
-                need_tree=bool(_imp is not None and _imp.is_comptime)
+                mod_path, importer_path=self._resolve_importer_path(node_)
             );
             if mod is None {
                 return UnknownType(is_incomplete=True);
@@ -484,7 +479,7 @@ impl TypeEvaluator._resolve_submodule_attr(
 }
 
 impl TypeEvaluator._import_module_from_path(
-    path: str, importer_path: (str | None) = None, need_tree: bool = False
+    path: str, importer_path: (str | None) = None
 ) -> Module | None {
     resolved_path = str(Path(path).resolve());
 
@@ -499,7 +494,7 @@ impl TypeEvaluator._import_module_from_path(
         self._modules_in_compile.add(resolved_path);
         try {
             mod = self.program.load_dependency_module(
-                path, importer_path=importer_path, need_tree=need_tree
+                path, importer_path=importer_path
             );
         } finally {
             self._modules_in_compile.discard(resolved_path);

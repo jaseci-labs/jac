@@ -114,6 +114,8 @@ context; it does not share another context's live objects.
 An interface lookup prefers a valid local interface, but a local bytecode-only
 record cannot hide the interface in a sealed SDK image. Packaging consumes the
 same selected metadata and rebases its paths for the destination package.
+Type lookup consumes these interfaces even for compile-time imports; evaluating
+a compile-time value requests the producer's body separately.
 
 Packaging retains the self-host compilation closure until both bytecode and
 interface metadata are collected. Native artifacts are retained normally;

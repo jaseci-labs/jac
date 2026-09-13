@@ -1464,3 +1464,34 @@ test "symbol-only compilation does not load unused compile-time bodies" {
         assert not warm.errors_had;
     }
 }
+
+
+test "type queries for compile-time imports use prepared interfaces" {
+    import from jaclang.compiler.api { query_type }
+    import from jaclang.compiler.ir.types.nodes { ClassType }
+    with tempfile.TemporaryDirectory() as directory {
+        provider = str(Path(directory) / "provider.jac");
+        consumer = str(Path(directory) / "consumer.jac");
+        Path(provider).write_text("comptime VALUE: int = 42;\n");
+        Path(consumer).write_text(
+            "comptime import from provider { VALUE }\n"
+            "def answer -> int { return VALUE; }\n"
+        );
+        cold = _context(consumer);
+        assert cold.iface_registry().ensure(provider) is not None;
+        warm = _context(consumer);
+        module = warm.compile(
+            consumer, options=warm.options.for_symbols(need_tree=True)
+        );
+        context = warm.module_context(module);
+        value = module.lookup("VALUE");
+        assert value is not None;
+        value_type = query_type(context, value);
+        assert isinstance(value_type, ClassType);
+        assert value_type.shared.class_name == "int";
+        loaded = context.find_module(provider);
+        assert loaded is None or loaded.stub_only , "a type query loaded the compile-time producer body";
+        assert context.analysis.cache_events.get("dep_hydrate", 0) == 1;
+        assert not warm.errors_had , [e.pretty_print() for e in warm.errors_had];
+    }
+}
