@@ -218,7 +218,7 @@ def start_server_span(
     }
 
     parsed = parse_traceparent(parent_traceparent);
-    span = None;
+    span: Span;
     if parsed is not None {
         flags = TraceFlags(_FLAG_SAMPLED if parsed["sampled"] else 0);
         parent_ctx = SpanContext(
