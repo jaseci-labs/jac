@@ -221,7 +221,7 @@ binascii
 _operator -lcrypto
 _queue
 _json
-_csv jac_modules/csv.c
+_csv
 _struct
 cmath
 math

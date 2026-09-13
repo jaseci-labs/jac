@@ -318,6 +318,27 @@ assert _heapq.heappop([1, 2, 3]) == 1
         raise AssertionError("Native CSV ignored its field limit")
     finally:
         _csv.field_size_limit(previous_limit)
+    # Callback owners and native CSV parsing state participate in cyclic GC.
+    import gc
+    import weakref
+    class CsvInput:
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise StopIteration
+
+    class CsvOutput:
+        def write(self, data):
+            return len(data)
+
+    for owner_type, factory in ((CsvInput, _csv.reader), (CsvOutput, _csv.writer)):
+        owner = owner_type()
+        owner.binding = factory(owner)
+        owner_ref = weakref.ref(owner)
+        del owner
+        gc.collect()
+        assert owner_ref() is None, "Native CSV bindings hid a callback cycle"
     assert ctypes.pythonapi.jacpy_json_encode
     assert ctypes.pythonapi.jacpy_json_scan
     import json

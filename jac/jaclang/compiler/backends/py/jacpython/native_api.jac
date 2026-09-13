@@ -152,17 +152,7 @@ import from jaclang.runtime.python.modules.collections {
 import from jaclang.runtime.python.bindings.struct { PyInit__struct }
 import from jaclang.runtime.python.bindings.cmath { PyInit_cmath }
 
-import from jaclang.runtime.python.modules.csv {
-    jacpy_csv_dialect,
-    jacpy_csv_reader_new,
-    jacpy_csv_reader_clear,
-    jacpy_csv_reader_fields,
-    jacpy_csv_reader_line,
-    jacpy_csv_read,
-    jacpy_csv_writer_new,
-    jacpy_csv_write,
-    jacpy_csv_registry
-}
+import from jaclang.runtime.python.bindings.csv { PyInit__csv }
 import from jaclang.runtime.python.bindings.json { PyInit__json }
 import from jaclang.runtime.python.bindings.queue { PyInit__queue }
 import from jaclang.runtime.python.bindings.operator { PyInit__operator }

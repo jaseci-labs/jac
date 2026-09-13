@@ -48,7 +48,16 @@ import from jaclang.runtime.python.capi {
     jacpy_object_str,
     jacpy_call_one
 }
-import from c { def jacpy_csv_limit(module: u64) -> i64;  }
+import from jaclang.runtime.python.bindings.state { NativeState }
+
+obj CsvConfig(NativeState) {
+    has limit: i64 = 128 * 1024;
+
+    def clear {}
+    def traverse_refs(visitor: u64, context: u64) -> i32 {
+        return i32(0);
+    }
+}
 
 def:priv fail(kind: str, message: str) {
     object_error(kind, message);
@@ -339,15 +348,15 @@ obj csv_reader {
         }
     }
 
-    def append(character: int, module: u64, error: u64) {
-        limit = int(jacpy_csv_limit(module));
+    def append(character: int, module: CsvConfig, error: u64) {
+        limit = int(module.limit);
         if len(self.field) >= limit {
             csv_error(error, "field larger than field limit (" + str(limit) + ")");
         }
         self.field.append(character);
     }
 
-    def feed(character: int, dialect: csv_dialect, module: u64, error: u64) {
+    def feed(character: int, dialect: csv_dialect, module: CsvConfig, error: u64) {
         # -2 is the physical line boundary; -1 is an unset dialect character.
         if self.state == parse_state.START_RECORD {
             if character == -2 {
@@ -481,7 +490,7 @@ def:pub jacpy_csv_reader_line(reader: csv_reader) -> i64 {
 }
 
 def:pub jacpy_csv_read(
-    reader: csv_reader, iterator: u64, options: u64, module: u64, error: u64
+    reader: csv_reader, iterator: u64, options: u64, module: CsvConfig, error: u64
 ) -> u64 {
     try {
         reader.reset();

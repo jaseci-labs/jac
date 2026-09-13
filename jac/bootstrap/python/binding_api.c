@@ -33,6 +33,11 @@ typedef struct {
     PyMethodDef methods[];
 } JacModuleSpec;
 
+typedef struct {
+    void *native;
+    PyObject *references[];
+} JacModuleState;
+
 static void discard_methods(JacMethodTable *table) {
     free(table->name);
     free(table->doc);
@@ -58,7 +63,7 @@ uint64_t jacpy_binding_module(const char *name, const char *doc, int64_t count,
     spec->table = (JacMethodTable){strdup(name), strdup(doc), spec->methods};
     spec->definition.m_name = spec->table.name;
     spec->definition.m_doc = spec->table.doc;
-    spec->definition.m_size = state_count * sizeof(PyObject *);
+    spec->definition.m_size = sizeof(JacModuleState) + state_count * sizeof(PyObject *);
     spec->definition.m_traverse = (traverseproc)hooks.traverse;
     spec->definition.m_clear = (inquiry)hooks.clear;
     spec->definition.m_free = (freefunc)hooks.free;
@@ -101,15 +106,15 @@ int64_t jacpy_binding_add(uint64_t module, const char *name, uint64_t value) {
  * meaning, initialization, traversal, and clearing. Get borrows; set retains. */
 int64_t jacpy_binding_state_count(uint64_t module) {
     if (!PyModule_GetState(P(module))) return 0;
-    return PyModule_GetDef(P(module))->m_size / sizeof(PyObject *);
+    return (PyModule_GetDef(P(module))->m_size - sizeof(JacModuleState)) / sizeof(PyObject *);
 }
 uint64_t jacpy_binding_state_get(uint64_t module, int64_t index) {
-    PyObject **state = PyModule_GetState(P(module));
-    return H(state[index]);
+    JacModuleState *state = PyModule_GetState(P(module));
+    return H(state->references[index]);
 }
 void jacpy_binding_state_set(uint64_t module, int64_t index, uint64_t value) {
-    PyObject **state = PyModule_GetState(P(module));
-    Py_XSETREF(state[index], Py_XNewRef((PyObject *)P(value)));
+    JacModuleState *state = PyModule_GetState(P(module));
+    Py_XSETREF(state->references[index], Py_XNewRef((PyObject *)P(value)));
 }
 int32_t jacpy_binding_visit(uint64_t value, uint64_t visitor, uint64_t context) {
     return value ? ((visitproc)P(visitor))(P(value), P(context)) : 0;
@@ -259,6 +264,28 @@ static void **native_payload(uint64_t object, uint64_t definition) {
 
 extern void jac_retain(void *);
 extern void jac_release(void *);
+
+void *jacpy_binding_module_native_get(uint64_t module) {
+    JacModuleState *state = PyModule_GetState(P(module));
+    void *value = state ? state->native : NULL;
+    if (value) jac_retain(value);
+    return value;
+}
+void jacpy_binding_module_native_set(uint64_t module, void *value) {
+    JacModuleState *state = PyModule_GetState(P(module));
+    void *previous = state->native;
+    if (value) jac_retain(value);
+    state->native = value;
+    if (previous) jac_release(previous);
+}
+void jacpy_binding_module_native_clear(uint64_t module) {
+    if (PyModule_GetState(P(module))) jacpy_binding_module_native_set(module, NULL);
+}
+int64_t jacpy_binding_module_native_present(uint64_t module) {
+    JacModuleState *state = PyModule_GetState(P(module));
+    return state && state->native;
+}
+
 void *jacpy_binding_native_get(uint64_t object, uint64_t definition) {
     void **slot = native_payload(object, definition);
     if (!slot) return NULL;

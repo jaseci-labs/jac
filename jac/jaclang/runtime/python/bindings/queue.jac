@@ -18,7 +18,7 @@ import from jaclang.runtime.python.bindings.type {
     jacpy_binding_base,
     jacpy_binding_owner
 }
-import from jaclang.runtime.python.bindings.state {
+import from jaclang.runtime.python.bindings.payload {
     jacpy_binding_native_get,
     jacpy_binding_native_set,
     jacpy_binding_native_present,

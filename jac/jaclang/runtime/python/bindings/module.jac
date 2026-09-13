@@ -4,6 +4,7 @@ Declarations contain no Python objects and are constructed once during native
 initialization. The immutable records can be shared by isolated interpreters.
 """
 import from jaclang.runtime.python.capi { jacpy_release }
+import from jaclang.runtime.python.bindings.state { NativeState }
 import from c {
     obj ModuleHooks {
         has execute: Callable[[u64], i32] = 0,
@@ -29,7 +30,22 @@ import from c {
     ) -> i32;  def jacpy_binding_exception(name: str, base: str, doc: str) -> u64;
 }
 
+import from c {
+    def jacpy_binding_module_native_get(module: u64) -> NativeState;  def jacpy_binding_module_native_set(
+        module: u64, state: NativeState
+    );  def jacpy_binding_module_native_clear(module: u64);  def jacpy_binding_module_native_present(
+        module: u64
+    ) -> i64;
+}
+
 def traverse_state(module: u64, visitor: u64, context: u64) -> i32 {
+    if jacpy_binding_module_native_present(module) != 0 {
+        state = jacpy_binding_module_native_get(module);
+        status = state.traverse_refs(visitor, context);
+        if status != 0 {
+            return status;
+        }
+    }
     for index in range(int(jacpy_binding_state_count(module))) {
         result = jacpy_binding_visit(
             jacpy_binding_state_get(module, i64(index)), visitor, context
@@ -42,6 +58,11 @@ def traverse_state(module: u64, visitor: u64, context: u64) -> i32 {
 }
 
 def clear_state(module: u64) -> i32 {
+    if jacpy_binding_module_native_present(module) != 0 {
+        state = jacpy_binding_module_native_get(module);
+        state.clear();
+        jacpy_binding_module_native_clear(module);
+    }
     for index in range(int(jacpy_binding_state_count(module))) {
         jacpy_binding_state_set(module, i64(index), 0);
     }

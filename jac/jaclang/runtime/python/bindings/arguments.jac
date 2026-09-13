@@ -5,6 +5,7 @@ import from jaclang.runtime.python.capi {
     object_error,
     text_value,
     jacpy_release,
+    jacpy_retain,
     jacpy_tuple_size,
     jacpy_tuple_item,
     jacpy_dict_items,
@@ -18,12 +19,14 @@ import from c { def jacpy_ssize(value: u64) -> i64;  }
 
 obj BoundArguments {
     has values: list[u64],
-        context: u64 = 0;
+        context: u64 = 0,
+        keywords: u64 = 0;
 
     def drop {
         for value in self.values {
             jacpy_release(value);
         }
+        jacpy_release(self.keywords);
     }
 }
 
@@ -125,13 +128,17 @@ def invoke(
     args: u64,
     kwargs: u64,
     implementation: Callable[[BoundArguments], u64],
-    context: u64 = 0
+    context: u64 = 0,
+    forward_keywords: bool = False
 ) -> u64 {
     # The call frame lives outside the exception region: every exit releases
     # all converted arguments, including a failure in a nested conversion.
     bound = BoundArguments([u64(0) for _ in signature.names], context);
+    if forward_keywords and kwargs != 0 {
+        bound.keywords = jacpy_retain(kwargs);
+    }
     try {
-        if not signature.bind(bound, args, kwargs) {
+        if not signature.bind(bound, args, u64(0) if forward_keywords else kwargs) {
             return 0;
         }
         return implementation(bound);
