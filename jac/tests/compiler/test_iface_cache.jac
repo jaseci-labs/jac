@@ -458,7 +458,7 @@ test "a compile acting on an inferred native verdict persists no interface" {
         != before , "a declared native placement must reach the interface";
 }
 
-test "the interface-bytes memo outlives the compile closure" {
+test "the interface-bytes memo outlives the compile closure without republishing released analysis" {
     # Encoding an interface forces every exported symbol's type, which pulls
     # the module's dependencies in; re-persisting an unchanged module (the
     # client-boundary walk re-enters package modules dozens of times per
@@ -470,10 +470,17 @@ test "the interface-bytes memo outlives the compile closure" {
     reg = prog.iface_registry();
     events = prog.analysis.cache_events;
     assert events.get("iface_encode", 0) == 1 , f"the cold persist did not encode (events: {events})";
+    encoded = reg._iface_bytes[dep];
+    cache = _cache_path(dep);
+    before = cache.read_bytes();
     prog.release_compile_closure();
+    assert reg._iface_bytes[dep] is encoded;
     reg.persist_after_compile(dep, mod, _check_opts(), 0, 0);
     events = prog.analysis.cache_events;
-    assert events.get("iface_persist", 0) == 2 , f"expected a second persist of the unchanged module (events: {events})";
+    # Compact products survive, but a released tree has no live dependency proof
+    # and must not replace persisted diagnostics or dependency revisions.
+    assert events.get("iface_persist", 0) == 1;
+    assert cache.read_bytes() == before;
     assert events.get("iface_encode", 0) == 1 , f"the unchanged module was re-encoded after closure release (events: {events})";
 }
 
