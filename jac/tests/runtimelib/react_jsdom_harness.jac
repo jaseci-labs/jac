@@ -48,7 +48,10 @@ def require_client_integration(suite: str) {
 forms, matching the production bundler pipeline."""
 def compile_react(path: str) -> str {
     prog = JacProgram();
-    ir = prog.compile(file_path=str(path), options=CompileOptions(no_cgen=True));
+    ir = prog.compile(
+        file_path=str(path),
+        options=CompileOptions(force_codespace="client", no_cgen=True)
+    );
     fatal = [
         e
         for e in prog.errors_had
