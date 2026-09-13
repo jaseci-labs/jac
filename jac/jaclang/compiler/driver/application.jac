@@ -449,7 +449,9 @@ def _prepare(
     builder = None;
     if client {
         import from jaclang.client.vite_client_bundle { make_client_bundle_builder }
-        builder = make_client_bundle_builder(Path(`root), entry_path=`entry);
+        builder = make_client_bundle_builder(
+            Path(`root), entry_path=`entry, program=program
+        );
         revision.client_compiler = builder._get_compiler();
         revision.client_dist = str(revision.client_compiler.vite_bundler.output_dir);
     }

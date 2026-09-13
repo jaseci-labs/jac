@@ -1,3 +1,4 @@
+import type from jaclang.compiler.driver.program { JacProgram }
 import contextlib;
 import from pathlib { Path }
 import from types { ModuleType }
@@ -16,6 +17,8 @@ with entry {
 }
 
 class ViteCompiler {
+    has program: JacProgram | None = None;
+
     def init(
         self: ViteCompiler,
         vite_package_json: Path,
@@ -26,7 +29,8 @@ class ViteCompiler {
         extract_exports_func: Callable[[ClientManifest | None], list[str]],
         extract_globals_func:
             Callable[[ClientManifest | None, ModuleType | None], dict[str, any]],
-        entry_path: str = ""
+        entry_path: str = "",
+        program: JacProgram | None = None
     );
 
     def compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[str]];

@@ -6,7 +6,7 @@ import from jaclang.runtime.prepared { PreparedApplication }
 
 def write_client(application: PreparedApplication, base: Path) -> str {
     import from jaclang.client.vite_bundler { ViteBundler }
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.client.client_bundle { client_program }
     import from jaclang.compiler.driver.pipeline_runner { wasm_ir }
     import from jaclang.compiler.backends.native.wasm_build { prepare_wasm_module }
     import from jaclang.compiler.backends.native.c_emit { emit_c }
@@ -30,7 +30,7 @@ def write_client(application: PreparedApplication, base: Path) -> str {
     bundler.create_vite_config(compiled / '_entry.js');
     native = [];
     for target in compiler._wasm_targets(Path(application.entry)) {
-        (llvm_ir, imports) = wasm_ir(JacProgram(), str(target));
+        (llvm_ir, imports) = wasm_ir(client_program(compiler.program), str(target));
         (module, machine, linked) = prepare_wasm_module(llvm_ir);
         stem = native_wasm_stem(str(target));
         source = workspace / 'native' / f'{stem}.c';

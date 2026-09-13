@@ -1,7 +1,9 @@
 import from jaclang.cli.console { console }
 
 impl make_client_bundle_builder(
-    base_path: (Path | None) = None, entry_path: str = ""
+    base_path: (Path | None) = None,
+    entry_path: str = "",
+    program: JacProgram | None = None
 ) -> ViteClientBundleBuilder {
     import from jaclang.client.vite_bundler { ViteBundler }
     if base_path is None {
@@ -34,7 +36,8 @@ impl make_client_bundle_builder(
         vite_package_json=package_json_path,
         vite_output_dir=bundler._client_app_dir() / 'dist',
         vite_minify=False,
-        entry_path=entry_path
+        entry_path=entry_path,
+        program=program
     );
 }
 
@@ -90,7 +93,8 @@ impl ViteClientBundleBuilder._get_compiler(
             compile_to_js_func=compile_to_js_func,
             extract_exports_func=self._extract_client_exports,
             extract_globals_func=self._extract_client_globals,
-            entry_path=self.entry_path
+            entry_path=self.entry_path,
+            program=self.program
         );
     }
     return self._compiler;
@@ -102,9 +106,10 @@ impl ViteClientBundleBuilder.init(
     vite_output_dir: (Path | None) = None,
     vite_package_json: (Path | None) = None,
     vite_minify: bool = False,
-    entry_path: str = ""
+    entry_path: str = "",
+    program: JacProgram | None = None
 ) -> None {
-    super.init(runtime_path);
+    super.init(runtime_path, program=program);
     self.vite_output_dir = vite_output_dir;
     self.vite_package_json = vite_package_json;
     self.vite_minify = vite_minify;

@@ -1,3 +1,4 @@
+import type from jaclang.compiler.driver.program { JacProgram }
 import hashlib;
 import os;
 import from pathlib { Path }
@@ -29,6 +30,7 @@ obj _CachedBundle {
 
 obj ClientBundleBuilder {
     has runtime_path: (Path | None) = None,
+        program: JacProgram | None = None,
         _cache: dict[(str, _CachedBundle)] = {};
 
     def postinit -> None;
@@ -45,3 +47,16 @@ obj ClientBundleBuilder {
 }
 
 def emitted_tree_digest(tree_root: Path) -> str;
+
+
+def client_program(program: JacProgram | None) -> JacProgram {
+    if program is not None {
+        return program;
+    }
+    import from jaclang.runtime.runtime { JacRuntime }
+    current = JacRuntime.program;
+    if current is None {
+        raise ClientBundleError('No active compilation program for client products');
+    }
+    return current;
+}
