@@ -270,6 +270,19 @@ assert _heapq.heappop([1, 2, 3]) == 1
     values = (2 ** 64 - 1, -(2 ** 31), 1.25, complex(-2, 3))
     assert layout.unpack(layout.pack(*values)) == values
     assert _struct.pack("f", 2) == _struct.pack("f", 2.0)
+    for kind in ("deque", "iterator", "defaultdict"):
+        owner = CallableOwner()
+        if kind == "defaultdict":
+            owner.binding = _collections.defaultdict(owner.call)
+            owner.binding["owner"] = owner
+        else:
+            sequence = _collections.deque([owner])
+            owner.binding = sequence if kind == "deque" else iter(sequence)
+            del sequence
+        owner_ref = weakref.ref(owner)
+        del owner
+        gc.collect()
+        assert owner_ref() is None, "Native collections hid a Python reference cycle"
     callback_layout = _struct.Struct(">I")
     class ReplaceLayout:
         def __index__(self):

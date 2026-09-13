@@ -3,6 +3,7 @@
  * belong here. Definitions are constructed once by native static initialization
  * and, like CPython's static PyModuleDefs, live for the process lifetime. */
 #include <Python.h>
+#include "internal/pycore_object.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -141,6 +142,16 @@ typedef struct {
     uint64_t (*descriptor)(uint64_t, uint64_t, uint64_t);
     uint64_t (*compare)(uint64_t, uint64_t, int32_t);
     int64_t (*hash)(uint64_t);
+    int32_t (*descriptor_set)(uint64_t, uint64_t, uint64_t);
+    uint64_t (*bit_or)(uint64_t, uint64_t);
+    int64_t (*length)(uint64_t);
+    uint64_t (*item)(uint64_t, int64_t);
+    int32_t (*assign)(uint64_t, int64_t, uint64_t);
+    int32_t (*contains)(uint64_t, uint64_t);
+    uint64_t (*concat)(uint64_t, uint64_t);
+    uint64_t (*inplace_concat)(uint64_t, uint64_t);
+    uint64_t (*repeat)(uint64_t, int64_t);
+    uint64_t (*inplace_repeat)(uint64_t, int64_t);
 } JacTypeHooks;
 
 typedef struct {
@@ -152,7 +163,7 @@ typedef struct {
 typedef struct {
     JacMethodTable table;
     PyType_Spec definition;
-    PyType_Slot slots[18];
+    PyType_Slot slots[28];
     vectorcallfunc vectorcall;
     int instance_dict;
     PyMemberDef members[3];
@@ -212,6 +223,16 @@ uint64_t jacpy_binding_type(const char *name, const char *doc, int64_t count,
     SLOT(next, Py_tp_iternext);
     SLOT(descriptor, Py_tp_descr_get);
     SLOT(compare, Py_tp_richcompare);
+    SLOT(descriptor_set, Py_tp_descr_set);
+    SLOT(bit_or, Py_nb_or);
+    SLOT(length, Py_sq_length);
+    SLOT(item, Py_sq_item);
+    SLOT(assign, Py_sq_ass_item);
+    SLOT(contains, Py_sq_contains);
+    SLOT(concat, Py_sq_concat);
+    SLOT(inplace_concat, Py_sq_inplace_concat);
+    SLOT(repeat, Py_sq_repeat);
+    SLOT(inplace_repeat, Py_sq_inplace_repeat);
     if (unhashable) spec->slots[slot++] = (PyType_Slot){Py_tp_hash, PyObject_HashNotImplemented};
     else { SLOT(hash, Py_tp_hash); }
 #undef SLOT
@@ -220,7 +241,7 @@ uint64_t jacpy_binding_type(const char *name, const char *doc, int64_t count,
     }
     if (member) spec->slots[slot++] = (PyType_Slot){Py_tp_members, spec->members};
     spec->slots[slot++] = (PyType_Slot){Py_tp_methods, spec->methods};
-    spec->slots[slot++] = (PyType_Slot){Py_tp_doc, spec->table.doc};
+    if (*spec->table.doc) spec->slots[slot++] = (PyType_Slot){Py_tp_doc, spec->table.doc};
     spec->slots[slot++] = (PyType_Slot){Py_tp_token, spec};
     spec->slots[slot++] = (PyType_Slot){Py_tp_getset, spec->properties};
     return H(spec);
@@ -373,6 +394,36 @@ int64_t jacpy_binding_dict_replace(uint64_t object, uint64_t dictionary) {
 uint64_t jacpy_binding_method_bind(uint64_t callable, uint64_t instance) {
     return H(PyMethod_New(P(callable), P(instance)));
 }
-int64_t jacpy_binding_enter_recursive(const char *where) { return Py_EnterRecursiveCall(where); }
-void jacpy_binding_leave_recursive(void) { Py_LeaveRecursiveCall(); }
 uint64_t jacpy_binding_marker(void) { return H(PyObject_CallNoArgs((PyObject *)&PyBaseObject_Type)); }
+
+/* Invoke inherited opaque built-in slots without duplicating their layouts. */
+int64_t jacpy_binding_matches(uint64_t object, uint64_t definition) {
+    PyTypeObject *base = NULL;
+    int found = PyType_GetBaseByToken(Py_TYPE((PyObject *)P(object)), P(definition), &base);
+    Py_XDECREF(base);
+    return found;
+}
+uint64_t jacpy_binding_base_new(uint64_t base, uint64_t type, uint64_t args, uint64_t keywords) {
+    return H(((PyTypeObject *)P(base))->tp_new(P(type), P(args), P(keywords)));
+}
+int32_t jacpy_binding_base_init(uint64_t base, uint64_t object, uint64_t args, uint64_t keywords) {
+    return ((PyTypeObject *)P(base))->tp_init(P(object), P(args), P(keywords));
+}
+int32_t jacpy_binding_base_traverse(uint64_t base, uint64_t object, uint64_t visitor, uint64_t context) {
+    return ((PyTypeObject *)P(base))->tp_traverse(P(object), (visitproc)P(visitor), P(context));
+}
+int32_t jacpy_binding_base_clear(uint64_t base, uint64_t object) {
+    return ((PyTypeObject *)P(base))->tp_clear(P(object));
+}
+void jacpy_binding_base_dealloc(uint64_t base, uint64_t object) {
+    ((PyTypeObject *)P(base))->tp_dealloc(P(object));
+}
+uint64_t jacpy_binding_object_state(uint64_t object) { return H(_PyObject_GetState(P(object))); }
+
+uint64_t jacpy_binding_parent(uint64_t type, uint64_t definition) {
+    PyTypeObject *base = P(jacpy_binding_base(type, definition));
+    if (!base) return 0;
+    PyTypeObject *parent = base->tp_base;
+    Py_DECREF(base);
+    return H(parent); /* borrowed from the input type's retained base chain */
+}

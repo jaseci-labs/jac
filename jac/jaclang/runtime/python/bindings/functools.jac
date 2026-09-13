@@ -23,8 +23,6 @@ import from jaclang.runtime.python.bindings.type {
     jacpy_binding_dict_peek,
     jacpy_binding_dict_replace,
     jacpy_binding_method_bind,
-    jacpy_binding_enter_recursive,
-    jacpy_binding_leave_recursive,
     jacpy_binding_marker
 }
 import from jaclang.runtime.python.bindings.state { NativeState }
@@ -62,6 +60,8 @@ import from jaclang.runtime.python.modules.functools {
     jacpy_cmp_key
 }
 import from jaclang.runtime.python.capi {
+    jacpy_recursion_enter,
+    jacpy_recursion_leave,
     jacpy_release,
     jacpy_retain,
     jacpy_none,
@@ -254,13 +254,13 @@ def:priv partial_call(instance: u64, args: u64, kwargs: u64) -> u64 {
     if state is None {
         return 0;
     }
-    if jacpy_binding_enter_recursive(" while calling a Python object") != 0 {
+    if jacpy_recursion_enter(" while calling a Python object") != 0 {
         return 0;
     }
     try {
         return jacpy_partial_call(state.native, args, kwargs);
     } finally {
-        jacpy_binding_leave_recursive();
+        jacpy_recursion_leave();
     }
 }
 
@@ -473,13 +473,13 @@ def:priv lru_call(instance: u64, args: u64, kwargs: u64) -> u64 {
     if state is None {
         return 0;
     }
-    if jacpy_binding_enter_recursive(" while calling a Python object") != 0 {
+    if jacpy_recursion_enter(" while calling a Python object") != 0 {
         return 0;
     }
     try {
         return jacpy_lru_call(state.native, args, kwargs);
     } finally {
-        jacpy_binding_leave_recursive();
+        jacpy_recursion_leave();
     }
 }
 

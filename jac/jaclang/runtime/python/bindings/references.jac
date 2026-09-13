@@ -1,7 +1,11 @@
 """Shared ownership and cycle-collector visibility for Python reference fields."""
 import from jaclang.runtime.python.bindings.state { NativeState }
 import from jaclang.runtime.python.bindings.module { jacpy_binding_visit }
-import from jaclang.runtime.python.capi { jacpy_release }
+import from jaclang.runtime.python.capi {
+    jacpy_release,
+    jacpy_tuple_new,
+    jacpy_tuple_set_owned
+}
 
 obj ReferenceState(NativeState) {
     has references: list[u64];
@@ -27,4 +31,27 @@ obj ReferenceState(NativeState) {
     def drop {
         self.clear();
     }
+}
+
+# Consume all supplied owned references, including when tuple allocation fails.
+def owned_tuple(values: list[u64]) -> u64 {
+    held = ReferenceState(references=values);
+    for value in values {
+        if value == 0 {
+            return 0;
+        }
+    }
+    result = jacpy_tuple_new(i64(len(values)));
+    if result == 0 {
+        return 0;
+    }
+    for i in range(len(values)) {
+        value = held.references[i];
+        held.references[i] = 0;
+        if jacpy_tuple_set_owned(result, i64(i), value) < 0 {
+            jacpy_release(result);
+            return 0;
+        }
+    }
+    return result;
 }

@@ -8,7 +8,8 @@ enum TypeFlags {
     VECTORCALL = 2048,
     GC = 16384,
     MANAGED_WEAKREF = 8,
-    DISALLOW_INSTANTIATION = 128
+    DISALLOW_INSTANTIATION = 128,
+    SEQUENCE = 32
 }
 
 enum TypeSlot { INIT = 60, NEW = 65 }
@@ -27,7 +28,17 @@ import from c {
             next: Callable[[u64], u64] = 0,
             descriptor: Callable[[u64, u64, u64], u64] = 0,
             compare: Callable[[u64, u64, i32], u64] = 0,
-            hash: Callable[[u64], i64] = 0;
+            hash: Callable[[u64], i64] = 0,
+            descriptor_set: Callable[[u64, u64, u64], i32] = 0,
+            bit_or: Callable[[u64, u64], u64] = 0,
+            length: Callable[[u64], i64] = 0,
+            item: Callable[[u64, i64], u64] = 0,
+            assign: Callable[[u64, i64, u64], i32] = 0,
+            contains: Callable[[u64, u64], i32] = 0,
+            concat: Callable[[u64, u64], u64] = 0,
+            inplace_concat: Callable[[u64, u64], u64] = 0,
+            repeat: Callable[[u64, i64], u64] = 0,
+            inplace_repeat: Callable[[u64, i64], u64] = 0;
     }  def jacpy_binding_type(
         name: str,
         doc: str,
@@ -132,5 +143,21 @@ import from c {
         object: u64, value: u64, context: u64
     ) -> i32;  def jacpy_binding_dict_replace(object: u64, dictionary: u64) -> i64;  def jacpy_binding_method_bind(
         callable: u64, instance: u64
-    ) -> u64;  def jacpy_binding_enter_recursive(where: str) -> i64;  def jacpy_binding_leave_recursive;  def jacpy_binding_marker -> u64;
+    ) -> u64;  def jacpy_binding_marker -> u64;
 }
+
+import from c {
+    def jacpy_binding_generic_alias(type: u64, item: u64) -> u64;  def jacpy_binding_basicsize(
+        object: u64
+    ) -> i64;  def jacpy_binding_matches(object: u64, definition: u64) -> i64;  def jacpy_binding_base_new(
+        base: u64, type: u64, args: u64, keywords: u64
+    ) -> u64;  def jacpy_binding_base_init(
+        base: u64, object: u64, args: u64, keywords: u64
+    ) -> i32;  def jacpy_binding_base_traverse(
+        base: u64, object: u64, visitor: u64, context: u64
+    ) -> i32;  def jacpy_binding_base_clear(base: u64, object: u64) -> i32;  def jacpy_binding_base_dealloc(
+        base: u64, object: u64
+    );  def jacpy_binding_object_state(object: u64) -> u64;
+}
+
+import from c { def jacpy_binding_parent(type: u64, definition: u64) -> u64;  }
