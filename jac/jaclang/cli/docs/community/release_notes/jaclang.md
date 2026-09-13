@@ -13,8 +13,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ### Bug Fixes
 
-- Native boolean expressions and dictionary lookups preserve optional-value ownership and release unused defaults without invalidating returned containers or strings.
-
 - **JS target: `min`/`max` no longer silently return `NaN` on the single-iterable form**: `min([1, 2, 3])` and `max([1, 2, 3])` lowered straight to `Math.min`/`Math.max`, which only understands the varargs form (`Math.min(1, 2, 3)`); the single-iterable form silently evaluated to `NaN` instead of scanning the list. `key=` was also broken: keyword arguments were flattened into the same positional list `Math.min` received, so `min(a, b, key=f)` passed `f` to `Math.min` as a bogus third number. Both call shapes now route through a proper `_jac.builtin.min`/`max` runtime helper that supports `key=` and raises like Python on an empty sequence. Fixes #8589.
 - **Fix: Consistent profile configuration**: CLI, compiler, plugin, and deployment readers share profile resolution, so per-app replica, resource, HPA, and pod overrides reach deployment fleets alongside gateway settings. Explicit profiles replace previous overlays and survive plugin configuration refreshes.
 - **Fix: JavaScript primitive conversions**: Client calls to `Boolean`, `Number`, and `String`, including aliases, return primitives instead of constructing truthy wrapper objects. Static helpers and user-defined constructors remain supported.
