@@ -1,4 +1,4 @@
-impl register_agent_callback(callback: Callable) -> None {
+impl register_agent_callback(callback: Callable[[dict], None]) -> None {
     if callback not in _agent_callbacks {
         _agent_callbacks.append(callback);
     }
@@ -28,7 +28,7 @@ impl _aggregate_usage(usage_history: list[dict]) -> dict[str, object] {
 }
 
 impl _emit_agent_telemetry(
-    mt_run: object,
+    mt_run: MTRuntime,
     result: object,
     model_name: str,
     latency_ms: float,
@@ -75,16 +75,16 @@ impl _emit_agent_telemetry(
 
     tokens: dict = {"total": {}, "by_kind": {}, "per_call": [], "requests": 0};
     try {
-        history: any = mt_run._usage_history or [];
+        history = mt_run._usage_history;
         tokens = _aggregate_usage(history);
     } except Exception as e {
         logger.debug(f"tokens aggregation failed: {e}");
     }
 
-    record_mtir = mt_run?.mtir;
+    record_mtir = mt_run.mtir;
     record = {
-        "invocation_id": getattr(mt_run, "_invocation_id"),
-        "parent_invocation_id": mt_run?._parent_invocation_id,
+        "invocation_id": mt_run._invocation_id,
+        "parent_invocation_id": mt_run._parent_invocation_id,
         "caller_name": record_mtir.caller.__name__ if record_mtir else "unknown",
         "caller_args": caller_args,
         "user_prompt": user_prompt,

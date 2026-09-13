@@ -122,6 +122,8 @@ paths live under `jaclang.project`; semantic metadata lives under `jaclang.runti
 
 Native C is produced from the existing native backend's LLVM IR. Binary and source
 products share lowering validation, entry initialization, and callback bindings.
+`dist/native_product.jac` packages both forms. Wheels use the existing native
+shared-library emitter directly and do not require the C projection toolchain.
 The C projection uses a pinned LLVM C backend and a versioned compatibility patch;
 its provenance and license ship with exports. The generated C retains the selected
 target ABI and external native library requirements. Exporting C requires CMake and LLVM
