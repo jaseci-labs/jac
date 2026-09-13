@@ -1,4 +1,4 @@
-"""Shared rig for the React jsdom behavioral suites.
+"""Shared rig for the React and Solid jsdom behavioral suites.
 
 `test_react_state_semantics.jac` and `test_react_auth_jsdom.jac` both compile
 the real `@jac/runtime` shim to JS, mount it under jsdom, and assert the live
@@ -23,6 +23,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
+import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.client.client_surface { with_runtime_globals }
 import from jaclang.client.npm_provider { CORE_RUNTIME_DEPS, OPTIONAL_RUNTIME_DEPS }
@@ -42,11 +43,11 @@ def require_client_integration(suite: str) {
     require_tool("bun");
 }
 
-"""Compile a `.jac` to JS with the React backend; type errors are non-fatal.
+"""Compile a `.jac` to JS with explicit client placement; type errors are non-fatal.
 
 `type_check=True` so typed builtin calls (e.g. `len(list)`) lower to their JS
 forms, matching the production bundler pipeline."""
-def compile_react(path: str) -> str {
+def compile_client(path: str, backend: FrameworkBackend) -> str {
     prog = JacProgram();
     ir = prog.compile(
         file_path=str(path),
@@ -58,8 +59,12 @@ def compile_react(path: str) -> str {
         if not issubclass(e.from_pass, TypeCheckPass)
     ];
     assert not fatal , f"compile errors in {path}: {[str(e) for e in fatal]}";
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=ReactBackend());
+    es_pass = run_pass(EsastGenPass, ir, prog, backend=backend);
     return es_to_js(es_pass.ir_out.gen.es_ast);
+}
+
+def compile_react(path: str) -> str {
+    return compile_client(path, ReactBackend());
 }
 
 """Point the shim's dotted core import at a flat sibling (mirrors the bundler)."""
@@ -82,8 +87,10 @@ def wire_jac_runtime(js: str) -> str {
 
 """Compile a page/layout/app `.jac`, prepend its `@jac/runtime` globals (the bare
 `__jacJsx`), and wire the runtime specifier."""
-def compile_page(path: str, backend: any) -> str {
-    return wire_jac_runtime(with_runtime_globals(compile_react(path), backend));
+def compile_page(path: str, backend: FrameworkBackend) -> str {
+    return wire_jac_runtime(
+        with_runtime_globals(compile_client(path, backend), backend)
+    );
 }
 
 """Emit the compiled `@jac/runtime` shim + its core into the work dir."""
@@ -99,10 +106,15 @@ def write_runtime(work: Path) {
     );
 }
 
-def write_runtime_support(work: Path, runtime_path: str) {
+def write_runtime_support(
+    work: Path, runtime_path: str, backend: (FrameworkBackend | None) = None
+) {
     for name in ["auth_contract", "endpoint_cache"] {
         (work / (name + ".js")).write_text(
-            compile_react(str(Path(runtime_path).parent / (name + ".jac"))),
+            compile_client(
+                str(Path(runtime_path).parent / (name + ".jac")),
+                backend if backend is not None else ReactBackend()
+            ),
             encoding="utf-8"
         );
     }
