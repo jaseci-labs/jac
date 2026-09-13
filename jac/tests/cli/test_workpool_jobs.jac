@@ -27,3 +27,32 @@ test "default_jobs sizes the pool by the per-worker ceiling" {
     # A ceiling the box cannot hold even once still yields one worker.
     assert default_jobs(worker_bytes=64 * GB, avail_bytes=16 * GB) == 1;
 }
+
+test "test workers use their configured recycling ceiling for auto sizing" {
+    import from unittest.mock { patch }
+    import jaclang.cli.workpool as workpool;
+    import jaclang.testing.test_runner as runner;
+    original = workpool.default_jobs;
+    def on_small_runner(worker_bytes: int = 0, avail_bytes: int = 0) -> int {
+        return original(worker_bytes=worker_bytes, avail_bytes=16 * GB);
+    }
+    with patch.object(os, "cpu_count", return_value=8), patch.object(
+        workpool, "default_jobs", side_effect=on_small_runner
+    ), patch.dict(
+        os.environ,
+        {
+            "JAC_TEST_JOBS": "auto",
+            "JAC_TEST_RECYCLE_MB": "8192",
+            "JAC_TEST_RECYCLE": "0"
+        }
+    ) {
+        assert runner.resolve_jobs() == 1;
+        assert not runner._test_retire(1, 8191);
+        assert runner._test_retire(1, 8192);
+        os.environ["JAC_TEST_RECYCLE_MB"] = "4096";
+        assert runner.resolve_jobs() == 2;
+        assert not runner._test_retire(1, 4095);
+        assert runner._test_retire(1, 4096);
+        assert runner.resolve_jobs(3) == 3;
+    }
+}

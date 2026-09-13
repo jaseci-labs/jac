@@ -345,3 +345,18 @@ but stopped at 24/29 steps on Stage-2 compilation of `ifacecache`; that file als
 passes with the current diagnostic compiler and fresh catalog. A complete build
 from the settled sources is running; the intermediate build is not counted as a
 passing self-rebuild.
+
+## Runtime worker memory budget
+
+The test runner recycled workers at an 8 GB default RSS ceiling but omitted that
+ceiling when asking the shared pool to size automatic concurrency. It now follows
+the existing checker integration: one helper supplies the same configured ceiling
+to pool sizing and retirement. Explicit worker counts continue to take precedence.
+The regression models a 16 GB runner, verifies default/configured ceilings and
+retirement thresholds, fails before the fix, and passes afterward. All three
+pool-sizing/recycling tests pass. This corrects a demonstrated budgeting mismatch;
+it does not establish the cause of the earlier CI runner communication loss.
+
+The complete byLLM directory additionally passes 241 tests (one skip). The actual
+Stage-1 image, including its newly generated catalog, passes all six previously
+failing source files with CI's provider SDK dependencies installed.

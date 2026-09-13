@@ -1102,16 +1102,22 @@ impl run_tests(
 
 impl resolve_jobs(requested: (str | int | None) = None) -> int {
     import from jaclang.cli.workpool { resolve_jobs as _resolve_pool_jobs }
-    return _resolve_pool_jobs(requested, env_var="JAC_TEST_JOBS");
+    return _resolve_pool_jobs(
+        requested,
+        env_var="JAC_TEST_JOBS",
+        worker_bytes=_test_rss_cap_mb() * 1024 * 1024
+    );
+}
+
+impl _test_rss_cap_mb -> int {
+    import from jaclang.cli.workpool { env_int }
+    return env_int("JAC_TEST_RECYCLE_MB", 8192);
 }
 
 impl _test_retire(served: int, rss_mb: int) -> bool {
     import from jaclang.cli.workpool { env_int }
     return _should_retire(
-        served,
-        env_int("JAC_TEST_RECYCLE", 25),
-        rss_mb,
-        env_int("JAC_TEST_RECYCLE_MB", 8192)
+        served, env_int("JAC_TEST_RECYCLE", 25), rss_mb, _test_rss_cap_mb()
     );
 }
 
