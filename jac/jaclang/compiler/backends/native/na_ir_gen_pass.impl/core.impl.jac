@@ -894,7 +894,8 @@ impl NaIRGenPass._walk_imported_module_abilities(
         import os as _wl_os2;
 
         _wl_abs = _wl_os2.path.abspath(imported_mod.loc.mod_path);
-        _wl_jac_internal = imported_mod.decided_codespace != 'native'
+        _wl_jac_internal = not self.prog.options.native_required_for(_wl_abs)
+            and imported_mod.decided_codespace != 'native'
             and (_wl_os2.sep + "jaclang" + _wl_os2.sep) in _wl_abs
             and (_wl_os2.sep + "na_stdlib" + _wl_os2.sep) not in _wl_abs;
         if _wl_jac_internal {

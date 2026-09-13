@@ -36,6 +36,19 @@ impl NaIRGenPass._clib_coerce_callback(
         tramp = self._emit_clib_c_trampoline(val, c_fn_ty);
         return self.builder.bitcast(tramp, c_fn_ty, name="clibcb.tramp");
     }
+    typed_pointer = isinstance(val.type, ir.PointerType)
+        and not val.type.is_opaque
+        and isinstance(val.type.pointee, ir.FunctionType);
+    null_pointer = isinstance(val, ir.Constant) and val.constant in (None, 0);
+    if not typed_pointer and not null_pointer {
+        self.emit(
+            E5092,
+            kind="expression",
+            name="erased value passed as a C function pointer",
+            help_text="A C callback requires a typed C code address. A nullable or erased Jac Callable may carry an environment and cannot be cast to that address. Store named callbacks in an explicit C-ABI callback record."
+        );
+        return ir.Constant(c_fn_ty, None);
+    }
     return self._coerce_type(val, c_fn_ty);
 }
 

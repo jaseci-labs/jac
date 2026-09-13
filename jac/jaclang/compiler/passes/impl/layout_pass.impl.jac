@@ -846,7 +846,7 @@ impl LayoutPass._is_layout_compatible_type(
             target_name = type_node.target.value;
         }
 
-        if target_name == "type" {
+        if target_name in ("type", "Callable") {
             return True;
         }
         if target_name in {"list", "dict", "set", "frozenset", "tuple"} {

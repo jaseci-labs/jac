@@ -96,6 +96,10 @@ def bind_options(
 ) -> CompileOptions {
     import from jaclang.compiler.placement.workspace { workspace_for_path }
     bound = copy.copy(options);
+    if bound.native_required_for(path) {
+        bound.default_codespace = 'native';
+        bound.force_codespace = 'native';
+    }
     new_entry = bool(
         options.entry_point and options.entry_point != program.options.entry_point
     );

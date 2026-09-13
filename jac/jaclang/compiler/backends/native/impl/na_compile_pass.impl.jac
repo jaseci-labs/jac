@@ -288,6 +288,21 @@ impl native_live_call_conflicts(
     return conflicts;
 }
 
+impl require_native_ir(llvm_ir_text: str) -> None {
+    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+    issues = native_lowering_issues(llvm_ir_text);
+    symbols = set(native_demoted_ir_symbols(llvm_ir_text));
+    symbols.update(issue.symbol for issue in issues);
+    if symbols {
+        details = "\n".join(issue.detail for issue in issues);
+        raise ValueError(
+            "Native-only compilation cannot use Python fallback or erased fields: "
+                + ", ".join(sorted(symbols))
+                + ("\n" + details if details else "")
+        );
+    }
+}
+
 impl native_demoted_ir_symbols(llvm_ir_text: str) -> list[str] {
     import re as _ds_re;
     _ds_def = _ds_re.compile(
@@ -411,6 +426,10 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             );
 
             module.gen.llvm_ir = mod;
+        }
+
+        if _compile_opts.native_required_for(module.loc.mod_path) {
+            require_native_ir(str(mod));
         }
 
         _is_kernel_unit = bool(getattr(_compile_opts, "kernel_unit", False));
@@ -735,6 +754,12 @@ impl NativeCompilePass._compile_and_link_native_imports(
         }
 
         if not os.path.exists(full_path) {
+            if _link_opts.native_required_for(module.loc.mod_path)
+                or _link_opts.native_required_for(full_path) {
+                raise FileNotFoundError(
+                    f"Required native module not found: {full_path}"
+                );
+            }
             self.emit(W5023, path=full_path);
             continue;
         }

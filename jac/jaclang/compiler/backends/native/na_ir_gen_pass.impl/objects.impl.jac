@@ -1155,7 +1155,8 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     _own = list(self.errors_had[local_mark:]);
 
     _na_debug = self._na_debug_on();
-    if self._seam_warnings_on() {
+    if self._seam_warnings_on()
+        and not self.prog.options.native_required_for(self.ir_in.loc.mod_path) {
         import from jaclang.cli.console { console }
         _why = "; ".join(str(e) for e in _own);
         console.warning(
@@ -1181,7 +1182,9 @@ impl NaIRGenPass._demote_method_if_unlowerable(
             );
         } except Exception {}
     }
-    del self.errors_had[local_mark:];
+    if not self.prog.options.native_required_for(self.ir_in.loc.mod_path) {
+        del self.errors_had[local_mark:];
+    }
 
     if stub_body {
         NativeLoweringIssue(
@@ -1249,7 +1252,8 @@ impl NaIRGenPass._opaque_field_if_unlowerable(
     _code = _first.code.code if _first.code is not None else "";
     _why = str(_first).split('\n')[0];
 
-    if self._seam_warnings_on() {
+    if self._seam_warnings_on()
+        and not self.prog.options.native_required_for(self.ir_in.loc.mod_path) {
         import from jaclang.cli.console { console }
         console.warning(
             f"native seam -- erasing field {arch_name}.{fname} to an "
@@ -1273,7 +1277,9 @@ impl NaIRGenPass._opaque_field_if_unlowerable(
     ).record(
         self.llvm_module
     );
-    del self.errors_had[local_mark:];
+    if not self.prog.options.native_required_for(self.ir_in.loc.mod_path) {
+        del self.errors_had[local_mark:];
+    }
     if arch_name not in self.struct_field_opaque {
         self.struct_field_opaque[arch_name] = {};
     }
