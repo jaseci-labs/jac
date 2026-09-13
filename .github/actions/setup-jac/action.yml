@@ -293,8 +293,12 @@ runs:
         mkdir -p "$HOME/.jacbin"
         ln -sf "$GITHUB_WORKSPACE/jac/zig-out/bin/jac" "$HOME/.jacbin/jac"
         echo "$HOME/.jacbin" >> "$GITHUB_PATH"
-    - name: Save compiled module cache (trusted refs only)
-      if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true' && steps.modules-cache.outputs.cache-hit != 'true'
+    # Module generations are small (about 21 MiB for a complete local image),
+    # unlike the runtime archives above. Preserve PR iteration work as well;
+    # GitHub scopes PR caches to their merge ref, and every restored JIR still
+    # passes the compiler's producer/source/dependency validation.
+    - name: Save compiled module cache
+      if: steps.cache.outputs.cache-hit != 'true' && steps.modules-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: jac/.compiler-build
