@@ -12,7 +12,7 @@ import from jaclang.server.watcher { FileChangeEvent }
 def port_bind_error(port: int) -> Optional[str] {
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
     try {
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0);
         s.bind(("0.0.0.0", port));
         return None;
     } except OSError as e {

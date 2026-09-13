@@ -196,9 +196,25 @@ runs:
         shim="${shims[0]}"
         test -f "$shim"
         zig build -Dshim-bin="$shim" --summary all
-        if [ "${{ inputs.verify-bootstrap }}" = true ]; then
-          zig build verify-compiler-image verify-compiler-stage2 -Dshim-bin="$shim" --summary all
-        fi
+
+    - name: Checkpoint compiled modules before self-rebuild
+      if: >-
+        steps.cache.outputs.cache-hit != 'true' && steps.modules-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: jac/.compiler-build
+        key: compiler-modules-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json', 'jac/bootstrap/compiler.jac') }}-${{ steps.inputs.outputs.digest }}-stage1
+
+    - name: Verify compiler self-rebuild
+      if: steps.cache.outputs.cache-hit != 'true' && inputs.verify-bootstrap == 'true'
+      shell: bash
+      working-directory: jac
+      run: |
+        set -euo pipefail
+        shims=(zig-out/lib/libjacllvm.*)
+        shim="${shims[0]}"
+        test -f "$shim"
+        zig build verify-compiler-image verify-compiler-stage2 -Dshim-bin="$shim" --summary all
 
     # Seed the shared binary cache from trusted refs only (see the note by the
     # restore step). Saved after the build so both the binary and the materialized
