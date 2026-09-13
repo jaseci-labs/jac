@@ -1482,6 +1482,9 @@ jobs:
           [apps.replay]
           kind = "native-binary"
           entry-point = "core.site.game.arena_replay"
+
+          [apps.replay.check.lint]
+          ignore = ["no-print"]
           TOML
           cd site
           jac build replay --as source -o dist/replay
