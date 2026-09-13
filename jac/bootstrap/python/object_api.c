@@ -613,3 +613,27 @@ int64_t jacpy_dict_memory(uint64_t value) {
     Py_DECREF(size);
     return result;
 }
+
+/* General value conversion and interpreter services for native bindings. */
+int64_t jacpy_is_slice(uint64_t value) { return PySlice_Check(OBJECT(value)); }
+typedef struct { int64_t start, stop, step, count, valid; } JacSliceBounds;
+JacSliceBounds jacpy_slice_unpack(uint64_t value) {
+    JacSliceBounds result = {0};
+    Py_ssize_t start, stop, step;
+    if (PySlice_Unpack(OBJECT(value), &start, &stop, &step) == 0)
+        result = (JacSliceBounds){start, stop, step, 0, 1};
+    return result;
+}
+JacSliceBounds jacpy_slice_adjust(int64_t length, JacSliceBounds bounds) {
+    Py_ssize_t start = bounds.start, stop = bounds.stop;
+    bounds.count = PySlice_AdjustIndices(length, &start, &stop, bounds.step);
+    bounds.start = start; bounds.stop = stop;
+    return bounds;
+}
+int64_t jacpy_audit(const char *event, uint64_t arguments) { return PySys_AuditTuple(event, OBJECT(arguments)); }
+int64_t jacpy_warn(const char *category, const char *message, int64_t stacklevel) {
+    extern PyObject *jacpy_exception_type(const char *);
+    return PyErr_WarnEx(jacpy_exception_type(category), message, stacklevel);
+}
+uint64_t jacpy_builtins(void) { return HANDLE(Py_NewRef(PyEval_GetBuiltins())); }
+int64_t jacpy_type_subtype(uint64_t type, uint64_t base) { return PyType_IsSubtype((PyTypeObject *)OBJECT(type), (PyTypeObject *)OBJECT(base)); }

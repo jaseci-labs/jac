@@ -53,3 +53,9 @@ def dispose_payload(instance: u64, definition: u64) {
     jacpy_binding_native_clear(instance, definition);
     jacpy_binding_free(instance);
 }
+
+import from c {
+    def jacpy_binding_dealloc_guard(
+        object: u64, callback: Callable[[u64], None], body: Callable[[u64], None]
+    );
+}

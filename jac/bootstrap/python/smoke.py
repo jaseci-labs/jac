@@ -158,6 +158,28 @@ assert _heapq.heappop([1, 2, 3]) == 1
             pass
         else:
             raise AssertionError("array resized while exporting a view")
+    # A view owns storage and exposes a writable, correctly typed buffer.
+    class ArrayOwner(array.array):
+        pass
+    owner = ArrayOwner('i', [1, 2])
+    view = memoryview(owner)
+    assert view.format == 'i' and view.shape == (2,) and not view.readonly
+    view[1] = 42
+    assert owner.tolist() == [1, 42]
+    owner_ref = weakref.ref(owner)
+    del owner
+    gc.collect()
+    assert owner_ref() is not None
+    view.release()
+    gc.collect()
+    assert owner_ref() is None
+    for cycle_kind in ('iterator', 'view'):
+        owner = ArrayOwner('i', [1, 2])
+        owner.cycle = iter(owner) if cycle_kind == 'iterator' else memoryview(owner)
+        owner_ref = weakref.ref(owner)
+        del owner
+        gc.collect()
+        assert owner_ref() is None, "Native array hid a Python reference cycle"
     numeric_array.clear()
     assert numeric_array.__sizeof__() <= array_empty_size + 1
     numeric_array.append(1)

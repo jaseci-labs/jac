@@ -56,3 +56,14 @@ obj BufferArgument {
         self.close();
     }
 }
+
+import from c {
+    obj BufferLayout {
+        has address: u64,
+            count: i64,
+            itemsize: i64,
+            readonly: i64 = 0;
+    }  def jacpy_binding_buffer_fill(
+        view: u64, object: u64, layout: BufferLayout, format: str, flags: i32
+    ) -> i32;  def jacpy_binding_buffer_dispose(view: u64);
+}

@@ -12,6 +12,8 @@ import from jaclang.runtime.python.capi {
     jacpy_list_size,
     jacpy_list_item,
     jacpy_is_unicode,
+    jacpy_unicode_size,
+    jacpy_unicode_char,
     jacpy_index,
     jacpy_error_pending
 }
@@ -153,4 +155,12 @@ def invoke_one(value: u64, implementation: Callable[[u64], u64]) -> u64 {
     } except boundary_failure {
         return 0;
     }
+}
+
+def character_value(value: u64, context: str) -> (i64 | None) {
+    if jacpy_is_unicode(value) == 0 or jacpy_unicode_size(value) != 1 {
+        object_error("TypeError", f"{context}() argument must be a unicode character");
+        return None;
+    }
+    return jacpy_unicode_char(value, 0);
 }

@@ -38,7 +38,12 @@ import from c {
             concat: Callable[[u64, u64], u64] = 0,
             inplace_concat: Callable[[u64, u64], u64] = 0,
             repeat: Callable[[u64, i64], u64] = 0,
-            inplace_repeat: Callable[[u64, i64], u64] = 0;
+            inplace_repeat: Callable[[u64, i64], u64] = 0,
+            mapping_length: Callable[[u64], i64] = 0,
+            subscript: Callable[[u64, u64], u64] = 0,
+            assign_subscript: Callable[[u64, u64, u64], i32] = 0,
+            buffer: Callable[[u64, u64, i32], i32] = 0,
+            release_buffer: Callable[[u64, u64], None] = 0;
     }  def jacpy_binding_type(
         name: str,
         doc: str,
@@ -161,3 +166,5 @@ import from c {
 }
 
 import from c { def jacpy_binding_parent(type: u64, definition: u64) -> u64;  }
+
+import from c { def jacpy_binding_type_matches(type: u64, definition: u64) -> i64;  }

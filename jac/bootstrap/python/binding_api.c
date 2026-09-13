@@ -152,6 +152,11 @@ typedef struct {
     uint64_t (*inplace_concat)(uint64_t, uint64_t);
     uint64_t (*repeat)(uint64_t, int64_t);
     uint64_t (*inplace_repeat)(uint64_t, int64_t);
+    int64_t (*mapping_length)(uint64_t);
+    uint64_t (*subscript)(uint64_t, uint64_t);
+    int32_t (*assign_subscript)(uint64_t, uint64_t, uint64_t);
+    int32_t (*buffer)(uint64_t, uint64_t, int32_t);
+    void (*release_buffer)(uint64_t, uint64_t);
 } JacTypeHooks;
 
 typedef struct {
@@ -163,7 +168,7 @@ typedef struct {
 typedef struct {
     JacMethodTable table;
     PyType_Spec definition;
-    PyType_Slot slots[28];
+    PyType_Slot slots[33];
     vectorcallfunc vectorcall;
     int instance_dict;
     PyMemberDef members[3];
@@ -233,6 +238,11 @@ uint64_t jacpy_binding_type(const char *name, const char *doc, int64_t count,
     SLOT(inplace_concat, Py_sq_inplace_concat);
     SLOT(repeat, Py_sq_repeat);
     SLOT(inplace_repeat, Py_sq_inplace_repeat);
+    SLOT(mapping_length, Py_mp_length);
+    SLOT(subscript, Py_mp_subscript);
+    SLOT(assign_subscript, Py_mp_ass_subscript);
+    SLOT(buffer, Py_bf_getbuffer);
+    SLOT(release_buffer, Py_bf_releasebuffer);
     if (unhashable) spec->slots[slot++] = (PyType_Slot){Py_tp_hash, PyObject_HashNotImplemented};
     else { SLOT(hash, Py_tp_hash); }
 #undef SLOT
@@ -397,11 +407,14 @@ uint64_t jacpy_binding_method_bind(uint64_t callable, uint64_t instance) {
 uint64_t jacpy_binding_marker(void) { return H(PyObject_CallNoArgs((PyObject *)&PyBaseObject_Type)); }
 
 /* Invoke inherited opaque built-in slots without duplicating their layouts. */
-int64_t jacpy_binding_matches(uint64_t object, uint64_t definition) {
+int64_t jacpy_binding_type_matches(uint64_t type, uint64_t definition) {
     PyTypeObject *base = NULL;
-    int found = PyType_GetBaseByToken(Py_TYPE((PyObject *)P(object)), P(definition), &base);
+    int found = PyType_GetBaseByToken(P(type), P(definition), &base);
     Py_XDECREF(base);
     return found;
+}
+int64_t jacpy_binding_matches(uint64_t object, uint64_t definition) {
+    return jacpy_binding_type_matches(H(Py_TYPE((PyObject *)P(object))), definition);
 }
 uint64_t jacpy_binding_base_new(uint64_t base, uint64_t type, uint64_t args, uint64_t keywords) {
     return H(((PyTypeObject *)P(base))->tp_new(P(type), P(args), P(keywords)));
@@ -426,4 +439,49 @@ uint64_t jacpy_binding_parent(uint64_t type, uint64_t definition) {
     PyTypeObject *parent = base->tp_base;
     Py_DECREF(base);
     return H(parent); /* borrowed from the input type's retained base chain */
+}
+
+/* Contiguous one-dimensional buffer metadata belongs to the individual export,
+ * so format and shape pointers remain valid independently of later callbacks. */
+typedef struct {
+    uint64_t address;
+    int64_t count, itemsize;
+    int64_t readonly;
+} JacBufferLayout;
+typedef struct { Py_ssize_t shape; char format[]; } JacBufferExport;
+int32_t jacpy_binding_buffer_fill(uint64_t view_handle, uint64_t object,
+                                  JacBufferLayout layout, const char *format, int32_t flags) {
+    Py_buffer *view = P(view_handle);
+    if (!view) { PyErr_SetString(PyExc_BufferError, "view==NULL argument is obsolete"); return -1; }
+    if (layout.count < 0 || layout.itemsize <= 0 || layout.count > PY_SSIZE_T_MAX / layout.itemsize) {
+        PyErr_SetString(PyExc_BufferError, "invalid native buffer dimensions"); return -1;
+    }
+    size_t format_size = strlen(format) + 1;
+    JacBufferExport *metadata = malloc(sizeof(*metadata) + format_size);
+    if (!metadata) { PyErr_NoMemory(); return -1; }
+    metadata->shape = layout.count;
+    memcpy(metadata->format, format, format_size);
+    if (PyBuffer_FillInfo(view, P(object), P(layout.address), layout.count * layout.itemsize,
+                          (int)layout.readonly, flags) < 0) { free(metadata); return -1; }
+    view->itemsize = layout.itemsize;
+    view->format = flags & PyBUF_FORMAT ? metadata->format : NULL;
+    view->shape = flags & PyBUF_ND ? &metadata->shape : NULL;
+    view->strides = (flags & PyBUF_STRIDES) == PyBUF_STRIDES ? &view->itemsize : NULL;
+    view->internal = metadata;
+    return 0;
+}
+void jacpy_binding_buffer_dispose(uint64_t view_handle) {
+    Py_buffer *view = P(view_handle);
+    if (view) { free(view->internal); view->internal = NULL; }
+}
+
+/* Keep deeply linked Python ownership chains within CPython's destruction
+ * budget. The entry callback is the actual tp_dealloc; body disposes once. */
+void jacpy_binding_dealloc_guard(uint64_t object, void (*entry)(uint64_t),
+                                 void (*body)(uint64_t)) {
+    PyObject *op = P(object);
+    PyObject_GC_UnTrack(op);
+    Py_TRASHCAN_BEGIN(op, (destructor)entry)
+    body(object);
+    Py_TRASHCAN_END
 }

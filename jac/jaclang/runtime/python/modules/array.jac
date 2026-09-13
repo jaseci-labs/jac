@@ -749,13 +749,13 @@ def:pub jacpy_array_repr(state: array_state) -> u64 {
 }
 
 obj array_cursor {
-    has owner: u64 = 0,
+    has state: (array_state | None),
+        owner: u64 = 0,
         index: i64 = 0;
 }
 
-import from c { def jacpy_array_state(handle: u64) -> array_state;  }
-def:pub jacpy_array_cursor_new(owner: u64) -> array_cursor {
-    return array_cursor(owner=jacpy_retain(owner));
+def:pub jacpy_array_cursor_new(owner: u64, state: array_state) -> array_cursor {
+    return array_cursor(state=state, owner=jacpy_retain(owner));
 }
 
 def:pub jacpy_array_cursor_owner(cursor: array_cursor) -> u64 {
@@ -769,21 +769,22 @@ def:pub jacpy_array_cursor_index(cursor: array_cursor) -> i64 {
 def:pub jacpy_array_cursor_clear(cursor: array_cursor) {
     owner = cursor.owner;
     cursor.owner = 0;
+    cursor.state = None;
     jacpy_release(owner);
 }
 
 def:pub jacpy_array_cursor_set(cursor: array_cursor, index: i64) {
-    if cursor.owner != 0 {
-        state = jacpy_array_state(cursor.owner);
+    state = cursor.state;
+    if cursor.owner != 0 and state is not None {
         cursor.index = min(state.length, max(i64(0), index));
     }
 }
 
 def:pub jacpy_array_cursor_next(cursor: array_cursor) -> u64 {
-    if cursor.owner == 0 {
+    state = cursor.state;
+    if cursor.owner == 0 or state is None {
         return 0;
     }
-    state = jacpy_array_state(cursor.owner);
     if cursor.index >= state.length {
         jacpy_array_cursor_clear(cursor);
         return 0;

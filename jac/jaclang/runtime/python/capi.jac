@@ -382,3 +382,21 @@ def serialization_note(value: u64, key: u64, index: int, kind: int, detail: str 
         jacpy_error_restore(error);
     }
 }
+
+import from c {
+    obj SliceBounds {
+        has start: i64,
+            stop: i64,
+            step: i64,
+            count: i64,
+            valid: i64;
+    }  def jacpy_is_slice(value: u64) -> i64;  def jacpy_slice_unpack(
+        value: u64
+    ) -> SliceBounds;  def jacpy_slice_adjust(
+        length: i64, bounds: SliceBounds
+    ) -> SliceBounds;  def jacpy_audit(event: str, arguments: u64) -> i64;  def jacpy_warn(
+        category: str, message: str, stacklevel: i64
+    ) -> i64;  def jacpy_builtins -> u64;  def jacpy_type_subtype(
+        type: u64, base: u64
+    ) -> i64;  def jacpy_number_ssize(value: u64, exception: str) -> i64;
+}
