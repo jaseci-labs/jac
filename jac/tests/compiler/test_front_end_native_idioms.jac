@@ -20,7 +20,7 @@ import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
-import from jaclang.compiler.frontend.helpers { pascal_to_snake }
+import from jaclang.project.source { pascal_to_snake }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"

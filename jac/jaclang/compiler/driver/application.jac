@@ -97,6 +97,19 @@ def _project_modules(program: any, `root: any) -> dict {
     return result;
 }
 
+def _semantic_metadata(revision: PreparedApplication, program: any) {
+    import from jaclang.compiler.driver.compilation_context { program_for }
+    import from jaclang.jac0core.ext_registry { base_stem }
+    for path in revision.code {
+        actual = program_for(path, program);
+        prefix = base_stem(path) + '.';
+        revision.semantic[path] = {
+            key: value for (key, value) in actual.mtir_map.items()
+            if key.startswith(prefix)
+        };
+    }
+}
+
 def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict {
     import from jaclang.compiler.frontend { unitree as uni }
     import from jaclang.compiler.frontend.constant { Tokens as Tok }
@@ -371,6 +384,9 @@ def prepare_application(
                     );
                 }
                 revision = applications[0];
+                for application in applications {
+                    application.name = application.manifests.get(application.entry, {}).get('app', '');
+                }
                 revision.services = tuple(entries[1:]);
                 revision.applications = applications[1:];
                 publish(revision);
@@ -451,6 +467,7 @@ def _prepare(
         for path in revision.code {
             revision.native[path] = compiler.get_native_interop_setup(path, program);
         }
+        _semantic_metadata(revision, program);
         return revision;
     }
     console.print('  Compiling server modules and placement metadata...');
@@ -583,6 +600,7 @@ def _prepare(
             dependencies=dependencies
         )
     );
+    _semantic_metadata(revision, program);
     return revision;
 }
 

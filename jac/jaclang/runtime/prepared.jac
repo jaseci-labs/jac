@@ -1,12 +1,16 @@
 import os;
 import types;
 import from jaclang.runtime.object_model { field }
+import type from jaclang.runtime.semantic { Info }
 
 obj PreparedApplication {
     has `root: str,
         `entry: str,
         code: dict[str, types.CodeType] = field(default_factory=`dict),
         manifests: dict[str, dict] = field(default_factory=`dict),
+        semantic: dict[str, dict[str, Info]] = field(default_factory=`dict),
+        origins: dict[str, str] = field(default_factory=`dict),
+        name: str = '',
         client_compiler: any = None,
         client_enabled: bool = False,
         native: dict[str, tuple] = field(default_factory=`dict),
@@ -19,6 +23,11 @@ obj PreparedApplication {
 glob _applications: dict[str, PreparedApplication] = {};
 
 def publish(application: PreparedApplication) {
+    import sys;
+    import from jaclang.runtime.prepared_loader { PreparedFinder }
+    if not any(isinstance(finder, PreparedFinder) for finder in sys.meta_path) {
+        sys.meta_path.insert(0, PreparedFinder());
+    }
     _applications[os.path.realpath(application.entry)] = application;
     for child in application.applications {
         _applications[os.path.realpath(child.entry)] = child;
@@ -152,7 +161,7 @@ def initialize_application(
     module = load_prepared_module(application.entry);
     if ((config is not None) and (served is not None)) {
         import from jaclang.server.assembly { assemble_served_program }
-        assemble_served_program(config, served, application.root);
+        assemble_served_program(config, served, application.root, application);
     }
     return module;
 }
@@ -173,10 +182,14 @@ def ensure_namespace(application: PreparedApplication, name: str = '') -> str {
     import importlib.util;
     name = name or application_namespace(application);
     if name not in sys.modules {
-        initializer = os.path.join(application.root, '__init__.jac');
-        if initializer in application.code {
-            import from jaclang.meta_importer { JacMetaImporter }
-            loader = JacMetaImporter();
+        initializer = next(
+            (p for p in application.code if os.path.dirname(p) == application.root
+                and os.path.basename(p).startswith('__init__.')),
+            ''
+        );
+        if initializer {
+            import from jaclang.runtime.prepared_loader { PreparedLoader }
+            loader = PreparedLoader(application);
             spec = importlib.util.spec_from_file_location(
                 name,
                 initializer,
@@ -265,15 +278,15 @@ def module_builtins(application: PreparedApplication, source: str) -> dict {
         }
         for base in dict.fromkeys([os.path.dirname(source), application.root]) {
             candidate = os.path.join(base, *name.split('.'));
-            module = candidate + '.jac';
-            package = os.path.join(candidate, '__init__.jac');
             selected = application;
-            declared = _applications.get(os.path.realpath(module));
-            if declared is not None {
-                selected = declared;
+            for suffix in ('.jac', '.py') {
+                declared = _applications.get(os.path.realpath(candidate + suffix));
+                if declared is not None {
+                    selected = declared;
+                    break;
+                }
             }
-            local = module in selected.code
-                or package in selected.code
+            local = any(candidate + suffix in selected.code for suffix in ('.jac', '.py'))
                 or any(p.startswith(candidate + os.sep) for p in selected.code);
             if not local {
                 continue;
@@ -293,4 +306,46 @@ def module_builtins(application: PreparedApplication, source: str) -> dict {
     result = dict(vars(builtins));
     result['__import__'] = scoped_import;
     return result;
+}
+
+def execute_module(module: types.ModuleType, application: PreparedApplication) -> None {
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    source = os.path.realpath(module.__file__);
+    code = application.code.get(source);
+    if code is None {
+        raise ImportError(f'No prepared executable artifact for {source}');
+    }
+    if not module.__name__.startswith('jaclang.') {
+        Jac.load_module(module.__name__, module);
+    }
+    (native_engine, callbacks) = application.native.get(source, (None, None));
+    if native_engine is not None {
+        module.__dict__['__jac_native_engine__'] = native_engine;
+    }
+    if callbacks is not None {
+        module.__dict__['__jac_interop_py_funcs__'] = callbacks;
+    }
+    module.__dict__['__builtins__'] = module_builtins(application, source);
+    exec(code, module.__dict__);
+}
+
+def semantic_for_scope(scope: str) -> Info | None {
+    import sys;
+    import from jaclang.jac0core.ext_registry { base_stem }
+    parts = scope.split('.');
+    for end in range(len(parts) - 1, 0, -1) {
+        name = '.'.join(parts[:end]);
+        module = sys.modules.get(name);
+        source = getattr(module, '__file__', '');
+        if not source {
+            continue;
+        }
+        application = application_for(source, name);
+        if application is None {
+            continue;
+        }
+        key = '.'.join([base_stem(source), *parts[end:]]);
+        return application.semantic.get(os.path.realpath(source), {}).get(key);
+    }
+    return None;
 }

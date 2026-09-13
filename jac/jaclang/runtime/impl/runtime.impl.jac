@@ -700,7 +700,6 @@ impl JacModule.jac_import(
     if (lng is None) {
         lng = infer_language(target, base_path);
     }
-    _ = JacRuntime.get_program();
     if target.startswith('.') {
         caller_dir = base_path
             if os.path.isdir(base_path)
@@ -742,9 +741,7 @@ impl JacModule.jac_import(
     }
     try {
         if (override_name == '__main__') {
-            import from jaclang.meta_importer { JacMetaImporter }
-            finder = JacMetaImporter();
-            spec = finder.find_spec(module_name, None);
+            spec = importlib.util.find_spec(module_name);
             if (
                 spec and spec.origin and spec.origin.endswith('.jac') and (lng == 'py')
             ) {
@@ -782,15 +779,11 @@ impl JacModule.jac_import(
             }
             JacRuntimeInterface.load_module('__main__', module);
 
-            if (spec.origin and spec.origin.endswith('.py')) {
-                codeobj = JacRuntime.get_compiler().get_bytecode(
-                    full_target=spec.origin, target_program=JacRuntime.get_program()
-                );
-                if codeobj {
-                    exec(codeobj, module.__dict__);
-                } elif spec.loader {
-                    spec.loader.exec_module(module);
+            if spec.origin and spec.origin.endswith('.py') {
+                with open(spec.origin, encoding='utf-8') as stream {
+                    codeobj = compile(stream.read(), spec.origin, 'exec');
                 }
+                exec(codeobj, module.__dict__);
             } elif spec.loader {
                 spec.loader.exec_module(module);
             }
@@ -1522,8 +1515,8 @@ impl JacArchetype.set_trigger(
 }
 
 impl JacServe.get_client_bundle_builder -> ClientBundleBuilder {
-    import from jaclang.client.vite_client_bundle { make_client_bundle_builder }
-    return make_client_bundle_builder();
+    import from jaclang.runtime.build_services { build_services }
+    return build_services().client_builder();
 }
 
 impl JacServe.build_client_bundle(
@@ -1732,6 +1725,11 @@ impl JacLLM.add_mtir_to_map(scope: str, mtir: Info) -> None {
 }
 
 impl JacLLM.get_mtir_from_map(scope: str) -> (Info | None) {
+    import from jaclang.runtime.prepared { semantic_for_scope }
+    prepared = semantic_for_scope(scope);
+    if prepared is not None {
+        return prepared;
+    }
     if (JacRuntime.program is None) {
         raise AttributeError('JacRuntime.program is not initialized');
     }
@@ -2015,8 +2013,8 @@ impl JacRuntime.reset_process_state(cls: any, clear_modules: bool = True) -> Non
 
 impl JacRuntime.get_compiler(cls: any) -> JacCompiler {
     if (cls.compiler is None) {
-        import from jaclang.compiler.driver.compiler { JacCompiler }
-        cls.compiler = JacCompiler();
+        import from jaclang.runtime.build_services { build_services }
+        cls.compiler = build_services().compiler();
         if cls.program is not None and cls.program._compiler is None {
             cls.program._compiler = cls.compiler;
         }
@@ -2026,8 +2024,8 @@ impl JacRuntime.get_compiler(cls: any) -> JacCompiler {
 
 impl JacRuntime.get_program(cls: any) -> JacProgram {
     if (cls.program is None) {
-        import from jaclang.compiler.driver.program { JacProgram }
-        prog = JacProgram();
+        import from jaclang.runtime.build_services { build_services }
+        prog = build_services().program();
 
         prog._compiler = cls.get_compiler();
         cls.program = prog;
@@ -2037,8 +2035,8 @@ impl JacRuntime.get_program(cls: any) -> JacProgram {
 
 impl JacRuntime.get_selfhost(cls: any) -> SelfHostCache {
     if (cls.selfhost is None) {
-        import from jaclang.compiler.driver.selfhost { SelfHostCache }
-        cls.selfhost = SelfHostCache();
+        import from jaclang.runtime.build_services { build_services }
+        cls.selfhost = build_services().selfhost();
     }
     return cls.selfhost;
 }

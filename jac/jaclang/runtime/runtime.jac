@@ -33,7 +33,7 @@ import from jaclang.runtime.archetype {
     light_hop,
     light_hop_answers
 }
-import from jaclang.compiler.frontend.constant { EdgeDir, colors }
+import from jaclang.runtime.constants { EdgeDir, colors }
 import from jaclang.runtime.graph_query { GraphQuery, QHop }
 import from jaclang.runtime.constructs {
     AccessLevel,
@@ -96,8 +96,8 @@ def _scale_provider -> any {
     }
     result: any = None;
     try {
-        import from jaclang.scale.plugin { JacScalePlugin }
-        result = JacScalePlugin;
+        import from jaclang.scale.runtime.provider { JacScaleRuntime }
+        result = JacScaleRuntime;
     } except ImportError as e {
         _scale_provider_error[0] = e;
     }

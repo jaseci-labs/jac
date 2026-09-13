@@ -5,7 +5,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext }
-import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+import from jaclang.project.source { read_file_with_encoding }
 import from jaclang.compiler.driver.source_failures { module_import_in_flight }
 
 obj ModuleCompilation {
@@ -344,12 +344,11 @@ obj ModuleCompilation {
     }
 }
 
-def wasm_artifact(program: JacProgram, file_path: str, exports: list[str]) -> bytes {
+def wasm_ir(program: JacProgram, file_path: str) -> tuple[str, set[str]] {
     import from jaclang.compiler.backends.native.wasm_build {
         _project_gc_settings,
         _assert_ir_rc_free,
-        app_declared_imports,
-        emit_wasm_from_ir
+        app_declared_imports
     }
     import from jaclang.compiler.driver.compile_options {
         CompileOptions,
@@ -411,5 +410,11 @@ def wasm_artifact(program: JacProgram, file_path: str, exports: list[str]) -> by
     if gc_mode == "none" {
         _assert_ir_rc_free(llvm_ir_str, file_path);
     }
-    return emit_wasm_from_ir(llvm_ir_str, exports, app_imports=app_imports);
+    return (llvm_ir_str, app_imports);
+}
+
+def wasm_artifact(program: JacProgram, file_path: str, exports: list[str]) -> bytes {
+    import from jaclang.compiler.backends.native.wasm_build { emit_wasm_from_ir }
+    (llvm_ir, app_imports) = wasm_ir(program, file_path);
+    return emit_wasm_from_ir(llvm_ir, exports, app_imports=app_imports);
 }

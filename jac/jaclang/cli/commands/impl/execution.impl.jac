@@ -1225,7 +1225,7 @@ impl serve(
         }
     }
 
-    import from jaclang.scale.plugin { mark_scale_runtime }
+    import from jaclang.scale.runtime.provider { mark_scale_runtime }
     mark_scale_runtime();
     fleet_rc = _serve_fleet(cfg, served, filename, port, fleet, dev, no_client);
     if fleet_rc is not None {
@@ -1322,6 +1322,9 @@ impl serve(
     }
     ServerClass = Jac.get_api_server_class();
     server = ServerClass(module_name=mod, base_path=base, settings=settings);
+    if prepared.client_compiler is not None or (dev and not no_client) {
+        server.introspector._bundle_builder = Jac.get_client_bundle_builder();
+    }
     if prepared.client_compiler is not None {
         server.introspector._bundle_builder._compiler = prepared.client_compiler;
     }

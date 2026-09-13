@@ -2564,7 +2564,7 @@ import from jaclang.server.bridge {
     BridgeUnavailable,
     bridge_error_from
 }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.server.outbox {
     SqliteOutboxStore,
     cached_result,
