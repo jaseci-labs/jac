@@ -1551,6 +1551,8 @@ impl JacConfig.app_for_target(entry_path: str = "") -> AppConfig | None {
 }
 
 impl JacConfig.app_for_path(abs_path: str) -> AppConfig | None {
+    import from jaclang.runtime.prepared { origin_for_source }
+    abs_path = origin_for_source(abs_path);
     if self.project_root is None {
         return None;
     }

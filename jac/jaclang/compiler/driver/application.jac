@@ -273,6 +273,19 @@ def _prepare_sealed(
         if path in revision.code {
             continue;
         }
+        if Path(path).suffix == '.py' {
+            code = compiler.get_bytecode(path, program);
+            if code is None {
+                raise RuntimeError(
+                    f'Sealed application has no Python artifact: {path}'
+                );
+            }
+            revision.code[path] = code;
+            pending.update(
+                runtime_sources(code, path, image_root) - revision.code.keys()
+            );
+            continue;
+        }
         sealed = compiler._sealed_jir_data(path);
         if sealed is None {
             raise RuntimeError(

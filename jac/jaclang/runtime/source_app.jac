@@ -132,14 +132,8 @@ def main(manifest_path: str, name: str = '', argv: list[str] | None = None) -> i
         mark_scale_runtime();
     }
     import from jaclang.runtime.runtime { JacRuntime as Jac }
-    source_entry = str(
-        artifact_path(
-            Path(application.root),
-            application.origins.get(application.entry, application.entry)
-        )
-    );
-    Jac.set_full_target_path(source_entry);
-    context = Jac.create_j_context(None, application.root, source_entry);
+    Jac.set_full_target_path(application.entry);
+    context = Jac.create_j_context(None, application.root, application.entry);
     Jac.set_context(context);
     previous_argv = sys.argv;
     sys.argv = [application.entry, *arguments];

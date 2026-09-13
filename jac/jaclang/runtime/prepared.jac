@@ -372,6 +372,15 @@ def semantic_for_scope(scope: str) -> Info | None {
 }
 
 
+def origin_for_source(path: str) -> str {
+    application = application_for(path);
+    if application is None {
+        return path;
+    }
+    origin = application.origins.get(os.path.realpath(path));
+    return os.path.realpath(os.path.join(application.root, origin)) if origin else path;
+}
+
 def source_for_origin(application: PreparedApplication, origin: str) -> str {
     for (path, original) in application.origins.items() {
         if original == origin {

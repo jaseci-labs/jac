@@ -31,7 +31,7 @@ def _module_to_file(pkg_root: Path, mod: str) -> Path | None {
 }
 
 def scan_jaclang_imports(
-    py_src: str, module: str = '', package: bool = False
+    py_src: str, module: str = '', package: bool = False, include_symbols: bool = True
 ) -> set[str] {
     import from importlib.util { resolve_name }
     found: set[str] = set();
@@ -67,16 +67,34 @@ def scan_jaclang_imports(
             }
             if base == 'jaclang' or base.startswith('jaclang.') {
                 found.add(base);
-                found.update(
-                    base + '.' + alias.name
-                    for alias in current.names
-                    if alias.name != '*'
-                );
+                if include_symbols {
+                    found.update(
+                        base + '.' + alias.name
+                        for alias in current.names
+                        if alias.name != '*'
+                    );
+                }
             }
         }
         pending.extend(py_ast.iter_child_nodes(current));
     }
     return found;
+}
+
+def _runtime_dependencies(
+    pkg_root: Path, source: str, module: str = '', package: bool = False
+) -> set[str] {
+    for required in scan_jaclang_imports(
+        source, module, package, include_symbols=False
+    ) {
+        if required != 'jaclang' and _module_to_file(pkg_root, required) is None {
+            raise ValueError(
+                f'Runtime import does not resolve: {required} (imported by {module
+                    or "application"})'
+            );
+        }
+    }
+    return scan_jaclang_imports(source, module, package);
 }
 
 def _declared_literal(source: str, name: str) -> object {
@@ -176,7 +194,7 @@ def build_runtime_closure(
     }
     pending = set(requested);
     for source in user_codes {
-        pending.update(scan_jaclang_imports(source));
+        pending.update(_runtime_dependencies(pkg_root, source));
     }
     closure: dict[str, bytes] = {
         '__init__.py': _VENDORED_INIT.encode('utf-8') if prepared else b''
@@ -260,7 +278,9 @@ def build_runtime_closure(
             closure[native['record']['source']] = native['source'].encode('utf-8');
         }
         modules.append(record);
-        pending.update(scan_jaclang_imports(source, module, package) - processed);
+        pending.update(
+            _runtime_dependencies(pkg_root, source, module, package) - processed
+        );
     }
     for relative in [
         name
