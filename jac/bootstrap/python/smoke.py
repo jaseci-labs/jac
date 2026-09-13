@@ -193,6 +193,28 @@ assert _heapq.heappop([1, 2, 3]) == 1
     numeric_array.append(ArrayMutation())
     assert numeric_array.tolist() == [4, 7]
     assert array.array('w', 'aΩ😀').tounicode() == 'aΩ😀'
+    class IteratorOwner:
+        def key(self, value):
+            return True
+    for iterator_kind in ('cycle', 'groupby', 'grouper', 'tee'):
+        owner = IteratorOwner()
+        if iterator_kind == 'cycle':
+            owner.iterator = itertools.cycle([owner])
+        elif iterator_kind == 'groupby':
+            owner.iterator = itertools.groupby([owner], owner.key)
+        elif iterator_kind == 'grouper':
+            owner.iterator = next(itertools.groupby([owner]))[1]
+        else:
+            owner.iterator = itertools.tee([owner])[0]
+        owner_ref = weakref.ref(owner)
+        del owner
+        gc.collect()
+        assert owner_ref() is None, "Native itertools hid a Python reference cycle"
+    first, lagging = itertools.tee(range(200000))
+    sum(first)
+    del first, lagging
+    gc.collect()  # Releasing a long replay chain must use the destruction budget.
+
     assert ctypes.pythonapi.jacpy_tee_next
     assert list(itertools.batched(range(5), 2)) == [(0, 1), (2, 3), (4,)]
     assert list(itertools.permutations("ab")) == [("a", "b"), ("b", "a")]

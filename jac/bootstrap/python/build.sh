@@ -227,7 +227,7 @@ cmath
 math
 _collections
 _functools
-itertools jac_modules/itertools.c
+itertools
 array
 _pickle jac_modules/pickle.c
 SETUP

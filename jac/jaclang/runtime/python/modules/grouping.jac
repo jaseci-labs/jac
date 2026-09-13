@@ -18,19 +18,15 @@ import from jaclang.runtime.python.capi {
     checked,
     boundary_failure
 }
-import from c { def jacpy_grouper_create(parent: u64, target: u64) -> u64;  }
 
 obj group_state {
-    has source: u64 = 0,
+    has make_group: Callable[[u64, u64], u64],
+        source: u64 = 0,
         function: u64 = 0,
         target: u64 = 0,
         key: u64 = 0,
         value: u64 = 0,
         active_group: u64 = 0;
-}
-
-def:pub jacpy_group_new -> group_state {
-    return group_state();
 }
 
 def:pub jacpy_group_init(state: group_state, iterable: u64, function: u64) -> i64 {
@@ -136,7 +132,7 @@ def:pub jacpy_group_next(state: group_state, owner: u64) -> u64 {
         previous = state.target;
         state.target = jacpy_retain(key);
         jacpy_release(previous);
-        group = required(jacpy_grouper_create(owner, key));
+        group = required(state.make_group(owner, key));
         result = required(jacpy_tuple_new(2));
         checked(jacpy_tuple_set_owned(result, 0, jacpy_retain(key)));
         checked(jacpy_tuple_set_owned(result, 1, jacpy_retain(group)));

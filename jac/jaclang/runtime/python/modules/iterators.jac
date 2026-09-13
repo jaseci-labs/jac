@@ -42,7 +42,7 @@ import from jaclang.runtime.python.capi {
     type_name
 }
 
-# These values are shared with the type-registration table in modules/itertools.c.
+# These values identify iterator policies in the native bindings.
 enum pipeline_kind {
     ACCUMULATE = 0,
     BATCHED = 1,

@@ -29,17 +29,20 @@ obj tee_block {
 }
 
 obj tee_cursor {
-    has block: u64 = 0,
+    has bindings: TeeBindings,
+        block: u64 = 0,
         index: int = 0;
 }
 
-import from c {
-    def jacpy_tee_block_wrap(type_handle: u64, state: tee_block) -> u64;  def jacpy_tee_cursor_wrap(
-        type_handle: u64, state: tee_cursor
-    ) -> u64;  def jacpy_tee_block_state(handle: u64) -> tee_block;  def jacpy_tee_cursor_state(
-        handle: u64
-    ) -> tee_cursor;  def jacpy_object_type(value: u64) -> u64;
+# The binding supplies typed ownership access without routing through C callbacks.
+obj TeeBindings {
+    def wrap_block(type_handle: u64, state: tee_block) -> u64 abst;
+    def wrap_cursor(type_handle: u64, state: tee_cursor) -> u64 abst;
+    def block_state(handle: u64) -> tee_block abst;
+    def cursor_state(handle: u64) -> tee_cursor abst;
 }
+
+import from c { def jacpy_object_type(value: u64) -> u64;  }
 
 def:pub jacpy_tee_block_new -> tee_block {
     return tee_block();
@@ -106,19 +109,21 @@ def:pub jacpy_tee_cursor_clear(state: tee_cursor) {
     jacpy_release(previous);
 }
 
-def:pub jacpy_tee_construct(type_handle: u64, data_type: u64, iterable: u64) -> u64 {
+def:pub jacpy_tee_construct(
+    bindings: TeeBindings, type_handle: u64, data_type: u64, iterable: u64
+) -> u64 {
     iterator: u64 = 0;
     block: u64 = 0;
-    cursor = tee_cursor();
+    cursor = tee_cursor(bindings);
     try {
         iterator = required(jacpy_iter(iterable));
         if jacpy_type_check(iterator, type_handle) != 0 {
-            previous = jacpy_tee_cursor_state(iterator);
+            previous = bindings.cursor_state(iterator);
             cursor.block = jacpy_retain(previous.block);
             cursor.index = previous.index;
         } else {
             data = tee_block(source=jacpy_retain(iterator));
-            block = jacpy_tee_block_wrap(data_type, data);
+            block = bindings.wrap_block(data_type, data);
             if block == 0 {
                 jacpy_tee_block_clear(data);
                 raise boundary_failure();
@@ -126,7 +131,7 @@ def:pub jacpy_tee_construct(type_handle: u64, data_type: u64, iterable: u64) -> 
             cursor.block = block;
             block = 0;
         }
-        result = jacpy_tee_cursor_wrap(type_handle, cursor);
+        result = bindings.wrap_cursor(type_handle, cursor);
         if result == 0 {
             jacpy_tee_cursor_clear(cursor);
         }
@@ -140,21 +145,25 @@ def:pub jacpy_tee_construct(type_handle: u64, data_type: u64, iterable: u64) -> 
 }
 
 def:pub jacpy_tee_split(
-    type_handle: u64, data_type: u64, iterable: u64, count: i64
+    bindings: TeeBindings, type_handle: u64, data_type: u64, iterable: u64, count: i64
 ) -> u64 {
     result: u64 = 0;
     first: u64 = 0;
     try {
         result = required(jacpy_tuple_new(count));
         if count > 0 {
-            first = required(jacpy_tee_construct(type_handle, data_type, iterable));
+            first = required(
+                jacpy_tee_construct(bindings, type_handle, data_type, iterable)
+            );
             checked(jacpy_tuple_set_owned(result, 0, jacpy_retain(first)));
             for i in range(1, int(count)) {
                 checked(
                     jacpy_tuple_set_owned(
                         result,
                         i64(i),
-                        required(jacpy_tee_construct(type_handle, data_type, first))
+                        required(
+                            jacpy_tee_construct(bindings, type_handle, data_type, first)
+                        )
                     )
                 );
             }
@@ -174,7 +183,7 @@ def:pub jacpy_tee_next(cursor: tee_cursor) -> u64 {
     if cursor.block == 0 {
         return 0;
     }
-    state = jacpy_tee_block_state(cursor.block);
+    state = cursor.bindings.block_state(cursor.block);
     if cursor.index >= 57 {
         if state.next_block == 0 {
             type_handle = jacpy_object_type(cursor.block);
@@ -182,7 +191,7 @@ def:pub jacpy_tee_next(cursor: tee_cursor) -> u64 {
                 return 0;
             }
             following = tee_block(source=jacpy_retain(state.source));
-            next_block = jacpy_tee_block_wrap(type_handle, following);
+            next_block = cursor.bindings.wrap_block(type_handle, following);
             jacpy_release(type_handle);
             if next_block == 0 {
                 jacpy_tee_block_clear(following);
@@ -194,7 +203,7 @@ def:pub jacpy_tee_next(cursor: tee_cursor) -> u64 {
         cursor.block = jacpy_retain(state.next_block);
         cursor.index = 0;
         jacpy_release(previous);
-        state = jacpy_tee_block_state(cursor.block);
+        state = cursor.bindings.block_state(cursor.block);
     }
     if cursor.index >= len(state.values) {
         if state.running {
