@@ -325,3 +325,23 @@ source check and 137 type-system tests (five skips), including all six runtime
 value regressions. Fresh-catalog, staged-build and final CI verification remain
 in progress; intermediate diagnostic images and incomplete runs are not release
 acceptance evidence.
+
+## SDK-backed provider contracts
+
+With CI's SDK ranges installed, provider checking exposed ten response-shape
+errors and a quoted legacy type alias. The message alias now uses native Jac
+syntax and includes dictionary messages already accepted by the runtime. SDK
+response and streaming boundaries use the existing cast infrastructure. All
+three provider/telemetry/type modules pass checking with those dependencies,
+and all 82 provider/telemetry/streaming tests pass in the updated compiled image.
+The nine byLLM exclusions have been removed from the repository check gate.
+The pinned stage-0 compiler also executes a native forward type-alias smoke test.
+
+The full source check on the preceding diagnostic compiler finished with 877
+passes and only the ELF linker failure in 1,846.53 seconds. The corrected compiler
+passes that file and all 137 type-system regressions (five skips) with the fresh
+catalog. The in-flight intermediate staged build installed and verified Stage 1
+but stopped at 24/29 steps on Stage-2 compilation of `ifacecache`; that file also
+passes with the current diagnostic compiler and fresh catalog. A complete build
+from the settled sources is running; the intermediate build is not counted as a
+passing self-rebuild.

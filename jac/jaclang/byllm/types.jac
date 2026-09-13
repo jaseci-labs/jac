@@ -7,7 +7,7 @@ import from contextlib { suppress }
 
 glob logger: logging.Logger = logging.getLogger(__name__);
 import from io { BytesIO }
-import from typing { IO, TypeAlias, get_type_hints }
+import from typing { IO, get_type_hints }
 
 import from jaclang.byllm._optdeps.pillow { PILImageCls, open_image }
 import from jaclang.byllm._optdeps.litellm { LiteLLMMessage }
@@ -18,7 +18,7 @@ import from jaclang.byllm.exceptions { ByLLMError, FinishToolError }
 import from jaclang.compiler.driver.mtp { Info }
 import from jaclang.byllm.mcp { McpTool }
 
-glob MessageType: TypeAlias = 'Message | LiteLLMMessage';
+type MessageType = Message | LiteLLMMessage | dict;
 
 enum MessageRole: str {
     SYSTEM = "system",

@@ -111,7 +111,7 @@ impl ModelPool.model_call_no_stream(params: dict) -> dict {
         }
         return response;
     }
-    return self._router.completion(**params);
+    return cast(dict, self._router.completion(**params));
 }
 
 impl ModelPool.model_call_with_stream(params: dict) -> Iterator[object] {
@@ -164,5 +164,5 @@ impl ModelPool.model_call_with_stream(params: dict) -> Iterator[object] {
         }
         return _fallback_gen();
     }
-    return self._router.completion(stream=True, **params);
+    return cast(Iterator[object], self._router.completion(stream=True, **params));
 }

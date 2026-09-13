@@ -1403,7 +1403,7 @@ def _parse_tool_calls(
 }
 
 
-def _sanitize_tool_calls(message: LiteLLMMessage) -> set {
+def _sanitize_tool_calls(message: LiteLLMMessage | dict) -> set {
     damaged: set = set();
     tool_calls = (message or {}).get("tool_calls") or [];
     for tc in tool_calls {
@@ -1439,7 +1439,7 @@ def _sanitize_tool_calls(message: LiteLLMMessage) -> set {
 }
 
 
-def _truncated_call_ids(message: LiteLLMMessage, finish_reason: str) -> set {
+def _truncated_call_ids(message: LiteLLMMessage | dict, finish_reason: str) -> set {
     if finish_reason != "length" {
         return set();
     }
@@ -1482,14 +1482,14 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     actual_model = response.get("model", self.model_name);
     self.log_info(f"Calling LLM: {actual_model} with params: {log_params}");
 
-    message: LiteLLMMessage = response.get("choices", [])[0].get("message");
+    message: LiteLLMMessage | dict = response.get("choices", [])[0].get("message");
 
     if not self.supports_native_tools {
         message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
     damaged_ids = _sanitize_tool_calls(message);
     mt_run.add_message(message);
-    output_content: str = message.get("content") or "";
+    output_content = cast(str, message.get("content") or "");
     self.log_info(f"LLM call completed with response: {output_content}");
     finish_reason = str(
         (response.get("choices") or [{}])[0].get("finish_reason") or ""
@@ -1685,7 +1685,7 @@ impl BaseLLM.dispatch_streaming_with_tools(
     }
     damaged_ids = _sanitize_tool_calls(message);
     mt_run.add_message(message);
-    output_content: str = message.get("content") or "";
+    output_content = cast(str, message.get("content") or "");
 
     truncated_ids = _truncated_call_ids(message, finish_reason);
     tool_calls: list[ToolCall] = [];
@@ -1728,14 +1728,14 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     }
     actual_model = response.get("model", self.model_name);
     self.log_info(f"Calling LLM: {actual_model} with params: {log_params}");
-    message: LiteLLMMessage = response.get("choices", [])[0].get("message");
+    message: LiteLLMMessage | dict = response.get("choices", [])[0].get("message");
 
     if not self.supports_native_tools {
         message = recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
     }
     damaged_ids = _sanitize_tool_calls(message);
     mt_run.add_message(message);
-    output_content: str = message.get("content") or "";
+    output_content = cast(str, message.get("content") or "");
     self.log_info(f"LLM call completed with response: {output_content}");
     finish_reason = str(
         (response.get("choices") or [{}])[0].get("finish_reason") or ""
