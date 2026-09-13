@@ -4,18 +4,6 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 
-glob _VENDORED_INIT: str = '''"""Application runtime exported from Jac."""
-from pathlib import Path
-from jaclang.runtime.source_app import load_runtime
-load_runtime(Path(__file__).parent)
-def __getattr__(name):
-    if name in {"JacRuntime", "JacRuntimeInterface"}:
-        from jaclang.runtime import runtime
-        return getattr(runtime, name)
-    raise AttributeError(name)
-__all__ = ["JacRuntime", "JacRuntimeInterface"]
-''';
-
 def _pkg_root -> Path {
     import jaclang;
     return Path(str(jaclang.__file__)).parent;
@@ -190,10 +178,14 @@ def build_runtime_closure(
     for source in user_codes {
         pending.update(_runtime_dependencies(pkg_root, py_ast.parse(source)));
     }
-    closure: dict[str, bytes] = {
-        '__init__.py': _VENDORED_INIT.encode('utf-8') if prepared else b''
-    };
-    sources: dict[str, py_ast.Module] = {};
+    initializer = (pkg_root / '__init__.py').read_text(encoding='utf-8')
+        if prepared
+        else '';
+    closure: dict[str, bytes] = {'__init__.py': initializer.encode('utf-8')};
+    sources: dict[str, py_ast.Module] = {'jaclang': py_ast.parse(initializer)};
+    pending.update(
+        _runtime_dependencies(pkg_root, sources['jaclang'], 'jaclang', True)
+    );
     processed: set[str] = {'jaclang'};
     program = JacProgram();
     modules: list[dict] = [];
