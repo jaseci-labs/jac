@@ -125,11 +125,37 @@ jobs:
         working-directory: jac
         run: zig build build-python $DTARGET --summary all
       - name: Build and probe the packaged native JacPython binary
+        timeout-minutes: 60
         working-directory: jac
         env:
           JAC_NO_DEV_SOURCE: "1"
+          JAC_PRECOMPILE_RSS_LOG: "1"
         run: |
-          zig build $DTARGET --summary all
+          # Zig buffers child stderr until a build step completes. Keep a
+          # separate monitor so a stalled packaging step leaves evidence.
+          (
+            ticks=0
+            while sleep 60; do
+              ticks=$((ticks + 1))
+              date -u
+              for pid in $(pgrep -x python3.14 || true); do
+                ps -o pid,ppid,%cpu,rss,etime,comm -p "$pid" || true
+                if [ "$RUNNER_OS" = macOS ] && [ "$ticks" -eq 45 ]; then
+                  sample_log=".python-build/packaging-sample-$pid.log"
+                  sample "$pid" 1 1 -file "$sample_log" || true
+                  if [ -f "$sample_log" ]; then
+                    sed -n '1,180p' "$sample_log"
+                  fi
+                fi
+              done
+            done
+          ) &
+          monitor_pid=$!
+          trap 'kill "$monitor_pid" 2>/dev/null || true' EXIT
+          zig build $DTARGET --summary all --verbose
+          kill "$monitor_pid" 2>/dev/null || true
+          wait "$monitor_pid" 2>/dev/null || true
+          trap - EXIT
           zig-out/bin/jac -c '
           import ast, ctypes, sys
           assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
