@@ -22,9 +22,9 @@ down with it.
 import ctypes;
 import os;
 import subprocess;
-import sys;
 import tempfile;
 import from tests.support {
+    jac_command,
     TESTS_DIR,
     compile_native,
     get_func,
@@ -62,7 +62,7 @@ def compile_na_inline_ir(label: str, code: str) -> tuple {
 """Run a fixture on the server pathway, where CPython is the oracle."""
 def sv_run(fixture: str) -> str {
     proc = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", os.path.join(FIXTURES, fixture)],
+        jac_command("run", os.path.join(FIXTURES, fixture)),
         capture_output=True,
         text=True,
         timeout=900
@@ -77,16 +77,9 @@ def sv_run(fixture: str) -> str {
 def na_run(fixture: str) -> str {
     out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
     comp = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            os.path.join(FIXTURES, fixture),
-            "-o",
-            out_bin
-        ],
+        jac_command(
+            "build", "--native", os.path.join(FIXTURES, fixture), "-o", out_bin
+        ),
         capture_output=True,
         text=True,
         timeout=900
@@ -352,16 +345,13 @@ test "a generic pack slot is a native list, not the bare erased pointer" {
 test "a generic pack at a by-value type argument is refused, not lowered" {
     out_bin = os.path.join(tempfile.mkdtemp(), "nope.bin");
     comp = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
+        jac_command(
             "build",
             "--native",
             os.path.join(FIXTURES, "varargs_generic_scalar.jac"),
             "-o",
             out_bin
-        ],
+        ),
         capture_output=True,
         text=True,
         timeout=900
