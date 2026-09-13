@@ -570,7 +570,6 @@ def:pub jacpy_json_scan(
 }
 
 import from jaclang.runtime.python.capi {
-    text_value,
     type_name,
     jacpy_error_pending,
     repr_value,
@@ -587,9 +586,7 @@ import from jaclang.runtime.python.capi {
     jacpy_float_value,
     jacpy_truth,
     jacpy_identity,
-    jacpy_error_take,
-    jacpy_error_restore,
-    jacpy_exception_note,
+    serialization_note,
     jacpy_sequence_fast,
     jacpy_fast_size,
     jacpy_fast_item,
@@ -613,30 +610,6 @@ def encoding_error(kind: str, message: str) {
     raise boundary_failure();
 }
 
-
-# Preserve the original exception if formatting a diagnostic invokes user code.
-def serialization_note(value: u64, key: u64, index: int, kind: int) {
-    error = jacpy_error_take();
-    if error == 0 {
-        return;
-    }
-    try {
-        tail = " object";
-        if kind == 1 {
-            tail = " item " + str(index);
-        } elif kind == 2 {
-            tail = " item " + repr_value(key);
-        }
-        note = text_object("when serializing " + type_name(value, True) + tail);
-        try {
-            checked(jacpy_exception_note(error, note));
-        } finally {
-            jacpy_release(note);
-        }
-    } except boundary_failure {} finally {
-        jacpy_error_restore(error);
-    }
-}
 
 obj json_output {
     has writer: u64,
@@ -970,7 +943,9 @@ obj json_output {
                 while True {
                     record = jacpy_dict_entry(value, position);
                     if record == 0 {
-                        if jacpy_error_pending() != 0 { raise boundary_failure(); }
+                        if jacpy_error_pending() != 0 {
+                            raise boundary_failure();
+                        }
                         break;
                     }
                     try {

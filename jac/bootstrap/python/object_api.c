@@ -492,3 +492,83 @@ uint64_t jacpy_tuple_exchange(uint64_t value, int64_t index, uint64_t item) {
     if(!PyObject_GC_IsTracked(tuple)) PyObject_GC_Track(tuple);
     return HANDLE(old);
 }
+
+/* Retained object primitives used by native wire protocols. */
+uint64_t jacpy_number_long(uint64_t value) { return HANDLE(PyNumber_Long(OBJECT(value))); }
+uint64_t jacpy_long_signed_bytes(uint64_t value, int64_t size) {
+    PyObject *result = PyBytes_FromStringAndSize(NULL, size);
+    if (!result) return 0;
+    if (_PyLong_AsByteArray((PyLongObject *)OBJECT(value), (unsigned char *)PyBytes_AS_STRING(result), size, 1, 1, 1) < 0) {
+        Py_DECREF(result); return 0;
+    }
+    return HANDLE(result);
+}
+uint64_t jacpy_long_from_signed_bytes(uint64_t value) {
+    return HANDLE(_PyLong_FromByteArray((const unsigned char *)PyBytes_AS_STRING(OBJECT(value)), PyBytes_GET_SIZE(OBJECT(value)), 1, 1));
+}
+uint64_t jacpy_bytes_decode(uint64_t value, const char *encoding, const char *errors) {
+    return HANDLE(PyUnicode_Decode(PyBytes_AS_STRING(OBJECT(value)), PyBytes_GET_SIZE(OBJECT(value)), encoding, errors));
+}
+uint64_t jacpy_unicode_encode(uint64_t value, const char *encoding, const char *errors) { return HANDLE(PyUnicode_AsEncodedString(OBJECT(value), encoding, errors)); }
+uint64_t jacpy_optional_attr(uint64_t value, const char *name) { PyObject *result = NULL; return PyObject_GetOptionalAttrString(OBJECT(value), name, &result) < 0 ? 0 : HANDLE(result); }
+int64_t jacpy_setattr(uint64_t value, uint64_t name, uint64_t item) { return PyObject_SetAttr(OBJECT(value), OBJECT(name), OBJECT(item)); }
+uint64_t jacpy_import_object(uint64_t name) { return HANDLE(PyImport_Import(OBJECT(name))); }
+uint64_t jacpy_type_new(uint64_t type, uint64_t args, uint64_t kwargs) {
+    if (!PyType_Check(OBJECT(type))) { PyErr_SetString(PyExc_TypeError, "NEWOBJ class argument must be a type"); return 0; }
+    if (!PyTuple_Check(OBJECT(args))) { PyErr_SetString(PyExc_TypeError, "NEWOBJ args argument must be a tuple"); return 0; }
+    if (kwargs && !PyDict_Check(OBJECT(kwargs))) { PyErr_SetString(PyExc_TypeError, "NEWOBJ_EX kwargs argument must be a dict"); return 0; }
+    PyTypeObject *cls = (PyTypeObject *)OBJECT(type);
+    if (!cls->tp_new) { PyErr_SetString(PyExc_TypeError, "NEWOBJ class has no __new__"); return 0; }
+    return HANDLE(cls->tp_new(cls, OBJECT(args), OBJECT(kwargs)));
+}
+
+uint64_t jacpy_set_new(uint64_t iterable, int64_t frozen) { return HANDLE(frozen ? PyFrozenSet_New(OBJECT(iterable)) : PySet_New(OBJECT(iterable))); }
+int64_t jacpy_set_add(uint64_t set, uint64_t value) { return PySet_Add(OBJECT(set), OBJECT(value)); }
+uint64_t jacpy_memoryview(uint64_t value) { return HANDLE(PyMemoryView_FromObject(OBJECT(value))); }
+int64_t jacpy_is_type(uint64_t value) { return PyType_Check(OBJECT(value)); }
+uint64_t jacpy_float_from_text(uint64_t value) { return HANDLE(PyFloat_FromString(OBJECT(value))); }
+uint64_t jacpy_bytes_unescape(uint64_t value) { return HANDLE(PyBytes_DecodeEscape(PyBytes_AS_STRING(OBJECT(value)), PyBytes_GET_SIZE(OBJECT(value)), "strict", 0, NULL)); }
+
+/* Exact built-in categories: subclasses use their object protocols instead. */
+int64_t jacpy_builtin_kind(uint64_t value) {
+    PyObject *object = OBJECT(value); PyTypeObject *type = Py_TYPE(object);
+    if (object == Py_None) return 0;
+    if (type == &PyBool_Type) return 1;
+    if (type == &PyLong_Type) return 2;
+    if (type == &PyFloat_Type) return 3;
+    if (type == &PyBytes_Type) return 4;
+    if (type == &PyUnicode_Type) return 5;
+    if (type == &PyTuple_Type) return 6;
+    if (type == &PyList_Type) return 7;
+    if (type == &PyDict_Type) return 8;
+    if (type == &PySet_Type) return 9;
+    if (type == &PyFrozenSet_Type) return 10;
+    if (type == &PyByteArray_Type) return 11;
+    if (type == &PyType_Type) return 12;
+    if (type == &PyFunction_Type) return 13;
+    if (type == &PyPickleBuffer_Type) return 14;
+    return 15;
+}
+int64_t jacpy_is_not_implemented(uint64_t value) { return OBJECT(value) == Py_NotImplemented; }
+
+int64_t jacpy_audit_pickle_find(uint64_t module, uint64_t name) { return PySys_Audit("pickle.find_class", "OO", OBJECT(module), OBJECT(name)); }
+
+uint64_t jacpy_mapping_optional_item(uint64_t mapping, uint64_t key) { PyObject *result = NULL; return PyMapping_GetOptionalItem(OBJECT(mapping), OBJECT(key), &result) < 0 ? 0 : HANDLE(result); }
+
+int64_t jacpy_is_iterator(uint64_t value) { return PyIter_Check(OBJECT(value)); }
+
+uint64_t jacpy_not_implemented(void) { return HANDLE(Py_NewRef(Py_NotImplemented)); }
+uint64_t jacpy_ellipsis(void) { return HANDLE(Py_NewRef(Py_Ellipsis)); }
+
+void jacpy_exception_context(uint64_t error, uint64_t cause) { PyException_SetContext(OBJECT(error), Py_NewRef(OBJECT(cause))); }
+
+uint64_t jacpy_dict_items(uint64_t value) { return HANDLE(PyDict_Items(OBJECT(value))); }
+uint64_t jacpy_unicode_intern(uint64_t value) { PyObject *result=Py_NewRef(OBJECT(value)); PyUnicode_InternInPlace(&result); return HANDLE(result); }
+
+int64_t jacpy_dict_memory(uint64_t value) {
+    PyObject *size = PyObject_CallMethod(OBJECT(value), "__sizeof__", NULL);
+    if (!size) return -1;
+    Py_ssize_t result = PyLong_AsSsize_t(size);
+    Py_DECREF(size);
+    return result;
+}

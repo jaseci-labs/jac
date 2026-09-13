@@ -5,25 +5,69 @@ reference (zero on error), released with jacpy_release or returned to Python.
 All calls require the interpreter lock; exceptions remain in CPython's thread
 state. No Python implementation of a replaced module is invoked here.
 """
+enum builtin_kind {
+    NONE = 0,
+    BOOL = 1,
+    INT = 2,
+    FLOAT = 3,
+    BYTES = 4,
+    STR = 5,
+    TUPLE = 6,
+    LIST = 7,
+    DICT = 8,
+    SET = 9,
+    FROZENSET = 10,
+    BYTEARRAY = 11,
+    TYPE = 12,
+    FUNCTION = 13,
+    PICKLE_BUFFER = 14,
+    OTHER = 15
+}
+
 import from c {
-    def jacpy_unicode_decode_bytes(value: u64, encoding: str) -> u64;
-    def jacpy_unicode_from_ordinal(point: i64) -> u64;
-    def jacpy_memory_move(target: u64, source: u64, size: i64);
-    def jacpy_bytearray_new(size: i64) -> u64;
-    def jacpy_bytearray_resize(value: u64, size: i64) -> i64;
-    def jacpy_bytearray_memory(value: u64) -> i64;
-    def jacpy_float32_bits(value: f64) -> u64;
-    def jacpy_tuple_unique(value: u64) -> i64;
-    def jacpy_tuple_exchange(value: u64, index: i64, item: u64) -> u64;
-    def jacpy_call_two(callable: u64, a: u64, b: u64) -> u64;  def jacpy_object_type(
+    def jacpy_dict_memory(value: u64) -> i64;  def jacpy_dict_items(
         value: u64
-    ) -> u64;  def jacpy_callable(value: u64) -> i64;  def jacpy_is_exact_unicode(
+    ) -> u64;  def jacpy_unicode_intern(value: u64) -> u64;  def jacpy_exception_context(
+        error: u64, cause: u64
+    );  def jacpy_not_implemented -> u64;  def jacpy_ellipsis -> u64;  def jacpy_is_iterator(
         value: u64
-    ) -> i64;  def jacpy_is_exact_tuple(value: u64) -> i64;  def jacpy_object_hash(
+    ) -> i64;  def jacpy_mapping_optional_item(mapping: u64, key: u64) -> u64;  def jacpy_audit_pickle_find(
+        module: u64, name: u64
+    ) -> i64;  def jacpy_builtin_kind(value: u64) -> i64;  def jacpy_is_not_implemented(
         value: u64
-    ) -> i64;  def jacpy_dict_copy(value: u64) -> u64;  def jacpy_dict_update(
-        target: u64, source: u64
-    ) -> i64;  def jacpy_ordered_dict_new -> u64;  def jacpy_long_fits_i64(
+    ) -> i64;  def jacpy_set_new(iterable: u64, frozen: i64) -> u64;  def jacpy_set_add(
+        set: u64, value: u64
+    ) -> i64;  def jacpy_memoryview(value: u64) -> u64;  def jacpy_is_type(
+        value: u64
+    ) -> i64;  def jacpy_float_from_text(value: u64) -> u64;  def jacpy_bytes_unescape(
+        value: u64
+    ) -> u64;  def jacpy_number_long(value: u64) -> u64;  def jacpy_long_signed_bytes(
+        value: u64, size: i64
+    ) -> u64;  def jacpy_long_from_signed_bytes(value: u64) -> u64;  def jacpy_bytes_decode(
+        value: u64, encoding: str, errors: str
+    ) -> u64;  def jacpy_unicode_encode(
+        value: u64, encoding: str, errors: str
+    ) -> u64;  def jacpy_optional_attr(value: u64, name: str) -> u64;  def jacpy_setattr(
+        value: u64, name: u64, item: u64
+    ) -> i64;  def jacpy_import_object(name: u64) -> u64;  def jacpy_type_new(
+        type: u64, args: u64, kwargs: u64
+    ) -> u64;  def jacpy_unicode_decode_bytes(value: u64, encoding: str) -> u64;  def jacpy_unicode_from_ordinal(
+        point: i64
+    ) -> u64;  def jacpy_memory_move(target: u64, source: u64, size: i64);  def jacpy_bytearray_new(
+        size: i64
+    ) -> u64;  def jacpy_bytearray_resize(value: u64, size: i64) -> i64;  def jacpy_bytearray_memory(
+        value: u64
+    ) -> i64;  def jacpy_float32_bits(value: f64) -> u64;  def jacpy_tuple_unique(
+        value: u64
+    ) -> i64;  def jacpy_tuple_exchange(value: u64, index: i64, item: u64) -> u64;  def jacpy_call_two(
+        callable: u64, a: u64, b: u64
+    ) -> u64;  def jacpy_object_type(value: u64) -> u64;  def jacpy_callable(
+        value: u64
+    ) -> i64;  def jacpy_is_exact_unicode(value: u64) -> i64;  def jacpy_is_exact_tuple(
+        value: u64
+    ) -> i64;  def jacpy_object_hash(value: u64) -> i64;  def jacpy_dict_copy(
+        value: u64
+    ) -> u64;  def jacpy_dict_update(target: u64, source: u64) -> i64;  def jacpy_ordered_dict_new -> u64;  def jacpy_long_fits_i64(
         value: u64
     ) -> i64;  def jacpy_sequence_tuple(value: u64) -> u64;  def jacpy_is_exact_float(
         value: u64
@@ -312,5 +356,29 @@ def type_name(value: u64, qualified: bool = False) -> str {
         return text_value(name);
     } finally {
         jacpy_release(name);
+    }
+}
+
+# Preserve the original exception if formatting a diagnostic invokes user code.
+def serialization_note(value: u64, key: u64, index: int, kind: int, detail: str = "") {
+    error = jacpy_error_take();
+    if error == 0 {
+        return;
+    }
+    try {
+        tail = " " + detail if detail else " object";
+        if kind == 1 {
+            tail = " item " + str(index);
+        } elif kind == 2 {
+            tail = " item " + repr_value(key);
+        }
+        note = text_object("when serializing " + type_name(value, True) + tail);
+        try {
+            checked(jacpy_exception_note(error, note));
+        } finally {
+            jacpy_release(note);
+        }
+    } except boundary_failure {} finally {
+        jacpy_error_restore(error);
     }
 }
