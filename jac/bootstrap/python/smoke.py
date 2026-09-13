@@ -84,13 +84,15 @@ if required_compiler is not None:
     isolated = interpreters.create()
     try:
         isolated.exec("""
-import array, _functools, itertools, _pickle
+import array, _functools, itertools, _pickle, _bisect, _heapq
 assert array.__spec__.origin == _functools.__spec__.origin == itertools.__spec__.origin == 'built-in'
 assert _functools.partial(pow, 2)(5) == 32
 assert list(itertools.islice(itertools.count(3), 3)) == [3, 4, 5]
 assert array.array('i', [1, 2]).tolist() == [1, 2]
 assert _pickle.__spec__.origin == 'built-in'
 assert _pickle.loads(_pickle.dumps({'a': [1, 2]})) == {'a': [1, 2]}
+assert _bisect.bisect_right(a=[1, 2, 2], x=2) == 3
+assert _heapq.heappop([1, 2, 3]) == 1
 """)
     finally:
         isolated.close()
@@ -386,6 +388,20 @@ assert _pickle.loads(_pickle.dumps({'a': [1, 2]})) == {'a': [1, 2]}
     assert generator.getrandbits(130) == bits
     assert ctypes.pythonapi.jacpy_heapify
     assert _bisect.bisect_right([1, 2, 2, 4], 2) == 3
+    # The native binding frame must release conversions on every error path,
+    # including duplicate keywords, unknown names, and failing __index__.
+    binding_values, binding_needle = [], object()
+    binding_refs = sys.getrefcount(binding_values), sys.getrefcount(binding_needle)
+    for _ in range(100):
+        for kwargs in ({"x": binding_needle}, {"bad": binding_needle}, {"lo": None}):
+            try:
+                _bisect.bisect_left(binding_values, binding_needle, **kwargs)
+            except TypeError:
+                pass
+            else:
+                raise AssertionError("Invalid native argument binding was accepted")
+    del kwargs
+    assert (sys.getrefcount(binding_values), sys.getrefcount(binding_needle)) == binding_refs
     import builtins
     original_value_error = builtins.ValueError
     try:

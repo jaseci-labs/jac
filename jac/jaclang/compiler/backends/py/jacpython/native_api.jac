@@ -277,14 +277,8 @@ import from jaclang.runtime.python.modules.random {
     jacpy_random_setstate,
     jacpy_random_bits
 }
-import from jaclang.runtime.python.modules.bisect { jacpy_bisect }
-import from jaclang.runtime.python.modules.heapq {
-    jacpy_heap_push,
-    jacpy_heap_pop,
-    jacpy_heap_replace,
-    jacpy_heap_pushpop,
-    jacpy_heapify
-}
+import from jaclang.runtime.python.bindings.bisect { PyInit__bisect }
+import from jaclang.runtime.python.bindings.heapq { PyInit__heapq }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

@@ -152,6 +152,7 @@ cpython() {
         cp "$recipe/compiler_bridge.h" Python/jac_compile.h
         cp "$recipe/compiler_runtime.c" Python/jac_runtime.c
         cp "$recipe/object_api.c" Python/jac_objects.c
+        cp "$recipe/binding_api.c" Python/jac_bindings.c
         mkdir -p Modules/jac_modules
         cp "$recipe/modules/"*.c Modules/jac_modules/
         cp "$work/native/jacpython.o" Python/jacpython.o
@@ -213,8 +214,8 @@ SETUP
     if [ -n "$host" ]; then
         cat >> Modules/Setup.local <<'SETUP'
 *static*
-_bisect jac_modules/bisect.c
-_heapq jac_modules/heapq.c
+_bisect
+_heapq
 _random jac_modules/random.c
 binascii jac_modules/binascii.c
 _operator jac_modules/operator.c -lcrypto

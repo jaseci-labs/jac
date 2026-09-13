@@ -52,6 +52,13 @@ implements those C API calls. `bootstrap/python/modules/` contains Python
 method/type registration and argument adapters. The algorithms are native Jac,
 and their C sources and Clinic headers are excluded from shipped runtimes.
 
+`bindings/` provides native Jac module declarations and argument binding. Bisect
+and heapq now use this path, including their `PyInit_*` entry points. The shared
+`bootstrap/python/binding_api.c` stores opaque CPython ABI records without
+module-specific policy. Declarations contain no Python objects and live for the
+process lifetime; an owned argument frame releases conversions on success and
+error paths. Python calling conventions and isolated interpreters are preserved.
+
 Queues and deques share `modules/object_ring.jac`. Its circular storage transfers
 owned Python references without invoking callbacks; callers finish mutations
 before releasing references. The C adapters expose every retained Python value

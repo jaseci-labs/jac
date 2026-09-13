@@ -11,6 +11,7 @@
 int64_t jacpy_object_size(uint64_t handle) {
     return PySequence_Size(OBJECT(handle));
 }
+int64_t jacpy_ssize(uint64_t handle) { return PyLong_AsSsize_t(OBJECT(handle)); }
 uint64_t jacpy_sequence_slot(uint64_t handle) {
     PyTypeObject *type = Py_TYPE(OBJECT(handle));
     if (type->tp_as_sequence && type->tp_as_sequence->sq_item)

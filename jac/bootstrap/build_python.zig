@@ -5,20 +5,20 @@ const builtin = @import("builtin");
 const seed = @import("seed.zig");
 const Io = std.Io;
 const inputs = [_][]const u8{
-    "bootstrap/build_python.zig",           "bootstrap/seed.zig",
-    "bootstrap/python/sources.json",        "bootstrap/python/cpython-sources.txt",
-    "bootstrap/python/build.sh",            "bootstrap/python/smoke.py",
-    "bootstrap/python/finalize.py",         "bootstrap/python/compiler-bridge.patch",
-    "bootstrap/python/compiler_runtime.c",  "bootstrap/python/compiler_bridge.c",
-    "bootstrap/python/object_api.c",        "bootstrap/python/modules/bisect.c",
-    "bootstrap/python/modules/heapq.c",     "bootstrap/python/modules/random.c",
-    "bootstrap/python/modules/queue.c",     "bootstrap/python/modules/operator.c",
-    "bootstrap/python/modules/binascii.c",  "bootstrap/python/compiler_bridge.h",
-    "bootstrap/python/modules/csv.c",       "bootstrap/python/prepare_native.py",
-    "bootstrap/python/modules/json.c",      "bootstrap/python/modules/struct.c",
-    "bootstrap/python/modules/cmath.c",     "bootstrap/python/modules/collections.c",
-    "bootstrap/python/modules/math.c",      "bootstrap/python/modules/functools.c",
-    "bootstrap/python/modules/itertools.c", "bootstrap/python/modules/array.c",
+    "bootstrap/build_python.zig",             "bootstrap/seed.zig",
+    "bootstrap/python/sources.json",          "bootstrap/python/cpython-sources.txt",
+    "bootstrap/python/build.sh",              "bootstrap/python/smoke.py",
+    "bootstrap/python/finalize.py",           "bootstrap/python/compiler-bridge.patch",
+    "bootstrap/python/compiler_runtime.c",    "bootstrap/python/compiler_bridge.c",
+    "bootstrap/python/object_api.c",          "bootstrap/python/binding_api.c",
+    "bootstrap/python/modules/random.c",      "bootstrap/python/modules/queue.c",
+    "bootstrap/python/modules/operator.c",    "bootstrap/python/modules/binascii.c",
+    "bootstrap/python/compiler_bridge.h",     "bootstrap/python/modules/csv.c",
+    "bootstrap/python/prepare_native.py",     "bootstrap/python/modules/json.c",
+    "bootstrap/python/modules/struct.c",      "bootstrap/python/modules/cmath.c",
+    "bootstrap/python/modules/collections.c", "bootstrap/python/modules/math.c",
+    "bootstrap/python/modules/functools.c",   "bootstrap/python/modules/itertools.c",
+    "bootstrap/python/modules/array.c",       "bootstrap/python/modules/pickle.c",
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
 const Mode = enum { host, jacpython };
@@ -167,7 +167,8 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
         if (mode != .jacpython and (std.mem.endsWith(u8, path, "/compiler-bridge.patch") or
             std.mem.endsWith(u8, path, "/compiler_bridge.c") or std.mem.endsWith(u8, path, "/compiler_bridge.h") or
             std.mem.endsWith(u8, path, "/prepare_native.py") or std.mem.endsWith(u8, path, "/compiler_runtime.c") or
-            std.mem.endsWith(u8, path, "/object_api.c") or std.mem.indexOf(u8, path, "/modules/") != null)) continue;
+            std.mem.endsWith(u8, path, "/object_api.c") or std.mem.endsWith(u8, path, "/binding_api.c") or
+            std.mem.indexOf(u8, path, "/modules/") != null)) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
         const content = try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited);
         hash.update(path);
