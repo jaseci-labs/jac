@@ -1,0 +1,24 @@
+name: Fingerprint build inputs
+description: Snapshot tracked producer inputs before restoring or generating artifacts.
+outputs:
+  binary:
+    description: Complete tracked binary inputs.
+    value: ${{ steps.inputs.outputs.binary }}
+  package:
+    description: Tracked package inputs.
+    value: ${{ steps.inputs.outputs.package }}
+  compiler:
+    description: Compiler implementation compatibility scope.
+    value: ${{ steps.inputs.outputs.compiler }}
+  python:
+    description: Native Python and producing compiler inputs.
+    value: ${{ steps.inputs.outputs.python }}
+  layers:
+    description: Dependency layer producer inputs.
+    value: ${{ steps.inputs.outputs.layers }}
+runs:
+  using: composite
+  steps:
+    - id: inputs
+      shell: bash
+      run: bash scripts/build_cache_keys.sh >> "$GITHUB_OUTPUT"
