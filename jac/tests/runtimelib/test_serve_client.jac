@@ -2417,7 +2417,6 @@ for (const row of ROWS) {
   const ok = JSON.stringify(seen) === JSON.stringify(want);
   console.log((ok ? "PASS  " : "FAIL  ") + row.name + ": " + JSON.stringify(seen) + (ok ? "" : " want " + JSON.stringify(want)));
   failed += ok ? 0 : 1;
-  dom.window.close();
 }
 process.exit(failed ? 1 : 0);
 """;
