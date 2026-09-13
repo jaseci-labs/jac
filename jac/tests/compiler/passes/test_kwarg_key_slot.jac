@@ -19,6 +19,7 @@ those slots, the capture walk skips them, and the Python lane builds a keyword
 key from its spelling rather than from a lowered reference.
 """
 
+import from tests.support { jac_command }
 import ast as ast3;
 import os;
 import subprocess;
@@ -136,10 +137,7 @@ test "the native nested function takes no phantom capture" {
 test "the annexed body computes the same value on both lanes" {
     src = os.path.join(FIXTURES, "kwarg_key_slot.jac");
     sv = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", src],
-        capture_output=True,
-        text=True,
-        timeout=900
+        jac_command() + ["run", src], capture_output=True, text=True, timeout=900
     );
     assert sv.returncode == 0 , f"server run failed: {sv.stderr[-800:]}";
     assert sv.stdout.strip() == "34" , f"server lane printed {sv.stdout!r}";

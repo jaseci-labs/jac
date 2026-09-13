@@ -8,6 +8,7 @@ Named archetype bindings stay fenced (E1406): there is no copy-in idiom
 for archetypes, so only fresh values may enter.
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,
@@ -69,7 +70,8 @@ test "element drops fire exactly once at identical points in all gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"olc_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", fixture]
+                jac_command()
+                    + ["build", "--native", fixture]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

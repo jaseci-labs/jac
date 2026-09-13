@@ -14,7 +14,14 @@ import from jaclang.data.dbcatalog {
 }
 import from jaclang.data.pgembed { PgRuntime }
 import from jaclang.runtime.exceptions { ReadOnlyRetry, WriteConflict }
-import from jaclang.data.store { AnchorRow, ConnInfo, PgStore, Store, TxnIsolation }
+import from jaclang.data.store {
+    AnchorRow,
+    ConnInfo,
+    PgStore,
+    Store,
+    StoreReset,
+    TxnIsolation
+}
 
 glob logger = logging.getLogger(__name__),
      MAX_RETRIES = 5,
@@ -82,20 +89,21 @@ def record_unit_writes(key: str) {
 
 obj ScratchLease {
     has database: str,
-        reset: bool = False;
+        reset: StoreReset | None = None;
 }
 
 
 obj RuntimeLease {
     has runtime: PgRuntime,
-        reset: bool = False;
+        reset: StoreReset | None = None;
 }
 
 
 obj ScratchState {
     has database: str,
         base_path: str,
-        owner_pid: int = 0;
+        owner_pid: int = 0,
+        reset: StoreReset | None = None;
 }
 
 

@@ -11,6 +11,7 @@ supported relocation kind, the malloc/memcpy import surface, a data segment,
 and the indirect-call table.
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,
@@ -213,18 +214,16 @@ test "linking is deterministic" {
 test "nacompile --target wasm32 writes a valid module via the CLI" {
     out = os.path.join(tempfile.mkdtemp(), "game.wasm");
     proc = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            "--target",
-            "wasm32",
-            os.path.join(FIXTURES, FIXTURE),
-            "-o",
-            out
-        ],
+        jac_command()
+            + [
+                "build",
+                "--native",
+                "--target",
+                "wasm32",
+                os.path.join(FIXTURES, FIXTURE),
+                "-o",
+                out
+            ],
         capture_output=True,
         text=True,
         timeout=300

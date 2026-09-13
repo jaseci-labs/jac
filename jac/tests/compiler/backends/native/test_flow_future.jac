@@ -4,6 +4,7 @@ heap future record joining at `wait`. Parallel in enforced zero-RC and
 atomic-rc builds; cycles, wasm, rc-debug, and any handle whose uses
 are not exactly `wait` keep the sequential erasure."""
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import sys;
@@ -50,7 +51,8 @@ test "future output is byte-identical across gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"fut_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+                jac_command()
+                    + ["build", "--native", FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

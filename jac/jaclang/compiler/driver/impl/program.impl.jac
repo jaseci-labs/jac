@@ -346,7 +346,7 @@ impl JacProgram.release_check_caches(self: JacProgram) -> None {
 }
 
 impl JacProgram.release_compile_closure(
-    self: JacProgram, collect: bool = True
+    self: JacProgram, collect: bool = True, retain_stubs: bool = True
 ) -> None {
     import os;
     if os.environ.get("JAC_NO_UNIT_EVICT") {
@@ -356,7 +356,9 @@ impl JacProgram.release_compile_closure(
     if self.context_root is None {
         for context in list(self.contexts.values()) {
             if context is not self {
-                context.release_compile_closure(collect=False);
+                context.release_compile_closure(
+                    collect=False, retain_stubs=retain_stubs
+                );
             }
         }
         self.contexts.clear();
@@ -365,7 +367,7 @@ impl JacProgram.release_compile_closure(
         self.source_store.revisions.clear();
     }
     self.release_native_dep_units();
-    self.hub.reset();
+    self.hub.reset(retain_stubs=retain_stubs);
     self.mod = self.hub.mod;
     self.deps.clear();
     self.type_evaluator = None;

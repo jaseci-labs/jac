@@ -1,5 +1,4 @@
 import logging;
-import from enum { StrEnum }
 import from jaclang.data.store { ConnInfo, SCHEMA_STAMP_KEY }
 
 glob logger = logging.getLogger(__name__),
@@ -47,7 +46,7 @@ glob logger = logging.getLogger(__name__),
      ];
 
 
-enum DbKind(StrEnum) { PROJECT = 'project', SCRATCH = 'scratch' }
+enum DbKind: str { PROJECT = 'project', SCRATCH = 'scratch' }
 
 
 obj DbRecord {

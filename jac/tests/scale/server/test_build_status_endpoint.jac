@@ -12,11 +12,14 @@ import from tempfile { TemporaryDirectory }
 import from jaclang.server.hmr { HotReloader }
 import from jaclang.server.watcher { JacFileWatcher }
 
-obj _CapturedServer {
-    has endpoints: list = [],
-        base_path: str = "";
+import from jaclang.server.server { JacAPIServer }
+import from jaclang.server.serving.endpoint { JEndPoint }
 
-    def add_endpoint(ep: any) {
+obj _CapturedServer(JacAPIServer) {
+    has endpoints: list[JEndPoint] = [];
+
+    override def postinit {}
+    override def add_endpoint(ep: JEndPoint) {
         self.endpoints.append(ep);
     }
 }
@@ -54,7 +57,7 @@ test "the scale build status route serves the status document shape" {
     import from jaclang.server.endpoints.pages { register_diagnostics_endpoints }
     import from jaclang.server.serving.datatypes { Request }
     with TemporaryDirectory() as tmp {
-        stub = _CapturedServer(base_path=tmp);
+        stub = _CapturedServer(module_name="diagnostics-test", base_path=tmp);
         register_diagnostics_endpoints(stub);
         status_eps = [
             e

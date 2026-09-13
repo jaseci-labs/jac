@@ -11,6 +11,7 @@ The fixture-plus-expected-codes cases for this rule live in the shared
 table cannot express.
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,
@@ -56,14 +57,8 @@ def _enforced_codes(name: str) -> list[str] {
 def _run_mode(tmp: str, mode: str) -> str {
     out_bin = os.path.join(tmp, f"ofd_{mode}");
     res = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            os.path.join(FIXDIR, "own_field_drop_count.jac")
-        ]
+        jac_command()
+            + ["build", "--native", os.path.join(FIXDIR, "own_field_drop_count.jac")]
             + MODE_FLAGS[mode]
             + ["-o", out_bin],
         capture_output=True,

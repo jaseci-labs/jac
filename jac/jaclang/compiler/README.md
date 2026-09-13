@@ -65,6 +65,77 @@ faster together. Total build ranges overlap (3.423–4.193 s baseline,
 3.340–4.145 s new), so the end-to-end figure is a local measurement rather than a
 guaranteed speedup. Both generated executables completed an automatic game.
 
+## Native hash containers
+
+Dictionaries and sets share `backends/native/na_ir_gen_pass.impl/hash_core.impl.jac`
+and `hash_order.impl.jac`. The order allocation contains `capacity` hash-slot
+indices, `capacity` inverse slot-to-position indices, then one extent word.
+Deletion marks its order position as -1 and trims trailing holes. Ordered reads
+compact holes once; insertion also compacts when the order allocation fills.
+Rehashing rebuilds both indices. This makes deletion amortized constant time,
+preserves insertion order, and bounds order storage during repeated mutations.
+
+`jc_materialize` decodes this private order storage when copying native
+dictionaries. Keep its decoder synchronized with changes to this allocation;
+the container field offsets still come from the backend's ABI metadata.
+The native dictionary scaling, mutation, and materialization tests cover these
+contracts.
+
+## Packaged interfaces and compilation lifetimes
+
+Precompilation uses the ordinary interface registry, stub catalog, and code
+pipeline. The compiler-image builder preserves interface sections, dependency
+hashes, diagnostic profiles, and placement facts alongside executable bytecode.
+Serialization runs in the same compilation context that produced those facts,
+so temporary source paths can be relocated without changing type identities.
+A bytecode-only cache is upgraded through `IfaceRegistry`.
+
+Packaging consumes a verified complete image and its prebuilt catalog; it does
+not compile or mutate the compiler. Catalog construction alone owns the recursion
+guard. Image startup loads compiled modules without source compilation.
+
+Bytecode loads establish their own compilation request. A caller's analysis and
+full-tree requirements resume after loading the executable dependency. Ordinary
+analysis programs own their graphs and interfaces; there is no separate self-host
+program or seed compiler.
+
+Interface preparation, replay, and persistence share one source eligibility
+rule. Typed Python packages and type stubs remain content-fingerprinted
+dependencies; explicitly requesting an interface does not force their lazy
+imports into a recursively encoded package closure.
+Loading a dependency-validated interface also seeds the registry's encoding
+memo. A consumer that needs the source tree can still run its requested
+passes without re-encoding that unchanged interface and its dependency closure.
+Include bindings own local declaration nodes and retain the original symbol's
+lazy provider. Already-local symbols keep their existing bindings: copying
+them during a self-include would append to the overload list being traversed.
+Foreign declarations are never rebound. Interface
+encoding takes an alias category from its resolved definition, keeping hashes
+stable when later imports refine that definition.
+
+Interface paths are encoded relative to their source module before hashing.
+JIR's `SEC_PATH_ROOT` records the local base directory; sealed packages store
+only its relative location inside the package. The dependency, interface,
+diagnostic, and placement readers relocate path fields to the installed root
+without changing interface hashes or literal text. Identical staged packages
+therefore produce identical artifacts. Reused bytes
+keep their path mapping through local cache writes and subsequent packaging. Diagnostic
+profile and dependency checks still govern reuse. Dependencies outside the
+package retain their existing validation and source fallback.
+
+Per-unit release keeps parsed stub trees while a compilation uses them.
+The runtime graph driver indexes anchors with non-owning handles, including
+inside an execution context. Node and edge references keep reachable topology
+alive, and the persistence store owns stored anchors. When the last owner
+releases a component, weak-handle callbacks retire its kernel rows and recycle
+its handles. Closing a context also retires its region, even for graph objects
+still held by callers. Handle metadata uses a slotted weak reference with a
+shared callback, avoiding a closure and captured cells for every anchor.
+At a completed compilation boundary, `release_compile_state` releases both
+source and stub roots. Compiler execution uses the immutable compiler image;
+application analysis owns its own source and stub roots. Activating a stub
+catalog never changes the stub lens of an active application compilation.
+
 ## Rules
 
 **Backends consume facts, they do not compute them.** Types are read from

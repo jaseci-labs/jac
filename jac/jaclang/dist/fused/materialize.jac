@@ -17,8 +17,25 @@ import from .trailer {
     rt_key,
     rt_key_pathhash
 }
-import from ._libc { read_at, getuid, listdir }
+import from ._libc { read_at, getuid, listdir, fopen, fileno, fclose, flock }
 import from .report { die, say }
+
+glob LOCK_SHARED: i32 = 1,
+     LOCK_EXCLUSIVE: i32 = 2,
+     LOCK_NONBLOCKING: i32 = 4,
+     _runtime_leases: list[int] = [];
+
+def lock_file(path: str, operation: i32) -> int {
+    stream = fopen(path, "a+");
+    if stream == 0 {
+        return 0;
+    }
+    if flock(fileno(stream), operation) != 0 {
+        fclose(stream);
+        return 0;
+    }
+    return stream;
+}
 
 obj Overlay {
     has off: int = 0,
@@ -143,7 +160,21 @@ def:pub materialize(exe_path: str) -> str {
     cache_dir = cache_root();
     key = rt_key(trailer.hash16(), exe_path);
     rt = f"{cache_dir}/rt/{key}";
+    os.makedirs(cache_dir + "/rt", exist_ok=True);
+    guard = lock_file(cache_dir + "/rt.lock", LOCK_EXCLUSIVE);
+    if guard == 0 {
+        die("cannot lock the runtime cache");
+        return "";
+    }
+    lease = lock_file(rt + ".lock", LOCK_SHARED);
+    if lease == 0 {
+        fclose(guard);
+        die("cannot acquire a runtime lease");
+        return "";
+    }
+    _runtime_leases.append(lease);
     if os.path.isfile(rt + "/.ok") {
+        fclose(guard);
         return rt;
     }
 
@@ -168,6 +199,7 @@ def:pub materialize(exe_path: str) -> str {
     }
     extract_payload(zbuf, rt);
     gc_stale(cache_dir, key);
+    fclose(guard);
     secs = time.monotonic() - t0;
     say(f"one-time setup complete ({secs:.1f}s).");
     return rt;
@@ -196,7 +228,7 @@ def:pub extract_payload(zbuf: bytes, rt: str) {
     }
 }
 
-def:pub gc_stale(cache_dir: str, keep_key: str) {
+def gc_stale(cache_dir: str, keep_key: str) {
     rtdir = cache_dir + "/rt";
     mine = rt_key_pathhash(keep_key);
     for name in listdir(rtdir) {
@@ -210,7 +242,12 @@ def:pub gc_stale(cache_dir: str, keep_key: str) {
         if not os.path.isdir(full) {
             continue;
         }
+        lease = lock_file(full + ".lock", LOCK_EXCLUSIVE | LOCK_NONBLOCKING);
+        if lease == 0 {
+            continue;
+        }
         say(f"  removing stale runtime {full}...");
         shutil.rmtree(full);
+        fclose(lease);
     }
 }

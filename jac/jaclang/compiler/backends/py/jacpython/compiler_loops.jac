@@ -45,7 +45,6 @@ import from jaclang.compiler.backends.py.jacpython.compiler_ir {
     mk_instr,
     mk_jump,
     no_loc,
-    pending_break_finish,
     same_loc,
     stmt_cont,
 }
@@ -82,15 +81,8 @@ import from jaclang.compiler.backends.py.jacpython.compiler_codegen {
     visit_stmts,
     visit_store_target_tos
 }
-import from jaclang.compiler.backends.py.jacpython.compiler_dispatch { stmt_handlers }
 import from jaclang.compiler.backends.py.jacpython.compiler_exc {
     emit_anext_send_except_regions
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_context {
-    append_pending_break_finish,
-    current_pending_break_finishes,
-    push_pending_break_finish,
-    current_optimization_level,
 }
 
 # ---------------- break-edge tail duplication (CPython parity) ----------------
@@ -105,15 +97,6 @@ import from jaclang.compiler.backends.py.jacpython.compiler_context {
 # once, then finish_break_sites copies it over each break jump when CPython
 # would have.
 
-# A loop compiled with a None tail (nested-loop context) cannot finish its
-# break sites inline: its shared continuation is appended to by the CALLER
-# after this visitor returns (the enclosing loop's back edge, following
-# statements, or the driver epilogue). Those loops record a finish job; the
-# enclosing visitor flushes the queue once the continuation block can receive
-# no further instructions. Flushing drives the SAME finish_break_sites
-# mechanism as the synchronous tail-present path -- there is one splicer, and
-# deferral only changes WHEN it observes the finalized continuation.
-
 # Does control fall out of the block (CPython BB_HAS_FALLTHROUGH)?
 def block_is_terminated(b: basicblock) -> bool {
     n = len(b.instrs);
@@ -122,46 +105,6 @@ def block_is_terminated(b: basicblock) -> bool {
     }
     op = b.instrs[n - 1].opcode;
     return is_unconditional_jump_opcode(op) or is_scope_exit_opcode(op);
-}
-
-# Finish every job recorded since `from_idx`. Called only at points where all
-# continuation blocks touched by those jobs are final: right after the owning
-# visitor emitted its own trailing instructions (back edge) into the current
-# block. Jobs are consumed even when neither inline predicate fires -- keeping
-# the plain jump then matches CPython, whose pass simply does not rewrite.
-def flush_pending_break_finishes(g: cfg_builder, from_idx: int) {
-    jobs = current_pending_break_finishes();
-    while from_idx < len(jobs) {
-        job = jobs[from_idx];
-        jobs.pop(from_idx);
-        if not block_is_terminated(job.join) {
-            # Falling-through continuations are finalized by the unit drivers
-            # (epilogue synthesis needs tail context this lane does not have);
-            # leaving the plain jump matches today's verified shapes.
-            continue;
-        }
-        finish_break_sites(g, job.frame, job.join, no_loc(), True, job.allow_nop);
-        if job.test_blk is not None
-            and job.branch_idx >= 0
-            and job.body_hdr is not None
-            and join_artificial_tail(job.join) {
-            # Thread the test's false edge through the artificial anchor
-            # exactly as CPython's optimizer does: reverse the conditional
-            # onto the body and inline the anchor copy after the test (the
-            # NOT_TAKEN after the forward conditional is added later).
-            br = job.test_blk.instrs[job.branch_idx];
-            if br.opcode == OP_POP_JUMP_IF_FALSE {
-                br.opcode = OP_POP_JUMP_IF_TRUE;
-                hdr = job.body_hdr as basicblock;
-                br.target_block = hdr.id;
-                ci = 0;
-                while ci < len(job.join.instrs) {
-                    job.test_blk.instrs.append(copy_cinstr(job.join.instrs[ci]));
-                    ci = ci + 1;
-                }
-            }
-        }
-    }
 }
 
 # Mirror inline_small_exit_blocks' target test for the continuation block.
@@ -363,20 +306,15 @@ def finish_break_sites(
 }
 
 def visit_if(
-    g: cfg_builder,
-    i: If,
-    more_code_follows: bool,
-    tail: list[stmt],
-    tail_idx: int,
-    tail_join: basicblock | None = None,
-    ann_ctx: ann_scope_plan | None = None
+    g: cfg_builder, i: If, ann_ctx: ann_scope_plan | None = None
 ) -> stmt_cont {
+    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     iloc = nloc(i.lineno, i.end_lineno, i.col_offset, i.end_col_offset);
-    constant_test = None;
+    constant_test: bool | None = None;
     if isinstance(i.`test, Constant) {
         constant_test = i.`test.value.tp_bool();
     } elif isinstance(i.`test, Name) and i.`test.id == "__debug__" {
-        constant_test = current_optimization_level() == 0;
+        constant_test = g.u.context.optimize == 0;
     }
     if constant_test is not None {
         chosen = i.body if constant_test else i.orelse;
@@ -385,19 +323,19 @@ def visit_if(
         if not chosen {
             return stmt_cont(loc=test_loc);
         }
-        return stmt_handlers["visit_cleanup_stmts"](g, chosen, ann_ctx);
+        return dispatch_exc.visit_cleanup_stmts(g, chosen, ann_ctx);
     }
     test_loc = expr_loc(i.`test);
     kind = visit_test_expr(g, i.`test, test_loc, True);
     false_blk = g.new_deferred_block();
     join = g.new_deferred_block();
     emit_branch_if_test_false(g, kind, false_blk.id, test_loc);
-    body_cont = stmt_handlers["visit_cleanup_stmts"](g, i.body, ann_ctx);
+    body_cont = dispatch_exc.visit_cleanup_stmts(g, i.body, ann_ctx);
     if not body_cont.terminated {
         g.emit_jump(OP_JUMP_FORWARD, join.id, iloc);
     }
     g.use(false_blk);
-    else_cont = stmt_handlers["visit_cleanup_stmts"](g, i.orelse, ann_ctx);
+    else_cont = dispatch_exc.visit_cleanup_stmts(g, i.orelse, ann_ctx);
     if body_cont.terminated and else_cont.terminated {
         return stmt_cont(loc=iloc, terminated=True);
     }
@@ -409,13 +347,9 @@ def visit_if(
 }
 
 def visit_while(
-    g: cfg_builder,
-    w: While,
-    more_code_follows: bool,
-    tail: list[stmt],
-    tail_idx: int,
-    ann_ctx: ann_scope_plan | None = None
+    g: cfg_builder, w: While, ann_ctx: ann_scope_plan | None = None
 ) -> stmt_cont {
+    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     wloc = nloc(w.lineno, w.end_lineno, w.col_offset, w.end_col_offset);
     test_loc = expr_loc(w.`test);
     head = g.new_block();
@@ -425,13 +359,13 @@ def visit_while(
     kind = visit_test_expr(g, w.`test, test_loc, True);
     emit_branch_if_test_false(g, kind, exhausted.id, test_loc);
     g.push_loop(head, end, True);
-    body_cont = stmt_handlers["visit_cleanup_stmts"](g, w.body, ann_ctx);
+    body_cont = dispatch_exc.visit_cleanup_stmts(g, w.body, ann_ctx);
     g.pop_loop();
     if not body_cont.terminated {
         g.emit_jump(OP_JUMP_BACKWARD, head.id, wloc);
     }
     g.use(exhausted);
-    else_cont = stmt_handlers["visit_cleanup_stmts"](g, w.orelse, ann_ctx);
+    else_cont = dispatch_exc.visit_cleanup_stmts(g, w.orelse, ann_ctx);
     if not else_cont.terminated and g.u.blocks[-1] is not g.cur {
         g.emit_jump(OP_JUMP_FORWARD, end.id, wloc);
     }
@@ -444,13 +378,9 @@ def visit_while(
 
 
 def visit_for(
-    g: cfg_builder,
-    f: For,
-    more_code_follows: bool,
-    tail: list[stmt],
-    tail_idx: int,
-    ann_ctx: ann_scope_plan | None = None
+    g: cfg_builder, f: For, ann_ctx: ann_scope_plan | None = None
 ) -> stmt_cont {
+    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     floc = nloc(f.lineno, f.end_lineno, f.col_offset, f.end_col_offset);
     iter_loc = expr_loc(f.iter);
     visit_expr(g, f.iter);
@@ -465,7 +395,7 @@ def visit_for(
     g.emit_jump(OP_FOR_ITER, exhausted.id, iter_loc);
     g.push_loop(head, end, True, True);
     visit_store_target_tos(g, f.target);
-    body_cont = stmt_handlers["visit_cleanup_stmts"](g, f.body, ann_ctx);
+    body_cont = dispatch_exc.visit_cleanup_stmts(g, f.body, ann_ctx);
     g.pop_loop();
     if not body_cont.terminated {
         g.emit_jump(OP_JUMP_BACKWARD, head.id, floc);
@@ -473,7 +403,7 @@ def visit_for(
     g.use(exhausted);
     g.emit_op(OP_END_FOR, 0, iter_loc);
     g.emit_op(OP_POP_ITER, 0, iter_loc);
-    else_cont = stmt_handlers["visit_cleanup_stmts"](g, f.orelse, ann_ctx);
+    else_cont = dispatch_exc.visit_cleanup_stmts(g, f.orelse, ann_ctx);
     if not else_cont.terminated and g.u.blocks[-1] is not g.cur {
         g.emit_jump(OP_JUMP_FORWARD, end.id, floc);
     }
@@ -483,13 +413,9 @@ def visit_for(
 
 
 def visit_async_for(
-    g: cfg_builder,
-    af: AsyncFor,
-    more_code_follows: bool,
-    tail: list[stmt],
-    tail_idx: int,
-    ann_ctx: ann_scope_plan | None = None
+    g: cfg_builder, af: AsyncFor, ann_ctx: ann_scope_plan | None = None
 ) -> stmt_cont {
+    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     floc = nloc(af.lineno, af.end_lineno, af.col_offset, af.end_col_offset);
     iter_loc = expr_loc(af.iter);
     visit_expr(g, af.iter);
@@ -506,14 +432,14 @@ def visit_async_for(
     g.use(body);
     g.push_loop(head, end, True, True);
     visit_store_target_tos(g, af.target);
-    body_cont = stmt_handlers["visit_cleanup_stmts"](g, af.body, ann_ctx);
+    body_cont = dispatch_exc.visit_cleanup_stmts(g, af.body, ann_ctx);
     g.pop_loop();
     if not body_cont.terminated {
         g.emit_jump(OP_JUMP_BACKWARD, head.id, floc);
     }
     g.use(exhausted);
     g.emit_jump(OP_END_ASYNC_FOR, end_send, iter_loc);
-    else_cont = stmt_handlers["visit_cleanup_stmts"](g, af.orelse, ann_ctx);
+    else_cont = dispatch_exc.visit_cleanup_stmts(g, af.orelse, ann_ctx);
     if not else_cont.terminated and g.u.blocks[-1] is not g.cur {
         g.emit_jump(OP_JUMP_FORWARD, end.id, floc);
     }
@@ -531,16 +457,4 @@ def visit_async_for(
         )
     );
     return stmt_cont(loc=floc);
-}
-
-# Wire statement-dispatch handlers into the leaf registry (see
-# compiler_dispatch.jac). Runs at module load via `with entry`; entry
-# drivers (product_compile, compiler_slice) import this module so the
-# registration always precedes the first compile. Dict item assignment
-# mutates the holder in place (scalar-glob rebinding would be local).
-with entry {
-    stmt_handlers["visit_if"] = visit_if;
-    stmt_handlers["visit_while"] = visit_while;
-    stmt_handlers["visit_for"] = visit_for;
-    stmt_handlers["visit_async_for"] = visit_async_for;
 }

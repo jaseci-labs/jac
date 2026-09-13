@@ -8,6 +8,7 @@ scheduling gate sees when the shared object is genuinely absent. This is
 the suite home of what used to be ci.yml's `test-no-llvm` job.
 """
 
+import from tests.support { COMPILER_SITE }
 import os;
 import subprocess;
 import sys;
@@ -28,7 +29,7 @@ def _run_no_llvm(argv: list[str], work: str) -> tuple[int, str] {
     argv_repr = repr(["jac"] + argv);
     script = f"""
 import sys, runpy
-sys.path.insert(0, {JAC_ROOT!r})
+sys.path.insert(0, {COMPILER_SITE!r})
 sys.argv = {argv_repr}
 try:
     runpy.run_module('jaclang', run_name='__main__', alter_sys=True)
@@ -63,4 +64,30 @@ test "no-llvm run degrades to the server codespace and still executes" {
         assert "scheduling error" not in out , out;
         assert "preferred native but did not lower" not in out , out;
     }
+}
+
+
+test "native availability probes do not load code generators or LLVM bindings" {
+    script = """
+import os, sys, tempfile
+from pathlib import Path
+from jaclang.compiler.driver.pipeline import native_pipeline_available, _native_env_memo
+heavy = ('jaclang.compiler.backends.native.na_ir_gen_pass',
+         'jaclang.compiler.backends.native.na_compile_pass',
+         'jaclang.compiler.backends.native.llvm.binding')
+with tempfile.TemporaryDirectory() as directory:
+    shim = Path(directory) / 'probe-shim'
+    shim.touch()
+    for setting, expected in [('none', False), (str(shim), True)]:
+        os.environ['JAC_LLVM_SHIM'] = setting
+        _native_env_memo.clear()
+        available, reason = native_pipeline_available()
+        assert available is expected, (available, reason)
+        loaded = [name for name in sys.modules if name.startswith(heavy)]
+        assert not loaded, f'availability probe imported compiler backends: {loaded}'
+""";
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
+    );
+    assert proc.returncode == 0 , proc.stdout + proc.stderr;
 }

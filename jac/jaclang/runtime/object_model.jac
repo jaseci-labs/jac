@@ -108,11 +108,6 @@ def _is_class_var(annotation: object) -> bool {
 }
 
 def _install_init(cls: type, declared: list[ObjectField]) {
-    """Generate a real signature so ordinary Python binding stays authoritative.
-
-    Defaults are passed through a private namespace rather than interpolated
-    into source. Factories execute only when the caller omits that argument.
-    """;
     names = {f.name for f in declared};
     prefix = "_jac_";
     while any(name.startswith(prefix) for name in names) {
@@ -215,7 +210,6 @@ def _install_custom_init(cls: type, declared: list[ObjectField]) {
 }
 
 def make_object(cls: type) -> type {
-    """Install Jac's field contract without generating equality or hashing.""";
     declared: dict[str, ObjectField] = {};
     for base in reversed(cls.__mro__[1:]) {
         inherited: dict[str, ObjectField] = getattr(base, "__jac_fields__", {});

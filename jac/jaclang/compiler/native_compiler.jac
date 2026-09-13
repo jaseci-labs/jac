@@ -6,6 +6,10 @@ import from ctypes { c_char_p, c_double, c_int64, c_void_p, cast, py_object }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 import type from jaclang.compiler.passes.transform { PassResult }
 
+glob _DECREF: any = ctypes.PYFUNCTYPE(None, py_object)(
+         ("Py_DecRef", ctypes.pythonapi)
+     );
+
 glob CODE_INT: int = 1,
      CODE_BOOL: int = 2,
      CODE_STR: int = 3,
@@ -468,7 +472,7 @@ class NativeCompiler {
         }
         boxed = cast(ptr, py_object);
         out = boxed.value;
-        ctypes.pythonapi.Py_DecRef(boxed);
+        _DECREF(boxed);
         return out;
     }
 

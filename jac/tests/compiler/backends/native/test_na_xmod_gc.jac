@@ -6,6 +6,7 @@ source + compiler fingerprint only, so artifacts poisoned across gc modes.
 Both paths must yield RC-free IR for a gc-none multi-module program.
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,
@@ -65,18 +66,8 @@ test "host-path multi-module gc none build passes assert-no-rc" {
         }
         out_bin = os.path.join(tmp, "xmod.bin");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                `entry,
-                "--memory",
-                "nogc",
-                "-o",
-                out_bin
-            ],
+            jac_command()
+                + ["build", "--native", `entry, "--memory", "nogc", "-o", out_bin],
             capture_output=True,
             text=True,
             timeout=300,

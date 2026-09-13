@@ -12,6 +12,10 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
 import from jaclang.scale.deploy.target.kubernetes { kubernetes_target as kt_module }
+import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
+    KubernetesTarget,
+    KubernetesTargetBase
+}
 
 def _as_any(v: any) -> any {
     return v;
@@ -27,6 +31,7 @@ test "deployment target factory creates kubernetes target" {
     assert hasattr(target, "destroy");
     assert hasattr(target, "get_status");
     assert hasattr(target, "scale");
+    assert isinstance(target, KubernetesTargetBase);
     assert target.k8s_config.app_name == "test-app";
 }
 

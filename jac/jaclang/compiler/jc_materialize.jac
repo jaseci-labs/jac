@@ -268,6 +268,10 @@ def _enqueue(m: Mz, h: int, hint: int) {
     }
 }
 
+def _dict_order_extent(h: int, order: int) -> int {
+    return _peek64(order + _peek64(h + 8) * 16);
+}
+
 def _enqueue_value(m: Mz, h: int, layout: int) {
     if h == 0 {
         return;
@@ -279,8 +283,12 @@ def _enqueue_value(m: Mz, h: int, layout: int) {
         n = _peek64(h);
         data = _peek64(h + row.data_off);
         order = _peek64(h + row.order_off) if row.code == CODE_NATDICT else 0;
-        for i in range(n) {
+        extent = _dict_order_extent(h, order) if row.code == CODE_NATDICT else n;
+        for i in range(extent) {
             slot = _peek64(order + i * 8) if row.code == CODE_NATDICT else i;
+            if slot < 0 {
+                continue;
+            }
             _enqueue_value(m, _peek64(data + slot * 8), row.child);
         }
     }
@@ -305,8 +313,12 @@ def _copy_value(m: Mz, h: int, layout: int) -> int {
     out = PyDict_New() if row.code == CODE_NATDICT else PyList_New(n);
     keys = _peek64(h + row.key_off) if row.code == CODE_NATDICT else 0;
     order = _peek64(h + row.order_off) if row.code == CODE_NATDICT else 0;
-    for i in range(n) {
+    extent = _dict_order_extent(h, order) if row.code == CODE_NATDICT else n;
+    for i in range(extent) {
         slot = _peek64(order + i * 8) if row.code == CODE_NATDICT else i;
+        if slot < 0 {
+            continue;
+        }
         value = _copy_value(m, _peek64(data + slot * 8), row.child);
         if row.code == CODE_NATDICT {
             key = PyUnicode_FromString(_peek64(keys + slot * 8));

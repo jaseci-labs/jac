@@ -49,9 +49,8 @@ test "Invalid verifier cannot exchange or consume an OAuth session" {
         p = provider();
         session = OAuthSession(users=fake_users(), provider=p, platform="github");
         started = session.begin(challenge_of("a" * 64));
-        with patch.object(
-            GithubSSOProvider, "_exchange_code", new_callable=AsyncMock
-        ) as exchange {
+        exchange = AsyncMock();
+        with patch.object(GithubSSOProvider, "_exchange_code", new=exchange) {
             result = asyncio.run(session.finish("code", started.state, "b" * 64));
             assert not result.ok;
             exchange.assert_not_awaited();
@@ -68,12 +67,8 @@ test "OAuth callback exchanges a code once and forwards PKCE verifier" {
             users=fake_users(), provider=provider(), platform="github"
         );
         started = session.begin(challenge_of("a" * 64));
-        with patch.object(
-            GithubSSOProvider,
-            "_exchange_code",
-            new_callable=AsyncMock,
-            return_value={"access_token": "provider-token"}
-        ) as exchange, patch.object(
+        exchange = AsyncMock(return_value={"access_token": "provider-token"});
+        with patch.object(GithubSSOProvider, "_exchange_code", new=exchange), patch.object(
             GithubSSOProvider,
             "fetch_user",
             new_callable=AsyncMock,
@@ -140,12 +135,8 @@ test "Native OAuth delivers tokens only to the initiating device once" {
         assert started.ok and started.poll and started.poll != started.state;
         assert started.poll not in started.url;
         assert not session.poll(started.poll).ok;
-        with patch.object(
-            GithubSSOProvider,
-            "_exchange_code",
-            new_callable=AsyncMock,
-            return_value={"access_token": "provider-token"}
-        ) as exchange, patch.object(
+        exchange = AsyncMock(return_value={"access_token": "provider-token"});
+        with patch.object(GithubSSOProvider, "_exchange_code", new=exchange), patch.object(
             GithubSSOProvider,
             "fetch_user",
             new_callable=AsyncMock,

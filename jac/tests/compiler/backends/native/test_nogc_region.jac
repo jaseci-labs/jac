@@ -6,6 +6,7 @@ so region opens stop being E1406 and the whole build-traverse-discard
 shape compiles headerless, byte-identical to the managed modes.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import sys;
@@ -27,7 +28,8 @@ test "region build-traverse-discard compiles rc-free and matches managed output"
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"rg_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+                jac_command()
+                    + ["build", "--native", FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

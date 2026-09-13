@@ -36,6 +36,7 @@ test "minimal config (enabled, target_port, concurrency_target) builds a spec wi
     assert spec.target.service == "preview-svc";
     assert spec.target.port == 8080;
     assert spec.target.port_name is None;
+    assert spec.concurrency is not None;
     assert spec.concurrency.target_value == 10;
     assert spec.request_rate is None;
     assert spec.min_replicas == 0;
@@ -84,6 +85,7 @@ test "full config translates rules, cold_start, timeouts, request_rate, and cust
     spec = build_http_activation_spec(
         cfg, "preview-deployment", "staging", "preview-svc"
     );
+    assert spec is not None;
     assert spec.min_replicas == 1;
     assert spec.max_replicas == 5;
     assert spec.polling_interval == 15;
@@ -91,6 +93,7 @@ test "full config translates rules, cold_start, timeouts, request_rate, and cust
     assert spec.target.port is None;
     assert spec.target.port_name == "http";
     assert spec.concurrency is None;
+    assert spec.request_rate is not None;
     assert spec.request_rate.target_value == 50;
     assert spec.request_rate.rate_window == "5m";
     assert spec.request_rate.granularity == "10s";
@@ -99,11 +102,15 @@ test "full config translates rules, cold_start, timeouts, request_rate, and cust
     assert spec.rules[0].paths[0].value == "/app";
     assert spec.rules[0].headers[0].name == "x-preview-id";
     assert spec.rules[0].headers[0].value == "123";
+    assert spec.cold_start is not None;
+    assert spec.cold_start.placeholder is not None;
+    assert spec.cold_start.fallback_service is not None;
     assert spec.cold_start.placeholder.status_code == 503;
     assert spec.cold_start.placeholder.body == "warming up";
     assert spec.cold_start.placeholder.headers == {"Retry-After": "2"};
     assert spec.cold_start.fallback_service.service == "fallback-svc";
     assert spec.cold_start.fallback_service.port == 8080;
+    assert spec.timeouts is not None;
     assert spec.timeouts.readiness == "30s";
     assert spec.timeouts.request == "60s";
     assert spec.timeouts.response_header == "5s";

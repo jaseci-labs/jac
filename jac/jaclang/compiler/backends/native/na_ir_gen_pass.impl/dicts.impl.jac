@@ -46,73 +46,6 @@ impl NaIRGenPass._dict_val_spec(val_type: ir.Type) -> str {
     return "i64";
 }
 
-impl NaIRGenPass._emit_dict_order_compact(
-    b: ir.IRBuilder,
-    fn: ir.Function,
-    d_ptr: ir.Value,
-    removed_slot: ir.Value,
-    new_len: ir.Value,
-    i32: ir.Type,
-    i64: ir.Type,
-    order_idx: int
-) -> ir.IRBuilder {
-    ord_a = b.load(
-        b.gep(d_ptr, [ir.Constant(i32, 0), ir.Constant(i32, order_idx)], name="oc.orp"),
-        name="oc.ord"
-    );
-    _idx = b.alloca(i64, name="oc.i");
-    b.store(ir.Constant(i64, 0), _idx);
-    _scan = fn.append_basic_block("oc.scan");
-    _body = fn.append_basic_block("oc.body");
-    _shift = fn.append_basic_block("oc.shift");
-    _sbody = fn.append_basic_block("oc.sbody");
-    _cont = fn.append_basic_block("oc.cont");
-    b.branch(_scan);
-
-    bs = ir.IRBuilder(_scan);
-    _i = bs.load(_idx, name="oc.iv");
-
-    bs.cbranch(bs.icmp_unsigned(">=", _i, new_len, name="oc.end"), _cont, _body);
-    bb = ir.IRBuilder(_body);
-    _cur = bb.load(bb.gep(ord_a, [_i], name="oc.cp"), name="oc.cur");
-    _hit = bb.icmp_signed("==", _cur, removed_slot, name="oc.hit");
-    bb.cbranch(
-        _hit, _shift, self._emit_order_scan_incr_block(bb, _idx, _i, i64, fn, _scan)
-    );
-
-    bh = ir.IRBuilder(_shift);
-    _j = bh.alloca(i64, name="oc.j");
-    bh.store(_i, _j);
-    bh.branch(_sbody);
-    bsb = ir.IRBuilder(_sbody);
-    _jv = bsb.load(_j, name="oc.jv");
-    _more = bsb.icmp_unsigned("<", _jv, new_len, name="oc.smore");
-    _do = fn.append_basic_block("oc.do");
-    bsb.cbranch(_more, _do, _cont);
-    bd = ir.IRBuilder(_do);
-    _nx = bd.add(_jv, ir.Constant(i64, 1), name="oc.jn");
-    _nv = bd.load(bd.gep(ord_a, [_nx], name="oc.srcp"), name="oc.src");
-    bd.store(_nv, bd.gep(ord_a, [_jv], name="oc.dstp"));
-    bd.store(_nx, _j);
-    bd.branch(_sbody);
-    return ir.IRBuilder(_cont);
-}
-
-impl NaIRGenPass._emit_order_scan_incr_block(
-    b: ir.IRBuilder,
-    idx_slot: ir.Value,
-    i_cur: ir.Value,
-    i64: ir.Type,
-    fn: ir.Function,
-    scan_bb: ir.Block
-) -> ir.Block {
-    _blk = fn.append_basic_block("oc.incr");
-    _bi = ir.IRBuilder(_blk);
-    _bi.store(_bi.add(i_cur, ir.Constant(i64, 1), name="oc.in"), idx_slot);
-    _bi.branch(scan_bb);
-    return _blk;
-}
-
 impl NaIRGenPass._emit_dict_helpers(
     key_type_name: str,
     val_type_name: str,
@@ -357,6 +290,9 @@ impl NaIRGenPass._dict_key_reconcile(
 }
 
 impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
+    if any(pair.key is None for pair in nd.kv_pairs) {
+        return self._codegen_dict_unpack(nd);
+    }
     if not nd.kv_pairs {
         _dk = self._peer_dict_key() or self._dict_key_of(nd);
         _helpers = self.dict_helpers.get(_dk) if _dk is not None else None;
@@ -493,6 +429,77 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     }
 
     return dict_val;
+}
+
+impl NaIRGenPass._codegen_dict_unpack(nd: uni.DictVal) -> (ir.Value | None) {
+    dict_key = self._dict_key_of(nd);
+    if dict_key is None {
+        return None;
+    }
+    helpers = self.dict_helpers.get(dict_key);
+    emitter = self._ensure_emitters().get("dict");
+    if helpers is None or not isinstance(emitter, NativeDictEmitter) {
+        return None;
+    }
+    ctx = NativeEmitCtx(pass_ref=self, type_key=dict_key);
+    result = self._rc_call_with_ctx(helpers["new"], [], op="new", name="dict.unpack");
+    self._nogc_stamp_elem_drops(result, self._nogc_type_arg_mangles(nd));
+    args = nd.type.private.type_args
+        if isinstance(nd.type, ClassType) and nd.type.private is not None
+        else [];
+    semantic_value = self._lower_type(args[1]) if args and len(args) >= 2 else None;
+    tuple_type = semantic_value.pointee
+        if isinstance(semantic_value, ir.PointerType)
+            and isinstance(semantic_value.pointee, ir.LiteralStructType)
+        else None;
+    for pair in nd.kv_pairs {
+        if pair.key is None {
+            other = self._codegen_expr(pair.value);
+            if other is None {
+                return None;
+            }
+            if other.type != result.type {
+                self.emit(
+                    E5092,
+                    node_override=pair.value,
+                    kind="expression",
+                    name="dictionary unpack with incompatible storage"
+                );
+                return None;
+            }
+            emitter.emit_update(ctx, result, [other]);
+            self._release_owned_args([other], op="dict_unpack");
+        } else {
+            key = self._codegen_expr(pair.key);
+            value = self._str_norm_optional(self._codegen_expr(pair.value));
+            if key is None or value is None {
+                return None;
+            }
+            if tuple_type is not None {
+                value = self._coerce_tuple_to_struct(value, tuple_type);
+            }
+            value = self._nogc_elem_prep(pair.value, value);
+            if value is None {
+                return None;
+            }
+            if not dict_key.endswith(":jacval")
+                and self._reject_ptr_into_raw_slot(
+                    nd, value, helpers["val_type"], "dict value"
+                ) {
+                return None;
+            }
+            key = self._coerce_type(key, helpers["key_type"]);
+            value = self._coerce_type(value, helpers["val_type"]);
+            (set_fn, hash_value) = self._static_key_op(helpers, "set", pair.key);
+            setter_args = [result, key, value];
+            if hash_value is not None {
+                setter_args.append(hash_value);
+            }
+            self._rc_call_with_ctx(set_fn, setter_args, op="dict_init");
+            self._release_owned_args([key, value], op="dict_init");
+        }
+    }
+    return result;
 }
 
 impl NaIRGenPass._codegen_dict_access(

@@ -7,6 +7,7 @@ cover the planner (`plan_app_run`) for every kind, kind inference
 (`resolve_app_kind`), entry-point resolution, error paths, and real execution
 of the two cheap runnable kinds (cli, cli-native)."""
 
+import from tests.support { jac_command }
 import io;
 import os;
 import sys;
@@ -691,17 +692,15 @@ test "backend flag selects either executor and forwards program arguments" {
     );
     for backend in ["python", "native"] {
         result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "run",
-                "--backend",
-                backend,
-                os.path.join(d, "main.jac"),
-                "--",
-                "forwarded"
-            ],
+            jac_command()
+                + [
+                    "run",
+                    "--backend",
+                    backend,
+                    os.path.join(d, "main.jac"),
+                    "--",
+                    "forwarded"
+                ],
             capture_output=True,
             text=True,
             timeout=300

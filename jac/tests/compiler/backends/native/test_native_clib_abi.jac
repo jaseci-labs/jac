@@ -6,6 +6,7 @@ reference library, and the DT_RUNPATH/$ORIGIN entry in emitted dynamic
 executables.
 """
 
+import from tests.support { jac_command }
 import ctypes;
 import os;
 import shutil;
@@ -106,16 +107,7 @@ test "clib rpath: emitted dynamic executables carry DT_RUNPATH $ORIGIN" {
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "rpath_probe");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                fixture,
-                "-o",
-                out_bin
-            ],
+            jac_command() + ["build", "--native", fixture, "-o", out_bin],
             capture_output=True,
             text=True,
             timeout=180

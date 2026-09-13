@@ -32,22 +32,22 @@ impl JacCompiler.ensure_stub_catalog -> StubCatalog | None {
         return None;
     }
     found = self.stub_catalog();
-    if found is not None {
-        return found;
+    if found is None {
+        import from jaclang.compiler.types.stubcat.state { env_disabled }
+        if env_disabled() or self._stub_catalog_tried {
+            return None;
+        }
+        self._stub_catalog_tried = True;
+        import jaclang.compiler.types.stubcat.format;
+        import jaclang.compiler.types.stubcat.reader;
+        import from jaclang.compiler.types.stubcat.locate { ensure_catalog }
+        found = ensure_catalog();
+        self._stub_catalog = found;
     }
     import from jaclang.compiler.types.stubcat.state { env_disabled }
     if env_disabled() {
         return None;
     }
-    if self._stub_catalog_tried {
-        return None;
-    }
-    self._stub_catalog_tried = True;
-    import jaclang.compiler.types.stubcat.format;
-    import jaclang.compiler.types.stubcat.reader;
-    import from jaclang.compiler.types.stubcat.locate { ensure_catalog }
-    found = ensure_catalog();
-    self._stub_catalog = found;
     return found;
 }
 
@@ -170,7 +170,8 @@ impl JacCompiler._get_bytecode(
                     self._restore_sections(
                         full_target,
                         actual_program,
-                        read_sections(sealed_data, sp0 + len(magic0))
+                        read_sections(sealed_data, sp0 + len(magic0)),
+                        base_dir=sealed_root
                     );
                 }
                 return marshal.loads(
@@ -238,13 +239,20 @@ impl JacCompiler._get_bytecode(
         return marshal.loads(precompiled_bc);
     }
 
-    result = self.compile(
-        file_path=full_target, target_program=actual_program, options=CompileOptions()
-    );
-    if result.gen.py_bytecode {
-        actual_program.hub_cache_stamp(full_target);
-        self._persist_module_cache(full_target, result, actual_program);
-        return marshal.loads(result.gen.py_bytecode);
+    options = CompileOptions();
+    enclosing_closure = self._closure_opts;
+    self._closure_opts = options;
+    try {
+        result = self.compile(
+            file_path=full_target, target_program=actual_program, options=options
+        );
+        if result.gen.py_bytecode {
+            actual_program.hub_cache_stamp(full_target);
+            self._persist_module_cache(full_target, result, actual_program);
+            return marshal.loads(result.gen.py_bytecode);
+        }
+    } finally {
+        self._closure_opts = enclosing_closure;
     }
     return None;
 }
@@ -371,7 +379,10 @@ impl JacCompiler._load_native_from_bitcode(
 }
 
 impl JacCompiler._restore_sections(
-    full_target: str, actual_program: JacProgram, secs: dict[int, bytes]
+    full_target: str,
+    actual_program: JacProgram,
+    secs: dict[int, bytes],
+    base_dir: str = ""
 ) -> None {
     import pickle;
     client_bytes = secs.get(SEC_CLIENT);
@@ -397,7 +408,9 @@ impl JacCompiler._restore_sections(
                 summary_from_bytes,
                 summary_store
             }
-            restored = summary_from_bytes(placement_bytes);
+            import from jaclang.compiler.driver.jir { JirPaths, SEC_PATH_ROOT }
+            paths = JirPaths.from_bytes(secs.get(SEC_PATH_ROOT), base_dir);
+            restored = summary_from_bytes(placement_bytes, path_mapper=paths.resolve);
             if restored is not None {
                 summary_store(actual_program)[os.path.abspath(full_target)] = restored;
             }
@@ -1323,10 +1336,8 @@ impl JacCompiler.compile(
                 );
             } finally {
                 if target_program is not caller_program {
-                    caller_program.errors_had.extend(
-                        target_program.errors_had[context_errors:]
-                    );
-                    caller_program.warnings_had.extend(
+                    caller_program.diags.extend(
+                        target_program.errors_had[context_errors:],
                         target_program.warnings_had[context_warnings:]
                     );
                 }
@@ -1983,7 +1994,7 @@ impl JacCompiler.release_compile_state(target_program: JacProgram) -> None {
     if self._reentrant_depth or owner.scratch.compile_depth {
         raise RuntimeError("Cannot release compiler state during compilation");
     }
-    owner.release_compile_closure(collect=False);
+    owner.release_compile_closure(collect=False, retain_stubs=False);
 
     import gc;
     gc.collect();

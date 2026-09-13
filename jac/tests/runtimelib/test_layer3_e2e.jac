@@ -10,6 +10,7 @@ test_persistence_migration_e2e.jac so each run is a fresh Python process
 with a fresh class registry.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import sys;
@@ -20,7 +21,7 @@ import from tempfile { TemporaryDirectory }
 """Run `jac enter <file> <entrypoint>` and return (rc, stdout, stderr)."""
 def _jac_enter(cwd: str, app_path: str, entrypoint: str) -> tuple {
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", "--entry", entrypoint, app_path],
+        jac_command() + ["run", "--entry", entrypoint, app_path],
         cwd=cwd,
         capture_output=True,
         text=True,

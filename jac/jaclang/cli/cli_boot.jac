@@ -3,47 +3,30 @@ import sys;
 import shutil;
 import from pathlib { Path }
 
-def _get_cache_dir -> Path {
-    if sys.platform == "win32" {
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"));
-        return base / "jac" / "cache" / "bytecode";
-    } elif sys.platform == "darwin" {
-        return Path.home() / "Library" / "Caches" / "jac" / "bytecode";
-    } else {
-        xdg = os.environ.get("XDG_CACHE_HOME");
-        base = Path(xdg) if xdg else (Path.home() / ".cache");
-        return base / "jac" / "bytecode";
-    }
-}
-
 def _handle_purge {
     if "-h" in sys.argv or "--help" in sys.argv {
         print("usage: jac purge [-h]\n");
-        print(
-            "Remove all cached Jac files (JIR, bytecode, bootstrap) from the cache directories.\n"
-        );
+        print("Remove global Jac compilation caches (JIR and native artifacts).\n");
         print("Useful when switching branches or when cache becomes corrupted.");
         sys.`exit(0);
     }
 
-    cache_dir = _get_cache_dir();
-    bootstrap_dir = cache_dir.parent / "bootstrap";
-
-    jir_dir = cache_dir.parent / "jir";
+    import from jaclang.compiler.driver.cache_paths { get_jir_cache_dir }
+    jir_dir = get_jir_cache_dir();
 
     total_files = 0;
     total_size = 0;
     removed_dirs: list[str] = [];
-    for d in [cache_dir, bootstrap_dir, jir_dir] {
+    for d in [jir_dir] {
         if d.exists() {
             total_files += sum(
                 1
-                for f in d.iterdir()
+                for f in d.rglob("*")
                 if f.is_file()
             );
             total_size += sum(
                 f.stat().st_size
-                for f in d.iterdir()
+                for f in d.rglob("*")
                 if f.is_file()
             );
             try {

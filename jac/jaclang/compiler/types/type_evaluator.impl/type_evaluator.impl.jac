@@ -2040,6 +2040,24 @@ impl TypeEvaluator._get_type_of_expression_core(
             if scope := self._resolution_scope_for(expr) {
                 symbol = lookup_symtab(scope, expr.value, self.builtins_module);
 
+                if symbol is not None
+                    and symbol.decl is not None
+                    and isinstance(symbol.decl.name_of, HasVar) {
+                    field = symbol.decl.name_of;
+                    if field.type_tag is not None
+                        and expr.find_parent_of_type(SubTag) is field.type_tag {
+                        owner = field.find_parent_of_type(Archetype);
+                        if owner is not None
+                            and owner.sym_tab.parent_scope is not None {
+                            symbol = lookup_symtab(
+                                owner.sym_tab.parent_scope,
+                                expr.value,
+                                self.builtins_module
+                            );
+                        }
+                    }
+                }
+
                 if (
                     symbol is not None
                     and symbol.decl is not None
@@ -2430,6 +2448,10 @@ impl TypeEvaluator._get_type_of_symbol_decl(
         case Name():
             if node_.type is not None {
                 return node_.type;
+            }
+
+            if isinstance(node_.parent, ExprAsItem) and node_.parent.alias is node_ {
+                return self.get_type_of_context_item(node_.parent);
             }
 
             if enum_member_type := self._get_enum_member_type_for_decl(node_) {
@@ -3083,6 +3105,22 @@ impl TypeEvaluator._heal_class_bases(cls: ClassType) -> None {
         shared.mro = rebuilt;
     }
     shared._mro_sig = mro_signature(cls);
+}
+
+impl TypeEvaluator.get_type_of_context_item(item: ExprAsItem) -> TypeBase {
+    expr_type = self.get_type_of_expression(item.expr);
+    if isinstance(expr_type, UnknownType) {
+        return expr_type;
+    }
+    stmt = item.find_parent_of_type(WithStmt);
+    is_async = stmt is not None and stmt.is_async;
+    enter_ret = self.get_type_of_magic_method_call(
+        expr_type, "__aenter__" if is_async else "__enter__", [], item.expr
+    );
+    if enter_ret is None {
+        return expr_type;
+    }
+    return self._unwrap_awaitable_type(enter_ret, item.expr) if is_async else enter_ret;
 }
 
 impl TypeEvaluator.get_type_of_magic_method_call(

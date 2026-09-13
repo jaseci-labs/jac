@@ -21,6 +21,7 @@ What is pinned here:
     later-declared locals segfaults under allocation reuse otherwise).
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import sys;
@@ -35,7 +36,8 @@ glob OWNBENCH = str(Path(__file__).resolve().parents[4] / "examples" / "ownbench
 def _nacompile(src: str, mode: str, out_bin: str) {
     profile = {"none": "nogc", "rc": "rc", "cycles": "managed"}[mode];
     comp = subprocess.run(
-        [sys.executable, "-m", "jaclang", "build", "--native", src]
+        jac_command()
+            + ["build", "--native", src]
             + native_memory_flags(profile)
             + ["-o", out_bin],
         capture_output=True,
@@ -79,14 +81,7 @@ def _run(out_bin: str, args: list[str]) -> tuple[str, dict] {
 """Generate the bare rgraph baseline via rerase.jac into `dst`."""
 def _rerase(src: str, dst: str) {
     r = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "run",
-            os.path.join(OWNBENCH, "harness", "rerase.jac"),
-            src
-        ],
+        jac_command() + ["run", os.path.join(OWNBENCH, "harness", "rerase.jac"), src],
         capture_output=True,
         text=True,
         timeout=120,

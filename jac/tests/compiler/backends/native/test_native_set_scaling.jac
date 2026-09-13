@@ -9,6 +9,7 @@ constant when N doubles. The assertion lives inside the fixture, so a
 regression makes the host binary exit non-zero.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import sys;
@@ -23,7 +24,7 @@ test "native set inserts stay O(1) when N doubles (hash-core scaling guard)" {
     src = os.path.join(FIXTURES, PROG);
     out_bin = os.path.join(tempfile.mkdtemp(), "set_hash_scaling.bin");
     comp = subprocess.run(
-        [sys.executable, "-m", "jaclang", "build", "--native", src, "-o", out_bin],
+        jac_command() + ["build", "--native", src, "-o", out_bin],
         capture_output=True,
         text=True,
         timeout=300

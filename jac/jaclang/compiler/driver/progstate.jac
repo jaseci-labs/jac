@@ -77,12 +77,12 @@ obj ModuleHub {
         }
     }
 
-    def reset {
+    def reset(retain_stubs: bool = True) {
         retained_mods: dict[str, uni.Module] = {};
         retained_stamps: dict[str, float] = {};
         dropped: list[uni.Module] = [];
         for (path, mod) in self.mod.hub.items() {
-            if path.endswith(".pyi") {
+            if retain_stubs and path.endswith(".pyi") {
                 retained_mods[path] = mod;
                 if path in self.stamps {
                     retained_stamps[path] = self.stamps[path];
@@ -118,6 +118,7 @@ obj ModuleHub {
 
 obj DepGraph {
     has dependents: dict[str, set[str]] = {},
+        dependencies: dict[str, set[str]] = {},
         tracking: bool = False;
 
     def record(importer_path: str, target_path: str) -> None {
@@ -130,6 +131,7 @@ obj DepGraph {
             self.dependents[target_path] = bucket;
         }
         bucket.add(importer_path);
+        self.dependencies.setdefault(importer_path, set()).add(target_path);
     }
 
     def record_module(mod: uni.Module) -> None {
@@ -169,11 +171,19 @@ obj DepGraph {
     }
 
     def transitive_dependents(target_path: str) -> set[str] {
+        return self._transitive(self.dependents, target_path);
+    }
+
+    def transitive_dependencies(importer_path: str) -> set[str] {
+        return self._transitive(self.dependencies, importer_path);
+    }
+
+    def _transitive(edges: dict[str, set[str]], target_path: str) -> set[str] {
         out: set[str] = set();
         frontier: list[str] = [target_path];
         while frontier {
             current = frontier.pop();
-            for importer in self.dependents.get(current, set()) {
+            for importer in edges.get(current, set()) {
                 if importer in out {
                     continue;
                 }
@@ -185,13 +195,14 @@ obj DepGraph {
     }
 
     def forget(resolved_path: str) {
-        for bucket in self.dependents.values() {
-            bucket.discard(resolved_path);
+        for target in self.dependencies.pop(resolved_path, set()) {
+            self.dependents[target].discard(resolved_path);
         }
     }
 
     def clear {
         self.dependents.clear();
+        self.dependencies.clear();
     }
 }
 
@@ -199,7 +210,49 @@ obj DiagLedger {
     has errors: list[Alert] = [],
         warnings: list[Alert] = [];
 
+    def extend(errors: Sequence[Alert], warnings: Sequence[Alert]) {
+        import from jaclang.compiler.frontend.srcloc { Span }
+        def span_key(span: Span) -> tuple {
+            return (
+                span.mod_path,
+                span.first_line,
+                span.last_line,
+                span.col_start,
+                span.col_end,
+                span.pos_start,
+                span.pos_end
+            );
+        }
+        def alert_key(alert: Alert) -> tuple {
+            return (
+                alert.owner,
+                alert.code.code if alert.code is not None else None,
+                alert.msg,
+                span_key(alert.loc),
+                alert.help_text,
+                tuple((label, span_key(span)) for (label, span) in alert.related)
+            );
+        }
+        for (destination, incoming) in [
+            (self.errors, errors),
+            (self.warnings, warnings)
+        ] {
+            if not incoming {
+                continue;
+            }
+            keys = {alert_key(alert) for alert in destination};
+            for alert in incoming {
+                key = alert_key(alert);
+                if key not in keys {
+                    destination.append(alert);
+                    keys.add(key);
+                }
+            }
+        }
+    }
+
     def owned_errors(path: str) -> list[Alert] {
+        path = os.path.realpath(path);
         return [
             a
             for a in self.errors
@@ -207,7 +260,17 @@ obj DiagLedger {
         ];
     }
 
+    def owned_warnings(path: str) -> list[Alert] {
+        path = os.path.realpath(path);
+        return [
+            a
+            for a in self.warnings
+            if self._owned(a, path)
+        ];
+    }
+
     def drop_module(resolved_path: str) {
+        resolved_path = os.path.realpath(resolved_path);
         self.errors[:] = [
             a
             for a in self.errors
@@ -221,14 +284,8 @@ obj DiagLedger {
     }
 
     def _owned(alert: Alert, path: str) -> bool {
-        import os;
         import from jaclang.compiler.driver.extensions { is_annex_path_of }
-        try {
-            norm = os.path.realpath(path);
-        } except OSError {
-            return False;
-        }
-        return alert.owner == norm or is_annex_path_of(alert.owner, norm);
+        return alert.owner == path or is_annex_path_of(alert.owner, path);
     }
 
     def clear {

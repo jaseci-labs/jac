@@ -32,8 +32,8 @@ def snapshot_sources(package: Path, destination: Path) {
     def excluded(path: str) -> bool {
         return skip_jaclang(path)
             or any(
-                part.startswith(".") or part in ("tests", "test")
-                for part in Path(path).parts
+                (part.startswith(".") and part not in (".gitignore", ".env.example"))
+                    or part in ("tests", "test") for part in Path(path).parts
             );
     }
     copy_tree(str(package), str(destination), excluded);
@@ -44,6 +44,104 @@ def snapshot_sources(package: Path, destination: Path) {
     shutil.copyfile(project[1], destination.parent / "jac.toml");
 
     (destination / "jac0core").mkdir(exist_ok=True);
+}
+
+def native_python_sources -> tuple[str, ...] {
+    return (
+        "compiler/frontend/python",
+        "compiler/backends/py/jacpython",
+        "runtime/python"
+    );
+}
+
+def exclude_native_python_sources(package: Path, snapshot: Path) {
+    for relative in native_python_sources() {
+        shutil.rmtree(snapshot / relative, ignore_errors=True);
+    }
+    license_file = Path("runtime/python/LICENSE.cpython");
+    (snapshot / license_file).parent.mkdir(parents=True, exist_ok=True);
+    shutil.copyfile(package / license_file, snapshot / license_file);
+}
+
+def verify_source_isolation(program: JacProgram) {
+    producer = Path(jaclang.__file__).resolve().parent;
+    foreign = [
+        path for context in [program] + list(program.contexts.values())
+        for path in context.mod.hub
+        if path.endswith(".jac")
+            and Path(path).is_relative_to(producer)
+            and not toolchain_native_by_policy(str(producer), path)
+    ];
+    if foreign {
+        raise RuntimeError(f"Target compilation read producer sources: {foreign}");
+    }
+}
+
+def compile_native_python(package: Path, output: Path, target: str) {
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        native_linked_ir_text,
+        native_demoted_ir_symbols
+    }
+    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+    import from jaclang.compiler.backends.native.shared_emit {
+        init_object_codegen,
+        inject_shared_init
+    }
+    import jaclang.compiler.backends.native.llvm.binding as llvm;
+    package = package.resolve(strict=True);
+    output = output.resolve();
+    output.parent.mkdir(parents=True, exist_ok=True);
+    with tempfile.TemporaryDirectory(prefix="jac-python-native-") as work {
+        snapshot = Path(work).resolve() / "jaclang";
+        snapshot_sources(package, snapshot);
+        program = JacProgram();
+        push_import_base(str(snapshot.parent));
+        try {
+            module = program.compile(
+                file_path=str(
+                    snapshot / "compiler/backends/py/jacpython/native_api.jac"
+                ),
+                options=CompileOptions(
+                    aot_mode=True,
+                    default_codespace="native",
+                    memory_profile="managed",
+                    no_ir_cache=True,
+                    opt_level=2,
+                    native_target=target
+                )
+            );
+            verify_source_isolation(program);
+            if program.errors_had {
+                for error in program.errors_had {
+                    sys.stderr.write(error.pretty_print() + "\n");
+                }
+                raise RuntimeError("JacPython native compilation failed");
+            }
+            if module is None {
+                raise RuntimeError("JacPython native compilation produced no module");
+            }
+            ir_text = native_linked_ir_text(module);
+            issues = native_demoted_ir_symbols(ir_text);
+            issues.extend(issue.symbol for issue in native_lowering_issues(ir_text));
+            if issues {
+                raise RuntimeError(
+                    "JacPython may not demote to Python: "
+                        + ", ".join(sorted(set(issues)))
+                );
+            }
+            (ir_text, _) = inject_shared_init(ir_text, module.gen.interop_manifest);
+            init_object_codegen();
+            compiled = llvm.parse_assembly(ir_text);
+            compiled.verify();
+            machine = llvm.Target.from_triple(target).create_target_machine(
+                opt=2, reloc="pic", codemodel="small"
+            );
+            output.write_bytes(machine.emit_object(compiled));
+        } finally {
+            pop_import_base();
+            program.release_compile_closure(collect=True);
+        }
+    }
 }
 
 def compile_kernel(package: Path, output: Path, target: str) {
@@ -154,16 +252,7 @@ def compile_module(
         }
         module = program.compile(file_path=str(source), options=options);
         contexts = [program] + list(program.contexts.values());
-        foreign = [
-            path for context in contexts
-            for path in context.mod.hub
-            if path.endswith(".jac")
-                and Path(path).is_relative_to(producer)
-                and not toolchain_native_by_policy(str(producer), path)
-        ];
-        if foreign {
-            raise RuntimeError(f"Target compilation read producer sources: {foreign}");
-        }
+        verify_source_isolation(program);
         if module is None or not module.gen.py_bytecode {
             details = "\n".join(e.pretty_print() for e in program.errors_had);
             raise ValueError(
@@ -190,11 +279,27 @@ def compile_module(
                 bodies.update(unit.ct_body_deps or []);
             }
         }
+        import from jaclang.compiler.types.stubcat { modiface }
+        import from jaclang.dist.precompile_bytecode { _unit_extra }
+        import from jaclang.compiler.driver.compilation_context {
+            cache_scope,
+            context_identity
+        }
+        registry = program.iface_registry();
+        if registry.prepare_interface(str(source), module) {
+            registry.persist_after_compile(str(source), module, options, 0, 0);
+        }
+        with cache_scope(
+            program.context_key or context_identity(program.options), program.options
+        ) {
+            extra_sections = _unit_extra(str(source), str(package), False);
+        }
         artifact = codec.write_precompiled_jir(
             bytecode,
             compute_precompile_module_key(str(source), identity),
             FLAG_PRECOMPILED,
             {
+                ** extra_sections,
                 int(SEC_CTDEPS): ct_deps_section(
                     list(dependencies), list(bodies), str(package)
                 )
@@ -239,7 +344,6 @@ def compile_image(
         find_jac_files,
         jir_to_module,
         write_manifest,
-        _nested_project_dirs,
         _precompile_retire
     }
     import from jaclang.compiler.driver.jir { running_compiler_digest }
@@ -274,6 +378,7 @@ def compile_image(
         site = Path(work).resolve() / "site";
         snapshot = site / "jaclang";
         snapshot_sources(package, snapshot);
+        exclude_native_python_sources(package, snapshot);
         resolver_marker = snapshot / "jac0core";
         shutil.copyfile(
             package.parent / "bootstrap/pins.json", snapshot / "dist/payload/pins.json"
@@ -302,7 +407,6 @@ def compile_image(
         precompiled = snapshot / "_precompiled";
         artifacts = precompiled / pyver;
         artifacts.mkdir(parents=True, exist_ok=True);
-        nested = _nested_project_dirs(str(snapshot));
         codec = image_codec(str(snapshot));
         layout_digest = hashlib.sha256(producer_digest.encode());
         layout_digest.update(Path(__file__).read_bytes());
@@ -323,8 +427,8 @@ def compile_image(
             source
             for source in find_jac_files(str(snapshot))
             if Path(source).relative_to(snapshot).as_posix() not in native_only
+                and not Path(source).is_relative_to(snapshot / "client/templates")
                 and not toolchain_native_by_policy(str(snapshot), source)
-                and not any(source.startswith(nested_root) for nested_root in nested)
         ];
         modules: dict[str, dict[str, any]] = {};
         results: list[dict[str, any]] = [];
@@ -452,6 +556,8 @@ def complete_image(source: Path, catalog: Path, output: Path) {
 with entry:__main__ {
     if len(sys.argv) == 5 and sys.argv[1] == "complete" {
         complete_image(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]));
+    } elif len(sys.argv) == 5 and sys.argv[1] == "python-native" {
+        compile_native_python(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4]);
     } elif len(sys.argv) == 5 and sys.argv[1] == "kernel" {
         compile_kernel(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4]);
     } elif len(sys.argv) >= 8 and sys.argv[1] == "image" {

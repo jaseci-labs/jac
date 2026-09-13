@@ -150,8 +150,7 @@ pub fn build(b: *std.Build) void {
     else
         b.resolveTargetQuery(.{ .cpu_model = .baseline });
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSmall });
-    const jacpython = b.option(bool, "jacpython", "Replace CPython's C compiler with JacPython (experimental)") orelse false;
-    const python_variant = if (jacpython) "jacpython" else "cpython";
+    const python_variant = "jacpython";
 
     // --- LLVMPY_* shim: compile jac/native/*.cpp + statically link host LLVM ---
     // Replaces the bundled libllvmlite.so (llvmlite wheel). Gated on -Dllvm-dir
@@ -202,12 +201,12 @@ pub fn build(b: *std.Build) void {
     });
     const seed = b.addExecutable(.{ .name = "build_python", .root_module = seed_mod });
     const pins_path = b.pathFromRoot(pins.PINS_PATH);
-    const host_python_dir = b.pathFromRoot(b.fmt(".python-build/{s}/{s}", .{ python_variant, host_osarch }));
+    const host_python_dir = b.pathFromRoot(b.fmt(".python-build/{s}/{s}.host", .{ python_variant, host_osarch }));
     const fetch_host = b.addRunArtifact(seed);
     fetch_host.addArgs(&.{ host_osarch, host_python_dir, b.pathFromRoot("."), b.graph.zig_exe });
-    if (jacpython) fetch_host.addArg("--jacpython");
+    fetch_host.addArg("--host");
     fetch_host.has_side_effects = true;
-    b.step("build-python", "Build the source-pinned Python runtime and native libraries").dependOn(&fetch_host.step);
+    b.step("build-host-python", "Build the isolated C Python used for compiler build tools").dependOn(&fetch_host.step);
     const root = b.pathFromRoot(".");
 
     // The typeshed seed reads its pin (PIN + TARBALL_SHA256) out of the vendor
@@ -254,8 +253,6 @@ pub fn build(b: *std.Build) void {
         image_step.dependOn(&b.addFail("compiler-image requires the pinned LLVM shim; run zig build fetch-llvm").step);
         break :image b.path(".unavailable-compiler-image");
     };
-
-    if (jacpython) fetch_host.addDirectoryArg(compiler_core);
 
     const bootstrap_tool = JacTool{
         .b = b,
@@ -394,16 +391,23 @@ pub fn build(b: *std.Build) void {
     // host's whenever host == target, which is every CI lane.
     const python_dir = b.pathFromRoot(b.fmt(".python-build/{s}/{s}", .{ python_variant, osarch }));
     const python_tree = b.fmt("{s}/python", .{python_dir});
-    const fetch_target: *std.Build.Step = if (std.mem.eql(u8, osarch, host_osarch)) &fetch_host.step else blk: {
-        const fetch = b.addRunArtifact(seed);
-        fetch.addArgs(&.{ osarch, python_dir, root, b.graph.zig_exe });
-        if (jacpython) {
-            fetch.addArg("--jacpython");
-            fetch.addDirectoryArg(compiler_image);
-        }
-        fetch.has_side_effects = true;
-        break :blk &fetch.step;
-    };
+    const build_python_native = tool.run("jac", &.{ "run", "--backend", "python" });
+    build_python_native.addFileArg(b.path("bootstrap/compiler.jac"));
+    build_python_native.addArgs(&.{ "python-native", b.pathFromRoot("jaclang") });
+    const python_native = build_python_native.addOutputFileArg("jacpython.o");
+    build_python_native.addArg(b.fmt("{s}-{s}", .{
+        @tagName(target.result.cpu.arch),
+        if (target.result.os.tag == .macos) "apple-darwin" else "unknown-linux-gnu",
+    }));
+    addTreeInputs(b, build_python_native, "jaclang");
+    build_python_native.addFileInput(b.path("../jac.toml"));
+    b.step("python-native", "Compile the native Python compiler with the stage-1 image").dependOn(&build_python_native.step);
+    const build_runtime = b.addRunArtifact(seed);
+    build_runtime.addArgs(&.{ osarch, python_dir, root, b.graph.zig_exe, "--native-object" });
+    build_runtime.addFileArg(python_native);
+    build_runtime.has_side_effects = true;
+    const fetch_target = &build_runtime.step;
+    b.step("build-python", "Build the source-pinned runtime with native JacPython").dependOn(fetch_target);
 
     // --- launcher stub: the staged compiler compiles launcher/ natively --
     // A native build treats any native-seam demotion in the stub's closure as

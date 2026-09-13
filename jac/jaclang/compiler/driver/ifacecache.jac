@@ -8,30 +8,26 @@ import from jaclang.compiler.driver.jir {
     SEC_DIAG,
     SEC_IFACE,
     SEC_PLACEMENT,
+    SEC_PATH_ROOT,
+    JirPaths,
     cache_mode,
     ct_deps_section,
     deps_section,
     get_module_cache_path,
-    is_compiler_source_path,
     is_module_cache_valid,
     is_stub_like_path,
     jir_cacheable_source_path,
     module_cache_key,
     read_dep_hashes,
+    read_jir_paths,
     read_section_bytes,
+    running_compiler_digest,
     write_module_cache
 }
 
 glob DIAG_SCHEMA: int = 1,
      IFACE_RETAIN_CAP: int = 1024,
-     _SYMTAB_PROVIDES_MEMO: list = [],
-     _CODEC_MODULES: tuple = (
-         "jaclang.compiler.types.type_evaluator",
-         "jaclang.compiler.types.stubcat.reader",
-         "jaclang.compiler.types.stubcat.writer",
-         "jaclang.compiler.types.stubcat.modiface"
-     ),
-     _CODEC_MEMO: list = [];
+     _SYMTAB_PROVIDES_MEMO: list = [];
 
 obj IfaceCodec {
     has build_module_iface: any,
@@ -40,32 +36,19 @@ obj IfaceCodec {
         iface_module: any;
 }
 
-def iface_codec -> (IfaceCodec | None) {
+glob _CODEC_MEMO: list[IfaceCodec] = [];
+
+def iface_codec -> IfaceCodec {
     if _CODEC_MEMO {
         return _CODEC_MEMO[0];
     }
-    import sys;
-    for name in _CODEC_MODULES {
-        mod = sys.modules.get(name);
-        if mod is None {
-            return None;
-        }
-        spec = mod?.__spec__;
-        if spec is not None and bool(getattr(spec, "_initializing", False)) {
-            return None;
-        }
-    }
-    modiface = sys.modules[_CODEC_MODULES[-1]];
-    try {
-        codec = IfaceCodec(
-            build_module_iface=modiface.build_module_iface,
-            open_module_iface=modiface.open_module_iface,
-            read_iface_hash=modiface.read_iface_hash,
-            iface_module=modiface.iface_module
-        );
-    } except AttributeError {
-        return None;
-    }
+    import from jaclang.compiler.types.stubcat { modiface }
+    codec = IfaceCodec(
+        build_module_iface=modiface.build_module_iface,
+        open_module_iface=modiface.open_module_iface,
+        read_iface_hash=modiface.read_iface_hash,
+        iface_module=modiface.iface_module
+    );
     _CODEC_MEMO.append(codec);
     return codec;
 }
@@ -73,6 +56,10 @@ def iface_codec -> (IfaceCodec | None) {
 def iface_verify_enabled -> bool {
     truthy: set = {'1', 'true', 'True', 'TRUE', 'yes', 'YES', 'on', 'ON'};
     return os.environ.get('JAC_IFACE_VERIFY', '') in truthy;
+}
+
+def _interface_source_path(path: str) -> bool {
+    return jir_cacheable_source_path(path) and not is_stub_like_path(path);
 }
 
 def _symtab_provides -> set[AnalysisFact] {
@@ -158,10 +145,21 @@ obj IfaceEntry {
         section: (bytes | None) = None,
         placement: (bytes | None) = None,
         diags: (bytes | None) = None,
+        paths: JirPaths | None = None,
         catalog: any = None,
         module: any = None,
         stamp: float = 0.0,
         replayed_token: int = -1;
+}
+
+obj EncodedInterface {
+    has module_key: str,
+        section: bytes,
+        digest: str,
+        paths: JirPaths | None = None,
+        diagnostics: dict | None = None,
+        dependencies: dict[str, str] = {},
+        profile_key: str = "";
 }
 
 obj IfaceRegistry {
@@ -171,7 +169,7 @@ obj IfaceRegistry {
         checking: set[str] postinit,
         frames: list[str] postinit,
         direct_deps: dict[str, dict[str, str]] = {},
-        _iface_bytes: dict[str, tuple[str, bytes, str]] = {},
+        _iface_bytes: dict[str, EncodedInterface] = {},
         _incoherent: set[str] = set(),
         verifying: bool = False,
         closure_token: int = 0,
@@ -263,12 +261,13 @@ obj IfaceRegistry {
         importer = self.frames[-1];
         real = os.path.realpath(dep_path);
 
-        if real == importer or is_compiler_source_path(real) {
+        if real == importer {
             return;
         }
         if not jir_cacheable_source_path(real) {
             return;
         }
+        self.prog.record_dependency(importer, real);
         digest = "";
         if is_stub_like_path(real) {
             try {
@@ -341,13 +340,21 @@ obj IfaceRegistry {
         }
     }
 
+    def _restore_dependencies(resolved: str, dependencies: dict[str, str]) {
+        self.direct_deps.setdefault(resolved, {}).update(dependencies);
+        for dependency in dependencies {
+            self.prog.record_dependency(resolved, dependency);
+        }
+    }
+
     def _register(
         resolved: str,
         digest: str,
         section: (bytes | None),
         placement: (bytes | None),
         diags: (bytes | None) = None,
-        remember: bool = True
+        remember: bool = True,
+        paths: JirPaths | None = None
     ) -> IfaceEntry {
         ent = IfaceEntry(
             path=resolved,
@@ -355,6 +362,7 @@ obj IfaceRegistry {
             section=section,
             placement=placement,
             diags=diags,
+            paths=paths,
             stamp=time.time()
         );
         prev = self.entries.get(resolved);
@@ -365,6 +373,29 @@ obj IfaceRegistry {
         }
         if remember {
             self.entries[resolved] = ent;
+            self._restore_dependencies(resolved, self.direct_deps.get(resolved, {}));
+            profiles = self._profiles_of(
+                diags, paths.resolve if paths is not None else None
+            )
+                or {};
+            profile_key = self.analysis_profile(self.prog.options);
+            profile = profiles.get(profile_key);
+            if section is not None {
+                if profile is not None and profile.get("errors") {
+                    profile = None;
+                }
+                try {
+                    self._iface_bytes[resolved] = EncodedInterface(
+                        module_cache_key(resolved),
+                        section,
+                        digest,
+                        paths,
+                        profile,
+                        dict(self.direct_deps.get(resolved, {})),
+                        profile_key if profile is not None else ""
+                    );
+                } except OSError {}
+            }
         }
         return ent;
     }
@@ -435,7 +466,7 @@ obj IfaceRegistry {
     def _register_from_disk(resolved: str, check_deps: bool) -> (IfaceEntry | None) {
         codec = iface_codec();
         found = self._module_jir(resolved);
-        if codec is None or found is None {
+        if found is None {
             return None;
         }
         (data, base_dir) = found;
@@ -447,13 +478,15 @@ obj IfaceRegistry {
         if check_deps and not self._deps_match(data, base_dir) {
             return None;
         }
+        self.direct_deps[resolved] = dict(read_dep_hashes(data, base_dir));
         return self._register(
             resolved,
             digest,
             section,
             read_section_bytes(data, SEC_PLACEMENT),
             diags=read_section_bytes(data, SEC_DIAG),
-            remember=check_deps
+            remember=check_deps,
+            paths=read_jir_paths(data, base_dir)
         );
     }
 
@@ -485,6 +518,9 @@ obj IfaceRegistry {
         path: str, compile_on_miss: bool = True
     ) -> (IfaceEntry | None) {
         resolved = os.path.realpath(path);
+        if not _interface_source_path(resolved) {
+            return None;
+        }
         ent = self.entries.get(resolved);
         if ent is not None and self._entry_fresh(ent) {
             return ent;
@@ -507,11 +543,7 @@ obj IfaceRegistry {
                 return found;
             }
         }
-        if (
-            not compile_on_miss
-            or not jir_cacheable_source_path(resolved)
-            or is_stub_like_path(resolved)
-        ) {
+        if not compile_on_miss {
             return None;
         }
         if not os.path.isfile(resolved) {
@@ -548,10 +580,12 @@ obj IfaceRegistry {
             return None;
         }
         codec = iface_codec();
-        if codec is None {
-            return None;
-        }
-        catalog = codec.open_module_iface(ent.section, self._pkg_dir(), resolver=self);
+        catalog = codec.open_module_iface(
+            ent.section,
+            self._pkg_dir(),
+            resolver=self,
+            path_mapper=ent.paths.resolve if ent.paths is not None else None
+        );
         if catalog is None {
             return None;
         }
@@ -573,7 +607,10 @@ obj IfaceRegistry {
                 summary_from_bytes,
                 summary_store
             }
-            restored = summary_from_bytes(ent.placement);
+            restored = summary_from_bytes(
+                ent.placement,
+                path_mapper=ent.paths.resolve if ent.paths is not None else None
+            );
             if restored is not None {
                 summary_store(self.prog)[os.path.abspath(ent.path)] = restored;
             }
@@ -583,10 +620,13 @@ obj IfaceRegistry {
     def _prepare(ent: IfaceEntry, mod: any) {
         self.prog._get_compiler().stamp_app_facts(mod, self.prog);
         self._restore_placement(ent);
+        self._restore_dependencies(ent.path, self.direct_deps.get(ent.path, {}));
         self.prog.analysis.analyses_run.mark(mod, _symtab_provides());
     }
 
-    def _profiles_of(diag_bytes: (bytes | None)) -> (dict | None) {
+    static def _profiles_of(
+        diag_bytes: (bytes | None), path_mapper: Callable[[str], str] | None = None
+    ) -> (dict | None) {
         import json;
         if diag_bytes is None {
             return None;
@@ -599,37 +639,70 @@ obj IfaceRegistry {
         if payload.get("schema") != DIAG_SCHEMA {
             return None;
         }
-        return payload.get("profiles", {}) or {};
+        profiles = payload.get("profiles", {}) or {};
+        if path_mapper is not None {
+            for profile in profiles.values() {
+                for kind in ("errors", "warnings") {
+                    for record in profile.get(kind, []) {
+                        span = record.get("span");
+                        if span {
+                            span[0] = path_mapper(span[0]);
+                        }
+                        for related in record.get("related", []) {
+                            related[1][0] = path_mapper(related[1][0]);
+                        }
+                    }
+                }
+            }
+        }
+        return profiles;
     }
 
-    def _replay_records(prof: dict, err0: int, warn0: int) {
-        def key_of(alert: any) -> tuple {
-            return (
-                alert.loc.mod_path,
-                alert.loc.first_line,
-                alert.loc.col_start,
-                alert.code.code if alert.code is not None else None,
-                alert.msg
-            );
-        }
+    def _replay_records(prof: dict) {
+        self.prog.diags.extend(
+            [_alert_from_record(rec) for rec in (prof.get("errors") or [])],
+            [_alert_from_record(rec) for rec in (prof.get("warnings") or [])]
+        );
+    }
 
-        def rec_key(rec: dict) -> tuple {
-            span = rec.get("span") or ["", 0, 0, 0];
-            return (span[0], span[1], span[3], rec.get("code"), rec.get("msg", ""));
-        }
-        live_errs = {key_of(a) for a in self.prog.errors_had[err0:]};
-        live_warns = {key_of(a) for a in self.prog.warnings_had[warn0:]};
-        for rec in (prof.get("errors") or []) {
-            if rec_key(rec) in live_errs {
+    def _dependency_diagnostics(
+        ent: IfaceEntry, profile_key: str
+    ) -> list[tuple[IfaceEntry, dict]] | None {
+        pending = list(self.direct_deps.get(ent.path, {}));
+        visited = {ent.path};
+        profiles_to_replay: list[tuple[IfaceEntry, dict]] = [];
+        while pending {
+            path = pending.pop();
+            if path in visited or is_stub_like_path(path) {
                 continue;
             }
-            self.prog.errors_had.append(_alert_from_record(rec));
-        }
-        for rec in (prof.get("warnings") or []) {
-            if rec_key(rec) in live_warns {
+            visited.add(path);
+            dependency = self.ensure(path, compile_on_miss=False);
+            if dependency is None {
+                return None;
+            }
+            if dependency.replayed_token == self.closure_token {
                 continue;
             }
-            self.prog.warnings_had.append(_alert_from_record(rec));
+            profiles = self._profiles_of(
+                dependency.diags,
+                dependency.paths.resolve if dependency.paths is not None else None
+            )
+                or {};
+            profile = profiles.get(profile_key);
+            if profile is None or profile.get("errors") {
+                return None;
+            }
+            profiles_to_replay.append((dependency, profile));
+            pending.extend(self.direct_deps.get(path, {}));
+        }
+        return profiles_to_replay;
+    }
+
+    def _replay_dependency_diagnostics(profiles: list[tuple[IfaceEntry, dict]]) {
+        for (dependency, profile) in profiles {
+            self._replay_records(profile);
+            dependency.replayed_token = self.closure_token;
         }
     }
 
@@ -639,7 +712,7 @@ obj IfaceRegistry {
             or bool(options.default_codespace) {
             return False;
         }
-        if not jir_cacheable_source_path(resolved) or is_stub_like_path(resolved) {
+        if not _interface_source_path(resolved) {
             return False;
         }
         if compiler.stub_catalog_disabled {
@@ -648,12 +721,8 @@ obj IfaceRegistry {
         return True;
     }
 
-    def ready -> bool {
-        return iface_codec() is not None;
-    }
-
     def _serve_in_context(compiler: any, resolved: str, options: any) -> any {
-        if not options.iface_ok or options.need_full_ast or not self.ready() {
+        if not options.iface_ok or options.need_full_ast {
             return None;
         }
         if resolved in self.building {
@@ -676,15 +745,16 @@ obj IfaceRegistry {
     }
 
     def _serve_symtab(resolved: str, profile_key: (str | None)) -> any {
-        err0 = len(self.prog.errors_had);
-        warn0 = len(self.prog.warnings_had);
         ent = self.ensure(resolved, compile_on_miss=False);
         if ent is None {
             return None;
         }
         prof: (dict | None) = None;
+        dependency_profiles: list[tuple[IfaceEntry, dict]] = [];
         if profile_key is not None {
-            profiles = self._profiles_of(ent.diags);
+            profiles = self._profiles_of(
+                ent.diags, ent.paths.resolve if ent.paths is not None else None
+            );
             prof = profiles.get(profile_key) if profiles is not None else None;
             if prof is None {
                 self._event("dep_profile_miss");
@@ -694,6 +764,12 @@ obj IfaceRegistry {
                 self._event("dep_error_profile");
                 return None;
             }
+            gathered = self._dependency_diagnostics(ent, profile_key);
+            if gathered is None {
+                self._event("dep_closure_profile_miss");
+                return None;
+            }
+            dependency_profiles = gathered;
         }
         mod = self._materialize(ent);
         if mod is None {
@@ -701,7 +777,8 @@ obj IfaceRegistry {
         }
         self._prepare(ent, mod);
         if prof is not None and ent.replayed_token != self.closure_token {
-            self._replay_records(prof, err0, warn0);
+            self._replay_records(prof);
+            self._replay_dependency_diagnostics(dependency_profiles);
             ent.replayed_token = self.closure_token;
         }
         self._event("dep_hydrate");
@@ -712,15 +789,14 @@ obj IfaceRegistry {
     }
 
     def _serve_analysis(compiler: any, resolved: str, options: any) -> any {
-        err0 = len(self.prog.errors_had);
-        warn0 = len(self.prog.warnings_had);
         codec = iface_codec();
         found = self._module_jir(resolved);
-        if codec is None or found is None {
+        if found is None {
             return None;
         }
         (data, base_dir) = found;
-        profiles = self._profiles_of(read_section_bytes(data, SEC_DIAG));
+        paths = read_jir_paths(data, base_dir);
+        profiles = self._profiles_of(read_section_bytes(data, SEC_DIAG), paths.resolve);
         if profiles is None {
             return None;
         }
@@ -749,20 +825,29 @@ obj IfaceRegistry {
         if digest is None {
             return None;
         }
+        self.direct_deps[resolved] = dict(read_dep_hashes(data, base_dir));
         ent = self._register(
             resolved,
             digest,
             section,
             read_section_bytes(data, SEC_PLACEMENT),
-            diags=read_section_bytes(data, SEC_DIAG)
+            diags=read_section_bytes(data, SEC_DIAG),
+            paths=paths
         );
+        dependency_profiles = self._dependency_diagnostics(
+            ent, self.analysis_profile(options.for_symbols())
+        );
+        if dependency_profiles is None {
+            self._event("replay_closure_profile_miss");
+            return None;
+        }
         mod = self._materialize(ent);
         if mod is None {
             return None;
         }
         self._prepare(ent, mod);
-        self._replay_records(prof, err0, warn0);
-        self.direct_deps[resolved] = dict(read_dep_hashes(data, base_dir));
+        self._replay_records(prof);
+        self._replay_dependency_diagnostics(dependency_profiles);
         ent.replayed_token = self.closure_token;
         self._event("analysis_replay");
         if self.verifying is False and iface_verify_enabled() {
@@ -789,6 +874,7 @@ obj IfaceRegistry {
         pol = diagnostic_policy_for(config, list(options.suppress_codes or []));
         ident = json.dumps(
             {
+                "compiler": running_compiler_digest(),
                 "no_cgen": bool(options.no_cgen),
                 "app": str(getattr(options, "target_app", "") or ""),
                 "app_kind": str(getattr(options, "app_kind", "") or ""),
@@ -826,13 +912,19 @@ obj IfaceRegistry {
         self._event("iface_cfg");
     }
 
-    def _encode_iface(codec: IfaceCodec, mod: any) -> (bytes | None) {
+    def _encode_iface(codec: IfaceCodec, mod: any, paths: JirPaths) -> (bytes | None) {
         import from jaclang.compiler.types.stubcat.modiface { IncoherentInterface }
         self._event("iface_encode");
         self._ensure_flow_graph(mod);
         try {
+            package_dir = os.path.realpath(
+                self.prog.options.project_root or paths.base_dir
+            );
+            def encode_path(path: str) -> str {
+                return paths.encode(path, package_dir);
+            }
             return codec.build_module_iface(
-                mod, self.prog.get_type_evaluator(), self._pkg_dir()
+                mod, self.prog.get_type_evaluator(), self._pkg_dir(), encode_path
             );
         } except IncoherentInterface {
             self._event("iface_incoherent");
@@ -843,31 +935,60 @@ obj IfaceRegistry {
     def _prepare_interface_in_context(resolved: str, mod: any) -> bool {
         if mod.parse_failed
             or mod.codespace_inferred
-            or not jir_cacheable_source_path(resolved)
+            or not _interface_source_path(resolved)
             or not os.path.isfile(resolved) {
             return False;
         }
         codec = iface_codec();
-        if codec is None {
-            return False;
-        }
         key = module_cache_key(resolved);
         memo = self._iface_bytes.get(resolved);
-        if memo is not None and memo[0] == key {
+        profile_key = self.analysis_profile(self.prog.options);
+        if memo is not None
+            and memo.module_key == key
+            and memo.profile_key == profile_key {
+            self._restore_dependencies(resolved, memo.dependencies);
+            if memo.diagnostics is not None {
+                self._replay_records(memo.diagnostics);
+            }
             return True;
         }
-        encoded = self._encode_iface(codec, mod);
+        paths = JirPaths(base_dir=os.path.dirname(resolved));
+        err_start = len(self.prog.errors_had);
+        warn_start = len(self.prog.warnings_had);
+        encoded = self._encode_iface(codec, mod, paths);
         if encoded is None {
             self._incoherent.add(resolved);
             return False;
         }
         self._incoherent.discard(resolved);
-        self._iface_bytes[resolved] = (
+        self._iface_bytes[resolved] = EncodedInterface(
             key,
             encoded,
-            codec.read_iface_hash(encoded) or ''
+            codec.read_iface_hash(encoded) or '',
+            paths,
+            self._diagnostic_records(resolved, err_start, warn_start),
+            dict(self.direct_deps.get(resolved, {})),
+            profile_key
         );
         return True;
+    }
+
+    def _diagnostic_records(resolved: str, err_start: int, warn_start: int) -> dict {
+        errors = list(self.prog.errors_had[err_start:]);
+        warnings = list(self.prog.warnings_had[warn_start:]);
+        for path in sorted(
+            self.prog.deps.transitive_dependencies(resolved) | {resolved}
+        ) {
+            errors.extend(self.prog.diags.owned_errors(path));
+            warnings.extend(self.prog.diags.owned_warnings(path));
+        }
+        import from jaclang.compiler.driver.progstate { DiagLedger }
+        diagnostics = DiagLedger();
+        diagnostics.extend(errors, warnings);
+        return {
+            "errors": [_alert_record(a) for a in diagnostics.errors],
+            "warnings": [_alert_record(a) for a in diagnostics.warnings]
+        };
     }
 
     def _persist_in_context(
@@ -875,13 +996,13 @@ obj IfaceRegistry {
     ) -> None {
         import json;
 
-        if mod is None or mod.parse_failed or resolved in self._incoherent {
+        if mod is None
+            or mod.parse_failed
+            or not _interface_source_path(resolved)
+            or resolved in self._incoherent {
             return;
         }
         codec = iface_codec();
-        if codec is None {
-            return;
-        }
         sections: dict[int, bytes] = {};
         modkey = "";
         try {
@@ -894,14 +1015,18 @@ obj IfaceRegistry {
         payload: (bytes | None) = None;
         if inferred {
             digest = self._disk_iface_digest(resolved);
-        } elif modkey and memo is not None and memo[0] == modkey {
-            payload = memo[1];
-            digest = memo[2];
+        } elif modkey and memo is not None and memo.module_key == modkey {
+            payload = memo.section;
+            digest = memo.digest;
         } else {
             digest = self._disk_iface_digest(resolved);
         }
         if payload is not None {
             sections[SEC_IFACE] = payload;
+
+            sections[SEC_PATH_ROOT] = memo.paths.to_bytes()
+                if memo is not None and memo.paths is not None
+                else b"";
         }
         sections[SEC_DEPS] = deps_section(self.dep_rows(resolved, mod));
         try {
@@ -925,19 +1050,12 @@ obj IfaceRegistry {
         }
         if options.no_cgen {
             profiles = self._existing_profiles(resolved);
-            errors: list = [];
-            for alert in self.prog.errors_had[err_start:] {
-                errors.append(_alert_record(alert));
-            }
-            warnings: list = [];
-            for alert in self.prog.warnings_had[warn_start:] {
-                warnings.append(_alert_record(alert));
-            }
-            _prof_key = self.analysis_profile(options);
-            if errors {
-                profiles.pop(_prof_key, None);
+            profile = self._diagnostic_records(resolved, err_start, warn_start);
+            profile_key = self.analysis_profile(options);
+            if profile["errors"] {
+                profiles.pop(profile_key, None);
             } else {
-                profiles[_prof_key] = {"errors": [], "warnings": warnings};
+                profiles[profile_key] = profile;
             }
             sections[SEC_DIAG] = json.dumps(
                 {"schema": DIAG_SCHEMA, "profiles": profiles}
@@ -954,7 +1072,8 @@ obj IfaceRegistry {
                 digest,
                 sections.get(SEC_IFACE),
                 sections.get(SEC_PLACEMENT),
-                diags=sections.get(SEC_DIAG)
+                diags=sections.get(SEC_DIAG),
+                paths=memo.paths if memo is not None else None
             );
         }
         if digest {
@@ -970,28 +1089,24 @@ obj IfaceRegistry {
     def _disk_iface_digest(resolved: str) -> str {
         codec = iface_codec();
         found = self._module_jir(resolved);
-        if codec is None or found is None {
+        if found is None {
             return "";
         }
         return codec.read_iface_hash(read_section_bytes(found[0], SEC_IFACE)) or "";
     }
 
     def _existing_profiles(resolved: str) -> dict {
-        import json;
         found = self._module_jir(resolved);
         if found is None {
             return {};
         }
         try {
-            diag_bytes = read_section_bytes(found[0], SEC_DIAG);
-            if diag_bytes is None {
-                return {};
-            }
-            payload = json.loads(diag_bytes.decode("utf-8"));
-            if payload.get("schema") != DIAG_SCHEMA {
-                return {};
-            }
-            return payload.get("profiles", {}) or {};
+            (data, base_dir) = found;
+            return self._profiles_of(
+                read_section_bytes(data, SEC_DIAG),
+                read_jir_paths(data, base_dir).resolve
+            )
+                or {};
         } except Exception {
             return {};
         }
@@ -1131,10 +1246,9 @@ obj IfaceRegistry {
                 );
             }
             codec = iface_codec();
-            assert codec is not None;
             fresh_digest = codec.read_iface_hash(
-                codec.build_module_iface(
-                    fresh, prog2.get_type_evaluator(), self._pkg_dir()
+                prog2.iface_registry()._encode_iface(
+                    codec, fresh, JirPaths(base_dir=os.path.dirname(resolved))
                 )
             )
                 or "";

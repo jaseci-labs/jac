@@ -27,7 +27,7 @@ failing one test.
 import os;
 import subprocess;
 import sys;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, COMPILER_SITE }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -65,7 +65,10 @@ The child gets this process's `sys.path` verbatim so it resolves the same
 jaclang the test is exercising, rather than whatever an installed one would be.
 """
 def _jit_call(fixture: str, symbol: str) -> tuple[(int, str, str)] {
-    source = "import sys\nsys.path[:] = " + repr(sys.path) + "\n" + _JIT_DRIVER;
+    source = "import sys\nsys.path.insert(0, "
+        + repr(COMPILER_SITE)
+        + ")\n"
+        + _JIT_DRIVER;
     proc = subprocess.run(
         [sys.executable, "-c", source, os.path.join(FIXTURES, fixture), symbol],
         capture_output=True,

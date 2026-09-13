@@ -108,6 +108,28 @@ test "delivery lands alerts on the program in emission order" {
     );
 }
 
+test "delivery deduplicates equivalent alerts while preserving distinct context" {
+    import copy;
+    prog = JacProgram();
+    mod = _parse(prog, "with entry { x = 1; }");
+    first = run_pass(ProbeEmitPass, mod, prog);
+    deliver_alerts(
+        [copy.copy(alert) for alert in first.errors_had],
+        [copy.copy(alert) for alert in first.warnings_had],
+        prog
+    );
+    assert [alert.msg for alert in prog.errors_had]
+        == ["probe error first", "probe error third"];
+    assert len(prog.warnings_had) == 1;
+    distinct = copy.copy(first.warnings_had[0]);
+    distinct.help_text = "A different remedy must remain visible.";
+    deliver_alerts([], [distinct], prog);
+    assert len(prog.warnings_had) == 2;
+    prog.drop_module_alerts(mod.loc.mod_path);
+    deliver_alerts(first.errors_had, first.warnings_had, prog);
+    assert len(prog.errors_had) == 2 and len(prog.warnings_had) == 1;
+}
+
 
 test "a policy stamped on the pass suppresses at emit time" {
     prog = JacProgram();

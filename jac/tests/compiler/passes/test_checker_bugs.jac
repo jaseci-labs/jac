@@ -1043,6 +1043,30 @@ test "bug_withas_1_async_with_as_binds_and_checks" {
     );
 }
 
+test "context aliases resolve during interface analysis before type-check traversal" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.frontend.unitree { ExprAsItem, Name }
+    for fixture in [
+        "checker_with_as_enter_binding.jac",
+        "checker_async_with_as_binding.jac"
+    ] {
+        program = JacProgram();
+        mod = program.compile(
+            os.path.join(CHECKER_FIXTURES, fixture),
+            options=CompileOptions(symtab_ir_only=True, no_ir_cache=True)
+        );
+        aliases = mod.get_all_sub_nodes(ExprAsItem);
+        assert aliases;
+        for item in aliases {
+            alias = item.alias;
+            assert isinstance(alias, Name) and alias.sym is not None;
+            resolved = program.get_type_evaluator().get_type_of_symbol(alias.sym);
+            assert not isinstance(resolved, UnknownType) , (fixture, str(resolved));
+        }
+        assert not program.errors_had , program.errors_had;
+    }
+}
+
 test "bug_starguard_1_guarded_star_reexport_resolves" {
     program = compile_and_check("checker_star_reexport_guard.jac");
     e1055 = sum(

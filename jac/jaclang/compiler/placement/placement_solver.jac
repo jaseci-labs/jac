@@ -714,14 +714,17 @@ def _emit_solver_warning(
         }
     }
     try {
-        prog.warnings_had.append(
-            Alert(
-                msg=diag.format_message(**kwargs),
-                loc=nd.loc.span(),
-                from_pass=PlacementApplyPass,
-                code=diag,
-                help_text=diag.format_help(**kwargs)
-            )
+        prog.diags.extend(
+            [],
+            [
+                Alert(
+                    msg=diag.format_message(**kwargs),
+                    loc=nd.loc.span(),
+                    from_pass=PlacementApplyPass,
+                    code=diag,
+                    help_text=diag.format_help(**kwargs)
+                )
+            ]
         );
     } except Exception {}
 }

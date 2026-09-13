@@ -3,7 +3,6 @@ import from jaclang.runtime.exports { runtime_function }
 import from jaclang.runtime.object_model { make_object }
 import from abc { ABCMeta, abstractmethod }
 import from collections.abc { Callable }
-import from enum { StrEnum }
 import from typing { ClassVar, NoReturn, `override }
 import type from enum { IntEnum }
 import type from jaclang.runtime.access_level { AccessLevel }
@@ -11,13 +10,9 @@ import type from jaclang.runtime.constructs { NodeArchetype }
 import type from jaclang.runtime.runtime { LLMModel }
 import type from jaclang { JacRuntimeInterface }
 
-enum APIProtocol(StrEnum) {
-    HTTP = 'http',
-    WEBHOOK = 'webhook',
-    WEBSOCKET = 'websocket'
-}
+enum APIProtocol: str { HTTP = 'http', WEBHOOK = 'webhook', WEBSOCKET = 'websocket' }
 
-enum ScheduleTrigger(StrEnum) { STATIC = 'static', DYNAMIC = 'dynamic' }
+enum ScheduleTrigger: str { STATIC = 'static', DYNAMIC = 'dynamic' }
 
 def _get_jac -> type[JacRuntimeInterface];
 

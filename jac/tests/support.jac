@@ -11,6 +11,8 @@ Imported as `from tests.support`, which resolves identically under the single
 """
 
 import ctypes;
+import jaclang;
+import sys;
 
 import from pathlib { Path }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -20,7 +22,20 @@ import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine
 # `tests/`: the directory holding this file.
 glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
      # Repo root (the `jac/` dir): the parent of `tests/`.
-     JAC_ROOT: str = str(Path(__file__).resolve().parent.parent);
+     JAC_ROOT: str = str(Path(__file__).resolve().parent.parent),
+     COMPILER_SITE: str = str(Path(jaclang.__file__).resolve().parent.parent);
+
+
+"""Invoke the current compiler image without letting a checkout shadow it."""
+def jac_command -> list[str] {
+    script = (
+        "import runpy, sys; "
+        + f"sys.path.insert(0, {COMPILER_SITE!r}); "
+        + "sys.argv[0] = 'jac'; "
+        + "runpy.run_module('jaclang', run_name='__main__', alter_sys=True)"
+    );
+    return [sys.executable, "-P", "-c", script];
+}
 
 """CompileOptions that force a fixture into the native codespace.
 
@@ -249,7 +264,8 @@ def native_build(
     import sys;
     assert os.path.exists(src) , f"fixture missing: {src}";
     cmd = (
-        [sys.executable, "-m", "jaclang", "build", src, "--native"]
+        jac_command()
+        + ["build", src, "--native"]
         + native_memory_flags(memory)
         + list(extra or [])
         + ["-o", out_bin]
@@ -300,8 +316,7 @@ def python_run(src: str, args: list[str] | None = None, timeout: int = 120) -> s
     import subprocess;
     import sys;
     proc = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", "--backend", "python", src]
-            + list(args or []),
+        jac_command() + ["run", "--backend", "python", src] + list(args or []),
         capture_output=True,
         text=True,
         timeout=timeout

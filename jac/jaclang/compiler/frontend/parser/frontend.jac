@@ -12,6 +12,8 @@ import from jaclang.compiler.frontend.unitree { CommentToken, Expr, Module, Sour
 def _replay_diags(
     diags: list[SrcDiag], from_pass: type, prog: JacProgram, diag_src: Source
 ) {
+    errors: list[Alert] = [];
+    warnings: list[Alert] = [];
     for d in diags {
         loc = d.loc;
         span = Span.make(
@@ -25,11 +27,12 @@ def _replay_diags(
         help_text = d.help or None;
         alrt = Alert(d.message, span, from_pass, code=code, help_text=help_text);
         if d.is_error {
-            prog.errors_had.append(alrt);
+            errors.append(alrt);
         } else {
-            prog.warnings_had.append(alrt);
+            warnings.append(alrt);
         }
     }
+    prog.diags.extend(errors, warnings);
 }
 
 def parse_diags(

@@ -1,3 +1,5 @@
+import from typing { cast }
+import from jaclang.server.server { EndpointHost }
 import from unittest.mock { patch, MagicMock }
 import from concurrent.futures { ThreadPoolExecutor }
 import from tempfile { mkdtemp }
@@ -57,8 +59,8 @@ test "enabled quotas fail closed when storage is unavailable" {
 }
 
 test "registration limits precede verification and account creation" {
-    server = MagicMock();
-    register_auth_endpoints(server);
+    server = MagicMock(spec=EndpointHost);
+    register_auth_endpoints(cast(EndpointHost, server));
     callbacks: dict[str, any] = {
         c.args[0].path: c.args[0].callback for c in server.add_endpoint.call_args_list
     };

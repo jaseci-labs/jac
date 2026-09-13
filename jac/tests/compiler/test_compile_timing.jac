@@ -40,6 +40,7 @@ only survives a failure is not much of a report. Since the runner came in-house
 (#8287) that file is the only durable copy, so read the tables there.
 """
 
+import from tests.support { jac_command }
 import json;
 import os;
 import shutil;
@@ -152,7 +153,7 @@ def run_probe(
         return _PROBE_CACHE[key];
     }
     proc = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", PROBE],
+        jac_command() + ["run", PROBE],
         cwd=tree_dir,
         env=env,
         capture_output=True,
@@ -337,16 +338,7 @@ test "the chess AOT binary stays inside its recorded run envelope" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "chess");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                CHESS,
-                "-o",
-                out_bin
-            ],
+            jac_command() + ["build", "--native", CHESS, "-o", out_bin],
             capture_output=True,
             text=True,
             timeout=1800

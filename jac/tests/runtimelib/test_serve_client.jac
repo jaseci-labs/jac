@@ -194,10 +194,8 @@ def make_failload_client(tmp_path: str) -> JacTestClient {
 
 Same fixtures as `make_crossboundary_client`, but the entry/server/client files
 are copied into a unique dir inside the jaclang package (where `jac ai --ui` and
-other bundled apps live). `SelfHostCache.resolve` routes any file under
-the package root to the self-host program, so the cross-boundary
-interop facts land in that hub rather than `Jac.program.mod.hub` -- the exact
-condition under which the serve endpoint collector missed them. Returns
+other bundled apps live). Explicit program ownership must preserve the same
+cross-boundary interop and endpoint visibility as an external application. Returns
 `(client, cleanup_dir)`; the caller must rmtree `cleanup_dir`.
 """
 def make_bundled_crossboundary_client -> tuple {
@@ -1901,7 +1899,8 @@ test "concurrent async walkers run concurrently end-to-end" {
         assert getattr(walker_cls, "__jac_async__", False) , "slow_async walker must be async";
         user_mgr = UserManager(base_path=tmpdir);
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
-        user_mgr.create_user("testuser", "testpass");
+        created = user_mgr.create_user("testuser", "testpass");
+        assert "error" not in created , created;
         async def run -> float {
             start = time();
             tasks = [

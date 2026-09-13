@@ -6,10 +6,10 @@ Python, uv, or pip** at install or runtime. Both halves are Jac:
 
 | Piece | Where | Tier |
 |---|---|---|
-| Launcher stub (`launcher.jac`) | this directory | native (`jac build --as native` / `nacompile`) |
+| Launcher stub (`launcher.jac`) | this directory | native (`jac build --native`) |
 | Fused-runtime library | `jaclang/dist/fused/` | native, shipped in the payload |
-| Payload tool (fetch, stage, precompile, pack) | `jaclang/dist/payload/` | Python tier, run on source-built CPython |
-| Bootstrap seeds (`build_python.zig`, `fetch_typeshed.zig`), `pins.json` | `bootstrap/` | Zig + the pin files |
+| Payload tool (fetch, stage, pack) | `jaclang/dist/payload/` | compiled Stage-1 image, run on the build-only Python host |
+| Pinned toolchain and source-runtime builders, `pins.json` | `bootstrap/` | Zig + the pin files |
 | `build.zig` | `jac/` | the one-command entry; also the C/C++ cross-compiler for the LLVM shim and the vendored runtimes |
 
 Instead of statically linking CPython, the launcher **`dlopen`s the bundled
@@ -77,7 +77,6 @@ cd jac
 zig build test                       # bootstrap unit tests (no network needed)
 zig build stub                       # just the launcher stub (no payload)
 zig build                            # -> zig-out/bin/jac
-zig build -Djacpython=true            # opt in to the experimental JacPython compiler
 ./zig-out/bin/jac --version
 
 zig build -Dpayload-progress         # stream the payload build live
@@ -88,7 +87,7 @@ zig build compiler-stage2           # rebuild that image with itself
 
 `zig build` first builds CPython from the checksum-pinned sources in
 `bootstrap/python/sources.json` and fetches the pinned typeshed stubs. The
-Python seed uses Zig for C compilation and archiving, with the upstream
+Python bootstrap uses Zig for C compilation and archiving, with the upstream
 configure/make recipes retained for platform probes and generated files.
 The build fetches the checksum-pinned prior Jac compiler and uses it to build
 the current compiler image. No installed Python or Jac is needed. See the
@@ -97,12 +96,15 @@ image selection.
 Build hosts need Zig 0.16.0, make, Perl, a POSIX shell, and network access.
 macOS also needs the SDK provided by Xcode command line tools.
 
-`zig build` defaults to CPython's C parser/compiler. `-Djacpython=true` replaces
-that compiler with JacPython and embeds its bootstrap seed; the CPython VM and
-object runtime are retained in both variants. The flag also applies to
-`zig build build-python`, which builds only the Python distribution.
-Its cache in `.python-build/<cpython|jacpython>/<platform>` contains the interpreter, shared library, stdlib,
-licenses, CA certificates, and static archives for Jac's native backend.
+Every build uses JacPython's native parser/compiler replacement. The CPython
+VM and object runtime remain. A separate build-only CPython host runs Jac's
+native compiler to emit that object. The build rejects interpreted demotions;
+no replacement bytecode, compiler seed, or Python adapter ships in the payload.
+There is no compiler selection flag or C compiler fallback.
+`zig build build-python` builds only this runtime and its native libraries.
+Its cache in `.python-build/jacpython/<platform>` contains the interpreter,
+shared library, stdlib, licenses, CA certificates, and static archives for Jac's
+native backend. The adjacent `<platform>.host` tree is only a build tool.
 A content fingerprint covers the source checksums, source allowlist, recipes,
 Zig version, target, and macOS SDK version. A cache hit skips compilation; a miss builds from
 source and checks relocation before marking the distribution complete.
@@ -116,20 +118,18 @@ The source-built runtime excludes Tk, curses, readline, dbm, and CPython test
 extensions. `bootstrap/python/cpython-sources.txt` is the source allowlist:
 each line names a file or a directory ending in `/`, relative to the pinned
 CPython archive. Only those paths survive extraction into the build tree;
-the default CPython build also restores the entries marked `# removed:`.
-Those marked exclusions apply only with `-Djacpython=true`. Its separate
-build-time host restores them to generate the seed, then the reduced runtime
-build omits them. JacPython source changes invalidate that runtime's cache;
-they do not invalidate the default CPython distribution.
+the build-only host restores entries marked `# removed:` to produce the first
+native object. The shipped runtime omits all those entries. Changes to JacPython
+or the Jac compiler that produces its native object invalidate the runtime cache;
+they do not invalidate the build-only host.
 Blank lines and full-line comments are allowed; globs, missing paths, and
 overlapping entries fail the build. The archive is still downloaded and
 checksum-verified as a whole. Other dependency archives use `sources.json`.
 
-Stable and rolling dev releases build both variants for each selected platform.
-The standard `jac-<version>-<platform>` (or `jac-dev-<platform>`) asset uses
-CPython; the opt-in asset appends `-jacpython`. Each has its own checksum.
-Installers and Docker images consume the standard CPython asset. Intel Mac
-remains a manual release target and builds both variants when selected.
+Stable and rolling dev releases build one native JacPython binary per selected
+platform under the standard `jac-<version>-<platform>` (or `jac-dev-<platform>`)
+name, with its checksum. Installers and Docker images consume these same assets.
+Intel Mac remains a manually selected release target.
 
 The list starts with the C implementations needed by the Linux/macOS release
 builds, their headers/generated tables, the Python standard library, and the
@@ -157,3 +157,12 @@ performance parity has not been established.
 * `jac test jac/tests/payload/` covers the trailer codec, deterministic staging,
   frame routing and the payload CLI; the bundled `compression.zstd` / `tarfile`
   equivalence tests cover the decode path the launcher uses.
+
+## Runtime cache lifetime
+
+The shared materializer in `jaclang/dist/fused/materialize.jac` serializes
+extraction with a cache lock and holds a shared lock for each runtime generation
+until the process exits. Cleanup requires a nonblocking exclusive lock before
+removing an older generation. Replacing a binary therefore cannot delete the
+Python files still used by its running processes. The operating system releases
+leases after normal exit or a crash; lock files remain stable across cleanup.

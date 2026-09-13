@@ -83,6 +83,18 @@ test "a compiler phase boundary rejects release during an active compile" {
     }
 }
 
+def _stub_probe(prog: JacProgram) -> any {
+    stub = prog.parse_str("value: int\n", "release_bootstrap.pyi");
+    return weakref.ref(stub);
+}
+
+test "a compiler phase boundary releases stub roots as well as source trees" {
+    program = JacProgram();
+    stub = _stub_probe(program);
+    program._get_compiler().release_compile_state(program);
+    assert stub() is None , "completed application still owns its stub trees";
+}
+
 glob STUB_SRC: str = (
          "import sys;\n"
          "with entry {\n"

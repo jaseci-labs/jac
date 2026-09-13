@@ -1386,7 +1386,8 @@ impl precommit(
         shutil.rmtree(tmp_root, ignore_errors=True);
     }
     console.print("[precommit] Running check...");
-    check_ret = check(targets);
+    import from jaclang.compiler.frontend.helpers { read_jacignore_patterns }
+    check_ret = check(targets, ignore=read_jacignore_patterns(git_root));
     if not verify
         and check_ret == 0
         and fmt_ret == 0

@@ -3,8 +3,7 @@
 make_archetype installs Jac field semantics on every archetype; for a class that
 declares no fields of its own that must not synthesize a zero-arg
 __init__ that shadows an inherited constructor (builtin bases, classes
-with explicit init). Mirrors the jac0 bootstrap's no-fields -> init=False
-rule so all lowerings agree.
+with explicit init). All backends preserve the inherited constructor.
 """
 
 class Box {

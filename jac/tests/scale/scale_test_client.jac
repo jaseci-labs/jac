@@ -4,6 +4,8 @@ import glob;
 import tempfile;
 import contextlib;
 import from pathlib { Path }
+import type from starlette.testclient { TestClient }
+import type from jaclang.scale.server.inprocess { PreparedInProcessRuntime }
 
 # Hash throwaway fixture credentials at minimum scrypt cost so it does not dominate test time.
 with entry {
@@ -46,8 +48,8 @@ obj ScaleTestClient {
     has _jac_file: str,
         _base_path: str,
         _server: any | None = None,
-        _client: any | None = None,
-        _runtime: any | None = None,
+        _client: TestClient | None = None,
+        _runtime: PreparedInProcessRuntime | None = None,
         _tmp_dir: str | None = None;
 
     static def from_file(
@@ -77,13 +79,21 @@ obj ScaleTestClient {
         self._client = self._runtime.client;
     }
 
+    def _require_client -> TestClient {
+        client = self._client;
+        if client is None {
+            raise RuntimeError("The test client is not initialized or has been closed");
+        }
+        return client;
+    }
+
     def get(
         path: str,
         headers: dict[str, str] | None = None,
         params: dict[str, any] | None = None,
         allow_redirects: bool = True
     ) -> any {
-        return self._client.get(
+        return self._require_client().get(
             path, headers=headers or {}, params=params, follow_redirects=allow_redirects
         );
     }
@@ -109,7 +119,7 @@ obj ScaleTestClient {
         if files is not None {
             kwargs["files"] = files;
         }
-        return self._client.post(path, **kwargs);
+        return self._require_client().post(path, **kwargs);
     }
 
     def put(
@@ -117,11 +127,11 @@ obj ScaleTestClient {
         json: dict[str, any] | None = None,
         headers: dict[str, str] | None = None
     ) -> any {
-        return self._client.put(path, json=json, headers=headers or {});
+        return self._require_client().put(path, json=json, headers=headers or {});
     }
 
     def delete(path: str, headers: dict[str, str] | None = None) -> any {
-        return self._client.delete(path, headers=headers or {});
+        return self._require_client().delete(path, headers=headers or {});
     }
 
     def register_user(username: str, password: str) -> tuple[str, str] {

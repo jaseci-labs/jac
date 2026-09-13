@@ -128,13 +128,26 @@ def summary_to_bytes(ps: PlacementSummary) -> bytes {
     return json.dumps(ps.to_dict()).encode('utf-8');
 }
 
-def summary_from_bytes(data: bytes) -> (PlacementSummary | None) {
+def summary_from_bytes(
+    data: bytes, path_mapper: Callable[[str], str] | None = None
+) -> (PlacementSummary | None) {
     try {
         parsed = json.loads(data.decode('utf-8'));
         if not isinstance(parsed, dict) {
             return None;
         }
-        return PlacementSummary.from_dict(parsed);
+        summary = PlacementSummary.from_dict(parsed);
+        if summary is not None and path_mapper is not None {
+            summary.mod_path = path_mapper(summary.mod_path);
+            summary.jac_deps = [path_mapper(p) for p in summary.jac_deps];
+            for element in summary.elements {
+                element.import_jac_target = path_mapper(element.import_jac_target);
+                element.import_py_targets = [
+                    path_mapper(p) for p in element.import_py_targets
+                ];
+            }
+        }
+        return summary;
     } except Exception {
         return None;
     }

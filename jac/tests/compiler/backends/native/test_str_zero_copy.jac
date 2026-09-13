@@ -4,6 +4,7 @@ under managed modes, rootless and derivation-bounded (item 2's checker
 rules) under the enforced headerless build. Behavior byte-identical
 across modes."""
 
+import from tests.support { jac_command }
 import os;
 import re;
 import subprocess;
@@ -57,7 +58,8 @@ test "slice-view output is byte-identical across gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"zc_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+                jac_command()
+                    + ["build", "--native", FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

@@ -313,6 +313,7 @@ obj CatalogWriter {
         base_dir: str postinit,
         external_modules: set[any] postinit,
         boundary: (Module | None) = None,
+        path_mapper: Callable[[str], str] | None = None,
         failures: int = 0,
         evaluated: int = 0,
         failure_log: list[str] = [],
@@ -499,7 +500,7 @@ obj CatalogWriter {
         if real.startswith(prefix) {
             return real[len(prefix):].replace(os.sep, "/");
         }
-        return real;
+        return self.path_mapper(real) if self.path_mapper is not None else real;
     }
 
     def add_module(mod: Module, dotted: str) -> None {
@@ -1098,9 +1099,16 @@ obj CatalogWriter {
         if self._sym_ident(sym) not in self.sym_types {
             self.force_symbol(sym);
         }
+        target = sym;
+        if sym.imported {
+            try {
+                target = self.evaluator.resolve_to_definition_symbol(sym);
+            } except Exception {}
+        }
         out = bytearray();
         put_uvar(out, self.sid(sym.sym_name));
-        put_uvar(out, self.sid(str(sym.sym_type.value)));
+
+        put_uvar(out, self.sid(str(target.sym_type.value)));
         access = ACCESS_PUBLIC;
         if sym.access.value == "private" {
             access = ACCESS_PRIVATE;
@@ -1121,11 +1129,6 @@ obj CatalogWriter {
         alias_mod = -1;
         alias_name = "";
         if sym.imported {
-            try {
-                target = self.evaluator.resolve_to_definition_symbol(sym);
-            } except Exception {
-                target = sym;
-            }
             if target is not sym {
                 target_mod = module_of(home_scope(target));
                 alias_mod = self.ref_module(target_mod);

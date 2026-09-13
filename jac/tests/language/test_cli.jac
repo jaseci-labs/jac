@@ -1,5 +1,6 @@
 """Test Jac cli module."""
 
+import from tests.support { jac_command, COMPILER_SITE }
 import io;
 import inspect;
 import json;
@@ -238,9 +239,9 @@ test "jac run with no filename and no resolvable entry errors cleanly" {
     # jac.toml and dispatches on the project kind. JAC_ROOT's project declares
     # no entry-point, so this must fail with a clear message (not a crash).
     env = dict(os.environ);
-    env["PYTHONPATH"] = JAC_ROOT;
+    env["PYTHONPATH"] = COMPILER_SITE;
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run"],
+        jac_command() + ["run"],
         cwd=JAC_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

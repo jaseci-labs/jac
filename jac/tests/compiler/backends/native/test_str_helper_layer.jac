@@ -6,6 +6,7 @@ __jac_str_* bodies and the RC machinery's type-tag compares (C strings,
 not Jac strings). The fixture must also keep running identically across
 all three gc modes -- the sweep is a pure refactor."""
 
+import from tests.support { jac_command }
 import os;
 import re;
 import subprocess;
@@ -72,7 +73,8 @@ test "string surface output is byte-identical across gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"strsurf_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+                jac_command()
+                    + ["build", "--native", FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

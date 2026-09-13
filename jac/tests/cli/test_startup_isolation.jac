@@ -5,6 +5,7 @@ These tests assert that lightweight informational paths do not eagerly import
 command implementations or optional feature packages.
 """
 
+import from tests.support { COMPILER_SITE }
 import os;
 import subprocess;
 import sys;
@@ -29,7 +30,7 @@ def _probe(argv: list[str], blocked: (set[str] | None) = None) -> tuple[int, str
     argv_repr = repr(["jac"] + argv);
     script = f"""
 import os, sys, runpy
-sys.path.insert(0, {JAC_ROOT!r})
+sys.path.insert(0, {COMPILER_SITE!r})
 os.chdir({JAC_ROOT!r})
 BLOCKED = set({blocked_repr})
 real_import = __builtins__.__import__
@@ -60,7 +61,7 @@ def _probe_in_cwd(
     argv_repr = repr(["jac"] + argv);
     script = f"""
 import os, sys, runpy
-sys.path.insert(0, {JAC_ROOT!r})
+sys.path.insert(0, {COMPILER_SITE!r})
 os.chdir({cwd!r})
 BLOCKED = set({blocked_repr})
 real_import = __builtins__.__import__
@@ -113,6 +114,37 @@ test "hidden commands dispatch via manifest" {
 test "purge avoids heavy imports" {
     (code, err) = _probe(["purge", "--help"]);
     assert code == 0 , err;
+}
+
+test "purge uses the compilation cache owner and retains sibling directories" {
+    import from unittest.mock { patch }
+    import jaclang.compiler.driver.cache_paths as cache_paths;
+    import from jaclang.cli.cli_boot { _handle_purge }
+    with tempfile.TemporaryDirectory() as directory {
+        cache = Path(directory) / "jir";
+        nested = cache / "modules" / "generation";
+        nested.mkdir(parents=True);
+        (nested / "module.jir").write_bytes(b"cache");
+        sibling = Path(directory) / "runtime";
+        sibling.mkdir();
+        with patch.object(
+            cache_paths, "get_jir_cache_dir", return_value=cache
+        ) as directory_resolver, patch.object(sys, "argv", ["jac", "purge"]), patch.object(
+            Path, "home", return_value=Path(directory)
+        ), patch.dict(
+            os.environ, {"XDG_CACHE_HOME": directory, "LOCALAPPDATA": directory}
+        ) {
+            try {
+                _handle_purge();
+                assert False , "purge did not finish";
+            } except SystemExit as result {
+                assert result.code == 0;
+            }
+            directory_resolver.assert_called_once();
+        }
+        assert not cache.exists();
+        assert sibling.is_dir();
+    }
 }
 
 # Optional feature families. The thin route table imports the owning command

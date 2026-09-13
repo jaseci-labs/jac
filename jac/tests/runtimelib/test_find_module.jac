@@ -1,14 +1,4 @@
-"""Regression tests for `JacProgram.find_module` -- the single, program-spanning
-resolver for "the compiled module at <path>".
-
-`SelfHostCache.resolve` routes a file to either the user's program (`Jac.program`) or
-the compiler's internal program (anything under the jaclang package root, e.g.
-the bundled `jac ai --ui` app). A consumer that holds only a path -- the server's
-auth/manifest introspection, the client bundler -- must resolve the module no
-matter which program owns it. Before `find_module`, those consumers read
-`Jac.program.mod.hub` directly and silently missed internal-program modules,
-which made every `def:pub` endpoint of a jaclang-bundled app return 401.
-"""
+"""Compiled modules have one explicit program owner, including bundled apps."""
 
 import os;
 import shutil;
@@ -17,9 +7,7 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 
-"""Write a `.jac` file under the jaclang package root, so the self-host redirect
-routes it to the internal program (the `jac ai --ui` condition). Returns the
-created directory (caller rmtrees it) and the file path."""
+"""Create a temporary bundled application fixture."""
 def _bundled_app(slug: str, body: str) -> tuple[Path, Path] {
     d = Path(jaclang.__file__).parent / f"_find_module_test_{slug}";
     d.mkdir(exist_ok=True);
@@ -28,7 +16,7 @@ def _bundled_app(slug: str, body: str) -> tuple[Path, Path] {
     return (d, f);
 }
 
-test "find_module resolves a module routed to the internal program" {
+test "find_module resolves a bundled module in its explicit program" {
     (d, f) = _bundled_app("resolve", 'def:pub greet() -> str { return "hi"; }\n');
     key = str(f.resolve());
     prog = Jac.program;
@@ -36,10 +24,7 @@ test "find_module resolves a module routed to the internal program" {
     try {
         mod = prog.compile(key);
         assert mod is not None;
-        # The divergence the bug relied on: a jaclang-root file is routed to the
-        # internal program, so it never lands in the user program's hub.
-        assert key not in prog.mod.hub;
-        # ...but find_module spans the internal program and resolves it.
+        assert prog.mod.hub[key] is mod;
         assert prog.find_module(key) is mod;
     } finally {
         shutil.rmtree(d, ignore_errors=True);

@@ -8,6 +8,7 @@ annotations; a returned owner stays on the heap. rc-stats reports the count
 as `promoted=N`.
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,
@@ -82,16 +83,7 @@ test "headerless mode: borrowed-only owner is stack-promoted" {
 
 test "jac explain memory reports the promoted count" {
     res = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "explain",
-            "memory",
-            FIXTURE,
-            "--memory",
-            "rc"
-        ],
+        jac_command() + ["explain", "memory", FIXTURE, "--memory", "rc"],
         capture_output=True,
         text=True
     );

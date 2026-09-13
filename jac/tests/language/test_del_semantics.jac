@@ -6,6 +6,7 @@ CPython and asserts Jac agrees, the dead-anchor rules, and the backend-parity
 checks.
 """
 
+import from tests.support { jac_command }
 import ctypes;
 import io;
 import os;
@@ -20,10 +21,7 @@ glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
 """Run a .jac file in a subprocess and return (stdout, stderr, returncode)."""
 def run_jac_file(path: str) -> tuple[str, str, int] {
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", path],
-        capture_output=True,
-        text=True,
-        cwd=JAC_ROOT
+        jac_command() + ["run", path], capture_output=True, text=True, cwd=JAC_ROOT
     );
     return (result.stdout, result.stderr, result.returncode);
 }
@@ -167,10 +165,7 @@ glob BAD_TARGETS = os.path.join(FIXTURES, "del_bad_targets.jac");
 """Run `jac check` on a .jac file and return its combined output."""
 def run_jac_check(path: str) -> str {
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang", "check", path],
-        capture_output=True,
-        text=True,
-        cwd=JAC_ROOT
+        jac_command() + ["check", path], capture_output=True, text=True, cwd=JAC_ROOT
     );
     return result.stdout + result.stderr;
 }
@@ -249,7 +244,7 @@ glob SUBSCRIPT_IR = os.path.join(FIXTURES, "del_subscript_ir.jac");
 
 test "a subscript del peeks once and keeps the Python del verbatim" {
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang", "tool", "ir", "py", SUBSCRIPT_IR],
+        jac_command() + ["tool", "ir", "py", SUBSCRIPT_IR],
         capture_output=True,
         text=True,
         cwd=JAC_ROOT

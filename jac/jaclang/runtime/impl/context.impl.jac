@@ -48,6 +48,13 @@ impl ExecutionContext.entry_node.getter -> NodeAnchor {
     return cast(NodeAnchor, self._entry_node);
 }
 
+impl ExecutionContext.is_user_context.getter -> bool {
+    if self._system_root is None and self._parent is not None {
+        return self._parent.is_user_context;
+    }
+    return self._user_root is not None and self._user_root != self._system_root;
+}
+
 impl ExecutionContext._resolve_roots -> None {
     if self._system_root is not None {
         return;

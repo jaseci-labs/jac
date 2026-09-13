@@ -311,7 +311,22 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
             if mod_path in self._module_type_cache {
                 resolved_for_cache = str(Path(mod_path).resolve());
                 if self.program.is_hub_entry_fresh(resolved_for_cache) {
-                    npath.type = self._module_type_cache[mod_path];
+                    cached_type = self._module_type_cache[mod_path];
+                    cached_module = cached_type.symbol_table;
+                    if isinstance(cached_module, Module) {
+                        cached_path = cached_module.loc.mod_path or resolved_for_cache;
+                        if Path(cached_path).is_file() {
+                            import_node = node_.find_parent_of_type(Import);
+                            cached_type.symbol_table = self._import_module_from_path(
+                                cached_path,
+                                importer_path=self._resolve_importer_path(node_),
+                                need_tree=bool(
+                                    import_node is not None and import_node.is_comptime
+                                )
+                            );
+                        }
+                    }
+                    npath.type = cached_type;
                     if isinstance(npath, Name) {
                         npath._sym_category = SymbolType.MODULE;
                     }

@@ -23,6 +23,8 @@ import struct;
 import subprocess;
 import sys;
 import from pathlib { Path }
+import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import type from jaclang.compiler.frontend.unitree { Module }
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.backends.es { EsastGenPass }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
@@ -192,7 +194,9 @@ def run_js_expr(js_code: str, expr: str) -> any {
 # -----------------------------------------------------------------------
 # NA (Native / LLVM) helpers
 # -----------------------------------------------------------------------
-def compile_native(fixture: str, *, no_ir_cache: bool = False) -> tuple {
+def compile_native(
+    fixture: str, *, no_ir_cache: bool = False
+) -> tuple[ExecutionEngine, Module] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=str(os.path.join(_fixture_shadow_dir(), fixture)),
@@ -205,10 +209,12 @@ def compile_native(fixture: str, *, no_ir_cache: bool = False) -> tuple {
     return (eng, ir);
 }
 
-def get_func(eng: object, name: str, restype: type, *argtypes: type) -> object {
+def get_func(
+    eng: ExecutionEngine, name: str, restype: type | None, *argtypes: type
+) -> Callable[..., any] {
     addr = eng.get_function_address(name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
-    functype = ctypes.CFUNCTYPE(restype, *argtypes);
+    functype: any = ctypes.CFUNCTYPE(restype, *argtypes);
     return functype(addr);
 }
 
@@ -225,7 +231,9 @@ def unbox_jacval(jv: JacVal) -> object {
         if jv.payload == 0 {
             return "";
         }
-        return ctypes.cast(jv.payload, ctypes.c_char_p).value.decode("utf-8");
+        value = ctypes.cast(jv.payload, ctypes.c_char_p).value;
+        assert value is not None;
+        return value.decode("utf-8");
     } elif jv.tag == 3 {
         # List pointer: {i64 len, i64 cap, T* data}. The RC header's type-tag
         # string (at payload - 24) names the concrete storage (list_i64,
@@ -320,7 +328,9 @@ def unbox_jacval(jv: JacVal) -> object {
     return None;
 }
 
-def run_native_function(eng: object, func_name: str, ir: object = None) -> dict {
+def run_native_function(
+    eng: ExecutionEngine, func_name: str, ir: Module | None = None
+) -> dict {
     # Open-addressing hash-table dict:
     #   {i64 len, i64 cap, i8** keys, JacVal* vals, i8* ctrl, i64 used, i64* order}
     # Live entries sit at sparse hashed slots across `cap`. `order[0..len]` holds
@@ -345,11 +355,11 @@ def run_native_function(eng: object, func_name: str, ir: object = None) -> dict 
     # jac_entry. Fixtures carry no entry block, so this only runs initializers.
     init_addr = eng.get_function_address("jac_entry");
     if init_addr != 0 {
-        ctypes.CFUNCTYPE(None)(init_addr)();
+        get_func(eng, "jac_entry", None)();
     } else {
         own_init = eng.get_function_address("__jac_glob_init");
         if own_init != 0 {
-            ctypes.CFUNCTYPE(None)(own_init)();
+            get_func(eng, "__jac_glob_init", None)();
         }
         # Without a jac_entry nothing has chained the glob inits of linked
         # native imports (they are renamed to __jac_glob_init_<safe_sym> at
@@ -369,7 +379,7 @@ def run_native_function(eng: object, func_name: str, ir: object = None) -> dict 
                 "__jac_glob_init_" + native_safe_sym(src_mod)
             );
             if imp_init != 0 {
-                ctypes.CFUNCTYPE(None)(imp_init)();
+                get_func(eng, "__jac_glob_init_" + native_safe_sym(src_mod), None)();
             }
         }
     }

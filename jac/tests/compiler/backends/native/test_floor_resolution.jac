@@ -13,6 +13,7 @@ dir so the resolution is covered without a real pbs build or a relocated jaclang
 
 import os;
 import tempfile;
+import from unittest.mock { patch }
 import from jaclang.compiler.backends.native.linker_common {
     resolve_floor_dir,
     floor_lib_dir
@@ -56,29 +57,28 @@ test "dev tree: .python-build/<osarch>/python/build/lib resolves (#6978 0.2)" {
     assert got == libdir , f"expected {libdir}, got {got}";
 }
 
-test "each compiler variant resolves its development archives and CA bundle" {
-    for variant in ["cpython", "jacpython"] {
-        with tempfile.TemporaryDirectory() as base {
-            build = _mk(
-                os.path.join(
-                    base, ".python-build", variant, "linux-x86_64", "python", "build"
-                )
-            );
-            libdir = _mk(os.path.join(build, "lib"));
-            ca = os.path.join(build, "cacert.pem");
-            with open(ca, "w") as f {
-                f.write("# test CA bundle\n");
-            }
-            assert resolve_floor_dir(base, "x86_64-unknown-linux-gnu") == libdir;
-            assert _resolve_ca_bundle(base) == ca;
+test "JacPython resolves its development archives and CA bundle" {
+    with tempfile.TemporaryDirectory() as base {
+        build = _mk(
+            os.path.join(
+                base, ".python-build", "jacpython", "linux-x86_64", "python", "build"
+            )
+        );
+        libdir = _mk(os.path.join(build, "lib"));
+        ca = os.path.join(build, "cacert.pem");
+        with open(ca, "w") as f {
+            f.write("# test CA bundle\n");
         }
+        assert resolve_floor_dir(base, "x86_64-unknown-linux-gnu") == libdir;
+        assert _resolve_ca_bundle(base) == ca;
     }
 }
 
-
 test "no floor anywhere resolves to None (#6978 0.2)" {
     base = tempfile.mkdtemp();
-    got = resolve_floor_dir(base, "x86_64-unknown-linux-gnu");
+    with patch("jaclang.dist.fused_binary.bundled_floor_roots", return_value=[]) {
+        got = resolve_floor_dir(base, "x86_64-unknown-linux-gnu");
+    }
     assert got is None , f"expected None, got {got}";
 }
 

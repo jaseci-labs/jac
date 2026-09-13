@@ -180,8 +180,8 @@ test "a non-required platform missing: publish the release without it" {
     }
 }
 
-test "both compiler variants are required before publishing" {
-    required = ["linux-x86_64", "linux-x86_64-jacpython"];
+test "all automatic platforms are required before publishing" {
+    required = ["linux-x86_64", "linux-aarch64", "macos-aarch64"];
     for missing in required {
         fx = scaffold(
             assets_for(

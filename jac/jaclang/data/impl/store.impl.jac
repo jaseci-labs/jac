@@ -190,11 +190,10 @@ impl PgStore._ensure_ready -> None {
             if self.auto_schema {
                 self.ensure_schema_once(self.promotions);
             }
-            self._ready = True;
-            if self.pending_reset {
-                self.pending_reset = False;
-                self.reset_data();
+            if self.pending_reset is not None {
+                self.pending_reset.apply(self);
             }
+            self._ready = True;
         } finally {
             self._readying = None;
         }

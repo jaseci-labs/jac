@@ -6,6 +6,7 @@ where nobody has imported jaclang yet, relying solely on
 importable without paying the full jaclang bootstrap up front.
 """
 
+import from tests.support { COMPILER_SITE }
 import os;
 import sys;
 import tempfile;
@@ -39,7 +40,7 @@ test "lazy finder loads a .jac submodule of a no-__init__ package" {
         );
 
         snippet = (
-            "import sys; sys.path.insert(0, "
+            f"import sys; sys.path.insert(0, {COMPILER_SITE!r}); sys.path.insert(0, "
             + repr(tmp_path)
             + ");"
             "import _jac_finder; _jac_finder.install();"
@@ -66,7 +67,7 @@ test "lazy finder loads a top-level .jac module" {
         );
 
         snippet = (
-            "import sys; sys.path.insert(0, "
+            f"import sys; sys.path.insert(0, {COMPILER_SITE!r}); sys.path.insert(0, "
             + repr(tmp_path)
             + ");"
             "import _jac_finder; _jac_finder.install();"

@@ -138,6 +138,20 @@ def _rss_kb -> (int | None) {
     return None;
 }
 
+test "kernel reference transfer is independent of shared ctypes signatures" {
+    import ctypes;
+    import from unittest.mock { patch }
+    import from jaclang.compiler.native_compiler { ensure_loaded }
+    import from jaclang.compiler.frontend.parser.frontend { parse_woven }
+    assert ensure_loaded() is not None;
+    with patch.object(ctypes.pythonapi.Py_DecRef, "argtypes", [ctypes.c_void_p]) {
+        (module, failed) = parse_woven(
+            "def answer -> int { return 42; }", "kernel_ctypes.jac", None, []
+        );
+        assert module is not None and not failed;
+    }
+}
+
 test "kernel materialization releases every borrowed input reference" {
     import ctypes;
     import from jaclang.compiler.native_compiler { ensure_loaded }

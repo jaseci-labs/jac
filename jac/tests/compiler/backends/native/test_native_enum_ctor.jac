@@ -22,6 +22,7 @@ print the same lines, and CPython's own answers for the same six calls are
 `2 1 25 4 rejected rejected 0`.
 """
 
+import from tests.support { jac_command }
 import contextlib;
 import io;
 import os;
@@ -77,16 +78,8 @@ def seam_report(fixture: str) -> str {
 def na_lines(fixture: str) -> list {
     out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
     comp = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            os.path.join(FIXTURES, fixture),
-            "-o",
-            out_bin
-        ],
+        jac_command()
+            + ["build", "--native", os.path.join(FIXTURES, fixture), "-o", out_bin],
         capture_output=True,
         text=True,
         timeout=900

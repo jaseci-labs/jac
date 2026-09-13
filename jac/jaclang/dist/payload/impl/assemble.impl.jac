@@ -197,19 +197,6 @@ impl stage_tree(
     stage_stdlib(python_lib, lib_dst);
 
     copy_tree(site, os.path.join(stage, "site"), skip_stage_site);
-    import sys as _sys;
-    strip_best_effort(
-        os.path.join(
-            stage,
-            "site",
-            "jaclang",
-            "compiler",
-            "libjac_compiler.dylib"
-                if _sys.platform == "darwin"
-                else "libjac_compiler.so"
-        )
-    );
-
     stage_python_bin(python_dir, stage);
 
     copy_tree(

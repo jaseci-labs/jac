@@ -2376,7 +2376,7 @@ impl NativeBytesEmitter.emit_decode(
     dec_end = b.gep(new_str, [n], name="dec.end");
     b.store(ir.Constant(ir.IntType(8), 0), dec_end);
 
-    p._stamp_str_len(b, new_str, p._call_str_len_raw(b, new_str, name="dec.len"));
+    p._stamp_str_len(b, new_str, n);
     p._mark_owned(new_str);
     return new_str;
 }

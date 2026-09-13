@@ -13,9 +13,11 @@ The build graph has explicit artifacts:
 1. The pinned compiler builds the native frontend kernel and its class layout.
 2. The pinned compiler compiles the current compiler, runtime, CLI, and packaging
    modules into a stage-1 image using ordinary full compilation.
-3. Stage 1 builds the typeshed catalog and the launcher. Packaging consumes the
-   image, catalog, native libraries, and source-built Python runtime.
-4. `compiler-stage2` rebuilds the kernel and image with stage 1. This checks the
+3. A source-built C CPython host runs stage 1, which builds the typeshed catalog
+   and emits the native Python compiler object using the ordinary native backend.
+4. The runtime build consumes that explicit object. Packaging consumes the verified
+   image, catalog, native libraries, and source-built native JacPython runtime.
+5. `compiler-stage2` rebuilds the kernel and image with stage 1. This checks the
    compiler's ability to build its successor independently of the original pin.
 
 The producer executes its own compiled modules. Target sources live in an
@@ -64,7 +66,10 @@ the operating system temporary directory, and proxy settings. CI run identifiers
 and ambient compiler overrides do not invalidate or redirect build artifacts.
 Source inputs are ordered deterministically before entering the build cache.
 
-The experimental `-Djacpython=true` Python build consumes the compiled image
-when preparing its private Python compiler dependency image. It does not invoke
-a source seed transpiler. The CPython virtual machine and object runtime remain
-part of both variants.
+Native JacPython is mandatory in the distribution. The C compiler host is a
+build artifact only. `zig build python-native` emits `jacpython.o`;
+`zig build build-python` consumes it to build the runtime. The runtime builder
+never imports the compiler or discovers a source checkout. Native Python
+implementation sources are excluded from the interpreted compiler image; their
+CPython license is preserved. The CPython virtual machine and object runtime
+remain part of the product.

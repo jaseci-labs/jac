@@ -97,6 +97,8 @@ def deliver_alerts(
     policy: (DiagnosticPolicy | None) = None
 ) {
     pol = policy if policy is not None else build_diagnostic_policy(prog);
+    accepted_errors: list[Alert] = [];
+    accepted_warnings: list[Alert] = [];
     for alrt in errors {
         if alrt.code is not None and pol.is_suppressed(alrt.code, alrt.loc) {
             continue;
@@ -106,7 +108,7 @@ def deliver_alerts(
             and _alert_in_internal_stub(str(alrt.loc.mod_path or "")) {
             continue;
         }
-        prog.errors_had.append(alrt);
+        accepted_errors.append(alrt);
     }
     for alrt in warnings {
         if alrt.code is not None and pol.is_suppressed(alrt.code, alrt.loc) {
@@ -116,8 +118,9 @@ def deliver_alerts(
             and _alert_in_internal_stub(str(alrt.loc.mod_path or "")) {
             continue;
         }
-        prog.warnings_had.append(alrt);
+        accepted_warnings.append(alrt);
     }
+    prog.diags.extend(accepted_errors, accepted_warnings);
 }
 
 def run_pass(

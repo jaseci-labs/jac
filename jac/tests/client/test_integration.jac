@@ -95,7 +95,10 @@ def _bootstrap_js_snippet -> str {
 def _jac2py(jac_file: Path) -> tuple {
     jac = shutil.which("jac") or "jac";
     result = subprocess.run(
-        [jac, "jac2py", str(jac_file)], capture_output=True, text=True, timeout=60
+        [jac, "tool", "jac2py", str(jac_file)],
+        capture_output=True,
+        text=True,
+        timeout=60
     );
     return (
         result.returncode == 0 and bool(result.stdout.strip()),

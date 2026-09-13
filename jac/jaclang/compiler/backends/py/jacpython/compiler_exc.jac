@@ -105,7 +105,6 @@ import from jaclang.compiler.backends.py.jacpython.compiler_codegen {
     visit_stmts,
     visit_store_target_tos
 }
-import from jaclang.compiler.backends.py.jacpython.compiler_dispatch { stmt_handlers }
 
 def visit_cleanup_stmts(
     g: cfg_builder, body: list[stmt], ann_ctx: ann_scope_plan | None
@@ -319,39 +318,6 @@ def push_try_await_frame(g: cfg_builder, nop_blk: int) -> try_await_frame {
     return fr;
 }
 
-# Suspendable functions: PEP 479 StopIteration handler at end of co_code.
-def emit_generator_except_handler(g: cfg_builder, protect_start: int) {
-    if protect_start < 0 {
-        return;
-    }
-    noloc = no_loc();
-    handler = g.new_block();
-    g.use(handler);
-    g.emit_op(OP_CALL_INTRINSIC_1, 3, noloc);
-    g.emit_op(OP_RERAISE, 1, noloc);
-    if len(g.u.pending_pep479_regions) == 0 {
-        g.u.except_regions.append(
-            except_region(
-                start_block=protect_start,
-                end_block=handler.id,
-                handler_block=handler.id,
-                stack_depth=2,
-                preserve_lasti=True
-            )
-        );
-    }
-    pi = 0;
-    while pi < len(g.u.pending_pep479_regions) {
-        ri = g.u.pending_pep479_regions[pi];
-        g.u.except_regions[ri].handler_block = handler.id;
-        if g.u.except_regions[ri].end_block < 0 {
-            g.u.except_regions[ri].end_block = handler.id;
-        }
-        pi = pi + 1;
-    }
-}
-
-
 # Inline footer before END_SEND (async-with except __aexit__ await).
 def emit_await_send_loop_inline_footer(
     g: cfg_builder,
@@ -532,6 +498,28 @@ def visit_raise_stmt(g: cfg_builder, r: Raise) -> stmt_cont {
 }
 
 
+def ordered_unwind_spans(
+    spans: list[tuple[int, int]], pos: dict[int, int]
+) -> list[tuple[int, int]] {
+    ordered: list[tuple[int, int]] = [];
+    for span in spans {
+        ordered.append(span);
+    }
+    # Keep equal-start spans in their original order. The comparison uses the
+    # explicit layout, without creating a Python closure for sorted(key=...).
+    for index in range(1, len(ordered)) {
+        span = ordered[index];
+        start = layout_pos(pos, span[0]);
+        slot = index;
+        while slot > 0 and layout_pos(pos, ordered[slot - 1][0]) > start {
+            ordered[slot] = ordered[slot - 1];
+            slot -= 1;
+        }
+        ordered[slot] = span;
+    }
+    return ordered;
+}
+
 # Lower try/finally without except/else.
 def append_cleanup_regions(
     g: cfg_builder,
@@ -543,10 +531,7 @@ def append_cleanup_regions(
     lasti: bool
 ) {
     pos = build_layout_pos(g.u);
-    spans = sorted(
-        frame.unwind_spans,
-        key=lambda (span: tuple[int, int]) { layout_pos(pos, span[0]); }
-    );
+    spans = ordered_unwind_spans(frame.unwind_spans, pos);
     current = start.id;
     for (left, right) in spans {
         if layout_pos(pos, left) >= layout_pos(pos, end.id) {
@@ -1340,10 +1325,7 @@ def visit_with_item(
     # range. Keep the frame available for other branches while carving those
     # emitted unwind paths out of its exception table.
     pos = build_layout_pos(g.u);
-    spans = sorted(
-        frame.unwind_spans,
-        key=lambda (span: tuple[int, int]) { layout_pos(pos, span[0]); }
-    );
+    spans = ordered_unwind_spans(frame.unwind_spans, pos);
     current = start.id;
     for (left, right) in spans {
         if layout_pos(pos, current) < layout_pos(pos, left) {
@@ -1400,21 +1382,4 @@ def visit_async_with(
         return stmt_cont(loc=stmt_loc(w));
     }
     return visit_with_item(g, w, 0, ann_ctx);
-}
-
-
-# Wire statement-dispatch handlers into the leaf registry (see
-# compiler_dispatch.jac). Runs at module load via `with entry`; entry
-# drivers (product_compile, compiler_slice) import this module so the
-# registration always precedes the first compile. Dict item assignment
-# mutates the holder in place (scalar-glob rebinding would be local).
-with entry {
-    stmt_handlers["visit_cleanup_stmts"] = visit_cleanup_stmts;
-    stmt_handlers["clear_exception_name"] = clear_exception_name;
-    stmt_handlers["visit_raise_stmt"] = visit_raise_stmt;
-    stmt_handlers["visit_try"] = visit_try;
-    stmt_handlers["visit_try_star"] = visit_try_star;
-    stmt_handlers["visit_with"] = visit_with;
-    stmt_handlers["visit_async_with"] = visit_async_with;
-    stmt_handlers["deferred_comp_handlers"] = emit_deferred_comp_handlers;
 }

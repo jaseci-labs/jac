@@ -13,6 +13,7 @@ PE32+ image whose imports resolve to msvcrt.dll). Actually running the binary
 requires a Windows host (or WSL interop) and is not assumed here.
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,
@@ -335,18 +336,16 @@ test "linking is deterministic" {
 test "nacompile --target windows writes a valid PE via the CLI" {
     out = os.path.join(tempfile.mkdtemp(), "smoke.exe");
     proc = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            "--target",
-            "windows",
-            os.path.join(FIXTURES, FIXTURE),
-            "-o",
-            out
-        ],
+        jac_command()
+            + [
+                "build",
+                "--native",
+                "--target",
+                "windows",
+                os.path.join(FIXTURES, FIXTURE),
+                "-o",
+                out
+            ],
         capture_output=True,
         text=True,
         timeout=300

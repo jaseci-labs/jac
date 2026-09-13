@@ -27,9 +27,6 @@ import from jaclang.compiler.backends.py.jacpython.flowgraph {
     flatten_blocks
 }
 
-import from jaclang.compiler.backends.py.jacpython.compiler_context {
-    current_compile_flags
-}
 
 glob CONTINUATION_BIT: int = 64;
 
@@ -305,7 +302,7 @@ def assemble(cfg: verified_cfg) -> PyCode {
         posonlyargcount=u.posonlyargcount,
         kwonlyargcount=u.kwonlyargcount,
         stacksize=stacksize,
-        flags=u.flags | (current_compile_flags() & 0x1FE0000),
+        flags=u.flags | (u.context.flags & 0x1FE0000),
         co_code=code,
         consts=u.consts,
         names=u.names,

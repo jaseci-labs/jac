@@ -429,7 +429,7 @@ def native_pipeline_available -> tuple[bool, str] {
     }
     reason = '';
     try {
-        import from jaclang.compiler.backends.native.llvm.binding.ffi { _find_shim }
+        import from jaclang.compiler.backends.native.llvm { _find_shim }
         _find_shim();
     } except OSError as error {
         reason = f"native pipeline unavailable: {error}";

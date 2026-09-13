@@ -5,6 +5,8 @@ import from tests.support { JAC_ROOT }
 import from bootstrap.compiler {
     compile_module,
     complete_image,
+    exclude_native_python_sources,
+    native_python_sources,
     image_codec,
     snapshot_sources
 }
@@ -64,6 +66,9 @@ test "compiler module cache follows dependency and source changes" {
         output = workspace / "probe.jir";
         first = compile_module(source, package, output, cache, "test-producer");
         assert not first.get("cached", False);
+        codec = image_codec(str(package));
+        assert codec.read_section_bytes(output.read_bytes(), codec.SEC_IFACE)
+            is not None;
         assert compile_module(source, package, output, cache, "test-producer").get(
             "cached"
         );
@@ -106,5 +111,27 @@ test "compiler bytecode does not depend on its staging directory" {
         codec = image_codec(str(package));
         assert codec.read_section_bytes(first.read_bytes(), codec.SEC_BYTECODE)
             == codec.read_section_bytes(second.read_bytes(), codec.SEC_BYTECODE);
+    }
+}
+
+
+test "the compiler image excludes native Python implementation sources and preserves its license" {
+    with tempfile.TemporaryDirectory() as directory {
+        workspace = Path(directory);
+        package = workspace / "source";
+        snapshot = workspace / "image";
+        for relative in native_python_sources() {
+            (package / relative).mkdir(parents=True);
+            (package / relative / "sample.jac").write_text(
+                "def sample -> int { return 42; }\n"
+            );
+        }
+        license_file = Path("runtime/python/LICENSE.cpython");
+        (package / license_file).write_text("Python license");
+        shutil.copytree(package, snapshot);
+        exclude_native_python_sources(package, snapshot);
+        assert (snapshot / license_file).read_text() == "Python license";
+        assert not list(snapshot.rglob("*.jac"));
+        assert list(package.rglob("*.jac"));
     }
 }

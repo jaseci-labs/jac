@@ -173,3 +173,17 @@ test "shortcoming_34_while_true_no_false_positive" {
         f"E1004 false positive on `while True` with no break: {_msgs}"
     );
 }
+
+test "shortcoming_34_never_calls_end_control_flow" {
+    program = JacProgram();
+    program.compile(os.path.join(CHECKER_FIXTURES, "checker_never_returns.jac"));
+    messages = [str(error) for error in program.errors_had];
+    implicit = [
+        message
+        for message in messages
+        if "implicitly return" in message
+    ];
+    assert len(implicit) == 2 , f"Unexpected fallthrough diagnostics: {messages}";
+    assert any("'conditional'" in message for message in implicit);
+    assert any("'ordinary'" in message for message in implicit);
+}

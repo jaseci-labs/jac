@@ -21,6 +21,10 @@ from jaclang.compiler.driver.image import _jaclang_image
 image = _jaclang_image()
 assert image is not None
 image.verify()
+assert "client/targets/desktop/plugin/webview_lib.jac" in image.manifest["modules"]
+assert "client/templates/cli/.gitignore" in image.payloads
+assert "client/templates/cli/main.jac" in image.payloads
+assert "client/templates/cli/main.jac" not in image.manifest["modules"]
 package = Path(jaclang.__file__).resolve().parent
 assert not (package / "jac0.py").exists()
 assert not (package / "jac0core").exists()

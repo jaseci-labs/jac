@@ -84,8 +84,7 @@ obj SourceStore {
         }
         syntax = copy.deepcopy(unit.syntax);
         assert isinstance(syntax, Module);
-        program.errors_had.extend(unit.errors);
-        program.warnings_had.extend(unit.warnings);
+        program.diags.extend(unit.errors, unit.warnings);
         return (syntax, unit.failed);
     }
 }

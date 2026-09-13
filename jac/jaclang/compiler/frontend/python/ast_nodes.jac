@@ -760,24 +760,24 @@ obj MatchValue(pattern) {
     has value: expr,
         lineno: int,
         col_offset: int,
-        end_lineno: int,
-        end_col_offset: int;
+        end_lineno: int | None,
+        end_col_offset: int | None;
 }
 
 obj MatchSingleton(pattern) {
     has value: PyObj,
         lineno: int,
         col_offset: int,
-        end_lineno: int,
-        end_col_offset: int;
+        end_lineno: int | None,
+        end_col_offset: int | None;
 }
 
 obj MatchSequence(pattern) {
     has patterns: list[pattern],
         lineno: int,
         col_offset: int,
-        end_lineno: int,
-        end_col_offset: int;
+        end_lineno: int | None,
+        end_col_offset: int | None;
 }
 
 obj MatchMapping(pattern) {
@@ -786,8 +786,8 @@ obj MatchMapping(pattern) {
         rest: str | None,
         lineno: int,
         col_offset: int,
-        end_lineno: int,
-        end_col_offset: int;
+        end_lineno: int | None,
+        end_col_offset: int | None;
 }
 
 obj MatchClass(pattern) {
@@ -797,16 +797,16 @@ obj MatchClass(pattern) {
         kwd_patterns: list[pattern],
         lineno: int,
         col_offset: int,
-        end_lineno: int,
-        end_col_offset: int;
+        end_lineno: int | None,
+        end_col_offset: int | None;
 }
 
 obj MatchStar(pattern) {
     has name: str | None,
         lineno: int,
         col_offset: int,
-        end_lineno: int,
-        end_col_offset: int;
+        end_lineno: int | None,
+        end_col_offset: int | None;
 }
 
 obj MatchAs(pattern) {
@@ -814,16 +814,16 @@ obj MatchAs(pattern) {
         name: str | None,
         lineno: int,
         col_offset: int,
-        end_lineno: int,
-        end_col_offset: int;
+        end_lineno: int | None,
+        end_col_offset: int | None;
 }
 
 obj MatchOr(pattern) {
     has patterns: list[pattern],
         lineno: int,
         col_offset: int,
-        end_lineno: int,
-        end_col_offset: int;
+        end_lineno: int | None,
+        end_col_offset: int | None;
 }
 
 # --- type_ignore ---
@@ -849,8 +849,8 @@ obj TypeVar(type_param) {
         default_value: expr | None,
         lineno: int,
         col_offset: int,
-        end_lineno: int,
-        end_col_offset: int;
+        end_lineno: int | None,
+        end_col_offset: int | None;
 }
 
 obj ParamSpec(type_param) {
@@ -858,8 +858,8 @@ obj ParamSpec(type_param) {
         default_value: expr | None,
         lineno: int,
         col_offset: int,
-        end_lineno: int,
-        end_col_offset: int;
+        end_lineno: int | None,
+        end_col_offset: int | None;
 }
 
 obj TypeVarTuple(type_param) {
@@ -867,6 +867,6 @@ obj TypeVarTuple(type_param) {
         default_value: expr | None,
         lineno: int,
         col_offset: int,
-        end_lineno: int,
-        end_col_offset: int;
+        end_lineno: int | None,
+        end_col_offset: int | None;
 }

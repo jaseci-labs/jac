@@ -13,6 +13,7 @@ and plays a game with it, so the AOT lane can never regress behind a green run
 lane again.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import sys;
@@ -83,16 +84,7 @@ test "the chess example compiles to a binary that plays a game" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "chess");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                CHESS,
-                "-o",
-                out_bin
-            ],
+            jac_command() + ["build", "--native", CHESS, "-o", out_bin],
             capture_output=True,
             text=True,
             timeout=1800

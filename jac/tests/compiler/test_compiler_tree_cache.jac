@@ -1,6 +1,6 @@
 """The compiler's own tree is an ordinary citizen of the analysis cache.
 
-Two properties, asserted through the self-host program's counters rather than
+Two properties, asserted through an ordinary program's counters rather than
 timing: a compiler-tree dependency hydrates from its persisted interface for
 every later analysis instead of being re-ingested as a tree, and a verdict
 served warm is byte-for-byte the verdict a cold analysis computes. The second
@@ -8,15 +8,18 @@ is the license for the first to exist, and it walks a sample of compiler-tree
 files chosen for what they exercise: comptime specs that must reach through a
 hydrated boundary, and cross-module attribute types on hydrated classes.
 
-Both tests reset the process-global self-host program between steps, which
-is what a fresh process does; other tests in the same worker recompile on
-demand, the hub being transient by contract."""
+Both tests release their analysis program between steps. Runtime compiler
+modules remain loaded independently of that transient analysis graph."""
 import os;
 import jaclang;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.jir { get_module_cache_path }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.runtime.runtime { JacRuntime }
+import from jaclang.compiler.driver.compilation_context {
+    bind_options,
+    cache_scope,
+    context_identity
+}
 
 glob JACLANG_DIR: str = os.path.dirname(os.path.realpath(str(jaclang.__file__))),
      HYDRATION_TARGET: str = "server/serving/openapi.jac",
@@ -45,16 +48,23 @@ def _reset_analysis {
 }
 
 def _forget_verdict(path: str) {
+    options = bind_options(path, _analysis(), _check_options(path));
     try {
-        os.unlink(get_module_cache_path(path));
+        with cache_scope(context_identity(options), options) {
+            os.unlink(get_module_cache_path(path));
+        }
     } except OSError {}
+}
+
+def _check_options(path: str) -> CompileOptions {
+    return CompileOptions(
+        no_cgen=True, native_parity=True, iface_ok=True, entry_point=path
+    );
 }
 
 def _check(path: str) -> list[str] {
     prog = _analysis();
-    prog.compile(
-        path, options=CompileOptions(no_cgen=True, native_parity=True, iface_ok=True)
-    );
+    prog.compile(path, options=_check_options(path));
     return sorted(
         [a.pretty_print() for a in prog.errors_had]
             + [a.pretty_print() for a in prog.warnings_had]
@@ -137,6 +147,7 @@ test "a verdict served warm is the verdict a cold analysis computes, across the 
 test "variadic tuple annotations resolve ellipsis on cold and warm checks" {
     import from pathlib { Path }
     import from tempfile { TemporaryDirectory }
+    _reset_analysis();
     with TemporaryDirectory() as td {
         (Path(td) / 'values.jac').write_text(
             'def:pub values -> tuple[int, ...] { return (1, 2); }\n'

@@ -1,12 +1,11 @@
 import os;
-import from enum { StrEnum }
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.data.store { TxnIsolation }
 import from jaclang.data.dbcatalog { DbRecord, MAINTENANCE_DB }
 
 
-enum DbAction(StrEnum) {
+enum DbAction: str {
     STATUS = 'status',
     SERVE = 'serve',
     STOP = 'stop',

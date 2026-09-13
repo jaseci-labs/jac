@@ -1,3 +1,6 @@
+import from jaclang.server.identity.user_manager { UserManager }
+import from typing { cast }
+import from jaclang.server.server { EndpointHost }
 import from unittest.mock { patch, MagicMock }
 import from datetime { datetime, UTC, timedelta }
 import from concurrent.futures { ThreadPoolExecutor }
@@ -52,11 +55,11 @@ test "only one concurrent registration can redeem a proof" {
 }
 
 test "registration endpoint enforces challenge before creating account" {
-    server = MagicMock();
+    server = MagicMock(spec=EndpointHost);
     users = server.identity.return_value;
     users.create_user_with_identities.return_value = {'user_id': 'new-user'};
     users.create_jwt_token.return_value = 'session';
-    register_auth_endpoints(server);
+    register_auth_endpoints(cast(EndpointHost, server));
     handler: any = None;
     for call in server.add_endpoint.call_args_list {
         endpoint = call.args[0];
@@ -95,7 +98,7 @@ test "registration challenge is opt in for other projects" {
 }
 
 test "verified GitHub identity can create an account without registration proof" {
-    manager = MagicMock();
+    manager = MagicMock(spec=UserManager);
     manager.get_user_by_sso.return_value = None;
     manager.create_user.return_value = {'user_id': 'github-user'};
     manager.link_sso_account.return_value = {};
@@ -107,7 +110,7 @@ test "verified GitHub identity can create an account without registration proof"
     manager.create_jwt_token.return_value = 'github-session';
     with patch(register_auth_endpoints.__module__ + '.consume_challenge') as verify {
         result = complete_identity(
-            manager,
+            cast(UserManager, manager),
             SSOUserInfo(email='', external_id='123', username='github_alice'),
             'github'
         );

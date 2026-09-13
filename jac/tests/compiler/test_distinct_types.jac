@@ -1,7 +1,7 @@
 """Erased distinct types (#8030 B1): check-time brand, runtime primitive.
 
 `type X := int;` brands X nominally in the checker while every
-lowering (jac0, sv, native) erases it to the base primitive; X(v) is a
+backend erases it to the base primitive; X(v) is a
 zero-cost cast. `obj X(builtin)` is rejected with a pointer at the
 distinct form (E1106); a distinct alias over a non-primitive base is
 rejected (E1107).

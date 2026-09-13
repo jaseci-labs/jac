@@ -1,6 +1,6 @@
 # .jacignore -- modules excluded from the repo-wide `jac check` gate.
 #
-# CI feeds every non-comment line here to `jac check --ignore` (see
+# Precommit uses this file, and CI feeds it to `jac check --ignore` (see
 # .github/workflows/ci.yml, "Run jac check (using .jacignore)"). CI adds
 # `tests checker_*.jac *_err.jac` of its own; those are not listed here.
 #
@@ -10,8 +10,13 @@
 # basename repo-wide. Every entry below is path-qualified for that reason --
 # one line per excluded module, so a fix deletes exactly one line.
 #
-# Each entry is a module that does not currently pass `jac check`. Adding to
-# this list is a debt, not a policy: the goal is an empty file.
+# Production-source exclusions below are temporary typing debt. Diagnostic
+# fixtures remain excluded because their tests assert the expected errors.
+
+# Deliberately invalid inputs validated by diagnostic regression tests.
+# These are test data, not standalone programs expected to pass checking.
+jac/tests/compiler/passes/fixtures/checker/checker_never_returns.jac
+jac/tests/compiler/passes/fixtures/static_analysis/redundant_typing_imports.jac
 
 # llvmlite-bound native IR generation.
 # These NaIRGenPass body files reach llvmlite handles (ir.Function.args,

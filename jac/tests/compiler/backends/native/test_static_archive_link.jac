@@ -16,6 +16,7 @@ unresolved libc import and the loader would abort, so a clean run proves the
 merge. Together the file covers the archive-merge path on both object formats.
 """
 
+import from tests.support { jac_command }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,
@@ -202,7 +203,7 @@ test "nacompile CLI: `import from lzma` static-links the floor, no dylib dep (#6
     d = tempfile.mkdtemp();
     out = os.path.join(d, "crc32_cli");
     comp = subprocess.run(
-        [sys.executable, "-m", "jaclang", "build", "--native", fixture, "-o", out],
+        jac_command() + ["build", "--native", fixture, "-o", out],
         capture_output=True,
         text=True,
         timeout=180

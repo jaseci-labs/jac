@@ -1,6 +1,6 @@
 # Python source/AST -> PyCode through Jac validation, codegen and assembly.
 
-import from jaclang.runtime.python.objects { PyObj, py_error, is_error }
+import from jaclang.runtime.python.objects { PyObj, py_error }
 import from jaclang.compiler.frontend.python.parser {
     parse_eval_expr,
     parse_file,
@@ -29,25 +29,12 @@ import from jaclang.compiler.backends.py.jacpython.compiler_codegen {
     compile_eval,
     compile_exec
 }
-# Statement-dispatch siblings: imported for their load-time registration into
-# the compiler_dispatch leaf (see compiler_dispatch.jac); without these edges
-# a compile of any compound statement would call an unwired handler slot.
-import from jaclang.compiler.backends.py.jacpython.compiler_defs { visit_function_def }
-import from jaclang.compiler.backends.py.jacpython.compiler_exc { visit_try }
-import from jaclang.compiler.backends.py.jacpython.compiler_loops { visit_if }
-import from jaclang.compiler.backends.py.jacpython.compiler_match { visit_match }
 import from jaclang.compiler.backends.py.jacpython.flowgraph { verify_cfg }
 import from jaclang.compiler.backends.py.jacpython.assembler { assemble }
-import from jaclang.compiler.backends.py.jacpython.compiler_annotations {
+import from jaclang.compiler.frontend.python.annotation_unparse {
     stringify_future_annotations
 }
-import from jaclang.compiler.backends.py.jacpython.compiler_context {
-    current_compile_flags,
-    add_future_flags,
-    enter_compile_context,
-    exit_compile_context,
-    ensure_compile_registries_wired,
-}
+import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context, }
 
 def compile_source(
     source: str, filename: str, mode: str, optimize: int, flags: int = 0
@@ -55,30 +42,19 @@ def compile_source(
     if optimize not in (0, 1, 2) {
         return py_error("ValueError", "compile(): invalid optimize value");
     }
-    reg = ensure_compile_registries_wired();
-    if is_error(reg) {
-        return reg;
-    }
-    enter_compile_context(optimize, flags);
-    try {
-        if mode == "eval" {
-            result = compile_eval_path(source, filename, mode);
-        } elif mode == "single" {
-            tree = parse_interactive(source, filename, current_compile_flags());
-            if tree is None {
-                result = py_error("SyntaxError", "invalid syntax");
-            } else {
-                result = compile_exec_ast(
-                    Module(body=tree.body, type_ignores=[]), filename, True
-                );
-            }
-        } else {
-            result = compile_exec_path(source, filename, mode);
+    context = compile_context(optimize=optimize, flags=flags);
+    if mode == "eval" {
+        return compile_eval_path(source, filename, mode, context);
+    } elif mode == "single" {
+        tree = parse_interactive(source, filename, context.flags);
+        if tree is None {
+            return py_error("SyntaxError", "invalid syntax");
         }
-    } finally {
-        exit_compile_context();
+        return compile_exec_ast(
+            Module(body=tree.body, type_ignores=[]), filename, True, context
+        );
     }
-    return result;
+    return compile_exec_path(source, filename, mode, context);
 }
 
 def compile_ast(
@@ -87,27 +63,17 @@ def compile_ast(
     if optimize not in (0, 1, 2) {
         return py_error("ValueError", "compile(): invalid optimize value");
     }
-    reg = ensure_compile_registries_wired();
-    if is_error(reg) {
-        return reg;
+    context = compile_context(optimize=optimize, flags=flags);
+    if mode == "eval" and isinstance(tree, Expression) {
+        return compile_eval_ast(tree.body, filename, context);
+    } elif mode == "exec" and isinstance(tree, Module) {
+        return compile_exec_ast(tree, filename, False, context);
+    } elif mode == "single" and isinstance(tree, Interactive) {
+        return compile_exec_ast(
+            Module(body=tree.body, type_ignores=[]), filename, True, context
+        );
     }
-    enter_compile_context(optimize, flags);
-    try {
-        if mode == "eval" and isinstance(tree, Expression) {
-            result = compile_eval_ast(tree.body, filename);
-        } elif mode == "exec" and isinstance(tree, Module) {
-            result = compile_exec_ast(tree, filename);
-        } elif mode == "single" and isinstance(tree, Interactive) {
-            result = compile_exec_ast(
-                Module(body=tree.body, type_ignores=[]), filename, True
-            );
-        } else {
-            result = py_error("TypeError", "AST root does not match compilation mode");
-        }
-    } finally {
-        exit_compile_context();
-    }
-    return result;
+    return py_error("TypeError", "AST root does not match compilation mode");
 }
 
 def prepare_ast_output(
@@ -120,34 +86,33 @@ def prepare_ast_output(
         }
         flags |= features;
     }
-    return preprocess_node(tree, optimize, flags, bool(flags & 0x8000));
+    return preprocess_node(tree, optimize, flags, bool(flags & 0x8000)) as mod;
 }
 
-def compile_eval_path(source: str, filename: str, mode: str) -> PyObj {
+def compile_eval_path(
+    source: str, filename: str, mode: str, context: compile_context
+) -> PyObj {
     if mode != "eval" {
         return py_error(
             "NotImplementedError",
             "compile_source: mode '" + mode + "' not yet supported (Phase C)"
         );
     }
-    e = parse_eval_expr(source, filename, current_compile_flags());
+    e = parse_eval_expr(source, filename, context.flags);
     if e is None {
         return py_error(
             "SyntaxError", "compile_source: failed to parse eval expression"
         );
     }
-    return compile_eval_ast(e, filename);
+    return compile_eval_ast(e, filename, context);
 }
 
-def compile_eval_ast(e: expr, filename: str) -> PyObj {
-    vr = validate_eval_expr(e, bool(current_compile_flags() & 0x2000));
+def compile_eval_ast(e: expr, filename: str, context: compile_context) -> PyObj {
+    vr = validate_eval_expr(e, bool(context.flags & 0x2000));
     if vr.diag is not None {
         return compiler_diag_to_pyobj(vr.diag);
     }
-    import from jaclang.compiler.backends.py.jacpython.compiler_context {
-        current_optimization_level
-    }
-    e = preprocess_node(e, current_optimization_level(), current_compile_flags(), True);
+    e = preprocess_node(e, context.optimize, context.flags, True) as expr;
     check_ast_warnings(e, filename);
     sr = build_module_symtable(
         [
@@ -158,7 +123,8 @@ def compile_eval_ast(e: expr, filename: str) -> PyObj {
                 end_lineno=e.end_lineno,
                 end_col_offset=e.end_col_offset
             )
-        ]
+        ],
+        context
     );
     if sr.diag is not None {
         return compiler_diag_to_pyobj(sr.diag);
@@ -176,42 +142,43 @@ def compile_eval_ast(e: expr, filename: str) -> PyObj {
 
 # exec-mode native front end (PLAN.md P0.12 band 2: straight-line modules).
 # parse_file -> validate -> symtable -> compile_exec -> verify_cfg -> assemble.
-def compile_exec_path(source: str, filename: str, mode: str) -> PyObj {
+def compile_exec_path(
+    source: str, filename: str, mode: str, context: compile_context
+) -> PyObj {
     if mode != "exec" {
         return py_error(
             "NotImplementedError",
             "compile_source: mode '" + mode + "' not yet supported"
         );
     }
-    m = parse_file(source, filename, current_compile_flags());
+    m = parse_file(source, filename, context.flags);
     if m is None {
         return py_error("SyntaxError", "compile_source: failed to parse exec module");
     }
-    return compile_exec_ast(m, filename);
+    return compile_exec_ast(m, filename, False, context);
 }
 
-def compile_exec_ast(m: Module, filename: str, interactive: bool = False) -> PyObj {
+def compile_exec_ast(
+    m: Module, filename: str, interactive: bool, context: compile_context
+) -> PyObj {
     (features, future_result) = future_features(m.body);
     if future_result.diag is not None {
         return compiler_diag_to_pyobj(future_result.diag);
     }
-    add_future_flags(features);
-    vr = validate_module_body(m.body, bool(current_compile_flags() & 0x2000));
+    context.flags |= features;
+    vr = validate_module_body(m.body, bool(context.flags & 0x2000));
     if vr.diag is not None {
         return compiler_diag_to_pyobj(vr.diag);
     }
-    import from jaclang.compiler.backends.py.jacpython.compiler_context {
-        current_optimization_level
-    }
-    preprocess_node(m, current_optimization_level(), current_compile_flags(), True);
+    preprocess_node(m, context.optimize, context.flags, True);
     check_ast_warnings(m, filename);
-    sr = build_module_symtable(m.body);
+    sr = build_module_symtable(m.body, context);
     if sr.diag is not None {
         return compiler_diag_to_pyobj(sr.diag);
     }
     # Scope analysis still validates annotation expressions and their binding
     # forms before the future flag turns those expressions into strings.
-    if current_compile_flags() & 0x1000000 {
+    if context.flags & 0x1000000 {
         stringify_future_annotations(m, filename);
     }
     u = compile_exec(m.body, filename, "<module>", 1, sr.top, interactive);

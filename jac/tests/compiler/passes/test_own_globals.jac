@@ -9,6 +9,7 @@ The fixture-plus-expected-codes cases for this rule live in the shared
 table cannot express.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import sys;
@@ -30,7 +31,8 @@ test "own globals compile and run identically across gc modes including enforced
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"og_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+                jac_command()
+                    + ["build", "--native", FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

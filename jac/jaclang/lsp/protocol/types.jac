@@ -1,4 +1,4 @@
-import from enum { IntEnum, StrEnum }
+import from enum { IntEnum }
 import types as pytypes;
 import from typing { Optional, Union }
 
@@ -91,15 +91,11 @@ enum CompletionItemKind(IntEnum) {
     TypeParameter = 25
 }
 
-enum MarkupKind(StrEnum) { PlainText = "plaintext", Markdown = "markdown" }
+enum MarkupKind: str { PlainText = "plaintext", Markdown = "markdown" }
 
 enum TextDocumentSyncKind(IntEnum) { None_ = 0, Full = 1, Incremental = 2 }
 
-enum PositionEncodingKind(StrEnum) {
-    Utf8 = "utf-8",
-    Utf16 = "utf-16",
-    Utf32 = "utf-32"
-}
+enum PositionEncodingKind: str { Utf8 = "utf-8", Utf16 = "utf-16", Utf32 = "utf-32" }
 
 obj Position {
     has line: int = 0,

@@ -1,3 +1,5 @@
+import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context }
+
 # Symbol table for the P4 front track (INTEGRATION_PLAN Phase 5).
 #
 # Two-pass scope analysis over validated AST: raw def/use collection, then
@@ -112,6 +114,7 @@ obj sym_block {
     has block_type: str,
         name: str,
         lineno: int,
+        context: compile_context = compile_context(),
         col_offset: int = -1,
         nested: bool = False,
         generator: bool = False,
@@ -369,6 +372,7 @@ obj sym_builder {
     ) -> bool {
         child = sym_block(
             block_type=block_type,
+            context=self.cur.context,
             name=name,
             lineno=lineno,
             col_offset=col_offset,
@@ -392,10 +396,7 @@ obj sym_builder {
 }
 
 def sym_allows_async(block: sym_block) -> bool {
-    import from jaclang.compiler.backends.py.jacpython.compiler_context {
-        current_compile_flags
-    }
-    return (block.block_type == "module" and bool(current_compile_flags() & 0x2000))
+    return (block.block_type == "module" and bool(block.context.flags & 0x2000))
         or (
             block.block_type == "function"
             and (block.coroutine or bool(block.comprehension))
@@ -1219,7 +1220,7 @@ def sym_match_pattern_unwrap_or(p: pattern) -> pattern {
 def sym_visit_type_parameters(b: sym_builder, parameters: list[type_param]) -> bool {
     seen_default = False;
     for tp in parameters {
-        name: str = getattr(tp, "name");
+        name = tp.name;
         if name == "__classdict__" {
             return b.fail(
                 "SyntaxError",
@@ -1239,7 +1240,10 @@ def sym_visit_type_parameters(b: sym_builder, parameters: list[type_param]) -> b
         if not b.add_def(name, DEF_LOCAL | 1024, tp.lineno, tp.col_offset) {
             return False;
         }
-        default_value: expr | None = getattr(tp, "default_value");
+        default_value: expr | None = None;
+        if isinstance(tp, (TypeVar, TypeVarTuple, ParamSpec)) {
+            default_value = tp.default_value;
+        }
         if default_value is None and seen_default {
             return b.fail(
                 "SyntaxError",
@@ -1252,7 +1256,9 @@ def sym_visit_type_parameters(b: sym_builder, parameters: list[type_param]) -> b
         }
         seen_default = seen_default or default_value is not None;
         bound = tp.bound if isinstance(tp, TypeVar) else None;
-        for (index, value) in enumerate([bound, default_value]) {
+        annotation_values: list[expr | None] = [bound, default_value];
+        for index in range(len(annotation_values)) {
+            value = annotation_values[index];
             if value is None {
                 continue;
             }
@@ -1291,10 +1297,7 @@ def sym_visit_type_parameters(b: sym_builder, parameters: list[type_param]) -> b
 # The future flag retains its checks and outer bindings but excludes the
 # annotation scope from closure analysis because no expression will execute.
 def sym_visit_assignment_annotation(b: sym_builder, an: AnnAssign) -> bool {
-    import from jaclang.compiler.backends.py.jacpython.compiler_context {
-        current_compile_flags
-    }
-    future = bool(current_compile_flags() & 0x1000000);
+    future = bool(b.cur.context.flags & 0x1000000);
     owner = b.cur;
     scope = owner.annotation_scope;
     if scope is None {
@@ -1336,10 +1339,7 @@ def sym_visit_assignment_annotation(b: sym_builder, an: AnnAssign) -> bool {
 def sym_visit_function_annotations(
     b: sym_builder, fd: FunctionDef | AsyncFunctionDef
 ) -> bool {
-    import from jaclang.compiler.backends.py.jacpython.compiler_context {
-        current_compile_flags
-    }
-    future = bool(current_compile_flags() & 0x1000000);
+    future = bool(b.cur.context.flags & 0x1000000);
     parameters = fd.args.posonlyargs + fd.args.args;
     if fd.args.vararg is not None {
         parameters.append(fd.args.vararg);
@@ -1409,8 +1409,7 @@ def sym_enter_generic_definition(
     if isinstance(definition, ClassDef) {
         b.private = definition.name;
         b.cur.mangled_names = {
-            getattr(parameter, "name") as str
-            for parameter in definition.type_params or []
+            parameter.name for parameter in definition.type_params or []
         };
         for name in [".type_params", ".generic_base"] {
             if not b.add_def(name, DEF_LOCAL, definition.lineno, definition.col_offset)
@@ -2269,8 +2268,16 @@ def sym_assign_inline_aliases(block: sym_block, owner: sym_block | None = None) 
     }
 }
 
-def build_module_symtable(body: list[stmt]) -> symtable_result {
-    top = sym_block(block_type="module", name="top", lineno=0, nested=False);
+def build_module_symtable(
+    body: list[stmt], context: compile_context | None = None
+) -> symtable_result {
+    top = sym_block(
+        block_type="module",
+        name="top",
+        lineno=0,
+        nested=False,
+        context=context if context is not None else compile_context()
+    );
     b = sym_builder(cur=top, stack=[], module_global={}, private=None, diag=None);
     si = 0;
     while si < len(body) {

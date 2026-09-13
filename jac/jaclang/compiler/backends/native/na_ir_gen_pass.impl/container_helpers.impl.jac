@@ -994,9 +994,9 @@ impl NaIRGenPass._emit_rc_alloc_container(
                 name="used.ptr"
             )
         );
-        _ord0 = b.call(malloc_fn, [ir.Constant(i64, initial_cap * 8)], name="order0");
+        _ord0 = self._hash_order_alloc(b, ir.Constant(i64, initial_cap));
         b.store(
-            b.bitcast(_ord0, i64.as_pointer(), name="order0.p"),
+            _ord0,
             b.gep(
                 container_ptr,
                 [ir.Constant(i32, 0), ir.Constant(i32, layout["order_idx"])],
@@ -1217,4 +1217,23 @@ impl NaIRGenPass._emit_tuple_box_lifecycle(
         has_trace = self._register_trace_pair(rel_fn, trace_fn);
     }
     self._require_trace_fn("tuple", True, has_trace);
+}
+
+impl NaIRGenPass._coerce_container_element(
+    value: ir.Value, element_type: ir.Type
+) -> ir.Value {
+    payload_type = self._opt_ptr_payload_of(value.type);
+    if payload_type is not None and isinstance(element_type, ir.PointerType) {
+        tag = self.builder.extract_value(value, 0, name="elem.optional.tag");
+        payload = self.builder.extract_value(value, 1, name="elem.optional.payload");
+        present = self.builder.icmp_unsigned("!=", tag, ir.Constant(ir.IntType(8), 0));
+        nullable = self.builder.select(
+            present, payload, ir.Constant(payload_type, None)
+        );
+        if self._is_owned(value) {
+            self._mark_owned(nullable);
+        }
+        return self._coerce_type(nullable, element_type);
+    }
+    return self._coerce_type(value, element_type);
 }

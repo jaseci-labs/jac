@@ -9,6 +9,7 @@ state is deterministic (disjoint element writes), so output is
 byte-identical across thread counts and across gc modes.
 """
 
+import from tests.support { jac_command }
 import os;
 import subprocess;
 import sys;
@@ -66,7 +67,8 @@ def _run_matrix(fixture: str, expected: str) {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"ffr_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", fixture]
+                jac_command()
+                    + ["build", "--native", fixture]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,
@@ -109,7 +111,8 @@ test "rc parallel output is byte-identical across thread counts" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "ffp_rc_par");
         res = subprocess.run(
-            [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+            jac_command()
+                + ["build", "--native", FIXTURE]
                 + MODE_FLAGS["rc"]
                 + ["-o", out_bin],
             capture_output=True,
@@ -133,7 +136,8 @@ test "shared-capture rc stress is identical across widths and modes" {
         for mode in ("rc", "cycles") {
             out_bin = os.path.join(tmp, f"ffs_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", SHARED_FIXTURE]
+                jac_command()
+                    + ["build", "--native", SHARED_FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,
@@ -176,7 +180,8 @@ test "output is byte-identical across gc modes and thread counts" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"ffp_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+                jac_command()
+                    + ["build", "--native", FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

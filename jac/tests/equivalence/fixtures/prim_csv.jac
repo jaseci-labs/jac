@@ -8,11 +8,10 @@ here with `list(...)`); the native `reader` is eager and returns the same
 record is probed through scalar cell reads and `len(...)`. Covers mid-field
 literal quotes, quote-after-close, unterminated quotes, embedded
 delimiter+newline inside a quoted field, and NUL pass-through (CPython >= 3.14
-parses NUL as an ordinary character -- the sv runtime is 3.14; <= 3.13 raised
-`csv.Error("line contains NUL")`). The NUL row is probed by field count and its
-NUL-free cell only: native strings drop an embedded NUL byte on concatenation
-(and the ctypes harness truncates at NUL), so NUL-bearing field CONTENT is a
-documented na divergence. ES/JS opts out.
+parses NUL as an ordinary character -- the sv runtime is 3.14). The NUL row
+uses field counts, lengths and character codes to check its complete content
+without passing a NUL-bearing string through the ctypes result decoder.
+ES/JS opts out.
 """
 
 import from csv { reader }
@@ -58,6 +57,9 @@ def csv_py -> dict {
         "nln": len(r9[0]),
         "nul1": r10[0][1],
         "nuln": len(r10[0]),
+        "nul_len": len(r10[0][0]),
+        "nul_code": ord(r10[0][0][1]),
+        "nul_tail": ord(r10[0][0][2]),
         "tnrows": len(r11),
         "t0a": r11[0][0],
         "t0n": len(r11[0]),
@@ -115,6 +117,9 @@ def csv_na -> dict[str, any] {
         "nln": len(r9[0]),
         "nul1": r10[0][1],
         "nuln": len(r10[0]),
+        "nul_len": len(r10[0][0]),
+        "nul_code": ord(r10[0][0][1]),
+        "nul_tail": ord(r10[0][0][2]),
         "tnrows": len(r11),
         "t0a": r11[0][0],
         "t0n": len(r11[0]),

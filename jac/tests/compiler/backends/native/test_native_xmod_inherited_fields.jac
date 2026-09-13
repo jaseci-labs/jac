@@ -29,6 +29,7 @@ A class something IS dispatched through keeps its header and its refusal --
 that pair genuinely has no assignment satisfying both.
 """
 
+import from tests.support { jac_command }
 import contextlib;
 import io;
 import os;
@@ -78,7 +79,7 @@ def slots_of(ir: uni.Module, prog: JacProgram, name: str) -> dict {
 
 def sv_run(fixture: str) -> str {
     proc = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", os.path.join(FIXTURES, fixture)],
+        jac_command() + ["run", os.path.join(FIXTURES, fixture)],
         capture_output=True,
         text=True,
         timeout=900
@@ -92,16 +93,8 @@ def sv_run(fixture: str) -> str {
 def na_run(fixture: str) -> str {
     out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
     comp = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            os.path.join(FIXTURES, fixture),
-            "-o",
-            out_bin
-        ],
+        jac_command()
+            + ["build", "--native", os.path.join(FIXTURES, fixture), "-o", out_bin],
         capture_output=True,
         text=True,
         timeout=900
