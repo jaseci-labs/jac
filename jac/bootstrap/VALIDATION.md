@@ -369,3 +369,28 @@ all 757 modules in 390.74 seconds. Both stages generated catalogs with zero
 evaluation failures (69.43 and 71.05 seconds) and passed image verification.
 This includes all compiler/provider type fixes; the subsequent test-worker
 budget change is undergoing its own final rebuild. CI status is tracked on the PR.
+
+## Runtime integration follow-up
+
+Single-worker test runs now use the shared recycling pool; explicit `--jobs 0`
+retains in-process execution. Process-ID coverage fails before the fix and passes
+afterward. Workers also run their own `atexit` handlers before retirement, without
+running inherited parent handlers. Shutdown coverage fails on the preceding
+compiler; five pool tests and eight pooled notification/worker tests pass afterward.
+
+A native crash in the template tests exposed a duplicate dependency-verdict lookup
+that skipped JIT dependency compilation. Imported functions now use the existing
+native verdict resolver, including its pending state for cyclic imports. The cold
+JIT regression fails before the fix; 21 focused and 272 broader native tests pass
+afterward (three skips). That revision passed all 29 staged build steps: Stage 1
+reused 749 modules and compiled eight in 181.12 seconds; Stage 2 compiled all 757
+in 413.86 seconds. Both catalogs had zero evaluation failures.
+
+The runtime sweep passed 1,590 tests before this Mac exhausted PostgreSQL shared
+memory IDs. All five notification tests pass after stopping this task's database.
+The continuation exposed the React harness omitting explicit client placement for
+independently compiled browser dependencies; all three React behavior suites pass
+with that corrected. Upstream's extended-import-bytecode regression and the other
+ten application-preparation tests pass after normalizing its temporary path.
+The four GNU-time integration tests require Linux and are left to their CI lane.
+Final rebuild, remaining runtime tests, and latest-head CI remain acceptance gates.

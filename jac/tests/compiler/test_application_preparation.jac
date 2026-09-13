@@ -108,6 +108,7 @@ test "executable import discovery includes package initializers and deferred imp
 test "import discovery reads levels past a module's single-byte name pool" {
     import from jaclang.compiler.backends.py.artifact_imports { runtime_sources }
     tmp = tempfile.mkdtemp(prefix="jac-prepared-extended-");
+    tmp = str(Path(tmp).resolve());
     try {
         base = Path(tmp);
         (base / 'pkg').mkdir();
