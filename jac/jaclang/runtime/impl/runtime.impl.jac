@@ -659,6 +659,14 @@ impl JacModule.impl_patch_filename(
     def decorator(func: Callable[(P, T)]) -> Callable[(P, T)] {
         try {
             code = func.__code__;
+            import from jaclang.jac0core.ext_registry { is_jac }
+            import from jaclang.runtime.prepared { application_for }
+            application = application_for(code.co_filename, func.__module__ or '');
+
+            if application is not None
+                and is_jac(application.origins.get(code.co_filename, '')) {
+                return func;
+            }
             new_code = types.CodeType(
                 code.co_argcount,
                 code.co_posonlyargcount,
