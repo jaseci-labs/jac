@@ -1,9 +1,8 @@
-"""Launch an exported application using its declared runtime product."""
-
 import argparse;
 import importlib;
 import json;
 import subprocess;
+import sys;
 import from pathlib { Path }
 
 def main(manifest_path: str) -> int {
@@ -27,11 +26,11 @@ def main(manifest_path: str) -> int {
         native = selected['native'];
         output = manifest.parent / selected['root'] / native['output'];
         if native['kind'] == 'shared' {
-            print(output);
+            sys.stdout.write(str(output) + '\n');
             return 0;
         }
         return subprocess.run([str(output), *remaining]).returncode;
     }
     runner = importlib.import_module(selected['runner']);
-    return runner.main(str(manifest));
+    return runner.main(str(manifest), args.app, remaining);
 }

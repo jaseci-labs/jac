@@ -1,5 +1,3 @@
-"""Project the transitive runtime module closure using the normal compiler products."""
-
 import ast as py_ast;
 import json;
 import tempfile;
@@ -92,7 +90,8 @@ def _declared_literal(source: str, name: str) -> object {
         }
         if any(
             isinstance(target, py_ast.Name) and target.id == name for target in targets
-        ) {
+        )
+            and statement.value is not None {
             return py_ast.literal_eval(statement.value);
         }
     }
@@ -138,11 +137,13 @@ def _compile_runtime_module(
         );
     }
     if native is not None and ir.gen.native_engine is not None {
-        import from jaclang.dist.source.native { write_native_library }
+        import from jaclang.dist.source.native { write_native_product }
         with tempfile.TemporaryDirectory(prefix='jac-runtime-native-') as temporary {
             directory = Path(temporary);
-            record = write_native_library(
-                ir, directory, path.relative_to(pkg_root).with_suffix('.py')
+            record = write_native_product(
+                ir,
+                directory,
+                Path('native') / path.relative_to(pkg_root).with_suffix('.py')
             );
             native['record'] = record;
             native['source'] = (directory / record['source']).read_text(

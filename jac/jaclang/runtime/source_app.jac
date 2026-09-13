@@ -1,5 +1,3 @@
-"""Load and run an application projected to editable Python, JavaScript and C."""
-
 import argparse;
 import builtins;
 import json;
@@ -68,7 +66,7 @@ def _load_application(record: dict, base: Path) -> PreparedApplication {
     return application;
 }
 
-def load_runtime(directory: Path) -> None {
+def load_runtime(directory: Path) {
     manifest = directory / 'runtime.json';
     if manifest.is_file() {
         record = json.loads(manifest.read_text(encoding='utf-8'));
@@ -107,47 +105,53 @@ def load_project(manifest_path: Path, name: str = '') -> PreparedApplication {
     return primary;
 }
 
-def main(manifest_path: str) -> int {
-    parser = argparse.ArgumentParser(description='Run the exported application');
-    parser.add_argument('--app', `default='');
-    parser.add_argument('--host', `default='');
-    parser.add_argument('--port', type=int, `default=0);
-    args = parser.parse_args();
-    application = load_project(Path(manifest_path), args.app);
+def main(manifest_path: str, name: str = '', argv: list[str] | None = None) -> int {
+    import sys;
+    application = load_project(Path(manifest_path), name);
     import from jaclang.project.config { JacConfig, set_config }
+    import from jaclang.project.app_kinds { kind_has_server }
     config = JacConfig.load(Path(application.root) / 'jac.toml');
     set_config(config);
     served = config.resolve_app(application.name);
+    server_enabled = kind_has_server(config.resolved_kind(served));
+    arguments = list(sys.argv[1:] if argv is None else argv);
+    overrides: dict = {'dev': False, 'no_client': not application.client_enabled};
+    if server_enabled {
+        parser = argparse.ArgumentParser(description='Run the exported server');
+        parser.add_argument('--host', `default='');
+        parser.add_argument('--port', type=int, `default=0);
+        (args, arguments) = parser.parse_known_args(arguments);
+        if args.host {
+            overrides['host'] = args.host;
+        }
+        if args.port {
+            overrides['port'] = args.port;
+            overrides['strict_port'] = True;
+        }
+        import from jaclang.scale.runtime.provider { mark_scale_runtime }
+        mark_scale_runtime();
+    }
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     Jac.set_full_target_path(application.entry);
-    import from jaclang.scale.runtime.provider { mark_scale_runtime }
-    mark_scale_runtime();
     context = Jac.create_j_context(None, application.root, application.entry);
     Jac.set_context(context);
-    module = initialize_application(application, config, served);
-    context.mem.unit_exit();
-    import from jaclang.project.app_kinds { kind_has_server }
-    if not kind_has_server(config.resolved_kind(served)) {
-        context.close();
-        return 0;
-    }
-    import from jaclang.server.settings { ServeSettings }
-    import from jaclang.server.server { JacAPIServer }
-    overrides = {'dev': False, 'no_client': not application.client_enabled};
-    if args.host {
-        overrides['host'] = args.host;
-    }
-    if args.port {
-        overrides['port'] = args.port;
-        overrides['strict_port'] = True;
-    }
-    settings = ServeSettings.load(application.root, overrides);
-    server = JacAPIServer(
-        module_name=module.__name__, base_path=application.root, settings=settings
-    );
+    previous_argv = sys.argv;
+    sys.argv = [application.entry, *arguments];
     try {
+        module = initialize_application(application, config, served);
+        context.mem.unit_exit();
+        if not server_enabled {
+            return 0;
+        }
+        import from jaclang.server.settings { ServeSettings }
+        import from jaclang.server.server { JacAPIServer }
+        settings = ServeSettings.load(application.root, overrides);
+        server = JacAPIServer(
+            module_name=module.__name__, base_path=application.root, settings=settings
+        );
         return server.start(no_client=not application.client_enabled);
     } finally {
+        sys.argv = previous_argv;
         context.close();
     }
 }

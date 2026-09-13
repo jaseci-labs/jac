@@ -1,5 +1,3 @@
-"""Editable source projection of the compiler's prepared application products."""
-
 import copy;
 import json;
 import os;
@@ -9,7 +7,7 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.project.config { JacConfig }
-import from jaclang.runtime.prepared { PreparedApplication }
+import from jaclang.runtime.prepared { PreparedApplication, application_namespace }
 import type from jaclang.compiler.frontend.unitree { Module }
 
 
@@ -35,20 +33,20 @@ def python_source(path: str, program: JacProgram) -> tuple[str, Module | None] {
 }
 
 
-def _copy_resources(source: Path, destination: Path, output: Path) -> None {
+def _copy_resources(source: Path, destination: Path, output: Path) {
     import from jaclang.dist.publish.sources { EXCLUDED_DIRS, EXCLUDED_SUFFIXES }
     excluded = set(EXCLUDED_DIRS);
     for (directory, dirs, files) in os.walk(str(source)) {
-        parent = Path(directory);
+        parent: Path = Path(os.fsdecode(directory));
         dirs[:] = sorted(
             name
             for name in dirs
             if name not in excluded
                 and not name.startswith('.')
-                and (parent / name).resolve() != output
+                and (parent / os.fsdecode(name)).resolve() != output
         );
         for name in sorted(files) {
-            item = parent / name;
+            item = parent / os.fsdecode(name);
             if item.suffix in EXCLUDED_SUFFIXES or name.startswith('.') {
                 continue;
             }
@@ -74,6 +72,7 @@ def _write_application(
     record: dict = {
         'name': application.name,
         'runner': 'jaclang.runtime.source_app',
+        'namespace': application_namespace(application),
         'root': directory.relative_to(base).as_posix(),
         'entry': Path(application.entry).relative_to(project_root).with_suffix(
             '.py'
@@ -95,8 +94,10 @@ def _write_application(
             'manifest': application.manifests.get(path, {})
         };
         if module is not None and module.gen.native_engine is not None {
-            import from jaclang.dist.source.native { write_native_library }
-            item['native'] = write_native_library(module, directory, python_path);
+            import from jaclang.dist.source.native { write_native_product }
+            item['native'] = write_native_product(
+                module, directory, Path("native") / python_path
+            );
         }
         modules.append(item);
     }
@@ -123,17 +124,9 @@ def _write_application(
 
 
 def _requirements(config: JacConfig, server: bool) -> list[str] {
-    import from jaclang.project.capabilities {
-        derive_capabilities,
-        scale_intent_from_config,
-        resolve_closure,
-        RUNTIME
-    }
+    import from jaclang.project.capabilities { resolve_config_closures, RUNTIME }
     import from jaclang.project.pyvenv { make_pip_spec }
-    caps = derive_capabilities(
-        scale_intent_from_config(config), ['serve'] if server else []
-    );
-    closure = resolve_closure(caps, RUNTIME);
+    closure = resolve_config_closures(config, 'serve' if server else 'run')[RUNTIME];
     dependencies = dict(closure.deps);
     dependencies.update(config.dependencies);
     return [
@@ -215,41 +208,23 @@ def export_project(
                 for item in [application, *application.applications]
             ];
         } elif native_module is not None {
-            import from jaclang.compiler.backends.native.na_compile_pass {
-                native_linked_ir_text
-            }
-            import from jaclang.compiler.backends.native.c_emit { emit_c }
-            import from jaclang.compiler.backends.native.shared_emit {
-                inject_shared_init
-            }
+            import from jaclang.dist.source.native { write_native_product }
             directory = base / 'applications' / app.name;
             directory.mkdir(parents=True);
-            import from jaclang.compiler.backends.native.entry_points {
-                inject_main,
-                validate_native_application
-            }
-            llvm_ir = validate_native_application(
-                native_module, kind == 'native-lib', config.memory.profile
+            native = write_native_product(
+                native_module,
+                directory,
+                Path('main'),
+                shared=kind == 'native-lib',
+                memory=native_options.memory_profile or ""
             );
-            if kind == 'native-lib' {
-                (llvm_ir, exports) = inject_shared_init(
-                    llvm_ir, native_module.gen.interop_manifest
-                );
-            } else {
-                llvm_ir = inject_main(llvm_ir);
-            }
-            (directory / 'main.c').write_text(emit_c(llvm_ir), encoding='utf-8');
             records.append(
                 {
                     'name': app.name,
                     'root': directory.relative_to(base).as_posix(),
                     'entry': 'main',
                     'modules': [],
-                    'native': {
-                        'source': 'main.c',
-                        'output': 'main.so' if kind == 'native-lib' else 'main',
-                        'kind': 'shared' if kind == 'native-lib' else 'executable'
-                    }
+                    'native': native
                 }
             );
         }
@@ -263,6 +238,17 @@ def export_project(
             extra_seeds=['jaclang.dist.source.build', 'jaclang.dist.source.run'],
             prepared=application is not None
         );
+        if any(base.rglob('*.c')) {
+            import from jaclang.toolchains.c_backend {
+                c_backend_provenance,
+                c_backend_license
+            }
+            (base / 'licenses').mkdir(exist_ok=True);
+            shutil.copy2(c_backend_license(), base / 'licenses' / 'llvm-cbe.txt');
+            (base / 'native-toolchain.json').write_text(
+                json.dumps(c_backend_provenance(), indent=2) + '\n', encoding='utf-8'
+            );
+        }
         (base / 'requirements.txt').write_text(
             '\n'.join(_requirements(config, kind_has_server(kind))) + '\n',
             encoding='utf-8'
@@ -285,10 +271,18 @@ def export_project(
                 + 'Application code is under `applications/`; `jaclang/` contains the shared runtime source.\n',
             encoding='utf-8'
         );
+        previous = Path(temporary) / 'previous';
         if output.exists() {
-            shutil.rmtree(output);
+            output.replace(previous);
         }
-        base.replace(output);
+        try {
+            base.replace(output);
+        } except BaseException {
+            if previous.exists() {
+                previous.replace(output);
+            }
+            raise;
+        }
     }
     return output;
 }

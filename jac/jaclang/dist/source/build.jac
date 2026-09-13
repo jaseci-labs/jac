@@ -6,7 +6,7 @@ import subprocess;
 import from pathlib { Path }
 
 
-def _compile_native(base: Path, record: dict) {
+def build_native_product(base: Path, record: dict) {
     source = base / record['source'];
     output = base / record['output'];
     output.parent.mkdir(parents=True, exist_ok=True);
@@ -65,7 +65,7 @@ def build(base: Path) {
         runtime = json.loads(runtime_manifest.read_text(encoding='utf-8'));
         for module in runtime['modules'] {
             if module.get('native') {
-                _compile_native(base / 'jaclang', module['native']);
+                build_native_product(base / 'jaclang', module['native']);
             }
         }
     }
@@ -73,7 +73,7 @@ def build(base: Path) {
     for application in data['applications'] {
         directory = base / application['root'];
         if application.get('native') {
-            _compile_native(directory, application['native']);
+            build_native_product(directory, application['native']);
         }
         if application.get('client_dist') {
             bun = shutil.which('bun');
@@ -88,12 +88,12 @@ def build(base: Path) {
                 (directory / 'client' / 'native.json').read_text(encoding='utf-8')
             );
             for record in records {
-                _compile_native(base, record);
+                build_native_product(base, record);
             }
         }
         for module in application['modules'] {
             if module.get('native') {
-                _compile_native(directory, module['native']);
+                build_native_product(directory, module['native']);
             }
         }
     }

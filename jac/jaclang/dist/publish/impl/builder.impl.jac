@@ -301,6 +301,31 @@ impl WheelBuilder._vendor_runtime_into(
         )
     );
     closure = build_runtime_closure(codes, include_byllm=include_byllm);
+    runtime = json.loads(closure['runtime.json']);
+    native_records = [
+        module['native']
+        for module in runtime['modules']
+        if module.get('native')
+    ];
+    if native_records {
+        import tempfile;
+        import sysconfig;
+        import from jaclang.dist.source.build { build_native_product }
+        with tempfile.TemporaryDirectory(prefix='jac-wheel-native-') as temporary {
+            directory = Path(temporary);
+            for record in native_records {
+                source = directory / record['source'];
+                source.parent.mkdir(parents=True, exist_ok=True);
+                source.write_bytes(closure[record['source']]);
+                build_native_product(directory, record);
+                closure[record['output']] = (directory / record['output']).read_bytes();
+            }
+        }
+        self.pure_python = False;
+        self.platform_tag = sysconfig.get_platform().replace('-', '_').replace(
+            '.', '_'
+        );
+    }
 
     tops = sorted(
         {
@@ -359,6 +384,7 @@ impl WheelBuilder.build -> bytes {
         raise ValueError("Cannot build wheel: project_root is not set.");
     }
 
+    src_data: dict[str, bytes] = self.source_data();
     dist_info = dist_info_dirname(self.config);
 
     metadata_bytes = generate_metadata(self.config, project_root=proj_root).encode(
@@ -374,7 +400,6 @@ impl WheelBuilder.build -> bytes {
     );
     ep_bytes: bytes | None = generate_entry_points(self.config).encode("utf-8") or None;
 
-    src_data: dict[str, bytes] = self.source_data();
     top_level_bytes = ("\n".join(self._top_level_names(src_data)) + "\n").encode(
         "utf-8"
     );
@@ -418,6 +443,7 @@ impl WheelBuilder.build -> bytes {
 }
 
 impl WheelBuilder.build_to(output_dir: Path) -> Path {
+    content = self.build();
     output_dir.mkdir(parents=True, exist_ok=True);
     fname = wheel_filename(
         self.config,
@@ -426,7 +452,7 @@ impl WheelBuilder.build_to(output_dir: Path) -> Path {
         platform_tag=self.platform_tag,
     );
     dest = output_dir / fname;
-    dest.write_bytes(self.build());
+    dest.write_bytes(content);
     return dest;
 }
 

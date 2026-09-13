@@ -12,6 +12,11 @@ def write_client(application: PreparedApplication, base: Path) -> str {
     import from jaclang.compiler.backends.native.c_emit { emit_c }
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
     compiler = application.client_compiler;
+    if compiler is None {
+        raise ValueError(
+            f'Application {application.name!r} has no prepared client product'
+        );
+    }
     directory = base / 'applications' / application.name;
     workspace = directory / 'client';
     compiled = workspace / 'compiled';
