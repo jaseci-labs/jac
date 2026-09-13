@@ -33,6 +33,19 @@ def file_to_str(file_path: str) -> str {
     return read_file_with_encoding(file_path);
 }
 
+test "empty modules retain their source identity in both frontends" {
+    import from jaclang.compiler.frontend.parser.frontend { parse_woven }
+    path = os.path.abspath("empty_package/__init__.jac");
+    for source in ["", "# Package entry.\n", "\n  \n"] {
+        (parsed, failed) = rd_parse(source, path);
+        assert not failed;
+        assert parsed.loc.mod_path == path;
+        (woven, failed) = parse_woven(source, path, JacProgram(), []);
+        assert not failed;
+        assert woven.loc.mod_path == path;
+    }
+}
+
 test "fstring escape brace" {
     (module, had_error) = rd_parse('glob a=f"{{}}", not_b=4;', "");
     assert not had_error;
