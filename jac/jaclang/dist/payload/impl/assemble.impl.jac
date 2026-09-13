@@ -50,13 +50,26 @@ impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
                 fetch_typeshed(repo_root);
             }
             log("==> assembling jaclang site from source (no pyproject build)");
-            run_child([py, "-m", "ensurepip", "--upgrade"], None, True);
-            run_child(
-                [py, "-m", "pip", "install", "--quiet", "--upgrade", "pip"], None, True
-            );
             make_dirs(site);
             with opts.measurements.stage("assemble_site") {
                 assemble_site(repo_root, site, opts);
+            }
+            import from jaclang.dist.payload.python_dependencies {
+                install_dependencies
+            }
+            with opts.measurements.stage("python_dependencies") {
+                reused = install_dependencies(
+                    py,
+                    site,
+                    os.path.join(
+                        opts.layer_cache
+                            or os.path.join(repo_root, ".jac", "cache", "payload"),
+                        "producers"
+                    )
+                );
+                opts.measurements.cache_outcome(
+                    "python_dependencies", "hit" if reused else "miss"
+                );
             }
             with opts.measurements.stage("stage_floor") {
                 stage_floor(python_dir, work);
@@ -64,23 +77,7 @@ impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
             with opts.measurements.stage("precompile_and_seal") {
                 run_precompile_stage(py, python_dir, site, opts);
             }
-            log("==> bundling watchdog (jac run --dev) + tomlkit");
             delete_tree(os.path.join(site, "__pycache__"));
-            run_child(
-                [
-                    py,
-                    "-m",
-                    "pip",
-                    "install",
-                    "--quiet",
-                    "watchdog>=3.0.0",
-                    "tomlkit",
-                    "--target",
-                    site
-                ],
-                None,
-                False
-            );
             with opts.measurements.stage("stage_tree") {
                 stage_tree(python_dir, site, stage, opts.musl_dir, opts.wasm_libc_dir);
             }
@@ -88,7 +85,7 @@ impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
                 precompile_pyc(py, stage, opts);
             }
             with opts.measurements.stage("archive_and_compress") {
-                tar_zst_dir(stage, out, opts.layer_cache);
+                tar_zst_dir(stage, out, opts.layer_cache, opts.measurements);
             }
             log(f"==> payload: {out}");
             delete_tree(work);
@@ -172,7 +169,9 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
         );
     }
 
-    build_compiler_kernel(repo_root, site, opts);
+    with opts.measurements.stage("compiler_kernel") {
+        build_compiler_kernel(repo_root, site, opts);
+    }
     _bundle_bun(site, opts);
 }
 
@@ -206,25 +205,32 @@ impl build_compiler_kernel(repo_root: str, site: str, opts: MkPayloadOpts) {
         Path(opts.layer_cache or os.path.join(repo_root, ".jac", "cache", "payload"))
             / "producers"
     );
-    inputs = [
-        "compiler-kernel-v1",
-        compiler_source_digest(os.path.join(repo_root, "jaclang")),
-        compute_content_sha256(so),
-        host_os_arch(),
-        sys.implementation.cache_tag or "",
-        CompileOptions().codegen_identity(),
-        compute_content_sha256(__file__),
-        compute_content_sha256(
-            os.path.join(os.path.dirname(__file__), "impl", "assemble.impl.jac")
-        )
-    ];
-    for ancestor in [Path(repo_root).resolve(), *Path(repo_root).resolve().parents] {
-        config = ancestor / "jac.toml";
-        if config.is_file() {
-            inputs.append(compute_content_sha256(str(config)));
+    def input_key() -> str {
+        inputs = [
+            "compiler-kernel-v1",
+            compiler_source_digest(os.path.join(repo_root, "jaclang")),
+            compute_content_sha256(so),
+            host_os_arch(),
+            sys.version,
+            compute_content_sha256(sys.executable),
+            CompileOptions().codegen_identity(),
+            compute_content_sha256(__file__),
+            compute_content_sha256(
+                os.path.join(os.path.dirname(__file__), "impl", "assemble.impl.jac")
+            )
+        ];
+        for ancestor in [
+            Path(repo_root).resolve(),
+            *Path(repo_root).resolve().parents
+        ] {
+            config = ancestor / "jac.toml";
+            if config.is_file() {
+                inputs.append(compute_content_sha256(str(config)));
+            }
         }
+        return hashlib.sha256(json.dumps(inputs).encode()).hexdigest();
     }
-    key = hashlib.sha256(json.dumps(inputs).encode()).hexdigest();
+    key = input_key();
     outputs = {
         jc_name: Path(jc_dst),
         jc_name + ".layout.json": Path(jc_dst + ".layout.json")
@@ -254,13 +260,11 @@ impl build_compiler_kernel(repo_root: str, site: str, opts: MkPayloadOpts) {
         jc_env["JAC_COMPILER_LIB"] = "off";
         jc_env["JAC_NO_DEV_SOURCE"] = "1";
         jc_env["JAC_STUBCAT_BUILDING"] = "1";
-        with opts.measurements.stage("compiler_kernel") {
-            jc_ok = run_child(
-                [sys.executable, "-I", "-c", jc_boot, repo_root, jc_src, jc_dst],
-                jc_env,
-                True
-            );
-        }
+        jc_ok = run_child(
+            [sys.executable, "-I", "-c", jc_boot, repo_root, jc_src, jc_dst],
+            jc_env,
+            True
+        );
         if (
             not jc_ok
             or not file_exists(jc_dst)
@@ -269,6 +273,11 @@ impl build_compiler_kernel(repo_root: str, site: str, opts: MkPayloadOpts) {
             raise PayloadDie(
                 f"mkpayload: native compiler kernel build failed; the shipped"
                 f" binary requires {jc_dst} and its .layout.json sidecar."
+            );
+        }
+        if input_key() != key {
+            raise PayloadDie(
+                "mkpayload: compiler kernel inputs changed during construction"
             );
         }
         cache.publish("compiler_kernel", key, outputs);
@@ -324,9 +333,14 @@ impl run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOp
     }
     site_pre = os.path.join(site, "jaclang", "_precompiled");
     pc = opts.precompiled_cache;
-    if pc is not None and os.path.isdir(pc) {
-        log(f"==> seeding JIR precompile from {pc}");
-        copy_tree(pc, site_pre, skip_none);
+    import from jaclang.jac0core.cache_paths { FileLock }
+    if pc is not None {
+        with FileLock(pc + ".lock") {
+            if os.path.isdir(pc) {
+                log(f"==> seeding JIR precompile from {pc}");
+                copy_tree(pc, site_pre, skip_none);
+            }
+        }
     }
 
     delete_file(os.path.join(site_pre, "MANIFEST.json"));
@@ -341,8 +355,10 @@ impl run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOp
         measurements=opts.measurements
     );
     if pc is not None {
-        delete_tree(pc);
-        copy_tree(site_pre, pc, skip_none);
+        with FileLock(pc + ".lock") {
+            delete_tree(pc);
+            copy_tree(site_pre, pc, skip_none);
+        }
     }
 }
 
@@ -365,6 +381,11 @@ impl run_stubcat_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts)
     if not built {
         die("mkpayload: stub catalog build failed (see log above).");
     }
+    import json;
+    with open(out + ".json", "r", encoding="utf-8") as metadata {
+        reused = bool(json.load(metadata).get("reused"));
+    }
+    opts.measurements.cache_outcome("stub_catalog", "hit" if reused else "miss");
     if out_copy is not None {
         copy_file(out, out_copy);
     }
@@ -477,11 +498,18 @@ impl precompile(
         fin.append("--debug-src");
     }
     log("==> sealing (finalize): completeness check + manifest + freeze bootstrap");
+    env["JAC_SEAL_METRICS"] = result;
     with timings.stage("seal_finalize") {
         sealed = run_child(fin, env, True);
     }
     if not sealed {
         die("mkpayload: seal-finalize failed (see log above).");
+    }
+    if file_exists(result) {
+        with open(result, "r", encoding="utf-8") as metrics_file {
+            timings.compilation["seal"] = json.load(metrics_file);
+        }
+        delete_file(result);
     }
     if not file_exists(os.path.join(pre_dir, "MANIFEST.json")) {
         die(
@@ -558,7 +586,12 @@ impl stage_tree(
 
 impl stage_stdlib(python_lib: str, lib_dst: str) {
     stdlib_dst = os.path.join(lib_dst, f"python{py_ver()}");
-    copy_tree(os.path.join(python_lib, f"python{py_ver()}"), stdlib_dst, skip_none);
+    copy_tree(
+        os.path.join(python_lib, f"python{py_ver()}"),
+        stdlib_dst,
+        lambda (path: str) -> bool { return "site-packages"
+            in path.replace("\\", "/").split("/"); }
+    );
     for d in STDLIB_PRUNE {
         delete_tree(os.path.join(stdlib_dst, d));
     }
@@ -603,7 +636,8 @@ impl stage_floor(python_dir: str, stage: str) {
     }
     log(f"==> staged {staged} C-floor archive(s) -> python/floor/{osarch}");
 
-    ca = find_ca_bundle(python_dir);
+    pinned_ca = os.path.join(stage, "site", "pip", "_vendor", "certifi", "cacert.pem");
+    ca = pinned_ca if file_exists(pinned_ca) else find_ca_bundle(python_dir);
     if ca is not None {
         copy_file(ca, os.path.join(stage, "python", "floor", "cacert.pem"));
         log("==> staged CA bundle -> python/floor/cacert.pem");
@@ -789,20 +823,23 @@ impl tar_stage(stage: str) -> tuple[bytes, bytes] {
     return (deps_buf.getvalue(), jac_buf.getvalue());
 }
 
-impl tar_zst_dir(stage: str, out: str, layer_cache: str | None) {
+impl tar_zst_dir(
+    stage: str,
+    out: str,
+    layer_cache: str | None,
+    measurements: BuildMeasurements | None = None
+) {
     if not os.path.isdir(stage) {
         die(f"mkpayload: stage dir missing at {stage}");
     }
     (deps_tar, jac_tar) = tar_stage(stage);
 
-    deps_frame = deps_frame_cached(layer_cache, deps_tar);
+    deps_frame = compressed_frame_cached(layer_cache, "deps", deps_tar, measurements);
 
-    jac_frame = compressed_frame_cached(layer_cache, "jac", jac_tar);
+    jac_frame = compressed_frame_cached(layer_cache, "jac", jac_tar, measurements);
 
-    with open(out, "wb") as f {
-        f.write(deps_frame);
-        f.write(jac_frame);
-    }
+    import from jaclang.jac0core.cache_paths { atomic_write }
+    atomic_write(out, deps_frame + jac_frame);
 }
 
 impl zstd_compress(data: bytes) -> bytes {
@@ -825,46 +862,80 @@ impl deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes {
 }
 
 impl compressed_frame_cached(
-    layer_cache: str | None, name: str, tar_bytes: bytes
+    layer_cache: str | None,
+    name: str,
+    tar_bytes: bytes,
+    measurements: BuildMeasurements | None = None
 ) -> bytes {
-    key = sha256_hex(tar_bytes);
+    import json;
+    import sys;
+    key = sha256_hex(
+        json.dumps([PAYLOAD_ZSTD_LEVEL, PAYLOAD_WINDOW_LOG, sys.version]).encode()
+            + tar_bytes
+    );
     cache_path = (
         os.path.join(layer_cache, f"{name}-{key}.tar.zst")
             if layer_cache is not None
             else None
     );
 
-    if cache_path is not None {
-        cached: bytes | None = None;
+    import from jaclang.jac0core.cache_paths { FileLock }
+    lock: FileLock | None = None;
+    if layer_cache is not None {
         try {
-            cached = read_bytes(cache_path);
+            lock = FileLock(os.path.join(layer_cache, name + ".lock"));
+            lock.acquire();
         } except OSError {
-            log(f"==> {name} layer: no cached frame (key {key[:16]}); compressing");
+            lock = None;
         }
-        if cached is not None {
-            if frame_decodes_to(cached, tar_bytes) {
-                log(f"==> {name} layer: reusing cached frame (key {key[:16]})");
-                return cached;
+    }
+    try {
+        if cache_path is not None {
+            cached: bytes | None = None;
+            try {
+                cached = read_bytes(cache_path);
+            } except OSError {
+                log(f"==> {name} layer: no cached frame (key {key[:16]}); compressing");
             }
-            log(f"==> {name} layer: cached frame failed verification; recompressing");
+            if cached is not None {
+                if frame_decodes_to(cached, tar_bytes) {
+                    log(f"==> {name} layer: reusing cached frame (key {key[:16]})");
+                    if measurements is not None {
+                        measurements.cache_outcome(name + "_frame", "hit");
+                    }
+                    return cached;
+                }
+                log(
+                    f"==> {name} layer: cached frame failed verification; recompressing"
+                );
+            }
         }
-    }
 
-    log(f"==> packing {name} layer | zstd -{PAYLOAD_ZSTD_LEVEL}");
-    fresh = zstd_compress(tar_bytes);
-    if cache_path is not None and layer_cache is not None {
-        prune_layer_cache(layer_cache, os.path.basename(cache_path));
-        try {
-            make_dirs(layer_cache);
-            import from jaclang.jac0core.cache_paths { atomic_write }
-            atomic_write(cache_path, fresh);
-        } except OSError as e {
-            log(
-                f"==> {name} layer: cache write failed ({type(e).__name__}); continuing"
-            );
+        log(f"==> packing {name} layer | zstd -{PAYLOAD_ZSTD_LEVEL}");
+        if measurements is not None {
+            measurements.cache_outcome(name + "_frame", "miss");
+        }
+        fresh = zstd_compress(tar_bytes);
+        if lock is not None and cache_path is not None and layer_cache is not None {
+            prune_layer_cache(layer_cache, os.path.basename(cache_path));
+            try {
+                make_dirs(layer_cache);
+                import from jaclang.jac0core.cache_paths { atomic_write }
+                atomic_write(cache_path, fresh);
+            } except OSError as e {
+                log(
+                    f"==> {name} layer: cache write failed ({type(
+                        e
+                    ).__name__}); continuing"
+                );
+            }
+        }
+        return fresh;
+    } finally {
+        if lock is not None {
+            lock.release();
         }
     }
-    return fresh;
 }
 
 impl frame_decodes_to(frame: bytes, expect: bytes) -> bool {

@@ -3,6 +3,32 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
 import from jaclang.dist.payload.artifacts { ArtifactStore }
+
+test "artifact expiry retains recently used and locked producers" {
+    import os;
+    import time;
+    with TemporaryDirectory() as directory {
+        base = Path(directory);
+        store = ArtifactStore(base / "cache", ttl_days=1);
+        source = base / "input";
+        source.write_bytes(b"artifact");
+        for key in ["a" * 64, "b" * 64, "c" * 64] {
+            store.publish("test", key, {"result": source});
+        }
+        old = time.time() - 3 * 86400;
+        for key in ["a" * 64, "b" * 64] {
+            os.utime(store.location("test", key), (old, old));
+        }
+        store.swept.clear();
+        with store.lock("test", "b" * 64) {
+            store.prune("test", "d" * 64);
+        }
+        assert not store.location("test", "a" * 64).exists();
+        assert store.location("test", "b" * 64).exists();
+        assert store.location("test", "c" * 64).exists();
+    }
+}
+
 import from jaclang.dist.payload.assemble { precompile_env }
 
 test "completed artifacts require every member and reject corrupted data" {
@@ -133,5 +159,32 @@ test "Python bytecode reuses unchanged files after relocation and compiles only 
         namespace: dict[str, any] = {};
         exec(code, namespace);
         assert namespace["answer"] == 43;
+    }
+}
+
+test "a distinct target interpreter batches only Python bytecode misses" {
+    import marshal;
+    import sys;
+    import jaclang.dist.payload.python_bytecode as bytecode;
+    with TemporaryDirectory() as directory {
+        base = Path(directory);
+        stage = base / "stage";
+        stage.mkdir();
+        (stage / "value.py").write_text("answer = 42\n");
+        with patch.object(bytecode, "current_identity", return_value={}) {
+            assert bytecode.precompile_tree(
+                sys.executable, str(stage), str(base / "cache")
+            )
+                == {"compiled": 1, "reused": 0};
+            generated = next((stage / "__pycache__").glob("value.*.pyc"));
+            code = marshal.loads(generated.read_bytes()[16:]);
+            assert code.co_filename == "/jac-rt/value.py";
+            generated.unlink();
+            assert bytecode.precompile_tree(
+                sys.executable, str(stage), str(base / "cache")
+            )
+                == {"compiled": 0, "reused": 1};
+            assert generated.is_file();
+        }
     }
 }

@@ -1,90 +1,105 @@
+"""Reuse Python products by source, normalized filename, and target interpreter."""
+
 import hashlib;
-import importlib.util;
 import json;
 import py_compile;
 import subprocess;
-import sys;
 import from pathlib { Path }
+import from tempfile { TemporaryDirectory }
 import from jaclang.dist.payload.artifacts { ArtifactStore }
+import from jaclang.dist.payload.python_runtime {
+    current_identity,
+    interpreter_identity
+}
+
+obj BytecodeRequest {
+    has source: Path,
+        output: Path,
+        filename: str,
+        content: bytes,
+        key: str;
+}
 
 def precompile_tree(python: str, stage: str, cache_dir: str) -> dict[str, int] {
-    probe = subprocess.run(
-        [
-            python,
-            "-I",
-            "-c",
-            "import sys, json, importlib.util; print(json.dumps([list(sys.version_info[:3]), importlib.util.MAGIC_NUMBER.hex(), sys.implementation.cache_tag]))"
-        ],
-        check=True,
-        capture_output=True,
-        text=True
-    );
-    target = json.loads(probe.stdout);
-    local = [
-        list(sys.version_info[:3]),
-        importlib.util.MAGIC_NUMBER.hex(),
-        sys.implementation.cache_tag
-    ];
+    target = interpreter_identity(python);
     directory = Path(stage);
-    sources = sorted(
-        path
-        for path in directory.rglob("*.py")
-        if "__pycache__" not in path.parts
-    );
-    if target != local {
-        subprocess.run(
-            [
-                python,
-                "-I",
-                "-m",
-                "compileall",
-                "--invalidation-mode",
-                "unchecked-hash",
-                "-q",
-                "-f",
-                "-j",
-                "0",
-                "-s",
-                stage,
-                "-p",
-                "/jac-rt",
-                stage
-            ],
-            check=True
-        );
-        return {"compiled": len(sources), "reused": 0};
-    }
     store = ArtifactStore(Path(cache_dir));
     counts = {"compiled": 0, "reused": 0};
-    for source in sources {
-        relative = source.relative_to(directory).as_posix();
-        filename = "/jac-rt/" + relative;
-        content = source.read_bytes();
-        digest = hashlib.sha256(json.dumps([target, filename, "optimize=0"]).encode());
-        digest.update(content);
-        key = digest.hexdigest();
-        output = source.parent
-            / "__pycache__"
-            / Path(importlib.util.cache_from_source(str(source))).name;
-        outputs = {"bytecode.pyc": output};
-        with store.lock("python_bytecode", key) {
-            if store.restore("python_bytecode", key, outputs) {
-                counts["reused"] += 1;
+    pending: list[BytecodeRequest] = [];
+    producer = hashlib.sha256(json.dumps(target, sort_keys=True).encode()).hexdigest();
+    # One transaction per target interpreter allows a single subprocess to batch
+    # all misses without retaining one open lock descriptor per source file.
+    with store.lock("python_bytecode", producer) {
+        for source in sorted(directory.rglob("*.py")) {
+            if "__pycache__" in source.parts {
                 continue;
             }
-            py_compile.compile(
-                str(source),
-                cfile=str(output),
-                dfile=filename,
-                doraise=True,
-                optimize=0,
-                invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH
+            filename = "/jac-rt/" + source.relative_to(directory).as_posix();
+            content = source.read_bytes();
+            digest = hashlib.sha256(
+                json.dumps([target, filename, "optimize=0"], sort_keys=True).encode()
             );
-            if source.read_bytes() != content {
-                output.unlink(missing_ok=True);
-                raise RuntimeError(f"Source changed while compiling {source}");
+            digest.update(content);
+            key = digest.hexdigest();
+            output = source.parent
+                / "__pycache__"
+                / (source.stem + "." + target["cache_tag"] + ".pyc");
+            if store.restore("python_bytecode", key, {"bytecode.pyc": output}) {
+                counts["reused"] += 1;
+            } else {
+                pending.append(BytecodeRequest(source, output, filename, content, key));
             }
-            store.publish("python_bytecode", key, outputs);
+        }
+        if target == current_identity() {
+            for request in pending {
+                py_compile.compile(
+                    str(request.source),
+                    cfile=str(request.output),
+                    dfile=request.filename,
+                    doraise=True,
+                    optimize=0,
+                    invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH
+                );
+            }
+        } elif pending {
+            with TemporaryDirectory() as work {
+                manifest = Path(work) / "bytecode.json";
+                manifest.write_text(
+                    json.dumps(
+                        [
+                            [
+                                str(request.source),
+                                str(request.output),
+                                request.filename
+                            ] for request in pending
+                        ]
+                    )
+                );
+                subprocess.run(
+                    [
+                        python,
+                        "-I",
+                        "-c",
+                        "import json, py_compile, sys\n"
+                        "with open(sys.argv[1]) as stream: requests = json.load(stream)\n"
+                        "for source, output, filename in requests:\n"
+                        "    py_compile.compile(source, cfile=output, dfile=filename, "
+                        "doraise=True, optimize=0, "
+                        "invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH)\n",
+                        str(manifest)
+                    ],
+                    check=True
+                );
+            }
+        }
+        for request in pending {
+            if request.source.read_bytes() != request.content {
+                request.output.unlink(missing_ok=True);
+                raise RuntimeError(f"Source changed while compiling {request.source}");
+            }
+            store.publish(
+                "python_bytecode", request.key, {"bytecode.pyc": request.output}
+            );
             counts["compiled"] += 1;
         }
     }

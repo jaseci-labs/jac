@@ -120,11 +120,20 @@ def find_libpython(lib_dir: str) -> FoundLib;
 def is_volatile_path(p: str) -> bool;
 def collect_stage_entries(stage: str) -> list[TarEntry];
 def tar_stage(stage: str) -> tuple[bytes, bytes];
-def tar_zst_dir(stage: str, out: str, layer_cache: str | None);
+def tar_zst_dir(
+    stage: str,
+    out: str,
+    layer_cache: str | None,
+    measurements: BuildMeasurements | None = None
+);
+
 def zstd_compress(data: bytes) -> bytes;
 def deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes;
 def compressed_frame_cached(
-    layer_cache: str | None, name: str, tar_bytes: bytes
+    layer_cache: str | None,
+    name: str,
+    tar_bytes: bytes,
+    measurements: BuildMeasurements | None = None
 ) -> bytes;
 
 def frame_decodes_to(frame: bytes, expect: bytes) -> bool;
