@@ -274,7 +274,7 @@ test "desktop launch wires JAC_DESKTOP_DEPS from the project venv" {
     _saved = os.environ.get("JAC_DESKTOP_DEPS");
     _cwd = os.getcwd();
     try {
-        proj = Path(tmp);
+        proj = Path(tmp).resolve();
         (proj / "jac.toml").write_text(
             "[project]\nname = \"d\"\nversion = \"0.1.0\"\n"
         );

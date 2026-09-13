@@ -206,7 +206,7 @@ test "dev HTML and runtime aliases resolve in the selected workspace app" {
 
     previous = get_config();
     with tempfile.TemporaryDirectory() as tmp {
-        project = Path(tmp);
+        project = Path(tmp).resolve();
         manifest = (
             '[project]\nname = "dev-paths"\ndefault-app = "web"\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n[apps.desktop]\nkind = "desktop"\nentry-point = "shell.main"\n[apps.desktop.dependencies.npm]\nreact-native-web = "^0.19.13"\n[client.pwa]\nenabled = true\n[client.vite]\nplugins = ["tailwindcss()"]\nlib_imports = ["import tailwindcss from \'@tailwindcss/vite\'"]\n'
         );

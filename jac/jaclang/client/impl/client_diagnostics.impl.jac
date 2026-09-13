@@ -177,7 +177,7 @@ def _relative(base_path: str, path: str) -> str {
         return path;
     }
     try {
-        rel = Path(os.path.abspath(path)).relative_to(os.path.abspath(base_path));
+        rel = Path(path).resolve().relative_to(Path(base_path).resolve());
     } except ValueError {
         return path;
     }

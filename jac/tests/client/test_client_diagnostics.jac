@@ -19,6 +19,24 @@ import json;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
+test "diagnostic paths remain relative through a project symlink" {
+    import from jaclang.client.client_diagnostics { _relative }
+
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp).resolve();
+        project = base / "project";
+        project.mkdir();
+        alias = base / "alias";
+        alias.symlink_to(project, target_is_directory=True);
+        source = project / "main.jac";
+        source.write_text("with entry {}\n");
+        assert _relative(str(alias), str(source)) == "main.jac";
+        assert _relative(str(project), str(alias / "main.jac")) == "main.jac";
+        outside = str(base / "outside.jac");
+        assert _relative(str(alias), outside) == outside;
+    }
+}
+
 glob MERMAID_SRC = 'import from "mermaid" { default as mermaid, Mermaid }\n'
      'def:pub diagram() -> any {\n'
      '    engine = mermaid;\n'
