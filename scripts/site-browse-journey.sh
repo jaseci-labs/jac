@@ -39,6 +39,12 @@ fail() {
     jac browse snapshot | head -n 60 || true
     echo "--- console at failure ---"
     jac browse console || true
+    echo "--- module requests at failure ---"
+    jac browse eval 'JSON.stringify(performance.getEntriesByType("resource")
+      .filter(e => ["script", "link"].includes(e.initiatorType))
+      .map(e => ({url: e.name, status: e.responseStatus,
+        duration: Math.round(e.duration), transferred: e.transferSize,
+        decoded: e.decodedBodySize})), null, 2)' || true
     exit 1
 }
 
