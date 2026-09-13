@@ -3282,6 +3282,7 @@ impl NativeListEmitter._emit_value_sort(
     one = ir.Constant(i64, 1);
     length = b.load(b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 0)]));
     data = b.load(b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 2)]));
+    assert isinstance(data.type, ir.PointerType) and not data.type.is_opaque;
     elem_type = data.type.pointee;
     itemsize = p._abi_sizeof(elem_type);
     fn = b.basic_block.function;
