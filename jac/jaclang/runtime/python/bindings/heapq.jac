@@ -22,6 +22,7 @@ import from jaclang.runtime.python.modules.heapq {
 glob:priv heappush_signature = CallSignature(
          "heappush", ["heap", "item"], 2, 2, 2
      );
+
 def:priv heappush_bound(args: BoundArguments) -> u64 {
     heap = args.values[0];
     if jacpy_is_list(heap) == 0 {

@@ -123,6 +123,7 @@ def:priv unhexlify_call(module: u64, data: u64) -> u64 {
 glob:priv b2a_uu_signature = CallSignature(
          "b2a_uu", ["data", "backtick"], 1, 1, 1
      );
+
 def:priv b2a_uu_bound(args: BoundArguments) -> u64 {
     return convert(args.context, args.values[0], 1, [args.values[1]]);
 }
