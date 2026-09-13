@@ -256,12 +256,17 @@ class ValueRef(ffi.ObjectRef) {
             raise TypeError('Function signature requires a function value');
         }
         function_type = ffi.lib.LLVMPY_GlobalGetValueType(self);
-        result = ffi.ret_string(ffi.lib.LLVMPY_PrintType(ffi.lib.LLVMPY_GetReturnType(function_type)));
+        result = ffi.ret_string(
+            ffi.lib.LLVMPY_PrintType(ffi.lib.LLVMPY_GetReturnType(function_type))
+        );
         count = ffi.lib.LLVMPY_CountParamTypes(function_type);
         parameters = (ffi.LLVMTypeRef * count)();
         ffi.lib.LLVMPY_GetParamTypes(function_type, parameters);
-        return (result, [ffi.ret_string(ffi.lib.LLVMPY_PrintType(item)) for item in parameters],
-            bool(ffi.lib.LLVMPY_IsFunctionVararg(function_type)));
+        return (
+            result,
+            [ffi.ret_string(ffi.lib.LLVMPY_PrintType(item)) for item in parameters],
+            bool(ffi.lib.LLVMPY_IsFunctionVararg(function_type))
+        );
     }
 
     @property

@@ -14,7 +14,9 @@ def emit_c(llvm_ir: str) -> str {
         source.write_text(llvm_ir, encoding='utf-8');
         result = subprocess.run(
             [str(backend), '-O0', str(source), '-o', str(output)],
-            capture_output=True, text=True, timeout=300
+            capture_output=True,
+            text=True,
+            timeout=300
         );
         if result.returncode {
             raise RuntimeError(f'Native C projection failed:\n{result.stderr}');

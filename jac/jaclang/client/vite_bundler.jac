@@ -45,7 +45,8 @@ def _forward_vite_output(
 
 class ViteBundler {
     has dev_server_port: int = 0,
-        on_client_event: any = None;
+        on_client_event: any = None,
+        build_dir: Path | None = None;
 
     def _dispatch_client_event(self: ViteBundler, line: str) -> None;
     def init(

@@ -3,11 +3,15 @@ import logging;
 import from collections.abc { Callable, Iterable }
 import from typing { Protocol }
 class CallbackSignature(Protocol) {
-    has name: str, ret_type: str, param_types: list[str];
+    has name: str,
+        ret_type: str,
+        param_types: list[str];
 }
 
 obj NativeCallback {
-    has name: str, ret_type: str, param_types: list[str];
+    has name: str,
+        ret_type: str,
+        param_types: list[str];
 }
 
 obj NativeLibrary {
@@ -34,17 +38,19 @@ obj NativeLibrary {
     }
 
     def register_symbol(name: str, address: int) -> None {
-        setter = getattr(self.handle(), '__jac_bind_' + name);
-        setter.argtypes = [ctypes.c_void_p];
-        setter.restype = None;
-        setter(address);
+        bind_function = getattr(self.handle(), '__jac_bind_' + name);
+        bind_function.argtypes = [ctypes.c_void_p];
+        bind_function.restype = None;
+        bind_function(address);
     }
 
     def initialize -> None {
         if self.initialized {
             return;
         }
-        register_py_callbacks(self.bindings, self.functions, self.callbacks, self.register_symbol);
+        register_py_callbacks(
+            self.bindings, self.functions, self.callbacks, self.register_symbol
+        );
         initializer = getattr(self.handle(), '__jac_shared_init');
         initializer.argtypes = [];
         initializer.restype = None;

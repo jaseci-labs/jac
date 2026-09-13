@@ -379,19 +379,27 @@ def bind_shared_callbacks(llvm_ir: str, bindings: list) -> str {
         }
         (result, parameters, variadic) = function.function_signature();
         if variadic {
-            raise ValueError(f'Python callbacks cannot use a variadic ABI: {binding.name}');
+            raise ValueError(
+                f'Python callbacks cannot use a variadic ABI: {binding.name}'
+            );
         }
         name = _wrapname(binding.name);
         slot = _wrapname('__jac_callback_' + binding.name);
-        setter = _wrapname('__jac_bind_' + binding.name);
-        arguments = ', '.join(f'{kind} %arg{index}' for (index, kind) in enumerate(parameters));
+        bind_function = _wrapname('__jac_bind_' + binding.name);
+        arguments = ', '.join(
+            f'{kind} %arg{index}' for (index, kind) in enumerate(parameters)
+        );
         call = f'call {result} %function({arguments})';
-        body = f'  {call}\n  ret void' if result == 'void' else f'  %result = {call}\n  ret {result} %result';
-        definitions.extend([
-            f'@{slot} = internal global ptr null',
-            f'define void @{setter}(ptr %callback) {{\n  store ptr %callback, ptr @{slot}\n  ret void\n}}',
-            f'define {result} @{name}({arguments}) {{\n  %function = load ptr, ptr @{slot}\n{body}\n}}'
-        ]);
+        body = f'  {call}\n  ret void'
+            if result == 'void'
+            else f'  %result = {call}\n  ret {result} %result';
+        definitions.extend(
+            [
+                f'@{slot} = internal global ptr null',
+                f'define void @{bind_function}(ptr %callback) {{\n  store ptr %callback, ptr @{slot}\n  ret void\n}}',
+                f'define {result} @{name}({arguments}) {{\n  %function = load ptr, ptr @{slot}\n{body}\n}}'
+            ]
+        );
     }
     if definitions {
         callbacks = llvm.parse_assembly('\n'.join(definitions));

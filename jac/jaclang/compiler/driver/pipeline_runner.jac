@@ -418,3 +418,38 @@ def wasm_artifact(program: JacProgram, file_path: str, exports: list[str]) -> by
     (llvm_ir, app_imports) = wasm_ir(program, file_path);
     return emit_wasm_from_ir(llvm_ir, exports, app_imports=app_imports);
 }
+
+
+def native_application(
+    program: JacProgram,
+    file_path: str,
+    target: str = '',
+    memory: str = '',
+    debug: bool = False,
+    no_ir_cache: bool = False
+) -> uni.Module {
+    import from jaclang.compiler.driver.compile_options {
+        CompileOptions,
+        push_native_target,
+        pop_native_target
+    }
+    previous = push_native_target(target) if target else None;
+    try {
+        return program.compile(
+            file_path=os.path.abspath(file_path),
+            options=CompileOptions(
+                aot_mode=True,
+                default_codespace='native',
+                force_target_program=True,
+                memory_profile=memory or None,
+                native_target=target or None,
+                native_debug=True if debug else None,
+                no_ir_cache=debug or no_ir_cache
+            )
+        );
+    } finally {
+        if target {
+            pop_native_target(previous);
+        }
+    }
+}

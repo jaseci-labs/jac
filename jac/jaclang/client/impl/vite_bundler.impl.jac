@@ -30,6 +30,9 @@ def _build_vite_command(build_dir: Path, args: list[str]) -> list[str] {
 }
 
 impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
+    if self.build_dir is not None {
+        return self.build_dir;
+    }
     try {
         import from jaclang.project.config { get_config }
         config = get_config();
@@ -91,10 +94,11 @@ impl ViteBundler.create_package_json(
     dependencies = package_config.get('dependencies', {});
     dev_dependencies = package_config.get('devDependencies', {});
 
+    config_relative = os.path.relpath(configs_dir / 'vite.config.js', self.project_dir);
     scripts = {
-        'build': 'vite build --config .jac/client/configs/vite.config.js',
-        'dev': 'vite dev --config .jac/client/configs/vite.config.js',
-        'preview': 'vite preview --config .jac/client/configs/vite.config.js'
+        'build': f'vite build --config {config_relative}',
+        'dev': f'vite dev --config {config_relative}',
+        'preview': f'vite preview --config {config_relative}'
     };
     user_scripts = package_config.get('scripts', {});
     scripts.update(user_scripts);
@@ -440,6 +444,9 @@ impl ViteBundler._generate_vite_config_content(
     client_paths: (list[str] | None) = None
 ) -> str {
     build_dir = self._get_client_dir();
+    project_relative = Path(
+        os.path.relpath(self.project_dir, build_dir / 'configs')
+    ).as_posix();
     vite_config_data = self.config_loader.get_vite_config();
 
     try {
@@ -691,7 +698,7 @@ import fs from "fs";
 import {{ fileURLToPath }} from "url";
 {imports_section}const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.resolve(__dirname, "..");
-const projectRoot = path.resolve(__dirname, "../../..");
+const projectRoot = path.resolve(__dirname, "{project_relative}");
 import jacFastRefresh from "./jac-fast-refresh.js";
 import jacClientEvents, {{ recordClientEvent }} from "./jac-client-events.js";
 
@@ -930,9 +937,9 @@ import path from "path";
 import fs from "fs";
 import {{ fileURLToPath }} from "url";
 {imports_section}const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Config is in configs/ inside .jac/client/, so go up one level to .jac/client/, then up two more to project root
+// Resolve this configuration relative to its exported workspace.
 const buildDir = path.resolve(__dirname, "..");
-const projectRoot = path.resolve(__dirname, "../../..");
+const projectRoot = path.resolve(__dirname, "{project_relative}");
 
 // Jac source mapper plugin - chains the per-file column maps the Jac client
 // compiler writes, so a bundled stack keeps its way back to .jac coordinates.

@@ -1,5 +1,9 @@
 import os;
-import type from jaclang.compiler.backends.native.llvm.binding { ModuleRef, ValueRef, TargetMachine }
+import type from jaclang.compiler.backends.native.llvm.binding {
+    ModuleRef,
+    ValueRef,
+    TargetMachine
+}
 import type from jaclang.compiler.frontend.unitree { Module as UniModule }
 
 def _wasm_rt_src_dir -> str {
@@ -353,7 +357,10 @@ def emit_wasm_from_ir(
     llvm_ir_str: str, export_funcs: list = [], app_imports: (set | None) = None
 ) -> bytes {
     import from jaclang.compiler.backends.native.wasm_linker { WasmLinker }
-    import from jaclang.compiler.backends.native.wasm_host_abi { WASM_HOST_ABI, WASM_HOST_MODULE }
+    import from jaclang.compiler.backends.native.wasm_host_abi {
+        WASM_HOST_ABI,
+        WASM_HOST_MODULE
+    }
     (mod, tm, libc_linked) = prepare_wasm_module(llvm_ir_str);
     obj_bytes = tm.emit_object(mod);
     assert isinstance(obj_bytes, bytes);

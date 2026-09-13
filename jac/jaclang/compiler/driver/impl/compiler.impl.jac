@@ -349,7 +349,12 @@ impl JacCompiler._load_native_from_cache(
             manifest = self._deserialize_interop_table(cached_interop);
             gen.interop_manifest = manifest;
             if manifest.native_imports {
-                register_py_callbacks(manifest.native_imports, py_func_table, callbacks_list, llvm.add_symbol);
+                register_py_callbacks(
+                    manifest.native_imports,
+                    py_func_table,
+                    callbacks_list,
+                    llvm.add_symbol
+                );
             }
         }
         install_native_static_init(engine, gen.interop_manifest);
@@ -417,7 +422,9 @@ impl JacCompiler._load_native_from_bitcode(
         manifest = self._deserialize_interop_table(cached_interop);
         gen.interop_manifest = manifest;
         if manifest.native_imports {
-            register_py_callbacks(manifest.native_imports, py_func_table, callbacks_list, llvm.add_symbol);
+            register_py_callbacks(
+                manifest.native_imports, py_func_table, callbacks_list, llvm.add_symbol
+            );
         }
     }
     install_native_static_init(engine, gen.interop_manifest);

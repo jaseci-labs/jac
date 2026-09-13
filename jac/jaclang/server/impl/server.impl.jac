@@ -513,6 +513,13 @@ impl ModuleIntrospector._register_prepared_bindings(
         }
         auth = bool(b.get('auth', True));
         src_path = os.path.join(img_root, rel);
+        import from jaclang.runtime.prepared { application_for, source_for_origin }
+        application = application_for(self._module.__file__, self._module.__name__)
+            if self._module is not None
+            else None;
+        if application is not None {
+            src_path = source_for_origin(application, rel);
+        }
         if b.get('kind') == 'walker' {
             if name in self._walkers {
                 continue;

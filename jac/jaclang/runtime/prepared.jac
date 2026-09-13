@@ -11,6 +11,7 @@ obj PreparedApplication {
         semantic: dict[str, dict[str, Info]] = field(default_factory=`dict),
         origins: dict[str, str] = field(default_factory=`dict),
         name: str = '',
+        namespace: str = '',
         client_compiler: any = None,
         client_enabled: bool = False,
         native: dict[str, tuple] = field(default_factory=`dict),
@@ -173,6 +174,9 @@ def clear {
 
 def application_namespace(application: PreparedApplication) -> str {
     import hashlib;
+    if application.namespace {
+        return application.namespace;
+    }
     return '_jac_app_' + hashlib.sha256(application.entry.encode()).hexdigest()[:16];
 }
 
@@ -183,8 +187,12 @@ def ensure_namespace(application: PreparedApplication, name: str = '') -> str {
     name = name or application_namespace(application);
     if name not in sys.modules {
         initializer = next(
-            (p for p in application.code if os.path.dirname(p) == application.root
-                and os.path.basename(p).startswith('__init__.')),
+            (
+                p
+                for p in application.code
+                if os.path.dirname(p) == application.root
+                    and os.path.basename(p).startswith('__init__.')
+            ),
             ''
         );
         if initializer {
@@ -251,7 +259,9 @@ def entry_alias(fullname: str) -> tuple[str, str] | None {
             if provider is consumer {
                 continue;
             }
-            local_name = qualified_module(provider.entry, consumer);
+            origin = provider.origins.get(provider.entry, '');
+            source = os.path.join(consumer.root, origin) if origin else provider.entry;
+            local_name = qualified_module(source, consumer);
             if fullname == local_name {
                 ensure_namespace(provider);
                 return (qualified_module(provider.entry, provider), provider.entry);
@@ -286,7 +296,9 @@ def module_builtins(application: PreparedApplication, source: str) -> dict {
                     break;
                 }
             }
-            local = any(candidate + suffix in selected.code for suffix in ('.jac', '.py'))
+            local = any(
+                candidate + suffix in selected.code for suffix in ('.jac', '.py')
+            )
                 or any(p.startswith(candidate + os.sep) for p in selected.code);
             if not local {
                 continue;
@@ -309,17 +321,21 @@ def module_builtins(application: PreparedApplication, source: str) -> dict {
 }
 
 def execute_module(module: types.ModuleType, application: PreparedApplication) -> None {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
     source = os.path.realpath(module.__file__);
     code = application.code.get(source);
     if code is None {
         raise ImportError(f'No prepared executable artifact for {source}');
     }
     if not module.__name__.startswith('jaclang.') {
+        import from jaclang.runtime.runtime { JacRuntime as Jac }
         Jac.load_module(module.__name__, module);
     }
     (native_engine, callbacks) = application.native.get(source, (None, None));
     if native_engine is not None {
+        import from jaclang.runtime.interop_bridge { NativeLibrary }
+        if isinstance(native_engine, NativeLibrary) {
+            native_engine.initialize();
+        }
         module.__dict__['__jac_native_engine__'] = native_engine;
     }
     if callbacks is not None {
@@ -348,4 +364,14 @@ def semantic_for_scope(scope: str) -> Info | None {
         return application.semantic.get(os.path.realpath(source), {}).get(key);
     }
     return None;
+}
+
+
+def source_for_origin(application: PreparedApplication, origin: str) -> str {
+    for (path, original) in application.origins.items() {
+        if original == origin {
+            return path;
+        }
+    }
+    return os.path.realpath(os.path.join(application.root, origin));
 }

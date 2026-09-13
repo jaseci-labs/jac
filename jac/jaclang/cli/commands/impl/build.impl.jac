@@ -82,6 +82,16 @@ def _build_app(
             and "as" not in spec.flags
         );
 
+    if projection == "source" {
+        import from jaclang.cli.commands.eject { eject }
+        return eject(
+            source=project_root,
+            output=output if output != "dist" else "",
+            app=app.name if app is not None else "",
+            entry_override=entry_override
+        );
+    }
+
     if client_artifact {
         import from jaclang.project.kinds { kind_has_client }
         if app is None {
@@ -149,14 +159,6 @@ def _build_app(
             target=projection,
             fat=fat,
             app=(app.name if app is not None else "")
-        );
-    }
-    if projection == "source" {
-        import from jaclang.cli.commands.eject { eject }
-        return eject(
-            source=project_root,
-            output=(output if output != "dist" else ""),
-            force=False
         );
     }
     console.error(f"Unknown projection: '{projection}'");

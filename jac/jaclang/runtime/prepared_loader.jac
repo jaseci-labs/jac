@@ -33,14 +33,19 @@ obj PreparedLoader(Loader) {
 
 obj PreparedFinder(MetaPathFinder) {
     def find_spec(
-        fullname: str,
-        path: list[str] | None = None,
-        target: ModuleType | None = None
+        fullname: str, path: list[str] | None = None, target: ModuleType | None = None
     ) -> ModuleSpec | None {
         import from jaclang.runtime.prepared {
-            _applications, application_namespace, entry_alias, qualified_module
+            _applications,
+            application_namespace,
+            entry_alias,
+            qualified_module
         }
-        if not fullname.startswith('_jac_app_') {
+        if not any(
+            fullname == application_namespace(application)
+                or fullname.startswith(application_namespace(application) + '.')
+            for application in _applications.values()
+        ) {
             return None;
         }
         alias = entry_alias(fullname);
@@ -62,13 +67,16 @@ obj PreparedFinder(MetaPathFinder) {
                         source,
                         loader=PreparedLoader(application),
                         submodule_search_locations=[os.path.dirname(source)]
-                            if package else None
+                            if package
+                            else None
                     );
                 }
             }
             relative = fullname[len(namespace):].lstrip('.');
             directory = os.path.join(application.root, *relative.split('.'));
-            if any(source.startswith(directory + os.sep) for source in application.code) {
+            if any(
+                source.startswith(directory + os.sep) for source in application.code
+            ) {
                 spec = ModuleSpec(fullname, loader=None, is_package=True);
                 spec.submodule_search_locations = [directory];
                 return spec;
