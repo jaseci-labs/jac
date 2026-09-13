@@ -440,6 +440,15 @@ impl worker_rss_mb -> int {
             return resident_pages * os.sysconf("SC_PAGE_SIZE") // (1024 * 1024);
         } except (OSError, ValueError, IndexError) {}
     }
+    if sys.platform == "darwin" {
+        import subprocess;
+        try {
+            resident_kb = subprocess.check_output(
+                ["ps", "-o", "rss=", "-p", str(os.getpid())], text=True
+            );
+            return int(resident_kb.strip()) // 1024;
+        } except (OSError, ValueError, subprocess.SubprocessError) {}
+    }
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss;
     return int(peak // (1024 * 1024))
         if sys.platform == "darwin"
