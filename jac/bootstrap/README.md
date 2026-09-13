@@ -59,6 +59,11 @@ keys do not rescan a checkout or guess which compiler source tree is active.
 compiler workers can retain several GiB each. Image builds report per-module
 cache reuse and elapsed time. Compare cold and warm builds separately.
 
+Compiler build steps inherit only executable lookup, home/cache locations,
+the operating system temporary directory, and proxy settings. CI run identifiers
+and ambient compiler overrides do not invalidate or redirect build artifacts.
+Source inputs are ordered deterministically before entering the build cache.
+
 The experimental `-Djacpython=true` Python build consumes the compiled image
 when preparing its private Python compiler dependency image. It does not invoke
 a source seed transpiler. The CPython virtual machine and object runtime remain

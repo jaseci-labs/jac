@@ -79,14 +79,21 @@ const JacTool = struct {
 };
 
 fn isolateCompilerRun(run: *std.Build.Step.Run) void {
-    run.setEnvironmentVariable("JAC_NO_DEV_SOURCE", "1");
-    for ([_][]const u8{ "JAC_DEV_SOURCE", "JAC_COMPILER_IMAGE", "JAC_COMPILER_LIB", "JAC_LLVM_SHIM", "JAC_STUBCAT_BUILDING", "JAC_STUBCAT_FILE", "JAC_STUBCAT_OFF", "JAC_STUBCAT_LEN", "JACPATH" }) |name| {
-        run.removeEnvironmentVariable(name);
+    // Run hashes its whole environment. Inheriting CI run IDs, shell state, or
+    // unrelated application settings defeats artifact reuse and source isolation.
+    const inherited = &run.step.owner.graph.environ_map;
+    run.clearEnvironment();
+    for ([_][]const u8{
+        "PATH",        "HOME",        "XDG_CACHE_HOME", "XDG_DATA_HOME",
+        "HTTP_PROXY",  "HTTPS_PROXY", "NO_PROXY",       "http_proxy",
+        "https_proxy", "no_proxy",    "TMPDIR",
+    }) |name| {
+        if (inherited.get(name)) |value| run.setEnvironmentVariable(name, value);
     }
+    run.setEnvironmentVariable("JAC_NO_DEV_SOURCE", "1");
 }
 
 fn configureCompilerKernel(b: *std.Build, run: *std.Build.Step.Run, target: std.Build.ResolvedTarget) std.Build.LazyPath {
-    isolateCompilerRun(run);
     if (target.result.cpu.arch != b.graph.host.result.cpu.arch or target.result.os.tag != b.graph.host.result.os.tag) {
         run.step.dependOn(&b.addFail("Compiler images must be built on a matching OS and architecture; use the corresponding release runner").step);
     }
@@ -105,7 +112,6 @@ fn configureCompilerKernel(b: *std.Build, run: *std.Build.Step.Run, target: std.
 }
 
 fn configureCompilerImage(b: *std.Build, run: *std.Build.Step.Run, kernel: std.Build.LazyPath, shim: std.Build.LazyPath, jobs: u32) std.Build.LazyPath {
-    isolateCompilerRun(run);
     run.addFileArg(b.path("bootstrap/compiler.jac"));
     run.addArgs(&.{ "image", b.pathFromRoot("jaclang") });
     const image = run.addOutputDirectoryArg("compiler-site");
@@ -226,6 +232,7 @@ pub fn build(b: *std.Build) void {
     // Native compiler artifacts belong to the build graph. The pinned compiler
     // owns its runtime and LLVM; payload assembly only consumes the library.
     const kernel_build = b.addSystemCommand(&.{ stage0_path, "run", "--backend", "python" });
+    isolateCompilerRun(kernel_build);
     kernel_build.step.dependOn(fetch_jac_step);
     kernel_build.step.dependOn(&fetch_ts.step);
     const compiler_kernel = configureCompilerKernel(b, kernel_build, target);
@@ -238,6 +245,7 @@ pub fn build(b: *std.Build) void {
     const image_step = b.step("compiler-image", "Build the current compiler image with the pinned stage-0 compiler");
     const compiler_core: std.Build.LazyPath = if (jacllvm) |shim| image: {
         const image_build = b.addSystemCommand(&.{ stage0_path, "run", "--backend", "python" });
+        isolateCompilerRun(image_build);
         image_build.step.dependOn(fetch_jac_step);
         image_build.step.dependOn(&fetch_ts.step);
         const compiler_image = configureCompilerImage(b, image_build, compiler_kernel, shim.bin, compiler_jobs);
@@ -518,6 +526,7 @@ fn addTreeInputs(b: *std.Build, run: *std.Build.Step.Run, sub_path: []const u8) 
     defer dir.close(io);
     var walker = dir.walk(b.allocator) catch @panic("OOM");
     defer walker.deinit();
+    var paths = std.array_list.Managed([]const u8).init(b.allocator);
     while (walker.next(io) catch @panic("tree inputs: walk failed")) |entry| {
         if (entry.kind != .file) continue;
         if (std.mem.indexOf(u8, entry.path, "__pycache__") != null) continue;
@@ -534,8 +543,14 @@ fn addTreeInputs(b: *std.Build, run: *std.Build.Step.Run, sub_path: []const u8) 
         if (std.mem.startsWith(u8, entry.path, "compiler/libjac_compiler.")) continue;
         if (std.mem.indexOf(u8, entry.path, "libjacllvm.") != null) continue;
         if (std.mem.endsWith(u8, entry.path, ".pyc")) continue;
-        run.addFileInput(b.path(b.fmt("{s}/{s}", .{ sub_path, entry.path })));
+        paths.append(b.fmt("{s}/{s}", .{ sub_path, entry.path })) catch @panic("OOM");
     }
+    std.mem.sort([]const u8, paths.items, {}, struct {
+        fn lessThan(_: void, left: []const u8, right: []const u8) bool {
+            return std.mem.lessThan(u8, left, right);
+        }
+    }.lessThan);
+    for (paths.items) |path| run.addFileInput(b.path(path));
 }
 
 fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
