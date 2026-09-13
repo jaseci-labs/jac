@@ -204,13 +204,14 @@ test "imported Jac field layouts use resolved declarations including aliases" {
         consumer = Path(directory) / "consumer.jac";
         consumer.write_text(
             "import from .provider { Counter as ImportedCounter }\n"
-                + "obj Holder { has direct: ImportedCounter, optional: ImportedCounter | None, items: list[ImportedCounter]; }\n"
+                + "import from typing { Optional as Maybe, Union as Either }\n"
+                + "obj Holder { has direct: ImportedCounter, optional: ImportedCounter | None, items: list[ImportedCounter], alias: Maybe[ImportedCounter], nested: list[Maybe[ImportedCounter]], choice: Either[int, str]; }\n"
         );
         program = JacProgram();
         module = program.compile(str(consumer), options=CompileOptions(no_cgen=True));
         assert not program.errors_had , str(program.errors_had);
         layout = get_layout_registry(module, program).get_layout("Holder");
-        assert layout is not None and len(layout.fields) == 3;
+        assert layout is not None and len(layout.fields) == 6;
         assert not any(
             warning.code is not None and warning.code.code == "W5032"
             for warning in program.warnings_had

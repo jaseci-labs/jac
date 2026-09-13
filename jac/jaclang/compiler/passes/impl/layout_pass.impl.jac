@@ -783,11 +783,42 @@ impl LayoutPass._validate_obj_fields(
             continue;
         }
         type_node = var.type_tag.tag;
-        if not self._is_layout_compatible_type(type_node, arch_map) {
+        if not self._is_layout_compatible_semantic_type(var.type)
+            and not self._is_layout_compatible_type(type_node, arch_map) {
             type_str = unparse_node(type_node) or str(type_node);
             self.emit(W5032, node_override=var, arch=aname, field=fname, type=type_str);
         }
     }
+}
+
+impl LayoutPass._is_layout_compatible_semantic_type(typ: TypeBase | None) -> bool {
+    import from jaclang.compiler.types.types { ClassType, FunctionType, UnionType }
+    if isinstance(typ, UnionType) {
+        return bool(typ.types)
+            and all(
+                self._is_layout_compatible_semantic_type(member) for member in typ.types
+            );
+    }
+    if isinstance(typ, FunctionType) {
+        return True;
+    }
+    if not isinstance(typ, ClassType) or typ._shared is None {
+        return False;
+    }
+    declaration = typ.shared.symbol_table;
+    if isinstance(declaration, Archetype)
+        and declaration.loc.mod_path.endswith(".jac") {
+        return True;
+    }
+    if typ.is_builtin(list(LAYOUT_COMPATIBLE_SCALARS) + ["None", "NoneType"]) {
+        return True;
+    }
+    if typ.is_builtin(["list", "dict", "set", "frozenset", "tuple"]) {
+        args = typ.private.type_args;
+        return bool(args)
+            and all(self._is_layout_compatible_semantic_type(arg) for arg in args);
+    }
+    return False;
 }
 
 impl LayoutPass._is_layout_compatible_type(
@@ -805,19 +836,9 @@ impl LayoutPass._is_layout_compatible_type(
         return self._is_layout_compatible_type(type_node.operand, arch_map);
     }
 
-    # Imported Jac objects have the same reference layout as local objects.
-    # Consult their resolved declaration rather than the current module's names.
-    if isinstance(type_node, Name)
-        or (isinstance(type_node, AtomTrailer) and type_node.is_attr) {
-        import from jaclang.compiler.types.types { ClassType }
-        resolved = type_node.type;
-        if isinstance(resolved, ClassType) and resolved._shared is not None {
-            declaration = resolved.shared.symbol_table;
-            if isinstance(declaration, Archetype)
-                and declaration.loc.mod_path.endswith(".jac") {
-                return True;
-            }
-        }
+    if isinstance(type_node, Expr)
+        and self._is_layout_compatible_semantic_type(type_node.type) {
+        return True;
     }
 
     if isinstance(type_node, Name) {

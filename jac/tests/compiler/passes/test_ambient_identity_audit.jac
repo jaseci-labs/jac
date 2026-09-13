@@ -732,6 +732,7 @@ test "optional_layout_signal" {
         + " typing="
         + str(typed_codes)
     );
+    assert not native_codes , "Optional Jac objects have a supported native layout";
 }
 
 test "audit_union_pep604" {
