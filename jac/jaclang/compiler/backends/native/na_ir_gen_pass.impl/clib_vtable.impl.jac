@@ -40,7 +40,7 @@ impl NaIRGenPass._clib_coerce_callback(
         and not val.type.is_opaque
         and isinstance(val.type.pointee, ir.FunctionType);
     null_pointer = isinstance(val, ir.Constant) and val.constant in (None, 0);
-    # Dynamic C symbol lookup returns a native integer address (for example dlsym).
+
     native_address = val.type == ir.IntType(64);
     if not typed_pointer and not null_pointer and not native_address {
         self.emit(
