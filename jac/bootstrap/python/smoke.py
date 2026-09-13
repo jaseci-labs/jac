@@ -313,6 +313,33 @@ assert _heapq.heappop([1, 2, 3]) == 1
     document = {"unicode": "\U0001f642\ud800", "nested": [None, True, 2 ** 100, 1.25]}
     assert json.loads(json.dumps(document, indent=2, sort_keys=True)) == document
     assert json.loads('{"a":1,"a":2}', object_pairs_hook=tuple) == (("a", 1), ("a", 2))
+    # Native binding state must keep Python callbacks visible to cyclic GC.
+    import gc
+    import weakref
+    class JsonBindingOwner:
+        strict = True
+        object_pairs_hook = None
+        parse_float = float
+        parse_int = int
+        parse_constant = str
+
+        def object_hook(self, value):
+            return value
+
+    owner = JsonBindingOwner()
+    owner.scanner = _json.make_scanner(owner)
+    owner.encoder = _json.make_encoder(
+        None, owner.object_hook, _json.encode_basestring, None,
+        ":", ",", False, False, True,
+    )
+    assert owner.scanner.object_hook == owner.object_hook
+    assert owner.encoder.default == owner.object_hook
+    assert owner.scanner('{"x": 1}', 0) == ({"x": 1}, 8)
+    assert "".join(owner.encoder({"x": 1}, 0)) == '{"x":1}'
+    owner_ref = weakref.ref(owner)
+    del owner
+    gc.collect()
+    assert owner_ref() is None, "Native JSON bindings hid a Python reference cycle"
     try:
         json.loads("[" * 100_000 + "0" + "]" * 100_000)
     except RecursionError:

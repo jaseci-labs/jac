@@ -220,7 +220,7 @@ _random
 binascii
 _operator jac_modules/operator.c -lcrypto
 _queue
-_json jac_modules/json.c
+_json
 _csv jac_modules/csv.c
 _struct jac_modules/struct.c
 cmath

@@ -127,12 +127,14 @@ typedef struct {
     void (*dealloc)(uint64_t);
     int32_t (*traverse)(uint64_t, uint64_t, uint64_t);
     int32_t (*clear)(uint64_t);
+    uint64_t (*call)(uint64_t, uint64_t, uint64_t);
 } JacTypeHooks;
 
 typedef struct {
     JacMethodTable table;
     PyType_Spec definition;
-    PyType_Slot slots[9];
+    PyType_Slot slots[11];
+    PyGetSetDef *properties;
     PyMethodDef methods[];
 } JacTypeSpec;
 
@@ -140,15 +142,23 @@ void jacpy_binding_type_discard(uint64_t handle) {
     JacTypeSpec *spec = P(handle);
     if (!spec) return;
     discard_methods(&spec->table);
+    if (spec->properties) {
+        for (PyGetSetDef *property = spec->properties; property->name; property++) {
+            free((void *)property->name);
+            free((void *)property->doc);
+        }
+        free(spec->properties);
+    }
     free(spec);
 }
 
 uint64_t jacpy_binding_type(const char *name, const char *doc, int64_t count,
-                           uint64_t flags, JacTypeHooks hooks) {
+                           uint64_t flags, JacTypeHooks hooks, int64_t property_count) {
     JacTypeSpec *spec = calloc(1, sizeof(*spec) + (count + 1) * sizeof(PyMethodDef));
     if (!spec) return 0;
     spec->table = (JacMethodTable){strdup(name), strdup(doc), spec->methods};
-    if (!spec->table.name || !spec->table.doc) {
+    spec->properties = calloc(property_count + 1, sizeof(PyGetSetDef));
+    if (!spec->table.name || !spec->table.doc || !spec->properties) {
         jacpy_binding_type_discard(H(spec));
         return 0;
     }
@@ -160,11 +170,23 @@ uint64_t jacpy_binding_type(const char *name, const char *doc, int64_t count,
     SLOT(dealloc, Py_tp_dealloc);
     SLOT(traverse, Py_tp_traverse);
     SLOT(clear, Py_tp_clear);
+    SLOT(call, Py_tp_call);
 #undef SLOT
     spec->slots[slot++] = (PyType_Slot){Py_tp_methods, spec->methods};
     spec->slots[slot++] = (PyType_Slot){Py_tp_doc, spec->table.doc};
     spec->slots[slot++] = (PyType_Slot){Py_tp_token, spec};
+    spec->slots[slot++] = (PyType_Slot){Py_tp_getset, spec->properties};
     return H(spec);
+}
+
+int64_t jacpy_binding_property(uint64_t handle, int64_t index, const char *name,
+        uint64_t (*get)(uint64_t, uint64_t),
+        int32_t (*set)(uint64_t, uint64_t, uint64_t), uint64_t context, const char *doc) {
+    JacTypeSpec *spec = P(handle);
+    char *owned_name = strdup(name), *owned_doc = strdup(doc);
+    if (!owned_name || !owned_doc) { free(owned_name); free(owned_doc); return -1; }
+    spec->properties[index] = (PyGetSetDef){owned_name, (getter)get, (setter)set, owned_doc, P(context)};
+    return 0;
 }
 
 uint64_t jacpy_binding_type_create(uint64_t handle, uint64_t module, uint64_t bases) {

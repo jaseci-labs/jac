@@ -231,21 +231,13 @@ impl LayoutRegistry.dependency_order(names: list[str]) -> list[str] {
 }
 
 impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
-    """Assign an archetype's header and field slots.
+    """Assign header and field slots with stable dispatch requirements.
 
-    `needs_vtable` folds two different questions together. `parents_set` and
-    `isinstance_targets` ask "is anything dispatched through me", which is a
-    real requirement. `bool(parents)` asks "do I have a base", which is a
-    property of the declaration and says nothing about dispatch -- and this
-    pass is per-module, so a base whose only subclass lives elsewhere is
-    nobody's parent here and comes out flat while its child, merely for
-    having a base, claims a vtable slot the base lacks. Their headers then
-    disagree and `adopt_imported_bases` declines the pair.
-
-    The build-time answer is left exactly as it was, so no existing layout
-    moves. `vtable_by_dispatch` records which of the two questions answered,
-    which is what lets adoption -- where both layouts are finally in hand --
-    tell a header the class needs from one it merely inherited the habit of.
+    Abstract interfaces reserve a vtable even when their implementations live
+    in other modules. Local parents, isinstance targets, and OSP archetypes
+    likewise require dispatch. A concrete class may initially acquire a slot
+    merely because it declares a base; imported-base adoption can remove that
+    provisional slot when neither the class nor its ancestors need dispatch.
     """;
     reg = self.registry;
     aname = arch.name.value if arch.name else "unknown";
@@ -263,7 +255,10 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
     }
 
     vtable_by_dispatch = (
-        is_osp or aname in parents_set or aname in self.isinstance_targets
+        is_osp
+        or arch.is_abstract
+        or aname in parents_set
+        or aname in self.isinstance_targets
     );
     needs_vtable = bool(parents) or vtable_by_dispatch;
 

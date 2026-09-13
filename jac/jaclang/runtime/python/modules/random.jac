@@ -38,6 +38,12 @@ import from jaclang.runtime.python.bindings.state { NativeState }
 obj mt19937(NativeState) {
     has words: list[u32] = [u32(0) for i in range(624)],
         index: int = 0;
+
+    def traverse_refs(visitor: u64, context: u64) -> i32 {
+        return i32(0);
+    }
+
+    def clear {}
 }
 
 def:pub jacpy_random_new -> mt19937 {

@@ -176,12 +176,7 @@ import from jaclang.runtime.python.modules.csv {
     jacpy_csv_write,
     jacpy_csv_registry
 }
-import from jaclang.runtime.python.modules.json {
-    jacpy_json_escape,
-    jacpy_json_scanstring,
-    jacpy_json_scan,
-    jacpy_json_encode
-}
+import from jaclang.runtime.python.bindings.json { PyInit__json }
 import from jaclang.runtime.python.bindings.queue { PyInit__queue }
 import from jaclang.runtime.python.modules.operator {
     jacpy_operator_prepare,

@@ -6,11 +6,8 @@ import from jaclang.runtime.python.bindings.type {
 }
 
 obj NativeState {
-    def traverse_refs(visitor: u64, context: u64) -> i32 {
-        return i32(0);
-    }
-
-    def clear {}
+    def traverse_refs(visitor: u64, context: u64) -> i32 abst;
+    def clear abst;
 }
 
 import from c {
