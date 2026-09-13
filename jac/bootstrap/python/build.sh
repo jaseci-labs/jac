@@ -218,7 +218,7 @@ _bisect
 _heapq
 _random
 binascii
-_operator jac_modules/operator.c -lcrypto
+_operator -lcrypto
 _queue
 _json
 _csv jac_modules/csv.c

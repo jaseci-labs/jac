@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stddef.h>
 
 #define H(p) ((uint64_t)(uintptr_t)(p))
 #define P(h) ((void *)(uintptr_t)(h))
@@ -128,12 +129,21 @@ typedef struct {
     int32_t (*traverse)(uint64_t, uint64_t, uint64_t);
     int32_t (*clear)(uint64_t);
     uint64_t (*call)(uint64_t, uint64_t, uint64_t);
+    uint64_t (*repr)(uint64_t);
+    uint64_t (*vectorcall)(uint64_t, uint64_t, uint64_t, uint64_t);
 } JacTypeHooks;
+
+typedef struct {
+    void *state;
+    vectorcallfunc vectorcall;
+} JacVectorPayload;
 
 typedef struct {
     JacMethodTable table;
     PyType_Spec definition;
-    PyType_Slot slots[11];
+    PyType_Slot slots[13];
+    vectorcallfunc vectorcall;
+    PyMemberDef members[2];
     PyGetSetDef *properties;
     PyMethodDef methods[];
 } JacTypeSpec;
@@ -163,6 +173,12 @@ uint64_t jacpy_binding_type(const char *name, const char *doc, int64_t count,
         return 0;
     }
     spec->definition = (PyType_Spec){spec->table.name, -(int)sizeof(void *), 0, (unsigned int)flags, spec->slots};
+    if (hooks.vectorcall) {
+        spec->definition.basicsize = -(int)sizeof(JacVectorPayload);
+        spec->vectorcall = (vectorcallfunc)hooks.vectorcall;
+        spec->members[0] = (PyMemberDef){"__vectorcalloffset__", Py_T_PYSSIZET,
+            offsetof(JacVectorPayload, vectorcall), Py_READONLY | Py_RELATIVE_OFFSET};
+    }
     int slot = 0;
 #define SLOT(field, id) if (hooks.field) spec->slots[slot++] = (PyType_Slot){id, (void *)hooks.field}
     SLOT(create, Py_tp_new);
@@ -171,7 +187,12 @@ uint64_t jacpy_binding_type(const char *name, const char *doc, int64_t count,
     SLOT(traverse, Py_tp_traverse);
     SLOT(clear, Py_tp_clear);
     SLOT(call, Py_tp_call);
+    SLOT(repr, Py_tp_repr);
 #undef SLOT
+    if (hooks.vectorcall) {
+        if (!hooks.call) spec->slots[slot++] = (PyType_Slot){Py_tp_call, PyVectorcall_Call};
+        spec->slots[slot++] = (PyType_Slot){Py_tp_members, spec->members};
+    }
     spec->slots[slot++] = (PyType_Slot){Py_tp_methods, spec->methods};
     spec->slots[slot++] = (PyType_Slot){Py_tp_doc, spec->table.doc};
     spec->slots[slot++] = (PyType_Slot){Py_tp_token, spec};
@@ -246,6 +267,8 @@ int64_t jacpy_binding_native_set(uint64_t object, uint64_t definition, void *sta
     void *previous = *slot;
     if (state) jac_retain(state);
     *slot = state;
+    JacTypeSpec *spec = P(definition);
+    if (spec->vectorcall) ((JacVectorPayload *)slot)->vectorcall = spec->vectorcall;
     if (previous) jac_release(previous);
     return 0;
 }
@@ -255,4 +278,9 @@ void jacpy_binding_native_clear(uint64_t object, uint64_t definition) {
 int64_t jacpy_binding_native_present(uint64_t object, uint64_t definition) {
     void **slot = native_payload(object, definition);
     return slot && *slot;
+}
+
+int64_t jacpy_binding_vector_count(uint64_t count) { return PyVectorcall_NARGS((size_t)count); }
+uint64_t jacpy_binding_vector_item(uint64_t arguments, int64_t index) {
+    return H(((PyObject *const *)P(arguments))[index]);
 }

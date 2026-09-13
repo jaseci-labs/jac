@@ -190,6 +190,17 @@ void jacpy_buffer_release(uint64_t value) {
     PyBuffer_Release(view);
     PyMem_Free(view);
 }
+uint64_t jacpy_buffer_address(uint64_t value) {
+    return HANDLE(((Py_buffer *)(uintptr_t)value)->buf);
+}
+int64_t jacpy_buffer_length(uint64_t value) {
+    return ((Py_buffer *)(uintptr_t)value)->len;
+}
+int64_t jacpy_buffer_dimensions(uint64_t value) {
+    return ((Py_buffer *)(uintptr_t)value)->ndim;
+}
+int64_t jacpy_buffer_supported(uint64_t value) { return PyObject_CheckBuffer(OBJECT(value)); }
+int64_t jacpy_unicode_ascii(uint64_t value) { return PyUnicode_IS_ASCII(OBJECT(value)); }
 uint64_t jacpy_unsigned_mask(uint64_t value) { return PyLong_AsUnsignedLongMask(OBJECT(value)); }
 int64_t jacpy_unicode_read(uint64_t value, int64_t index) { return PyUnicode_ReadChar(OBJECT(value), index); }
 void jacpy_set_exception(uint64_t type, const char *message, int64_t size) {

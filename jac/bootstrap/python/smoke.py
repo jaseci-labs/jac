@@ -373,6 +373,11 @@ assert _heapq.heappop([1, 2, 3]) == 1
     assert _operator.methodcaller("replace", "a", "b")("native") == "nbtive"
     assert _operator._compare_digest(b"native", b"native") is True
     assert _operator._compare_digest(b"native", b"Native") is False
+    vectorcall_function = ctypes.pythonapi.PyVectorcall_Function
+    vectorcall_function.argtypes = [ctypes.py_object]
+    vectorcall_function.restype = ctypes.c_void_p
+    for accessor in (_operator.itemgetter(0), _operator.attrgetter("name"), _operator.methodcaller("upper")):
+        assert vectorcall_function(accessor), "Native operator accessor lost vectorcall"
     repr_events = []
     class MethodName(str):
         def __repr__(self):

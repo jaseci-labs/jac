@@ -5,6 +5,7 @@ enum TypeFlags {
     DEFAULT = 0,
     IMMUTABLE = 256,
     BASETYPE = 1024,
+    VECTORCALL = 2048,
     GC = 16384,
     MANAGED_WEAKREF = 8
 }
@@ -18,7 +19,9 @@ import from c {
             dealloc: Callable[[u64], None] = 0,
             traverse: Callable[[u64, u64, u64], i32] = 0,
             clear: Callable[[u64], i32] = 0,
-            call: Callable[[u64, u64, u64], u64] = 0;
+            call: Callable[[u64, u64, u64], u64] = 0,
+            repr: Callable[[u64], u64] = 0,
+            vectorcall: Callable[[u64, u64, u64, u64], u64] = 0;
     }  def jacpy_binding_type(
         name: str,
         doc: str,
