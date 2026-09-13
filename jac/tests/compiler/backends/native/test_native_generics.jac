@@ -114,7 +114,7 @@ def compile_na_inline(label: str, code: str) -> JacProgram {
 }
 
 test "mono: identity specializes at int, float, and str" {
-    (eng, _) = compile_native("generics_mono.jac");
+    (native_program, eng, _) = compile_native("generics_mono.jac");
     fi = get_func(eng, "use_identity_int", ctypes.c_int64, ctypes.c_int64);
     assert fi(7) == 7;
     fs = get_sfunc(eng, "use_identity_str_len", ctypes.c_int64, ctypes.c_char_p);
@@ -126,7 +126,7 @@ test "mono: identity specializes at int, float, and str" {
 }
 
 test "mono: one body, different lowerings per instantiation" {
-    (eng, _) = compile_native("generics_mono.jac");
+    (native_program, eng, _) = compile_native("generics_mono.jac");
     ti = get_func(eng, "use_tail_int", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert ti(3, 9) == 9 , "i64 element load at int";
     ts = get_sfunc(
@@ -136,7 +136,7 @@ test "mono: one body, different lowerings per instantiation" {
 }
 
 test "mono: container type params solve through list[T]" {
-    (eng, _) = compile_native("generics_mono.jac");
+    (native_program, eng, _) = compile_native("generics_mono.jac");
     f = get_func(eng, "use_first", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(5, 9) == 5;
     g = get_sfunc(
@@ -146,7 +146,7 @@ test "mono: container type params solve through list[T]" {
 }
 
 test "mono: an uncalled generic def emits no code and no error" {
-    (eng, ir) = compile_native("generics_mono.jac");
+    (native_program, eng, ir) = compile_native("generics_mono.jac");
     assert eng.get_function_address("never_called") == 0 , (
         "a generic template with no instantiations must not exist as a symbol"
     );
@@ -156,7 +156,7 @@ test "mono: generic generator specializes per element type" {
     # #7626 A3: the generator transform runs under the active substitution
     # with spec-keyed resume/drop symbols, so int and str instantiations
     # of one generic generator coexist.
-    (eng, _) = compile_native("generics_generators.jac");
+    (native_program, eng, _) = compile_native("generics_generators.jac");
     f = get_func(eng, "sum_int_pairs", ctypes.c_int64);
     assert f() == 6 , "1+2+3 through pairs[int]";
     g = get_func(eng, "count_str_pairs", ctypes.c_int64);
@@ -167,7 +167,7 @@ test "mono: generic method on an archetype stamps per call site" {
     # #7626 A4: `def pick[T]` on an archetype registers as a method
     # template (no declaration-time unlowerable-type error); call sites
     # stamp self-prepended specializations.
-    (eng, _) = compile_native("generics_methods.jac");
+    (native_program, eng, _) = compile_native("generics_methods.jac");
     f = get_func(eng, "pick_int", ctypes.c_int64, ctypes.c_int64);
     assert f(1) == 7 , "val>0 picks first";
     assert f(0) == 9 , "val==0 picks second";
@@ -179,25 +179,25 @@ test "mono: generic method on an archetype stamps per call site" {
 test "iter flow: generator through a monomorphized Iterator[T] param" {
     # #7626 B4: JacIter is type-erased, so iterator values pass through
     # monomorphized signatures; the element type resolves per site.
-    (eng, _) = compile_native("iter_generic.jac");
+    (native_program, eng, _) = compile_native("iter_generic.jac");
     f = get_func(eng, "use_take2", ctypes.c_int64);
     assert f() == 1 , "take2(gen_nums(5)) == [0, 1]";
 }
 
 test "iter flow: iterator stored in a container and drained later" {
-    (eng, _) = compile_native("iter_generic.jac");
+    (native_program, eng, _) = compile_native("iter_generic.jac");
     f = get_func(eng, "stored_iter", ctypes.c_int64);
     assert f() == 3 , "0+1+2 through the stored iterator";
 }
 
 test "iter flow: lazy adapter over a passed-in iterator param" {
-    (eng, _) = compile_native("iter_generic.jac");
+    (native_program, eng, _) = compile_native("iter_generic.jac");
     f = get_func(eng, "use_adapter", ctypes.c_int64);
     assert f() == 6 , "map(+1) over gen_nums(3): 1+2+3";
 }
 
 test "mono as-value: concrete Callable annotation stamps the template (#7626 A5)" {
-    (eng, _) = compile_native("generics_as_value.jac");
+    (native_program, eng, _) = compile_native("generics_as_value.jac");
     f = get_func(eng, "use_pick_int", ctypes.c_int64, ctypes.c_int64);
     assert f(7) == 7 , "pick2[int] through the closure value returns x";
     g = get_func(eng, "use_pick_str_len", ctypes.c_int64);

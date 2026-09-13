@@ -6,7 +6,7 @@ import from tests.support { compile_native, get_func }
 import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 
 test "dictionary tuple reads release each object exactly once" {
-    (engine, module) = compile_native("dict_tuple_ownership.jac");
+    (native_program, engine, module) = compile_native("dict_tuple_ownership.jac");
     issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , str(issues);
     drops = get_func(engine, "drop_count", ctypes.c_int64);

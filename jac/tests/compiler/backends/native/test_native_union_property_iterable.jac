@@ -6,7 +6,7 @@ import from tests.support { compile_native, get_func }
 import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 
 test "iterate properties through chained, named and temporary union receivers" {
-    (engine, module) = compile_native("union_property_iterable.jac");
+    (native_program, engine, module) = compile_native("union_property_iterable.jac");
     issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , str(issues);
     assert get_func(engine, "probe", ctypes.c_int64)() == 8;

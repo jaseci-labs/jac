@@ -3,14 +3,14 @@ import jaclang.compiler.ir.schema as uni;
 import from tests.support { compile_native, get_func }
 
 test "native field factories use ordinary calls and fresh values per instance" {
-    (engine, _) = compile_native("native_field_factories.jac");
+    (native_program, engine, _) = compile_native("native_field_factories.jac");
     probe = get_func(engine, "probe", ctypes.c_bool);
     assert probe();
     assert probe();
 }
 
 test "synthetic pipe calls preserve the source graph after lowering" {
-    (engine, module) = compile_native("pipe_fwd.jac");
+    (native_program, engine, module) = compile_native("pipe_fwd.jac");
     chain = get_func(engine, "pipe_chain", ctypes.c_int64, ctypes.c_int64);
     spread = get_func(
         engine, "pipe_tuple", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64

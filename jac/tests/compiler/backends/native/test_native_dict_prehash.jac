@@ -31,32 +31,32 @@ glob FIXTURES = os.path.join(
 # ─────────────────────────────────────────────────────────────────────
 
 test "literal-inserted keys are found via runtime-built keys" {
-    (eng, _) = compile_native("dict_prehash.jac");
+    (native_program, eng, _) = compile_native("dict_prehash.jac");
     f = get_func(eng, "static_insert_runtime_lookup", ctypes.c_int64);
     # digits 1,2,3,4 in order; a 9 digit marks a hash-divergence miss
     assert f() == 1234 , f"got {f()}";
 }
 
 test "runtime-inserted keys are found via literal keys" {
-    (eng, _) = compile_native("dict_prehash.jac");
+    (native_program, eng, _) = compile_native("dict_prehash.jac");
     f = get_func(eng, "runtime_insert_static_lookup", ctypes.c_int64);
     assert f() == 567 , f"got {f()}";
 }
 
 test "literal subscript stores land where runtime lookups probe" {
-    (eng, _) = compile_native("dict_prehash.jac");
+    (native_program, eng, _) = compile_native("dict_prehash.jac");
     f = get_func(eng, "static_store_runtime_lookup", ctypes.c_int64);
     assert f() == 56 , f"got {f()}";
 }
 
 test "set literals answer runtime membership probes" {
-    (eng, _) = compile_native("dict_prehash.jac");
+    (native_program, eng, _) = compile_native("dict_prehash.jac");
     f = get_func(eng, "set_static_runtime_membership", ctypes.c_int64);
     assert f() == 111 , f"got {f()}";
 }
 
 test "literal and runtime spellings address the same slot" {
-    (eng, _) = compile_native("dict_prehash.jac");
+    (native_program, eng, _) = compile_native("dict_prehash.jac");
     f = get_func(eng, "overwrite_across_paths", ctypes.c_int64);
     # three writes to one key: final value 3, len stays 1
     assert f() == 31 , f"got {f()}";
@@ -68,7 +68,7 @@ test "literal and runtime spellings address the same slot" {
 # on the same key, so literals with embedded NULs must refuse the prehash and
 # fall back to the hashing wrapper.
 test "an embedded-NUL literal degrades to the runtime hash" {
-    (eng, _) = compile_native("dict_prehash.jac");
+    (native_program, eng, _) = compile_native("dict_prehash.jac");
     f = get_func(eng, "embedded_nul_key", ctypes.c_int64);
     assert f() == 1 , f"expected runtime-consistent lookup, got {f()}";
 }
@@ -78,7 +78,7 @@ test "an embedded-NUL literal degrades to the runtime hash" {
 # ─────────────────────────────────────────────────────────────────────
 
 test "static-key sites lower to prehashed core calls" {
-    (_, ir) = compile_native("dict_prehash.jac");
+    (native_program, _, ir) = compile_native("dict_prehash.jac");
     llvm_text = str(artifact_for(ir).llvm_ir);
     for marker in ("_set_ph_", "_get_ph_", "_contains_ph_", "_add_ph_") {
         assert marker in llvm_text , (

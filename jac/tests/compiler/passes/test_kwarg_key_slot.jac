@@ -31,20 +31,23 @@ import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(TESTS_DIR, "compiler", "passes", "fixtures");
 
-"""Compile a fixture on the server lane and hand back the module."""
-def compile_server(fixture: str) -> uni.Module {
+"""Compile a fixture and return its program together with the module."""
+def compile_server(fixture: str) -> tuple[JacProgram, uni.Module] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, fixture),
         options=CompileOptions(no_ir_cache=True, force_codespace='server')
     );
     assert ir is not None , f"no module for {fixture}";
-    return ir;
+    return (prog, ir);
 }
 
 
 def generated_python(fixture: str) -> str {
-    return ast3.unparse(artifact_for(compile_server(fixture)).py_ast[0]);
+    (program, module) = compile_server(fixture);
+    import gc;
+    gc.collect();
+    return ast3.unparse(artifact_for(module).py_ast[0]);
 }
 
 
@@ -59,7 +62,7 @@ def ability_named(ir: uni.Module, name: str) -> uni.Ability {
 
 
 test "a keyword-argument key carries no scope symbol" {
-    ir = compile_server("kwarg_key_slot.jac");
+    (ir_program, ir) = compile_server("kwarg_key_slot.jac");
     bound = [
         kw.key.sym_name
         for kw in ir.get_all_sub_nodes(uni.KWPair)
@@ -70,7 +73,7 @@ test "a keyword-argument key carries no scope symbol" {
 
 
 test "the predicate answers for both identifier slots" {
-    ir = compile_server("kwarg_key_slot.jac");
+    (ir_program, ir) = compile_server("kwarg_key_slot.jac");
     keys = [
         kw.key
         for kw in ir.get_all_sub_nodes(uni.KWPair)
@@ -102,7 +105,7 @@ test "the predicate answers for both identifier slots" {
 
 
 test "a nested function does not capture through a keyword key" {
-    ir = compile_server("kwarg_key_slot.jac");
+    (ir_program, ir) = compile_server("kwarg_key_slot.jac");
     caps = [s.sym_name for s in ability_named(ir, "slot").capture_symbols];
     assert "align" not in caps , (
         f"'align' is captured though `slot` only spells it as a keyword key: " f"{caps}"

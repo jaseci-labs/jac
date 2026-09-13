@@ -6,7 +6,7 @@ import from tests.support { compile_native, get_func }
 import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 
 test "compiler tuple containers retain values across native operations" {
-    (engine, module) = compile_native("compiler_tuple_containers.jac");
+    (native_program, engine, module) = compile_native("compiler_tuple_containers.jac");
     issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
     guard = get_func(engine, "protocol_guard", ctypes.c_int64);
@@ -23,7 +23,7 @@ test "compiler tuple containers retain values across native operations" {
 }
 
 test "optional empty constructors keep their declared element types" {
-    (engine, module) = compile_native("optional_empty_containers.jac");
+    (native_program, engine, module) = compile_native("optional_empty_containers.jac");
     issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
     make_set = get_func(engine, "optional_set", ctypes.c_int64, ctypes.c_int64);
@@ -34,7 +34,7 @@ test "optional empty constructors keep their declared element types" {
 }
 
 test "dictionary comprehensions preserve key types and iteration order" {
-    (engine, module) = compile_native("dictionary_comprehensions.jac");
+    (native_program, engine, module) = compile_native("dictionary_comprehensions.jac");
     issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
     selected = get_func(engine, "dictionary_comprehensions", ctypes.c_int64);

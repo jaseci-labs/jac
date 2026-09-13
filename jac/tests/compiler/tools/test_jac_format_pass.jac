@@ -55,10 +55,14 @@ def compare_files(
 }
 
 def micro_suite_test(filename: str, auto_lint: bool = False) {
-    code_gen_pure = JacProgram().compile(filename);
+    code_gen_pure_program = JacProgram();
+    code_gen_pure = code_gen_pure_program.compile(filename);
     format_prog = JacProgram.jac_file_formatter(filename, auto_lint=auto_lint);
     code_gen_format = artifact_for(format_prog.mod.main).jac;
-    code_gen_jac = JacProgram().compile(use_str=code_gen_format, file_path=filename);
+    code_gen_jac_program = JacProgram();
+    code_gen_jac = code_gen_jac_program.compile(
+        use_str=code_gen_format, file_path=filename
+    );
     if "circle_clean_tests.jac" in filename {
         tokens = code_gen_format.split();
         num_test = 0;

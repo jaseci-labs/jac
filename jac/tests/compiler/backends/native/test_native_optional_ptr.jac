@@ -38,7 +38,7 @@ def compile_errors(fixture: str) -> list[str] {
 }
 
 test "pointer optional: construct, narrow, and unwrap at every seam" {
-    (eng, _) = compile_native("optional_ptr.jac");
+    (native_program, eng, _) = compile_native("optional_ptr.jac");
     ol = get_func(eng, "opt_local_str", ctypes.c_int64, ctypes.c_int64);
     assert ol(1) == 4 , "narrowed local unwraps to len('beta')";
     assert ol(0) == -1 , "None local stays None";
@@ -51,7 +51,7 @@ test "pointer optional: construct, narrow, and unwrap at every seam" {
 }
 
 test "optional casts preserve absent and false-valued payloads" {
-    (eng, _) = compile_native("optional_ptr.jac");
+    (native_program, eng, _) = compile_native("optional_ptr.jac");
     memo = get_func(eng, "memo_cast", ctypes.c_int64, ctypes.c_int64);
     assert memo(0) == -1;
     assert memo(1) == 7;
@@ -63,7 +63,7 @@ test "optional casts preserve absent and false-valued payloads" {
 }
 
 test "pointer optional equality is tag arithmetic matching Python" {
-    (eng, _) = compile_native("optional_ptr.jac");
+    (native_program, eng, _) = compile_native("optional_ptr.jac");
     assert get_func(eng, "eq_matrix", ctypes.c_int64)() == 11101 , (
         "None == None, None != '', None != 'alpha', value equality, self-equality"
     );
@@ -73,7 +73,7 @@ test "pointer optional equality is tag arithmetic matching Python" {
 }
 
 test "pointer optional truthiness and f-string follow Python" {
-    (eng, _) = compile_native("optional_ptr.jac");
+    (native_program, eng, _) = compile_native("optional_ptr.jac");
     assert get_func(eng, "truthy_flow", ctypes.c_int64)() == 100 , (
         "None and '' are falsy; a value is truthy"
     );
@@ -83,7 +83,7 @@ test "pointer optional truthiness and f-string follow Python" {
 }
 
 test "narrowed optionals reach str helpers, concat, and dict keys" {
-    (eng, _) = compile_native("optional_ptr.jac");
+    (native_program, eng, _) = compile_native("optional_ptr.jac");
     hn = get_func(eng, "helper_after_narrow", ctypes.c_int64, ctypes.c_int64);
     assert hn(1) == 1 , "s.upper() on the narrowed payload";
     assert hn(0) == 0 , "None side never reaches the helper";
@@ -94,7 +94,7 @@ test "narrowed optionals reach str helpers, concat, and dict keys" {
 }
 
 test "optional container elements ride jacval slots" {
-    (eng, _) = compile_native("optional_ptr.jac");
+    (native_program, eng, _) = compile_native("optional_ptr.jac");
     assert get_func(eng, "list_of_opt", ctypes.c_int64)() == 111 , (
         "list[str | None]: tag read, equality, narrowed element"
     );
@@ -113,7 +113,7 @@ test "optional operands in container membership ride tagged slots" {
     # membership loop used to emit a raw integer icmp on the JacVal struct
     # (E5020 LLVM IR parse failure). A None operand must also mean plain
     # False membership, never an unwrap raise or a NULL strcmp.
-    (eng, _) = compile_native("optional_ptr.jac");
+    (native_program, eng, _) = compile_native("optional_ptr.jac");
     assert get_func(eng, "marker_membership", ctypes.c_int64)() == 1110 , (
         "None is in nothing; a carried value matches by payload"
     );
@@ -143,7 +143,7 @@ test "un-narrowed optional use at strict sites is E1121, never runtime UB" {
 }
 
 test "IR shape: tagged optionals, jacval slots, no NULL-guarded strcmp" {
-    ir = compile_native_ir("optional_ptr.jac");
+    (ir_program, ir) = compile_native_ir("optional_ptr.jac");
     text = str(artifact_for(ir).llvm_ir);
     assert "JacOpt." in text , "pointer optionals did not lower to JacOpt";
     assert "List.jacval" in text , "optional elements did not lower to jacval slots";

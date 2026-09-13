@@ -135,7 +135,7 @@ test "the same field bound twice is destroyed exactly once" {
 
 # --- The box destructor is what makes the borrows balance ---
 test "a boxed tuple carries a destructor that releases its fields" {
-    ir = compile_native_ir(FIXTURE);
+    (ir_program, ir) = compile_native_ir(FIXTURE);
     text = str(artifact_for(ir).llvm_ir);
     assert '__rc_release_tuple0' in text , (
         "no tuple-box destructor was emitted; boxed tuple fields would be "

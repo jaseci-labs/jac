@@ -59,7 +59,7 @@ def run_py_lane(fixture_stem: str, func_name: str) -> any {
 }
 
 test "a native class over a Python-side base compiles with no seams" {
-    (_eng, ir) = compile_native("pyb_native_main.jac");
+    (native_program, _eng, ir) = compile_native("pyb_native_main.jac");
     layout = artifact_for(ir).native_layout;
     assert layout is not None , "no native layout was exported";
     for m in ["Kid.__post_init__", "Kid.poke", "Kid.read_back"] {
@@ -70,14 +70,14 @@ test "a native class over a Python-side base compiles with no seams" {
 }
 
 test "postinit chain, inherited store and inherited call match Python" {
-    (eng, _) = compile_native("pyb_native_main.jac");
+    (native_program, eng, _) = compile_native("pyb_native_main.jac");
     get_func(eng, "jac_entry", None)();
     f = get_func(eng, "run_all", ctypes.c_int64);
     assert f() == EXPECTED , f"native lane produced {f()}, expected {EXPECTED}";
 }
 
 test "the Python lane and the native lane agree on the fixture" {
-    (eng, _) = compile_native("pyb_native_main.jac");
+    (native_program, eng, _) = compile_native("pyb_native_main.jac");
     get_func(eng, "jac_entry", None)();
     native_val = get_func(eng, "run_all", ctypes.c_int64)();
     py_val = run_py_lane("pyb_native_main", "run_all");
@@ -87,7 +87,7 @@ test "the Python lane and the native lane agree on the fixture" {
 }
 
 test "an inherited field store is visible on the Python shadow" {
-    (eng, _) = compile_native("pyb_native_main.jac");
+    (native_program, eng, _) = compile_native("pyb_native_main.jac");
     get_func(eng, "jac_entry", None)();
     _pyb_shadows.clear();
     kept = get_func(eng, "keep_and_poke", ctypes.c_int64)();
@@ -106,7 +106,7 @@ test "an inherited field store is visible on the Python shadow" {
 }
 
 test "releasing the native owner drops its Python shadow" {
-    (eng, _) = compile_native("pyb_native_main.jac");
+    (native_program, eng, _) = compile_native("pyb_native_main.jac");
     _pyb_shadows.clear();
     get_func(eng, "jac_entry", None)();
     transient = get_func(eng, "run_all", ctypes.c_int64)();
@@ -123,7 +123,7 @@ test "a subscripted generic Python-side base still bridges" {
     # compiler's own pass chain, which spelled `Transform[Module, Module]`
     # until the chain went monomorphic; user code still writes it, which is
     # why the fixture keeps measuring it.
-    (eng, ir) = compile_native("pyb_gen_base_main.jac");
+    (native_program, eng, ir) = compile_native("pyb_gen_base_main.jac");
     layout = artifact_for(ir).native_layout;
     assert layout is not None , "no native layout was exported";
     assert "Kid.poke" in layout.methods , (

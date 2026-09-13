@@ -81,7 +81,7 @@ def probe -> int {
 test "object hash layouts stay distinct from strings and other object classes" {
     import from tests.support { compile_native, get_func }
     import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
-    (engine, module) = compile_native("object_hash_layouts.jac");
+    (native_program, engine, module) = compile_native("object_hash_layouts.jac");
     issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
     probe = get_func(engine, "probe", ctypes.c_int64);

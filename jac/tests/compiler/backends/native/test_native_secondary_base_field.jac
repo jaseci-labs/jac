@@ -40,7 +40,7 @@ def probe(eng: any, name: str) -> list[int] {
 }
 
 test "secondary-base field read is independent of the neighbouring pointer" {
-    (eng, _) = compile_native("secondary_base_xmod_main.jac");
+    (native_program, eng, _) = compile_native("secondary_base_xmod_main.jac");
     assert probe(eng, "read_narrowed") == [0, 0, 1, 1, 1] , (
         "a read through the narrowed base must land on `flagged`, not on the "
         "`tag` pointer the base's slot index names inside `Item`"
@@ -48,28 +48,28 @@ test "secondary-base field read is independent of the neighbouring pointer" {
 }
 
 test "secondary-base field read outside the isinstance condition agrees" {
-    (eng, _) = compile_native("secondary_base_xmod_main.jac");
+    (native_program, eng, _) = compile_native("secondary_base_xmod_main.jac");
     assert probe(eng, "read_direct") == [0, 0, 1, 1, 1] , (
         "a narrowed read in a separate statement must resolve the same slot"
     );
 }
 
 test "secondary-base field write lands on the field, not the neighbour" {
-    (eng, _) = compile_native("secondary_base_xmod_main.jac");
+    (native_program, eng, _) = compile_native("secondary_base_xmod_main.jac");
     assert probe(eng, "write_narrowed") == [1, 1, 1, 1, 1] , (
         "a store through the narrowed base must be visible through the concrete type"
     );
 }
 
 test "a secondary-base write does not clobber a neighbouring field" {
-    (eng, _) = compile_native("secondary_base_xmod_main.jac");
+    (native_program, eng, _) = compile_native("secondary_base_xmod_main.jac");
     assert probe(eng, "tag_intact") == [0, 1, 0, 1, 0] , (
         "storing `flagged` through the base must leave the `tag` pointer alone"
     );
 }
 
 test "a method declared on the secondary base still dispatches to itself" {
-    (eng, _) = compile_native("secondary_base_xmod_main.jac");
+    (native_program, eng, _) = compile_native("secondary_base_xmod_main.jac");
     assert probe(eng, "call_narrowed") == [20, 20, 20, 20, 20] , (
         "the vtable slot for a secondary base's method must not resolve to the "
         "primary base's method"
@@ -77,7 +77,7 @@ test "a method declared on the secondary base still dispatches to itself" {
 }
 
 test "the same hierarchy inside one module keeps resolving correctly" {
-    (eng, _) = compile_native("secondary_base_field.jac");
+    (native_program, eng, _) = compile_native("secondary_base_field.jac");
     assert probe(eng, "read_narrowed") == [0, 0, 1, 1, 1] , "single-module read";
     assert probe(eng, "read_direct") == [0, 0, 1, 1, 1] , "single-module split read";
     assert probe(eng, "write_narrowed") == [1, 1, 1, 1, 1] , "single-module write";

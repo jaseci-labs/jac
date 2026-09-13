@@ -6,7 +6,7 @@ import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 import from tests.support { compile_native, get_func }
 
 test "native test and entry scopes preserve module callable bindings" {
-    (engine, module) = compile_native("native_test_scopes.jac");
+    (native_program, engine, module) = compile_native("native_test_scopes.jac");
     issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
     tests = module.get_all_sub_nodes(Test);

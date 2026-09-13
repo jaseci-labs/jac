@@ -23,7 +23,7 @@ glob FIXTURES = os.path.join(
      );
 
 test "clib sext: negative C int return stays negative through int and any" {
-    (eng, _) = compile_native("clib_sext.jac");
+    (native_program, eng, _) = compile_native("clib_sext.jac");
     f = get_func(eng, "neg_direct", ctypes.c_int64);
     assert f() < 0 , f"strcmp('a','b') must stay negative widened to i64, got {f()}";
     g = get_func(eng, "neg_thru_any", ctypes.c_int64);

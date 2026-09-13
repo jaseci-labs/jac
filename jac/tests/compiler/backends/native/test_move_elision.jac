@@ -54,7 +54,7 @@ def retain_calls(fixture: str, move_lower: bool) -> int {
         _napatch._can_native_move_lower = _no_move_lower;
     }
     try {
-        ir = compile_native_ir(fixture);
+        (ir_program, ir) = compile_native_ir(fixture);
         return str(artifact_for(ir).llvm_ir).count('call void @"__rc_retain"');
     } finally {
         NaIRGenPass._can_native_move_lower = orig;
@@ -79,7 +79,7 @@ test "move-lowering elides exactly the `b = a` alias retain" {
 }
 
 test "move-lowering nulls the source slot (keeps the free sound)" {
-    ir = compile_native_ir("move_elision.jac");
+    (ir_program, ir) = compile_native_ir("move_elision.jac");
     text = str(artifact_for(ir).llvm_ir);
     # Nulling the moved-from slot is what makes eliding the retain sound: the
     # source's cleanup release then loads null and is a no-op, so the object is

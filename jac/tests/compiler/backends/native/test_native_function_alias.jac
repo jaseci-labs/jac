@@ -6,7 +6,7 @@ import from tests.support { compile_native, get_func }
 import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 
 test "direct function import aliases resolve their original declaration" {
-    (engine, module) = compile_native("native_function_alias.jac");
+    (native_program, engine, module) = compile_native("native_function_alias.jac");
     issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , str(issues);
     probe = get_func(engine, "imported_function_alias_probe", ctypes.c_int64);

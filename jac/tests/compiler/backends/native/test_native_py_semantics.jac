@@ -16,7 +16,7 @@ glob FIXTURES = os.path.join(
 
 # --- 2a: chained comparisons lower every link, not just the first ---
 test "chained comparison: every link is evaluated and ANDed" {
-    (eng, _) = compile_native("py_chain_cmp.jac");
+    (native_program, eng, _) = compile_native("py_chain_cmp.jac");
     get_func(eng, "jac_entry", None)();
     cases = get_func(eng, "chain_cases", ctypes.c_int64);
     result = cases();
@@ -25,7 +25,7 @@ test "chained comparison: every link is evaluated and ANDed" {
 }
 
 test "chained comparison: middle operand evaluated exactly once" {
-    (eng, _) = compile_native("py_chain_cmp.jac");
+    (native_program, eng, _) = compile_native("py_chain_cmp.jac");
     get_func(eng, "jac_entry", None)();
     once = get_func(eng, "middle_evaluated_once", ctypes.c_int64);
     result = once();
@@ -33,7 +33,7 @@ test "chained comparison: middle operand evaluated exactly once" {
 }
 
 test "chained comparison: three-link chain with mixed directions" {
-    (eng, _) = compile_native("py_chain_cmp.jac");
+    (native_program, eng, _) = compile_native("py_chain_cmp.jac");
     get_func(eng, "jac_entry", None)();
     chain = get_func(eng, "long_chain", ctypes.c_int64);
     result = chain();
@@ -42,7 +42,7 @@ test "chained comparison: three-link chain with mixed directions" {
 
 # --- #7593 item 2: membership/identity links in chains ---
 test "chained comparison: membership links lower like single 'in'" {
-    (eng, _) = compile_native("py_chain_cmp_mixed.jac");
+    (native_program, eng, _) = compile_native("py_chain_cmp_mixed.jac");
     get_func(eng, "jac_entry", None)();
     cases = get_func(eng, "chain_in_cases", ctypes.c_int64);
     result = cases();
@@ -50,7 +50,7 @@ test "chained comparison: membership links lower like single 'in'" {
 }
 
 test "chained comparison: identity links lower like single 'is'" {
-    (eng, _) = compile_native("py_chain_cmp_mixed.jac");
+    (native_program, eng, _) = compile_native("py_chain_cmp_mixed.jac");
     get_func(eng, "jac_entry", None)();
     cases = get_func(eng, "chain_is_cases", ctypes.c_int64);
     result = cases();
@@ -58,7 +58,7 @@ test "chained comparison: identity links lower like single 'is'" {
 }
 
 test "chained comparison: membership middle operand evaluated once" {
-    (eng, _) = compile_native("py_chain_cmp_mixed.jac");
+    (native_program, eng, _) = compile_native("py_chain_cmp_mixed.jac");
     get_func(eng, "jac_entry", None)();
     once = get_func(eng, "chain_middle_once", ctypes.c_int64);
     result = once();
@@ -67,7 +67,7 @@ test "chained comparison: membership middle operand evaluated once" {
 
 # --- 2b: or/and yield the deciding operand value, not a truth bit ---
 test "bool ops: int or/and return the operand value" {
-    (eng, _) = compile_native("py_bool_ops.jac");
+    (native_program, eng, _) = compile_native("py_bool_ops.jac");
     get_func(eng, "jac_entry", None)();
     ops = get_func(eng, "bool_ops_int", ctypes.c_int64);
     result = ops();
@@ -76,7 +76,7 @@ test "bool ops: int or/and return the operand value" {
 }
 
 test "bool ops: str or picks the fallback for empty strings" {
-    (eng, _) = compile_native("py_bool_ops.jac");
+    (native_program, eng, _) = compile_native("py_bool_ops.jac");
     get_func(eng, "jac_entry", None)();
     ops = get_func(eng, "bool_ops_str", ctypes.c_int64);
     result = ops();
@@ -84,7 +84,7 @@ test "bool ops: str or picks the fallback for empty strings" {
 }
 
 test "bool ops: rhs is not evaluated when lhs decides" {
-    (eng, _) = compile_native("py_bool_ops.jac");
+    (native_program, eng, _) = compile_native("py_bool_ops.jac");
     get_func(eng, "jac_entry", None)();
     ops = get_func(eng, "bool_ops_short_circuit", ctypes.c_int64);
     result = ops();
@@ -94,7 +94,7 @@ test "bool ops: rhs is not evaluated when lhs decides" {
 
 # --- 2c: membership compares string values, not pointer identity ---
 test "membership: str in list[str] compares values" {
-    (eng, _) = compile_native("py_membership.jac");
+    (native_program, eng, _) = compile_native("py_membership.jac");
     get_func(eng, "jac_entry", None)();
     mem = get_func(eng, "str_list_membership", ctypes.c_int64);
     result = mem();
@@ -103,7 +103,7 @@ test "membership: str in list[str] compares values" {
 }
 
 test "membership: str in d.keys() compares values" {
-    (eng, _) = compile_native("py_membership.jac");
+    (native_program, eng, _) = compile_native("py_membership.jac");
     get_func(eng, "jac_entry", None)();
     mem = get_func(eng, "dict_keys_membership", ctypes.c_int64);
     result = mem();
@@ -112,7 +112,7 @@ test "membership: str in d.keys() compares values" {
 
 # --- 2d: sort()/sorted() honor reverse= and key= ---
 test "sort kwargs: reverse=True sorts descending in place" {
-    (eng, _) = compile_native("py_sort_kwargs.jac");
+    (native_program, eng, _) = compile_native("py_sort_kwargs.jac");
     get_func(eng, "jac_entry", None)();
     srt = get_func(eng, "sort_reverse", ctypes.c_int64);
     result = srt();
@@ -120,7 +120,7 @@ test "sort kwargs: reverse=True sorts descending in place" {
 }
 
 test "sort kwargs: sorted(reverse=True) returns a descending copy" {
-    (eng, _) = compile_native("py_sort_kwargs.jac");
+    (native_program, eng, _) = compile_native("py_sort_kwargs.jac");
     get_func(eng, "jac_entry", None)();
     srt = get_func(eng, "sorted_reverse_copies", ctypes.c_int64);
     result = srt();
@@ -129,7 +129,7 @@ test "sort kwargs: sorted(reverse=True) returns a descending copy" {
 }
 
 test "sort kwargs: key=len orders by key not by element" {
-    (eng, _) = compile_native("py_sort_kwargs.jac");
+    (native_program, eng, _) = compile_native("py_sort_kwargs.jac");
     get_func(eng, "jac_entry", None)();
     srt = get_func(eng, "sort_key_len", ctypes.c_int64);
     result = srt();
@@ -137,7 +137,7 @@ test "sort kwargs: key=len orders by key not by element" {
 }
 
 test "sort kwargs: key= and reverse= compose" {
-    (eng, _) = compile_native("py_sort_kwargs.jac");
+    (native_program, eng, _) = compile_native("py_sort_kwargs.jac");
     get_func(eng, "jac_entry", None)();
     srt = get_func(eng, "sort_key_and_reverse", ctypes.c_int64);
     result = srt();
@@ -147,7 +147,7 @@ test "sort kwargs: key= and reverse= compose" {
 
 # --- dropped-argument family: range step, find start, pow modulus ---
 test "range honors a positive and negative step in for headers" {
-    (eng, _) = compile_native("py_dropped_args.jac");
+    (native_program, eng, _) = compile_native("py_dropped_args.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "range_step_sum", ctypes.c_int64);
     result = fn();
@@ -156,7 +156,7 @@ test "range honors a positive and negative step in for headers" {
 }
 
 test "str.find honors the start argument" {
-    (eng, _) = compile_native("py_dropped_args.jac");
+    (native_program, eng, _) = compile_native("py_dropped_args.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "find_with_start", ctypes.c_int64);
     result = fn();
@@ -165,7 +165,7 @@ test "str.find honors the start argument" {
 }
 
 test "pow honors the modulus argument" {
-    (eng, _) = compile_native("py_dropped_args.jac");
+    (native_program, eng, _) = compile_native("py_dropped_args.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "pow_with_mod", ctypes.c_int64);
     result = fn();
@@ -175,7 +175,7 @@ test "pow honors the modulus argument" {
 
 # --- 2f: f-strings size their buffer and honor format specs ---
 test "fstring: output larger than 1024 bytes is not truncated" {
-    (eng, _) = compile_native("py_fstring.jac");
+    (native_program, eng, _) = compile_native("py_fstring.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "fstring_long", ctypes.c_int64);
     result = fn();
@@ -183,7 +183,7 @@ test "fstring: output larger than 1024 bytes is not truncated" {
 }
 
 test "fstring: numeric and string format specs render like CPython" {
-    (eng, _) = compile_native("py_fstring.jac");
+    (native_program, eng, _) = compile_native("py_fstring.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "fstring_specs", ctypes.c_int64);
     result = fn();
@@ -192,7 +192,7 @@ test "fstring: numeric and string format specs render like CPython" {
 }
 
 test "fstring: !r conversion matches CPython repr" {
-    (eng, _) = compile_native("py_fstring.jac");
+    (native_program, eng, _) = compile_native("py_fstring.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "fstring_repr", ctypes.c_int64);
     result = fn();
@@ -201,7 +201,7 @@ test "fstring: !r conversion matches CPython repr" {
 }
 
 test "fstring: dynamic format specs render like CPython" {
-    (eng, _) = compile_native("py_fstring.jac");
+    (native_program, eng, _) = compile_native("py_fstring.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "fstring_dynspec", ctypes.c_int64);
     result = fn();
@@ -210,7 +210,7 @@ test "fstring: dynamic format specs render like CPython" {
 }
 
 test "fstring: invalid dynamic spec raises ValueError" {
-    (eng, _) = compile_native("py_fstring.jac");
+    (native_program, eng, _) = compile_native("py_fstring.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "fstring_dynspec_invalid", ctypes.c_int64);
     result = fn();
@@ -218,7 +218,7 @@ test "fstring: invalid dynamic spec raises ValueError" {
 }
 
 test "range with zero step raises ValueError instead of looping" {
-    (eng, _) = compile_native("py_dropped_args.jac");
+    (native_program, eng, _) = compile_native("py_dropped_args.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "range_zero_step_raises", ctypes.c_int64);
     result = fn();
@@ -226,7 +226,7 @@ test "range with zero step raises ValueError instead of looping" {
 }
 
 test "pow with zero modulus raises ValueError instead of trapping" {
-    (eng, _) = compile_native("py_dropped_args.jac");
+    (native_program, eng, _) = compile_native("py_dropped_args.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "pow_zero_mod_raises", ctypes.c_int64);
     result = fn();
@@ -235,7 +235,7 @@ test "pow with zero modulus raises ValueError instead of trapping" {
 
 # --- subscript aug-assign lowers read-modify-write, not an RHS store ---
 test "subscript aug: list int arithmetic ops read-modify-write" {
-    (eng, _) = compile_native("py_subscript_aug.jac");
+    (native_program, eng, _) = compile_native("py_subscript_aug.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "list_int_ops", ctypes.c_int64);
     result = fn();
@@ -244,7 +244,7 @@ test "subscript aug: list int arithmetic ops read-modify-write" {
 }
 
 test "subscript aug: list int bitwise/shift/pow ops apply" {
-    (eng, _) = compile_native("py_subscript_aug.jac");
+    (native_program, eng, _) = compile_native("py_subscript_aug.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "list_int_bitops", ctypes.c_int64);
     result = fn();
@@ -253,7 +253,7 @@ test "subscript aug: list int bitwise/shift/pow ops apply" {
 }
 
 test "subscript aug: list float ops apply incl. floored //=" {
-    (eng, _) = compile_native("py_subscript_aug.jac");
+    (native_program, eng, _) = compile_native("py_subscript_aug.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "list_float_ops", ctypes.c_int64);
     result = fn();
@@ -262,7 +262,7 @@ test "subscript aug: list float ops apply incl. floored //=" {
 }
 
 test "subscript aug: dict int and float values read-modify-write" {
-    (eng, _) = compile_native("py_subscript_aug.jac");
+    (native_program, eng, _) = compile_native("py_subscript_aug.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "dict_ops", ctypes.c_int64);
     result = fn();
@@ -271,7 +271,7 @@ test "subscript aug: dict int and float values read-modify-write" {
 }
 
 test "field aug: float //= floors and int %= applies" {
-    (eng, _) = compile_native("py_subscript_aug.jac");
+    (native_program, eng, _) = compile_native("py_subscript_aug.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "field_scalar_ops", ctypes.c_int64);
     result = fn();
@@ -280,7 +280,7 @@ test "field aug: float //= floors and int %= applies" {
 }
 
 test "subscript aug: index expression evaluated exactly once" {
-    (eng, _) = compile_native("py_subscript_aug.jac");
+    (native_program, eng, _) = compile_native("py_subscript_aug.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "index_evaluated_once", ctypes.c_int64);
     result = fn();
@@ -290,7 +290,7 @@ test "subscript aug: index expression evaluated exactly once" {
 
 # --- str() identity ownership and negative string indexing ---
 test "str() of an owned temp keeps the value alive" {
-    (eng, _) = compile_native("py_str_identity_index.jac");
+    (native_program, eng, _) = compile_native("py_str_identity_index.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "str_of_owned_temp", ctypes.c_int64);
     result = fn();
@@ -298,7 +298,7 @@ test "str() of an owned temp keeps the value alive" {
 }
 
 test "test-slug shape: str of joined chars survives the arg release" {
-    (eng, _) = compile_native("py_str_identity_index.jac");
+    (native_program, eng, _) = compile_native("py_str_identity_index.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "slug_of_desc", ctypes.c_int64);
     result = fn();
@@ -307,7 +307,7 @@ test "test-slug shape: str of joined chars survives the arg release" {
 }
 
 test "string subscript wraps negative indices" {
-    (eng, _) = compile_native("py_str_identity_index.jac");
+    (native_program, eng, _) = compile_native("py_str_identity_index.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "neg_index_reads", ctypes.c_int64);
     result = fn();
@@ -316,7 +316,7 @@ test "string subscript wraps negative indices" {
 }
 
 test "string subscript raises IndexError below range" {
-    (eng, _) = compile_native("py_str_identity_index.jac");
+    (native_program, eng, _) = compile_native("py_str_identity_index.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "neg_index_oob", ctypes.c_int64);
     result = fn();
@@ -324,7 +324,7 @@ test "string subscript raises IndexError below range" {
 }
 
 test "string subscript raises IndexError above range" {
-    (eng, _) = compile_native("py_str_identity_index.jac");
+    (native_program, eng, _) = compile_native("py_str_identity_index.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "pos_index_oob", ctypes.c_int64);
     result = fn();

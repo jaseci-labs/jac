@@ -15,7 +15,7 @@ import from tests.support {
 }
 
 test "list constructs scalar and mixed tuple elements in order" {
-    (engine, module) = compile_native("tuple_list_conversion.jac");
+    (native_program, engine, module) = compile_native("tuple_list_conversion.jac");
     assert not native_lowering_issues(str(artifact_for(module).llvm_ir));
     call = get_func(engine, "scalars", ctypes.c_int64);
     actual = call();
@@ -23,7 +23,7 @@ test "list constructs scalar and mixed tuple elements in order" {
 }
 
 test "list retains fresh and returned tuple objects exactly once" {
-    (engine, module) = compile_native("tuple_list_conversion.jac");
+    (native_program, engine, module) = compile_native("tuple_list_conversion.jac");
     assert not native_lowering_issues(str(artifact_for(module).llvm_ir));
     drops = get_func(engine, "drops", ctypes.c_int64);
     for (name, expected) in [("fresh_objects", 10), ("returned_objects", 11)] {
@@ -35,7 +35,7 @@ test "list retains fresh and returned tuple objects exactly once" {
 }
 
 test "list shares borrowed tuple objects and releases both references" {
-    (engine, module) = compile_native("tuple_list_shared.jac");
+    (native_program, engine, module) = compile_native("tuple_list_shared.jac");
     assert not native_lowering_issues(str(artifact_for(module).llvm_ir));
     drops = get_func(engine, "shared_drops", ctypes.c_int64);
     call = get_func(engine, "borrowed_objects", ctypes.c_int64);
@@ -45,7 +45,7 @@ test "list shares borrowed tuple objects and releases both references" {
 }
 
 test "tuple conversion preserves empty and widened list storage" {
-    (engine, module) = compile_native("tuple_list_context.jac");
+    (native_program, engine, module) = compile_native("tuple_list_context.jac");
     issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , str(issues);
     for (name, expected) in [("empty_lists", 43), ("widened_elements", 6)] {

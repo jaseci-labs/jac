@@ -87,77 +87,77 @@ def _no_narrowing(pass_self: any, nd: any) -> any {
 }
 
 test "pointer optional: `is None` early-return guard narrows the fall-through" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "ptr_guard_is_none", [0, 1, 3]);
     assert vals == [-1, 1, 3] , f"unexpected ptr_guard_is_none results: {vals}";
 }
 
 test "pointer optional: `is not None` positive branch narrows the body" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "ptr_is_not_none", [0, 1, 3]);
     assert vals == [-1, 1, 3] , f"unexpected ptr_is_not_none results: {vals}";
 }
 
 test "pointer optional: if/else narrows both branches" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "ptr_if_else", [0, 2, 5]);
     assert vals == [-1, 20, 50] , f"unexpected ptr_if_else results: {vals}";
 }
 
 test "pointer optional: plain truthiness narrows the true branch" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "ptr_truthy", [0, 2, 4]);
     assert vals == [-1, 102, 104] , f"unexpected ptr_truthy results: {vals}";
 }
 
 test "pointer optional: `!= None` narrows like `is not None`" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "ptr_ne_none", [0, 2, 4]);
     assert vals == [-1, 202, 204] , f"unexpected ptr_ne_none results: {vals}";
 }
 
 test "scalar optional: `is None` early-return guard narrows the fall-through" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "scalar_guard", [0, 1, 4]);
     assert vals == [-1, 4, 13] , f"unexpected scalar_guard results: {vals}";
 }
 
 test "scalar optional: early `continue` narrows the rest of the loop body" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "scalar_continue_guard", [0, 3, 5]);
     assert vals == [0, 3, 18] , f"unexpected scalar_continue_guard results: {vals}";
 }
 
 test "scalar optional: early `raise` narrows the fall-through" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "scalar_raise_guard", [1, 3]);
     assert vals == [5, 11] , f"unexpected scalar_raise_guard results: {vals}";
 }
 
 test "isinstance narrows a boxed union to the tested member" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "iso_any", [0, 2, 5]);
     assert vals == [-1, 9, 21] , f"unexpected iso_any results: {vals}";
 }
 
 test "a redundant `is None` on a proven value still reads the tag" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "redundant_guard", [0, 1, 2]);
     assert vals == [-1, 6, 9] , f"unexpected redundant_guard results: {vals}";
 }
 
 test "a redundant `is None` on a proven zero payload is still False" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "zero_payload_redundant_guard", [0, 1, 5]);
     assert vals == [-1, 7, 7] , (
@@ -166,7 +166,7 @@ test "a redundant `is None` on a proven zero payload is still False" {
 }
 
 test "`is None` as a value never compares against a narrowed payload" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "zero_payload_none_test_value", [0, 1, 5]);
     assert vals == [-1, 9, 9] , (
@@ -181,21 +181,21 @@ test "`is None` as a value never compares against a narrowed payload" {
 }
 
 test "truthiness of a proven container stays len > 0" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "truthy_after_guard", [0, 1, 3]);
     assert vals == [-1, 1, 3] , f"unexpected truthy_after_guard results: {vals}";
 }
 
 test "a rebind re-widens: the tag is still read after reassignment" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "rebind_widens", [0, 2, 6]);
     assert vals == [-1, 6, 21] , f"unexpected rebind_widens results: {vals}";
 }
 
 test "a loop that rebinds before the use still narrows" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "loop_fresh_each_iter", [0, 2, 6]);
     assert vals == [-4, 7, 54] , f"unexpected loop_fresh_each_iter results: {vals}";
@@ -205,8 +205,8 @@ test "a callee that rebinds the attribute keeps the checked unwrap" {
     # k=0 leaves the attribute set, so both backends agree on a value. k=1
     # routes through `drop_slot`, which the checker's intra-procedural walk
     # cannot see: sv raises TypeError there, so native must not read a payload.
-    (eng, _) = compile_native(FIXTURE);
-    ir = compile_native_ir(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
+    (ir_program, ir) = compile_native_ir(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "callee_rebinds_attr", [0]);
     assert vals == [1] , f"unexpected callee_rebinds_attr results: {vals}";
@@ -220,8 +220,8 @@ test "a value live across a loop back edge keeps the checked unwrap" {
     # n=6 keeps the rebound value non-None on every iteration, so both
     # backends agree. n=2 puts None on the back edge and sv raises TypeError,
     # so the in-loop use must not have been narrowed away.
-    (eng, _) = compile_native(FIXTURE);
-    ir = compile_native_ir(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
+    (ir_program, ir) = compile_native_ir(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "back_edge_rewiden", [0, 6]);
     assert vals == [-1, 21] , f"unexpected back_edge_rewiden results: {vals}";
@@ -232,7 +232,7 @@ test "a value live across a loop back edge keeps the checked unwrap" {
 }
 
 test "`case None` over a narrowed subject folds instead of comparing to null" {
-    (eng, _) = compile_native(FIXTURE);
+    (native_program, eng, _) = compile_native(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "match_narrowed_subject", [0, 2, 4]);
     assert vals == [-1, 5, 5] , f"unexpected match_narrowed_subject results: {vals}";
@@ -241,7 +241,7 @@ test "`case None` over a narrowed subject folds instead of comparing to null" {
 test "the narrowed in-loop use keeps its tag check elided" {
     # `scalar_continue_guard` assigns at the top of the body, so the guard's
     # proof is fresh every iteration and the loop rule must still allow it.
-    ir = compile_native_ir(FIXTURE);
+    (ir_program, ir) = compile_native_ir(FIXTURE);
     body = func_ir(str(artifact_for(ir).llvm_ir), "scalar_continue_guard");
     assert "opt.isnone" not in body , (
         "assign-then-guard inside a loop must still narrow"
@@ -255,12 +255,12 @@ test "narrowing removes the tag check from the proven use" {
     _napatch: any = NaIRGenPass;
     _napatch._narrowed_flow_type = _no_narrowing;
     try {
-        base_ir = compile_native_ir("optional_scalar.jac");
+        (base_ir_program, base_ir) = compile_native_ir("optional_scalar.jac");
         base = str(artifact_for(base_ir).llvm_ir);
     } finally {
         NaIRGenPass._narrowed_flow_type = orig;
     }
-    narrowed_ir = compile_native_ir("optional_scalar.jac");
+    (narrowed_ir_program, narrowed_ir) = compile_native_ir("optional_scalar.jac");
     narrowed = str(artifact_for(narrowed_ir).llvm_ir);
 
     for name in ["use_pick", "opt_local", "opt_param"] {
@@ -274,7 +274,7 @@ test "narrowing removes the tag check from the proven use" {
 }
 
 test "a proven pointer-optional use emits no unwrap branch" {
-    narrowed_ir = compile_native_ir(FIXTURE);
+    (narrowed_ir_program, narrowed_ir) = compile_native_ir(FIXTURE);
     body = func_ir(str(artifact_for(narrowed_ir).llvm_ir), "ptr_guard_is_none");
     assert "opt.isnone" not in body , (
         "the guarded len(ids) must read the payload with no tag check"

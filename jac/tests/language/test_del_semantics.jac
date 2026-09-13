@@ -230,7 +230,7 @@ glob NATIVE_FIXTURE = "del_semantics_native.jac",
      };
 
 test "del under the native backend matches the Python backend" {
-    (eng, _ir) = compile_native(NATIVE_FIXTURE, fixture_dir=FIXTURES);
+    (native_program, eng, _ir) = compile_native(NATIVE_FIXTURE, fixture_dir=FIXTURES);
     for fn_name in NATIVE_EXPECTED {
         fn = get_func(eng, fn_name, ctypes.c_int64);
         assert fn() == NATIVE_EXPECTED[fn_name] , fn_name;

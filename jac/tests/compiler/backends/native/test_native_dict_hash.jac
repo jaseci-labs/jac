@@ -22,55 +22,55 @@ glob FIXTURES = os.path.join(
      PROG = "dict_hash_ops.jac";
 
 test "dict str-key del and pop" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "del_pop_str_keys", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "dict tombstone reuse after delete" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "tombstone_reuse", ctypes.c_int64);
     assert f() == 2;
 }
 
 test "dict rehash cycle with deletes mixed in" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "rehash_with_deletes", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "dict clear then contains and reinsert" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "clear_then_reuse", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "dict iteration order preserved after deletes" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "order_after_deletes", ctypes.c_char_p);
     assert f().decode("utf-8") == "one;three;four;five;";
 }
 
 test "dict popitem returns last pair with str keys" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "popitem_last_str", ctypes.c_char_p);
     assert f().decode("utf-8") == "gamma=C";
 }
 
 test "dict popitem drains in LIFO order" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "popitem_drain", ctypes.c_int64);
     assert f() == 0;
 }
 
 test "dict order survives bounded tombstone churn and sparse rehash" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "order_after_churn", ctypes.c_int64);
     assert f() == 0;
 }
 
 test "dict f64 keys hash and compare" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "f64_keys", ctypes.c_int64);
     assert f() == 1;
 }

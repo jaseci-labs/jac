@@ -18,12 +18,12 @@ glob FIXTURES = os.path.join(
      );
 
 test "cyclic import: mandated two-file cycle compiles" {
-    (eng, _) = compile_native("cycle_ping.jac");
+    (native_program, eng, _) = compile_native("cycle_ping.jac");
     assert eng is not None;
 }
 
 test "cyclic import: mutual recursion computes across modules" {
-    (eng, _) = compile_native("cycle_ping.jac");
+    (native_program, eng, _) = compile_native("cycle_ping.jac");
     get_func(eng, "jac_entry", None)();
     f = get_func(eng, "ping", ctypes.c_int64, ctypes.c_int64);
     assert f(7) == 7 , f"ping(7) expected 7, got {f(7)}";
@@ -31,14 +31,14 @@ test "cyclic import: mutual recursion computes across modules" {
 }
 
 test "glob init: transitive runtime initializer runs dependencies first" {
-    (eng, _) = compile_native("glob_chain_entry.jac");
+    (native_program, eng, _) = compile_native("glob_chain_entry.jac");
     get_func(eng, "jac_entry", None)();
     got = get_func(eng, "get_b", ctypes.c_int64)();
     assert got == 7 , f"get_b() expected 7 (leaf inits before mid), got {got}";
 }
 
 test "glob init: cyclic modules init once without crashing" {
-    (eng, _) = compile_native("cycle_glob_a.jac");
+    (native_program, eng, _) = compile_native("cycle_glob_a.jac");
     get_func(eng, "jac_entry", None)();
     av = get_func(eng, "get_av", ctypes.c_int64)();
     bv = get_func(eng, "get_bv", ctypes.c_int64)();

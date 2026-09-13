@@ -29,7 +29,7 @@ glob FIXTURES = os.path.join(
      );
 
 test "isinstance on an optional: None is an instance of nothing" {
-    (eng, _) = compile_native("isinstance_optional.jac");
+    (native_program, eng, _) = compile_native("isinstance_optional.jac");
     f = get_func(eng, "opt_single", ctypes.c_bool, ctypes.c_int64);
     assert f(1) is True , "Leaf should match";
     assert f(2) is False , "Twig should not match Leaf";
@@ -37,7 +37,7 @@ test "isinstance on an optional: None is an instance of nothing" {
 }
 
 test "isinstance on an optional against a class tuple" {
-    (eng, _) = compile_native("isinstance_optional.jac");
+    (native_program, eng, _) = compile_native("isinstance_optional.jac");
     f = get_func(eng, "opt_tuple", ctypes.c_bool, ctypes.c_int64);
     assert f(1) is True;
     assert f(2) is True;
@@ -45,7 +45,7 @@ test "isinstance on an optional against a class tuple" {
 }
 
 test "the none-branch never inspects the payload" {
-    (eng, _) = compile_native("isinstance_optional.jac");
+    (native_program, eng, _) = compile_native("isinstance_optional.jac");
     f = get_func(eng, "opt_negative", ctypes.c_bool, ctypes.c_int64);
     # pick=0 leaves the option empty; an unguarded unwrap would read a vtable
     # off an undefined payload here.
@@ -54,7 +54,7 @@ test "the none-branch never inspects the payload" {
 }
 
 test "an optional crosses into a static method and still narrows" {
-    (eng, _) = compile_native("isinstance_optional.jac");
+    (native_program, eng, _) = compile_native("isinstance_optional.jac");
     f = get_func(eng, "opt_through_static", ctypes.c_bool, ctypes.c_int64);
     assert f(1) is True;
     assert f(0) is False;

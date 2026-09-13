@@ -3,7 +3,7 @@ import ctypes;
 import from tests.support { compile_native, native_str_func as get_sfunc }
 
 test "string affixes support tuple candidates and bounds" {
-    (eng, _) = compile_native("string_affixes.jac");
+    (native_program, eng, _) = compile_native("string_affixes.jac");
     suffix = get_sfunc(eng, "suffix", ctypes.c_int64, ctypes.c_char_p);
     prefix = get_sfunc(eng, "prefix", ctypes.c_int64, ctypes.c_char_p);
     bounds = get_sfunc(

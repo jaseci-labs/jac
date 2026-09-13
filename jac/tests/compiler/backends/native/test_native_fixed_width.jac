@@ -118,7 +118,7 @@ test "plain int keeps its pre-existing lowering: shifts, negation, abs and pow d
 
 test "sized casts unwrap narrowed optional fields" {
     import from tests.support { compile_native, get_func }
-    (eng, _) = compile_native("fixed_width_optional_fields.jac");
+    (native_program, eng, _) = compile_native("fixed_width_optional_fields.jac");
     assert get_func(eng, "present_end", ctypes.c_int64)() == 42;
     assert get_func(eng, "absent_end", ctypes.c_int64)() == -1;
 }

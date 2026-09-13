@@ -46,7 +46,7 @@ glob KERNEL_SRC: str = (
          "\"*.kernel\" = \"native\"\n"
      );
 
-def compile_host -> uni.Module {
+def compile_host -> tuple[JacProgram, uni.Module] {
     tmp = tempfile.mkdtemp(prefix="jac_na_edge_");
     kernel_path = os.path.join(tmp, "kernel.jac");
     host_path = os.path.join(tmp, "host.jac");
@@ -60,11 +60,11 @@ def compile_host -> uni.Module {
         f.write(PIN_HOST_CLIENT);
     }
     prog = JacProgram();
-    return prog.compile(host_path);
+    return (prog, prog.compile(host_path));
 }
 
 test "native import binds generated wasm stubs in the client js" {
-    mod = compile_host();
+    (mod_program, mod) = compile_host();
     js = artifact_for(mod).js;
     assert '__na_bind' in js , "expected the @jac/wasm_host stub factory import";
     assert '"kernel"' in js , "expected the module stem in the bind call";
@@ -101,7 +101,7 @@ test "native import binds generated wasm stubs in the client js" {
 }
 
 test "native import records typed cl->na bindings in the interop manifest" {
-    mod = compile_host();
+    (mod_program, mod) = compile_host();
     manifest = artifact_for(mod).interop_manifest;
     assert manifest is not None;
     bindings = manifest.client_native_imports;
@@ -130,7 +130,7 @@ test "native import records typed cl->na bindings in the interop manifest" {
 }
 
 test "native import compiles to nothing on the python side" {
-    mod = compile_host();
+    (mod_program, mod) = compile_host();
     assert "kernel" not in artifact_for(mod).py , (
         "the client->native import must be inert under CPython; only a plain"
         " server import of a native module means the ctypes crossing"
@@ -211,7 +211,7 @@ test "plain import of a native module from client code takes the na edge" {
 }
 
 test "the injected wasm host import is registered for materialization" {
-    mod = compile_host();
+    (mod_program, mod) = compile_host();
     imports = dict(artifact_for(mod).client_manifest.imports);
     assert "@jac/wasm_host" in imports , (
         "the compiler injects `import { __na_bind } from '@jac/wasm_host'`, so the"

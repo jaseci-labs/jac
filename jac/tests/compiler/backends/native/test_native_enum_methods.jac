@@ -6,7 +6,7 @@ import from tests.support { compile_native, get_func }
 import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 
 test "native enum methods preserve scalar receivers and nested calls" {
-    (engine, module) = compile_native("enum_methods.jac");
+    (native_program, engine, module) = compile_native("enum_methods.jac");
     issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
     binding = get_func(engine, "binding_score", ctypes.c_int64, ctypes.c_int64);
@@ -17,7 +17,7 @@ test "native enum methods preserve scalar receivers and nested calls" {
 
 
 test "imported enum methods retain declarations and default arguments" {
-    (engine, module) = compile_native("enum_methods.jac");
+    (native_program, engine, module) = compile_native("enum_methods.jac");
     issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
     foreign = get_func(

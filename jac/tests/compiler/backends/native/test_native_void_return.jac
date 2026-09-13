@@ -23,10 +23,10 @@ import from jaclang.compiler.session.session { JacProgram }
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
-     _MEMO: list = [];
+     _MEMO: list[tuple[JacProgram, uni.Module]] = [];
 
 """Compile the fixture once; a codegen failure here is the bug, not a symptom."""
-def void_fixture -> uni.Module {
+def void_fixture -> tuple[JacProgram, uni.Module] {
     if _MEMO {
         return _MEMO[0];
     }
@@ -37,13 +37,13 @@ def void_fixture -> uni.Module {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors: {errors}";
-    _MEMO.append(ir);
-    return ir;
+    _MEMO.append((prog, ir));
+    return (prog, ir);
 }
 
 
 test "a module with `return None` in a `-> None` method still produces IR" {
-    ir = void_fixture();
+    (ir_program, ir) = void_fixture();
     assert artifact_for(ir).llvm_ir is not None , (
         "no native IR: `ret i8* null` in a void function fails LLVM's parser "
         "and takes the whole module with it"
@@ -53,7 +53,7 @@ test "a module with `return None` in a `-> None` method still produces IR" {
 
 
 test "every `-> None` callable terminates with ret void" {
-    ir = void_fixture();
+    (ir_program, ir) = void_fixture();
     text = str(artifact_for(ir).llvm_ir);
     for line in text.splitlines() {
         stripped = line.strip();
@@ -70,7 +70,7 @@ test "every `-> None` callable terminates with ret void" {
 
 
 test "the returned expression is still evaluated for its effects" {
-    ir = void_fixture();
+    (ir_program, ir) = void_fixture();
     _eng: any = artifact_for(ir).native_engine;
     addr = _eng.get_function_address("run");
     assert addr != 0 , "'run' not found in the JIT engine";

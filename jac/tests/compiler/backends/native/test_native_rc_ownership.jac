@@ -123,7 +123,7 @@ test "param shadow: other fn's param names add no retain-on-return" {
     # `return v` path treat the fresh local as a borrowed param and retain it
     # (rc=2 at the caller -> every returned Vec leaks).
     (eng, _) = compile_native("rc_param_shadow_return.jac");
-    ir = compile_native_ir("rc_param_shadow_return.jac");
+    (ir_program, ir) = compile_native_ir("rc_param_shadow_return.jac");
     body = fn_ir(ir, "make_vec");
     n = body.count('call void @"__rc_retain"');
     assert n == 0 , f"make_vec should return its owned local with no retain, found {n}";
@@ -137,7 +137,7 @@ test "param shadow: loop-exit cleanup still releases same-named locals" {
     # locals; the loop-exit (iter_end) cleanup must still release both or the
     # final iteration's Boxes are never freed.
     (eng, _) = compile_native("rc_param_shadow_looptail.jac");
-    ir = compile_native_ir("rc_param_shadow_looptail.jac");
+    (ir_program, ir) = compile_native_ir("rc_param_shadow_looptail.jac");
     body = fn_ir(ir, "churn");
     assert "iter.cleanup.a" in body , "loop-exit cleanup for local 'a' was suppressed";
     assert "iter.cleanup.b" in body , "loop-exit cleanup for local 'b' was suppressed";
@@ -174,7 +174,7 @@ test "import sys compiles under --memory rc (argv list is a heap container)" {
 """Run the drop fixture and assert the hook fired once per destroyed Res."""
 def check_drop_parity(gc_mode: str | None) {
     (eng, _) = compile_native("rc_drop_hook.jac", gc_mode=gc_mode);
-    ir = compile_native_ir(
+    (ir_program, ir) = compile_native_ir(
         "rc_drop_hook.jac",
         options=CompileOptions(
             force_codespace="native",

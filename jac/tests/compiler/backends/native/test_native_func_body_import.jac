@@ -40,7 +40,7 @@ def sv_module(stem: str) -> any {
 }
 
 test "function-body imports lower and agree with sv" {
-    (eng, _) = compile_native("func_body_import.jac");
+    (native_program, eng, _) = compile_native("func_body_import.jac");
     sv = sv_module("func_body_import");
     cases = [
         "floor_half",

@@ -13,7 +13,7 @@ import from jaclang.compiler.backends.native.na_compile_pass {
 import from tests.support { compile_native }
 
 test "method demotion is visible without changing the method ABI name" {
-    (_, module) = compile_native("partial_native.jac");
+    (native_program, _, module) = compile_native("partial_native.jac");
     text = str(artifact_for(module).llvm_ir);
     issues = native_lowering_issues(text);
     assert any(issue.symbol == "Literal.evaluate" for issue in issues);

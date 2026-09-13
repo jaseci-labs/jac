@@ -62,35 +62,35 @@ def fmt_errors(prog: JacProgram) -> str {
 # merge inserted the wrong keys, so every expectation below pins the key set.
 
 test "literal keywords still fill the sink (no regression)" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "call_literal_kwargs", ctypes.c_int64, ctypes.c_int64);
     # p, q -> 10 + 200 + 1000 + 2000
     assert f(10) == 3210 , f"got {f(10)}";
 }
 
 test "a forwarded **kwargs reaches the inner sink with its keys intact" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "call_forwarded", ctypes.c_int64, ctypes.c_int64);
     # p, r -> 10 + 200 + 1000 + 4000
     assert f(10) == 5210 , f"got {f(10)}";
 }
 
 test "a plain dict spreads into the sink" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "call_spread_dict", ctypes.c_int64, ctypes.c_int64);
     # p, q, r -> 10 + 300 + 1000 + 2000 + 4000
     assert f(10) == 7310 , f"got {f(10)}";
 }
 
 test "a spread merges with literal keywords at the same call site" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "call_spread_plus_literal", ctypes.c_int64, ctypes.c_int64);
     # q literal + r spread -> 10 + 200 + 2000 + 4000
     assert f(10) == 6210 , f"got {f(10)}";
 }
 
 test "spreading an empty dict yields an empty sink" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "call_spread_empty", ctypes.c_int64, ctypes.c_int64);
     assert f(10) == 10 , f"got {f(10)}";
 }
@@ -154,7 +154,7 @@ test "a spread into a sink no longer trips the capability gate" {
 # the spreads, so a spread appearing first in source ran second. `_SEQ`
 # records the order each operand fired as decimal digits.
 test "a spread and a literal keyword evaluate in source order" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     spread_first = get_func(eng, "order_spread_then_literal", ctypes.c_int64);
     assert spread_first() == 12 , (
         f"**spread should evaluate before the later literal, got {spread_first()}"
@@ -194,42 +194,42 @@ test "a spread emits a duplicate-key guard for every entry it inserts" {
 # kw) is numerically distinct from the bound answer.
 
 test "a spread key naming a defaulted param binds it, not the sink" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "spread_binds_declared", ctypes.c_int64);
     # a=5, kw={} -> 5000. Sink diversion would give 105.
     assert f() == 5000 , f"got {f()}";
 }
 
 test "a spread key satisfies a required param" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "spread_binds_required", ctypes.c_int64, ctypes.c_int64);
     # a=n, kw={} -> n*10. Sink diversion would give 1 for any n.
     assert f(6) == 60 , f"got {f(6)}";
 }
 
 test "one spread splits between a declared param and the sink" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "mixed_bind_and_sink", ctypes.c_int64, ctypes.c_int64);
     # a=3 bound, {"z": 9} sunk -> 3100. Sink diversion would give 203.
     assert f(3) == 3100 , f"got {f(3)}";
 }
 
 test "two spreads split: first binds the param, second fills the sink" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "two_spread_split", ctypes.c_int64);
     # a=4 from d1, {"z": 9} from d2 -> 4100. Sink diversion would give 204.
     assert f() == 4100 , f"got {f()}";
 }
 
 test "a spread key binds a keyword-only param" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "kwonly_bind", ctypes.c_int64);
     # args=(1,2), k=7, kw={} -> 20700. Sink diversion would give 20001.
     assert f() == 20700 , f"got {f()}";
 }
 
 test "the sink parameter's own name stays a sink key" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "sink_name_not_bindable", ctypes.c_int64);
     # "kw" is not keyword-bindable: a=0, kw={"kw": 3} -> 100.
     assert f() == 100 , f"got {f()}";
@@ -240,25 +240,25 @@ test "the sink parameter's own name stays a sink key" {
 # distinct sentinel when no raise fired.
 
 test "a spread key colliding with a literal keyword raises TypeError" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "collide_bound_kw", ctypes.c_int64);
     assert f() == 1 , f"expected TypeError, got sentinel {f()}";
 }
 
 test "a spread key colliding with a positional binding raises TypeError" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "collide_bound_pos", ctypes.c_int64);
     assert f() == 1 , f"expected TypeError, got sentinel {f()}";
 }
 
 test "a second spread re-binding a param raises TypeError" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "collide_two_spreads", ctypes.c_int64);
     assert f() == 1 , f"expected TypeError, got sentinel {f()}";
 }
 
 test "a required param a spread never supplies raises TypeError" {
-    (eng, _) = compile_native("kwargs_spread.jac");
+    (native_program, eng, _) = compile_native("kwargs_spread.jac");
     f = get_func(eng, "missing_required", ctypes.c_int64);
     # Sentinel -x surfaces the zero-filled wrong answer if no raise fired.
     assert f() == 1 , f"expected TypeError, got sentinel {f()}";

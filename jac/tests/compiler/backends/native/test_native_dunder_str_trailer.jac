@@ -48,7 +48,7 @@ def sv_module(stem: str) -> any {
 }
 
 test "str dunders reading through a trailer are not demoted to Python" {
-    (_, ir) = compile_native("dunder_str_trailer.jac");
+    (native_program, _, ir) = compile_native("dunder_str_trailer.jac");
     layout = artifact_for(ir).native_layout;
     assert layout is not None , "no native layout -- module-wide native compile failed";
     for want in ["Kind.__str__", "Outer.__str__", "Indexed.__str__"] {
@@ -60,7 +60,7 @@ test "str dunders reading through a trailer are not demoted to Python" {
 }
 
 test "class-form enum members and trailer dunders match the sv values" {
-    (eng, _) = compile_native("dunder_str_trailer.jac");
+    (native_program, eng, _) = compile_native("dunder_str_trailer.jac");
     sv = sv_module("dunder_str_trailer");
     for name in [
         "alpha_value",
@@ -76,7 +76,7 @@ test "class-form enum members and trailer dunders match the sv values" {
 }
 
 test "a StrEnum member compares equal to its text on both backends" {
-    (eng, _) = compile_native("dunder_str_trailer.jac");
+    (native_program, eng, _) = compile_native("dunder_str_trailer.jac");
     sv = sv_module("dunder_str_trailer");
     addr = eng.get_function_address("alpha_is_text");
     assert addr != 0 , "alpha_is_text not found in the JIT engine";

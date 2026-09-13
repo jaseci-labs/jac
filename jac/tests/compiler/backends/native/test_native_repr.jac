@@ -36,85 +36,85 @@ def capture_stdout(fn: any) -> bytes {
 }
 
 test "str(list[int]) is CPython repr" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "list_int_str", ctypes.c_char_p);
     assert f() == b"[1, 2, 3]";
 }
 
 test "str of empty list" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "list_empty_str", ctypes.c_char_p);
     assert f() == b"[]";
 }
 
 test "nested list repr" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "nested_list_str", ctypes.c_char_p);
     assert f() == b"[[1, 2], [3]]";
 }
 
 test "str elements get CPython quote choice" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "list_str_quoting", ctypes.c_char_p);
     assert f() == b"['a', \"b'c\", 'd\"e']";
 }
 
 test "dict repr" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "dict_str", ctypes.c_char_p);
     assert f() == b"{'a': 1, 'b': 2}";
 }
 
 test "set repr" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "set_str", ctypes.c_char_p);
     assert f() == b"{1, 2, 3}";
 }
 
 test "tuple repr" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "tuple_str", ctypes.c_char_p);
     assert f() == b"(1, 'x')";
 }
 
 test "one-tuple trailing comma" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "one_tuple_str", ctypes.c_char_p);
     assert f() == b"(1,)";
 }
 
 test "bool elements repr as True/False" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "bool_list_str", ctypes.c_char_p);
     assert f() == b"[True, False]";
 }
 
 test "None element in optional-str list" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "opt_str_list", ctypes.c_char_p);
     assert f() == b"['a', None]";
 }
 
 test "float elements use repr formatting" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "float_list_str", ctypes.c_char_p);
     assert f() == b"[1.0, 2.5, 1e+300]";
 }
 
 test "f-string container interpolation" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "fstr_container", ctypes.c_char_p);
     assert f() == b"v=[1, 2]";
 }
 
 test "obj element uses __repr__" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "obj_elem_repr", ctypes.c_char_p);
     assert f() == b"[P(1)]";
 }
 
 test "obj element default repr" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "obj_elem_default", ctypes.c_char_p);
     out = f();
     assert out.startswith(b"[<Plain object at 0x") , f"got {out!r}";
@@ -122,7 +122,7 @@ test "obj element default repr" {
 }
 
 test "print(list) and print(tuple) to stdout" {
-    (eng, _) = compile_native("container_repr.jac");
+    (native_program, eng, _) = compile_native("container_repr.jac");
     `entry = get_func(eng, "jac_entry", None);
     out = capture_stdout(`entry);
     assert out == b"[1, 2, 3]\n(1, 2)\n" , f"got {out!r}";

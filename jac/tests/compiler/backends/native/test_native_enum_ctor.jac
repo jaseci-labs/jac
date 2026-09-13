@@ -111,7 +111,7 @@ test "the enum-constructor fixture lowers with no seam" {
 
 
 test "the call validates against every declared member" {
-    ir = compile_native_ir("enum_ctor.jac");
+    (ir_program, ir) = compile_native_ir("enum_ctor.jac");
     text = str(artifact_for(ir).llvm_ir);
     for member in ("Null", "Instantiable", "Instance", "Ambiguous") {
         assert f"ec.Flags.{member}" in text , (
@@ -127,7 +127,7 @@ test "the call validates against every declared member" {
 
 
 test "the declared-enum spelling validates the same way" {
-    ir = compile_native_ir("enum_ctor.jac");
+    (ir_program, ir) = compile_native_ir("enum_ctor.jac");
     text = str(artifact_for(ir).llvm_ir);
     for member in ("LOW", "MID", "HIGH") {
         assert f"ec.Level.{member}" in text , (

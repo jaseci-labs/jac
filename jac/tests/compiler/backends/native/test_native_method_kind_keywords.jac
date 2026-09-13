@@ -69,26 +69,26 @@ def fmt_errors(prog: JacProgram) -> str {
 # ─────────────────────────────────────────────────────────────────────
 
 test "abst: an abstract declaration lowers and its override runs" {
-    (eng, _) = compile_native("method_kind_keywords.jac");
+    (native_program, eng, _) = compile_native("method_kind_keywords.jac");
     f = get_func(eng, "call_abstract_impl", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 25;
     assert f(0) == 0;
 }
 
 test "abst: dispatch through the abstract base reaches the override" {
-    (eng, _) = compile_native("method_kind_keywords.jac");
+    (native_program, eng, _) = compile_native("method_kind_keywords.jac");
     f = get_func(eng, "call_abstract_through_base", ctypes.c_int64, ctypes.c_int64);
     assert f(7) == 49;
 }
 
 test "static def: a staticmethod lowers and returns its value" {
-    (eng, _) = compile_native("method_kind_keywords.jac");
+    (native_program, eng, _) = compile_native("method_kind_keywords.jac");
     f = get_func(eng, "call_staticmethod", ctypes.c_int64, ctypes.c_int64);
     assert f(41) == 42;
 }
 
 test "class def: a classmethod lowers receiver-less and carries its arguments" {
-    (eng, _) = compile_native("method_kind_keywords.jac");
+    (native_program, eng, _) = compile_native("method_kind_keywords.jac");
     f = get_func(eng, "call_classmethod", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 17;
     assert f(0) == 7;

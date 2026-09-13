@@ -28,7 +28,7 @@ import from tests.support {
 import jaclang;
 
 test "lambda parameters remain borrowed across explicit returns" {
-    (engine, module) = compile_native("lambda_borrowed_params.jac");
+    (native_program, engine, module) = compile_native("lambda_borrowed_params.jac");
     issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
     call = get_func(engine, "call_lambda", ctypes.c_int64);
@@ -61,7 +61,7 @@ def compile_na_inline_ir(label: str, code: str) -> tuple {
 }
 
 test "closure: nested def reads an enclosing param" {
-    (eng, _) = compile_native("closures.jac");
+    (native_program, eng, _) = compile_native("closures.jac");
     f = get_func(eng, "scaled", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(4, 5) == 20;
     assert f(0, 9) == 0;
@@ -184,76 +184,76 @@ def probe -> int {
 }
 
 test "closure: read captures are late-bound (py backend parity)" {
-    (eng, _) = compile_native("closures.jac");
+    (native_program, eng, _) = compile_native("closures.jac");
     f = get_func(eng, "late_bound", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     # r1 = 10 + a (before rebind), r2 = 10 + b (after rebind).
     assert f(2, 7) == 12017;
 }
 
 test "closure: rebound capture writes through to the enclosing frame" {
-    (eng, _) = compile_native("closures.jac");
+    (native_program, eng, _) = compile_native("closures.jac");
     f = get_func(eng, "rebind_out", ctypes.c_int64, ctypes.c_int64);
     # total = 0; bump(5) twice writes through: total == 10.
     assert f(5) == 10;
 }
 
 test "closure: RC pointer capture (str) reads without double release" {
-    (eng, _) = compile_native("closures.jac");
+    (native_program, eng, _) = compile_native("closures.jac");
     f = native_str_func(eng, "str_capture", ctypes.c_int64, ctypes.c_char_p);
     assert f(b"abcd") == 8;
 }
 
 test "closure: capturing lambda in the same frame keeps working" {
-    (eng, _) = compile_native("closures.jac");
+    (native_program, eng, _) = compile_native("closures.jac");
     f = get_func(eng, "lam_parity", ctypes.c_int64, ctypes.c_int64);
     assert f(6) == 18;
 }
 
 test "closure: self-recursive nested def forwards its own captures" {
-    (eng, _) = compile_native("closures.jac");
+    (native_program, eng, _) = compile_native("closures.jac");
     f = get_func(eng, "recursive_capture", ctypes.c_int64, ctypes.c_int64);
     # depth increments through the shared slot on every recursion level.
     assert f(3) == 4;
 }
 
 test "closure escape: counter factory returns a live closure" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "use_counter", ctypes.c_int64);
     assert f() == 3;
 }
 
 test "closure escape: two factory closures have independent cells" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "two_counters_independent", ctypes.c_int64);
     assert f() == 32;
 }
 
 test "closure escape: closure passed as argument writes through" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "pass_closure", ctypes.c_int64, ctypes.c_int64);
     assert f(10) == 16016;
 }
 
 test "closure escape: closure stored in a list and called later" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "stored_in_list", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(40, 2) == 42;
 }
 
 test "closure escape: two closures share one rebound cell" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "shared_cell", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "closure escape: env keeps an RC capture alive after the frame dies" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "use_greeter", ctypes.c_int64);
     assert f() == 8;
 }
 
 test "closure escape: capturing lambda escapes as a value" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "lambda_escape", ctypes.c_int64, ctypes.c_int64);
     assert f(7) == 124;
     g = get_func(eng, "use_adder", ctypes.c_int64);
@@ -307,33 +307,33 @@ test "closure escape: calling a closure through an any-typed value stays rejecte
 }
 
 test "adapter: map with a capturing lambda callback" {
-    (eng, _) = compile_native("closures_adapters.jac");
+    (native_program, eng, _) = compile_native("closures_adapters.jac");
     f = get_func(eng, "scale_all", ctypes.c_int64, ctypes.c_int64);
     assert f(3) == 18 , "3+6+9";
     assert f(0) == 0;
 }
 
 test "adapter: filter with a capturing lambda predicate" {
-    (eng, _) = compile_native("closures_adapters.jac");
+    (native_program, eng, _) = compile_native("closures_adapters.jac");
     f = get_func(eng, "keep_over", ctypes.c_int64, ctypes.c_int64);
     assert f(4) == 14 , "5+9";
     assert f(0) == 18 , "1+5+9+3";
 }
 
 test "adapter: stored closure value drives map" {
-    (eng, _) = compile_native("closures_adapters.jac");
+    (native_program, eng, _) = compile_native("closures_adapters.jac");
     f = get_func(eng, "map_stored_closure", ctypes.c_int64, ctypes.c_int64);
     assert f(7) == 44 , "(10+7)+(20+7)";
 }
 
 test "adapter: named nested closure passed to map by name" {
-    (eng, _) = compile_native("closures_adapters.jac");
+    (native_program, eng, _) = compile_native("closures_adapters.jac");
     f = get_func(eng, "map_named_capture", ctypes.c_int64, ctypes.c_int64);
     assert f(10) == 50 , "20+30";
 }
 
 test "adapter: capturing filter chained into capturing map" {
-    (eng, _) = compile_native("closures_adapters.jac");
+    (native_program, eng, _) = compile_native("closures_adapters.jac");
     f = get_func(
         eng, "filter_then_map", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
     );
@@ -341,19 +341,19 @@ test "adapter: capturing filter chained into capturing map" {
 }
 
 test "frame scan: closure escaping an event-method frame" {
-    (eng, _) = compile_native("closures_frames.jac");
+    (native_program, eng, _) = compile_native("closures_frames.jac");
     f = get_func(eng, "event_frame_escape", ctypes.c_int64, ctypes.c_int64);
     assert f(3) == 30 , "here.val captured, f(10) = 10*3";
 }
 
 test "frame scan: closure escaping a no-signature method frame" {
-    (eng, _) = compile_native("closures_frames.jac");
+    (native_program, eng, _) = compile_native("closures_frames.jac");
     f = get_func(eng, "nosig_frame_escape", ctypes.c_int64, ctypes.c_int64);
     assert f(9) == 109 , "base captured, f(100) = 100+9";
 }
 
 test "frame scan: lambda escaping a global initializer" {
-    (eng, _) = compile_native("closures_frames.jac");
+    (native_program, eng, _) = compile_native("closures_frames.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "globinit_lambda", ctypes.c_int64, ctypes.c_int64);
@@ -361,7 +361,7 @@ test "frame scan: lambda escaping a global initializer" {
 }
 
 test "frame scan: lambda escaping the module entry frame" {
-    (eng, _) = compile_native("closures_frames.jac");
+    (native_program, eng, _) = compile_native("closures_frames.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "entry_frame_escape", ctypes.c_int64);

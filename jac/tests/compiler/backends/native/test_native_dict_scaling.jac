@@ -45,7 +45,7 @@ test "native dict inserts stay O(1) when N doubles (hash-table scaling guard)" {
 }
 
 test "native dict deletion scales linearly in both insertion orders" {
-    (eng, _) = compile_native("dict_delete_scaling.jac");
+    (native_program, eng, _) = compile_native("dict_delete_scaling.jac");
     erase = get_func(eng, "erase_keys", ctypes.c_double, ctypes.c_int64, ctypes.c_bool);
     for reverse in [False, True] {
         erase(1000, reverse);

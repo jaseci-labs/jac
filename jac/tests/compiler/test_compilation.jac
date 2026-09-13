@@ -59,7 +59,8 @@ test "arith precedence" {
     # opt-in no-print rule (E3012) that would reject the print used below.
     set_config(JacConfig(check=CheckConfig(lint=LintConfig(select=["default"]))));
     try {
-        prog = JacProgram().compile(
+        prog_program = JacProgram();
+        prog = prog_program.compile(
             use_str="with entry {print(4-5-4);}", file_path="test.jac"
         );
         old = sys.stdout;
@@ -77,7 +78,8 @@ test "arith precedence" {
 }
 
 test "double format issue" {
-    prog = JacProgram().compile("with entry {print(hello);}", "test.jac");
+    prog_program = JacProgram();
+    prog = prog_program.compile("with entry {print(hello);}", "test.jac");
     unparse_module(prog);
     before = format_module(prog);
     format_module(prog);
@@ -87,12 +89,14 @@ test "double format issue" {
 }
 
 test "multiline single tok" {
-    mypass = JacProgram().compile(os.path.join(LANG_FIXTURES, "byllmissue.jac"));
+    mypass_program = JacProgram();
+    mypass = mypass_program.compile(os.path.join(LANG_FIXTURES, "byllmissue.jac"));
     assert "2:5 - 4:8" in print_ast_tree(mypass);
 }
 
 test "annotation tuple issue" {
-    mypass = JacProgram().compile(os.path.join(LANG_FIXTURES, "slice_vals.jac"));
+    mypass_program = JacProgram();
+    mypass = mypass_program.compile(os.path.join(LANG_FIXTURES, "slice_vals.jac"));
     assert "Annotated[Str, INT, BLAH]" in artifact_for(mypass).py;
     assert "tuple[int, Optional[type], Optional[tuple]]" in artifact_for(mypass).py;
 }

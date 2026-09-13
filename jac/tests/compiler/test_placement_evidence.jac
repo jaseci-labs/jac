@@ -56,7 +56,8 @@ test "authenticated endpoints bridge within their app without placement pins" {
             ).js;
             binding = artifact_for(mod).interop_manifest.bindings["read_value"];
             assert binding.ast_node.access.tag.value == access;
-            provider = JacProgram().compile(
+            provider_program = JacProgram();
+            provider = provider_program.compile(
                 os.path.join(d, "api.jac"), options=CompileOptions(no_ir_cache=True)
             );
             assert artifact_for(provider).interop_manifest.func_access["read_value"];

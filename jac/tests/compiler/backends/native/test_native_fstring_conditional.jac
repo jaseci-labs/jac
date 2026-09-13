@@ -46,7 +46,7 @@ def sv_module(stem: str) -> object {
 }
 
 test "f-string ternary interpolations match the sv rendering" {
-    (eng, _) = compile_native("fstring_conditional.jac");
+    (native_program, eng, _) = compile_native("fstring_conditional.jac");
     sv = sv_module("fstring_conditional");
     cases = [
         "pick_str",

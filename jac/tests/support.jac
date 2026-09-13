@@ -15,6 +15,7 @@ import ctypes;
 
 import from pathlib { Path }
 import type from jaclang.compiler.session.options { CompileOptions }
+import type from jaclang.compiler.session.session { JacProgram }
 import type from jaclang.compiler.ir.schema { Module }
 import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
@@ -149,7 +150,9 @@ glob NATIVE_FIXTURES: str = str(
              / "fixtures"
      );
 
-"""Compile a .jac fixture into the native codespace and return (engine, module).
+"""Compile a .jac fixture into the native codespace and return (program, engine, module).
+
+Keep the program alive while inspecting the module's backend artifacts.
 
 `fixture_dir` defaults to the native pass fixtures directory, which is where
 all but one caller looks; pass it explicitly for a fixture that lives
@@ -160,17 +163,21 @@ should assert against it once, in a single test.
 """
 def compile_native(
     fixture: str, fixture_dir: str = ""
-) -> tuple[ExecutionEngine, Module] {
-    ir = _compile_native_fixture(fixture, fixture_dir, native_force_opts());
+) -> tuple[JacProgram, ExecutionEngine, Module] {
+    (program, ir) = _compile_native_fixture(fixture, fixture_dir, native_force_opts());
     eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
-    return (eng, ir);
+    return (program, eng, ir);
 }
 
-"""Inspect fresh lowering output before LLVM optimization removes layout types."""
+"""Return (program, module) for inspecting fresh LLVM lowering output.
+
+Keep the program alive while reading its artifacts; the syntax graph does not
+own backend output.
+"""
 def compile_native_ir(
     fixture: str, fixture_dir: str = "", options: CompileOptions | None = None
-) -> Module {
+) -> tuple[JacProgram, Module] {
     options = options or native_force_opts();
     options.skip_native_engine = True;
     options.no_ir_cache = True;
@@ -179,7 +186,7 @@ def compile_native_ir(
 
 def _compile_native_fixture(
     fixture: str, fixture_dir: str, options: CompileOptions
-) -> Module {
+) -> tuple[JacProgram, Module] {
     import from jaclang.compiler.session.session { JacProgram }
     base = fixture_dir or NATIVE_FIXTURES;
     prog = JacProgram();
@@ -194,7 +201,7 @@ def _compile_native_fixture(
     }
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     assert ir is not None , f"No module produced for {fixture}";
-    return ir;
+    return (prog, ir);
 }
 
 """Get a ctypes-callable function from a JIT engine."""

@@ -202,6 +202,7 @@ Use stable schema identifiers and a schema version. Type/path renames must not s
 - Source syntax is immutable after parse/annex composition. Semantic analysis operates on a contextual graph instance. Structural lowering uses an explicit edit scope with invalidation, then freezes structure again.
 - Do not share mutable Codespace/type graphs between app contexts. Codespace identifiers are immutable enums; graph instances/anchors have explicit lifetime. Immutable interned types may be shared only with an enforced immutability contract.
 - Node IDs are scoped by graph identity. Disk keys never use process `id()` values. Persisted references use codec-defined stable IDs; graph release drops associated products, reverse indexes, diagnostics, and caches together.
+- Backend artifacts belong to the compilation context. Callers inspecting a module's generated output must retain its `JacProgram`; fixture helpers return `(program, module)` or `(program, engine, module)` to make that lifetime explicit.
 
 **8. Scheduling and strongly typed products.** `pipeline/schedule.jac` is the single authoritative execution specification. Use typed declarative lists and prerequisite relationships, with deterministic serial execution initially. The scheduler's dependency graph is derived infrastructure held in ordinary typed objects; it does not need another OSP graph just because the program IR is one.
 
