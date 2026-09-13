@@ -12,6 +12,7 @@ uses, so a flag rename fails here instead of in production."""
 import os;
 import unittest.mock;
 import from pathlib { Path }
+import from jaclang.cli.cli_boot { jac_command }
 import from tempfile { TemporaryDirectory }
 
 import jaclang.cli.commands.execution;
@@ -98,5 +99,6 @@ test "client dev backend spawn argv is accepted by the real CLI" {
     }
     assert len(captured) == 1 , f"expected one spawn, got {captured}";
     # argv is [sys.executable, "-m", "jaclang", <cli invocation...>].
-    _parse_with_real_cli(captured[0][3:]);
+    assert captured[0][:len(jac_command())] == jac_command();
+    _parse_with_real_cli(captured[0][len(jac_command()):]);
 }

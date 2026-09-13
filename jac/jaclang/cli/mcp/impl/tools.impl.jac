@@ -697,9 +697,9 @@ impl execute_command(
     command: str, args: list[str] | None = None, timeout: int = 30
 ) -> dict[str, any] {
     import subprocess;
-    import sys;
+    import from jaclang.cli.cli_boot { jac_command }
 
-    cmd_args: list[str] = [sys.executable, "-m", "jaclang", command] + (args or []);
+    cmd_args: list[str] = jac_command() + [command] + (args or []);
     try {
         result = subprocess.run(
             cmd_args, capture_output=True, text=True, timeout=timeout

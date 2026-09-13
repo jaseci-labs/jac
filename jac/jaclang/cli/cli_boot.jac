@@ -3,6 +3,19 @@ import sys;
 import shutil;
 import from pathlib { Path }
 
+"""Invoke the current compiler image without letting a checkout shadow it."""
+def jac_command -> list[str] {
+    import jaclang;
+    compiler_site = str(Path(jaclang.__file__).resolve().parent.parent);
+    script = (
+        "import runpy, sys; "
+        + f"sys.path.insert(0, {compiler_site!r}); "
+        + "sys.argv[0] = 'jac'; "
+        + "runpy.run_module('jaclang', run_name='__main__', alter_sys=True)"
+    );
+    return [sys.executable, "-P", "-c", script];
+}
+
 def _handle_purge {
     if "-h" in sys.argv or "--help" in sys.argv {
         print("usage: jac purge [-h]\n");

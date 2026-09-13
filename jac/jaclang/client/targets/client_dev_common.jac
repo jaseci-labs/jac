@@ -119,9 +119,9 @@ def ensure_watchdog_common(target_name: str) -> bool {
 }
 
 def start_backend_server_common(entry_file: Path, project_dir: Path, port: int) -> any {
-    import sys;
+    import from jaclang.cli.cli_boot { jac_command }
     return subprocess.Popen(
-        [sys.executable, "-m", "jaclang"] + headless_start_args(str(entry_file), port),
+        jac_command() + headless_start_args(str(entry_file), port),
         cwd=str(project_dir),
         stdout=None,
         stderr=None

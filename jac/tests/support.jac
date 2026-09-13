@@ -10,6 +10,7 @@ Imported as `from tests.support`, which resolves identically under the single
 `jac` binary and a source checkout (same mechanism as `tests.fixtures_list`).
 """
 
+import from jaclang.cli.cli_boot { jac_command }
 import ctypes;
 import jaclang;
 import sys;
@@ -25,17 +26,6 @@ glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
      JAC_ROOT: str = str(Path(__file__).resolve().parent.parent),
      COMPILER_SITE: str = str(Path(jaclang.__file__).resolve().parent.parent);
 
-
-"""Invoke the current compiler image without letting a checkout shadow it."""
-def jac_command -> list[str] {
-    script = (
-        "import runpy, sys; "
-        + f"sys.path.insert(0, {COMPILER_SITE!r}); "
-        + "sys.argv[0] = 'jac'; "
-        + "runpy.run_module('jaclang', run_name='__main__', alter_sys=True)"
-    );
-    return [sys.executable, "-P", "-c", script];
-}
 
 """CompileOptions that force a fixture into the native codespace.
 

@@ -28,18 +28,8 @@ def seal_copy_ignore(_dir: str, items: list) -> list {
 }
 
 def run_precompiler(src_dir: str, flags: list[str]) -> int {
-    import sys;
-    import subprocess;
-
-    code = (
-        "import _jac_finder as _jf; _jf.apply_compiler_image(); _jf.install(); "
-        "import sys; sys.argv = ['jac', 'precompile', "
-        + repr(src_dir)
-        + "] + "
-        + repr(list(flags))
-        + "; from jaclang.cli.cli_boot import start_cli; start_cli()"
-    );
-    return subprocess.call([sys.executable, "-c", code]);
+    import from jaclang.cli.cli_boot { jac_command }
+    return subprocess.call(jac_command() + ["precompile", src_dir] + flags);
 }
 
 def resolve_entry_file(config: any, app: str = "") -> (Path | None) {
