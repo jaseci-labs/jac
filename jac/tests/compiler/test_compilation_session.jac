@@ -4,6 +4,7 @@ import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from threading { Event }
+import from unittest.mock { patch }
 import from jaclang.compiler.driver.compilation_context {
     CompilationSession,
     context_program
@@ -14,6 +15,8 @@ import jaclang.compiler.types.type_evaluator;
 import jaclang.compiler.types.stubcat.reader;
 import jaclang.compiler.types.stubcat.writer;
 import jaclang.compiler.types.stubcat.modiface;
+import from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
+import from jaclang.compiler.driver.selfhost { SelfHostCache }
 
 test "two roots share their analyzed dependency until the session budget expires" {
     with TemporaryDirectory() as directory, CompilationSession(
@@ -102,5 +105,81 @@ test "a failed request releases its session state" {
         session.checkpoint(failed=True);
         assert not session.program.source_store.revisions;
         assert session.evictions == 1;
+    }
+}
+
+test "an edit during compilation cannot publish or retain the old tree" {
+    with TemporaryDirectory() as directory, CompilationSession() as session {
+        source = Path(directory) / "moving.jac";
+        source.write_text("def answer() -> int { return 41; }\n");
+        def edit(task: ModuleCompilation) {
+            source.write_text("def answer() -> int { return 42; }\n");
+        }
+        failed = False;
+        with patch.object(ModuleCompilation, "ir", edit) {
+            try {
+                session.program.compile(
+                    str(source), options=CompileOptions(no_cgen=True)
+                );
+            } except RuntimeError as error {
+                failed = "Source changed during compilation" in str(error);
+            }
+        }
+        assert failed;
+        for program in session.programs() {
+            assert str(source) not in program.mod.hub;
+        }
+        assert session.program.get_bytecode(str(source)) is not None;
+    }
+}
+
+test "nested compiler execution retains analysis until the outer module finishes" {
+    with CompilationSession() as session {
+        cache = SelfHostCache(_program=session.program);
+        with patch.object(session.program, "release_compile_closure") as release {
+            cache.enter_execution();
+            cache.enter_execution();
+            cache.evict_unit("module.jac", None, collect=False);
+            assert release.call_count == 0;
+            cache.exit_execution();
+            assert release.call_count == 0;
+            cache.evict_unit("other.jac", None, collect=True);
+            cache.exit_execution();
+            release.assert_called_once_with(collect=True);
+        }
+    }
+}
+
+test "live compilation sessions invalidate embedded compile-time inputs" {
+    import types;
+    def constants(code: types.CodeType) -> list[object] {
+        values: list[object] = [];
+        for value in code.co_consts {
+            if isinstance(value, types.CodeType) {
+                values.extend(constants(value));
+            } else {
+                values.append(value);
+            }
+        }
+        return values;
+    }
+    with TemporaryDirectory() as directory, CompilationSession() as session {
+        source = Path(directory) / "embedder.jac";
+        data = Path(directory) / "payload.txt";
+        data.write_text("first payload");
+        source.write_text(
+            "import from jaclang.comptime { embed_file }\n"
+            "comptime BLOB: str = embed_file(\"payload.txt\");\n"
+            "def value() -> str { return BLOB; }\n"
+        );
+        program = precompile_context(str(source), directory, session.program);
+        first = program.get_bytecode(str(source));
+        assert first is not None;
+        assert "first payload" in constants(first);
+        data.write_text("other payload");
+        second = program.get_bytecode(str(source));
+        assert second is not None;
+        assert "other payload" in constants(second);
+        assert "first payload" not in constants(second);
     }
 }

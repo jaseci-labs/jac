@@ -16,6 +16,7 @@ obj ModuleCompilation {
         source: str | None = None,
         module: uni.Module postinit,
         module_path: str = "",
+        source_key: str = "",
         parse_failed: bool = False,
         blocked: bool = False,
         full_head: bool = False,
@@ -27,6 +28,10 @@ obj ModuleCompilation {
 
     def parse {
         resolved = os.path.realpath(self.path);
+        if self.source is None {
+            import from jaclang.compiler.driver.jir { module_source_key }
+            self.source_key = module_source_key(resolved);
+        }
         existing = self.program.mod.hub.get(resolved);
         if self.source is None
             and existing is not None
@@ -50,6 +55,24 @@ obj ModuleCompilation {
         );
         self.parse_failed = len(self.program.errors_had) > errors_before;
         self.compiler._ingest_comptime_producers(self.module, self.program, self.path);
+    }
+
+    def inputs_current -> bool {
+        if self.source is not None or not self.source_key {
+            return True;
+        }
+        import from jaclang.compiler.driver.jir { module_source_key }
+        try {
+            return module_source_key(os.path.realpath(self.path)) == self.source_key;
+        } except OSError {
+            return False;
+        }
+    }
+
+    def discard {
+        self.module.parse_failed = True;
+        self.module.gen.py_bytecode = None;
+        self.program.invalidate_module(os.path.realpath(self.path));
     }
 
     def ir {

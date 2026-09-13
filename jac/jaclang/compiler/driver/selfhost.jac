@@ -5,7 +5,10 @@ import jaclang.compiler.frontend.unitree as uni;
 obj SelfHostCache {
     has _program: (JacProgram | None) = None,
         _jaclang_root: (str | None) = None,
-        _bytecode_depth: int = 0;
+        _bytecode_depth: int = 0,
+        _execution_depth: int = 0,
+        _release_pending: bool = False,
+        _collect_pending: bool = False;
 
     has program: JacProgram { getter; }
 
@@ -91,7 +94,29 @@ obj SelfHostCache {
             slim.interop_manifest = result.gen.interop_manifest;
             self.program.hub.artifacts[full_target] = slim;
         }
-        self.program.release_compile_closure(collect=collect);
+        if self._execution_depth > 0 {
+            self._release_pending = True;
+            self._collect_pending = self._collect_pending or collect;
+        } else {
+            self.program.release_compile_closure(collect=collect);
+        }
+    }
+
+    def enter_execution {
+        self._execution_depth += 1;
+    }
+
+    def exit_execution {
+        if self._execution_depth <= 0 {
+            raise RuntimeError("Unbalanced compiler execution scope");
+        }
+        self._execution_depth -= 1;
+        if self._execution_depth == 0 and self._release_pending {
+            collect = self._collect_pending;
+            self._release_pending = False;
+            self._collect_pending = False;
+            self.program.release_compile_closure(collect=collect);
+        }
     }
 
     def enter_bytecode {

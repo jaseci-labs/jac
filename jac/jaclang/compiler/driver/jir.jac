@@ -185,17 +185,8 @@ def get_jir_cache_dir -> Path {
 }
 
 def compute_content_sha256(file_path: str) -> str {
-    h = hashlib.sha256();
-    with open(file_path, 'rb') as f {
-        while True {
-            chunk = f.read(8192);
-            if not chunk {
-                break;
-            }
-            h.update(chunk);
-        }
-    }
-    return h.hexdigest();
+    import from jaclang.jac0core.cache_paths { content_sha256 }
+    return content_sha256(file_path);
 }
 
 def _related_files(source_path: str) -> list[tuple[str, str]] {
@@ -264,21 +255,12 @@ def _module_codespace_mode(source_path: str) -> str {
     }
 }
 
-glob COMPILER_DIGEST_ROOTS: tuple = (
-         "jac0.py",
-         "bootstrap_manifest.py",
-         "meta_importer.py",
-         "jac0core",
-         "compiler",
-         "runtime",
-         "lib",
-         "cli/cli_boot.jac",
-         "project/tomlio.jac",
-         "dist/precompile_bytecode.jac"
-     ),
-     COMPILER_DIGEST_SUFFIXES: tuple = (".jac", ".py"),
-     COMPILER_DIGEST_SKIP_DIRS: tuple = ("tests", "test", "__pycache__"),
-     COMPILER_DIGEST_SKIP: tuple = ();
+import from jaclang.bootstrap_manifest {
+    COMPILER_DIGEST_ROOTS,
+    COMPILER_DIGEST_SUFFIXES,
+    COMPILER_DIGEST_SKIP_DIRS,
+    is_compiler_input
+}
 
 def compiler_source_files(pkg_dir: str) -> list[str] {
     base = str(Path(pkg_dir));
@@ -305,10 +287,7 @@ def compiler_source_files(pkg_dir: str) -> list[str] {
                 rel = os.path.relpath(os.path.join(walk_dir, name), base).replace(
                     os.sep, "/"
                 );
-                if any(rel.startswith(prefix) for prefix in SOURCE_ONLY_PATHS) {
-                    continue;
-                }
-                if rel in COMPILER_DIGEST_SKIP {
+                if not is_compiler_input(rel) {
                     continue;
                 }
                 rels.append(rel);
@@ -335,77 +314,13 @@ def compiler_source_digest(pkg_dir: str) -> str {
 
 glob _COMPILER_DIGEST_CACHE: list = [];
 
-def _digest_manifest_path(pkg_dir: str) -> Path {
-    tag = hashlib.sha256(str(Path(pkg_dir).resolve()).encode()).hexdigest()[:8];
-    return get_jir_cache_dir() / f"compiler_digest.{tag}.json";
-}
-
-def _manifest_compiler_digest(pkg_dir: str) -> str {
-    import json;
-    base = str(Path(pkg_dir));
-    rels = compiler_source_files(base);
-    manifest_path = _digest_manifest_path(base);
-    entries: dict = {};
-    stored_digest = "";
-    try {
-        raw = json.loads(manifest_path.read_text());
-        entries = raw.get("entries", {}) or {};
-        stored_digest = raw.get("digest", "") or "";
-    } except Exception {
-        entries = {};
-        stored_digest = "";
-    }
-    changed = False;
-    new_entries: dict = {};
-    h = hashlib.sha256();
-    for rel in rels {
-        full = os.path.join(base, rel.replace("/", os.sep));
-        st = os.stat(full);
-        prev = entries.get(rel);
-        if (
-            isinstance(prev, list)
-            and len(prev) == 3
-            and prev[0] == st.st_mtime
-            and prev[1] == st.st_size
-        ) {
-            sha = prev[2];
-        } else {
-            sha = compute_content_sha256(full);
-            changed = True;
-        }
-        new_entries[rel] = [st.st_mtime, st.st_size, sha];
-        h.update(rel.encode());
-        h.update(sha.encode());
-    }
-    if len(new_entries) != len(entries) {
-        changed = True;
-    }
-    digest = f"{len(rels)}:{h.hexdigest()}";
-    if changed or digest != stored_digest {
-        try {
-            manifest_path.parent.mkdir(parents=True, exist_ok=True);
-            import from jaclang.jac0core.cache_paths { atomic_write }
-            atomic_write(
-                manifest_path,
-                json.dumps({"entries": new_entries, "digest": digest}).encode()
-            );
-        } except Exception {}
-    }
-    return digest;
-}
-
 def running_compiler_digest -> str {
     if not _COMPILER_DIGEST_CACHE {
         pinned = os.environ.get("JAC_COMPILER_DIGEST_PIN", "").strip();
         if pinned {
             _COMPILER_DIGEST_CACHE.append(f"pin:{pinned}");
         } else {
-            try {
-                digest = _manifest_compiler_digest(_jaclang_pkg_dir);
-            } except Exception {
-                digest = compiler_source_digest(_jaclang_pkg_dir);
-            }
-            _COMPILER_DIGEST_CACHE.append(digest);
+            _COMPILER_DIGEST_CACHE.append(compiler_source_digest(_jaclang_pkg_dir));
         }
     }
     return _COMPILER_DIGEST_CACHE[0];
@@ -416,7 +331,11 @@ glob _COMPILER_GENERATION_CACHE: list = [];
 def compiler_generation -> str {
     if not _COMPILER_GENERATION_CACHE {
         _COMPILER_GENERATION_CACHE.append(
-            hashlib.sha256(running_compiler_digest().encode()).hexdigest()[:16]
+            hashlib.sha256(
+                (
+                    running_compiler_digest() + ":" + _toolchain_env_fingerprint()
+                ).encode()
+            ).hexdigest()[:16]
         );
     }
     return _COMPILER_GENERATION_CACHE[0];
@@ -1097,7 +1016,8 @@ def _mergeable_sections(
         }
         secs = read_sections(data, pos + len(magic));
         if secs.get(SEC_MODKEY) != key_sections.get(SEC_MODKEY)
-            or secs.get(SEC_ENVKEY) != key_sections.get(SEC_ENVKEY) {
+            or secs.get(SEC_ENVKEY) != key_sections.get(SEC_ENVKEY)
+            or not ct_deps_fresh(data) {
             return ({}, 0, );
         }
         return (secs, header.flags, );
@@ -1110,7 +1030,8 @@ def write_module_cache(
     source_path: str,
     bytecode: (bytes | None),
     extra_sections: (dict[int, bytes] | None) = None,
-    flags: int = 0
+    flags: int = 0,
+    expected_source_key: str | None = None
 ) -> bool {
     resolved_path = str(Path(source_path).resolve());
     if not jir_cacheable_source_path(resolved_path) {
@@ -1118,12 +1039,36 @@ def write_module_cache(
     }
     try {
         cache_path = get_module_cache_path(resolved_path);
-        key_sections = module_jir_key_sections(resolved_path);
         import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
         with FileLock(str(cache_path) + ".lock") {
+            revision = module_source_key(resolved_path);
+            if expected_source_key is not None and revision != expected_source_key {
+                return False;
+            }
+            key_sections = module_jir_key_sections(resolved_path);
             (existing, existing_flags) = _mergeable_sections(cache_path, key_sections);
             sections: dict[int, bytes] = {};
             sections.update(existing);
+            if extra_sections is not None
+                and any(
+                    kind in extra_sections
+                        and extra_sections[kind] != existing.get(kind)
+                    for kind in (SEC_DEPS, SEC_CTDEPS)
+                ) {
+                # Products from different dependency revisions cannot share one JIR.
+                for kind in (
+                    SEC_BYTECODE,
+                    SEC_MTIR,
+                    SEC_NATIVE_OBJ,
+                    SEC_LLVM_IR,
+                    SEC_CLIENT,
+                    SEC_INTEROP,
+                    SEC_DIAG,
+                    SEC_PLACEMENT
+                ) {
+                    sections.pop(kind, None);
+                }
+            }
             sections.update(key_sections);
             if bytecode is not None {
                 sections[SEC_BYTECODE] = bytecode;
@@ -1140,6 +1085,9 @@ def write_module_cache(
             cache_path.parent.mkdir(parents=True, exist_ok=True);
             _sweep_once(_module_cache_root(resolved_path));
             jir_bytes = write_precompiled_jir(None, "", merged_flags, sections);
+            if module_source_key(resolved_path) != revision {
+                return False;
+            }
             atomic_write(cache_path, jir_bytes);
             return True;
         }

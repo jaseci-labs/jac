@@ -54,19 +54,22 @@ obj SourceUnit {
 obj SourceStore {
     has units: dict[str, SourceUnit] = {},
         revisions: dict[str, str] = {},
+        max_units: int = 256,
         parses: int = 0,
         hits: int = 0;
 
-    def parse(
+    def load(
         source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
-    ) -> tuple[Module, bool] {
+    ) -> SourceUnit {
         import from jaclang.compiler.frontend.parser.frontend { parse_woven }
         import from jaclang.compiler.driver.program { JacProgram }
         key = hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
-        unit = self.units.get(key);
+        unit = self.units.pop(key, None);
         if unit is None {
             diagnostics = JacProgram();
-            (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
+            with program.analysis.measure(path, "frontend:parse") {
+                (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
+            }
             unit = SourceUnit(
                 syntax,
                 failed,
@@ -78,12 +81,26 @@ obj SourceStore {
                 self.units.pop(previous, None);
             }
             self.revisions[path] = key;
-            self.units[key] = unit;
             self.parses += 1;
         } else {
             self.hits += 1;
         }
-        syntax = copy.deepcopy(unit.syntax);
+        self.units[key] = unit;
+        while len(self.units) > max(1, self.max_units) {
+            oldest = next(iter(self.units));
+            removed = self.units.pop(oldest);
+            self.revisions.pop(removed.syntax.loc.mod_path, None);
+        }
+        return unit;
+    }
+
+    def parse(
+        source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
+    ) -> tuple[Module, bool] {
+        unit = self.load(source, path, program, annexes);
+        with program.analysis.measure(path, "frontend:copy") {
+            syntax = copy.deepcopy(unit.syntax);
+        }
         assert isinstance(syntax, Module);
         program.errors_had.extend(unit.errors);
         program.warnings_had.extend(unit.warnings);
@@ -112,6 +129,7 @@ obj CompilationSession {
         }
         self.program = JacProgram();
         self.program.session = self;
+        self.program.source_store.max_units = self.max_modules;
     }
 
     def programs -> list[JacProgram] {

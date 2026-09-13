@@ -61,6 +61,7 @@ class JacProgram {
     def hub_cache_stamp(self: JacProgram, resolved_path: str) -> None;
     def install_module(self: JacProgram, resolved_path: str, mod: uni.Module) -> None;
     def is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool;
+    def is_compile_closure_fresh(self: JacProgram, resolved_path: str) -> bool;
     def record_dependency(
         self: JacProgram, importer_path: str, target_path: str
     ) -> None;

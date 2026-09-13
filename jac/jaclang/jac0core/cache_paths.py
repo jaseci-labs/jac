@@ -20,11 +20,35 @@ Platform roots:
 """
 
 import errno
+import hashlib
 import os
 import secrets
-import time
 import sys
+import time
 from pathlib import Path
+
+
+def file_revision(path: str) -> tuple[int, int, int, int, int]:
+    stat = os.stat(path)
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+def _content_digest(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def content_sha256(path: str) -> str:
+    """Hash current contents; filesystem timestamps are not a content identity."""
+    for _ in range(3):
+        before = file_revision(path)
+        digest = _content_digest(path)
+        if file_revision(path) == before:
+            return digest
+    raise OSError(f"Source changed while reading {path}")
 
 
 def get_jir_cache_dir() -> Path:

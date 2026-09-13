@@ -59,6 +59,15 @@ impl JacProgram.is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool
     return self.hub.is_fresh(resolved_path);
 }
 
+impl JacProgram.is_compile_closure_fresh(self: JacProgram, resolved_path: str) -> bool {
+    paths = self.deps.transitive_dependencies(resolved_path) | {resolved_path};
+    return all(
+        self.hub.is_fresh(path)
+        for path in paths
+        if path in self.hub.stamps
+    );
+}
+
 impl JacProgram.record_dependency(
     self: JacProgram, importer_path: str, target_path: str
 ) -> None {

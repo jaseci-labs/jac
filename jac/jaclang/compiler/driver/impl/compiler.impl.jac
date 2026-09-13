@@ -208,7 +208,13 @@ impl JacCompiler._get_bytecode(
                     else {}
             );
             bc = secs.get(SEC_BYTECODE);
-            if bc is not None {
+            if bc is not None
+                and (
+                    actual_program.session is None
+                    or actual_program.iface_registry().dependencies_match(
+                        full_target, jir_data
+                    )
+                ) {
                 self._restore_sections(full_target, actual_program, secs);
                 _had_native_secs = SEC_NATIVE_OBJ in secs or SEC_LLVM_IR in secs;
                 if (
@@ -268,7 +274,6 @@ impl JacCompiler._get_bytecode(
             file_path=full_target, target_program=actual_program, options=options
         );
         if result.gen.py_bytecode {
-            actual_program.hub_cache_stamp(full_target);
             self._persist_module_cache(full_target, result, actual_program);
             if is_internal {
                 note_compiler_source_failure(full_target, '');
@@ -1488,7 +1493,7 @@ impl JacCompiler._persist_module_cache(
                 not result.gen.js
                 or read_section_bytes(_pmc_data, SEC_CLIENT) is not None
             );
-            if read_section_bytes(_pmc_data, SEC_BYTECODE) is not None
+            if read_section_bytes(_pmc_data, SEC_BYTECODE) == result.gen.py_bytecode
                 and _pmc_client_done {
                 return;
             }
@@ -1556,7 +1561,17 @@ impl JacCompiler._persist_module_cache(
                 result.ct_file_deps, result.ct_body_deps
             );
         }
-        write_module_cache(full_target, cache_bc, extra_sections=sections);
+        if not actual_program.is_compile_closure_fresh(os.path.realpath(full_target)) {
+            return;
+        }
+        write_module_cache(
+            full_target,
+            cache_bc,
+            extra_sections=sections,
+            expected_source_key=actual_program.hub.stamps.get(
+                os.path.realpath(full_target), ""
+            )
+        );
     } except Exception {}
 }
 

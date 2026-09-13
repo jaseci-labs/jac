@@ -91,12 +91,12 @@ impl WorkPool._request(idx: int, path: str, crashlog: str) -> dict[(str, any)] {
 impl WorkPool.run_inline -> None {
     import time;
     started = time.perf_counter();
-    init_hook = self.worker_init;
-    if init_hook is not None {
-        init_hook();
-    }
-    setup_seconds = time.perf_counter() - started;
     try {
+        init_hook = self.worker_init;
+        if init_hook is not None {
+            init_hook();
+        }
+        setup_seconds = time.perf_counter() - started;
         dispatch_hook = self.on_dispatch;
         while self.pending {
             if self._should_stop() {

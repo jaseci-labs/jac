@@ -32,8 +32,7 @@ import from jaclang.compiler.driver.jir {
     read_section_bytes,
     read_sections,
     write_module_cache,
-    write_precompiled_jir,
-    _manifest_compiler_digest
+    write_precompiled_jir
 }
 import from jaclang.compiler.types.stubcat.modiface { read_iface_hash }
 
@@ -296,24 +295,18 @@ test "verify mode accepts an honest cache and rejects a corrupted one" {
     }
 }
 
-test "the compiler digest manifest reproduces the full sweep exactly" {
-    pkg = tempfile.mkdtemp();
-    comp = Path(pkg) / "compiler";
-    comp.mkdir();
-    (comp / "a.jac").write_text("with entry { print(1); }\n");
-    (comp / "b.py").write_text("x = 1\n");
-    full = compiler_source_digest(pkg);
-    assert _manifest_compiler_digest(pkg) == full , "manifest digest diverged";
-    assert _manifest_compiler_digest(pkg) == full , "second (stat-only) run diverged";
-    import time;
-    (comp / "a.jac").write_text("with entry { print(2); }\n");
-    future = time.time() + 2.0;
-    os.utime(comp / "a.jac", (future, future));
-    changed = compiler_source_digest(pkg);
-    assert changed != full;
-    assert _manifest_compiler_digest(pkg) == changed , (
-        "manifest digest missed an edited file"
-    );
+test "compiler identity detects same-size edits with restored timestamps" {
+    with tempfile.TemporaryDirectory() as pkg {
+        source = Path(pkg) / "compiler/a.jac";
+        source.parent.mkdir();
+        source.write_text("with entry { print(1); }\n");
+        before = source.stat();
+        original = compiler_source_digest(pkg);
+        assert compiler_source_digest(pkg) == original;
+        source.write_text("with entry { print(2); }\n");
+        os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns));
+        assert compiler_source_digest(pkg) != original;
+    }
 }
 
 test "a typed third-party Python dependency is fingerprinted, never encoded as a target" {

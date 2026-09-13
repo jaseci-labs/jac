@@ -8,10 +8,56 @@ import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
 import from jaclang.compiler.driver.jir {
     get_module_cache_path,
     is_module_cache_valid,
+    module_source_key,
     read_section_bytes,
     write_module_cache,
     SEC_BYTECODE,
+    SEC_DEPS,
+    SEC_DIAG,
     SEC_IFACE
+}
+
+test "publication rejects products from a displaced source revision" {
+    with TemporaryDirectory() as directory {
+        source = Path(directory) / "revision.jac";
+        source.write_text("def answer() -> int { return 41; }\n");
+        revision = module_source_key(str(source));
+        assert write_module_cache(str(source), b"first", expected_source_key=revision);
+        source.write_text("def answer() -> int { return 42; }\n");
+        assert not write_module_cache(
+            str(source), b"stale", expected_source_key=revision
+        );
+        cache = get_module_cache_path(str(source));
+        assert not is_module_cache_valid(str(source), cache);
+        revision = module_source_key(str(source));
+        assert write_module_cache(
+            str(source), b"current", expected_source_key=revision
+        );
+        assert read_section_bytes(cache.read_bytes(), SEC_BYTECODE) == b"current";
+    }
+}
+
+test "changing dependency revisions cannot relabel older executable products" {
+    with TemporaryDirectory() as directory {
+        source = Path(directory) / "consumer.jac";
+        source.write_text("def answer() -> int { return 42; }\n");
+        path = str(source);
+        assert write_module_cache(
+            path,
+            b"old code",
+            {SEC_DEPS: b"first dependencies", SEC_DIAG: b"old verdict"}
+        );
+        assert write_module_cache(
+            path, None, {SEC_DEPS: b"new dependencies", SEC_IFACE: b"new interface"}
+        );
+        data = get_module_cache_path(path).read_bytes();
+        assert read_section_bytes(data, SEC_BYTECODE) is None;
+        assert read_section_bytes(data, SEC_DIAG) is None;
+        assert read_section_bytes(data, SEC_IFACE) == b"new interface";
+        assert write_module_cache(path, b"new code");
+        assert read_section_bytes(get_module_cache_path(path).read_bytes(), SEC_IFACE)
+            == b"new interface";
+    }
 }
 
 test "concurrent product writers retain both complete products" {

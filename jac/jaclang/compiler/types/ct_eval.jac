@@ -306,6 +306,11 @@ obj CtEvaluator {
         if owner_path and os.path.realpath(owner_path) == path {
             return;
         }
+        if owner_path {
+            self.evaluator.program.record_dependency(
+                os.path.realpath(owner_path), os.path.realpath(path)
+            );
+        }
         if path not in owner.ct_file_deps {
             owner.ct_file_deps.append(path);
         }
@@ -2043,6 +2048,7 @@ obj CtEvaluator {
         base = os.path.dirname(mod.loc.mod_path) if mod is not None and mod.loc else "";
         path = rel if os.path.isabs(rel) else os.path.join(base, rel);
         path = os.path.normpath(path);
+        self._note_ct_path(path);
         try {
             with open(path, "rb") as fh {
                 data = fh.read();
@@ -2053,7 +2059,6 @@ obj CtEvaluator {
         if mod is not None and path not in mod.ct_file_deps {
             mod.ct_file_deps.append(path);
         }
-        self._note_ct_path(path);
         self.burn(len(data) // 64 + 1);
         if as_bytes {
             return data;

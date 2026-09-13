@@ -29,7 +29,7 @@ from jaclang.jac0 import discover_impl_files as _jac0_discover_impls  # noqa: E4
 from jaclang import bootstrap_manifest as _bootstrap_manifest  # noqa: E402
 from jaclang.jac0core import ext_registry  # noqa: E402
 from jaclang.jac0core import sealed as _sealed  # noqa: E402
-from jaclang.jac0core.cache_paths import atomic_write, get_bootstrap_cache_dir  # noqa: E402
+from jaclang.jac0core.cache_paths import FileLock, atomic_write, get_bootstrap_cache_dir  # noqa: E402
 
 _jac0_source_path = getattr(_jac0_mod, "__file__", "")
 _jac0_hash = (
@@ -66,6 +66,7 @@ def _bootstrap_compile(
     """Compile a bootstrap .jac file, using a marshalled bytecode disk cache."""
     # Build the hash key from all source inputs + Python version + transpiler.
     h = hashlib.sha256()
+    h.update(os.path.realpath(file_path).encode())
     h.update(sys.version.encode())
     h.update(_jac0_hash)
     h.update(jac_source.encode())
@@ -73,26 +74,37 @@ def _bootstrap_compile(
         for src, path in impl_sources:
             h.update(path.encode())
             h.update(src.encode())
-    digest = h.hexdigest()[:16]
+    digest = h.hexdigest()
 
     base_name = os.path.splitext(os.path.basename(file_path))[0]
     cache_file = get_bootstrap_cache_dir() / f"{base_name}.{digest}.jbc"
 
-    if cache_file.is_file():
-        try:
-            return marshal.loads(cache_file.read_bytes())  # noqa: S302
-        except Exception:
-            cache_file.unlink(missing_ok=True)
-
-    # Cache miss — transpile with jac0, compile, and cache (best-effort).
-    py_source = _jac0_compile(jac_source, file_path, impl_sources=impl_sources)
-    code = compile(py_source, file_path, "exec")
+    lock = FileLock(str(cache_file) + ".lock")
+    acquired = False
     try:
-        atomic_write(cache_file, marshal.dumps(code))
-    except OSError:
-        pass
+        try:
+            lock.acquire()
+            acquired = True
+        except OSError:
+            pass  # A read-only cache must not prevent bootstrap compilation.
+        if cache_file.is_file():
+            try:
+                return marshal.loads(cache_file.read_bytes())  # noqa: S302
+            except Exception:
+                pass
 
-    return code
+        # Cache miss — transpile with jac0, compile, and cache (best-effort).
+        py_source = _jac0_compile(jac_source, file_path, impl_sources=impl_sources)
+        code = compile(py_source, file_path, "exec")
+        try:
+            atomic_write(cache_file, marshal.dumps(code))
+        except OSError:
+            pass
+
+        return code
+    finally:
+        if acquired:
+            lock.release()
 
 
 class JacSourceCompileError(ImportError):
@@ -355,6 +367,17 @@ class JacMetaImporter(MetaPathFinder, Loader):
 
         from jaclang.runtime.runtime import JacRuntime as Jac
 
+        cache = Jac.get_compiler().selfhost
+        cache.enter_execution()
+        try:
+            self._exec_compiled_module(module, file_path)
+        finally:
+            cache.exit_execution()
+
+    def _exec_compiled_module(self, module: ModuleType, file_path: str) -> None:
+        from jaclang.runtime.runtime import JacRuntime as Jac
+
+        assert module.__spec__ is not None
         is_pkg = module.__spec__.submodule_search_locations is not None
 
         # Register module in JacRuntime's tracking (skip internal jaclang modules)

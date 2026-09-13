@@ -176,6 +176,11 @@ def require_product(
                 f"Compilation dependency cycle: {product.value} of {module.loc.mod_path}"
             );
         }
+        event = "product_" + product.value + "_" + task.state.value;
+        program.analysis.cache_events[event] = program.analysis.cache_events.get(
+            event, 0
+        )
+            + 1;
         return task.state == TaskState.SUCCEEDED;
     }
     task = ProductTask(product, TaskState.RUNNING);
@@ -219,6 +224,9 @@ def require_product(
                     if len(program.errors_had) == before
                     else TaskState.FAILED
             );
+        if task.state == TaskState.CANCELLED {
+            program.invalidate_module(os.path.realpath(module.loc.mod_path));
+        }
         return task.state == TaskState.SUCCEEDED;
     } except Exception {
         task.state = TaskState.FAILED;
@@ -275,11 +283,18 @@ def compile_module(
     task = ModuleCompilation(compiler, program, path, options, source);
     for step in module_pipeline() {
         if options.cancel_token is not None and options.cancel_token.is_set() {
+            task.discard();
             break;
+        }
+        if not task.inputs_current() {
+            task.discard();
+            raise RuntimeError(f"Source changed during compilation: {path}");
         }
         started = time.perf_counter();
         try {
-            step.execute(task);
+            with program.analysis.measure(path, "phase:" + step.phase.value) {
+                step.execute(task);
+            }
         } finally {
             name = step.phase.name;
             program.analysis.phase_time[name] = (
@@ -287,6 +302,17 @@ def compile_module(
                 - started
             );
         }
+    }
+    if not task.inputs_current()
+        or (
+            source is None
+            and not program.is_compile_closure_fresh(os.path.realpath(path))
+        ) {
+        task.discard();
+        raise RuntimeError(f"Source changed during compilation: {path}");
+    }
+    if options.cancel_token is not None and options.cancel_token.is_set() {
+        task.discard();
     }
     return task.module;
 }
