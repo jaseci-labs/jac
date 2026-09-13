@@ -2842,6 +2842,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                 if method_name == "insert" and not self._nogc_headerless() {
                     self._release_owned_args(_orig_args, op="list_method_arg");
                 }
+                self._release_owned_args([list_val], op="list_method_receiver");
                 return result;
             }
         }
