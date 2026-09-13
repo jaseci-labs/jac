@@ -297,8 +297,11 @@ runs:
     # unlike the runtime archives above. Preserve PR iteration work as well;
     # GitHub scopes PR caches to their merge ref, and every restored JIR still
     # passes the compiler's producer/source/dependency validation.
+    # Keep completed modules if a later build or verification step fails too.
     - name: Save compiled module cache
-      if: steps.cache.outputs.cache-hit != 'true' && steps.modules-cache.outputs.cache-hit != 'true'
+      if: >-
+        !cancelled() && steps.modules-cache.outcome == 'success' &&
+        steps.cache.outputs.cache-hit != 'true' && steps.modules-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: jac/.compiler-build
