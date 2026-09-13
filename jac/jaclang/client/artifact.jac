@@ -13,6 +13,20 @@ obj ClientBundle {
         hash: str;
 }
 
+def client_output_dir(source_path: Path) -> Path {
+    import from jaclang.server.sealed_serve { client_dist_for }
+    import from jaclang.project.config { get_config_for_path }
+    import from jaclang.project.client_paths { client_app_dir_for }
+    prepared = client_dist_for(str(source_path));
+    if prepared is not None {
+        return prepared;
+    }
+    config = get_config_for_path(source_path);
+    return client_app_dir_for(config, str(source_path)) / 'dist'
+        if config is not None
+        else source_path.parent / '.jac' / 'client' / 'dist';
+}
+
 def prebuilt_bundle(module: ModuleType, source_path: Path) -> ClientBundle | None {
     import from jaclang.server.sealed_serve { client_dist_for, serve_manifest_for }
     dist = client_dist_for(str(source_path));
