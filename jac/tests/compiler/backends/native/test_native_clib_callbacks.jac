@@ -54,3 +54,28 @@ test "C callback records have layout-compatible pointer fields" {
         for error in program.warnings_had
     );
 }
+
+
+test "C callback records accept addresses from dynamic symbol lookup" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    library = ctypes.CDLL(None);
+    address = ctypes.cast(library.abs, ctypes.c_void_p).value;
+    assert isinstance(address, int);
+    program = JacProgram();
+    module = program.compile(
+        file_path="dynamic_c_callback.jac",
+        use_str="import from c { obj Functions { has absolute: Callable[[i32], i32] = 0; } }\n"
+            + "def invoke_address(address: int, value: i32) -> i32 { "
+            + "functions = Functions(); functions.absolute = address; "
+            + "return functions.absolute(value); }\n",
+        options=CompileOptions(native_required=True, force_target_program=True)
+    );
+    assert not program.errors_had , str(program.errors_had);
+    engine = module.gen.native_engine;
+    assert engine is not None;
+    function = get_func(
+        engine, "invoke_address", ctypes.c_int32, ctypes.c_int64, ctypes.c_int32
+    );
+    assert function(address, -123) == 123;
+}
