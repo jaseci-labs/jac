@@ -1,11 +1,11 @@
 import from jaclang.compiler.ir.identity { RelationFamily }
 impl ModuleType.symbol_table.getter -> (SymbolTable | None) {
-    import from jaclang.compiler.ir.types.edges { DeclScopeOf }
-
     cached = self._cached_symbol_table;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { DeclScopeOf }
+
     found = [self->:DeclScopeOf:->];
     val = found[0] if found else None;
     self._cached_symbol_table = RelationCache(self.relation_generation, val);
@@ -33,12 +33,12 @@ impl ModuleType.symbol_table.setter(symbol_table: (SymbolTable | None)) -> None 
 }
 
 impl TypeVarType.bound.getter -> (TypeBase | None) {
-    import from jaclang.compiler.ir.types.edges { BoundOf }
-
     cached = self._cached_bound;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { BoundOf }
+
     found = [self->:BoundOf:->];
     val = found[0] if found else None;
     self._cached_bound = RelationCache(self.relation_generation, val);
@@ -66,12 +66,12 @@ impl TypeVarType.bound.setter(bound: (TypeBase | None)) -> None {
 }
 
 impl TypeVarType.constraints.getter -> list[TypeBase] {
-    import from jaclang.compiler.ir.types.edges { ConstraintOf }
-
     cached = self._cached_constraints;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { ConstraintOf }
+
     val = [self->:ConstraintOf:->][?:TypeBase];
     self._cached_constraints = RelationCache(self.relation_generation, val);
     return val;
@@ -100,12 +100,12 @@ impl TypeVarType.constraints.setter(constraints: (list[TypeBase] | None)) -> Non
 }
 
 impl ClassDetailsShared.symbol_table.getter -> SymbolTable {
-    import from jaclang.compiler.ir.types.edges { DeclScopeOf }
-
     cached = self._cached_symbol_table;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { DeclScopeOf }
+
     val = [self->:DeclScopeOf:->][0];
     self._cached_symbol_table = RelationCache(self.relation_generation, val);
     return val;
@@ -156,12 +156,12 @@ impl ClassDetailsShared.mro.setter(mro: list[ClassType]) -> None {
 }
 
 impl ClassDetailsShared.type_params.getter -> list[TypeVarType] {
-    import from jaclang.compiler.ir.types.edges { TypeParamOf }
-
     cached = self._cached_type_params;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { TypeParamOf }
+
     val = [self->:TypeParamOf:->][?:TypeVarType];
     self._cached_type_params = RelationCache(self.relation_generation, val);
     return val;
@@ -192,12 +192,12 @@ impl ClassDetailsShared.type_params.setter(
 }
 
 impl ClassDetailsShared.base_classes.getter -> list[TypeBase] {
-    import from jaclang.compiler.ir.types.edges { BaseOf }
-
     cached = self._cached_base_classes;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { BaseOf }
+
     val = [self->:BaseOf:->][?:TypeBase];
     self._cached_base_classes = RelationCache(self.relation_generation, val);
     return val;
@@ -228,12 +228,12 @@ impl ClassDetailsShared.base_classes.setter(
 }
 
 impl ClassDetailsShared.enum_value_type.getter -> (TypeBase | None) {
-    import from jaclang.compiler.ir.types.edges { ValueTypeOf }
-
     cached = self._cached_enum_value_type;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { ValueTypeOf }
+
     found = [self->:ValueTypeOf:->];
     val = found[0] if found else None;
     self._cached_enum_value_type = RelationCache(self.relation_generation, val);
@@ -417,12 +417,12 @@ impl ClassDetailsPrivate.type_args.setter(type_args: (list[TypeBase] | None)) ->
 }
 
 impl ClassType._shared.getter -> (ClassDetailsShared | None) {
-    import from jaclang.compiler.ir.types.edges { SharedOf }
-
     cached = self._cached__shared;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { SharedOf }
+
     found = [self->:SharedOf:->];
     val = found[0] if found else None;
     self._cached__shared = RelationCache(self.relation_generation, val);
@@ -450,12 +450,12 @@ impl ClassType._shared.setter(_shared: (ClassDetailsShared | None)) -> None {
 }
 
 impl ClassType.private.getter -> ClassDetailsPrivate {
-    import from jaclang.compiler.ir.types.edges { PrivOf }
-
     cached = self._cached_private;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { PrivOf }
+
     val = [self->:PrivOf:->][0];
     self._cached_private = RelationCache(self.relation_generation, val);
     return val;
@@ -552,12 +552,12 @@ impl Parameter.init(
 }
 
 impl Parameter.param_type.getter -> (TypeBase | None) {
-    import from jaclang.compiler.ir.types.edges { ParamTypeOf }
-
     cached = self._cached_param_type;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { ParamTypeOf }
+
     found = [self->:ParamTypeOf:->];
     val = found[0] if found else None;
     self._cached_param_type = RelationCache(self.relation_generation, val);
@@ -585,12 +585,12 @@ impl Parameter.param_type.setter(param_type: (TypeBase | None)) -> None {
 }
 
 impl Parameter.default_value.getter -> (Expr | None) {
-    import from jaclang.compiler.ir.types.edges { ParamDefaultOf }
-
     cached = self._cached_default_value;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { ParamDefaultOf }
+
     found = [self->:ParamDefaultOf:->];
     val = found[0] if found else None;
     self._cached_default_value = RelationCache(self.relation_generation, val);
@@ -641,12 +641,12 @@ impl FunctionType.init(
 }
 
 impl FunctionType.return_type.getter -> (TypeBase | None) {
-    import from jaclang.compiler.ir.types.edges { ReturnsOf }
-
     cached = self._cached_return_type;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { ReturnsOf }
+
     found = [self->:ReturnsOf:->];
     val = found[0] if found else None;
     self._cached_return_type = RelationCache(self.relation_generation, val);
@@ -706,12 +706,12 @@ impl FunctionType.parameters.setter(parameters: (list[Parameter] | None)) -> Non
 }
 
 impl FunctionType.type_params.getter -> list[TypeVarType] {
-    import from jaclang.compiler.ir.types.edges { TypeParamOf }
-
     cached = self._cached_type_params;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { TypeParamOf }
+
     val = [self->:TypeParamOf:->][?:TypeVarType];
     self._cached_type_params = RelationCache(self.relation_generation, val);
     return val;
@@ -740,12 +740,12 @@ impl FunctionType.type_params.setter(type_params: (list[TypeVarType] | None)) ->
 }
 
 impl FunctionType.type_guard.getter -> (TypeBase | None) {
-    import from jaclang.compiler.ir.types.edges { GuardOf }
-
     cached = self._cached_type_guard;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { GuardOf }
+
     found = [self->:GuardOf:->];
     val = found[0] if found else None;
     self._cached_type_guard = RelationCache(self.relation_generation, val);
@@ -773,12 +773,12 @@ impl FunctionType.type_guard.setter(type_guard: (TypeBase | None)) -> None {
 }
 
 impl OverloadedType.overloads.getter -> list[FunctionType] {
-    import from jaclang.compiler.ir.types.edges { OverloadOf }
-
     cached = self._cached_overloads;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { OverloadOf }
+
     val = [self->:OverloadOf:->][?:FunctionType];
     self._cached_overloads = RelationCache(self.relation_generation, val);
     return val;
@@ -814,12 +814,12 @@ impl OverloadedType.init(
 }
 
 impl UnionType.types.getter -> list[TypeBase] {
-    import from jaclang.compiler.ir.types.edges { UnionMemberOf }
-
     cached = self._cached_types;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { UnionMemberOf }
+
     val = [self->:UnionMemberOf:->][?:TypeBase];
     self._cached_types = RelationCache(self.relation_generation, val);
     return val;
@@ -861,12 +861,12 @@ impl UnionType.init(
 }
 
 impl EnumMemberInfo.value_type.getter -> (TypeBase | None) {
-    import from jaclang.compiler.ir.types.edges { ValueTypeOf }
-
     cached = self._cached_value_type;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { ValueTypeOf }
+
     found = [self->:ValueTypeOf:->];
     val = found[0] if found else None;
     self._cached_value_type = RelationCache(self.relation_generation, val);
@@ -905,12 +905,12 @@ impl EnumMemberInfo.init(
 }
 
 impl EnumMemberType.enum_class.getter -> (ClassType | None) {
-    import from jaclang.compiler.ir.types.edges { EnumClassOf }
-
     cached = self._cached_enum_class;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { EnumClassOf }
+
     found = [self->:EnumClassOf:->];
     val = found[0] if found else None;
     self._cached_enum_class = RelationCache(self.relation_generation, val);
@@ -938,12 +938,12 @@ impl EnumMemberType.enum_class.setter(enum_class: (ClassType | None)) -> None {
 }
 
 impl EnumMemberType.member_info.getter -> (EnumMemberInfo | None) {
-    import from jaclang.compiler.ir.types.edges { MemberInfoOf }
-
     cached = self._cached_member_info;
     if cached is not None and cached.generation == self.relation_generation {
         return cached.value;
     }
+    import from jaclang.compiler.ir.types.edges { MemberInfoOf }
+
     found = [self->:MemberInfoOf:->];
     val = found[0] if found else None;
     self._cached_member_info = RelationCache(self.relation_generation, val);
