@@ -1650,7 +1650,6 @@ CMake, or a configured `JAC_LLVM_CBE`. Generated C retains the selected target's
 ABI. Original `.jac` files can remain as application resources, such as the site's
 source browser; executable modules use the exported Python, JavaScript, and C.
 
-
 **Building apps of a workspace:**
 
 ```bash
