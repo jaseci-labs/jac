@@ -29,11 +29,14 @@ carrying no `postinit` has no shadow-side initializer to lose.
 
 import os;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.analysis.placement.native_fallback {
+    na_coverage_begin,
+    na_coverage_end
+}
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
-import from jaclang.compiler.frontend.codeinfo {
+import from jaclang.compiler.session.target_options {
     get_effective_default_codespace_override,
     set_effective_default_codespace
 }

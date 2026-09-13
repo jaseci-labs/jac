@@ -5,7 +5,6 @@ in their names using string literals, which is necessary since hyphens
 cannot be used in unquoted identifiers.
 """
 
-
 # Test 1: react-dom - named imports
 import from "react-dom" { render, hydrate }
 
@@ -34,7 +33,7 @@ import from "react-router-dom" { BrowserRouter, Route, Link }
 import from react { useState, useEffect }
 import from lodash { map, filter }
 
-def TestComponent() {
+def TestComponent() -> str {
     # Use some of the imports to ensure they're valid
     ReactDOM.render();
     styled.div();

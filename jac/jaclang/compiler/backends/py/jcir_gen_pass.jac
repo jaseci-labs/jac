@@ -1,7 +1,8 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from jaclang.runtime.osp_kernel { osp_skip_rest }
 import textwrap;
 import from collections.abc { Sequence }
-import from jaclang.compiler.frontend.unitree {
+import from jaclang.compiler.ir.schema {
     literal_string_value,
     Ability,
     ArchHas,
@@ -128,26 +129,29 @@ import from jaclang.compiler.frontend.unitree {
     YieldExpr,
     is_identifier_slot
 }
-import from jaclang.compiler.frontend.constant {
+import from jaclang.compiler.ir.enums {
     CodeContext,
     EdgeDir,
     is_borrow_kind,
     OwnershipKind,
     SymbolStorage
 }
-import from jaclang.compiler.frontend.constant { Constants as Con }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
+import from jaclang.compiler.ir.enums { Constants as Con }
+import from jaclang.compiler.ir.enums { Tokens as Tok }
 import from jaclang.runtime.scalars { shape_of }
 
 import from jaclang.compiler.backends.py.codegen_ir { CodegenIrWriter }
-import from jaclang.compiler.frontend.codeinfo { BoundaryTypeInfo, InteropBinding }
+import from jaclang.compiler.backends.common.artifacts {
+    BoundaryTypeInfo,
+    InteropBinding
+}
 import from jaclang.compiler.backends.py.jcir_facts {
     JCIR_AMBIENT_TYPING_NAMES,
     JCIR_BUILTIN_NAMES,
     jcir_is_test_path
 }
 import from jaclang.compiler.backends.common.ast_gen_base { BaseAstGenPass }
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+import from jaclang.compiler.analysis.binding.module_facts { ModuleFacts }
 import from jaclang.compiler.frontend.diagnostics {
     E5001,
     E5002,

@@ -42,7 +42,7 @@ glob FORBIDDEN: dict[str, str] = {
      # at sites where the declaration IS the fact.
      SANCTIONED: dict[tuple, tuple] = {
          ("es/esast_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
-             4,
+             3,
              "return_type_is_jsx (#8314) reads the declared return annotation "
              "to pick a component's call ABI; the declaration is the fact, "
              "and the type checker keys component-hood off the same "
@@ -61,7 +61,7 @@ glob FORBIDDEN: dict[str, str] = {
              "classify_call fallback is deleted (#7418): call_kind is "
              "stamped authoritatively by the required inference schedule"
          ),
-         ("es/esast_gen_pass.impl/decls.impl.jac", "symbol_utils"): (
+         ("es/esast_gen_pass.jac", "symbol_utils"): (
              1,
              "return_type_is_jsx (#8314) reads the declared return annotation "
              "to record a component export; same declaration-surface "
@@ -179,7 +179,7 @@ glob FORBIDDEN: dict[str, str] = {
              "The is_builtin_region_name read (#7491) is gone from here and "
              "from stmt.impl.jac, whose entry left this table entirely: the "
              "predicate is pure unitree syntax that was marooned in "
-             "symbol_utils, whose own imports reach compiler/driver/compiler.jac, so "
+             "symbol_utils, whose own imports reach compiler/session/compiler.jac, so "
              "sealing wave 3 hoisted it to the leaf expr_keys.jac. The "
              "backend stopped reaching into the analysis module for it rather "
              "than merely renaming the reach"

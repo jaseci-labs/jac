@@ -4,7 +4,10 @@ while compiler/bootstrap cache remains in the global cache."""
 import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from jaclang.compiler.driver.jir { get_jir_cache_dir, get_module_cache_path }
+import from jaclang.compiler.session.cache.artifact_codec {
+    get_jir_cache_dir,
+    get_module_cache_path
+}
 import from jaclang.project.config { JacConfig, set_config }
 import jaclang.project.config as config_mod;
 import jaclang;

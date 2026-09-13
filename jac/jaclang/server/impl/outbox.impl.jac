@@ -32,7 +32,7 @@ impl outbox_db_path -> str {
         return os.path.join(data_root, OUTBOX_DB_REL);
     }
     import from jaclang { JacRuntime }
-    import from jaclang.compiler.driver.modresolver { find_jac_project_root }
+    import from jaclang.compiler.session.resolver { find_jac_project_root }
     base = JacRuntime.get_base_path_dir() or os.getcwd();
     project_root = find_jac_project_root(base) or base;
     return os.path.join(project_root, OUTBOX_DB_REL);

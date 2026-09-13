@@ -130,11 +130,37 @@ jobs:
         working-directory: jac
         run: zig build build-python $DTARGET --summary all
       - name: Build and probe the packaged native JacPython binary
+        timeout-minutes: 60
         working-directory: jac
         env:
           JAC_NO_DEV_SOURCE: "1"
+          JAC_PRECOMPILE_RSS_LOG: "1"
         run: |
-          zig build $DTARGET --summary all
+          # Zig buffers child stderr until a build step completes. Keep a
+          # separate monitor so a stalled packaging step leaves evidence.
+          (
+            ticks=0
+            while sleep 60; do
+              ticks=$((ticks + 1))
+              date -u
+              for pid in $(pgrep -x python3.14 || true); do
+                ps -o pid,ppid,%cpu,rss,etime,comm -p "$pid" || true
+                if [ "$RUNNER_OS" = macOS ] && [ "$ticks" -eq 45 ]; then
+                  sample_log=".python-build/packaging-sample-$pid.log"
+                  sample "$pid" 1 1 -file "$sample_log" || true
+                  if [ -f "$sample_log" ]; then
+                    sed -n '1,180p' "$sample_log"
+                  fi
+                fi
+              done
+            done
+          ) &
+          monitor_pid=$!
+          trap 'kill "$monitor_pid" 2>/dev/null || true' EXIT
+          zig build $DTARGET -Dpayload-progress --summary all --verbose
+          kill "$monitor_pid" 2>/dev/null || true
+          wait "$monitor_pid" 2>/dev/null || true
+          trap - EXIT
           zig-out/bin/jac -c '
           import ast, ctypes, sys
           assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
@@ -363,7 +389,7 @@ jobs:
               echo "No .jac files changed in this PR; skipping format check."
               exit 0
             fi
-            FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+            FILES="$(grep -vE '(/fixtures/|^scripts/|/compiler/backends/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
             if [ -z "$FILES" ]; then
               echo "No formattable .jac files changed (all excluded); skipping."
               exit 0
@@ -371,7 +397,7 @@ jobs:
             printf '%s\n' "$FILES" | tr '\n' '\0' \
               | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           else
-            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
+            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/compiler/backends/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           fi
 
       # Autofix push mirrors pre-commit.ci. Without a JAC_AUTOFIX_TOKEN secret
@@ -392,7 +418,7 @@ jobs:
             exit 0
           fi
           git checkout -B "$HEAD_REF" FETCH_HEAD
-          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+          FILES="$(grep -vE '(/fixtures/|^scripts/|/compiler/backends/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
           if [ -z "$FILES" ]; then
             echo "No formattable .jac files to fix."
             exit 0
@@ -419,7 +445,7 @@ jobs:
         if: steps.fmt.outcome == 'failure'
         run: |
           set -euo pipefail
-          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+          FILES="$(grep -vE '(/fixtures/|^scripts/|/compiler/backends/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
           if [ -n "$FILES" ]; then
             printf '%s\n' "$FILES" | tr '\n' '\0' \
               | xargs -0 --no-run-if-empty jac fmt --lintfix || true

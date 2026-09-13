@@ -3,6 +3,7 @@ obj Entry {
     has kind: str,
         annotation: str = "";
 }
+
 def:pub generator_bool_check -> int {
     values = [Entry(kind="function"), Entry(kind="class")];
     if not any(item.kind == "function" and not item.annotation for item in values) {

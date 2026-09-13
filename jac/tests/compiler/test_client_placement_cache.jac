@@ -1,8 +1,10 @@
 """Client artifacts must reflect placement discovered by the current program."""
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import tempfile;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 
 test "a cached partial helper is regenerated when a new client root pulls another export" {
@@ -48,7 +50,7 @@ test "a cached partial helper is regenerated when a new client root pulls anothe
 test "the final JS audit rejects an imported value whose binding was dropped" {
     import from unittest.mock { patch }
     import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-    import from jaclang.compiler.driver.pass_driver { run_pass }
+    import from jaclang.compiler.pipeline.executor { run_pass }
     import jaclang.compiler.backends.es.estree as es;
     import jaclang.compiler.backends.es.esast_gen_pass as esgen;
     with tempfile.TemporaryDirectory(prefix="jac-import-audit-") as tmp {
@@ -81,10 +83,10 @@ test "the final JS audit rejects an imported value whose binding was dropped" {
             return original(program);
         }
         with patch.object(esgen, "es_to_js", drop_import) {
-            run_pass(EsastGenPass, mod, prog);
+            run_pass(PassIdentity.EsastGenPass, mod, prog);
         }
-        assert 'import mermaid from "mermaid"' not in mod.gen.js;
-        assert "let diagram = mermaid" in mod.gen.js;
+        assert 'import mermaid from "mermaid"' not in artifact_for(mod).js;
+        assert "let diagram = mermaid" in artifact_for(mod).js;
         errors = [
             e
             for e in prog.errors_had

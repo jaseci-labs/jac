@@ -64,7 +64,7 @@ impl NaIRGenPass._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None
 }
 
 impl NaIRGenPass._vtable_candidates(names: list[str]) -> list[ir.GlobalVariable] {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
 
     reg = get_layout_registry(self.ir_in, self.prog);
     out: list[ir.GlobalVariable] = [];
@@ -97,7 +97,7 @@ impl NaIRGenPass._isinstance_needs_class_name(names: list[str]) -> bool {
     garbage. Either way the answer has to come from the class-name identity
     every instance carries instead.
     """;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
 
     _reach = self._vtable_less_reach;
     if _reach is None {
@@ -144,7 +144,7 @@ impl NaIRGenPass._isinstance_unprovable_class(
     case that most needs the refusal. Returns the class whose MRO is short, or
     `None` when every chain this operand could take is whole.
     """;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
 
     _missing = self._short_mro_reach;
     if _missing is None {
@@ -241,7 +241,7 @@ impl NaIRGenPass._codegen_virtual_call(
     _vc_force_variants = False;
     indices = self.vtable_method_indices.get(obj_type_name);
     if indices is None or method_name not in indices {
-        import from jaclang.compiler.passes.layout_pass {
+        import from jaclang.compiler.lowering.layout_pass {
             get_layout_registry as _vc_glr
         }
         _vc_lay = _vc_glr(self.ir_in, self.prog).get_layout(obj_type_name);
@@ -285,7 +285,7 @@ impl NaIRGenPass._codegen_virtual_call(
 
     _vd_variants: list[tuple[str, ir.GlobalVariable, ir.Function]] = [];
     _vd_uniform = True;
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry as _vd_glr }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry as _vd_glr }
     _vd_reg = _vd_glr(self.ir_in, self.prog);
     for _vd_cls in _vd_reg.mro_order {
         if obj_type_name not in self._mro_of(_vd_cls) {
@@ -608,7 +608,7 @@ impl NaIRGenPass._codegen_class_ref(nd: uni.Name) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._is_enum_arch(name: str) -> bool {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
     if name in self.enum_types {
         return True;
     }
@@ -625,7 +625,7 @@ impl NaIRGenPass._is_enum_arch(name: str) -> bool {
 }
 
 impl NaIRGenPass._emit_isa_fn -> ir.Function {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
     if self._isa_fn is not None {
         return self._isa_fn;
     }
@@ -759,7 +759,7 @@ impl NaIRGenPass._is_runtime_class_tuple(t: any) -> bool {
     both `tuple[type[T], type[T]]` and `tuple[type[T], ...]` qualify.
     """;
     try {
-        import from jaclang.compiler.types.types { ClassType as _SeqClassType }
+        import from jaclang.compiler.ir.types.nodes { ClassType as _SeqClassType }
     } except ImportError {
         return False;
     }

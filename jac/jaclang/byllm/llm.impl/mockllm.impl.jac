@@ -81,7 +81,7 @@ impl MockLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     return self.dispatch_no_streaming(mt_run);
 }
 
-impl MockLLM.adispatch_streaming(mt_run: MTRuntime) {
+impl MockLLM.adispatch_streaming(mt_run: MTRuntime) -> AsyncGenerator[str, None] {
     import asyncio;
 
     output = self.config["outputs"].pop(0);

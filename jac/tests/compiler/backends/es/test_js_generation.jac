@@ -3,6 +3,8 @@
 Migrated from test_js_generation.py to native Jac test format.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import json;
 import os;
 import shutil;
@@ -14,8 +16,7 @@ import from tests.support { JAC_ROOT }
 import from tests.compiler.backends.es.codegen_helpers {
     compile_fixture_to_js,
     compile_fixture_to_js_production,
-    _resolve_fixture_path,
-    _fatal_compile_errors
+    _resolve_fixture_path
 }
 import jaclang;
 import from jaclang.compiler.backends.es { EsastGenPass }
@@ -25,9 +26,9 @@ import from jaclang.compiler.backends.es.es_unparse {
     template_element_raw
 }
 import from jaclang.compiler.backends.es.primitives_es { ESDictEmitter, ESEmitCtx }
-import from jaclang.compiler.driver.modresolver { convert_to_js_import_path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.session.resolver { convert_to_js_import_path }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
@@ -49,6 +50,32 @@ def write_temp_jac(code: str) -> str {
         tmp.write(code);
         return tmp.name;
     }
+}
+
+def write_import_fixture(code: str) -> str {
+    project = Path(tempfile.mkdtemp(dir=_test_tmp_dir));
+    sources: dict[str, str] = {
+        "jac.toml": "[placement.pins]\n\"*\" = \"client\"\n",
+        "client/pages/main.jac": code,
+        "client/pages/utils.js": (
+            "export function helper() {}\n"
+            "export function processData(value) { return value; }\n"
+            "export class MessageFormatter { format(value) { return value; } }\n"
+        ),
+        "client/lib.js": "export function formatter(value) { return value; }\n",
+        "config.js": "export const settings = {};\n",
+        "client/pages/components/Button.js": (
+            "export function Button() {}\nexport default Button;\n"
+        ),
+        "client/lib/utils.js": "export default {};\n",
+        "client/lib/helpers.js": "export function logMessage(message) {}\n"
+    };
+    for (relative, source) in sources.items() {
+        path = project / relative;
+        path.parent.mkdir(parents=True, exist_ok=True);
+        path.write_text(source);
+    }
+    return str(project / "client/pages/main.jac");
 }
 
 """Ensure generated JavaScript has balanced delimiters."""
@@ -188,14 +215,16 @@ test "advanced fixture emits expected constructs" {
 
     # check props transformation
     assert "function TodoList(props) {" in js_code;
-    assert "const {filteredTodos, toggleTodo, deleteTodo} = props;" in js_code;
+    assert "const {filteredTodos, toggleTodo, deleteTodo, children: children = null} = props;"
+        in js_code;
     assert (
-        "\"toggleTodo\": toggleTodo, \"deleteTodo\": props.deleteTodo, \"children\": props.children"
+        "\"toggleTodo\": toggleTodo, \"deleteTodo\": deleteTodo, \"children\": children"
         in js_code
     );
 
     assert "function PropTodoList(props) {" in js_code;
-    assert "const {filteredTodos, toggleTodo, deleteTodo} = props;" in js_code;
+    assert "const {filteredTodos, toggleTodo, deleteTodo, children: children = null} = props;"
+        in js_code;
     assert (
         "\"toggleTodo\": props.toggleTodo, \"deleteTodo\": props.deleteTodo, \"children\": props.children}, []);"
         in js_code
@@ -340,7 +369,7 @@ test "empty file generates minimal js" {
 }
 
 test "type to typeof transformation" {
-    jac_code = "\"\"\"Test type() to typeof conversion.\"\"\"\n\ndef check_types() {\n    x = 42;\n    y = \"hello\";\n    my_obj = {\"key\": \"value\"};\n    arr = [1, 2, 3];\n\n    t1 = type(x);\n    t2 = type(y);\n    t3 = type(my_obj);\n    t4 = type(arr[0]);\n\n    return t1;\n}\n";
+    jac_code = "\"\"\"Test type() to typeof conversion.\"\"\"\n\ndef check_types() -> type[int] {\n    x = 42;\n    y = \"hello\";\n    my_obj = {\"key\": \"value\"};\n    arr = [1, 2, 3];\n\n    t1 = type(x);\n    t2 = type(y);\n    t3 = type(my_obj);\n    t4 = type(arr[0]);\n\n    return t1;\n}\n";
 
     temp_path = write_temp_jac(jac_code);
 
@@ -360,7 +389,9 @@ test "type to typeof transformation" {
 
 test "category1 named imports generate correct js" {
     fixture_file_path = os.path.join(FIXTURES, "category1_named_imports.jac");
-    js_code = compile_fixture_to_js(fixture_file_path);
+    js_code = compile_fixture_to_js(
+        write_import_fixture(Path(fixture_file_path).read_text())
+    );
 
     imports = [
         "import { useState } from \"react\";",
@@ -386,7 +417,9 @@ test "category1 named imports generate correct js" {
 
 test "category2 default imports generate correct js" {
     fixture_file_path = os.path.join(FIXTURES, "category2_default_imports.jac");
-    js_code = compile_fixture_to_js(fixture_file_path);
+    js_code = compile_fixture_to_js(
+        write_import_fixture(Path(fixture_file_path).read_text())
+    );
 
     imports = [
         "import React from \"react\";",
@@ -409,7 +442,9 @@ test "category2 default imports generate correct js" {
 
 test "category4 namespace imports generate correct js" {
     fixture_file_path = os.path.join(FIXTURES, "category4_namespace_imports.jac");
-    js_code = compile_fixture_to_js(fixture_file_path);
+    js_code = compile_fixture_to_js(
+        write_import_fixture(Path(fixture_file_path).read_text())
+    );
 
     imports = [
         "import * as React from \"react\";",
@@ -434,7 +469,7 @@ test "atom trailer starts with specialvaref js" {
     fixture_file_path = os.path.join(FIXTURES, "root_render.jac");
     js_code = compile_fixture_to_js(fixture_file_path);
 
-    assert "root.render();" in js_code;
+    assert "root.__str__();" in js_code;
     assert "obj" not in js_code;
 }
 
@@ -585,9 +620,9 @@ test "hyphenated package imports generate correct js" {
 }
 
 test "relative imports include js extension" {
-    jac_code = "\"\"\"Test relative imports with .js extension.\"\"\"\n\n# Single dot relative import\nimport from .utils { MessageFormatter }\n\n# Double dot relative import\nimport from ..lib { formatter }\n\n# Triple dot relative import\nimport from ...config { settings }\n\n# Module name with dots (should still get .js)\nimport from .components.Button { Button }\n\n# Using imported functions\ndef test_usage() {\n    fmt = MessageFormatter();\n    return fmt.format(\"test\");\n}\n";
+    jac_code = "\"\"\"Test relative imports with .js extension.\"\"\"\n\n# Single dot relative import\nimport from .utils { MessageFormatter }\n\n# Double dot relative import\nimport from ..lib { formatter }\n\n# Triple dot relative import\nimport from ...config { settings }\n\n# Module name with dots (should still get .js)\nimport from .components.Button { Button }\n\n# Using imported functions\ndef test_usage() -> str {\n    fmt = MessageFormatter();\n    return fmt.format(\"test\");\n}\n";
 
-    temp_path = write_temp_jac(jac_code);
+    temp_path = write_import_fixture(jac_code);
 
     try {
         js_code = compile_fixture_to_js(temp_path);
@@ -1097,13 +1132,13 @@ test "bridged call duplicate kwarg is a compile error" {
     # ``TypeError: got multiple values for argument 'name'`` and must be
     # reported as a compile-time error so the build fails fast rather than
     # silently emitting a JS object with a duplicated key.
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.compiler.backends.es { EsastGenPass }
 
     fixture = os.path.join(FIXTURES, "svc_kwargs/sv_import_kwargs_dup.jac");
     prog = JacProgram();
     ir = prog.compile(file_path=fixture, no_cgen=True);
-    run_pass(EsastGenPass, ir, prog);
+    run_pass(PassIdentity.EsastGenPass, ir, prog);
 
     dup_errs = [
         e
@@ -1269,7 +1304,7 @@ test "convert to js import path preserves js format" {
 
 test "for-of tuple targets destructure into binding patterns" {
     jac_code = (
-        "def f() {\n"
+        "def f() -> int {\n"
         "    pairs = [[1, 2]];\n"
         "    nested = [[[1, 2], 3]];\n"
         "    rows = [[1, 2, 3]];\n"
@@ -1298,7 +1333,7 @@ test "for-of tuple targets destructure into binding patterns" {
 
 test "tuple assignment targets destructure with a rest pattern" {
     jac_code = (
-        "def f(rows: list) {\n"
+        "def f(rows: list) -> list {\n"
         "    (first, *rest) = rows;\n"
         "    return rest;\n"
         "}\n"
@@ -2212,7 +2247,7 @@ test "user-defined exception except is not a catch-all" {
     # else branch and compiled to `if (true)` — catching EVERY exception. It
     # must now emit `instanceof MyError` so it catches only that type and lets
     # unrelated exceptions fall through to the next handler.
-    jac_code = "\"\"\"user-defined except is not a catch-all.\"\"\"\n\nobj MyError {}\ndef classify(which: int) -> str {\n    try {\n        if which == 1 { raise MyError(); }\n        raise ValueError(\"b\");\n    } except MyError { return \"mine\"; } except ValueError { return \"ve\"; }\n    return \"none\";\n}\n";
+    jac_code = "\"\"\"user-defined except is not a catch-all.\"\"\"\n\nobj MyError(Exception) {}\ndef classify(which: int) -> str {\n    try {\n        if which == 1 { raise MyError(); }\n        raise ValueError(\"b\");\n    } except MyError { return \"mine\"; } except ValueError { return \"ve\"; }\n    return \"none\";\n}\n";
 
     temp_path = write_temp_jac(jac_code);
     try {
@@ -2828,20 +2863,20 @@ test "imported JS/TS class constructs with new (#8017)" {
     assert_balanced_syntax(js_code, "ts_class_new.jac");
 }
 
-test "builtin functions lower to runtime helpers without type-check (#7480, #8589)" {
-    # An imported client module reaches the bundler uninferred (call_kind
-    # unstamped, as when compiled as a dependency). The bundler chokepoint must
-    # run the inference schedule before the backend so builtins lower to their
+test "client artifact request schedules builtin inference (#7480, #8589)" {
+    # A symbol-only module has no inferred call_kind. Requesting its client
+    # artifact must schedule inference before the backend so builtins lower to their
     # _jac.builtin.* helpers rather than bare, undefined identifiers.
     import re;
-    import from jaclang.client.client_bundle { _ensure_js_generated }
     fixture_path = _resolve_fixture_path("builtin_func_untyped.jac", FIXTURES);
     prog = JacProgram();
-    ir = prog.compile(file_path=fixture_path, no_cgen=True);
-    _fatal = _fatal_compile_errors(prog);
-    assert not _fatal , (f"Compilation errors: {[str(e) for e in _fatal]}");
-    _ensure_js_generated(ir, prog);
-    js_code = ir.gen.js;
+    prog.compile(file_path=fixture_path, symtab_ir_only=True);
+    client_artifact = prog.get_client_artifact(fixture_path);
+    assert not prog.errors_had , (
+        f"Compilation errors: {[str(e) for e in prog.errors_had]}"
+    );
+    assert client_artifact is not None , "client artifact was not generated";
+    js_code = client_artifact.js;
 
     fn_starts = [
         js_code.find("function " + fn) for fn in ["summarize", "numeric", "combined"]
@@ -3066,7 +3101,7 @@ test "unimplemented client statement is a hard error, not a silent drop (#7922)"
     try {
         prog = JacProgram();
         ir = prog.compile(file_path=temp_path, no_cgen=True);
-        run_pass(EsastGenPass, ir, prog);
+        run_pass(PassIdentity.EsastGenPass, ir, prog);
         drops = [
             e
             for e in prog.errors_had
@@ -3105,7 +3140,7 @@ test "supported client statements do not trip the completeness guard (#7922)" {
     try {
         prog = JacProgram();
         ir = prog.compile(file_path=temp_path, no_cgen=True);
-        run_pass(EsastGenPass, ir, prog);
+        run_pass(PassIdentity.EsastGenPass, ir, prog);
         drops = [
             e
             for e in prog.errors_had
@@ -3136,7 +3171,7 @@ test "E5018 names the rewrite that makes the pattern lower (#8375)" {
     try {
         prog = JacProgram();
         ir = prog.compile(file_path=temp_path, no_cgen=True);
-        run_pass(EsastGenPass, ir, prog);
+        run_pass(PassIdentity.EsastGenPass, ir, prog);
         pats = [
             e
             for e in prog.errors_had

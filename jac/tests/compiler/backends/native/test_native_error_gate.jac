@@ -10,13 +10,15 @@ Before the gate landed, the first compile printed the errors but cached
 the poisoned artifact anyway, so every later run executed silently with
 holes in the code (exit 0, zero diagnostics).
 """
-import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from jaclang.compiler.session.context { artifact_cache_path }
 
 import from tests.support { native_force_opts }
 import os;
 import tempfile;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.jir { get_module_cache_path }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.cache.artifact_codec { get_module_cache_path }
 import from jaclang.runtime.runtime { JacRuntime }
 
 # `eval` of a runtime string can never be lowered on the na pathway: it
@@ -78,10 +80,10 @@ test "na codegen errors withhold the native artifact" {
     assert has_error_code(prog, "E5092") , (
         f"Expected E5092 from native codegen, got: {fmt_errors(prog)}"
     );
-    assert mod.gen.llvm_ir is None , (
+    assert artifact_for(mod).llvm_ir is None , (
         "a module with native codegen errors must not publish llvm ir"
     );
-    assert mod.gen.native_engine is None , (
+    assert artifact_for(mod).native_engine is None , (
         "a module with native codegen errors must not publish a jit engine"
     );
 }
@@ -113,7 +115,7 @@ test "import of a natively-unlowerable module demotes and succeeds" {
 test "check-path compile surfaces native codegen errors (check/run parity)" {
     src = write_module("gate_bad_check.jac", BAD_NA_SOURCE);
     prog = JacProgram();
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     prog.compile(
         file_path=src,
         options=CompileOptions(
@@ -145,7 +147,9 @@ test "clean na module still publishes artifacts and caches" {
     prog = JacProgram();
     mod = prog.compile(file_path=src, options=native_force_opts());
     assert not prog.errors_had , f"unexpected errors: {fmt_errors(prog)}";
-    assert mod.gen.llvm_ir is not None , ("clean na module must still publish llvm ir");
+    assert artifact_for(mod).llvm_ir is not None , (
+        "clean na module must still publish llvm ir"
+    );
     bc = JacProgram().get_bytecode(src);
     assert bc is not None , "clean na module must still produce bytecode";
     assert os.path.exists(artifact_cache_path(src, JacProgram())) , (

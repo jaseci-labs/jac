@@ -37,7 +37,7 @@ def sv_module -> any {
 }
 
 test "user obj call argument: a plain value wraps into an optional parameter" {
-    (eng, _) = compile_native("coercion_routing.jac");
+    (native_program, eng, _) = compile_native("coercion_routing.jac");
     sv = sv_module();
     f = get_func(eng, "arg_wrap", ctypes.c_int64, ctypes.c_int64);
     for n in [3, 0, -4] {
@@ -49,7 +49,7 @@ test "user obj call argument: a plain value wraps into an optional parameter" {
 }
 
 test "user obj call argument: an explicit None reaches an optional parameter" {
-    (eng, _) = compile_native("coercion_routing.jac");
+    (native_program, eng, _) = compile_native("coercion_routing.jac");
     sv = sv_module();
     f = get_func(eng, "arg_wrap_none", ctypes.c_int64);
     assert f() == sv.arg_wrap_none() , f"arg_wrap_none: {f()} != {sv.arg_wrap_none()}";
@@ -57,7 +57,7 @@ test "user obj call argument: an explicit None reaches an optional parameter" {
 }
 
 test "user obj call argument: a narrowed optional unwraps into a plain parameter" {
-    (eng, _) = compile_native("coercion_routing.jac");
+    (native_program, eng, _) = compile_native("coercion_routing.jac");
     sv = sv_module();
     f = get_func(eng, "arg_unwrap", ctypes.c_int64, ctypes.c_int64);
     for n in [4, 0] {
@@ -70,7 +70,7 @@ test "user obj call argument: a narrowed optional unwraps into a plain parameter
 }
 
 test "primitive call argument: a narrowed optional list unwraps for extend" {
-    (eng, _) = compile_native("coercion_routing.jac");
+    (native_program, eng, _) = compile_native("coercion_routing.jac");
     sv = sv_module();
     f = get_func(eng, "arg_unwrap_container", ctypes.c_int64, ctypes.c_int64);
     for flag in [1, 0] {
@@ -84,7 +84,7 @@ test "primitive call argument: a narrowed optional list unwraps for extend" {
 }
 
 test "primitive call argument: a narrowed optional str unwraps for startswith" {
-    (eng, _) = compile_native("coercion_routing.jac");
+    (native_program, eng, _) = compile_native("coercion_routing.jac");
     sv = sv_module();
     f = get_func(eng, "arg_unwrap_str", ctypes.c_int64, ctypes.c_int64);
     for flag in [1, 0] {
@@ -97,7 +97,7 @@ test "primitive call argument: a narrowed optional str unwraps for startswith" {
 }
 
 test "primitive call argument: a narrowed optional list unwraps for str.join" {
-    (eng, _) = compile_native("coercion_routing.jac");
+    (native_program, eng, _) = compile_native("coercion_routing.jac");
     sv = sv_module();
     f = get_func(eng, "arg_join_unwrap", ctypes.c_int64, ctypes.c_int64);
     for flag in [1, 0] {
@@ -111,7 +111,7 @@ test "primitive call argument: a narrowed optional list unwraps for str.join" {
 }
 
 test "primitive call argument: element wrap into an optional-element list" {
-    (eng, _) = compile_native("coercion_routing.jac");
+    (native_program, eng, _) = compile_native("coercion_routing.jac");
     sv = sv_module();
     f = get_func(eng, "arg_wrap_elem", ctypes.c_int64, ctypes.c_int64);
     for n in [2, 5] {
@@ -123,7 +123,7 @@ test "primitive call argument: element wrap into an optional-element list" {
 }
 
 test "call receiver: an optional list receiver unwraps for append" {
-    (eng, _) = compile_native("coercion_routing.jac");
+    (native_program, eng, _) = compile_native("coercion_routing.jac");
     sv = sv_module();
     f = get_func(eng, "opt_list_receiver", ctypes.c_int64, ctypes.c_int64);
     for n in [2, 9] {
@@ -135,7 +135,7 @@ test "call receiver: an optional list receiver unwraps for append" {
 }
 
 test "call receiver: a narrowed optional list receiver still takes both branches" {
-    (eng, _) = compile_native("coercion_routing.jac");
+    (native_program, eng, _) = compile_native("coercion_routing.jac");
     sv = sv_module();
     f = get_func(eng, "opt_list_receiver_guarded", ctypes.c_int64, ctypes.c_int64);
     for flag in [3, 0] {
@@ -149,7 +149,7 @@ test "call receiver: a narrowed optional list receiver still takes both branches
 }
 
 test "unpack store: plain elements wrap into optional-typed targets" {
-    (eng, _) = compile_native("coercion_routing.jac");
+    (native_program, eng, _) = compile_native("coercion_routing.jac");
     sv = sv_module();
     f = get_func(eng, "unpack_wrap", ctypes.c_int64, ctypes.c_int64);
     for n in [3, 7] {
@@ -161,7 +161,7 @@ test "unpack store: plain elements wrap into optional-typed targets" {
 }
 
 test "unpack store: optional elements unwrap into plain targets" {
-    (eng, _) = compile_native("coercion_routing.jac");
+    (native_program, eng, _) = compile_native("coercion_routing.jac");
     sv = sv_module();
     f = get_func(eng, "unpack_unwrap", ctypes.c_int64, ctypes.c_int64);
     for n in [5, 1] {

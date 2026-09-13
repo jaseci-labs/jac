@@ -11,13 +11,14 @@ is gone, the analysis stage runs without being asked, and a module-scoped error
 stops code generation for every codespace rather than only for native modules.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import shutil;
 import tempfile;
 
 import from pathlib { Path }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob _BAD_SRC: str = "def widen(a: int, b: int) -> int {\n    return a * b;\n}\n\nwith entry {\n    total: int = widen(\"alpha\", \"beta\");\n}\n",
      _GOOD_SRC: str = "def widen(a: int, b: int) -> int {\n    return a * b;\n}\n\nwith entry {\n    total: int = widen(6, 7);\n}\n";
@@ -58,19 +59,19 @@ test "a plain module is type-checked without being asked" {
 test "a type error blocks code generation for a server module" {
     (mod, codes) = _compile_src(_BAD_SRC);
     assert codes , "expected diagnostics for the bad module";
-    assert not mod.gen.py_bytecode , "a type error still produced bytecode";
+    assert not artifact_for(mod).py_bytecode , "a type error still produced bytecode";
 }
 
 
 test "a clean module still reaches code generation" {
     (mod, codes) = _compile_src(_GOOD_SRC);
     assert not codes , f"clean source reported diagnostics: {codes}";
-    assert mod.gen.py_bytecode , "a clean module produced no bytecode";
+    assert artifact_for(mod).py_bytecode , "a clean module produced no bytecode";
 }
 
 
 test "type inference is a hard requirement of the environment" {
-    import from jaclang.compiler.driver.pipeline {
+    import from jaclang.compiler.pipeline.schedule {
         TypeshedUnavailableError,
         require_typeshed_stubs,
         typeshed_stubs_available
@@ -93,5 +94,5 @@ test "a type error blocks a natively lowered module too" {
         + "}\n";
     (mod, codes) = _compile_src(src);
     assert codes , "a natively lowered module swallowed its type error";
-    assert not mod.gen.py_bytecode , "a type error still produced bytecode";
+    assert not artifact_for(mod).py_bytecode , "a type error still produced bytecode";
 }

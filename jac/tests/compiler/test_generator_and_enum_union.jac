@@ -11,8 +11,8 @@ member resolved them fine; only the union broke, and the diagnostic named
 no missing type because there was none to name.
 """
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 def check_src(src: str) -> list[str] {
     prog = JacProgram();
@@ -43,7 +43,7 @@ test "a generator expression is still iterable and consumable" {
 }
 
 test "value resolves on a union of enum members" {
-    src = "import from jaclang.compiler.frontend.constant { Tokens as Tok }\n"
+    src = "import from jaclang.compiler.ir.enums { Tokens as Tok }\n"
         + "def probe(x: str) -> str {\n"
         + "    t: (Tok | None) = None;\n"
         + "    if x == 'a' {\n"

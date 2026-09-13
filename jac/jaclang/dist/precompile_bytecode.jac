@@ -1,4 +1,4 @@
-import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.session.session { JacProgram }
 import hashlib;
 import json;
 import marshal;
@@ -12,8 +12,8 @@ import from contextlib { contextmanager }
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.jac0core { ext_registry }
-import from jaclang.compiler.driver.jir { patch_co_filenames_bytes }
-import from jaclang.compiler.driver.jir {
+import from jaclang.compiler.session.cache.artifact_codec { patch_co_filenames_bytes }
+import from jaclang.compiler.session.cache.artifact_codec {
     write_precompiled_jir,
     FLAG_PRECOMPILED,
     FLAG_BOOTSTRAP,
@@ -153,15 +153,13 @@ glob _sealable_cache: dict[tuple[str, str], list[str]] = {},
      _source_apps: dict[tuple[str, str], dict[str, str]] = {};
 
 def _application_sources(package_dir: str, app: str) -> list[str] | None {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.placement.workspace { workspace_for_path }
-    import from jaclang.compiler.driver.compilation_context { bind_options }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.driver.pipeline { compile_application }
-    import from jaclang.compiler.placement.placement_facts {
-        module_spaces,
-        spaces_are_client_only
-    }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.session.workspace { workspace_for_path }
+    import from jaclang.compiler.session.context { bind_options }
+    import from jaclang.compiler.session.options { CompileOptions }
+    import from jaclang.compiler.api { compile_application, module_spaces }
+    import from jaclang.compiler.api { module_spaces }
+    import from jaclang.build.inventory { spaces_are_client_only }
     workspace = workspace_for_path(os.path.join(package_dir, '__init__.jac'));
     if workspace is None or not workspace.explicit {
         return None;
@@ -200,7 +198,9 @@ def _application_sources(package_dir: str, app: str) -> list[str] | None {
                 if not path.startswith(key[0] + os.sep) or not os.path.isfile(path) {
                     continue;
                 }
-                facts.setdefault(path, set()).update(module_spaces(module));
+                facts.setdefault(path, set()).update(
+                    space.value for space in module_spaces(context, module).spaces
+                );
                 source_apps.setdefault(path, context.options.target_app);
             }
         }
@@ -239,20 +239,17 @@ def sealable_sources(package_dir: str, app: str = "") -> list[str] {
             and not any(p.startswith(n) for n in nested)
     ];
     if Path(package_dir).name == "jaclang" {
-        import from jaclang.compiler.placement.placement_facts {
-            toolchain_native_by_policy
-        }
+        import from jaclang.build.inventory { toolchain_native_by_policy }
+        import from jaclang.compiler.session.session { JacProgram }
+        discovery = JacProgram();
         result = [
             p
             for p in candidates
-            if not toolchain_native_by_policy(package_dir, p)
+            if not toolchain_native_by_policy(package_dir, p, discovery)
         ];
     } else {
-        import from jaclang.compiler.placement.placement_facts {
-            discover_spaces,
-            spaces_are_client_only
-        }
-        import from jaclang.compiler.driver.program { JacProgram }
+        import from jaclang.build.inventory { discover_spaces, spaces_are_client_only }
+        import from jaclang.compiler.session.session { JacProgram }
         discovery = JacProgram();
         facts = discover_spaces(candidates, discovery);
         _placement_cache[key] = facts;
@@ -305,7 +302,7 @@ def placement_facts_map(package_dir: str, app: str = "") -> dict[str, list[str]]
 }
 
 def _emit_unit_diagnostics(jac_path: str, programs: list) {
-    import from jaclang.compiler.driver.source_failures {
+    import from jaclang.compiler.bootstrap.source_failures {
         compiler_source_failure_details
     }
     stashed = compiler_source_failure_details(jac_path);
@@ -355,13 +352,15 @@ def _emit_unit_diagnostics(jac_path: str, programs: list) {
 
 glob _unit_program: list[JacProgram] = [];
 
-def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, bytes] {
+def _unit_extra(
+    jac_path: str, pkg_root: str, embed_src: bool, program: JacProgram
+) -> dict[int, bytes] {
     pkg_root = os.path.realpath(pkg_root);
     extra: dict[int, bytes] = {};
     try {
-        cache_path = get_module_cache_path(jac_path);
-        if cache_path.exists() and is_module_cache_valid(jac_path, cache_path) {
-            data = cache_path.read_bytes();
+        artifact = program.iface_registry()._module_jir(jac_path);
+        if artifact is not None {
+            (data, base_dir) = artifact;
             for section in (SEC_IFACE, SEC_DEPS, SEC_DIAG, SEC_PLACEMENT) {
                 raw = read_section_bytes(data, section);
                 if raw is not None {
@@ -369,7 +368,7 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
                 }
             }
             if extra {
-                paths = read_jir_paths(data);
+                paths = read_jir_paths(data, base_dir);
                 if not paths.base_dir {
                     paths.base_dir = os.path.dirname(os.path.realpath(jac_path));
                 }
@@ -380,12 +379,12 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
                     extra[SEC_DEPS] = deps_section(
                         [
                             (encode_path(path), digest, flags)
-                            for (path, digest, flags) in read_dep_rows(data)
+                            for (path, digest, flags) in read_dep_rows(data, base_dir)
                         ]
                     );
                 }
                 if SEC_DIAG in extra {
-                    import from jaclang.compiler.driver.ifacecache {
+                    import from jaclang.compiler.session.imports {
                         IfaceRegistry,
                         DIAG_SCHEMA
                     }
@@ -399,7 +398,7 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
                     }
                 }
                 if SEC_PLACEMENT in extra {
-                    import from jaclang.compiler.placement.placement {
+                    import from jaclang.compiler.analysis.placement.summary {
                         summary_from_bytes,
                         summary_to_bytes
                     }
@@ -412,6 +411,12 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
             }
             raw = read_section_bytes(data, SEC_CTDEPS);
             if raw is not None {
+                if base_dir {
+                    import from jaclang.compiler.session.cache.artifact_codec {
+                        absolutize_ct_deps_section
+                    }
+                    raw = absolutize_ct_deps_section(raw, base_dir);
+                }
                 extra[SEC_CTDEPS] = rebase_ct_deps_section(
                     raw, os.path.normpath(pkg_root)
                 );
@@ -427,11 +432,8 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
 def precompile_context(
     jac_path: str, pkg_root: str, program: JacProgram, app: str = ""
 ) -> JacProgram {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.driver.compilation_context {
-        bind_options,
-        context_program
-    }
+    import from jaclang.compiler.session.options { CompileOptions }
+    import from jaclang.compiler.session.context { bind_options, context_program }
     compiler = program._get_compiler();
     selected = compiler.selfhost.resolve(jac_path, program);
     if compiler.selfhost.is_selfhost(selected) {
@@ -458,10 +460,10 @@ def precompile_context(
 def precompile_unit_context(
     jac_path: str, pkg_root: str, collect: bool = True, app: str = ""
 ) -> Iterator[JacProgram] {
-    import jaclang.compiler.types.type_evaluator;
-    import jaclang.compiler.types.stubcat.modiface;
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compilation_context { cache_scope }
+    import jaclang.compiler.analysis.types.type_evaluator;
+    import jaclang.compiler.session.cache.interface_codec;
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.session.context { cache_scope, program_cache_identity }
     import from jaclang.cli.workpool { maybe_malloc_trim }
     if not _unit_program {
         _unit_program.append(JacProgram());
@@ -473,9 +475,9 @@ def precompile_unit_context(
         os.path.realpath(jac_path), app
     );
     selected = precompile_context(jac_path, pkg_root, program, source_app);
-    identity = '' if compiler.selfhost.is_selfhost(selected) else selected.context_key;
+    identity = program_cache_identity(selected);
     compiler.unit_collect = collect;
-    with cache_scope(identity, selected.options) {
+    with cache_scope(identity, selected.options, selected), compiler.selfhost.retain_units() {
         try {
             yield selected;
         } finally {
@@ -507,7 +509,7 @@ def _precompile_unit(
     jac_path: str, pkg_root: str, program: JacProgram, embed_src: bool = False
 ) -> bytes | None {
     try {
-        import from jaclang.compiler.driver.jir { cache_mode }
+        import from jaclang.compiler.session.cache.artifact_codec { cache_mode }
         (rebuild_units, _np) = cache_mode();
         cache_path = get_module_cache_path(jac_path);
         if (not rebuild_units) and is_module_cache_valid(jac_path, cache_path) {
@@ -522,7 +524,7 @@ def _precompile_unit(
                     rewrapped,
                     compute_precompile_module_key(jac_path),
                     FLAG_PRECOMPILED,
-                    _unit_extra(jac_path, pkg_root, embed_src)
+                    _unit_extra(jac_path, pkg_root, embed_src, program)
                 );
             }
         }
@@ -530,12 +532,12 @@ def _precompile_unit(
 
     compiler = program._get_compiler();
 
-    program.iface_registry().ensure(jac_path);
     code = compiler.get_bytecode(full_target=jac_path, target_program=program);
     if code is None {
         _emit_unit_diagnostics(jac_path, [program, compiler.selfhost.program]);
         return None;
     }
+    program.iface_registry().ensure(jac_path);
     patched = patch_co_filenames_bytes(
         marshal.dumps(code), pkg_root, PRECOMPILE_SENTINEL
     );
@@ -543,7 +545,7 @@ def _precompile_unit(
         patched,
         compute_precompile_module_key(jac_path),
         FLAG_PRECOMPILED,
-        _unit_extra(jac_path, pkg_root, embed_src)
+        _unit_extra(jac_path, pkg_root, embed_src, program)
     );
 }
 
@@ -600,7 +602,7 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
             );
             with precompile_unit_context(str(jac_file), str(pkg_dir)) as program {
                 program.iface_registry().ensure(str(jac_file));
-                extra = _unit_extra(str(jac_file), str(pkg_dir), embed_src);
+                extra = _unit_extra(str(jac_file), str(pkg_dir), embed_src, program);
             }
             jir_rel = jac_file.relative_to(pkg_dir).with_suffix(".jir");
             jir_path = out_dir / jir_rel;
@@ -993,7 +995,7 @@ def write_manifest(
         manifest.update(app_meta);
     }
     if pkg_name == "jaclang" {
-        import from jaclang.compiler.native_scope { NATIVE_SCOPE }
+        import from jaclang.compiler.bootstrap.native_scope { NATIVE_SCOPE }
         scope_mods = sorted([e.module for e in NATIVE_SCOPE]);
         if scope_mods {
             manifest["native"] = {"modules": scope_mods};
@@ -1005,13 +1007,30 @@ def write_manifest(
 }
 
 def _precompile_retire(served: int, rss_mb: int) -> bool {
-    import from jaclang.cli.workpool { env_int, should_retire }
-    return should_retire(
-        served,
-        env_int("JAC_PRECOMPILE_RECYCLE", 0),
-        rss_mb,
-        env_int("JAC_PRECOMPILE_RECYCLE_MB", 4096)
-    );
+    import from jaclang.cli.workpool {
+        WORKER_MEM_BYTES,
+        env_int,
+        maybe_malloc_trim,
+        should_retire,
+        worker_rss_mb
+    }
+    recycle = env_int("JAC_PRECOMPILE_RECYCLE", 0);
+    cap = env_int("JAC_PRECOMPILE_RECYCLE_MB", WORKER_MEM_BYTES // (1024 * 1024));
+    if should_retire(served, recycle, 0, 0) {
+        return True;
+    }
+    if cap > 0 and rss_mb >= cap {
+        import gc;
+        gc.collect();
+        maybe_malloc_trim();
+        current = worker_rss_mb();
+        if os.environ.get("JAC_PRECOMPILE_RSS_LOG") {
+            sys.stderr.write(f"[gc] precompile rss={rss_mb}->{current}MB\n");
+            sys.stderr.flush();
+        }
+        rss_mb = current;
+    }
+    return should_retire(served, recycle, rss_mb, cap);
 }
 
 def precompile_exit(code: int) {
@@ -1157,9 +1176,11 @@ def run_precompile(
         }
     }
 
-    import from jaclang.compiler.driver.jir { read_debug_source }
+    import from jaclang.compiler.session.cache.artifact_codec { read_debug_source }
     import from jaclang.cli.workpool {
+        WORKER_MEM_BYTES,
         WorkPool,
+        env_int,
         forced_serial,
         jobs_setting,
         pool_available,
@@ -1167,7 +1188,12 @@ def run_precompile(
     }
 
     raw_jobs = jobs_setting("precompile", jobs_arg);
-    workers = resolve_jobs(raw_jobs, env_var="JAC_PRECOMPILE_JOBS");
+    worker_mb = env_int("JAC_PRECOMPILE_RECYCLE_MB", WORKER_MEM_BYTES // (1024 * 1024));
+    workers = resolve_jobs(
+        raw_jobs,
+        env_var="JAC_PRECOMPILE_JOBS",
+        worker_bytes=max(0, worker_mb) * 1024 * 1024
+    );
     use_pool = (
         pool_available()
         and not forced_serial(raw_jobs)
@@ -1177,7 +1203,7 @@ def run_precompile(
     counts: dict[str, int] = {"compiled": 0, "reused": 0, "failed": 0};
 
     import gc;
-    import from jaclang.compiler.driver.compiler { COMPILE_GC_THRESHOLDS }
+    import from jaclang.compiler.session.compiler { COMPILE_GC_THRESHOLDS }
     if (
         not os.environ.get("JAC_GC_NO_COMPILE_BOOST")
         and gc.get_threshold()[0] < COMPILE_GC_THRESHOLDS[0]

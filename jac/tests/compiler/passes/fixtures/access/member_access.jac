@@ -13,7 +13,7 @@ obj Base {
     def :pub pub_m() -> int { return 1; }
     def :priv priv_m() -> int { return 2; }
 
-    def own() -> None {
+    def inspect_fields() -> None {
         a = self.pub_f;     # ok
         b = self.prot_f;    # ok
         c = self.priv_f;    # ok -- declaring class

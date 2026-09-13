@@ -1,6 +1,7 @@
 """Annotation arguments preserve shape and reject mapping spreads."""
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 import ctypes;
 import from tests.support { get_func, native_force_opts }
 
@@ -21,8 +22,9 @@ def:pub read_child() -> int {
         options=native_force_opts()
     );
     assert not program.errors_had;
-    assert module.gen.native_engine is not None;
-    assert get_func(module.gen.native_engine, "read_child", ctypes.c_int64)() == 42;
+    assert artifact_for(module).native_engine is not None;
+    assert get_func(artifact_for(module).native_engine, "read_child", ctypes.c_int64)()
+        == 42;
 }
 
 test "mapping spreads in generic annotations report a type diagnostic" {

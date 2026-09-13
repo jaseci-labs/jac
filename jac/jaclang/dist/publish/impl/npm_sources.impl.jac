@@ -107,7 +107,7 @@ def _package_dirs(config: JacConfig, proj_root: Path) -> list[Path] {
 }
 
 def _crosses_server_boundary(mod: any) -> bool {
-    im = mod.gen.interop_manifest if mod and mod.gen else None;
+    im = artifact_for(mod).interop_manifest if mod and artifact_for(mod) else None;
     if im is None {
         return False;
     }
@@ -121,7 +121,7 @@ def _crosses_server_boundary(mod: any) -> bool {
 }
 
 def _compile_module(program: any, path: Path) -> any {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     source_key = str(path);
     prev = len(program.errors_had);
 
@@ -132,8 +132,9 @@ def _compile_module(program: any, path: Path) -> any {
         raise ValueError(f"Failed to compile '{path}' for npm bundle:\n{formatted}");
     }
     import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-    import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
-    if mod and mod.gen and not mod.gen.js {
+    import from jaclang.compiler.pipeline.products { require_product }
+    import from jaclang.compiler.pipeline.contracts { CompilationProduct }
+    if mod and artifact_for(mod) and not artifact_for(mod).js {
         require_product(program, mod, CompilationProduct.CLIENT);
     }
     return mod;
@@ -155,7 +156,7 @@ impl collect_npm_sources(
         );
     }
 
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     program = JacProgram();
 
     runtime_pkg = runtime_pkg_name(config);
@@ -175,7 +176,7 @@ impl collect_npm_sources(
             }
 
             mod = _compile_module(program, src);
-            js = (mod.gen.js if mod and mod.gen else "") or "";
+            js = (artifact_for(mod).js if mod and artifact_for(mod) else "") or "";
             if not js.strip() {
                 continue;
             }

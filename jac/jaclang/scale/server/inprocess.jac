@@ -2,7 +2,7 @@ import os;
 import sys;
 
 import from jaclang { JacRuntime as Jac }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.compiler.ir.enums { Constants as Con }
 import type from jaclang.runtime.context { ExecutionContext }
 import from jaclang.jac0core.ext_registry { base_stem }
 import from jaclang.server.server { JacAPIServer, ServerExtension }
@@ -87,7 +87,7 @@ def prepare_inprocess_runtime(
         }
         import from jaclang.project.config { get_config_for_dir }
         import from jaclang.server.assembly { service_apps }
-        import from jaclang.compiler.driver.application { prepare_application }
+        import from jaclang.build.preparation { prepare_application }
         import from jaclang.runtime.prepared { initialize_application }
         cfg = get_config_for_dir(base);
         served = cfg.app_for_path(os.path.abspath(jac_file))

@@ -1002,7 +1002,7 @@ impl NaIRGenPass._make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None) {
 impl NaIRGenPass._resolve_method_owner(
     arch_name: str, method_name: str
 ) -> (str | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
     owner = get_layout_registry(self.ir_in, self.prog).resolve_method_owner(
         arch_name, method_name
     );
@@ -1024,7 +1024,7 @@ impl NaIRGenPass._resolve_method_owner(
 impl NaIRGenPass._resolve_method(
     arch_name: str, method_name: str
 ) -> (ir.Function | None) {
-    import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+    import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
     _reg = get_layout_registry(self.ir_in, self.prog);
     cur: (str | None) = arch_name;
     _guard = 0;
@@ -1252,7 +1252,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     (iter_val, elem_name, elem_type) = built;
     i8p = ir.IntType(8).as_pointer();
     _loc = "iter_for";
-    is_tuple_target = isinstance(nd.target, uni.TupleVal);
+    target = nd.target;
 
     _gen_it_spill: (ir.Value | None) = None;
     if self._gen_ctx is not None and self.builder.function is self._gen_ctx.resume_fn {
@@ -1266,14 +1266,14 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     }
 
     elem_slot = self._entry_alloca(elem_type, "iter.elem");
-    if is_tuple_target {
-        targets = nd.target.values or [];
+    if isinstance(target, uni.TupleVal) {
+        targets = target.values or [];
         if not isinstance(elem_type, ir.LiteralStructType)
             or len(targets) != len(elem_type.elements)
-            or any(self._get_name(target) is None for target in targets) {
+            or any(self._get_name(item) is None for item in targets) {
             return False;
         }
-    } elif self._get_name(nd.target) is None {
+    } elif self._get_name(target) is None {
         return False;
     }
     func = self.builder.function;
@@ -1292,8 +1292,8 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     self.builder.position_at_end(body_bb);
     yielded = self.builder.load(elem_slot, name="iterf.value");
 
-    if is_tuple_target {
-        if not self._codegen_tuple_unpack(nd.target.values, yielded, None) {
+    if isinstance(target, uni.TupleVal) {
+        if not self._codegen_tuple_unpack(target.values, yielded, None) {
             return False;
         }
     } else {
@@ -1301,11 +1301,11 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         binding = self.builder.insert_value(
             ir.Constant(binding_type, None), yielded, 0, name="iterf.binding"
         );
-        if not self._codegen_tuple_unpack([nd.target], binding, None) {
+        if not self._codegen_tuple_unpack([target], binding, None) {
             return False;
         }
     }
-    import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+    import from jaclang.compiler.analysis.ownership.rc_facts_pass { loop_body_locals }
     _saved = loop_body_locals(nd.body if isinstance(nd.body, (list, tuple)) else None);
 
     _iter_prebody = set(self.local_vars.keys());

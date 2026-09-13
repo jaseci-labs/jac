@@ -31,18 +31,19 @@ The keyword-forms contract is untouched: `abstractmethod`, `ABCMeta` and a
 bare `import abc` still refuse, pinned in `test_native_abc_erasure`.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import importlib;
 import os;
 import sys;
-import from jaclang.compiler.passes.capability_check_pass {
+import from jaclang.compiler.analysis.capabilities.capability_check_pass {
     native_capability_violations
 }
-import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.lowering.layout_pass { get_layout_registry }
+import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
-import from jaclang.compiler.placement.placement { scan_native_blockers }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.analysis.placement.evidence { scan_native_blockers }
+import from jaclang.compiler.session.session { JacProgram }
 import from tests.support { TESTS_DIR }
 
 glob FIXTURES = os.path.join(
@@ -97,7 +98,7 @@ def _module_with(import_line: str) -> str {
 
 """A JIT-resolved `int()` function from a compiled fixture."""
 def _native_int_fn(ir: any, name: str) -> any {
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"no native engine for '{name}'";
     addr = eng.get_function_address(name);
     assert addr != 0 , f"'{name}' is absent from the JIT engine";
@@ -136,7 +137,7 @@ test "a typing.cast import no longer blocks native placement" {
 test "typing.cast lowers with no seam" {
     (prog, ir) = _compile_native("typing_cast_identity.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     for fn in ["run", "widen"] {
         assert fn in layout.functions , (
@@ -162,7 +163,7 @@ test "typing.cast is the identity on both lanes" {
 test "the cast erasure reaches an annexed impl body" {
     (prog, ir) = _compile_native("typing_cast_annex.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "run" in layout.functions , (
         f"the annexed function demoted rather than erasing its cast: "
@@ -189,7 +190,7 @@ test "a TypeVar import no longer blocks native placement" {
 test "a module-scope TypeVar glob produces native IR" {
     (prog, ir) = _compile_native("typing_typevar_glob.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the TypeVar glob";
+    assert ir is not None and artifact_for(ir).llvm_ir , "no native IR for the TypeVar glob";
     assert _native_int_fn(ir, "run")() == 9 , (
         "the TypeVar glob changed what the rest of the module computes"
     );

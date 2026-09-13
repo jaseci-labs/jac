@@ -38,10 +38,10 @@ impl EsastGenPass._lower_place_builtin(nd: uni.FuncCall) -> es.Expression | None
     pairs: list[es.Expression | es.SpreadElement] = [];
     for param in (nd.params or []) {
         place = param.operand if isinstance(param, uni.UnaryExpr) else param;
-        if not isinstance(place, uni.Expr) or place.gen.es_ast is None {
+        if not isinstance(place, uni.Expr) or artifact_for(place).es_ast is None {
             return None;
         }
-        pair = self._place_accessors(cast(es.Expression, place.gen.es_ast));
+        pair = self._place_accessors(cast(es.Expression, artifact_for(place).es_ast));
         if pair is None {
             return None;
         }

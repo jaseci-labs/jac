@@ -9,9 +9,9 @@ reports each disagreement once.
 
 import os;
 import tempfile;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.variant_agreement_pass {
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.analysis.types.variant_agreement_pass {
     public_surface,
     variant_sibling
 }

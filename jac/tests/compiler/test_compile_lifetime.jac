@@ -12,15 +12,16 @@ so a long-lived process (the test pool's fork workers, a language server)
 carries every AST and every LLVM IR object it ever built.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import gc;
 import os;
 import weakref;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-import from jaclang.compiler.passes.transform { Transform }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass }
+import from jaclang.compiler.analysis.types.type_checker_pass { TypeCheckPass }
+import from jaclang.compiler.pipeline.pass_base { Transform }
 import from unittest.mock { patch }
 
 glob VIRTUAL_PATH: str = os.path.join(
@@ -88,7 +89,7 @@ test "failed checker phases restore the enclosing diagnostic context" {
                 TypeCheckPass, phase, side_effect=RuntimeError("phase failure")
             ) {
                 try {
-                    run_pass(TypeCheckPass, mod, prog=prog);
+                    run_pass(PassIdentity.TypeCheckPass, mod, prog=prog);
                 } except RuntimeError as error {
                     assert str(error) == "phase failure";
                     failed = True;

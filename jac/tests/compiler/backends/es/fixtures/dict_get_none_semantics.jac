@@ -15,7 +15,7 @@ def get_is_not_none -> bool {
     return d.get("error") is not None;
 }
 
-def get_present -> int {
+def get_present -> int | None {
     d: dict[str, int] = {"value": 1};
     return d.get("value");
 }

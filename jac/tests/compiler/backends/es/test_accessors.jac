@@ -1,9 +1,12 @@
 """Accessor-backed fields use JavaScript properties rather than storage slots."""
+
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import json;
 import subprocess;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 test "data constructors bind positional keyword and spread arguments in source order" {
     program = JacProgram();
@@ -32,12 +35,16 @@ def probe -> list[int] {
 """,
         options=CompileOptions(force_codespace="client", no_cgen=True)
     );
-    EsastGenPass(ir_in=module, prog=program);
+    run_pass(PassIdentity.EsastGenPass, module, program);
     assert not program.errors_had , "\n".join(
         str(error) for error in program.errors_had
     );
     result = subprocess.run(
-        ["node", "-e", module.gen.js + "\nconsole.log(JSON.stringify(probe()));"],
+        [
+            "node",
+            "-e",
+            artifact_for(module).js + "\nconsole.log(JSON.stringify(probe()));"
+        ],
         capture_output=True,
         text=True,
         timeout=10
@@ -69,12 +76,16 @@ def probe -> list[int] {
 """,
         options=CompileOptions(force_codespace="client", no_cgen=True)
     );
-    EsastGenPass(ir_in=module, prog=program);
+    run_pass(PassIdentity.EsastGenPass, module, program);
     assert not program.errors_had , "\n".join(
         str(error) for error in program.errors_had
     );
     result = subprocess.run(
-        ["node", "-e", module.gen.js + "\nconsole.log(JSON.stringify(probe()));"],
+        [
+            "node",
+            "-e",
+            artifact_for(module).js + "\nconsole.log(JSON.stringify(probe()));"
+        ],
         capture_output=True,
         text=True,
         timeout=10

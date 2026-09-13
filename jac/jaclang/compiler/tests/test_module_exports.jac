@@ -1,9 +1,9 @@
 """Prelude exports are read from the same module tree as other compiler facts."""
 import ast;
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+import from jaclang.compiler.analysis.binding.module_facts { ModuleFacts }
 import from jaclang.compiler.frontend.parser.frontend { parse }
-import from jaclang.compiler.frontend.unitree { Module, PythonModuleAst, Source }
-import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
+import from jaclang.compiler.ir.schema { Module, PythonModuleAst, Source }
+import from jaclang.compiler.frontend.pyast_load_pass { PyastBuildPass }
 
 def jac_module(source: str) -> Module {
     (module, failed) = parse(source, "module_exports.jac");

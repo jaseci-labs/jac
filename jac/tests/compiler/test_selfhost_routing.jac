@@ -3,7 +3,7 @@ process-global self-host program the running compiler keeps for its own
 modules."""
 import os;
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 
 def _pkg_path(rel: str) -> str {
@@ -29,10 +29,20 @@ test "a native stdlib module resolves into the program that imports it" {
 test "a compiler module still resolves into the self-host program" {
     prog = JacProgram();
     cache = prog._get_compiler().selfhost;
-    log_mod = _pkg_path("compiler/driver/log.jac");
+    log_mod = _pkg_path("compiler/pipeline/log.jac");
     assert os.path.isfile(log_mod) , log_mod;
     assert cache.resolve(log_mod, prog) is cache.program;
     assert cache.resolve(log_mod, prog, force=True) is prog;
+}
+
+test "client runtime modules retain their consumer compilation context" {
+    prog = JacProgram();
+    cache = prog._get_compiler().selfhost;
+    for relative in ["client/client_mobui.jac", "client/client_runtime_native.jac"] {
+        path = _pkg_path(relative);
+        assert cache.resolve(path, prog) is prog;
+        assert cache.resolve(path, cache.program) is cache.program;
+    }
 }
 
 test "shared construction runtime resolves into its consumer program" {
@@ -53,15 +63,16 @@ test "the self-host program keeps its own native stdlib imports" {
 }
 
 test "lazy compiler bytecode does not inherit the caller's analysis request" {
+    import from jaclang.compiler.pipeline.contracts { PassIdentity }
     import from pathlib { Path }
     import from tempfile { TemporaryDirectory }
     import from unittest.mock { patch }
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import jaclang.compiler.driver.pass_driver as driver;
+    import from jaclang.compiler.session.compiler { JacCompiler }
+    import from jaclang.compiler.bootstrap.selfhost { SelfHostCache }
+    import from jaclang.compiler.session.options { CompileOptions }
+    import jaclang.compiler.pipeline.executor as driver;
     # Ensure the codec is available so unnecessary interface work is observable.
-    import jaclang.compiler.types.stubcat.modiface;
+    import jaclang.compiler.session.cache.interface_codec;
     with TemporaryDirectory() as directory {
         base_path = Path(directory);
         toolchain = base_path / "toolchain";
@@ -79,8 +90,10 @@ test "lazy compiler bytecode does not inherit the caller's analysis request" {
         program._compiler = compiler;
         loaded: list[any] = [];
         original: any = driver.run_pass;
-        def load_helper(pass_cls: any, ir_in: any, prog: any, **kwargs: any) -> any {
-            if pass_cls.__name__ == "SymTabBuildPass"
+        def load_helper(
+            pass_id: PassIdentity, ir_in: any, prog: any, **kwargs: any
+        ) -> any {
+            if pass_id == PassIdentity.SymTabBuildPass
                 and ir_in.loc.mod_path == str(app)
                 and not loaded {
                 assert compiler._reentrant_depth > 0;
@@ -88,7 +101,7 @@ test "lazy compiler bytecode does not inherit the caller's analysis request" {
                     compiler.get_bytecode(str(helper), target_program=program)
                 );
             }
-            return original(pass_cls, ir_in, prog, **kwargs);
+            return original(pass_id, ir_in, prog, **kwargs);
         }
         with patch.object(driver, "run_pass", load_helper) {
             program.compile(
@@ -113,11 +126,11 @@ test "application analysis does not eagerly publish selfhost dependency interfac
     import from pathlib { Path }
     import from tempfile { TemporaryDirectory }
     import from unittest.mock { patch }
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import jaclang.compiler.types.stubcat.modiface;
-    import jaclang.compiler.driver.jir as jir;
+    import from jaclang.compiler.session.compiler { JacCompiler }
+    import from jaclang.compiler.bootstrap.selfhost { SelfHostCache }
+    import from jaclang.compiler.session.options { CompileOptions }
+    import jaclang.compiler.session.cache.interface_codec;
+    import jaclang.compiler.session.cache.artifact_codec as jir;
     with TemporaryDirectory() as directory {
         base_path = Path(directory);
         toolchain = base_path / "toolchain";
@@ -163,7 +176,7 @@ test "application analysis does not eagerly publish selfhost dependency interfac
         );
         program.compile(str(consumer), options=CompileOptions(no_cgen=True));
         assert not program.errors_had;
-        assert str(plugin) in internal.iface_registry()._iface_bytes , (
+        assert program.iface_registry().cached_interface(str(plugin)) is not None , (
             "bundled libraries outside the compiler fingerprint need dependency interfaces"
         );
         explicit = internal.iface_registry().ensure(str(toolchain / "api.jac"));

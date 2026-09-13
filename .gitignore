@@ -108,4 +108,8 @@ jactastic/**
 # Zig 0.16 project-local package cache (fetched, hash-pinned deps)
 zig-pkg/
 
+
+# Application preparation is source code.
+!jac/jaclang/build/
+!jac/jaclang/build/**
 .xdg-cache/

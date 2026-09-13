@@ -48,7 +48,7 @@ impl runtime_api_names(framework: str = "") -> set[str] {
 }
 
 def _compile_cl_to_js(src: Path) -> str {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     program = JacProgram();
     prev = len(program.errors_had);
     mod = program.compile(str(src));
@@ -57,7 +57,7 @@ def _compile_cl_to_js(src: Path) -> str {
         formatted = "\n".join(str(err) for err in new_errors);
         raise ValueError(f"Failed to compile {src.name}:\n{formatted}");
     }
-    return (mod.gen.js if mod and mod.gen else "") or "";
+    return (artifact_for(mod).js if mod and artifact_for(mod) else "") or "";
 }
 
 impl compile_runtime_js(framework: str = "") -> str {

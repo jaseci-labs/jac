@@ -1,7 +1,9 @@
-import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.pipeline.executor { execute_passes }
+import from jaclang.compiler.pipeline.contracts { AnalysisFact }
 
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.pipeline {
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.pipeline.schedule {
     pass_requires,
     pass_provides,
     get_analysis_sched,
@@ -13,17 +15,13 @@ import from jaclang.compiler.driver.pipeline {
     providers_of,
     validate_schedule
 }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }
-import from jaclang.compiler.passes.ownership_check_pass { OwnershipCheckPass }
-import from jaclang.compiler.passes.static_analysis_pass { StaticAnalysisPass }
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
+import from jaclang.compiler.session.session { JacProgram }
 
 
 test "schedule omitting a declared dependency fails fast at construction" {
     err = '';
     try {
-        validate_schedule([OwnershipCheckPass], origin='test schedule');
+        validate_schedule([PassIdentity.OwnershipCheckPass], origin='test schedule');
     } except RuntimeError as e {
         err = str(e);
     }
@@ -36,7 +34,7 @@ test "validation names the first missing analysis with CfgSucc preprovided" {
     err = '';
     try {
         validate_schedule(
-            [OwnershipCheckPass],
+            [PassIdentity.OwnershipCheckPass],
             preprovided={AnalysisFact.CFG_SUCC},
             origin='test schedule'
         );
@@ -49,35 +47,42 @@ test "validation names the first missing analysis with CfgSucc preprovided" {
 
 test "validation accepts a schedule whose dependencies are preprovided" {
     sched = validate_schedule(
-        [OwnershipCheckPass],
+        [PassIdentity.OwnershipCheckPass],
         preprovided={AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF},
         origin='test schedule'
     );
-    assert sched == [OwnershipCheckPass];
+    assert sched == [PassIdentity.OwnershipCheckPass];
 }
 
 test "validation accepts a schedule whose dependencies run earlier in it" {
     sched = validate_schedule(
-        [CFGBuildPass, TypeCheckPass, OwnershipCheckPass], origin='test schedule'
+        [
+            PassIdentity.CFGBuildPass,
+            PassIdentity.TypeCheckPass,
+            PassIdentity.OwnershipCheckPass
+        ],
+        origin='test schedule'
     );
     assert len(sched) == 3;
 }
 
 test "the analysis stage always carries type checking and the checkers" {
     sched = get_analysis_sched();
-    assert TypeCheckPass in sched;
-    assert StaticAnalysisPass in sched;
-    assert OwnershipCheckPass in sched;
-    assert sched.index(TypeCheckPass) < sched.index(OwnershipCheckPass);
+    assert PassIdentity.TypeCheckPass in sched;
+    assert PassIdentity.StaticAnalysisPass in sched;
+    assert PassIdentity.OwnershipCheckPass in sched;
+    assert sched.index(PassIdentity.TypeCheckPass)
+        < sched.index(PassIdentity.OwnershipCheckPass);
 }
 
 test "the canonical compile pipeline validates end to end" {
     sched = get_ir_gen_sched() + get_analysis_sched() + get_boundary_analysis_sched();
     sched += get_py_code_gen(provided=providers_of(sched));
-    assert CFGBuildPass in sched;
-    assert TypeCheckPass in sched;
-    assert OwnershipCheckPass in sched;
-    assert sched.index(CFGBuildPass) < sched.index(TypeCheckPass);
+    assert PassIdentity.CFGBuildPass in sched;
+    assert PassIdentity.TypeCheckPass in sched;
+    assert PassIdentity.OwnershipCheckPass in sched;
+    assert sched.index(PassIdentity.CFGBuildPass)
+        < sched.index(PassIdentity.TypeCheckPass);
     validate_schedule(sched, origin='compile schedule');
 }
 
@@ -87,7 +92,7 @@ test "every declared requirement is satisfied within the one pipeline" {
     provided: set[AnalysisFact] = set();
     for p in sched {
         for tag in pass_requires(p) {
-            assert tag in provided , f"{p.__name__} requires '{tag}' with no earlier provider";
+            assert tag in provided , f"{p.value} requires '{tag}' with no earlier provider";
         }
         for tag in pass_provides(p) {
             provided.add(tag);
@@ -96,17 +101,17 @@ test "every declared requirement is satisfied within the one pipeline" {
 }
 
 test "providers_of reports the tags a schedule segment supplies" {
-    assert AnalysisFact.CFG_SUCC in providers_of([CFGBuildPass]);
-    assert AnalysisFact.TYPE_OF in providers_of([TypeCheckPass]);
+    assert AnalysisFact.CFG_SUCC in providers_of([PassIdentity.CFGBuildPass]);
+    assert AnalysisFact.TYPE_OF in providers_of([PassIdentity.TypeCheckPass]);
     assert providers_of([]) == set();
 }
 
-test "run_schedule rejects an incoherent schedule before running any pass" {
+test "the executor rejects an incoherent schedule before running any pass" {
     prog = JacProgram();
     stub = uni.Module.make_stub(inject_name='sched_stub');
     err = '';
     try {
-        prog.run_schedule(stub, [OwnershipCheckPass]);
+        execute_passes(prog, stub, [PassIdentity.OwnershipCheckPass]);
     } except RuntimeError as e {
         err = str(e);
     }
@@ -135,15 +140,17 @@ test "symbols-only requests never resolve types to serialize an interface" {
     import from pathlib { Path }
     import from tempfile { TemporaryDirectory }
     import from unittest.mock { patch }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     with TemporaryDirectory() as td {
         path = Path(td) / 'main.jac';
         path.write_text('def value -> int { return 1; }\n');
         program = JacProgram();
-        registry = program.iface_registry();
+        import from jaclang.compiler.analysis.interfaces.interface_pass {
+            InterfaceFactsPass
+        }
         with patch.object(
-            type(registry),
-            '_encode_iface',
+            InterfaceFactsPass,
+            'transform',
             side_effect=AssertionError(
                 'symbols-only compilation resolved interface types'
             )
@@ -154,6 +161,50 @@ test "symbols-only requests never resolve types to serialize an interface" {
             assert not encode.called;
         }
         assert not program.errors_had;
-        assert not program.analysis.analyses_run.provides(module, AnalysisFact.TYPE_OF);
+        assert not program.analysis.provides(module, AnalysisFact.TYPE_OF);
+    }
+}
+
+test "dependency interfaces are scheduled by the importing module interface producer" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.compiler.pipeline.progress {
+        pipeline_progress,
+        ProgressEvent,
+        ProgressState
+    }
+    import from jaclang.compiler.session.options { CompileOptions }
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        dependency = base / 'helper.jac';
+        dependency.write_text('def value -> int { return 1; }');
+        main = base / 'main.jac';
+        main.write_text('import helper; def value -> int { return helper.value(); }');
+        interfaces: list[str] = [];
+        bindings: list[str] = [];
+        def observe(event: ProgressEvent) {
+            if event.operation == PassIdentity.InterfaceFactsPass.value
+                and event.state == ProgressState.STARTED {
+                interfaces.append(event.path);
+            }
+            if event.operation == PassIdentity.SymTabBuildPass.value
+                and event.state == ProgressState.STARTED
+                and event.path in (str(main), str(dependency)) {
+                bindings.append(event.path);
+            }
+        }
+        program = JacProgram();
+        with pipeline_progress.listen(observe) {
+            program.compile(
+                str(main),
+                options=CompileOptions(
+                    no_cgen=True, no_ir_cache=True, default_codespace='server'
+                )
+            );
+        }
+        assert not program.errors_had , [str(error) for error in program.errors_had];
+        assert interfaces == [str(main), str(dependency)] , interfaces;
+        assert program.source_store.parses == 2;
+        assert bindings == [str(main), str(dependency)] , bindings;
     }
 }

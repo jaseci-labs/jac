@@ -20,7 +20,7 @@ test "runtime unit identity is independent of the compiler installation" {
 }
 
 test "an imported walker operation acts on the active kernel" {
-    (engine, _) = compile_native("osp_runtime_import.jac");
+    (native_program, engine, _) = compile_native("osp_runtime_import.jac");
     address = engine.get_function_address("probe");
     assert address != 0;
     probe = ctypes.CFUNCTYPE(ctypes.c_int64)(address);
@@ -28,7 +28,7 @@ test "an imported walker operation acts on the active kernel" {
 }
 
 test "native edge peers require a live edge incident to the origin" {
-    (engine, _) = compile_native("osp_edge_peer.jac");
+    (native_program, engine, _) = compile_native("osp_edge_peer.jac");
     probe = get_func(engine, "probe", ctypes.c_bool);
     assert probe();
     assert probe();

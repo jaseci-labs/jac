@@ -7,7 +7,7 @@ This is the memory contract per-module release relies on.
 """
 import gc;
 import weakref;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob SRC = "def area(r: float) -> float { return 3.14 * r * r; }\n";
 
@@ -93,8 +93,8 @@ def _stub_probe(prog: JacProgram) -> any {
 }
 
 test "a compiler phase boundary releases stub roots as well as source trees" {
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+    import from jaclang.compiler.session.compiler { JacCompiler }
+    import from jaclang.compiler.bootstrap.selfhost { SelfHostCache }
     internal = JacProgram();
     compiler = JacCompiler(_selfhost=SelfHostCache(_program=internal));
     internal._compiler = compiler;
@@ -108,8 +108,8 @@ test "a compiler phase boundary releases stub roots as well as source trees" {
 }
 
 test "activating the catalog releases the compiler's bootstrap stub trees" {
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+    import from jaclang.compiler.session.compiler { JacCompiler }
+    import from jaclang.compiler.bootstrap.selfhost { SelfHostCache }
     internal = JacProgram();
     compiler = JacCompiler(_selfhost=SelfHostCache(_program=internal));
     internal._compiler = compiler;

@@ -6,23 +6,29 @@ reference library, and the DT_RUNPATH/$ORIGIN entry in emitted dynamic
 executables.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import shutil;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
+import from tests.support {
+    jac_command,
+    TESTS_DIR,
+    compile_native,
+    get_func,
+    native_force_opts
+}
 import jaclang;
 
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
 test "clib sext: negative C int return stays negative through int and any" {
-    (eng, _) = compile_native("clib_sext.jac");
+    (native_program, eng, _) = compile_native("clib_sext.jac");
     f = get_func(eng, "neg_direct", ctypes.c_int64);
     assert f() < 0 , f"strcmp('a','b') must stay negative widened to i64, got {f()}";
     g = get_func(eng, "neg_thru_any", ctypes.c_int64);
@@ -81,7 +87,7 @@ test "clib SysV: by-value float structs pass and return in SSE registers" {
         ir = prog.compile(file_path=path, use_str=code, options=native_force_opts());
         errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
         assert not prog.errors_had , f"Compilation errors: {errors}";
-        eng = ir.gen.native_engine;
+        eng = artifact_for(ir).native_engine;
         assert eng is not None;
         f = get_func(eng, "use_ptd", ctypes.c_double, ctypes.c_double, ctypes.c_double);
         assert abs(f(1.5, 2.25) - 6.0) < 1e-9 , f"ptd_sum(1.5, 2.25) = {f(1.5, 2.25)}";
@@ -106,16 +112,7 @@ test "clib rpath: emitted dynamic executables carry DT_RUNPATH $ORIGIN" {
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "rpath_probe");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                fixture,
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", fixture, "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=180

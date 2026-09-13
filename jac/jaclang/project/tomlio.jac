@@ -1,5 +1,5 @@
 import tomllib;
-import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+import from jaclang.compiler.frontend.source_io { read_file_with_encoding }
 
 class MalformedJacTomlError(tomllib.TOMLDecodeError) {
     has file_path: str,

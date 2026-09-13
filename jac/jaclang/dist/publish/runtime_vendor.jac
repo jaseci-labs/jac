@@ -1,7 +1,8 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ast as py_ast;
 
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob _SEEDS: list[str] = [
          "jaclang.lib.jaclib",
@@ -41,12 +42,12 @@ glob _SEEDS: list[str] = [
          "jaclang.cli.console",
          "jaclang.cli.banners",
          "jaclang.server.serving.endpoint",
-         "jaclang.compiler.frontend.constant",
-         "jaclang.compiler.frontend.codeinfo",
-         "jaclang.compiler.frontend.srcloc",
-         "jaclang.compiler.frontend.helpers",
-         "jaclang.compiler.driver.modresolver",
-         "jaclang.compiler.driver.mtp",
+         "jaclang.compiler.ir.enums",
+         "jaclang.compiler.backends.common.artifacts",
+         "jaclang.compiler.frontend.source_locations",
+         "jaclang.compiler.frontend.source_io",
+         "jaclang.compiler.session.resolver",
+         "jaclang.compiler.lowering.mtir",
          "jaclang.jac0core.ext_registry",
          "jaclang.client.client_bundle"
      ],
@@ -172,7 +173,7 @@ def _compile_runtime_module(pkg_root: Path, path: Path, prog: JacProgram) -> str
         }
         return compile_jac(jac_source, str(path), impl_sources=impl_sources or None);
     }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     ir = prog.compile(
         file_path=str(path),
         options=CompileOptions(
@@ -189,7 +190,7 @@ def _compile_runtime_module(pkg_root: Path, path: Path, prog: JacProgram) -> str
             "(and reported no errors)."
         );
     }
-    py_out = str(ir.gen.py or "");
+    py_out = str(artifact_for(ir).py or "");
     if not py_out.strip() {
         raise ValueError(
             f"runtime vendor: {path.name}: compiler produced no Python output "

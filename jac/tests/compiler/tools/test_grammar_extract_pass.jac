@@ -5,6 +5,8 @@ EBNF/Lark formatting, simplification, and integration with the real
 Jac parser module. Also validates grammar matches jac.spec.
 """
 
+import from jaclang.compiler.pipeline.contracts { UtilityProduct }
+import from jaclang.compiler.session.options { CompileOptions }
 import from pathlib { Path }
 import os;
 import from tests.support { JAC_ROOT }
@@ -24,8 +26,8 @@ import from jaclang.compiler.tools.grammar_extract_pass {
     METHOD_TABLE,
     SPECIAL_LOOKAHEAD_TOKENS
 }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_utility }
 
 glob PARSER_PATH = str(
          Path(jaclang.__file__).parent
@@ -351,6 +353,23 @@ impl Parser.parse_contextual {
 }
 """;
 
+def extract_parser(path: str) -> GrammarExtractPass {
+    prog = JacProgram();
+    mod = prog.compile(
+        path,
+        options=CompileOptions(
+            symtab_ir_only=True,
+            no_cgen=True,
+            need_full_ast=True,
+            force_target_program=True
+        )
+    );
+    assert not prog.errors_had , [str(error) for error in prog.errors_had];
+    extracted = run_utility(UtilityProduct.GRAMMAR, mod, prog.module_context(mod));
+    assert isinstance(extracted, GrammarExtractPass);
+    return extracted;
+}
+
 """Compile the mini parser fixture and run extraction on it."""
 def mini_pass -> GrammarExtractPass {
     import tempfile;
@@ -359,9 +378,7 @@ def mini_pass -> GrammarExtractPass {
         with open(path, "w", encoding="utf-8") as f {
             f.write(MINI_PARSER_SRC);
         }
-        prog = JacProgram();
-        mod = prog.compile(path, no_cgen=True);
-        return run_pass(GrammarExtractPass, mod, prog);
+        return extract_parser(path);
     }
 }
 
@@ -446,20 +463,14 @@ test "strict diagnostics flag invisible constructs" {
 
 # ── Integration: extract rules from the real parser ──────────────────────
 test "rules extracted" {
-    prog = JacProgram();
-    mod = prog.compile(PARSER_PATH, no_cgen=True);
-    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
-    extracted = run_pass(GrammarExtractPass, mod, prog);
+    extracted = extract_parser(PARSER_PATH);
     assert len(extracted.rules) > 20 , (
         f"Expected >20 rules, got {len(extracted.rules)}"
     );
 }
 
 test "known rule names" {
-    prog = JacProgram();
-    mod = prog.compile(PARSER_PATH, no_cgen=True);
-    assert not prog.errors_had;
-    extracted = run_pass(GrammarExtractPass, mod, prog);
+    extracted = extract_parser(PARSER_PATH);
     rule_names = {r.name for r in extracted.rules};
     expected = {
         "if_stmt",
@@ -478,10 +489,7 @@ test "known rule names" {
 }
 
 test "bitwise or structure" {
-    prog = JacProgram();
-    mod = prog.compile(PARSER_PATH, no_cgen=True);
-    assert not prog.errors_had;
-    extracted = run_pass(GrammarExtractPass, mod, prog);
+    extracted = extract_parser(PARSER_PATH);
     rule_map = {r.name: r for r in extracted.rules};
     assert "bitwise_or" in rule_map;
     ebnf = fmt(rule_map["bitwise_or"].body);
@@ -490,10 +498,7 @@ test "bitwise or structure" {
 }
 
 test "if stmt structure" {
-    prog = JacProgram();
-    mod = prog.compile(PARSER_PATH, no_cgen=True);
-    assert not prog.errors_had;
-    extracted = run_pass(GrammarExtractPass, mod, prog);
+    extracted = extract_parser(PARSER_PATH);
     rule_map = {r.name: r for r in extracted.rules};
     assert "if_stmt" in rule_map;
     ebnf = fmt(rule_map["if_stmt"].body);
@@ -504,10 +509,7 @@ test "if stmt structure" {
 }
 
 test "while stmt structure" {
-    prog = JacProgram();
-    mod = prog.compile(PARSER_PATH, no_cgen=True);
-    assert not prog.errors_had;
-    extracted = run_pass(GrammarExtractPass, mod, prog);
+    extracted = extract_parser(PARSER_PATH);
     rule_map = {r.name: r for r in extracted.rules};
     assert "while_stmt" in rule_map;
     ebnf = fmt(rule_map["while_stmt"].body);
@@ -516,10 +518,7 @@ test "while stmt structure" {
 }
 
 test "forever stmt structure" {
-    prog = JacProgram();
-    mod = prog.compile(PARSER_PATH, no_cgen=True);
-    assert not prog.errors_had;
-    extracted = run_pass(GrammarExtractPass, mod, prog);
+    extracted = extract_parser(PARSER_PATH);
     rule_map = {r.name: r for r in extracted.rules};
     assert "forever_stmt" in rule_map;
     ebnf = fmt(rule_map["forever_stmt"].body);
@@ -531,10 +530,7 @@ test "forever stmt structure" {
 }
 
 test "ebnf output nonempty" {
-    prog = JacProgram();
-    mod = prog.compile(PARSER_PATH, no_cgen=True);
-    assert not prog.errors_had;
-    extracted = run_pass(GrammarExtractPass, mod, prog);
+    extracted = extract_parser(PARSER_PATH);
     ebnf = extracted.emit_ebnf();
     assert len(ebnf) > 100;
     assert "::=" in ebnf;
@@ -548,10 +544,7 @@ test "ebnf output nonempty" {
 }
 
 test "no duplicate rules" {
-    prog = JacProgram();
-    mod = prog.compile(PARSER_PATH, no_cgen=True);
-    assert not prog.errors_had;
-    extracted = run_pass(GrammarExtractPass, mod, prog);
+    extracted = extract_parser(PARSER_PATH);
     names = [r.name for r in extracted.rules];
     assert len(names) == len(set(names)) , (
         f"Duplicate rules: {[
@@ -563,10 +556,7 @@ test "no duplicate rules" {
 }
 
 test "rules reference valid names" {
-    prog = JacProgram();
-    mod = prog.compile(PARSER_PATH, no_cgen=True);
-    assert not prog.errors_had;
-    extracted = run_pass(GrammarExtractPass, mod, prog);
+    extracted = extract_parser(PARSER_PATH);
     rule_names = {r.name for r in extracted.rules};
 
     def collect_refs(expr: object) -> set[str] {
@@ -599,10 +589,7 @@ test "rules reference valid names" {
 glob STRICT_FINDING_BUDGET = 37;
 
 test "strict finding budget" {
-    prog = JacProgram();
-    mod = prog.compile(PARSER_PATH, no_cgen=True);
-    assert not prog.errors_had;
-    extracted = run_pass(GrammarExtractPass, mod, prog);
+    extracted = extract_parser(PARSER_PATH);
     count = len(extracted.diagnostics);
     assert count <= STRICT_FINDING_BUDGET , (
         f"grammar strict findings grew to {count} (budget {STRICT_FINDING_BUDGET}).\n"
@@ -628,10 +615,7 @@ test "grammar matches spec" {
     if not spec_path.exists() {
         return;
     }
-    prog = JacProgram();
-    mod = prog.compile(PARSER_PATH, no_cgen=True);
-    assert not prog.errors_had;
-    extracted = run_pass(GrammarExtractPass, mod, prog);
+    extracted = extract_parser(PARSER_PATH);
 
     spec_rules = parse_spec(spec_path.read_text());
     current_rules = parse_spec(extracted.emit_ebnf());

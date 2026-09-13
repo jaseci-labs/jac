@@ -13,20 +13,17 @@ PE32+ image whose imports resolve to msvcrt.dll). Actually running the binary
 requires a Windows host (or WSL interop) and is not assumed here.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
+import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import struct;
 import subprocess;
-import sys;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.compiler.backends.native.pe_linker { PeLinker }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 
@@ -92,7 +89,7 @@ def emit_coff_object(fixture: str) -> bytes {
         assert not prog.errors_had , f"compile errors: {[
             str(e) for e in prog.errors_had
         ]}";
-        src = _inject_pe_entry(str(ir.gen.llvm_ir));
+        src = _inject_pe_entry(str(artifact_for(ir).llvm_ir));
         llvm.initialize_all_targets();
         llvm.initialize_all_asmprinters();
         mod = llvm.parse_assembly(src);
@@ -335,10 +332,7 @@ test "linking is deterministic" {
 test "nacompile --target windows writes a valid PE via the CLI" {
     out = os.path.join(tempfile.mkdtemp(), "smoke.exe");
     proc = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
+        jac_command(
             "build",
             "--native",
             "--target",
@@ -346,7 +340,7 @@ test "nacompile --target windows writes a valid PE via the CLI" {
             os.path.join(FIXTURES, FIXTURE),
             "-o",
             out
-        ],
+        ),
         capture_output=True,
         text=True,
         timeout=300

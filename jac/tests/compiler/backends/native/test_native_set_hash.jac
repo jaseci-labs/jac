@@ -12,9 +12,14 @@ internally and prints OK).
 import ctypes;
 import os;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
+import from tests.support {
+    jac_command,
+    TESTS_DIR,
+    compile_native,
+    get_func,
+    native_force_opts
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -22,61 +27,61 @@ glob FIXTURES = os.path.join(
      PROG = "set_hash_ops.jac";
 
 test "set int add remove contains" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "add_remove_contains_int", ctypes.c_int64);
     assert f() == 2;
 }
 
 test "set str add remove contains" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "add_remove_contains_str", ctypes.c_int64);
     assert f() == 2;
 }
 
 test "set tombstone reuse after remove" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "tombstone_reuse", ctypes.c_int64);
     assert f() == 2;
 }
 
 test "set rehash cycle with removes mixed in" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "rehash_with_deletes", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "set clear then contains and re-add" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "clear_then_reuse", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "set iteration order preserved after removes" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "order_after_deletes", ctypes.c_char_p);
     assert f().decode("utf-8") == "one;three;four;five;";
 }
 
 test "set pop drains in LIFO order" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "pop_lifo", ctypes.c_int64);
     assert f() == 0;
 }
 
 test "set algebra correctness" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "algebra", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "set in-place ops correctness" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "inplace_ops", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "set f64 elements hash and compare" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "f64_elems", ctypes.c_int64);
     assert f() == 1;
 }
@@ -84,7 +89,7 @@ test "set f64 elements hash and compare" {
 def _run_fixture_with_gc(extra_flags: list[str], tag: str) {
     src = os.path.join(FIXTURES, PROG);
     out_bin = os.path.join(tempfile.mkdtemp(), f"set_hash_ops_{tag}.bin");
-    cmd = [sys.executable, "-m", "jaclang", "build", "--native", src];
+    cmd = jac_command("build", "--native", src);
     cmd += extra_flags;
     cmd += ["-o", out_bin];
     comp = subprocess.run(cmd, capture_output=True, text=True, timeout=300);

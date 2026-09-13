@@ -1,12 +1,13 @@
 """Count live references, independently of RSS and allocator caching."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, get_func }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.frontend.codeinfo { HDR_RC_OFF }
-import from jaclang.compiler.native_compiler { ensure_loaded }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.backends.common.artifacts { HDR_RC_OFF }
+import from jaclang.compiler.frontend.kernel.adapter { ensure_loaded }
 
 test "native string and temporary roots balance across storage and calls" {
     kernel = ensure_loaded();
@@ -32,7 +33,7 @@ test "native string and temporary roots balance across storage and calls" {
         options=options
     );
     assert not program.errors_had , [str(e) for e in program.errors_had];
-    engine = mod.gen.native_engine;
+    engine = artifact_for(mod).native_engine;
     assert engine is not None;
     make = kernel.lib.jac_str_new;
     release = kernel.lib.jac_release;

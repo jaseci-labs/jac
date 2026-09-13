@@ -11,7 +11,6 @@ Based on the table in jac_import_patterns_proposal.md:
 | import Vue from 'vue'         | cl import from vue { default as Vue }     |
 """
 
-
 # Default import examples
 import from react { default as React }
 import from axios { default as axios }
@@ -22,7 +21,7 @@ import from .components.Button { default as Button }
 import from ..lib.utils { default as utils }
 
 # Using imported defaults
-def example_usage() {
+def example_usage() -> object {
     app = Vue.createApp({});
     axios.get("/api/data");
     element = React.createElement("div", {}, "Hello");

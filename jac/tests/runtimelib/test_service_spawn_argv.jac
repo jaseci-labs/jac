@@ -9,6 +9,8 @@ healthy". These tests capture the argv each spawn site actually builds (Popen
 is mocked - nothing runs) and feed it to the parser the `jac` binary really
 uses, so a flag rename fails here instead of in production."""
 
+import from tests.support { jac_command }
+
 import os;
 import unittest.mock;
 import from pathlib { Path }
@@ -97,6 +99,6 @@ test "client dev backend spawn argv is accepted by the real CLI" {
         start_backend_server_common(Path("app.jac"), Path("."), 8321);
     }
     assert len(captured) == 1 , f"expected one spawn, got {captured}";
-    # argv is [sys.executable, "-m", "jaclang", <cli invocation...>].
+    # argv is jac_command(<cli invocation...>).
     _parse_with_real_cli(captured[0][3:]);
 }

@@ -1,5 +1,5 @@
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.analysis.types.type_registry { JAC_TYPE_REGISTRY }
 
 def collect_foreign_structs(modules: list) -> dict {
     out: dict = {};

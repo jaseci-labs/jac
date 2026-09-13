@@ -4,7 +4,7 @@ import ctypes;
 import from tests.support { compile_native, get_func }
 
 test "managed loop values survive their iteration cleanup" {
-    (engine, _) = compile_native("loop_live_out.jac");
+    (native_program, engine, _) = compile_native("loop_live_out.jac");
     for (name, expected) in [
         ("while_result", 42),
         ("for_result", 3),

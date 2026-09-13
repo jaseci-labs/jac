@@ -13,7 +13,7 @@ reloads) is covered in tests/runtimelib/test_hmr.jac.
 import tempfile;
 import jaclang;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob BROKEN_SRC = 'def broken_repro( -> {{{ SYNTAX ERROR\n',
      FIXED_SRC = 'def:pub broken_repro -> int {\n    return 7;\n}\n',
@@ -142,7 +142,7 @@ test "a failed parse is never written to the on-disk module cache" {
     # A cache hit replays no alerts, so serving a failed module's bytecode
     # from disk would report the import as clean. The write seam gates on
     # parse_failed, so the cache entry must simply never exist.
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.session.cache.artifact_codec { get_module_cache_path }
     with tempfile.TemporaryDirectory() as tmp {
         proj = _write_project(tmp);
         broken = str((proj / "broken.jac").resolve());

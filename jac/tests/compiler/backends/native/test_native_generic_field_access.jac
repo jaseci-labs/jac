@@ -21,12 +21,13 @@ same fixture -- a load that silently drops its payload is still well typed
 and still compiles, so only the value catches it.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts, native_str_func }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
-import from jaclang.compiler.frontend.codeinfo {
+import from jaclang.compiler.session.target_options {
     get_effective_default_codespace_override,
     set_effective_default_codespace
 }
@@ -61,7 +62,7 @@ def _compile(fixture: str) -> object {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return eng;
 }

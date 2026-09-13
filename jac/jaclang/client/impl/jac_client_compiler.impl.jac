@@ -237,7 +237,9 @@ impl JacClientCompiler.emit_dependencies(
     if (collected_globals is None) {
         collected_globals = {};
     }
-    import from jaclang.compiler.driver.pipeline { collect_client_graph }
+    import from jaclang.compiler.api { link_client_graph }
+    import from jaclang.compiler.backends.es.link_facts { ClientLinkRequest }
+    import from jaclang.runtime.runtime { JacRuntime }
     module_path = module_path.resolve();
     source_root = source_root.resolve()
         if source_root is not None
@@ -245,12 +247,15 @@ impl JacClientCompiler.emit_dependencies(
     def variant(path: Path) -> Path {
         return self._native_variant(path) if native else path;
     }
-    closure = collect_client_graph(
-        [module_path],
-        self.jac_compiler.compile_module,
-        variant,
-        self.SELF_COMPILED_VIRTUAL_MODULES,
-        visited
+    closure = link_client_graph(
+        JacRuntime.get_program(),
+        ClientLinkRequest(
+            [module_path],
+            self.jac_compiler.compile_module,
+            variant,
+            self.SELF_COMPILED_VIRTUAL_MODULES,
+            visited
+        )
     );
     for unit in closure.modules {
         module_path = unit.path;

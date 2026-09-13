@@ -184,7 +184,7 @@ def dev_proxy_paths(project_dir: Path, entry_file: Path) -> tuple {
     try {
         import from jaclang.runtime.prepared { prepared_manifest }
         if prepared_manifest(str(entry_file)) is None {
-            import from jaclang.compiler.driver.application { prepare_application }
+            import from jaclang.build.preparation { prepare_application }
             import from jaclang.runtime.runtime { JacRuntime as Jac }
             prepare_application(str(entry_file), Jac.get_program(), str(project_dir));
         }

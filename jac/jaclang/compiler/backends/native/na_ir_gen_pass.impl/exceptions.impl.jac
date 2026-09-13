@@ -172,7 +172,10 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
 }
 
 impl NaIRGenPass._emit_runtime_raise(
-    is_error: ir.Value, exc_type_name: str, msg: str
+    is_error: ir.Value,
+    exc_type_name: str,
+    msg: str,
+    release_on_error: list[ir.Value] = []
 ) -> None {
     if not self._slot_lowering_active() and self._exc_raise_fn is None {
         self._declare_exception_runtime();
@@ -187,6 +190,13 @@ impl NaIRGenPass._emit_runtime_raise(
     self.builder.cbranch(is_error, raise_bb, ok_bb);
 
     self.builder.position_at_end(raise_bb);
+    # Release expression temporaries before unwinding. Their ownership on the
+    # successful branch is unchanged, so do not consume the emitter's markers.
+    for value in release_on_error {
+        if self._is_owned(value) {
+            self._emit_rc_release_simple(value, op="read_error");
+        }
+    }
     exc_type_id = self._get_or_register_exc_type(exc_type_name);
 
     if msg in self._rt_error_msgs {
@@ -220,14 +230,14 @@ impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
     if exc_name in self._exc_type_registry {
         return self._exc_type_registry[exc_name];
     }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import from jaclang.compiler.analysis.types.type_registry { JAC_TYPE_REGISTRY }
     type_id = JAC_TYPE_REGISTRY.exception_type_id(exc_name);
     self._exc_type_registry[exc_name] = type_id;
     return type_id;
 }
 
 impl NaIRGenPass._get_exc_descendants(type_name: str) -> list[str] {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import from jaclang.compiler.analysis.types.type_registry { JAC_TYPE_REGISTRY }
     descendants = JAC_TYPE_REGISTRY.exception_descendants(type_name);
     for desc_name in descendants {
         self._get_or_register_exc_type(desc_name);
@@ -572,7 +582,7 @@ impl NaIRGenPass._codegen_try_unwind(
 
 impl NaIRGenPass._slot_lowering_active -> bool {
     return (
-        bool(getattr(self.ir_in.gen, "nogc_enforced", False))
+        bool(getattr(artifact_for(self.ir_in), "nogc_enforced", False))
         or "wasm" in str(self.llvm_module.triple)
     )
         and self._gen_ctx is None;

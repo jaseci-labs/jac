@@ -10,12 +10,13 @@ lives in a generated jac.toml beside it, and compiling it in place would
 resolve the repo's own manifest instead.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import shutil;
 import tempfile;
 import from tests.support { JAC_ROOT }
-import from jaclang.compiler.placement.placement_pins { config_kind_space }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.analysis.placement.pins { config_kind_space }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURE = os.path.join(
          JAC_ROOT, "tests", "compiler", "fixtures", "codespace", "kind_pub_exports.jac"
@@ -81,7 +82,7 @@ test "js-package bare compile emits every pub export" {
         prog = JacProgram();
         mod = prog.compile(lib);
         assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-        js = mod.gen.js or "";
+        js = artifact_for(mod).js or "";
         assert "function activate" in js;
         assert "function deactivate" in js , (
             "evidence-free pub export must not be dropped in a serverless project"
@@ -100,7 +101,7 @@ test "full-stack inference is unchanged for kinds with a server" {
         prog = JacProgram();
         mod = prog.compile(lib);
         assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-        js = mod.gen.js or "";
+        js = artifact_for(mod).js or "";
         assert "function activate" in js;
         assert "function deactivate" not in js , (
             "evidence-free pub in a full-stack project stays a server endpoint"
@@ -171,7 +172,7 @@ test "nested kind inheritance reaches the compiler, not just the resolver" {
         prog = JacProgram();
         mod = prog.compile(lib);
         assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-        js = mod.gen.js or "";
+        js = artifact_for(mod).js or "";
         assert "function deactivate" in js , (
             "the inherited serverless kind must place the evidence-free pub "
             f"export client-side; got:\n{js}"

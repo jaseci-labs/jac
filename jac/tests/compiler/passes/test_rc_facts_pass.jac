@@ -16,13 +16,14 @@ Every UAF channel (own-param, escape via call/field/borrow/closure/concurrent,
 loop back-edge re-read) is asserted NOT proven.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import os;
 import from tests.support { TESTS_DIR }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.session.session { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.analysis.ownership.rc_facts_pass { RcFactsPass }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob FIXTURES = os.path.join(TESTS_DIR, "compiler", "passes", "fixtures");
 
@@ -34,7 +35,7 @@ def move_marks(fixture: str) -> dict[str, bool] {
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     # Native codegen (which schedules this pass) is gated off for plain `.jac`
     # modules, so run the proof directly over the CFG-built IR to populate marks.
-    run_pass(RcFactsPass, ir, prog);
+    run_pass(PassIdentity.RcFactsPass, ir, prog);
     out: dict[str, bool] = {};
     for nd in ir.get_all_sub_nodes(uni.Assignment) {
         if len(nd.target) == 1 {

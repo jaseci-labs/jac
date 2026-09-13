@@ -16,21 +16,21 @@ glob FIXTURES = os.path.join(
      );
 
 test "scalar optional: fn returning int|None distinguishes None from 0" {
-    (eng, _) = compile_native("optional_scalar.jac");
+    (native_program, eng, _) = compile_native("optional_scalar.jac");
     f = get_func(eng, "use_pick", ctypes.c_int64, ctypes.c_int64);
     assert f(3) == 6 , "pick(3) == 6 through the optional";
     assert f(0) == -1 , "pick(0) is None -- NOT 0";
 }
 
 test "scalar optional: int|None local assigns None and a value" {
-    (eng, _) = compile_native("optional_scalar.jac");
+    (native_program, eng, _) = compile_native("optional_scalar.jac");
     f = get_func(eng, "opt_local", ctypes.c_int64, ctypes.c_int64);
     assert f(4) == 5 , "x = 4 then x + 1";
     assert f(0) == -1 , "x stays None";
 }
 
 test "scalar optional: int|None parameter passes None and a value" {
-    (eng, _) = compile_native("optional_scalar.jac");
+    (native_program, eng, _) = compile_native("optional_scalar.jac");
     f = get_func(eng, "use_opt_param", ctypes.c_int64, ctypes.c_int64);
     assert f(7) == 7 , "value flows through the optional param";
     assert f(0) == -5 , "explicit None selects the alternative";

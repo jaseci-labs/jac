@@ -4,8 +4,8 @@ import builtins;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
-import from jaclang.compiler.driver.jir { module_env_fingerprint }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.cache.artifact_codec { module_env_fingerprint }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.project.config { get_explicit_config, set_config }
 
 test "a file's cache fingerprint and compilation stay within its imports (#9095)" {

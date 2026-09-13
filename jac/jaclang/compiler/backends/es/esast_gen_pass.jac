@@ -1,17 +1,38 @@
+import type from jaclang.compiler.session.services { AnalysisServices }
+import from jaclang.compiler.session.import_paths { annex_base }
+import from jaclang.compiler.session.import_paths { resolve_import_path }
+import from jaclang.compiler.session.import_paths { annex_base }
+import from jaclang.compiler.session.import_paths { resolve_import_path }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+import from jaclang.compiler.frontend.diagnostics { E5097 }
+
+import from jaclang.compiler.tools.unparse_pass { unparse_node }
+import from jaclang.compiler.analysis.binding.symbol_utils { return_type_is_jsx }
+import from jaclang.compiler.backends.es.reactive_intent {
+    StateField,
+    RefField,
+    StateUpdate,
+    Effect,
+    AsyncBoundary
+}
 import from jaclang.runtime.osp_kernel { osp_skip_rest }
 import json;
 import from typing { cast }
 import jaclang.compiler.backends.es.estree as es;
-import jaclang.compiler.frontend.unitree as uni;
-import type from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import type from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
-import from jaclang.compiler.frontend.constant { CodeContext, SymbolType }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.runtime.osp_model { OspAnalysis, OspModel }
+import from jaclang.compiler.ir.enums { CodeContext, SymbolType }
+import from jaclang.compiler.ir.enums { Tokens as Tok }
+import from jaclang.compiler.analysis.binding.osp_model { OspAnalysis }
+import from jaclang.compiler.analysis.binding.osp_facts { OspModel }
 import from jaclang.compiler.backends.common.ast_gen_base { BaseAstGenPass }
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+import from jaclang.compiler.analysis.binding.module_facts { ModuleFacts }
 import from jaclang.compiler.backends.es.jsx_processor { EsJsxProcessor }
-import from jaclang.compiler.frontend.codeinfo { BoundaryTypeInfo, ClientManifest }
+import from jaclang.compiler.backends.common.artifacts {
+    BoundaryTypeInfo,
+    ClientManifest
+}
 import from jaclang.compiler.backends.es.scoped_styles {
     ScopedStyleSheet,
     load_style_annex
@@ -23,7 +44,7 @@ import from jaclang.compiler.backends.es.free_ident_audit {
     client_ambient_globals,
     free_identifiers
 }
-import from jaclang.compiler.driver.modresolver {
+import from jaclang.compiler.session.resolver {
     convert_to_js_import_path,
     relative_js_specifier,
     resolve_relative_path
@@ -229,7 +250,7 @@ obj CallArgSlot {
 }
 
 walker EsastGenPass(BaseAstGenPass[es.Statement]) {
-    has prog: JacProgram,
+    has prog: AnalysisServices,
         _ct_only_names: (set[str] | None) = None,
         child_passes: list[EsastGenPass] = [],
         imports: list[es.ImportDeclaration] = [],
@@ -267,8 +288,6 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         _builtin_emitter: (object | None) = None,
         _primitives_es_mod: (object | None) = None,
         _poly_methods: (set[str] | None) = None;
-
-    static has HOST_PASS: bool = True;
 
     def before_pass -> None;
     can enter_walk with uni.UniNode entry;

@@ -6,7 +6,7 @@ analysis happens before application initialization. The server requires serving
 metadata and does not compile source to recover missing metadata.
 
 The compiler entry point is
-`jaclang.compiler.driver.application.prepare_application(entry, program, root,
+`jaclang.build.preparation.prepare_application(entry, program, root,
 services=(), client=False, dev=True)`. It returns a `PreparedApplication` and
 publishes it only after all required artifacts succeed. The runtime entry point
 is `jaclang.runtime.prepared.initialize_application(prepared, config, served)`.
@@ -39,6 +39,10 @@ Jac modules. The Python import hook reads the revision registry only after that
 module loads, avoiding a recursive import while bootstrapping the compiler.
 Installed builds can load these modules from their precompiled artifacts.
 
+Preparation reads detached serving facts from the scheduled compiler product.
+Access rules, boundary exports, and endpoint effects are derived in compiler
+passes, rather than by walking Unitree during revision assembly.
+
 The revision holds server bytecode, compiler restoration sections, endpoint
 access and boundary metadata, client output and native output. The runtime
 import hook consumes prepared bytecode and native bindings. A dynamic import
@@ -63,15 +67,24 @@ reader reads configuration only. The selected entry establishes an app compilati
 context; ordinary imports inherit it, while another declared entry establishes a
 boundary. `default-app` selects a CLI default and does not assign shared modules.
 
-`compiler/driver/pipeline.jac` owns the phase order, pass lists, typed contracts,
-product requests, and pass execution. `pipeline_types.jac` defines analysis facts,
-products, and task states. `pipeline_runner.jac` implements the phase actions.
+`compiler/pipeline/schedule.jac` owns phase order, pass registration and prerequisites.
+`pipeline/contracts.jac` defines analysis facts, products and task states.
+`pipeline/request.jac` advances compilation requests, `pipeline/executor.jac`
+executes registered passes, and `pipeline/products.jac` owns results and invalidation.
 Context and import facts are explicit scheduled passes. Backend and tooling
 consumers request named products through this pipeline rather than invoking passes.
 
-`compilation_context.jac` holds parsed source revisions and context-specific
-programs. A source revision is parsed once per session and cloned before semantic
-mutation. App, entry, UI, codespace, and target settings distinguish compilation
+`session/sources.jac` holds parsed source revisions and `session/context.jac`
+selects contextual programs. The compiler keeps a bounded cache of frozen source
+revisions, keyed by source path, contents and annexes. Programs reuse these parse
+results and clone syntax and diagnostics before semantic mutation. Eviction only
+removes the cache reference; live programs retain their revisions.
+Symbol-only imports of the compiler's own server modules instead create fresh
+graphs through the native parser and its scheduled early passes. They retain the
+requesting program's context, avoiding a frozen-source copy without sharing mutable
+host IR. Native ingress validates relations and context compatibility in one walk;
+it assigns the context permit only after the entire graph passes validation.
+App, entry, UI, codespace, and target settings distinguish compilation
 contexts and disk artifact namespaces. A symbol-only dependency can progress
 through the remaining passes without reparsing or repeating completed passes.
 Native and client outputs retain target-specific analysis and code generation.

@@ -30,10 +30,14 @@ answer, because a truth test that always answers "nonzero pointer" also
 compiles.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.analysis.placement.native_fallback {
+    na_coverage_begin,
+    na_coverage_end
+}
+import from jaclang.compiler.session.session { JacProgram }
 import from tests.support { TESTS_DIR, native_force_opts }
 
 glob FIXTURES = os.path.join(
@@ -59,7 +63,7 @@ def measured -> tuple {
     }
     errors = [str(e) for e in (prog.errors_had or [])];
     rec = coverage.get(os.path.realpath(path)) or coverage.get(path);
-    out = (rec, errors, (ir.gen.native_engine if ir is not None else None), );
+    out = (rec, errors, (artifact_for(ir).native_engine if ir is not None else None), );
     _MEMO.append(out);
     return out;
 }

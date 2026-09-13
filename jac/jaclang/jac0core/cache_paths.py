@@ -3,12 +3,12 @@
 Pure Python with no jac dependencies, so it is importable during bootstrap —
 before the jac0core ``.jac`` modules have been transpiled. Both the bootstrap
 bytecode cache (``meta_importer``) and the JIR module cache
-(``jaclang.compiler.driver.jir``) derive their directories from here, so the
+(``jaclang.compiler.session.cache.artifact_codec``) derive their directories from here, so the
 platform-resolution logic lives in exactly one place.
 
 This module owns only the genuinely global, config-independent directories.
 The per-module cache locations (``jir/modules/`` and its ``native/`` subdir)
-are project-aware and therefore resolved in ``jaclang.compiler.driver.jir`` via
+are project-aware and therefore resolved in ``jaclang.compiler.session.cache.artifact_codec`` via
 ``get_module_cache_path``/``get_native_cache_dir(source_path)``, which fall
 back to the project's ``.jac/cache`` when inside a project.
 

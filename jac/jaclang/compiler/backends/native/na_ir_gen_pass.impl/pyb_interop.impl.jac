@@ -1,5 +1,3 @@
-glob _PYB_BRIDGE_MODULE: str = "jaclang.runtime.interop_bridge";
-
 impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple | None) {
     """The first Python-side base on `arch_name`'s MRO, as (name, path).
 
@@ -26,7 +24,9 @@ impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple | None) {
     stayed the same. Resolving one is not the same as inheriting one.
     """;
     import os;
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ERASED_BASES }
+    import from jaclang.compiler.analysis.capabilities.native_policy {
+        NATIVE_ERASED_BASES
+    }
     if arch_name in self._pyb_base_memo {
         cached = self._pyb_base_memo[arch_name];
         return cached;

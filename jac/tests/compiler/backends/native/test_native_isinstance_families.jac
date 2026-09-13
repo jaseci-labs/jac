@@ -22,12 +22,13 @@ parameter. The fixed-arity spelling unrolls its arms; the variadic one lowers
 to a native sequence, so the compare runs as a loop over a runtime length.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts }
 import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
@@ -56,8 +57,8 @@ def families_engine -> ExecutionEngine {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not errors , f"isinstance_families.jac did not lower: {errors}";
-    assert ir.gen.llvm_ir , "no native IR for isinstance_families.jac";
-    eng = ir.gen.native_engine;
+    assert artifact_for(ir).llvm_ir , "no native IR for isinstance_families.jac";
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine for isinstance_families.jac";
     _ENGINE.append(eng);
     return eng;
@@ -142,7 +143,7 @@ test "abc arm: Mapping separates dicts from sequences" {
 
 
 test "abc arm: an ABC with no exact reduction refuses instead of guessing" {
-    import from jaclang.compiler.driver.na_coverage {
+    import from jaclang.compiler.analysis.placement.native_fallback {
         na_coverage_begin,
         na_coverage_end
     }
@@ -167,7 +168,7 @@ test "abc arm: an ABC with no exact reduction refuses instead of guessing" {
 
 
 test "abc arm: a Python-based operand refuses rather than read a partial MRO" {
-    import from jaclang.compiler.driver.na_coverage {
+    import from jaclang.compiler.analysis.placement.native_fallback {
         na_coverage_begin,
         na_coverage_end
     }

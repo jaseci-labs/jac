@@ -12,10 +12,11 @@ classifier now demands the target's decided placement and accepts only the
 target's own in-body native evidence.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import tempfile;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
 
 glob ARENA_SRC: str = (
          "def:pub tick(buf: own str) -> int {\n" "    return len(buf);\n" "}\n"
@@ -61,7 +62,10 @@ def write_fixture -> str {
 
 def na_targets(mod: uni.Module) -> list[str] {
     return sorted(
-        {str(b.source_module) for b in mod.gen.interop_manifest.client_native_imports}
+        {
+            str(b.source_module)
+            for b in artifact_for(mod).interop_manifest.client_native_imports
+        }
     );
 }
 
@@ -73,7 +77,7 @@ test "a client component stays a plain import in every hub order" {
     prog.compile(os.path.join(tmp, "comp.jac"));
     page = prog.compile(os.path.join(tmp, "page.jac"));
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    js = page.gen.js;
+    js = artifact_for(page).js;
     assert './comp.js' in js , "importer must take the plain JS import";
     assert '__na_bind("comp"' not in js , "a client component is not a wasm stub";
     targets = na_targets(page);
@@ -93,7 +97,7 @@ test "cold and warm compiles emit identical importer js" {
     warm_prog.compile(os.path.join(tmp, "host.jac"));
     warm_prog.compile(os.path.join(tmp, "comp.jac"));
     warm = warm_prog.compile(os.path.join(tmp, "page.jac"));
-    assert cold.gen.js == warm.gen.js , (
+    assert artifact_for(cold).js == artifact_for(warm).js , (
         "importer emission must not depend on hub population order"
     );
 }
@@ -103,7 +107,7 @@ test "the genuine na edge survives a warm hub" {
     prog = JacProgram();
     prog.compile(os.path.join(tmp, "arena.jac"));
     host = prog.compile(os.path.join(tmp, "host.jac"));
-    js = host.gen.js;
+    js = artifact_for(host).js;
     assert '__na_bind' in js , "native target must still bind the wasm stub";
     assert '"arena"' in js , "expected the arena stem in the bind call";
     targets = na_targets(host);

@@ -7,13 +7,13 @@ children defers teardown to the last reabsorb (zombie parent). Output is
 byte-identical across gc modes.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { jac_command, TESTS_DIR }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.compiler.backends.native.llvm.binding.module { parse_bitcode }
 
 glob FIXTURE = os.path.join(
@@ -48,9 +48,9 @@ test "children draw pages from the parent behind the reabsorb contract" {
         options=CompileOptions(aot_mode=True, memory_profile="rc")
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     assert "__jac_region_partition" in text , "no partition call in the module";
-    bitcode = ir.gen.native_bitcode;
+    bitcode = artifact_for(ir).native_bitcode;
     assert bitcode is not None , "native linking produced no bitcode";
     linked = parse_bitcode(bitcode);
     fn_names = {str(f.name) for f in linked.functions};
@@ -61,7 +61,7 @@ test "children draw pages from the parent behind the reabsorb contract" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"share_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", SHARE_FIXTURE]
+                jac_command("build", "--native", SHARE_FIXTURE)
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,
@@ -85,7 +85,7 @@ test "partition(n) sugar reabsorbs like the per-child form across gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"partn_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", SUGAR_FIXTURE]
+                jac_command("build", "--native", SUGAR_FIXTURE)
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,
@@ -111,7 +111,7 @@ test "partition reabsorb and zombie teardown across gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"part_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+                jac_command("build", "--native", FIXTURE)
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

@@ -1,5 +1,6 @@
 """Advanced Jac constructs combined fixture for ECMAScript generator tests."""
 
+import type from typing { Generator }
 
 # Lambdas and higher-order helpers
 def lambda_examples() -> dict {
@@ -33,7 +34,7 @@ async def async_pipeline(data: list) -> dict {
 }
 
 # Generators
-def generator_examples(limit: int) {
+def generator_examples(limit: int) -> Generator[int, None, None] {
     index = 0;
     while index < limit {
         yield index * 3;
@@ -176,7 +177,12 @@ def build_advanced_report(values: list) -> dict {
     };
 }
 
-def TodoList(filteredTodos: any, toggleTodo: any, deleteTodo: any) -> JsxElement {
+def TodoList(
+    filteredTodos: any,
+    toggleTodo: any,
+    deleteTodo: any,
+    children: JsxElement | None = None
+) -> JsxElement {
     if filteredTodos.length == 0 {
         return
             <div style={{"padding": "20px", "textAlign": "center", "color": "#999"}}>
@@ -192,8 +198,8 @@ def TodoList(filteredTodos: any, toggleTodo: any, deleteTodo: any) -> JsxElement
                         key={jid(todo)}
                         todo={todo}
                         toggleTodo={toggleTodo}
-                        deleteTodo={props.deleteTodo}
-                        children={props.children}
+                        deleteTodo={deleteTodo}
+                        children={children}
                     />; }
             )}
         </div>;
@@ -225,4 +231,5 @@ def PropTodoList(props: any) -> JsxElement {
 def `def(`from: str, `class: str) -> str {
     print("From is:", `from);
     print("Class is:", `class);
+    return `from + `class;
 }

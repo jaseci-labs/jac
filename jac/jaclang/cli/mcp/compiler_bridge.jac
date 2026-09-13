@@ -1,3 +1,4 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 glob MAX_INPUT_SIZE: int = 102400,
      MAX_OUTPUT_SIZE: int = 102400,
      OUTPUT_TRUNCATION_MARKER: str = "\n[... output truncated ...]",

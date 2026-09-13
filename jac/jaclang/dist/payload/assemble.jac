@@ -43,7 +43,7 @@ glob PAYLOAD_ZSTD_LEVEL: int = 19,
      STUBCAT_BOOT_SRC: str = (
          "import sys\n"
          "import _jac_finder; _jac_finder.install()\n"
-         "from jaclang.compiler.types.stubcat.build import main\n"
+         "from jaclang.compiler.bootstrap.catalog import main\n"
          "sys.exit(main(sys.argv[1:]))\n"
      );
 

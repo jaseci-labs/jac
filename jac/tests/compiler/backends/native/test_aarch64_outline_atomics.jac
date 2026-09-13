@@ -69,9 +69,10 @@ value, the stored new value, sub-word CAS's zero-extension of a caller's wide
 `expected`, and cas16's paired compare -- all four orderings of all of it.
 """
 
+import from tests.support { jac_command }
+
 import os;
 import subprocess;
-import sys;
 import tempfile;
 import from pathlib { Path }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
@@ -338,10 +339,7 @@ test "the aarch64 executable path assembles to a real object (#8788)" {
     # where a host-only asm parser is no help at all.
     fixture = os.path.join(FIXTURES, "emit_aarch64_atomics_obj.jac");
     res = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", fixture],
-        capture_output=True,
-        text=True,
-        timeout=900
+        jac_command("run", fixture), capture_output=True, text=True, timeout=900
     );
     assert res.returncode == 0 , (
         f"emitting an aarch64 object out of the executable path exited "
@@ -373,10 +371,7 @@ test "jac build --native itself registers a parser for its target (#8788)" {
     work = tempfile.mkdtemp();
     out_bin = os.path.join(work, "crc32_aarch64");
     res = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
+        jac_command(
             "build",
             "--native",
             "--debug",
@@ -385,7 +380,7 @@ test "jac build --native itself registers a parser for its target (#8788)" {
             os.path.join(FIXTURES, "static_archive_crc32.jac"),
             "-o",
             out_bin
-        ],
+        ),
         capture_output=True,
         text=True,
         timeout=900

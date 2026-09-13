@@ -6,16 +6,17 @@ part of artifact identity (folded into the JIR module key), and no compiler
 pass reads os.environ directly (source-scan gate below).
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import re;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.compile_options {
+import from jaclang.compiler.session.options {
     CompileOptions,
     effective_codegen_fingerprint,
     link_fingerprint_mismatches
 }
-import from jaclang.compiler.driver.jir { compute_module_key }
+import from jaclang.compiler.session.cache.artifact_codec { compute_module_key }
 
 
 def _pinned_opts(**overrides: any) -> CompileOptions {
@@ -39,7 +40,7 @@ test "identical codegen options produce an identical fingerprint" {
 }
 
 test "forced server compilation retains Python standard-library imports" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     program = JacProgram();
     module = program.compile(
         file_path="forced_server_socket.jac",
@@ -55,7 +56,7 @@ test "forced server compilation retains Python standard-library imports" {
     );
     assert not program.errors_had , str(program.errors_had);
     assert not module.in_native_context();
-    assert module.gen.py_bytecode is not None;
+    assert artifact_for(module).py_bytecode is not None;
 }
 
 test "every codegen option flip changes the fingerprint" {
@@ -161,7 +162,7 @@ test "native debug enters the options object from the option, not the environmen
 }
 
 test "JIR module key follows the target override, not native-only codegen flags" {
-    import from jaclang.compiler.driver.compile_options {
+    import from jaclang.compiler.session.options {
         push_native_target,
         pop_native_target
     }
@@ -202,17 +203,24 @@ test "the codegen fingerprint tracks the native debug option, not the environmen
 
 test "no compiler pass reads the environment directly" {
     import jaclang;
-    passes_dir = os.path.join(
-        os.path.dirname(os.path.abspath(jaclang.__file__)), "compiler", "passes"
+    compiler_dir = os.path.join(
+        os.path.dirname(os.path.abspath(jaclang.__file__)), "compiler"
     );
-    assert os.path.isdir(passes_dir) , f"passes dir missing: {passes_dir}";
+    pass_domains = [
+        os.path.join(compiler_dir, name) for name in ("analysis", "lowering", "tools")
+    ];
+    for domain in pass_domains {
+        assert os.path.isdir(domain) , f"pass domain missing: {domain}";
+    }
     patterns = [
         re.compile(r"\.environ"),
         re.compile(r"\bos\.getenv\s*\("),
         re.compile(r"import\s+from\s+os\s*\{[^}]*environ")
     ];
     offenders: list[str] = [];
-    for (dirpath, _dirs, files) in os.walk(passes_dir) {
+    for (dirpath, _dirs, files) in [
+        item for domain in pass_domains for item in os.walk(domain)
+    ] {
         for fname in files {
             if not (fname.endswith(".jac") or fname.endswith(".py")) {
                 continue;
@@ -223,7 +231,7 @@ test "no compiler pass reads the environment directly" {
                 for (lineno, line) in enumerate(lines, 1) {
                     for pat in patterns {
                         if pat.search(line) {
-                            rel = os.path.relpath(fpath, passes_dir);
+                            rel = os.path.relpath(fpath, compiler_dir);
                             offenders.append(f"{rel}:{lineno}: {line.strip()}");
                         }
                     }
@@ -232,7 +240,7 @@ test "no compiler pass reads the environment directly" {
         }
     }
     assert not offenders , (
-        "environment reads found under compiler/passes (options must enter "
+        "environment reads found in pass domains (options must enter "
         "through CompileOptions at the program boundary):\n"
         + "\n".join(offenders)
     );
@@ -291,8 +299,8 @@ test "no cycle counter or stack validity channel in the type system" {
         os.path.dirname(os.path.abspath(jaclang.__file__)), "compiler"
     );
     scan_dirs = [
-        os.path.join(compiler_dir, "types"),
-        os.path.join(compiler_dir, "passes")
+        os.path.join(compiler_dir, "ir", "types"),
+        os.path.join(compiler_dir, "analysis")
     ];
     tokens = ["_cyclic_resolution_depth", "is_result_valid"];
     offenders: list[str] = [];

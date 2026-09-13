@@ -1,6 +1,6 @@
 """Implementation file for stub_param_goto_def.jac."""
 
-import jaclang.compiler.frontend.unitree as uni;
+import jaclang.compiler.ir.schema as uni;
 import from typing { Optional }
 
 impl ModuleProcessor.process_module(name: str, module: uni.Module) -> None { }

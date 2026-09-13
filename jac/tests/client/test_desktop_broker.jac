@@ -60,7 +60,7 @@ def _server(
     (Path(tmp) / f"{mod}.jac").write_text(
         "walker:pub Ping {\n    can run with Root entry {\n        report \"pong\";\n    }\n}\n"
     );
-    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.build.preparation { prepare_application }
     import from jaclang.runtime.prepared { initialize_application }
     initialize_application(
         prepare_application(str(Path(tmp) / f'{mod}.jac'), Jac.get_program(), tmp)

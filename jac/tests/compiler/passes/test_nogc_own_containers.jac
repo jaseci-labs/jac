@@ -9,16 +9,12 @@ for archetypes, so only fresh values may enter.
 """
 
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
+import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { jac_command, TESTS_DIR }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob OWNFIELD_DIR = os.path.join(
          TESTS_DIR, "compiler", "passes", "fixtures", "nogc_ownfield"
@@ -69,7 +65,7 @@ test "element drops fire exactly once at identical points in all gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"olc_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", fixture]
+                jac_command("build", "--native", fixture)
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

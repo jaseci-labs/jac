@@ -1,5 +1,6 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from typing { cast }
-import jaclang.compiler.frontend.unitree as uni;
+import jaclang.compiler.ir.schema as uni;
 import type from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
 import type from jaclang.compiler.backends.es.estree { Expression }
 

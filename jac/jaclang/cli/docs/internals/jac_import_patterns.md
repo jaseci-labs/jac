@@ -149,10 +149,10 @@ import_item: (KW_DEFAULT | STAR_MUL | named_ref) (KW_AS NAME)?
 - `compiler/backends/py/jcir_gen_pass.jac`:
   - Logs error if `default` or `*` used without `cl`
   - Logs error if string literal imports used without `cl` (Python doesn't support string literal module names)
-- `compiler/passes/sym_tab_build_pass.jac`: Only alias added to symbol table for default/namespace; skips symbol creation for String paths
+- `compiler/analysis/binding/sym_tab_build_pass.jac`: Only alias added to symbol table for default/namespace; skips symbol creation for String paths
 - `compiler/backends/es/esast_gen_pass.jac`: Generates appropriate `ImportSpecifier`, `ImportDefaultSpecifier`, or `ImportNamespaceSpecifier`
 - `compiler/frontend/parser/parser.jac`: Handles both `dotted_name` (list of Names) and `STRING` in import paths
-- `compiler/frontend/unitree.jac`: `ModulePath.dot_path_str` extracts string value from String literals
+- `compiler/ir/syntax/nodes.jac`: `ModulePath.dot_path_str` extracts string value from String literals
 
 ## Testing
 

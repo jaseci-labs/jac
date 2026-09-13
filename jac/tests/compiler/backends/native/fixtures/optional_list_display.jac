@@ -2,6 +2,7 @@
 obj Item {
     has value: int;
 }
+
 def from_optionals(first: Item | None, second: Item | None) -> list[Item | None] {
     return [first, second];
 }

@@ -1,5 +1,5 @@
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
 import from .sem_manager { SemTokManager }
 
 obj ModuleManager {

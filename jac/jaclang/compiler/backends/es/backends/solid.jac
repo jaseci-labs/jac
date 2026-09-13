@@ -1,3 +1,4 @@
+import type from jaclang.compiler.backends.es.view_ir { ViewChild }
 import jaclang.compiler.backends.es.estree as es;
 import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
 import from jaclang.compiler.backends.es.reactive_intent {

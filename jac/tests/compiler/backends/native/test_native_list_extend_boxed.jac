@@ -24,9 +24,10 @@ exception. `extend_plain_list` pins the already-typed path, which never went
 through the box and must not start now.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from tests.support { JAC_ROOT, native_force_opts }
 
 glob FIXTURES = os.path.join(
@@ -46,7 +47,7 @@ def engine -> any {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine for the extend fixture";
     _ENGINE.append(eng);
     return eng;

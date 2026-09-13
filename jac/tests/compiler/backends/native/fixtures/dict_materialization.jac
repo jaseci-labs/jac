@@ -1,6 +1,6 @@
 """Copy a real mutated native dictionary through the compiler materializer."""
 
-import from jaclang.compiler.jc_materialize {
+import from jaclang.compiler.frontend.kernel.materialize {
     CODE_NATDICT,
     CODE_OBJ,
     CODE_STR,

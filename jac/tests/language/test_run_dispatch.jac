@@ -7,6 +7,8 @@ cover the planner (`plan_app_run`) for every kind, kind inference
 (`resolve_app_kind`), entry-point resolution, error paths, and real execution
 of the two cheap runnable kinds (cli, cli-native)."""
 
+import from tests.support { jac_command }
+
 import io;
 import os;
 import sys;
@@ -664,7 +666,7 @@ test "--serve is a plain serve: the kind's dev default does not ride along" {
 }
 
 test "python backend overrides a native project and restores compiler context" {
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.target_options {
         get_effective_default_codespace_override
     }
     d = _mk_project("kind = \"cli-native\"\n", "main.jac");
@@ -691,17 +693,14 @@ test "backend flag selects either executor and forwards program arguments" {
     );
     for backend in ["python", "native"] {
         result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
+            jac_command(
                 "run",
                 "--backend",
                 backend,
                 os.path.join(d, "main.jac"),
                 "--",
                 "forwarded"
-            ],
+            ),
             capture_output=True,
             text=True,
             timeout=300
@@ -724,7 +723,7 @@ test "backend override rejects unsupported execution modes" {
 }
 
 test "python backend restores compiler context when compilation fails" {
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.target_options {
         get_effective_default_codespace_override
     }
     d = _mk_project("kind = \"cli\"\n", "broken.jac", "with entry { print(");

@@ -1,5 +1,5 @@
 import from enum { Enum }
-import from jaclang.compiler.types.type_utils { PropertyWriteKind }
+import from jaclang.compiler.analysis.types.type_utils { PropertyWriteKind }
 
 class LegacyPropertyWriteKind(Enum) {
     with entry {

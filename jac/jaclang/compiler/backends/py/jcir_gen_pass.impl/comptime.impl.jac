@@ -146,7 +146,7 @@ impl JcirGenPass._import_ref(module: str, name: str, jac_node: UniNode) -> CgNod
 }
 
 impl JcirGenPass._class_ref(module: str, name: str, jac_node: UniNode) -> CgNode {
-    import from jaclang.compiler.frontend.codeinfo { module_dotted_name }
+    import from jaclang.compiler.backends.native.naming { module_dotted_name }
     if module == "builtins" or not module {
         return self.name_load(name, jac_node);
     }
@@ -200,7 +200,7 @@ impl JcirGenPass._ct_order_key(v: any) -> str {
 }
 
 impl JcirGenPass._materialize(v: any, jac_node: UniNode) -> (CgNode | None) {
-    import from jaclang.compiler.frontend.codeinfo { module_dotted_name }
+    import from jaclang.compiler.backends.native.naming { module_dotted_name }
     load = self.nod('Load', [], []);
     kind = self._ct_kind(v);
     if kind == "scalar" {

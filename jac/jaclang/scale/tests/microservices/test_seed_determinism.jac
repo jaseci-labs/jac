@@ -4,7 +4,7 @@ import from pathlib { Path }
 import from jaclang.scale.injector.bundle { pack_jab, content_address }
 import from jaclang.scale.injector.binary { pack_binary_bytes }
 import from jaclang.scale.tests.support { pod_binary, require_pod_binary }
-import from jaclang.compiler.driver.jir {
+import from jaclang.compiler.session.cache.artifact_codec {
     FLAG_PRECOMPILED,
     compiler_source_digest,
     compiler_source_files,
@@ -46,7 +46,7 @@ def _stage_compiler_tree(where: str, codegen_body: str) -> str {
     pkg = Path(where, "jaclang");
     for rel in [
         "jac0.py",
-        "compiler/driver/jir.jac",
+        "compiler/session/cache/artifact_codec.jac",
         "compiler/backends/py/jcir_gen_pass.jac",
         "compiler/backends/native/llvm/libjacllvm.so",
         "dist/precompile_bytecode.jac",
@@ -155,12 +155,12 @@ test "the running compiler digest covers the real compiler tree" {
     rels = compiler_source_files(pkg);
     for expected in [
         "jac0.py",
-        "compiler/driver/jir.jac",
-        "compiler/frontend/unitree.jac",
+        "compiler/session/cache/artifact_codec.jac",
+        "compiler/ir/syntax/nodes.jac",
         "compiler/backends/py/jcir_gen_pass.jac",
         "compiler/backends/py/jcir_gen_pass.impl/expr.impl.jac",
         "compiler/backends/native/na_ir_gen_pass.impl/core.impl.jac",
-        "compiler/passes/type_checker_pass.jac",
+        "compiler/analysis/types/type_checker_pass.jac",
         "dist/precompile_bytecode.jac"
     ] {
         assert expected in rels , f"{expected} is outside the compiler digest";
@@ -170,7 +170,7 @@ test "the running compiler digest covers the real compiler tree" {
     assert rels == sorted(rels);
     for rel in rels {
         assert "/tests/" not in rel and not rel.startswith("tests/") , f"{rel} is test material and must not gate the seed";
-        assert rel.endswith(".jac") or rel.endswith(".py");
+        assert rel.endswith((".jac", ".py", ".pyi")) , rel;
     }
     assert running_compiler_digest() == compiler_source_digest(pkg);
     assert running_compiler_digest() == running_compiler_digest();
@@ -178,7 +178,7 @@ test "the running compiler digest covers the real compiler tree" {
 
 
 test "the per-module JIR cache key stays compiler-agnostic" {
-    import jaclang.compiler.driver.jir as jir;
+    import jaclang.compiler.session.cache.artifact_codec as jir;
     with tempfile.TemporaryDirectory() as tmp {
         src = os.path.join(tmp, "probe.jac");
         Path(src).write_text("with entry { print(1); }\n");

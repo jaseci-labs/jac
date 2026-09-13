@@ -7,7 +7,7 @@ of copying the same definitions across four files.
 
 import os;
 import from tests.support { JAC_ROOT }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "ownership"
@@ -19,7 +19,7 @@ def compile_fixture(fixture_name: str, enforce: bool = False) -> JacProgram {
     path = os.path.join(FIXTURES, fixture_name);
     program = JacProgram();
     if enforce {
-        import from jaclang.compiler.driver.compile_options { CompileOptions }
+        import from jaclang.compiler.session.options { CompileOptions }
         program.compile(path, options=CompileOptions(memory_profile="nogc"));
     } else {
         program.compile(path);

@@ -15,10 +15,11 @@ HIGH's ordinal) or past the end of the array (25, 40) -- a segfault -- and
 `dict[Level, str]` unusable: its keys could not be iterated or inspected.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts, native_str_func }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
@@ -40,7 +41,7 @@ def compile_native(fixture: str) -> ExecutionEngine {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     # The glob tables live in module globals; without jac_entry they are null
     # and every table read segfaults the JIT.

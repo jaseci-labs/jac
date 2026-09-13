@@ -11,17 +11,18 @@ on so the gate cannot silently drift from `NaIRGenPass.transform`'s own trigger:
    module carrying an inline `na {}` block.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import os;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pipeline {
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.schedule {
     get_analysis_sched,
     get_boundary_analysis_sched,
     get_ir_gen_sched,
     get_py_code_gen,
     providers_of
 }
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+import from jaclang.compiler.analysis.binding.module_facts { ModuleFacts }
 import from jaclang.compiler.backends.native { NaIRGenPass, NativeCompilePass }
 
 glob FIXTURES = os.path.join(
@@ -31,8 +32,8 @@ glob FIXTURES = os.path.join(
 
 test "get_py_code_gen omits the native passes when native=False" {
     without_native = get_py_code_gen(native=False);
-    assert NaIRGenPass not in without_native;
-    assert NativeCompilePass not in without_native;
+    assert PassIdentity.NaIRGenPass not in without_native;
+    assert PassIdentity.NativeCompilePass not in without_native;
 }
 
 
@@ -45,13 +46,13 @@ test "get_py_code_gen schedules the native passes when native=True" {
             get_ir_gen_sched() + get_analysis_sched() + get_boundary_analysis_sched()
         )
     );
-    assert NaIRGenPass in with_native;
-    assert NativeCompilePass in with_native;
+    assert PassIdentity.NaIRGenPass in with_native;
+    assert PassIdentity.NativeCompilePass in with_native;
 }
 
 
 test "plain Python module carries no native-context statements" {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, "gate_python_only.jac"),

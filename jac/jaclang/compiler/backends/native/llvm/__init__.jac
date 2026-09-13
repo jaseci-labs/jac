@@ -1,6 +1,6 @@
 import os;
 import sys;
-import from jaclang.compiler.driver.compile_options { env_typed_pointers_enabled }
+import from jaclang.compiler.session.options { env_typed_pointers_enabled }
 
 glob ir_layer_typed_pointers_enabled: bool = env_typed_pointers_enabled();
 
@@ -17,7 +17,7 @@ def _shim_name -> str {
 
 
 def _find_shim -> str {
-    import from jaclang.compiler.driver.compile_options { env_llvm_shim_override }
+    import from jaclang.compiler.session.options { env_llvm_shim_override }
     `override = env_llvm_shim_override();
     if `override and (`override.strip().lower() in ("none", "off", "disabled")) {
         raise OSError(

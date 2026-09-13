@@ -81,7 +81,7 @@ Now that we understand the motivation, let us survey the five organizational pat
 | **Inline** | Single `.jac` file, declarations + `impl` blocks together | Small modules (<100 lines) | [`lsp/server/rwlock.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/lsp/server/rwlock.jac) |
 | **Side-by-Side** | `mod.jac` + `impl/mod.impl.jac` | Medium modules, clean interface/impl split | [`cli/command.jac`](https://github.com/Jaseci-Labs/jaseci/blob/7b0f5297ac87d7bf2cc06922d7e77cd979c3c7f2/jac/jaclang/cli/command.jac) |
 | **Shared impl/ Directory** | Multiple `.jac` files + one `impl/` directory | Package-level organization | [`cli/commands/`](https://github.com/Jaseci-Labs/jaseci/tree/7b0f5297ac87d7bf2cc06922d7e77cd979c3c7f2/jac/jaclang/cli/commands) |
-| **`.impl/` Directory** | `mod.jac` + `mod.impl/*.impl.jac` | Very large modules, many concerns | [`type_evaluator.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/compiler/types/type_evaluator.jac) |
+| **`.impl/` Directory** | `mod.jac` + `mod.impl/*.impl.jac` | Very large modules, many concerns | [`type_evaluator.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/compiler/analysis/types/type_evaluator.jac) |
 | **Pure Declarations** | `.jac` file with only type/object definitions | Data models, re-exports | [`estree.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/compiler/backends/es/estree.jac) |
 
 ---
@@ -313,7 +313,7 @@ compiler/types/
 
 ### Real example
 
-**[`jaclang/compiler/types/type_evaluator.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/compiler/types/type_evaluator.jac)** -- The type evaluator. Let us examine how the declaration file defines a single `TypeEvaluator` object with 200+ method signatures, carefully organized by concern:
+**[`jaclang/compiler/analysis/types/type_evaluator.jac`](https://github.com/jaseci-labs/jac/blob/main/jac/jaclang/compiler/analysis/types/type_evaluator.jac)** -- The type evaluator. Let us examine how the declaration file defines a single `TypeEvaluator` object with 200+ method signatures, carefully organized by concern:
 
 ```jac
 obj TypeEvaluator {

@@ -172,9 +172,11 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             }
 
             _is_pub = nd.access and nd.access.tag.name == Tok.KW_PUB;
-            if _is_pub and self.ir_in?.gen and var_name.isidentifier() {
-                if var_name not in self.ir_in.gen._exported_symbols {
-                    self.ir_in.gen._exported_symbols.append(var_name);
+            if _is_pub
+                and (artifact_for(self.ir_in) if self.ir_in is not None else None)
+                and var_name.isidentifier() {
+                if var_name not in artifact_for(self.ir_in)._exported_symbols {
+                    artifact_for(self.ir_in)._exported_symbols.append(var_name);
                 }
             }
 
@@ -241,7 +243,7 @@ impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | 
 impl NaIRGenPass._codegen_const_expr(
     nd: uni.UniNode, target_type: ir.Type
 ) -> (ir.Constant | None) {
-    import from jaclang.compiler.frontend.const_fold { fold_const }
+    import from jaclang.compiler.analysis.comptime.const_fold { fold_const }
     if self?.jacval_type and target_type == self.jacval_type {
         return None;
     }

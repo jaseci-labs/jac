@@ -1,6 +1,6 @@
 """Bound methods preserve Self across union receivers."""
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 def check_receiver(source: str) -> list[str] {
     program = JacProgram();

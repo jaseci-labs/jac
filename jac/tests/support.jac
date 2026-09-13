@@ -10,17 +10,44 @@ Imported as `from tests.support`, which resolves identically under the single
 `jac` binary and a source checkout (same mechanism as `tests.fixtures_list`).
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 
 import from pathlib { Path }
-import type from jaclang.compiler.driver.compile_options { CompileOptions }
-import type from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.session.options { CompileOptions }
+import type from jaclang.compiler.session.session { JacProgram }
+import type from jaclang.compiler.ir.schema { Module }
 import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
 # `tests/`: the directory holding this file.
 glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
      # Repo root (the `jac/` dir): the parent of `tests/`.
      JAC_ROOT: str = str(Path(__file__).resolve().parent.parent);
+
+"""Run Python code in a child that selects this process's compiler package."""
+def compiler_python_command(source: str, *args: str) -> list[str] {
+    import jaclang;
+    import sys;
+    package_root = str(Path(str(jaclang.__file__)).resolve().parent.parent);
+    boot = (
+        "import sys\nsys.path.insert(0, "
+        + repr(package_root)
+        + ")\n"
+        + "sys.path.extend("
+        + repr(sys.path)
+        + ")\n"
+        + source
+    );
+    return [sys.executable, "-c", boot, *args];
+}
+
+"""Invoke the selected compiler's CLI, including from a checkout working directory."""
+def jac_command(*args: str) -> list[str] {
+    return compiler_python_command(
+        "import runpy\nrunpy.run_module('jaclang', run_name='__main__', alter_sys=True)",
+        *args
+    );
+}
 
 """CompileOptions that force a fixture into the native codespace.
 
@@ -30,7 +57,7 @@ Forced placement keeps lowering failures loud (no server demotion), exactly
 like the old suffix.
 """
 def native_force_opts -> CompileOptions {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     return CompileOptions(force_codespace='native', force_target_program=True);
 }
 
@@ -148,7 +175,9 @@ glob NATIVE_FIXTURES: str = str(
              / "fixtures"
      );
 
-"""Compile a .jac fixture into the native codespace and return (engine, module).
+"""Compile a .jac fixture into the native codespace and return (program, engine, module).
+
+Keep the program alive while inspecting the module's backend artifacts.
 
 `fixture_dir` defaults to the native pass fixtures directory, which is where
 all but one caller looks; pass it explicitly for a fixture that lives
@@ -159,17 +188,21 @@ should assert against it once, in a single test.
 """
 def compile_native(
     fixture: str, fixture_dir: str = ""
-) -> tuple[ExecutionEngine, Module] {
-    ir = _compile_native_fixture(fixture, fixture_dir, native_force_opts());
-    eng = ir.gen.native_engine;
+) -> tuple[JacProgram, ExecutionEngine, Module] {
+    (program, ir) = _compile_native_fixture(fixture, fixture_dir, native_force_opts());
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
-    return (eng, ir);
+    return (program, eng, ir);
 }
 
-"""Inspect fresh lowering output before LLVM optimization removes layout types."""
+"""Return (program, module) for inspecting fresh LLVM lowering output.
+
+Keep the program alive while reading its artifacts; the syntax graph does not
+own backend output.
+"""
 def compile_native_ir(
     fixture: str, fixture_dir: str = "", options: CompileOptions | None = None
-) -> Module {
+) -> tuple[JacProgram, Module] {
     options = options or native_force_opts();
     options.skip_native_engine = True;
     options.no_ir_cache = True;
@@ -178,21 +211,22 @@ def compile_native_ir(
 
 def _compile_native_fixture(
     fixture: str, fixture_dir: str, options: CompileOptions
-) -> Module {
-    import from jaclang.compiler.driver.program { JacProgram }
+) -> tuple[JacProgram, Module] {
+    import from jaclang.compiler.session.session { JacProgram }
     base = fixture_dir or NATIVE_FIXTURES;
     prog = JacProgram();
     ir = prog.compile(file_path=str(Path(base) / fixture), options=options);
     errors = [e.pretty_print() for e in prog.errors_had] if prog.errors_had else [];
-    if errors and ir is not None and ir.gen.llvm_ir is not None {
+    if errors and ir is not None and artifact_for(ir).llvm_ir is not None {
         import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
         errors.extend(
-            issue.detail for issue in native_lowering_issues(str(ir.gen.llvm_ir))
+            issue.detail
+            for issue in native_lowering_issues(str(artifact_for(ir).llvm_ir))
         );
     }
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     assert ir is not None , f"No module produced for {fixture}";
-    return ir;
+    return (prog, ir);
 }
 
 """Get a ctypes-callable function from a JIT engine."""
@@ -249,7 +283,7 @@ def native_build(
     import sys;
     assert os.path.exists(src) , f"fixture missing: {src}";
     cmd = (
-        [sys.executable, "-m", "jaclang", "build", src, "--native"]
+        jac_command("build", src, "--native")
         + native_memory_flags(memory)
         + list(extra or [])
         + ["-o", out_bin]
@@ -300,8 +334,7 @@ def python_run(src: str, args: list[str] | None = None, timeout: int = 120) -> s
     import subprocess;
     import sys;
     proc = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", "--backend", "python", src]
-            + list(args or []),
+        jac_command("run", "--backend", "python", src) + list(args or []),
         capture_output=True,
         text=True,
         timeout=timeout

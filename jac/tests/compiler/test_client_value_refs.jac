@@ -13,11 +13,12 @@ access, so nothing to forward to) codegen fails loudly instead of shipping an
 unbound identifier.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from tests.support { JAC_ROOT }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "fixtures", "codespace"
@@ -50,7 +51,7 @@ def check_fixture(rel: str) -> JacProgram {
 test "endpoint used as a client value is bound, not left dangling" {
     (prog, mod) = build_fixture("infer_value_ref_endpoint.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    js = mod.gen.js or "";
+    js = artifact_for(mod).js or "";
     assert "async function run_current_file(" in js , (
         "a server endpoint reachable from client code needs a real client "
         f"binding, not a bare identifier; got:\n{js}"
@@ -76,7 +77,7 @@ test "a bound endpoint value reference no longer warns W6007" {
 test "calls to the same endpoint still bridge over RPC" {
     (prog, mod) = build_fixture("infer_value_ref_call.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    js = mod.gen.js or "";
+    js = artifact_for(mod).js or "";
     assert '__jacCallFunction("push_tag", {"tag": "x"},' in js , (
         f"the call-site rewrite still carries Jac's calling convention; got:\n{js}"
     );
@@ -86,7 +87,7 @@ test "calls to the same endpoint still bridge over RPC" {
 test "an endpoint used both as a value and as a call binds once" {
     (prog, mod) = build_fixture("infer_value_ref_mixed.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    js = mod.gen.js or "";
+    js = artifact_for(mod).js or "";
     assert js.count("async function push_tag(") == 1 , (
         f"exactly one client forwarder per endpoint; got:\n{js}"
     );

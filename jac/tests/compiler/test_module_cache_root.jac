@@ -11,8 +11,8 @@ looked for later beside the file, and recompiled. The root now follows the
 import os;
 import tempfile;
 import from pathlib { Path }
-import jaclang.compiler.driver.compile_options as compile_options;
-import from jaclang.compiler.driver.jir {
+import jaclang.compiler.session.options as compile_options;
+import from jaclang.compiler.session.cache.artifact_codec {
     get_module_cache_path,
     module_env_fingerprint
 }
@@ -71,7 +71,11 @@ test "a module's env key is the same inside and outside the config probe guards"
     mod.write_text("def two -> int {\n    return 2;\n}\n");
     import jaclang;
     internal = str(
-        Path(str(jaclang.__file__)).parent / "compiler" / "symbol_utils.jac"
+        Path(str(jaclang.__file__)).parent
+            / "compiler"
+            / "analysis"
+            / "binding"
+            / "symbol_utils.jac"
     );
     pinned = project_scope_is_pinned();
     saved = get_config();

@@ -283,7 +283,7 @@ impl NaIRGenPass._codegen_string(nd: uni.String) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._fstring_spec_text(spec: uni.Expr) -> (str | None) {
-    import from jaclang.compiler.passes.capability_check_pass {
+    import from jaclang.compiler.analysis.capabilities.capability_check_pass {
         static_fstring_spec_text
     }
     return static_fstring_spec_text(spec);
@@ -992,7 +992,7 @@ impl NaIRGenPass._codegen_string_slice(
 }
 
 impl NaIRGenPass._hl_view_base_licensed(base_node: object) -> bool {
-    import from jaclang.compiler.frontend.constant { OwnershipKind }
+    import from jaclang.compiler.ir.enums { OwnershipKind }
     _x = base_node;
     while isinstance(_x, uni.AtomTrailer) {
         _x = _x.target;

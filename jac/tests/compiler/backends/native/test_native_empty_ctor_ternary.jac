@@ -22,9 +22,10 @@ inserted into through another corrupts. Taking the empty branch and then
 adding to it proves the two arms really do share a representation.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from tests.support { JAC_ROOT, native_force_opts }
 
 glob FIXTURES = os.path.join(
@@ -44,7 +45,7 @@ def engine -> any {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine for the empty-ctor fixture";
     _ENGINE.append(eng);
     return eng;

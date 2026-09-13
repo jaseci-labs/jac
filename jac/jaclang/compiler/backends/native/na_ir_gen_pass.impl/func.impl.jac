@@ -1,7 +1,3 @@
-import from jaclang.compiler.backends.native.abi { classify_foreign_fn }
-import from jaclang.compiler.frontend.constant { OwnershipKind }
-
-
 impl NaIRGenPass._forward_declare_functions(module: uni.Module) -> None {
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
         self._maybe_declare_ability(stmt);
@@ -109,7 +105,7 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         self.decorated_fns[name] = (func, slot_gv, _dec_names, fnty);
     } else {
         _emit_name = name;
-        import from jaclang.compiler.frontend.codeinfo {
+        import from jaclang.compiler.backends.native.naming {
             native_library_function_symbol
         }
         _def_module = nd.find_parent_of_type(uni.Module);
@@ -121,7 +117,7 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         if nd.access
             and nd.access.tag.name == Tok.KW_PRIV
             and nd.find_parent_of_type(uni.Archetype) is None {
-            import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+            import from jaclang.compiler.backends.native.naming { native_safe_sym }
             _def_m = nd.find_parent_of_type(uni.Module);
             if _def_m is not None {
                 _emit_name = f"{name}.__jacp_{native_safe_sym(_def_m.name)}";
@@ -469,7 +465,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
                 param_name,
                 arg_val,
                 borrowed=borrowed,
-                rebound=bool(p.name?.sym?.param_rebound)
+                rebound=bool(p.name?.sym?.memory?.param_rebound)
             );
             if param_name == "self" and not borrowed {
                 self._self_owned = True;
@@ -527,15 +523,17 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     }
 
     _is_pub = nd.access and nd.access.tag.name == Tok.KW_PUB;
-    if _is_pub and self.ir_in?.gen and func.name.isidentifier() {
-        if func.name not in self.ir_in.gen._exported_symbols {
-            self.ir_in.gen._exported_symbols.append(func.name);
+    if _is_pub
+        and (artifact_for(self.ir_in) if self.ir_in is not None else None)
+        and func.name.isidentifier() {
+        if func.name not in artifact_for(self.ir_in)._exported_symbols {
+            artifact_for(self.ir_in)._exported_symbols.append(func.name);
         }
     }
 }
 
 impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
-    import from jaclang.compiler.frontend.codeinfo { native_test_symbol }
+    import from jaclang.compiler.backends.native.naming { native_test_symbol }
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     if self._exc_raise_fn is None {
@@ -645,7 +643,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     } else {
         free_vars = [
             s.sym_name
-            for s in nd.get_enclosing_captures()
+            for s in nd.capture_symbols
             if s.sym_name in self.local_vars
         ];
         rebound: set = set();
@@ -748,7 +746,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
 }
 
 impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
-    import from jaclang.compiler.frontend.constant { SymbolType }
+    import from jaclang.compiler.ir.enums { SymbolType }
     _p = nd.parent;
     _frame: (uni.UniNode | None) = None;
     while _p is not None {
@@ -815,7 +813,7 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
         }
         _ord: list = [];
         _md: dict = {};
-        for _sym in s.get_enclosing_captures() {
+        for _sym in s.capture_symbols {
             if _sym.sym_name in _md or _sym.sym_name in _sib_by_name {
                 continue;
             }
@@ -1403,7 +1401,7 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     i64 = ir.IntType(64);
     import re;
 
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.backends.native.naming {
         native_glob_init_name,
         native_safe_sym
     }
@@ -1451,7 +1449,9 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
             b_on.branch(_gc_cont);
             self._builder = ir.IRBuilder(_gc_cont);
         }
-        _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
+        _manifest = artifact_for(self.ir_in).interop_manifest
+            if ((artifact_for(self.ir_in) if self.ir_in is not None else None))
+            else None;
         _all_na_sources = _manifest.native_transitive_sources if _manifest else [];
         _seen_init_mods: set = set();
         for _source_mod in _all_na_sources {

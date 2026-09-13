@@ -20,21 +20,21 @@ abstraction is implemented two different ways, that shows up here.
 
 All nine keywords flow through a single, unified pipeline: tokenized in
 `compiler/frontend/parser/tokens.jac`, parsed by `compiler/frontend/parser/impl/parser.impl.jac`
-into a small set of AST node types defined in `compiler/frontend/unitree.jac`, and
+into a small set of AST node types defined in `compiler/ir/syntax/nodes.jac`, and
 implemented by `JacRuntimeInterface` in `runtime/runtime.jac`. Both the
 bootstrap compiler (`jac0.py`) and the full compiler share this front end.
 
 | Keyword | Token | AST node | Runtime |
 |---|---|---|---|
-| `walker` | `KW_WALKER` -- [tokens.jac:48](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L48) | `Archetype` (discriminated by `arch_type`) -- [unitree.jac:636](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/unitree.jac#L636) | `WalkerArchetype` (constructs.jac); traversal in [`JacWalker`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac#L222) |
+| `walker` | `KW_WALKER` -- [tokens.jac:48](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L48) | `Archetype` (discriminated by `arch_type`) -- [unitree.jac:636](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/ir/syntax/nodes.jac#L636) | `WalkerArchetype` (constructs.jac); traversal in [`JacWalker`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac#L222) |
 | `node` | `KW_NODE` -- [tokens.jac:46](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L46) | `Archetype` | `NodeArchetype` + `NodeAnchor` -- [archetype.jac:108](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/archetype.jac#L108) |
 | `edge` | `KW_EDGE` -- [tokens.jac:47](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L47) | `Archetype` | `EdgeArchetype` + `EdgeAnchor` -- [archetype.jac:122](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/archetype.jac#L122) |
-| `visit` | `KW_VISIT` -- [tokens.jac:88](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L88) | `VisitStmt` -- [unitree.jac:938](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/unitree.jac#L938) | [`JacWalker.visit`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac#L224) |
+| `visit` | `KW_VISIT` -- [tokens.jac:88](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L88) | `VisitStmt` -- [unitree.jac:938](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/ir/syntax/nodes.jac#L938) | [`JacWalker.visit`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac#L224) |
 | `spawn` | `KW_SPAWN` -- [tokens.jac:89](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L89) | unpack-position modifier -- [parser.impl.jac:1309](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/impl/parser.impl.jac#L1309) | `spawn_call` / `spawn_walker` -- [runtime.jac:272,822](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac#L272) |
 | `entry` | `KW_ENTRY` -- [tokens.jac:90](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L90) | `Ability` (in archetype) **or** module-level `with entry` block | `_jac_entry_funcs_` ClassVar; dispatched by `_execute_entries` -- [runtime.jac:239](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac#L239) |
 | `exit` | `KW_EXIT` -- [tokens.jac:91](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L91) | `Ability` | `_jac_exit_funcs_` ClassVar; `_execute_exits` -- [runtime.jac:249](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac#L249) |
-| `can` | `KW_CAN` -- [tokens.jac:50](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L50) | `Ability` -- [unitree.jac:688](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/unitree.jac#L688) | compiled to a plain Python method on the archetype class |
-| `has` | `KW_HAS` -- [tokens.jac:49](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L49) | `HasVar` -- [unitree.jac:781](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/unitree.jac#L781) | dataclass field; wrapped by `JacField` (jac0) or `_.field()` (full compiler) |
+| `can` | `KW_CAN` -- [tokens.jac:50](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L50) | `Ability` -- [unitree.jac:688](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/ir/syntax/nodes.jac#L688) | compiled to a plain Python method on the archetype class |
+| `has` | `KW_HAS` -- [tokens.jac:49](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac#L49) | `HasVar` -- [unitree.jac:781](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/ir/syntax/nodes.jac#L781) | dataclass field; wrapped by `JacField` (jac0) or `_.field()` (full compiler) |
 
 **Notes**
 
@@ -192,7 +192,7 @@ When adding a new abstraction:
 1. **Keyword** -- add a row to Category 1. The token must be defined in
    [`compiler/frontend/parser/tokens.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/parser/tokens.jac),
    the AST node must live in
-   [`compiler/frontend/unitree.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/unitree.jac),
+   [`compiler/ir/syntax/nodes.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/ir/syntax/nodes.jac),
    and the runtime entry point belongs on `JacRuntimeInterface` in
    [`runtime/runtime.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac).
 2. **Builtin** -- add the `_get_X` thunk in

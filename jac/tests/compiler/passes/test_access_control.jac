@@ -21,7 +21,7 @@ import shutil;
 import tempfile;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.project.config { get_config }
 
 glob MEMBER_FIXTURE = os.path.join(

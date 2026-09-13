@@ -33,11 +33,15 @@ pin the layout and the run-time answers together, so neither half can be
 reverted alone.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.analysis.placement.native_fallback {
+    na_coverage_begin,
+    na_coverage_end
+}
+import from jaclang.compiler.session.session { JacProgram }
 import from tests.support { JAC_ROOT, native_force_opts }
 
 glob FIXTURES = os.path.join(
@@ -57,7 +61,7 @@ def engine -> any {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine for the container fixture";
     _ENGINE.append(eng);
     return eng;
@@ -124,14 +128,16 @@ test "compr over or lowers, and its absent arm is falsy rather than a fault" {
         f"the `or`-defaulted comprehension shapes all lower now, got: {seams}"
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
     for fn in [
         "compr_over_or",
         "tern_local_or",
         "tern_local_compr",
         "tern_inline_or"
     ] {
-        assert fn in ir.gen.native_layout.functions , f"{fn} demoted";
+        ir_layout = artifact_for(ir).native_layout;
+        assert ir_layout is not None , "native layout was not produced";
+        assert fn in ir_layout.functions , f"{fn} demoted";
     }
 }
 
@@ -149,7 +155,7 @@ test "an optional list held across a branch answers rather than dereferencing nu
         options=native_force_opts()
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine for the or-defaulted fixture";
     for (fn, present, absent) in [
         ("tern_local_or", 7, 0),

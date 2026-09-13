@@ -5,17 +5,18 @@ the PyastBuildPass, and that specific conversions (docstrings, f-strings)
 are handled properly.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ast as py_ast;
 import inspect;
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
+import from jaclang.compiler.frontend.pyast_load_pass { PyastBuildPass }
 import from jaclang.compiler.tools.unparse_pass { unparse_module }
-import from jaclang.compiler.frontend.helpers { pascal_to_snake }
+import from jaclang.compiler.frontend.source_io { pascal_to_snake }
 import from jaclang.compiler.frontend.parser.lexer { tokenize_full }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.unitree { PythonModuleAst, Source }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.ir.schema { PythonModuleAst, Source }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures");
 
@@ -189,7 +190,7 @@ test "py2jac line continuation string concat" {
     );
 
     # The folded literals survive as adjacent Jac strings with escapes intact.
-    formatted = prog.mod.main.gen.jac;
+    formatted = artifact_for(prog.mod.main).jac;
     assert '"abc" "def"' in formatted , f"Expected folded concat in:\n{formatted}";
     assert "line two\\n" in formatted , f"Expected preserved \\n escape in:\n{formatted}";
 }

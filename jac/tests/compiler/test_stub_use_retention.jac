@@ -4,7 +4,7 @@ The type evaluator serves every stdlib stub from the process-wide stub
 catalog, so a use-site recorded on a stub symbol would be a process-lifetime
 reference into the using program's AST: one such edge keeps that program's
 whole module graph -- inference results, and for native compiles the LLVM
-artifacts hanging off `mod.gen` -- reachable forever. Long-lived `jac test`
+artifacts hanging off `artifact_for(mod)` -- reachable forever. Long-lived `jac test`
 fork workers and the full-sweep `jac check .` then grow monotonically until
 the box dies (the CI "lost communication" failures).
 
@@ -14,11 +14,12 @@ codegen depend on that), and a program dropped on the floor -- the dominant
 pattern in the pass tests -- becomes garbage-collectable.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import gc;
 import os;
 import tempfile;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURE_SRC: str = (
          "with entry {\n"

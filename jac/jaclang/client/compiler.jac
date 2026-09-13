@@ -9,7 +9,10 @@ import from jaclang.client.client_bundle {
 }
 import from jaclang.client.jac_client_compiler { JacClientCompiler }
 import from jaclang.client.vite_bundler { ViteBundler }
-import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
+import type from jaclang.compiler.backends.common.artifacts {
+    ClientArtifact,
+    ClientManifest
+}
 
 with entry {
     if TYPE_CHECKING {}

@@ -9,15 +9,17 @@ This replaces the previous client-only `Reflect.construct(...)` idiom and
 lets the same source compile cleanly in both backends.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import tempfile;
 import from pathlib { Path }
 import from tempfile { NamedTemporaryFile }
 import jaclang;
 import from jaclang.compiler.frontend.parser.frontend { parse }
-import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.analysis.binding.ast_validation_pass { ASTValidationPass }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_new_builtin_"),
      _client_tmp_dir: str = os.path.join(_test_tmp_dir, "client");
@@ -55,7 +57,7 @@ def parse_and_validate(source: str) -> JacProgram {
     prog = JacProgram();
     (module, _) = parse(source, "/tmp/test_new_builtin.jac", prog=prog);
     if module is not None {
-        run_pass(ASTValidationPass, module, prog);
+        run_pass(PassIdentity.ASTValidationPass, module, prog);
     }
     return prog;
 }
@@ -136,7 +138,7 @@ test "`f = new;` (first-class reference) does NOT emit E0012" {
 test "cl: new(Cls, args) lowers to Reflect.construct in JS output" {
     code = "def make_date(s: str) -> Any {\n" + "    return new(Date, s);\n" + "}\n";
     mod = compile_inline(code, client=True);
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert js.strip() , "Expected JavaScript output for cl code";
     assert "Reflect.construct(Date, [s])" in js , (
         "new(Date, s) must lower to Reflect.construct(Date, [s]); got:\n" + js
@@ -149,7 +151,7 @@ test "cl: new(Cls, args) lowers to Reflect.construct in JS output" {
 test "cl: new(Cls) with no args lowers to Reflect.construct(Cls, [])" {
     code = "def make_set() -> Any {\n" + "    return new(Set);\n" + "}\n";
     mod = compile_inline(code, client=True);
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "Reflect.construct(Set, [])" in js , (
         "new(Set) with no args must lower to Reflect.construct(Set, []); got:\n" + js
     );
@@ -158,7 +160,7 @@ test "cl: new(Cls) with no args lowers to Reflect.construct(Cls, [])" {
 test "cl: new with multiple args produces a JS array of args" {
     code = "def mk(a: int, b: int) -> Any {\n" + "    return new(Map, a, b);\n" + "}\n";
     mod = compile_inline(code, client=True);
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert "Reflect.construct(Map, [a, b])" in js , (
         "new(Map, a, b) must lower to Reflect.construct(Map, [a, b]); got:\n" + js
     );
@@ -171,7 +173,7 @@ test "cl: new with multiple args produces a JS array of args" {
 test "server: new is auto-imported from runtime.builtin" {
     code = "with entry { x = new(list, [1, 2, 3]); print(x); }\n";
     mod = compile_inline(code);
-    py = mod.gen.py;
+    py = artifact_for(mod).py;
     assert "from jaclang.runtime.builtin import" in py , (
         "Expected builtin import preamble; got:\n" + py
     );

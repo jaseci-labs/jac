@@ -19,12 +19,13 @@ mode is a segfault, which has to fail the test rather than take the runner
 down with it.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import subprocess;
-import sys;
 import tempfile;
 import from tests.support {
+    jac_command,
     TESTS_DIR,
     compile_native,
     get_func,
@@ -33,7 +34,7 @@ import from tests.support {
 }
 import jaclang;
 
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -62,7 +63,7 @@ def compile_na_inline_ir(label: str, code: str) -> tuple {
 """Run a fixture on the server pathway, where CPython is the oracle."""
 def sv_run(fixture: str) -> str {
     proc = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", os.path.join(FIXTURES, fixture)],
+        jac_command("run", os.path.join(FIXTURES, fixture)),
         capture_output=True,
         text=True,
         timeout=900
@@ -77,16 +78,9 @@ def sv_run(fixture: str) -> str {
 def na_run(fixture: str) -> str {
     out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
     comp = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            os.path.join(FIXTURES, fixture),
-            "-o",
-            out_bin
-        ],
+        jac_command(
+            "build", "--native", os.path.join(FIXTURES, fixture), "-o", out_bin
+        ),
         capture_output=True,
         text=True,
         timeout=900
@@ -125,25 +119,25 @@ def same_lines(sv_text: str, na_text: str, what: str) {
 }
 
 test "varargs: *args sums positional extras" {
-    (eng, _) = compile_native("varargs.jac");
+    (native_program, eng, _) = compile_native("varargs.jac");
     f = get_func(eng, "test_sum_all", ctypes.c_int64);
     assert f() == 6 , f"Expected 6, got {f()}";
 }
 
 test "varargs: empty *args materializes an empty list" {
-    (eng, _) = compile_native("varargs.jac");
+    (native_program, eng, _) = compile_native("varargs.jac");
     f = get_func(eng, "test_sum_empty", ctypes.c_int64);
     assert f() == 0 , f"Expected 0, got {f()}";
 }
 
 test "varargs: fixed params bind before the pack" {
-    (eng, _) = compile_native("varargs.jac");
+    (native_program, eng, _) = compile_native("varargs.jac");
     f = get_func(eng, "test_mixed", ctypes.c_int64);
     assert f() == 7003 , f"Expected 7003, got {f()}";
 }
 
 test "varargs: defaults compose with *args" {
-    (eng, _) = compile_native("varargs.jac");
+    (native_program, eng, _) = compile_native("varargs.jac");
     packed = get_func(eng, "test_default_packed", ctypes.c_int64);
     empty = get_func(eng, "test_default_empty", ctypes.c_int64);
     assert packed() == 36 , f"Expected 36, got {packed()}";
@@ -151,25 +145,25 @@ test "varargs: defaults compose with *args" {
 }
 
 test "varargs: indexing and len over the pack" {
-    (eng, _) = compile_native("varargs.jac");
+    (native_program, eng, _) = compile_native("varargs.jac");
     f = get_func(eng, "test_idx_ends", ctypes.c_int64);
     assert f() == 47 , f"Expected 47, got {f()}";
 }
 
 test "varargs: str pack (RC pointer elements)" {
-    (eng, _) = compile_native("varargs.jac");
+    (native_program, eng, _) = compile_native("varargs.jac");
     f = get_func(eng, "test_join_lens", ctypes.c_int64);
     assert f() == 5 , f"Expected 5, got {f()}";
 }
 
 test "varargs: *args: any boxes heterogeneous values" {
-    (eng, _) = compile_native("varargs.jac");
+    (native_program, eng, _) = compile_native("varargs.jac");
     f = get_func(eng, "test_any_pack", ctypes.c_int64);
     assert f() == 3 , f"Expected 3, got {f()}";
 }
 
 test "kwargs: **kwargs get and contains" {
-    (eng, _) = compile_native("varargs.jac");
+    (native_program, eng, _) = compile_native("varargs.jac");
     hit = get_func(eng, "test_kw_hit", ctypes.c_int64);
     miss = get_func(eng, "test_kw_miss", ctypes.c_int64);
     assert hit() == 4 , f"Expected 4, got {hit()}";
@@ -177,7 +171,7 @@ test "kwargs: **kwargs get and contains" {
 }
 
 test "kwargs: **kwargs iteration sums values" {
-    (eng, _) = compile_native("varargs.jac");
+    (native_program, eng, _) = compile_native("varargs.jac");
     f = get_func(eng, "test_kw_sum", ctypes.c_int64);
     e = get_func(eng, "test_kw_sum_empty", ctypes.c_int64);
     assert f() == 6 , f"Expected 6, got {f()}";
@@ -185,7 +179,7 @@ test "kwargs: **kwargs iteration sums values" {
 }
 
 test "varargs+kwonly+kwargs combined binding" {
-    (eng, _) = compile_native("varargs.jac");
+    (native_program, eng, _) = compile_native("varargs.jac");
     mn = get_func(eng, "test_combo_min", ctypes.c_int64);
     rest = get_func(eng, "test_combo_rest", ctypes.c_int64);
     kwonly = get_func(eng, "test_combo_kwonly", ctypes.c_int64);
@@ -197,13 +191,13 @@ test "varargs+kwonly+kwargs combined binding" {
 }
 
 test "varargs: method receives the pack after self" {
-    (eng, _) = compile_native("varargs.jac");
+    (native_program, eng, _) = compile_native("varargs.jac");
     f = get_func(eng, "test_method_pack", ctypes.c_int64);
     assert f() == 106 , f"Expected 106, got {f()}";
 }
 
 test "varargs: cross-module callee receives the pack" {
-    (eng, _) = compile_native("varargs.jac");
+    (native_program, eng, _) = compile_native("varargs.jac");
     f = get_func(eng, "test_xmod_pack", ctypes.c_int64);
     assert f() == 15 , f"Expected 15, got {f()}";
 }
@@ -224,7 +218,7 @@ test "callsite star-unpack of a LIST into a fixed-arity callee demotes the calle
         f"two(*xs) is owned by use(), which must demote to a seam, got: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "two" in layout.functions , (
         f"clean sibling function was lost: {list(layout.functions)}"
@@ -237,7 +231,7 @@ test "callsite star-unpack of a LIST into a fixed-arity callee demotes the calle
 test "callsite star-unpack: tuple spread splits into declared params" {
     # #7626 A6: a tuple spread's arity is static, so add3(*xs) lowers by
     # splitting the tuple into the three declared params.
-    (eng, _) = compile_native("call_unpack.jac");
+    (native_program, eng, _) = compile_native("call_unpack.jac");
     f = get_func(eng, "spread_tuple", ctypes.c_int64);
     assert f() == 30201 , "add3(1, 2, 3)";
     g = get_func(eng, "spread_mixed", ctypes.c_int64);
@@ -245,7 +239,7 @@ test "callsite star-unpack: tuple spread splits into declared params" {
 }
 
 test "callsite star-unpack: list spread routes through a variadic callee" {
-    (eng, _) = compile_native("call_unpack.jac");
+    (native_program, eng, _) = compile_native("call_unpack.jac");
     f = get_func(eng, "spread_variadic", ctypes.c_int64);
     assert f() == 15 , "vsum(*[4, 5, 6])";
 }
@@ -260,7 +254,7 @@ test "double-star unpack at a call site demotes the calling function" {
         f"two(**d) is owned by use(), which must demote to a seam, got: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "two" in layout.functions , (
         f"clean sibling function was lost: {list(layout.functions)}"
@@ -284,7 +278,7 @@ test "def:pub variadic demotes off the native interop surface" {
         f"variadic must demote to its Python implementation, got: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "f" not in layout.functions , (
         "the pub variadic must be demoted out of the native layout"
@@ -303,7 +297,7 @@ test "variadic init demotes the constructor and refuses its callers" {
         f"variadic init demotes instead of refusing the module, got: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "pure" in layout.functions , (
         f"clean sibling function was lost: {list(layout.functions)}"
@@ -330,7 +324,7 @@ test "a generic pack slot is a native list, not the bare erased pointer" {
     options.skip_native_engine = True;
     ir = prog.compile(os.path.join(FIXTURES, "varargs_generic.jac"), options=options);
     assert not prog.errors_had , str(prog.errors_had);
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "Cell.get" in layout.methods , (
         f"the variadic method must reach the native image: {sorted(layout.methods)}"
@@ -341,7 +335,7 @@ test "a generic pack slot is a native list, not the bare erased pointer" {
     assert "Cell.pick" in layout.methods , (
         f"a pack after a fixed parameter must lower too: {sorted(layout.methods)}"
     );
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     assert 'define i8* @"Cell.get"(%"Cell"* %"self", %"List.ptr"* %"fallback")'
         in text , (
         "the pack slot must lay out as the pointer-flavoured native list; a bare "
@@ -352,16 +346,13 @@ test "a generic pack slot is a native list, not the bare erased pointer" {
 test "a generic pack at a by-value type argument is refused, not lowered" {
     out_bin = os.path.join(tempfile.mkdtemp(), "nope.bin");
     comp = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
+        jac_command(
             "build",
             "--native",
             os.path.join(FIXTURES, "varargs_generic_scalar.jac"),
             "-o",
             out_bin
-        ],
+        ),
         capture_output=True,
         text=True,
         timeout=900
@@ -386,7 +377,7 @@ test "a callee whose pack slot did not lay out refuses its caller" {
         f"the caller owns the refusal, so the module must still compile: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "pure" in layout.functions , (
         f"clean sibling function was lost: {list(layout.functions)}"

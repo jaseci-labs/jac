@@ -1,6 +1,9 @@
 """Tests for the centralized Jac Type Registry."""
 
-import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY, JacTypeEntry }
+import from jaclang.compiler.analysis.types.type_registry {
+    JAC_TYPE_REGISTRY,
+    JacTypeEntry
+}
 
 def ent(name: str) -> JacTypeEntry {
     `entry = JAC_TYPE_REGISTRY.get(name);
@@ -261,7 +264,7 @@ test "the sized names, widths and signedness are defined in one table only" {
     owners = {
         "runtime/scalars.jac",
         "runtime/builtin.jac",
-        "compiler/frontend/constant.jac",
+        "compiler/ir/enums.jac",
         "compiler/frontend/parser/tokens.jac",
         "compiler/frontend/parser/parser.jac",
         "compiler/frontend/parser/impl/parser.impl.jac",

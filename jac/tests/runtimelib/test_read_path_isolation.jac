@@ -183,7 +183,7 @@ test "isolation: a pending write inside a read scope forces SERIALIZABLE" {
 
 
 test "isolation: scale context construction declares read intent" {
-    import from jaclang.compiler.frontend.constant { Constants as Con }
+    import from jaclang.compiler.ir.enums { Constants as Con }
     with TemporaryDirectory() as td {
         s = _mk_session(td);
         try {

@@ -43,8 +43,9 @@ for relative in (
         destination.write_text(source.read_text().replace("jaclang.", namespace + "."))
 
 import jaclang
-from jaclang.compiler.driver.program import JacProgram
-from jaclang.compiler.driver.compile_options import CompileOptions
+from jaclang.compiler.session.session import JacProgram
+from jaclang.compiler.session.options import CompileOptions
+from jaclang.compiler.backends.common.artifact_store import artifact_for
 from jaclang.compiler.backends.native.na_compile_pass import (
     native_linked_ir_text, native_demoted_ir_symbols,
 )
@@ -69,7 +70,7 @@ issues = native_demoted_ir_symbols(ir_text)
 issues.extend(issue.symbol for issue in native_lowering_issues(ir_text))
 if issues:
     raise RuntimeError("JacPython may not demote to Python: " + ", ".join(sorted(set(issues))))
-ir_text, _ = inject_shared_init(ir_text, module.gen.interop_manifest)
+ir_text, _ = inject_shared_init(ir_text, artifact_for(module).interop_manifest)
 init_object_codegen()
 compiled = llvm.parse_assembly(ir_text)
 compiled.verify()

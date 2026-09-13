@@ -1,8 +1,9 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from collections { deque }
 import jaclang.compiler.tools.doc_ir as doc;
-import jaclang.compiler.frontend.unitree as uni;
+import jaclang.compiler.ir.schema as uni;
 import from jaclang.compiler.frontend.diagnostics { W5050, E5051 }
-import from jaclang.compiler.passes { Transform }
+import from jaclang.compiler.pipeline.pass_base { Transform }
 
 walker JacFormatPass(Transform) {
     has indent_size: int = 4,
@@ -40,12 +41,14 @@ walker JacFormatPass(Transform) {
 }
 
 def format_module(mod: uni.Module) -> str {
-    import from jaclang.compiler.tools.doc_ir_gen_pass { DocIRGenPass }
-    import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
-    import from jaclang.compiler.driver.program { JacProgram }
-    return run_utility(
-        UtilityProduct.FORMAT,
-        run_utility(UtilityProduct.DOC, mod, JacProgram()).ir_out,
-        JacProgram()
-    ).ir_out.gen.jac;
+    import copy;
+    import from jaclang.compiler.pipeline.executor { execute_passes }
+    import from jaclang.compiler.pipeline.schedule { get_format_sched }
+    import from jaclang.compiler.session.session { JacProgram }
+    program = JacProgram();
+    syntax = copy.deepcopy(mod);
+    assert isinstance(syntax, uni.Module);
+    syntax.thaw_structure();
+    execute_passes(program, syntax, get_format_sched());
+    return artifact_for(syntax).jac;
 }

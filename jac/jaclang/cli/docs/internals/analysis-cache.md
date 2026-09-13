@@ -30,7 +30,7 @@ module exports is small, stable, and exactly what importers consume.
 ## The three sections
 
 All three live in the module's cache JIR
-([`compiler/driver/jir.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/jir.jac)),
+([`compiler/session/cache/artifact_codec.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/session/cache/artifact_codec.jac)),
 written through the same atomic merge-write funnel as the bytecode sections,
 and gated by the same `SEC_MODKEY`/`SEC_ENVKEY` freshness checks.
 
@@ -41,7 +41,7 @@ The module's exported surface in the **stubcat-generalized encoding**
 typed symbols with evaluated types, signatures, overloads, archetype
 layouts, enum members, plus the access, ownership, binding-kind, and native
 capability facts that the cross-module checkers read. The payload is a
-single-module stub catalog produced by `CatalogWriter` in *boundary* mode:
+single-module stub catalog produced by `CatalogBuilder` in *boundary* mode:
 anything homed in another module is written as a stable **symbolic
 cross-reference** (module path plus dotted symbol path), never as a pickled
 object graph, so payloads stay small and identity survives round trips.
@@ -57,7 +57,7 @@ the module would defeat the cutoff for every importer. Declared and pinned
 placement is coerced at parse time in every flavor and is part of the
 interface.
 
-`compiler/types/stubcat/modiface.jac` holds the build/open entry points;
+`compiler/analysis/types/stubcat/modiface.jac` holds the build/open entry points;
 the typeshed stub catalog itself is the degenerate case of the same format
 (whole-world boundary, no cross-references), which is why one codec serves
 both.
@@ -167,7 +167,7 @@ always on where analysis happens.
 |------|------|
 | `JacCompiler._compile_once` | Serves eligible compiles from the cache before parsing; persists the analysis sections after the pipeline runs |
 | `JacProgram.load_dependency_module` | Hub first (dirty buffers shadow disk), then the registry, then a source compile on a miss; records dependency edges |
-| `JacProgram.iface_registry` (`compiler/driver/ifacecache.jac`) | Per-program registry: entry freshness, dep-hash validation, hydration, replay, verify |
+| `JacProgram.iface_registry` (`compiler/session/imports.jac`) | Per-program registry: entry freshness, dep-hash validation, hydration, replay, verify |
 | `write_module_cache` | Atomic merge-write: analysis writers and the bytecode writer share one JIR per module |
 | LSP `_fanout_dependents` | Seeds the reverse-import index from persisted `SEC_DEPS` on first use, so who-imports-X fan-out works from a cold start |
 

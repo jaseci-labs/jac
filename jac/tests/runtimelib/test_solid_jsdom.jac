@@ -18,6 +18,8 @@ it runs only when `JAC_CLIENT_INTEGRATION` is set (mirrors `test_preact_e2e.jac`
 Core CI exercises it in a dedicated `test-solid-jsdom` job that sets that flag.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import json;
 import os;
 import re;
@@ -26,17 +28,16 @@ import subprocess;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.backends.es { EsastGenPass }
-import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
+import from jaclang.compiler.analysis.types.type_checker_pass { TypeCheckPass }
 import from jaclang.client.client_surface { with_runtime_globals }
 import from tests.runtimelib.react_jsdom_harness { write_runtime_support }
 import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
 import from jaclang.client.bun_installer { get_bun }
 import from jaclang.client.solid_entry { build_pages_solid_entry_script }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures"),
      # Real npm deps. The solid-* / zod versions mirror the canonical Solid set in
@@ -803,8 +804,8 @@ def _compile_solid(path: str) -> str {
         if not issubclass(e.from_pass, TypeCheckPass)
     ];
     assert not fatal , f"compile errors in {path}: {[str(e) for e in fatal]}";
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=SolidBackend());
-    return es_to_js(es_pass.ir_out.gen.es_ast);
+    es_pass = run_pass(PassIdentity.EsastGenPass, ir, prog, backend=SolidBackend());
+    return artifact_for(es_pass.ir_out).js;
 }
 
 """Point the shim's dotted core import at a flat sibling (mirrors the bundler)."""

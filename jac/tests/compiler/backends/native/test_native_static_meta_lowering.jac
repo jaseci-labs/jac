@@ -15,9 +15,10 @@ has` is class-level, so it takes no part in the instance dataclass field
 order and none of the instance layout rules.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 import from tests.support { JAC_ROOT }
 
 glob FIXTURES = os.path.join(
@@ -66,13 +67,22 @@ def diag_codes(entries: list) -> list {
 test "class-level tuple metadata lowers natively" {
     (prog, ir) = compile_native("static_tuple_meta.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for static tuple metadata";
+    assert ir is not None and artifact_for(ir).llvm_ir , "no native IR for static tuple metadata";
+}
+
+test "an imported static field is declared by its consumer and defined once" {
+    (prog, ir) = compile_native("imported_static_consumer.jac");
+    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+    assert '@"Counter.VALUE" = external global i64' in str(artifact_for(ir).llvm_ir);
+    (owner_prog, owner) = compile_native("imported_static_owner.jac");
+    assert not owner_prog.errors_had , f"{[str(e) for e in owner_prog.errors_had]}";
+    assert '@"Counter.VALUE" = global i64 42' in str(artifact_for(owner).llvm_ir);
 }
 
 
 test "class-level tuple metadata keeps the literal's layout" {
     (_prog, ir) = compile_native("static_tuple_meta.jac");
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     assert '@"Access.PROVIDES" = global {i8*}*' in text , (
         "the widened `tuple` annotation did not narrow to the one-element "
         "tuple of str its constant declares; a scalar slot here would make "
@@ -101,7 +111,7 @@ test "a defaulted static has does not order instance fields" {
         f"{[str(e) for e in prog.errors_had]}"
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for static-first archetype";
+    assert ir is not None and artifact_for(ir).llvm_ir , "no native IR for static-first archetype";
 }
 
 
@@ -114,15 +124,15 @@ test "the static has ordering rule matches on the server lane" {
 test "a TypeAlias glob lowers as a compile-time declaration" {
     (prog, ir) = compile_native("type_alias_glob.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the alias module";
+    assert ir is not None and artifact_for(ir).llvm_ir , "no native IR for the alias module";
 }
 
 
 test "a type-parameter glob lowers as a compile-time declaration" {
     (prog, ir) = compile_native("type_param_glob.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the type-param module";
-    assert '@"T"' not in str(ir.gen.llvm_ir) , (
+    assert ir is not None and artifact_for(ir).llvm_ir , "no native IR for the type-param module";
+    assert '@"T"' not in str(artifact_for(ir).llvm_ir) , (
         "the type variable was given storage instead of being erased"
     );
 }
@@ -131,8 +141,8 @@ test "a type-parameter glob lowers as a compile-time declaration" {
 test "a widened tuple glob lowers from its constant" {
     (prog, ir) = compile_native("tuple_glob_meta.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the tuple glob";
-    assert '@"MOVE_EXEMPT" = global {i8*, i8*}*' in str(ir.gen.llvm_ir) , (
+    assert ir is not None and artifact_for(ir).llvm_ir , "no native IR for the tuple glob";
+    assert '@"MOVE_EXEMPT" = global {i8*, i8*}*' in str(artifact_for(ir).llvm_ir) , (
         "the glob did not take the two-element str layout its constant declares"
     );
 }

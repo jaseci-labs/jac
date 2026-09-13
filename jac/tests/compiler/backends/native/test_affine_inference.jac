@@ -7,14 +7,12 @@ reclamation point is unobservable. Types with a `drop` hook are excluded
 by the codegen gate, so hook timing never changes. Zero user action.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
+import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "affine_inference.jac"
@@ -26,7 +24,7 @@ def _compile_ir -> str {
         prog = JacProgram();
         ir = prog.compile(file_path=FIXTURE, options=CompileOptions(aot_mode=True));
         assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-        return str(ir.gen.llvm_ir);
+        return str(artifact_for(ir).llvm_ir);
     } finally {
         pop_native_target(prev);
     }

@@ -33,7 +33,7 @@ import from jaclang.runtime.archetype {
     light_hop,
     light_hop_answers
 }
-import from jaclang.compiler.frontend.constant { EdgeDir, colors }
+import from jaclang.compiler.ir.enums { EdgeDir, colors }
 import from jaclang.runtime.graph_query { GraphQuery, QHop }
 import from jaclang.runtime.constructs {
     AccessLevel,
@@ -49,18 +49,18 @@ import from jaclang.runtime.constructs {
     WalkerAnchor,
     WalkerArchetype
 }
-import from jaclang.compiler.driver.modresolver {
+import from jaclang.compiler.session.resolver {
     infer_language,
     find_jac_project_root,
     push_import_base,
     pop_import_base
 }
-import from jaclang.compiler.driver.mtp { Info }
+import from jaclang.compiler.lowering.mtir { Info }
 import type from jaclang.byllm.mtir { MTRuntime }
 import type from jaclang.cli.console { JacConsole as ConsoleImpl }
-import type from jaclang.compiler.driver.compiler { JacCompiler }
-import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.driver.selfhost { SelfHostCache }
+import type from jaclang.compiler.session.compiler { JacCompiler }
+import type from jaclang.compiler.session.session { JacProgram }
+import type from jaclang.compiler.bootstrap.selfhost { SelfHostCache }
 import type from jaclang.client.client_bundle { ClientBundle, ClientBundleBuilder }
 import type from jaclang.runtime.context { ExecutionContext }
 import type from jaclang.server.server { JacAPIServer as JacServer }

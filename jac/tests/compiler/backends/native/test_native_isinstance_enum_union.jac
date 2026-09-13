@@ -19,6 +19,7 @@ reason in both directions.
 Refs #8067, #8039
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support {
@@ -30,14 +31,14 @@ import from tests.support {
 }
 import jaclang;
 
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
 test "an enum arm over an enum/object/None union answers by tag" {
-    (eng, _) = compile_native("isinstance_enum_union.jac");
+    (native_program, eng, _) = compile_native("isinstance_enum_union.jac");
     f = get_func(eng, "chk_enum", ctypes.c_bool, ctypes.c_int64);
     assert f(1) is True , "an enum member must match its own enum class";
     assert f(2) is False , "an object must not match the enum class";
@@ -45,7 +46,7 @@ test "an enum arm over an enum/object/None union answers by tag" {
 }
 
 test "the object arm of the same union is unaffected by the enum member" {
-    (eng, _) = compile_native("isinstance_enum_union.jac");
+    (native_program, eng, _) = compile_native("isinstance_enum_union.jac");
     f = get_func(eng, "chk_node", ctypes.c_bool, ctypes.c_int64);
     assert f(2) is True , "the object must match its own archetype";
     assert f(1) is False , (
@@ -56,7 +57,7 @@ test "the object arm of the same union is unaffected by the enum member" {
 }
 
 test "UniScopeNode.insert's access-spec resolution answers correctly" {
-    (eng, _) = compile_native("isinstance_enum_union.jac");
+    (native_program, eng, _) = compile_native("isinstance_enum_union.jac");
     f = get_func(eng, "resolve_access", ctypes.c_int64, ctypes.c_int64);
     assert f(1) == 1 , "a bare Access member resolves to itself (PUBLIC)";
     assert f(2) == 2 , "a node resolves through its access_type (PROTECTED)";
@@ -68,7 +69,7 @@ test "the same resolution with the union declared on the parameter" {
     # assigning `Access.PUBLIC` leaves an EnumMemberType in the joined union,
     # while a declared parameter leaves the enum ClassType. Both have to
     # classify as the enum that owns the tag.
-    (eng, _) = compile_native("isinstance_enum_union.jac");
+    (native_program, eng, _) = compile_native("isinstance_enum_union.jac");
     f = get_func(eng, "resolve_access_param", ctypes.c_int64, ctypes.c_int64);
     assert f(1) == 1 , "a bare Access member resolves to itself (PUBLIC)";
     assert f(2) == 2 , "a node resolves through its access_type (PROTECTED)";
@@ -76,7 +77,7 @@ test "the same resolution with the union declared on the parameter" {
 }
 
 test "an enum against bool still owns the int tag alone" {
-    (eng, _) = compile_native("isinstance_enum_union.jac");
+    (native_program, eng, _) = compile_native("isinstance_enum_union.jac");
     f = get_func(eng, "chk_enum_over_bool", ctypes.c_bool, ctypes.c_int64);
     assert f(1) is True , "the enum member matches";
     assert f(2) is False , "True is tag 7, not the enum's tag 0";
@@ -97,8 +98,10 @@ test "an enum sharing the int tag is refused, not answered by tag" {
         "the tag-clash refusal is owned by chk_enum_over_int(), which must "
         f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "chk_enum_over_int" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "chk_enum_over_int" not in ir_layout.functions , (
         "isinstance against an enum that shares the int tag must demote the "
         "asking function out of the native layout, never answer by tag"
     );

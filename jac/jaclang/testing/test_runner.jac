@@ -28,10 +28,7 @@ glob _WARNING_IGNORES: list[tuple[str, str, str]] = [
          ("", "DeprecationWarning", "cattrs")
      ];
 
-glob _WORKER_MEM_BYTES: int = 2 * 1024 * 1024 * 1024,
-     _MEM_HEADROOM: float = 0.6,
-     _MAX_AUTO_JOBS: int = 12,
-     _PROGRESS_WIDTH: int = 72;
+glob _PROGRESS_WIDTH: int = 72;
 
 glob _CRASH_LOG: list[str] = [""],
      _TEST_BASES: list[str] = [],
@@ -101,7 +98,9 @@ import from jaclang.cli.workpool {
     worker_rss_mb as _worker_rss_mb
 }
 
-def _test_retire(served: int, rss_mb: int) -> bool;
+def _test_retire(served: int, rss_mb: int, budget_mb: int = 0) -> bool;
+def _test_rss_cap_mb -> int;
+def _test_worker_budget_mb -> int;
 
 def _run_plan(
     plan: TestPlan,
@@ -111,7 +110,8 @@ def _run_plan(
     maxfail: (int | None),
     jobs: int,
     isolate: (set[str] | None),
-    inline: bool
+    inline: bool,
+    budget_mb: int = 0
 ) -> None;
 
 def discover(

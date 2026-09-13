@@ -7,7 +7,7 @@ impl EsastGenPass.exit_switch_case with uni.SwitchCase exit {
         );
     }
     body_stmts = self._collect_stmt_body(here.body);
-    here.gen.es_ast = self.sync_loc(
+    artifact_for(here).es_ast = self.sync_loc(
         es.SwitchCase(`test=case_test, consequent=body_stmts), jac_node=here
     );
 }
@@ -18,12 +18,15 @@ impl EsastGenPass.exit_switch_stmt with uni.SwitchStmt exit {
     );
     cases: list[es.SwitchCase] = [];
     for stmt in here.cases {
-        if (stmt.gen.es_ast and isinstance(stmt.gen.es_ast, es.SwitchCase)) {
-            switch_case = cast(es.SwitchCase, stmt.gen.es_ast);
+        if (
+            artifact_for(stmt).es_ast
+            and isinstance(artifact_for(stmt).es_ast, es.SwitchCase)
+        ) {
+            switch_case = cast(es.SwitchCase, artifact_for(stmt).es_ast);
             cases.append(switch_case);
         }
     }
-    here.gen.es_ast = self.sync_loc(
+    artifact_for(here).es_ast = self.sync_loc(
         es.SwitchStatement(discriminant=`test, cases=cases), jac_node=here
     );
 }
@@ -77,7 +80,9 @@ impl EsastGenPass.exit_match_stmt with uni.MatchStmt exit {
             mcase.pattern, self.sync_loc(es.Identifier(name=subj_name), jac_node=mcase)
         );
         if not ok {
-            here.gen.es_ast = self.sync_loc(es.BlockStatement(body=[]), jac_node=here);
+            artifact_for(here).es_ast = self.sync_loc(
+                es.BlockStatement(body=[]), jac_node=here
+            );
             return;
         }
         body_stmts = self._collect_stmt_body(mcase.body);
@@ -147,7 +152,7 @@ impl EsastGenPass.exit_match_stmt with uni.MatchStmt exit {
             )
         );
     }
-    here.gen.es_ast = stmts;
+    artifact_for(here).es_ast = stmts;
 }
 
 impl EsastGenPass._match_subj_member(subj: es.Expression, field: str) -> es.Expression {

@@ -22,7 +22,7 @@ def _find_project_toml() -> str | None:
     """Walk up from the cwd to the nearest ``jac.toml``; return its path or None.
 
     Deliberate plain-Python MIRROR of the single canonical resolver
-    ``jaclang.compiler.frontend.helpers.find_project_root``. It cannot import that one
+    ``jaclang.compiler.frontend.source_io.find_project_root``. It cannot import that one
     because this module runs during ``sitecustomize``/launcher boot, BEFORE
     ``import jaclang`` is possible -- it is what sets jaclang up. Keep the walk
     semantics (nearest jac.toml, cwd-anchored at boot) in lockstep with the

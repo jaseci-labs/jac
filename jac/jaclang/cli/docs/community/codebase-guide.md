@@ -32,7 +32,7 @@ Here's a quick map from contribution type to the right part of the codebase:
 |--------------|-----------|
 | Fix a compiler bug | `jac/jaclang/compiler/passes/` (shared analysis) + `compiler/backends/py/` (Python target) |
 | Add a language feature | `jac/jaclang/compiler/frontend/` (parser + AST) + `compiler/passes/` + `compiler/backends/` (all targets) |
-| Fix type checking | `jac/jaclang/compiler/types/` + `compiler/passes/type_checker_pass.jac` |
+| Fix type checking | `jac/jaclang/compiler/types/` + `compiler/analysis/types/type_checker_pass.jac` |
 | Work on native compilation | `jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/` |
 | Work on JS compilation | `jac/jaclang/compiler/backends/es/` |
 | Improve the CLI | `jac/jaclang/cli/commands/` |
@@ -99,7 +99,7 @@ A fourth category -- `compiler/tools/` -- contains non-compilation passes for th
 
 ### Compilation Pass Ordering
 
-The compiler orchestrator in `compiler/driver/compiler.jac` defines several pass schedules. For the default Python target, the full pipeline runs roughly as follows:
+The compiler orchestrator in `compiler/session/compiler.jac` defines several pass schedules. For the default Python target, the full pipeline runs roughly as follows:
 
 **IR generation** (`get_ir_gen_sched`):
 
@@ -127,7 +127,7 @@ The compiler orchestrator in `compiler/driver/compiler.jac` defines several pass
 5. `JcirGenPass` -- Lower the unitree into the compact codegen IR container
 6. `JcirBytecodeGenPass` -- Rebuild the Python AST from the container and compile it to bytecode
 
-See `compiler/driver/compiler.jac` for the authoritative ordering -- it uses re-entrancy guards during bootstrap that slightly alter the schedule when the compiler is compiling itself.
+See `compiler/session/compiler.jac` for the authoritative ordering -- it uses re-entrancy guards during bootstrap that slightly alter the schedule when the compiler is compiling itself.
 
 ### `compiler/backends/native/` -- Native Compilation
 

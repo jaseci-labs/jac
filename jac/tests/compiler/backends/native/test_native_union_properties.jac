@@ -4,7 +4,7 @@ import ctypes;
 import from tests.support { compile_native }
 
 test "unrelated union members dispatch their collection properties" {
-    (engine, _) = compile_native("union_properties.jac");
+    (native_program, engine, _) = compile_native("union_properties.jac");
     address = engine.get_function_address("probe");
     assert address != 0;
     probe = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address);
@@ -14,7 +14,7 @@ test "unrelated union members dispatch their collection properties" {
 }
 
 test "union field writes respect concrete offsets and optional ownership" {
-    (engine, _) = compile_native("union_field_assignment.jac");
+    (native_program, engine, _) = compile_native("union_field_assignment.jac");
     address = engine.get_function_address("probe");
     assert address != 0;
     probe = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address);

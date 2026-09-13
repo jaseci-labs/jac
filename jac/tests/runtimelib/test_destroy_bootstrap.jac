@@ -2,7 +2,7 @@ import sys;
 import importlib;
 import from unittest.mock { patch }
 import from jaclang { JacRuntime as Jac }
-import from jaclang.compiler.driver.compiler { JacCompiler }
+import from jaclang.compiler.session.compiler { JacCompiler }
 
 test "deleting ordinary values does not import graph cleanup modules" {
     # Cache invalidation can delete values while these modules are importing.

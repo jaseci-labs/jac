@@ -1,15 +1,16 @@
 """Entry declarations are boundaries; ordinary imports inherit compilation context."""
+import from jaclang.compiler.session.context { program_cache_identity }
 import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.compilation_context {
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.context {
     bind_options,
     context_program,
     cache_scope
 }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.placement.workspace {
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.workspace {
     app_for_path,
     workspace_for_path,
     app_fact_digest
@@ -41,10 +42,7 @@ test "only declared entries have a filesystem app identity" {
 
 test "workspace probes scale with modules within a compilation request" {
     import from unittest.mock { patch }
-    import from jaclang.compiler.driver.compilation_context {
-        compilation_scope,
-        context_app
-    }
+    import from jaclang.compiler.session.context { compilation_scope, context_app }
     with TemporaryDirectory() as td {
         base = Path(td);
         workspace(base);
@@ -85,7 +83,7 @@ test "workspace probes scale with modules within a compilation request" {
 }
 
 test "application identity scopes observe workspace edits between requests" {
-    import from jaclang.compiler.driver.compilation_context { context_app }
+    import from jaclang.compiler.session.context { context_app }
     with TemporaryDirectory() as td {
         base = Path(td);
         workspace(base);
@@ -133,6 +131,68 @@ test "a normal import inherits its app and an entry import changes context" {
     }
 }
 
+test "context identity resolves implicit defaults without merging distinct targets" {
+    import copy;
+    import from unittest.mock { patch }
+    import jaclang.compiler.session.target_options as targets;
+    import from jaclang.compiler.session.context { context_identity }
+    implicit = CompileOptions(aot_mode=True, entry_point='/tmp/context-entry.jac');
+    explicit = copy.copy(implicit);
+    explicit.default_codespace = 'native';
+    with patch.object(targets, 'effective_default_codespace', return_value='native') {
+        assert context_identity(implicit) == context_identity(explicit);
+        program = JacProgram();
+        selected = context_program(program, implicit);
+        assert context_program(program, explicit) is selected;
+        for name in (
+            'default_codespace',
+            'force_codespace',
+            'target_app',
+            'entry_point'
+        ) {
+            distinct = copy.copy(explicit);
+            setattr(distinct, name, 'client');
+            assert context_program(program, distinct) is not selected;
+        }
+    }
+    with patch.object(targets, 'effective_default_codespace', return_value='server') {
+        assert context_identity(implicit) != context_identity(explicit);
+    }
+    assert implicit.default_codespace == '';
+}
+
+test "native imports reuse the context selected by the effective project default" {
+    import from unittest.mock { patch }
+    import jaclang.compiler.session.target_options as targets;
+    import from jaclang.compiler.backends.common.artifact_store { artifact_for }
+    with TemporaryDirectory() as td {
+        entry_path = Path(td) / 'entry.jac';
+        helper = Path(td) / 'helper.jac';
+        entry_path.write_text(
+            'import from helper { increment }\n'
+            'def answer(value: int) -> int { return increment(value); }\n'
+        );
+        helper.write_text('def increment(value: int) -> int { return value + 1; }\n');
+        program = JacProgram();
+        compiler = program._get_compiler();
+        with patch.object(
+            targets, 'effective_default_codespace', return_value='native'
+        ), patch.object(compiler, 'parse_str', wraps=compiler.parse_str) as parse {
+            module = program.compile(
+                str(entry_path),
+                options=CompileOptions(
+                    aot_mode=True, force_target_program=True, no_ir_cache=True
+                )
+            );
+            assert not program.errors_had , [str(e) for e in program.errors_had];
+            assert artifact_for(module).llvm_ir is not None;
+            assert len(program.contexts) == 1;
+            assert sum(call.args[1] == str(helper) for call in parse.call_args_list)
+                == 1;
+        }
+    }
+}
+
 test "shared syntax produces distinct app facts in either request order" {
     for names in [('web', 'api'), ('api', 'web')] {
         with TemporaryDirectory() as td {
@@ -161,7 +221,7 @@ test "shared syntax produces distinct app facts in either request order" {
 }
 
 test "contextual artifacts cannot overwrite another app cache slot" {
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.session.cache.artifact_codec { get_module_cache_path }
     with TemporaryDirectory() as td {
         base = Path(td);
         workspace(base);
@@ -172,7 +232,7 @@ test "contextual artifacts cannot overwrite another app cache slot" {
                 str(base / (name + '.jac')), program, CompileOptions()
             );
             selected = context_program(program, options);
-            with cache_scope(selected.context_key) {
+            with cache_scope(program_cache_identity(selected), selected.options) {
                 slots.append(get_module_cache_path(str(base / 'shared.jac')));
             }
         }
@@ -182,7 +242,7 @@ test "contextual artifacts cannot overwrite another app cache slot" {
 
 test "placement reuses an untyped dependency tree across app contexts" {
     import from unittest.mock { patch }
-    import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
+    import from jaclang.compiler.pipeline.contracts { AnalysisFact }
     with TemporaryDirectory() as td {
         base = Path(td);
         workspace(base);
@@ -195,7 +255,7 @@ test "placement reuses an untyped dependency tree across app contexts" {
         first = web.load_dependency_module(path, need_tree=True);
         api = context_program(web, bind_options(path, web, web.options));
         assert api is not web;
-        assert not api.analysis.analyses_run.provides(first, AnalysisFact.TYPE_OF);
+        assert not api.analysis.provides(first, AnalysisFact.TYPE_OF);
         with patch.object(
             web,
             'compile',
@@ -221,8 +281,36 @@ test "implicit projects still identify their entry" {
     }
 }
 
+test "repeated dependency imports reuse their prepared contextual facts" {
+    import from jaclang.compiler.pipeline.keys { PLACEMENT_SUMMARY }
+    with TemporaryDirectory() as td {
+        base = Path(td);
+        (base / 'jac.toml').write_text(
+            '[project]\nname="cached"\n[placement]\ndefault="server"\n'
+        );
+        path = str(base / 'helper.jac');
+        Path(path).write_text('def answer -> int { return 42; }\n');
+        options = CompileOptions(no_cgen=True, iface_ok=True, project_root=td);
+        cold = JacProgram();
+        cold = context_program(cold, bind_options(path, cold, options));
+        assert cold.iface_registry().ensure(path) is not None;
+        assert not cold.errors_had;
+        warm = JacProgram();
+        warm = context_program(warm, bind_options(path, warm, options));
+        module = warm.load_dependency_module(path);
+        context = warm.module_context(module);
+        assert module.stub_only;
+        summary = context.analysis.lookup(path, PLACEMENT_SUMMARY);
+        assert summary is not None;
+        runs = dict(context.analysis.pass_runs);
+        assert context.load_dependency_module(path) is module;
+        assert context.analysis.pass_runs == runs;
+        assert context.analysis.lookup(path, PLACEMENT_SUMMARY) is summary;
+    }
+}
+
 test "application traversal checks imported bodies on cold and warm requests" {
-    import from jaclang.compiler.driver.pipeline { compile_application }
+    import from jaclang.compiler.api { compile_application }
     with TemporaryDirectory() as td {
         base = Path(td);
         entry_path = str(base / 'main.jac');

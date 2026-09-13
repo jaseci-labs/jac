@@ -7,12 +7,13 @@ one bulk chunk free. These tests pin the allocation routing at the IR level
 and the drop-hook/teardown behavior through the JIT.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, get_func }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import jaclang.compiler.ir.schema as uni;
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
@@ -32,7 +33,7 @@ def compile_native(
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);
 }
@@ -46,7 +47,7 @@ def calls_to(body: str, name: str) -> int {
 def fn_ir(ir: uni.Module, name: str) -> str {
     out: list[str] = [];
     inside = False;
-    for ln in str(ir.gen.llvm_ir).split("\n") {
+    for ln in str(artifact_for(ir).llvm_ir).split("\n") {
         if not inside
             and ln.startswith("define")
             and ((('@"' + name + '"') in ln) or (("@" + name + "(") in ln)) {

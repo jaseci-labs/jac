@@ -12,22 +12,22 @@ import from pathlib { Path }
 import from jaclang.cli.console { console }
 
 impl compile_cl_module(filepath: str) -> tuple[str, list, dict, list] {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     prog = JacProgram();
     mod = prog.compile(str(filepath));
     if prog.errors_had {
         errs = "\n".join([str(e) for e in prog.errors_had]);
         raise RuntimeError(f"Failed to compile {filepath}:\n{errs}");
     }
-    manifest = mod.gen.client_manifest;
+    manifest = artifact_for(mod).client_manifest;
     tests = list(getattr(manifest, "tests", []) or []);
     imports = dict(getattr(manifest, "imports", {}) or {});
     server_imports = list(getattr(manifest, "server_imports", []) or []);
-    return (mod.gen.js, tests, imports, server_imports);
+    return (artifact_for(mod).js, tests, imports, server_imports);
 }
 
 impl _compile_runtime -> tuple[str, str] {
-    import from jaclang.compiler.driver.modresolver { resolve_jac_virtual_module_path }
+    import from jaclang.compiler.session.resolver { resolve_jac_virtual_module_path }
 
     runtime_src = resolve_jac_virtual_module_path("@jac/runtime");
     if (not runtime_src) or (not Path(runtime_src).exists()) {
@@ -535,16 +535,16 @@ impl module_is_client(filepath: str) -> bool {
     if path in _COLOR_CACHE {
         return _COLOR_CACHE[path];
     }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.frontend.constant { CodeContext }
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.options { CompileOptions }
+    import from jaclang.compiler.ir.enums { CodeContext }
+    import from jaclang.compiler.session.session { JacProgram }
     result = False;
     try {
         mod = JacProgram().compile(path, options=CompileOptions(symtab_ir_only=True));
         result = mod is not None
             and mod.declares_codespace(CodeContext.CLIENT, path_hint=path);
     } except Exception as probe_exc {
-        import from jaclang.compiler.driver.source_failures {
+        import from jaclang.compiler.bootstrap.source_failures {
             CompilerSourceError,
             compiler_source_failure_origin
         }

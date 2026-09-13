@@ -28,11 +28,11 @@ Gap index:
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.analysis.types.type_checker_pass { TypeCheckPass }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures"),
      CHECKER_FIXTURES = os.path.join(
@@ -411,7 +411,7 @@ test "gap 47 undeclared attr assignment on archetypes" {
 test "gap 48 type checker self check" {
     program = JacProgram();
     tc_path = os.path.join(
-        JAC_ROOT, "jaclang", "compiler", "passes", "type_checker_pass.jac"
+        JAC_ROOT, "jaclang", "compiler", "analysis", "types", "type_checker_pass.jac"
     );
     mod = program.compile(tc_path);
 
@@ -542,7 +542,7 @@ test "gap 51 property on union type returns function type" {
 # (cannot access attribute) on every `i.name` / `i.value` and a fan of
 # W1051 warnings on every dependent expression.
 #
-# Real-world failure: jac/jaclang/compiler/frontend/impl/constant.impl.jac:9-15
+# Real-world failure: jac/jaclang/compiler/ir/impl/enums.impl.jac:9-15
 #   impl JacSemTokenType.as_str_list -> list {
 #       return [i.name.lower() for i in JacSemTokenType if i.name];
 #   }
@@ -583,7 +583,7 @@ test "gap 52 class enum iteration yields enum instance" {
 # Impact: 1,073 false E1032 in lexer.impl.jac, 211 in parser.impl.jac.
 # =========================================================================
 test "gap 53 discover_base_file finds .jac for impl file" {
-    import from jaclang.compiler.driver.bccache { discover_base_file }
+    import from jaclang.compiler.session.cache.annexes { discover_base_file }
     impl_path = os.path.join(FIXTURES, "na_impl", "impl", "counter.impl.jac");
     base = discover_base_file(impl_path);
     assert base is not None and base.endswith("counter.jac") , (

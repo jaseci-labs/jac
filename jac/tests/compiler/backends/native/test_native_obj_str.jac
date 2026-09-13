@@ -46,27 +46,27 @@ def capture_stdout(fn: object) -> bytes {
 
 # --- str(obj) ---
 test "str(obj) dispatches to __str__" {
-    (eng, _) = compile_native("obj_str.jac");
+    (native_program, eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "obj_str", ctypes.c_char_p);
     assert f() == b"hello";
 }
 
 test "str(obj) with a computed (f-string) __str__" {
-    (eng, _) = compile_native("obj_str.jac");
+    (native_program, eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "obj_str_computed", ctypes.c_char_p);
     assert f() == b"Q(42)";
 }
 
 # --- f"{obj}" ---
 test "f-string interpolates obj via __str__" {
-    (eng, _) = compile_native("obj_str.jac");
+    (native_program, eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "obj_in_fstring", ctypes.c_char_p);
     assert f() == b"[world]";
 }
 
 # --- default repr fallback (no __str__) ---
 test "str(obj) without __str__ falls back to default repr, not garbage" {
-    (eng, _) = compile_native("obj_str.jac");
+    (native_program, eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "obj_default_repr", ctypes.c_char_p);
     got = f();
     assert got.startswith(b"<Plain object at 0x") , f"got: {got!r}";
@@ -75,20 +75,20 @@ test "str(obj) without __str__ falls back to default repr, not garbage" {
 
 # --- polymorphism (vtable dispatch through a base-typed receiver) ---
 test "str(obj) resolves the runtime subclass __str__" {
-    (eng, _) = compile_native("obj_str.jac");
+    (native_program, eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "poly_str", ctypes.c_char_p);
     assert f() == b"Dog:rex";
 }
 
 test "str(obj) on a base instance uses the base __str__" {
-    (eng, _) = compile_native("obj_str.jac");
+    (native_program, eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "base_str", ctypes.c_char_p);
     assert f() == b"Animal:generic";
 }
 
 # --- null receiver (T | None) ---
 test "str(obj) on a null (None) struct pointer renders \"None\", not a crash" {
-    (eng, _) = compile_native("obj_str.jac");
+    (native_program, eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "maybe_str", ctypes.c_char_p, ctypes.c_int64);
     assert f(1) == b"set";
     assert f(0) == b"None";
@@ -96,7 +96,7 @@ test "str(obj) on a null (None) struct pointer renders \"None\", not a crash" {
 
 # --- print(obj) ---
 test "print(obj) writes __str__ to stdout" {
-    (eng, _) = compile_native("obj_str.jac");
+    (native_program, eng, _) = compile_native("obj_str.jac");
     `entry = get_func(eng, "jac_entry", None);
     got = capture_stdout(`entry);
     assert got == b"printed\n" , got;

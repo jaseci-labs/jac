@@ -9,7 +9,7 @@ import from typing { get_type_hints }
 import from jaclang.data.serializer { Serializer }
 import from jaclang.client.client_bundle { ClientBundleError, MissingBunError }
 import from jaclang.runtime.exceptions { ReadOnlyRetry, WriteConflict }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.compiler.ir.enums { Constants as Con }
 import from jaclang.server.net { PORT_RETRY_LIMIT }
 import from jaclang.server.serving.server { ServingServer }
 import type from jaclang.runtime.constructs { Archetype }

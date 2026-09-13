@@ -413,6 +413,8 @@ class ClassDef:
     decorators: list = field(default_factory=list)
     is_object: bool = False
     arch_kind: str = ""
+    source_endpoint: str = ""
+    target_endpoint: str = ""
 
 
 @dataclass
@@ -1003,6 +1005,7 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
         if not origin:
             raise ParseError(f"line {tok.line}: edge reference needs an origin")
         cur = origin
+        after = j + 1
         for n, (k, length, direction, etype, flt) in enumerate(hops):
             end = k + length
             nxt = hops[n + 1][0] if n + 1 < len(hops) else len(inner)
@@ -1018,14 +1021,24 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
                         f"line {tok.line}: filter comprehensions are outside the seed subset"
                     )
             if len(hops) == 1 and not flt and not trailing:
+                index: int | None = None
+                if not edges_only and after < len(tokens) and tokens[after].type == TT.LBRACKET:
+                    end_index = after + 1
+                    while end_index < len(tokens) and tokens[end_index].type != TT.RBRACKET:
+                        end_index += 1
+                    raw_index = "".join(t.value for t in tokens[after + 1:end_index])
+                    if end_index < len(tokens) and raw_index in ("0", "-1"):
+                        index = int(raw_index)
+                        after = end_index + 1
                 # One hop, no predicate, no node filter: the direct adjacency read.
                 cur = _osp_call(
-                    "hop0",
+                    "hop0" if index is None else "hop_at0",
                     [
                         cur,
                         [_tok(TT.NUMBER, str(direction), tok)],
                         [_tok(TT.NAME, etype or "None", tok)],
-                        [_tok(TT.NAME, "True" if edges_only else "False", tok)],
+                        [_tok(TT.NAME, "True" if edges_only else "False", tok)]
+                        if index is None else [_tok(TT.NUMBER, str(index), tok)],
                     ],
                     tok,
                 )
@@ -1041,7 +1054,7 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
                 args.append(_lower_edge_refs(trailing))
             cur = _osp_call("refs0", args, tok)
         out.extend(cur)
-        i = j + 1
+        i = after
     return out
 
 
@@ -1608,7 +1621,7 @@ class Parser:
                 return self._parse_class([])
             if v == "enum":
                 return self._parse_enum([])
-            if v == "def" or v == "can":
+            if v in ("def", "can", "override"):
                 return self._parse_funcdef([])
             if v == "static":
                 if self._peek(1).type == TT.NAME and self._peek(1).value == "has":
@@ -1707,7 +1720,7 @@ class Parser:
             return self._parse_class(decorators)
         if v == "enum":
             return self._parse_enum(decorators)
-        if v in ("def", "static", "async", "can"):
+        if v in ("def", "static", "async", "can", "override"):
             return self._parse_funcdef(decorators)
         if v == "impl":
             return self._parse_impl(decorators)
@@ -1779,6 +1792,19 @@ class Parser:
         if self._match(TT.LPAREN):
             bases = self._collect_until(TT.RPAREN)
             self._expect(TT.RPAREN)
+        source_endpoint = ""
+        target_endpoint = ""
+        if self._match(TT.COLON):
+            if arch_kind != "edge":
+                raise ParseError("Only edges can declare endpoint types")
+            endpoint_tokens = self._collect_tokens_until(TT.LBRACE)
+            divider = next((i for i in range(len(endpoint_tokens) - 1)
+                            if endpoint_tokens[i].value == "-"
+                            and endpoint_tokens[i + 1].type == TT.ARROW), None)
+            if divider is None or divider == 0 or divider + 2 == len(endpoint_tokens):
+                raise ParseError("An edge endpoint clause requires Source --> Target")
+            source_endpoint = tokens_to_str(endpoint_tokens[:divider])
+            target_endpoint = tokens_to_str(endpoint_tokens[divider + 2:])
         self._expect(TT.LBRACE)
         body = self._parse_body()
         self._expect(TT.RBRACE)
@@ -1790,6 +1816,8 @@ class Parser:
             decorators=decorators,
             is_object=is_dc,
             arch_kind=arch_kind,
+            source_endpoint=source_endpoint,
+            target_endpoint=target_endpoint,
         )
 
     def _parse_type_alias(self) -> TypeAliasDef:
@@ -1877,6 +1905,8 @@ class Parser:
         is_static = False
         is_classmethod = False
         is_async = False
+        # Override is checked by semantic analysis; it has no runtime wrapper.
+        self._match(TT.NAME, "override")
         # Handle modifiers: class/static async def / async class/static def
         if self._match(TT.NAME, "class"):
             is_classmethod = True
@@ -2573,6 +2603,9 @@ class CodeGen:
         base_str = f"({bases})" if bases else ""
         self._line(f"class {node.name}{tp_str}{base_str}:")
         self.indent += 1
+        if node.source_endpoint:
+            self._line("__jac_edge_endpoints__ = staticmethod(lambda: ("
+                       f"{node.source_endpoint}, {node.target_endpoint}))")
         prev_arch_kind = self._arch_kind
         self._arch_kind = node.arch_kind
         body = node.body
@@ -3099,6 +3132,7 @@ def compile_jac(
             codegen.impl_registry.setdefault(cls, []).append(node)
 
     # Parse and register impls from impl files
+    annex_imports: list[Import] = []
     if impl_sources:
         for impl_src, impl_file in impl_sources:
             impl_lexer = Lexer(impl_src, impl_file)
@@ -3108,5 +3142,12 @@ def compile_jac(
                 if isinstance(node, ImplDef):
                     cls = node.target.split(".")[0]
                     codegen.impl_registry.setdefault(cls, []).append(node)
+                elif isinstance(node, Import):
+                    # An implementation shares its declaration module's globals.
+                    # Preserve its imports just as the full annex weaver does.
+                    if node not in module.body and node not in annex_imports:
+                        annex_imports.append(node)
+
+    module.body = annex_imports + module.body
 
     return codegen.generate(module)

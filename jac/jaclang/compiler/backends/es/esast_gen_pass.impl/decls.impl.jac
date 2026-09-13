@@ -1,8 +1,5 @@
-import from jaclang.compiler.symbol_utils { return_type_is_jsx }
-import from jaclang.compiler.frontend.diagnostics { E5097 }
-
 impl EsastGenPass.exit_has_var with uni.HasVar exit {
-    here.gen.es_ast = None;
+    artifact_for(here).es_ast = None;
 }
 
 impl EsastGenPass.exit_param_var with uni.ParamVar exit {
@@ -11,23 +8,24 @@ impl EsastGenPass.exit_param_var with uni.ParamVar exit {
     );
     self._register_declaration(param_id.name);
     if here.is_vararg or here.is_kwargs {
-        here.gen.es_ast = self.sync_loc(
+        artifact_for(here).es_ast = self.sync_loc(
             es.RestElement(argument=param_id), jac_node=here
         );
-    } elif here.value and here.value.gen.es_ast {
-        here.gen.es_ast = self.sync_loc(
+    } elif here.value and artifact_for(here.value).es_ast {
+        artifact_for(here).es_ast = self.sync_loc(
             es.AssignmentPattern(
-                left=param_id, right=cast(es.Expression, here.value.gen.es_ast)
+                left=param_id,
+                right=cast(es.Expression, artifact_for(here.value).es_ast)
             ),
             jac_node=here
         );
     } else {
-        here.gen.es_ast = param_id;
+        artifact_for(here).es_ast = param_id;
     }
 }
 
 impl EsastGenPass.exit_func_signature with uni.FuncSignature exit {
-    here.gen.es_ast = None;
+    artifact_for(here).es_ast = None;
 }
 
 impl EsastGenPass.exit_ability with uni.Ability exit {
@@ -40,7 +38,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
     }
 
     if here.is_comptime {
-        here.gen.es_ast = None;
+        artifact_for(here).es_ast = None;
         return;
     }
 
@@ -134,9 +132,9 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
                     self.sync_loc(
                         es.AssignmentProperty(
                             key=param_key,
-                            value=cast(es.Pattern, param.gen.es_ast),
+                            value=cast(es.Pattern, artifact_for(param).es_ast),
                             shorthand=not isinstance(
-                                param.gen.es_ast, es.AssignmentPattern
+                                artifact_for(param).es_ast, es.AssignmentPattern
                             ),
                         ),
                         jac_node=param,
@@ -174,8 +172,8 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
                 );
             }
             for param in value_params {
-                if param.gen.es_ast {
-                    params.append(cast(es.Pattern, param.gen.es_ast));
+                if artifact_for(param).es_ast {
+                    params.append(cast(es.Pattern, artifact_for(param).es_ast));
                 }
             }
         }
@@ -185,8 +183,8 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
             params.append(self.sync_loc(es.Identifier(name="props"), jac_node=here));
         }
         params.append(
-            cast(es.Pattern, ref_param.gen.es_ast)
-                if ref_param.gen.es_ast
+            cast(es.Pattern, artifact_for(ref_param).es_ast)
+                if artifact_for(ref_param).es_ast
                 else self.sync_loc(
                     es.Identifier(name=ref_param.name.sym_name), jac_node=ref_param.name
                 )
@@ -235,7 +233,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
             ),
             jac_node=here
         );
-        here.gen.es_ast = method_def;
+        artifact_for(here).es_ast = method_def;
     } elif ref_param is not None {
         self._inject_runtime_import('forwardRef', here);
         func_expr = self.sync_loc(
@@ -263,7 +261,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
             ),
             jac_node=here
         );
-        here.gen.es_ast = self.sync_loc(
+        artifact_for(here).es_ast = self.sync_loc(
             es.VariableDeclaration(declarations=[declarator], kind='const'),
             jac_node=here
         );
@@ -302,7 +300,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
                 ),
                 jac_node=here
             );
-            here.gen.es_ast = [func_decl, alias_decl];
+            artifact_for(here).es_ast = [func_decl, alias_decl];
         } else {
             func_decl = self.sync_loc(
                 es.FunctionDeclaration(
@@ -314,7 +312,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
                 ),
                 jac_node=here
             );
-            here.gen.es_ast = func_decl;
+            artifact_for(here).es_ast = func_decl;
         }
     }
 }
@@ -349,8 +347,10 @@ impl EsastGenPass.exit_enum with uni.Enum exit {
                             es.Identifier(name=target.sym_name), jac_node=target
                         );
                         enum_value: es.Expression;
-                        if (stmt.value and stmt.value.gen.es_ast) {
-                            enum_value = cast(es.Expression, stmt.value.gen.es_ast);
+                        if (stmt.value and artifact_for(stmt.value).es_ast) {
+                            enum_value = cast(
+                                es.Expression, artifact_for(stmt.value).es_ast
+                            );
                             if (
                                 isinstance(enum_value, es.Literal)
                                 and isinstance(enum_value.value, int)
@@ -387,15 +387,15 @@ impl EsastGenPass.exit_enum with uni.Enum exit {
         ),
         jac_node=here
     );
-    here.gen.es_ast = var_decl;
+    artifact_for(here).es_ast = var_decl;
 }
 
 impl EsastGenPass.exit_type_alias with uni.TypeAlias exit {
-    here.gen.es_ast = [];
+    artifact_for(here).es_ast = [];
 }
 
 impl EsastGenPass.exit_type_param with uni.TypeParam exit {
-    here.gen.es_ast = [];
+    artifact_for(here).es_ast = [];
 }
 
 impl EsastGenPass.exit_archetype with uni.Archetype exit {
@@ -415,8 +415,10 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
                 has_members.append(stmt);
                 for var in stmt.vars {
                     for accessor in (var.accessors or []) {
-                        if isinstance(accessor.gen.es_ast, es.MethodDefinition) {
-                            body_stmts.append(accessor.gen.es_ast);
+                        if isinstance(
+                            artifact_for(accessor).es_ast, es.MethodDefinition
+                        ) {
+                            body_stmts.append(artifact_for(accessor).es_ast);
                         }
                     }
                 }
@@ -444,7 +446,7 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
                     } elif (
                         isinstance(tgt, uni.Name)
                         and asn.value is not None
-                        and isinstance(asn.value.gen.es_ast, es.Expression)
+                        and isinstance(artifact_for(asn.value).es_ast, es.Expression)
                     ) {
                         body_stmts.append(
                             self.sync_loc(
@@ -461,7 +463,9 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
                                                             es.ReturnStatement(
                                                                 argument=cast(
                                                                     es.Expression,
-                                                                    asn.value.gen.es_ast
+                                                                    artifact_for(
+                                                                        asn.value
+                                                                    ).es_ast
                                                                 )
                                                             ),
                                                             jac_node=asn
@@ -482,13 +486,14 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
                 continue;
             }
             if (
-                stmt.gen.es_ast
-                and stmt.gen.es_ast
+                artifact_for(stmt).es_ast
+                and artifact_for(stmt).es_ast
                 and isinstance(
-                    stmt.gen.es_ast, (es.MethodDefinition, es.PropertyDefinition)
+                    artifact_for(stmt).es_ast,
+                    (es.MethodDefinition, es.PropertyDefinition)
                 )
             ) {
-                body_stmts.append(stmt.gen.es_ast);
+                body_stmts.append(artifact_for(stmt).es_ast);
             }
         }
     }
@@ -533,9 +538,13 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
                         continue;
                     }
                     default_expr: es.Expression = cast(
-                        es.Expression, var.value.gen.es_ast
+                        es.Expression, artifact_for(var.value).es_ast
                     )
-                        if (var.value and var.value.gen.es_ast and var.value.gen.es_ast)
+                        if (
+                            var.value
+                            and artifact_for(var.value).es_ast
+                            and artifact_for(var.value).es_ast
+                        )
                         else self.sync_loc(es.Literal(value=None), jac_node=var);
                     static_prop = self.sync_loc(
                         es.PropertyDefinition(
@@ -598,8 +607,14 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
                     ),
                     jac_node=var
                 );
-                default_val: es.Expression = cast(es.Expression, var.value.gen.es_ast)
-                    if (var.value and var.value.gen.es_ast and var.value.gen.es_ast)
+                default_val: es.Expression = cast(
+                    es.Expression, artifact_for(var.value).es_ast
+                )
+                    if (
+                        var.value
+                        and artifact_for(var.value).es_ast
+                        and artifact_for(var.value).es_ast
+                    )
                     else self.sync_loc(es.Literal(value=None), jac_node=var);
                 conditional = self.sync_loc(
                     es.ConditionalExpression(
@@ -727,11 +742,11 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
     }
     class_body = self.sync_loc(es.ClassBody(body=body_stmts), jac_node=here);
     super_class: (es.Expression | None) = None;
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import from jaclang.compiler.analysis.types.type_registry { JAC_TYPE_REGISTRY }
     if here.base_classes {
         base = here.base_classes[0];
-        if base.gen.es_ast {
-            super_class = cast(es.Expression, base.gen.es_ast);
+        if artifact_for(base).es_ast {
+            super_class = cast(es.Expression, artifact_for(base).es_ast);
             (base_ty_known, base_builtin) = _raised_exc_identity(base);
             if isinstance(super_class, es.Identifier) {
                 if base_builtin is not None {
@@ -752,5 +767,5 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
         es.ClassDeclaration(id=class_id, superClass=super_class, body=class_body),
         jac_node=here
     );
-    here.gen.es_ast = class_decl;
+    artifact_for(here).es_ast = class_decl;
 }

@@ -8,9 +8,9 @@ instead of impressions.
 Three measurements, three shapes:
 
 `warm-compile phase timings` is a REPORT, not a gate. It drives a fixed corpus
-of real repo modules through the four schedules `_compile_once` runs for a
-Python-lane module, one at a time so each is attributable, and prints the
-table. It asserts only what a broken measurement looks like -- a compile error,
+of real repo modules through the normal Python compilation request and prints
+its executor-recorded phase timings. These include nested dependency requests
+and need not add up to the measured wall time. It asserts only what a broken measurement looks like -- a compile error,
 or a phase that took no time at all -- because a wall-clock gate on a developer
 laptop is a coin flip, and a coin flip that fails the suite teaches people to
 ignore it.
@@ -45,12 +45,11 @@ import os;
 import shutil;
 import statistics;
 import subprocess;
-import sys;
 import tempfile;
 import time;
 
 import from pathlib { Path }
-import from tests.support { JAC_ROOT, TESTS_DIR }
+import from tests.support { jac_command, JAC_ROOT, TESTS_DIR }
 import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
 
 glob PROBE: str = os.path.join(
@@ -77,10 +76,10 @@ probe to read its list is not an option -- importing a `.jac` module runs its
 entry block, which is the whole measurement.
 """
 glob CORPUS: list[str] = [
-         "jaclang/compiler/frontend/srcloc.jac",
+         "jaclang/compiler/frontend/source_locations.jac",
          "jaclang/compiler/frontend/parser/tokens.jac",
-         "jaclang/compiler/passes/uni_pass.jac",
-         "jaclang/compiler/frontend/constant.jac",
+         "jaclang/compiler/pipeline/uni_pass.jac",
+         "jaclang/compiler/ir/enums.jac",
          "examples/chess/chess.jac"
      ];
 
@@ -174,7 +173,7 @@ def run_probe(tree_dir: str, cache: str, round_no: int = 0) -> list[dict] {
         return _PROBE_CACHE[key];
     }
     proc = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", PROBE],
+        jac_command("run", PROBE),
         cwd=tree_dir,
         env=_probe_env(cache),
         capture_output=True,
@@ -423,16 +422,7 @@ test "the chess AOT binary stays inside its recorded run envelope" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "chess");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                CHESS,
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", CHESS, "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=1800
@@ -495,9 +485,10 @@ The fixture's server default is also pinned for the measurement.
 glob PRECOMPILE_GATE: str = os.path.join(
          TESTS_DIR, "compiler", "fixtures", "precompile_gate"
      ),
-     # Context, absorbed-import and boundary/native fact work is now counted
-     # as explicit passes: 140 runs that previously lived inside the driver.
-     GATE_COLD_MAX_RUNS: int = 760,
+     # The scheduled pipeline records 1162 cold runs: the prior 706 plus
+     # 456 newly explicit context, import, binding, placement and client
+     # dependency passes. Keep the same absolute headroom and cache ratio.
+     GATE_COLD_MAX_RUNS: int = 1216,
      GATE_COLD_MAX_RATIO: float = 0.6;
 
 def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
@@ -506,28 +497,28 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
         find_jac_files,
         _unit_program
     }
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.context { artifact_cache_path }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.dist.precompile_bytecode { precompile_context }
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.target_options {
         set_effective_default_codespace,
         get_effective_default_codespace_override
     }
     files = find_jac_files(pkg);
-    for f in files {
-        cp = artifact_cache_path(f, precompile_context(f, pkg, JacProgram()));
-        if cp.exists() {
-            cp.unlink();
-        }
-    }
-    shutil.rmtree(os.path.join(pkg, "_precompiled"), ignore_errors=True);
-    if rebuild {
-        os.environ["JAC_REBUILD"] = "1";
-    }
     prior_default = get_effective_default_codespace_override();
     set_effective_default_codespace("server");
-    started = time.perf_counter();
     try {
+        for f in files {
+            cp = artifact_cache_path(f, precompile_context(f, pkg, JacProgram()));
+            if cp.exists() {
+                cp.unlink();
+            }
+        }
+        shutil.rmtree(os.path.join(pkg, "_precompiled"), ignore_errors=True);
+        if rebuild {
+            os.environ["JAC_REBUILD"] = "1";
+        }
+        started = time.perf_counter();
         for f in files {
             assert precompile_unit(f, pkg, False, collect=False) is not None , f"{f} did not precompile";
         }
@@ -556,7 +547,7 @@ test "the cold precompile path stays inside its work envelope" {
         find_jac_files,
         _unit_program
     }
-    import from jaclang.compiler.frontend.codeinfo {
+    import from jaclang.compiler.session.target_options {
         set_effective_default_codespace,
         get_effective_default_codespace_override
     }
@@ -591,7 +582,7 @@ test "the cold precompile path stays inside its work envelope" {
         );
         assert cold <= GATE_COLD_MAX_RUNS , (
             f"cold precompile did {cold} pass runs; the ceiling is {GATE_COLD_MAX_RUNS} "
-            "(recorded 706 against 1408 without the cache, including 140 newly explicit context/import/fact passes): closure work the cache used to take back is being redone"
+            "(recorded 1162 against 2736 without the cache, including 456 newly explicit passes): closure work the cache used to take back is being redone"
         );
         assert cold <= GATE_COLD_MAX_RATIO * no_cache , (
             f"cold precompile with the cache did {cold} pass runs against {no_cache} without it "

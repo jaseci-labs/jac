@@ -17,15 +17,15 @@ import os;
 import sys;
 import tempfile;
 import time;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.compiler { JacCompiler }
-import from jaclang.compiler.driver.jir {
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.compiler { JacCompiler }
+import from jaclang.compiler.session.cache.artifact_codec {
     SEC_CTDEPS,
     precompiled_jir_matches_source,
     read_section_bytes
 }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.context { artifact_cache_path }
 import from jaclang.dist.precompile_bytecode { precompile_unit }
 import from types { CodeType }
 import from unittest.mock { patch }
@@ -366,7 +366,7 @@ def _native_compile(path: str) {
 }
 
 def _native_ir(path: str) -> str {
-    import from jaclang.compiler.driver.jir { get_native_cache_dir }
+    import from jaclang.compiler.session.cache.artifact_codec { get_native_cache_dir }
     cache_dir = str(get_native_cache_dir(path));
     stem = os.path.splitext(os.path.basename(path))[0];
     text = "";

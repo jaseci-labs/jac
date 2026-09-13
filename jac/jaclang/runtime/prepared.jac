@@ -1,16 +1,19 @@
 import os;
 import types;
 import from jaclang.runtime.object_model { field }
+import type from jaclang.client.compiler { ViteCompiler }
 
 obj PreparedApplication {
     has `root: str,
         `entry: str,
         code: dict[str, types.CodeType] = field(default_factory=`dict),
         manifests: dict[str, dict] = field(default_factory=`dict),
-        client_compiler: any = None,
+        client_compiler: ViteCompiler | None = None,
         client_enabled: bool = False,
-        native: dict[str, tuple] = field(default_factory=`dict),
-        services: tuple = (),
+        native: dict[str, tuple[object | None, dict[str, object] | None]] = field(
+            default_factory=`dict
+        ),
+        services: tuple[str, ...] = (),
         dev: bool = True,
         client_dist: str = "",
         applications: list[PreparedApplication] = field(default_factory=list);

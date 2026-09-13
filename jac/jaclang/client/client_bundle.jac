@@ -2,16 +2,14 @@ import hashlib;
 import os;
 import from pathlib { Path }
 import from types { ModuleType }
-import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
-import type from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.backends.common.artifacts {
+    ClientArtifact,
+    ClientManifest
+}
 
 class ClientBundleError(RuntimeError) {}
 
 class MissingBunError(ClientBundleError) {}
-
-def _client_target_module(source_key: str, program: any) -> (Module | None);
-
-def _ensure_js_generated(mod: Module, program: any) -> None;
 
 def _prebuilt_bundle(module: ModuleType, source_path: Path) -> (ClientBundle | None);
 

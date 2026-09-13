@@ -31,15 +31,16 @@ The corpus is the one the cutover requirements name: comments,
 diagnostics, string-named tests, and circular includes.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ast as pyast;
 import marshal;
 import types;
 import from builtins { compile as pycompile }
 import from jaclang.compiler.backends.py.codegen_ir { read_container }
 import from jaclang.compiler.backends.py.codegen_shim { transcribe }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 """Compile once, returning the pyast tree, the shim tree and the bytes."""
 def emit_both(src: str, path: str) -> tuple {
@@ -55,7 +56,7 @@ def emit_both(src: str, path: str) -> tuple {
         )
     );
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
-    ref_tree = mod.gen.py_ast[0];
+    ref_tree = artifact_for(mod).py_ast[0];
     blob = JcirGenPass(ir_in=mod).ir_bytes();
     (mods, diags) = transcribe(blob);
     assert len(mods) == 1 , f"{path}: container carried {len(mods)} modules";

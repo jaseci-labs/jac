@@ -16,8 +16,8 @@ enforcement enabled via CompileOptions, matching
 """
 
 import os;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 import from tests.support { JAC_ROOT }
 
 glob FIXTURES = os.path.join(
@@ -67,7 +67,11 @@ test "native stdlib sinks borrow named owned arguments" {
 test "compiler-internal modules are exempt from ambient enforcement" {
     import jaclang;
     path = os.path.join(
-        os.path.dirname(jaclang.__file__), "compiler", "passes", "dataflow.jac"
+        os.path.dirname(jaclang.__file__),
+        "compiler",
+        "analysis",
+        "flow",
+        "dataflow.jac"
     );
     prog = JacProgram();
     opts = CompileOptions(memory_profile="nogc");

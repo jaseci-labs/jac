@@ -35,10 +35,11 @@ must keep working around it.
 Refs #8148
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "nogc"
@@ -50,7 +51,7 @@ glob FIXTURES = os.path.join(
 
 """Headerless: `--memory nogc` with nogc enforced, the mode with no rc header."""
 def _headerless_opts -> any {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     return CompileOptions(
         force_codespace='native', force_target_program=True, memory_profile="nogc"
     );
@@ -85,7 +86,9 @@ def _has_code(prog: any, code: str) -> bool {
 
 
 def _ir_text(ir: any) -> str {
-    return str(ir.gen.llvm_ir) if (ir is not None and ir.gen.llvm_ir) else "";
+    return str(artifact_for(ir).llvm_ir)
+        if (ir is not None and artifact_for(ir).llvm_ir)
+        else "";
 }
 
 
@@ -93,7 +96,7 @@ test "headerless mode keeps the class-name reads that need no header" {
     (prog, ir) = _compile(STATIC_FIXTURE, _headerless_opts());
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {STATIC_FIXTURE}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine for the headerless fixture";
 
     vt = _get(eng, "vtable_rank");
@@ -118,7 +121,7 @@ test "an open receiver is refused under headerless mode, not answered" {
         "the refused read is owned by erased_rank, which must demote to a "
         f"seam: got {[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "erased_rank" not in layout.functions , (
         "a type-erased receiver's class name can only come from the header, "
@@ -140,7 +143,7 @@ test "the same open read answers under a gc mode that has headers" {
     assert PROBE_SYMBOL in _ir_text(ir) , (
         f"'{PROBE_SYMBOL}' is how this read is answered when a header exists"
     );
-    assert _get(ir.gen.native_engine, "erased_rank")(0) == 1 , (
+    assert _get(artifact_for(ir).native_engine, "erased_rank")(0) == 1 , (
         "the erased slot holds a Marked and the header stamp says so -- so "
         "the refusal above is specific to headerless mode, not a lowering gap"
     );

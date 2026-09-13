@@ -84,11 +84,13 @@ impl EsastGenPass._collect_body_stmts(
     body_stmts: list[es.Statement] = [];
     if body {
         for stmt in body {
-            if stmt.gen.es_ast {
-                if isinstance(stmt.gen.es_ast, list) {
-                    body_stmts.extend(cast(es.Statement, s) for s in stmt.gen.es_ast);
+            if artifact_for(stmt).es_ast {
+                if isinstance(artifact_for(stmt).es_ast, list) {
+                    body_stmts.extend(
+                        cast(es.Statement, s) for s in artifact_for(stmt).es_ast
+                    );
                 } else {
-                    body_stmts.append(cast(es.Statement, stmt.gen.es_ast));
+                    body_stmts.append(cast(es.Statement, artifact_for(stmt).es_ast));
                 }
             }
         }
@@ -97,7 +99,7 @@ impl EsastGenPass._collect_body_stmts(
 }
 
 impl EsastGenPass._audit_free_identifiers(nd: uni.Module, program: es.Program) -> None {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import from jaclang.compiler.analysis.types.type_registry { JAC_TYPE_REGISTRY }
     allowed = client_ambient_globals() | RUNTIME_PRELUDE_GLOBALS;
     frees = free_identifiers(program, allowed);
     if not frees {
@@ -170,15 +172,15 @@ impl EsastGenPass._build_block_statement(
 impl EsastGenPass._get_ast_or_default(
     nd: (uni.UniNode | None), default_factory: Callable[([(uni.UniNode | None)], _T)]
 ) -> _T {
-    if (nd and nd.gen.es_ast) {
-        generated = nd.gen.es_ast;
+    if (nd and artifact_for(nd).es_ast) {
+        generated = artifact_for(nd).es_ast;
         if isinstance(generated, es.Node) {
             return cast(_T, generated);
         }
     }
     if (
         isinstance(nd, uni.Expr)
-        and (nd.gen.es_ast is None)
+        and (artifact_for(nd).es_ast is None)
         and (nd not in self._unlowered_reported)
         and self._is_client_destined(nd)
     ) {
@@ -206,7 +208,7 @@ impl EsastGenPass._collect_stmt_body(
         if isinstance(stmt, uni.Semi) {
             continue;
         }
-        generated = stmt.gen.es_ast;
+        generated = artifact_for(stmt).es_ast;
         if isinstance(generated, list) {
             statements.extend(
                 item
@@ -433,7 +435,7 @@ impl EsastGenPass.exit_walk with uni.UniNode exit {
         is_native_edge = isinstance(here, uni.Import)
             and self._is_client_native_import(here);
         is_shared_arch = (
-            isinstance(here, uni.Archetype)
+            isinstance(here, (uni.Archetype, uni.Enum))
             and (here.name is not None)
             and (here.name.value in self.shared_arch_names)
         );
@@ -471,7 +473,7 @@ impl EsastGenPass.enter_walk with uni.UniNode entry {
             and self._is_service_bridge_import(here);
 
         is_shared_arch = (
-            isinstance(here, uni.Archetype)
+            isinstance(here, (uni.Archetype, uni.Enum))
             and (here.name is not None)
             and (here.name.value in self.shared_arch_names)
         );
@@ -489,7 +491,7 @@ impl EsastGenPass.enter_walk with uni.UniNode entry {
         }
         self._push_scope(here);
     }
-    if here.gen.es_ast {
+    if artifact_for(here).es_ast {
         if not (
             isinstance(here, uni.Import) and here.code_context != CodeContext.CLIENT
         ) {
@@ -501,11 +503,13 @@ impl EsastGenPass.enter_walk with uni.UniNode entry {
 
 impl EsastGenPass.before_pass -> None {
     for nd in self.ir_in.flatten() {
-        nd.gen.es_ast = None;
+        artifact_for(nd).es_ast = None;
     }
-    import from jaclang.compiler.frontend.codeinfo { ClientManifest }
+    import from jaclang.compiler.backends.common.artifacts { ClientManifest }
 
-    import from jaclang.compiler.frontend.module_facts { client_capability_violations }
+    import from jaclang.compiler.analysis.binding.module_facts {
+        client_capability_violations
+    }
     import from jaclang.compiler.frontend.diagnostics { E5096 }
     if not self.ir_in.client_viols_reported {
         for (_vnode, _vkind) in client_capability_violations(self.ir_in) {
@@ -518,13 +522,13 @@ impl EsastGenPass.before_pass -> None {
     self.component_export_names = set();
 
     self.client_manifest.endpoint_effects = dict(
-        self.ir_in.gen.interop_manifest.endpoint_effects
+        artifact_for(self.ir_in).interop_manifest.endpoint_effects
     );
 
-    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+    import from jaclang.compiler.analysis.binding.module_facts { ModuleFacts }
     self.shared_arch_names: set[str] = {
         a.name.value
-        for a in ModuleFacts.shared_archetypes_for_context(
+        for a in ModuleFacts.shared_type_declarations_for_context(
             self.ir_in, CodeContext.CLIENT
         )
         if a.name is not None
@@ -532,6 +536,6 @@ impl EsastGenPass.before_pass -> None {
     self.jsx_processor = EsJsxProcessor(self);
 
     self.scoped_styles = load_style_annex(
-        self.ir_in.annexable_by or self.ir_in.loc.mod_path
+        annex_base(self.ir_in) or self.ir_in.loc.mod_path
     );
 }

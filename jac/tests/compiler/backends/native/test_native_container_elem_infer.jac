@@ -23,12 +23,13 @@ took the first element's lowered type (i64, from the literal `1`) in place of
 the checker's `float`.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -42,9 +43,9 @@ def native_compile(fixture: str) -> tuple[object, str] {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
-    return (eng, str(ir.gen.llvm_ir));
+    return (eng, str(artifact_for(ir).llvm_ir));
 }
 
 """Compile a fixture through the native pipeline and return its JIT engine."""
@@ -69,7 +70,7 @@ def sv_funcs(fixture: str) -> dict {
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"sv compilation errors in {fixture}: {errors}";
     ns: dict = {};
-    exec(compile(ir.gen.py, path, "exec"), ns);
+    exec(compile(artifact_for(ir).py, path, "exec"), ns);
     return ns;
 }
 
@@ -230,8 +231,10 @@ test "un-inferable elem type: equality against an unboxable peer is refused" {
         "the unboxable-peer refusal is owned by f(), which must demote, got "
         + f"{[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "f" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "f" not in ir_layout.functions , (
         "the refused comparison's function must be demoted out of the layout, "
         + "never answer True for 0 == (0, 0)"
     );
@@ -254,8 +257,10 @@ test "un-inferable elem type: an unorderable mixed comparison is refused, not gu
         "the unorderable-comparison refusal is owned by f(), which must "
         + f"demote, got {[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "f" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "f" not in ir_layout.functions , (
         "the refused comparison's function must be demoted out of the layout, "
         + "never guessed"
     );

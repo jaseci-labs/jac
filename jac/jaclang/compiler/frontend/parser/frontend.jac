@@ -4,10 +4,10 @@ import from .lexer { Lexer }
 import from .parser { Parser, parse_expression as _parse_expression }
 import from .tokens { CommentData, SrcDiag }
 import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
-import from jaclang.compiler.passes.transform { Alert }
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.srcloc { Span }
-import from jaclang.compiler.frontend.unitree { CommentToken, Expr, Module, Source }
+import from jaclang.compiler.pipeline.pass_base { Alert }
+import type from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.frontend.source_locations { Span }
+import from jaclang.compiler.ir.schema { CommentToken, Expr, Module, Source }
 
 def _replay_diags(
     diags: list[SrcDiag], from_pass: type, prog: JacProgram, diag_src: Source
@@ -134,7 +134,7 @@ def _native_parse_woven(
     annexes: list,
     early_context: str = ""
 ) -> (tuple | None) {
-    import jaclang.compiler.native_compiler as _jc;
+    import jaclang.compiler.frontend.kernel.adapter as _jc;
     kernel = _jc.ensure_loaded();
     if kernel is None {
         return None;
@@ -146,7 +146,9 @@ def _native_parse_woven(
     if kernel.run(source_str, file_path) != 0 {
         return None;
     }
-    module = kernel.take_module();
+    module = kernel.take_module(
+        prog.analysis.mutations if prog is not None and early_context else None
+    );
     if module is None {
         return None;
     }
@@ -182,7 +184,7 @@ def parse_woven(
     if had_error or not annexes {
         return (module, had_error);
     }
-    import from jaclang.compiler.passes.annex_weave { merge_annex_into }
+    import from jaclang.compiler.frontend.annexes { merge_annex_into }
     for (a_src, a_path) in annexes {
         (a_mod, _a_err) = parse(a_src, a_path, prog=prog);
         merge_annex_into(module, a_mod);
@@ -195,11 +197,11 @@ def annex_sources(file_path: str) -> list[tuple[str, str]] {
         return [];
     }
     try {
-        import from jaclang.compiler.driver.bccache {
+        import from jaclang.compiler.session.cache.annexes {
             discover_annex_files,
             discover_base_file
         }
-        import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+        import from jaclang.compiler.frontend.source_io { read_file_with_encoding }
         if discover_base_file(file_path) is not None {
             return [];
         }

@@ -24,9 +24,9 @@ import tempfile;
 import importlib;
 import jaclang;
 import from pathlib { Path }
-import from jaclang.compiler.driver.modresolver { resolve_relative_path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.resolver { resolve_relative_path }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob PKG_FILES: dict[str, str] = {
          '__init__.jac': '',
@@ -120,7 +120,7 @@ test "a directory without a marker resolves as the namespace package the runtime
     # source as an implicit namespace package; the resolver answered nothing
     # for the bare directory, so `import from pkg { sub }` could not find
     # `sub` and go-to-definition had nowhere to land.
-    import from jaclang.compiler.driver.modresolver { resolve_module }
+    import from jaclang.compiler.session.resolver { resolve_module }
     base_dir = tempfile.mkdtemp();
     try {
         pkg = os.path.join(base_dir, "nspkg");

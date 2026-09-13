@@ -1,5 +1,5 @@
 import from hashlib { blake2s }
-import from jaclang.compiler.driver.bccache { discover_style_annex }
+import from jaclang.compiler.session.cache.annexes { discover_style_annex }
 
 obj ScopedStyleSheet {
     has module_path: str,
@@ -32,4 +32,11 @@ glob __all__ = [
          'hash_class_name',
          'scope_selector',
          'scope_stylesheet'
-     ];
+     ],
+     _GROUPING_AT_RULES: set[str] = {
+         'media',
+         'supports',
+         'container',
+         'layer',
+         'scope'
+     };

@@ -6,19 +6,16 @@ source + compiler fingerprint only, so artifacts poisoned across gc modes.
 Both paths must yield RC-free IR for a gc-none multi-module program.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
+import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import shutil;
 import subprocess;
-import sys;
 import tempfile;
 import jaclang;
-import from tests.support { TESTS_DIR, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { jac_command, TESTS_DIR, native_force_opts }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -36,8 +33,8 @@ def _compile_ir(entry_path: str, gc_mode: str, enforce: list) -> str {
             )
         );
         assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-        assert ir is not None and ir.gen.llvm_ir is not None;
-        return str(ir.gen.llvm_ir);
+        assert ir is not None and artifact_for(ir).llvm_ir is not None;
+        return str(artifact_for(ir).llvm_ir);
     } finally {
         pop_native_target(prev);
     }
@@ -67,18 +64,7 @@ test "host-path multi-module gc none build passes assert-no-rc" {
         }
         out_bin = os.path.join(tmp, "xmod.bin");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                `entry,
-                "--memory",
-                "nogc",
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", `entry, "--memory", "nogc", "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=300,

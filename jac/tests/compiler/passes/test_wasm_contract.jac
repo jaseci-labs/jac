@@ -2,8 +2,8 @@
 
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.project.config { get_explicit_config, set_config }
 
 def host_errors(
@@ -30,46 +30,64 @@ def host_errors(
             module = program.compile(
                 str(source),
                 options=CompileOptions(
-                    no_cgen=True, native_parity=True, force_codespace="client"
+                    no_cgen=True,
+                    native_parity=True,
+                    force_codespace="client",
+                    symtab_ir_only=cached_host
                 )
             );
             if cached_host {
-                import from jaclang.compiler.frontend.unitree { FuncCall, Name }
-                import from jaclang.compiler.passes.wasm_contract { check_host_call }
-                import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
-                import from jaclang.compiler.types.stubcat.modiface {
-                    build_module_iface,
+                import from jaclang.compiler.ir.schema { FuncCall, Name }
+                import from jaclang.compiler.analysis.boundaries.wasm_contract {
+                    check_host_call
+                }
+                import from jaclang.compiler.session.cache.catalog_paths {
+                    jaclang_pkg_dir
+                }
+                import from jaclang.compiler.session.cache.interface_codec {
                     open_module_iface,
                     iface_module
                 }
-                import from jaclang.compiler.types.stubcat.reader { CatScope }
-                import from jaclang.compiler.types.types { ClassType }
+                import from jaclang.compiler.session.cache.catalog_reader { CatScope }
+                import from jaclang.compiler.ir.types.nodes { ClassType }
                 evaluator = program.get_type_evaluator();
                 package = jaclang_pkg_dir();
-                payload = build_module_iface(module, evaluator, package);
-                catalog = open_module_iface(
-                    payload, package, resolver=program.iface_registry().resolve_module
-                );
-                assert catalog is not None;
-                cached = iface_module(catalog);
-                assert cached is not None;
-                host_type = evaluator.get_type_of_symbol(cached.names_in_scope["Host"]);
-                assert isinstance(host_type, ClassType);
-                assert isinstance(host_type.shared.symbol_table, CatScope);
-                call = next(
-                    c
-                    for c in module.get_all_sub_nodes(FuncCall)
-                    if isinstance(c.target, Name) and c.target.value == "bind_na_host"
-                );
-                host_arg = call.params[1];
-                assert isinstance(host_arg, Name);
-                host_arg.narrowed_type = host_type.clone_as_instance();
-                try {
-                    check_host_call(call, program);
-                } except ValueError as error {
-                    return [str(error)];
+                import from jaclang.compiler.pipeline.contracts { CompilationProduct }
+                import from jaclang.compiler.pipeline.products { require_product }
+                import from jaclang.compiler.pipeline.keys { INTERFACE }
+                assert require_product(program, module, CompilationProduct.ANALYSIS);
+                assert require_product(program, module, CompilationProduct.INTERFACE);
+                payload = program.analysis.result(str(source), INTERFACE).data;
+                assert payload is not None;
+                import from jaclang.compiler.ir.identity { MutationScope }
+                with MutationScope(program.analysis.mutations, 31) {
+                    catalog = open_module_iface(
+                        payload, package, resolver=program.iface_registry()
+                    );
+                    assert catalog is not None;
+                    cached = iface_module(catalog);
+                    assert cached is not None;
+                    host_type = evaluator.get_type_of_symbol(
+                        cached.names_in_scope["Host"]
+                    );
+                    assert isinstance(host_type, ClassType);
+                    assert isinstance(host_type.shared.symbol_table, CatScope);
+                    call = next(
+                        c
+                        for c in module.get_all_sub_nodes(FuncCall)
+                        if isinstance(c.target, Name)
+                            and c.target.value == "bind_na_host"
+                    );
+                    host_arg = call.params[1];
+                    assert isinstance(host_arg, Name);
+                    host_arg.narrowed_type = host_type.clone_as_instance();
+                    try {
+                        check_host_call(call, program);
+                    } except ValueError as error {
+                        return [str(error)];
+                    }
+                    return [];
                 }
-                return [];
             }
             return [str(error) for error in program.errors_had];
         }

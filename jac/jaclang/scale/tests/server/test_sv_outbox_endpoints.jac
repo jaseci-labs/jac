@@ -10,7 +10,7 @@ import time;
 import unittest.mock;
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
-import from jaclang.compiler.driver.application { prepare_application }
+import from jaclang.build.preparation { prepare_application }
 import from jaclang.server { sv_client }
 import from jaclang.server.outbox {
     LEASE_S,

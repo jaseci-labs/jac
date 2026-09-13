@@ -1,5 +1,6 @@
 """Test Jac cli module."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import io;
 import inspect;
 import json;
@@ -11,7 +12,7 @@ import sys;
 import tempfile;
 import traceback;
 import from pathlib { Path }
-import from tests.support { JAC_ROOT }
+import from tests.support { jac_command, compiler_python_command, JAC_ROOT }
 import jaclang;
 import from jaclang.cli.commands {
     analysis,
@@ -240,7 +241,7 @@ test "jac run with no filename and no resolvable entry errors cleanly" {
     env = dict(os.environ);
     env["PYTHONPATH"] = JAC_ROOT;
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run"],
+        jac_command("run"),
         cwd=JAC_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -409,7 +410,7 @@ test "jac impl err" {
 }
 
 test "param name diff warns" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     prog = JacProgram();
     prog.compile(fixture_path("decl_defn_param_name.jac"), no_cgen=True);
     warn_msgs = [str(w) for w in prog.warnings_had];
@@ -796,7 +797,7 @@ test "lambda self" {
 }
 
 test "param arg" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
 
     filename = fixture_path("params/test_complex_params.jac");
     captured = io.StringIO();
@@ -807,7 +808,8 @@ test "param arg" {
     jac_file_path = "";
     try {
         transform.jac2py(f"{fixture_path('params/test_complex_params.jac')}");
-        py_code = JacProgram().compile(file_path=filename).gen.py;
+        program = JacProgram();
+        py_code = artifact_for(program.compile(file_path=filename)).py;
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False
@@ -2079,7 +2081,7 @@ test "error traceback shows source code" {
 }
 
 test "syntax error pretty print" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
 
     program = JacProgram();
     program.compile(fixture_path("test_syntax_err.jac"));
@@ -2419,7 +2421,7 @@ test "jac check reports errors for files inside jaclang source tree" {
 
 """Regression: JIR cache must preserve Archetype.body for generic type inference."""
 test "generic type inference is identical across fresh processes" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.runtime.runtime { JacRuntime }
 
     with tempfile.TemporaryDirectory() as tmpdir {
@@ -2458,7 +2460,7 @@ JIR writer serialised the slices field as EXTERNAL_REF, reader discarded it,
 slices=[] on cache hit, list iteration type became Unknown.
 """
 test "list iteration type through IndexSlice is identical across runs" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.runtime.runtime { JacRuntime }
 
     with tempfile.TemporaryDirectory() as tmpdir {
@@ -2497,7 +2499,7 @@ the archetype's symbol table by DeclImplMatchPass._populate_self_member_symbols.
 Since impl_mod is not serialized in JIR, these symbols were lost on cache reload.
 """
 test "impl defined instance variables resolve identically across runs" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.runtime.runtime { JacRuntime }
 
     with tempfile.TemporaryDirectory() as tmpdir {
@@ -2542,7 +2544,7 @@ The is_sub_class check must compute MRO on demand to properly recognize
 subtype relationships (e.g., ClassType extends TypeBase).
 """
 test "jir cache computes mro for subtype checking" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.runtime.runtime { JacRuntime }
 
     with tempfile.TemporaryDirectory() as tmpdir {
@@ -2590,7 +2592,7 @@ accessors became [], so the property classifier saw a setter-less property and f
 raised E1005 on assignment.
 """
 test "field vs property accessor typing is identical across runs" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.runtime.runtime { JacRuntime }
 
     with tempfile.TemporaryDirectory() as tmpdir {
@@ -2635,7 +2637,7 @@ test "field vs property accessor typing is identical across runs" {
 
 """jac check on .impl.jac files should compile the base file and filter errors."""
 test "jac check on impl file redirects to base and filters errors" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.runtime.runtime { JacRuntime }
 
     with tempfile.TemporaryDirectory() as tmpdir {
@@ -2677,7 +2679,7 @@ test "jac check on impl file redirects to base and filters errors" {
 
 """A directory walk skips annexes the base module in the same run already compiles."""
 test "jac check directory skips covered annexes" {
-    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.session.session { JacProgram }
     import from jaclang.runtime.runtime { JacRuntime }
 
     with tempfile.TemporaryDirectory() as tmpdir {
@@ -2771,5 +2773,39 @@ test "jac install --extras all expands groups in output" {
         assert "Extras: all" in combined , (
             f"Expected 'Extras: all' in output; got:\n{combined}"
         );
+    }
+}
+
+test "CLI subprocess keeps the selected compiler when cwd contains another jaclang" {
+    with tempfile.TemporaryDirectory() as tmp {
+        shadow = Path(tmp) / "jaclang";
+        shadow.mkdir();
+        (shadow / "__init__.py").write_text(
+            "raise RuntimeError('selected the cwd compiler')\n"
+        );
+        result = subprocess.run(
+            jac_command("--version"),
+            cwd=tmp,
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , result.stderr;
+        assert "jac " in result.stdout , result.stdout;
+    }
+}
+
+test "compiler subprocess preserves imports from its working directory" {
+    with tempfile.TemporaryDirectory() as tmp {
+        (Path(tmp) / "cwd_probe.py").write_text("value = 42\n");
+        result = subprocess.run(
+            compiler_python_command("import cwd_probe; print(cwd_probe.value)"),
+            cwd=tmp,
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , result.stderr;
+        assert result.stdout.strip() == "42" , result.stdout;
     }
 }

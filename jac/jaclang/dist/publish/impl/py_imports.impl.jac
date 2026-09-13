@@ -2,7 +2,7 @@ import ast as py_ast;
 import os;
 
 import from pathlib { Path }
-import from jaclang.compiler.driver.modresolver { resolve_module }
+import from jaclang.compiler.session.resolver { resolve_module }
 
 impl wheel_module_name(wheel_path: str) -> str {
     path = wheel_path;

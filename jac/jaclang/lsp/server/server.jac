@@ -5,7 +5,7 @@ import logging;
 
 import from typing { Optional }
 
-import from jaclang.compiler.frontend.constant {
+import from jaclang.compiler.ir.enums {
     JacSemTokenModifier as SemTokMod,
     JacSemTokenType as SemTokType
 }

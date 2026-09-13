@@ -145,7 +145,7 @@ them from any other app lower to typed-async bridge stubs.
 
 The solver is the only thing that computes placement; everything else reads
 its verdict. The single query surface is
-`jaclang.compiler.placement.placement_facts`:
+`jaclang.compiler.analysis.placement.facts`:
 
 - `module_spaces(mod)` rolls a compiled module's element-level verdicts up to
   the set of codespaces it emits into (`{"server"}`, `{"client"}`, a mixed
@@ -162,7 +162,7 @@ its verdict. The single query surface is
   (base table merged with the selected app's overlay) for the few places that
   need explicit user intent rather than the solved verdict (app-kind
   inference, trust-boundary import handling).
-- `compiler/placement/workspace.jac` is the compiler-side workspace reader:
+- `compiler/session/workspace.jac` is the compiler-side workspace reader:
   `app_for_path`, `serving_apps`, `app_fact_digest`. It
   parses `[apps]` permissively (validation is the project layer's job) and
   synthesizes the implicit app when there is no `[apps]` table.

@@ -4,7 +4,7 @@ Three laws, one bug. A compiler-source module's cache key folded in the
 ambient default codespace, which is whatever compile scope happens to be in
 flight, so an entry written under one scope was rejected under another and the
 module was recompiled *while Python was importing it*. That recompile ran the
-full pass pipeline, whose passes import `jaclang.compiler.symbol_utils`, so
+full pass pipeline, whose passes import `jaclang.compiler.analysis.binding.symbol_utils`, so
 compiling `symbol_utils.jac` re-entered a half-initialized `symbol_utils` and
 raised. The client-codespace probe caught the ImportError and answered
 "server", so every module quietly changed codespace on a warm cache.
@@ -29,12 +29,12 @@ import sys;
 import types;
 import importlib.machinery as machinery;
 import jaclang;
-import jaclang.compiler.driver.program as program_mod;
+import jaclang.compiler.session.session as program_mod;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.source_failures { CompilerSourceError }
-import from jaclang.compiler.driver.pipeline {
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.bootstrap.source_failures { CompilerSourceError }
+import from jaclang.compiler.pipeline.schedule {
     ANALYSIS_SCHED_DEPS,
     CODEGEN_SCHED_DEPS,
     IR_SCHED_DEPS,
@@ -45,12 +45,14 @@ import from jaclang.compiler.driver.pipeline {
     providers_of,
     schedule_tier_reason
 }
-import from jaclang.compiler.driver.source_failures { bootstrap_tier_failure_details }
-import from jaclang.compiler.frontend.codeinfo {
+import from jaclang.compiler.bootstrap.source_failures {
+    bootstrap_tier_failure_details
+}
+import from jaclang.compiler.session.target_options {
     get_effective_default_codespace_override,
     set_effective_default_codespace
 }
-import from jaclang.compiler.driver.jir {
+import from jaclang.compiler.session.cache.artifact_codec {
     get_module_cache_path,
     module_cache_key,
     module_env_fingerprint
@@ -58,10 +60,18 @@ import from jaclang.compiler.driver.jir {
 import from jaclang.testing.cl_test_runner { _COLOR_CACHE, module_is_client }
 
 glob SYMBOL_UTILS: str = os.path.join(
-         os.path.dirname(str(jaclang.__file__)), "compiler", "symbol_utils.jac"
+         os.path.dirname(str(jaclang.__file__)),
+         "compiler",
+         "analysis",
+         "binding",
+         "symbol_utils.jac"
      ),
      EXPR_KEYS: str = os.path.join(
-         os.path.dirname(str(jaclang.__file__)), "compiler", "expr_keys.jac"
+         os.path.dirname(str(jaclang.__file__)),
+         "compiler",
+         "analysis",
+         "types",
+         "expr_keys.jac"
      );
 
 
@@ -117,10 +127,10 @@ test "a compiler-source module keys the same under every ambient codespace" {
 
 
 test "the symtab-ir schedule pre-imports what its passes reach at run time" {
-    saved_mod = sys.modules.pop("jaclang.compiler.symbol_utils");
+    saved_mod = sys.modules.pop("jaclang.compiler.analysis.binding.symbol_utils");
     try {
         get_symtab_ir_sched();
-        restored = sys.modules.get("jaclang.compiler.symbol_utils");
+        restored = sys.modules.get("jaclang.compiler.analysis.binding.symbol_utils");
         assert restored is not None , (
             "building the symtab-IR schedule left symbol_utils unimported, so a "
             "pass reaching it at run time would be the first to import it"
@@ -129,13 +139,13 @@ test "the symtab-ir schedule pre-imports what its passes reach at run time" {
             "symbol_utils came back half-initialized"
         );
     } finally {
-        sys.modules["jaclang.compiler.symbol_utils"] = saved_mod;
+        sys.modules["jaclang.compiler.analysis.binding.symbol_utils"] = saved_mod;
     }
 }
 
 
 test "a symtab-only compile survives being the first to need symbol_utils" {
-    saved_mod = sys.modules.pop("jaclang.compiler.symbol_utils");
+    saved_mod = sys.modules.pop("jaclang.compiler.analysis.binding.symbol_utils");
     cache_path = get_module_cache_path(SYMBOL_UTILS);
     cached = cache_path.read_bytes() if cache_path.exists() else None;
     cache_path.unlink(missing_ok=True);
@@ -147,7 +157,7 @@ test "a symtab-only compile survives being the first to need symbol_utils" {
         );
         assert mod is not None;
     } finally {
-        sys.modules["jaclang.compiler.symbol_utils"] = saved_mod;
+        sys.modules["jaclang.compiler.analysis.binding.symbol_utils"] = saved_mod;
         if cached is not None {
             cache_path.write_bytes(cached);
         }
@@ -156,10 +166,10 @@ test "a symtab-only compile survives being the first to need symbol_utils" {
 
 
 test "the ir-gen schedule pre-imports the narrowing keys its passes reach" {
-    saved_mod = sys.modules.pop("jaclang.compiler.expr_keys");
+    saved_mod = sys.modules.pop("jaclang.compiler.analysis.types.expr_keys");
     try {
         get_ir_gen_sched();
-        restored = sys.modules.get("jaclang.compiler.expr_keys");
+        restored = sys.modules.get("jaclang.compiler.analysis.types.expr_keys");
         assert restored is not None , (
             "building the ir-gen schedule left expr_keys unimported, so "
             "CFGBuildPass reaching it at run time would be the first to import it"
@@ -168,7 +178,7 @@ test "the ir-gen schedule pre-imports the narrowing keys its passes reach" {
             "expr_keys came back half-initialized"
         );
     } finally {
-        sys.modules["jaclang.compiler.expr_keys"] = saved_mod;
+        sys.modules["jaclang.compiler.analysis.types.expr_keys"] = saved_mod;
     }
 }
 
@@ -182,7 +192,7 @@ def _with_in_flight(name: str, path: str) -> types.ModuleType {
 
 
 test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
-    name = "jaclang.compiler.symbol_utils";
+    name = "jaclang.compiler.analysis.binding.symbol_utils";
     assert name in IR_SCHED_DEPS , "symbol_utils left the ir-gen dependency list";
     saved = _with_in_flight(name, SYMBOL_UTILS);
     try {
@@ -193,7 +203,7 @@ test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
             "the full ir-gen schedule was built while one of its dependencies was "
             "mid-import; a pass reaching that module at run time re-enters it"
         );
-        tail = [p.__name__ for p in get_py_code_gen()];
+        tail = [p.value for p in get_py_code_gen()];
         assert tail
             == ["NativeImportFactsPass", "JcirGenPass", "JcirBytecodeGenPass"] , tail;
     } finally {
@@ -211,7 +221,7 @@ test "a silent internal compile failure names the dependency mid-import" {
     assert bootstrap_tier_failure_details(victim) == "" , (
         "no dependency is in flight, so there is nothing to explain"
     );
-    name = "jaclang.compiler.symbol_utils";
+    name = "jaclang.compiler.analysis.binding.symbol_utils";
     saved = _with_in_flight(name, SYMBOL_UTILS);
     try {
         details = bootstrap_tier_failure_details(victim);
@@ -244,12 +254,29 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
                 f"{origin}: {dep} came back half-initialized"
             );
         }
+        import from jaclang.compiler.pipeline.pass_base { Transform }
         for p in passes {
-            owner = p.__module__;
+            implementations: set[type] = set();
+            for loaded in list(sys.modules.values()) {
+                if loaded is None
+                    or not loaded.__name__.startswith('jaclang.compiler.') {
+                    continue;
+                }
+                candidate = vars(loaded).get(p.value);
+                if isinstance(candidate, type) and issubclass(candidate, Transform) {
+                    implementations.add(candidate);
+                }
+            }
+            assert len(implementations) == 1 , (
+                f"{origin}: {p.value} must have one loaded implementation, got "
+                f"{implementations}"
+            );
+            implementation = next(iter(implementations));
+            owner = implementation.__module__;
             covered = seed(owner)
                 or any(owner == dep or owner.startswith(dep + ".") for dep in deps);
             assert covered , (
-                f"{origin}: pass {p.__name__} lives in {owner}, which is neither a "
+                f"{origin}: pass {p.value} lives in {owner}, which is neither a "
                 "seed module nor in the schedule's dependency list; a compile "
                 "reached from its import would run the schedule that needs it"
             );
@@ -259,7 +286,7 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
 
 
 test "a compile that re-enters the module being imported says so" {
-    ek = sys.modules["jaclang.compiler.expr_keys"];
+    ek = sys.modules["jaclang.compiler.analysis.types.expr_keys"];
     saved_fn = ek.collect_assigned_symbols;
     sys.modules["jac_reentrant_probe"] = initializing_stub(EXPR_KEYS);
     delattr(ek, "collect_assigned_symbols");
@@ -276,7 +303,7 @@ test "a compile that re-enters the module being imported says so" {
         } except CompilerSourceError as loud {
             raised = True;
             assert "re-entered" in str(loud) , str(loud);
-            assert "jaclang.compiler.expr_keys" in str(loud) , str(loud);
+            assert "jaclang.compiler.analysis.types.expr_keys" in str(loud) , str(loud);
         }
         assert raised , "a re-entrant compile degraded quietly instead of refusing";
     } finally {
@@ -291,8 +318,8 @@ test "a probe failure from the compiler's own source refuses to answer" {
     _COLOR_CACHE.pop(os.path.abspath(fake), None);
     err = ImportError(
         "cannot import name 'collect_assigned_symbols' from partially "
-        "initialized module 'jaclang.compiler.symbol_utils'",
-        name="jaclang.compiler.symbol_utils",
+        "initialized module 'jaclang.compiler.analysis.binding.symbol_utils'",
+        name="jaclang.compiler.analysis.binding.symbol_utils",
         path=SYMBOL_UTILS
     );
     saved_program = program_mod.JacProgram;

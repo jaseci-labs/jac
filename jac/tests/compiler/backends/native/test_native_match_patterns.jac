@@ -15,7 +15,7 @@ import from tests.support {
     native_force_opts
 }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -31,7 +31,7 @@ def check_na_inline(label: str, code: str) -> JacProgram {
 }
 
 test "match sequence dispatches on length" {
-    (eng, _) = compile_native("match_patterns.jac");
+    (native_program, eng, _) = compile_native("match_patterns.jac");
     f = get_func(eng, "seq_lengths", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 0;
     assert f(1) == 1;
@@ -40,14 +40,14 @@ test "match sequence dispatches on length" {
 }
 
 test "match sequence literal and capture arms" {
-    (eng, _) = compile_native("match_patterns.jac");
+    (native_program, eng, _) = compile_native("match_patterns.jac");
     f = get_func(eng, "seq_fixed", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(1, 2) == 1;
     assert f(3, 4) == 7;
 }
 
 test "match star binds head and rest slice" {
-    (eng, _) = compile_native("match_patterns.jac");
+    (native_program, eng, _) = compile_native("match_patterns.jac");
     f = get_func(eng, "seq_star_head", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == -1;
     assert f(1) == 1000;
@@ -55,7 +55,7 @@ test "match star binds head and rest slice" {
 }
 
 test "match star binds init and last" {
-    (eng, _) = compile_native("match_patterns.jac");
+    (native_program, eng, _) = compile_native("match_patterns.jac");
     f = get_func(eng, "seq_star_tail", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == -1;
     assert f(1) == 1000;
@@ -63,7 +63,7 @@ test "match star binds init and last" {
 }
 
 test "match star between head and tail binds the middle" {
-    (eng, _) = compile_native("match_patterns.jac");
+    (native_program, eng, _) = compile_native("match_patterns.jac");
     f = get_func(eng, "seq_star_mid", ctypes.c_int64, ctypes.c_int64);
     assert f(1) == -1;
     assert f(2) == 1110;
@@ -71,45 +71,45 @@ test "match star between head and tail binds the middle" {
 }
 
 test "match mapping probes keys and binds values" {
-    (eng, _) = compile_native("match_patterns.jac");
+    (native_program, eng, _) = compile_native("match_patterns.jac");
     f = get_func(eng, "map_probe", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 1;
     assert f(1) == 3;
 }
 
 test "match mapping falls through on a missing key" {
-    (eng, _) = compile_native("match_patterns.jac");
+    (native_program, eng, _) = compile_native("match_patterns.jac");
     f = get_func(eng, "map_missing", ctypes.c_int64);
     assert f() == -1;
 }
 
 test "match mapping rest collects unmatched entries" {
-    (eng, _) = compile_native("match_patterns.jac");
+    (native_program, eng, _) = compile_native("match_patterns.jac");
     f = get_func(eng, "map_rest", ctypes.c_int64);
     assert f() == 102;
 }
 
 test "match class pattern binds fields by keyword" {
-    (eng, _) = compile_native("match_patterns.jac");
+    (native_program, eng, _) = compile_native("match_patterns.jac");
     f = get_func(eng, "arch_kw", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(3, 4) == 34;
 }
 
 test "match class pattern binds fields by position" {
-    (eng, _) = compile_native("match_patterns.jac");
+    (native_program, eng, _) = compile_native("match_patterns.jac");
     f = get_func(eng, "arch_pos", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(5, 6) == 56;
 }
 
 test "match class pattern dispatches subclass via vtable" {
-    (eng, _) = compile_native("match_patterns.jac");
+    (native_program, eng, _) = compile_native("match_patterns.jac");
     f = get_func(eng, "arch_subtype", ctypes.c_int64, ctypes.c_int64);
     assert f(1) == 9 , "Sub instance must hit the Sub arm";
     assert f(0) == 7 , "Base instance must NOT hit the Sub arm";
 }
 
 test "nested sequence patterns recurse" {
-    (eng, _) = compile_native("match_patterns.jac");
+    (native_program, eng, _) = compile_native("match_patterns.jac");
     hit = get_func(eng, "nested_seq", ctypes.c_int64);
     miss = get_func(eng, "nested_seq_miss", ctypes.c_int64);
     assert hit() == 6;
@@ -117,7 +117,7 @@ test "nested sequence patterns recurse" {
 }
 
 test "match guard runs after structural binding" {
-    (eng, _) = compile_native("match_patterns.jac");
+    (native_program, eng, _) = compile_native("match_patterns.jac");
     f = get_func(eng, "seq_guard", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(5, 1) == 1;
     assert f(1, 5) == 2;

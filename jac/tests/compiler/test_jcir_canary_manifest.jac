@@ -23,9 +23,10 @@ The third obligation -- that the lane under measurement is actually JCIR
 nineteen files exist, CI runs them, and what they run is the container.
 """
 
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import os;
 import from tests.support { JAC_ROOT }
-import from jaclang.compiler.driver.pipeline { get_py_code_gen }
+import from jaclang.compiler.pipeline.schedule { get_py_code_gen }
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 
@@ -120,16 +121,16 @@ test "the manifest has no duplicates and covers both lanes" {
 
 test "the lane the canaries measure is the container, with no alternative" {
     sched = get_py_code_gen(native=False);
-    assert JcirGenPass in sched , (
-        f"the codegen schedule does not emit JCIR: {[p.__name__ for p in sched]}"
+    assert PassIdentity.JcirGenPass in sched , (
+        f"the codegen schedule does not emit JCIR: {[p.value for p in sched]}"
     );
-    assert JcirBytecodeGenPass in sched , (
+    assert PassIdentity.JcirBytecodeGenPass in sched , (
         "the codegen schedule emits JCIR but never transcribes it"
     );
     for `entry in sched {
-        assert "Pyast" not in `entry.__name__ and "PyBytecode" not in `entry.__name__ , (
+        assert "Pyast" not in `entry.value and "PyBytecode" not in `entry.value , (
             f"a second Python codegen emitter is back in the schedule "
-            f"({`entry.__name__}); the manifest measures whichever lane runs, "
+            f"({`entry.value}); the manifest measures whichever lane runs, "
             "so two lanes make it ambiguous"
         );
     }

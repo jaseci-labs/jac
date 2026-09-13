@@ -13,11 +13,12 @@ its own `with entry`).
 accessors, so it only reads back as `11` if properties took no slots.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
@@ -37,7 +38,7 @@ def accessor_engine -> tuple[ExecutionEngine, uni.Module] {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors: {errors}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "No native engine produced for accessor_fields.jac";
     _ENGINE_MEMO.append((eng, ir, ));
     return (eng, ir);
@@ -99,7 +100,7 @@ test "an overridden accessor dispatches on the runtime class" {
 
 test "a property is absent from the exported struct layout" {
     (_eng, ir) = accessor_engine();
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "no native layout exported";
     names = [f.name for f in layout.structs["Box"].fields];
     assert "doubled" not in names and "width" not in names , (

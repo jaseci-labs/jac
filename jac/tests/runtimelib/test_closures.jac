@@ -4,9 +4,10 @@ Closures are a compiler feature (runtime-agnostic), so this checks the
 generated JS directly rather than building a full bundle.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from tests.support { JAC_ROOT }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "runtimelib", "fixtures");
 
@@ -14,7 +15,7 @@ test "nested function closures compile to JS" {
     fixture = os.path.join(FIXTURES, "test_closures.jac");
     prog = JacProgram();
     mod = prog.compile(fixture);
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert js.strip() , "Expected JavaScript output for cl closures";
 
     # Outer functions.

@@ -7,12 +7,13 @@ These exercise the sv↔na-congruent surface a binary parser needs:
   - `open(path, "rb").read()` returning that length-aware bytes buffer.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from tests.support { compile_native, get_func, native_force_opts }
 import ctypes;
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
@@ -98,225 +99,225 @@ def get_sfunc(eng: any, name: str, restype: type | None, *argtypes: type) -> any
 
 # ─── bytes type: length awareness, indexing, slicing, equality ───
 test "bytes literal length counts embedded NUL" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "lit_len", ctypes.c_int64);
     assert f() == 5;
 }
 
 test "bytes index returns embedded NUL byte" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "idx_nul", ctypes.c_int64);
     assert f() == 0;
 }
 
 test "bytes data past NUL is reachable" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "idx_after_nul", ctypes.c_int64);
     assert f() == 67;
 }
 
 test "bytes negative index" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "neg_index", ctypes.c_int64);
     assert f() == 68;
 }
 
 test "bytes slice length" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "slice_len", ctypes.c_int64);
     assert f() == 5;
 }
 
 test "bytes slice index" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "slice_idx", ctypes.c_int64);
     assert f() == 119;
 }
 
 test "bytes equality true" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "eq_true", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "bytes equality differs after NUL" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "eq_false_after_nul", ctypes.c_int64);
     assert f() == 0;
 }
 
 test "bytes equality differs by length" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "eq_len_differs", ctypes.c_int64);
     assert f() == 0;
 }
 
 test "str encode length" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "encode_len", ctypes.c_int64);
     assert f() == 5;
 }
 
 test "int from_bytes little-endian length-aware" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "from_bytes_le", ctypes.c_int64);
     assert f() == 256;
 }
 
 test "int from_bytes big-endian" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "from_bytes_be", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "int to_bytes roundtrip" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "to_bytes_roundtrip", ctypes.c_int64);
     assert f() == 258;
 }
 
 test "empty bytes length" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "empty_len", ctypes.c_int64);
     assert f() == 0;
 }
 
 # ─── bytes building: concatenation and the bytes()/bytearray() constructors ───
 test "bytes concat length" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "concat_len", ctypes.c_int64);
     assert f() == 2;
 }
 
 test "bytes concat keeps embedded NUL (length-aware)" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "concat_embedded_nul_len", ctypes.c_int64);
     assert f() == 4;
 }
 
 test "bytes concat copies right operand at correct offset" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "concat_idx", ctypes.c_int64);
     assert f() == 67;
 }
 
 test "bytes() constructor length counts bytes past NUL" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "ctor_len", ctypes.c_int64);
     assert f() == 3;
 }
 
 test "bytes() constructor byte after NUL is reachable" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "ctor_idx_after_nul", ctypes.c_int64);
     assert f() == 66;
 }
 
 test "bytearray() constructor length counts bytes past NUL" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     f = get_func(eng, "bytearray_ctor_len", ctypes.c_int64);
     assert f() == 3;
 }
 
 # ─── struct module: unpack / pack / calcsize ───
 test "struct unpack u32 little-endian" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "u_u32_le", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "struct unpack i32 little-endian signed" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "u_i32_le", ctypes.c_int64);
     assert f() == -1;
 }
 
 test "struct unpack u32 big-endian" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "u_u32_be", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "struct unpack i16 signed" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "u_i16_le", ctypes.c_int64);
     assert f() == -2;
 }
 
 test "struct unpack u16" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "u_u16_le", ctypes.c_int64);
     assert f() == 32768;
 }
 
 test "struct unpack u8" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "u_u8", ctypes.c_int64);
     assert f() == 255;
 }
 
 test "struct unpack i8 signed" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "u_i8", ctypes.c_int64);
     assert f() == -1;
 }
 
 test "struct unpack u64" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "u_u64_le", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "struct unpack two shorts" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "u_two_le", ctypes.c_int64);
     assert f() == 1002;
 }
 
 test "struct unpack f32 via pack roundtrip" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "u_f32", ctypes.c_double);
     assert abs(f() - 1.5) < 1e-9;
 }
 
 test "struct unpack f64 via pack roundtrip" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "u_f64", ctypes.c_double);
     assert abs(f() - 3.25) < 1e-12;
 }
 
 test "struct calcsize mixed" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "calcsize_mix", ctypes.c_int64);
     assert f() == 8;
 }
 
 test "struct calcsize with pad byte" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "calcsize_pad", ctypes.c_int64);
     assert f() == 4;
 }
 
 test "struct pack unpack u32 le roundtrip" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "pack_unpack_u32_le", ctypes.c_int64);
     assert f() == 305419896;
 }
 
 test "struct pack unpack u32 be roundtrip" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "pack_unpack_u32_be", ctypes.c_int64);
     assert f() == 305419896;
 }
 
 test "struct pack multiple values" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "pack_multi", ctypes.c_int64);
     assert f() == 7009;
 }
 
 test "struct unpack short buffer raises" {
-    (eng, _) = compile_native("struct_pack.jac");
+    (native_program, eng, _) = compile_native("struct_pack.jac");
     f = get_func(eng, "unpack_short_raises", ctypes.c_int64);
     assert f() == -1;
 }
@@ -336,8 +337,10 @@ test "struct pack wrong arg count is a compile error" {
         f"the bad struct.pack is owned by bad_pack(), which must demote to "
         f"a seam, got: {[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "bad_pack" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "bad_pack" not in ir_layout.functions , (
         "a struct.pack with the wrong argument count must demote its "
         "function out of the native layout, never pack uninitialized tail "
         "bytes"
@@ -357,7 +360,7 @@ def _write_blob -> str {
 }
 
 test "binary read length counts embedded NULs" {
-    (eng, _) = compile_native("binary_file.jac");
+    (native_program, eng, _) = compile_native("binary_file.jac");
     f = get_sfunc(eng, "read_len", ctypes.c_int64, ctypes.c_char_p);
     path = _write_blob();
     try {
@@ -368,7 +371,7 @@ test "binary read length counts embedded NULs" {
 }
 
 test "binary read byte after NUL" {
-    (eng, _) = compile_native("binary_file.jac");
+    (native_program, eng, _) = compile_native("binary_file.jac");
     f = get_sfunc(eng, "byte_after_nul", ctypes.c_int64, ctypes.c_char_p);
     path = _write_blob();
     try {
@@ -379,7 +382,7 @@ test "binary read byte after NUL" {
 }
 
 test "struct unpack from binary file slice" {
-    (eng, _) = compile_native("binary_file.jac");
+    (native_program, eng, _) = compile_native("binary_file.jac");
     f = get_sfunc(eng, "struct_from_file", ctypes.c_int64, ctypes.c_char_p);
     path = _write_blob();
     try {
@@ -390,7 +393,7 @@ test "struct unpack from binary file slice" {
 }
 
 test "binary read via context manager" {
-    (eng, _) = compile_native("binary_file.jac");
+    (native_program, eng, _) = compile_native("binary_file.jac");
     f = get_sfunc(eng, "read_with_ctx", ctypes.c_int64, ctypes.c_char_p);
     path = _write_blob();
     try {
@@ -409,7 +412,7 @@ def _write_line_blob -> str {
 }
 
 test "binary readline keeps embedded NUL (length-aware)" {
-    (eng, _) = compile_native("binary_file.jac");
+    (native_program, eng, _) = compile_native("binary_file.jac");
     f = get_sfunc(eng, "first_line_len", ctypes.c_int64, ctypes.c_char_p);
     path = _write_line_blob();
     try {
@@ -420,7 +423,7 @@ test "binary readline keeps embedded NUL (length-aware)" {
 }
 
 test "binary readline byte after NUL" {
-    (eng, _) = compile_native("binary_file.jac");
+    (native_program, eng, _) = compile_native("binary_file.jac");
     f = get_sfunc(eng, "first_line_byte_after_nul", ctypes.c_int64, ctypes.c_char_p);
     path = _write_line_blob();
     try {
@@ -434,7 +437,7 @@ test "binary readline byte after NUL" {
 # Grouped one-compile-per-gap; each embedded-NUL case is what the old
 # strlen/strstr/strcmp paths got wrong.
 test "bytes repeat is length-aware (#6749)" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     assert get_func(eng, "repeat_len", ctypes.c_int64)() == 6;
     assert get_func(eng, "repeat_idx", ctypes.c_int64)() == 98;
     assert get_func(eng, "repeat_nul_len", ctypes.c_int64)() == 6;
@@ -443,7 +446,7 @@ test "bytes repeat is length-aware (#6749)" {
 }
 
 test "bytes membership is length-aware (#6749)" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     assert get_func(eng, "in_true", ctypes.c_int64)() == 1;
     assert get_func(eng, "in_false", ctypes.c_int64)() == 0;
     assert get_func(eng, "in_nul", ctypes.c_int64)() == 1;
@@ -452,7 +455,7 @@ test "bytes membership is length-aware (#6749)" {
 }
 
 test "bytes iteration yields int bytes (#6749)" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     assert get_func(eng, "iter_sum", ctypes.c_int64)() == 294;
     assert get_func(eng, "iter_count_nul", ctypes.c_int64)() == 3;
     assert get_func(eng, "iter_sum_nul", ctypes.c_int64)() == 195;
@@ -460,7 +463,7 @@ test "bytes iteration yields int bytes (#6749)" {
 }
 
 test "bytes truthiness is emptiness, not nullness (#6749)" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     assert get_func(eng, "truthy_empty", ctypes.c_int64)() == 0;
     assert get_func(eng, "truthy_nonempty", ctypes.c_int64)() == 1;
     assert get_func(eng, "truthy_nul", ctypes.c_int64)() == 1;
@@ -469,7 +472,7 @@ test "bytes truthiness is emptiness, not nullness (#6749)" {
 }
 
 test "bytes repr matches CPython b'...' (#6749)" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     assert get_func(eng, "repr_abc_ok", ctypes.c_int64)() == 1;
     assert get_func(eng, "repr_nul_ok", ctypes.c_int64)() == 1;
     assert get_func(eng, "repr_empty_ok", ctypes.c_int64)() == 1;
@@ -480,7 +483,7 @@ test "bytes repr matches CPython b'...' (#6749)" {
 }
 
 test "bytes dict key is length-aware (#6749)" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     assert get_func(eng, "dict_get", ctypes.c_int64)() == 7;
     assert get_func(eng, "dict_nul", ctypes.c_int64)() == 5;
     assert get_func(eng, "dict_distinct_len", ctypes.c_int64)() == 2;
@@ -488,7 +491,7 @@ test "bytes dict key is length-aware (#6749)" {
 }
 
 test "bytes ordering is lexicographic unsigned (#6749)" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     assert get_func(eng, "lt_true", ctypes.c_int64)() == 1;
     assert get_func(eng, "lt_false", ctypes.c_int64)() == 0;
     assert get_func(eng, "lt_prefix", ctypes.c_int64)() == 1;
@@ -500,7 +503,7 @@ test "bytes ordering is lexicographic unsigned (#6749)" {
 }
 
 test "bytes vs None comparison is null-safe (#6751)" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     # None operand: equal only to None (CPython identity), never deref null
     assert get_func(eng, "none_eq_bytes", ctypes.c_int64)() == 0;
     assert get_func(eng, "bytes_eq_none", ctypes.c_int64)() == 0;
@@ -517,16 +520,16 @@ test "bytes vs None comparison is null-safe (#6751)" {
 }
 
 test "builtin repr supports native bytes without demotion" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     assert get_func(eng, "builtin_repr_ok", ctypes.c_int64)() == 1;
 }
 
 test "string containment preserves embedded NUL boundaries" {
-    (eng, _) = compile_native("bytes_ops.jac");
+    (native_program, eng, _) = compile_native("bytes_ops.jac");
     assert get_func(eng, "string_contains_nul", ctypes.c_int64)() == 1;
 }
 
 test "reused object locals preserve narrowed string operations" {
-    (eng, _) = compile_native("rebound_string.jac");
+    (native_program, eng, _) = compile_native("rebound_string.jac");
     assert get_func(eng, "rebound_string", ctypes.c_int64)() == 0;
 }

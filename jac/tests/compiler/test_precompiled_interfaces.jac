@@ -2,7 +2,11 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import hashlib;
 import shutil;
-import from jaclang.compiler.driver.jir { SEC_IFACE, SEC_DIAG, read_section_bytes }
+import from jaclang.compiler.session.cache.artifact_codec {
+    SEC_IFACE,
+    SEC_DIAG,
+    read_section_bytes
+}
 import from jaclang.dist.precompile_bytecode { precompile_unit, write_manifest }
 
 def _package(base_path: Path) -> Path {
@@ -60,8 +64,9 @@ test "precompiled modules carry their type interface on cold and cached builds" 
 
 test "an installed precompiled interface resolves paths without rebuilding its source" {
     import from jaclang.jac0core { sealed }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.types.types { FunctionType, ClassType }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.ir.types.nodes { FunctionType, ClassType }
+    import from jaclang.compiler.api { query_type }
     with TemporaryDirectory() as directory {
         base_path = Path(directory);
         package = _package(base_path / "build");
@@ -99,15 +104,23 @@ test "an installed precompiled interface resolves paths without rebuilding its s
             path = str(installed / "api.jac");
             iface_entry = registry.ensure(path, compile_on_miss=False);
             assert iface_entry is not None , "the installed interface could not be validated";
+            repacked = precompile_unit(path, str(installed), collect=False);
+            assert repacked is not None;
+            assert read_section_bytes(repacked, SEC_IFACE) is not None , (
+                "repacking a sealed module lost its interface metadata"
+            );
             module = registry._materialize(iface_entry);
             assert module is not None and module.stub_only;
             assert module.loc.mod_path == path;
             assert not program.analysis.pass_runs , "installation rebuilt the dependency";
-            evaluator = program.get_type_evaluator();
-            function = evaluator.get_type_of_symbol(module.lookup("make"));
+            make_symbol = module.lookup("make");
+            assert make_symbol is not None;
+            function = query_type(program, make_symbol);
             assert isinstance(function, FunctionType);
-            assert module.lookup("make").decl.loc.mod_path == path;
-            box = evaluator.get_type_of_symbol(module.lookup("Box"));
+            assert make_symbol.decl.loc.mod_path == path;
+            box_symbol = module.lookup("Box");
+            assert box_symbol is not None;
+            box = query_type(program, box_symbol);
             assert isinstance(box, ClassType);
             identity = box.shared.canonical_key();
             assert identity is not None and identity[0] == str(installed / "model.jac");
@@ -118,13 +131,16 @@ test "an installed precompiled interface resolves paths without rebuilding its s
             reloaded = JacProgram().iface_registry();
             cached = reloaded.ensure(path, compile_on_miss=False);
             assert cached is not None , "local persistence lost the installed interface";
-            assert reloaded._materialize(cached).loc.mod_path == path , (
+            cached_module = reloaded._materialize(cached);
+            assert cached_module is not None;
+            assert cached_module.loc.mod_path == path , (
                 "persisting a reused interface lost its relocation metadata"
             );
             code = program.get_bytecode(path);
             assert code is not None and code.co_filename == path;
-            import from jaclang.compiler.placement.placement { summary_store }
-            assert summary_store(program)[path].mod_path == path;
+            import from jaclang.compiler.pipeline.keys { PLACEMENT_SUMMARY }
+            placement = program.analysis.lookup(path, PLACEMENT_SUMMARY);
+            assert placement is not None and placement.mod_path == path;
         } finally {
             sealed._images.remove(image);
         }
@@ -133,9 +149,9 @@ test "an installed precompiled interface resolves paths without rebuilding its s
 
 test "relocation changes path fields without rewriting diagnostic messages" {
     import json;
-    import from jaclang.compiler.driver.jir { JirPaths }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.ifacecache { DIAG_SCHEMA }
+    import from jaclang.compiler.session.cache.artifact_codec { JirPaths }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.session.imports { DIAG_SCHEMA }
     paths = JirPaths(roots=["/build/library"], base_dir="/installed/library");
     original = "/build/library/api.jac";
     raw = json.dumps(
@@ -179,6 +195,24 @@ test "relocation changes path fields without rewriting diagnostic messages" {
     }
 }
 
+test "SDK dependency paths survive a different runtime extraction directory" {
+    import from unittest.mock { patch }
+    import jaclang.compiler.session.cache.artifact_codec as codec;
+    paths = codec.JirPaths(base_dir="/app/library");
+    relative = "vendor/typeshed/stdlib/builtins.pyi";
+    with patch.object(codec, "_jaclang_pkg_dir", "/sdk/first") {
+        encoded = paths.encode("/sdk/first/" + relative, "/app");
+        assert encoded == "<jaclang>/" + relative;
+        assert paths.encode("/sdk/first_extra/external.py", "/app")
+            == "/sdk/first_extra/external.py";
+    }
+    with patch.object(codec, "_jaclang_pkg_dir", "/sdk/second") {
+        assert paths.encode("/sdk/second/" + relative, "/app") == encoded;
+        assert paths.resolve(encoded) == "/sdk/second/" + relative;
+        assert codec.JirPaths().resolve(encoded) == "/sdk/second/" + relative;
+    }
+}
+
 test "freezing bootstrap bytecode initializes and preserves its interface" {
     import os;
     import subprocess;
@@ -190,10 +224,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from jaclang.dist.precompile_bytecode import seal_bootstrap, _unit_program
-from jaclang.compiler.driver.compiler import JacCompiler
-from jaclang.compiler.driver.program import JacProgram
-from jaclang.compiler.driver.selfhost import SelfHostCache
-from jaclang.compiler.driver.jir import SEC_IFACE, read_section_bytes
+from jaclang.compiler.session.compiler import JacCompiler
+from jaclang.compiler.session.session import JacProgram
+from jaclang.compiler.bootstrap.selfhost import SelfHostCache
+from jaclang.compiler.session.cache.artifact_codec import SEC_IFACE, read_section_bytes
 from jaclang.jac0core import sealed
 with TemporaryDirectory() as directory:
     package = Path(directory) / 'jaclang'
@@ -229,11 +263,11 @@ with TemporaryDirectory() as directory:
 test "selfhost sealing resolves conditional stub classes before application analysis" {
     import os;
     import from unittest.mock { patch }
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
-    import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
-    import from jaclang.compiler.types.stubcat.writer { module_of }
+    import from jaclang.compiler.session.compiler { JacCompiler }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.bootstrap.selfhost { SelfHostCache }
+    import from jaclang.compiler.bootstrap.catalog_loader { jaclang_pkg_dir }
+    import from jaclang.compiler.analysis.interfaces.catalog_builder { module_of }
     import jaclang.dist.precompile_bytecode as precompile;
     import jaclang.jac0core.stubcat_hook as hook;
     package = jaclang_pkg_dir();
@@ -259,5 +293,40 @@ test "selfhost sealing resolves conditional stub classes before application anal
                 "sealing created an orphan class instead of a reusable interface reference"
             );
         }
+    }
+}
+
+test "selfhost packaging keeps the compiled graph until its interface is ready" {
+    import os;
+    import from unittest.mock { patch }
+    import from jaclang.compiler.session.session { JacProgram }
+    import jaclang.compiler.frontend.parser.frontend as frontend;
+    with TemporaryDirectory() as directory {
+        package = _package(Path(directory));
+        source = str(package / "api.jac");
+        Path(source).write_text("def answer -> int { return 42; }\n");
+        cache = JacProgram()._get_compiler().selfhost;
+        original_resolve = cache.resolve;
+        def resolve(path: str, program: JacProgram, force: bool = False) -> JacProgram {
+            if os.path.realpath(path) == source {
+                return cache.program;
+            }
+            return original_resolve(path, program, force);
+        }
+        # Route only this fixture through the same owner as an SDK module.
+        with patch.object(cache, "resolve", resolve), patch.object(
+            frontend, "parse_woven", wraps=frontend.parse_woven
+        ) as parse {
+            data = precompile_unit(source, str(package), collect=False);
+        }
+        assert data is not None;
+        assert read_section_bytes(data, SEC_IFACE) is not None;
+        calls = [
+            call
+            for call in parse.call_args_list
+            if call.args[1] == source
+        ];
+        assert len(calls) == 1 , "packaging rebuilt its module to prepare the interface";
+        assert cache.program.find_module(source) is None , "packaging retained the finished unit";
     }
 }

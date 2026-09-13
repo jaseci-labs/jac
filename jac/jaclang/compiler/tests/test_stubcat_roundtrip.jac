@@ -11,15 +11,18 @@ writer needs them; a bundled binary would carry the catalog instead).
 """
 import os;
 import tempfile;
-import from jaclang.compiler.types.stubcat.build { build_catalog }
-import from jaclang.compiler.types.stubcat.locate {
+import from jaclang.compiler.bootstrap.catalog { build_catalog }
+import from jaclang.compiler.session.cache.catalog_paths {
     ENV_FILE,
     jaclang_pkg_dir,
     reset_catalog_cache,
     typeshed_stdlib_dir
 }
-import from jaclang.compiler.types.stubcat.reader { StubCatalog, open_catalog_file }
-import from jaclang.compiler.types.types { ClassType, FunctionType, OverloadedType }
+import from jaclang.compiler.session.cache.catalog_reader {
+    StubCatalog,
+    open_catalog_file
+}
+import from jaclang.compiler.ir.types.nodes { ClassType, FunctionType, OverloadedType }
 
 glob SMALL_SET: list[str] = [
          "builtins",
@@ -45,8 +48,8 @@ glob SMALL_SET: list[str] = [
 
 test "catalog export releases its temporary compiler and stub trees" {
     import gc;
-    import jaclang.compiler.types.stubcat.build as catalog_build;
-    import from jaclang.compiler.driver.program { JacProgram }
+    import jaclang.compiler.bootstrap.catalog as catalog_build;
+    import from jaclang.compiler.session.session { JacProgram }
     import from unittest.mock { patch }
     import from weakref { ReferenceType, ref }
     if not sources_present() {
@@ -196,8 +199,8 @@ test "a catalog-backed check of a small program is clean" {
         return;
     }
     (cat, out) = small_catalog();
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.session { JacProgram }
+    import from jaclang.compiler.session.options { CompileOptions }
     previous = os.environ.get(ENV_FILE);
     os.environ[ENV_FILE] = out;
     reset_catalog_cache();

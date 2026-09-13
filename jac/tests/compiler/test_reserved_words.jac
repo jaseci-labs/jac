@@ -10,7 +10,7 @@ and after a dot none of them needs the escape.
 import os;
 import re;
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.frontend.parser { parse }
 import from jaclang.compiler.frontend.parser.tokens {
     BUILTIN_TYPE_KINDS,

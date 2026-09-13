@@ -19,14 +19,18 @@ still lower and still agree with the Python lane, so the refusal reads as a
 diagnosis of the Python-side crossing rather than of class-qualified calls.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import importlib;
 import os;
 import sys;
 import from tests.support { TESTS_DIR, native_force_opts }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.analysis.placement.native_fallback {
+    na_coverage_begin,
+    na_coverage_end
+}
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -114,7 +118,7 @@ test "a module-scope static call into a Python-side class refuses" {
         f"the diagnostic must name the callee it refuses, the way the "
         f"free-function crossing names its function: {texts}"
     );
-    assert ir.gen.llvm_ir is None , (
+    assert artifact_for(ir).llvm_ir is None , (
         "a module whose entry silently loses a statement is worse than a "
         "refusal, so nothing may lower here"
     );
@@ -127,7 +131,7 @@ test "a body-scoped static call demotes only its owning function" {
         f"a function owns this violation, so it demotes rather than failing "
         f"the module: {[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "clean" in layout.functions , (
         f"the clean sibling was lost: {sorted(layout.functions)}"
@@ -158,7 +162,7 @@ test "the same call with no Python base still lowers" {
         f"only the Python-side crossing may refuse; a class-qualified call "
         f"into a native module must be untouched: {[str(e) for e in prog.errors_had]}"
     );
-    layout = ir.gen.native_layout;
+    layout = artifact_for(ir).native_layout;
     assert layout is not None , "whole-module native compile aborted";
     assert "run_merge" in layout.functions , (
         f"the caller was demoted: {sorted(layout.functions)}"
@@ -176,7 +180,7 @@ test "the control's two lanes agree on the merged value" {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine for the control";
     addr = eng.get_function_address("run_merge");
     assert addr != 0 , "run_merge is absent from the JIT engine";

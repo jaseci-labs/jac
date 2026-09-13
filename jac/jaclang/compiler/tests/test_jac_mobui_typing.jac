@@ -18,10 +18,10 @@ route every npm import uses, and it must name every export the shim makes.
 import os;
 import shutil;
 import tempfile;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.modresolver { resolve_jac_virtual_module_path }
-import from jaclang.compiler.types.type_evaluator { FunctionType, UnknownType }
-import from jaclang.compiler.frontend.unitree { Import, ModuleItem }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.resolver { resolve_jac_virtual_module_path }
+import from jaclang.compiler.analysis.types.type_evaluator { FunctionType, UnknownType }
+import from jaclang.compiler.ir.schema { Import, ModuleItem }
 
 
 glob _TOML: str = (
@@ -130,7 +130,7 @@ test "mobui imports resolve and type from the app root and from shared code" {
 
 test "the mobui declarations name every export of the shim" {
     import jaclang;
-    import from jaclang.compiler.types.ts_decl_parser { parse_dts }
+    import from jaclang.compiler.analysis.types.ts_decl_parser { parse_dts }
     client_dir = os.path.join(os.path.dirname(jaclang.__file__), "client");
     shim = os.path.join(client_dir, "client_mobui.jac");
     dts = os.path.join(client_dir, "client_mobui.d.ts");

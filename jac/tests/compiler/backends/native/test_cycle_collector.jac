@@ -25,12 +25,13 @@ Linux/glibc only (needs `mallinfo2`); skipped elsewhere, where the AOT RSS test
 carries the coverage.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import sys;
 import from tests.support { TESTS_DIR, native_force_opts }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -79,7 +80,7 @@ def _cycle_growth(fixture: str, enable: bool, inuse: any) -> int {
     assert not prog.errors_had , (
         f"compile errors in {fixture}: {[str(e) for e in prog.errors_had]}"
     );
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"no native engine for {fixture}";
 
     def _fn(name: str) -> any {

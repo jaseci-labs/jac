@@ -342,9 +342,9 @@ def _usage_to_dict(usage_obj: object) -> dict {
         return dict(usage_obj);
     }
     try {
-        return usage_obj.model_dump()
-            if usage_obj?.model_dump
-            else dict(vars(usage_obj));
+        model_dump = usage_obj?.model_dump;
+        dumped = model_dump() if callable(model_dump) else dict(vars(usage_obj));
+        return dumped if isinstance(dumped, dict) else {};
     } except Exception as e {
         logger.debug(f"usage serialization failed, recording an empty payload: {e}");
         return {};
@@ -685,7 +685,8 @@ impl BaseLLM.__call__(**kwargs: object) -> BaseLLM {
 impl BaseLLM.invoke(mt_run: MTRuntime) -> any {
     handler = mt_run.call_params.get("stream_handler");
     if mt_run.stream and handler is not None and callable(handler) {
-        return self._invoke_with_handler(mt_run, handler);
+        import from typing { cast }
+        return self._invoke_with_handler(mt_run, cast(Callable, handler));
     }
 
     if mt_run.stream and mt_run.call_params.get("logging", False) {
@@ -1547,7 +1548,7 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
             response = self.model_call_with_stream(params);
             for chunk in response {
                 if chunk?.choices and chunk?.choices?[0]?.finish_reason {
-                    finish_reason = str(chunk.choices[0].finish_reason);
+                    finish_reason = str(chunk?.choices?[0]?.finish_reason);
                 }
                 chunk_usage = chunk?.usage;
                 if chunk_usage {
@@ -1757,7 +1758,7 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     );
 }
 
-impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) {
+impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) -> AsyncGenerator[str, None] {
     params = self.make_model_params(mt_run);
     log_params = self.format_prompt(params);
     self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
@@ -1771,7 +1772,7 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) {
             response = await self.model_call_with_stream_async(params);
             async for chunk in response {
                 if chunk?.choices and chunk?.choices?[0]?.finish_reason {
-                    finish_reason = str(chunk.choices[0].finish_reason);
+                    finish_reason = str(chunk?.choices?[0]?.finish_reason);
                 }
                 chunk_usage = chunk?.usage;
                 if chunk_usage {
@@ -1782,8 +1783,8 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) {
                     );
                 }
                 if chunk?.choices and chunk?.choices?[0]?.delta {
-                    delta = chunk.choices[0].delta;
-                    yield delta.content or "";
+                    delta = chunk?.choices?[0]?.delta;
+                    yield str(delta?.content or "");
                 }
             }
             break;

@@ -1,3 +1,4 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
 import from jaclang.comptime { name as ct_name }
 

@@ -19,7 +19,7 @@ glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
 # Direct introspection follows the same explicit preparation contract as serving.
 def prepare_source(path: str) {
-    import from jaclang.compiler.driver.application { prepare_application }
+    import from jaclang.build.preparation { prepare_application }
     import from jaclang.runtime.runtime { JacRuntime as Jac }
     prepare_application(path, Jac.get_program(), str(Path(path).parent));
 }
@@ -1374,12 +1374,8 @@ test "issue 6507: a cross-boundary endpoint module that fails to import is logge
 }
 
 test "bundled app: cross-boundary def:pub endpoint registers for jaclang-bundled app" {
-    # Regression for `jac ai --ui`: when the app lives under the jaclang package
-    # root, its modules route to the self-host program, so the
-    # cross-boundary bindings land there -- not in `Jac.program.mod.hub`. The
-    # serve collector must span both hubs (`_search_hubs`); before the fix it
-    # scanned only `Jac.program.mod.hub` (empty for a bundled app), so cross_pub
-    # went unregistered and the client got a 404/405 instead of "pub-ok".
+    # Bundled applications must expose their compiled cross-boundary bindings
+    # from the selected application context as callable routes.
     bundled = make_bundled_crossboundary_client();
     client = bundled[0];
     cleanup_dir = bundled[1];
@@ -2564,7 +2560,7 @@ import from jaclang.server.bridge {
     BridgeUnavailable,
     bridge_error_from
 }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.compiler.ir.enums { Constants as Con }
 import from jaclang.server.outbox {
     SqliteOutboxStore,
     cached_result,

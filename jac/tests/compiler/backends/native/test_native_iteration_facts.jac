@@ -1,11 +1,12 @@
 """Native iteration consumes types recorded for whole binding patterns."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.frontend.unitree { InnerCompr, InForStmt, TupleVal }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.ir.schema { InnerCompr, InForStmt, TupleVal }
 
 test "tuple iteration targets retain analysis types and execute natively" {
     program = JacProgram();
@@ -34,7 +35,7 @@ test "tuple iteration targets retain analysis types and execute natively" {
         }
     }
     assert count == 4;
-    engine = module.gen.native_engine;
+    engine = artifact_for(module).native_engine;
     assert engine is not None;
     for (name, expected) in [("comprehension", 21), ("loop", 17)] {
         address = engine.get_function_address(name);

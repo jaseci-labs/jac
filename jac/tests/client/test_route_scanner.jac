@@ -24,7 +24,7 @@ import from jaclang.client.route_scanner {
     describe_pages_without_routes,
     entry_drops_route_children
 }
-import from jaclang.compiler.frontend.codeinfo { ClientManifest }
+import from jaclang.compiler.backends.common.artifacts { ClientManifest }
 
 
 """Write `body` to `base/rel`, creating parent directories."""

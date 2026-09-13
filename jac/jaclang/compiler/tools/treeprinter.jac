@@ -1,8 +1,9 @@
+import from jaclang.compiler.session.import_paths { resolve_import_path }
 import ast as ast3;
 import builtins;
 import html;
-import jaclang.compiler.frontend.unitree as uni;
-import type from jaclang.compiler.frontend.unitree { UniNode, UniScopeNode }
+import jaclang.compiler.ir.schema as uni;
+import type from jaclang.compiler.ir.schema { UniNode, UniScopeNode }
 
 glob id_bag: dict = {},
      id_state: dict = {"used": 0},
@@ -208,7 +209,7 @@ def print_ast_tree(
     output_file: (str | None) = None,
     max_depth: (int | None) = None
 ) -> str {
-    import from jaclang.compiler.frontend.unitree { AstSymbolNode, Token }
+    import from jaclang.compiler.ir.schema { AstSymbolNode, Token }
     print_py_raise: bool = False;
     def __node_repr_in_tree(nd: UniNode) -> str {
         access = f"Access: {nd.access.tag.value} ,"
@@ -233,7 +234,7 @@ def print_ast_tree(
                 else nd.name.value;
             resolved_path: (str | None) = None;
             try {
-                resolved_path = nd.resolve_relative_path();
+                resolved_path = resolve_import_path(nd);
             } except Exception {
                 resolved_path = nd.abs_path;
             }
@@ -242,7 +243,7 @@ def print_ast_tree(
         } elif isinstance(nd, uni.ModulePath) {
             path_str: (str | None) = None;
             try {
-                path_str = nd.resolve_relative_path();
+                path_str = resolve_import_path(nd);
             } except Exception {
                 path_str = nd.abs_path;
             }

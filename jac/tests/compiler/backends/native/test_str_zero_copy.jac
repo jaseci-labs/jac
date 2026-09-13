@@ -4,14 +4,14 @@ under managed modes, rootless and derivation-bounded (item 2's checker
 rules) under the enforced headerless build. Behavior byte-identical
 across modes."""
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import re;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { jac_command, TESTS_DIR }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "str_slice_views.jac"
@@ -31,7 +31,7 @@ def _probe_fn_ir(gc_mode: str, enforce: bool) -> str {
         )
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    text = str(ir.gen.llvm_ir);
+    text = str(artifact_for(ir).llvm_ir);
     m = re.search(r'define[^\n]*@"?probe"?\([^\n]*\n(.*?)\n\}', text, re.DOTALL);
     assert m , "probe fn not found in IR";
     return m.group(1);
@@ -57,7 +57,7 @@ test "slice-view output is byte-identical across gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"zc_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+                jac_command("build", "--native", FIXTURE)
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

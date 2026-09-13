@@ -1,6 +1,9 @@
 import from pathlib { Path }
 import from types { ModuleType }
-import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
+import type from jaclang.compiler.backends.common.artifacts {
+    ClientArtifact,
+    ClientManifest
+}
 
 obj JacToJSCompiler {
     has _compile_to_js: Callable[[Path], ClientArtifact],

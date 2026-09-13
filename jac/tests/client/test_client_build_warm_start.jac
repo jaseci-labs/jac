@@ -16,7 +16,7 @@ import os;
 import tempfile;
 import time;
 import from pathlib { Path }
-import from jaclang.compiler.driver.pass_driver { compile_progress }
+import from jaclang.compiler.pipeline.progress { compile_progress }
 import from jaclang.project.config {
     get_config,
     pin_project_scope,
@@ -140,7 +140,7 @@ test "a warm client build over a real layout is served from the cache" {
     reloader._running = True;
     edited: list[str] = [];
     with compile_progress.listen(edited.append) {
-        reloader._recompile_client_unified(str(button));
+        reloader._recompile_client_code(str(button));
     }
     assert any(p.endswith("button.jac") for p in edited) , (
         f"an HMR edit must recompile the edited module, saw {edited}"
@@ -149,7 +149,7 @@ test "a warm client build over a real layout is served from the cache" {
         "the HMR output must carry the edit"
     );
 
-    Jac.get_program().hub.reset();
+    Jac.get_program().release_compile_closure();
     after = _build(proj);
     assert "Navbar.jac" in after , (
         f"the module that imports the edited one must recompile, saw {after}"

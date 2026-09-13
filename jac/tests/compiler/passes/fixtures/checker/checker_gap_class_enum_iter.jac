@@ -1,6 +1,6 @@
 """Class-based enum iteration should yield enum-instance type, not Unknown.
 
-Mirrors the real-world pattern in jac/jaclang/compiler/frontend/impl/constant.impl.jac:
+Mirrors the real-world pattern in jac/jaclang/compiler/ir/impl/enums.impl.jac:
 a `class Foo(IntEnum) { with entry { A = 0; ... } }` enum iterated inside a
 list comprehension, with attribute access on the iteration variable. The
 type evaluator must materialize the iteration variable as an enum instance

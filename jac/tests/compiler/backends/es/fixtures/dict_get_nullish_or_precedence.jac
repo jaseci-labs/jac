@@ -6,7 +6,6 @@ into Jac `or` / `and`, the parenthesized ?? subexpression must stay grouped
 — unparenthesized ?? mixed with ||/&& is a SyntaxError.
 """
 
-
 def getattr_two_arg_or_empty(o: object) -> str {
     return getattr(o, "k", "") or "";
 }
@@ -31,7 +30,7 @@ def literal_or_getattr(o: object) -> str {
     return "x" or getattr(o, "k", "");
 }
 
-def getattr_and_true(o: object) -> bool {
+def getattr_and_true(o: object) -> int | bool {
     return getattr(o, "flag", 0) and True;
 }
 

@@ -1,7 +1,7 @@
 import from typing { TypeVar }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes.uni_pass { UniPass }
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.pipeline.uni_pass { UniPass }
+import from jaclang.compiler.analysis.binding.module_facts { ModuleFacts }
 glob ChildPassT = TypeVar('ChildPassT', bound='BaseAstGenPass[Any]');
 
 walker BaseAstGenPass[AstNodeT](UniPass) {

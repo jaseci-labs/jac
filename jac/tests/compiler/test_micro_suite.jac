@@ -10,15 +10,16 @@ This reduces ~640 parametrized tests to ~160 and eliminates redundant
 compilations (was 6-7 compiles per file, now 4).
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ast as ast3;
 import os;
 import from difflib { unified_diff }
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.helpers { add_line_numbers }
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.frontend.source_io { add_line_numbers }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.tools.unparse_pass { unparse_module }
 import from jaclang.testing.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
@@ -42,11 +43,12 @@ def micro_suite_combined_test(rel_path: str) -> None {
     }
 
     # --- Phase 1: Compile + codegen checks ---
-    code_gen = JacProgram().compile(filename);
-    assert code_gen is not None and code_gen.gen.py_ast is not None , (
+    original_program = JacProgram();
+    code_gen = original_program.compile(filename);
+    assert code_gen is not None and artifact_for(code_gen).py_ast is not None , (
         f"Compilation failed for {filename}"
     );
-    from_jac = code_gen.gen.py_ast[0];
+    from_jac = artifact_for(code_gen).py_ast[0];
     from_jac_str = ast3.dump(from_jac, indent=2);
     assert isinstance(from_jac, ast3.Module) , f"Not a module for {filename}";
     compile(from_jac, filename="<ast>", mode="exec");
@@ -90,17 +92,20 @@ def micro_suite_combined_test(rel_path: str) -> None {
     assert len(from_jac_str) > 10 , f"AST dump too short for {filename}";
 
     # --- Phase 2: Re-compile + parent scrub (tree parent test) ---
-    code_gen2 = JacProgram().compile(filename);
+    second_program = JacProgram();
+    code_gen2 = second_program.compile(filename);
     assert parent_scrub(code_gen2) , f"Parent scrub failed (pass 2) for {filename}";
 
     # --- Phase 3: Unparse roundtrip ---
-    before = ast3.dump(code_gen.gen.py_ast[0], indent=2);
+    before = ast3.dump(artifact_for(code_gen).py_ast[0], indent=2);
     unparsed = unparse_module(code_gen);
-    code_gen_unparsed = JacProgram().compile(use_str=unparsed, file_path=filename);
-    assert code_gen_unparsed is not None and code_gen_unparsed.gen.py_ast is not None , (
+    unparsed_program = JacProgram();
+    code_gen_unparsed = unparsed_program.compile(use_str=unparsed, file_path=filename);
+    assert code_gen_unparsed is not None
+        and artifact_for(code_gen_unparsed).py_ast is not None , (
         f"Re-compilation from unparse failed for {filename}"
     );
-    after_unparse = ast3.dump(code_gen_unparsed.gen.py_ast[0], indent=2);
+    after_unparse = ast3.dump(artifact_for(code_gen_unparsed).py_ast[0], indent=2);
     if "circle_clean_tests.jac" in filename {
         diff_lines = [
             i
@@ -117,8 +122,11 @@ def micro_suite_combined_test(rel_path: str) -> None {
 
     # --- Phase 4: Format roundtrip ---
     format_prog = JacProgram.jac_file_formatter(filename);
-    code_gen_format = format_prog.mod.main.gen.jac;
-    code_gen_fmt = JacProgram().compile(use_str=code_gen_format, file_path=filename);
+    code_gen_format = artifact_for(format_prog.mod.main).jac;
+    formatted_program = JacProgram();
+    code_gen_fmt = formatted_program.compile(
+        use_str=code_gen_format, file_path=filename
+    );
     if "circle_clean_tests.jac" in filename {
         tokens = code_gen_format.split();
         num_test = 0;
@@ -133,8 +141,8 @@ def micro_suite_combined_test(rel_path: str) -> None {
         before_fmt = "";
         after_fmt = "";
         try {
-            before_fmt = ast3.dump(code_gen.gen.py_ast[0], indent=2);
-            after_fmt = ast3.dump(code_gen_fmt.gen.py_ast[0], indent=2);
+            before_fmt = ast3.dump(artifact_for(code_gen).py_ast[0], indent=2);
+            after_fmt = ast3.dump(artifact_for(code_gen_fmt).py_ast[0], indent=2);
             assert isinstance(code_gen, uni.Module)
                 and isinstance(code_gen_fmt, uni.Module) , "Parsed objects are not modules.";
             diff = "\n".join(

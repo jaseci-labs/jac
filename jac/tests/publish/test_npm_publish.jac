@@ -18,8 +18,8 @@ import shutil;
 import from pathlib { Path }
 import from subprocess { run }
 import from jaclang.project.config { JacConfig }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.dist.publish.package_json {
     generate_package_json,
     npm_package_name,
@@ -495,7 +495,8 @@ test "dts_for_module declares exported functions, classes, and globals" {
             'def:pub add(a: int, b: int) -> int { return a + b; }\n'
             'def:pub names(items: list[str]) -> int { return len(items); }\n'
         );
-        mod = JacProgram().compile(
+        program = JacProgram();
+        mod = program.compile(
             str(src), options=CompileOptions(force_codespace='client')
         );
         dts = dts_for_module(mod);

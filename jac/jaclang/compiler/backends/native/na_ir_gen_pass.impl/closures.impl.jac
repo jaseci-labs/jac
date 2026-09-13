@@ -52,7 +52,7 @@ impl NaIRGenPass._scan_closure_escapes(
         if not escapes {
             continue;
         }
-        for cap_sym in sub.get_enclosing_captures() {
+        for cap_sym in sub.capture_symbols {
             if uni.same_lexical_scope(cap_sym.parent_tab, nd) {
                 self.closure_cell_vars.add(cap_sym.sym_name);
             }

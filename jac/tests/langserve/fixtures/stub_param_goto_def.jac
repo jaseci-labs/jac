@@ -1,6 +1,6 @@
 """Test fixture for go-to-def and highlighting on compound param types in stub files."""
 
-import jaclang.compiler.frontend.unitree as uni;
+import jaclang.compiler.ir.schema as uni;
 import from typing { Optional }
 
 obj ModuleProcessor {

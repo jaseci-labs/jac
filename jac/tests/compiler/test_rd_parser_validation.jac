@@ -1,14 +1,15 @@
+import from jaclang.compiler.pipeline.contracts { PassIdentity }
 import os;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import jaclang;
-import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+import from jaclang.compiler.ir.schema { Module }
+import from jaclang.compiler.frontend.source_io { read_file_with_encoding }
 import from jaclang.testing.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
-import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.analysis.binding.ast_validation_pass { ASTValidationPass }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.pipeline.executor { run_pass }
 
 glob GAP_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "fixtures", "rd_parser_gaps"
@@ -229,7 +230,7 @@ def parse_and_validate(source: str, file_path: str) -> bool {
             return True;
         }
         prog = JacProgram();
-        validation = run_pass(ASTValidationPass, module, prog);
+        validation = run_pass(PassIdentity.ASTValidationPass, module, prog);
         return len(prog.errors_had) > 0;
     } except Exception {
         return True;

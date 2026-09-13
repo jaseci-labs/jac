@@ -1,3 +1,4 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import contextlib;
 import io;
 import time;
@@ -986,7 +987,7 @@ test "async def by llm(stream=True) streams end to end" {
         os.path.join(FIXTURE_DIR, "async_stream_by_llm.jac")
     );
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
-    compiled = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec");
+    compiled = compile(artifact_for(code_gen).py_ast[0], filename="<ast>", mode="exec");
     module = types.ModuleType("async_stream_by_llm_fixture");
     module.__dict__["__file__"] = code_gen.loc.mod_path;
     exec(compiled, module.__dict__);
@@ -1102,17 +1103,18 @@ test "model_call_http_async returns json response" {
 }
 
 import ast as ast3;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
     code_gen = (prog := JacProgram()).compile(
         os.path.join(FIXTURE_DIR, "async_by_llm.jac")
     );
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
-    assert code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module) , (
+    assert artifact_for(code_gen).py_ast
+        and isinstance(artifact_for(code_gen).py_ast[0], ast3.Module) , (
         "Expected a compiled Python AST module"
     );
-    py_source = ast3.unparse(code_gen.gen.py_ast[0]);
+    py_source = ast3.unparse(artifact_for(code_gen).py_ast[0]);
 
     assert "acall_llm" in py_source , (
         f"Expected 'acall_llm' in generated source for async by llm(). Got:\n{py_source}"
@@ -1134,7 +1136,7 @@ test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
     }
     await_nodes = [
         n
-        for n in ast3.walk(code_gen.gen.py_ast[0])
+        for n in ast3.walk(artifact_for(code_gen).py_ast[0])
         if isinstance(n, ast3.Await) and _is_acall_llm_call(n.value)
     ];
     assert len(await_nodes) >= 1 , (
@@ -1143,12 +1145,12 @@ test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
 
     all_acall_nodes = [
         n
-        for n in ast3.walk(code_gen.gen.py_ast[0])
+        for n in ast3.walk(artifact_for(code_gen).py_ast[0])
         if _is_acall_llm_call(n)
     ];
     awaited_values = {
         id(n.value)
-        for n in ast3.walk(code_gen.gen.py_ast[0])
+        for n in ast3.walk(artifact_for(code_gen).py_ast[0])
         if isinstance(n, ast3.Await)
     };
     bare_acall_nodes = [
@@ -1167,9 +1169,10 @@ test "async by llm() end-to-end with mocked acall_llm" {
         os.path.join(FIXTURE_DIR, "async_by_llm.jac")
     );
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
-    assert code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module);
+    assert artifact_for(code_gen).py_ast
+        and isinstance(artifact_for(code_gen).py_ast[0], ast3.Module);
 
-    compiled = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec");
+    compiled = compile(artifact_for(code_gen).py_ast[0], filename="<ast>", mode="exec");
     module = types.ModuleType("async_by_llm_fixture");
     module.__dict__["__file__"] = code_gen.loc.mod_path;
 

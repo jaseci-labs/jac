@@ -1,3 +1,4 @@
+import from jaclang.compiler.ir.enums { Tokens as Tok, SymbolAccess, SymbolType }
 import from .tokens {
     LexToken,
     TokenKind,
@@ -10,7 +11,7 @@ import from .tokens {
 }
 import from .lexer { tokenize_full }
 
-import from jaclang.compiler.frontend.unitree {
+import from jaclang.compiler.ir.schema {
     Ability,
     AstDocNode,
     ArchHas,
@@ -139,9 +140,9 @@ import from jaclang.compiler.frontend.unitree {
     YieldExpr,
     AssertStmt
 }
-import from jaclang.compiler.frontend.unitree { Ellipsis as EllipsisLit }
+import from jaclang.compiler.ir.schema { Ellipsis as EllipsisLit }
 
-import from jaclang.compiler.frontend.constant {
+import from jaclang.compiler.ir.enums {
     Tokens as Tok,
     EdgeDir,
     CodeContext,

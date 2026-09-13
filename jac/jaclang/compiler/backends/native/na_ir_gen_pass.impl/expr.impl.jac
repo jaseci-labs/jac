@@ -1,5 +1,3 @@
-import os;
-
 impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     if nd is None {
         return None;
@@ -128,7 +126,7 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         }
 
         if isinstance(nd, uni.Expr) and self._elem_kind(_result.type) != "raw" {
-            import from jaclang.compiler.passes.rc_facts_pass {
+            import from jaclang.compiler.analysis.ownership.rc_facts_pass {
                 Ownership,
                 result_ownership
             }
@@ -545,7 +543,7 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         global_var = self.global_vars[var_name];
         return self.builder.load(global_var, name=f"glob.{var_name}");
     }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    import from jaclang.compiler.analysis.types.type_registry { JAC_TYPE_REGISTRY }
     _np = nd.parent;
     _is_call_target = isinstance(_np, uni.FuncCall) and _np.target is nd;
     if JAC_TYPE_REGISTRY.is_sized(var_name) and not _is_call_target {
@@ -715,7 +713,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
         return walker_val;
     }
 
-    _spawn_model = self.ir_in.gen.osp_model;
+    _spawn_model = artifact_for(self.ir_in).osp_models.get(CodeContext.NATIVE);
     if (_spawn_model is not None)
         and (walker_name in _spawn_model.tags)
         and (self._osp_rt_global is not None)
@@ -807,7 +805,7 @@ impl NaIRGenPass._spawn_operand_name(nd: uni.UniNode) -> (str | None) {
 }
 
 impl NaIRGenPass._is_walker_arch(name: str) -> bool {
-    _model = self.ir_in.gen.osp_model;
+    _model = artifact_for(self.ir_in).osp_models.get(CodeContext.NATIVE);
     return (_model is not None) and (_model.arch_kind.get(name) == "walker");
 }
 
@@ -1490,7 +1488,7 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
     if operand is None {
         return None;
     }
-    import from jaclang.compiler.frontend.constant { is_borrow_kind, OwnershipKind }
+    import from jaclang.compiler.ir.enums { is_borrow_kind, OwnershipKind }
     if is_borrow_kind(nd.ownership) {
         return operand;
     }
@@ -1830,7 +1828,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
         }
 
         if right_name == "value" or right_name == "name" {
-            import from jaclang.compiler.passes.layout_pass {
+            import from jaclang.compiler.lowering.layout_pass {
                 class_form_enum_member,
                 class_form_enum_scalar
             }
@@ -1940,7 +1938,9 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 }
             }
         }
-        import from jaclang.compiler.symbol_utils { imported_module_name }
+        import from jaclang.compiler.analysis.binding.symbol_utils {
+            imported_module_name
+        }
         module_name = imported_module_name(nd.target);
         if module_name is not None {
             target_name = module_name;
@@ -2115,7 +2115,13 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 type_name = self._infer_type_name(obj_val);
             }
             if type_name is not None {
-                return self._read_field_or_refuse(nd, obj_val, right_name, type_name);
+                value = self._read_field_or_refuse(nd, obj_val, right_name, type_name);
+                # Inline views still point into the receiver. Loaded values can
+                # survive it once any borrowed reference has been retained.
+                if right_name not in self.struct_field_inline.get(type_name, set()) {
+                    return self._finish_borrowed_read(obj_val, value);
+                }
+                return value;
             }
         }
     }

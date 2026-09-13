@@ -12,9 +12,14 @@ a clean exit: the fixture asserts internally and prints OK.
 import ctypes;
 import os;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
+import from tests.support {
+    jac_command,
+    TESTS_DIR,
+    compile_native,
+    get_func,
+    native_force_opts
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -22,55 +27,55 @@ glob FIXTURES = os.path.join(
      PROG = "dict_hash_ops.jac";
 
 test "dict str-key del and pop" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "del_pop_str_keys", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "dict tombstone reuse after delete" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "tombstone_reuse", ctypes.c_int64);
     assert f() == 2;
 }
 
 test "dict rehash cycle with deletes mixed in" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "rehash_with_deletes", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "dict clear then contains and reinsert" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "clear_then_reuse", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "dict iteration order preserved after deletes" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "order_after_deletes", ctypes.c_char_p);
     assert f().decode("utf-8") == "one;three;four;five;";
 }
 
 test "dict popitem returns last pair with str keys" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "popitem_last_str", ctypes.c_char_p);
     assert f().decode("utf-8") == "gamma=C";
 }
 
 test "dict popitem drains in LIFO order" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "popitem_drain", ctypes.c_int64);
     assert f() == 0;
 }
 
 test "dict order survives bounded tombstone churn and sparse rehash" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "order_after_churn", ctypes.c_int64);
     assert f() == 0;
 }
 
 test "dict f64 keys hash and compare" {
-    (eng, _) = compile_native(PROG);
+    (native_program, eng, _) = compile_native(PROG);
     f = get_func(eng, "f64_keys", ctypes.c_int64);
     assert f() == 1;
 }
@@ -78,7 +83,7 @@ test "dict f64 keys hash and compare" {
 def _run_fixture_with_gc(extra_flags: list[str], tag: str) {
     src = os.path.join(FIXTURES, PROG);
     out_bin = os.path.join(tempfile.mkdtemp(), f"dict_hash_ops_{tag}.bin");
-    cmd = [sys.executable, "-m", "jaclang", "build", "--native", src];
+    cmd = jac_command("build", "--native", src);
     cmd += extra_flags;
     cmd += ["-o", out_bin];
     comp = subprocess.run(cmd, capture_output=True, text=True, timeout=300);
@@ -111,18 +116,7 @@ test "dict ops pass under headerless --memory nogc" {
     src = os.path.join(FIXTURES, "nogc", "dict_hash_nogc.jac");
     out_bin = os.path.join(tempfile.mkdtemp(), "dict_hash_nogc.bin");
     comp = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            src,
-            "--memory",
-            "nogc",
-            "-o",
-            out_bin
-        ],
+        jac_command("build", "--native", src, "--memory", "nogc", "-o", out_bin),
         capture_output=True,
         text=True,
         timeout=300

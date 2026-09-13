@@ -8,10 +8,10 @@ compiled through the real type-check schedule with enforcement enabled,
 matching `jac build --native --memory nogc`.
 """
 import os;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.frontend.unitree { Assignment, Name }
-import from jaclang.compiler.frontend.constant { OwnershipKind }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.ir.schema { Assignment, Name }
+import from jaclang.compiler.ir.enums { OwnershipKind }
 import from tests.support { JAC_ROOT }
 
 glob FIXTURES = os.path.join(

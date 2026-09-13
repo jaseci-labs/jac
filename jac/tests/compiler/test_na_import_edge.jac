@@ -11,12 +11,13 @@ edge is placement-inferred; these tests pin the host module client via
 [placement.pins] the way a migrated project would.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import json;
 import re;
 import tempfile;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
 
 glob KERNEL_SRC: str = (
          "def:pub fib(n: int) -> int {\n"
@@ -45,7 +46,7 @@ glob KERNEL_SRC: str = (
          "\"*.kernel\" = \"native\"\n"
      );
 
-def compile_host -> uni.Module {
+def compile_host -> tuple[JacProgram, uni.Module] {
     tmp = tempfile.mkdtemp(prefix="jac_na_edge_");
     kernel_path = os.path.join(tmp, "kernel.jac");
     host_path = os.path.join(tmp, "host.jac");
@@ -59,12 +60,12 @@ def compile_host -> uni.Module {
         f.write(PIN_HOST_CLIENT);
     }
     prog = JacProgram();
-    return prog.compile(host_path);
+    return (prog, prog.compile(host_path));
 }
 
 test "native import binds generated wasm stubs in the client js" {
-    mod = compile_host();
-    js = mod.gen.js;
+    (mod_program, mod) = compile_host();
+    js = artifact_for(mod).js;
     assert '__na_bind' in js , "expected the @jac/wasm_host stub factory import";
     assert '"kernel"' in js , "expected the module stem in the bind call";
     encoded = re.search(r'__jac_na_bind\("kernel",\s*("(?:\\.|[^"\\])*")\)', js);
@@ -100,8 +101,8 @@ test "native import binds generated wasm stubs in the client js" {
 }
 
 test "native import records typed cl->na bindings in the interop manifest" {
-    mod = compile_host();
-    manifest = mod.gen.interop_manifest;
+    (mod_program, mod) = compile_host();
+    manifest = artifact_for(mod).interop_manifest;
     assert manifest is not None;
     bindings = manifest.client_native_imports;
     targets = sorted({str(b.source_module) for b in bindings});
@@ -120,7 +121,7 @@ test "native import records typed cl->na bindings in the interop manifest" {
     assert alias_binding.ret_type == "int";
     assert alias_binding.param_types == ["int"];
     assert alias_binding.param_names == ["n"];
-    client_manifest = mod.gen.client_manifest;
+    client_manifest = artifact_for(mod).client_manifest;
     assert client_manifest is not None;
     assert "kernel" not in dict(client_manifest.imports) , (
         "a native import must not join manifest.imports -- the client build"
@@ -129,8 +130,8 @@ test "native import records typed cl->na bindings in the interop manifest" {
 }
 
 test "native import compiles to nothing on the python side" {
-    mod = compile_host();
-    assert "kernel" not in mod.gen.py , (
+    (mod_program, mod) = compile_host();
+    assert "kernel" not in artifact_for(mod).py , (
         "the client->native import must be inert under CPython; only a plain"
         " server import of a native module means the ctypes crossing"
     );
@@ -191,24 +192,27 @@ test "plain import of a native module from client code takes the na edge" {
         f"the cl->na edge is inferred for native targets: "
         f"{[str(e) for e in prog.errors_had]}"
     );
-    js = mod.gen.js;
+    js = artifact_for(mod).js;
     assert '__na_bind' in js , "plain native import must bind the wasm stub";
     assert '"kernel"' in js , "expected the module stem in the bind call";
     targets = sorted(
-        {str(b.source_module) for b in mod.gen.interop_manifest.client_native_imports}
+        {
+            str(b.source_module)
+            for b in artifact_for(mod).interop_manifest.client_native_imports
+        }
     );
     assert len(targets) == 1 and targets[0].endswith("kernel.jac") , (
         f"plain native import must drive wasm emission; got: {targets}"
     );
-    assert "kernel" not in mod.gen.py , (
+    assert "kernel" not in artifact_for(mod).py , (
         "the inferred na edge must be inert under CPython, exactly like the"
         " server-pinned form"
     );
 }
 
 test "the injected wasm host import is registered for materialization" {
-    mod = compile_host();
-    imports = dict(mod.gen.client_manifest.imports);
+    (mod_program, mod) = compile_host();
+    imports = dict(artifact_for(mod).client_manifest.imports);
     assert "@jac/wasm_host" in imports , (
         "the compiler injects `import { __na_bind } from '@jac/wasm_host'`, so the"
         " specifier must join manifest.imports -- that list is what compiles"
@@ -273,7 +277,9 @@ test "na binding signatures resolve when the client module is not the entry" {
     prog.compile(entry_path);
     host_mod = prog.find_module(os.path.join(tmp, "host.jac"));
     assert host_mod is not None;
-    by_name = {b.name: b for b in host_mod.gen.interop_manifest.client_native_imports};
+    by_name = {
+        b.name: b for b in artifact_for(host_mod).interop_manifest.client_native_imports
+    };
     assert "fib" in by_name , f"expected the na binding; got: {list(by_name.keys())}";
     assert by_name["fib"].param_types == ["int"] , (
         "reached as a dependency the import symbol is an unlinked placeholder, so"

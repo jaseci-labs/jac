@@ -395,7 +395,7 @@ Static strings have one constructor: a single helper builds the `{ i64 sentinel,
 
 ### Type Identity and Layout Authority
 
-The single authority for native type identity and layout is the layout registry (`LayoutRegistry` in `jaclang/compiler/passes/layout_pass.jac`), keyed by defining module + symbol. Archetype field order, inheritance topology, vtable shape, enum identity, and enum member value tables all resolve through it: native lowering asks the authority which module defines a type and reads that module's registry, so the order in which the native pass walks imported modules never changes the answer. A walk-order fuzz gate compiles the cross-module fixtures under forward, reversed, and shuffled module walk orders and requires identical IR.
+The single authority for native type identity and layout is the layout registry (`LayoutRegistry` in `jaclang/compiler/lowering/layout_pass.jac`), keyed by defining module + symbol. Archetype field order, inheritance topology, vtable shape, enum identity, and enum member value tables all resolve through it: native lowering asks the authority which module defines a type and reads that module's registry, so the order in which the native pass walks imported modules never changes the answer. A walk-order fuzz gate compiles the cross-module fixtures under forward, reversed, and shuffled module walk orders and requires identical IR.
 
 Enum classes lower to their backing `i64` through one path: the authority predicate (`is_enum_class_type`) plus a defining-module lookup (`enum_decl_of`) that materializes the member value tables on demand. The native pass's `type_map` is a static primitive-name table seeded once from the type registry at pass construction; nothing registers into it during module walks, and a source-scan test enforces this.
 
@@ -917,7 +917,7 @@ Assert messages in native tests are limited to string literals: `assert cond, "m
 
 ## Build Options and Artifact Identity
 
-The single authority for codegen-affecting build options is the compile-options object (`CompileOptions` in `jaclang/compiler/driver/compile_options.jac`). It is constructed once at the CLI/program boundary and threaded to every compiler pass through the program; each option resolves as explicit argument, then environment override, then `jac.toml`, then built-in default. No compiler pass reads the environment directly; a source-scan test over `jaclang/compiler/passes/` enforces this.
+The single authority for codegen-affecting build options is the compile-options object (`CompileOptions` in `jaclang/compiler/session/options.jac`). It is constructed once at the CLI/program boundary and threaded to every compiler pass through the program; each option resolves as explicit argument, then environment override, then `jac.toml`, then built-in default. No compiler pass reads the environment directly; a source-scan test over `jaclang/compiler/passes/` enforces this.
 
 The codegen options carry a canonical identity string and a short hash of it, the codegen fingerprint. The fingerprint participates in artifact identity: it is folded into the JIR module cache key and into the native import IR cache key, so flipping any codegen option re-keys the artifact and a stale build is never served. Each native import artifact is stamped with the fingerprint of the options that built it; a cached module whose stamp disagrees with the current build is rejected with `E5027` instead of being linked into a mixed-options binary.
 

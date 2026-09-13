@@ -19,31 +19,34 @@ those slots, the capture walk skips them, and the Python lane builds a keyword
 key from its spelling rather than from a lowered reference.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ast as ast3;
 import os;
 import subprocess;
-import sys;
-import from tests.support { TESTS_DIR, native_force_opts }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { jac_command, TESTS_DIR, native_force_opts }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(TESTS_DIR, "compiler", "passes", "fixtures");
 
-"""Compile a fixture on the server lane and hand back the module."""
-def compile_server(fixture: str) -> uni.Module {
+"""Compile a fixture and return its program together with the module."""
+def compile_server(fixture: str) -> tuple[JacProgram, uni.Module] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, fixture),
         options=CompileOptions(no_ir_cache=True, force_codespace='server')
     );
     assert ir is not None , f"no module for {fixture}";
-    return ir;
+    return (prog, ir);
 }
 
 
 def generated_python(fixture: str) -> str {
-    return ast3.unparse(compile_server(fixture).gen.py_ast[0]);
+    (program, module) = compile_server(fixture);
+    import gc;
+    gc.collect();
+    return ast3.unparse(artifact_for(module).py_ast[0]);
 }
 
 
@@ -58,7 +61,7 @@ def ability_named(ir: uni.Module, name: str) -> uni.Ability {
 
 
 test "a keyword-argument key carries no scope symbol" {
-    ir = compile_server("kwarg_key_slot.jac");
+    (ir_program, ir) = compile_server("kwarg_key_slot.jac");
     bound = [
         kw.key.sym_name
         for kw in ir.get_all_sub_nodes(uni.KWPair)
@@ -69,7 +72,7 @@ test "a keyword-argument key carries no scope symbol" {
 
 
 test "the predicate answers for both identifier slots" {
-    ir = compile_server("kwarg_key_slot.jac");
+    (ir_program, ir) = compile_server("kwarg_key_slot.jac");
     keys = [
         kw.key
         for kw in ir.get_all_sub_nodes(uni.KWPair)
@@ -101,8 +104,8 @@ test "the predicate answers for both identifier slots" {
 
 
 test "a nested function does not capture through a keyword key" {
-    ir = compile_server("kwarg_key_slot.jac");
-    caps = [s.sym_name for s in ability_named(ir, "slot").get_enclosing_captures()];
+    (ir_program, ir) = compile_server("kwarg_key_slot.jac");
+    caps = [s.sym_name for s in ability_named(ir, "slot").capture_symbols];
     assert "align" not in caps , (
         f"'align' is captured though `slot` only spells it as a keyword key: " f"{caps}"
     );
@@ -120,7 +123,7 @@ test "the native nested function takes no phantom capture" {
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     defs = [
         _l.strip()
-        for _l in str(ir.gen.llvm_ir).split("\n")
+        for _l in str(artifact_for(ir).llvm_ir).split("\n")
         if "define" in _l and "__jac_nested_slot" in _l
     ];
     assert len(defs) == 1 , f"expected one nested definition, got {defs}";
@@ -136,10 +139,7 @@ test "the native nested function takes no phantom capture" {
 test "the annexed body computes the same value on both lanes" {
     src = os.path.join(FIXTURES, "kwarg_key_slot.jac");
     sv = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", src],
-        capture_output=True,
-        text=True,
-        timeout=900
+        jac_command("run", src), capture_output=True, text=True, timeout=900
     );
     assert sv.returncode == 0 , f"server run failed: {sv.stderr[-800:]}";
     assert sv.stdout.strip() == "34" , f"server lane printed {sv.stdout!r}";

@@ -1,7 +1,7 @@
 """Unit tests for the pragmatic .d.ts declaration parser."""
 
 import jaclang;
-import from jaclang.compiler.types.ts_decl_parser {
+import from jaclang.compiler.analysis.types.ts_decl_parser {
     parse_dts,
     TsDecl,
     TsType,

@@ -3,7 +3,7 @@ import json;
 import logging;
 import from inspect { isgenerator }
 import from typing { AsyncGenerator, get_type_hints }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.compiler.ir.enums { Constants as Con }
 import from jaclang.runtime.builtin { APIProtocol }
 import from jaclang.server.serving.datatypes { Request, Response, StreamingResponse }
 import from jaclang.server.serving.endpoint {

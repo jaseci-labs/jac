@@ -9,10 +9,13 @@ workspace: a web-app entry, a social service entry, a cli app and a
 pair of mutually-importing services that close an app cycle.
 """
 
+import from jaclang.compiler.session.import_paths { resolve_import_path }
+import from jaclang.compiler.analysis.boundaries.classify { is_service_bridge_import }
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from tests.support { JAC_ROOT }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.boundary_classify {
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.analysis.boundaries.classify {
     CrossAppKind,
     classify_cross_app_import,
     import_crosses_apps,
@@ -20,8 +23,8 @@ import from jaclang.compiler.driver.boundary_classify {
     import_provider_route,
     is_client_boundary_import
 }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.codeinfo {
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.backends.common.artifacts {
     InteropBinding,
     InteropContext,
     InteropManifest
@@ -35,7 +38,7 @@ def fixture(*parts: str) -> str {
 
 def compile_fixture(path: str, cgen: bool = False, app: str = "") -> tuple {
     prog = JacProgram();
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.session.options { CompileOptions }
     options = CompileOptions(no_cgen=not cgen);
     if app {
         options.target_app = app;
@@ -67,7 +70,7 @@ test "same-app import is LOCAL" {
     (prog, mod) = compile_fixture(fixture("web", "main.jac"));
     imp = import_of(mod, "helpers");
     assert classify_cross_app_import(imp, None) == CrossAppKind.LOCAL;
-    assert not imp.is_service_import;
+    assert not is_service_bridge_import(imp);
     assert not import_crosses_apps(imp);
     assert import_provider_app(imp) is None;
 }
@@ -76,13 +79,13 @@ test "server-context import of another serving app is SERVICE_BRIDGE" {
     (prog, mod) = compile_fixture(fixture("web", "main.jac"));
     imp = import_of(mod, "social_app");
     assert classify_cross_app_import(imp, None) == CrossAppKind.SERVICE_BRIDGE;
-    assert imp.is_service_import , (
-        "Import.is_service_import is the SERVICE_BRIDGE verdict"
+    assert is_service_bridge_import(imp) , (
+        "is_service_bridge_import(Import) is the SERVICE_BRIDGE verdict"
     );
     assert import_provider_app(imp) == "social";
     assert import_provider_route(imp) == "/api/social";
     assert not is_client_boundary_import(imp);
-    manifest = mod.gen.interop_manifest;
+    manifest = artifact_for(mod).interop_manifest;
     assert ("web", "social") in manifest.app_edges , (
         f"consumer->provider edge must be recorded; got {manifest.app_edges}"
     );
@@ -99,7 +102,7 @@ test "server-context import of another serving app is SERVICE_BRIDGE" {
 
 test "SERVICE_BRIDGE stubs are typed-async and keyed by the owner app" {
     (prog, mod) = compile_fixture(fixture("web", "main.jac"), cgen=True);
-    py = mod.gen.py;
+    py = artifact_for(mod).py;
     assert "async def greet(" in py , py;
     assert "await __jac_sv_client.call('social', 'greet'" in py , py;
     assert "__jac_provider_app__ = 'social'" in py , py;
@@ -117,8 +120,8 @@ test "cli app importing a service walker is a SERVICE_BRIDGE consumer" {
     (prog, mod) = compile_fixture(fixture("cli_app.jac"), cgen=True);
     imp = import_of(mod, "social_app");
     assert classify_cross_app_import(imp, None) == CrossAppKind.SERVICE_BRIDGE;
-    assert ("cli", "social") in mod.gen.interop_manifest.app_edges;
-    assert "spawn_walker('social', 'Greet'" in mod.gen.py;
+    assert ("cli", "social") in artifact_for(mod).interop_manifest.app_edges;
+    assert "spawn_walker('social', 'Greet'" in artifact_for(mod).py;
     assert "E5106" not in codes(prog) , f"{[str(e) for e in prog.errors_had]}";
 }
 
@@ -127,13 +130,13 @@ test "client-context import of server-placed elements is CLIENT_BRIDGE" {
     imp = import_of(mod, "social_app");
     assert classify_cross_app_import(imp, None) == CrossAppKind.CLIENT_BRIDGE;
     assert is_client_boundary_import(imp);
-    assert not imp.is_service_import;
-    js = mod.gen.js;
+    assert not is_service_bridge_import(imp);
+    js = artifact_for(mod).js;
     assert '__jacCallFunction("greet"' in js , js;
     assert '"route": "/api/social"' in js or "route: \"/api/social\"" in js , (
         "cross-app client stubs carry the provider route; got:\n" + js
     );
-    assert ("web", "social") in mod.gen.interop_manifest.app_edges;
+    assert ("web", "social") in artifact_for(mod).interop_manifest.app_edges;
 }
 
 test "NATIVE_BIND wins for a client import recorded as a client-native edge" {
@@ -143,7 +146,7 @@ test "NATIVE_BIND wins for a client import recorded as a client-native edge" {
     if from_loc is None {
         raise AssertionError("import has no from_loc");
     }
-    resolved = from_loc.resolve_relative_path();
+    resolved = resolve_import_path(from_loc);
     manifest = InteropManifest();
     manifest.bindings["greet"] = InteropBinding(
         name="greet",
@@ -196,7 +199,9 @@ test "a generator-returning SERVICE_BRIDGE stub is a coroutine until awaited" {
     );
     (prog, mod) = compile_fixture(fixture("web", "stream_awaited.jac"), cgen=True);
     assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    assert "await __jac_sv_client.call('social', 'narrate'" in mod.gen.py , mod.gen.py;
+    assert "await __jac_sv_client.call('social', 'narrate'" in artifact_for(mod).py , artifact_for(
+        mod
+    ).py;
 }
 
 test "spawning a bridged walker types as the stub's coroutine, not E1114" {
@@ -217,15 +222,15 @@ test "spawning a bridged walker types as the stub's coroutine, not E1114" {
     );
     assert len(prog.errors_had) == 1 , [str(e) for e in prog.errors_had];
     import re;
-    assert re.search(r"(?<![\w.])spawn\(", mod.gen.py) is None , (
-        "the runtime spawn must not wrap a bridged stub:\n" + mod.gen.py
+    assert re.search(r"(?<![\w.])spawn\(", artifact_for(mod).py) is None , (
+        "the runtime spawn must not wrap a bridged stub:\n" + artifact_for(mod).py
     );
 }
 
 test "a bridged obj imported alone mirrors as a boundary type, not an RPC stub" {
     (prog, mod) = compile_fixture(fixture("web", "only_profile.jac"), cgen=True);
     assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    py = mod.gen.py;
+    py = artifact_for(mod).py;
     assert "async def Profile" not in py , (
         "a data type must never lower to a coroutine stub; got:\n" + py
     );
@@ -233,7 +238,8 @@ test "a bridged obj imported alone mirrors as a boundary type, not an RPC stub" 
         "the consumer needs a local mirror of the provider's obj; got:\n" + py
     );
     assert any(
-        t.name == "Profile" for t in mod.gen.interop_manifest.boundary_types.values()
+        t.name == "Profile"
+        for t in artifact_for(mod).interop_manifest.boundary_types.values()
     );
 }
 
@@ -257,7 +263,7 @@ test "a provider's import of a shared pure helper is not an app edge" {
     assert "E5104" not in found , (
         f"false cycle through a shared helper: {[str(e) for e in prog.errors_had]}"
     );
-    import from jaclang.compiler.driver.boundary_classify {
+    import from jaclang.compiler.analysis.boundaries.classify {
         symbol_linked_source_module
     }
     import from pathlib { Path }

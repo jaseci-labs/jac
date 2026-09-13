@@ -19,13 +19,14 @@ answers below are what proves the identity reaches the right class rather than
 merely existing.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import contextlib;
 import ctypes;
 import io;
 import os;
 import from tests.support { TESTS_DIR, get_func, native_force_opts }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.ir.schema as uni;
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
@@ -49,7 +50,7 @@ def compile_native(
     if not expect_demotions {
         assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     }
-    eng = ir.gen.native_engine;
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);
 }

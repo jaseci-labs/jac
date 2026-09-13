@@ -4,7 +4,7 @@
 # .github/workflows/ci.yml, "Run jac check (using .jacignore)"). CI adds
 # `tests checker_*.jac *_err.jac` of its own; those are not listed here.
 #
-# Matching (compiler/frontend/helpers.jac:path_matches_exclude): an entry containing
+# Matching (compiler/frontend/source_io.jac:path_matches_exclude): an entry containing
 # `/` is fnmatched against the whole path; a bare entry is fnmatched against
 # EVERY path component, so a bare `types.jac` silences every file of that
 # basename repo-wide. Every entry below is path-qualified for that reason --

@@ -13,6 +13,7 @@ call through an `any`-typed value) stay structured E5092 errors, never a
 silently mis-bound value.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 import os;
@@ -27,8 +28,8 @@ import from tests.support {
 import jaclang;
 
 test "lambda parameters remain borrowed across explicit returns" {
-    (engine, module) = compile_native("lambda_borrowed_params.jac");
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    (native_program, engine, module) = compile_native("lambda_borrowed_params.jac");
+    issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
     call = get_func(engine, "call_lambda", ctypes.c_int64);
     drops = get_func(engine, "drop_count", ctypes.c_int64);
@@ -36,7 +37,7 @@ test "lambda parameters remain borrowed across explicit returns" {
     assert drops() == 1;
 }
 
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -60,7 +61,7 @@ def compile_na_inline_ir(label: str, code: str) -> tuple {
 }
 
 test "closure: nested def reads an enclosing param" {
-    (eng, _) = compile_native("closures.jac");
+    (native_program, eng, _) = compile_native("closures.jac");
     f = get_func(eng, "scaled", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(4, 5) == 20;
     assert f(0, 9) == 0;
@@ -78,9 +79,9 @@ def compute(value: int) -> int {
 """
     );
     assert not prog.errors_had , "\n".join(str(e) for e in prog.errors_had);
-    assert module.gen.native_engine is not None;
+    assert artifact_for(module).native_engine is not None;
     call = get_func(
-        module.gen.native_engine, "compute", ctypes.c_int64, ctypes.c_int64
+        artifact_for(module).native_engine, "compute", ctypes.c_int64, ctypes.c_int64
     );
     assert call(37) == 37;
 }
@@ -120,9 +121,9 @@ def probe -> int {
 """
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
-    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
+    call = get_func(artifact_for(module).native_engine, "probe", ctypes.c_int64);
     assert call() == 50;
 }
 
@@ -148,10 +149,10 @@ def drops -> int { return dropped; }
 """
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
-    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
-    drops = get_func(module.gen.native_engine, "drops", ctypes.c_int64);
+    call = get_func(artifact_for(module).native_engine, "probe", ctypes.c_int64);
+    drops = get_func(artifact_for(module).native_engine, "drops", ctypes.c_int64);
     before = drops();
     assert call() == 21;
     assert drops() - before == 1;
@@ -176,83 +177,83 @@ def probe -> int {
 """
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    issues = native_lowering_issues(str(artifact_for(module).llvm_ir));
     assert not issues , "\n".join(issue.detail for issue in issues);
-    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
+    call = get_func(artifact_for(module).native_engine, "probe", ctypes.c_int64);
     assert call() == 35;
 }
 
 test "closure: read captures are late-bound (py backend parity)" {
-    (eng, _) = compile_native("closures.jac");
+    (native_program, eng, _) = compile_native("closures.jac");
     f = get_func(eng, "late_bound", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     # r1 = 10 + a (before rebind), r2 = 10 + b (after rebind).
     assert f(2, 7) == 12017;
 }
 
 test "closure: rebound capture writes through to the enclosing frame" {
-    (eng, _) = compile_native("closures.jac");
+    (native_program, eng, _) = compile_native("closures.jac");
     f = get_func(eng, "rebind_out", ctypes.c_int64, ctypes.c_int64);
     # total = 0; bump(5) twice writes through: total == 10.
     assert f(5) == 10;
 }
 
 test "closure: RC pointer capture (str) reads without double release" {
-    (eng, _) = compile_native("closures.jac");
+    (native_program, eng, _) = compile_native("closures.jac");
     f = native_str_func(eng, "str_capture", ctypes.c_int64, ctypes.c_char_p);
     assert f(b"abcd") == 8;
 }
 
 test "closure: capturing lambda in the same frame keeps working" {
-    (eng, _) = compile_native("closures.jac");
+    (native_program, eng, _) = compile_native("closures.jac");
     f = get_func(eng, "lam_parity", ctypes.c_int64, ctypes.c_int64);
     assert f(6) == 18;
 }
 
 test "closure: self-recursive nested def forwards its own captures" {
-    (eng, _) = compile_native("closures.jac");
+    (native_program, eng, _) = compile_native("closures.jac");
     f = get_func(eng, "recursive_capture", ctypes.c_int64, ctypes.c_int64);
     # depth increments through the shared slot on every recursion level.
     assert f(3) == 4;
 }
 
 test "closure escape: counter factory returns a live closure" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "use_counter", ctypes.c_int64);
     assert f() == 3;
 }
 
 test "closure escape: two factory closures have independent cells" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "two_counters_independent", ctypes.c_int64);
     assert f() == 32;
 }
 
 test "closure escape: closure passed as argument writes through" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "pass_closure", ctypes.c_int64, ctypes.c_int64);
     assert f(10) == 16016;
 }
 
 test "closure escape: closure stored in a list and called later" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "stored_in_list", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(40, 2) == 42;
 }
 
 test "closure escape: two closures share one rebound cell" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "shared_cell", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "closure escape: env keeps an RC capture alive after the frame dies" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "use_greeter", ctypes.c_int64);
     assert f() == 8;
 }
 
 test "closure escape: capturing lambda escapes as a value" {
-    (eng, _) = compile_native("closures_escape.jac");
+    (native_program, eng, _) = compile_native("closures_escape.jac");
     f = get_func(eng, "lambda_escape", ctypes.c_int64, ctypes.c_int64);
     assert f(7) == 124;
     g = get_func(eng, "use_adder", ctypes.c_int64);
@@ -274,8 +275,10 @@ test "closure escape: capture borrowed from an outer frame stays rejected" {
         f"the outer-frame capture refusal is owned by outer(), which must "
         f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "outer" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "outer" not in ir_layout.functions , (
         "a closure escaping with an outer-frame capture must demote its "
         "function out of the native layout, never lower wrongly"
     );
@@ -294,41 +297,43 @@ test "closure escape: calling a closure through an any-typed value stays rejecte
         f"the any-typed closure call refusal is owned by outer(), which must "
         f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "outer" not in ir.gen.native_layout.functions , (
+    assert artifact_for(ir).native_layout is not None , "whole-module native compile aborted";
+    ir_layout = artifact_for(ir).native_layout;
+    assert ir_layout is not None , "native layout was not produced";
+    assert "outer" not in ir_layout.functions , (
         "an any-typed closure call site must demote its function out of the "
         "native layout, never lower wrongly"
     );
 }
 
 test "adapter: map with a capturing lambda callback" {
-    (eng, _) = compile_native("closures_adapters.jac");
+    (native_program, eng, _) = compile_native("closures_adapters.jac");
     f = get_func(eng, "scale_all", ctypes.c_int64, ctypes.c_int64);
     assert f(3) == 18 , "3+6+9";
     assert f(0) == 0;
 }
 
 test "adapter: filter with a capturing lambda predicate" {
-    (eng, _) = compile_native("closures_adapters.jac");
+    (native_program, eng, _) = compile_native("closures_adapters.jac");
     f = get_func(eng, "keep_over", ctypes.c_int64, ctypes.c_int64);
     assert f(4) == 14 , "5+9";
     assert f(0) == 18 , "1+5+9+3";
 }
 
 test "adapter: stored closure value drives map" {
-    (eng, _) = compile_native("closures_adapters.jac");
+    (native_program, eng, _) = compile_native("closures_adapters.jac");
     f = get_func(eng, "map_stored_closure", ctypes.c_int64, ctypes.c_int64);
     assert f(7) == 44 , "(10+7)+(20+7)";
 }
 
 test "adapter: named nested closure passed to map by name" {
-    (eng, _) = compile_native("closures_adapters.jac");
+    (native_program, eng, _) = compile_native("closures_adapters.jac");
     f = get_func(eng, "map_named_capture", ctypes.c_int64, ctypes.c_int64);
     assert f(10) == 50 , "20+30";
 }
 
 test "adapter: capturing filter chained into capturing map" {
-    (eng, _) = compile_native("closures_adapters.jac");
+    (native_program, eng, _) = compile_native("closures_adapters.jac");
     f = get_func(
         eng, "filter_then_map", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
     );
@@ -336,19 +341,19 @@ test "adapter: capturing filter chained into capturing map" {
 }
 
 test "frame scan: closure escaping an event-method frame" {
-    (eng, _) = compile_native("closures_frames.jac");
+    (native_program, eng, _) = compile_native("closures_frames.jac");
     f = get_func(eng, "event_frame_escape", ctypes.c_int64, ctypes.c_int64);
     assert f(3) == 30 , "here.val captured, f(10) = 10*3";
 }
 
 test "frame scan: closure escaping a no-signature method frame" {
-    (eng, _) = compile_native("closures_frames.jac");
+    (native_program, eng, _) = compile_native("closures_frames.jac");
     f = get_func(eng, "nosig_frame_escape", ctypes.c_int64, ctypes.c_int64);
     assert f(9) == 109 , "base captured, f(100) = 100+9";
 }
 
 test "frame scan: lambda escaping a global initializer" {
-    (eng, _) = compile_native("closures_frames.jac");
+    (native_program, eng, _) = compile_native("closures_frames.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "globinit_lambda", ctypes.c_int64, ctypes.c_int64);
@@ -356,7 +361,7 @@ test "frame scan: lambda escaping a global initializer" {
 }
 
 test "frame scan: lambda escaping the module entry frame" {
-    (eng, _) = compile_native("closures_frames.jac");
+    (native_program, eng, _) = compile_native("closures_frames.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "entry_frame_escape", ctypes.c_int64);

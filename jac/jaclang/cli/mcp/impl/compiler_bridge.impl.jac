@@ -113,7 +113,7 @@ impl CompilerBridge.parse_snippet(
     }
     def _do_parse(tmp_path: str) -> dict[str, any] {
         import from jaclang.runtime.runtime { JacRuntime as Jac }
-        import from jaclang.compiler.driver.program { JacProgram }
+        import from jaclang.compiler.session.session { JacProgram }
 
         program = JacProgram();
 
@@ -155,7 +155,7 @@ impl CompilerBridge.typecheck_snippet(
     }
     def _do_typecheck(tmp_path: str) -> dict[str, any] {
         import from jaclang.runtime.runtime { JacRuntime as Jac }
-        import from jaclang.compiler.driver.program { JacProgram }
+        import from jaclang.compiler.session.session { JacProgram }
 
         program = JacProgram();
         compiler = Jac.get_compiler();
@@ -228,7 +228,7 @@ impl CompilerBridge.py_to_jac(python_code: str) -> dict[str, any] {
     }
     def _do_py2jac(tmp_path: str) -> dict[str, any] {
         import from jaclang.runtime.runtime { JacRuntime as Jac }
-        import from jaclang.compiler.driver.program { JacProgram }
+        import from jaclang.compiler.session.session { JacProgram }
 
         compiler = Jac.get_compiler();
 
@@ -273,7 +273,7 @@ impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, a
     }
     def _do_ast(tmp_path: str) -> dict[str, any] {
         import from jaclang.runtime.runtime { JacRuntime as Jac }
-        import from jaclang.compiler.driver.program { JacProgram }
+        import from jaclang.compiler.session.session { JacProgram }
 
         program = JacProgram();
 
@@ -314,7 +314,7 @@ impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str,
     }
     def _do_lint(tmp_path: str) -> dict[str, any] {
         import from jaclang.runtime.runtime { JacRuntime as Jac }
-        import from jaclang.compiler.driver.compiler { JacCompiler }
+        import from jaclang.compiler.session.compiler { JacCompiler }
 
         if auto_fix {
             prog = JacCompiler.jac_str_formatter(
@@ -336,8 +336,8 @@ impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str,
 
         fixed_code: (str | None) = None;
         changed = False;
-        if auto_fix and prog.mod and prog.mod.main and prog.mod.main.gen {
-            fixed_code = prog.mod.main.gen.jac;
+        if auto_fix and prog.mod and prog.mod.main and artifact_for(prog.mod.main) {
+            fixed_code = artifact_for(prog.mod.main).jac;
             if fixed_code is None {
                 fixed_code = unparse_module(prog.mod.main);
             }
@@ -367,7 +367,7 @@ impl CompilerBridge.jac_to_py(code: str) -> dict[str, any] {
     }
     def _do_jac2py(tmp_path: str) -> dict[str, any] {
         import from jaclang.runtime.runtime { JacRuntime as Jac }
-        import from jaclang.compiler.driver.program { JacProgram }
+        import from jaclang.compiler.session.session { JacProgram }
 
         prog = JacProgram();
         ir = prog.compile(file_path=tmp_path);
@@ -385,7 +385,7 @@ impl CompilerBridge.jac_to_py(code: str) -> dict[str, any] {
             return {"python_code": "", "warnings": errors or ["Conversion failed"]};
         }
 
-        py_code = ir.gen.py or "";
+        py_code = artifact_for(ir).py or "";
         return {"python_code": py_code, "warnings": warnings};
     }
     (success, result) = run_with_timeout(
@@ -406,7 +406,7 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
     }
     def _do_jac2js(tmp_path: str) -> dict[str, any] {
         import from jaclang.runtime.runtime { JacRuntime as Jac }
-        import from jaclang.compiler.driver.program { JacProgram }
+        import from jaclang.compiler.session.session { JacProgram }
 
         prog = JacProgram();
         ir = prog.compile(file_path=tmp_path);
@@ -424,7 +424,7 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
             return {"js_code": "", "warnings": errors or ["Conversion failed"]};
         }
 
-        js_code = ir.gen.js or "";
+        js_code = artifact_for(ir).js or "";
         if not js_code.strip() {
             warnings.append("ECMAScript code generation produced no output.");
         }

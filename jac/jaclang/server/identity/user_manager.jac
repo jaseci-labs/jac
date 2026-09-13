@@ -1,7 +1,7 @@
 import logging;
 import from contextvars { ContextVar }
 import from datetime { UTC, datetime, timedelta }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.compiler.ir.enums { Constants as Con }
 import from jaclang.server.identity.identity_storage {
     IdentityStorage,
     PgIdentityStorage

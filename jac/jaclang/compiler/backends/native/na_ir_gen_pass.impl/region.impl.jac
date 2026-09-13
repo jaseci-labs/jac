@@ -1,16 +1,11 @@
-import from jaclang.compiler.backends.common.kernel_units { REGION_KERNEL_ABI }
-
-glob REGION_TLS_GLOBAL: str = "__jac_region_tls",
-     REGION_TLS_GET: str = "__jac_region_tls_get",
-     REGION_TLS_SET: str = "__jac_region_tls_set",
-     REGION_GBL_GET: str = "__jac_region_gbl_get";
-
 impl NaIRGenPass._register_region_kernel -> None {
     if self._region_kernel_registered {
         return;
     }
     self._region_kernel_registered = True;
-    _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
+    _manifest = artifact_for(self.ir_in).interop_manifest
+        if ((artifact_for(self.ir_in) if self.ir_in is not None else None))
+        else None;
     if (_manifest is not None)
         and ("region_kernel" not in _manifest.native_transitive_sources) {
         _manifest.native_transitive_sources.append("region_kernel");
@@ -195,20 +190,20 @@ impl NaIRGenPass._register_region_handle_var(
     _tgt = nd.target[0]
         if (len(nd.target) == 1 and isinstance(nd.target[0], uni.Name))
         else None;
-    if _tgt is None or _tgt.sym is None or not _tgt.sym.na_region_handle {
+    if _tgt is None or _tgt.sym is None or not _tgt.sym.memory.region_handle {
         return;
     }
     self.region_handle_vars.add(var_name);
     if isinstance(nd.value, uni.Name)
         and nd.value.sym is not None
-        and nd.value.sym.na_region_handle
+        and nd.value.sym.memory.region_handle
         and nd.value.sym_name != var_name {
         self.region_handle_vars.discard(nd.value.sym_name);
     }
 }
 
 impl NaIRGenPass._lower_partition_unpack(nd: uni.Assignment) -> bool {
-    import from jaclang.compiler.expr_keys { is_builtin_region_type }
+    import from jaclang.compiler.analysis.types.expr_keys { is_builtin_region_type }
     if len(nd.target) != 1 or not isinstance(nd.target[0], uni.TupleVal) {
         return False;
     }

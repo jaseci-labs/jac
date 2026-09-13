@@ -28,13 +28,17 @@ refusal and demotion, and the untouched functions that keep lowering because
 the refusal is no longer module-wide.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import hashlib;
 import os;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.analysis.placement.native_fallback {
+    na_coverage_begin,
+    na_coverage_end
+}
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      WALK_ORDERS: list = [None, "reverse", "shuffle:1337", "shuffle:7", "shuffle:42"];
@@ -51,8 +55,8 @@ def compile_ir_text(fixture: str, walk_order: str | None) -> str {
     mod = prog.compile(file_path=os.path.join(FIXTURES, fixture), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    assert mod.gen.llvm_ir is not None , f"No IR emitted for {fixture}";
-    return str(mod.gen.llvm_ir);
+    assert artifact_for(mod).llvm_ir is not None , f"No IR emitted for {fixture}";
+    return str(artifact_for(mod).llvm_ir);
 }
 
 """Rejoin IR with top-level entities sorted; function bodies stay intact."""
@@ -113,7 +117,7 @@ test "imported obj-field chain executes correctly" {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors: {errors}";
-    eng = mod.gen.native_engine;
+    eng = artifact_for(mod).native_engine;
     assert eng is not None , "No native engine produced";
     addr = eng.get_function_address("imported_field_checksum");
     assert addr != 0 , "imported_field_checksum not found";
@@ -167,10 +171,10 @@ test "an unlowerable field erases loudly: the declaration seams, every touch ref
     # Spending the refusal on the field is only worth anything if the module
     # survives it -- that is the whole reason the diagnostic moved off the
     # module, so it is pinned here rather than left implied.
-    assert mod.gen.llvm_ir is not None , (
+    assert artifact_for(mod).llvm_ir is not None , (
         "an erased field must no longer withhold the module's IR"
     );
-    layout = mod.gen.native_layout;
+    layout = artifact_for(mod).native_layout;
     assert layout is not None , "an erased field must not abort the module";
     assert "read_view" not in layout.functions , (
         "a function that reads an erased slot must leave the native layout"

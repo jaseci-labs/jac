@@ -1,6 +1,6 @@
 import logging;
 import from pathlib { Path }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.compiler.ir.enums { Constants as Con }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 import from jaclang.server.serving.datatypes {
     HTMLResponse,

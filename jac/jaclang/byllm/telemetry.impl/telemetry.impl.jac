@@ -75,17 +75,18 @@ impl _emit_agent_telemetry(
 
     tokens: dict = {"total": {}, "by_kind": {}, "per_call": [], "requests": 0};
     try {
-        history: any = mt_run._usage_history or [];
+        history: any = mt_run?._usage_history or [];
         tokens = _aggregate_usage(history);
     } except Exception as e {
         logger.debug(f"tokens aggregation failed: {e}");
     }
 
     record_mtir = mt_run?.mtir;
+    caller = record_mtir?.caller;
     record = {
         "invocation_id": getattr(mt_run, "_invocation_id"),
         "parent_invocation_id": mt_run?._parent_invocation_id,
-        "caller_name": record_mtir.caller.__name__ if record_mtir else "unknown",
+        "caller_name": getattr(caller, "__name__", "unknown"),
         "caller_args": caller_args,
         "user_prompt": user_prompt,
         "agent_response": agent_response,

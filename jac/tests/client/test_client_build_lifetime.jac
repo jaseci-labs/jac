@@ -91,8 +91,7 @@ test "prepared native assets and exports survive the bundler clearing its output
         ), patch.object(ViteCompiler, "_wasm_targets", return_value=[entry_path]), patch.object(
             ViteCompiler, "_compile_wasm_module", return_value=assets
         ), patch(
-            "jaclang.compiler.boundary_audit.boundary_audit",
-            return_value={"prepared": True}
+            "jaclang.build.manifests.boundary_audit", return_value={"prepared": True}
         ) {
             inputs = builder.prepare(loaded);
         }

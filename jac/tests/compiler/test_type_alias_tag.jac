@@ -11,8 +11,8 @@ When the tag goes unrecognized the symbol keeps the *annotation's* type instead.
 `typing.get_type_hints` uncallable with any argument at all.
 """
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
 
 def check_src(src: str) -> list[str] {
     prog = JacProgram();

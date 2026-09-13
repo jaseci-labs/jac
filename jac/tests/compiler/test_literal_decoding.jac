@@ -31,8 +31,8 @@ import from tests.support { JAC_ROOT }
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.frontend.parser.lexer { tokenize, tokenize_full }
 import from jaclang.compiler.frontend.parser.tokens { TokenKind }
-import from jaclang.compiler.frontend.unitree { decode_string_literal }
-import jaclang.compiler.frontend.unitree as uni;
+import from jaclang.compiler.ir.schema { decode_string_literal }
+import jaclang.compiler.ir.schema as uni;
 
 """Every prefix spelling `Parser.parse_multistring` splices onto a STRING."""
 glob LITERAL_PREFIXES: tuple = (

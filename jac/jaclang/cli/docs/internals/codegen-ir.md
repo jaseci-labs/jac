@@ -21,7 +21,7 @@ must conform to the bytes specified here.
 Status note (#8732): the native seal, the fused `libjac_compiler` build,
 the pass-serving binder, and the `mat_parse` materializer crossing that
 this document refers to were removed. The compiler modules served natively
-are now listed in `compiler/native_scope.jac`, empty until a native pass
+are now listed in `compiler/bootstrap/native_scope.jac`, empty until a native pass
 can share the tree with a bytecode pass. The sealed-lane paragraphs below
 (sections 2, 9 and 11) are the record of what was measured before the
 removal and the precedent the next crossing builds on; the tests and
@@ -126,7 +126,7 @@ instead of 4,500 lines of hand-written crossing code.
 
 ## 3. Container format
 
-The container is versioned like the JIR container (`compiler/driver/jir.jac`):
+The container is versioned like the JIR container (`compiler/session/cache/artifact_codec.jac`):
 magic plus format version, refuse mismatched, no migration attempts.
 
 ```
@@ -630,11 +630,11 @@ assumed away.
   lanes and asserts exact `ast.dump(include_attributes=True)` equality,
   recursive code-object equality after `compile()`, and behavioral
   equality under `exec`, including one real compiler source file
-  (`compiler/frontend/srcloc.jac`) end to end.
+  (`compiler/frontend/source_locations.jac`) end to end.
 
 ### 11.1 The codegen tail, after the cutover
 
-`get_py_code_gen` (compiler/driver/compiler.jac) returns one Python codegen
+`get_py_code_gen` (compiler/session/compiler.jac) returns one Python codegen
 tail and there is nothing to select between:
 
 - `JcirGenPass`, `JcirBytecodeGenPass`

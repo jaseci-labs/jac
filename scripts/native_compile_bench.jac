@@ -31,7 +31,7 @@ def main -> None {
     }
 
     import from jaclang.cli.commands.native_build { native_build }
-    import from jaclang.compiler.native_compiler { ensure_loaded }
+    import from jaclang.compiler.frontend.kernel.adapter { ensure_loaded }
 
     kernel = ensure_loaded();
     if kernel is None {

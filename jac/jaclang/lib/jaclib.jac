@@ -1,6 +1,6 @@
 import from jaclang.runtime.archetype { GenericEdge, Root }
 import from jaclang.runtime.archetype { ObjectSpatialFunction as DSFunc }
-import from jaclang.compiler.frontend.constant { EdgeDir }
+import from jaclang.compiler.ir.enums { EdgeDir }
 import from jaclang.runtime.constructs { Archetype as Obj }
 import from jaclang.runtime.constructs { EdgeArchetype as Edge }
 import from jaclang.runtime.constructs { JsxElement }

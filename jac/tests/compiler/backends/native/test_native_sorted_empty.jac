@@ -14,11 +14,12 @@ answer for the same program, following the isinstance-families harness
 pattern.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
@@ -37,8 +38,8 @@ def sorted_engine -> ExecutionEngine {
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not errors , f"sorted_empty.jac did not lower: {errors}";
-    assert ir.gen.llvm_ir , "no native IR for sorted_empty.jac";
-    eng = ir.gen.native_engine;
+    assert artifact_for(ir).llvm_ir , "no native IR for sorted_empty.jac";
+    eng = artifact_for(ir).native_engine;
     assert eng is not None , "no native engine for sorted_empty.jac";
     _ENGINE.append(eng);
     return eng;

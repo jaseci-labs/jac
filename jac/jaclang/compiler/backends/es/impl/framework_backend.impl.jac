@@ -7,7 +7,7 @@ impl FrameworkBackend.lower_view_expr(expr: es.Expression) -> es.Expression {
 }
 
 impl FrameworkBackend._get_setter_name(var_name: str) -> str {
-    import from jaclang.compiler.frontend.constant { client_state_setter_name }
+    import from jaclang.compiler.ir.enums { client_state_setter_name }
     return client_state_setter_name(var_name);
 }
 

@@ -96,7 +96,7 @@ def resolve_app_kind(config: JacConfig, app: AppConfig, entry_path: str) -> str 
     if project_kind {
         return project_kind;
     }
-    import from jaclang.compiler.placement.placement_facts { pinned_module_space }
+    import from jaclang.build.inventory { pinned_module_space }
     entry_pin = pinned_module_space(entry_path) if entry_path else '';
     if (entry_pin == 'native') {
         return "cli-native";

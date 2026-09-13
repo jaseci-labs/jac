@@ -2,8 +2,8 @@
 
 import from jaclang.compiler.backends.native.abi { struct_layouts }
 import from jaclang.compiler.backends.native.llvm { binding, ir }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.options { CompileOptions }
+import from jaclang.compiler.session.session { JacProgram }
 
 test "target data retains its type through the context manager" {
     source = """

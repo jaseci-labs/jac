@@ -38,7 +38,7 @@ _jac0_hash = (
     else b""
 )
 
-# Inline logging config (previously in jaclang.compiler.driver.log)
+# Inline logging config (previously in jaclang.compiler.pipeline.log)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 
 
@@ -53,7 +53,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 # in-file header or validation is needed.  The directory is resolved by the
 # pure-Python `jaclang.jac0core.cache_paths` (importable here, before the JIR
 # Jac modules are bootstrapped), so it shares one platform-resolution rule with
-# `jaclang.compiler.driver.jir`; the cache *key*, however, stays independent of that
+# `jaclang.compiler.session.cache.artifact_codec`; the cache *key*, however, stays independent of that
 # module's `compute_module_key` since it must work before the seed tier compiles.
 # ---------------------------------------------------------------------------
 
@@ -123,7 +123,7 @@ class JacSourceCompileError(ImportError):
 def _retained_failure_details(file_path: str) -> str:
     """Recover diagnostics the internal compile closure already evicted."""
     try:
-        from jaclang.compiler.driver.source_failures import compiler_source_failure_details
+        from jaclang.compiler.bootstrap.source_failures import compiler_source_failure_details
 
         return compiler_source_failure_details(file_path) or ""
     except Exception:
@@ -146,24 +146,24 @@ def _module_scoped_alerts(program: object, file_path: str) -> list:
 # frozen from the manifest; a missing/corrupt JIR falls back to the retained
 # source, which jac0 transpiles live.
 _modresolver_jac = os.path.join(
-    os.path.dirname(__file__), "compiler", "driver", "modresolver.jac"
+    os.path.dirname(__file__), "compiler", "session", "resolver.jac"
 )
 _modresolver_code = None
 _modresolver_origin = _modresolver_jac
-_frozen_modresolver = _sealed.find_module("jaclang.compiler.driver.modresolver")
+_frozen_modresolver = _sealed.find_module("jaclang.compiler.session.resolver")
 if _frozen_modresolver is not None and _frozen_modresolver[1].get("bootstrap"):
     _mr_image = _frozen_modresolver[0]
-    _modresolver_code = _mr_image.bootstrap_code("jaclang.compiler.driver.modresolver")
+    _modresolver_code = _mr_image.bootstrap_code("jaclang.compiler.session.resolver")
     if _modresolver_code is not None:
         _modresolver_origin = _mr_image.virtual_origin(_frozen_modresolver[2])
 if _modresolver_code is None:
     with open(_modresolver_jac, encoding="utf-8") as _f:
         _modresolver_code = _bootstrap_compile(_modresolver_jac, _f.read())
-_modresolver = types.ModuleType("jaclang.compiler.driver.modresolver")
+_modresolver = types.ModuleType("jaclang.compiler.session.resolver")
 _modresolver.__file__ = _modresolver_origin
-_modresolver.__package__ = "jaclang.compiler.driver"
+_modresolver.__package__ = "jaclang.compiler.session"
 exec(_modresolver_code, _modresolver.__dict__)  # noqa: S102
-sys.modules["jaclang.compiler.driver.modresolver"] = _modresolver
+sys.modules["jaclang.compiler.session.resolver"] = _modresolver
 get_jac_search_paths = _modresolver.get_jac_search_paths
 
 
@@ -384,7 +384,7 @@ class JacMetaImporter(MetaPathFinder, Loader):
                 containing_lookup(file_path, module.__name__) if containing_lookup is not None else None
             )
             if containing is not None:
-                from jaclang.compiler.driver.application import prepare_dynamic_module
+                from jaclang.build.preparation import prepare_dynamic_module
 
                 prepared = prepare_dynamic_module(file_path, program, containing)
         codeobj = (

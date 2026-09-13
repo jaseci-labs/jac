@@ -14,11 +14,12 @@ class constructor TestClient without |new|` and `ReferenceError: jid is not
 defined`.
 """
 
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import shutil;
 import tempfile;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.unitree { FuncCall, Module, Name, Test }
+import from jaclang.compiler.session.session { JacProgram }
+import from jaclang.compiler.ir.schema { FuncCall, Module, Name, Test }
 
 
 glob _TEST_MOD_SRC: str = (
@@ -106,7 +107,7 @@ test "a standalone test module still lowers its test-block calls (stopgap retire
     try {
         prog = JacProgram();
         mod = prog.compile(mod_path);
-        js = mod.gen.js;
+        js = artifact_for(mod).js;
         assert "new TestClient({})" in js , (
             f"the archetype constructor reached the bundle as a plain call: {js}"
         );

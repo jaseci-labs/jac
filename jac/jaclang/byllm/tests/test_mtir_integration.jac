@@ -19,7 +19,7 @@ import from pathlib { Path }
 
 import from jaclang { JacRuntime }
 import from jaclang { JacRuntimeInterface as Jac }
-import from jaclang.compiler.driver.mtp {
+import from jaclang.compiler.lowering.mtir {
     ClassInfo,
     EnumInfo,
     FieldInfo,
@@ -29,7 +29,7 @@ import from jaclang.compiler.driver.mtp {
     mk_dict,
     mk_list,
 }
-import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.session.session { JacProgram }
 
 glob jac_import = Jac.jac_import,
      FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures");
@@ -212,7 +212,7 @@ test "method tool in class" {
 # Python Library Fallback Tests
 # =============================================================================
 test "mtruntime without mtir info" {
-    import from jaclang.compiler.driver.mtp { MTIR }
+    import from jaclang.compiler.lowering.mtir { MTIR }
 
     def sample_func(x: int, y: str) -> str {
         return f"{y}: {x}";
@@ -243,7 +243,7 @@ test "python lib mode fixture" {
 # MTIR Caching Tests
 # =============================================================================
 test "jir cache path for source" {
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.session.cache.artifact_codec { get_module_cache_path }
 
     cache_path = get_module_cache_path("/path/to/test.jac");
     assert cache_path is not None;
@@ -251,7 +251,11 @@ test "jir cache path for source" {
 }
 
 test "jir cache has sec mtir constant" {
-    import from jaclang.compiler.driver.jir { SEC_MTIR, SEC_BYTECODE, SECTIONS_MAGIC }
+    import from jaclang.compiler.session.cache.artifact_codec {
+        SEC_MTIR,
+        SEC_BYTECODE,
+        SECTIONS_MAGIC
+    }
 
     assert SEC_MTIR == 0x03;
     assert SEC_BYTECODE == 0x02;
@@ -261,7 +265,7 @@ test "jir cache has sec mtir constant" {
 test "mtir roundtrip via jir cache" {
     import pickle;
     import shutil;
-    import from jaclang.compiler.driver.jir {
+    import from jaclang.compiler.session.cache.artifact_codec {
         get_module_cache_path,
         write_sections,
         read_sections,

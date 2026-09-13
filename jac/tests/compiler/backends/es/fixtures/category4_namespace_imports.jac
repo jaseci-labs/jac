@@ -11,7 +11,6 @@ Based on the table in jac_import_patterns_proposal.md:
 | import * as utils from './utils'   | cl import from .utils { * as utils }  |
 """
 
-
 # Namespace import examples
 import from react { * as React }
 import from lodash { * as _ }
@@ -22,7 +21,7 @@ import from .utils { * as utils }
 import from ..lib.helpers { * as helpers }
 
 # Using imported namespaces
-def example_usage() {
+def example_usage() -> object {
     component = React.createElement("div", {}, "Hello");
     numbers = [1, 2, 3];
     now = DateUtils.formatDate();

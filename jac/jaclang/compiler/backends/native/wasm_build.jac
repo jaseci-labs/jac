@@ -1,13 +1,14 @@
+import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import type from jaclang.compiler.backends.native.llvm.binding { ModuleRef, ValueRef }
-import type from jaclang.compiler.frontend.unitree { Module as UniModule }
+import type from jaclang.compiler.ir.schema { Module as UniModule }
 
 def _wasm_rt_src_dir -> str {
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "wasm_rt");
 }
 
 def _wasm_libc_dir -> (str | None) {
-    import from jaclang.compiler.driver.compile_options { env_wasm_libc_dir }
+    import from jaclang.compiler.session.options { env_wasm_libc_dir }
     env = env_wasm_libc_dir();
     if env {
         return env if os.path.isdir(env) else None;
@@ -408,7 +409,7 @@ def wasm_import_map(wasm_bytes: bytes) -> dict {
 
 def app_declared_imports(ir_module: UniModule) -> set[str] {
     names: set[str] = set();
-    gen = ir_module.gen;
+    gen = artifact_for(ir_module);
     sym_lib = gen._clib_symbol_lib;
     if sym_lib {
         names.update(sym_lib.keys());
@@ -463,7 +464,7 @@ def _assert_ir_rc_free(llvm_ir_str: str, file_path: str) {
 }
 
 def compile_to_wasm(file_path: str, export_funcs: list = []) -> bytes {
-    import from jaclang.compiler.driver.pipeline { build_wasm }
+    import from jaclang.compiler.api { build_wasm }
     import from jaclang.runtime.runtime { JacRuntime }
     return build_wasm(JacRuntime.get_program(), file_path, export_funcs);
 }

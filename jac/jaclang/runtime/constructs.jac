@@ -15,7 +15,7 @@ import from jaclang.runtime.archetype {
     WalkerAnchor,
     WalkerArchetype
 }
-import from jaclang.compiler.driver.mtp { MTIR, MTRuntime }
+import from jaclang.compiler.lowering.mtir { MTIR, MTRuntime }
 glob __all__ = [
          'AccessLevel',
          'access_level_cast',

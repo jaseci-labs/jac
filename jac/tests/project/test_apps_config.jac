@@ -616,7 +616,7 @@ def _rewrite_toml(root_path: Path, toml: str) {
 }
 
 test "app_fact_digest tracks routes and entry modules" {
-    import from jaclang.compiler.placement.workspace { app_fact_digest, app_for_path }
+    import from jaclang.compiler.session.workspace { app_fact_digest, app_for_path }
     with TemporaryDirectory() as td {
         root_path = write_workspace(Path(td) / "acme");
         (root_path / "core" / "social_graph2.jac").write_text("walker:pub Hi {}\n");
@@ -669,7 +669,7 @@ test "app_fact_digest tracks routes and entry modules" {
 }
 
 test "app_fact_digest does not depend on where the workspace is checked out" {
-    import from jaclang.compiler.placement.workspace { app_fact_digest, app_for_path }
+    import from jaclang.compiler.session.workspace { app_fact_digest, app_for_path }
     with TemporaryDirectory() as td_a, TemporaryDirectory() as td_b {
         root_a = write_workspace(Path(td_a) / "acme");
         root_b = write_workspace(Path(td_b) / "elsewhere" / "acme");
@@ -713,7 +713,7 @@ test "entry points reject paths extensions and patterns" {
 }
 
 test "entry resolution shares local import rules without executing packages" {
-    import from jaclang.compiler.driver.modresolver { resolve_module }
+    import from jaclang.compiler.session.resolver { resolve_module }
     with TemporaryDirectory() as directory {
         root_path = Path(directory);
         (root_path / 'core').mkdir();
