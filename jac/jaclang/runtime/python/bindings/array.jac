@@ -3,6 +3,7 @@ import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
     MethodDefinition,
+    MethodCallbacks,
     add_state_owned,
     add_owned,
     jacpy_binding_state_get,
@@ -968,10 +969,8 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          "array.arrayiterator",
          "",
          [
-             MethodDefinition("__reduce__", 0, "", positional=iterator_reduce, flags=4),
-             MethodDefinition(
-                 "__setstate__", 0, "", positional=iterator_setstate, flags=8
-             )
+             MethodDefinition("__reduce__", MethodCallbacks(positional=iterator_reduce), "", flags=4),
+             MethodDefinition("__setstate__", MethodCallbacks(positional=iterator_setstate), "", flags=8)
          ],
          flags | u64(TypeFlags.DISALLOW_INSTANTIATION.value),
          TypeHooks(
@@ -986,36 +985,30 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          "array.array",
          "",
          [
-             MethodDefinition("fromfile", 0, "", positional=fromfile, flags=1),
-             MethodDefinition("tofile", 0, "", positional=tofile, flags=8),
-             MethodDefinition("__reduce_ex__", 0, "", positional=reduce, flags=8),
-             MethodDefinition("append", 0, "", positional=append, flags=8),
-             MethodDefinition("insert", 0, "", positional=insert, flags=1),
-             MethodDefinition("pop", 0, "", positional=pop, flags=1),
-             MethodDefinition("index", 0, "", positional=index, flags=1),
-             MethodDefinition("count", 0, "", positional=count, flags=8),
-             MethodDefinition("remove", 0, "", positional=remove, flags=8),
-             MethodDefinition("clear", 0, "", positional=clear, flags=4),
-             MethodDefinition("reverse", 0, "", positional=reverse, flags=4),
-             MethodDefinition("byteswap", 0, "", positional=byteswap, flags=4),
-             MethodDefinition("extend", 0, "", positional=extend, flags=8),
-             MethodDefinition("fromlist", 0, "", positional=fromlist, flags=8),
-             MethodDefinition("frombytes", 0, "", positional=frombytes, flags=8),
-             MethodDefinition("fromunicode", 0, "", positional=fromunicode, flags=8),
-             MethodDefinition("tolist", 0, "", positional=tolist, flags=4),
-             MethodDefinition("tobytes", 0, "", positional=tobytes, flags=4),
-             MethodDefinition("tounicode", 0, "", positional=tounicode, flags=4),
-             MethodDefinition("buffer_info", 0, "", positional=buffer_info, flags=4),
-             MethodDefinition("__sizeof__", 0, "", positional=size_of, flags=4),
-             MethodDefinition("__copy__", 0, "", positional=copy, flags=4),
-             MethodDefinition("__deepcopy__", 0, "", positional=copy, flags=8),
-             MethodDefinition(
-                 "__class_getitem__",
-                 0,
-                 "",
-                 positional=jacpy_binding_generic_alias,
-                 flags=24
-             )
+             MethodDefinition("fromfile", MethodCallbacks(positional=fromfile), "", flags=1),
+             MethodDefinition("tofile", MethodCallbacks(positional=tofile), "", flags=8),
+             MethodDefinition("__reduce_ex__", MethodCallbacks(positional=reduce), "", flags=8),
+             MethodDefinition("append", MethodCallbacks(positional=append), "", flags=8),
+             MethodDefinition("insert", MethodCallbacks(positional=insert), "", flags=1),
+             MethodDefinition("pop", MethodCallbacks(positional=pop), "", flags=1),
+             MethodDefinition("index", MethodCallbacks(positional=index), "", flags=1),
+             MethodDefinition("count", MethodCallbacks(positional=count), "", flags=8),
+             MethodDefinition("remove", MethodCallbacks(positional=remove), "", flags=8),
+             MethodDefinition("clear", MethodCallbacks(positional=clear), "", flags=4),
+             MethodDefinition("reverse", MethodCallbacks(positional=reverse), "", flags=4),
+             MethodDefinition("byteswap", MethodCallbacks(positional=byteswap), "", flags=4),
+             MethodDefinition("extend", MethodCallbacks(positional=extend), "", flags=8),
+             MethodDefinition("fromlist", MethodCallbacks(positional=fromlist), "", flags=8),
+             MethodDefinition("frombytes", MethodCallbacks(positional=frombytes), "", flags=8),
+             MethodDefinition("fromunicode", MethodCallbacks(positional=fromunicode), "", flags=8),
+             MethodDefinition("tolist", MethodCallbacks(positional=tolist), "", flags=4),
+             MethodDefinition("tobytes", MethodCallbacks(positional=tobytes), "", flags=4),
+             MethodDefinition("tounicode", MethodCallbacks(positional=tounicode), "", flags=4),
+             MethodDefinition("buffer_info", MethodCallbacks(positional=buffer_info), "", flags=4),
+             MethodDefinition("__sizeof__", MethodCallbacks(positional=size_of), "", flags=4),
+             MethodDefinition("__copy__", MethodCallbacks(positional=copy), "", flags=4),
+             MethodDefinition("__deepcopy__", MethodCallbacks(positional=copy), "", flags=8),
+             MethodDefinition("__class_getitem__", MethodCallbacks(positional=jacpy_binding_generic_alias), "", flags=24)
          ],
          flags
              | u64(
@@ -1088,9 +1081,7 @@ glob:priv definition = ModuleDefinition(
          "array",
          "Native Jac typed arrays.",
          [
-             MethodDefinition(
-                 "_array_reconstructor", 0, "", positional=reconstruct, flags=1
-             )
+             MethodDefinition("_array_reconstructor", MethodCallbacks(positional=reconstruct), "", flags=1)
          ],
          hooks=ModuleHooks(execute=execute),
          state_count=2

@@ -1,7 +1,7 @@
 """Struct bindings with owned format plans and exported-buffer iterators."""
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
-    MethodDefinition,
+    MethodCallbacks, MethodDefinition,
     ModuleHooks,
     add_state_owned,
     jacpy_binding_exception,
@@ -505,20 +505,12 @@ glob:priv struct_type = TypeDefinition(
          "_struct.Struct",
          "Compiled binary layout.",
          [
-             MethodDefinition("pack", 0, "Pack values.", pack, 1),
-             MethodDefinition(
-                 "pack_into", 0, "Pack into a writable buffer.", pack_into, 1
-             ),
-             MethodDefinition("unpack", unpack, "Unpack a buffer."),
-             MethodDefinition(
-                 "unpack_from", unpack_from, "Unpack from a buffer offset."
-             ),
-             MethodDefinition(
-                 "iter_unpack", iter_unpack, "Iterate over packed records."
-             ),
-             MethodDefinition(
-                 "__sizeof__", 0, "Memory consumed by this format.", memory_size, 4
-             )
+             MethodDefinition("pack", MethodCallbacks(positional=pack), "Pack values.", flags=1),
+             MethodDefinition("pack_into", MethodCallbacks(positional=pack_into), "Pack into a writable buffer.", flags=1),
+             MethodDefinition("unpack", MethodCallbacks(keywords=unpack), "Unpack a buffer."),
+             MethodDefinition("unpack_from", MethodCallbacks(keywords=unpack_from), "Unpack from a buffer offset."),
+             MethodDefinition("iter_unpack", MethodCallbacks(keywords=iter_unpack), "Iterate over packed records."),
+             MethodDefinition("__sizeof__", MethodCallbacks(positional=memory_size), "Memory consumed by this format.", flags=4)
          ],
          u64(
              TypeFlags.GC.value
@@ -543,9 +535,7 @@ glob:priv struct_type = TypeDefinition(
          "_struct.unpack_iterator",
          "Packed record iterator.",
          [
-             MethodDefinition(
-                 "__length_hint__", 0, "Remaining records.", iterator_hint, 4
-             )
+             MethodDefinition("__length_hint__", MethodCallbacks(positional=iterator_hint), "Remaining records.", flags=4)
          ],
          u64(
              TypeFlags.GC.value
@@ -659,23 +649,13 @@ glob:priv definition = ModuleDefinition(
          "_struct",
          "Native Jac binary layouts.",
          [
-             MethodDefinition(
-                 "calcsize", 0, "Calculate record size.", module_calcsize, 8
-             ),
-             MethodDefinition(
-                 "_clearcache", 0, "Clear cached formats.", module_clearcache, 4
-             ),
-             MethodDefinition("pack", 0, "Pack values.", module_pack, 1),
-             MethodDefinition(
-                 "pack_into", 0, "Pack into a buffer.", module_pack_into, 1
-             ),
-             MethodDefinition("unpack", 0, "Unpack a buffer.", module_unpack, 1),
-             MethodDefinition(
-                 "unpack_from", module_unpack_from, "Unpack from an offset."
-             ),
-             MethodDefinition(
-                 "iter_unpack", 0, "Iterate packed records.", module_iter_unpack, 1
-             )
+             MethodDefinition("calcsize", MethodCallbacks(positional=module_calcsize), "Calculate record size.", flags=8),
+             MethodDefinition("_clearcache", MethodCallbacks(positional=module_clearcache), "Clear cached formats.", flags=4),
+             MethodDefinition("pack", MethodCallbacks(positional=module_pack), "Pack values.", flags=1),
+             MethodDefinition("pack_into", MethodCallbacks(positional=module_pack_into), "Pack into a buffer.", flags=1),
+             MethodDefinition("unpack", MethodCallbacks(positional=module_unpack), "Unpack a buffer.", flags=1),
+             MethodDefinition("unpack_from", MethodCallbacks(keywords=module_unpack_from), "Unpack from an offset."),
+             MethodDefinition("iter_unpack", MethodCallbacks(positional=module_iter_unpack), "Iterate packed records.", flags=1)
          ],
          ModuleHooks(execute=execute),
          4

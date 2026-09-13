@@ -2,7 +2,7 @@
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
-    MethodDefinition,
+    MethodCallbacks, MethodDefinition,
     add_owned
 }
 import from jaclang.runtime.python.bindings.arguments {
@@ -155,89 +155,29 @@ glob:priv definition = ModuleDefinition(
          "cmath",
          "Native Jac complex mathematics.",
          [
-             MethodDefinition(
-                 "acos", 0, "acos($module, z, /)\n--\n\nComplex acos.", acos_call, 8
-             ),
-             MethodDefinition(
-                 "acosh", 0, "acosh($module, z, /)\n--\n\nComplex acosh.", acosh_call, 8
-             ),
-             MethodDefinition(
-                 "asin", 0, "asin($module, z, /)\n--\n\nComplex asin.", asin_call, 8
-             ),
-             MethodDefinition(
-                 "asinh", 0, "asinh($module, z, /)\n--\n\nComplex asinh.", asinh_call, 8
-             ),
-             MethodDefinition(
-                 "atan", 0, "atan($module, z, /)\n--\n\nComplex atan.", atan_call, 8
-             ),
-             MethodDefinition(
-                 "atanh", 0, "atanh($module, z, /)\n--\n\nComplex atanh.", atanh_call, 8
-             ),
-             MethodDefinition(
-                 "cos", 0, "cos($module, z, /)\n--\n\nComplex cos.", cos_call, 8
-             ),
-             MethodDefinition(
-                 "cosh", 0, "cosh($module, z, /)\n--\n\nComplex cosh.", cosh_call, 8
-             ),
-             MethodDefinition(
-                 "exp", 0, "exp($module, z, /)\n--\n\nComplex exp.", exp_call, 8
-             ),
-             MethodDefinition(
-                 "sin", 0, "sin($module, z, /)\n--\n\nComplex sin.", sin_call, 8
-             ),
-             MethodDefinition(
-                 "sinh", 0, "sinh($module, z, /)\n--\n\nComplex sinh.", sinh_call, 8
-             ),
-             MethodDefinition(
-                 "sqrt", 0, "sqrt($module, z, /)\n--\n\nComplex sqrt.", sqrt_call, 8
-             ),
-             MethodDefinition(
-                 "tan", 0, "tan($module, z, /)\n--\n\nComplex tan.", tan_call, 8
-             ),
-             MethodDefinition(
-                 "tanh", 0, "tanh($module, z, /)\n--\n\nComplex tanh.", tanh_call, 8
-             ),
-             MethodDefinition(
-                 "log10", 0, "log10($module, z, /)\n--\n\nComplex log10.", log10_call, 8
-             ),
-             MethodDefinition(
-                 "phase", 0, "phase($module, z, /)\n--\n\nComplex phase.", phase_call, 8
-             ),
-             MethodDefinition(
-                 "polar", 0, "polar($module, z, /)\n--\n\nComplex polar.", polar_call, 8
-             ),
-             MethodDefinition(
-                 "isfinite",
-                 0,
-                 "isfinite($module, z, /)\n--\n\nComplex isfinite.",
-                 isfinite_call,
-                 8
-             ),
-             MethodDefinition(
-                 "isinf", 0, "isinf($module, z, /)\n--\n\nComplex isinf.", isinf_call, 8
-             ),
-             MethodDefinition(
-                 "isnan", 0, "isnan($module, z, /)\n--\n\nComplex isnan.", isnan_call, 8
-             ),
-             MethodDefinition(
-                 "log",
-                 0,
-                 "log($module, z, base=None, /)\n--\n\nComplex logarithm.",
-                 log_call,
-                 1
-             ),
-             MethodDefinition(
-                 "rect",
-                 0,
-                 "rect($module, r, phi, /)\n--\n\nConvert polar to rectangular coordinates.",
-                 rect_call,
-                 1
-             ),
-             MethodDefinition(
-                 "isclose",
-                 close_call,
-                 "isclose($module, /, a, b, *, rel_tol=1e-09, abs_tol=0.0)\n--\n\nCompare complex values with tolerances."
-             )
+             MethodDefinition("acos", MethodCallbacks(positional=acos_call), "acos($module, z, /)\n--\n\nComplex acos.", flags=8),
+             MethodDefinition("acosh", MethodCallbacks(positional=acosh_call), "acosh($module, z, /)\n--\n\nComplex acosh.", flags=8),
+             MethodDefinition("asin", MethodCallbacks(positional=asin_call), "asin($module, z, /)\n--\n\nComplex asin.", flags=8),
+             MethodDefinition("asinh", MethodCallbacks(positional=asinh_call), "asinh($module, z, /)\n--\n\nComplex asinh.", flags=8),
+             MethodDefinition("atan", MethodCallbacks(positional=atan_call), "atan($module, z, /)\n--\n\nComplex atan.", flags=8),
+             MethodDefinition("atanh", MethodCallbacks(positional=atanh_call), "atanh($module, z, /)\n--\n\nComplex atanh.", flags=8),
+             MethodDefinition("cos", MethodCallbacks(positional=cos_call), "cos($module, z, /)\n--\n\nComplex cos.", flags=8),
+             MethodDefinition("cosh", MethodCallbacks(positional=cosh_call), "cosh($module, z, /)\n--\n\nComplex cosh.", flags=8),
+             MethodDefinition("exp", MethodCallbacks(positional=exp_call), "exp($module, z, /)\n--\n\nComplex exp.", flags=8),
+             MethodDefinition("sin", MethodCallbacks(positional=sin_call), "sin($module, z, /)\n--\n\nComplex sin.", flags=8),
+             MethodDefinition("sinh", MethodCallbacks(positional=sinh_call), "sinh($module, z, /)\n--\n\nComplex sinh.", flags=8),
+             MethodDefinition("sqrt", MethodCallbacks(positional=sqrt_call), "sqrt($module, z, /)\n--\n\nComplex sqrt.", flags=8),
+             MethodDefinition("tan", MethodCallbacks(positional=tan_call), "tan($module, z, /)\n--\n\nComplex tan.", flags=8),
+             MethodDefinition("tanh", MethodCallbacks(positional=tanh_call), "tanh($module, z, /)\n--\n\nComplex tanh.", flags=8),
+             MethodDefinition("log10", MethodCallbacks(positional=log10_call), "log10($module, z, /)\n--\n\nComplex log10.", flags=8),
+             MethodDefinition("phase", MethodCallbacks(positional=phase_call), "phase($module, z, /)\n--\n\nComplex phase.", flags=8),
+             MethodDefinition("polar", MethodCallbacks(positional=polar_call), "polar($module, z, /)\n--\n\nComplex polar.", flags=8),
+             MethodDefinition("isfinite", MethodCallbacks(positional=isfinite_call), "isfinite($module, z, /)\n--\n\nComplex isfinite.", flags=8),
+             MethodDefinition("isinf", MethodCallbacks(positional=isinf_call), "isinf($module, z, /)\n--\n\nComplex isinf.", flags=8),
+             MethodDefinition("isnan", MethodCallbacks(positional=isnan_call), "isnan($module, z, /)\n--\n\nComplex isnan.", flags=8),
+             MethodDefinition("log", MethodCallbacks(positional=log_call), "log($module, z, base=None, /)\n--\n\nComplex logarithm.", flags=1),
+             MethodDefinition("rect", MethodCallbacks(positional=rect_call), "rect($module, r, phi, /)\n--\n\nConvert polar to rectangular coordinates.", flags=1),
+             MethodDefinition("isclose", MethodCallbacks(keywords=close_call), "isclose($module, /, a, b, *, rel_tol=1e-09, abs_tol=0.0)\n--\n\nCompare complex values with tolerances.")
          ],
          ModuleHooks(execute=execute)
      );

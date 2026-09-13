@@ -2,6 +2,7 @@
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodDefinition,
+    MethodCallbacks,
     ModuleHooks,
     add_owned
 }
@@ -424,23 +425,9 @@ glob:priv definition = ModuleDefinition(
          "_json",
          "JSON algorithms implemented in native Jac.",
          [
-             MethodDefinition(
-                 "encode_basestring",
-                 0,
-                 "Return a JSON string representation.",
-                 escape_call,
-                 8
-             ),
-             MethodDefinition(
-                 "encode_basestring_ascii",
-                 0,
-                 "Return an ASCII-only JSON string representation.",
-                 escape_ascii_call,
-                 8
-             ),
-             MethodDefinition(
-                 "scanstring", 0, "Scan and unescape a JSON string.", scanstring_call, 1
-             )
+             MethodDefinition("encode_basestring", MethodCallbacks(positional=escape_call), "Return a JSON string representation.", flags=8),
+             MethodDefinition("encode_basestring_ascii", MethodCallbacks(positional=escape_ascii_call), "Return an ASCII-only JSON string representation.", flags=8),
+             MethodDefinition("scanstring", MethodCallbacks(positional=scanstring_call), "Scan and unescape a JSON string.", flags=1)
          ],
          ModuleHooks(execute=execute)
      );

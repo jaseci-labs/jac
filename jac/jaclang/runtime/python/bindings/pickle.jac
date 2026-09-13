@@ -2,7 +2,7 @@
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
-    MethodDefinition,
+    MethodCallbacks, MethodDefinition,
     add_owned,
     add_state_owned,
     jacpy_binding_state_get,
@@ -952,12 +952,10 @@ glob:priv pickler_signature = CallSignature(
          "_pickle.Pickler",
          "",
          [
-             MethodDefinition("dump", 0, "", positional=dump, flags=8),
-             MethodDefinition("clear_memo", 0, "", positional=clear_memo, flags=4),
-             MethodDefinition(
-                 "persistent_id", 0, "", positional=persistent_id, flags=8
-             ),
-             MethodDefinition("__sizeof__", 0, "", positional=size_of, flags=4)
+             MethodDefinition("dump", MethodCallbacks(positional=dump), "", flags=8),
+             MethodDefinition("clear_memo", MethodCallbacks(positional=clear_memo), "", flags=4),
+             MethodDefinition("persistent_id", MethodCallbacks(positional=persistent_id), "", flags=8),
+             MethodDefinition("__sizeof__", MethodCallbacks(positional=size_of), "", flags=4)
          ],
          flags | u64(TypeFlags.BASETYPE.value),
          TypeHooks(
@@ -980,12 +978,10 @@ glob:priv pickler_signature = CallSignature(
          "_pickle.Unpickler",
          "",
          [
-             MethodDefinition("load", 0, "", positional=load, flags=4),
-             MethodDefinition("find_class", 0, "", positional=find_class, flags=1),
-             MethodDefinition(
-                 "persistent_load", 0, "", positional=persistent_load, flags=8
-             ),
-             MethodDefinition("__sizeof__", 0, "", positional=size_of, flags=4)
+             MethodDefinition("load", MethodCallbacks(positional=load), "", flags=4),
+             MethodDefinition("find_class", MethodCallbacks(positional=find_class), "", flags=1),
+             MethodDefinition("persistent_load", MethodCallbacks(positional=persistent_load), "", flags=8),
+             MethodDefinition("__sizeof__", MethodCallbacks(positional=size_of), "", flags=4)
          ],
          flags | u64(TypeFlags.BASETYPE.value),
          TypeHooks(
@@ -1000,9 +996,9 @@ glob:priv pickler_signature = CallSignature(
          [PropertyDefinition("memo", get_memo, write=set_memo)]
      ),
      memo_methods = [
-         MethodDefinition("copy", 0, "", positional=memo_copy, flags=4),
-         MethodDefinition("clear", 0, "", positional=memo_clear, flags=4),
-         MethodDefinition("__reduce__", 0, "", positional=memo_reduce, flags=4)
+         MethodDefinition("copy", MethodCallbacks(positional=memo_copy), "", flags=4),
+         MethodDefinition("clear", MethodCallbacks(positional=memo_clear), "", flags=4),
+         MethodDefinition("__reduce__", MethodCallbacks(positional=memo_reduce), "", flags=4)
      ],
      pickler_memo_type = TypeDefinition(
          "_pickle.PicklerMemoProxy",
@@ -1082,10 +1078,10 @@ glob:priv definition = ModuleDefinition(
          "_pickle",
          "Native Jac pickle serialization.",
          [
-             MethodDefinition("dump", module_dump, ""),
-             MethodDefinition("dumps", module_dumps, ""),
-             MethodDefinition("load", module_load, ""),
-             MethodDefinition("loads", module_loads, "")
+             MethodDefinition("dump", MethodCallbacks(keywords=module_dump), ""),
+             MethodDefinition("dumps", MethodCallbacks(keywords=module_dumps), ""),
+             MethodDefinition("load", MethodCallbacks(keywords=module_load), ""),
+             MethodDefinition("loads", MethodCallbacks(keywords=module_loads), "")
          ],
          hooks=ModuleHooks(execute=execute),
          state_count=9

@@ -2,7 +2,7 @@
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
-    MethodDefinition,
+    MethodCallbacks, MethodDefinition,
     add_state_owned,
     jacpy_binding_state_get,
     jacpy_binding_visit
@@ -982,44 +982,20 @@ def:priv make_types -> list[TypeDefinition] {
         }
         if kind >= Kind.PRODUCT.value and kind <= Kind.PERMUTATIONS.value {
             methods.append(
-                MethodDefinition(
-                    "__sizeof__",
-                    0,
-                    "Returns size in memory, in bytes.",
-                    positional=combination_size,
-                    flags=4
-                )
+                MethodDefinition("__sizeof__", MethodCallbacks(positional=combination_size), "Returns size in memory, in bytes.", flags=4)
             );
         }
         if kind == Kind.REPEAT.value {
             methods.append(
-                MethodDefinition(
-                    "__length_hint__",
-                    0,
-                    "Private method returning an estimate of len(list(it)).",
-                    positional=repeat_length,
-                    flags=4
-                )
+                MethodDefinition("__length_hint__", MethodCallbacks(positional=repeat_length), "Private method returning an estimate of len(list(it)).", flags=4)
             );
         }
         if kind == Kind.CHAIN.value {
             methods.append(
-                MethodDefinition(
-                    "from_iterable",
-                    0,
-                    "from_iterable($type, iterable, /)\n--\n\nAlternative chain constructor taking a single iterable argument.",
-                    positional=chain_from,
-                    flags=24
-                )
+                MethodDefinition("from_iterable", MethodCallbacks(positional=chain_from), "from_iterable($type, iterable, /)\n--\n\nAlternative chain constructor taking a single iterable argument.", flags=24)
             );
             methods.append(
-                MethodDefinition(
-                    "__class_getitem__",
-                    0,
-                    "See PEP 585",
-                    positional=jacpy_binding_generic_alias,
-                    flags=24
-                )
+                MethodDefinition("__class_getitem__", MethodCallbacks(positional=jacpy_binding_generic_alias), "See PEP 585", flags=24)
             );
         }
         if kind == Kind.GROUPER.value {
@@ -1029,13 +1005,7 @@ def:priv make_types -> list[TypeDefinition] {
             flags = flags | u64(TypeFlags.MANAGED_WEAKREF.value);
             hooks.create = tee_new;
             methods.append(
-                MethodDefinition(
-                    "__copy__",
-                    0,
-                    "Returns an independent iterator.",
-                    positional=tee_copy,
-                    flags=4
-                )
+                MethodDefinition("__copy__", MethodCallbacks(positional=tee_copy), "Returns an independent iterator.", flags=4)
             );
         }
         if kind == Kind.TEE_DATA.value {
@@ -1071,13 +1041,7 @@ glob:priv definition = ModuleDefinition(
          "itertools",
          "Native Jac iterator policies.",
          [
-             MethodDefinition(
-                 "tee",
-                 0,
-                 "tee($module, iterable, n=2, /)\n--\n\nReturn n independent iterators.",
-                 positional=tee_call,
-                 flags=1
-             )
+             MethodDefinition("tee", MethodCallbacks(positional=tee_call), "tee($module, iterable, n=2, /)\n--\n\nReturn n independent iterators.", flags=1)
          ],
          hooks=ModuleHooks(execute=execute),
          state_count=22

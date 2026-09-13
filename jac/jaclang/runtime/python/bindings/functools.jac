@@ -2,6 +2,7 @@
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     MethodDefinition,
+    MethodCallbacks,
     ModuleHooks,
     add_state_owned,
     jacpy_binding_state_get,
@@ -623,17 +624,9 @@ glob:priv callable_flags = u64(
          "functools.partial",
          "partial(func, /, *args, **keywords)\n--\n\nCreate a new function with partial application of the given arguments\nand keywords.",
          [
-             MethodDefinition("__reduce__", 0, "", positional=partial_reduce, flags=4),
-             MethodDefinition(
-                 "__setstate__", 0, "", positional=partial_setstate, flags=8
-             ),
-             MethodDefinition(
-                 "__class_getitem__",
-                 0,
-                 "partial is generic over the wrapped function's return type",
-                 positional=jacpy_binding_generic_alias,
-                 flags=24
-             )
+             MethodDefinition("__reduce__", MethodCallbacks(positional=partial_reduce), "", flags=4),
+             MethodDefinition("__setstate__", MethodCallbacks(positional=partial_setstate), "", flags=8),
+             MethodDefinition("__class_getitem__", MethodCallbacks(positional=jacpy_binding_generic_alias), "partial is generic over the wrapped function's return type", flags=24)
          ],
          callable_flags,
          TypeHooks(
@@ -710,23 +703,11 @@ glob:priv callable_flags = u64(
          "functools._lru_cache_wrapper",
          "Create a cached callable that wraps another function.",
          [
-             MethodDefinition(
-                 "cache_clear",
-                 0,
-                 "cache_clear($self, /)\n--\n\nClear the cache and cache statistics",
-                 positional=lru_cache_clear,
-                 flags=4
-             ),
-             MethodDefinition(
-                 "cache_info",
-                 0,
-                 "cache_info($self, /)\n--\n\nReport cache statistics",
-                 positional=lru_cache_info,
-                 flags=4
-             ),
-             MethodDefinition("__reduce__", 0, "", positional=lru_reduce, flags=4),
-             MethodDefinition("__copy__", 0, "", positional=lru_copy, flags=1),
-             MethodDefinition("__deepcopy__", 0, "", positional=lru_copy, flags=1)
+             MethodDefinition("cache_clear", MethodCallbacks(positional=lru_cache_clear), "cache_clear($self, /)\n--\n\nClear the cache and cache statistics", flags=4),
+             MethodDefinition("cache_info", MethodCallbacks(positional=lru_cache_info), "cache_info($self, /)\n--\n\nReport cache statistics", flags=4),
+             MethodDefinition("__reduce__", MethodCallbacks(positional=lru_reduce), "", flags=4),
+             MethodDefinition("__copy__", MethodCallbacks(positional=lru_copy), "", flags=1),
+             MethodDefinition("__deepcopy__", MethodCallbacks(positional=lru_copy), "", flags=1)
          ],
          callable_flags,
          TypeHooks(
@@ -748,9 +729,7 @@ glob:priv callable_flags = u64(
          "functools._PlaceholderType",
          "",
          [
-             MethodDefinition(
-                 "__reduce__", 0, "", positional=placeholder_reduce, flags=4
-             )
+             MethodDefinition("__reduce__", MethodCallbacks(positional=placeholder_reduce), "", flags=4)
          ],
          u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          TypeHooks(
@@ -803,16 +782,8 @@ glob:priv definition = ModuleDefinition(
          "_functools",
          "Native Jac callable policies.",
          [
-             MethodDefinition(
-                 "reduce",
-                 reduce,
-                 "reduce($module, function, iterable, /, initial=<unrepresentable>)\n--\n\nApply a function of two arguments cumulatively to the items of an iterable."
-             ),
-             MethodDefinition(
-                 "cmp_to_key",
-                 cmp_to_key,
-                 "cmp_to_key($module, /, mycmp)\n--\n\nConvert a cmp= function into a key= function."
-             )
+             MethodDefinition("reduce", MethodCallbacks(keywords=reduce), "reduce($module, function, iterable, /, initial=<unrepresentable>)\n--\n\nApply a function of two arguments cumulatively to the items of an iterable."),
+             MethodDefinition("cmp_to_key", MethodCallbacks(keywords=cmp_to_key), "cmp_to_key($module, /, mycmp)\n--\n\nConvert a cmp= function into a key= function.")
          ],
          hooks=ModuleHooks(execute=execute),
          state_count=7
