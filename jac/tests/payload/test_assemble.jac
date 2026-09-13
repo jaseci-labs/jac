@@ -30,7 +30,12 @@ import from jaclang.dist.payload.assemble {
     tar_stage,
     tar_zst_dir
 }
-import from jaclang.dist.payload.fsutil { host_os_arch, copy_tree, skip_jaclang }
+import from jaclang.dist.payload.fsutil {
+    host_os_arch,
+    copy_tree,
+    skip_jaclang,
+    skip_stage_site
+}
 import from jaclang.dist.payload.pins { py_ver }
 
 def wf(stage: str, rel: str, data: bytes, mode: int = 0o644) {
@@ -70,6 +75,27 @@ test "payload excludes interpreted JacPython modules and keeps their license" {
         assert rf(os.path.join(target, "runtime/python/LICENSE.cpython")) == b"license";
         assert rf(os.path.join(target, "compiler/frontend/parser.jac"))
             == b"Jac parser";
+    }
+}
+
+test "catalog producer metadata cannot change shipped payload bytes" {
+    with tempfile.TemporaryDirectory() as tmp {
+        source = os.path.join(tmp, "source");
+        wf(source, "jaclang/_precompiled/stubcat.bin", b"catalog");
+        wf(source, "jaclang/_precompiled/MANIFEST.json", b"sealed manifest");
+        outputs: list[tuple[bytes, bytes]] = [];
+        for build in ("cold", "warm") {
+            wf(source, "jaclang/_precompiled/stubcat.bin.json", build.encode());
+            wf(source, "jaclang/_precompiled/stubcat.bin.lock", build.encode());
+            stage = os.path.join(tmp, build);
+            copy_tree(source, os.path.join(stage, "site"), skip_stage_site);
+            assert rf(os.path.join(stage, "site/jaclang/_precompiled/stubcat.bin"))
+                == b"catalog";
+            assert rf(os.path.join(stage, "site/jaclang/_precompiled/MANIFEST.json"))
+                == b"sealed manifest";
+            outputs.append(tar_stage(stage));
+        }
+        assert outputs[0] == outputs[1];
     }
 }
 

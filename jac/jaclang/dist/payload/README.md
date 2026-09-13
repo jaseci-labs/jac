@@ -30,6 +30,8 @@ Restoring a pair validates both members before replacing either destination.
 Inactive artifact directories expire after 30 days; locked producers are retained.
 Lock files keep stable inodes so concurrent processes continue to coordinate.
 JIR publication uses the same locking primitives around its section merge.
+Catalog build receipts and locks remain in the producer cache; runtime staging
+excludes them so timing and cache-hit metadata cannot change payload bytes.
 
 CI cache entries are immutable. The payload cache therefore restores by a source
 prefix and saves changed contents under a new run snapshot, including when the
