@@ -69,6 +69,7 @@ def jab_app_meta(img_root: Path) -> dict[str, any] {
         "app": meta.get("app", ""),
         "capabilities": meta.get("capabilities") or [],
         "entry": meta.get("entry") or {},
-        "package": meta.get("package", "")
+        "package": meta.get("package", ""),
+        "native": meta.get("native") or {}
     };
 }

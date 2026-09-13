@@ -42,12 +42,9 @@ impl NaIRGenPass._bytes_alloc(n: ir.Value) -> ir.Value {
     bt = self._get_bytes_struct_type();
     n = self._coerce_type(n, i64);
     total = self.builder.add(n, ir.Constant(i64, 8), name="by.total");
-    if self.rc_alloc_fn is None {
-        self._emit_rc_helpers();
-    }
-    _alloc_fn = self.rc_alloc_fn;
-    assert _alloc_fn is not None , "rc helpers are emitted before allocation";
-    raw = self._rc_call_with_ctx(_alloc_fn, [total], op="bytes", loc="", name="by.raw");
+    raw = self._rc_call_with_ctx(
+        self.rc_alloc_fn, [total], op="bytes", loc="", name="by.raw"
+    );
     self._emit_set_type_tag(self.builder, raw, "bytes");
     bv = self.builder.bitcast(raw, bt.as_pointer(), name="by.obj");
     len_ptr = self.builder.gep(

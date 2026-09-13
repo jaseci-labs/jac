@@ -8,22 +8,22 @@ banned and is covered by checker_numeric_kind_disallowed.jac.
 """
 
 # ---------- Literal -> primitive ----------
-def to_f64() -> f64 {
+def to_f64 -> f64 {
     x: f64 = 3.14;
     return x;
 }
 
-def to_i32() -> i32 {
+def to_i32 -> i32 {
     x: i32 = 42;
     return x;
 }
 
-def to_f32() -> f32 {
+def to_f32 -> f32 {
     x: f32 = 1.5;
     return x;
 }
 
-def to_u8() -> u8 {
+def to_u8 -> u8 {
     x: u8 = 7;
     return x;
 }

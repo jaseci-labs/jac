@@ -34,6 +34,10 @@ jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/stmt.impl.jac
 jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/types.impl.jac
 jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/vtable.impl.jac
 
+# Native compile driver (same llvmlite boundary as na_ir_gen).
+jac/jaclang/compiler/backends/native/impl/na_compile_pass.impl.jac
+jac/jaclang/compiler/backends/native/na_compile_pass.jac
+
 # byllm -- litellm/LLM-provider glue.
 jac/jaclang/byllm/llm.impl/basellm.impl.jac
 jac/jaclang/byllm/llm.impl/local.impl.jac
