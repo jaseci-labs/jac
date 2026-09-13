@@ -91,6 +91,12 @@ test "separately compiled abstract dispatch and inherited fields execute togethe
     assert function() == 17;
 }
 
+test "an imported dispatcher invokes implementations absent from its own module" {
+    (engine, _) = compile_native("abstract_slot_child.jac");
+    function = get_func(engine, "run_imported_abstract_dispatch", ctypes.c_int64);
+    assert function() == 23;
+}
+
 
 test "a child of a flat imported base carries the same header its base does" {
     (ir, _coverage) = _compile(CHILD);
