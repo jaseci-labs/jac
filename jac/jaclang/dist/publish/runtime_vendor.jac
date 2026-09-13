@@ -123,7 +123,11 @@ def _declared_literal(tree: py_ast.Module, name: str) -> object {
 }
 
 def _compile_runtime_module(
-    pkg_root: Path, path: Path, prog: JacProgram, native: dict | None = None
+    pkg_root: Path,
+    path: Path,
+    prog: JacProgram,
+    native: dict | None = None,
+    native_sources: bool = True
 ) -> str {
     if path.suffix == ".py" {
         return path.read_text(encoding="utf-8");
@@ -144,18 +148,18 @@ def _compile_runtime_module(
     import from jaclang.compiler.driver.source_products { python_source }
     (py_out, ir) = python_source(str(path), prog);
     if native is not None and ir is not None and ir.gen.native_engine is not None {
-        import from jaclang.dist.source.native { write_native_product }
+        import from jaclang.dist.native_product { write_native_product }
         with tempfile.TemporaryDirectory(prefix='jac-runtime-native-') as temporary {
             directory = Path(temporary);
             record = write_native_product(
                 ir,
                 directory,
-                Path('native') / path.relative_to(pkg_root).with_suffix('.py')
+                Path('native') / path.relative_to(pkg_root).with_suffix('.py'),
+                emit_source=native_sources
             );
             native['record'] = record;
-            native['source'] = (directory / record['source']).read_text(
-                encoding='utf-8'
-            );
+            native['path'] = record['source'] if native_sources else record['output'];
+            native['content'] = (directory / native['path']).read_bytes();
         }
     }
     return py_out;
@@ -166,7 +170,8 @@ def build_runtime_closure(
     user_codes: list[str],
     include_byllm: bool = False,
     extra_seeds: list[str] | None = None,
-    prepared: bool = True
+    prepared: bool = True,
+    native_sources: bool = True
 ) -> dict[str, bytes] {
     pkg_root = _pkg_root();
     requested = set(extra_seeds or []);
@@ -232,7 +237,9 @@ def build_runtime_closure(
             continue;
         }
         native: dict = {};
-        source = _compile_runtime_module(pkg_root, path, program, native);
+        source = _compile_runtime_module(
+            pkg_root, path, program, native, native_sources
+        );
         tree = py_ast.parse(source, filename=str(path));
         sources[module] = tree;
         relative = module.removeprefix('jaclang.').replace('.', '/');
@@ -270,7 +277,7 @@ def build_runtime_closure(
         record = {'path': relative, 'origin': path.relative_to(pkg_root).as_posix()};
         if native {
             record['native'] = native['record'];
-            closure[native['record']['source']] = native['source'].encode('utf-8');
+            closure[native['path']] = native['content'];
         }
         modules.append(record);
         pending.update(

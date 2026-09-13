@@ -281,7 +281,9 @@ impl WheelBuilder._vendor_runtime_into(
             for imp in needed
         )
     );
-    closure = build_runtime_closure(codes, include_byllm=include_byllm);
+    closure = build_runtime_closure(
+        codes, include_byllm=include_byllm, native_sources=False
+    );
     runtime = json.loads(closure['runtime.json']);
     native_records = [
         module['native']
@@ -289,19 +291,7 @@ impl WheelBuilder._vendor_runtime_into(
         if module.get('native')
     ];
     if native_records {
-        import tempfile;
         import sysconfig;
-        import from jaclang.dist.source.build { build_native_product }
-        with tempfile.TemporaryDirectory(prefix='jac-wheel-native-') as temporary {
-            directory = Path(temporary);
-            for record in native_records {
-                source = directory / record['source'];
-                source.parent.mkdir(parents=True, exist_ok=True);
-                source.write_bytes(closure[record['source']]);
-                build_native_product(directory, record);
-                closure[record['output']] = (directory / record['output']).read_bytes();
-            }
-        }
         self.pure_python = False;
         self.platform_tag = sysconfig.get_platform().replace('-', '_').replace(
             '.', '_'
