@@ -149,3 +149,7 @@ def add_owned(module: u64, name: str, value: u64) -> bool {
     jacpy_release(value);
     return result == 0;
 }
+
+import from c {
+    def jacpy_binding_exception_with_base(name: str, base: u64, doc: str) -> u64;
+}

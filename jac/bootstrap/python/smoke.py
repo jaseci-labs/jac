@@ -99,9 +99,41 @@ assert _heapq.heappop([1, 2, 3]) == 1
     import gc
     import io
     import pickle
+    import pickletools
     import weakref
+    recursive_list = []
+    recursive_tuple = (recursive_list,)
+    recursive_list.append(recursive_tuple)
+    protocol_zero = pickle.dumps(recursive_tuple, protocol=0)
+    assert all(opcode.proto == 0 for opcode, _, _ in pickletools.genops(protocol_zero))
+    restored_tuple = pickle.loads(protocol_zero)
+    assert restored_tuple[0][0] is restored_tuple
     assert ctypes.pythonapi.jacpy_pickler_dump
     assert ctypes.pythonapi.jacpy_unpickler_load
+    class PickleOwner:
+        def callback(self, *args):
+            return None
+    for codec_kind in ('pickler', 'unpickler', 'memo', 'buffers'):
+        owner = PickleOwner()
+        if codec_kind == 'unpickler':
+            owner.codec = pickle.Unpickler(io.BytesIO(pickle.dumps([1])))
+            owner.codec.persistent_load = owner.callback
+        elif codec_kind == 'buffers':
+            owner.codec = pickle.Pickler(io.BytesIO(), protocol=5, buffer_callback=owner.callback)
+        elif codec_kind == 'memo':
+            class MemoPickler(pickle.Pickler):
+                pass
+            owner.codec = MemoPickler(io.BytesIO())
+            owner.codec.memo_cycle = owner.codec.memo
+            owner.codec.owner = owner
+        else:
+            owner.codec = pickle.Pickler(io.BytesIO())
+            owner.codec.persistent_id = owner.callback
+        owner_ref = weakref.ref(owner)
+        del owner
+        gc.collect()
+        assert owner_ref() is None, "Native pickle hid a Python reference cycle"
+
     stream = io.BytesIO()
     writer = pickle.Pickler(stream)
     empty = writer.__sizeof__()

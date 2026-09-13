@@ -43,7 +43,9 @@ import from c {
             subscript: Callable[[u64, u64], u64] = 0,
             assign_subscript: Callable[[u64, u64, u64], i32] = 0,
             buffer: Callable[[u64, u64, i32], i32] = 0,
-            release_buffer: Callable[[u64, u64], None] = 0;
+            release_buffer: Callable[[u64, u64], None] = 0,
+            get_attribute: Callable[[u64, u64], u64] = 0,
+            set_attribute: Callable[[u64, u64, u64], i32] = 0;
     }  def jacpy_binding_type(
         name: str,
         doc: str,

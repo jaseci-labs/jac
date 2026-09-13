@@ -157,6 +157,8 @@ typedef struct {
     int32_t (*assign_subscript)(uint64_t, uint64_t, uint64_t);
     int32_t (*buffer)(uint64_t, uint64_t, int32_t);
     void (*release_buffer)(uint64_t, uint64_t);
+    uint64_t (*get_attribute)(uint64_t, uint64_t);
+    int32_t (*set_attribute)(uint64_t, uint64_t, uint64_t);
 } JacTypeHooks;
 
 typedef struct {
@@ -168,7 +170,7 @@ typedef struct {
 typedef struct {
     JacMethodTable table;
     PyType_Spec definition;
-    PyType_Slot slots[33];
+    PyType_Slot slots[35];
     vectorcallfunc vectorcall;
     int instance_dict;
     PyMemberDef members[3];
@@ -243,6 +245,8 @@ uint64_t jacpy_binding_type(const char *name, const char *doc, int64_t count,
     SLOT(assign_subscript, Py_mp_ass_subscript);
     SLOT(buffer, Py_bf_getbuffer);
     SLOT(release_buffer, Py_bf_releasebuffer);
+    SLOT(get_attribute, Py_tp_getattro);
+    SLOT(set_attribute, Py_tp_setattro);
     if (unhashable) spec->slots[slot++] = (PyType_Slot){Py_tp_hash, PyObject_HashNotImplemented};
     else { SLOT(hash, Py_tp_hash); }
 #undef SLOT
@@ -484,4 +488,8 @@ void jacpy_binding_dealloc_guard(uint64_t object, void (*entry)(uint64_t),
     Py_TRASHCAN_BEGIN(op, (destructor)entry)
     body(object);
     Py_TRASHCAN_END
+}
+
+uint64_t jacpy_binding_exception_with_base(const char *name, uint64_t base, const char *doc) {
+    return H(PyErr_NewExceptionWithDoc(name, *doc ? doc : NULL, P(base), NULL));
 }

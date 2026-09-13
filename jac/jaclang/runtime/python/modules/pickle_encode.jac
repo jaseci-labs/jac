@@ -417,6 +417,12 @@ obj pickle_state {
                     for _ in range(count) {
                         self.emit(opcode.POP);
                     }
+                } elif self.protocol == 0 {
+                    # POP_MARK belongs to protocol 1. Pop each item and the
+                    # leading mark explicitly for a recursive protocol-0 tuple.
+                    for _ in range(count + 1) {
+                        self.emit(opcode.POP);
+                    }
                 } else {
                     self.emit(opcode.POP_MARK);
                 }

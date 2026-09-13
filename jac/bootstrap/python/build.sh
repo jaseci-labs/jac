@@ -153,8 +153,6 @@ cpython() {
         cp "$recipe/compiler_runtime.c" Python/jac_runtime.c
         cp "$recipe/object_api.c" Python/jac_objects.c
         cp "$recipe/binding_api.c" Python/jac_bindings.c
-        mkdir -p Modules/jac_modules
-        cp "$recipe/modules/"*.c Modules/jac_modules/
         cp "$work/native/jacpython.o" Python/jacpython.o
     fi
     # The shared interpreter must survive relocation into the Jac payload.
@@ -229,7 +227,7 @@ _collections
 _functools
 itertools
 array
-_pickle jac_modules/pickle.c
+_pickle
 SETUP
     fi
     # CPython runs the compiler itself; dependency-oriented -O2 flags above

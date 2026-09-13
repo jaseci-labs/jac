@@ -497,7 +497,7 @@ def:pub jacpy_math_log(value: u64, base: u64) -> u64 {
     }
 }
 
-# Operation IDs are shared with the method-registration table in modules/math.c.
+# Operation IDs are shared with the native method declarations in bindings/math.jac.
 def:pub jacpy_math_unary(operation: i64, value: u64) -> u64 {
     try {
         if operation >= 28 and operation <= 30 {

@@ -571,25 +571,33 @@ uint64_t jacpy_float_from_text(uint64_t value) { return HANDLE(PyFloat_FromStrin
 uint64_t jacpy_bytes_unescape(uint64_t value) { return HANDLE(PyBytes_DecodeEscape(PyBytes_AS_STRING(OBJECT(value)), PyBytes_GET_SIZE(OBJECT(value)), "strict", 0, NULL)); }
 
 /* Exact built-in categories: subclasses use their object protocols instead. */
+static PyTypeObject *const builtin_types[] = {
+    NULL, &PyBool_Type, &PyLong_Type, &PyFloat_Type, &PyBytes_Type,
+    &PyUnicode_Type, &PyTuple_Type, &PyList_Type, &PyDict_Type, &PySet_Type,
+    &PyFrozenSet_Type, &PyByteArray_Type, &PyType_Type, &PyFunction_Type,
+    &PyPickleBuffer_Type
+};
 int64_t jacpy_builtin_kind(uint64_t value) {
-    PyObject *object = OBJECT(value); PyTypeObject *type = Py_TYPE(object);
+    PyObject *object = OBJECT(value);
     if (object == Py_None) return 0;
-    if (type == &PyBool_Type) return 1;
-    if (type == &PyLong_Type) return 2;
-    if (type == &PyFloat_Type) return 3;
-    if (type == &PyBytes_Type) return 4;
-    if (type == &PyUnicode_Type) return 5;
-    if (type == &PyTuple_Type) return 6;
-    if (type == &PyList_Type) return 7;
-    if (type == &PyDict_Type) return 8;
-    if (type == &PySet_Type) return 9;
-    if (type == &PyFrozenSet_Type) return 10;
-    if (type == &PyByteArray_Type) return 11;
-    if (type == &PyType_Type) return 12;
-    if (type == &PyFunction_Type) return 13;
-    if (type == &PyPickleBuffer_Type) return 14;
+    for (size_t i = 1; i < sizeof(builtin_types) / sizeof(*builtin_types); ++i)
+        if (Py_TYPE(object) == builtin_types[i]) return (int64_t)i;
     return 15;
 }
+uint64_t jacpy_builtin_type(int64_t kind) {
+    if (kind == 0) return HANDLE(Py_NewRef((PyObject *)Py_TYPE(Py_None)));
+    if (kind < 0 || (uint64_t)kind >= sizeof(builtin_types) / sizeof(*builtin_types)) {
+        PyErr_SetString(PyExc_SystemError, "invalid built-in type category"); return 0;
+    }
+    return HANDLE(Py_NewRef((PyObject *)builtin_types[kind]));
+}
+uint64_t jacpy_generic_getattr(uint64_t object, uint64_t name) {
+    return HANDLE(PyObject_GenericGetAttr(OBJECT(object), OBJECT(name)));
+}
+int32_t jacpy_generic_setattr(uint64_t object, uint64_t name, uint64_t value) {
+    return PyObject_GenericSetAttr(OBJECT(object), OBJECT(name), OBJECT(value));
+}
+
 int64_t jacpy_is_not_implemented(uint64_t value) { return OBJECT(value) == Py_NotImplemented; }
 
 int64_t jacpy_audit_pickle_find(uint64_t module, uint64_t name) { return PySys_Audit("pickle.find_class", "OO", OBJECT(module), OBJECT(name)); }

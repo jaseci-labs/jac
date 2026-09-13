@@ -400,3 +400,9 @@ import from c {
         type: u64, base: u64
     ) -> i64;  def jacpy_number_ssize(value: u64, exception: str) -> i64;
 }
+
+import from c {
+    def jacpy_builtin_type(kind: i64) -> u64;  def jacpy_generic_getattr(
+        object: u64, name: u64
+    ) -> u64;  def jacpy_generic_setattr(object: u64, name: u64, value: u64) -> i32;
+}

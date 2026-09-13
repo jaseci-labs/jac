@@ -10,7 +10,8 @@ shipped compiler.
 | `jac/jaclang/compiler/frontend/python/` | Python scanning, parsing, AST validation, source decoding, and symbol analysis |
 | `jac/jaclang/compiler/backends/py/jacpython/` | Native request handling, bytecode generation, assembly, and code-object serialization |
 | `jac/jaclang/runtime/python/` | Compiler values, tokenizer/symbol-table interfaces, shared object API, and native standard-library modules |
-| `jac/bootstrap/python/` | Pinned source build and C adapters for retained CPython values and APIs |
+| `jac/jaclang/runtime/python/bindings/` | Native module/type declarations, argument binding, descriptors, and Python object ownership |
+| `jac/bootstrap/python/` | Pinned source build and shared C shims for opaque CPython ABI records and object APIs |
 
 `native_api.jac` connects source/AST requests to `product_compile.jac` and the
 native parser, scanner, and symbol-table implementation. `marshal_writer.jac`
@@ -46,18 +47,20 @@ The AST, token model, PEG parser and opcode metadata derive from CPython 3.14.6
 and are maintained directly in Jac. [`LICENSE.cpython`](LICENSE.cpython) applies
 to the CPython-derived code across these packages.
 
-`modules/` contains the native standard-library replacements. `capi.jac`
-declares their shared retained-object operations; `bootstrap/python/object_api.c`
-implements those C API calls. `bootstrap/python/modules/` contains Python
-method/type registration and argument adapters. The algorithms are native Jac,
-and their C sources and Clinic headers are excluded from shipped runtimes.
+`modules/` contains the native standard-library algorithms. `bindings/` implements
+all sixteen module adapters in native Jac, including their `PyInit_*` entry points,
+constructors, descriptors, protocol callbacks, and lifecycle handling. There are
+no per-module C adapters. `capi.jac` declares shared retained-object operations;
+`bootstrap/python/object_api.c` implements those C API primitives, while
+`bootstrap/python/binding_api.c` stores opaque CPython module, type, and buffer
+records without module-specific policy.
 
-`bindings/` provides native Jac module declarations and argument binding. Bisect,
-heapq, math, cmath, binascii, random, and queue use this path, including their `PyInit_*` entry points. The shared
-`bootstrap/python/binding_api.c` stores opaque CPython ABI records without
-module-specific policy. Declarations contain no Python objects and live for the
-process lifetime; an owned argument frame releases conversions on success and
-error paths. Python calling conventions and isolated interpreters are preserved.
+Declarations contain no Python objects and live for the process lifetime. Each
+interpreter owns its module state and heap types. Owned argument frames release
+conversions on success and error paths. A shared native-state protocol exposes
+Python reference edges to the cycle collector, while Jac retains and releases
+native state. Buffer exports retain their owner and their own layout metadata.
+Python calling conventions and isolated interpreters are preserved.
 
 Queues and deques share `modules/object_ring.jac`. Its circular storage transfers
 owned Python references without invoking callbacks; callers finish mutations
@@ -74,7 +77,7 @@ summation, vector norms, and dot products use native error-free transforms.
 
 `modules/functools.jac` implements partial argument binding, reductions,
 comparison keys, and cache policy. Bounded caches reuse the retained runtime's
-ordered dictionary; the C boundary stores cached hashes and visits references.
+ordered dictionary; native binding state stores cached hashes and visits references.
 There is no separate native hash table or Python cache-policy callback.
 
 Iterator policies live in `modules/iterators.jac`, `combinatorics.jac`,
