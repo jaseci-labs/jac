@@ -17,6 +17,7 @@ import from jaclang.runtime.prepared {
 test "sealing retains each colocated service's access metadata" {
     import from jaclang.dist.seal { build_serve_manifest }
     with tempfile.TemporaryDirectory() as tmp {
+        tmp = str(Path(tmp).resolve());
         base = Path(tmp);
         (base / 'jac.toml').write_text(
             '[project]\nname="contracts"\ndefault-app="web"\n'
@@ -46,6 +47,7 @@ test "sealing retains each colocated service's access metadata" {
 test "server entries do not build a browser app during cold or warm preparation" {
     import from jaclang.client.compiler { ViteCompiler }
     with tempfile.TemporaryDirectory() as tmp {
+        tmp = str(Path(tmp).resolve());
         path = Path(tmp) / 'main.jac';
         path.write_text('walker:pub Ping { can ping with Root entry { report 1; } }\n');
         try {
@@ -72,6 +74,7 @@ test "server entries do not build a browser app during cold or warm preparation"
 test "executable import discovery includes package initializers and deferred imports" {
     import from jaclang.compiler.backends.py.artifact_imports { runtime_sources }
     tmp = tempfile.mkdtemp(prefix="jac-prepared-imports-");
+    tmp = str(Path(tmp).resolve());
     try {
         base = Path(tmp);
         for name in ['pkg', 'shared'] {
@@ -103,6 +106,7 @@ test "executable import discovery includes package initializers and deferred imp
 
 test "preparation does not execute modules and warm restoration does not compile" {
     tmp = tempfile.mkdtemp(prefix="jac-prepared-");
+    tmp = str(Path(tmp).resolve());
     try {
         path = Path(tmp) / 'main.jac';
         marker = Path(tmp) / 'initialized';
@@ -148,6 +152,7 @@ test "preparation does not execute modules and warm restoration does not compile
 
 test "source changes invalidate a prepared revision and replace its access metadata" {
     tmp = tempfile.mkdtemp(prefix="jac-prepared-edit-");
+    tmp = str(Path(tmp).resolve());
     try {
         path = Path(tmp) / 'main.jac';
         path.write_text("def:pub hello -> str { return 'old'; }\n");
@@ -166,6 +171,7 @@ test "runtime logs and toolchain directories do not become application inputs" {
     import jaclang.compiler.driver.application as preparation;
     import from jaclang.runtime.prepared { containing_application }
     with tempfile.TemporaryDirectory(prefix='jac-prepared-log-') as tmp {
+        tmp = str(Path(tmp).resolve());
         base = Path(tmp);
         path = base / 'main.jac';
         log = base / 'server.log';
@@ -211,6 +217,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
     import from jaclang.server.sealed_serve { client_dist_for }
     for package_name in ['prepared_sealed_test', 'site'] {
         with tempfile.TemporaryDirectory(prefix='jac-prepared-sealed-') as tmp {
+            tmp = str(Path(tmp).resolve());
             base = Path(tmp);
             path = base / f'{package_name}.jac';
             package_init = base / '__init__.jac';
@@ -317,6 +324,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
 
 test "failed preparation does not replace the last working revision" {
     tmp = tempfile.mkdtemp(prefix="jac-prepared-fail-");
+    tmp = str(Path(tmp).resolve());
     try {
         path = Path(tmp) / 'main.jac';
         path.write_text("def:pub hello -> str { return 'old'; }\n");
@@ -354,6 +362,7 @@ test "preparation infrastructure is present in the compiler image" {
 test "prepared services with the same entry filename load independently" {
     import from jaclang.runtime.prepared { load_prepared_module }
     tmp = tempfile.mkdtemp(prefix='jac-prepared-services-');
+    tmp = str(Path(tmp).resolve());
     try {
         base = Path(tmp);
         paths: list[str] = [];

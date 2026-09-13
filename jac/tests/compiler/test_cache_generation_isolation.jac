@@ -1,8 +1,7 @@
 """One binary, several compiler trees, one cache: the slots must not collide.
 
-The dev loop picks a compiler source per process from the nearest `jac.toml`,
-so two checkouts can compile the same file concurrently through the same
-binary. The module cache keyed only the source path, and the compiler identity
+The dev loop selects an explicit compiler image per process, so two
+checkouts can compile the same file concurrently through the same binary. The module cache keyed only the source path, and the compiler identity
 lived in the JIR's ENVKEY -- a field read *after* the file was opened. Both
 trees therefore targeted one filename and each rejected, then overwrote, what
 the other had just written: correct results, unbounded rebuilds.
@@ -141,7 +140,8 @@ test "a zero TTL disables the sweep" {
     assert gen.is_dir();
 }
 
-test "JacPython sources participate in the compiler image" {
+test "JacPython uses the native runtime boundary" {
+    import ctypes;
     import jaclang;
     import from jaclang.compiler.driver.image { load_image }
     image = load_image(Path(jaclang.__file__).parent / "_precompiled");
@@ -151,7 +151,12 @@ test "JacPython sources participate in the compiler image" {
         "compiler/backends/py/jacpython/",
         "runtime/python/"
     ) {
-        assert any(path.startswith(prefix) for path in image.manifest["modules"]);
-        assert any(path.startswith(prefix) for path in image.payloads);
+        assert not any(path.startswith(prefix) for path in image.manifest["modules"]);
+        assert not any(
+            path.startswith(prefix) and path.endswith(".jac") for path in image.payloads
+        );
     }
+    assert "runtime/python/LICENSE.cpython" in image.payloads;
+    assert ctypes.pythonapi._PyJac_CompilerRequired() == 1;
+    assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3;
 }
