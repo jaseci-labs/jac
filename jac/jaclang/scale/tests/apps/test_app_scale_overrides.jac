@@ -145,6 +145,29 @@ test "timeouts resolve per app, then the gateway, then the default" {
     }
 }
 
+test "an explicit plugin directory without jac.toml uses defaults rather than its parent" {
+    import from jaclang.project.config { get_explicit_config, set_config }
+    directory = Path(_project());
+    child = directory / "standalone";
+    child.mkdir();
+    saved = get_explicit_config();
+    set_config(None);
+    try {
+        config = JacScaleConfig(project_dir=child);
+        assert config.get_gateway_config()["gateway_port"] == 8000;
+        initial = config.load();
+        assert config.load() is initial;
+        (child / "jac.toml").write_text(
+            '[project]\nname="child"\n[scale.gateway]\ngateway_port=9300\n'
+        );
+        assert config.get_gateway_config()["gateway_port"] == 9300;
+        assert config.load() is not initial;
+    } finally {
+        set_config(saved);
+        shutil.rmtree(directory, ignore_errors=True);
+    }
+}
+
 
 test "normalize_gateway_config fills every section with defaults" {
     gw = normalize_gateway_config({});
@@ -218,6 +241,14 @@ glob _PROFILE_TOML: str = '[apps.orders.scale]\n'
      '[apps.orders.scale.hpa]\n'
      'enabled = false\n'
      '\n'
+     '[[apps.orders.scale.deployment_overlay.spec.template.spec.initContainers]]\n'
+     'name = "install-tools"\n'
+     'image = "tools"\n'
+     '\n'
+     '[[apps.orders.scale.deployment_overlay.spec.template.spec.volumes]]\n'
+     'name = "key"\n'
+     'secret = { secretName = "github-app-key" }\n'
+     '\n'
      '[scale.gateway]\n'
      'gateway_port = 9200\n';
 
@@ -252,6 +283,75 @@ test "a profile retunes [apps.<name>.scale], not only [scale.gateway]" {
             os.environ["JAC_PROFILE"] = old;
         }
         shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+test "the manifest fleet discovers the same active profile as the scale plugin (#8995)" {
+    import from jaclang.project.config { get_config, get_explicit_config, set_config }
+    import from unittest.mock { patch }
+
+    directory = _project_with_profile();
+    saved = get_explicit_config();
+    set_config(None);
+    reset_scale_config();
+    try {
+        with patch.dict(os.environ, {"JAC_PROFILE": "e2e"}) {
+            scale = get_scale_config(project_dir=Path(directory));
+            builder = ManifestBuilder(
+                k8s_config=KubernetesConfig(app_name="shop", namespace="shop"),
+                project_dir=directory,
+                dry_run=True
+            );
+            fleet = builder._derive_fleet(
+                AppConfig(code_folder=directory, file_name="main.jac", served_app="web")
+            );
+            assert scale.get_gateway_config()["gateway_port"] == 9200;
+            orders = fleet.app_config("orders");
+            assert orders["replicas"] == 1 , orders;
+            assert orders["cpu_limit"] == "500m" , orders;
+            assert orders["hpa"]["enabled"] is False , orders;
+            assert orders["hpa"]["max"] == 20 , orders;
+            pod = orders["deployment_overlay"]["spec"]["template"]["spec"];
+            assert pod["initContainers"][0]["name"] == "install-tools";
+            assert pod["volumes"][0]["secret"]["secretName"] == "github-app-key";
+            assert builder._project_config() is scale.get_jac_config();
+            # A CLI override replaces both the plugin's cached view and the fleet's source.
+            get_config(start_path=Path(directory), profile="");
+            assert scale.get_gateway_config()["gateway_port"] == 9100;
+            assert scale.get_app_scale_config("orders")["replicas"] == 2;
+            assert builder._project_config() is scale.get_jac_config();
+        }
+    } finally {
+        reset_scale_config();
+        set_config(saved);
+        shutil.rmtree(directory, ignore_errors=True);
+    }
+}
+
+test "new plugin readers refresh the shared config while preserving the explicit profile" {
+    import from jaclang.project.config { get_config, get_explicit_config, set_config }
+    import from unittest.mock { patch }
+    directory = Path(_project_with_profile());
+    saved = get_explicit_config();
+    set_config(None);
+    try {
+        with patch.dict(os.environ, {"JAC_PROFILE": ""}) {
+            get_config(start_path=directory, profile="e2e");
+            first = JacScaleConfig(project_dir=directory);
+            assert first.get_gateway_config()["gateway_port"] == 9200;
+            (directory / "jac.e2e.toml").write_text(
+                _PROFILE_TOML.replace("9200", "9400")
+            );
+            refreshed = JacScaleConfig(project_dir=directory);
+            assert refreshed.get_gateway_config()["gateway_port"] == 9400;
+            assert first.get_gateway_config()["gateway_port"] == 9400;
+            assert get_config() is refreshed.get_jac_config();
+            assert refreshed.get_jac_config().active_profile == "e2e";
+            assert len(refreshed.get_jac_config()._layers) == 1;
+        }
+    } finally {
+        set_config(saved);
+        shutil.rmtree(directory, ignore_errors=True);
     }
 }
 

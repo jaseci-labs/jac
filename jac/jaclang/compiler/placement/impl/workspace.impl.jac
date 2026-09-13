@@ -43,7 +43,16 @@ impl WorkspaceSpec.module_dot_path(abs_path: str) -> str {
 }
 
 impl _real(path: str) -> str {
-    return os.path.normcase(os.path.realpath(os.path.abspath(path)));
+    absolute = os.path.abspath(path);
+    scope = _resolution.get();
+    if scope is not None and absolute in scope.paths {
+        return scope.paths[absolute];
+    }
+    resolved = os.path.normcase(os.path.realpath(absolute));
+    if scope is not None {
+        scope.paths[absolute] = resolved;
+    }
+    return resolved;
 }
 
 impl _read_toml(toml_path: str) -> dict {
@@ -225,6 +234,19 @@ impl workspace_for_path(path: str) -> (WorkspaceSpec | None) {
     if not path {
         return None;
     }
+    absolute = os.path.abspath(path);
+    scope = _resolution.get();
+    if scope is not None and absolute in scope.workspaces {
+        return scope.workspaces[absolute];
+    }
+    found = _workspace_for_path(absolute);
+    if scope is not None {
+        scope.workspaces[absolute] = found;
+    }
+    return found;
+}
+
+impl _workspace_for_path(path: str) -> (WorkspaceSpec | None) {
     root_dir = find_jac_project_root(path);
     if not root_dir {
         return None;

@@ -150,11 +150,14 @@ impl BoundaryAnalysisPass._register_native_absorb(nd: Import) -> None {
         if sym.access == SymbolAccess.PRIVATE or not sym.defn {
             continue;
         }
-        defn0 = sym.defn[0];
+        defn0 = resolved_decl_of(sym);
+        if defn0 is None {
+            continue;
+        }
         if defn0.find_parent_of_type(Import) is not None {
             continue;
         }
-        src = self._native_source_module_of(defn0.find_parent_of_type(Module))
+        src = self._native_source_module_of(defn0.name_of.find_parent_of_type(Module))
             or native_path;
         self._imported_native_funcs[name] = (src, import_context);
         if (is_native_ctx and name not in manifest.bindings) {
@@ -214,10 +217,13 @@ impl BoundaryAnalysisPass.enter_import with Import entry {
                         _item_sym = item.name.sym
                             if isinstance(item.name, AstSymbolNode)
                             else None;
+                        _definition = resolved_decl_of(_item_sym)
+                            if _item_sym
+                            else None;
                         _src = self._native_source_module_of(
-                            _item_sym.defn[0].find_parent_of_type(Module)
+                            _definition.name_of.find_parent_of_type(Module)
                         )
-                            if (_item_sym and _item_sym.defn)
+                            if _definition is not None
                             else None;
                         _src = _src or native_path;
                         self._imported_native_funcs[func_name] = (_src, import_context);

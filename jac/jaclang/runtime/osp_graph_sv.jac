@@ -7,6 +7,8 @@ import from jaclang.runtime.archetype {
     anchor_key,
     same_anchor
 }
+import from weakref { ReferenceType }
+import from typing { cast }
 
 obj _SvStore {
     has h_of_key: dict[any, int] = {},
@@ -14,7 +16,28 @@ obj _SvStore {
         region: int = 0;
 }
 
-glob _obj_of_h: list[(Anchor | None)] = [None],
+class _AnchorRef(ReferenceType[Anchor]) {
+    static has __slots__: tuple[str, ...] = ("store", "key", "handle", "is_edge");
+    has store: _SvStore,
+        key: any,
+        handle: int,
+        is_edge: bool;
+
+    def __new__(
+        cls: type[_AnchorRef], anchor: Anchor, store: _SvStore, key: any, handle: int
+    ) -> _AnchorRef {
+        return cast(_AnchorRef, ReferenceType.__new__(cls, anchor, _collect_handle));
+    }
+
+    def init(self: _AnchorRef, anchor: Anchor, store: _SvStore, key: any, handle: int) {
+        self.store = store;
+        self.key = key;
+        self.handle = handle;
+        self.is_edge = isinstance(anchor, EdgeAnchor);
+    }
+}
+
+glob _obj_of_h: list[_AnchorRef | None] = [None],
      _h_free: list[int] = [],
      _next_region: list[int] = [1],
      _tag_of_cls: dict[(type, int)] = {},
@@ -56,6 +79,29 @@ def _handle_of(st: _SvStore, anchor: Anchor) -> int {
     return h if h != 0 else st.h_of_key.get(id(anchor), 0);
 }
 
+def _collect_handle(dead_ref: ReferenceType[Anchor]) -> None {
+    if not isinstance(dead_ref, _AnchorRef) {
+        return;
+    }
+    st = dead_ref.store;
+    key = dead_ref.key;
+    h = dead_ref.handle;
+    if _obj_of_h[h] is not dead_ref {
+        return;
+    }
+    if dead_ref.is_edge {
+        _graph.osp_disconnect(h);
+    } else {
+        _graph.osp_drop_node(h);
+    }
+    if st.h_of_key.get(key) == h {
+        st.h_of_key.pop(key);
+    }
+    st.forgotten.discard(h);
+    _obj_of_h[h] = None;
+    _h_free.append(h);
+}
+
 def _mint(st: _SvStore, anchor: Anchor) -> int {
     aid = anchor.id;
     key: any = id(anchor) if aid is None else aid;
@@ -67,17 +113,18 @@ def _mint(st: _SvStore, anchor: Anchor) -> int {
         if h == 0 {
             if _h_free {
                 h = _h_free.pop();
-                _obj_of_h[h] = anchor;
             } else {
-                _obj_of_h.append(anchor);
+                _obj_of_h.append(None);
                 h = len(_obj_of_h) - 1;
             }
         }
         st.h_of_key[key] = h;
+        _obj_of_h[h] = _AnchorRef(anchor, st, key, h);
         return h;
     }
-    if anchor.is_populated() or _obj_of_h[h] is None {
-        _obj_of_h[h] = anchor;
+    current = obj_of(h);
+    if current is not anchor and (anchor.is_populated() or current is None) {
+        _obj_of_h[h] = _AnchorRef(anchor, st, key, h);
     }
     return h;
 }
@@ -90,7 +137,8 @@ def obj_of(h: int) -> (Anchor | None) {
     if h <= 0 or h >= len(_obj_of_h) {
         return None;
     }
-    return _obj_of_h[h];
+    found = _obj_of_h[h];
+    return found() if found is not None else None;
 }
 
 def tag_of_cls(cls: type) -> int {
@@ -159,7 +207,10 @@ def sv_live_edges(
 ) -> list[Anchor] {
     m = _mem_or_ctx(mem);
     st = _store_for(m);
-    oh = _mint(st, origin_a);
+    oh = _handle_of(st, origin_a);
+    if oh == 0 {
+        return [];
+    }
     if edge_type is None {
         out: list[Anchor] = [];
         for h in _graph.osp_refs(oh, dir_int, -1, 1 if edges_only else 0) {

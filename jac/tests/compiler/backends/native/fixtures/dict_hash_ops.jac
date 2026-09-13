@@ -176,6 +176,52 @@ def f64_keys -> int {
     return len(d);
 }
 
+def order_after_churn -> int {
+    d: dict[int, int] = {};
+    for i in range(6) {
+        d[i] = i * 10;
+    }
+    # Reusing the same hash tombstone fills order storage without rehashing.
+    for i in range(100) {
+        del d[2];
+        d[2] = 20;
+        del d[3];
+        d[3] = 30;
+    }
+    expected = [0, 1, 4, 5, 2, 3];
+    index = 0;
+    for (k, v) in d.items() {
+        assert k == expected[index];
+        assert v == k * 10;
+        index += 1;
+    }
+    assert index == 6;
+    del d[1];
+    del d[2];
+    for i in range(6, 100) {
+        d[i] = i * 10;
+    }
+    expected = [0, 4, 5, 3];
+    for i in range(6, 100) {
+        expected.append(i);
+    }
+    index = len(expected) - 1;
+    while len(d) > 0 {
+        pair = d.popitem();
+        assert pair[0] == expected[index];
+        assert pair[1] == pair[0] * 10;
+        index -= 1;
+    }
+    d[7] = 70;
+    d[8] = 80;
+    del d[7];
+    d.clear();
+    d[9] = 90;
+    pair = d.popitem();
+    assert pair[0] == 9 and pair[1] == 90;
+    return len(d);
+}
+
 with entry {
     assert del_pop_str_keys() == 1 , "del/pop with str keys failed";
     assert tombstone_reuse() == 2 , "tombstone reuse (delete then reinsert) failed";
@@ -185,5 +231,6 @@ with entry {
     assert popitem_last_str() == "gamma=C" , "popitem last str pair failed";
     assert popitem_drain() == 0 , "popitem drain failed";
     assert f64_keys() == 1 , "f64-key dict ops failed";
+    assert order_after_churn() == 0;
     print("OK dict_hash_ops");
 }

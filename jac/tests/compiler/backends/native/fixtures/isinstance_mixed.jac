@@ -25,6 +25,46 @@ obj Lone {
     has q: int = 0;
 }
 
+obj StringBox {
+    has value: str;
+}
+
+def typed_string_check(value: str) -> bool {
+    return isinstance(value, str);
+}
+
+def optional_string_check(value: str | None) -> bool {
+    return isinstance(value, str);
+}
+
+def chk_string_representations -> int {
+    box = StringBox(value="hello");
+    local = box.value;
+    result = 0;
+    if isinstance("", str) {
+        result += 1;
+    }
+    if isinstance(box.value, str) {
+        result += 2;
+    }
+    if isinstance(local, (str, Other)) {
+        result += 4;
+    }
+    if typed_string_check(local) {
+        result += 8;
+    }
+    if optional_string_check(local) {
+        result += 16;
+    }
+    if not optional_string_check(None) {
+        result += 32;
+    }
+    if not isinstance(Other(), str) {
+        result += 64;
+    }
+    return result;
+}
+
 def chk_int_foo(k: int) -> int {
     x: any = 0;
     if k == 0 {

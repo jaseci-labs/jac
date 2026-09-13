@@ -71,11 +71,25 @@ demo/
 .zig-cache/
 zig-out/
 
+# Local CPython reference sources.
+reference/
+
 # Agent / IDE working notes (not repo artifacts)
 AGENTS.md
 PLAN.md
 IMPLEMENTATION.md
 RUNTIME_SPLIT_PROGRESS.md
+CURRENT.md
+FIXME.md
+INTEGRATION_PLAN.md
+PROGRESS.md
+PR_SPLIT_PLAN.md
+TASK.md
+SKILL.md
+AUDIT-*.md
+.cursor/
+.pi/
+.ralph/
 
 # Claude Code local instructions
 CLAUDE.local.md
@@ -94,3 +108,4 @@ jactastic/**
 # Zig 0.16 project-local package cache (fetched, hash-pinned deps)
 zig-pkg/
 
+.xdg-cache/

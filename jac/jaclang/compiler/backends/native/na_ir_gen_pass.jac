@@ -1013,29 +1013,27 @@ walker NaIRGenPass(Transform) {
         key_size: int = 0
     ) -> None;
 
-    def _emit_dict_order_compact(
-        b: ir.IRBuilder,
-        fn: ir.Function,
-        d_ptr: ir.Value,
-        removed_slot: ir.Value,
-        new_len: ir.Value,
-        i32: ir.Type,
-        i64: ir.Type,
-        order_idx: int
-    ) -> ir.IRBuilder;
+    def _hash_order_extent_ptr(
+        b: ir.IRBuilder, order: ir.Value, capacity: ir.Value
+    ) -> ir.Value;
 
-    def _emit_order_scan_incr_block(
-        b: ir.IRBuilder,
-        idx_slot: ir.Value,
-        i_cur: ir.Value,
-        i64: ir.Type,
-        fn: ir.Function,
-        scan_bb: ir.Block
-    ) -> ir.Block;
+    def _hash_order_position_ptr(
+        b: ir.IRBuilder, order: ir.Value, capacity: ir.Value, slot: ir.Value
+    ) -> ir.Value;
+
+    def _hash_order_alloc(b: ir.IRBuilder, capacity: ir.Value) -> ir.Value;
+    def _emit_hash_order_compact_fn(
+        name: str, container_type: ir.Type, layout: dict
+    ) -> ir.Function;
+
+    def _emit_hash_order_remove_fn(
+        name: str, container_type: ir.Type, layout: dict
+    ) -> ir.Function;
 
     def _box_to_jacval(value: ir.Value) -> ir.Value;
     def _unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value;
     def _codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None);
+    def _codegen_dict_unpack(nd: uni.DictVal) -> (ir.Value | None);
     def _codegen_dict_access(
         target_val: ir.Value,
         key_val: ir.Value,
@@ -1377,6 +1375,7 @@ walker NaIRGenPass(Transform) {
     def _emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> None;
     def _emit_aos_list_helpers(tname: str) -> ir.Type;
     def _codegen_list_val(nd: uni.ListVal) -> (ir.Value | None);
+    def _coerce_container_element(value: ir.Value, element_type: ir.Type) -> ir.Value;
     def _codegen_index(
         target_val: ir.Value, index_val: ir.Value, elem_type_name: str
     ) -> (ir.Value | None);

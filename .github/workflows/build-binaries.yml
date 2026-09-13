@@ -1,7 +1,8 @@
 name: Build jac native binaries
 
 # Builds the self-contained `jac` binary per platform and attaches it to a
-# GitHub Release. One parameterized workflow serves both channels:
+# GitHub Release, with native JacPython on every target.
+# One parameterized workflow serves both channels:
 #   - channel=release (default): cold, glibc-2.17-pinned builds attached to a
 #     versioned release. Called by release.yml after it cuts the release (a
 #     GITHUB_TOKEN-created release emits no release.published event); the
@@ -55,7 +56,7 @@ on:
         # demanded there, hanging the release on an asset nothing was
         # building. `plan` derives this from the same array the matrix comes
         # from, so the two can no longer disagree.
-        description: "Space-separated platforms whose assets a release must carry to publish; non-blocking legs are excluded."
+        description: "Space-separated platform suffixes required to publish; non-blocking legs are excluded."
         value: ${{ jobs.plan.outputs.required }}
     # Called workflows do not see the caller's repo secrets unless passed
     # explicitly; without these the docker-image job skips its push steps.
@@ -206,6 +207,7 @@ jobs:
           echo "Required to publish: ${REQUIRED:-(none)}"
 
   build:
+    name: ${{ matrix.platform }}
     needs: plan
     strategy:
       fail-fast: false
@@ -318,24 +320,26 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.precompiled-build
-          key: jac-precompiled-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-${{ hashFiles('jac/jaclang/**') }}
+          path: jac/.precompiled-build/jacpython
+          key: jac-precompiled-jacpython-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-${{ hashFiles('jac/jaclang/**') }}
           restore-keys: |
-            jac-precompiled-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-
+            jac-precompiled-jacpython-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-
 
-      # pbs + bun: the two read-mostly runtime trees `zig build` otherwise
-      # re-downloads and re-extracts on every push to main (the ~600 MB
-      # python-build-standalone tree is the slow one; measured at several
-      # minutes per leg). Keys mirror setup-jac verbatim so the Linux-x86_64
-      # leg shares the entry main seeds; the other legs self-seed here (no
-      # other workflow runs on their runners). Dev channel only: the release
-      # channel builds cold on purpose.
-      - name: Restore cached python-build-standalone tree (dev channel)
+      # Cache the native compiler and its build host. Release builds remain cold.
+      - name: Resolve Python SDK cache input
+        id: python-sdk
+        shell: bash
+        run: |
+          sdk=zig-libc
+          if [ "$RUNNER_OS" = macOS ]; then sdk=$(xcrun --sdk macosx --show-sdk-version); fi
+          echo "version=$sdk" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cached source-built Python (dev channel)
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.pbs-build
-          key: pbs-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+          path: jac/.python-build/jacpython
+          key: python-build-v3-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ hashFiles('jac/bootstrap/build_python.zig', 'jac/bootstrap/seed.zig', 'jac/bootstrap/python/**', 'jac/jaclang/**/*.jac', 'jac/jaclang/**/*.py', 'jac/jaclang/vendor/typeshed/PIN', 'jac/jaclang/vendor/typeshed/TARBALL_SHA256') }}
 
       - name: Restore cached bun runtime (dev channel)
         if: inputs.channel == 'dev'
@@ -352,10 +356,10 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.payload-layers
-          key: payload-layers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/bootstrap/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/jaclang/client/bun_installer.jac', 'jac/jaclang/compiler/backends/native/wasm_rt/**') }}
+          path: jac/.payload-layers/jacpython
+          key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/bootstrap/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/jaclang/client/bun_installer.jac', 'jac/jaclang/compiler/backends/native/wasm_rt/**') }}
           restore-keys: |
-            payload-layers-${{ runner.os }}-${{ runner.arch }}-
+            payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-
 
       # Release channel: fetch the prebuilt, target-pinned shim that
       # build-shims.yml publishes on the rolling `deps` prerelease instead of
@@ -491,6 +495,24 @@ jobs:
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
+
+      - name: Verify the shipped native JacPython compiler
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          WORK="$(mktemp -d)"
+          cat > "$WORK/native_compiler.jac" <<'EOF'
+          import sys;
+          import ctypes;
+          with entry {
+              assert ctypes.pythonapi._PyJac_CompilerRequired() == 1;
+              assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3;
+              assert not hasattr(sys, "_jacpython_compile");
+              assert not hasattr(sys, "_jacpython_image");
+              print("native JacPython verified");
+          }
+          EOF
+          JAC_NO_DEV_SOURCE=1 zig-out/bin/jac run "$WORK/native_compiler.jac"
 
       # Guards #7047: the binary must not leak PYTHONHOME/PYTHONPATH (or any
       # interpreter config) into subprocesses -- a python-based child spawned

@@ -25,9 +25,7 @@ obj HttpSource {
 
 def http_get(url: str) -> bytes;
 def http_get_range(url: str, start: int, end: int) -> bytes;
-def pbs_platform(osarch: str) -> str | None;
 def bun_asset_name(osarch: str) -> str | None;
-def fetch_pbs(osarch: str, dest: str);
 def fetch_typeshed(repo_root: str);
 def typeshed_sha(commit: str);
 def fetch_llvm(dest: str);

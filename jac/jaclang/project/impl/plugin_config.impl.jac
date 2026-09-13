@@ -1,5 +1,5 @@
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig, active_profile_name, find_project_root }
+import from jaclang.project.config { JacConfig, find_project_root, get_config_for_path }
 import from jaclang.runtime.runtime { JacRuntime }
 
 impl deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str, any] {
@@ -97,18 +97,18 @@ impl PluginConfigBase._validate_declared_keys(raw: dict[str, any]) -> None {
 }
 
 impl PluginConfigBase.get_jac_config -> JacConfig {
-    if self._jac_config is None {
-        if self.config_file.exists() {
-            config = JacConfig.load(self.config_file);
-            config.apply_profile_overlay(active_profile_name(config) or None);
-            self._jac_config = config;
-        } else {
-            self._jac_config = JacConfig();
-            self._jac_config.toml_path = self.config_file;
-            self._jac_config.project_root = self.project_dir;
-        }
+    config = get_config_for_path(
+        self.config_file, force_discover=self._jac_config is None
+    )
+        if self.config_file.exists()
+        else None;
+    if config is not self._jac_config {
+        self._config = None;
+        self._jac_config = config;
     }
-    return self._jac_config;
+    return config
+        if config is not None
+        else JacConfig(toml_path=self.config_file, project_root=self.project_dir);
 }
 
 impl PluginConfigBase.get_section(
