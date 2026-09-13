@@ -258,12 +258,22 @@ obj ModuleCompilation {
 
     def interface {
         closure = self.compiler._closure_opts or self.options;
+        requested_symbols = closure.symtab_ir_only
+            and closure.iface_ok
+            and not closure.need_full_ast
+            and self.options.symtab_ir_only
+            and self.options.iface_ok
+            and not self.options.need_full_ast
+            and self.program.iface_registry().eligible(
+                self.compiler, self.path, self.options
+            );
         if not self.parse_failed
             and not self.blocked
             and self.source is None
             and (
                 (self.options.no_cgen and not self.options.symtab_ir_only)
                 or (closure.no_cgen and not closure.symtab_ir_only)
+                or requested_symbols
             ) {
             import from jaclang.compiler.driver.pipeline {
                 require_product,

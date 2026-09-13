@@ -1,5 +1,6 @@
 import os;
 import sys;
+import from contextlib { contextmanager }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
 import from jaclang.compiler.passes.transform { Alert, PassResult }
@@ -208,7 +209,28 @@ obj DepGraph {
 
 obj DiagLedger {
     has errors: list[Alert] = [],
-        warnings: list[Alert] = [];
+        warnings: list[Alert] = [],
+        _delivery_depth: int = 0,
+        _error_start: int = 0,
+        _warning_start: int = 0;
+
+    @contextmanager
+    def compilation -> Iterator[None] {
+        if self._delivery_depth == 0 {
+            self._error_start = len(self.errors);
+            self._warning_start = len(self.warnings);
+        }
+        self._delivery_depth += 1;
+        try {
+            yield ;
+        } finally {
+            self._delivery_depth -= 1;
+            if self._delivery_depth == 0 {
+                self._error_start = 0;
+                self._warning_start = 0;
+            }
+        }
+    }
 
     def extend(errors: Sequence[Alert], warnings: Sequence[Alert]) {
         import from jaclang.compiler.frontend.srcloc { Span }
@@ -233,14 +255,14 @@ obj DiagLedger {
                 tuple((label, span_key(span)) for (label, span) in alert.related)
             );
         }
-        for (destination, incoming) in [
-            (self.errors, errors),
-            (self.warnings, warnings)
+        for (destination, incoming, start) in [
+            (self.errors, errors, self._error_start),
+            (self.warnings, warnings, self._warning_start)
         ] {
             if not incoming {
                 continue;
             }
-            keys = {alert_key(alert) for alert in destination};
+            keys = {alert_key(alert) for alert in destination[start:]};
             for alert in incoming {
                 key = alert_key(alert);
                 if key not in keys {
@@ -271,6 +293,13 @@ obj DiagLedger {
 
     def drop_module(resolved_path: str) {
         resolved_path = os.path.realpath(resolved_path);
+        self._error_start = sum(
+            not self._owned(a, resolved_path) for a in self.errors[:self._error_start]
+        );
+        self._warning_start = sum(
+            not self._owned(a, resolved_path)
+            for a in self.warnings[:self._warning_start]
+        );
         self.errors[:] = [
             a
             for a in self.errors
@@ -291,6 +320,8 @@ obj DiagLedger {
     def clear {
         self.errors.clear();
         self.warnings.clear();
+        self._error_start = 0;
+        self._warning_start = 0;
     }
 }
 

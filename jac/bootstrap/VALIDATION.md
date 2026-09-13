@@ -123,9 +123,30 @@ image phase reused 752 modules and compiled five in 24.36 seconds. Testing that
 exact binary passed 135 cache/checker/startup/runtime-upgrade regressions in
 325.10 seconds and 690 runtime tests with six skips in 340.59 seconds.
 
+## Downstream regression fixes
+
+The final pre-fix Stage-2 graph passed 19/19 steps and rebuilt all 757 modules
+in 800.02 seconds. The broader pass/ES suite passed 1,248 tests with five skips.
+
+Broader compiler and runtime-support runs identified stale source-only subprocess
+probes, macOS path assumptions, an invalid superclass call used by LSP completion,
+and diagnostic deduplication that outlived a compile request. The fixes reuse the
+compiled-image test helper, canonicalize workspace roots at the context boundary,
+and scope diagnostic delivery to a compilation including its nested imports.
+Focused regression runs passed 31 path/boundary tests, 47 workspace/LSP tests,
+and 48 diagnostic/cache tests.
+
+A symbols-only interface request could compile without producing its requested
+interface. Fulfilling that request through the existing INTERFACE product reduces
+the precompile fixture's cold pass count from 902 to 723, below the unchanged
+760-pass limit. The warm run performs zero passes. All 41 cache/reparse tests
+passed after this change, including exact cold/warm diagnostics and the assertion
+that ordinary code generation does not encode interfaces eagerly.
+
 ## Outstanding validation
 
 The normal integration commit hook passed all 261 source checks in 1,738.67
-seconds. Final Stage-2 verification is running; push and resolve required CI
+seconds. The downstream fixes are undergoing a packaged rebuild, broader suite
+reruns, and their normal commit hook. Push those fixes and resolve required CI
 checks until green. The original Linux build-kit and bootstrap jobs passed;
 final-revision CI remains pending.

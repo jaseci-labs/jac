@@ -1,5 +1,5 @@
 import from pathlib { Path }
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, COMPILER_SITE }
 
 import os;
 import subprocess;
@@ -31,6 +31,7 @@ glob IMPORTER: str = (
      ),
      CHECK_PROBE: str = (
          "import sys\n"
+         f"sys.path.insert(0, {COMPILER_SITE!r})\n"
          "import jaclang\n"
          "from jaclang.cli.commands.analysis import check\n"
          "sys.exit(check(paths=sys.argv[1:], jobs='0', nowarn=True))\n"

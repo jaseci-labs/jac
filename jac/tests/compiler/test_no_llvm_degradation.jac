@@ -86,6 +86,7 @@ with tempfile.TemporaryDirectory() as directory:
         loaded = [name for name in sys.modules if name.startswith(heavy)]
         assert not loaded, f'availability probe imported compiler backends: {loaded}'
 """;
+    script = "import sys\nsys.path.insert(0, " + repr(COMPILER_SITE) + ")\n" + script;
     proc = subprocess.run(
         [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
     );

@@ -19,6 +19,11 @@ glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
 def cache_scope(
     identity: str, options: CompileOptions | None = None
 ) -> Iterator[None] {
+    if options is not None and options.project_root {
+        project_root = os.path.realpath(options.project_root);
+        options = copy.copy(options);
+        options.project_root = project_root;
+    }
     token = _cache_context.set(identity);
     option_token = _active_options.set(options);
     try {

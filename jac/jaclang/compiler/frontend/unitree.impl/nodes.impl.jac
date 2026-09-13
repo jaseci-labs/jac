@@ -1869,7 +1869,7 @@ impl UniScopeNode.update_expr_ctx_for_def(nd: AstSymbolNode) -> None {
 }
 
 impl UniScopeNode.__repr__ -> str {
-    out = f"{self.scope_name} {super().__repr__()}:\n";
+    out = f"{self.scope_name} {super.__repr__()}:\n";
     for (k, v) in self.names_in_scope.items() {
         out += f"    {k}: {v}\n";
     }

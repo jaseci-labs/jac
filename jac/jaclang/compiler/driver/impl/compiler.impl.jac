@@ -1178,7 +1178,9 @@ impl JacCompiler.compile(
     context_warnings = len(target_program.warnings_had);
     import from jaclang.compiler.driver.compilation_context { compilation_scope }
     identity = target_program.context_key;
-    with compilation_scope(identity, options) {
+    with caller_program.diags.compilation(), target_program.diags.compilation(), compilation_scope(
+        identity, options
+    ) {
         import from jaclang.compiler.native_scope {
             activate_scope_lowering,
             deactivate_scope_lowering,

@@ -123,13 +123,7 @@ def publish(name: str, text: str) {
     (out_dir / f"{name}.txt").write_text(text + "\n", encoding="utf-8");
 }
 
-"""Environment for a probe subprocess, pinned to `cache` and to nothing else.
-
-`JAC_DEV_SOURCE` is dropped rather than overridden: `_jac_finder` re-derives it
-from the nearest `jac.toml` above the subprocess cwd, and an inherited value
-would be a second, contradicting answer to the one question this harness needs
-the subprocess to answer for itself -- which compiler is running.
-"""
+"""Keep probe caches separate while the caller selects the compiler image."""
 def _probe_env(cache: str) -> dict[str, str] {
     env = dict(os.environ);
     env["XDG_CACHE_HOME"] = cache;
