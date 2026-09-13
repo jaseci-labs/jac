@@ -84,7 +84,12 @@ import from jaclang.compiler.backends.py.jacpython.compiler_ir {
     stmt_cont,
     unverified_cfg,
 }
-import from jaclang.compiler.frontend.python.compiler_symtable { sym_block }
+import from jaclang.compiler.frontend.python.compiler_symtable {
+    sym_block,
+    sym_dict_get,
+    sym_scope_of,
+    SCOPE_GLOBAL_EXPLICIT
+}
 import from jaclang.compiler.backends.py.jacpython.flowgraph { verify_cfg }
 import from jaclang.compiler.backends.py.jacpython.assembler { assemble }
 import from jaclang.compiler.backends.py.jacpython.compiler_emit {
@@ -282,6 +287,20 @@ def visit_import_from(g: cfg_builder, imp: ImportFrom) -> stmt_cont {
 }
 
 
+# Explicit global definitions have module-level identities, even inside a
+# function or class. Use the same mangled binding as load/store lowering.
+def definition_qualname(g: cfg_builder, name: str) -> str {
+    if g.sym_top is None {
+        return name;
+    }
+    flags = sym_dict_get(g.sym_top.symbols, codegen_mangle(g, name), 0);
+    if sym_scope_of(flags) == SCOPE_GLOBAL_EXPLICIT {
+        return name;
+    }
+    return nested_code_qualname(g.sym_top.block_type, g.u.qualname, name);
+}
+
+
 def sym_class_qualname(
     cd: ClassDef, sym_cls: sym_block, enclosing_private: str | None
 ) -> str {
@@ -463,7 +482,7 @@ def visit_class_def(g: cfg_builder, cd: ClassDef) -> stmt_cont {
         visit_expr(g, decorator);
     }
     firstlineno = decorators[0].lineno if decorators else cd.lineno;
-    qualname = nested_code_qualname(g.sym_top.block_type, g.u.qualname, cd.name);
+    qualname = definition_qualname(g, cd.name);
     generic = bool(cd.type_params);
     scope: sym_block | None = g.sym_top;
     if generic {
@@ -669,7 +688,7 @@ def visit_function_def(
     }
     decorators = fd.decorator_list or [];
     firstlineno = decorators[0].lineno if decorators else fd.lineno;
-    qualname = nested_code_qualname(g.sym_top.block_type, g.u.qualname, fd.name);
+    qualname = definition_qualname(g, fd.name);
     generic = bool(fd.type_params);
     scope: sym_block | None = g.sym_top;
     if generic {

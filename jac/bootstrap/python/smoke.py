@@ -570,6 +570,41 @@ else:
                                   "sys.exit(0 if ok and ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3 else 1)"],
                 check=True,
             )
+    # Global definitions need stable module-level identities for pickle.
+    definitions = {}
+    exec("""
+def define():
+    global GlobalClass, GlobalFunction, GenericClass, GenericFunction, AsyncFunction
+    class GlobalClass:
+        class Nested:
+            pass
+    def GlobalFunction():
+        pass
+    class GenericClass[T]:
+        pass
+    def GenericFunction[T](value: T):
+        return value
+    async def AsyncFunction():
+        pass
+    class Local:
+        pass
+    return Local
+Local = define()
+class Enclosing:
+    global GlobalFromClass, __hidden
+    class GlobalFromClass:
+        pass
+    def __hidden():
+        pass
+""", definitions)
+    for name in ("GlobalClass", "GlobalFunction", "GenericClass", "GenericFunction",
+                 "AsyncFunction", "GlobalFromClass"):
+        assert definitions[name].__qualname__ == name
+    assert definitions["GlobalClass"].Nested.__qualname__ == "GlobalClass.Nested"
+    assert definitions["Local"].__qualname__ == "define.<locals>.Local"
+    assert definitions["_Enclosing__hidden"].__qualname__ == "__hidden"
+    assert definitions["GlobalFunction"].__code__.co_qualname == "GlobalFunction"
+    assert definitions["GenericFunction"].__code__.co_qualname == "GenericFunction"
     interactive = subprocess.run(
         [sys.executable, "-I", "-q", "-i"],
         input="def twice(value):\n    return value * 2\n\nprint('INTERACTIVE', twice(21))\n"
