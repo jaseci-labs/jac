@@ -797,12 +797,27 @@ impl LayoutPass._is_layout_compatible_type(
     if type_node is None {
         return False;
     }
-    if isinstance(type_node, FuncSignature) {
+    if isinstance(type_node, (FuncSignature, Null)) {
         return True;
     }
 
     if isinstance(type_node, UnaryExpr) and type_node.ownership != OwnershipKind.NONE {
         return self._is_layout_compatible_type(type_node.operand, arch_map);
+    }
+
+    # Imported Jac objects have the same reference layout as local objects.
+    # Consult their resolved declaration rather than the current module's names.
+    if isinstance(type_node, Name)
+        or (isinstance(type_node, AtomTrailer) and type_node.is_attr) {
+        import from jaclang.compiler.types.types { ClassType }
+        resolved = type_node.type;
+        if isinstance(resolved, ClassType) and resolved._shared is not None {
+            declaration = resolved.shared.symbol_table;
+            if isinstance(declaration, Archetype)
+                and declaration.loc.mod_path.endswith(".jac") {
+                return True;
+            }
+        }
     }
 
     if isinstance(type_node, Name) {
@@ -871,18 +886,6 @@ impl LayoutPass._is_layout_compatible_type(
         }
     }
 
-    if isinstance(type_node, Name) {
-        tname = type_node.value;
-        if tname in LAYOUT_COMPATIBLE_SCALARS {
-            return True;
-        }
-        if tname in arch_map {
-            return True;
-        }
-        if tname in self.registry.layouts {
-            return True;
-        }
-    }
     return False;
 }
 
