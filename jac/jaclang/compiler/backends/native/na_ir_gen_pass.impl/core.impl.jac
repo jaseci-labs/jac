@@ -1206,7 +1206,9 @@ impl NaIRGenPass._forward_declare_imported_ability(
             in self._module_functions {
         return;
     }
-    if name in self.func_symtab {
+    private = nd.access is not None and nd.access.tag.name == Tok.KW_PRIV;
+
+    if name in self.func_symtab and not private {
         import from jaclang.compiler.frontend.codeinfo {
             native_library_function_symbol
         }
@@ -1224,6 +1226,7 @@ impl NaIRGenPass._forward_declare_imported_ability(
         _fd_demoted = (unavailable is not None and name in unavailable)
             or (
                 imp_layout is not None
+                and not private
                 and not name.startswith("__")
                 and name not in imp_layout.functions
             );
