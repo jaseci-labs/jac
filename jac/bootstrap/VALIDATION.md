@@ -118,8 +118,14 @@ The subsequent packaged installation passed all 20 build steps. Startup and
 purge-command isolation passed all 12 tests, including cache-owner delegation
 and preservation of unrelated runtime files.
 
+The final packaged revision passed all 20 installation steps. Its incremental
+image phase reused 752 modules and compiled five in 24.36 seconds. Testing that
+exact binary passed 135 cache/checker/startup/runtime-upgrade regressions in
+325.10 seconds and 690 runtime tests with six skips in 340.59 seconds.
+
 ## Outstanding validation
 
-Run the normal precommit hook, then push and resolve required CI
+The normal integration commit hook passed all 261 source checks in 1,738.67
+seconds. Final Stage-2 verification is running; push and resolve required CI
 checks until green. The original Linux build-kit and bootstrap jobs passed;
 final-revision CI remains pending.
