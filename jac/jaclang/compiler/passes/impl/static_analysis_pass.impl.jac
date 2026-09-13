@@ -482,7 +482,7 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
             }
             if isinstance(resolved, str) and resolved.endswith('.jac') {
                 import from jaclang.compiler.frontend.diagnostics { W1105 }
-                import from jaclang.compiler.driver.modresolver { is_client_npm_import }
+                import from jaclang.project.modresolver { is_client_npm_import }
                 spec = nd.from_loc.dot_path_str;
                 if is_client_npm_import(spec, nd.loc.mod_path or '') {
                     self.emit(W1105, node_override=nd.from_loc, name=spec);
@@ -507,7 +507,7 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
             }
             import os;
             import from jaclang.compiler.frontend.diagnostics { W1106 }
-            import from jaclang.compiler.driver.modresolver {
+            import from jaclang.project.modresolver {
                 is_client_npm_import,
                 is_path_alias_import
             }

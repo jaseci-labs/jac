@@ -31,7 +31,7 @@ impl JacCompiler.note_stub_tree_served(path: str, program: JacProgram) -> None {
     if self.stub_catalog() is not None {
         return;
     }
-    import from jaclang.compiler.driver.modresolver { _in_typeshed_tree }
+    import from jaclang.project.modresolver { _in_typeshed_tree }
     if _in_typeshed_tree(path) {
         self._stub_trees_served = True;
     }
@@ -950,7 +950,7 @@ impl JacCompiler.stamp_native_import_facts(
 }
 
 impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) -> None {
-    import from jaclang.compiler.driver.modresolver { find_jac_project_root }
+    import from jaclang.project.modresolver { find_jac_project_root }
     import from jaclang.compiler.placement.workspace { workspace_for_path }
     opts = target_program.options;
     mod_path = mod.loc.mod_path if mod.loc else '';

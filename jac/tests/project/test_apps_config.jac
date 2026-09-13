@@ -713,7 +713,7 @@ test "entry points reject paths extensions and patterns" {
 }
 
 test "entry resolution shares local import rules without executing packages" {
-    import from jaclang.compiler.driver.modresolver { resolve_module }
+    import from jaclang.project.modresolver { resolve_module }
     with TemporaryDirectory() as directory {
         root_path = Path(directory);
         (root_path / 'core').mkdir();

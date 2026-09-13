@@ -274,7 +274,7 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
 }
 
 impl ViteCompiler.compile_desktop_sdk(self: ViteCompiler) {
-    import from jaclang.compiler.driver.modresolver { resolve_jac_virtual_module_path }
+    import from jaclang.project.modresolver { resolve_jac_virtual_module_path }
     desktop_src = resolve_jac_virtual_module_path('@jac/desktop');
     if not desktop_src {
         return;
@@ -294,9 +294,7 @@ impl ViteCompiler.compile_desktop_sdk(self: ViteCompiler) {
     all_names = sorted(set(desktop_exports + list(desktop_globals.keys())));
 
     if not all_names {
-        import from jaclang.compiler.driver.modresolver {
-            resolve_jac_virtual_module_exports
-        }
+        import from jaclang.project.modresolver { resolve_jac_virtual_module_exports }
         all_names = sorted(resolve_jac_virtual_module_exports('@jac/desktop'));
     }
     if all_names {

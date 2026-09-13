@@ -23,7 +23,7 @@ import from jaclang.compiler.backends.es.free_ident_audit {
     client_ambient_globals,
     free_identifiers
 }
-import from jaclang.compiler.driver.modresolver {
+import from jaclang.project.modresolver {
     convert_to_js_import_path,
     relative_js_specifier,
     resolve_relative_path

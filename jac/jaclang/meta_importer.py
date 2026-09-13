@@ -146,24 +146,24 @@ def _module_scoped_alerts(program: object, file_path: str) -> list:
 # frozen from the manifest; a missing/corrupt JIR falls back to the retained
 # source, which jac0 transpiles live.
 _modresolver_jac = os.path.join(
-    os.path.dirname(__file__), "compiler", "driver", "modresolver.jac"
+    os.path.dirname(__file__), "project", "modresolver.jac"
 )
 _modresolver_code = None
 _modresolver_origin = _modresolver_jac
-_frozen_modresolver = _sealed.find_module("jaclang.compiler.driver.modresolver")
+_frozen_modresolver = _sealed.find_module("jaclang.project.modresolver")
 if _frozen_modresolver is not None and _frozen_modresolver[1].get("bootstrap"):
     _mr_image = _frozen_modresolver[0]
-    _modresolver_code = _mr_image.bootstrap_code("jaclang.compiler.driver.modresolver")
+    _modresolver_code = _mr_image.bootstrap_code("jaclang.project.modresolver")
     if _modresolver_code is not None:
         _modresolver_origin = _mr_image.virtual_origin(_frozen_modresolver[2])
 if _modresolver_code is None:
     with open(_modresolver_jac, encoding="utf-8") as _f:
         _modresolver_code = _bootstrap_compile(_modresolver_jac, _f.read())
-_modresolver = types.ModuleType("jaclang.compiler.driver.modresolver")
+_modresolver = types.ModuleType("jaclang.project.modresolver")
 _modresolver.__file__ = _modresolver_origin
 _modresolver.__package__ = "jaclang.compiler.driver"
 exec(_modresolver_code, _modresolver.__dict__)  # noqa: S102
-sys.modules["jaclang.compiler.driver.modresolver"] = _modresolver
+sys.modules["jaclang.project.modresolver"] = _modresolver
 get_jac_search_paths = _modresolver.get_jac_search_paths
 
 

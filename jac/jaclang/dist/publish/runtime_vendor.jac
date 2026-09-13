@@ -45,8 +45,8 @@ glob _SEEDS: list[str] = [
          "jaclang.compiler.frontend.codeinfo",
          "jaclang.compiler.frontend.srcloc",
          "jaclang.compiler.frontend.helpers",
-         "jaclang.compiler.driver.modresolver",
-         "jaclang.compiler.driver.mtp",
+         "jaclang.project.modresolver",
+         "jaclang.runtime.semantic",
          "jaclang.jac0core.ext_registry",
          "jaclang.client.client_bundle"
      ],

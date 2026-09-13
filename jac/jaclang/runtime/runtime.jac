@@ -49,13 +49,13 @@ import from jaclang.runtime.constructs {
     WalkerAnchor,
     WalkerArchetype
 }
-import from jaclang.compiler.driver.modresolver {
+import from jaclang.project.modresolver {
     infer_language,
     find_jac_project_root,
     push_import_base,
     pop_import_base
 }
-import from jaclang.compiler.driver.mtp { Info }
+import from jaclang.runtime.semantic { Info }
 import type from jaclang.byllm.mtir { MTRuntime }
 import type from jaclang.cli.console { JacConsole as ConsoleImpl }
 import type from jaclang.compiler.driver.compiler { JacCompiler }

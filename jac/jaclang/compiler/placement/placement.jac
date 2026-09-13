@@ -296,7 +296,7 @@ def _element_reqs(stmt: uni.UniNode) -> list {
         } elif eco == 'py' {
             npm_dep = False;
             if isinstance(stmt, uni.Import) and stmt.from_loc is not None {
-                import from jaclang.compiler.driver.modresolver { is_client_npm_import }
+                import from jaclang.project.modresolver { is_client_npm_import }
                 mod_path = stmt.loc.mod_path or '';
                 npm_dep = is_client_npm_import(stmt.from_loc.dot_path_str, mod_path);
             }
@@ -523,7 +523,7 @@ def module_anchor_reasons(module: uni.Module) -> list[str] {
             break;
         }
     }
-    import from jaclang.compiler.driver.modresolver { is_client_npm_import }
+    import from jaclang.project.modresolver { is_client_npm_import }
     for imp in module.get_all_sub_nodes(uni.Import) {
         if imp.has_clib_decls or imp.is_virtual_jac or imp.has_string_path {
             continue;

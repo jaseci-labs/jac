@@ -94,12 +94,13 @@ SEED_PATHS: tuple[str, ...] = (
     "runtime/osp_model.jac",
     "runtime/osp_tag.jac",
     "lib/jaclib.jac",
-    "compiler/driver/mtp.jac",
+    "runtime/semantic.jac",
     "cli/cli_boot.jac",
     "jac0core/cli_boot.jac",
     "project/__init__.jac",
     "project/tomlio.jac",
     "project/apps.jac",
+    "project/modresolver.jac",
     "project/app_kinds.jac",
 )
 

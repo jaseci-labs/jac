@@ -1769,7 +1769,7 @@ impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None)
     if not mod_path {
         return None;
     }
-    import from jaclang.compiler.driver.modresolver { resolve_client_npm_package }
+    import from jaclang.project.modresolver { resolve_client_npm_package }
     base = self._client_npm_base(spec, mod_path);
     if base is None {
         return None;
@@ -1778,7 +1778,7 @@ impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None)
 }
 
 impl TypeEvaluator._client_npm_base(spec: str, mod_path: str) -> (str | None) {
-    import from jaclang.compiler.driver.modresolver { has_client_npm_package }
+    import from jaclang.project.modresolver { has_client_npm_package }
     if has_client_npm_package(spec, mod_path) {
         return mod_path;
     }

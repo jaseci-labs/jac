@@ -12,7 +12,7 @@ impl EsastGenPass._has_import(name: str) -> bool {
 }
 
 impl EsastGenPass._register_jac_virtual_import(module_id: str) -> None {
-    import from jaclang.compiler.driver.modresolver { resolve_jac_virtual_module_path }
+    import from jaclang.project.modresolver { resolve_jac_virtual_module_path }
     if not self.client_manifest or module_id in self.client_manifest.imports {
         return;
     }

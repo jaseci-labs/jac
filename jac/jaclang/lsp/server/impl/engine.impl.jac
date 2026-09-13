@@ -660,7 +660,7 @@ impl JacLangServer._string_import_definition(
 
 impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
     import os;
-    import from jaclang.compiler.driver.modresolver {
+    import from jaclang.project.modresolver {
         is_client_npm_import,
         resolve_client_npm_declarations,
         resolve_client_npm_package
@@ -694,7 +694,7 @@ impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
 impl JacLangServer._npm_item_location(
     from_loc: uni.ModulePath, item_name: str
 ) -> Optional[lspt.Location] {
-    import from jaclang.compiler.driver.modresolver {
+    import from jaclang.project.modresolver {
         is_client_npm_import,
         resolve_client_npm_declarations,
         resolve_client_npm_package

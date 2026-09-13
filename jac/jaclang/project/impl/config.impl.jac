@@ -29,9 +29,7 @@ impl interpolate_env_vars(value: str) -> str {
 }
 
 impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
-    import from jaclang.compiler.driver.modresolver {
-        find_project_root as _find_project_root
-    }
+    import from jaclang.project.modresolver { find_project_root as _find_project_root }
     return _find_project_root(start);
 }
 

@@ -2,7 +2,7 @@ import from jaclang.compiler.driver.compilation_context { context_app }
 import fnmatch;
 import json;
 import os;
-import from jaclang.compiler.driver.modresolver { find_jac_project_root }
+import from jaclang.project.modresolver { find_jac_project_root }
 import from jaclang.compiler.placement.workspace {
     app_fact_digest,
     kind_codespace,
