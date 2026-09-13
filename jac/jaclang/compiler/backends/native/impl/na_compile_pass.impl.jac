@@ -29,12 +29,13 @@ impl native_dep_cache_paths(
     import os as _dcp_os;
     import from jaclang.compiler.driver.jir { ct_dep_digest, get_native_cache_dir }
     _ir_cache_dir = str(get_native_cache_dir(real_path));
-    _src_stem = _dcp_os.path.splitext(_dcp_os.path.basename(real_path))[0];
-    _source_hash = ct_dep_digest(real_path, with_annexes=True)[:12];
-    _fp = native_compiler_fingerprint(options);
+    import from jaclang.compiler.frontend.codeinfo { native_module_key }
+    (module_stem, module_location) = native_module_key(real_path).rsplit(":", 1);
+    source_hash = ct_dep_digest(real_path, with_annexes=True)[:12];
+    prefix = f"{module_stem}.{module_location}.{native_compiler_fingerprint(options)}";
     return (
-        _dcp_os.path.join(_ir_cache_dir, f"{_src_stem}.{_source_hash}.{_fp}.ir_cache"),
-        _dcp_os.path.join(_ir_cache_dir, f"{_src_stem}.{_source_hash}.{_fp}.ir_meta")
+        _dcp_os.path.join(_ir_cache_dir, f"{prefix}.{source_hash}.ir_cache"),
+        _dcp_os.path.join(_ir_cache_dir, f"{prefix}.{source_hash}.ir_meta")
     );
 }
 
@@ -755,7 +756,6 @@ impl NativeCompilePass._compile_and_link_native_imports(
         }
 
         import from jaclang.compiler.driver.jir { get_native_cache_dir }
-        _src_stem = os.path.splitext(os.path.basename(real_path))[0];
         _ir_cache_dir = str(get_native_cache_dir(real_path));
 
         _cache_ir_path = "";
@@ -1003,15 +1003,16 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 os.makedirs(_ir_cache_dir, exist_ok=True);
 
                 import glob as _glob;
+                _cache_prefix = os.path.basename(_cache_ir_path).rsplit(".", 2)[0];
                 for stale in _glob.`glob(
-                    os.path.join(_ir_cache_dir, f"{_src_stem}.*.ir_cache")
+                    os.path.join(_ir_cache_dir, f"{_cache_prefix}.*.ir_cache")
                 ) {
                     if stale != _cache_ir_path {
                         os.remove(stale);
                     }
                 }
                 for stale in _glob.`glob(
-                    os.path.join(_ir_cache_dir, f"{_src_stem}.*.ir_meta")
+                    os.path.join(_ir_cache_dir, f"{_cache_prefix}.*.ir_meta")
                 ) {
                     if stale != _cache_meta_path {
                         os.remove(stale);
