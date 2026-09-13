@@ -143,10 +143,25 @@ the precompile fixture's cold pass count from 902 to 723, below the unchanged
 passed after this change, including exact cold/warm diagnostics and the assertion
 that ordinary code generation does not encode interfaces eagerly.
 
+The rebuilt downstream package passed all 20 installation steps and 80 focused
+regressions in 98.99 seconds. Its Stage-2 verification passed all 19 steps,
+rebuilding all 757 modules in 766.04 seconds. The broad top-level compiler suite
+passed 1,093 tests with one skip in 1,002.58 seconds. Runtime-support suites
+passed 1,294 tests with four skips in 571.00 seconds.
+
+Client integration exposed a diagnostic formatter that compared unresolved
+project paths against resolved source paths. The existing formatter now resolves
+both before making the path relative; a symlink regression covers both directions
+and preservation of outside-project paths. Client path/diagnostic tests passed
+35 tests, and web development tests passed six. The full local client run also
+includes Linux ELF assertions that cannot pass on macOS; Linux CI validates those
+platform-specific assertions.
+
 ## Outstanding validation
 
 The normal integration commit hook passed all 261 source checks in 1,738.67
-seconds. The downstream fixes are undergoing a packaged rebuild, broader suite
-reruns, and their normal commit hook. Push those fixes and resolve required CI
-checks until green. The original Linux build-kit and bootstrap jobs passed;
-final-revision CI remains pending.
+seconds. The downstream compiler fix commit passed all 11 normal source checks.
+The client diagnostic fix is undergoing a packaged rebuild. The latest completed
+Linux installation passed all 21 build steps, with 757 cold modules compiled in
+2,203.82 seconds, before a newer push cancelled the verification run. Required
+CI checks on the final revision remain pending.
