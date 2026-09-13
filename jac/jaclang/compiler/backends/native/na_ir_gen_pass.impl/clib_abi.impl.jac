@@ -212,6 +212,7 @@ impl NaIRGenPass._codegen_clib_call(
                 }
                 scalar_type = pp["type"];
                 if isinstance(scalar_type, ir.PointerType)
+                    and not scalar_type.is_opaque
                     and isinstance(scalar_type.pointee, ir.FunctionType) {
                     call_args.append(self._clib_coerce_callback(_cv, scalar_type));
                 } else {

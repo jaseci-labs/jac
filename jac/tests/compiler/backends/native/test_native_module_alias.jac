@@ -3,6 +3,14 @@ import ctypes;
 import from tests.support { compile_native, get_func }
 import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 
+test "private helpers in modules with the same basename remain distinct" {
+    (engine, module) = compile_native("native_private_same_basename.jac");
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    probe = get_func(engine, "private_modules_probe", ctypes.c_int64);
+    assert probe() == 31;
+}
+
 test "module aliases resolve native functions and globals" {
     (engine, module) = compile_native("native_module_alias.jac");
     issues = native_lowering_issues(str(module.gen.llvm_ir));
