@@ -377,6 +377,7 @@ def precompile_worker_init {
     );
     if _discovery_sources {
         _unit_session[0].program.source_store = _discovery_sources[0];
+        _unit_session[0].program.source_store.max_units = _unit_session[0].max_modules;
     }
 }
 
@@ -812,7 +813,8 @@ def seal_finalize(
     pkg_name: str,
     pyver: str,
     embed_src: bool,
-    app: str = ""
+    app: str = "",
+    startup: dict[str, float] | None = None
 ) -> int {
     writes = (
         FORMAT_VERSION,
@@ -896,7 +898,10 @@ def seal_finalize(
     if metrics_path {
         import from jaclang.jac0core.cache_paths { atomic_write }
         atomic_write(
-            metrics_path, json.dumps({"bootstrap": bootstrap_counts}).encode()
+            metrics_path,
+            json.dumps(
+                {"bootstrap": bootstrap_counts, "startup": startup or {}}
+            ).encode()
         );
     }
     if boot_failed > 0 {
@@ -1081,6 +1086,16 @@ def run_precompile(
     jobs_arg: str = "",
     app: str = ""
 ) {
+    entered = time.perf_counter();
+    started = os.environ.pop("JAC_PRECOMPILE_START_TIME", "");
+    booted = os.environ.pop("JAC_PRECOMPILE_BOOT_TIME", "");
+    startup: dict[str, float] = {};
+    if booted {
+        startup["compiler_seconds"] = max(0.0, entered - float(booted));
+        if started {
+            startup["process_seconds"] = max(0.0, float(booted) - float(started));
+        }
+    }
     exclude_seed = seal or seal_compile;
     package_dir = find_package_dir(source_dir);
     if package_dir is None {
@@ -1107,7 +1122,13 @@ def run_precompile(
         console.print(f"Sealing {pkg_name} for {pyver} (finalize)...");
         precompile_exit(
             seal_finalize(
-                Path(package_dir), precompiled_dir, pkg_name, pyver, embed_src, app
+                Path(package_dir),
+                precompiled_dir,
+                pkg_name,
+                pyver,
+                embed_src,
+                app,
+                startup
             )
         );
     }
@@ -1342,6 +1363,7 @@ def run_precompile(
                 "reused": reused,
                 "failed": failed,
                 "measurement_schema": 1,
+                "startup": startup,
                 "inputs": {
                     "compiler": compiler_identity(),
                     "python": sys.version,
@@ -1363,7 +1385,9 @@ def run_precompile(
 
     if seal {
         precompile_exit(
-            seal_finalize(pkg_path, precompiled_dir, pkg_name, pyver, embed_src, app)
+            seal_finalize(
+                pkg_path, precompiled_dir, pkg_name, pyver, embed_src, app, startup
+            )
         );
     }
 

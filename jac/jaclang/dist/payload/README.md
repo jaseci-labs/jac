@@ -67,6 +67,9 @@ CI uploads `jac/.build-metrics` as `build-kit-measurements`.
   dependency work. `frontend:parse` and `frontend:copy` separate parser work from
   copying shared syntax. Product/cache events distinguish reuse from computation.
 - `compilation.seal` records compiled, reused, and bytecode-only bootstrap reuse.
+- `compilation.startup` and `compilation.seal.startup` separate process launch
+  through the first Python statement from compiler/CLI initialization through
+  precompile entry. Worker setup and replacement remain in the worker records.
 
 RSS is the process high-water mark, not a sum of live objects or a peak across
 the entire process tree. Worker RSS is recorded separately. Child CPU includes

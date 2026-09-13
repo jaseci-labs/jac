@@ -33,6 +33,48 @@ impl JacProgram.iface_registry(self: JacProgram) -> IfaceRegistry {
     return reg;
 }
 
+impl JacProgram.context_programs(self: JacProgram) -> list[JacProgram] {
+    owner = self.context_root if self.context_root is not None else self;
+    return [owner]
+        + [
+            context
+            for context in owner.contexts.values()
+            if context is not owner
+        ];
+}
+
+impl JacProgram.refresh_compile_inputs(self: JacProgram) -> None {
+    if self.session is not None and self.session.closed {
+        raise RuntimeError("Compilation session is closed");
+    }
+    compiler = self._get_compiler();
+    if compiler._reentrant_depth
+        or self.scratch.compile_depth
+        or (self.session is None and compiler.selfhost.is_selfhost(self)) {
+        return;
+    }
+    programs = self.context_programs();
+    stale: set[str] = {
+        path for program in programs
+        for path in program.hub.stamps
+        if not program.hub.is_fresh(path)
+    };
+    affected: list[tuple[JacProgram, set[str]]] = [];
+    for program in programs {
+        paths = set(stale);
+        for path in stale {
+            paths.update(program.transitive_dependents(path));
+        }
+        affected.append((program, paths));
+    }
+    for (program, paths) in affected {
+        for path in paths {
+            program.invalidate_module(path);
+            program.drop_module_alerts(path);
+        }
+    }
+}
+
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
     self.hub.stamp(resolved_path);
 }

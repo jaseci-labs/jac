@@ -131,9 +131,7 @@ impl JacCompiler.get_bytecode(
         compilation_scope
     }
     actual = self.selfhost.resolve(full_target, target_program);
-    if actual.session is not None and not self._reentrant_depth {
-        actual.session.refresh();
-    }
+    actual.refresh_compile_inputs();
     if not self.selfhost.is_selfhost(actual) {
         options = bind_options(full_target, actual, actual.options);
         actual = context_program(actual, options);
@@ -1243,12 +1241,11 @@ impl JacCompiler.compile(
         context_program
     }
     caller_program = target_program;
-    if target_program.session is not None and not self._reentrant_depth {
-        target_program.session.refresh();
-    }
+
     resolved_program = self.selfhost.resolve(file_path, target_program)
         if not options.force_target_program
         else target_program;
+    resolved_program.refresh_compile_inputs();
     if not self.selfhost.is_selfhost(resolved_program) {
         options = bind_options(file_path, resolved_program, options);
         target_program = context_program(resolved_program, options);

@@ -31,7 +31,8 @@ glob PAYLOAD_ZSTD_LEVEL: int = 19,
          "desktop = jaclang.client.desktop_plugin_config:desktop_sdk_exports\n"
      ),
      PRECOMPILE_BOOT_SRC: str = (
-         "import os, sys\n"
+         "import os, sys, time\n"
+         "os.environ['JAC_PRECOMPILE_BOOT_TIME'] = str(time.perf_counter())\n"
          "if len(sys.argv) > 1:\n"
          "    try:\n"
          "        os.unlink(os.path.join(sys.argv[1], 'jaclang', '_precompiled', 'MANIFEST.json'))\n"

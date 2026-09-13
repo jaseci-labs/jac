@@ -10,6 +10,7 @@ import from jaclang.compiler.driver.compilation_context {
     context_program
 }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.dist.precompile_bytecode { precompile_context }
 import jaclang.compiler.types.type_evaluator;
 import jaclang.compiler.types.stubcat.reader;
@@ -150,7 +151,7 @@ test "nested compiler execution retains analysis until the outer module finishes
     }
 }
 
-test "live compilation sessions invalidate embedded compile-time inputs" {
+test "live programs and compilation sessions invalidate embedded compile-time inputs" {
     import types;
     def constants(code: types.CodeType) -> list[object] {
         values: list[object] = [];
@@ -163,23 +164,28 @@ test "live compilation sessions invalidate embedded compile-time inputs" {
         }
         return values;
     }
-    with TemporaryDirectory() as directory, CompilationSession() as session {
-        source = Path(directory) / "embedder.jac";
-        data = Path(directory) / "payload.txt";
-        data.write_text("first payload");
-        source.write_text(
-            "import from jaclang.comptime { embed_file }\n"
-            "comptime BLOB: str = embed_file(\"payload.txt\");\n"
-            "def value() -> str { return BLOB; }\n"
-        );
-        program = precompile_context(str(source), directory, session.program);
-        first = program.get_bytecode(str(source));
-        assert first is not None;
-        assert "first payload" in constants(first);
-        data.write_text("other payload");
-        second = program.get_bytecode(str(source));
-        assert second is not None;
-        assert "other payload" in constants(second);
-        assert "first payload" not in constants(second);
+    for owned in (False, True) {
+        with TemporaryDirectory() as directory, CompilationSession() as session {
+            source = Path(directory) / "embedder.jac";
+            data = Path(directory) / "payload.txt";
+            data.write_text("first payload");
+            source.write_text(
+                "import from jaclang.comptime { embed_file }\n"
+                "comptime BLOB: str = embed_file(\"payload.txt\");\n"
+                "def value() -> str { return BLOB; }\n"
+            );
+            program = precompile_context(
+                str(source), directory, session.program if owned else JacProgram()
+            );
+            first = program.get_bytecode(str(source));
+            assert first is not None;
+            assert "first payload" in constants(first);
+            data.write_text("other payload");
+            second = program.get_bytecode(str(source));
+            assert second is not None;
+            assert "other payload" in constants(second);
+            assert "first payload" not in constants(second);
+            program.release_compile_closure(retain_stubs=False);
+        }
     }
 }

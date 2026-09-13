@@ -102,6 +102,11 @@ An executable request extends the live module's completed passes, including
 for selfhost modules. Missing bytecode does not invalidate unchanged analysis.
 Live source revisions use the same content and annex-membership identity as
 disk products, so restored timestamps and deleted annexes cannot hide edits.
+At an outer request, `JacProgram.refresh_compile_inputs` checks retained inputs
+and invalidates affected dependents before serving products. Ordinary programs
+and bounded sessions share this rule, including compile-time file dependencies.
+Recursive compiler work and the process's executing compiler do not rescan the
+closure on each import; source compilation owns its separate request context.
 Executable requests preserve the producer's compilation options and context.
 Normal code generation keeps its existing interface policy.
 Bytecode loads establish their own compilation request, including when a

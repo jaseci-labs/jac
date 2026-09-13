@@ -1,5 +1,6 @@
 import io;
 import os;
+import time;
 import tarfile;
 
 import from compression.zstd { CompressionParameter, compress, decompress }
@@ -473,6 +474,7 @@ impl precompile(
         env["JAC_STUBCAT_BUILDING"] = "1";
     }
     with timings.stage("module_precompile") {
+        env["JAC_PRECOMPILE_START_TIME"] = str(time.perf_counter());
         run_child(argv, env, True);
     }
 
@@ -500,6 +502,7 @@ impl precompile(
     log("==> sealing (finalize): completeness check + manifest + freeze bootstrap");
     env["JAC_SEAL_METRICS"] = result;
     with timings.stage("seal_finalize") {
+        env["JAC_PRECOMPILE_START_TIME"] = str(time.perf_counter());
         sealed = run_child(fin, env, True);
     }
     if not sealed {

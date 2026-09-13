@@ -127,38 +127,11 @@ obj CompilationSession {
     }
 
     def programs -> list[JacProgram] {
-        return [self.program]
-            + [
-                context
-                for context in self.program.contexts.values()
-                if context is not self.program
-            ];
+        return self.program.context_programs();
     }
 
     def refresh {
-        if self.closed {
-            raise RuntimeError("Compilation session is closed");
-        }
-        programs = self.programs();
-        stale: set[str] = {
-            path for program in programs
-            for path in program.hub.stamps
-            if not program.hub.is_fresh(path)
-        };
-        affected: list[tuple[JacProgram, set[str]]] = [];
-        for program in programs {
-            paths = set(stale);
-            for path in stale {
-                paths.update(program.transitive_dependents(path));
-            }
-            affected.append((program, paths));
-        }
-        for (program, paths) in affected {
-            for path in paths {
-                program.invalidate_module(path);
-                program.drop_module_alerts(path);
-            }
-        }
+        self.program.refresh_compile_inputs();
     }
 
     def checkpoint(failed: bool = False) {

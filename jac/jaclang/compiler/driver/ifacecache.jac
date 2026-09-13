@@ -432,11 +432,8 @@ obj IfaceRegistry {
         if actual is not self.prog {
             return actual.iface_registry().ensure(path, compile_on_miss);
         }
-        if self.prog.session is not None
-            and not self.building
-            and not self.checking
-            and not self.prog._get_compiler()._reentrant_depth {
-            self.prog.session.refresh();
+        if not self.building and not self.checking {
+            self.prog.refresh_compile_inputs();
         }
         with self._compilation_scope() {
             return self._ensure_in_context(path, compile_on_miss);
