@@ -12,7 +12,17 @@ impl load_pins(path: str | None = None) -> Pins {
     } except (OSError, ValueError) as e {
         die(f"pins: cannot read {p}: {e}");
     }
-    pbs_raw = raw["pbs"];
+    python_pins = os.path.join(os.path.dirname(p), "python-sources.json");
+    if not os.path.exists(python_pins) {
+        python_pins = os.path.join(os.path.dirname(p), "python", "sources.json");
+    }
+    try {
+        with open(python_pins, "r", encoding="utf-8") as f {
+            python_raw = json.load(f);
+        }
+    } except (OSError, ValueError) as e {
+        die(f"pins: cannot read {python_pins}: {e}");
+    }
     llvm_raw = raw["llvm"];
     slices: dict[str, LlvmSlice] = {};
     for (key, s) in llvm_raw["slices"].items() {
@@ -25,19 +35,14 @@ impl load_pins(path: str | None = None) -> Pins {
         );
     }
     loaded = Pins(
-        pbs=PbsPins(
-            tag=str(pbs_raw["tag"]),
-            python=str(pbs_raw["python"]),
-            flavor=str(pbs_raw["flavor"]),
-            base=str(pbs_raw["base"])
-        ),
+        python=str(python_raw["cpython"]["version"]),
         llvm=LlvmPins(
             version=str(llvm_raw["version"]),
             slice_base=str(llvm_raw["slice_base"]),
             slices=slices
         )
     );
-    py_minor(loaded.pbs.python);
+    py_minor(loaded.python);
     return loaded;
 }
 
@@ -53,13 +58,15 @@ impl pins -> Pins {
 impl py_minor(python: str) -> str {
     parts = python.split(".");
     if len(parts) != 3 or not all(part.isdigit() for part in parts) {
-        die(f"pins: pbs.python must be a MAJOR.MINOR.PATCH release, got '{python}'");
+        die(
+            f"pins: Python version must be a MAJOR.MINOR.PATCH release, got '{python}'"
+        );
     }
     return parts[0] + "." + parts[1];
 }
 
 impl py_ver -> str {
-    return py_minor(pins().pbs.python);
+    return py_minor(pins().python);
 }
 
 impl host_py_minor -> str {

@@ -95,16 +95,23 @@ def loop_body_locals(body: (Sequence[UniNode] | None)) -> list[str] {
     if not body {
         return out;
     }
+    body_names: list[Name] = [];
     for stmt in body {
-        for nm in stmt.get_all_sub_nodes(typ=Name) {
-            sym = nm.sym;
-            if sym is None or not sym.defn {
+        body_names.extend(stmt.get_all_sub_nodes(typ=Name));
+    }
+    body_ids = {id(nm) for nm in body_names};
+    for nm in body_names {
+        sym = nm.sym;
+        if sym is None or not sym.defn {
+            continue;
+        }
+        if sym.defn[0] is nm and nm.sym_name not in seen {
+            seen.add(nm.sym_name);
+
+            if any(id(use) not in body_ids for use in sym.uses) {
                 continue;
             }
-            if sym.defn[0] is nm and nm.sym_name not in seen {
-                seen.add(nm.sym_name);
-                out.append(nm.sym_name);
-            }
+            out.append(nm.sym_name);
         }
     }
     return out;

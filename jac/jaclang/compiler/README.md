@@ -65,6 +65,86 @@ faster together. Total build ranges overlap (3.423–4.193 s baseline,
 3.340–4.145 s new), so the end-to-end figure is a local measurement rather than a
 guaranteed speedup. Both generated executables completed an automatic game.
 
+## Native hash containers
+
+Dictionaries and sets share `backends/native/na_ir_gen_pass.impl/hash_core.impl.jac`
+and `hash_order.impl.jac`. The order allocation contains `capacity` hash-slot
+indices, `capacity` inverse slot-to-position indices, then one extent word.
+Deletion marks its order position as -1 and trims trailing holes. Ordered reads
+compact holes once; insertion also compacts when the order allocation fills.
+Rehashing rebuilds both indices. This makes deletion amortized constant time,
+preserves insertion order, and bounds order storage during repeated mutations.
+
+`jc_materialize` decodes this private order storage when copying native
+dictionaries. Keep its decoder synchronized with changes to this allocation;
+the container field offsets still come from the backend's ABI metadata.
+The native dictionary scaling, mutation, and materialization tests cover these
+contracts.
+
+## Packaged interfaces and compilation lifetimes
+
+Precompilation requests an analysis interface through the dependency registry
+before generating bytecode through the existing pipeline. Packaging explicitly
+initializes the existing interface codec: the separate bootstrap finalization
+process does not otherwise load it during symbol-only compilation. The registry's
+non-importing readiness check remains safe during compiler bootstrapping.
+The precompiler also activates the existing stub catalog before sealing
+symbol-only selfhost units, so cross-references to conditional stub classes
+resolve through the same authority used by application analysis.
+Payload assembly builds this catalog from staged sources before precompilation
+and bootstrap finalization. Its recursion guard belongs only to catalog
+construction; interface encoding must be able to open the completed catalog.
+Sealing preserves the interface, dependency hashes,
+diagnostic profiles, and placement facts, including for bootstrap modules
+whose executable bytecode is produced by jac0. A bytecode-only cache is
+upgraded through `IfaceRegistry` instead of introducing a second analyzer.
+Normal code generation keeps its existing interface policy.
+Bytecode loads establish their own compilation request, including when a
+type check lazily loads compiler code. The caller's analysis and full-tree
+requirements resume after the bytecode load and do not force interface
+encoding into that executable build.
+An application's analysis request also does not implicitly publish interfaces
+for symbol-only selfhost dependencies covered by the compiler fingerprint.
+Their types remain available on demand; packaging requests the interface
+product explicitly through the same registry. Other bundled libraries keep
+their dependency interfaces because their sources are outside that fingerprint.
+Interface preparation, replay, and persistence share one source eligibility
+rule. Typed Python packages and type stubs remain content-fingerprinted
+dependencies; explicitly requesting an interface does not force their lazy
+imports into a recursively encoded package closure.
+Loading a dependency-validated interface also seeds the registry's encoding
+memo. A consumer that needs the source tree can still run its requested
+passes without re-encoding that unchanged interface and its dependency closure.
+Include bindings own local declaration nodes and retain the original symbol's
+lazy provider. Already-local symbols keep their existing bindings: copying
+them during a self-include would append to the overload list being traversed.
+Foreign declarations are never rebound. Interface
+encoding takes an alias category from its resolved definition, keeping hashes
+stable when later imports refine that definition.
+
+Interface paths are encoded relative to their source module before hashing.
+JIR's `SEC_PATH_ROOT` records the local base directory; sealed packages store
+only its relative location inside the package. The dependency, interface,
+diagnostic, and placement readers relocate path fields to the installed root
+without changing interface hashes or literal text. Identical staged packages
+therefore produce identical artifacts. Reused bytes
+keep their path mapping through local cache writes and subsequent packaging. Diagnostic
+profile and dependency checks still govern reuse. Dependencies outside the
+package retain their existing validation and source fallback.
+
+Per-unit release keeps parsed stub trees while a compilation uses them.
+The runtime graph driver indexes anchors with non-owning handles, including
+inside an execution context. Node and edge references keep reachable topology
+alive, and the persistence store owns stored anchors. When the last owner
+releases a component, weak-handle callbacks retire its kernel rows and recycle
+its handles. Closing a context also retires its region, even for graph objects
+still held by callers. Handle metadata uses a slotted weak reference with a
+shared callback, avoiding a closure and captured cells for every anchor.
+At a completed compilation boundary, `release_compile_state` releases both
+source and stub roots. Activating the stub catalog also retires the private
+selfhost bootstrap closure before application compilation starts; it never
+changes the stub lens of an active application compilation.
+
 ## Rules
 
 **Backends consume facts, they do not compute them.** Types are read from

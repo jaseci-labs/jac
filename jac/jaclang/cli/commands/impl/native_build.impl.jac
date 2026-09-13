@@ -741,11 +741,37 @@ def _resolve_ca_bundle(pkg_root: str) -> (str | None) {
     }
 
     import glob;
+    bundles = sorted(
+        `glob.`glob(
+            os.path.join(
+                pkg_root,
+                ".python-build",
+                "jacpython",
+                "*",
+                "python",
+                "build",
+                "cacert.pem"
+            )
+        )
+    );
+    if bundles {
+        return bundles[0];
+    }
+    source_bundles = sorted(
+        `glob.`glob(
+            os.path.join(
+                pkg_root, ".python-build", "*", "python", "build", "cacert.pem"
+            )
+        )
+    );
+    if source_bundles {
+        return source_bundles[0];
+    }
     hits = sorted(
         `glob.`glob(
             os.path.join(
                 pkg_root,
-                ".pbs-build",
+                ".python-build",
                 "*",
                 "python",
                 "install",

@@ -28,7 +28,6 @@ import from jaclang.dist.payload.fsutil {
     write_text
 }
 import from jaclang.dist.payload.pins { llvm_release, pins }
-import from compression.zstd { decompress as zstd_decompress }
 
 impl HttpSource.get(url: str) -> bytes {
     return http_get(url);
@@ -87,17 +86,6 @@ impl http_get_range(url: str, start: int, end: int) -> bytes {
     return body;
 }
 
-impl pbs_platform(osarch: str) -> str | None {
-    return {
-        "macos-aarch64": "aarch64-apple-darwin",
-        "macos-x86_64": "x86_64-apple-darwin",
-        "linux-x86_64": "x86_64-unknown-linux-gnu",
-        "linux-aarch64": "aarch64-unknown-linux-gnu"
-    }.get(
-        osarch
-    );
-}
-
 impl bun_asset_name(osarch: str) -> str | None {
     return {
         "macos-aarch64": "bun-darwin-aarch64",
@@ -108,51 +96,6 @@ impl bun_asset_name(osarch: str) -> str | None {
     }.get(
         osarch
     );
-}
-
-impl fetch_pbs(osarch: str, dest: str) {
-    marker = os.path.join(dest, "python", "PYTHON.json");
-    if file_exists(marker) {
-        log(f"fetch-pbs: already present at {dest}/python");
-        return;
-    }
-    pbs = pins().pbs;
-    plat = pbs_platform(osarch);
-    if plat is None {
-        die(f"fetch-pbs: unsupported platform '{osarch}'");
-    }
-    asset = f"cpython-{pbs.python}+{pbs.tag}-{plat}-{pbs.flavor}.tar.zst";
-    url = f"{pbs.base}/{pbs.tag}/{asset}";
-
-    log(f"fetch-pbs: downloading {asset}");
-    tarzst = http_get(url);
-
-    sums = http_get(f"{pbs.base}/{pbs.tag}/SHA256SUMS").decode(
-        "utf-8", errors="replace"
-    );
-    expected = find_sum_line(sums, asset);
-    if expected is None {
-        die(f"fetch-pbs: no checksum for {asset} in SHA256SUMS");
-    }
-    actual = sha256_hex(tarzst);
-    if actual != expected {
-        die(
-            f"fetch-pbs: checksum mismatch for {asset}\n  expected {expected}\n  actual   {actual}"
-        );
-    }
-
-    make_dirs(dest);
-    try {
-        tar = zstd_decompress(tarzst);
-        extract_tar(tar, dest, 0, True);
-    } except (OSError, ValueError, Exception) as e {
-        die(f"fetch-pbs: extract failed: {type(e).__name__}: {e}");
-    }
-
-    if not file_exists(marker) {
-        die("fetch-pbs: extract produced no PYTHON.json");
-    }
-    log(f"fetch-pbs: ready at {dest}/python");
 }
 
 def _gunzip(gz: bytes) -> bytes {

@@ -7,6 +7,7 @@ import os;
 import shutil;
 import tarfile;
 import tempfile;
+import from unittest.mock { patch }
 
 import from compression.zstd {
     CompressionParameter,
@@ -29,7 +30,7 @@ import from jaclang.dist.payload.assemble {
     tar_stage,
     tar_zst_dir
 }
-import from jaclang.dist.payload.fsutil { host_os_arch }
+import from jaclang.dist.payload.fsutil { host_os_arch, copy_tree, skip_jaclang }
 import from jaclang.dist.payload.pins { py_ver }
 
 def wf(stage: str, rel: str, data: bytes, mode: int = 0o644) {
@@ -44,6 +45,31 @@ def wf(stage: str, rel: str, data: bytes, mode: int = 0o644) {
 def rf(path: str) -> bytes {
     with open(path, "rb") as f {
         return f.read();
+    }
+}
+
+test "payload excludes interpreted JacPython modules and keeps their license" {
+    with tempfile.TemporaryDirectory() as tmp {
+        source = os.path.join(tmp, "source");
+        target = os.path.join(tmp, "target");
+        removed = [
+            "compiler/frontend/python/parser.jac",
+            "compiler/backends/py/jacpython/native_api.jac",
+            "runtime/python/objects.jac",
+            "runtime/python/_precompiled/objects.jir"
+        ];
+        for path in removed {
+            wf(source, path, b"implementation");
+        }
+        wf(source, "runtime/python/LICENSE.cpython", b"license");
+        wf(source, "compiler/frontend/parser.jac", b"Jac parser");
+        copy_tree(source, target, skip_jaclang);
+        for path in removed {
+            assert not os.path.exists(os.path.join(target, path));
+        }
+        assert rf(os.path.join(target, "runtime/python/LICENSE.cpython")) == b"license";
+        assert rf(os.path.join(target, "compiler/frontend/parser.jac"))
+            == b"Jac parser";
     }
 }
 
@@ -95,9 +121,119 @@ def fake_repo(repo: str) {
         b"in-tree-shim-bytes"
     );
     wf(repo, "bootstrap/pins.json", b"{}\n");
+    wf(repo, "bootstrap/python/sources.json", b"{}\n");
     wf(repo, "_jac_finder.py", b"finder\n");
     wf(repo, "sitecustomize.py", b"sitecustomize\n");
     wf(repo, "jac.toml", b"version = \"0.0.0\"\n");
+}
+
+test "payload interface sealing uses the fresh staged catalog" {
+    import jaclang.dist.payload.assemble as assembly;
+    with tempfile.TemporaryDirectory() as base {
+        site = os.path.join(base, "site");
+        cache = os.path.join(base, "cache");
+        pre = os.path.join(site, "jaclang", "_precompiled");
+        catalog_copy = os.path.join(base, "stubcat.bin");
+        wf(site, "jaclang/dist/precompile_bytecode.jac", b"");
+        wf(cache, "stubcat.bin", b"stale catalog");
+        wf(cache, "MANIFEST.json", b"stale sealed modules");
+        calls: list[str] = [];
+        def child(
+            argv: list[str], env: dict[str, str] | None, allow_fail: bool
+        ) -> bool {
+            assert env is not None;
+            for name in ("JAC_STUBCAT_FILE", "JAC_STUBCAT_OFF", "JAC_STUBCAT_LEN") {
+                assert name not in env , "the payload inherited the host's catalog";
+            }
+            if argv[2].endswith("stubcat_boot.py") {
+                assert env.get("JAC_STUBCAT_BUILDING") == "1";
+                assert not os.path.exists(os.path.join(pre, "MANIFEST.json")) , (
+                    "catalog construction must load staged sources, not a cached image"
+                );
+                wf(pre, "stubcat.bin", b"fresh catalog");
+                calls.append("catalog");
+            } else {
+                assert not env.get("JAC_STUBCAT_BUILDING") , (
+                    "interface sealing disabled its stub authority"
+                );
+                assert rf(os.path.join(pre, "stubcat.bin")) == b"fresh catalog";
+                wf(pre, "PRECOMPILE_RESULT.json", b"{}");
+                calls.append("interfaces");
+            }
+            return True;
+        }
+        with patch.object(assembly, "run_child", side_effect=child), patch.dict(
+            os.environ,
+            {
+                "JAC_STUBCAT_BUILDING": "1",
+                "JAC_STUBCAT_FILE": "host.bin",
+                "JAC_STUBCAT_OFF": "100",
+                "JAC_STUBCAT_LEN": "200"
+            }
+        ) {
+            assembly.run_precompile_stage(
+                "python",
+                base,
+                site,
+                MkPayloadOpts(precompiled_cache=cache, stubcat_out=catalog_copy)
+            );
+        }
+        assert calls == ["catalog", "interfaces"];
+        assert rf(catalog_copy) == b"fresh catalog";
+        assert rf(os.path.join(cache, "stubcat.bin")) == b"fresh catalog";
+    }
+}
+
+test "skipping payload precompilation publishes an empty catalog region" {
+    import jaclang.dist.payload.assemble as assembly;
+    with tempfile.TemporaryDirectory() as base {
+        out = os.path.join(base, "stubcat.bin");
+        for opts in (
+            MkPayloadOpts(skip_precompile=True, stubcat_out=out),
+            MkPayloadOpts(link_source=base, stubcat_out=out)
+        ) {
+            wf(base, "stubcat.bin", b"stale catalog");
+            with patch.object(assembly, "run_child") as child {
+                assembly.run_precompile_stage("python", base, base, opts);
+                child.assert_not_called();
+            }
+            assert rf(out) == b"";
+        }
+    }
+}
+
+test "skipping the payload catalog cannot reuse a cached catalog" {
+    import jaclang.dist.payload.assemble as assembly;
+    with tempfile.TemporaryDirectory() as base {
+        site = os.path.join(base, "site");
+        cache = os.path.join(base, "cache");
+        pre = os.path.join(site, "jaclang", "_precompiled");
+        out = os.path.join(base, "stubcat.bin");
+        wf(site, "jaclang/dist/precompile_bytecode.jac", b"");
+        wf(cache, "stubcat.bin", b"stale catalog");
+        def child(
+            argv: list[str], env: dict[str, str] | None, allow_fail: bool
+        ) -> bool {
+            assert argv[2].endswith("precompile_boot.py");
+            assert env is not None and env.get("JAC_STUBCAT_BUILDING") == "1";
+            assert not os.path.exists(os.path.join(pre, "stubcat.bin"));
+            wf(pre, "PRECOMPILE_RESULT.json", b"{}");
+            return True;
+        }
+        with patch.object(assembly, "run_child", side_effect=child) as runner {
+            assembly.run_precompile_stage(
+                "python",
+                base,
+                site,
+                MkPayloadOpts(
+                    skip_stubcat=True, precompiled_cache=cache, stubcat_out=out
+                )
+            );
+            runner.assert_called_once();
+        }
+        assert rf(out) == b"";
+        assert not os.path.exists(os.path.join(cache, "stubcat.bin"));
+    }
 }
 
 test "tar constants mirror the stdlib" {
@@ -341,6 +477,11 @@ test "stage_floor stages the floor allow-list + CA bundle, skips non-floor archi
         assert os.path.isfile(os.path.join(floor, osarch, "libssl.a"));
         assert os.path.isfile(os.path.join(floor, "cacert.pem"));
         assert not os.path.exists(os.path.join(floor, osarch, "libX11.a"));
+
+        # Source-built Python supplies certificates independently of pip.
+        wf(pbs, "build/cacert.pem", b"# source CA\n");
+        stage_floor(pbs, stage);
+        assert rf(os.path.join(floor, "cacert.pem")) == b"# source CA\n";
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }

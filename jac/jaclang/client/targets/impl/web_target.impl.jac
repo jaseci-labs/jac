@@ -111,16 +111,22 @@ impl WebTarget.build(
     }
 
     program = Jac.get_program();
-    before = len(program.errors_had);
-    program.compile(str(entry_file.resolve()));
-    if len(program.errors_had) > before {
-        errors = '\n'.join(str(e) for e in program.errors_had[before:]);
-        raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
-    }
     loaded_mod = types.ModuleType(entry_file.stem);
     loaded_mod.__file__ = str(entry_file.resolve());
     builder = make_client_bundle_builder(project_dir);
-    builder.build(loaded_mod, force=True);
+    try {
+        before = len(program.errors_had);
+        program.compile(str(entry_file.resolve()));
+        if len(program.errors_had) > before {
+            errors = '\n'.join(str(e) for e in program.errors_had[before:]);
+            raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
+        }
+        inputs = builder.prepare(loaded_mod);
+        function_name = _get_client_function_name(loaded_mod);
+    } finally {
+        program._get_compiler().release_compile_state(program);
+    }
+    builder.bundle(inputs);
     bundle_path = bundler.find_bundle();
     if not bundle_path {
         raise RuntimeError("Web build failed: bundle not found");
@@ -129,6 +135,7 @@ impl WebTarget.build(
         bundle_path=bundle_path,
         bundler=bundler,
         loaded_mod=loaded_mod,
+        function_name=function_name,
         project_dir=project_dir
     );
     if _pwa_enabled(project_dir) {
@@ -201,13 +208,13 @@ def _generate_index_html(
     bundle_path: Path,
     bundler: ViteBundler,
     loaded_mod: types.ModuleType,
+    function_name: str,
     project_dir: Path
 ) {
     import html;
     import json;
     import from jaclang.client.serving { HeaderBuilder }
 
-    function_name = _get_client_function_name(loaded_mod);
     module_name = loaded_mod.__name__;
     dist_dir = Path(bundler.output_dir);
     css_link = _build_css_link(bundler);

@@ -81,6 +81,8 @@ class NativeCompiler {
         L = self.lib;
         L.jac_str_new.argtypes = [c_char_p, c_int64];
         L.jac_str_new.restype = c_void_p;
+        L.jac_release.argtypes = [c_void_p];
+        L.jac_release.restype = None;
         for name in ("jc_run", "jc_annex") {
             fn = getattr(L, name);
             fn.argtypes = [c_void_p, c_void_p, c_int64, c_void_p, c_void_p, c_int64];
@@ -395,15 +397,21 @@ class NativeCompiler {
         ab = a.encode();
         bb = b.encode();
         pa = self.lib.jac_str_new(ab, len(ab));
-        pb = self.lib.jac_str_new(bb, len(bb));
-        return fn(
-            c_void_p(pa),
-            c_void_p(pa),
-            c_int64(len(ab)),
-            c_void_p(pb),
-            c_void_p(pb),
-            c_int64(len(bb))
-        );
+        pb = None;
+        try {
+            pb = self.lib.jac_str_new(bb, len(bb));
+            return fn(
+                c_void_p(pa),
+                c_void_p(pa),
+                c_int64(len(ab)),
+                c_void_p(pb),
+                c_void_p(pb),
+                c_int64(len(bb))
+            );
+        } finally {
+            self.lib.jac_release(pb);
+            self.lib.jac_release(pa);
+        }
     }
 
     def annex(self: NativeCompiler, annex_src: str, annex_path: str) -> int {

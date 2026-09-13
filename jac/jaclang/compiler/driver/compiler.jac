@@ -108,6 +108,7 @@ obj JacCompiler {
 
     has selfhost: SelfHostCache { getter; }
 
+    def release_compile_state(target_program: JacProgram) -> None;
     def stub_catalog -> StubCatalog | None;
     def ensure_stub_catalog -> StubCatalog | None;
     def note_stub_tree_served(path: str, program: JacProgram) -> None;
@@ -160,7 +161,10 @@ obj JacCompiler {
     ) -> None;
 
     def _restore_sections(
-        full_target: str, actual_program: JacProgram, secs: dict[int, bytes]
+        full_target: str,
+        actual_program: JacProgram,
+        secs: dict[int, bytes],
+        base_dir: str = ""
     ) -> None;
 
     def _get_precompiled_jir_bytecode(

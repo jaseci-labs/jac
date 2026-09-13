@@ -30,6 +30,16 @@ def cache_scope(
     }
 }
 
+@contextmanager
+def compilation_scope(
+    identity: str, options: CompileOptions | None = None
+) -> Iterator[None] {
+    import from jaclang.compiler.placement.workspace { workspace_scope }
+    with cache_scope(identity, options), workspace_scope() {
+        yield ;
+    }
+}
+
 def cache_identity -> str {
     return _cache_context.get();
 }

@@ -21,3 +21,8 @@ def roundtrip(s: str) -> str {
 def slice_decode(s: str, a: int, c: int) -> str {
     return s.encode("utf-8")[a:c].decode("utf-8");
 }
+
+def decode_embedded_nul -> int {
+    decoded = b"a\x00b".decode("utf-8").encode("utf-8");
+    return len(decoded) * 1000 + decoded[-1];
+}
