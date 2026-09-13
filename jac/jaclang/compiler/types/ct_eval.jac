@@ -920,10 +920,14 @@ obj CtEvaluator {
         }
         self._active.add(skey);
         try {
-            sym = self._resolve_symbol_deep(sym);
+            return self._eval_symbol_inner(sym, use);
         } finally {
             self._active.discard(skey);
         }
+    }
+
+    def _eval_symbol_inner(sym: Symbol, use: UniNode) -> any {
+        sym = self._resolve_symbol_deep(sym);
         if self.demand {
             sym = self._demand_tree(sym);
         }
@@ -1020,9 +1024,9 @@ obj CtEvaluator {
     }
 
     def _resolve_symbol_deep(sym: Symbol) -> Symbol {
-        hops = 0;
-        while hops < 16 {
-            hops += 1;
+        seen: set[int] = set();
+        while id(sym) not in seen {
+            seen.add(id(sym));
             sym = self.evaluator.resolve_imported_symbols(sym);
             sym = self.evaluator.resolve_to_definition_symbol(sym);
             node_ = sym.decl.name_of;
@@ -1036,7 +1040,7 @@ obj CtEvaluator {
             }
             return sym;
         }
-        return sym;
+        raise CtNotComptime();
     }
 
     def _resolve_module_item(item: ModuleItem, use: UniNode) -> any {
