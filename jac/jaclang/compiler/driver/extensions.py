@@ -211,6 +211,8 @@ def is_annex_path_of(candidate_path: str, base_path: str) -> bool:
             rest.endswith(suffix) or rest.startswith(folder + os.sep)
             for suffix, folder in ANNEX_FOLDER.items()
         )
+    if not candidate_path.endswith(ANNEX_SUFFIXES):
+        return False
     base_dir, base_name = os.path.split(stem)
     cand_dir, cand_name = os.path.split(candidate_path)
     return any(

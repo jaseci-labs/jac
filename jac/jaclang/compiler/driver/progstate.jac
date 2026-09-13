@@ -292,6 +292,31 @@ obj DiagLedger {
         ];
     }
 
+    def owned_by(paths: Sequence[str]) -> tuple[list[Alert], list[Alert]] {
+        normalized = list(dict.fromkeys(os.path.realpath(path) for path in paths));
+        matches: dict[str, list[str]] = {};
+        collected: list[list[Alert]] = [];
+        for alerts in (self.errors, self.warnings) {
+            grouped: dict[str, list[Alert]] = {path: [] for path in normalized};
+            for alert in alerts {
+                owned = matches.get(alert.owner);
+                if owned is None {
+                    owned = [
+                        path
+                        for path in normalized
+                        if self._owned(alert, path)
+                    ];
+                    matches[alert.owner] = owned;
+                }
+                for path in owned {
+                    grouped[path].append(alert);
+                }
+            }
+            collected.append([alert for path in normalized for alert in grouped[path]]);
+        }
+        return (collected[0], collected[1]);
+    }
+
     def drop_module(resolved_path: str) {
         resolved_path = os.path.realpath(resolved_path);
         self._error_start = sum(

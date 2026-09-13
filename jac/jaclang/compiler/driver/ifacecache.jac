@@ -1043,12 +1043,11 @@ obj IfaceRegistry {
     def _diagnostic_records(resolved: str, err_start: int, warn_start: int) -> dict {
         errors = list(self.prog.errors_had[err_start:]);
         warnings = list(self.prog.warnings_had[warn_start:]);
-        for path in sorted(
-            self.prog.deps.transitive_dependencies(resolved) | {resolved}
-        ) {
-            errors.extend(self.prog.diags.owned_errors(path));
-            warnings.extend(self.prog.diags.owned_warnings(path));
-        }
+        (owned_errors, owned_warnings) = self.prog.diags.owned_by(
+            sorted(self.prog.deps.transitive_dependencies(resolved) | {resolved})
+        );
+        errors.extend(owned_errors);
+        warnings.extend(owned_warnings);
         import from jaclang.compiler.driver.progstate { DiagLedger }
         diagnostics = DiagLedger();
         diagnostics.extend(errors, warnings);

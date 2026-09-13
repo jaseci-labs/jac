@@ -480,3 +480,40 @@ The follow-up applies the same source mapping to the two native debug-metadata
 emitters, preserving synthetic module names. Twenty-five focused tests passed,
 including byte-identical objects with debug information, shared libraries,
 RC debug behavior and cyclic imports. Latest-head CI remains required.
+
+
+Revision `7ff42f86bc` passed all 28 staged build and verification steps after
+the debug-metadata change. Stage 1 reused 753 modules and rebuilt four in
+170.38 seconds; Stage 2 rebuilt 757 modules in 388.51 seconds. The native
+Python runtime reused content key `092f7a8c1d8ceebb`, and packaging reused its
+compressed dependency layer. This confirms cache reuse after a compiler edit
+through the full graph.
+
+### Diagnostic ownership collection
+
+A fresh scaffold profile exposed repeated scans of the diagnostic ledger for
+every transitive module. The ledger now collects diagnostics for a batch of
+modules, checks each distinct owner once per batch, and preserves module and
+annex ordering. It keeps no persistent index that can become stale after ledger
+edits. The shared annex predicate rejects ordinary unrelated paths before
+splitting them; 22,500 path-pair comparisons matched the previous behavior.
+Twenty-two diagnostic, interface, workspace and compiler-tree regressions passed.
+
+Sequential fresh six-entry scaffold checks with no full build competing for CPU
+passed in 91.94 seconds before the change and 89.72 seconds afterward. Process
+wall time was 92.75 versus 90.33 seconds; maximum RSS was 4,885,708,800 versus
+4,899,880,960 bytes on macOS. These results do not establish compliance with the
+unchanged CI wall-time and memory limits. Latest-head CI remains required.
+
+
+The diagnostic follow-up passed the complete compiler toplevel suite:
+1,102 tests passed, one skipped, in 581.62 seconds. All 28 staged build and
+verification steps passed. Stage 1 reused 722 modules and rebuilt 35 in
+199.98 seconds; Stage 2 rebuilt 757 in 383.88 seconds. Both catalogs reported
+zero evaluation failures, and the native runtime reused its existing content
+cache. The packaged executable passed 28 focused regressions in 36.56 seconds;
+SHA-256 `c227dc9183d5ccc4866567f4eb4a0bb7c9c68adc754076f18fdd1a39239d121f`.
+
+The final packaged compiler also passed the repository-wide CI source-check
+selection: all 941 files passed in 1,628.97 seconds with two workers. The
+performance budgets and latest-head CI acceptance criterion remain unchanged.
