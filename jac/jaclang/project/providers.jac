@@ -10,9 +10,6 @@ import from jaclang.project.pyvenv {
     summarize_pip_failure
 }
 
-glob EMIT_EJECT: str = "eject",
-     EMIT_PUBLISH: str = "publish";
-
 glob VENV_DEPS_MARKER: str = ".jac-deps-hash";
 
 
@@ -130,12 +127,6 @@ obj EcosystemProvider {
     }
 
     def list_installed(config: JacConfig) -> list[str] {
-        return [];
-    }
-
-    def emit_standalone(
-        config: JacConfig, deps: list[ResolvedDependency], out_dir: Path, mode: str
-    ) -> list[Path] {
         return [];
     }
 }
@@ -568,24 +559,6 @@ obj PythonProvider(EcosystemProvider) {
         } except (json.JSONDecodeError, KeyError) {
             return [];
         }
-    }
-
-    override def emit_standalone(
-        config: JacConfig, deps: list[ResolvedDependency], out_dir: Path, mode: str
-    ) -> list[Path] {
-        lines: list[str] = [];
-        for dep in deps {
-            spec = self.pip_spec(dep);
-            if dep.origin.startswith("capability:") {
-                lines.append(f"{spec}  # via {dep.origin}");
-            } else {
-                lines.append(spec);
-            }
-        }
-        out_dir.mkdir(parents=True, exist_ok=True);
-        req_path = out_dir / "requirements.txt";
-        req_path.write_text("\n".join(lines) + "\n", encoding="utf-8");
-        return [req_path];
     }
 }
 

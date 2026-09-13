@@ -99,7 +99,10 @@ then exports Python source, the client compiler's JavaScript workspace, and C
 source for native code. `project.json` retains each application's module identity,
 serving contracts, native bindings, and client output paths. The prepared cache
 also retains the client's native dependency inventory and page-routing state.
-Client compilation receives the selected entry explicitly; it does not infer
+`compiler/driver/source_products.jac` owns Python source extraction for application
+export, runtime vendoring, and wheel transpilation. Prepared origin mappings retain
+the original app identity after `.jac` modules become `.py`.
+Client compilation receives the selected entry and compiler program explicitly; it does not infer
 another application's pages from mutable runtime target state.
 
 The output contains `requirements.txt`, `build.py`, and `main.py`. Install the
@@ -120,7 +123,8 @@ paths live under `jaclang.project`; semantic metadata lives under `jaclang.runti
 Native C is produced from the existing native backend's LLVM IR. Binary and source
 products share lowering validation, entry initialization, and callback bindings.
 The C projection uses a pinned LLVM C backend and a versioned compatibility patch;
-its provenance and license ship with exports. Exporting C requires CMake and LLVM
+its provenance and license ship with exports. The generated C retains the selected
+target ABI and external native library requirements. Exporting C requires CMake and LLVM
 22 development files, or an explicit `JAC_LLVM_CBE` executable. Unsupported lowering
 fails at export instead of substituting a Python implementation.
 

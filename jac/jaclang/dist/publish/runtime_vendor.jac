@@ -90,7 +90,10 @@ def _runtime_dependencies(
     for required in scan_jaclang_imports(
         source, module, package, include_symbols=False
     ) {
-        if required != 'jaclang' and _module_to_file(pkg_root, required) is None {
+        namespace = pkg_root.joinpath(*required.split('.')[1:]);
+        if required != 'jaclang'
+            and _module_to_file(pkg_root, required) is None
+            and not namespace.is_dir() {
             raise ValueError(
                 f'Runtime import does not resolve: {required} (imported by {module
                     or "application"})'
@@ -210,6 +213,12 @@ def build_runtime_closure(
         processed.add(module);
         path = _module_to_file(pkg_root, module);
         if path is None {
+            namespace = pkg_root.joinpath(*parts[1:]);
+            if namespace.is_dir() {
+                relative = '/'.join(parts[1:]) + '/__init__.py';
+                closure[relative] = b'';
+                continue;
+            }
             (parent, _, name) = module.rpartition('.');
             exports = _declared_literal(sources[parent], '_LAZY_EXPORTS')
                 if parent in sources
