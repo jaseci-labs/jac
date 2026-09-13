@@ -2033,3 +2033,17 @@ test "bug_selfovl1_receiver_selects_the_self_typed_overload" {
         e.pretty_print() for e in program.errors_had
     );
 }
+
+test "implicit void results are None values when forwarded through calls" {
+    program = compile_and_check("checker_void_forwarding.jac");
+    assert not program.errors_had , "\n".join(
+        e.pretty_print() for e in program.errors_had
+    );
+    negative = JacProgram();
+    negative.compile(
+        file_path="none_class_return.jac",
+        use_str="import from types { NoneType }\ndef invalid -> None { return NoneType; }",
+        no_cgen=True
+    );
+    assert any(e.code and e.code.code == "E1002" for e in negative.errors_had);
+}

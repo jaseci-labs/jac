@@ -40,29 +40,11 @@ def _finders_find_spec(name: str, search: (list[str] | None)) -> (ModuleSpec | N
 }
 
 def _find_spec_no_exec(target: str) -> (ModuleSpec | None) {
-    import from importlib.machinery { PathFinder }
     loaded_target = sys.modules.get(target);
     if loaded_target is not None {
         tspec = loaded_target?.__spec__;
         if isinstance(tspec, ModuleSpec) {
             return tspec;
-        }
-    }
-    for finder in `list(sys.meta_path) {
-        if finder is PathFinder {
-            continue;
-        }
-        fs = finder?.find_spec;
-        if fs is None {
-            continue;
-        }
-        try {
-            whole = fs(target, None, None);
-        } except (ImportError, AttributeError, ValueError, KeyError, TypeError) {
-            continue;
-        }
-        if isinstance(whole, ModuleSpec) {
-            return whole;
         }
     }
     parts = target.split('.');

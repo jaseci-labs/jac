@@ -153,3 +153,24 @@ test "compiler namespace packages resolve in the target source tree" {
         shutil.rmtree(home, ignore_errors=True);
     }
 }
+
+test "dotted spec lookup keeps a loaded parent's namespace search path" {
+    import from importlib.machinery { ModuleSpec }
+    import from types { ModuleType }
+    import from unittest.mock { patch, Mock }
+    import from jaclang.compiler.driver.modresolver { _find_spec_no_exec }
+    parent = ModuleType("selected_parent");
+    parent.__path__ = ["/selected/parent"];
+    namespace = ModuleSpec("selected_parent.child", None, is_package=True);
+    namespace.submodule_search_locations = ["/selected/parent/child"];
+    finder = Mock();
+    finder.find_spec.return_value = namespace;
+    with patch.dict(sys.modules, {"selected_parent": parent}), patch.object(
+        sys, "meta_path", [finder]
+    ) {
+        assert _find_spec_no_exec("selected_parent.child") is namespace;
+        finder.find_spec.assert_called_once_with(
+            "selected_parent.child", ["/selected/parent"], None
+        );
+    }
+}

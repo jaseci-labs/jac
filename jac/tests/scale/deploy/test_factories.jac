@@ -13,7 +13,6 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 }
 import from jaclang.scale.deploy.target.kubernetes { kubernetes_target as kt_module }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
-    KubernetesTarget,
     KubernetesTargetBase
 }
 
