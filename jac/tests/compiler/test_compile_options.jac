@@ -762,3 +762,23 @@ test "native-only dependencies stay in the target rather than the compiler host"
         is program;
     assert host.peek_program() is None;
 }
+
+test "native dependency caches use the running compiler identity" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        native_compiler_fingerprint
+    }
+    options = _pinned_opts();
+    with patch(
+        "jaclang.compiler.driver.jir.running_compiler_digest", return_value="compiler-a"
+    ) {
+        first = native_compiler_fingerprint(options);
+        assert first == native_compiler_fingerprint(options);
+        assert first != native_compiler_fingerprint(_pinned_opts(native_required=True));
+    }
+    with patch(
+        "jaclang.compiler.driver.jir.running_compiler_digest", return_value="compiler-b"
+    ) {
+        assert first != native_compiler_fingerprint(options);
+    }
+}

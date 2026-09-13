@@ -120,26 +120,35 @@ test "native-only checks link providers outside the entry directory" {
     import from pathlib { Path }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
-    import from jaclang.compiler.backends.native.na_compile_pass { native_linked_ir_text }
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        native_linked_ir_text
+    }
     with tempfile.TemporaryDirectory() as directory {
-        root = Path(directory);
-        (root / "library").mkdir();
-        (root / "application").mkdir();
-        (root / "library" / "numbers.jac").write_text(
+        fixture_dir = Path(directory);
+        (fixture_dir / "library").mkdir();
+        (fixture_dir / "application").mkdir();
+        (fixture_dir / "library" / "nested").mkdir();
+        (fixture_dir / "library" / "nested" / "numbers.jac").write_text(
             "def increment(value: int) -> int { return value + 1; }\n"
         );
-        entry = root / "application" / "main.jac";
-        entry.write_text(
-            "import from ..library.numbers { increment }\n"
-            + "def answer -> int { return increment(41); }\n"
+        (fixture_dir / "library" / "relay.jac").write_text(
+            "import from .nested.numbers { increment }\n"
+                + "def relay(value: int) -> int { return increment(value); }\n"
+        );
+        entry_file = fixture_dir / "application" / "main.jac";
+        entry_file.write_text(
+            "import from ..library.relay { relay }\n"
+                + "def answer -> int { return relay(41); }\n"
         );
         for checking in (True, False) {
             program = JacProgram();
             module = program.compile(
-                str(entry),
+                str(entry_file),
                 options=CompileOptions(
-                    no_cgen=checking, native_parity=checking,
-                    aot_mode=not checking, native_required=True,
+                    no_cgen=checking,
+                    native_parity=checking,
+                    aot_mode=not checking,
+                    native_required=True,
                     force_target_program=True
                 )
             );
@@ -150,7 +159,9 @@ test "native-only checks link providers outside the entry directory" {
             );
             text = native_linked_ir_text(module);
             linked = llvm.parse_assembly(text);
+            import from jaclang.compiler.backends.native.llvm.binding.value { ValueRef }
             function = linked.get_function("increment");
+            assert isinstance(function, ValueRef);
             assert not function.is_declaration;
         }
     }

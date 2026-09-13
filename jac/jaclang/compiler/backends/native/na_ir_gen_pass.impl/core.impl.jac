@@ -663,8 +663,8 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         }
         self._ensure_dep_inference(imported_mod);
         processed_modules.add(abs_key);
-        _canon_src[abs_key] = _kernel_owner or src_mod_str;
-        imported_mods.append((_kernel_owner or src_mod_str, imported_mod));
+        _canon_src[abs_key] = _kernel_owner or os.path.realpath(full_path);
+        imported_mods.append((_canon_src[abs_key], imported_mod));
         _src_keys[_canon_src[abs_key]] = ""
             if _kernel_owner
             else native_module_key(full_path);
