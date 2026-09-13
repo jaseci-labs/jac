@@ -495,7 +495,8 @@ test "dts_for_module declares exported functions, classes, and globals" {
             'def:pub add(a: int, b: int) -> int { return a + b; }\n'
             'def:pub names(items: list[str]) -> int { return len(items); }\n'
         );
-        mod = JacProgram().compile(
+        program = JacProgram();
+        mod = program.compile(
             str(src), options=CompileOptions(force_codespace='client')
         );
         dts = dts_for_module(mod);

@@ -42,7 +42,8 @@ impl py2jac(filename: str) -> int {
 impl jac2py(filename: str) -> int {
     import from jaclang.compiler.session.session { JacProgram }
     if filename.endswith('.jac') {
-        code = artifact_for(JacProgram().compile(file_path=filename)).py;
+        program = JacProgram();
+        code = artifact_for(program.compile(file_path=filename)).py;
         if code {
             console.print(code, markup=False, highlight=False);
             return 0;

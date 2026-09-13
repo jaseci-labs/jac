@@ -1675,7 +1675,8 @@ impl debug(filename: str, main: bool = True, cache: bool = False) -> int {
     base = base or './';
     mod = mod[:-4];
     if filename.endswith('.jac') {
-        bytecode = artifact_for(JacProgram().compile(filename)).py_bytecode;
+        program = JacProgram();
+        bytecode = artifact_for(program.compile(filename)).py_bytecode;
         if bytecode {
             code = marshal.loads(bytecode);
             if db.has_breakpoint(bytecode) {

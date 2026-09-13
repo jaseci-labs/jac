@@ -808,7 +808,8 @@ test "param arg" {
     jac_file_path = "";
     try {
         transform.jac2py(f"{fixture_path('params/test_complex_params.jac')}");
-        py_code = artifact_for(JacProgram().compile(file_path=filename)).py;
+        program = JacProgram();
+        py_code = artifact_for(program.compile(file_path=filename)).py;
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False
