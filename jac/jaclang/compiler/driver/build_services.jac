@@ -3,6 +3,8 @@ import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.driver.selfhost { SelfHostCache }
 import type from jaclang.client.client_bundle { ClientBundleBuilder }
+import type from jaclang.runtime.prepared { PreparedApplication }
+import type from jaclang.server.hmr { HotReloader }
 
 obj CompilerBuildServices(BuildServices) {
     def compiler -> JacCompiler {
@@ -23,6 +25,32 @@ obj CompilerBuildServices(BuildServices) {
     def client_builder -> ClientBundleBuilder {
         import from jaclang.client.vite_client_bundle { make_client_bundle_builder }
         return make_client_bundle_builder();
+    }
+
+    def prepare_application(
+        entry_path: str,
+        program: JacProgram,
+        project_root: str,
+        default_codespace: str = ''
+    ) -> PreparedApplication {
+        import from jaclang.compiler.driver.application { prepare_application }
+        import from jaclang.compiler.frontend.codeinfo {
+            set_effective_default_codespace
+        }
+        if default_codespace {
+            set_effective_default_codespace(default_codespace);
+        }
+        return prepare_application(entry_path, program, project_root);
+    }
+
+    def hot_reloader(base_path: str, module_name: str) -> HotReloader {
+        import from jaclang.server.hmr { HotReloader }
+        import from jaclang.server.watcher { JacFileWatcher }
+        return HotReloader(
+            base_path=base_path,
+            module_name=module_name,
+            watcher=JacFileWatcher(watch_paths=[base_path])
+        );
     }
 
     def client_runtime_basename(framework: str) -> str {

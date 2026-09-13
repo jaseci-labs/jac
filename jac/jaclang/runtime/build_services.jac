@@ -5,12 +5,26 @@ import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.driver.selfhost { SelfHostCache }
 import type from jaclang.client.client_bundle { ClientBundleBuilder }
+import type from jaclang.runtime.prepared { PreparedApplication }
+import type from jaclang.server.hmr { HotReloader }
 
 class BuildServices(Protocol) {
     def compiler(self: BuildServices) -> JacCompiler;
     def program(self: BuildServices) -> JacProgram;
     def selfhost(self: BuildServices) -> SelfHostCache;
     def client_builder(self: BuildServices) -> ClientBundleBuilder;
+    def prepare_application(
+        self: BuildServices,
+        entry_path: str,
+        program: JacProgram,
+        project_root: str,
+        default_codespace: str = ''
+    ) -> PreparedApplication;
+
+    def hot_reloader(
+        self: BuildServices, base_path: str, module_name: str
+    ) -> HotReloader;
+
     def run_test(
         self: BuildServices,
         filepath: str,
