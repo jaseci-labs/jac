@@ -83,3 +83,12 @@ Jac owns resizing, slicing, conversion, iteration, and pickle reconstruction.
 Exported memoryviews pin the logical size, and conversion finishes before an
 address is taken so user callbacks cannot invalidate a saved buffer pointer.
 Array size reporting includes the Jac state and actual retained buffer allocation.
+
+`modules/pickle.jac` exposes typed reader/writer state. `pickle_encode.jac` and
+`pickle_decode.jac` implement all six protocols, memoization, object reductions,
+and callbacks; `pickle_stream.jac` owns framing and bounds checks, while
+`pickle_objects.jac` resolves globals and compatibility mappings. Retained
+CPython dictionaries store memo entries, and buffer objects keep their existing
+Python ABI. Shared serialization error notes live in `capi.jac`, also used by
+JSON. The two upstream pickle size assertions describe retired C layouts;
+smoke checks cover native memo allocation, reclamation, and callback cycles.

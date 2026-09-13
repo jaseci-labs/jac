@@ -278,6 +278,15 @@ def run_tests(args: any, calls: list[int]) -> int {
             );
         }
     }
+    if "_pickle" in args.native_modules and args.module == "test.test_pickle" {
+        # Both assertions specify retired C state layouts. Runtime smoke checks
+        # the native memo allocation, reclamation, and callback cycles instead.
+        test_module.SizeofTests = unittest.skip(
+            "CPython pickle C layouts replaced by native Jac storage"
+        )(
+            test_module.SizeofTests
+        );
+    }
     print("Compiler path: native Jac machine code", flush=True);
     try {
         sys.modules[args.module] = test_module;

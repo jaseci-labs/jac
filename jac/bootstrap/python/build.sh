@@ -228,6 +228,7 @@ _collections jac_modules/collections.c
 _functools jac_modules/functools.c
 itertools jac_modules/itertools.c
 array jac_modules/array.c
+_pickle jac_modules/pickle.c
 SETUP
     fi
     # CPython runs the compiler itself; dependency-oriented -O2 flags above

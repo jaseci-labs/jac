@@ -1,4 +1,26 @@
 """Native request orchestration; CPython value conversion stays at the ABI."""
+import from jaclang.runtime.python.modules.pickle {
+    jacpy_pickler_new,
+    jacpy_pickler_clear,
+    jacpy_unpickler_new,
+    jacpy_unpickler_clear,
+    jacpy_pickler_init,
+    jacpy_pickler_dump,
+    jacpy_pickler_field,
+    jacpy_pickler_size,
+    jacpy_unpickler_init,
+    jacpy_unpickler_load,
+    jacpy_unpickler_find,
+    jacpy_unpickler_field_count,
+    jacpy_unpickler_field,
+    jacpy_unpickler_size,
+    jacpy_pickler_memo,
+    jacpy_pickler_memo_clear,
+    jacpy_unpickler_memo,
+    jacpy_unpickler_memo_clear,
+    jacpy_pickler_memo_set,
+    jacpy_unpickler_memo_set
+}
 import from jaclang.runtime.python.modules.array {
     jacpy_array_new,
     jacpy_array_init,

@@ -74,7 +74,8 @@ if required_compiler is not None:
     import functools
     import itertools
     import array
-    for replacement in (_bisect, _heapq, _random, binascii, _operator, _queue, _json, _csv, _struct, cmath, math, _collections, _functools, itertools, array):
+    import _pickle
+    for replacement in (_bisect, _heapq, _random, binascii, _operator, _queue, _json, _csv, _struct, cmath, math, _collections, _functools, itertools, array, _pickle):
         assert replacement.__name__ in sys.builtin_module_names
         assert replacement.__spec__.origin == "built-in"
     # Startup imports itertools and functools; each native module must also
@@ -83,14 +84,64 @@ if required_compiler is not None:
     isolated = interpreters.create()
     try:
         isolated.exec("""
-import array, _functools, itertools
+import array, _functools, itertools, _pickle
 assert array.__spec__.origin == _functools.__spec__.origin == itertools.__spec__.origin == 'built-in'
 assert _functools.partial(pow, 2)(5) == 32
 assert list(itertools.islice(itertools.count(3), 3)) == [3, 4, 5]
 assert array.array('i', [1, 2]).tolist() == [1, 2]
+assert _pickle.__spec__.origin == 'built-in'
+assert _pickle.loads(_pickle.dumps({'a': [1, 2]})) == {'a': [1, 2]}
 """)
     finally:
         isolated.close()
+    import gc
+    import io
+    import pickle
+    import weakref
+    assert ctypes.pythonapi.jacpy_pickler_dump
+    assert ctypes.pythonapi.jacpy_unpickler_load
+    stream = io.BytesIO()
+    writer = pickle.Pickler(stream)
+    empty = writer.__sizeof__()
+    values = [[i] for i in range(10000)]
+    writer.dump(values)
+    grown = writer.__sizeof__()
+    assert grown > empty + 100000, (empty, grown)
+    writer.clear_memo()
+    assert writer.__sizeof__() < grown - 100000
+    reader = pickle.Unpickler(io.BytesIO(stream.getvalue()))
+    empty = reader.__sizeof__()
+    assert reader.load() == values
+    grown = reader.__sizeof__()
+    assert grown > empty + 100000, (empty, grown)
+    reader.memo.clear()
+    assert reader.__sizeof__() < grown - 100000
+
+    # Cyclic callbacks must be visible to CPython's collector.
+    class Sink:
+        def write(self, data):
+            pass
+
+    sink = Sink()
+    sink.writer = pickle.Pickler(sink)
+    reference = weakref.ref(sink)
+    del sink
+    gc.collect()
+    assert reference() is None
+
+    class Source:
+        def read(self, count):
+            return b""
+
+        def readline(self):
+            return b""
+
+    source = Source()
+    source.reader = pickle.Unpickler(source)
+    reference = weakref.ref(source)
+    del source
+    gc.collect()
+    assert reference() is None
     assert ctypes.pythonapi.jacpy_array_insert
     numeric_array = array.array('q')
     array_empty_size = numeric_array.__sizeof__()

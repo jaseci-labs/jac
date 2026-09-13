@@ -8,8 +8,8 @@
 #
 # Commented source paths record exclusions for the JacPython replacement.
 # Counts use pinned CPython 3.14.6 source lines, including comments and blanks.
-# Excluded: 41 C files / 95,685 lines; 24 headers / 10,077 lines.
-# Total: 65 files / 105,762 source lines excluded from every shipped runtime.
+# Excluded: 42 C files / 103,864 lines; 25 headers / 11,178 lines.
+# Total: 67 files / 115,042 source lines excluded from every shipped runtime.
 # A separate build-only CPython host restores these marked entries to produce
 # the native object. The shipped JacPython runtime includes none of them.
 # Keep build dependencies and ABI adapters aligned with these exclusions.
@@ -401,7 +401,7 @@ Modules/_multiprocessing/posixshmem.c
 Modules/_multiprocessing/semaphore.c
 Modules/_opcode.c
 # Modules/_operator.c  # removed: 2,032 source lines
-Modules/_pickle.c
+# Modules/_pickle.c  # removed: 8,179 source lines
 Modules/_posixsubprocess.c
 # Modules/_queuemodule.c  # removed: 628 source lines
 # Modules/_randommodule.c  # removed: 679 source lines
@@ -509,7 +509,7 @@ Modules/clinic/_lsprof.c.h
 Modules/clinic/_lzmamodule.c.h
 Modules/clinic/_opcode.c.h
 # Modules/clinic/_operator.c.h  # removed: 1,510 source lines
-Modules/clinic/_pickle.c.h
+# Modules/clinic/_pickle.c.h  # removed: 1,101 source lines
 Modules/clinic/_posixsubprocess.c.h
 # Modules/clinic/_queuemodule.c.h  # removed: 363 source lines
 # Modules/clinic/_randommodule.c.h  # removed: 177 source lines
