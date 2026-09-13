@@ -83,7 +83,6 @@ SEED_PATHS: tuple[str, ...] = (
     "runtime/prepared.jac",
     "runtime/prepared_loader.jac",
     "runtime/source_app.jac",
-    "runtime/interop_bridge.jac",
     "dist/source/build.jac",
     "dist/source/run.jac",
     "runtime/object_model.jac",
