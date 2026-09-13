@@ -1,3 +1,4 @@
+import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -62,6 +63,8 @@ glob PRIMITIVE_TYPES: list[str] = [
          + JAC_TYPE_REGISTRY.sized_scalar_names();
 
 walker MTIRGenPass(Transform) {
+    has prog: JacProgram;
+    static has HOST_PASS: bool = True;
     has ir_in: Module,
         cancel_token: any = None,
         _class_info_cache: dict[int, ClassInfo] = {};

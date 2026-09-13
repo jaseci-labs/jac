@@ -192,12 +192,56 @@ symlink at a different depth. Native dependency keys now use the existing runnin
 compiler identity instead of rescanning a partial source-file list. Generated
 relative dependency paths are normalized before filesystem lookup.
 
+## Packaged runtime and ownership follow-up
+
+The complete local staged build passed all 28 install, compiler-image and Stage-2
+verification steps. Stage 1 compiled 757 cold modules in 486.47 seconds, versus
+604.54 seconds in the earlier comparable eight-worker build (about 20% less for
+that phase). Stage 2 took 814.52 seconds under concurrent test load. These are
+local observations, not a forecast for total CI duration.
+
+The broad native/tools run passed 1,624 tests, with one assertion failure, one
+worker crash, and 18 skips. The lifetime test that crashed under the C build-host
+interpreter passed under the packaged runtime. Static archive linking exposed a
+real runtime-location bug when selecting an external compiler image. Floor
+lookup now uses the embedded interpreter's configured home, and selects the
+complete OS/architecture target instead of accepting an unrelated host floor.
+All seven static archive integration tests passed, including generated binary
+execution and absence of dynamic library dependencies. All 11 floor-resolution
+tests passed after the target-selection fix.
+
+Compiler namespace resolution now respects a loaded parent's search path. The
+six self-tree/namespace regressions passed; the deploy duplicate-type error was
+removed (the affected test then skipped locally without Kubernetes installed).
+Implicit void results are instances of NoneType, preserving rejection of the
+NoneType class as a return value. The new regression and all 15 eager-spawn tests
+passed.
+
+MTIR generation now writes to the compilation's explicit JacProgram through the
+existing host-pass infrastructure. All nine pass tests, including compilation
+with no global runtime program, passed. The combined SSO and MTIR integration
+rerun passed 38 tests, covering compilation-owned metadata, runtime imports,
+serialized metadata, and typed SSO mocks. All five outbox tests passed.
+
+The normal interface-cache suite passed 26 tests, including its corrupted-cache
+oracle; the npm regression passed three tests with verification explicitly
+enabled. An additional whole-suite globally enabled verification stress run was
+stopped after over 33 minutes; it is not counted as passing.
+
 ## Outstanding validation
 
 The normal integration commit hook passed all 261 source checks in 1,738.67
-seconds. The downstream compiler fix commit passed all 11 normal source checks.
-The latest completed Linux installation passed all 21 build steps, with 757 cold
-modules compiled in 2,203.82 seconds, before a newer push cancelled verification.
-The analysis changes passed all ten normal commit checks. The native changes passed both normal source checks in 40.95 seconds; a full
-native/tools suite and complete packaged self-rebuild are in progress. The Linux ARM64 native Python CI job passed on `5b14b0a01d`
-in about 92 minutes; the kit and macOS jobs are still running on that revision. Required CI checks on the final revision remain pending.
+seconds. The downstream compiler fix passed all 11 normal source checks; analysis
+and native follow-ups passed ten and two checks respectively.
+
+CI on preceding revision `5b14b0a01d` completed the Linux kit, Linux ARM64 and
+macOS ARM64 native builds successfully. Linux kit Stage 1 took 2,222.54 seconds,
+Stage 2 took 3,060.59 seconds, and warm materialization reused all 757 modules in
+5.90 seconds. Both Stage-1 and final caches were saved. Total cold kit time was
+about 120 minutes; Linux ARM64 completed in about 92 minutes. The runtime test
+runner lost communication with GitHub without a test result. Downstream CI
+identified the ownership and typing issues described above, plus a cold-work
+limit failure (795 versus the unchanged 760 ceiling) being rechecked.
+
+A complete rebuild of the final follow-up sources and required CI checks on the
+final revision remain in progress.

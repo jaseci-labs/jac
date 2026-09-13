@@ -10,6 +10,8 @@ import from jaclang.scale.config.config_loader { reset_scale_config }
 import from jaclang.scale.shared.enums { Platforms, Operations }
 import from jaclang.server.identity.user_manager { UserManager }
 import from jaclang.scale.sso.provider { SSOUserInfo }
+import from jaclang.scale.sso.firebase { FirebaseSSOProvider }
+import from .oauth_fixtures { fake_users }
 import from jaclang.scale.server.sso_ext { SSOExtension }
 import from jaclang.scale.sso.sso_auth { SSOAuth }
 import from tests.scale.support { RecordingHost }
@@ -146,7 +148,7 @@ test 'supported platforms includes firebase when configured' {
     with unittest.mock.patch(
         'jaclang.scale.sso.sso_auth.get_scale_config', return_value=mock_config
     ) {
-        user_manager = SSOAuth(users=unittest.mock.Mock());
+        user_manager = SSOAuth(users=fake_users());
         assert 'firebase' in user_manager.platforms;
         assert user_manager.platforms['firebase']['project_id']
             == 'test-firebase-project';
@@ -160,7 +162,7 @@ test 'supported platforms excludes firebase when not configured' {
     with unittest.mock.patch(
         'jaclang.scale.sso.sso_auth.get_scale_config', return_value=mock_config
     ) {
-        user_manager = SSOAuth(users=unittest.mock.Mock());
+        user_manager = SSOAuth(users=fake_users());
         assert 'firebase' not in user_manager.platforms;
     }
 }
@@ -181,7 +183,7 @@ test 'get sso with firebase platform' {
             'jaclang.scale.sso.firebase.credentials', mock_fb.credentials
         ) {
             sso = auth.get_sso(Platforms.FIREBASE.value);
-            assert sso is not None;
+            assert isinstance(sso, FirebaseSSOProvider);
             assert sso.project_id == 'test-firebase-project';
         }
     } finally {

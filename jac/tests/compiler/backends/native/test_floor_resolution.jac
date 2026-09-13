@@ -139,3 +139,38 @@ test "JAC_NATIVE_CA_BUNDLE overrides CA resolution (#6978 0.2)" {
         }
     }
 }
+
+test "selected compiler images locate the floor through the embedded interpreter" {
+    import sys;
+    import from pathlib { Path }
+    import from jaclang.dist.fused_binary { materialized_runtime_dir }
+    with tempfile.TemporaryDirectory() as directory {
+        runtime = Path(directory) / "runtime";
+        python_home = runtime / "python";
+        python_home.mkdir(parents=True);
+        (runtime / ".ok").touch();
+        with patch.object(sys, "base_prefix", str(python_home)) {
+            assert materialized_runtime_dir() == str(runtime);
+            (runtime / ".ok").unlink();
+            assert materialized_runtime_dir() is None;
+        }
+    }
+}
+
+test "floor selection rejects a different OS or development architecture" {
+    with tempfile.TemporaryDirectory() as base, patch(
+        "jaclang.dist.fused_binary.materialized_runtime_dir", return_value=None
+    ) {
+        _mk(
+            os.path.join(
+                base, ".python-build", "linux-x86_64", "python", "build", "lib"
+            )
+        );
+        assert resolve_floor_dir(base, "aarch64-unknown-linux-gnu") is None;
+        _mk(os.path.join(base, "python", "floor", "macos-aarch64"));
+        assert resolve_floor_dir(
+            _mk(os.path.join(base, "site")), "aarch64-unknown-linux-gnu"
+        )
+            is None;
+    }
+}

@@ -82,7 +82,9 @@ test "Legacy browser initiation binds random state to an HttpOnly cookie" {
             auth.sso_initiate("github", "login", "http://127.0.0.1:4567/callback")
         );
         assert isinstance(result, RedirectResponse);
-        params = parse_qs(urlparse(result.headers.get("location")).query);
+        location = result.headers.get("location");
+        assert isinstance(location, str);
+        params = parse_qs(urlparse(location).query);
         state = params["state"][0];
         assert state != "http://127.0.0.1:4567/callback";
         assert params["code_challenge_method"] == ["S256"];
@@ -98,9 +100,8 @@ test "Legacy browser callback rejects missing state and missing browser binding"
     tokens: any = FakeTokens();
     with patch.object(AuthTokenStore, "instance", return_value=tokens) {
         auth = configured();
-        with patch.object(
-            GithubSSOProvider, "_exchange_code", new_callable=AsyncMock
-        ) as exchange {
+        exchange = AsyncMock();
+        with patch.object(GithubSSOProvider, "_exchange_code", new=exchange) {
             assert not asyncio.run(
                 auth.sso_callback(callback_request(""), "github")
             ).ok;
@@ -123,12 +124,8 @@ test "Legacy browser callback completes only once with the originating cookie" {
         started: any = asyncio.run(auth.sso_initiate("github", "login"));
         state = parse_qs(urlparse(started.headers.get("location")).query)["state"][0];
         cookie = started.headers.get("set-cookie").split(";")[0];
-        with patch.object(
-            GithubSSOProvider,
-            "_exchange_code",
-            new_callable=AsyncMock,
-            return_value={"access_token": "provider-token"}
-        ) as exchange, patch.object(
+        exchange = AsyncMock(return_value={"access_token": "provider-token"});
+        with patch.object(GithubSSOProvider, "_exchange_code", new=exchange), patch.object(
             GithubSSOProvider,
             "fetch_user",
             new_callable=AsyncMock,
@@ -149,11 +146,17 @@ test "Legacy browser callback completes only once with the originating cookie" {
 
 test "SSO rejects invalid platforms operations and unconfigured providers" {
     auth = configured();
-    assert not asyncio.run(auth.sso_initiate("invalid", "login")).ok;
-    assert not asyncio.run(auth.sso_initiate("github", "invalid")).ok;
+    rejected_0 = asyncio.run(auth.sso_initiate("invalid", "login"));
+    assert isinstance(rejected_0, TransportResponse);
+    assert not rejected_0.ok;
+    rejected_1 = asyncio.run(auth.sso_initiate("github", "invalid"));
+    assert isinstance(rejected_1, TransportResponse);
+    assert not rejected_1.ok;
     assert not asyncio.run(auth.sso_callback(callback_request(""), "invalid")).ok;
     del auth.platforms["github"];
-    assert not asyncio.run(auth.sso_initiate("github", "login")).ok;
+    rejected_2 = asyncio.run(auth.sso_initiate("github", "login"));
+    assert isinstance(rejected_2, TransportResponse);
+    assert not rejected_2.ok;
     assert not asyncio.run(auth.sso_callback(callback_request(""), "github")).ok;
 }
 
@@ -162,17 +165,15 @@ test "GitHub sign-in needs public identity only and no email permission" {
         client_id="id", client_secret="secret", redirect_uri="https://app.test/callback"
     );
     assert p.scope() == "";
-    with patch.object(
-        GithubSSOProvider,
-        "_api_get",
-        new_callable=AsyncMock,
+    api = AsyncMock(
         return_value={
             "id": 123,
             "login": "alice",
             "name": "Alice",
             "avatar_url": "https://avatars.githubusercontent.com/u/123"
         }
-    ) as api {
+    );
+    with patch.object(GithubSSOProvider, "_api_get", new=api) {
         info = asyncio.run(p.fetch_user("token", {}));
         assert info.external_id == "123" and info.username == "alice";
         assert info.email == "";

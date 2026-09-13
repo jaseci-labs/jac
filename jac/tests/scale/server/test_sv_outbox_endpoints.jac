@@ -9,6 +9,7 @@ import tempfile;
 import time;
 import unittest.mock;
 import from pathlib { Path }
+import from jaclang.data.store { PgStore }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.compiler.driver.application { prepare_application }
 import from jaclang.server { sv_client }
@@ -312,7 +313,7 @@ test "PgOutboxStore: lease, expired-lease re-listing and prune on the embedded s
     session = Session(base_path=tmp);
     try {
         pg = session.store;
-        assert pg is not None;
+        assert isinstance(pg, PgStore);
         store = PgOutboxStore(store=pg);
         store.ensure_tables();
         now = time.time();
