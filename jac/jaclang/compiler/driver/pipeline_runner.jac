@@ -26,17 +26,21 @@ obj ModuleCompilation {
     }
 
     def parse {
-        existing = self.program.mod.hub.get(os.path.realpath(self.path));
+        resolved = os.path.realpath(self.path);
+        existing = self.program.mod.hub.get(resolved);
         if self.source is None
-            and not self.compiler.selfhost.is_selfhost(self.program)
             and existing is not None
             and not existing.stub_only
             and not existing.parse_failed
-            and self.program.is_hub_entry_fresh(os.path.realpath(self.path))
+            and self.program.is_hub_entry_fresh(resolved)
             and id(existing) in self.program.analysis.completed_passes {
             self.module = existing;
+            hits = self.program.analysis.tree_hits;
+            hits[resolved] = hits.get(resolved, 0) + 1;
             return;
         }
+        runs = self.program.analysis.parse_runs;
+        runs[resolved] = runs.get(resolved, 0) + 1;
         keep_str = self.source
             if self.source is not None
             else read_file_with_encoding(self.path);

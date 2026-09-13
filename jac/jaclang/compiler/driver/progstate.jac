@@ -13,40 +13,27 @@ import from jaclang.compiler.driver.pipeline_types {
 
 obj ModuleHub {
     has mod: uni.ProgramModule,
-        stamps: dict[str, float] = {},
+        stamps: dict[str, str] = {},
         artifacts: dict[str, any] = {},
         client_artifacts: dict[str, ClientArtifact] = {};
 
     def stamp(resolved_path: str) {
-        import time;
-        import from jaclang.compiler.driver.bccache { discover_annex_files }
-        seen = time.time();
+        import from jaclang.compiler.driver.jir { module_source_key }
         try {
-            seen = max(seen, os.path.getmtime(resolved_path));
-            for related in discover_annex_files(resolved_path) {
-                seen = max(seen, os.path.getmtime(related));
-            }
-        } except OSError {}
-        self.stamps[resolved_path] = seen;
+            self.stamps[resolved_path] = module_source_key(resolved_path);
+        } except OSError {
+            self.stamps.pop(resolved_path, None);
+        }
     }
 
     def is_fresh(resolved_path: str) -> bool {
-        import os;
-        import from jaclang.compiler.driver.bccache { discover_annex_files }
-        cached_at = self.stamps.get(resolved_path);
-        if cached_at is None {
-            return True;
+        import from jaclang.compiler.driver.jir { module_source_key }
+        revision = self.stamps.get(resolved_path);
+        if revision is None {
+            return False;
         }
         try {
-            if os.path.getmtime(resolved_path) > cached_at {
-                return False;
-            }
-            for related in discover_annex_files(resolved_path) {
-                if os.path.getmtime(related) > cached_at {
-                    return False;
-                }
-            }
-            return True;
+            return module_source_key(resolved_path) == revision;
         } except OSError {
             return False;
         }
@@ -79,7 +66,7 @@ obj ModuleHub {
 
     def reset(retain_stubs: bool = True) {
         retained_mods: dict[str, uni.Module] = {};
-        retained_stamps: dict[str, float] = {};
+        retained_stamps: dict[str, str] = {};
         dropped: list[uni.Module] = [];
         for (path, mod) in self.mod.hub.items() {
             if retain_stubs and path.endswith(".pyi") {
@@ -323,6 +310,8 @@ class AnalysisCaches {
         pass_runs: dict[str, int],
         pass_time: dict[str, float],
         phase_time: dict[str, float],
+        parse_runs: dict[str, int],
+        tree_hits: dict[str, int],
         completed_passes: dict[int, set[str]],
         product_tasks: dict[int, dict[CompilationProduct, ProductTask]],
         task_owners: dict[int, any],
@@ -337,6 +326,8 @@ class AnalysisCaches {
         self.pass_runs: dict[str, int] = {};
         self.pass_time: dict[str, float] = {};
         self.phase_time: dict[str, float] = {};
+        self.parse_runs = {};
+        self.tree_hits = {};
         self.completed_passes = {};
         self.product_tasks = {};
         self.task_owners = {};

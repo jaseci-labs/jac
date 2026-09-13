@@ -510,16 +510,23 @@ def module_env_fingerprint(source_path: str) -> str {
     return h.hexdigest();
 }
 
-def compute_module_key(source_path: str) -> str {
-    import from jaclang.compiler.driver.compilation_context { cache_identity }
+def module_source_key(source_path: str) -> str {
+    """Content and membership of a source unit, independent of its consumer.""";
     h = hashlib.sha256();
-    h.update(cache_identity().encode());
-    h.update(_env_fingerprint_for(source_path).encode());
     h.update(compute_content_sha256(source_path).encode());
     for (rel, digest) in _related_files(source_path) {
         h.update(rel.encode());
         h.update(digest.encode());
     }
+    return h.hexdigest();
+}
+
+def compute_module_key(source_path: str) -> str {
+    import from jaclang.compiler.driver.compilation_context { cache_identity }
+    h = hashlib.sha256();
+    h.update(cache_identity().encode());
+    h.update(_env_fingerprint_for(source_path).encode());
+    h.update(module_source_key(source_path).encode());
     return h.hexdigest();
 }
 

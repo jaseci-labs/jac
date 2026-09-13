@@ -42,6 +42,7 @@ impl JacProgram.install_module(
     if displaced is None {
         return;
     }
+    self.analysis.drop_tasks(id(displaced));
     work = self.analysis.placement_state.get('work');
     if work is not None {
         work.forget(displaced);
