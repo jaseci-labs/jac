@@ -173,6 +173,16 @@ jobs:
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
 
+      - name: Upload producer measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-kit-measurements
+          path: jac/.build-metrics
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: ignore
+
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2
         with:

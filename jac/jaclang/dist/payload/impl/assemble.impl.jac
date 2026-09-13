@@ -35,55 +35,69 @@ import from jaclang.dist.payload.pins { py_ver }
 import from jaclang.dist.payload.vendor { MUSL_ARTIFACTS }
 
 impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) {
-    py = resolve_python(python_dir);
-    work = out + ".work";
-    delete_tree(work);
-    make_dirs(work);
-
-    site = os.path.join(work, "site");
-    stage = os.path.join(work, "stage");
-
-    ts_versions = os.path.join(repo_root, TYPESHED_VENDOR, "stdlib", "VERSIONS");
-    if not file_exists(ts_versions) {
-        fetch_typeshed(repo_root);
+    try {
+        with opts.measurements.stage("payload") {
+            py = resolve_python(python_dir);
+            work = out + ".work";
+            delete_tree(work);
+            make_dirs(work);
+            site = os.path.join(work, "site");
+            stage = os.path.join(work, "stage");
+            ts_versions = os.path.join(
+                repo_root, TYPESHED_VENDOR, "stdlib", "VERSIONS"
+            );
+            if not file_exists(ts_versions) {
+                fetch_typeshed(repo_root);
+            }
+            log("==> assembling jaclang site from source (no pyproject build)");
+            run_child([py, "-m", "ensurepip", "--upgrade"], None, True);
+            run_child(
+                [py, "-m", "pip", "install", "--quiet", "--upgrade", "pip"], None, True
+            );
+            make_dirs(site);
+            with opts.measurements.stage("assemble_site") {
+                assemble_site(repo_root, site, opts);
+            }
+            with opts.measurements.stage("stage_floor") {
+                stage_floor(python_dir, work);
+            }
+            with opts.measurements.stage("precompile_and_seal") {
+                run_precompile_stage(py, python_dir, site, opts);
+            }
+            log("==> bundling watchdog (jac run --dev) + tomlkit");
+            delete_tree(os.path.join(site, "__pycache__"));
+            run_child(
+                [
+                    py,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--quiet",
+                    "watchdog>=3.0.0",
+                    "tomlkit",
+                    "--target",
+                    site
+                ],
+                None,
+                False
+            );
+            with opts.measurements.stage("stage_tree") {
+                stage_tree(python_dir, site, stage, opts.musl_dir, opts.wasm_libc_dir);
+            }
+            with opts.measurements.stage("python_bytecode") {
+                precompile_pyc(py, stage);
+            }
+            with opts.measurements.stage("archive_and_compress") {
+                tar_zst_dir(stage, out, opts.layer_cache);
+            }
+            log(f"==> payload: {out}");
+            delete_tree(work);
+        }
+    } finally {
+        opts.measurements.write(
+            os.environ.get("JAC_BUILD_METRICS", "") or out + ".metrics.json"
+        );
     }
-
-    log("==> assembling jaclang site from source (no pyproject build)");
-    run_child([py, "-m", "ensurepip", "--upgrade"], None, True);
-    run_child([py, "-m", "pip", "install", "--quiet", "--upgrade", "pip"], None, True);
-    make_dirs(site);
-
-    assemble_site(repo_root, site, opts);
-
-    stage_floor(python_dir, work);
-
-    run_precompile_stage(py, python_dir, site, opts);
-
-    log("==> bundling watchdog (jac run --dev) + tomlkit");
-    delete_tree(os.path.join(site, "__pycache__"));
-    run_child(
-        [
-            py,
-            "-m",
-            "pip",
-            "install",
-            "--quiet",
-            "watchdog>=3.0.0",
-            "tomlkit",
-            "--target",
-            site
-        ],
-        None,
-        False
-    );
-
-    stage_tree(python_dir, site, stage, opts.musl_dir, opts.wasm_libc_dir);
-
-    precompile_pyc(py, stage);
-
-    tar_zst_dir(stage, out, opts.layer_cache);
-    log(f"==> payload: {out}");
-    delete_tree(work);
 }
 
 impl resolve_python(python_dir: str) -> str {
@@ -192,9 +206,13 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
     jc_env["JAC_COMPILER_LIB"] = "off";
     jc_env["JAC_NO_DEV_SOURCE"] = "1";
     jc_env["JAC_STUBCAT_BUILDING"] = "1";
-    jc_ok = run_child(
-        [sys.executable, "-I", "-c", jc_boot, repo_root, jc_src, jc_dst], jc_env, True
-    );
+    with opts.measurements.stage("compiler_kernel") {
+        jc_ok = run_child(
+            [sys.executable, "-I", "-c", jc_boot, repo_root, jc_src, jc_dst],
+            jc_env,
+            True
+        );
+    }
     if (
         not jc_ok or not file_exists(jc_dst) or not file_exists(jc_dst + ".layout.json")
     ) {
@@ -267,7 +285,15 @@ impl run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOp
 
     delete_file(os.path.join(site_pre, "MANIFEST.json"));
     run_stubcat_stage(py, python_dir, site, opts);
-    precompile(py, python_dir, site, opts.seal, opts.debug_src, opts.skip_stubcat);
+    precompile(
+        py,
+        python_dir,
+        site,
+        opts.seal,
+        opts.debug_src,
+        opts.skip_stubcat,
+        measurements=opts.measurements
+    );
     if pc is not None {
         delete_tree(pc);
         copy_tree(site_pre, pc, skip_none);
@@ -287,7 +313,10 @@ impl run_stubcat_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts)
     site_pre = os.path.join(site, "jaclang", "_precompiled");
     make_dirs(site_pre);
     out = os.path.join(site_pre, "stubcat.bin");
-    if not run_stubcat(py, python_dir, site, out) {
+    with opts.measurements.stage("stub_catalog") {
+        built = run_stubcat(py, python_dir, site, out);
+    }
+    if not built {
         die("mkpayload: stub catalog build failed (see log above).");
     }
     if out_copy is not None {
@@ -338,8 +367,10 @@ impl precompile(
     site: str,
     seal: bool,
     debug_src: bool,
-    skip_stubcat: bool = False
+    skip_stubcat: bool = False,
+    measurements: BuildMeasurements | None = None
 ) {
+    timings = measurements if measurements is not None else BuildMeasurements();
     pc = os.path.join(site, "jaclang", "dist", "precompile_bytecode.jac");
     if not file_exists(pc) {
         return;
@@ -364,7 +395,9 @@ impl precompile(
     if skip_stubcat {
         env["JAC_STUBCAT_BUILDING"] = "1";
     }
-    run_child(argv, env, True);
+    with timings.stage("module_precompile") {
+        run_child(argv, env, True);
+    }
 
     pre_dir = os.path.join(site, "jaclang", "_precompiled");
     result = os.path.join(pre_dir, "PRECOMPILE_RESULT.json");
@@ -384,7 +417,10 @@ impl precompile(
         fin.append("--debug-src");
     }
     log("==> sealing (finalize): completeness check + manifest + freeze bootstrap");
-    if not run_child(fin, env, True) {
+    with timings.stage("seal_finalize") {
+        sealed = run_child(fin, env, True);
+    }
+    if not sealed {
         die("mkpayload: seal-finalize failed (see log above).");
     }
     if not file_exists(os.path.join(pre_dir, "MANIFEST.json")) {

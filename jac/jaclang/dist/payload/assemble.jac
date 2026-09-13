@@ -1,3 +1,5 @@
+import from jaclang.dist.payload.metrics { BuildMeasurements }
+
 glob PAYLOAD_ZSTD_LEVEL: int = 19,
      PAYLOAD_WINDOW_LOG: int = 24,
      TAR_PAX_FORMAT: int = 2,
@@ -59,7 +61,12 @@ obj MkPayloadOpts {
         seal: bool = False,
         debug_src: bool = False,
         stubcat_out: str | None = None,
-        skip_stubcat: bool = False;
+        skip_stubcat: bool = False,
+        measurements: BuildMeasurements postinit;
+
+    def postinit {
+        self.measurements = BuildMeasurements();
+    }
 }
 
 obj FoundLib {
@@ -86,7 +93,8 @@ def precompile(
     site: str,
     seal: bool,
     debug_src: bool,
-    skip_stubcat: bool = False
+    skip_stubcat: bool = False,
+    measurements: BuildMeasurements | None = None
 );
 
 def precompile_env(python_dir: str, site: str) -> dict[str, str];

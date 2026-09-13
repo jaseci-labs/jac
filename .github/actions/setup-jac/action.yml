@@ -233,6 +233,8 @@ runs:
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       working-directory: jac
+      env:
+        JAC_BUILD_METRICS: ${{ github.workspace }}/jac/.build-metrics/payload.json
       # On a shim-cache hit, stage the restored shim OUTSIDE its in-tree place
       # path before passing it via -Dshim-bin: the build's place step copies
       # -Dshim-bin back to that path, and a self-copy would read the file it is
