@@ -59,52 +59,14 @@ impl ViteCompiler.bundle(
     );
 }
 
-impl ViteCompiler._owes_wasm(self: ViteCompiler, module_path: Path) -> bool {
-    import from jaclang.compiler.frontend.constant { CodeContext }
-    import from jaclang { JacRuntime as Jac }
-    target = str(module_path.resolve());
-    compiled = Jac.get_program().mod.hub.get(target);
-    if compiled is not None {
-        return bool(compiled.declares_codespace(CodeContext.NATIVE));
-    }
-    declared = self.jac_client_compiler?.na_wasm_modules or set();
-    for known in declared {
-        try {
-            if str(Path(known).resolve()) == target {
-                return True;
-            }
-        } except OSError {
-            continue;
-        }
-    }
-    console.warning(
-        f"'{module_path.name}' not found in the compile hub and not recorded "
-            + "as a client native import, so no wasm will be emitted for it."
-    );
-    return False;
-}
-
 impl ViteCompiler._wasm_targets(self: ViteCompiler, module_path: Path) -> list[Path] {
-    targets: list[Path] = [];
-    if self._owes_wasm(module_path) {
-        targets.append(module_path);
-    }
-
-    declared = sorted(
-        getattr(self.jac_client_compiler, 'na_wasm_modules', set()) or set()
+    targets = sorted(
+        {Path(source).resolve() for source in self.jac_client_compiler.na_wasm_modules}
     );
-    for path_str in declared {
-        target = Path(path_str).resolve();
-        if target == module_path.resolve() {
-            continue;
+    for target in targets {
+        if not target.is_file() {
+            raise ClientBundleError(f"Native client dependency is missing: {target}");
         }
-        if not target.exists() {
-            console.warning(
-                f"na import target '{path_str}' not found; no wasm emitted for it"
-            );
-            continue;
-        }
-        targets.append(target);
     }
     return targets;
 }
@@ -317,7 +279,8 @@ impl ViteCompiler.init(
     compile_to_js_func: Callable[[Path], ClientArtifact],
     extract_exports_func: Callable[[ClientManifest | None], list[str]],
     extract_globals_func:
-        Callable[[ClientManifest | None, ModuleType | None], dict[str, any]]
+        Callable[[ClientManifest | None, ModuleType | None], dict[str, any]],
+    entry_path: str = ""
 ) {
     if (not vite_package_json or not vite_package_json.exists()) {
         raise ClientBundleError(
@@ -343,7 +306,8 @@ impl ViteCompiler.init(
         runtime_path=runtime_path,
         compile_to_js_func=compile_to_js_func,
         extract_exports_func=extract_exports_func,
-        extract_globals_func=extract_globals_func
+        extract_globals_func=extract_globals_func,
+        entry_path=entry_path
     );
     compiled_dir = self.jac_client_compiler.compiled_dir;
     if compiled_dir is None {
@@ -351,6 +315,8 @@ impl ViteCompiler.init(
     }
     self.compiled_dir = compiled_dir;
     self.jac_compiler = self.jac_client_compiler.jac_compiler;
-    self.vite_bundler = ViteBundler(self.project_dir, vite_output_dir, vite_minify);
+    self.vite_bundler = ViteBundler(
+        self.project_dir, vite_output_dir, vite_minify, entry_path=entry_path
+    );
     self._has_pages = False;
 }

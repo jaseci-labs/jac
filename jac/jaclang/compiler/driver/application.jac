@@ -6,7 +6,7 @@ import tempfile;
 import time;
 import from pathlib { Path }
 import type from jaclang.runtime.prepared { PreparedApplication }
-glob _FORMAT: int = 4,
+glob _FORMAT: int = 5,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
 def _inventory(`root: any, inputs: bool = False) -> dict {
@@ -104,7 +104,8 @@ def _semantic_metadata(revision: PreparedApplication, program: any) {
         actual = program_for(path, program);
         prefix = base_stem(path) + '.';
         revision.semantic[path] = {
-            key: value for (key, value) in actual.mtir_map.items()
+            key: value
+            for (key, value) in actual.mtir_map.items()
             if key.startswith(prefix)
         };
     }
@@ -385,7 +386,11 @@ def prepare_application(
                 }
                 revision = applications[0];
                 for application in applications {
-                    application.name = application.manifests.get(application.entry, {}).get('app', '');
+                    application.name = application.manifests.get(
+                        application.entry, {}
+                    ).get(
+                        'app', ''
+                    );
                 }
                 revision.services = tuple(entries[1:]);
                 revision.applications = applications[1:];
@@ -444,7 +449,7 @@ def _prepare(
     builder = None;
     if client {
         import from jaclang.client.vite_client_bundle { make_client_bundle_builder }
-        builder = make_client_bundle_builder(Path(`root));
+        builder = make_client_bundle_builder(Path(`root), entry_path=`entry);
         revision.client_compiler = builder._get_compiler();
         revision.client_dist = str(revision.client_compiler.vite_bundler.output_dir);
     }
@@ -453,6 +458,15 @@ def _prepare(
         if not record['has_client'] {
             revision.client_compiler = None;
             revision.client_dist = '';
+        }
+        if revision.client_compiler is not None {
+            revision.client_compiler.jac_client_compiler.na_wasm_modules = set(
+                record['client_native_sources']
+            );
+            revision.client_compiler._has_pages = record['client_has_pages'];
+            revision.client_compiler.jac_client_compiler._has_pages = record[
+                'client_has_pages'
+            ];
         }
         revision.code = record['code'];
         revision.manifests = record['manifests'];
@@ -593,6 +607,14 @@ def _prepare(
         `dict(
             key=key,
             has_client=has_client,
+            client_native_sources=sorted(
+                revision.client_compiler.jac_client_compiler.na_wasm_modules
+            )
+                if revision.client_compiler is not None
+                else [],
+            client_has_pages=revision.client_compiler._has_pages
+                if revision.client_compiler is not None
+                else False,
             code=revision.code,
             manifests=revision.manifests,
             sections=sections,

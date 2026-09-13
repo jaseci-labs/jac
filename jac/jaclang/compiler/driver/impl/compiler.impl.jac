@@ -1953,6 +1953,9 @@ impl JacCompiler.client_artifact_of(mod: uni.Module) -> (ClientArtifact | None) 
         return None;
     }
     native_sources: list[str] = [];
+    if mod.declares_codespace(CodeContext.NATIVE) {
+        native_sources.append(mod.loc.mod_path);
+    }
     for binding in mod.gen.interop_manifest.client_native_imports {
         if binding.source_module {
             native_sources.append(str(binding.source_module));

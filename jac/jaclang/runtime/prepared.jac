@@ -2,6 +2,7 @@ import os;
 import types;
 import from jaclang.runtime.object_model { field }
 import type from jaclang.runtime.semantic { Info }
+import type from jaclang.client.compiler { ViteCompiler }
 
 obj PreparedApplication {
     has `root: str,
@@ -12,7 +13,7 @@ obj PreparedApplication {
         origins: dict[str, str] = field(default_factory=`dict),
         name: str = '',
         namespace: str = '',
-        client_compiler: any = None,
+        client_compiler: ViteCompiler | None = None,
         client_enabled: bool = False,
         native: dict[str, tuple] = field(default_factory=`dict),
         services: tuple = (),
@@ -320,7 +321,7 @@ def module_builtins(application: PreparedApplication, source: str) -> dict {
     return result;
 }
 
-def execute_module(module: types.ModuleType, application: PreparedApplication) -> None {
+def execute_module(module: types.ModuleType, application: PreparedApplication) {
     filename = module.__file__;
     if filename is None {
         raise ImportError(f'Prepared module {module.__name__} has no source path');

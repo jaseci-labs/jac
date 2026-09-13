@@ -54,7 +54,8 @@ class ViteBundler {
         project_dir: Path,
         output_dir: Optional[Path] = None,
         minify: bool = False,
-        config_path: Optional[Path] = None
+        config_path: Optional[Path] = None,
+        entry_path: str = ""
     );
 
     def _get_client_dir(self: ViteBundler) -> Path;

@@ -1,5 +1,3 @@
-"""Project the existing client compiler workspace and Vite configuration."""
-
 import json;
 import shutil;
 import from pathlib { Path }
@@ -18,7 +16,7 @@ def write_client(application: PreparedApplication, base: Path) -> str {
     workspace = directory / 'client';
     compiled = workspace / 'compiled';
     shutil.copytree(compiler.compiled_dir, compiled, dirs_exist_ok=True);
-    bundler = ViteBundler(Path(application.root));
+    bundler = ViteBundler(Path(application.root), entry_path=application.entry);
     bundler.build_dir = workspace;
     bundler.output_dir = workspace / 'dist';
     bundler.project_dir = directory;

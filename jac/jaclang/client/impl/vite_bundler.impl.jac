@@ -52,11 +52,14 @@ impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
 }
 
 impl ViteBundler._client_app_dir(self: ViteBundler) -> Path {
+    if self.build_dir is not None {
+        return self.build_dir;
+    }
     client_dir = self._get_client_dir();
     try {
         import from jaclang.project.config { get_config }
         import from jaclang.project.client_paths { client_workspace_app }
-        app = client_workspace_app(get_config());
+        app = client_workspace_app(get_config(), self.config_loader.entry_path);
         if app is not None {
             return client_dir / app.name;
         }
@@ -1128,14 +1131,15 @@ impl ViteBundler.init(
     project_dir: Path,
     output_dir: Optional[Path] = None,
     minify: bool = False,
-    config_path: Optional[Path] = None
+    config_path: Optional[Path] = None,
+    entry_path: str = ""
 ) {
     import from jaclang.project.config { find_project_root }
     project_root = find_project_root(project_dir);
     self.project_dir = project_root[0] if project_root else project_dir;
     self.minify = minify;
     self.config_path = config_path;
-    self.config_loader = JacClientConfig(self.project_dir);
+    self.config_loader = JacClientConfig(self.project_dir, entry_path=entry_path);
 
     self.output_dir = output_dir or (self._client_app_dir() / 'dist');
 

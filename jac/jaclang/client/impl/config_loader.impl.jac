@@ -111,7 +111,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, any]
 }
 
 impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
-    target_app = self.get_jac_config().app_for_target();
+    target_app = self.get_jac_config().app_for_target(self.entry_path);
     app_name = target_app.name if target_app is not None else '';
     cached = self._config;
     if cached is not None and self._config_app == app_name {
@@ -270,7 +270,8 @@ impl JacClientConfig.get_assets_dir(
         );
         return Path(anchor) / configured;
     }
-    return client_app_root(jac_config, project_dir, entry_path) / 'assets';
+    return client_app_root(jac_config, project_dir, entry_path or self.entry_path)
+        / 'assets';
 }
 
 impl JacClientConfig.is_pwa_enabled(self: JacClientConfig) -> bool {

@@ -19,7 +19,7 @@ impl deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str
 }
 
 impl PluginConfigBase.postinit{
-    full_target = JacRuntime.get_full_target_path();
+    full_target = self.entry_path or JacRuntime.get_full_target_path();
     project_root_result = find_project_root(Path(full_target)) if full_target else None;
     self.project_dir = (
         self.project_dir
@@ -34,7 +34,7 @@ impl PluginConfigBase.postinit{
 
 impl PluginConfigBase.effective_jac_config -> JacConfig {
     jac_config = self.get_jac_config();
-    app = jac_config.app_for_target();
+    app = jac_config.app_for_target(self.entry_path);
     if app is None {
         return jac_config;
     }
@@ -46,7 +46,7 @@ impl PluginConfigBase.effective_jac_config -> JacConfig {
 }
 
 impl PluginConfigBase.load -> dict[str, any] {
-    target_app = self.get_jac_config().app_for_target();
+    target_app = self.get_jac_config().app_for_target(self.entry_path);
     app_name = target_app.name if target_app is not None else '';
     if self._config is not None and self._config_app == app_name {
         return self._config;
