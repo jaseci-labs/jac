@@ -308,3 +308,18 @@ def _split_tool_msg_images(msg: dict) -> tuple {
     }
     return ({** msg, "content": stripped_content}, image_blocks);
 }
+
+
+def response_dict(value: object) -> dict {
+    if isinstance(value, dict) {
+        return value;
+    }
+    dump = value?.model_dump;
+    result = dump() if callable(dump) else None;
+    if not isinstance(result, dict) {
+        raise TypeError(
+            f'Expected a model response mapping, got {type(value).__name__}'
+        );
+    }
+    return result;
+}

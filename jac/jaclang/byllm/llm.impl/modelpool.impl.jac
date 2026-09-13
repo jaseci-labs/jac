@@ -103,6 +103,7 @@ impl ModelPool._get_ctx_window(call_params: dict) -> int {
 
 
 impl ModelPool.model_call_no_stream(params: dict) -> dict {
+    assert self._router is not None;
     if self.strategy == "cost-based-routing" {
         coro = self._router.acompletion(**params);
         response: dict;
@@ -114,7 +115,8 @@ impl ModelPool.model_call_no_stream(params: dict) -> dict {
     return self._router.completion(**params);
 }
 
-impl ModelPool.model_call_with_stream(params: dict) -> Generator[object, None, None] {
+impl ModelPool.model_call_with_stream(params: dict) -> Iterable[object] {
+    assert self._router is not None;
     if self.strategy == "cost-based-routing" {
         async def _collect_stream -> list {
             result = await self._router.acompletion(stream=True, **params);
