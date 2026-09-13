@@ -30,6 +30,8 @@ runs:
         set -euo pipefail
         digest=$(git ls-tree -r HEAD -- jac jac.toml | git hash-object --stdin)
         echo "digest=$digest" >> "$GITHUB_OUTPUT"
+        llvm_digest=$(jq -cS .llvm jac/bootstrap/pins.json | git hash-object --stdin)
+        echo "llvm-digest=$llvm_digest" >> "$GITHUB_OUTPUT"
     - name: Restore cached jac binary
       id: cache
       uses: actions/cache/restore@v4
@@ -84,7 +86,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: jac/zig-out/lib/libjacllvm.*
-        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
+        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.llvm-digest }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.zig') }}
 
     # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
     # shim, so `zig build` needs that LLVM extracted first (there is no llvmlite
@@ -98,7 +100,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: jac/.llvm-build
-        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.llvm-digest }}
 
     # The contained bun runtime is fetched + sha256-verified and bundled into the
     # payload during `zig build`. Cache the extracted tree (~58 MB) so a binary
@@ -250,7 +252,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: jac/zig-out/lib/libjacllvm.*
-        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
+        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.llvm-digest }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.zig') }}
 
     - name: Save LLVM cache (trusted refs only)
       if: >-
@@ -261,7 +263,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: jac/.llvm-build
-        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.llvm-digest }}
 
     - name: Save bun cache (trusted refs only)
       if: >-
