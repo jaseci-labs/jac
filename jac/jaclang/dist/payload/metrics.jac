@@ -3,7 +3,6 @@
 import json;
 import time;
 import from jaclang.jac0core.resource_usage { child_cpu_seconds, peak_rss_mb }
-import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 
 obj StageMeasurement {
