@@ -494,57 +494,45 @@ impl JacCompiler._restore_sections(
 }
 
 impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None) {
-    import from pathlib { Path as _Path }
-    import from jaclang.jac0core { sealed as _sealed }
-    norm_file = os.path.normpath(os.path.abspath(full_target));
-    d = os.path.dirname(norm_file);
-    pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
-    while True {
-        bundle_dir = os.path.join(d, '_precompiled');
-        if os.path.isdir(bundle_dir) {
-            if _sealed.image_for_bundle_dir(bundle_dir) is None {
-                return None;
-            }
-            norm_root = os.path.normpath(d);
-            if not norm_file.startswith(norm_root + os.sep) {
-                return None;
-            }
-            rel_path = norm_file[len(norm_root) + 1:];
-            jir_path = os.path.join(
-                bundle_dir, pyver, os.path.splitext(rel_path)[0] + '.jir'
-            );
-            if os.path.isfile(jir_path) {
-                try {
-                    return (_Path(jir_path).read_bytes(), d);
-                } except OSError {
-                    return None;
-                }
-            }
-            return None;
-        }
-        parent = os.path.dirname(d);
-        if parent == d {
-            return None;
-        }
-        d = parent;
-    }
+    return self._precompiled_jir_data(full_target, allow_unsealed=False);
 }
 
 impl JacCompiler._get_precompiled_jir_bytecode(
     full_target: str, allow_unsealed: bool = True
 ) -> (tuple[bytes, bytes] | None) {
-    import from pathlib { Path as _Path }
     import from jaclang.compiler.driver.jir {
         PRECOMPILE_SENTINEL,
         SEC_CTDEPS,
         absolutize_ct_deps_section,
         cache_mode
     }
-    import from jaclang.jac0core { sealed as _sealed }
     (rebuild_flag, no_precompile) = cache_mode();
     if rebuild_flag or no_precompile {
         return None;
     }
+    found = self._precompiled_jir_data(full_target, allow_unsealed);
+    if found is None {
+        return None;
+    }
+    (data, package_root) = found;
+    bytecode = read_bytecode_only(data);
+    if bytecode is None {
+        return None;
+    }
+    dependencies = read_section_bytes(data, SEC_CTDEPS);
+    return (
+        patch_co_filenames_bytes(bytecode, PRECOMPILE_SENTINEL, package_root),
+        absolutize_ct_deps_section(dependencies, package_root) if dependencies else b""
+    );
+}
+
+impl JacCompiler._precompiled_jir_data(
+    full_target: str, allow_unsealed: bool = True
+) -> (tuple[bytes, str] | None) {
+    import from pathlib { Path as _Path }
+    import from jaclang.jac0core { sealed as _sealed }
+    (rebuild, no_precompile) = cache_mode();
+    reusable = allow_unsealed and not rebuild and not no_precompile;
     norm_file = os.path.normpath(os.path.abspath(full_target));
     d = os.path.dirname(norm_file);
     pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
@@ -560,7 +548,7 @@ impl JacCompiler._get_precompiled_jir_bytecode(
             jir_path = os.path.join(bundle_dir, pyver, jir_rel);
 
             sealed_img = _sealed.image_for_bundle_dir(bundle_dir);
-            if sealed_img is None and not allow_unsealed {
+            if sealed_img is None and not reusable {
                 break;
             }
             if os.path.isfile(jir_path) {
@@ -575,17 +563,7 @@ impl JacCompiler._get_precompiled_jir_bytecode(
                         )
                     );
                     if trusted {
-                        bc = read_bytecode_only(jir_data);
-                        if bc is not None {
-                            _ct_raw = read_section_bytes(jir_data, SEC_CTDEPS);
-                            return (
-                                patch_co_filenames_bytes(bc, PRECOMPILE_SENTINEL, d),
-                                absolutize_ct_deps_section(_ct_raw, norm_root)
-                                    if _ct_raw
-                                    else b"",
-
-                            );
-                        }
+                        return (jir_data, norm_root);
                     }
                 } except Exception {}
             }

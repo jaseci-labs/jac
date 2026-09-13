@@ -1,18 +1,12 @@
 import os;
+import time;
 import from pathlib { Path }
 import from jaclang.compiler.driver.compilation_context {
     CompilationSession,
-    SourceStore,
-    cache_scope
+    SourceStore
 }
 import from jaclang.compiler.driver.dependency_graph { dependency_groups }
-import from jaclang.compiler.driver.jir {
-    get_module_cache_path,
-    is_module_cache_valid,
-    read_dep_rows,
-    read_section_bytes,
-    SEC_DEPS
-}
+import from jaclang.compiler.driver.jir { read_dep_rows, read_section_bytes, SEC_DEPS }
 
 obj PrecompilePlan {
     has groups: list[list[str]],
@@ -24,74 +18,86 @@ obj PrecompilePlan {
 def plan_precompile(
     paths: list[str], package_root: str, app: str = ""
 ) -> PrecompilePlan {
+    started = time.monotonic();
     import from jaclang.dist.precompile_bytecode { precompile_context }
     import from jaclang.compiler.frontend.parser.frontend { annex_sources }
     import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
     import from jaclang.bootstrap_manifest { is_native_only_seed }
-    session = CompilationSession();
-    dependencies_graph = session.program.deps;
-    edges: dict[str, list[str]] = {};
-    pending = sorted(set(paths), reverse=True);
-    package_path = Path(package_root).resolve();
-    while pending {
-        path = os.path.realpath(pending.pop());
-        if path in edges {
-            continue;
-        }
-        program = precompile_context(path, package_root, session.program, app);
-        dependencies: set[str] | None = None;
-        with cache_scope(program.context_key, program.options) {
-            cache = get_module_cache_path(path);
-            if is_module_cache_valid(path, cache) {
+    with CompilationSession() as session {
+        dependencies_graph = session.program.deps;
+        edges: dict[str, list[str]] = {};
+        pending = sorted(set(paths), reverse=True);
+        package_path = Path(package_root).resolve();
+        dependency_hits = 0;
+        while pending {
+            path = os.path.realpath(pending.pop());
+            if path in edges {
+                continue;
+            }
+            program = precompile_context(path, package_root, session.program, app);
+            dependencies: set[str] | None = None;
+            found = program.iface_registry()._module_jir(path);
+            if found is not None {
+                (data, base_dir) = found;
+                if read_section_bytes(data, SEC_DEPS) is not None {
+                    dependencies = {
+                        dep for (dep, _, _) in read_dep_rows(data, base_dir)
+                    };
+                    dependency_hits += 1;
+                }
+            }
+            if dependencies is None {
                 try {
-                    data = cache.read_bytes();
-                    if read_section_bytes(data, SEC_DEPS) is not None {
-                        dependencies = {dep for (dep, _, _) in read_dep_rows(data)};
+                    unit = program.source_store.load(
+                        read_file_with_encoding(path),
+                        path,
+                        program,
+                        annex_sources(path)
+                    );
+                    with program.analysis.measure(path, "frontend:dependencies") {
+                        dependencies_graph.record_module(unit.syntax);
                     }
-                } except OSError {}
+                    dependencies = dependencies_graph.dependencies.get(path, set());
+                } except (OSError, ValueError) {
+                    dependencies = set();
+                }
             }
+            edges[path] = sorted(
+                dep
+                for dep in dependencies
+                if dep.endswith(".jac")
+                    and Path(dep).is_relative_to(package_path)
+                    and Path(dep).is_file()
+                    and not is_native_only_seed(
+                        Path(dep).relative_to(package_path).as_posix()
+                    )
+            );
+            pending.extend(reversed(edges[path]));
         }
-        if dependencies is None {
-            try {
-                unit = program.source_store.load(
-                    read_file_with_encoding(path), path, program, annex_sources(path)
-                );
-                dependencies_graph.record_module(unit.syntax);
-                dependencies = dependencies_graph.dependencies.get(path, set());
-            } except (OSError, ValueError) {
-                dependencies = set();
-            }
-        }
-        edges[path] = sorted(
-            dep
-            for dep in dependencies
-            if dep.endswith(".jac")
-                and Path(dep).is_relative_to(package_path)
-                and Path(dep).is_file()
-                and not is_native_only_seed(
-                    Path(dep).relative_to(package_path).as_posix()
-                )
-        );
-        pending.extend(reversed(edges[path]));
+        groups = dependency_groups(edges, paths);
+        owners = {
+            path: idx for (idx, members) in enumerate(groups) for path in members
+        };
+        prerequisites = {
+            idx: {
+                owners[dep] for path in members
+                for dep in edges[path]
+                if owners[dep] != idx
+            } for (idx, members) in enumerate(groups)
+        };
+        measurements = {
+            "groups": len(groups),
+            "modules": len(edges),
+            "syntax_parses": session.program.source_store.parses,
+            "retained_syntax": len(session.program.source_store.units),
+            "dependency_hits": dependency_hits,
+            "seconds": time.monotonic() - started,
+            "analysis": [
+                program.analysis.measurements() for program in session.programs()
+            ]
+        };
+        sources = session.program.source_store;
+        session.program.source_store = SourceStore();
+        return PrecompilePlan(groups, prerequisites, sources, measurements);
     }
-    groups = dependency_groups(edges, paths);
-    owners = {path: idx for (idx, members) in enumerate(groups) for path in members};
-    prerequisites = {
-        idx: {
-            owners[dep] for path in members
-            for dep in edges[path]
-            if owners[dep] != idx
-        } for (idx, members) in enumerate(groups)
-    };
-    measurements = {
-        "groups": len(groups),
-        "modules": len(edges),
-        "syntax_parses": session.program.source_store.parses,
-        "retained_syntax": len(session.program.source_store.units),
-        "analysis": [program.analysis.measurements() for program in session.programs()]
-    };
-
-    return PrecompilePlan(
-        groups, prerequisites, session.program.source_store, measurements
-    );
 }

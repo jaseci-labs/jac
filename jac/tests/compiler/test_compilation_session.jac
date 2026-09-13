@@ -109,6 +109,31 @@ test "a failed request releases its session state" {
     }
 }
 
+test "syntax eviction collects discarded cyclic trees within the release budget" {
+    import gc;
+    import weakref;
+    import from jaclang.compiler.driver.compilation_context { SourceStore }
+    program = JacProgram();
+    store = SourceStore(max_units=1);
+    source = "def answer() -> int { return 42; }\n";
+    first = weakref.ref(store.load(source, "/first.jac", program, []).syntax);
+    enabled = gc.isenabled();
+    gc.disable();
+    try {
+        with patch.dict(os.environ, {"JAC_UNIT_COLLECT_EVERY": "1"}) {
+            second = store.load(source, "/second.jac", program, []);
+            assert first() is None;
+            assert second.syntax.loc.mod_path == "/second.jac";
+            assert len(store.units) == 1;
+            assert set(store.revisions) == {"/second.jac"};
+        }
+    } finally {
+        if enabled {
+            gc.enable();
+        }
+    }
+}
+
 test "an edit during compilation cannot publish or retain the old tree" {
     with TemporaryDirectory() as directory, CompilationSession() as session {
         source = Path(directory) / "moving.jac";

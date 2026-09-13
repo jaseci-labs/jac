@@ -495,7 +495,7 @@ obj IfaceRegistry {
             }
         } except Exception {}
         try {
-            return self.prog._get_compiler()._sealed_jir_data(resolved);
+            return self.prog._get_compiler()._precompiled_jir_data(resolved);
         } except Exception {
             return None;
         }

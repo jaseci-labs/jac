@@ -1173,20 +1173,15 @@ def run_precompile(
     import from jaclang.compiler.driver.jir { read_debug_source }
     import from jaclang.cli.workpool {
         WorkPool,
+        env_int,
         forced_serial,
         jobs_setting,
+        maybe_malloc_trim,
         pool_available,
         resolve_jobs
     }
 
     raw_jobs = jobs_setting("precompile", jobs_arg);
-    workers = resolve_jobs(raw_jobs, env_var="JAC_PRECOMPILE_JOBS");
-    use_pool = (
-        pool_available()
-        and not forced_serial(raw_jobs)
-        and workers > 1
-        and len(jac_files) > 1
-    );
     counts: dict[str, int] = {"compiled": 0, "reused": 0, "failed": 0};
     measurements: list[dict[str, any]] = [];
 
@@ -1200,7 +1195,38 @@ def run_precompile(
     }
 
     import from jaclang.dist.precompile_plan { plan_precompile }
+    import from jaclang.runtime.runtime { JacRuntime }
+    compiler = JacRuntime.get_compiler();
+    compiler.release_compile_state(compiler.selfhost.program);
+    maybe_malloc_trim();
     plan = plan_precompile(jac_files, package_dir, app);
+    preparation_started = time.monotonic();
+    import jaclang.compiler.types.type_evaluator;
+    import jaclang.compiler.types.stubcat.modiface;
+    import from jaclang.compiler.driver.pipeline {
+        get_ir_gen_sched,
+        get_analysis_sched,
+        get_py_code_gen
+    }
+    compiler.ensure_stub_catalog();
+    get_ir_gen_sched();
+    get_analysis_sched();
+    get_py_code_gen(native=False);
+    compiler.release_compile_state(compiler.selfhost.program);
+    maybe_malloc_trim();
+    plan.measurements["worker_preparation_seconds"] = time.monotonic()
+        - preparation_started;
+    workers = resolve_jobs(
+        raw_jobs,
+        env_var="JAC_PRECOMPILE_JOBS",
+        worker_bytes=max(4096, env_int("JAC_PRECOMPILE_RECYCLE_MB", 4096)) * 1024 * 1024
+    );
+    use_pool = (
+        pool_available()
+        and not forced_serial(raw_jobs)
+        and workers > 1
+        and len(jac_files) > 1
+    );
     _discovery_sources[:] = [plan.sources];
     requested = set(jac_files);
     console.print(
@@ -1210,6 +1236,7 @@ def run_precompile(
     );
 
     def compile_unit(jac_path: str) -> dict[str, any] {
+        import from jaclang.compiler.driver.jir { cache_mode }
         analysis: list[dict[str, any]] = [];
         rel = Path(jac_path).relative_to(pkg_path);
         jir_path = out_dir / rel.with_suffix(".jir");
@@ -1227,7 +1254,8 @@ def run_precompile(
                     "analysis": analysis
                 };
             }
-            if jir_path.is_file() {
+            (rebuild, no_precompile) = cache_mode();
+            if not rebuild and not no_precompile and jir_path.is_file() {
                 existing = jir_path.read_bytes();
                 if precompiled_jir_matches_source(
                     existing, jac_path, package_root=package_dir

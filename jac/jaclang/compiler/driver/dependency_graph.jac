@@ -32,7 +32,10 @@ obj DepGraph {
         } except Exception {
             return;
         }
-        for imp in mod.get_all_sub_nodes(uni.Import) {
+        for imp in mod.flatten() {
+            if not isinstance(imp, uni.Import) {
+                continue;
+            }
             paths: list[uni.ModulePath] = [];
             if imp.from_loc is not None {
                 paths.append(imp.from_loc);

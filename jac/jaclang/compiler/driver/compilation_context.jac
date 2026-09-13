@@ -65,6 +65,7 @@ obj SourceStore {
         import from jaclang.compiler.driver.program { JacProgram }
         key = hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
         unit = self.units.pop(key, None);
+        discarded = False;
         if unit is None {
             diagnostics = JacProgram();
             with program.analysis.measure(path, "frontend:parse") {
@@ -79,6 +80,7 @@ obj SourceStore {
             previous = self.revisions.get(path);
             if previous is not None {
                 self.units.pop(previous, None);
+                discarded = True;
             }
             self.revisions[path] = key;
             self.parses += 1;
@@ -88,8 +90,19 @@ obj SourceStore {
         self.units[key] = unit;
         while len(self.units) > max(1, self.max_units) {
             oldest = next(iter(self.units));
-            removed = self.units.pop(oldest);
-            self.revisions.pop(removed.syntax.loc.mod_path, None);
+            old_path = self.units[oldest].syntax.loc.mod_path;
+            del self.units[oldest];
+            self.revisions.pop(old_path, None);
+            discarded = True;
+        }
+        if discarded {
+            import from jaclang.compiler.driver.progstate { unit_collect_budget }
+            if unit_collect_budget.due() {
+                import gc;
+                with program.analysis.measure(path, "frontend:collect") {
+                    gc.collect();
+                }
+            }
         }
         return unit;
     }
