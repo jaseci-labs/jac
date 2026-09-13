@@ -12,16 +12,16 @@ import from jaclang.runtime.python.bindings.arguments {
 import from jaclang.runtime.python.modules.bisect { jacpy_bisect }
 import from jaclang.runtime.python.capi { jacpy_is_none }
 
-def signature(name: str) -> CallSignature {
+def:priv signature(name: str) -> CallSignature {
     return CallSignature(name, ["a", "x", "lo", "hi", "key"], 2, 4);
 }
 
-glob left_signature = signature("bisect_left"),
+glob:priv left_signature = signature("bisect_left"),
      right_signature = signature("bisect_right"),
      insert_left_signature = signature("insort_left"),
      insert_right_signature = signature("insort_right");
 
-def search(args: BoundArguments, right: i64, insert: i64) -> u64 {
+def:priv search(args: BoundArguments, right: i64, insert: i64) -> u64 {
     low: i64 = 0;
     high: i64 = -1;
     if args.values[2] != 0 {
@@ -45,39 +45,39 @@ def search(args: BoundArguments, right: i64, insert: i64) -> u64 {
     return jacpy_bisect(args.values[0], args.values[1], low, high, key, right, insert);
 }
 
-def left(args: BoundArguments) -> u64 {
+def:priv left(args: BoundArguments) -> u64 {
     return search(args, 0, 0);
 }
 
-def right(args: BoundArguments) -> u64 {
+def:priv right(args: BoundArguments) -> u64 {
     return search(args, 1, 0);
 }
 
-def insert_left(args: BoundArguments) -> u64 {
+def:priv insert_left(args: BoundArguments) -> u64 {
     return search(args, 0, 1);
 }
 
-def insert_right(args: BoundArguments) -> u64 {
+def:priv insert_right(args: BoundArguments) -> u64 {
     return search(args, 1, 1);
 }
 
-def call_left(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv call_left(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(left_signature, args, kwargs, left);
 }
 
-def call_right(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv call_right(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(right_signature, args, kwargs, right);
 }
 
-def call_insert_left(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv call_insert_left(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(insert_left_signature, args, kwargs, insert_left);
 }
 
-def call_insert_right(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv call_insert_right(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(insert_right_signature, args, kwargs, insert_right);
 }
 
-glob definition = ModuleDefinition(
+glob:priv definition = ModuleDefinition(
          "_bisect",
          "Bisection algorithms implemented in native Jac.",
          [

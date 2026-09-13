@@ -18,117 +18,117 @@ import from jaclang.runtime.python.modules.cmath {
 }
 import from jaclang.runtime.python.capi { jacpy_float, jacpy_complex }
 
-def acos_call(module: u64, value: u64) -> u64 {
+def:priv acos_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(0, value);
 }
 
-def acosh_call(module: u64, value: u64) -> u64 {
+def:priv acosh_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(1, value);
 }
 
-def asin_call(module: u64, value: u64) -> u64 {
+def:priv asin_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(2, value);
 }
 
-def asinh_call(module: u64, value: u64) -> u64 {
+def:priv asinh_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(3, value);
 }
 
-def atan_call(module: u64, value: u64) -> u64 {
+def:priv atan_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(4, value);
 }
 
-def atanh_call(module: u64, value: u64) -> u64 {
+def:priv atanh_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(5, value);
 }
 
-def cos_call(module: u64, value: u64) -> u64 {
+def:priv cos_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(6, value);
 }
 
-def cosh_call(module: u64, value: u64) -> u64 {
+def:priv cosh_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(7, value);
 }
 
-def exp_call(module: u64, value: u64) -> u64 {
+def:priv exp_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(8, value);
 }
 
-def sin_call(module: u64, value: u64) -> u64 {
+def:priv sin_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(9, value);
 }
 
-def sinh_call(module: u64, value: u64) -> u64 {
+def:priv sinh_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(10, value);
 }
 
-def sqrt_call(module: u64, value: u64) -> u64 {
+def:priv sqrt_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(11, value);
 }
 
-def tan_call(module: u64, value: u64) -> u64 {
+def:priv tan_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(12, value);
 }
 
-def tanh_call(module: u64, value: u64) -> u64 {
+def:priv tanh_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(13, value);
 }
 
-def log10_call(module: u64, value: u64) -> u64 {
+def:priv log10_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(14, value);
 }
 
-def phase_call(module: u64, value: u64) -> u64 {
+def:priv phase_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(15, value);
 }
 
-def polar_call(module: u64, value: u64) -> u64 {
+def:priv polar_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(16, value);
 }
 
-def isfinite_call(module: u64, value: u64) -> u64 {
+def:priv isfinite_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(17, value);
 }
 
-def isinf_call(module: u64, value: u64) -> u64 {
+def:priv isinf_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(18, value);
 }
 
-def isnan_call(module: u64, value: u64) -> u64 {
+def:priv isnan_call(module: u64, value: u64) -> u64 {
     return jacpy_cmath_unary(19, value);
 }
 
-glob log_signature = CallSignature("log", ["z", "base"], 1, 2, 2),
+glob:priv log_signature = CallSignature("log", ["z", "base"], 1, 2, 2),
      rect_signature = CallSignature("rect", ["r", "phi"], 2, 2, 2),
      close_signature = CallSignature("isclose", ["a", "b", "rel_tol", "abs_tol"], 2, 2);
 
-def log_bound(args: BoundArguments) -> u64 {
+def:priv log_bound(args: BoundArguments) -> u64 {
     return jacpy_cmath_log(args.values[0], args.values[1]);
 }
 
-def rect_bound(args: BoundArguments) -> u64 {
+def:priv rect_bound(args: BoundArguments) -> u64 {
     return jacpy_cmath_rect(args.values[0], args.values[1]);
 }
 
-def close_bound(args: BoundArguments) -> u64 {
+def:priv close_bound(args: BoundArguments) -> u64 {
     return jacpy_cmath_isclose(
         args.values[0], args.values[1], args.values[2], args.values[3]
     );
 }
 
-def log_call(module: u64, args: u64) -> u64 {
+def:priv log_call(module: u64, args: u64) -> u64 {
     return invoke(log_signature, args, 0, log_bound);
 }
 
-def rect_call(module: u64, args: u64) -> u64 {
+def:priv rect_call(module: u64, args: u64) -> u64 {
     return invoke(rect_signature, args, 0, rect_bound);
 }
 
-def close_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv close_call(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(close_signature, args, kwargs, close_bound);
 }
 
-def execute(module: u64) -> i32 {
+def:priv execute(module: u64) -> i32 {
     names = ["pi", "e", "tau", "inf", "nan"];
     values = [
         3.14159265358979323846,
@@ -151,7 +151,7 @@ def execute(module: u64) -> i32 {
     return i32(0);
 }
 
-glob definition = ModuleDefinition(
+glob:priv definition = ModuleDefinition(
          "cmath",
          "Native Jac complex mathematics.",
          [

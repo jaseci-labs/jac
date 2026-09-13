@@ -17,8 +17,8 @@ import from jaclang.runtime.python.capi {
 import from c { def jacpy_ssize(value: u64) -> i64;  }
 
 obj BoundArguments {
-    has values: list[u64];
-    has context: u64 = 0;
+    has values: list[u64],
+        context: u64 = 0;
 
     def drop {
         for value in self.values {

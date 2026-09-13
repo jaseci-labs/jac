@@ -6,10 +6,10 @@ initialization. The immutable records can be shared by isolated interpreters.
 import from jaclang.runtime.python.capi { jacpy_release }
 import from c {
     obj ModuleHooks {
-        has execute: Callable[[u64], i32] = 0;
-        has traverse: Callable[[u64, u64, u64], i32] = 0;
-        has clear: Callable[[u64], i32] = 0;
-        has free: Callable[[u64], None] = 0;
+        has execute: Callable[[u64], i32] = 0,
+            traverse: Callable[[u64, u64, u64], i32] = 0,
+            clear: Callable[[u64], i32] = 0,
+            free: Callable[[u64], None] = 0;
     }  def jacpy_binding_module(
         name: str, doc: str, count: i64, hooks: ModuleHooks, state_count: i64
     ) -> u64;  def jacpy_binding_add(module: u64, name: str, value: u64) -> i64;  def jacpy_binding_method(
@@ -26,7 +26,7 @@ import from c {
         module: u64, index: i64
     ) -> u64;  def jacpy_binding_state_set(module: u64, index: i64, value: u64);  def jacpy_binding_visit(
         value: u64, visitor: u64, context: u64
-    ) -> i32;  def jacpy_binding_exception(name: str, base: str) -> u64;
+    ) -> i32;  def jacpy_binding_exception(name: str, base: str, doc: str) -> u64;
 }
 
 def traverse_state(module: u64, visitor: u64, context: u64) -> i32 {
@@ -60,6 +60,25 @@ obj MethodDefinition {
         flags: i64 = 3;
 }
 
+def install_methods(handle: u64, methods: list[MethodDefinition]) -> bool {
+    for index in range(len(methods)) {
+        method = methods[index];
+        if jacpy_binding_method(
+            handle,
+            i64(index),
+            method.name,
+            method.callback,
+            method.positional,
+            method.flags,
+            method.doc
+        )
+            < 0 {
+            return False;
+        }
+    }
+    return True;
+}
+
 obj ModuleDefinition {
     has handle: u64 = 0;
 
@@ -82,22 +101,9 @@ obj ModuleDefinition {
         if self.handle == 0 {
             return;
         }
-        for index in range(len(methods)) {
-            method = methods[index];
-            if jacpy_binding_method(
-                self.handle,
-                i64(index),
-                method.name,
-                method.callback,
-                method.positional,
-                method.flags,
-                method.doc
-            )
-                < 0 {
-                jacpy_binding_discard(self.handle);
-                self.handle = 0;
-                return;
-            }
+        if not install_methods(self.handle, methods) {
+            jacpy_binding_discard(self.handle);
+            self.handle = 0;
         }
     }
 

@@ -11,7 +11,7 @@ const inputs = [_][]const u8{
     "bootstrap/python/finalize.py",           "bootstrap/python/compiler-bridge.patch",
     "bootstrap/python/compiler_runtime.c",    "bootstrap/python/compiler_bridge.c",
     "bootstrap/python/object_api.c",          "bootstrap/python/binding_api.c",
-    "bootstrap/python/modules/random.c",      "bootstrap/python/modules/queue.c",
+
     "bootstrap/python/modules/operator.c",    "bootstrap/python/compiler_bridge.h",
     "bootstrap/python/modules/csv.c",         "bootstrap/python/prepare_native.py",
     "bootstrap/python/modules/json.c",        "bootstrap/python/modules/struct.c",

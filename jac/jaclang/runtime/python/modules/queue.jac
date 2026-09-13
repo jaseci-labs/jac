@@ -19,14 +19,36 @@ import from jaclang.runtime.python.capi {
     jacpy_set_none_exception,
     object_error
 }
+import from jaclang.runtime.python.bindings.state { NativeState }
+import from jaclang.runtime.python.bindings.module { jacpy_binding_visit }
+import from jaclang.runtime.python.capi { jacpy_lock_free }
 
 import from jaclang.runtime.python.modules.object_ring { object_ring }
 
-obj queue_state {
+obj queue_state(NativeState) {
     has lock: u64,
         items: object_ring = object_ring(),
         waiters: int = 0,
         notification: bool = False;
+
+    def clear {
+        jacpy_queue_clear(self);
+    }
+
+    def traverse_refs(visitor: u64, context: u64) -> i32 {
+        for i in range(self.items.count) {
+            result = jacpy_binding_visit(self.items.borrow(i), visitor, context);
+            if result != 0 {
+                return result;
+            }
+        }
+        return i32(0);
+    }
+
+    def drop {
+        self.clear();
+        jacpy_lock_free(self.lock);
+    }
 
     def notify {
         if self.waiters > 0 and self.items.count > 0 and not self.notification {

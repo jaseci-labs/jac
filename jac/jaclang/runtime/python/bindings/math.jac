@@ -31,318 +31,318 @@ import from jaclang.runtime.python.modules.math {
     jacpy_math_unary
 }
 
-def factorial_call(module: u64, value: u64) -> u64 {
+def:priv factorial_call(module: u64, value: u64) -> u64 {
     return jacpy_math_factorial(value);
 }
 
-def isqrt_call(module: u64, value: u64) -> u64 {
+def:priv isqrt_call(module: u64, value: u64) -> u64 {
     return jacpy_math_isqrt(value);
 }
 
-def gcd_call(module: u64, args: u64) -> u64 {
+def:priv gcd_call(module: u64, args: u64) -> u64 {
     return jacpy_math_gcd(args, 0);
 }
 
-def lcm_call(module: u64, args: u64) -> u64 {
+def:priv lcm_call(module: u64, args: u64) -> u64 {
     return jacpy_math_gcd(args, 1);
 }
 
-glob comb_signature = CallSignature("comb", ["n", "k"], 2, 2, 2);
-def comb_bound(args: BoundArguments) -> u64 {
+glob:priv comb_signature = CallSignature("comb", ["n", "k"], 2, 2, 2);
+def:priv comb_bound(args: BoundArguments) -> u64 {
     return jacpy_math_comb(args.values[0], args.values[1], 1);
 }
 
-def comb_call(module: u64, args: u64) -> u64 {
+def:priv comb_call(module: u64, args: u64) -> u64 {
     return invoke(comb_signature, args, 0, comb_bound);
 }
 
-glob perm_signature = CallSignature("perm", ["n", "k"], 1, 2, 2);
-def perm_bound(args: BoundArguments) -> u64 {
+glob:priv perm_signature = CallSignature("perm", ["n", "k"], 1, 2, 2);
+def:priv perm_bound(args: BoundArguments) -> u64 {
     return jacpy_math_comb(args.values[0], args.values[1], 0);
 }
 
-def perm_call(module: u64, args: u64) -> u64 {
+def:priv perm_call(module: u64, args: u64) -> u64 {
     return invoke(perm_signature, args, 0, perm_bound);
 }
 
-def acos_call(module: u64, value: u64) -> u64 {
+def:priv acos_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(0, value);
 }
 
-def acosh_call(module: u64, value: u64) -> u64 {
+def:priv acosh_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(1, value);
 }
 
-def asin_call(module: u64, value: u64) -> u64 {
+def:priv asin_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(2, value);
 }
 
-def asinh_call(module: u64, value: u64) -> u64 {
+def:priv asinh_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(3, value);
 }
 
-def atan_call(module: u64, value: u64) -> u64 {
+def:priv atan_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(4, value);
 }
 
-def atanh_call(module: u64, value: u64) -> u64 {
+def:priv atanh_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(5, value);
 }
 
-def cbrt_call(module: u64, value: u64) -> u64 {
+def:priv cbrt_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(6, value);
 }
 
-def cos_call(module: u64, value: u64) -> u64 {
+def:priv cos_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(7, value);
 }
 
-def cosh_call(module: u64, value: u64) -> u64 {
+def:priv cosh_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(8, value);
 }
 
-def erf_call(module: u64, value: u64) -> u64 {
+def:priv erf_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(9, value);
 }
 
-def erfc_call(module: u64, value: u64) -> u64 {
+def:priv erfc_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(10, value);
 }
 
-def exp_call(module: u64, value: u64) -> u64 {
+def:priv exp_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(11, value);
 }
 
-def exp2_call(module: u64, value: u64) -> u64 {
+def:priv exp2_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(12, value);
 }
 
-def expm1_call(module: u64, value: u64) -> u64 {
+def:priv expm1_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(13, value);
 }
 
-def fabs_call(module: u64, value: u64) -> u64 {
+def:priv fabs_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(14, value);
 }
 
-def gamma_call(module: u64, value: u64) -> u64 {
+def:priv gamma_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(15, value);
 }
 
-def lgamma_call(module: u64, value: u64) -> u64 {
+def:priv lgamma_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(16, value);
 }
 
-def log1p_call(module: u64, value: u64) -> u64 {
+def:priv log1p_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(17, value);
 }
 
-def sin_call(module: u64, value: u64) -> u64 {
+def:priv sin_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(18, value);
 }
 
-def sinh_call(module: u64, value: u64) -> u64 {
+def:priv sinh_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(19, value);
 }
 
-def sqrt_call(module: u64, value: u64) -> u64 {
+def:priv sqrt_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(20, value);
 }
 
-def tan_call(module: u64, value: u64) -> u64 {
+def:priv tan_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(21, value);
 }
 
-def tanh_call(module: u64, value: u64) -> u64 {
+def:priv tanh_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(22, value);
 }
 
-def degrees_call(module: u64, value: u64) -> u64 {
+def:priv degrees_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(23, value);
 }
 
-def radians_call(module: u64, value: u64) -> u64 {
+def:priv radians_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(24, value);
 }
 
-def isfinite_call(module: u64, value: u64) -> u64 {
+def:priv isfinite_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(25, value);
 }
 
-def isinf_call(module: u64, value: u64) -> u64 {
+def:priv isinf_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(26, value);
 }
 
-def isnan_call(module: u64, value: u64) -> u64 {
+def:priv isnan_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(27, value);
 }
 
-def ceil_call(module: u64, value: u64) -> u64 {
+def:priv ceil_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(28, value);
 }
 
-def floor_call(module: u64, value: u64) -> u64 {
+def:priv floor_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(29, value);
 }
 
-def trunc_call(module: u64, value: u64) -> u64 {
+def:priv trunc_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(30, value);
 }
 
-def log10_call(module: u64, value: u64) -> u64 {
+def:priv log10_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(31, value);
 }
 
-def log2_call(module: u64, value: u64) -> u64 {
+def:priv log2_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(32, value);
 }
 
-def ulp_call(module: u64, value: u64) -> u64 {
+def:priv ulp_call(module: u64, value: u64) -> u64 {
     return jacpy_math_unary(33, value);
 }
 
-glob atan2_signature = CallSignature("atan2", ["x", "y"], 2, 2, 2);
-def atan2_bound(args: BoundArguments) -> u64 {
+glob:priv atan2_signature = CallSignature("atan2", ["x", "y"], 2, 2, 2);
+def:priv atan2_bound(args: BoundArguments) -> u64 {
     return jacpy_math_binary(0, args.values[0], args.values[1]);
 }
 
-def atan2_call(module: u64, args: u64) -> u64 {
+def:priv atan2_call(module: u64, args: u64) -> u64 {
     return invoke(atan2_signature, args, 0, atan2_bound);
 }
 
-glob copysign_signature = CallSignature("copysign", ["x", "y"], 2, 2, 2);
-def copysign_bound(args: BoundArguments) -> u64 {
+glob:priv copysign_signature = CallSignature("copysign", ["x", "y"], 2, 2, 2);
+def:priv copysign_bound(args: BoundArguments) -> u64 {
     return jacpy_math_binary(1, args.values[0], args.values[1]);
 }
 
-def copysign_call(module: u64, args: u64) -> u64 {
+def:priv copysign_call(module: u64, args: u64) -> u64 {
     return invoke(copysign_signature, args, 0, copysign_bound);
 }
 
-glob fmod_signature = CallSignature("fmod", ["x", "y"], 2, 2, 2);
-def fmod_bound(args: BoundArguments) -> u64 {
+glob:priv fmod_signature = CallSignature("fmod", ["x", "y"], 2, 2, 2);
+def:priv fmod_bound(args: BoundArguments) -> u64 {
     return jacpy_math_binary(2, args.values[0], args.values[1]);
 }
 
-def fmod_call(module: u64, args: u64) -> u64 {
+def:priv fmod_call(module: u64, args: u64) -> u64 {
     return invoke(fmod_signature, args, 0, fmod_bound);
 }
 
-glob remainder_signature = CallSignature("remainder", ["x", "y"], 2, 2, 2);
-def remainder_bound(args: BoundArguments) -> u64 {
+glob:priv remainder_signature = CallSignature("remainder", ["x", "y"], 2, 2, 2);
+def:priv remainder_bound(args: BoundArguments) -> u64 {
     return jacpy_math_binary(3, args.values[0], args.values[1]);
 }
 
-def remainder_call(module: u64, args: u64) -> u64 {
+def:priv remainder_call(module: u64, args: u64) -> u64 {
     return invoke(remainder_signature, args, 0, remainder_bound);
 }
 
-glob pow_signature = CallSignature("pow", ["x", "y"], 2, 2, 2);
-def pow_bound(args: BoundArguments) -> u64 {
+glob:priv pow_signature = CallSignature("pow", ["x", "y"], 2, 2, 2);
+def:priv pow_bound(args: BoundArguments) -> u64 {
     return jacpy_math_binary(4, args.values[0], args.values[1]);
 }
 
-def pow_call(module: u64, args: u64) -> u64 {
+def:priv pow_call(module: u64, args: u64) -> u64 {
     return invoke(pow_signature, args, 0, pow_bound);
 }
 
-glob log_signature = CallSignature("log", ["x", "base"], 1, 2, 2);
-def log_bound(args: BoundArguments) -> u64 {
+glob:priv log_signature = CallSignature("log", ["x", "base"], 1, 2, 2);
+def:priv log_bound(args: BoundArguments) -> u64 {
     return jacpy_math_log(args.values[0], args.values[1]);
 }
 
-def log_call(module: u64, args: u64) -> u64 {
+def:priv log_call(module: u64, args: u64) -> u64 {
     return invoke(log_signature, args, 0, log_bound);
 }
 
-glob ldexp_signature = CallSignature("ldexp", ["x", "i"], 2, 2, 2);
-def ldexp_bound(args: BoundArguments) -> u64 {
+glob:priv ldexp_signature = CallSignature("ldexp", ["x", "i"], 2, 2, 2);
+def:priv ldexp_bound(args: BoundArguments) -> u64 {
     return jacpy_math_ldexp(args.values[0], args.values[1]);
 }
 
-def ldexp_call(module: u64, args: u64) -> u64 {
+def:priv ldexp_call(module: u64, args: u64) -> u64 {
     return invoke(ldexp_signature, args, 0, ldexp_bound);
 }
 
-glob fma_signature = CallSignature("fma", ["x", "y", "z"], 3, 3, 3);
-def fma_bound(args: BoundArguments) -> u64 {
+glob:priv fma_signature = CallSignature("fma", ["x", "y", "z"], 3, 3, 3);
+def:priv fma_bound(args: BoundArguments) -> u64 {
     return jacpy_math_fma(args.values[0], args.values[1], args.values[2]);
 }
 
-def fma_call(module: u64, args: u64) -> u64 {
+def:priv fma_call(module: u64, args: u64) -> u64 {
     return invoke(fma_signature, args, 0, fma_bound);
 }
 
-def frexp_call(module: u64, value: u64) -> u64 {
+def:priv frexp_call(module: u64, value: u64) -> u64 {
     return jacpy_math_parts(0, value);
 }
 
-def modf_call(module: u64, value: u64) -> u64 {
+def:priv modf_call(module: u64, value: u64) -> u64 {
     return jacpy_math_parts(1, value);
 }
 
-glob isclose_signature = CallSignature(
+glob:priv isclose_signature = CallSignature(
          "isclose", ["a", "b", "rel_tol", "abs_tol"], 2, 2, 0
      );
 
-def isclose_bound(args: BoundArguments) -> u64 {
+def:priv isclose_bound(args: BoundArguments) -> u64 {
     return jacpy_math_isclose(
         args.values[0], args.values[1], args.values[2], args.values[3]
     );
 }
 
-def isclose_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv isclose_call(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(isclose_signature, args, kwargs, isclose_bound);
 }
 
-glob nextafter_signature = CallSignature(
+glob:priv nextafter_signature = CallSignature(
          "nextafter", ["x", "y", "steps"], 2, 2, 2
      );
 
-def nextafter_bound(args: BoundArguments) -> u64 {
+def:priv nextafter_bound(args: BoundArguments) -> u64 {
     return jacpy_math_nextafter(args.values[0], args.values[1], args.values[2]);
 }
 
-def nextafter_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv nextafter_call(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(nextafter_signature, args, kwargs, nextafter_bound);
 }
 
-def fsum_call(module: u64, value: u64) -> u64 {
+def:priv fsum_call(module: u64, value: u64) -> u64 {
     return jacpy_math_fsum(value);
 }
 
-def hypot_call(module: u64, args: u64) -> u64 {
+def:priv hypot_call(module: u64, args: u64) -> u64 {
     return jacpy_math_hypot(args);
 }
 
-glob dist_signature = CallSignature("dist", ["p", "q"], 2, 2, 2);
-def dist_bound(args: BoundArguments) -> u64 {
+glob:priv dist_signature = CallSignature("dist", ["p", "q"], 2, 2, 2);
+def:priv dist_bound(args: BoundArguments) -> u64 {
     return jacpy_math_dist(args.values[0], args.values[1]);
 }
 
-def dist_call(module: u64, args: u64) -> u64 {
+def:priv dist_call(module: u64, args: u64) -> u64 {
     return invoke(dist_signature, args, 0, dist_bound);
 }
 
-glob sumprod_signature = CallSignature("sumprod", ["p", "q"], 2, 2, 2);
-def sumprod_bound(args: BoundArguments) -> u64 {
+glob:priv sumprod_signature = CallSignature("sumprod", ["p", "q"], 2, 2, 2);
+def:priv sumprod_bound(args: BoundArguments) -> u64 {
     return jacpy_math_sumprod(args.values[0], args.values[1]);
 }
 
-def sumprod_call(module: u64, args: u64) -> u64 {
+def:priv sumprod_call(module: u64, args: u64) -> u64 {
     return invoke(sumprod_signature, args, 0, sumprod_bound);
 }
 
-glob prod_signature = CallSignature("prod", ["iterable", "start"], 1, 1, 1);
-def prod_bound(args: BoundArguments) -> u64 {
+glob:priv prod_signature = CallSignature("prod", ["iterable", "start"], 1, 1, 1);
+def:priv prod_bound(args: BoundArguments) -> u64 {
     return jacpy_math_prod(args.values[0], args.values[1]);
 }
 
-def prod_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv prod_call(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(prod_signature, args, kwargs, prod_bound);
 }
 
-def execute(module: u64) -> i32 {
+def:priv execute(module: u64) -> i32 {
     names = ["pi", "e", "tau", "inf", "nan"];
     values = [
         3.14159265358979323846,
@@ -359,7 +359,7 @@ def execute(module: u64) -> i32 {
     return i32(0);
 }
 
-glob definition = ModuleDefinition(
+glob:priv definition = ModuleDefinition(
          "math",
          "Native Jac mathematics.",
          [

@@ -182,14 +182,7 @@ import from jaclang.runtime.python.modules.json {
     jacpy_json_scan,
     jacpy_json_encode
 }
-import from jaclang.runtime.python.modules.queue {
-    jacpy_queue_new,
-    jacpy_queue_clear,
-    jacpy_queue_size,
-    jacpy_queue_borrow,
-    jacpy_queue_put,
-    jacpy_queue_get
-}
+import from jaclang.runtime.python.bindings.queue { PyInit__queue }
 import from jaclang.runtime.python.modules.operator {
     jacpy_operator_prepare,
     jacpy_operator_apply,
@@ -246,14 +239,7 @@ import from jaclang.runtime.python.modules.operator {
     jacpy_operator_digest
 }
 import from jaclang.runtime.python.bindings.binascii { PyInit_binascii }
-import from jaclang.runtime.python.modules.random {
-    jacpy_random_new,
-    jacpy_random_seed,
-    jacpy_random_float,
-    jacpy_random_getstate,
-    jacpy_random_setstate,
-    jacpy_random_bits
-}
+import from jaclang.runtime.python.bindings.random { PyInit__random }
 import from jaclang.runtime.python.bindings.bisect { PyInit__bisect }
 import from jaclang.runtime.python.bindings.heapq { PyInit__heapq }
 import from jaclang.runtime.python.tokenize {

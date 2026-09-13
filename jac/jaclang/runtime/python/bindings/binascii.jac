@@ -31,7 +31,7 @@ import from c {
     ) -> i64;
 }
 
-def convert(module: u64, data: u64, operation: int, options: list[u64]) -> u64 {
+def:priv convert(module: u64, data: u64, operation: int, options: list[u64]) -> u64 {
     view = BufferArgument();
     if not view.acquire(data, operation in [0, 2, 4, 6]) {
         return 0;
@@ -108,89 +108,91 @@ def convert(module: u64, data: u64, operation: int, options: list[u64]) -> u64 {
     return result;
 }
 
-def a2b_uu_call(module: u64, data: u64) -> u64 {
+def:priv a2b_uu_call(module: u64, data: u64) -> u64 {
     return convert(module, data, 0, []);
 }
 
-def a2b_hex_call(module: u64, data: u64) -> u64 {
+def:priv a2b_hex_call(module: u64, data: u64) -> u64 {
     return convert(module, data, 4, []);
 }
 
-def unhexlify_call(module: u64, data: u64) -> u64 {
+def:priv unhexlify_call(module: u64, data: u64) -> u64 {
     return convert(module, data, 4, []);
 }
 
-glob b2a_uu_signature = CallSignature("b2a_uu", ["data", "backtick"], 1, 1, 1);
-def b2a_uu_bound(args: BoundArguments) -> u64 {
+glob:priv b2a_uu_signature = CallSignature(
+         "b2a_uu", ["data", "backtick"], 1, 1, 1
+     );
+def:priv b2a_uu_bound(args: BoundArguments) -> u64 {
     return convert(args.context, args.values[0], 1, [args.values[1]]);
 }
 
-def b2a_uu_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv b2a_uu_call(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(b2a_uu_signature, args, kwargs, b2a_uu_bound, module);
 }
 
-glob a2b_base64_signature = CallSignature(
+glob:priv a2b_base64_signature = CallSignature(
          "a2b_base64", ["data", "strict_mode"], 1, 1, 1
      );
 
-def a2b_base64_bound(args: BoundArguments) -> u64 {
+def:priv a2b_base64_bound(args: BoundArguments) -> u64 {
     return convert(args.context, args.values[0], 2, [args.values[1]]);
 }
 
-def a2b_base64_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv a2b_base64_call(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(a2b_base64_signature, args, kwargs, a2b_base64_bound, module);
 }
 
-glob b2a_base64_signature = CallSignature(
+glob:priv b2a_base64_signature = CallSignature(
          "b2a_base64", ["data", "newline"], 1, 1, 1
      );
 
-def b2a_base64_bound(args: BoundArguments) -> u64 {
+def:priv b2a_base64_bound(args: BoundArguments) -> u64 {
     return convert(args.context, args.values[0], 3, [args.values[1]]);
 }
 
-def b2a_base64_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv b2a_base64_call(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(b2a_base64_signature, args, kwargs, b2a_base64_bound, module);
 }
 
-glob b2a_hex_signature = CallSignature(
+glob:priv b2a_hex_signature = CallSignature(
          "b2a_hex", ["data", "sep", "bytes_per_sep"], 1, 3, 0
      );
 
-def b2a_hex_bound(args: BoundArguments) -> u64 {
+def:priv b2a_hex_bound(args: BoundArguments) -> u64 {
     return convert(args.context, args.values[0], 5, [args.values[1], args.values[2]]);
 }
 
-def b2a_hex_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv b2a_hex_call(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(b2a_hex_signature, args, kwargs, b2a_hex_bound, module);
 }
 
-glob hexlify_signature = CallSignature(
+glob:priv hexlify_signature = CallSignature(
          "hexlify", ["data", "sep", "bytes_per_sep"], 1, 3, 0
      );
 
-def hexlify_bound(args: BoundArguments) -> u64 {
+def:priv hexlify_bound(args: BoundArguments) -> u64 {
     return convert(args.context, args.values[0], 5, [args.values[1], args.values[2]]);
 }
 
-def hexlify_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv hexlify_call(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(hexlify_signature, args, kwargs, hexlify_bound, module);
 }
 
-glob a2b_qp_signature = CallSignature("a2b_qp", ["data", "header"], 1, 2, 0);
-def a2b_qp_bound(args: BoundArguments) -> u64 {
+glob:priv a2b_qp_signature = CallSignature("a2b_qp", ["data", "header"], 1, 2, 0);
+def:priv a2b_qp_bound(args: BoundArguments) -> u64 {
     return convert(args.context, args.values[0], 6, [args.values[1]]);
 }
 
-def a2b_qp_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv a2b_qp_call(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(a2b_qp_signature, args, kwargs, a2b_qp_bound, module);
 }
 
-glob b2a_qp_signature = CallSignature(
+glob:priv b2a_qp_signature = CallSignature(
          "b2a_qp", ["data", "quotetabs", "istext", "header"], 1, 4, 0
      );
 
-def b2a_qp_bound(args: BoundArguments) -> u64 {
+def:priv b2a_qp_bound(args: BoundArguments) -> u64 {
     return convert(
         args.context,
         args.values[0],
@@ -199,43 +201,43 @@ def b2a_qp_bound(args: BoundArguments) -> u64 {
     );
 }
 
-def b2a_qp_call(module: u64, args: u64, kwargs: u64) -> u64 {
+def:priv b2a_qp_call(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(b2a_qp_signature, args, kwargs, b2a_qp_bound, module);
 }
 
-glob crc_hqx_signature = CallSignature("crc_hqx", ["data", "crc"], 2, 2, 2);
-def crc_hqx_bound(args: BoundArguments) -> u64 {
+glob:priv crc_hqx_signature = CallSignature("crc_hqx", ["data", "crc"], 2, 2, 2);
+def:priv crc_hqx_bound(args: BoundArguments) -> u64 {
     return convert(args.context, args.values[0], 8, [args.values[1]]);
 }
 
-def crc_hqx_call(module: u64, args: u64) -> u64 {
+def:priv crc_hqx_call(module: u64, args: u64) -> u64 {
     return invoke(crc_hqx_signature, args, 0, crc_hqx_bound, module);
 }
 
-glob crc32_signature = CallSignature("crc32", ["data", "crc"], 1, 2, 2);
-def crc32_bound(args: BoundArguments) -> u64 {
+glob:priv crc32_signature = CallSignature("crc32", ["data", "crc"], 1, 2, 2);
+def:priv crc32_bound(args: BoundArguments) -> u64 {
     return convert(args.context, args.values[0], 9, [args.values[1]]);
 }
 
-def crc32_call(module: u64, args: u64) -> u64 {
+def:priv crc32_call(module: u64, args: u64) -> u64 {
     return invoke(crc32_signature, args, 0, crc32_bound, module);
 }
 
-def execute(module: u64) -> i32 {
+def:priv execute(module: u64) -> i32 {
     if not add_state_owned(
-        module, 0, "Error", jacpy_binding_exception("binascii.Error", "ValueError")
+        module, 0, "Error", jacpy_binding_exception("binascii.Error", "ValueError", "")
     ) {
         return i32(-1);
     }
     if not add_state_owned(
-        module, 1, "Incomplete", jacpy_binding_exception("binascii.Incomplete", "")
+        module, 1, "Incomplete", jacpy_binding_exception("binascii.Incomplete", "", "")
     ) {
         return i32(-1);
     }
     return i32(0);
 }
 
-glob definition = ModuleDefinition(
+glob:priv definition = ModuleDefinition(
          "binascii",
          "Binary codecs implemented in native Jac.",
          [

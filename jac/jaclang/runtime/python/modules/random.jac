@@ -33,7 +33,9 @@ import from jaclang.runtime.python.capi {
     jacpy_buffer_set
 }
 
-obj mt19937 {
+import from jaclang.runtime.python.bindings.state { NativeState }
+
+obj mt19937(NativeState) {
     has words: list[u32] = [u32(0) for i in range(624)],
         index: int = 0;
 }
