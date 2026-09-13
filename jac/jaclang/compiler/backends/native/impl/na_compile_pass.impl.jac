@@ -17,39 +17,10 @@ def _mod_bitcode(mod: ModuleRef) -> bytes {
 }
 
 impl native_compiler_fingerprint(options: CompileOptions) -> str {
-    import glob as _cgl;
-    import hashlib as _cfh_hash;
-    import os as _cfp_os;
-    import jaclang as _jlm;
-    _jl_dir = _cfp_os.path.dirname(_cfp_os.path.abspath(_jlm.__file__));
-    _nat_dir = _cfp_os.path.join(_jl_dir, "compiler", "backends", "native");
-    _comp_h = _cfh_hash.sha256();
-    import from jaclang.compiler.driver.jir { FORMAT_VERSION }
-    _comp_h.update(str(FORMAT_VERSION).encode());
-    for _cp in [
-        _cfp_os.path.join(_nat_dir, "*.jac"),
-        _cfp_os.path.join(_nat_dir, "impl", "*.jac"),
-        _cfp_os.path.join(_nat_dir, "na_ir_gen_pass.impl", "*.jac"),
-        _cfp_os.path.join(_jl_dir, "compiler", "backends", "common", "*.jac"),
-        _cfp_os.path.join(_jl_dir, "compiler", "passes", "layout_pass.jac"),
-        _cfp_os.path.join(
-            _jl_dir, "compiler", "passes", "impl", "layout_pass.impl.jac"
-        ),
-        _cfp_os.path.join(_jl_dir, "compiler", "types", "*.jac"),
-        _cfp_os.path.join(_jl_dir, "compiler", "types", "*", "*.jac"),
-        _cfp_os.path.join(_jl_dir, "compiler", "type_registry.jac"),
-        _cfp_os.path.join(_jl_dir, "runtime", "scalars.jac")
-    ] {
-        for _cf in sorted(_cgl.`glob(_cp)) {
-            try {
-                with open(_cf, "rb") as _cfh {
-                    _comp_h.update(_cfh.read());
-                }
-            } except Exception {}
-        }
-    }
-    _comp_h.update(options.codegen_identity().encode());
-    return _comp_h.hexdigest()[:8];
+    import hashlib;
+    import from jaclang.compiler.driver.jir { running_compiler_digest }
+    identity = running_compiler_digest() + ":" + options.codegen_identity();
+    return hashlib.sha256(identity.encode()).hexdigest()[:16];
 }
 
 impl native_dep_cache_paths(
@@ -721,7 +692,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
         }
 
         if source_mod_path.endswith(".jac") {
-            full_path = os.path.join(cur_base_dir, source_mod_path);
+            full_path = os.path.normpath(os.path.join(cur_base_dir, source_mod_path));
         } else {
             import from jaclang.compiler.frontend.codeinfo {
                 resolve_native_module as _resolve_na

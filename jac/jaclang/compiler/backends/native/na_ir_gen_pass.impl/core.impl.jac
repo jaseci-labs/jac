@@ -885,49 +885,10 @@ impl NaIRGenPass._walk_imported_module_abilities(
         }
     }
 
-    _wl_internal = False;
-    _wl_jac_internal = False;
-    if _imp_layout is None and imported_mod?.loc and imported_mod.loc.mod_path {
-        import os as _wl_os2;
-
-        _wl_abs = _wl_os2.path.abspath(imported_mod.loc.mod_path);
-        _wl_jac_internal = imported_mod.decided_codespace != 'native'
-            and (_wl_os2.sep + "jaclang" + _wl_os2.sep) in _wl_abs
-            and (_wl_os2.sep + "na_stdlib" + _wl_os2.sep) not in _wl_abs;
-        if _wl_jac_internal {
-            try {
-                import from jaclang.compiler.driver { image as _wl_sealed }
-                _wl_internal = _wl_sealed._jaclang_image() is not None;
-            } except Exception {
-                _wl_internal = False;
-            }
-        }
-    }
     _imp_fn_unavail: (set | None) = None;
-    _imp_verdicts_wanted = (
-        with_fn_verdicts and _imp_layout is None and not _wl_internal
-    );
+    _imp_verdicts_wanted = with_fn_verdicts and _imp_layout is None;
     if _imp_verdicts_wanted {
         _imp_fn_unavail = self._imported_function_demotions(imported_mod);
-    }
-    if (
-        with_fn_verdicts
-        and _imp_layout is None
-        and _imp_fn_unavail is None
-        and _wl_jac_internal
-    ) {
-        _wl_all_fns: set = set();
-        for _wl_stmt in ModuleFacts.iter_context_stmts(imported_mod) {
-            if (
-                isinstance(_wl_stmt, uni.Ability)
-                and _wl_stmt.name_ref
-                and not _wl_stmt.type_params
-                and isinstance(_wl_stmt.signature, uni.FuncSignature)
-            ) {
-                _wl_all_fns.add(_wl_stmt.name_ref.sym_name);
-            }
-        }
-        _imp_fn_unavail = _wl_all_fns;
     }
     if (
         _imp_verdicts_wanted
@@ -991,8 +952,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
                     _imp_layout is not None
                     and _im_full not in _imp_layout.methods
                     and not _imp_stmt.type_params
-                )
-                    or (_imp_layout is None and _wl_internal) {
+                ) {
                     self._native_skipped_methods.add(_im_full);
                 }
             }
@@ -1000,8 +960,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
 
         for (_ia_slot, _ia_var, _ia_acc) in archetype_accessors(_imp_arch) {
             _im_full = f"{_ia_name}.{_ia_slot}";
-            if (_imp_layout is not None and _im_full not in _imp_layout.methods)
-                or (_imp_layout is None and _wl_internal) {
+            if _imp_layout is not None and _im_full not in _imp_layout.methods {
                 self._native_skipped_methods.add(_im_full);
             }
         }
