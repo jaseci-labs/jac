@@ -363,7 +363,9 @@ obj ModuleCompilation {
                 target_program=self.program,
                 passes=get_py_code_gen(
                     native=needs_native,
-                    provided=self.program.analysis.analyses_run.provided(self.module)
+                    provided=self.program.analysis.analyses_run.provided(self.module),
+                    bootstrap=not self.full_head
+                        and self.compiler.selfhost.is_selfhost(self.program)
                 ),
                 cancel_token=self.options.cancel_token
             );

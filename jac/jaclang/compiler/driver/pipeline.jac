@@ -670,9 +670,11 @@ def _py_codegen_tail -> list[type[Transform]] {
 }
 
 def get_py_code_gen(
-    native: bool = True, provided: (set[AnalysisFact] | None) = None
+    native: bool = True,
+    provided: (set[AnalysisFact] | None) = None,
+    bootstrap: bool = False
 ) -> list[type[Transform]] {
-    if _codegen_tier_reason() {
+    if bootstrap or _codegen_tier_reason() {
         return _py_codegen_tail();
     }
     _tok = _codegen_sched_loading.set(True);
