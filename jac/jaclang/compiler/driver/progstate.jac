@@ -252,9 +252,8 @@ class AnalysisCaches {
         product_tasks: dict[int, dict[CompilationProduct, ProductTask]],
         task_owners: dict[int, any],
         early_passes: dict[int, PendingPassResults],
-        cache_events: dict[str, int];
-
-    has timings: dict[str, dict[str, TimingSample]] = {};
+        cache_events: dict[str, int],
+        timings: dict[str, dict[str, TimingSample]] = {};
 
     @contextmanager
     def measure(self: AnalysisCaches, path: str, name: str) -> Iterator[None] {
@@ -379,7 +378,7 @@ def _env_int(name: str, fallback: int) -> int {
 }
 
 def _peak_rss_mb -> int {
-    import from jaclang.jac0core.resource_usage { peak_rss_mb }
+    import from jaclang.runtime.resource_usage { peak_rss_mb }
     return peak_rss_mb();
 }
 

@@ -1,5 +1,3 @@
-"""Reuse Python products by source, normalized filename, and target interpreter."""
-
 import hashlib;
 import json;
 import py_compile;
@@ -27,8 +25,7 @@ def precompile_tree(python: str, stage: str, cache_dir: str) -> dict[str, int] {
     counts = {"compiled": 0, "reused": 0};
     pending: list[BytecodeRequest] = [];
     producer = hashlib.sha256(json.dumps(target, sort_keys=True).encode()).hexdigest();
-    # One transaction per target interpreter allows a single subprocess to batch
-    # all misses without retaining one open lock descriptor per source file.
+
     with store.lock("python_bytecode", producer) {
         for source in sorted(directory.rglob("*.py")) {
             if "__pycache__" in source.parts {

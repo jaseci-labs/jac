@@ -1055,7 +1055,6 @@ def write_module_cache(
                         and extra_sections[kind] != existing.get(kind)
                     for kind in (SEC_DEPS, SEC_CTDEPS)
                 ) {
-                # Products from different dependency revisions cannot share one JIR.
                 for kind in (
                     SEC_BYTECODE,
                     SEC_MTIR,

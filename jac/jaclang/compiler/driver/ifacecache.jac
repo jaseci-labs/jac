@@ -464,8 +464,6 @@ obj IfaceRegistry {
     }
 
     def publish_completed {
-        # Prepare every export before publishing dependency hashes, including cycles.
-        # Retain diagnostic profiles without certifying a new analysis check.
         if not self.ready() or self.prog.errors_had {
             return;
         }
@@ -580,8 +578,9 @@ obj IfaceRegistry {
         if not _interface_source_path(resolved) {
             return None;
         }
+        (rebuild, _) = cache_mode();
         ent = self.entries.get(resolved);
-        if ent is not None and self._entry_fresh(ent) {
+        if not rebuild and ent is not None and self._entry_fresh(ent) {
             return ent;
         }
         if ent is not None {
@@ -590,7 +589,6 @@ obj IfaceRegistry {
         if resolved in self.building or resolved in self.checking {
             return self._register_from_disk(resolved, check_deps=False);
         }
-        (rebuild, _) = cache_mode();
         if not rebuild {
             self.checking.add(resolved);
             try {

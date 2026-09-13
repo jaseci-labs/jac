@@ -1,5 +1,3 @@
-"""Install the hash-locked runtime dependencies with pip and cache the result."""
-
 import hashlib;
 import csv;
 import json;
@@ -32,7 +30,7 @@ def install_dependencies(python: str, site: str, cache_dir: str) -> bool {
     digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode());
     digest.update(requirements.read_bytes());
     digest.update(Path(__file__).read_bytes());
-    # The archive producer participates in the key as well as the installer.
+
     digest.update(
         Path(__file__).with_name("impl").joinpath("assemble.impl.jac").read_bytes()
     );
@@ -44,7 +42,6 @@ def install_dependencies(python: str, site: str, cache_dir: str) -> bool {
         with store.lock("python_dependencies", key) {
             reused = store.restore("python_dependencies", key, outputs);
             if not reused {
-                # Bootstrap pip comes from the content-identified ensurepip wheel.
                 bootstrap = Path(work) / "installer";
                 script = (
                     "import ensurepip, pathlib, runpy, sys; "
@@ -73,8 +70,7 @@ def install_dependencies(python: str, site: str, cache_dir: str) -> bool {
                     ],
                     check=True
                 );
-                # All pinned wheels are installed by the bundled pip in one transaction.
-                # Runtime commands use `python -m`; generated scripts embed staging paths.
+
                 shutil.rmtree(bootstrap / "bin", ignore_errors=True);
                 for record in bootstrap.glob("*.dist-info/RECORD") {
                     with record.open(newline="") as stream {

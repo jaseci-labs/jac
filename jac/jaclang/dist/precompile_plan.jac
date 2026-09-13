@@ -1,5 +1,3 @@
-"""Plan package work from compiler dependency facts, grouping import cycles."""
-
 import os;
 import from pathlib { Path }
 import from jaclang.compiler.driver.compilation_context {
@@ -61,7 +59,6 @@ def plan_precompile(
                 dependencies_graph.record_module(unit.syntax);
                 dependencies = dependencies_graph.dependencies.get(path, set());
             } except (OSError, ValueError) {
-                # The requested unit still runs and reports its normal compiler diagnostic.
                 dependencies = set();
             }
         }
@@ -93,7 +90,7 @@ def plan_precompile(
         "retained_syntax": len(session.program.source_store.units),
         "analysis": [program.analysis.measurements() for program in session.programs()]
     };
-    # Only bounded pristine syntax crosses fork; no evaluated program is retained.
+
     return PrecompilePlan(
         groups, prerequisites, session.program.source_store, measurements
     );

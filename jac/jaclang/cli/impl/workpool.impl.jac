@@ -505,7 +505,7 @@ impl pool_available -> bool {
 }
 
 impl worker_rss_mb -> int {
-    import from jaclang.jac0core.resource_usage { peak_rss_mb }
+    import from jaclang.runtime.resource_usage { peak_rss_mb }
     return peak_rss_mb();
 }
 

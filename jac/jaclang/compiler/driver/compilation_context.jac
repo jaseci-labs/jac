@@ -109,12 +109,6 @@ obj SourceStore {
 }
 
 obj CompilationSession {
-    """Own mutable analysis across roots, bounded by source modules and requests.
-
-    A session is confined to one worker. Context programs share pristine syntax,
-    while their evaluated trees, catalog readers and product ledgers stay local.
-    Completed portable interfaces remain reusable after a checkpoint evicts trees.
-    """
     has max_modules: int = 256,
         max_roots: int = 32,
         program: JacProgram postinit,
@@ -146,20 +140,19 @@ obj CompilationSession {
             raise RuntimeError("Compilation session is closed");
         }
         programs = self.programs();
-        stale = {
+        stale: set[str] = {
             path for program in programs
             for path in program.hub.stamps
             if not program.hub.is_fresh(path)
         };
-        affected = [
-            (
-                program,
-                stale
-                    | set().union(
-                        *[program.transitive_dependents(path) for path in stale]
-                    )
-            ) for program in programs
-        ];
+        affected: list[tuple[JacProgram, set[str]]] = [];
+        for program in programs {
+            paths = set(stale);
+            for path in stale {
+                paths.update(program.transitive_dependents(path));
+            }
+            affected.append((program, paths));
+        }
         for (program, paths) in affected {
             for path in paths {
                 program.invalidate_module(path);

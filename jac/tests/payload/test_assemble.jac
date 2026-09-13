@@ -151,6 +151,7 @@ test "payload interface sealing uses the fresh staged catalog" {
                     "catalog construction must load staged sources, not a cached image"
                 );
                 wf(pre, "stubcat.bin", b"fresh catalog");
+                wf(pre, "stubcat.bin.json", b'{"reused":false}');
                 calls.append("catalog");
             } else {
                 assert not env.get("JAC_STUBCAT_BUILDING") , (

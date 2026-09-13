@@ -96,3 +96,47 @@ test "requesting executable options keeps the producer identity" {
     assert not executable.iface_ok;
     assert options.symtab_ir_only and options.no_cgen;
 }
+
+test "an unsaved source buffer cannot become the live disk bytecode" {
+    import from jaclang.compiler.driver.compilation_context {
+        CompilationSession,
+        context_program
+    }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    with TemporaryDirectory() as directory, CompilationSession() as session {
+        source = Path(directory) / "buffer.jac";
+        source.write_text("def answer() -> int { return 42; }\n");
+        path = str(source);
+        program = context_program(
+            session.program, CompileOptions(entry_point=path, force_codespace="server")
+        );
+        program.compile(
+            path,
+            use_str="def answer() -> int { return 99; }\n",
+            options=program.options
+        );
+        code = program.get_bytecode(path);
+        assert code is not None;
+        namespace: dict[str, any] = {};
+        exec(code, namespace);
+        assert namespace["answer"]() == 42;
+    }
+}
+
+test "forced rebuild recomputes a retained frontend" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    with TemporaryDirectory() as directory {
+        source = Path(directory) / "rebuild.jac";
+        source.write_text("def answer() -> int { return 42; }\n");
+        path = str(source);
+        program = program_for(path, JacProgram());
+        options = CompileOptions(no_cgen=True, force_codespace="server");
+        first = program.compile(path, options=options);
+        with patch.dict(os.environ, {"JAC_REBUILD": "1"}) {
+            second = program.compile(path, options=options);
+        }
+        assert second is not first;
+        assert not program.errors_had;
+    }
+}

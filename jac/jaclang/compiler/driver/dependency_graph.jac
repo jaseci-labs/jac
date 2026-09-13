@@ -1,5 +1,3 @@
-"""Compiler dependency edges and deterministic strongly connected components."""
-
 import jaclang.compiler.frontend.unitree as uni;
 
 obj DepGraph {

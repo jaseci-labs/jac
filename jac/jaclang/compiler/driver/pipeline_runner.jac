@@ -28,6 +28,11 @@ obj ModuleCompilation {
 
     def parse {
         resolved = os.path.realpath(self.path);
+        import from jaclang.compiler.driver.jir { cache_mode }
+        (rebuild, _) = cache_mode();
+        if rebuild {
+            self.program.invalidate_module(resolved);
+        }
         if self.source is None {
             import from jaclang.compiler.driver.jir { module_source_key }
             self.source_key = module_source_key(resolved);
@@ -53,6 +58,9 @@ obj ModuleCompilation {
         self.module = self.compiler.parse_str(
             keep_str, self.path, self.program, cancel_token=self.options.cancel_token
         );
+        if self.source is not None {
+            self.program.hub.stamps.pop(resolved, None);
+        }
         self.parse_failed = len(self.program.errors_had) > errors_before;
         self.compiler._ingest_comptime_producers(self.module, self.program, self.path);
     }

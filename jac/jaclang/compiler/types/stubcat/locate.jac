@@ -31,7 +31,7 @@ def type_system_digest(pkg_dir: str | None = None) -> str {
     }
     pkg = Path(pkg_dir or jaclang_pkg_dir());
     digest = hashlib.sha256(compiler_source_digest(str(pkg)).encode());
-    # Compiler logic has one authority; add the actual data consumed by the catalog.
+
     for input_dir in [pkg / "compiler/types", pkg / "vendor/typeshed"] {
         for path in sorted(input_dir.rglob("*")) {
             if not path.is_file()

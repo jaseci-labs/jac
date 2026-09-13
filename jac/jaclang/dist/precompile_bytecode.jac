@@ -357,8 +357,7 @@ def _emit_unit_diagnostics(jac_path: str, programs: list) {
 }
 
 glob _unit_session: list[CompilationSession] = [],
-     _discovery_sources: list[SourceStore] = [],
-     _unit_measurements: list[dict[str, any]] = [];
+     _discovery_sources: list[SourceStore] = [];
 
 def precompile_worker_exit {
     while _unit_session {
@@ -482,7 +481,11 @@ def precompile_context(
 
 @contextmanager
 def precompile_unit_context(
-    jac_path: str, pkg_root: str, collect: bool = True, app: str = ""
+    jac_path: str,
+    pkg_root: str,
+    collect: bool = True,
+    app: str = "",
+    measurements: list[dict[str, any]] | None = None
 ) -> Iterator[JacProgram] {
     import jaclang.compiler.types.type_evaluator;
     import jaclang.compiler.types.stubcat.modiface;
@@ -508,15 +511,18 @@ def precompile_unit_context(
             failed = bool(selected.errors_had);
         } finally {
             for context in session.programs() {
-                if context.analysis.timings or context.analysis.cache_events {
-                    _unit_measurements.append(context.analysis.measurements());
-                    context.analysis.reset_measurements();
+                if measurements is not None
+                    and (context.analysis.timings or context.analysis.cache_events) {
+                    measurements.append(context.analysis.measurements());
                 }
+                context.analysis.reset_measurements();
             }
             evictions = session.evictions;
             session.checkpoint(failed=failed);
             if session.evictions != evictions {
-                _unit_measurements.append({"session_evictions": 1});
+                if measurements is not None {
+                    measurements.append({"session_evictions": 1});
+                }
                 maybe_malloc_trim();
             }
         }
@@ -528,9 +534,12 @@ def precompile_unit(
     pkg_root: str,
     embed_src: bool = False,
     collect: bool = True,
-    app: str = ""
+    app: str = "",
+    measurements: list[dict[str, any]] | None = None
 ) -> bytes | None {
-    with precompile_unit_context(jac_path, pkg_root, collect, app) as program {
+    with precompile_unit_context(
+        jac_path, pkg_root, collect, app, measurements
+    ) as program {
         return _precompile_unit(jac_path, pkg_root, program, embed_src);
     }
 }
@@ -1180,13 +1189,13 @@ def run_precompile(
     );
 
     def compile_unit(jac_path: str) -> dict[str, any] {
-        _unit_measurements.clear();
+        analysis: list[dict[str, any]] = [];
         rel = Path(jac_path).relative_to(pkg_path);
         jir_path = out_dir / rel.with_suffix(".jir");
         try {
             if jac_path not in requested {
                 with precompile_unit_context(
-                    jac_path, package_dir, app=app
+                    jac_path, package_dir, app=app, measurements=analysis
                 ) as program {
                     available = program.iface_registry().ensure(jac_path) is not None;
                     program.iface_registry().publish_completed();
@@ -1194,7 +1203,7 @@ def run_precompile(
                 return {
                     "status": "interface" if available else "deferred",
                     "rel": str(rel),
-                    "analysis": list(_unit_measurements)
+                    "analysis": analysis
                 };
             }
             if jir_path.is_file() {
@@ -1204,7 +1213,7 @@ def run_precompile(
                 )
                     and embed_src == (read_debug_source(existing) is not None) {
                     with precompile_unit_context(
-                        jac_path, package_dir, app=app
+                        jac_path, package_dir, app=app, measurements=analysis
                     ) as program {
                         reusable = program.iface_registry().dependencies_match(
                             jac_path, existing, package_dir
@@ -1214,13 +1223,18 @@ def run_precompile(
                         return {
                             "status": "reused",
                             "rel": str(rel),
-                            "analysis": list(_unit_measurements)
+                            "analysis": analysis
                         };
                     }
                 }
             }
             jir_bytes = precompile_unit(
-                jac_path, package_dir, embed_src, collect=not use_pool, app=app
+                jac_path,
+                package_dir,
+                embed_src,
+                collect=not use_pool,
+                app=app,
+                measurements=analysis
             );
             if jir_bytes is None {
                 jir_path.unlink(missing_ok=True);
@@ -1233,18 +1247,14 @@ def run_precompile(
             jir_path.parent.mkdir(parents=True, exist_ok=True);
             import from jaclang.jac0core.cache_paths { atomic_write }
             atomic_write(jir_path, jir_bytes);
-            return {
-                "status": "compiled",
-                "rel": str(rel),
-                "analysis": list(_unit_measurements)
-            };
+            return {"status": "compiled", "rel": str(rel), "analysis": analysis};
         } except Exception as e {
             jir_path.unlink(missing_ok=True);
             return {
                 "status": "failed" if jac_path in requested else "deferred",
                 "rel": str(rel),
                 "message": f"FAIL: {rel} - {e}",
-                "analysis": list(_unit_measurements)
+                "analysis": analysis
             };
         }
     }

@@ -164,8 +164,7 @@ def run_pass(
     }
     try {
         with prog.analysis.measure(
-            str(getattr(getattr(ir_in, "loc", None), "mod_path", "")),
-            "pass:" + pass_cls.__name__
+            str(getattr(ir_in?.loc, "mod_path", "")), "pass:" + pass_cls.__name__
         ) {
             inst = pass_cls(
                 ir_in=ir_in,

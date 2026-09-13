@@ -1,5 +1,3 @@
-"""Interpreter compatibility shared by Python payload producers."""
-
 import importlib.util;
 import json;
 import subprocess;

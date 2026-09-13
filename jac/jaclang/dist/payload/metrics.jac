@@ -1,8 +1,6 @@
-"""Producer-side build measurements, independent of buffered progress output."""
-
 import json;
 import time;
-import from jaclang.jac0core.resource_usage { child_cpu_seconds, peak_rss_mb }
+import from jaclang.runtime.resource_usage { child_cpu_seconds, peak_rss_mb }
 import from contextlib { contextmanager }
 
 obj StageMeasurement {

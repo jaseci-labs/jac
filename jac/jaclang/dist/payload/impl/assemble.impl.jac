@@ -205,7 +205,7 @@ impl build_compiler_kernel(repo_root: str, site: str, opts: MkPayloadOpts) {
         Path(opts.layer_cache or os.path.join(repo_root, ".jac", "cache", "payload"))
             / "producers"
     );
-    def input_key() -> str {
+    def input_key -> str {
         inputs = [
             "compiler-kernel-v1",
             compiler_source_digest(os.path.join(repo_root, "jaclang")),

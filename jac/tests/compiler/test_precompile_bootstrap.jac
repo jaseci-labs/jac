@@ -72,15 +72,35 @@ test "bootstrap sealing reuses complete products and extends bytecode-only artif
                     == 0;
                 assert edited["compiled"] == 1;
                 assert edited["bytecode_reused"] == 0;
-                code = marshal.loads(
-                    read_section_bytes(output.read_bytes(), SEC_BYTECODE)
-                );
+                bytecode = read_section_bytes(output.read_bytes(), SEC_BYTECODE);
+                assert bytecode is not None;
+                code = marshal.loads(bytecode);
                 namespace: dict[str, any] = {};
                 exec(code, namespace);
                 assert namespace["answer"]() == 43;
             } finally {
                 precompile_worker_exit();
             }
+        }
+    }
+}
+
+test "bootstrap cache rejects a valid marshal value that is not executable code" {
+    import types;
+    import jaclang.meta_importer as importer;
+    with TemporaryDirectory() as directory {
+        source = Path(directory) / "source.jac";
+        source.write_text("def answer() -> int { return 42; }\n");
+        with patch.object(
+            importer, "get_bootstrap_cache_dir", return_value=Path(directory)
+        ) {
+            first = importer._bootstrap_compile(str(source), source.read_text());
+            cache = next(Path(directory).glob("*.jbc"));
+            cache.write_bytes(marshal.dumps(42));
+            second = importer._bootstrap_compile(str(source), source.read_text());
+            assert isinstance(second, types.CodeType);
+            assert second.co_code == first.co_code;
+            assert isinstance(marshal.loads(cache.read_bytes()), types.CodeType);
         }
     }
 }

@@ -1,5 +1,3 @@
-"""Freeze seed products using the same bytecode authority as bootstrap imports."""
-
 import marshal;
 import os;
 import from pathlib { Path }

@@ -89,7 +89,9 @@ def _bootstrap_compile(
             pass  # A read-only cache must not prevent bootstrap compilation.
         if cache_file.is_file():
             try:
-                return marshal.loads(cache_file.read_bytes())  # noqa: S302
+                cached = marshal.loads(cache_file.read_bytes())  # noqa: S302
+                if isinstance(cached, types.CodeType):
+                    return cached
             except Exception:
                 pass
 

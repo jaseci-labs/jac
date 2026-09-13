@@ -1,8 +1,6 @@
-"""Portable process measurements shared by compiler workers and producers."""
-
 import sys;
 
-def peak_rss_mb() -> int {
+def peak_rss_mb -> int {
     try {
         import resource;
     } except ImportError {
@@ -12,7 +10,7 @@ def peak_rss_mb() -> int {
     return int(peak // (1024 * 1024 if sys.platform == "darwin" else 1024));
 }
 
-def child_cpu_seconds() -> float {
+def child_cpu_seconds -> float {
     try {
         import resource;
     } except ImportError {
