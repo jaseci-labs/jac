@@ -279,27 +279,11 @@ def compile_module(
                 bodies.update(unit.ct_body_deps or []);
             }
         }
-        import from jaclang.compiler.types.stubcat { modiface }
-        import from jaclang.dist.precompile_bytecode { _unit_extra }
-        import from jaclang.compiler.driver.compilation_context {
-            cache_scope,
-            context_identity
-        }
-        registry = program.iface_registry();
-        if registry.prepare_interface(str(source), module) {
-            registry.persist_after_compile(str(source), module, options, 0, 0);
-        }
-        with cache_scope(
-            program.context_key or context_identity(program.options), program.options
-        ) {
-            extra_sections = _unit_extra(str(source), str(package), False);
-        }
         artifact = codec.write_precompiled_jir(
             bytecode,
             compute_precompile_module_key(str(source), identity),
             FLAG_PRECOMPILED,
             {
-                ** extra_sections,
                 int(SEC_CTDEPS): ct_deps_section(
                     list(dependencies), list(bodies), str(package)
                 )

@@ -55,6 +55,12 @@ entries are rebuilt. The image codec in `compiler/driver/image.py` owns the wire
 format, bytecode loading, and path relocation; application publishing uses the
 same codec.
 
+Image modules contain executable bytecode and the compile-time dependencies
+needed to validate build-cache reuse. They do not carry the producer's analysis
+interfaces or diagnostics. The running compiler owns those results and caches
+them under its own identity, so a predecessor's type analysis cannot become the
+successor's source of truth.
+
 The installed compiler's identity comes from its image manifest. Runtime cache
 keys do not rescan a checkout or guess which compiler source tree is active.
 `-Dcompiler-jobs=N` controls image workers; the default is two because full

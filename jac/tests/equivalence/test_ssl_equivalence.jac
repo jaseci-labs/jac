@@ -28,6 +28,7 @@ import shutil;
 import subprocess;
 import tempfile;
 import threading;
+import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 import ssl as pyssl;
 import from http.server { BaseHTTPRequestHandler, HTTPServer }
 import from tests.equivalence.xbackend_equiv {
@@ -103,7 +104,7 @@ def _start_tls_server(cert: str, key: str) -> tuple {
 
 
 """Call a no-arg native `int`-returning fixture function through the JIT."""
-def _call_na_int(eng: object, name: str) -> int {
+def _call_na_int(eng: ExecutionEngine, name: str) -> int {
     import ctypes;
     fn = get_func(eng, name, ctypes.c_int64);
     return int(fn());

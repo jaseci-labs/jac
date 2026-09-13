@@ -67,7 +67,11 @@ test "compiler module cache follows dependency and source changes" {
         first = compile_module(source, package, output, cache, "test-producer");
         assert not first.get("cached", False);
         codec = image_codec(str(package));
-        assert codec.read_section_bytes(output.read_bytes(), codec.SEC_IFACE)
+        assert codec.read_section_bytes(output.read_bytes(), codec.SEC_IFACE) is None;
+        assert codec.read_section_bytes(output.read_bytes(), codec.SEC_DIAG) is None;
+        assert codec.read_section_bytes(output.read_bytes(), codec.SEC_CTDEPS)
+            is not None;
+        assert codec.read_section_bytes(output.read_bytes(), codec.SEC_BYTECODE)
             is not None;
         assert compile_module(source, package, output, cache, "test-producer").get(
             "cached"

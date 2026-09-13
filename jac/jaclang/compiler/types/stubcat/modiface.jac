@@ -33,10 +33,8 @@ def build_module_iface(
     dotted = mod.name or "";
     writer.add_module(mod, dotted);
     key = mod.loc.mod_path if mod.loc else dotted;
-    with evaluator.diagnostic_context(None) {
-        writer.force_all();
-        body = writer.emit(writer.rel_of(key), {});
-    }
+    writer.force_all();
+    body = writer.emit(writer.rel_of(key), {});
     if writer.orphans {
         raise IncoherentInterface(key, writer.orphans);
     }

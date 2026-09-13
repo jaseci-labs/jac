@@ -30,6 +30,7 @@ import from jaclang.client.client_bundle { _client_target_module, _ensure_js_gen
 import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree { Module }
 
@@ -114,7 +115,9 @@ test "a second client build lowers exactly what the first one did" {
 
         warm = JacProgram();
         warm_dep = _ingest_as_dependency(warm, widget);
-        assert not warm.analysis.analyses_run.provides(warm_dep, "TypeOf") , (
+        assert not warm.analysis.analyses_run.provides(
+            warm_dep, AnalysisFact.TYPE_OF
+        ) , (
             "the dependency schedule is supposed to leave the module unanalyzed;"
             " this test no longer reproduces the warm shape"
         );

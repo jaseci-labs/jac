@@ -22,6 +22,7 @@ opts out (no native socket/ssl floor)."""
 import ctypes;
 import os;
 import threading;
+import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 import from http.server { BaseHTTPRequestHandler, HTTPServer }
 import from tests.equivalence.xbackend_equiv {
     run_py_fixture,
@@ -74,7 +75,7 @@ def _start_server -> tuple {
 
 
 """Call a no-arg native `int`-returning fixture function through the JIT."""
-def _call_na_int(eng: object, name: str) -> int {
+def _call_na_int(eng: ExecutionEngine, name: str) -> int {
     fn = get_func(eng, name, ctypes.c_int64);
     return int(fn());
 }

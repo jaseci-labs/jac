@@ -156,6 +156,15 @@ test "npm import missing from both project roots still warns" {
             if w.code and w.code.code == "W1100"
         ];
         assert w1100 != [] , "unresolvable npm package must keep warning W1100";
+        warm = _check(entry_file, lib_dir);
+        warm_w1100 = [
+            str(w)
+            for w in warm.warnings_had
+            if w.code and w.code.code == "W1100"
+        ];
+        assert warm_w1100 == w1100 , (
+            "interface encoding must preserve diagnostics across cache reuse"
+        );
     } finally {
         shutil.rmtree(base_dir, ignore_errors=True);
     }

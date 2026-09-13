@@ -456,11 +456,7 @@ obj IfaceRegistry {
                 return (cache_path.read_bytes(), "", );
             }
         } except Exception {}
-        try {
-            return self.prog._get_compiler()._sealed_jir_data(resolved);
-        } except Exception {
-            return None;
-        }
+        return None;
     }
 
     def _register_from_disk(resolved: str, check_deps: bool) -> (IfaceEntry | None) {
@@ -914,8 +910,12 @@ obj IfaceRegistry {
 
     def _encode_iface(codec: IfaceCodec, mod: any, paths: JirPaths) -> (bytes | None) {
         import from jaclang.compiler.types.stubcat.modiface { IncoherentInterface }
+        import from jaclang.compiler.passes.transform { Transform }
+        import from jaclang.compiler.driver.pass_driver { deliver_alerts }
         self._event("iface_encode");
         self._ensure_flow_graph(mod);
+        evaluator = self.prog.get_type_evaluator();
+        reporter = Transform(ir_in=mod);
         try {
             package_dir = os.path.realpath(
                 self.prog.options.project_root or paths.base_dir
@@ -923,12 +923,16 @@ obj IfaceRegistry {
             def encode_path(path: str) -> str {
                 return paths.encode(path, package_dir);
             }
-            return codec.build_module_iface(
-                mod, self.prog.get_type_evaluator(), self._pkg_dir(), encode_path
-            );
+            with evaluator.diagnostic_context(reporter) {
+                return codec.build_module_iface(
+                    mod, evaluator, self._pkg_dir(), encode_path
+                );
+            }
         } except IncoherentInterface {
             self._event("iface_incoherent");
             return None;
+        } finally {
+            deliver_alerts(reporter.errors_had, reporter.warnings_had, self.prog);
         }
     }
 

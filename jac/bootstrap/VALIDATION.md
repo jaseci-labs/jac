@@ -170,11 +170,28 @@ self-rebuilt modules, and trusted binary publication still follows verification.
 The composite action parses and its consuming workflows pass actionlint with
 the existing custom-runner label exception.
 
+## Packaged downstream validation
+
+Revision `5b14b0a01d` passed the combined installation and Stage-1/Stage-2
+verification graph: 28 steps, with all 757 Stage-2 modules rebuilt in 768.85
+seconds. An unchanged repeat completed in 18.30 seconds with compilation cached.
+The exact packaged binary passed 41 client path/diagnostic regressions and both
+port-selection regressions. The full CI source-check command passed all 941
+inputs in 3,646.32 seconds.
+
+The remaining equivalence lane exposed producer-owned interfaces being reused
+as current analysis, lazy diagnostics discarded during interface encoding, and
+packaged runtime methods excluded by a package-path native-lowering shortcut.
+The updated analysis image passed 33 bootstrap/cache/npm tests, including the
+negative cache-verification oracle. A cold/warm npm warning regression passed,
+and the unchanged precompile work gate passed with interface verification enabled
+in 41.95 seconds. Native import cleanup is still undergoing validation.
+
 ## Outstanding validation
 
 The normal integration commit hook passed all 261 source checks in 1,738.67
 seconds. The downstream compiler fix commit passed all 11 normal source checks.
-The final port fix is undergoing a packaged rebuild. The latest completed
-Linux installation passed all 21 build steps, with 757 cold modules compiled in
-2,203.82 seconds, before a newer push cancelled the verification run. Required
-CI checks on the final revision remain pending.
+The latest completed Linux installation passed all 21 build steps, with 757 cold
+modules compiled in 2,203.82 seconds, before a newer push cancelled verification.
+The new analysis/native import changes require a final packaged self-rebuild and
+normal commit checks. Required CI checks on the final revision remain pending.
