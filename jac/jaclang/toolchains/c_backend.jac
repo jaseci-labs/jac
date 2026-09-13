@@ -1,5 +1,3 @@
-"""Pinned LLVM C backend used to project native compiler artifacts to source."""
-
 import os;
 import shutil;
 import subprocess;
@@ -108,4 +106,29 @@ def ensure_c_backend -> Path {
         }
     }
     return binary;
+}
+
+
+def c_backend_provenance -> dict[str, str | int] {
+    configured = os.environ.get('JAC_LLVM_CBE', '');
+    if configured {
+        return {
+            'name': C_BACKEND.name,
+            'provider': 'JAC_LLVM_CBE',
+            'executable_sha256': file_digest(ensure_c_backend())
+        };
+    }
+    patch = Path(__file__).parent / 'patches' / 'llvm-cbe-runtime-semantics.patch';
+    return {
+        'name': C_BACKEND.name,
+        'revision': C_BACKEND.version,
+        'source': C_BACKEND.url,
+        'source_sha256': C_BACKEND.digest,
+        'patch_sha256': file_digest(patch),
+        'llvm_major': LLVM_MAJOR
+    };
+}
+
+def c_backend_license -> Path {
+    return Path(__file__).parent / 'patches' / 'llvm-cbe-LICENSE';
 }

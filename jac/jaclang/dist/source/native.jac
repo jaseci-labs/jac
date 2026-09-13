@@ -1,12 +1,17 @@
-"""Native source products retain the compiler's ABI and initialization order."""
-
 import from pathlib { Path }
 import type from jaclang.compiler.frontend.unitree { Module }
 
 
-def write_native_library(module: Module, directory: Path, relative: Path) -> dict {
-    import from jaclang.compiler.backends.native.na_compile_pass {
-        native_linked_ir_text
+def write_native_product(
+    module: Module,
+    directory: Path,
+    relative: Path,
+    shared: bool = True,
+    memory: str = ''
+) -> dict {
+    import from jaclang.compiler.backends.native.entry_points {
+        inject_main,
+        validate_native_application
     }
     import from jaclang.compiler.backends.native.shared_emit {
         inject_shared_init,
@@ -14,18 +19,24 @@ def write_native_library(module: Module, directory: Path, relative: Path) -> dic
     }
     import from jaclang.compiler.backends.native.c_emit { emit_c }
     manifest = module.gen.interop_manifest;
-    (llvm_ir, exports) = inject_shared_init(native_linked_ir_text(module), manifest);
-    bindings = manifest.native_imports if manifest is not None else [];
-    llvm_ir = bind_shared_callbacks(llvm_ir, bindings);
-    source = Path('native') / relative.with_suffix('.c');
-    output = source.with_suffix('.so');
+    llvm_ir = validate_native_application(module, shared, memory);
+    bindings = manifest.native_imports if shared else [];
+    if shared {
+        (llvm_ir, exports) = inject_shared_init(llvm_ir, manifest);
+        llvm_ir = bind_shared_callbacks(llvm_ir, bindings);
+    } else {
+        llvm_ir = inject_main(llvm_ir);
+    }
+    source = relative.with_suffix('.c');
+    output = relative.with_suffix('.so' if shared else '');
     target = directory / source;
     target.parent.mkdir(parents=True, exist_ok=True);
     target.write_text(emit_c(llvm_ir), encoding='utf-8');
     return {
         'source': source.as_posix(),
         'output': output.as_posix(),
-        'kind': 'shared',
+        'kind': 'shared' if shared else 'executable',
+        'libraries': list(module.gen._clib_paths),
         'callbacks': [
             {
                 'name': binding.name,

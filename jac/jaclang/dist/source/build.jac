@@ -1,5 +1,3 @@
-"""Build editable source artifacts with Python, a C compiler and Node or Bun."""
-
 import json;
 import os;
 import shlex;
@@ -8,7 +6,7 @@ import subprocess;
 import from pathlib { Path }
 
 
-def _compile_native(base: Path, record: dict) -> None {
+def _compile_native(base: Path, record: dict) {
     source = base / record['source'];
     output = base / record['output'];
     output.parent.mkdir(parents=True, exist_ok=True);
@@ -41,11 +39,26 @@ def _compile_native(base: Path, record: dict) -> None {
         if record['kind'] == 'shared' {
             command += ['-shared', '-fPIC'];
         }
-        subprocess.run(command + [str(source), '-o', str(output), '-lm'], check=True);
+        libraries = list(record.get('libraries', []));
+        linker_flags = shlex.split(os.environ.get('LDFLAGS', ''));
+        for library in libraries {
+            name = Path(library).name;
+            candidate = base / library;
+            if candidate.is_file() {
+                linker_flags.append(str(candidate));
+            } elif name.startswith('lib') {
+                linker_flags.append('-l' + name[3:].split('.')[0]);
+            } else {
+                linker_flags.append('-l' + name.split('.')[0]);
+            }
+        }
+        subprocess.run(
+            command + [str(source), '-o', str(output), '-lm'] + linker_flags, check=True
+        );
     }
 }
 
-def build(base: Path) -> None {
+def build(base: Path) {
     base = base.resolve();
     runtime_manifest = base / 'jaclang' / 'runtime.json';
     if runtime_manifest.is_file() {

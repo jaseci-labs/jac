@@ -1,4 +1,4 @@
-import from jaclang.compiler.backends.native.linker_common {
+import from jaclang.compiler.backends.native.floor {
     collect_floor_archives,
     floor_lib_dir,
     resolve_floor_dir,

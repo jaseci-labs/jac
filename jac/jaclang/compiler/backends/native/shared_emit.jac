@@ -314,7 +314,7 @@ def emit_shared_library(
             );
         } elif is_macos {
             import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
-            import from jaclang.compiler.backends.native.linker_common {
+            import from jaclang.compiler.backends.native.floor {
                 collect_floor_archives
             }
             (_floor_members, _floor_handled) = collect_floor_archives(
@@ -336,7 +336,7 @@ def emit_shared_library(
             );
         } else {
             import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
-            import from jaclang.compiler.backends.native.linker_common {
+            import from jaclang.compiler.backends.native.floor {
                 collect_floor_archives as _cfa_elf
             }
             (_floor_members_elf, _fh_elf) = _cfa_elf(
