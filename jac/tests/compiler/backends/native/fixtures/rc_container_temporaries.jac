@@ -70,6 +70,46 @@ def borrowed_default -> int {
     return source[0].value + values[1][1].value;
 }
 
+def indexed_receiver(index: int) -> int {
+    try {
+        return [Item(4), Item(5)][index].value;
+    } except IndexError {
+        return -1;
+    }
+}
+
+def borrowed_index(index: int) -> int {
+    items = [Item(6), Item(7)];
+    try {
+        return items[index].value;
+    } except IndexError {
+        return items[0].value;
+    }
+}
+
+obj Holder {
+    has item: Item;
+    has selected: Item { getter; }
+}
+
+impl Holder.selected.getter -> Item {
+    return self.item;
+}
+
+def nested_receiver -> int {
+    return Holder(Item(8)).item.value;
+}
+
+def property_receiver -> int {
+    return Holder(Item(9)).selected.value;
+}
+
+def borrowed_field_write -> int {
+    item = Item(10);
+    item.value += 2;
+    return item.value;
+}
+
 def drop_count -> int {
     return dropped;
 }

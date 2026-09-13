@@ -30,7 +30,10 @@ def check_containers(profile: str) {
         ("popped_receiver", 12, 2),
         ("existing_default", 4, 3),
         ("missing_default", 5, 2),
-        ("borrowed_default", 9, 2)
+        ("borrowed_default", 9, 2),
+        ("nested_receiver", 8, 1),
+        ("property_receiver", 9, 1),
+        ("borrowed_field_write", 12, 1)
     ] {
         address = engine.get_function_address(name);
         assert address != 0;
@@ -38,6 +41,23 @@ def check_containers(profile: str) {
         before = dropped();
         assert call() == expected , name;
         assert dropped() - before == allocations , name;
+    }
+    for (name, index, expected) in [
+        ("indexed_receiver", 0, 4),
+        ("indexed_receiver", -1, 5),
+        ("indexed_receiver", 99, -1),
+        ("indexed_receiver", -99, -1),
+        ("borrowed_index", 0, 6),
+        ("borrowed_index", -1, 7),
+        ("borrowed_index", 99, 6),
+        ("borrowed_index", -99, 6)
+    ] {
+        address = engine.get_function_address(name);
+        assert address != 0;
+        call = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address);
+        before = dropped();
+        assert call(index) == expected , (name, index);
+        assert dropped() - before == 2 , (name, index);
     }
 }
 

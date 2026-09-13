@@ -604,7 +604,9 @@ impl NaIRGenPass._codegen_index(
     );
     above = self.builder.icmp_signed(">=", index_val, len_val, name="idx.oob.chk");
     is_oob = self.builder.or_(below, above, name="idx.range.chk");
-    self._emit_runtime_raise(is_oob, "IndexError", "list index out of range");
+    self._emit_runtime_raise(
+        is_oob, "IndexError", "list index out of range", [target_val]
+    );
     _got = self.builder.call(helpers["get"], [target_val, index_val], name="list.get");
     if elem_type_name == "u8" {
         return self.builder.zext(_got, i64, name="ba.get.zext");

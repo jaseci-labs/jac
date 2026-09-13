@@ -2115,7 +2115,13 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 type_name = self._infer_type_name(obj_val);
             }
             if type_name is not None {
-                return self._read_field_or_refuse(nd, obj_val, right_name, type_name);
+                value = self._read_field_or_refuse(nd, obj_val, right_name, type_name);
+                # Inline views still point into the receiver. Loaded values can
+                # survive it once any borrowed reference has been retained.
+                if right_name not in self.struct_field_inline.get(type_name, set()) {
+                    return self._finish_borrowed_read(obj_val, value);
+                }
+                return value;
             }
         }
     }
