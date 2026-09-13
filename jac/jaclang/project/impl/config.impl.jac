@@ -1437,7 +1437,11 @@ impl get_config_for_path(
 ) -> JacConfig | None {
     explicit = get_explicit_config();
     if explicit is not None {
-        return explicit;
+        project_root = explicit.project_root;
+        if project_root is None
+            or start_path.resolve().is_relative_to(project_root.resolve()) {
+            return explicit;
+        }
     }
     result = find_project_root(start_path);
     if result is None {
