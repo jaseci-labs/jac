@@ -51,3 +51,125 @@ test "the self-host program keeps its own native stdlib imports" {
     sock = _pkg_path("runtime/na_stdlib/socket.jac");
     assert cache.resolve(sock, cache.program) is cache.program;
 }
+
+test "lazy compiler bytecode does not inherit the caller's analysis request" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import jaclang.compiler.driver.pass_driver as driver;
+    # Ensure the codec is available so unnecessary interface work is observable.
+    import jaclang.compiler.types.stubcat.modiface;
+    with TemporaryDirectory() as directory {
+        base_path = Path(directory);
+        toolchain = base_path / "toolchain";
+        toolchain.mkdir();
+        helper = toolchain / "helper.jac";
+        helper.write_text("def answer() -> int { return 42; }\n");
+        app = base_path / "main.jac";
+        app.write_text("def application() -> int { return 1; }\n");
+        internal = JacProgram();
+        compiler = JacCompiler(
+            _selfhost=SelfHostCache(_program=internal, _jaclang_root=str(toolchain))
+        );
+        internal._compiler = compiler;
+        program = JacProgram();
+        program._compiler = compiler;
+        loaded: list[any] = [];
+        original: any = driver.run_pass;
+        def load_helper(pass_cls: any, ir_in: any, prog: any, **kwargs: any) -> any {
+            if pass_cls.__name__ == "SymTabBuildPass"
+                and ir_in.loc.mod_path == str(app)
+                and not loaded {
+                assert compiler._reentrant_depth > 0;
+                loaded.append(
+                    compiler.get_bytecode(str(helper), target_program=program)
+                );
+            }
+            return original(pass_cls, ir_in, prog, **kwargs);
+        }
+        with patch.object(driver, "run_pass", load_helper) {
+            program.compile(
+                str(app), options=CompileOptions(no_cgen=True, need_full_ast=True)
+            );
+        }
+        assert len(loaded) == 1 and loaded[0] is not None;
+        assert internal.analysis.cache_events.get("iface_encode", 0) == 0 , (
+            "the caller's type check forced interfaces into lazy compiler code generation"
+        );
+        assert sum(
+            context.analysis.cache_events.get("iface_encode", 0)
+            for context in [program] + list(program.contexts.values())
+        )
+            > 0 , "the outer application analysis lost its interface request";
+        assert compiler._closure_opts is None;
+        assert not program.errors_had;
+    }
+}
+
+test "application analysis does not eagerly publish selfhost dependency interfaces" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import jaclang.compiler.types.stubcat.modiface;
+    import jaclang.compiler.driver.jir as jir;
+    with TemporaryDirectory() as directory {
+        base_path = Path(directory);
+        toolchain = base_path / "toolchain";
+        toolchain.mkdir();
+        (toolchain / "api.jac").write_text("obj Api { has value: int = 42; }\n");
+        app = base_path / "main.jac";
+        app.write_text(
+            "import from .toolchain.api { Api }\n"
+                + "def application() -> int { return Api().value; }\n"
+        );
+        internal = JacProgram();
+        compiler = JacCompiler(
+            _selfhost=SelfHostCache(_program=internal, _jaclang_root=str(toolchain))
+        );
+        internal._compiler = compiler;
+        program = JacProgram();
+        program._compiler = compiler;
+        tracked = jir.is_compiler_tree_path;
+        api = str(toolchain / "api.jac");
+        # This private toolchain's API stands in for a compiler-digest member.
+        # Other files owned by SelfHostCache remain ordinary dependencies.
+        def compiler_member(path: str) -> bool {
+            return os.path.realpath(path) == api or tracked(path);
+        }
+        with patch.object(jir, "is_compiler_tree_path", side_effect=compiler_member) {
+            program.compile(str(app), options=CompileOptions(no_cgen=True));
+        }
+        assert not program.errors_had;
+        assert internal.analysis.cache_events.get("iface_encode", 0) == 0 , (
+            "a symbol-only selfhost import eagerly encoded its public type closure"
+        );
+        assert sum(
+            context.analysis.cache_events.get("iface_encode", 0)
+            for context in [program] + list(program.contexts.values())
+        )
+            > 0 , "application analysis must still publish its requested interface";
+        plugin = toolchain / "plugin.jac";
+        plugin.write_text("obj Plugin { has value: int = 42; }\n");
+        consumer = base_path / "plugin_user.jac";
+        consumer.write_text(
+            "import from .toolchain.plugin { Plugin }\n"
+                + "def application() -> int { return Plugin().value; }\n"
+        );
+        program.compile(str(consumer), options=CompileOptions(no_cgen=True));
+        assert not program.errors_had;
+        assert str(plugin) in internal.iface_registry()._iface_bytes , (
+            "bundled libraries outside the compiler fingerprint need dependency interfaces"
+        );
+        explicit = internal.iface_registry().ensure(str(toolchain / "api.jac"));
+        assert explicit is not None;
+        assert internal.analysis.cache_events.get("iface_encode", 0) > 0 , (
+            "explicit selfhost interface requests must remain available to packaging"
+        );
+    }
+}

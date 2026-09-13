@@ -114,3 +114,10 @@ test "f32 rounds to binary32 after every operation" {
 test "plain int keeps its pre-existing lowering: shifts, negation, abs and pow do not trap" {
     assert probe("plain_int_is_not_sized") == 4;
 }
+
+test "sized casts unwrap narrowed optional fields" {
+    import from tests.support { compile_native, get_func }
+    (eng, _) = compile_native("fixed_width_optional_fields.jac");
+    assert get_func(eng, "present_end", ctypes.c_int64)() == 42;
+    assert get_func(eng, "absent_end", ctypes.c_int64)() == -1;
+}

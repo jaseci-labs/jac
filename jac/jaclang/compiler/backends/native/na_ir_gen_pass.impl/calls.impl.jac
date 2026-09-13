@@ -1111,7 +1111,7 @@ impl NaIRGenPass._codegen_receiver(nd: (uni.UniNode | None)) -> (ir.Value | None
 }
 
 impl NaIRGenPass._emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None {
-    if isinstance(value.type, ir.PointerType) and not self._is_owned(value) {
+    if self._elem_kind(value.type) in ("rc_ptr", "str") and not self._is_owned(value) {
         self._emit_rc_retain(value, op=op, loc=loc);
         return;
     }
@@ -1710,10 +1710,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         );
                     }
                     if _len_result is not None {
-                        if isinstance(arg_val.type, ir.PointerType)
-                            and self._is_owned(arg_val) {
-                            self._emit_rc_release_simple(arg_val, op="len_arg", loc="");
-                        }
+                        self._release_owned_args([arg_val], op="len_arg");
                         return _len_result;
                     }
                 }
@@ -2834,8 +2831,25 @@ impl NaIRGenPass._emit_isinstance_core(
     unresolved: list[str] = [];
     static_seen = False;
     static_hit = False;
+    source_type = params[0].type;
+    source_members = source_type.types
+        if isinstance(source_type, UnionType)
+        else [source_type];
+    present_members = [
+        member
+        for member in source_members
+        if not (
+            isinstance(member, ClassType)
+            and member.shared.class_name in ("None", "NoneType")
+        )
+    ];
+    known_string = len(present_members) == 1
+        and isinstance(present_members[0], ClassType)
+        and present_members[0].shared.class_name == "str";
     for nm in names {
-        verdict = self._isinstance_static_verdict(nm, operand);
+        verdict = True
+            if nm == "str" and known_string
+            else self._isinstance_static_verdict(nm, operand);
         if verdict is not None {
             static_seen = True;
             static_hit = static_hit or verdict;

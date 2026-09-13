@@ -2196,6 +2196,11 @@ impl TypeEvaluator._collect_return_types(
             return True;
         }
 
+        if isinstance(stmt, ExprStmt)
+            and isinstance(self.get_type_of_expression(stmt.expr), NeverType) {
+            return True;
+        }
+
         if isinstance(stmt, IfStmt) {
             if_returns = self._collect_return_types(list(stmt.body), out);
             else_returns = self._collect_if_else_returns(stmt.else_body, out);

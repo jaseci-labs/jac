@@ -1163,7 +1163,8 @@ test "start dev prepares the client before initialization" {
                 [executable, "run", "--dev", "--port", str(port), "main.jac"],
                 cwd=project,
                 stdout=stream,
-                stderr=subprocess.STDOUT
+                stderr=subprocess.STDOUT,
+                start_new_session=os.name != "nt"
             );
         }
         try {
@@ -1182,11 +1183,25 @@ test "start dev prepares the client before initialization" {
                 < output.index("Initializing application")
                 < output.index("Server ready") , output;
         } finally {
-            process.send_signal(signal.SIGINT);
+            # A terminal interrupt reaches the whole dev-server process group.
+            # Isolate this test's group so Vite cannot outlive its temp tree.
+            if os.name != "nt" {
+                try {
+                    os.killpg(process.pid, int(signal.SIGINT));
+                } except ProcessLookupError {}
+            } else {
+                process.send_signal(signal.SIGINT);
+            }
             try {
-                process.`wait(timeout=15);
+                process.`wait(timeout=45);
             } except subprocess.TimeoutExpired {
-                process.kill();
+                if os.name != "nt" {
+                    try {
+                        os.killpg(process.pid, int(signal.SIGKILL));
+                    } except ProcessLookupError {}
+                } else {
+                    process.kill();
+                }
                 process.`wait();
             }
         }

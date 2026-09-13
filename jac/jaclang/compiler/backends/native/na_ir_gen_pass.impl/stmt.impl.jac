@@ -126,19 +126,8 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         self._codegen_ctrl(nd);
     } elif isinstance(nd, uni.ExprStmt) {
         _estmt_val = self._codegen_expr(nd.expr);
-        if (
-            _estmt_val is not None
-            and isinstance(_estmt_val.type, ir.PointerType)
-            and self._is_owned(_estmt_val)
-        ) {
-            self._emit_rc_release_simple(_estmt_val, op="discarded_call", loc="");
-        } elif (
-            _estmt_val is not None
-            and self?.jacval_type
-            and _estmt_val.type == self.jacval_type
-            and self._is_owned(_estmt_val)
-        ) {
-            self._emit_elem_release(self.builder, self.jacval_type, _estmt_val);
+        if _estmt_val is not None {
+            self._release_owned_args([_estmt_val], op="discarded_call");
         }
     } elif isinstance(nd, uni.TryStmt) {
         self._codegen_try(nd);
@@ -151,7 +140,7 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     } elif isinstance(nd, uni.AssertStmt) {
         cond = self._codegen_required(nd.condition);
         if cond is not None {
-            cond_bool = self._to_bool(cond);
+            cond_bool = self._consume_bool(cond);
 
             is_false = self.builder.not_(cond_bool, name="assert.fail");
 
@@ -217,6 +206,7 @@ impl NaIRGenPass._codegen_destroy_target(target: uni.Expr, nd: uni.DeleteStmt) -
             _fa_argtys = _forget_all_fn.function_type.args;
             self.builder.call(_forget_all_fn, [self._coerce_type(_hs, _fa_argtys[0])]);
         }
+        self._release_owned_args([_val], op="del_stmt");
         return;
     }
     if self._struct_name_of(target) is None
@@ -231,6 +221,7 @@ impl NaIRGenPass._codegen_destroy_target(target: uni.Expr, nd: uni.DeleteStmt) -
         _f_argtys = _forget_fn.function_type.args;
         self.builder.call(_forget_fn, [self._coerce_type(_h, _f_argtys[0])]);
     }
+    self._release_owned_args([_val], op="del_stmt");
 }
 
 impl NaIRGenPass._del_target_holds_graph(target: uni.Expr) -> bool {
@@ -402,7 +393,8 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
             if isinstance(nd.expr, uni.Name)
                 and nd.expr.sym_name in self.local_vars
                 and nd.expr.sym_name not in self.param_vars
-                and nd.expr.sym_name not in self.closure_cell_handles {
+                and nd.expr.sym_name not in self.closure_cell_handles
+                and not self._is_owned(val) {
                 skip_var = nd.expr.sym_name;
             } elif isinstance(nd.expr, uni.TupleVal) {
                 tup_elems = nd.expr.values or [];
@@ -441,7 +433,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
 
             if (
                 skip_var is None
-                and isinstance(val.type, ir.PointerType)
+                and self._elem_kind(val.type) in ("rc_ptr", "str")
                 and not self._is_owned(val)
             ) {
                 self._emit_rc_retain(
@@ -545,7 +537,7 @@ impl NaIRGenPass._codegen_if(nd: uni.IfStmt) -> None {
         return;
     }
 
-    cond = self._to_bool(cond);
+    cond = self._consume_bool(cond);
     func = self.builder.function;
     then_bb = func.append_basic_block(name="if.then");
     else_bb = func.append_basic_block(name="if.else");
@@ -652,7 +644,7 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     self.builder.position_at_end(cond_bb);
     cond = self._codegen_required(nd.condition);
     if cond is not None {
-        cond = self._to_bool(cond);
+        cond = self._consume_bool(cond);
         self.builder.cbranch(cond, body_bb, end_bb);
     } else {
         self.builder.branch(end_bb);
@@ -788,7 +780,7 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
     self.builder.position_at_end(cond_bb);
     cond = self._codegen_required(nd.condition);
     if cond is not None {
-        cond = self._to_bool(cond);
+        cond = self._consume_bool(cond);
         self.builder.cbranch(cond, body_bb, end_bb);
     } else {
         self.builder.branch(end_bb);
@@ -863,7 +855,7 @@ impl NaIRGenPass._codegen_match(nd: uni.MatchStmt) -> None {
             self._bind_match_pattern(`case.pattern, subj_val, subj_ty);
             gval = self._codegen_expr(`case.guard);
             if gval is not None {
-                self.builder.cbranch(self._to_bool(gval), body_bb, next_bb);
+                self.builder.cbranch(self._consume_bool(gval), body_bb, next_bb);
             } else {
                 self.builder.branch(next_bb);
             }
@@ -1394,7 +1386,7 @@ impl NaIRGenPass._match_value_eq(
     if cmp is None {
         return None;
     }
-    return self._to_bool(cmp);
+    return self._consume_bool(cmp);
 }
 
 impl NaIRGenPass._bind_match_pattern(
@@ -2400,7 +2392,13 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
 
             _is_raw_int_ptr = getattr(coerced, 'opname', '') == 'inttoptr';
             self._register_region_handle_var(nd, var_name);
-            if isinstance(alloca.pointee_type, ir.PointerType)
+            if (
+                isinstance(alloca.pointee_type, ir.PointerType)
+                or (
+                    self._elem_kind(alloca.pointee_type) == "str"
+                    and not self._nogc_headerless()
+                )
+            )
                 and not is_inplace_set_op {
                 if var_name in self.region_handle_vars {
                     _old_hdl = self.builder.load(alloca, name=f"{var_name}.old");
@@ -2420,7 +2418,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         or self._nogc_borrow_local_assign(nd) {
                         self.nogc_no_free_vars.add(var_name);
                     }
-                    if not self._is_owned(value)
+                    if not self._is_owned(coerced)
                         and not self._can_native_move_lower(nd) {
                         self._emit_rc_retain(
                             coerced,
@@ -2429,7 +2427,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 if nd.loc
                                 else 0}"
                         );
-                    } elif self._is_owned(value) {
+                    } elif self._is_owned(coerced) {
                         self.rc_ops_elided += 1;
                     }
                     if not (

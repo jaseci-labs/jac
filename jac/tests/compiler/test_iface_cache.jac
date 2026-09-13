@@ -144,6 +144,29 @@ test "dependency ingestion hydrates from the interface, not the source" {
     assert "f" in mod.names_in_scope , "the hydrated interface lost a symbol";
 }
 
+test "hydrated dependencies retain their application context" {
+    (main, dep) = _project();
+    project = Path(main).parent;
+    second = str(project / "second.jac");
+    Path(second).write_text(MAIN_SRC);
+    (project / "jac.toml").write_text(
+        '[project]\nname = "cached_apps"\nversion = "0.0.1"\n'
+            + '[apps.first]\nkind = "service"\nentry-point = "mainmod"\n'
+            + '[apps.second]\nkind = "service"\nentry-point = "second"\n'
+    );
+    for (entry_path, app) in [(main, "first"), (second, "second")] {
+        (_cold, diagnostics) = _check(entry_path);
+        assert not diagnostics , diagnostics;
+        prog = _context(entry_path);
+        mod = prog.load_dependency_module(dep);
+        assert prog.analysis.cache_events.get("dep_hydrate", 0) == 1;
+        assert mod.stub_only;
+        assert mod.app == app , f"{app}: {mod.app}";
+        assert mod.app_kind == "service";
+        assert mod.app_root == str(project);
+    }
+}
+
 test "a body-only dependency edit does not cascade to the importer" {
     (main, dep) = _project();
     (_cold, cold_diags) = _check(main);
@@ -293,7 +316,7 @@ test "the compiler digest manifest reproduces the full sweep exactly" {
     );
 }
 
-test "a third-party Python dependency is fingerprinted, never compiled as a target" {
+test "a typed third-party Python dependency is fingerprinted, never encoded as a target" {
     # A byllm fixture imports litellm, and the sealed in-package lane died
     # on it: `.py` under site-packages counted as a cacheable dependency, so
     # a cache miss compiled it as an interface target, whose interface walk
@@ -308,6 +331,9 @@ test "a third-party Python dependency is fingerprinted, never compiled as a targ
     sp = os.path.join(tmp, "site-packages");
     pkg = os.path.join(sp, "thirdmod");
     os.makedirs(pkg);
+    # Typed packages are analyzed lazily. They must also stay opaque to
+    # interface preparation, which can be requested without cache replay.
+    Path(pkg, "py.typed").touch();
     with open(os.path.join(pkg, "__init__.py"), "w") as fh {
         fh.write("from .sub import helper\n\n__all__ = ['helper']\n");
     }
@@ -341,6 +367,17 @@ test "a third-party Python dependency is fingerprinted, never compiled as a targ
         }
         reg = prog.iface_registry();
         compiler = prog._get_compiler();
+        for name in ("__init__.py", "sub.py", "deep.py") {
+            leaf = os.path.realpath(os.path.join(pkg, name));
+            assert leaf not in reg._iface_bytes , (
+                f"{name} was encoded in memory despite being ineligible for an interface"
+            );
+        }
+        mod = prog.find_module(init_py);
+        assert mod is not None , "the typed dependency must be loaded for this regression";
+        assert not reg.prepare_interface(init_py, mod) , "explicit interface preparation must also reject third-party Python";
+        reg.persist_after_compile(init_py, mod, _check_opts(), 0, 0);
+        assert not _cache_path(init_py).exists() , "explicit persistence must also reject third-party Python";
         assert not reg.eligible(compiler, init_py, _check_opts()) , "a site-packages module must never be served or persisted as an interface target";
         before = dict(reg.prog.analysis.cache_events);
         assert reg.ensure(init_py) is None , "ensure() must not manufacture an entry for third-party Python";
@@ -445,6 +482,23 @@ test "the interface-bytes memo outlives the compile closure" {
     events = prog.analysis.cache_events;
     assert events.get("iface_persist", 0) == 2 , f"expected a second persist of the unchanged module (events: {events})";
     assert events.get("iface_encode", 0) == 1 , f"the unchanged module was re-encoded after closure release (events: {events})";
+}
+
+test "a validated disk interface seeds the encoding memo for tree consumers" {
+    (main, dep) = _project();
+    _check(main);
+    prog = _context(main);
+    reg = prog.iface_registry();
+    cached = reg.ensure(dep, compile_on_miss=False);
+    assert cached is not None;
+    options = _check_opts();
+    options.need_full_ast = True;
+    prog.compile(dep, options=options);
+    assert prog.analysis.pass_runs , "the consumer did not request a source tree";
+    assert prog.analysis.cache_events.get("iface_encode", 0) == 0 , (
+        "a validated, unchanged interface was encoded again for a tree consumer"
+    );
+    assert reg.entries[dep].digest == cached.digest;
 }
 
 glob NARROW_DEP: str = """

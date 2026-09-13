@@ -8,7 +8,7 @@ producer side, which is the seat the sealed native emitter sits in.
 """
 
 import ast as pyast;
-import from builtins { exec as pyexec }
+import from builtins { exec as pyexec, compile as pycompile }
 import from jaclang.compiler.backends.py.codegen_ir {
     CIR_FORMAT_VERSION,
     CirDiag,
@@ -182,6 +182,25 @@ test "python inline splice lands with offset line numbers" {
     pyexec(result.modules[0].code_obj, ns);
     assert ns["X"] == 40;
     assert ns["Y"] == 42;
+    inputs: list[bool] = [];
+    def tracked_compile(
+        source: any,
+        filename: str,
+        mode: str,
+        flags: int = 0,
+        dont_inherit: bool = False
+    ) -> any {
+        inputs.append(isinstance(source, str));
+        return pycompile(
+            source, filename, mode, flags=flags, dont_inherit=dont_inherit
+        );
+    }
+    result = compile_ir(blob, python_compiler=tracked_compile);
+    assert inputs == [True, False] , "the selected compiler must handle both source splices and ASTs";
+    assert not result.diags;
+    replacement_ns: dict = {};
+    pyexec(result.modules[0].code_obj, replacement_ns);
+    assert replacement_ns["Y"] == 42;
 }
 
 test "version mismatch is refused" {

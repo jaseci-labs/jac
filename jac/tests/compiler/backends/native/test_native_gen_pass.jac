@@ -970,6 +970,8 @@ test "bytes_utf8" {
     _bytes_utf8__bytes_utf8_byte_len(_eng, _ir);
     _bytes_utf8__bytes_utf8_byte_at_portable(_eng, _ir);
     _bytes_utf8__bytes_utf8_decode_roundtrip_and_slice(_eng, _ir);
+    decoded_nul = get_func(_eng, "decode_embedded_nul", ctypes.c_int64);
+    assert decoded_nul() == 3098;
 }
 
 # --- TestNativeForTupleUnpack ---

@@ -5,6 +5,7 @@ import from types { ModuleType }
 import from typing { cast }
 import from jaclang.compiler.frontend.codeinfo { ClientArtifact }
 import from jaclang.client.client_bundle {
+    ClientBuildInputs,
     ClientBundle,
     ClientBundleBuilder,
     ClientBundleError
@@ -23,6 +24,14 @@ class ViteClientBundleBuilder(ClientBundleBuilder) {
     ) -> None;
 
     def _get_compiler(self: ViteClientBundleBuilder) -> ViteCompiler;
+    def prepare(
+        self: ViteClientBundleBuilder, module: ModuleType
+    ) -> ClientBuildInputs;
+
+    def bundle(
+        self: ViteClientBundleBuilder, inputs: ClientBuildInputs
+    ) -> ClientBundle;
+
     def _compile_bundle(
         self: ViteClientBundleBuilder, module: ModuleType, module_path: Path
     ) -> ClientBundle;

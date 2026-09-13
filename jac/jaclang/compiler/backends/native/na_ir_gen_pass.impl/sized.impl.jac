@@ -223,7 +223,7 @@ impl NaIRGenPass._codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value |
         return None;
     }
     arg = params[0];
-    val = self._codegen_expr(arg);
+    val = self._coerce_narrowed_arg(arg, self._codegen_expr(arg));
     if val is None {
         return None;
     }

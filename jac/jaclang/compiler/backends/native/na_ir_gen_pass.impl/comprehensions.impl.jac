@@ -583,11 +583,11 @@ impl NaIRGenPass._codegen_compr_walk_body(
         skip_bb = func.append_basic_block(name="compr.skip");
         all_cond = self._codegen_expr(conditionals[0]);
         if all_cond is not None {
-            all_cond = self._to_bool(all_cond);
+            all_cond = self._consume_bool(all_cond);
             for i in range(1, len(conditionals)) {
                 next_cond = self._codegen_expr(conditionals[i]);
                 if next_cond is not None {
-                    next_cond = self._to_bool(next_cond);
+                    next_cond = self._consume_bool(next_cond);
                     all_cond = self.builder.and_(all_cond, next_cond, name="compr.and");
                 }
             }
@@ -677,11 +677,11 @@ impl NaIRGenPass._codegen_compr_range_walk(
         skip_bb = func.append_basic_block(name="compr.range.skip");
         all_cond = self._codegen_expr(conditionals[0]);
         if all_cond is not None {
-            all_cond = self._to_bool(all_cond);
+            all_cond = self._consume_bool(all_cond);
             for i in range(1, len(conditionals)) {
                 next_cond = self._codegen_expr(conditionals[i]);
                 if next_cond is not None {
-                    next_cond = self._to_bool(next_cond);
+                    next_cond = self._consume_bool(next_cond);
                     all_cond = self.builder.and_(all_cond, next_cond, name="compr.and");
                 }
             }
