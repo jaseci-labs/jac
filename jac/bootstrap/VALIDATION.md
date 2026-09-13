@@ -157,11 +157,24 @@ and preservation of outside-project paths. Client path/diagnostic tests passed
 includes Linux ELF assertions that cannot pass on macOS; Linux CI validates those
 platform-specific assertions.
 
+The client diagnostic package rebuild and isolated verification passed all 22
+steps; its module phase reused 752 modules and compiled five in 13.47 seconds.
+Native JacPython constants and code-object boundary validation also passed.
+The client suite additionally exposed a macOS port probe that allowed wildcard
+address reuse despite an active loopback listener. Disabling reuse in the shared
+probe passed both existing port-selection regressions and the normal source check.
+
+CI now checkpoints completed module compilation before the self-rebuild, retaining
+that work when a newer push cancels verification. The final cache still includes
+self-rebuilt modules, and trusted binary publication still follows verification.
+The composite action parses and its consuming workflows pass actionlint with
+the existing custom-runner label exception.
+
 ## Outstanding validation
 
 The normal integration commit hook passed all 261 source checks in 1,738.67
 seconds. The downstream compiler fix commit passed all 11 normal source checks.
-The client diagnostic fix is undergoing a packaged rebuild. The latest completed
+The final port fix is undergoing a packaged rebuild. The latest completed
 Linux installation passed all 21 build steps, with 757 cold modules compiled in
 2,203.82 seconds, before a newer push cancelled the verification run. Required
 CI checks on the final revision remain pending.
