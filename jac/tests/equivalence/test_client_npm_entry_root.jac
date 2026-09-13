@@ -146,6 +146,7 @@ test "library-local installation never borrows entry declarations" {
 
 
 test "npm import missing from both project roots still warns" {
+    import from unittest.mock { patch }
     base_dir = tempfile.mkdtemp(prefix="jac_npm_root_");
     try {
         (entry_file, lib_dir) = _write_projects(base_dir, with_pkg=False);
@@ -156,7 +157,9 @@ test "npm import missing from both project roots still warns" {
             if w.code and w.code.code == "W1100"
         ];
         assert w1100 != [] , "unresolvable npm package must keep warning W1100";
-        warm = _check(entry_file, lib_dir);
+        with patch.dict(os.environ, {"JAC_IFACE_VERIFY": "1"}) {
+            warm = _check(entry_file, lib_dir);
+        }
         warm_w1100 = [
             str(w)
             for w in warm.warnings_had

@@ -1226,14 +1226,14 @@ obj IfaceRegistry {
     def _verify_iface(resolved: str, ent: IfaceEntry) -> None {
         self.verifying = True;
         try {
+            import from copy { copy }
             import from jaclang.compiler.driver.compile_options { CompileOptions }
             prog2 = self._fresh_verify_program();
-            fresh = prog2.compile(
-                resolved,
-                options=CompileOptions(
-                    symtab_ir_only=True, no_cgen=True, need_full_ast=True
-                )
-            );
+            options = copy(self.prog.options or CompileOptions());
+            options.symtab_ir_only = True;
+            options.no_cgen = True;
+            options.need_full_ast = True;
+            fresh = prog2.compile(resolved, options=options);
             served = ent.module;
             if served is None or fresh is None {
                 return;
@@ -1271,18 +1271,12 @@ obj IfaceRegistry {
     def _verify_analysis(resolved: str, options: any, prof: dict) {
         self.verifying = True;
         try {
-            import from jaclang.compiler.driver.compile_options { CompileOptions }
+            import from copy { copy }
             prog2 = self._fresh_verify_program();
+            fresh_options = copy(options);
+            fresh_options.need_full_ast = True;
             try {
-                prog2.compile(
-                    resolved,
-                    options=CompileOptions(
-                        no_cgen=options.no_cgen,
-                        native_parity=options.native_parity,
-                        suppress_codes=list(options.suppress_codes or []),
-                        need_full_ast=True
-                    )
-                );
+                prog2.compile(resolved, options=fresh_options);
             } except Exception {}
 
             def digestible(alert: any) -> tuple {
