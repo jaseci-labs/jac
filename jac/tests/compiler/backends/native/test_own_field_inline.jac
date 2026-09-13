@@ -12,9 +12,8 @@ import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.session.options { CompileOptions }
 
@@ -67,7 +66,7 @@ test "flattened output stays byte-identical across all gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"ofi_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+                jac_command("build", "--native", FIXTURE)
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

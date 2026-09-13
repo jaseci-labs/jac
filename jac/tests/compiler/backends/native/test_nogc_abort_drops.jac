@@ -8,9 +8,8 @@ EH-table machinery; drops fire exactly once, before the abort banner.
 
 import os;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "nogc_abort_drops.jac"
@@ -21,18 +20,7 @@ glob FIXTURE = os.path.join(
 
 def _build(src: str, out_bin: str) -> subprocess.CompletedProcess {
     return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            src,
-            "--memory",
-            "nogc",
-            "-o",
-            out_bin
-        ],
+        jac_command("build", "--native", src, "--memory", "nogc", "-o", out_bin),
         capture_output=True,
         text=True
     );

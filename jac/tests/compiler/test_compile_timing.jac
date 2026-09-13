@@ -45,12 +45,11 @@ import os;
 import shutil;
 import statistics;
 import subprocess;
-import sys;
 import tempfile;
 import time;
 
 import from pathlib { Path }
-import from tests.support { JAC_ROOT, TESTS_DIR }
+import from tests.support { jac_command, JAC_ROOT, TESTS_DIR }
 import from jaclang.jac0core.cache_paths { get_jir_cache_dir }
 
 glob PROBE: str = os.path.join(
@@ -174,7 +173,7 @@ def run_probe(tree_dir: str, cache: str, round_no: int = 0) -> list[dict] {
         return _PROBE_CACHE[key];
     }
     proc = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", PROBE],
+        jac_command("run", PROBE),
         cwd=tree_dir,
         env=_probe_env(cache),
         capture_output=True,
@@ -423,16 +422,7 @@ test "the chess AOT binary stays inside its recorded run envelope" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "chess");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                CHESS,
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", CHESS, "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=1800

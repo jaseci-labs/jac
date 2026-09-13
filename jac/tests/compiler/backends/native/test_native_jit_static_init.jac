@@ -26,9 +26,8 @@ failing one test.
 
 import os;
 import subprocess;
-import sys;
 import jaclang;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, compiler_python_command }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -75,17 +74,10 @@ paths after loading jaclang, so copying sys.path alone can switch compilers.
 """
 def _jit_call(fixture: str, symbol: str) -> tuple[(int, str, str)] {
     package = str(jaclang.__file__);
-    child_path = [os.path.dirname(os.path.dirname(package)), *sys.path];
-    source = "import sys\nsys.path[:] = " + repr(child_path) + "\n" + _JIT_DRIVER;
     proc = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            source,
-            os.path.join(FIXTURES, fixture),
-            symbol,
-            package
-        ],
+        compiler_python_command(
+            _JIT_DRIVER, os.path.join(FIXTURES, fixture), symbol, package
+        ),
         capture_output=True,
         text=True,
         timeout=900

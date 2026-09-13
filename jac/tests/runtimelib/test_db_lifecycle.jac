@@ -9,6 +9,8 @@ Every test owns an isolated cluster under a temp dir, so nothing here touches
 the developer's shared cluster at ~/.cache/jac/pg/main.
 """
 
+import from tests.support { jac_command }
+
 import io;
 import os;
 import shutil;
@@ -170,7 +172,7 @@ def _child_env(cluster: Cluster, scratch: bool) -> dict {
 """Run `jac run app.jac` inside *proj* against *cluster*."""
 def _run_app(cluster: Cluster, proj: str, scratch: bool = False) -> tuple {
     res = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", os.path.join(proj, "app.jac")],
+        jac_command("run", os.path.join(proj, "app.jac")),
         cwd=proj,
         env=_child_env(cluster, scratch),
         capture_output=True,

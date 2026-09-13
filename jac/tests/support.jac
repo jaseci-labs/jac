@@ -24,6 +24,31 @@ glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
      # Repo root (the `jac/` dir): the parent of `tests/`.
      JAC_ROOT: str = str(Path(__file__).resolve().parent.parent);
 
+"""Run Python code in a child that selects this process's compiler package."""
+def compiler_python_command(source: str, *args: str) -> list[str] {
+    import jaclang;
+    import sys;
+    package_root = str(Path(str(jaclang.__file__)).resolve().parent.parent);
+    boot = (
+        "import sys\nsys.path.insert(0, "
+        + repr(package_root)
+        + ")\n"
+        + "sys.path.extend("
+        + repr(sys.path)
+        + ")\n"
+        + source
+    );
+    return [sys.executable, "-c", boot, *args];
+}
+
+"""Invoke the selected compiler's CLI, including from a checkout working directory."""
+def jac_command(*args: str) -> list[str] {
+    return compiler_python_command(
+        "import runpy\nrunpy.run_module('jaclang', run_name='__main__', alter_sys=True)",
+        *args
+    );
+}
+
 """CompileOptions that force a fixture into the native codespace.
 
 The retired .na.jac marker used to do this from the filename; tests that
@@ -258,7 +283,7 @@ def native_build(
     import sys;
     assert os.path.exists(src) , f"fixture missing: {src}";
     cmd = (
-        [sys.executable, "-m", "jaclang", "build", src, "--native"]
+        jac_command("build", src, "--native")
         + native_memory_flags(memory)
         + list(extra or [])
         + ["-o", out_bin]
@@ -309,8 +334,7 @@ def python_run(src: str, args: list[str] | None = None, timeout: int = 120) -> s
     import subprocess;
     import sys;
     proc = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", "--backend", "python", src]
-            + list(args or []),
+        jac_command("run", "--backend", "python", src) + list(args or []),
         capture_output=True,
         text=True,
         timeout=timeout

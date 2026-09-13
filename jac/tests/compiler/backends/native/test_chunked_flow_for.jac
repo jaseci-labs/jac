@@ -9,9 +9,8 @@ import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import re;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.session.options { CompileOptions }
 
@@ -47,7 +46,7 @@ test "chunked output is identical across modes, widths, and python" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"ck_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+                jac_command("build", "--native", FIXTURE)
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,
@@ -82,9 +81,7 @@ test "chunked output is identical across modes, widths, and python" {
             );
         }
         pyr = subprocess.run(
-            [sys.executable, "-m", "jaclang", "run", py_src],
-            capture_output=True,
-            text=True
+            jac_command("run", py_src), capture_output=True, text=True
         );
         assert pyr.returncode == 0 , f"py: {pyr.stderr}";
         _py_lines = [

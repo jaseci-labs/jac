@@ -12,8 +12,7 @@ import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import subprocess;
-import sys;
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.session.options { CompileOptions }
 
@@ -80,16 +79,7 @@ test "headerless mode: borrowed-only owner is stack-promoted" {
 
 test "jac explain memory reports the promoted count" {
     res = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "explain",
-            "memory",
-            FIXTURE,
-            "--memory",
-            "rc"
-        ],
+        jac_command("explain", "memory", FIXTURE, "--memory", "rc"),
         capture_output=True,
         text=True
     );

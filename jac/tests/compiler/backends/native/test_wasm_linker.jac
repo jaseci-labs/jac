@@ -14,11 +14,10 @@ and the indirect-call table.
 import os;
 import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import subprocess;
-import sys;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 import jaclang;
 import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.session.options { CompileOptions }
@@ -210,10 +209,7 @@ test "linking is deterministic" {
 test "nacompile --target wasm32 writes a valid module via the CLI" {
     out = os.path.join(tempfile.mkdtemp(), "game.wasm");
     proc = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
+        jac_command(
             "build",
             "--native",
             "--target",
@@ -221,7 +217,7 @@ test "nacompile --target wasm32 writes a valid module via the CLI" {
             os.path.join(FIXTURES, FIXTURE),
             "-o",
             out
-        ],
+        ),
         capture_output=True,
         text=True,
         timeout=300

@@ -13,9 +13,8 @@ either way.
 import os;
 import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.session.options { CompileOptions }
 import from jaclang.compiler.analysis.ownership.rc_facts_pass { loop_body_locals }
@@ -71,14 +70,9 @@ test "inferred region drops LIFO at close in every gc mode" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"ar_{mode}");
             res = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "jaclang",
-                    "build",
-                    "--native",
-                    os.path.join(FIXDIR, "anon_region_spawn.jac")
-                ]
+                jac_command(
+                    "build", "--native", os.path.join(FIXDIR, "anon_region_spawn.jac")
+                )
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,
@@ -100,10 +94,7 @@ test "declined fixtures still run correctly" {
         for fixture in ("anon_region_rooted.jac", "anon_region_escape.jac") {
             out_bin = os.path.join(tmp, "ar_declined");
             res = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "jaclang",
+                jac_command(
                     "build",
                     "--native",
                     os.path.join(FIXDIR, fixture),
@@ -111,7 +102,7 @@ test "declined fixtures still run correctly" {
                     "rc",
                     "-o",
                     out_bin
-                ],
+                ),
                 capture_output=True,
                 text=True
             );

@@ -13,10 +13,11 @@ per-source `.jac/cache` lands there too — the two compiles can never see
 each other's cached artifacts.
 """
 
+import from tests.support { jac_command }
+
 import os;
 import shutil;
 import subprocess;
-import sys;
 import tempfile;
 import from pathlib { Path }
 
@@ -38,16 +39,7 @@ def _compile_and_run(rc_debug_codegen: bool) -> tuple[str, str] {
         src = os.path.join(tmp, "rc_debug_trace.jac");
         shutil.copyfile(os.path.join(FIXTURES, "rc_debug_trace.jac"), src);
         out_bin = os.path.join(tmp, "rc_debug_trace");
-        cmd = [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            src,
-            "-o",
-            out_bin
-        ];
+        cmd = jac_command("build", "--native", src, "-o", out_bin);
         if rc_debug_codegen {
             cmd.append("--debug");
         }

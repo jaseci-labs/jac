@@ -14,9 +14,8 @@ table cannot express.
 import os;
 import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.session.options { CompileOptions }
 
@@ -53,14 +52,9 @@ def _enforced_codes(name: str) -> list[str] {
 def _run_mode(tmp: str, mode: str) -> str {
     out_bin = os.path.join(tmp, f"ofd_{mode}");
     res = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            os.path.join(FIXDIR, "own_field_drop_count.jac")
-        ]
+        jac_command(
+            "build", "--native", os.path.join(FIXDIR, "own_field_drop_count.jac")
+        )
             + MODE_FLAGS[mode]
             + ["-o", out_bin],
         capture_output=True,

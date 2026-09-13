@@ -6,9 +6,10 @@ developer or operator uses. Each project's cluster is isolated so `db stop`
 cannot interrupt another test's transaction.
 """
 
+import from tests.support { jac_command }
+
 import os;
 import subprocess;
-import sys;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
@@ -35,7 +36,7 @@ def _run(cwd: str, argv: list) -> tuple {
 
 
 def _jac(cwd: str, args: list) -> tuple {
-    return _run(cwd, [sys.executable, "-m", "jaclang"] + args);
+    return _run(cwd, jac_command() + args);
 }
 
 

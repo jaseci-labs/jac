@@ -11,10 +11,9 @@ import os;
 import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import shutil;
 import subprocess;
-import sys;
 import tempfile;
 import jaclang;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { jac_command, TESTS_DIR, native_force_opts }
 import from jaclang.compiler.session.session { JacProgram }
 import from jaclang.compiler.session.options { CompileOptions }
 
@@ -65,18 +64,7 @@ test "host-path multi-module gc none build passes assert-no-rc" {
         }
         out_bin = os.path.join(tmp, "xmod.bin");
         comp = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                `entry,
-                "--memory",
-                "nogc",
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", `entry, "--memory", "nogc", "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=300,

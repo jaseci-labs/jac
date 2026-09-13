@@ -6,11 +6,12 @@ it owns through a per-instance element-drop slot -- all with zero RC calls in
 the emitted IR (the zero-RC contract of --memory nogc).
 """
 
+import from tests.support { jac_command }
+
 import from jaclang.compiler.backends.common.artifact_store { artifact_for }
 import os;
 import from jaclang.compiler.session.options { push_native_target, pop_native_target }
 import subprocess;
-import sys;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.compiler.session.session { JacProgram }
@@ -45,18 +46,7 @@ test "host binary runs str containers and passes assert-no-rc" {
     src = os.path.join(FIXTURES, PROG);
     out_bin = os.path.join(tempfile.mkdtemp(), "strcont.bin");
     comp = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            src,
-            "--memory",
-            "nogc",
-            "-o",
-            out_bin
-        ],
+        jac_command("build", "--native", src, "--memory", "nogc", "-o", out_bin),
         capture_output=True,
         text=True,
         timeout=300
