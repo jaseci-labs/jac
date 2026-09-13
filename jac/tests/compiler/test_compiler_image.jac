@@ -26,6 +26,10 @@ assert "client/templates/cli/.gitignore" in image.payloads
 assert "client/templates/cli/main.jac" in image.payloads
 assert "client/templates/cli/main.jac" not in image.manifest["modules"]
 package = Path(jaclang.__file__).resolve().parent
+assert "client/jac.toml" in image.payloads
+from jaclang.compiler.placement.placement_pins import config_module_pin
+for name in ("auth_contract", "endpoint_cache", "client_react_core", "client_runtime_core"):
+    assert config_module_pin(str(package / "client" / (name + ".jac"))) == "client"
 assert not (package / "jac0.py").exists()
 assert not (package / "jac0core").exists()
 assert not (package / "bootstrap_manifest.py").exists()

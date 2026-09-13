@@ -14,12 +14,6 @@ requires_python = ">=3.14"
 # linked by Zig (jac/native + `zig build fetch-llvm`), not the llvmlite wheel.
 dependencies = []
 
-# These bridge declarations use browser globals in their annexes.
-# Give source checks the same client placement as the packaged runtime.
-[placement.pins]
-"jac.jaclang.client.client_react_core" = "client"
-"jac.jaclang.client.client_runtime_core" = "client"
-
 [project.urls]
 Repository = "https://github.com/jaseci-labs/jaseci"
 Homepage = "https://jaseci.org"
@@ -28,12 +22,9 @@ Documentation = "https://www.jaclang.org/docs"
 # Developer command concurrency. Compiler selection is explicit via JAC_COMPILER_IMAGE.
 [dev]
 
-# `jac test` worker count. The generic default is sized from MemAvailable
-# assuming ~2 GB per worker, which suits an ordinary project. This repo's
-# compiler suite is far heavier: workers running the native/LLVM tests were
-# measured at ~4.9 GB PSS average and 7.1 GB peak (they fork `jac build --native`
-# subprocesses), so the generic default over-subscribes here. Pin it.
-# JAC_TEST_JOBS overrides this; "0" or "1" runs everything in one process.
+# Workstation test concurrency; CI overrides this with JAC_TEST_JOBS=auto.
+# Automatic sizing budgets the configured recycling ceiling per worker (8 GB
+# by default). "0" runs in process; "1" uses one recyclable worker.
 test_jobs = "8"
 
 # `jac test` discovers the suite here (mirrors pytest's testpaths); relative to
