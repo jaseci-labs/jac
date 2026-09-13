@@ -59,12 +59,8 @@ test "pth finder imports a .jac module without explicit jaclang import" {
             f.write('with entry { print("pth_import_ok"); }\n');
         }
         proc = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                f"import sys; sys.path.insert(0, {tmpdir!r}); import hello_pth",
-
-            ],
+            [sys.executable, "-c", "import hello_pth"],
+            cwd=tmpdir,
             capture_output=True,
             text=True,
             timeout=600,

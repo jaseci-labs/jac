@@ -56,3 +56,35 @@ test "test workers use their configured recycling ceiling for auto sizing" {
         assert runner.resolve_jobs(3) == 3;
     }
 }
+
+test "one test worker recycles while explicit zero stays in process" {
+    import tempfile;
+    import from contextlib { chdir }
+    import from pathlib { Path }
+    import from unittest.mock { patch }
+    import jaclang.testing.test_runner as runner;
+    if not hasattr(os, "fork") {
+        return;
+    }
+    with tempfile.TemporaryDirectory() as directory, chdir(directory), patch.dict(
+        os.environ, {"JAC_TEST_RECYCLE": "1", "JAC_TEST_RECYCLE_MB": "8192"}
+    ) {
+        for name in ["first", "second"] {
+            Path(f"test_{name}.jac").write_text(
+                'import os;\nimport from pathlib { Path }\n'
+                    + 'test "record pid" { Path("'
+                    + name
+                    + '.pid").write_text(str(os.getpid())); }\n'
+            );
+        }
+        assert runner.run_tests(paths=[directory], jobs=1) == 0;
+        pids = {int(Path(f"{name}.pid").read_text()) for name in ["first", "second"]};
+        assert len(pids) == 2 , "one-worker mode must replace retired workers";
+        assert os.getpid() not in pids , "one-worker mode must isolate test execution";
+        assert runner.run_tests(paths=[directory], jobs=0) == 0;
+        assert all(
+            int(Path(f"{name}.pid").read_text()) == os.getpid()
+            for name in ["first", "second"]
+        ) , "explicit zero must retain in-process execution";
+    }
+}

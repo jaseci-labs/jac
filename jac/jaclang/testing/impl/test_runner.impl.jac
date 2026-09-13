@@ -1045,7 +1045,6 @@ impl run_tests(
     forced_serial = str(raw_jobs).strip() == "0";
     use_pool = hasattr(os, "fork")
         and not forced_serial
-        and ((workers > 1) or bool(iso_set) or bool(ser_set))
         and (len(plan.files) > 1 or bool(iso_set) or bool(ser_set));
     if not use_pool {
         _run_plan(
