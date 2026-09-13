@@ -1,4 +1,3 @@
-import from collections.abc { Callable }
 import type from jaclang.compiler.analysis.types.type_evaluator { TypeEvaluator }
 import from jaclang.compiler.analysis.interfaces.facts { CatalogStatistics }
 import from jaclang.compiler.session.cache.catalog_codec { PreparedCatalog }

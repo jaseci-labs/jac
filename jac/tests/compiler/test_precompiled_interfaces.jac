@@ -104,6 +104,11 @@ test "an installed precompiled interface resolves paths without rebuilding its s
             path = str(installed / "api.jac");
             iface_entry = registry.ensure(path, compile_on_miss=False);
             assert iface_entry is not None , "the installed interface could not be validated";
+            repacked = precompile_unit(path, str(installed), collect=False);
+            assert repacked is not None;
+            assert read_section_bytes(repacked, SEC_IFACE) is not None , (
+                "repacking a sealed module lost its interface metadata"
+            );
             module = registry._materialize(iface_entry);
             assert module is not None and module.stub_only;
             assert module.loc.mod_path == path;

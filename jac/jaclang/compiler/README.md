@@ -42,6 +42,11 @@ mutation scopes and reports progress. `products.jac` tracks task outcomes,
 dependencies, versions and invalidation. `request.jac` advances a module request
 through the selected schedule.
 
+The symbol-only schedule leaves compile-time imports as interfaces. Full
+compilation loads their bodies in `ComptimeImportsPass`; a scheduled type query
+that actually evaluates a compile-time value can demand its source through the
+existing evaluator. Merely discovering symbols does not load unused bodies.
+
 `PassIdentity`, `CompilationProduct`, `AnalysisFact`, `PassSpec` and `QuerySpec`
 make the execution contract explicit. `ProductKey[T]` pairs a product identity
 with its result type. Analyses receive `AnalysisServices`; application
@@ -75,6 +80,8 @@ persistent semantic data. `ClassDetailsShared.declaration_identity` preserves
 that origin even when the catalog supplies a placeholder scope. The separate
 `_identity_key` cache is only a derived view of a live declaration; clearing it
 or changing unrelated type relations cannot change a catalog type's identity.
+MRO linearization compares this declaration identity, so independently hydrated
+copies of one ancestor occupy one position in the inheritance order.
 
 Structural role replacement checks every proposed connection before removing
 the previous edges. Its validation phase uses the same typed endpoint checks
@@ -92,11 +99,21 @@ graphs. A graph cannot be silently adopted by an unrelated session. Releasing a
 context releases its products and artifacts without invalidating another
 context's graph.
 
+A symbol-only request cannot reuse a graph transformed by inferred native
+placement. The request creates a fresh graph from the pristine source revision
+and runs its scheduled analysis; it does not parse that source again. Packaging
+can therefore produce bytecode first and still publish the ordinary import
+interface afterward.
+
 `session/context.jac` distinguishes graph identity from artifact identity.
 Entry points keep separate mutable graphs, while disk artifacts are reusable
 across entries with the same application, placement defaults, framework, and
 code-generation settings. Loading an interface creates a graph in the requesting
 context; it does not share another context's live objects.
+
+An interface lookup prefers a valid local interface, but a local bytecode-only
+record cannot hide the interface in a sealed SDK image. Packaging consumes the
+same selected metadata and rebases its paths for the destination package.
 
 Application **context** selects the app's entry and boundary rules. **Placement**
 describes participating codespaces. **Ownership** is reserved for memory and

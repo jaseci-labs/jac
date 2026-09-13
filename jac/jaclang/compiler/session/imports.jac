@@ -387,17 +387,27 @@ obj IfaceRegistry(CatalogResolver) {
     }
 
     def _module_jir_in_context(resolved: str) -> (tuple[bytes, str] | None) {
+        cached: tuple[bytes, str] | None = None;
         try {
             cache_path = get_module_cache_path(resolved);
             if is_module_cache_valid(resolved, cache_path) {
-                return (cache_path.read_bytes(), "", );
+                cached = (cache_path.read_bytes(), "", );
+                if read_section_bytes(cached[0], SEC_IFACE) is not None {
+                    return cached;
+                }
             }
         } except Exception {}
         try {
-            return self.prog._get_compiler()._sealed_jir_data(resolved);
-        } except Exception {
-            return None;
-        }
+            sealed = self.prog._get_compiler()._sealed_jir_data(resolved);
+            if sealed is not None
+                and (
+                    cached is None
+                    or read_section_bytes(sealed[0], SEC_IFACE) is not None
+                ) {
+                return sealed;
+            }
+        } except Exception {}
+        return cached;
     }
 
     def _register_from_disk(resolved: str, check_deps: bool) -> (IfaceEntry | None) {

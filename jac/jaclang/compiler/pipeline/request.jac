@@ -34,6 +34,7 @@ obj ModuleCompilation {
             and existing is not None
             and not existing.stub_only
             and not existing.parse_failed
+            and not (existing.codespace_inferred and self.options.no_cgen)
             and self.program.is_hub_entry_fresh(os.path.realpath(self.path))
             and self.program.analysis.has_module(existing) {
             self.module = existing;

@@ -352,13 +352,15 @@ def _emit_unit_diagnostics(jac_path: str, programs: list) {
 
 glob _unit_program: list[JacProgram] = [];
 
-def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, bytes] {
+def _unit_extra(
+    jac_path: str, pkg_root: str, embed_src: bool, program: JacProgram
+) -> dict[int, bytes] {
     pkg_root = os.path.realpath(pkg_root);
     extra: dict[int, bytes] = {};
     try {
-        cache_path = get_module_cache_path(jac_path);
-        if cache_path.exists() and is_module_cache_valid(jac_path, cache_path) {
-            data = cache_path.read_bytes();
+        artifact = program.iface_registry()._module_jir(jac_path);
+        if artifact is not None {
+            (data, base_dir) = artifact;
             for section in (SEC_IFACE, SEC_DEPS, SEC_DIAG, SEC_PLACEMENT) {
                 raw = read_section_bytes(data, section);
                 if raw is not None {
@@ -366,7 +368,7 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
                 }
             }
             if extra {
-                paths = read_jir_paths(data);
+                paths = read_jir_paths(data, base_dir);
                 if not paths.base_dir {
                     paths.base_dir = os.path.dirname(os.path.realpath(jac_path));
                 }
@@ -377,7 +379,7 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
                     extra[SEC_DEPS] = deps_section(
                         [
                             (encode_path(path), digest, flags)
-                            for (path, digest, flags) in read_dep_rows(data)
+                            for (path, digest, flags) in read_dep_rows(data, base_dir)
                         ]
                     );
                 }
@@ -409,6 +411,12 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
             }
             raw = read_section_bytes(data, SEC_CTDEPS);
             if raw is not None {
+                if base_dir {
+                    import from jaclang.compiler.session.cache.artifact_codec {
+                        absolutize_ct_deps_section
+                    }
+                    raw = absolutize_ct_deps_section(raw, base_dir);
+                }
                 extra[SEC_CTDEPS] = rebase_ct_deps_section(
                     raw, os.path.normpath(pkg_root)
                 );
@@ -516,7 +524,7 @@ def _precompile_unit(
                     rewrapped,
                     compute_precompile_module_key(jac_path),
                     FLAG_PRECOMPILED,
-                    _unit_extra(jac_path, pkg_root, embed_src)
+                    _unit_extra(jac_path, pkg_root, embed_src, program)
                 );
             }
         }
@@ -537,7 +545,7 @@ def _precompile_unit(
         patched,
         compute_precompile_module_key(jac_path),
         FLAG_PRECOMPILED,
-        _unit_extra(jac_path, pkg_root, embed_src)
+        _unit_extra(jac_path, pkg_root, embed_src, program)
     );
 }
 
@@ -594,7 +602,7 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
             );
             with precompile_unit_context(str(jac_file), str(pkg_dir)) as program {
                 program.iface_registry().ensure(str(jac_file));
-                extra = _unit_extra(str(jac_file), str(pkg_dir), embed_src);
+                extra = _unit_extra(str(jac_file), str(pkg_dir), embed_src, program);
             }
             jir_rel = jac_file.relative_to(pkg_dir).with_suffix(".jir");
             jir_path = out_dir / jir_rel;

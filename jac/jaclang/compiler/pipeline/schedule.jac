@@ -176,7 +176,6 @@ def get_symtab_ir_sched -> list[PassIdentity] {
             PassIdentity.GraphLoweringPass,
             PassIdentity.ASTValidationPass,
             PassIdentity.DependencyFactsPass,
-            PassIdentity.ComptimeImportsPass,
             PassIdentity.AbsorbImportsPass,
             PassIdentity.SymTabBuildPass,
             PassIdentity.DeclImplMatchPass,

@@ -93,6 +93,31 @@ test "shared syntax cache evicts by node budget and preserves live stores" {
     assert not cache.units and cache.nodes == 0;
 }
 
+test "symbol analysis replaces an inferred graph without reparsing source" {
+    import from jaclang.compiler.session.options { CompileOptions }
+    with TemporaryDirectory() as directory {
+        path = str(Path(directory) / 'api.jac');
+        Path(path).write_text('def answer -> int { return 42; }\n');
+        program = JacProgram();
+        options = CompileOptions(no_cgen=True, force_target_program=True);
+        previous = program.compile(path, options=options);
+        previous.codespace_inferred = True;
+        parses = program.source_store.parses;
+        with patch(
+            'jaclang.compiler.frontend.parser.frontend.parse_woven',
+            side_effect=AssertionError('changing analysis flavor reparsed source')
+        ) {
+            current = program.compile(
+                path, options=options.for_symbols(need_tree=True)
+            );
+        }
+        assert current is not previous;
+        assert not current.codespace_inferred;
+        assert not program.errors_had;
+        assert program.source_store.parses == parses;
+    }
+}
+
 test "cached parse diagnostics belong to the receiving program" {
     cache = SourceCache();
     first = JacProgram();

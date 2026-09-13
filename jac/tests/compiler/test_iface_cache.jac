@@ -148,6 +148,42 @@ test "dependency ingestion hydrates from the interface, not the source" {
     assert "f" in mod.names_in_scope , "the hydrated interface lost a symbol";
 }
 
+test "a bytecode-only cache does not hide a sealed type interface" {
+    import marshal;
+    import from unittest.mock { patch }
+    import from jaclang.compiler.session.context { cache_scope, program_cache_identity }
+    (main, dep) = _project();
+    _check(main);
+    cache = _cache_path(dep, main);
+    interface_artifact = cache.read_bytes();
+    cache.unlink();
+    program = _context(main);
+    with cache_scope(program_cache_identity(program), program.options, program) {
+        assert write_module_cache(dep, marshal.dumps(compile('pass', dep, 'exec')));
+    }
+    assert read_section_bytes(cache.read_bytes(), SEC_IFACE) is None;
+    compiler = program._get_compiler();
+    with patch.object(
+        compiler, '_sealed_jir_data', return_value=(interface_artifact, '')
+    ) {
+        module = program.load_dependency_module(dep);
+        assert module.stub_only and module.lookup('f') is not None;
+        assert 'SymTabBuildPass' not in program.analysis.pass_runs;
+        from_disk = program.iface_registry()._module_jir(dep);
+        assert from_disk is not None and from_disk[0] == interface_artifact;
+    }
+    cache.write_bytes(interface_artifact);
+    with patch.object(
+        compiler,
+        '_sealed_jir_data',
+        side_effect=AssertionError('a complete local interface must take precedence')
+    ) as sealed {
+        local = program.iface_registry()._module_jir(dep);
+        assert local is not None and local[0] == interface_artifact;
+        sealed.assert_not_called();
+    }
+}
+
 test "hydrated dependencies retain their application context" {
     (main, dep) = _project();
     project = Path(main).parent;
@@ -1403,5 +1439,28 @@ test "symbol interfaces ignore lint selection while full analysis retains it" {
             assert warm.analysis.cache_events.get('dep_hydrate', 0) == 1;
             assert warm.analysis.pass_runs.get('SymTabBuildPass', 0) == 0;
         }
+    }
+}
+
+test "symbol-only compilation does not load unused compile-time bodies" {
+    with tempfile.TemporaryDirectory() as directory {
+        provider = str(Path(directory) / "provider.jac");
+        consumer = str(Path(directory) / "consumer.jac");
+        Path(provider).write_text("comptime VALUE: int = 42;\n");
+        Path(consumer).write_text(
+            "comptime import from provider { VALUE }\n"
+            "def answer -> int { return 1; }\n"
+        );
+        options = CompileOptions(
+            no_cgen=True, force_target_program=True, entry_point=consumer
+        );
+        cold = _context(consumer);
+        assert cold.iface_registry().ensure(provider) is not None;
+        warm = JacProgram();
+        module = warm.compile(consumer, options=options.for_symbols(need_tree=True));
+        context = warm.module_context(module);
+        loaded = context.find_module(provider);
+        assert loaded is None or loaded.stub_only , "symbol discovery loaded an unused compile-time body";
+        assert not warm.errors_had;
     }
 }
