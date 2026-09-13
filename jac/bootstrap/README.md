@@ -24,6 +24,8 @@ The producer executes its own compiled modules. Target sources live in an
 isolated temporary snapshot. The historical pin requires an empty `jac0core`
 resolver marker in that snapshot; it contains no code and is removed before
 publication. The current compiler has no seed transpiler or seed membership list.
+Current-only native build options pass through a typed keyword mapping in the
+bootstrap recipe, which the prior compiler checks and stage 1 executes.
 
 ```bash
 cd jac
@@ -79,3 +81,10 @@ never imports the compiler or discovers a source checkout. Native Python
 implementation sources are excluded from the interpreted compiler image; their
 CPython license is preserved. The CPython virtual machine and object runtime
 remain part of the product.
+
+Stage 1 maps its temporary native Python source directory to the stable
+`jaclang` prefix. The compiler applies source-prefix mappings to native symbol
+identity and embedded assertion locations, includes them in code-generation
+cache identity, and preserves them across native imports. Identical emitted
+objects let the runtime's existing content cache reuse CPython after compiler
+edits that leave the native Python implementation unchanged.

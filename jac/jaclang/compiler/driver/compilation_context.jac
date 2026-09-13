@@ -48,6 +48,32 @@ def cache_identity -> str {
     return _cache_context.get();
 }
 
+def codegen_source_path(path: str) -> str {
+    options = _active_options.get();
+    if not path or options is None or not options.source_prefix_map {
+        return path;
+    }
+    resolved = os.path.realpath(path);
+    mappings: list[tuple[str, str]] = sorted(
+        [
+            (os.path.realpath(directory), prefix)
+            for (directory, prefix) in sorted(options.source_prefix_map.items())
+        ],
+        key=lambda (item: tuple[str, str]) { len(item[0]); },
+        reverse=True
+    );
+    for (directory, prefix) in mappings {
+        if resolved == directory {
+            return prefix;
+        }
+        if resolved.startswith(directory.rstrip(os.sep) + os.sep) {
+            relative = os.path.relpath(resolved, directory).replace(os.sep, "/");
+            return prefix.rstrip("/") + "/" + relative;
+        }
+    }
+    return path;
+}
+
 obj SourceUnit {
     has syntax: Module,
         failed: bool,

@@ -95,6 +95,9 @@ def compile_native_python(package: Path, output: Path, target: str) {
         snapshot = Path(work).resolve() / "jaclang";
         snapshot_sources(package, snapshot);
         program = JacProgram();
+        path_options: dict[str, dict[str, str]] = {
+            "source_prefix_map": {str(snapshot): "jaclang"}
+        };
         push_import_base(str(snapshot.parent));
         try {
             module = program.compile(
@@ -107,7 +110,8 @@ def compile_native_python(package: Path, output: Path, target: str) {
                     memory_profile="managed",
                     no_ir_cache=True,
                     opt_level=2,
-                    native_target=target
+                    native_target=target,
+                    **path_options
                 )
             );
             verify_source_isolation(program);

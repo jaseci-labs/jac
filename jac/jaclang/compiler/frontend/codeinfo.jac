@@ -198,7 +198,8 @@ def module_dotted_name(mod_path: str, mod_name: str = "") -> str {
 
 def native_module_key(path: str) -> str {
     import os;
-    rp = os.path.realpath(path);
+    import from jaclang.compiler.driver.compilation_context { codegen_source_path }
+    rp = codegen_source_path(os.path.realpath(path));
     base = os.path.basename(rp);
     dot = base.rfind(".");
     stem = base[0:dot] if dot > 0 else base;

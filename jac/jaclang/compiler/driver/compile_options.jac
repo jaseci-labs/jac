@@ -49,6 +49,7 @@ obj CompileOptions {
         app_kind: str = "",
         target_app: str = "",
         entry_point: str = "",
+        source_prefix_map: dict[str, str] = field(default_factory=`dict),
         ui: str = "",
         project_root: (str | None) = None,
         native_module_walk_order: (str | None) = None,
@@ -114,6 +115,7 @@ obj CompileOptions {
     }
 
     def codegen_identity -> str {
+        import json;
         return ";".join(
             [
                 f"gc={self.na_gc_mode}",
@@ -126,7 +128,9 @@ obj CompileOptions {
                 f"opt={self.opt_level}",
                 f"app={self.target_app}",
                 f"app_kind={self.app_kind}",
-                f"kernel_unit={int(bool(self.kernel_unit))}"
+                f"kernel_unit={int(bool(self.kernel_unit))}",
+                "source_prefix_map="
+                    + json.dumps(self.source_prefix_map, sort_keys=True)
             ]
         );
     }
@@ -189,7 +193,8 @@ obj CompileOptions {
             app_kind=self.app_kind,
             target_app=self.target_app,
             ui=self.ui,
-            project_root=self.project_root
+            project_root=self.project_root,
+            source_prefix_map=dict(self.source_prefix_map)
         );
     }
 

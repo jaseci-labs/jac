@@ -144,7 +144,12 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
 
             is_false = self.builder.not_(cond_bool, name="assert.fail");
 
-            _a_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
+            import from jaclang.compiler.driver.compilation_context {
+                codegen_source_path
+            }
+            _a_path = codegen_source_path(self.ir_in.loc.mod_path)
+                if self.ir_in.loc
+                else "";
             _a_line = nd.loc.first_line if nd.loc else 0;
             _a_text = "assertion failed";
             if isinstance(nd.error_msg, uni.String) {

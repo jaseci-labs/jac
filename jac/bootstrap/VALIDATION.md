@@ -438,3 +438,33 @@ Bundling current-compiler analysis metadata was also tested without changing
 the production build. It did not meet the scaffold time or memory limits;
 consumer diagnostic profiles still require contextual analysis. No additional
 metadata-generation stage or relaxed performance budget was added.
+
+Revision `1478a13517` passed all 28 staged build and verification steps.
+Stage 1 reused 746 modules and rebuilt 11 in 58.12 seconds; Stage 2 rebuilt
+757 modules in 417.86 seconds. Both catalogs reported zero failures.
+Repository-wide checking with CI's exclusions passed 941 files in 1,750.12
+seconds. The fresh scaffold check remained above its CI budget at 92.27
+seconds and 4,867,653,632 bytes maximum RSS on macOS.
+
+### Native object reproducibility
+
+Temporary snapshot paths appeared in native global-initializer names and
+assertion strings, changing `jacpython.o` and invalidating the runtime cache
+without changing the Python compiler implementation. Explicit source-prefix
+mapping now belongs to compiler options and the existing compilation scope;
+the native symbol and assertion emitters consume that shared mapping.
+
+Two independent processes built the full native Python object from different
+snapshot directories and emitted identical 4,060,392-byte objects, SHA-256
+`c1d1deb6949a3a2e63cf4b3e7aa04d3425630936bf0e4b44c076397afd927b8a`.
+The runtime builder took 93.12 seconds to build with the first object, then
+accepted the second object through its unchanged cache validation and passed
+runtime smoke checks in 10.61 seconds. This is a local component measurement,
+not a forecast of whole-CI duration.
+
+Native regressions cover byte-identical object emission, mapped assertion
+locations, default source paths, longest-prefix matching, path-component
+boundaries, scoped restoration, option cloning, and cache-key separation.
+The checksum-pinned prior compiler also successfully loaded the updated
+bootstrap recipe; current-only options are passed as typed keyword arguments.
+Full native regression, final packaging, and latest-head CI remain required.
