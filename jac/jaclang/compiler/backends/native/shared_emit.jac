@@ -363,3 +363,40 @@ def emit_shared_library(
     }
     return (True, "");
 }
+
+
+def bind_shared_callbacks(llvm_ir: str, bindings: list) -> str {
+    import jaclang.compiler.backends.native.llvm.binding as llvm;
+    import from jaclang.compiler.backends.native.llvm.ir.types { _wrapname }
+    module = llvm.parse_assembly(llvm_ir);
+    assert isinstance(module, llvm.ModuleRef);
+    definitions: list[str] = [];
+    for binding in bindings {
+        function = module.get_function(binding.name);
+        assert isinstance(function, llvm.ValueRef);
+        if not function.is_declaration {
+            continue;
+        }
+        (result, parameters, variadic) = function.function_signature();
+        if variadic {
+            raise ValueError(f'Python callbacks cannot use a variadic ABI: {binding.name}');
+        }
+        name = _wrapname(binding.name);
+        slot = _wrapname('__jac_callback_' + binding.name);
+        setter = _wrapname('__jac_bind_' + binding.name);
+        arguments = ', '.join(f'{kind} %arg{index}' for (index, kind) in enumerate(parameters));
+        call = f'call {result} %function({arguments})';
+        body = f'  {call}\n  ret void' if result == 'void' else f'  %result = {call}\n  ret {result} %result';
+        definitions.extend([
+            f'@{slot} = internal global ptr null',
+            f'define void @{setter}(ptr %callback) {{\n  store ptr %callback, ptr @{slot}\n  ret void\n}}',
+            f'define {result} @{name}({arguments}) {{\n  %function = load ptr, ptr @{slot}\n{body}\n}}'
+        ]);
+    }
+    if definitions {
+        callbacks = llvm.parse_assembly('\n'.join(definitions));
+        module.link_in(callbacks);
+    }
+    module.verify();
+    return str(module);
+}
