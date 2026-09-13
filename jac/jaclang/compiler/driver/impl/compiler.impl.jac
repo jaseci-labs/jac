@@ -2043,6 +2043,7 @@ impl JacCompiler.get_client_artifact(
         compilation_scope
     }
     actual = self.selfhost.resolve(full_target, target_program);
+    actual.refresh_compile_inputs();
     if not self.selfhost.is_selfhost(actual) {
         options = bind_options(full_target, actual, actual.options);
         actual = context_program(actual, options);

@@ -140,14 +140,12 @@ def invalidate_client_product(program: JacProgram, module: Module) {
     path = os.path.realpath(module.loc.mod_path);
     program.hub.client_artifacts.pop(path, None);
     import from jaclang.compiler.driver.compilation_context { cache_scope }
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.driver.jir { write_module_cache, SEC_CLIENT }
     identity = ''
         if program._get_compiler().selfhost.is_selfhost(program)
         else program.context_key;
     with cache_scope(identity, program.options) {
-        try {
-            get_module_cache_path(path).unlink(missing_ok=True);
-        } except OSError {}
+        write_module_cache(path, None, remove_sections=(SEC_CLIENT, ));
     }
 }
 

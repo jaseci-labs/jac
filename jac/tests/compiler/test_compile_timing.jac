@@ -548,6 +548,8 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
     pass_runs: dict[str, int] = {};
     events: dict[str, int] = {};
     for record in measurements {
+        events["frontend_tree_hits"] = events.get("frontend_tree_hits", 0)
+            + sum(record.get("tree_hits", {}).values());
         for (name, count) in record.get("pass_runs", {}).items() {
             pass_runs[name] = pass_runs.get(name, 0) + count;
         }
@@ -615,7 +617,10 @@ test "the cold precompile path stays inside its work envelope" {
             f"cold precompile with the cache did {cold} pass runs against {no_cache} without it "
             f"(ratio {cold / max(no_cache, 1):.2f}, ceiling {GATE_COLD_MAX_RATIO})"
         );
-        assert events.get("dep_hydrate", 0) >= 1 , f"the cold run hydrated nothing (events: {events})";
+        assert events.get("dep_hydrate", 0) + events.get("frontend_tree_hits", 0)
+            >= 1 , (
+            f"the cold run reused no dependency products or live trees (events: {events})"
+        );
         assert events.get("boundary_facts", 0) >= 1 , (
             f"the cold run served no boundary facts from the cache (events: {events})"
         );

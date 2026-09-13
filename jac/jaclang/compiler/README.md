@@ -100,6 +100,10 @@ whose executable bytecode is produced by jac0. A bytecode-only cache is
 upgraded through `IfaceRegistry` instead of introducing a second analyzer.
 An executable request extends the live module's completed passes, including
 for selfhost modules. Missing bytecode does not invalidate unchanged analysis.
+Client invalidation removes the client section through the shared JIR writer;
+it preserves executable and interface products. Closure publication prepares
+all available interfaces before recording dependency hashes, then republishes
+validated live executable products against that completed dependency set.
 Live source revisions use the same content and annex-membership identity as
 disk products, so restored timestamps and deleted annexes cannot hide edits.
 At an outer request, `JacProgram.refresh_compile_inputs` checks retained inputs

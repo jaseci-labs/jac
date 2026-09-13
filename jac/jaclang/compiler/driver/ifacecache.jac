@@ -478,6 +478,11 @@ obj IfaceRegistry {
             }
             for (path, module) in ready {
                 self._persist_in_context(path, module, options, 0, 0);
+                if module.gen.py_bytecode is not None {
+                    self.prog._get_compiler()._persist_module_cache(
+                        path, module, self.prog
+                    );
+                }
             }
         }
     }

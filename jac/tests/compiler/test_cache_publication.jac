@@ -12,6 +12,7 @@ import from jaclang.compiler.driver.jir {
     read_section_bytes,
     write_module_cache,
     SEC_BYTECODE,
+    SEC_CLIENT,
     SEC_DEPS,
     SEC_DIAG,
     SEC_IFACE
@@ -57,6 +58,32 @@ test "changing dependency revisions cannot relabel older executable products" {
         assert write_module_cache(path, b"new code");
         assert read_section_bytes(get_module_cache_path(path).read_bytes(), SEC_IFACE)
             == b"new interface";
+    }
+}
+
+test "invalidating a client product preserves executable and interface products" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.pipeline { invalidate_client_product }
+    import from jaclang.compiler.driver.compilation_context { cache_scope }
+    with TemporaryDirectory() as directory {
+        source = Path(directory) / "consumer.jac";
+        source.write_text("def answer() -> int { return 42; }\n");
+        path = str(source);
+        program = JacProgram();
+        module = program.parse_str(source.read_text(), path);
+        with cache_scope(program.context_key, program.options) {
+            assert write_module_cache(
+                path,
+                b"executable",
+                {SEC_IFACE: b"interface", SEC_CLIENT: b"stale JavaScript"}
+            );
+            invalidate_client_product(program, module);
+            image = get_module_cache_path(path).read_bytes();
+            assert read_section_bytes(image, SEC_CLIENT) is None;
+            assert read_section_bytes(image, SEC_BYTECODE) == b"executable";
+            assert read_section_bytes(image, SEC_IFACE) == b"interface";
+        }
+        program.release_compile_closure(retain_stubs=False);
     }
 }
 

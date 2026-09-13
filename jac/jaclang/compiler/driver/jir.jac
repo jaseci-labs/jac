@@ -1031,7 +1031,8 @@ def write_module_cache(
     bytecode: (bytes | None),
     extra_sections: (dict[int, bytes] | None) = None,
     flags: int = 0,
-    expected_source_key: str | None = None
+    expected_source_key: str | None = None,
+    remove_sections: tuple[int, ...] = ()
 ) -> bool {
     resolved_path = str(Path(source_path).resolve());
     if not jir_cacheable_source_path(resolved_path) {
@@ -1047,8 +1048,17 @@ def write_module_cache(
             }
             key_sections = module_jir_key_sections(resolved_path);
             (existing, existing_flags) = _mergeable_sections(cache_path, key_sections);
+            if remove_sections
+                and not existing
+                and bytecode is None
+                and not extra_sections {
+                return False;
+            }
             sections: dict[int, bytes] = {};
             sections.update(existing);
+            for kind in remove_sections {
+                sections.pop(kind, None);
+            }
             if extra_sections is not None
                 and any(
                     kind in extra_sections
