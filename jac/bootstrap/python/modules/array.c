@@ -197,6 +197,6 @@ static int module_exec(PyObject *op) {
     PyObject *registered=PyObject_CallMethod(abc,"register","O",m->array_type); Py_DECREF(abc); if(!registered) return -1; Py_DECREF(registered);
     return 0;
 }
-static PyModuleDef_Slot slots[]={{Py_mod_exec,module_exec},{0}};
+static PyModuleDef_Slot slots[]={{Py_mod_exec,module_exec},{Py_mod_multiple_interpreters,Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},{0}};
 static PyModuleDef definition={PyModuleDef_HEAD_INIT,"array","Native Jac typed arrays.",sizeof(Module),module_methods,slots,module_traverse,module_clear,NULL};
 PyMODINIT_FUNC PyInit_array(void) { return PyModuleDef_Init(&definition); }

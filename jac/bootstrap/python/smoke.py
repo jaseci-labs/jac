@@ -77,6 +77,20 @@ if required_compiler is not None:
     for replacement in (_bisect, _heapq, _random, binascii, _operator, _queue, _json, _csv, _struct, cmath, math, _collections, _functools, itertools, array):
         assert replacement.__name__ in sys.builtin_module_names
         assert replacement.__spec__.origin == "built-in"
+    # Startup imports itertools and functools; each native module must also
+    # support an isolated interpreter with its own interpreter lock.
+    from concurrent import interpreters
+    isolated = interpreters.create()
+    try:
+        isolated.exec("""
+import array, _functools, itertools
+assert array.__spec__.origin == _functools.__spec__.origin == itertools.__spec__.origin == 'built-in'
+assert _functools.partial(pow, 2)(5) == 32
+assert list(itertools.islice(itertools.count(3), 3)) == [3, 4, 5]
+assert array.array('i', [1, 2]).tolist() == [1, 2]
+""")
+    finally:
+        isolated.close()
     assert ctypes.pythonapi.jacpy_array_insert
     numeric_array = array.array('q')
     array_empty_size = numeric_array.__sizeof__()

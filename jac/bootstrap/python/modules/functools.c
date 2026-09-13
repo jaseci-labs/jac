@@ -229,6 +229,6 @@ static int module_exec(PyObject *op) {
     if(PyModule_AddObjectRef(op,"partial",m->partial)<0 || PyModule_AddObjectRef(op,"_lru_cache_wrapper",m->lru)<0 || PyModule_AddObjectRef(op,"Placeholder",m->placeholder)<0) return -1;
     return 0;
 }
-static PyModuleDef_Slot module_slots[]={{Py_mod_exec,module_exec},{0}};
+static PyModuleDef_Slot module_slots[]={{Py_mod_exec,module_exec},{Py_mod_multiple_interpreters,Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},{0}};
 static PyModuleDef definition={PyModuleDef_HEAD_INIT,"_functools","Native Jac callable policies.",sizeof(Module),methods,module_slots,module_traverse,module_clear,NULL};
 PyMODINIT_FUNC PyInit__functools(void) { return PyModuleDef_Init(&definition); }

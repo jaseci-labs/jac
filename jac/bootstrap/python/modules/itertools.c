@@ -285,6 +285,6 @@ static int module_exec(PyObject *op) {
     }
     return 0;
 }
-static PyModuleDef_Slot module_slots[]={{Py_mod_exec,module_exec},{0}};
+static PyModuleDef_Slot module_slots[]={{Py_mod_exec,module_exec},{Py_mod_multiple_interpreters,Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},{0}};
 static PyModuleDef definition={PyModuleDef_HEAD_INIT,"itertools","Native Jac iterator policies.",sizeof(Module),module_methods,module_slots,module_traverse,module_clear,NULL};
 PyMODINIT_FUNC PyInit_itertools(void) { return PyModuleDef_Init(&definition); }
