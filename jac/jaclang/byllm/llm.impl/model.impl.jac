@@ -153,13 +153,13 @@ impl Model.ainvoke(mt_run: MTRuntime) -> object {
 }
 
 async def _astream_with_telemetry(
-    agen: AsyncGenerator[object, None], mt: object, model_name: str, start: float
+    agen: AsyncGenerator[object, None], mt: MTRuntime, model_name: str, start: float
 ) -> AsyncGenerator[object, None] {
     import asyncio;
     import contextvars;
     import time;
 
-    invocation_id = mt?._invocation_id;
+    invocation_id = mt._invocation_id;
     ctx = contextvars.copy_context();
     if invocation_id is not None {
         ctx.run(_current_invocation_id.set, invocation_id);
@@ -196,12 +196,12 @@ async def _astream_with_telemetry(
 }
 
 def _stream_with_telemetry(
-    gen: object, mt: object, model_name: str, start: float
-) -> object {
+    gen: Iterator[object], mt: MTRuntime, model_name: str, start: float
+) -> Generator[object, None, None] {
     import contextvars;
     import time;
 
-    invocation_id = mt?._invocation_id;
+    invocation_id = mt._invocation_id;
     ctx = contextvars.copy_context();
     if invocation_id is not None {
         ctx.run(_current_invocation_id.set, invocation_id);

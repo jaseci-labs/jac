@@ -27,7 +27,7 @@ def write_native_product(
     target = directory / (source if emit_source else output);
     target.parent.mkdir(parents=True, exist_ok=True);
     if shared {
-        llvm_ir = bind_shared_callbacks(llvm_ir, bindings);
+        (llvm_ir, bindings) = bind_shared_callbacks(llvm_ir, bindings);
     }
     if emit_source {
         import from jaclang.compiler.backends.native.c_emit { emit_c }

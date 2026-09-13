@@ -1,3 +1,5 @@
+import type from jaclang.compiler.frontend.codeinfo { InteropBinding }
+
 def inject_shared_init(llvm_ir_str: str, manifest: any) -> tuple[str, list[str]] {
     init_calls: list[str] = [];
     transitive_sources: list[str] = [];
@@ -365,12 +367,15 @@ def emit_shared_library(
 }
 
 
-def bind_shared_callbacks(llvm_ir: str, bindings: list) -> str {
+def bind_shared_callbacks(
+    llvm_ir: str, bindings: list[InteropBinding]
+) -> tuple[str, list[InteropBinding]] {
     import jaclang.compiler.backends.native.llvm.binding as llvm;
     import from jaclang.compiler.backends.native.llvm.ir.types { _wrapname }
     module = llvm.parse_assembly(llvm_ir);
     assert isinstance(module, llvm.ModuleRef);
     definitions: list[str] = [];
+    callbacks: list[InteropBinding] = [];
     for binding in bindings {
         function = module.get_function(binding.name);
         assert isinstance(function, llvm.ValueRef);
@@ -383,6 +388,7 @@ def bind_shared_callbacks(llvm_ir: str, bindings: list) -> str {
                 f'Python callbacks cannot use a variadic ABI: {binding.name}'
             );
         }
+        callbacks.append(binding);
         name = _wrapname(binding.name);
         slot = _wrapname('__jac_callback_' + binding.name);
         bind_function = _wrapname('__jac_bind_' + binding.name);
@@ -402,9 +408,9 @@ def bind_shared_callbacks(llvm_ir: str, bindings: list) -> str {
         );
     }
     if definitions {
-        callbacks = llvm.parse_assembly('\n'.join(definitions));
-        module.link_in(callbacks);
+        callback_module = llvm.parse_assembly('\n'.join(definitions));
+        module.link_in(callback_module);
     }
     module.verify();
-    return str(module);
+    return (str(module), callbacks);
 }
