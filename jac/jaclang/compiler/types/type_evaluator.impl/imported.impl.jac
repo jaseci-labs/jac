@@ -532,6 +532,12 @@ impl TypeEvaluator._resolve_importer_path(ast_node: UniNode) -> (str | None) {
 }
 
 impl TypeEvaluator.get_type_of_symbol(symbol: Symbol) -> TypeBase {
+    if symbol.decl is not None {
+        mod = symbol.decl.find_parent_of_type(Module);
+        if mod is not None {
+            self.program.iface_registry().note_dep(mod.loc.mod_path);
+        }
+    }
     provider = symbol.provider;
     if provider is not None {
         return provider.resolve_type(symbol);

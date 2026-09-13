@@ -12,6 +12,7 @@ import from jaclang.compiler.driver.jir {
     JirPaths,
     cache_mode,
     ct_deps_section,
+    compute_precompile_module_key,
     deps_section,
     get_module_cache_path,
     is_module_cache_valid,
@@ -25,7 +26,8 @@ import from jaclang.compiler.driver.jir {
     write_module_cache
 }
 
-glob DIAG_SCHEMA: int = 1,
+glob SOURCE_DEP_PREFIX: str = "source:",
+     DIAG_SCHEMA: int = 1,
      IFACE_RETAIN_CAP: int = 1024,
      _SYMTAB_PROVIDES_MEMO: list = [];
 
@@ -259,6 +261,9 @@ obj IfaceRegistry {
             return;
         }
         importer = self.frames[-1];
+        if dep_path == importer or dep_path in self.direct_deps.get(importer, {}) {
+            return;
+        }
         real = os.path.realpath(dep_path);
 
         if real == importer {
@@ -279,6 +284,11 @@ obj IfaceRegistry {
         } else {
             ent = self.entries.get(real);
             digest = ent.digest if ent is not None else "";
+            if not digest {
+                try {
+                    digest = SOURCE_DEP_PREFIX + compute_precompile_module_key(real);
+                } except OSError {}
+            }
         }
         bucket = self.direct_deps.get(importer);
         if bucket is None {
@@ -518,6 +528,32 @@ obj IfaceRegistry {
                 }
                 continue;
             }
+            if recorded.startswith(SOURCE_DEP_PREFIX) {
+                try {
+                    if recorded
+                        != SOURCE_DEP_PREFIX + compute_precompile_module_key(dep) {
+                        return False;
+                    }
+                    if dep in self.checking {
+                        continue;
+                    }
+                    found = self._module_jir(dep);
+                    if found is None {
+                        return False;
+                    }
+                    self.checking.add(dep);
+                    try {
+                        if not self._deps_match(found[0], found[1]) {
+                            return False;
+                        }
+                    } finally {
+                        self.checking.discard(dep);
+                    }
+                } except OSError {
+                    return False;
+                }
+                continue;
+            }
             ent = self.ensure(dep);
             if ent is None or ent.digest != recorded {
                 return False;
@@ -691,7 +727,18 @@ obj IfaceRegistry {
             visited.add(path);
             dependency = self.ensure(path, compile_on_miss=False);
             if dependency is None {
-                return None;
+                found = self._module_jir(path);
+                if found is None or not self._deps_match(found[0], found[1]) {
+                    return None;
+                }
+                (data, base_dir) = found;
+                dependency = IfaceEntry(
+                    path=path,
+                    digest="",
+                    diags=read_section_bytes(data, SEC_DIAG),
+                    paths=read_jir_paths(data, base_dir)
+                );
+                self._restore_dependencies(path, dict(read_dep_hashes(data, base_dir)));
             }
             if dependency.replayed_token == self.closure_token {
                 continue;
@@ -1186,6 +1233,7 @@ obj IfaceRegistry {
             return None;
         }
         resolved = os.path.realpath(path);
+        self.note_dep(resolved);
         if not is_stub_like_path(resolved) {
             found = self.prog.find_module(resolved);
             if found is not None {

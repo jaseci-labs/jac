@@ -394,3 +394,25 @@ with that corrected. Upstream's extended-import-bytecode regression and the othe
 ten application-preparation tests pass after normalizing its temporary path.
 The four GNU-time integration tests require Linux and are left to their CI lane.
 Final rebuild, remaining runtime tests, and latest-head CI remain acceptance gates.
+
+### Dependency analysis and child-process follow-up
+
+CI run `34773029168` passed Linux build-kit, Linux ARM, macOS ARM, and the
+native backend suite. Its runtime lane passed 1,987 tests and exposed two
+sealing failures caused by checkout shadowing in the precompiler child.
+The shared CLI command constructor now pins the running image; sealing,
+service-spawn, and MCP regressions pass together (107 tests), including a
+seal with `JAC_COMPILER_IMAGE` removed.
+
+The current diagnostic image passes 78 cache, context, timing, and comptime
+regressions (one skip). Interface requests now consult the existing product
+ledger to avoid recursively serializing complete dependency interfaces.
+Source-only dependency records retain source fingerprints and diagnostics;
+actual symbol reads record dependency edges. The new regression covers an
+unneeded leaf staying unloaded, zero-pass warm replay, later demand for the
+leaf, and invalidation after its member type changes.
+
+A cold six-app scaffold check passes in 93.46 seconds locally, versus
+326.02 seconds before this scheduling change. This is not yet acceptance
+of CI's 90-second/2,560 MiB gate: macOS `time` reported 4,880,793,600 bytes
+maximum RSS. Packaged rebuild and CI verification remain required.

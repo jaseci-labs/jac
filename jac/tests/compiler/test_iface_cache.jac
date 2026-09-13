@@ -864,3 +864,45 @@ test "a codegen compile records dependency rows but encodes no interface" {
         "the frontier merge dropped the dependency rows"
     );
 }
+
+
+test "interface serialization only analyzes types its caller needs" {
+    with tempfile.TemporaryDirectory() as tmp {
+        base = Path(tmp).resolve();
+        main = base / "main.jac";
+        leaf = base / "leaf.jac";
+        main.write_text(
+            "import from api { answer }\nwith entry { print(answer()); }\n"
+        );
+        (base / "api.jac").write_text(
+            "import type from unrelated { Unrelated }\n"
+            "def answer -> int { return 42; }\n"
+        );
+        (base / "unrelated.jac").write_text(
+            "import type from leaf { Leaf }\nobj Unrelated { has value: Leaf; }\n"
+        );
+        leaf.write_text("obj Leaf { has value: int; }\n");
+        (cold, _) = _check(str(main));
+        assert not cold.errors_had;
+        assert str(leaf) not in cold.mod.hub;
+        (warm, _) = _check(str(main));
+        assert not warm.errors_had;
+        assert not warm.analysis.pass_runs;
+        _rewrite(
+            str(main),
+            "import type from api { Unrelated }\n"
+            "def read(value: Unrelated) -> int { return value.value.value; }\n"
+        );
+        (demanded, _) = _check(str(main));
+        assert str(leaf) in demanded.mod.hub;
+        assert not demanded.errors_had;
+        (demanded_warm, _) = _check(str(main));
+        assert not demanded_warm.errors_had;
+        assert not demanded_warm.analysis.pass_runs;
+        _rewrite(str(leaf), "obj Leaf { has value: str; }\n");
+        (changed, _) = _check(str(main));
+        assert any(
+            "Cannot return str, expected int" in a.msg for a in changed.errors_had
+        ) , f"{[a.msg for a in changed.errors_had]} {changed.analysis.cache_events} {changed.analysis.pass_runs}";
+    }
+}

@@ -257,6 +257,10 @@ obj ModuleCompilation {
     }
 
     def interface {
+        import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
+        if self.program.analysis.product_running(CompilationProduct.INTERFACE) {
+            return;
+        }
         closure = self.compiler._closure_opts or self.options;
         requested_symbols = closure.symtab_ir_only
             and closure.iface_ok
@@ -275,10 +279,7 @@ obj ModuleCompilation {
                 or (closure.no_cgen and not closure.symtab_ir_only)
                 or requested_symbols
             ) {
-            import from jaclang.compiler.driver.pipeline {
-                require_product,
-                CompilationProduct
-            }
+            import from jaclang.compiler.driver.pipeline { require_product }
             require_product(self.program, self.module, CompilationProduct.INTERFACE);
         }
     }

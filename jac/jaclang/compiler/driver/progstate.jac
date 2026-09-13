@@ -9,7 +9,8 @@ import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
 import from jaclang.compiler.driver.pipeline_types {
     AnalysisFact,
     CompilationProduct,
-    ProductTask
+    ProductTask,
+    TaskState
 }
 
 obj ModuleHub {
@@ -430,6 +431,16 @@ class AnalysisCaches {
         self.task_owners = {};
         self.early_passes: dict[int, PendingPassResults] = {};
         self.cache_events: dict[str, int] = {};
+    }
+
+    def product_running(self: AnalysisCaches, product: CompilationProduct) -> bool {
+        for tasks in self.product_tasks.values() {
+            task = tasks.get(product);
+            if task is not None and task.state == TaskState.RUNNING {
+                return True;
+            }
+        }
+        return False;
     }
 
     def retain_tasks(self: AnalysisCaches, module: uni.Module) {
