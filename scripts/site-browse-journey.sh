@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Drive the served jaclang.org site (jac/examples/jaclang_org) through a full
 # user journey with `jac browse`, asserting rendered content and fullstack
-# behavior at every stop. Used by CI (ci.yml pack-smoke) and
+# behavior at every stop. Shared by the pack-smoke and pack-eject CI jobs and
 # runnable locally against any server:
 #
 #   scripts/site-browse-journey.sh [BASE_URL]
