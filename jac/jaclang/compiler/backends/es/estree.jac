@@ -445,7 +445,7 @@ obj IndexInfo {
     has value: (Node | None) = None;
 }
 
-glob Statement = ExpressionStatement
+glob Statement: TypeAlias = ExpressionStatement
          | BlockStatement
          | ReturnStatement
          | BreakStatement
@@ -460,7 +460,7 @@ glob Statement = ExpressionStatement
          | FunctionDeclaration
          | VariableDeclaration
          | ClassDeclaration,
-     Expression = (
+     Expression: TypeAlias = (
          Identifier
          | RawCode
          | Literal
@@ -483,12 +483,19 @@ glob Statement = ExpressionStatement
          | JsxElement
          | JsxFragment
      ),
-     Pattern = Identifier
+     Pattern: TypeAlias = Identifier
          | ArrayPattern
          | ObjectPattern
          | AssignmentPattern
          | RestElement,
-     Declaration = FunctionDeclaration | VariableDeclaration | ClassDeclaration,
-     ModuleDeclaration = ImportDeclaration | ExportNamedDeclaration;
+     Declaration: TypeAlias = FunctionDeclaration
+         | VariableDeclaration
+         | ClassDeclaration,
+     ModuleDeclaration: TypeAlias = ImportDeclaration | ExportNamedDeclaration;
 
 def es_node_to_dict(nd: Node) -> dict[str, any];
+
+
+def expression_node(value: object) -> Expression | None {
+    return value if isinstance(value, Expression) else None;
+}

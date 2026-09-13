@@ -315,6 +315,7 @@ impl EsastGenPass._ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None) {
 }
 
 impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
+    assert isinstance(nd.signature, uni.EventSignature);
     inner = ModuleFacts.unwrap_body(nd);
     body_stmts = self._collect_stmt_body(inner);
     body_stmts = self._prepend_hoisted(nd, body_stmts);
@@ -322,7 +323,7 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
     is_entry = nd.signature.event.name == Tok.KW_ENTRY;
     is_async = nd.is_async;
 
-    deps_elements: list[es.Expression | es.SpreadElement | None] = [];
+    deps_elements: list[es.Expression] = [];
     arch_tag = nd.signature.arch_tag_info;
     if arch_tag {
         if isinstance(arch_tag, (uni.ListVal, uni.TupleVal)) {

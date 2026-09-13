@@ -107,7 +107,7 @@ impl EsastGenPass.exit_import with uni.Import exit {
         first_item = here.items[0];
         if (isinstance(first_item, uni.ModulePath) and first_item.path) {
             path_elem = first_item.path[0];
-            import_key = path_elem.lit_value
+            import_key = str(path_elem.lit_value)
                 if isinstance(path_elem, uni.String)
                 else path_elem.value;
         } else {
@@ -147,7 +147,7 @@ impl EsastGenPass.exit_import with uni.Import exit {
                 );
                 local = self.sync_loc(
                     es.Identifier(
-                        name=item.alias.sym_name if item.alias else item.name.sym_name
+                        name=item.alias.sym_name if item.alias else item.name.value
                     ),
                     jac_node=item.alias or item.name
                 );
@@ -232,6 +232,7 @@ impl EsastGenPass._partition_client_import_items(
         }
         if pinned_server
             and verdict == ClientImportVerdict.DEAD
+            and isinstance(item, uni.ModuleItem)
             and decl_has_access(source_mod, item) {
             bridged.append(item);
             continue;
@@ -239,7 +240,7 @@ impl EsastGenPass._partition_client_import_items(
         if verdict == ClientImportVerdict.BRIDGED {
             bridged.append(item);
         } elif verdict == ClientImportVerdict.DEAD {
-            if not cross_app {
+            if not cross_app and isinstance(item, uni.ModuleItem) {
                 report_dead_client_import(self, nd, item);
             }
         } else {
@@ -396,6 +397,7 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
     import json;
     contracts: dict = {};
     host_imports: dict = {};
+    assert nd.from_loc is not None;
     resolved_path = nd.from_loc.resolve_relative_path();
     stem = native_wasm_stem(resolved_path);
 
@@ -499,11 +501,11 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
 impl EsastGenPass._sv_import_item_is_type(
     nd: uni.Import, item: uni.ModuleItem
 ) -> bool {
-    sym = item.name.sym;
+    sym = item.name.sym if isinstance(item.name, uni.Name) else None;
     if sym and sym.binding_kind.denotes_type() {
         return True;
     }
-    local_name = item.alias.sym_name if item.alias else item.name.sym_name;
+    local_name = item.alias.sym_name if item.alias else item.name.value;
     binding = self.ir_in.gen.interop_manifest.bindings.get(local_name);
     return binding is not None and binding.kind == 'type';
 }

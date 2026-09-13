@@ -55,6 +55,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
         return;
     }
 
+    assert here.name_ref is not None;
     ref_param: (uni.ParamVar | None) = None;
     if (
         here.code_context == CodeContext.CLIENT
@@ -444,7 +445,7 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
                     } elif (
                         isinstance(tgt, uni.Name)
                         and asn.value is not None
-                        and isinstance(asn.value.gen.es_ast, es.Expression)
+                        and es.expression_node(asn.value.gen.es_ast) is not None
                     ) {
                         body_stmts.append(
                             self.sync_loc(

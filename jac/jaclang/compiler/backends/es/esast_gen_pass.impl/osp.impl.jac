@@ -45,6 +45,7 @@ impl EsastGenPass._osp_const_decl(
 }
 
 impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
+    assert nd.name_ref is not None;
     self.needs_jac_runtime = True;
     is_walker = osp["kind"] == "walker";
     other_ref = self.sync_loc(es.Identifier(name="__other"), jac_node=nd);
@@ -686,6 +687,14 @@ impl EsastGenPass._build_osp_filter_pred(
         );
     }
     for cmp in filt.compares {
+        if not isinstance(cmp, uni.CompareExpr) {
+            self.emit(
+                E5097,
+                node_override=cmp,
+                kind="a graph filter outside 'name <op> value' form"
+            );
+            return None;
+        }
         _lhs = cmp.left;
         _js_op: (str | None) = None;
         if isinstance(_lhs, uni.Name)

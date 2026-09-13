@@ -529,7 +529,7 @@ impl EsastGenPass.before_pass -> None {
         )
         if a.name is not None
     };
-    self.jsx_processor = EsJsxProcessor(self);
+    self._jsx_processor = EsJsxProcessor(self);
 
     self.scoped_styles = load_style_annex(
         self.ir_in.annexable_by or self.ir_in.loc.mod_path

@@ -4,7 +4,9 @@ import from typing { cast }
 import jaclang.compiler.backends.es.estree as es;
 import jaclang.compiler.frontend.unitree as uni;
 import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.es.es_unparse { es_to_js }
+import from jaclang.compiler.backends.es.es_unparse { es_to_js, JSCodeGenerator }
+import from jaclang.compiler.types.types { TypeBase, ClassType }
+import from jaclang.compiler.backends.es.primitives_es { ESBuiltinEmitter }
 import from jaclang.compiler.frontend.constant { CodeContext, SymbolType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.passes.osp_analysis { OspAnalysis, OspModel }
@@ -239,7 +241,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {},
         _backend: FrameworkBackend | None = None,
         client_manifest: ClientManifest = ClientManifest(),
-        jsx_processor: (EsJsxProcessor | None) = None,
+        _jsx_processor: EsJsxProcessor | None = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
         reactive_vars: set[str] = set(),
         component_export_names: set[str] = set(),
@@ -263,14 +265,23 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         _unlowered_reported: set = set(),
         _unbound_reported: set[str] = set(),
         _osp_var_arch_cache: (dict | None) = None,
-        _primitive_emitters: (dict[str, object] | None) = None,
-        _builtin_emitter: (object | None) = None,
-        _primitives_es_mod: (object | None) = None,
+        _primitive_emitters: dict[str, object] = {},
+        _emitters_ready: bool = False,
+        _builtin_emitter: ESBuiltinEmitter = ESBuiltinEmitter(),
         _poly_methods: (set[str] | None) = None;
 
     has backend: FrameworkBackend {
         getter {
             return self._ensure_backend();
+        }
+    }
+
+    has jsx_processor: EsJsxProcessor {
+        getter {
+            if self._jsx_processor is None {
+                self._jsx_processor = EsJsxProcessor(self);
+            }
+            return self._jsx_processor;
         }
     }
 
@@ -305,7 +316,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _is_declared_in_any_scope(name: str) -> bool;
     def _register_declaration(name: str) -> None;
     def _declaring_scope_for(name_node: uni.UniNode) -> (ScopeInfo | None);
-    def _operand_str(unparser: object, es_node: es.Expression) -> str;
+    def _operand_str(unparser: JSCodeGenerator, es_node: es.Expression) -> str;
     def _is_null_literal(nd: (uni.UniNode | None)) -> bool;
     def _hoist_into(scope: ScopeInfo, name: str, jac_node: uni.UniNode) -> None;
     def _ensure_identifier_declared(name: str, jac_node: uni.UniNode) -> None;
@@ -402,7 +413,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _ct_only_name(nd: uni.Name) -> bool;
     def _comptime_only_names -> set[str];
     def _is_ct_type_param(nd: uni.Name) -> bool;
-    def _ct_ctor_slots(nd: uni.UniNode) -> (list[tuple] | None);
+    def _ct_ctor_slots(nd: uni.UniNode) -> (list[tuple[str, uni.Expr]] | None);
     def _trailer_reaches_ct_class(nd: uni.AtomTrailer) -> bool;
     def _build_block_statement(
         scope_node: uni.UniScopeNode, body_nodes: (Sequence[uni.UniNode] | None)
@@ -565,7 +576,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _match_arch_field_order(pat: uni.MatchArch) -> (list[str] | None);
     def _match_subj_member(subj: es.Expression, field: str) -> es.Expression;
     def _ensure_emitters -> None;
-    def _resolve_primitive_type_name(_obj_type: object) -> str;
+    def _resolve_primitive_type_name(_obj_type: TypeBase | None) -> str;
     def _try_primitive_op(
         expr_node: uni.UniNode,
         emit_method: str,
@@ -708,7 +719,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     can exit_atom_unit with uni.AtomUnit exit;
     can exit_list_val with uni.ListVal exit;
     can exit_set_val with uni.SetVal exit;
-    def _gen_seq_array(nd: uni.UniNode) -> None;
+    def _gen_seq_array(nd: uni.ListVal | uni.TupleVal | uni.SetVal) -> None;
     can exit_tuple_val with uni.TupleVal exit;
     can exit_dict_val with uni.DictVal exit;
     can exit_k_v_pair with uni.KVPair exit;
@@ -722,7 +733,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         comprs: list[uni.InnerCompr], out_expr: es.Expression, nd: uni.UniNode
     ) -> (es.Expression | None);
 
-    def _compr_param(target: es.Expression, jac_node: uni.UniNode) -> es.Node;
+    def _compr_param(target: es.Expression, jac_node: uni.UniNode) -> es.Pattern;
     can exit_bool with uni.Bool exit;
     can exit_int with uni.Int exit;
     can exit_float with uni.Float exit;
