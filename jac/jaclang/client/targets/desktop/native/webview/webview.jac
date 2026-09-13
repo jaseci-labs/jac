@@ -1,5 +1,7 @@
 import from webview {
-    def webview_create(debug: i32, window: int) -> int;  def webview_destroy(
+    obj BindingCallback {
+        has invoke: Callable[[int, int, int], None];
+    }  def webview_create(debug: i32, window: int) -> int;  def webview_destroy(
         w: int
     ) -> i32;  def webview_run(w: int) -> i32;  def webview_terminate(w: int) -> i32;  def webview_set_title(
         w: int, title: str
@@ -48,8 +50,8 @@ obj:pub Webview {
         webview_eval(self.handle, js);
     }
 
-    def bind(name: str, handler: Callable[[int, int, int], None]) {
-        webview_bind(self.handle, name, handler, self.handle);
+    def bind(name: str, handler: BindingCallback) {
+        webview_bind(self.handle, name, handler.invoke, self.handle);
     }
 
     def:pub run {
