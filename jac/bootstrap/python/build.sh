@@ -223,8 +223,8 @@ _queue jac_modules/queue.c
 _json jac_modules/json.c
 _csv jac_modules/csv.c
 _struct jac_modules/struct.c
-cmath jac_modules/cmath.c
-math jac_modules/math.c
+cmath
+math
 _collections jac_modules/collections.c
 _functools jac_modules/functools.c
 itertools jac_modules/itertools.c

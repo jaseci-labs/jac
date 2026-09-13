@@ -120,25 +120,7 @@ import from jaclang.runtime.python.modules.functools {
     jacpy_lru_clear,
     jacpy_lru_info
 }
-import from jaclang.runtime.python.modules.math {
-    jacpy_math_gcd,
-    jacpy_math_factorial,
-    jacpy_math_isqrt,
-    jacpy_math_comb,
-    jacpy_math_log,
-    jacpy_math_unary,
-    jacpy_math_binary,
-    jacpy_math_parts,
-    jacpy_math_ldexp,
-    jacpy_math_fma,
-    jacpy_math_isclose,
-    jacpy_math_nextafter,
-    jacpy_math_fsum,
-    jacpy_math_hypot,
-    jacpy_math_dist,
-    jacpy_math_prod,
-    jacpy_math_sumprod
-}
+import from jaclang.runtime.python.bindings.math { PyInit_math }
 import from jaclang.runtime.python.modules.collections {
     jacpy_deque_new,
     jacpy_deque_size,
@@ -181,12 +163,7 @@ import from jaclang.runtime.python.modules.struct {
     jacpy_struct_cached,
     jacpy_struct_memory
 }
-import from jaclang.runtime.python.modules.cmath {
-    jacpy_cmath_unary,
-    jacpy_cmath_log,
-    jacpy_cmath_rect,
-    jacpy_cmath_isclose
-}
+import from jaclang.runtime.python.bindings.cmath { PyInit_cmath }
 
 import from jaclang.runtime.python.modules.csv {
     jacpy_csv_dialect,

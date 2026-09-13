@@ -1,8 +1,11 @@
 """Python heap signatures and initialization, compiled into JacPython."""
-import from jaclang.runtime.python.bindings.module { Module, Method }
+import from jaclang.runtime.python.bindings.module {
+    ModuleDefinition,
+    MethodDefinition
+}
 import from jaclang.runtime.python.bindings.arguments {
-    Signature,
-    Arguments,
+    CallSignature,
+    BoundArguments,
     invoke,
     invoke_one,
     invalid
@@ -16,8 +19,8 @@ import from jaclang.runtime.python.modules.heapq {
     jacpy_heapify
 }
 
-glob heappush_signature = Signature("heappush", ["heap", "item"], 2, 2, 2);
-def heappush_bound(args: Arguments) -> u64 {
+glob heappush_signature = CallSignature("heappush", ["heap", "item"], 2, 2, 2);
+def heappush_bound(args: BoundArguments) -> u64 {
     heap = args.values[0];
     if jacpy_is_list(heap) == 0 {
         invalid(f"heappush() argument must be list, not {type_name(heap)}");
@@ -30,8 +33,11 @@ def heappush_call(module: u64, args: u64) -> u64 {
     return invoke(heappush_signature, args, 0, heappush_bound);
 }
 
-glob heappush_max_signature = Signature("heappush_max", ["heap", "item"], 2, 2, 2);
-def heappush_max_bound(args: Arguments) -> u64 {
+glob heappush_max_signature = CallSignature(
+         "heappush_max", ["heap", "item"], 2, 2, 2
+     );
+
+def heappush_max_bound(args: BoundArguments) -> u64 {
     heap = args.values[0];
     if jacpy_is_list(heap) == 0 {
         invalid(f"heappush_max() argument must be list, not {type_name(heap)}");
@@ -44,8 +50,11 @@ def heappush_max_call(module: u64, args: u64) -> u64 {
     return invoke(heappush_max_signature, args, 0, heappush_max_bound);
 }
 
-glob heapreplace_signature = Signature("heapreplace", ["heap", "item"], 2, 2, 2);
-def heapreplace_bound(args: Arguments) -> u64 {
+glob heapreplace_signature = CallSignature(
+         "heapreplace", ["heap", "item"], 2, 2, 2
+     );
+
+def heapreplace_bound(args: BoundArguments) -> u64 {
     heap = args.values[0];
     if jacpy_is_list(heap) == 0 {
         invalid(f"heapreplace() argument must be list, not {type_name(heap)}");
@@ -58,11 +67,11 @@ def heapreplace_call(module: u64, args: u64) -> u64 {
     return invoke(heapreplace_signature, args, 0, heapreplace_bound);
 }
 
-glob heapreplace_max_signature = Signature(
+glob heapreplace_max_signature = CallSignature(
          "heapreplace_max", ["heap", "item"], 2, 2, 2
      );
 
-def heapreplace_max_bound(args: Arguments) -> u64 {
+def heapreplace_max_bound(args: BoundArguments) -> u64 {
     heap = args.values[0];
     if jacpy_is_list(heap) == 0 {
         invalid(f"heapreplace_max() argument must be list, not {type_name(heap)}");
@@ -75,8 +84,11 @@ def heapreplace_max_call(module: u64, args: u64) -> u64 {
     return invoke(heapreplace_max_signature, args, 0, heapreplace_max_bound);
 }
 
-glob heappushpop_signature = Signature("heappushpop", ["heap", "item"], 2, 2, 2);
-def heappushpop_bound(args: Arguments) -> u64 {
+glob heappushpop_signature = CallSignature(
+         "heappushpop", ["heap", "item"], 2, 2, 2
+     );
+
+def heappushpop_bound(args: BoundArguments) -> u64 {
     heap = args.values[0];
     if jacpy_is_list(heap) == 0 {
         invalid(f"heappushpop() argument must be list, not {type_name(heap)}");
@@ -89,11 +101,11 @@ def heappushpop_call(module: u64, args: u64) -> u64 {
     return invoke(heappushpop_signature, args, 0, heappushpop_bound);
 }
 
-glob heappushpop_max_signature = Signature(
+glob heappushpop_max_signature = CallSignature(
          "heappushpop_max", ["heap", "item"], 2, 2, 2
      );
 
-def heappushpop_max_bound(args: Arguments) -> u64 {
+def heappushpop_max_bound(args: BoundArguments) -> u64 {
     heap = args.values[0];
     if jacpy_is_list(heap) == 0 {
         invalid(f"heappushpop_max() argument must be list, not {type_name(heap)}");
@@ -154,74 +166,74 @@ def heapify_max_call(module: u64, args: u64) -> u64 {
     return invoke_one(args, heapify_max_bound);
 }
 
-glob definition = Module(
+glob definition = ModuleDefinition(
          "_heapq",
          "Heap algorithms implemented in native Jac.",
          [
-             Method(
+             MethodDefinition(
                  "heappush",
                  0,
                  "heappush($module, heap, item, /)\n--\n\nMaintain a heap in place.",
                  heappush_call,
                  1
              ),
-             Method(
+             MethodDefinition(
                  "heappush_max",
                  0,
                  "heappush_max($module, heap, item, /)\n--\n\nMaintain a heap in place.",
                  heappush_max_call,
                  1
              ),
-             Method(
+             MethodDefinition(
                  "heapreplace",
                  0,
                  "heapreplace($module, heap, item, /)\n--\n\nMaintain a heap in place.",
                  heapreplace_call,
                  1
              ),
-             Method(
+             MethodDefinition(
                  "heapreplace_max",
                  0,
                  "heapreplace_max($module, heap, item, /)\n--\n\nMaintain a heap in place.",
                  heapreplace_max_call,
                  1
              ),
-             Method(
+             MethodDefinition(
                  "heappushpop",
                  0,
                  "heappushpop($module, heap, item, /)\n--\n\nMaintain a heap in place.",
                  heappushpop_call,
                  1
              ),
-             Method(
+             MethodDefinition(
                  "heappushpop_max",
                  0,
                  "heappushpop_max($module, heap, item, /)\n--\n\nMaintain a heap in place.",
                  heappushpop_max_call,
                  1
              ),
-             Method(
+             MethodDefinition(
                  "heappop",
                  0,
                  "heappop($module, heap, /)\n--\n\nMaintain a heap in place.",
                  heappop_call,
                  8
              ),
-             Method(
+             MethodDefinition(
                  "heappop_max",
                  0,
                  "heappop_max($module, heap, /)\n--\n\nMaintain a heap in place.",
                  heappop_max_call,
                  8
              ),
-             Method(
+             MethodDefinition(
                  "heapify",
                  0,
                  "heapify($module, heap, /)\n--\n\nMaintain a heap in place.",
                  heapify_call,
                  8
              ),
-             Method(
+             MethodDefinition(
                  "heapify_max",
                  0,
                  "heapify_max($module, heap, /)\n--\n\nMaintain a heap in place.",

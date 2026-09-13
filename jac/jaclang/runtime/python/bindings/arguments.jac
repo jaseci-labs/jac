@@ -16,7 +16,7 @@ import from jaclang.runtime.python.capi {
 }
 import from c { def jacpy_ssize(value: u64) -> i64;  }
 
-obj Arguments {
+obj BoundArguments {
     has values: list[u64];
 
     def drop {
@@ -47,14 +47,14 @@ def index_value(value: u64) -> (i64 | None) {
     }
 }
 
-obj Signature {
+obj CallSignature {
     has name: str,
         names: list[str],
         required_count: int,
         positional_count: int,
         positional_only: int = 0;
 
-    def bind(result: Arguments, args: u64, kwargs: u64) -> bool {
+    def bind(result: BoundArguments, args: u64, kwargs: u64) -> bool {
         count = int(jacpy_tuple_size(args));
         if count < 0 {
             return False;
@@ -120,14 +120,14 @@ obj Signature {
 }
 
 def invoke(
-    signature: Signature,
+    signature: CallSignature,
     args: u64,
     kwargs: u64,
-    implementation: Callable[[Arguments], u64]
+    implementation: Callable[[BoundArguments], u64]
 ) -> u64 {
     # The call frame lives outside the exception region: every exit releases
     # all converted arguments, including a failure in a nested conversion.
-    bound = Arguments([u64(0) for _ in signature.names]);
+    bound = BoundArguments([u64(0) for _ in signature.names]);
     try {
         if not signature.bind(bound, args, kwargs) {
             return 0;

@@ -14,8 +14,12 @@ _Static_assert(METH_VARARGS == 1 && METH_KEYWORDS == 2 && METH_NOARGS == 4 && ME
                "native binding calling conventions must match Python.h");
 
 typedef struct {
+    int32_t (*execute)(uint64_t);
+} JacModuleHooks;
+
+typedef struct {
     PyModuleDef definition;
-    PyModuleDef_Slot slots[3];
+    PyModuleDef_Slot slots[4];
     PyMethodDef methods[];
 } JacModuleSpec;
 
@@ -31,7 +35,8 @@ void jacpy_binding_discard(uint64_t handle) {
     free(spec);
 }
 
-uint64_t jacpy_binding_module(const char *name, const char *doc, int64_t count) {
+uint64_t jacpy_binding_module(const char *name, const char *doc, int64_t count,
+                             JacModuleHooks hooks) {
     JacModuleSpec *spec = calloc(1, sizeof(*spec) + (count + 1) * sizeof(PyMethodDef));
     if (!spec) return 0;
     PyModuleDef initial = {PyModuleDef_HEAD_INIT};
@@ -43,6 +48,7 @@ uint64_t jacpy_binding_module(const char *name, const char *doc, int64_t count) 
     spec->definition.m_slots = spec->slots;
     spec->slots[0] = (PyModuleDef_Slot){Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED};
     spec->slots[1] = (PyModuleDef_Slot){Py_mod_gil, Py_MOD_GIL_USED};
+    if (hooks.execute) spec->slots[2] = (PyModuleDef_Slot){Py_mod_exec, (void *)hooks.execute};
     if (!spec->definition.m_name || !spec->definition.m_doc) {
         jacpy_binding_discard(H(spec));
         return 0;
@@ -67,4 +73,8 @@ uint64_t jacpy_binding_init(uint64_t handle) {
     if (!handle) return H(PyErr_NoMemory());
     JacModuleSpec *spec = P(handle);
     return H(PyModuleDef_Init(&spec->definition));
+}
+
+int64_t jacpy_binding_add(uint64_t module, const char *name, uint64_t value) {
+    return PyModule_AddObjectRef(P(module), name, P(value));
 }

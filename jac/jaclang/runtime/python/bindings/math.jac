@@ -1,0 +1,681 @@
+"""Python math signatures, constants, and native initialization."""
+import from jaclang.runtime.python.bindings.module {
+    ModuleDefinition,
+    MethodDefinition,
+    ModuleHooks,
+    add_owned
+}
+import from jaclang.runtime.python.bindings.arguments {
+    CallSignature,
+    BoundArguments,
+    invoke
+}
+import from jaclang.runtime.python.capi { jacpy_float }
+import from jaclang.runtime.python.modules.math {
+    jacpy_math_binary,
+    jacpy_math_comb,
+    jacpy_math_dist,
+    jacpy_math_factorial,
+    jacpy_math_fma,
+    jacpy_math_fsum,
+    jacpy_math_gcd,
+    jacpy_math_hypot,
+    jacpy_math_isclose,
+    jacpy_math_isqrt,
+    jacpy_math_ldexp,
+    jacpy_math_log,
+    jacpy_math_nextafter,
+    jacpy_math_parts,
+    jacpy_math_prod,
+    jacpy_math_sumprod,
+    jacpy_math_unary
+}
+
+def factorial_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_factorial(value);
+}
+
+def isqrt_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_isqrt(value);
+}
+
+def gcd_call(module: u64, args: u64) -> u64 {
+    return jacpy_math_gcd(args, 0);
+}
+
+def lcm_call(module: u64, args: u64) -> u64 {
+    return jacpy_math_gcd(args, 1);
+}
+
+glob comb_signature = CallSignature("comb", ["n", "k"], 2, 2, 2);
+def comb_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_comb(args.values[0], args.values[1], 1);
+}
+
+def comb_call(module: u64, args: u64) -> u64 {
+    return invoke(comb_signature, args, 0, comb_bound);
+}
+
+glob perm_signature = CallSignature("perm", ["n", "k"], 1, 2, 2);
+def perm_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_comb(args.values[0], args.values[1], 0);
+}
+
+def perm_call(module: u64, args: u64) -> u64 {
+    return invoke(perm_signature, args, 0, perm_bound);
+}
+
+def acos_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(0, value);
+}
+
+def acosh_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(1, value);
+}
+
+def asin_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(2, value);
+}
+
+def asinh_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(3, value);
+}
+
+def atan_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(4, value);
+}
+
+def atanh_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(5, value);
+}
+
+def cbrt_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(6, value);
+}
+
+def cos_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(7, value);
+}
+
+def cosh_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(8, value);
+}
+
+def erf_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(9, value);
+}
+
+def erfc_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(10, value);
+}
+
+def exp_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(11, value);
+}
+
+def exp2_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(12, value);
+}
+
+def expm1_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(13, value);
+}
+
+def fabs_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(14, value);
+}
+
+def gamma_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(15, value);
+}
+
+def lgamma_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(16, value);
+}
+
+def log1p_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(17, value);
+}
+
+def sin_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(18, value);
+}
+
+def sinh_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(19, value);
+}
+
+def sqrt_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(20, value);
+}
+
+def tan_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(21, value);
+}
+
+def tanh_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(22, value);
+}
+
+def degrees_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(23, value);
+}
+
+def radians_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(24, value);
+}
+
+def isfinite_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(25, value);
+}
+
+def isinf_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(26, value);
+}
+
+def isnan_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(27, value);
+}
+
+def ceil_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(28, value);
+}
+
+def floor_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(29, value);
+}
+
+def trunc_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(30, value);
+}
+
+def log10_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(31, value);
+}
+
+def log2_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(32, value);
+}
+
+def ulp_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_unary(33, value);
+}
+
+glob atan2_signature = CallSignature("atan2", ["x", "y"], 2, 2, 2);
+def atan2_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_binary(0, args.values[0], args.values[1]);
+}
+
+def atan2_call(module: u64, args: u64) -> u64 {
+    return invoke(atan2_signature, args, 0, atan2_bound);
+}
+
+glob copysign_signature = CallSignature("copysign", ["x", "y"], 2, 2, 2);
+def copysign_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_binary(1, args.values[0], args.values[1]);
+}
+
+def copysign_call(module: u64, args: u64) -> u64 {
+    return invoke(copysign_signature, args, 0, copysign_bound);
+}
+
+glob fmod_signature = CallSignature("fmod", ["x", "y"], 2, 2, 2);
+def fmod_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_binary(2, args.values[0], args.values[1]);
+}
+
+def fmod_call(module: u64, args: u64) -> u64 {
+    return invoke(fmod_signature, args, 0, fmod_bound);
+}
+
+glob remainder_signature = CallSignature("remainder", ["x", "y"], 2, 2, 2);
+def remainder_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_binary(3, args.values[0], args.values[1]);
+}
+
+def remainder_call(module: u64, args: u64) -> u64 {
+    return invoke(remainder_signature, args, 0, remainder_bound);
+}
+
+glob pow_signature = CallSignature("pow", ["x", "y"], 2, 2, 2);
+def pow_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_binary(4, args.values[0], args.values[1]);
+}
+
+def pow_call(module: u64, args: u64) -> u64 {
+    return invoke(pow_signature, args, 0, pow_bound);
+}
+
+glob log_signature = CallSignature("log", ["x", "base"], 1, 2, 2);
+def log_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_log(args.values[0], args.values[1]);
+}
+
+def log_call(module: u64, args: u64) -> u64 {
+    return invoke(log_signature, args, 0, log_bound);
+}
+
+glob ldexp_signature = CallSignature("ldexp", ["x", "i"], 2, 2, 2);
+def ldexp_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_ldexp(args.values[0], args.values[1]);
+}
+
+def ldexp_call(module: u64, args: u64) -> u64 {
+    return invoke(ldexp_signature, args, 0, ldexp_bound);
+}
+
+glob fma_signature = CallSignature("fma", ["x", "y", "z"], 3, 3, 3);
+def fma_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_fma(args.values[0], args.values[1], args.values[2]);
+}
+
+def fma_call(module: u64, args: u64) -> u64 {
+    return invoke(fma_signature, args, 0, fma_bound);
+}
+
+def frexp_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_parts(0, value);
+}
+
+def modf_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_parts(1, value);
+}
+
+glob isclose_signature = CallSignature(
+         "isclose", ["a", "b", "rel_tol", "abs_tol"], 2, 2, 0
+     );
+
+def isclose_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_isclose(
+        args.values[0], args.values[1], args.values[2], args.values[3]
+    );
+}
+
+def isclose_call(module: u64, args: u64, kwargs: u64) -> u64 {
+    return invoke(isclose_signature, args, kwargs, isclose_bound);
+}
+
+glob nextafter_signature = CallSignature(
+         "nextafter", ["x", "y", "steps"], 2, 2, 2
+     );
+
+def nextafter_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_nextafter(args.values[0], args.values[1], args.values[2]);
+}
+
+def nextafter_call(module: u64, args: u64, kwargs: u64) -> u64 {
+    return invoke(nextafter_signature, args, kwargs, nextafter_bound);
+}
+
+def fsum_call(module: u64, value: u64) -> u64 {
+    return jacpy_math_fsum(value);
+}
+
+def hypot_call(module: u64, args: u64) -> u64 {
+    return jacpy_math_hypot(args);
+}
+
+glob dist_signature = CallSignature("dist", ["p", "q"], 2, 2, 2);
+def dist_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_dist(args.values[0], args.values[1]);
+}
+
+def dist_call(module: u64, args: u64) -> u64 {
+    return invoke(dist_signature, args, 0, dist_bound);
+}
+
+glob sumprod_signature = CallSignature("sumprod", ["p", "q"], 2, 2, 2);
+def sumprod_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_sumprod(args.values[0], args.values[1]);
+}
+
+def sumprod_call(module: u64, args: u64) -> u64 {
+    return invoke(sumprod_signature, args, 0, sumprod_bound);
+}
+
+glob prod_signature = CallSignature("prod", ["iterable", "start"], 1, 1, 1);
+def prod_bound(args: BoundArguments) -> u64 {
+    return jacpy_math_prod(args.values[0], args.values[1]);
+}
+
+def prod_call(module: u64, args: u64, kwargs: u64) -> u64 {
+    return invoke(prod_signature, args, kwargs, prod_bound);
+}
+
+def execute(module: u64) -> i32 {
+    names = ["pi", "e", "tau", "inf", "nan"];
+    values = [
+        3.14159265358979323846,
+        2.71828182845904523536,
+        6.28318530717958647692,
+        float("inf"),
+        float("nan")
+    ];
+    for i in range(len(names)) {
+        if not add_owned(module, names[i], jacpy_float(values[i])) {
+            return i32(-1);
+        }
+    }
+    return i32(0);
+}
+
+glob definition = ModuleDefinition(
+         "math",
+         "Native Jac mathematics.",
+         [
+             MethodDefinition(
+                 "factorial",
+                 0,
+                 "factorial($module, n, /)\n--\n\nReturn n factorial.",
+                 factorial_call,
+                 8
+             ),
+             MethodDefinition(
+                 "isqrt",
+                 0,
+                 "isqrt($module, n, /)\n--\n\nReturn the integer part of the square root of n.",
+                 isqrt_call,
+                 8
+             ),
+             MethodDefinition(
+                 "gcd",
+                 0,
+                 "gcd($module, *integers)\n--\n\nGreatest common divisor.",
+                 gcd_call,
+                 1
+             ),
+             MethodDefinition(
+                 "lcm",
+                 0,
+                 "lcm($module, *integers)\n--\n\nLeast common multiple.",
+                 lcm_call,
+                 1
+             ),
+             MethodDefinition(
+                 "comb",
+                 0,
+                 "comb($module, n, k, /)\n--\n\nNumber of unordered selections without repetition.",
+                 comb_call,
+                 1
+             ),
+             MethodDefinition(
+                 "perm",
+                 0,
+                 "perm($module, n, k=None, /)\n--\n\nNumber of ordered selections without repetition.",
+                 perm_call,
+                 1
+             ),
+             MethodDefinition(
+                 "acos",
+                 0,
+                 "Return the arc cosine (measured in radians) of x.\n\nThe result is between 0 and pi.",
+                 acos_call,
+                 8
+             ),
+             MethodDefinition(
+                 "acosh", 0, "Return the inverse hyperbolic cosine of x.", acosh_call, 8
+             ),
+             MethodDefinition(
+                 "asin",
+                 0,
+                 "Return the arc sine (measured in radians) of x.\n\nThe result is between -pi/2 and pi/2.",
+                 asin_call,
+                 8
+             ),
+             MethodDefinition(
+                 "asinh", 0, "Return the inverse hyperbolic sine of x.", asinh_call, 8
+             ),
+             MethodDefinition(
+                 "atan",
+                 0,
+                 "Return the arc tangent (measured in radians) of x.\n\nThe result is between -pi/2 and pi/2.",
+                 atan_call,
+                 8
+             ),
+             MethodDefinition(
+                 "atanh",
+                 0,
+                 "Return the inverse hyperbolic tangent of x.",
+                 atanh_call,
+                 8
+             ),
+             MethodDefinition("cbrt", 0, "Return the cube root of x.", cbrt_call, 8),
+             MethodDefinition(
+                 "cos", 0, "Return the cosine of x (measured in radians).", cos_call, 8
+             ),
+             MethodDefinition(
+                 "cosh", 0, "Return the hyperbolic cosine of x.", cosh_call, 8
+             ),
+             MethodDefinition("erf", 0, "Error function at x.", erf_call, 8),
+             MethodDefinition(
+                 "erfc", 0, "Complementary error function at x.", erfc_call, 8
+             ),
+             MethodDefinition(
+                 "exp", 0, "Return e raised to the power of x.", exp_call, 8
+             ),
+             MethodDefinition(
+                 "exp2", 0, "Return 2 raised to the power of x.", exp2_call, 8
+             ),
+             MethodDefinition(
+                 "expm1",
+                 0,
+                 "Return exp(x)-1.\n\nThis function avoids the loss of precision involved in the direct evaluation of exp(x)-1 for small x.",
+                 expm1_call,
+                 8
+             ),
+             MethodDefinition(
+                 "fabs", 0, "Return the absolute value of the float x.", fabs_call, 8
+             ),
+             MethodDefinition("gamma", 0, "Gamma function at x.", gamma_call, 8),
+             MethodDefinition(
+                 "lgamma",
+                 0,
+                 "Natural logarithm of absolute value of Gamma function at x.",
+                 lgamma_call,
+                 8
+             ),
+             MethodDefinition(
+                 "log1p",
+                 0,
+                 "Return the natural logarithm of 1+x (base e).\n\nThe result is computed in a way which is accurate for x near zero.",
+                 log1p_call,
+                 8
+             ),
+             MethodDefinition(
+                 "sin", 0, "Return the sine of x (measured in radians).", sin_call, 8
+             ),
+             MethodDefinition(
+                 "sinh", 0, "Return the hyperbolic sine of x.", sinh_call, 8
+             ),
+             MethodDefinition("sqrt", 0, "Return the square root of x.", sqrt_call, 8),
+             MethodDefinition(
+                 "tan", 0, "Return the tangent of x (measured in radians).", tan_call, 8
+             ),
+             MethodDefinition(
+                 "tanh", 0, "Return the hyperbolic tangent of x.", tanh_call, 8
+             ),
+             MethodDefinition(
+                 "degrees",
+                 0,
+                 "Convert angle x from radians to degrees.",
+                 degrees_call,
+                 8
+             ),
+             MethodDefinition(
+                 "radians",
+                 0,
+                 "Convert angle x from degrees to radians.",
+                 radians_call,
+                 8
+             ),
+             MethodDefinition(
+                 "isfinite",
+                 0,
+                 "Return True if x is neither an infinity nor a NaN, and False otherwise.",
+                 isfinite_call,
+                 8
+             ),
+             MethodDefinition(
+                 "isinf",
+                 0,
+                 "Return True if x is a positive or negative infinity, and False otherwise.",
+                 isinf_call,
+                 8
+             ),
+             MethodDefinition(
+                 "isnan",
+                 0,
+                 "Return True if x is a NaN (not a number), and False otherwise.",
+                 isnan_call,
+                 8
+             ),
+             MethodDefinition(
+                 "ceil",
+                 0,
+                 "Return the ceiling of x as an Integral.\n\nThis is the smallest integer >= x.",
+                 ceil_call,
+                 8
+             ),
+             MethodDefinition(
+                 "floor",
+                 0,
+                 "Return the floor of x as an Integral.\n\nThis is the largest integer <= x.",
+                 floor_call,
+                 8
+             ),
+             MethodDefinition(
+                 "trunc",
+                 0,
+                 "Truncates the Real x to the nearest Integral toward 0.\n\nUses the __trunc__ magic method.",
+                 trunc_call,
+                 8
+             ),
+             MethodDefinition(
+                 "log10", 0, "Return the base 10 logarithm of x.", log10_call, 8
+             ),
+             MethodDefinition(
+                 "log2", 0, "Return the base 2 logarithm of x.", log2_call, 8
+             ),
+             MethodDefinition(
+                 "ulp",
+                 0,
+                 "Return the value of the least significant bit of the float x.",
+                 ulp_call,
+                 8
+             ),
+             MethodDefinition(
+                 "atan2",
+                 0,
+                 "Return the arc tangent (measured in radians) of y/x.\n\nUnlike atan(y/x), the signs of both x and y are considered.",
+                 atan2_call,
+                 1
+             ),
+             MethodDefinition(
+                 "copysign",
+                 0,
+                 "Return a float with the magnitude (absolute value) of x but the sign of y.\n\nOn platforms that support signed zeros, copysign(1.0, -0.0)\nreturns -1.0.\n",
+                 copysign_call,
+                 1
+             ),
+             MethodDefinition(
+                 "fmod",
+                 0,
+                 "Return fmod(x, y), according to platform C.\n\nx % y may differ.",
+                 fmod_call,
+                 1
+             ),
+             MethodDefinition(
+                 "remainder",
+                 0,
+                 "Difference between x and the closest integer multiple of y.\n\nReturn x - n*y where n*y is the closest integer multiple of y.\nIn the case where x is exactly halfway between two multiples of\ny, the nearest even value of n is used. The result is always exact.",
+                 remainder_call,
+                 1
+             ),
+             MethodDefinition(
+                 "pow", 0, "Return x**y (x to the power of y).", pow_call, 1
+             ),
+             MethodDefinition(
+                 "log",
+                 0,
+                 "log(x, [base=math.e])\nReturn the logarithm of x to the given base.\n\nIf the base is not specified, returns the natural logarithm (base e) of x.",
+                 log_call,
+                 1
+             ),
+             MethodDefinition(
+                 "ldexp",
+                 0,
+                 "Return x * (2**i).\n\nThis is essentially the inverse of frexp().",
+                 ldexp_call,
+                 1
+             ),
+             MethodDefinition(
+                 "fma",
+                 0,
+                 "Fused multiply-add operation.\n\nCompute (x * y) + z with a single round.",
+                 fma_call,
+                 1
+             ),
+             MethodDefinition(
+                 "frexp",
+                 0,
+                 "Return the mantissa and exponent of x, as pair (m, e).\n\nIf x is a finite nonzero number, then m is a float with\n0.5 <= abs(m) < 1.0 and an integer e is such that\nx == m * 2**e exactly.  Else, return (x, 0).",
+                 frexp_call,
+                 8
+             ),
+             MethodDefinition(
+                 "modf",
+                 0,
+                 "Return the fractional and integer parts of x.\n\nBoth results carry the sign of x and are floats.",
+                 modf_call,
+                 8
+             ),
+             MethodDefinition(
+                 "isclose",
+                 isclose_call,
+                 "Determine whether two floating-point numbers are close in value.\n\n  rel_tol\n    maximum difference for being considered \"close\", relative to the\n    magnitude of the input values\n  abs_tol\n    maximum difference for being considered \"close\", regardless of the\n    magnitude of the input values\n\nReturn True if a is close in value to b, and False otherwise.\n\nFor the values to be considered close, the difference between them\nmust be smaller than at least one of the tolerances.\n\n-inf, inf and NaN behave similarly to the IEEE 754 Standard.  That\nis, NaN is not close to anything, even itself.  inf and -inf are\nonly close to themselves."
+             ),
+             MethodDefinition(
+                 "nextafter",
+                 nextafter_call,
+                 "Return the floating-point value the given number of steps after x towards y.\n\nIf steps is not specified or is None, it defaults to 1.\n\nRaises a TypeError, if x or y is not a double, or if steps is not\nan integer.  Raises ValueError if steps is negative."
+             ),
+             MethodDefinition(
+                 "fsum",
+                 0,
+                 "Return an accurate floating-point sum of values in the iterable seq.\n\nAssumes IEEE-754 floating-point arithmetic.",
+                 fsum_call,
+                 8
+             ),
+             MethodDefinition(
+                 "hypot",
+                 0,
+                 "Multidimensional Euclidean distance from the origin to a point.\n\nRoughly equivalent to:\n    sqrt(sum(x**2 for x in coordinates))\n\nFor a two dimensional point (x, y), gives the hypotenuse\nusing the Pythagorean theorem:  sqrt(x*x + y*y).\n\nFor example, the hypotenuse of a 3/4/5 right triangle is:\n\n    >>> hypot(3.0, 4.0)\n    5.0",
+                 hypot_call,
+                 1
+             ),
+             MethodDefinition(
+                 "dist",
+                 0,
+                 "Return the Euclidean distance between two points p and q.\n\nThe points should be specified as sequences (or iterables) of\ncoordinates.  Both inputs must have the same dimension.\n\nRoughly equivalent to:\n    sqrt(sum((px - qx) ** 2.0 for px, qx in zip(p, q)))",
+                 dist_call,
+                 1
+             ),
+             MethodDefinition(
+                 "sumprod",
+                 0,
+                 "Return the sum of products of values from two iterables p and q.\n\nRoughly equivalent to:\n\n    sum(map(operator.mul, p, q, strict=True))\n\nFor float and mixed int/float inputs, the intermediate products\nand sums are computed with extended precision.",
+                 sumprod_call,
+                 1
+             ),
+             MethodDefinition(
+                 "prod",
+                 prod_call,
+                 "Calculate the product of all the elements in the input iterable.\n\nThe default start value for the product is 1.\n\nWhen the iterable is empty, return the start value.  This function is\nintended specifically for use with numeric values and may reject\nnon-numeric types."
+             )
+         ],
+         ModuleHooks(execute=execute)
+     );
+
+def:pub PyInit_math -> u64 {
+    return definition.initialize();
+}

@@ -1,16 +1,19 @@
 """Python bisection signatures and initialization, compiled into JacPython."""
-import from jaclang.runtime.python.bindings.module { Module, Method }
+import from jaclang.runtime.python.bindings.module {
+    ModuleDefinition,
+    MethodDefinition
+}
 import from jaclang.runtime.python.bindings.arguments {
-    Signature,
-    Arguments,
+    CallSignature,
+    BoundArguments,
     invoke,
     index_value
 }
 import from jaclang.runtime.python.modules.bisect { jacpy_bisect }
 import from jaclang.runtime.python.capi { jacpy_is_none }
 
-def signature(name: str) -> Signature {
-    return Signature(name, ["a", "x", "lo", "hi", "key"], 2, 4);
+def signature(name: str) -> CallSignature {
+    return CallSignature(name, ["a", "x", "lo", "hi", "key"], 2, 4);
 }
 
 glob left_signature = signature("bisect_left"),
@@ -18,7 +21,7 @@ glob left_signature = signature("bisect_left"),
      insert_left_signature = signature("insort_left"),
      insert_right_signature = signature("insort_right");
 
-def search(args: Arguments, right: i64, insert: i64) -> u64 {
+def search(args: BoundArguments, right: i64, insert: i64) -> u64 {
     low: i64 = 0;
     high: i64 = -1;
     if args.values[2] != 0 {
@@ -42,19 +45,19 @@ def search(args: Arguments, right: i64, insert: i64) -> u64 {
     return jacpy_bisect(args.values[0], args.values[1], low, high, key, right, insert);
 }
 
-def left(args: Arguments) -> u64 {
+def left(args: BoundArguments) -> u64 {
     return search(args, 0, 0);
 }
 
-def right(args: Arguments) -> u64 {
+def right(args: BoundArguments) -> u64 {
     return search(args, 1, 0);
 }
 
-def insert_left(args: Arguments) -> u64 {
+def insert_left(args: BoundArguments) -> u64 {
     return search(args, 0, 1);
 }
 
-def insert_right(args: Arguments) -> u64 {
+def insert_right(args: BoundArguments) -> u64 {
     return search(args, 1, 1);
 }
 
@@ -74,26 +77,26 @@ def call_insert_right(module: u64, args: u64, kwargs: u64) -> u64 {
     return invoke(insert_right_signature, args, kwargs, insert_right);
 }
 
-glob definition = Module(
+glob definition = ModuleDefinition(
          "_bisect",
          "Bisection algorithms implemented in native Jac.",
          [
-             Method(
+             MethodDefinition(
                  "bisect_left",
                  call_left,
                  "bisect_left($module, /, a, x, lo=0, hi=None, *, key=None)\n--\n\nReturn the insertion index before existing equal items."
              ),
-             Method(
+             MethodDefinition(
                  "bisect_right",
                  call_right,
                  "bisect_right($module, /, a, x, lo=0, hi=None, *, key=None)\n--\n\nReturn the insertion index after existing equal items."
              ),
-             Method(
+             MethodDefinition(
                  "insort_left",
                  call_insert_left,
                  "insort_left($module, /, a, x, lo=0, hi=None, *, key=None)\n--\n\nInsert x before existing equal items in sorted sequence a."
              ),
-             Method(
+             MethodDefinition(
                  "insort_right",
                  call_insert_right,
                  "insort_right($module, /, a, x, lo=0, hi=None, *, key=None)\n--\n\nInsert x after existing equal items in sorted sequence a."
