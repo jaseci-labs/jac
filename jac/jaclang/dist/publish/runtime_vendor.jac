@@ -31,11 +31,14 @@ def _module_to_file(pkg_root: Path, mod: str) -> Path | None {
 }
 
 def scan_jaclang_imports(
-    py_src: str, module: str = '', package: bool = False, include_symbols: bool = True
+    py_src: str | py_ast.Module,
+    module: str = '',
+    package: bool = False,
+    include_symbols: bool = True
 ) -> set[str] {
     import from importlib.util { resolve_name }
     found: set[str] = set();
-    tree = py_ast.parse(py_src);
+    tree = py_ast.parse(py_src) if isinstance(py_src, str) else py_src;
     pending: list[py_ast.AST] = [tree];
     while pending {
         current = pending.pop();
@@ -82,7 +85,7 @@ def scan_jaclang_imports(
 }
 
 def _runtime_dependencies(
-    pkg_root: Path, source: str, module: str = '', package: bool = False
+    pkg_root: Path, source: py_ast.Module, module: str = '', package: bool = False
 ) -> set[str] {
     for required in scan_jaclang_imports(
         source, module, package, include_symbols=False
@@ -97,8 +100,8 @@ def _runtime_dependencies(
     return scan_jaclang_imports(source, module, package);
 }
 
-def _declared_literal(source: str, name: str) -> object {
-    for statement in py_ast.parse(source).body {
+def _declared_literal(tree: py_ast.Module, name: str) -> object {
+    for statement in tree.body {
         if isinstance(statement, py_ast.Assign) {
             targets = statement.targets;
         } elif isinstance(statement, py_ast.AnnAssign) {
@@ -194,12 +197,12 @@ def build_runtime_closure(
     }
     pending = set(requested);
     for source in user_codes {
-        pending.update(_runtime_dependencies(pkg_root, source));
+        pending.update(_runtime_dependencies(pkg_root, py_ast.parse(source)));
     }
     closure: dict[str, bytes] = {
         '__init__.py': _VENDORED_INIT.encode('utf-8') if prepared else b''
     };
-    sources: dict[str, str] = {};
+    sources: dict[str, py_ast.Module] = {};
     processed: set[str] = {'jaclang'};
     program = JacProgram();
     modules: list[dict] = [];
@@ -238,13 +241,13 @@ def build_runtime_closure(
         }
         native: dict = {};
         source = _compile_runtime_module(pkg_root, path, program, native);
-        py_ast.parse(source, filename=str(path));
-        sources[module] = source;
+        tree = py_ast.parse(source, filename=str(path));
+        sources[module] = tree;
         relative = module.removeprefix('jaclang.').replace('.', '/');
         package = path.name.startswith('__init__.');
         relative += '/__init__.py' if package else '.py';
         closure[relative] = source.encode('utf-8');
-        resources = _declared_literal(source, '__jac_resources__');
+        resources = _declared_literal(tree, '__jac_resources__');
         if resources is not None {
             if not isinstance(resources, list)
                 or not all(isinstance(pattern, str) for pattern in resources) {
@@ -279,7 +282,7 @@ def build_runtime_closure(
         }
         modules.append(record);
         pending.update(
-            _runtime_dependencies(pkg_root, source, module, package) - processed
+            _runtime_dependencies(pkg_root, tree, module, package) - processed
         );
     }
     for relative in [
