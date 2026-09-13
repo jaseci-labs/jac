@@ -134,3 +134,58 @@ test "clib rpath: emitted dynamic executables carry DT_RUNPATH $ORIGIN" {
         );
     }
 }
+
+test "clib imported record returns preserve inferred fields and ABI" {
+    cc = shutil.which("cc") or shutil.which("gcc");
+    if not cc {
+        testskip("no C compiler available for the reference library");
+    }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        csrc = os.path.join(tmpdir, "records.c");
+        with open(csrc, "w") as fh {
+            fh.write(
+                "#include <stdint.h>\n"
+                "typedef struct { int64_t x, y; } Pair;\n"
+                "typedef struct { int64_t a, b, c, d, e; } Record;\n"
+                "Pair make_pair(int64_t n) { return (Pair){n, n+1}; }\n"
+                "Record make_record(int64_t n) { return (Record){n,n+1,n+2,n+3,n+4}; }\n"
+            );
+        }
+        library = os.path.join(tmpdir, "librecords.so");
+        built = subprocess.run(
+            [cc, "-shared", "-fPIC", csrc, "-o", library],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+        assert built.returncode == 0 , built.stderr;
+        with open(os.path.join(tmpdir, "declarations.jac"), "w") as fh {
+            fh.write(
+                f"import from \"{library}\" {{\n"
+                "obj Pair { has x:i64, y:i64; }\n"
+                "obj Record { has a:i64, b:i64, c:i64, d:i64, e:i64; }\n"
+                "def make_pair(n:i64) -> Pair;\n"
+                "def make_record(n:i64) -> Record;\n}\n"
+            );
+        }
+        code = (
+            "import from declarations { make_pair, make_record }\n"
+            "def fields(n:i64) -> i64 {\n"
+            "pair = make_pair(n); record = make_record(n);\n"
+            "return pair.x + pair.y + record.a + record.c + record.e;\n}\n"
+        );
+        prog = JacProgram();
+        ir = prog.compile(
+            file_path=os.path.join(tmpdir, "consumer.jac"),
+            use_str=code,
+            options=native_force_opts()
+        );
+        assert not prog.errors_had , str(prog.errors_had);
+        assert ir.gen.native_engine is not None;
+        fields = get_func(
+            ir.gen.native_engine, "fields", ctypes.c_int64, ctypes.c_int64
+        );
+        assert fields(10) == 57;
+        assert fields(-10) == -43;
+    }
+}

@@ -822,8 +822,7 @@ impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
         declared = self.get_type_of_expression(type_expr);
         if isinstance(declared, ClassType) and not declared.is_builtin() {
             scope = declared.shared.symbol_table;
-            if isinstance(scope, Archetype)
-                and scope.find_parent_of_type(Import) is None {
+            if isinstance(scope, Archetype) {
                 return self._convert_to_instance(declared);
             }
         }
