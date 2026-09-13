@@ -1,6 +1,6 @@
 import from pathlib { Path }
 import from jaclang.client.config_loader { JacClientConfig }
-import from jaclang.client.targets.registry { client_app_dir_for, client_app_root }
+import from jaclang.project.client_paths { client_app_dir_for, client_app_root }
 import from jaclang.project.config { find_project_root, get_config, get_config_for_dir }
 import from jaclang.project.kinds { kind_has_client }
 import from jaclang.runtime.runtime { JacRuntime as Jac }

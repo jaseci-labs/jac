@@ -81,7 +81,7 @@ def scan_jaclang_imports(
     return found;
 }
 
-def _lazy_exports(source: str) -> dict[str, str] {
+def _declared_literal(source: str, name: str) -> object {
     for statement in py_ast.parse(source).body {
         if isinstance(statement, py_ast.Assign) {
             targets = statement.targets;
@@ -91,13 +91,12 @@ def _lazy_exports(source: str) -> dict[str, str] {
             continue;
         }
         if any(
-            isinstance(target, py_ast.Name) and target.id == '_LAZY_EXPORTS'
-            for target in targets
+            isinstance(target, py_ast.Name) and target.id == name for target in targets
         ) {
-            return dict(py_ast.literal_eval(statement.value));
+            return py_ast.literal_eval(statement.value);
         }
     }
-    return {};
+    return None;
 }
 
 def _compile_runtime_module(
@@ -158,11 +157,14 @@ def _compile_runtime_module(
 def build_runtime_closure(
     user_codes: list[str],
     include_byllm: bool = False,
-    extra_seeds: list[str] | None = None
-) -> dict[str, str] {
+    extra_seeds: list[str] | None = None,
+    prepared: bool = True
+) -> dict[str, bytes] {
     pkg_root = _pkg_root();
     requested = set(extra_seeds or []);
-    requested.add('jaclang.runtime.source_app');
+    if prepared {
+        requested.add('jaclang.runtime.source_app');
+    }
     if include_byllm {
         requested.add('jaclang.byllm.lib');
     }
@@ -175,7 +177,9 @@ def build_runtime_closure(
     for source in user_codes {
         pending.update(scan_jaclang_imports(source));
     }
-    closure: dict[str, str] = {'__init__.py': _VENDORED_INIT};
+    closure: dict[str, bytes] = {
+        '__init__.py': _VENDORED_INIT.encode('utf-8') if prepared else b''
+    };
     sources: dict[str, str] = {};
     processed: set[str] = {'jaclang'};
     program = JacProgram();
@@ -202,7 +206,12 @@ def build_runtime_closure(
         path = _module_to_file(pkg_root, module);
         if path is None {
             (parent, _, name) = module.rpartition('.');
-            exports = _lazy_exports(sources[parent]) if parent in sources else {};
+            exports = _declared_literal(sources[parent], '_LAZY_EXPORTS')
+                if parent in sources
+                else {};
+            if not isinstance(exports, dict) {
+                exports = {};
+            }
             if name in exports {
                 pending.add(exports[name]);
             }
@@ -215,19 +224,51 @@ def build_runtime_closure(
         relative = module.removeprefix('jaclang.').replace('.', '/');
         package = path.name.startswith('__init__.');
         relative += '/__init__.py' if package else '.py';
-        closure[relative] = source;
+        closure[relative] = source.encode('utf-8');
+        resources = _declared_literal(source, '__jac_resources__');
+        if resources is not None {
+            if not isinstance(resources, list)
+                or not all(isinstance(pattern, str) for pattern in resources) {
+                raise ValueError(
+                    f'{module}.__jac_resources__ must be a list of package-relative glob patterns'
+                );
+            }
+            for pattern in resources {
+                matches = [
+                    item
+                    for item in path.parent.glob(pattern)
+                    if item.is_file()
+                ];
+                if not matches {
+                    raise ValueError(
+                        f'Resource declaration does not resolve: {module}: {pattern}'
+                    );
+                }
+                for item in matches {
+                    resolved = item.resolve();
+                    if not resolved.is_relative_to(pkg_root.resolve()) {
+                        raise ValueError(f'Resource escapes its package: {item}');
+                    }
+                    closure[item.relative_to(pkg_root).as_posix()] = item.read_bytes();
+                }
+            }
+        }
         record = {'path': relative, 'origin': path.relative_to(pkg_root).as_posix()};
         if native {
             record['native'] = native['record'];
-            closure[native['record']['source']] = native['source'];
+            closure[native['record']['source']] = native['source'].encode('utf-8');
         }
         modules.append(record);
         pending.update(scan_jaclang_imports(source, module, package) - processed);
     }
-    for relative in list(closure) {
+    for relative in [
+        name
+        for name in closure
+        if name.endswith('.py')
+    ] {
         for parent in Path(relative).parents {
             if str(parent) != '.' {
-                closure.setdefault((parent / '__init__.py').as_posix(), '');
+                closure.setdefault((parent / '__init__.py').as_posix(), b'');
             }
         }
     }
@@ -240,6 +281,8 @@ def build_runtime_closure(
             'modules': modules
         },
         indent=2
+    ).encode(
+        'utf-8'
     );
     return closure;
 }
@@ -248,13 +291,14 @@ def vendor_runtime(
     backend_dir: Path,
     user_codes: list[str],
     include_byllm: bool = False,
-    extra_seeds: list[str] | None = None
+    extra_seeds: list[str] | None = None,
+    prepared: bool = True
 ) -> int {
-    closure = build_runtime_closure(user_codes, include_byllm, extra_seeds);
+    closure = build_runtime_closure(user_codes, include_byllm, extra_seeds, prepared);
     for (relative, source) in closure.items() {
         target = backend_dir / 'jaclang' / relative;
         target.parent.mkdir(parents=True, exist_ok=True);
-        target.write_text(source, encoding='utf-8');
+        target.write_bytes(source);
     }
     return len(closure);
 }

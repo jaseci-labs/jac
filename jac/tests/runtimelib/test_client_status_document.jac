@@ -8,6 +8,8 @@ returns on the core and the scale server, and the same diagnostic value the
 `/cl/__error__` endpoint logs.
 """
 
+import from jaclang.server.build_status { BuildMonitor }
+
 import io;
 import json;
 import logging;
@@ -56,11 +58,11 @@ def _reset_client_globals {
     _error_rate_limiter._seen = {};
     _error_rate_limiter._count = 0;
     _error_rate_limiter._window_start = 0.0;
-    active = HotReloader._active;
+    active = BuildMonitor.active;
     if active is not None {
         active.stop();
     }
-    HotReloader._active = None;
+    BuildMonitor.active = None;
 }
 
 """Forget a module this file compiled into the long-lived global program."""
@@ -485,7 +487,7 @@ test "the suite leaves no dev-loop global behind" {
     }
     _reset_client_globals();
     # A pooled worker runs later suites in this same process.
-    assert HotReloader._active is None;
+    assert BuildMonitor.active is None;
     assert _locator_cache == {};
     assert _mapper_cache == {};
     assert _error_rate_limiter._seen == {};

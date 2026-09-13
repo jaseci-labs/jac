@@ -321,7 +321,11 @@ def module_builtins(application: PreparedApplication, source: str) -> dict {
 }
 
 def execute_module(module: types.ModuleType, application: PreparedApplication) -> None {
-    source = os.path.realpath(module.__file__);
+    filename = module.__file__;
+    if filename is None {
+        raise ImportError(f'Prepared module {module.__name__} has no source path');
+    }
+    source = os.path.realpath(filename);
     code = application.code.get(source);
     if code is None {
         raise ImportError(f'No prepared executable artifact for {source}');

@@ -1,10 +1,10 @@
 impl EsastGenPass._ensure_backend -> FrameworkBackend {
-    if self.backend is None {
+    if self._backend is None {
         import from jaclang.compiler.backends.es.backends.registry {
             resolve_active_backend
         }
         try {
-            self.backend = resolve_active_backend();
+            self._backend = resolve_active_backend();
         } except ValueError {
             import from jaclang.project.config { get_config }
             import from jaclang.compiler.frontend.diagnostics { E5081 }
@@ -12,11 +12,11 @@ impl EsastGenPass._ensure_backend -> FrameworkBackend {
             cfg = get_config();
             fw = cfg.client.framework if (cfg and cfg.client) else "unknown";
             self.emit(E5081, framework=fw);
-            self.backend = ReactBackend();
+            self._backend = ReactBackend();
         }
     }
-    assert self.backend is not None;
-    return self.backend;
+    assert self._backend is not None;
+    return self._backend;
 }
 
 impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) {

@@ -1338,7 +1338,7 @@ impl JacAPIServer._ensure_client_bundle -> None {
     if not client_exports {
         return;
     }
-    import from jaclang.client.targets.registry { client_app_dir_for }
+    import from jaclang.project.client_paths { client_app_dir_for }
     config = get_config();
     dist_dir = client_app_dir_for(config) / 'dist'
         if config

@@ -210,6 +210,9 @@ def register_py_callbacks(
         cb = cb_type(_make_callback(binding.name, py_func_table));
         callbacks_list.append(cb);
         cb_addr = ctypes.cast(cb, ctypes.c_void_p).value;
+        if cb_addr is None {
+            raise RuntimeError(f'Cannot allocate native callback {binding.name!r}');
+        }
         register_symbol(binding.name, cb_addr);
     }
 }

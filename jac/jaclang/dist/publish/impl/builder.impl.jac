@@ -324,7 +324,7 @@ impl WheelBuilder._vendor_runtime_into(
         }
     }
     for (rel, src) in sorted(closure.items()) {
-        src_data[f"{vendor_root}/jaclang/{rel}"] = src.encode("utf-8");
+        src_data[f"{vendor_root}/jaclang/{rel}"] = src;
     }
     self.vendored_runtime_modules = len(
         [

@@ -1,3 +1,4 @@
+import from jaclang.server.build_status { BuildMonitor }
 import marshal;
 import os;
 import sys;
@@ -1649,7 +1650,7 @@ def _start_vite_dev_server(
 
         try {
             import from jaclang.server.hmr { HotReloader }
-            reloader = HotReloader._active;
+            reloader = BuildMonitor.active;
             if reloader is not None {
                 reloader.attach_client_bundler(bundler);
             }

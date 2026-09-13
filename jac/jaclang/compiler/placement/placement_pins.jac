@@ -258,3 +258,25 @@ def client_framework(source_path: str) -> str {
     _framework_cache[root_dir] = (mtime, fw);
     return fw;
 }
+
+glob _FRAMEWORK_PACKAGES: dict[str, set[str]] = {
+         "react": {"react", "react-dom"},
+         "preact": {"preact"},
+         "solid": {"solid-js"}
+     };
+
+
+def is_client_npm_import(spec: str, source_path: str) -> bool {
+    if not spec {
+        return False;
+    }
+    import from jaclang.project.modresolver { npm_package_root, has_client_npm_package }
+    pkg_root = npm_package_root(spec);
+    if pkg_root in npm_dependency_names(source_path) {
+        return True;
+    }
+    if pkg_root in _FRAMEWORK_PACKAGES.get(client_framework(source_path), set()) {
+        return True;
+    }
+    return has_client_npm_package(spec, source_path);
+}

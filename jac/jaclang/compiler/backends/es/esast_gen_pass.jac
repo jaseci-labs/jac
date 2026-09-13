@@ -7,7 +7,7 @@ import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.frontend.constant { CodeContext, SymbolType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.runtime.osp_model { OspAnalysis, OspModel }
+import from jaclang.compiler.passes.osp_analysis { OspAnalysis, OspModel }
 import from jaclang.compiler.backends.common.ast_gen_base { BaseAstGenPass }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.backends.es.jsx_processor { EsJsxProcessor }
@@ -237,8 +237,8 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         exports: list[es.ExportNamedDeclaration] = [],
         scope_stack: list[ScopeInfo] = [],
         scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {},
-        backend: (FrameworkBackend | None) = None,
-        client_manifest: (ClientManifest | None) = None,
+        _backend: FrameworkBackend | None = None,
+        client_manifest: ClientManifest = ClientManifest(),
         jsx_processor: (EsJsxProcessor | None) = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
         reactive_vars: set[str] = set(),
@@ -267,6 +267,12 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         _builtin_emitter: (object | None) = None,
         _primitives_es_mod: (object | None) = None,
         _poly_methods: (set[str] | None) = None;
+
+    has backend: FrameworkBackend {
+        getter {
+            return self._ensure_backend();
+        }
+    }
 
     static has HOST_PASS: bool = True;
 
@@ -516,7 +522,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     can exit_forever_stmt with uni.ForeverStmt exit;
     can exit_iter_for_stmt with uni.IterForStmt exit;
     can exit_in_for_stmt with uni.InForStmt exit;
-    def _target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.Node;
+    def _target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.Pattern;
     can exit_try_stmt with uni.TryStmt exit;
     can exit_except with uni.Except exit;
     can exit_finally_stmt with uni.FinallyStmt exit;

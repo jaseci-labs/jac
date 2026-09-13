@@ -258,7 +258,7 @@ impl JacClientConfig.get_asset_extensions(self: JacClientConfig) -> set[str] {
 impl JacClientConfig.get_assets_dir(
     self: JacClientConfig, entry_path: str = ""
 ) -> Path {
-    import from jaclang.client.targets.registry { client_app_root }
+    import from jaclang.project.client_paths { client_app_root }
     project_dir = self.project_dir if self.project_dir is not None else Path.cwd();
     configured = str(self.get_assets_config().get('dir') or '');
     jac_config = self.effective_jac_config();

@@ -42,7 +42,7 @@ impl JacClientCompiler._client_app_dir(self: JacClientCompiler) -> Path {
     client_dir = self._get_client_dir();
     try {
         import from jaclang.project.config { get_config }
-        import from jaclang.client.targets.registry { client_workspace_app }
+        import from jaclang.project.client_paths { client_workspace_app }
         app = client_workspace_app(get_config());
         if app is not None {
             return client_dir / app.name;
@@ -54,7 +54,7 @@ impl JacClientCompiler._client_app_dir(self: JacClientCompiler) -> Path {
 impl JacClientCompiler._app_root(self: JacClientCompiler) -> Path {
     try {
         import from jaclang.project.config { get_config }
-        import from jaclang.client.targets.registry { client_app_root }
+        import from jaclang.project.client_paths { client_app_root }
         return client_app_root(get_config(), self.project_dir);
     } except ImportError {}
     return self.project_dir;

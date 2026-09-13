@@ -13,6 +13,25 @@ class BuildServices(Protocol) {
     def program(self: BuildServices) -> JacProgram;
     def selfhost(self: BuildServices) -> SelfHostCache;
     def client_builder(self: BuildServices) -> ClientBundleBuilder;
+    def run_test(
+        self: BuildServices,
+        filepath: str,
+        func_name: str | None,
+        filter: str | None,
+        xit: bool,
+        maxfail: int | None,
+        directory: str | None,
+        verbose: bool
+    ) -> int;
+
+    def application_edges(
+        self: BuildServices,
+        entry_path: str,
+        app_name: str,
+        app_kind: str,
+        project_root: str
+    ) -> list[tuple[str, str]];
+
     def client_runtime_basename(self: BuildServices, framework: str) -> str;
 }
 

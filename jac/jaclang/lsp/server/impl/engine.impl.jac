@@ -661,10 +661,10 @@ impl JacLangServer._string_import_definition(
 impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
     import os;
     import from jaclang.project.modresolver {
-        is_client_npm_import,
         resolve_client_npm_declarations,
         resolve_client_npm_package
     }
+    import from jaclang.compiler.placement.placement_pins { is_client_npm_import }
     try {
         resolved = mp.resolve_relative_path();
         if os.path.isfile(resolved) {
@@ -695,10 +695,10 @@ impl JacLangServer._npm_item_location(
     from_loc: uni.ModulePath, item_name: str
 ) -> Optional[lspt.Location] {
     import from jaclang.project.modresolver {
-        is_client_npm_import,
         resolve_client_npm_declarations,
         resolve_client_npm_package
     }
+    import from jaclang.compiler.placement.placement_pins { is_client_npm_import }
     def at_file(path_: str, rng: Optional[lspt.Range]) -> Optional[lspt.Location] {
         path_uri = uris.from_fs_path(path_);
         if path_uri is None {

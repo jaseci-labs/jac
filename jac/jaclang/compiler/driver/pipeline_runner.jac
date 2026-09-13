@@ -427,7 +427,7 @@ def native_application(
     memory: str = '',
     debug: bool = False,
     no_ir_cache: bool = False
-) -> uni.Module {
+) -> tuple[uni.Module, CompileOptions] {
     import from jaclang.compiler.driver.compile_options {
         CompileOptions,
         push_native_target,
@@ -435,18 +435,17 @@ def native_application(
     }
     previous = push_native_target(target) if target else None;
     try {
-        return program.compile(
-            file_path=os.path.abspath(file_path),
-            options=CompileOptions(
-                aot_mode=True,
-                default_codespace='native',
-                force_target_program=True,
-                memory_profile=memory or None,
-                native_target=target or None,
-                native_debug=True if debug else None,
-                no_ir_cache=debug or no_ir_cache
-            )
+        options = CompileOptions(
+            aot_mode=True,
+            default_codespace='native',
+            force_target_program=True,
+            memory_profile=memory or None,
+            native_target=target or None,
+            native_debug=True if debug else None,
+            no_ir_cache=debug or no_ir_cache
         );
+        module = program.compile(file_path=os.path.abspath(file_path), options=options);
+        return (module, options);
     } finally {
         if target {
             pop_native_target(previous);

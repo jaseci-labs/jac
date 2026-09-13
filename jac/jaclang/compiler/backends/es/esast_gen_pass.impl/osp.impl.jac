@@ -1,5 +1,5 @@
 impl EsastGenPass._osp_model -> OspModel {
-    import from jaclang.runtime.osp_model { get_osp_model }
+    import from jaclang.compiler.passes.osp_analysis { get_osp_model }
     _root = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
     return get_osp_model(_root);
 }
@@ -315,7 +315,7 @@ impl EsastGenPass._build_osp_tags_js -> str {
         );
         lines.append(f"__ospC.osp_register_type({tag}, [{isa_members}]);");
     }
-    import from jaclang.runtime.osp_model { stable_osp_tag }
+    import from jaclang.runtime.osp_tag { stable_osp_tag }
     ge_tag = stable_osp_tag("GenericEdge");
     lines.append(f"__ospGenericEdge.prototype.__tag = {ge_tag};");
     lines.append(f"__ospC.osp_register_type({ge_tag}, []);");
@@ -376,7 +376,7 @@ impl EsastGenPass._osp_slots_js(slots: list, tags: dict) -> str {
                 ttag = tags[trig] if (trig in tags) else -1;
                 if ttag < 0 {
                     if self._arch_kind_by_name(trig) in ("node", "edge", "walker") {
-                        import from jaclang.runtime.osp_model { stable_osp_tag }
+                        import from jaclang.runtime.osp_tag { stable_osp_tag }
                         ttag = stable_osp_tag(trig);
                     }
                 }
@@ -506,7 +506,7 @@ impl EsastGenPass._edge_tag_literal(
             _xkind = self._arch_kind_of_type(self._expr_class_type(type_expr));
         }
         if _xkind in ("node", "edge") {
-            import from jaclang.runtime.osp_model { stable_osp_tag }
+            import from jaclang.runtime.osp_tag { stable_osp_tag }
             _tag = stable_osp_tag(_etname);
         }
     }

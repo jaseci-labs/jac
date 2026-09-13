@@ -1,3 +1,4 @@
+import from jaclang.server.build_status { BuildMonitor }
 import json;
 import logging;
 import os;
@@ -25,7 +26,7 @@ impl HotReloader.start -> None {
 
     self.watcher.start();
     self._running = True;
-    HotReloader._active = self;
+    BuildMonitor.active = self;
     logger.debug(f"Hot reloader started for module: {self.module_name}");
 }
 
@@ -34,8 +35,8 @@ impl HotReloader.stop -> None {
         return;
     }
     self._running = False;
-    if HotReloader._active is self {
-        HotReloader._active = None;
+    if BuildMonitor.active is self {
+        BuildMonitor.active = None;
     }
 
     self.watcher.stop();
@@ -161,14 +162,6 @@ impl HotReloader._sync_status_file -> None {
             status_file.unlink();
         }
     } except OSError {}
-}
-
-impl get_build_status -> dict {
-    reloader = HotReloader._active;
-    if not reloader {
-        return {"status": BuildStatus.UNAVAILABLE.value, "diagnostics": []};
-    }
-    return reloader.build_status();
 }
 
 impl HotReloader.on_file_change(event: any) -> None {

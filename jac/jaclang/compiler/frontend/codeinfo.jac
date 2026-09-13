@@ -13,7 +13,7 @@ import type from jaclang.compiler.backends.es.estree { Node as EsNode }
 import type from jaclang.compiler.frontend.unitree { CommentToken }
 import type from jaclang.compiler.tools.doc_ir { Doc }
 import type from jaclang.compiler.frontend.unitree { Source, Token }
-import type from jaclang.runtime.osp_model { OspModel }
+import type from jaclang.compiler.passes.osp_analysis { OspModel }
 import type from jaclang.compiler.backends.native.llvm.ir { Module as IRModule }
 import type from jaclang.compiler.backends.native.llvm.binding {
     ModuleRef,

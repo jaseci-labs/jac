@@ -38,7 +38,7 @@ def python_source(path: str, program: JacProgram) -> tuple[str, Module | None] {
 def _copy_resources(source: Path, destination: Path, output: Path) -> None {
     import from jaclang.dist.publish.sources { EXCLUDED_DIRS, EXCLUDED_SUFFIXES }
     excluded = set(EXCLUDED_DIRS);
-    for (directory, dirs, files) in os.walk(source) {
+    for (directory, dirs, files) in os.walk(str(source)) {
         parent = Path(directory);
         dirs[:] = sorted(
             name
@@ -70,13 +70,15 @@ def _write_application(
 ) -> dict {
     directory = base / 'applications' / application.name;
     _copy_resources(project_root, directory, output);
-    record = {
+    modules: list[dict] = [];
+    record: dict = {
         'name': application.name,
+        'runner': 'jaclang.runtime.source_app',
         'root': directory.relative_to(base).as_posix(),
         'entry': Path(application.entry).relative_to(project_root).with_suffix(
             '.py'
         ).as_posix(),
-        'modules': [],
+        'modules': modules,
         'services': [child.name for child in application.applications]
     };
     for path in sorted(application.code) {
@@ -96,7 +98,7 @@ def _write_application(
             import from jaclang.dist.source.native { write_native_library }
             item['native'] = write_native_library(module, directory, python_path);
         }
-        record['modules'].append(item);
+        modules.append(item);
     }
     if application.semantic {
         semantic = directory / 'semantic.pickle';
@@ -174,7 +176,7 @@ def export_project(
     native_module = None;
     if kind in ('native-binary', 'native-lib', 'cli-native') {
         import from jaclang.compiler.driver.pipeline_runner { native_application }
-        native_module = native_application(program, entry_path);
+        (native_module, native_options) = native_application(program, entry_path);
         if program.errors_had {
             raise RuntimeError(
                 '\n'.join(error.pretty_print() for error in program.errors_had)
@@ -222,11 +224,19 @@ def export_project(
             }
             directory = base / 'applications' / app.name;
             directory.mkdir(parents=True);
-            llvm_ir = native_linked_ir_text(native_module);
+            import from jaclang.compiler.backends.native.entry_points {
+                inject_main,
+                validate_native_application
+            }
+            llvm_ir = validate_native_application(
+                native_module, kind == 'native-lib', config.memory.profile
+            );
             if kind == 'native-lib' {
                 (llvm_ir, exports) = inject_shared_init(
                     llvm_ir, native_module.gen.interop_manifest
                 );
+            } else {
+                llvm_ir = inject_main(llvm_ir);
             }
             (directory / 'main.c').write_text(emit_c(llvm_ir), encoding='utf-8');
             records.append(
@@ -250,14 +260,15 @@ def export_project(
         vendor_runtime(
             base,
             sources,
-            extra_seeds=['jaclang.runtime.source_app', 'jaclang.dist.source.build']
+            extra_seeds=['jaclang.dist.source.build', 'jaclang.dist.source.run'],
+            prepared=application is not None
         );
         (base / 'requirements.txt').write_text(
             '\n'.join(_requirements(config, kind_has_server(kind))) + '\n',
             encoding='utf-8'
         );
         (base / 'main.py').write_text(
-            'from pathlib import Path\nfrom jaclang.runtime.source_app import main\n'
+            'from pathlib import Path\nfrom jaclang.dist.source.run import main\n'
                 + 'raise SystemExit(main(str(Path(__file__).with_name("project.json"))))\n',
             encoding='utf-8'
         );

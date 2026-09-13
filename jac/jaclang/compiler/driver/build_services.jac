@@ -37,4 +37,24 @@ obj CompilerBuildServices(BuildServices) {
             else resolve_active_backend();
         return backend.runtime_source_basename();
     }
+
+    def application_edges(
+        entry_path: str, app_name: str, app_kind: str, project_root: str
+    ) -> list[tuple[str, str]] {
+        import from jaclang.compiler.driver.application_edges { application_edges }
+        return application_edges(entry_path, app_name, app_kind, project_root);
+    }
+
+    def run_test(
+        filepath: str,
+        func_name: str | None,
+        filter: str | None,
+        xit: bool,
+        maxfail: int | None,
+        directory: str | None,
+        verbose: bool
+    ) -> int {
+        import from jaclang.testing.runner { run_test }
+        return run_test(filepath, func_name, filter, xit, maxfail, directory, verbose);
+    }
 }

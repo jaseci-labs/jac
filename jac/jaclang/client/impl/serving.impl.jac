@@ -25,7 +25,7 @@ impl JacClient.render_page(
     }
     config = get_config();
     if config is not None {
-        import from jaclang.client.targets.registry {
+        import from jaclang.project.client_paths {
             client_app_dir_for,
             client_workspace_app
         }
