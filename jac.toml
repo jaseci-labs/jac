@@ -14,6 +14,12 @@ requires_python = ">=3.14"
 # linked by Zig (jac/native + `zig build fetch-llvm`), not the llvmlite wheel.
 dependencies = []
 
+# These bridge declarations use browser globals in their annexes.
+# Give source checks the same client placement as the packaged runtime.
+[placement.pins]
+"jac.jaclang.client.client_react_core" = "client"
+"jac.jaclang.client.client_runtime_core" = "client"
+
 [project.urls]
 Repository = "https://github.com/jaseci-labs/jaseci"
 Homepage = "https://jaseci.org"
