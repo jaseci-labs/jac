@@ -2,7 +2,8 @@
 
 Each test spawns real `jac ...` subprocesses so we exercise the full
 subprocess + embedded-server + CLI argparse path — exactly the interface a
-developer or operator uses.
+developer or operator uses. Each project's cluster is isolated so `db stop`
+cannot interrupt another test's transaction.
 """
 
 import os;
@@ -15,11 +16,17 @@ import from tempfile { TemporaryDirectory }
 """Run a subprocess and return (rc, stdout, stderr)."""
 def _run(cwd: str, argv: list) -> tuple {
     import jaclang;
+    import from jaclang.data.pgembed { PgRuntime }
     # -m jaclang must resolve to the source tree under test, not a
     # launcher-embedded snapshot.
     env = dict(os.environ);
     src = str(Path(jaclang.__file__).parent.parent);
     env['PYTHONPATH'] = src + os.pathsep + env.get('PYTHONPATH', '');
+    cache_home = str(Path(cwd) / '.db-cli-cache');
+    runtime = PgRuntime(data_dir=str(Path(cache_home) / 'pg' / 'main'));
+    env['JAC_PG_DIST'] = runtime._resolve_binaries();
+    env['JAC_CACHE_HOME'] = cache_home;
+    env.pop('JAC_DB_URL', None);
     result = subprocess.run(
         argv, cwd=cwd, capture_output=True, text=True, timeout=300, env=env
     );

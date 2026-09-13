@@ -728,8 +728,11 @@ impl JacCompiler.compile(
         compilation_scope,
         program_cache_identity
     }
+    import from jaclang.compiler.pipeline.executor { compilation_resources }
     identity = program_cache_identity(target_program);
-    with compilation_scope(identity, options, target_program) {
+    with compilation_resources(), compilation_scope(
+        identity, options, target_program
+    ) {
         import from jaclang.compiler.bootstrap.native_scope {
             activate_scope_lowering,
             deactivate_scope_lowering,
@@ -768,16 +771,6 @@ impl JacCompiler.compile(
             self._reentrant_depth = _depth_prev + 1;
             if _depth_prev == 0 {
                 self._closure_opts = options;
-            }
-            _gc_prev: (tuple | None) = None;
-            if _depth_prev == 0 and not os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
-                import gc;
-                _gc_prev = gc.get_threshold();
-                if _gc_prev[0] >= COMPILE_GC_THRESHOLDS[0] {
-                    _gc_prev = None;
-                } else {
-                    gc.set_threshold(*COMPILE_GC_THRESHOLDS);
-                }
             }
             _outer_opts: (CompileOptions | None) = None;
             _outer_prog: (JacProgram | None) = None;
@@ -928,10 +921,6 @@ impl JacCompiler.compile(
                         _scratch_prog.scratch.compile_depth = 0;
                         self._release_compile_scratch(_scratch_prog);
                     }
-                }
-                if _gc_prev is not None {
-                    import gc;
-                    gc.set_threshold(*_gc_prev);
                 }
             }
         }

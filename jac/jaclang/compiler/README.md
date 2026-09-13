@@ -38,9 +38,10 @@ flowchart TD
 `schedule.jac` owns phase ordering, product prerequisites, pass factories and
 query factories. A consumer requests a product; it does not instantiate a pass
 or assemble a private list. `executor.jac` establishes diagnostic, artifact and
-mutation scopes and reports progress. Scheduled passes and queries also apply
-the compiler's GC thresholds while they run and restore the caller's settings,
-so catalog preparation receives the same allocation policy as compilation.
+mutation scopes and reports progress. Its shared compilation resource scope
+applies the compiler's GC thresholds and restores the caller's settings.
+Compilation, scheduled passes and queries, and application preparation use
+this scope, including the work between module compilation and artifact collection.
 `products.jac` tracks task outcomes,
 dependencies, versions and invalidation. `request.jac` advances a module request
 through the selected schedule.

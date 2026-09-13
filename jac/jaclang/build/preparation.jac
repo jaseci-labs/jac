@@ -200,6 +200,7 @@ def prepare_application(
         return _prepare_sealed(`entry, program, image_root, entries);
     }
     import from jaclang.compiler.pipeline.progress { compile_progress }
+    import from jaclang.compiler.pipeline.executor { compilation_resources }
     started = time.monotonic();
     active: list[str] = [];
     completed: list[int] = [0];
@@ -227,7 +228,7 @@ def prepare_application(
     try {
         with console.status('Preparing application...') as status {
             status.update(progress);
-            with compile_progress.listen(begin, finish) {
+            with compilation_resources(), compile_progress.listen(begin, finish) {
                 import from jaclang.compiler.session.context {
                     bind_options,
                     context_program
