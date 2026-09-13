@@ -416,3 +416,25 @@ A cold six-app scaffold check passes in 93.46 seconds locally, versus
 326.02 seconds before this scheduling change. This is not yet acceptance
 of CI's 90-second/2,560 MiB gate: macOS `time` reported 4,880,793,600 bytes
 maximum RSS. Packaged rebuild and CI verification remain required.
+
+### Reuse analysis across independent check entries
+
+Revision `205360c5cc` passed the complete compiler toplevel suite locally:
+1,098 tests passed and one was skipped in 793.99 seconds. Its packaged
+executable passed 22 image, precompiled-interface, sealing and workspace
+checks without an image override.
+
+The follow-up removes the requested entry path from compilation-context
+identity. App identity, project root, placement and compiler options still
+separate contexts; the entry path remains request information. A regression
+fails before this change when a second entry recompiles its shared dependency,
+then passes with reuse and still detects an edited dependency's return type.
+The compiled diagnostic image passes 101 workspace, diagnostic, interface,
+scheduling and compile-time regressions. A twelve-file check probe generated
+26 interfaces instead of 60 and took 2.76 seconds instead of 6.33 seconds;
+these local measurements do not establish a CI-wide speedup.
+
+Bundling current-compiler analysis metadata was also tested without changing
+the production build. It did not meet the scaffold time or memory limits;
+consumer diagnostic profiles still require contextual analysis. No additional
+metadata-generation stage or relaxed performance budget was added.

@@ -248,3 +248,49 @@ test "application traversal checks imported bodies on cold and warm requests" {
         }
     }
 }
+
+test "different check entries reuse dependency analysis and observe edits" {
+    with TemporaryDirectory() as td {
+        base = Path(td).resolve();
+        (base / 'jac.toml').write_text('[project]\nname="entry-cache"\n');
+        shared = base / 'shared.jac';
+        shared.write_text('def:pub answer -> int { return 42; }\n');
+        for (name, expected_parses) in [('first', 2), ('second', 1)] {
+            entry_path = str(base / f'{name}.jac');
+            Path(entry_path).write_text(
+                'import from shared { answer }\ndef:pub read -> int { return answer(); }\n'
+            );
+            program = JacProgram();
+            try {
+                program.compile(
+                    entry_path,
+                    options=CompileOptions(
+                        no_cgen=True, iface_ok=True, entry_point=entry_path
+                    )
+                );
+                assert not program.errors_had;
+                assert program.analysis.pass_runs.get('ASTValidationPass', 0)
+                    == expected_parses , str(program.analysis.pass_runs);
+            } finally {
+                program.release_compile_closure();
+            }
+        }
+        shared.write_text('def:pub answer -> str { return "changed"; }\n');
+        entry_path = str(base / 'second.jac');
+        program = JacProgram();
+        try {
+            program.compile(
+                entry_path,
+                options=CompileOptions(
+                    no_cgen=True, iface_ok=True, entry_point=entry_path
+                )
+            );
+            assert any(
+                'Cannot return str, expected int' in error.msg
+                for error in program.errors_had
+            );
+        } finally {
+            program.release_compile_closure();
+        }
+    }
+}

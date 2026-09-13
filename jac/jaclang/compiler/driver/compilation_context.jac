@@ -160,8 +160,7 @@ def context_identity(options: CompileOptions) -> str {
                 options.force_codespace,
                 options.default_codespace,
                 options.ui,
-                options.project_root,
-                options.entry_point
+                options.project_root
             )
         ).encode()
     ).hexdigest()[:20];
@@ -196,10 +195,8 @@ def context_program(program: JacProgram, options: CompileOptions) -> JacProgram 
 }
 
 def program_for(path: str, program: JacProgram) -> JacProgram {
-    compiler = program._get_compiler();
-    actual = program;
-
-    return context_program(actual, bind_options(path, actual, actual.options));
+    program._get_compiler();
+    return context_program(program, bind_options(path, program, program.options));
 }
 
 def context_app(path: str) -> AppSpec | None {
