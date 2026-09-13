@@ -76,19 +76,16 @@ obj BuildMeasurements {
     }
 
     def write(path: str) {
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True);
-        with open(path, "w", encoding="utf-8") as stream {
-            json.dump(
-                {
-                    "schema": 1,
-                    "timing": "inclusive; nested stages must not be summed",
-                    "memory": "process peak RSS, excluding child processes",
-                    "stages": [stage.record() for stage in self.stages]
-                },
-                stream,
-                indent=2
-            );
-            stream.write("\n");
-        }
+        import from jaclang.jac0core.cache_paths { atomic_write }
+        data = json.dumps(
+            {
+                "schema": 1,
+                "timing": "inclusive; nested stages must not be summed",
+                "memory": "process peak RSS, excluding child processes",
+                "stages": [stage.record() for stage in self.stages]
+            },
+            indent=2
+        );
+        atomic_write(path, (data + "\n").encode());
     }
 }

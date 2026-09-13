@@ -384,9 +384,11 @@ def _manifest_compiler_digest(pkg_dir: str) -> str {
     if changed or digest != stored_digest {
         try {
             manifest_path.parent.mkdir(parents=True, exist_ok=True);
-            tmp = manifest_path.with_suffix(f".{os.getpid()}.tmp");
-            tmp.write_text(json.dumps({"entries": new_entries, "digest": digest}));
-            tmp.rename(manifest_path);
+            import from jaclang.jac0core.cache_paths { atomic_write }
+            atomic_write(
+                manifest_path,
+                json.dumps({"entries": new_entries, "digest": digest}).encode()
+            );
         } except Exception {}
     }
     return digest;
@@ -1062,52 +1064,14 @@ def read_debug_source(data: bytes) -> (str | None) {
 }
 
 def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
-    import from jaclang.compiler.driver.bccache {
-        discover_annex_files,
-        discover_style_annex
-    }
-    if not cache_path.exists() {
-        return False;
-    }
     try {
-        data: bytes = cache_path.read_bytes();
+        data = cache_path.read_bytes();
         header = parse_header(data[:HEADER_SIZE]);
-        if header is None or not header.is_compatible() {
-            return False;
-        }
-        if not jir_env_matches(data, source_path) {
-            return False;
-        }
-        if not ct_deps_fresh(data) {
-            return False;
-        }
-        cache_mtime = os.path.getmtime(cache_path);
-
-        related = discover_annex_files(source_path, '.impl.jac')
-            + discover_annex_files(source_path, '.test.jac');
-        style = discover_style_annex(source_path);
-        if style is not None {
-            related.append(style);
-        }
-        fresh = cache_mtime > os.path.getmtime(source_path);
-        if fresh {
-            for f in related {
-                try {
-                    if cache_mtime <= os.path.getmtime(f) {
-                        fresh = False;
-                        break;
-                    }
-                } except OSError {
-                    fresh = False;
-                    break;
-                }
-            }
-        }
-        if fresh {
-            return True;
-        }
-
-        return jir_matches_source(data, source_path);
+        return header is not None
+            and header.is_compatible()
+            and jir_env_matches(data, source_path)
+            and ct_deps_fresh(data)
+            and jir_matches_source(data, source_path);
     } except OSError {
         return False;
     }
@@ -1155,33 +1119,30 @@ def write_module_cache(
     try {
         cache_path = get_module_cache_path(resolved_path);
         key_sections = module_jir_key_sections(resolved_path);
-        (existing, existing_flags) = _mergeable_sections(cache_path, key_sections);
-        sections: dict[int, bytes] = {};
-        sections.update(existing);
-        sections.update(key_sections);
-        if bytecode is not None {
-            sections[SEC_BYTECODE] = bytecode;
-        }
-        if extra_sections is not None {
-            for (k, v) in extra_sections.items() {
-                sections[k] = v;
+        import from jaclang.jac0core.cache_paths { FileLock, atomic_write }
+        with FileLock(str(cache_path) + ".lock") {
+            (existing, existing_flags) = _mergeable_sections(cache_path, key_sections);
+            sections: dict[int, bytes] = {};
+            sections.update(existing);
+            sections.update(key_sections);
+            if bytecode is not None {
+                sections[SEC_BYTECODE] = bytecode;
             }
+            if extra_sections is not None {
+                for (k, v) in extra_sections.items() {
+                    sections[k] = v;
+                }
+            }
+            merged_flags = flags | existing_flags;
+            if existing and sections == existing and merged_flags == existing_flags {
+                return False;
+            }
+            cache_path.parent.mkdir(parents=True, exist_ok=True);
+            _sweep_once(_module_cache_root(resolved_path));
+            jir_bytes = write_precompiled_jir(None, "", merged_flags, sections);
+            atomic_write(cache_path, jir_bytes);
+            return True;
         }
-        merged_flags = flags | existing_flags;
-        if existing and sections == existing and merged_flags == existing_flags {
-            return False;
-        }
-        cache_path.parent.mkdir(parents=True, exist_ok=True);
-        _sweep_once(_module_cache_root(resolved_path));
-        jir_bytes = write_precompiled_jir(None, "", merged_flags, sections);
-        tmp_path = cache_path.with_suffix(f'.{os.getpid()}.tmp');
-        try {
-            tmp_path.write_bytes(jir_bytes);
-            tmp_path.rename(cache_path);
-        } finally {
-            tmp_path.unlink(missing_ok=True);
-        }
-        return True;
     } except Exception {
         return False;
     }

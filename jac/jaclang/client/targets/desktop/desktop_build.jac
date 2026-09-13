@@ -1,3 +1,4 @@
+import from jaclang.jac0core.cache_paths { FileLock }
 import os;
 import json;
 import shutil;
@@ -220,8 +221,7 @@ def _inject_platform(host_src: str, platform_src: str) -> str {
 def _native_build_cef(
     cef_dir: Path, source_name: str, build_name: str, output: Path, shared: bool,
 ) -> Path {
-    import from jaclang.toolchains.store { InstallLock }
-    with InstallLock(cef_dir / ".native-build.lock") {
+    with FileLock(cef_dir / ".native-build.lock") {
         build_dir = cef_dir / ".build";
         build_dir.mkdir(parents=True, exist_ok=True);
         build_src = build_dir / build_name;
