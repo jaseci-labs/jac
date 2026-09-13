@@ -1,7 +1,8 @@
 """Python heap signatures and initialization, compiled into JacPython."""
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
-    MethodCallbacks, MethodDefinition
+    MethodCallbacks,
+    MethodDefinition
 }
 import from jaclang.runtime.python.bindings.arguments {
     CallSignature,
@@ -173,16 +174,66 @@ glob:priv definition = ModuleDefinition(
          "_heapq",
          "Heap algorithms implemented in native Jac.",
          [
-             MethodDefinition("heappush", MethodCallbacks(positional=heappush_call), "heappush($module, heap, item, /)\n--\n\nMaintain a heap in place.", flags=1),
-             MethodDefinition("heappush_max", MethodCallbacks(positional=heappush_max_call), "heappush_max($module, heap, item, /)\n--\n\nMaintain a heap in place.", flags=1),
-             MethodDefinition("heapreplace", MethodCallbacks(positional=heapreplace_call), "heapreplace($module, heap, item, /)\n--\n\nMaintain a heap in place.", flags=1),
-             MethodDefinition("heapreplace_max", MethodCallbacks(positional=heapreplace_max_call), "heapreplace_max($module, heap, item, /)\n--\n\nMaintain a heap in place.", flags=1),
-             MethodDefinition("heappushpop", MethodCallbacks(positional=heappushpop_call), "heappushpop($module, heap, item, /)\n--\n\nMaintain a heap in place.", flags=1),
-             MethodDefinition("heappushpop_max", MethodCallbacks(positional=heappushpop_max_call), "heappushpop_max($module, heap, item, /)\n--\n\nMaintain a heap in place.", flags=1),
-             MethodDefinition("heappop", MethodCallbacks(positional=heappop_call), "heappop($module, heap, /)\n--\n\nMaintain a heap in place.", flags=8),
-             MethodDefinition("heappop_max", MethodCallbacks(positional=heappop_max_call), "heappop_max($module, heap, /)\n--\n\nMaintain a heap in place.", flags=8),
-             MethodDefinition("heapify", MethodCallbacks(positional=heapify_call), "heapify($module, heap, /)\n--\n\nMaintain a heap in place.", flags=8),
-             MethodDefinition("heapify_max", MethodCallbacks(positional=heapify_max_call), "heapify_max($module, heap, /)\n--\n\nMaintain a heap in place.", flags=8)
+             MethodDefinition(
+                 "heappush",
+                 MethodCallbacks(positional=heappush_call),
+                 "heappush($module, heap, item, /)\n--\n\nMaintain a heap in place.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "heappush_max",
+                 MethodCallbacks(positional=heappush_max_call),
+                 "heappush_max($module, heap, item, /)\n--\n\nMaintain a heap in place.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "heapreplace",
+                 MethodCallbacks(positional=heapreplace_call),
+                 "heapreplace($module, heap, item, /)\n--\n\nMaintain a heap in place.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "heapreplace_max",
+                 MethodCallbacks(positional=heapreplace_max_call),
+                 "heapreplace_max($module, heap, item, /)\n--\n\nMaintain a heap in place.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "heappushpop",
+                 MethodCallbacks(positional=heappushpop_call),
+                 "heappushpop($module, heap, item, /)\n--\n\nMaintain a heap in place.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "heappushpop_max",
+                 MethodCallbacks(positional=heappushpop_max_call),
+                 "heappushpop_max($module, heap, item, /)\n--\n\nMaintain a heap in place.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "heappop",
+                 MethodCallbacks(positional=heappop_call),
+                 "heappop($module, heap, /)\n--\n\nMaintain a heap in place.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "heappop_max",
+                 MethodCallbacks(positional=heappop_max_call),
+                 "heappop_max($module, heap, /)\n--\n\nMaintain a heap in place.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "heapify",
+                 MethodCallbacks(positional=heapify_call),
+                 "heapify($module, heap, /)\n--\n\nMaintain a heap in place.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "heapify_max",
+                 MethodCallbacks(positional=heapify_max_call),
+                 "heapify_max($module, heap, /)\n--\n\nMaintain a heap in place.",
+                 flags=8
+             )
          ]
      );
 

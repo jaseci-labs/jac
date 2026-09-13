@@ -1,7 +1,8 @@
 """Binary codec signatures, exported-buffer ownership, and interpreter state."""
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
-    MethodCallbacks, MethodDefinition,
+    MethodCallbacks,
+    MethodDefinition,
     ModuleHooks,
     add_state_owned,
     jacpy_binding_exception,
@@ -242,18 +243,71 @@ glob:priv definition = ModuleDefinition(
          "binascii",
          "Binary codecs implemented in native Jac.",
          [
-             MethodDefinition("a2b_uu", MethodCallbacks(positional=a2b_uu_call), "a2b_uu($module, data, /)\n--\n\nDecode a uuencoded line.", flags=8),
-             MethodDefinition("a2b_hex", MethodCallbacks(positional=a2b_hex_call), "a2b_hex($module, hexstr, /)\n--\n\nDecode hexadecimal data.", flags=8),
-             MethodDefinition("unhexlify", MethodCallbacks(positional=unhexlify_call), "unhexlify($module, hexstr, /)\n--\n\nDecode hexadecimal data.", flags=8),
-             MethodDefinition("b2a_uu", MethodCallbacks(keywords=b2a_uu_call), "b2a_uu($module, data, /, *, backtick=False)\n--\n\nConvert binary data."),
-             MethodDefinition("a2b_base64", MethodCallbacks(keywords=a2b_base64_call), "a2b_base64($module, data, /, *, strict_mode=False)\n--\n\nConvert binary data."),
-             MethodDefinition("b2a_base64", MethodCallbacks(keywords=b2a_base64_call), "b2a_base64($module, data, /, *, newline=True)\n--\n\nConvert binary data."),
-             MethodDefinition("b2a_hex", MethodCallbacks(keywords=b2a_hex_call), "b2a_hex($module, /, data, sep=<unrepresentable>, bytes_per_sep=1)\n--\n\nConvert binary data."),
-             MethodDefinition("hexlify", MethodCallbacks(keywords=hexlify_call), "hexlify($module, /, data, sep=<unrepresentable>, bytes_per_sep=1)\n--\n\nConvert binary data."),
-             MethodDefinition("a2b_qp", MethodCallbacks(keywords=a2b_qp_call), "a2b_qp($module, /, data, header=False)\n--\n\nConvert binary data."),
-             MethodDefinition("b2a_qp", MethodCallbacks(keywords=b2a_qp_call), "b2a_qp($module, /, data, quotetabs=False, istext=True, header=False)\n--\n\nConvert binary data."),
-             MethodDefinition("crc_hqx", MethodCallbacks(positional=crc_hqx_call), "crc_hqx($module, data, crc, /)\n--\n\nCompute CRC.", flags=1),
-             MethodDefinition("crc32", MethodCallbacks(positional=crc32_call), "crc32($module, data, crc=0, /)\n--\n\nCompute CRC.", flags=1)
+             MethodDefinition(
+                 "a2b_uu",
+                 MethodCallbacks(positional=a2b_uu_call),
+                 "a2b_uu($module, data, /)\n--\n\nDecode a uuencoded line.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "a2b_hex",
+                 MethodCallbacks(positional=a2b_hex_call),
+                 "a2b_hex($module, hexstr, /)\n--\n\nDecode hexadecimal data.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "unhexlify",
+                 MethodCallbacks(positional=unhexlify_call),
+                 "unhexlify($module, hexstr, /)\n--\n\nDecode hexadecimal data.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "b2a_uu",
+                 MethodCallbacks(keywords=b2a_uu_call),
+                 "b2a_uu($module, data, /, *, backtick=False)\n--\n\nConvert binary data."
+             ),
+             MethodDefinition(
+                 "a2b_base64",
+                 MethodCallbacks(keywords=a2b_base64_call),
+                 "a2b_base64($module, data, /, *, strict_mode=False)\n--\n\nConvert binary data."
+             ),
+             MethodDefinition(
+                 "b2a_base64",
+                 MethodCallbacks(keywords=b2a_base64_call),
+                 "b2a_base64($module, data, /, *, newline=True)\n--\n\nConvert binary data."
+             ),
+             MethodDefinition(
+                 "b2a_hex",
+                 MethodCallbacks(keywords=b2a_hex_call),
+                 "b2a_hex($module, /, data, sep=<unrepresentable>, bytes_per_sep=1)\n--\n\nConvert binary data."
+             ),
+             MethodDefinition(
+                 "hexlify",
+                 MethodCallbacks(keywords=hexlify_call),
+                 "hexlify($module, /, data, sep=<unrepresentable>, bytes_per_sep=1)\n--\n\nConvert binary data."
+             ),
+             MethodDefinition(
+                 "a2b_qp",
+                 MethodCallbacks(keywords=a2b_qp_call),
+                 "a2b_qp($module, /, data, header=False)\n--\n\nConvert binary data."
+             ),
+             MethodDefinition(
+                 "b2a_qp",
+                 MethodCallbacks(keywords=b2a_qp_call),
+                 "b2a_qp($module, /, data, quotetabs=False, istext=True, header=False)\n--\n\nConvert binary data."
+             ),
+             MethodDefinition(
+                 "crc_hqx",
+                 MethodCallbacks(positional=crc_hqx_call),
+                 "crc_hqx($module, data, crc, /)\n--\n\nCompute CRC.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "crc32",
+                 MethodCallbacks(positional=crc32_call),
+                 "crc32($module, data, crc=0, /)\n--\n\nCompute CRC.",
+                 flags=1
+             )
          ],
          ModuleHooks(execute=execute),
          2

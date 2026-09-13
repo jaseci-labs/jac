@@ -91,9 +91,15 @@ def install_methods(handle: u64, methods: list[MethodDefinition]) -> bool {
     for index in range(len(methods)) {
         method = methods[index];
         if jacpy_binding_method(
-            handle, i64(index), method.name, method.callbacks.keywords,
-            method.callbacks.positional, method.flags, method.doc
-        ) < 0 {
+            handle,
+            i64(index),
+            method.name,
+            method.callbacks.keywords,
+            method.callbacks.positional,
+            method.flags,
+            method.doc
+        )
+            < 0 {
             return False;
         }
     }

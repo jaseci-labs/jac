@@ -1,7 +1,8 @@
 """Python bisection signatures and initialization, compiled into JacPython."""
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
-    MethodCallbacks, MethodDefinition
+    MethodCallbacks,
+    MethodDefinition
 }
 import from jaclang.runtime.python.bindings.arguments {
     CallSignature,
@@ -81,10 +82,26 @@ glob:priv definition = ModuleDefinition(
          "_bisect",
          "Bisection algorithms implemented in native Jac.",
          [
-             MethodDefinition("bisect_left", MethodCallbacks(keywords=call_left), "bisect_left($module, /, a, x, lo=0, hi=None, *, key=None)\n--\n\nReturn the insertion index before existing equal items."),
-             MethodDefinition("bisect_right", MethodCallbacks(keywords=call_right), "bisect_right($module, /, a, x, lo=0, hi=None, *, key=None)\n--\n\nReturn the insertion index after existing equal items."),
-             MethodDefinition("insort_left", MethodCallbacks(keywords=call_insert_left), "insort_left($module, /, a, x, lo=0, hi=None, *, key=None)\n--\n\nInsert x before existing equal items in sorted sequence a."),
-             MethodDefinition("insort_right", MethodCallbacks(keywords=call_insert_right), "insort_right($module, /, a, x, lo=0, hi=None, *, key=None)\n--\n\nInsert x after existing equal items in sorted sequence a.")
+             MethodDefinition(
+                 "bisect_left",
+                 MethodCallbacks(keywords=call_left),
+                 "bisect_left($module, /, a, x, lo=0, hi=None, *, key=None)\n--\n\nReturn the insertion index before existing equal items."
+             ),
+             MethodDefinition(
+                 "bisect_right",
+                 MethodCallbacks(keywords=call_right),
+                 "bisect_right($module, /, a, x, lo=0, hi=None, *, key=None)\n--\n\nReturn the insertion index after existing equal items."
+             ),
+             MethodDefinition(
+                 "insort_left",
+                 MethodCallbacks(keywords=call_insert_left),
+                 "insort_left($module, /, a, x, lo=0, hi=None, *, key=None)\n--\n\nInsert x before existing equal items in sorted sequence a."
+             ),
+             MethodDefinition(
+                 "insort_right",
+                 MethodCallbacks(keywords=call_insert_right),
+                 "insort_right($module, /, a, x, lo=0, hi=None, *, key=None)\n--\n\nInsert x after existing equal items in sorted sequence a."
+             )
          ]
      );
 

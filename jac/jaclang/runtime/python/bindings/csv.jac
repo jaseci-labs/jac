@@ -1,7 +1,8 @@
 """CSV declarations, owned callbacks, and interpreter-local native configuration."""
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
-    MethodCallbacks, MethodDefinition,
+    MethodCallbacks,
+    MethodDefinition,
     ModuleHooks,
     add_owned,
     add_state_owned,
@@ -514,8 +515,18 @@ glob:priv dialect_type = TypeDefinition(
          "_csv.Dialect",
          "CSV dialect",
          [
-             MethodDefinition("__reduce__", MethodCallbacks(positional=dialect_reduce), "CSV dialects cannot be pickled.", flags=1),
-             MethodDefinition("__reduce_ex__", MethodCallbacks(positional=dialect_reduce), "CSV dialects cannot be pickled.", flags=1)
+             MethodDefinition(
+                 "__reduce__",
+                 MethodCallbacks(positional=dialect_reduce),
+                 "CSV dialects cannot be pickled.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "__reduce_ex__",
+                 MethodCallbacks(positional=dialect_reduce),
+                 "CSV dialects cannot be pickled.",
+                 flags=1
+             )
          ],
          u64(TypeFlags.GC.value | TypeFlags.BASETYPE.value | TypeFlags.IMMUTABLE.value),
          TypeHooks(
@@ -556,8 +567,18 @@ glob:priv dialect_type = TypeDefinition(
          "_csv.writer",
          "CSV writer",
          [
-             MethodDefinition("writerow", MethodCallbacks(positional=writer_row), "writerow($self, row, /)\n--\n\nWrite a CSV record.", flags=8),
-             MethodDefinition("writerows", MethodCallbacks(positional=writer_rows), "writerows($self, rows, /)\n--\n\nWrite CSV records.", flags=8)
+             MethodDefinition(
+                 "writerow",
+                 MethodCallbacks(positional=writer_row),
+                 "writerow($self, row, /)\n--\n\nWrite a CSV record.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "writerows",
+                 MethodCallbacks(positional=writer_rows),
+                 "writerows($self, rows, /)\n--\n\nWrite CSV records.",
+                 flags=8
+             )
          ],
          u64(
              TypeFlags.GC.value
@@ -611,13 +632,42 @@ glob:priv definition = ModuleDefinition(
          "_csv",
          "CSV algorithms implemented in native Jac.",
          [
-             MethodDefinition("reader", MethodCallbacks(keywords=reader_create), "reader($module, iterable, /, dialect='excel', **fmtparams)\n--\n\nCSV operation."),
-             MethodDefinition("writer", MethodCallbacks(keywords=writer_create), "writer($module, fileobj, /, dialect='excel', **fmtparams)\n--\n\nCSV operation."),
-             MethodDefinition("register_dialect", MethodCallbacks(keywords=register_dialect), "register_dialect($module, name, /, dialect='excel', **fmtparams)\n--\n\nCSV operation."),
-             MethodDefinition("get_dialect", MethodCallbacks(keywords=get_dialect), "get_dialect($module, /, name)\n--\n\nCSV operation."),
-             MethodDefinition("unregister_dialect", MethodCallbacks(keywords=unregister_dialect), "unregister_dialect($module, /, name)\n--\n\nCSV operation."),
-             MethodDefinition("field_size_limit", MethodCallbacks(keywords=field_size_limit), "field_size_limit($module, /, new_limit=<unrepresentable>)\n--\n\nCSV operation."),
-             MethodDefinition("list_dialects", MethodCallbacks(positional=list_dialects), "list_dialects($module, /)\n--\n\nList registered dialects.", flags=4)
+             MethodDefinition(
+                 "reader",
+                 MethodCallbacks(keywords=reader_create),
+                 "reader($module, iterable, /, dialect='excel', **fmtparams)\n--\n\nCSV operation."
+             ),
+             MethodDefinition(
+                 "writer",
+                 MethodCallbacks(keywords=writer_create),
+                 "writer($module, fileobj, /, dialect='excel', **fmtparams)\n--\n\nCSV operation."
+             ),
+             MethodDefinition(
+                 "register_dialect",
+                 MethodCallbacks(keywords=register_dialect),
+                 "register_dialect($module, name, /, dialect='excel', **fmtparams)\n--\n\nCSV operation."
+             ),
+             MethodDefinition(
+                 "get_dialect",
+                 MethodCallbacks(keywords=get_dialect),
+                 "get_dialect($module, /, name)\n--\n\nCSV operation."
+             ),
+             MethodDefinition(
+                 "unregister_dialect",
+                 MethodCallbacks(keywords=unregister_dialect),
+                 "unregister_dialect($module, /, name)\n--\n\nCSV operation."
+             ),
+             MethodDefinition(
+                 "field_size_limit",
+                 MethodCallbacks(keywords=field_size_limit),
+                 "field_size_limit($module, /, new_limit=<unrepresentable>)\n--\n\nCSV operation."
+             ),
+             MethodDefinition(
+                 "list_dialects",
+                 MethodCallbacks(positional=list_dialects),
+                 "list_dialects($module, /)\n--\n\nList registered dialects.",
+                 flags=4
+             )
          ],
          ModuleHooks(execute=execute),
          5

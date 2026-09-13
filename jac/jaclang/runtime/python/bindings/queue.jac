@@ -1,7 +1,8 @@
 """SimpleQueue type and Python signatures over shared native FIFO state."""
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
-    MethodCallbacks, MethodDefinition,
+    MethodCallbacks,
+    MethodDefinition,
     ModuleHooks,
     add_state_owned,
     jacpy_binding_exception,
@@ -188,13 +189,45 @@ glob:priv queue_type = TypeDefinition(
          "_queue.SimpleQueue",
          "SimpleQueue()\n--\n\nSimple, unbounded, reentrant FIFO queue.",
          [
-             MethodDefinition("put", MethodCallbacks(keywords=put_call), "put($self, /, item, block=True, timeout=None)\n--\n\nOperate on the FIFO queue."),
-             MethodDefinition("put_nowait", MethodCallbacks(keywords=put_nowait_call), "put_nowait($self, /, item)\n--\n\nOperate on the FIFO queue."),
-             MethodDefinition("get", MethodCallbacks(keywords=get_call), "get($self, /, block=True, timeout=None)\n--\n\nOperate on the FIFO queue."),
-             MethodDefinition("get_nowait", MethodCallbacks(positional=get_nowait_call), "get_nowait($self, /)\n--\n\nGet an item or raise Empty.", flags=4),
-             MethodDefinition("empty", MethodCallbacks(positional=empty_call), "empty($self, /)\n--\n\nReturn whether the queue is empty.", flags=4),
-             MethodDefinition("qsize", MethodCallbacks(positional=size_call), "qsize($self, /)\n--\n\nReturn the approximate queue size.", flags=4),
-             MethodDefinition("__class_getitem__", MethodCallbacks(positional=jacpy_binding_generic_alias), "Create a generic queue alias.", flags=24)
+             MethodDefinition(
+                 "put",
+                 MethodCallbacks(keywords=put_call),
+                 "put($self, /, item, block=True, timeout=None)\n--\n\nOperate on the FIFO queue."
+             ),
+             MethodDefinition(
+                 "put_nowait",
+                 MethodCallbacks(keywords=put_nowait_call),
+                 "put_nowait($self, /, item)\n--\n\nOperate on the FIFO queue."
+             ),
+             MethodDefinition(
+                 "get",
+                 MethodCallbacks(keywords=get_call),
+                 "get($self, /, block=True, timeout=None)\n--\n\nOperate on the FIFO queue."
+             ),
+             MethodDefinition(
+                 "get_nowait",
+                 MethodCallbacks(positional=get_nowait_call),
+                 "get_nowait($self, /)\n--\n\nGet an item or raise Empty.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "empty",
+                 MethodCallbacks(positional=empty_call),
+                 "empty($self, /)\n--\n\nReturn whether the queue is empty.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "qsize",
+                 MethodCallbacks(positional=size_call),
+                 "qsize($self, /)\n--\n\nReturn the approximate queue size.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "__class_getitem__",
+                 MethodCallbacks(positional=jacpy_binding_generic_alias),
+                 "Create a generic queue alias.",
+                 flags=24
+             )
          ],
          u64(
              TypeFlags.BASETYPE.value

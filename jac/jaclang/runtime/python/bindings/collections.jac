@@ -2,7 +2,8 @@
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
     ModuleHooks,
-    MethodCallbacks, MethodDefinition,
+    MethodCallbacks,
+    MethodDefinition,
     add_state_owned,
     add_owned,
     jacpy_binding_state_get,
@@ -978,8 +979,18 @@ def:priv iterator_dealloc(instance: u64) {
 
 glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
      iterator_methods = [
-         MethodDefinition("__length_hint__", MethodCallbacks(positional=iterator_hint), "Private method returning an estimate of len(list(it)).", flags=4),
-         MethodDefinition("__reduce__", MethodCallbacks(positional=iterator_reduce), "Return state information for pickling.", flags=4)
+         MethodDefinition(
+             "__length_hint__",
+             MethodCallbacks(positional=iterator_hint),
+             "Private method returning an estimate of len(list(it)).",
+             flags=4
+         ),
+         MethodDefinition(
+             "__reduce__",
+             MethodCallbacks(positional=iterator_reduce),
+             "Return state information for pickling.",
+             flags=4
+         )
      ],
      iterator_hooks = TypeHooks(
          create=iterator_new,
@@ -1003,25 +1014,120 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          "collections.deque",
          "A list-like sequence optimized for data accesses near its endpoints.",
          [
-             MethodDefinition("append", MethodCallbacks(positional=deque_append), "Add an element to the right side of the deque.", flags=8),
-             MethodDefinition("appendleft", MethodCallbacks(positional=deque_appendleft), "Add an element to the left side of the deque.", flags=8),
-             MethodDefinition("pop", MethodCallbacks(positional=deque_pop), "Remove and return the rightmost element.", flags=4),
-             MethodDefinition("popleft", MethodCallbacks(positional=deque_popleft), "Remove and return the leftmost element.", flags=4),
-             MethodDefinition("extend", MethodCallbacks(positional=deque_extend), "Extend the right side of the deque with elements from the iterable.", flags=8),
-             MethodDefinition("extendleft", MethodCallbacks(positional=deque_extendleft), "Extend the left side of the deque with elements from the iterable.", flags=8),
-             MethodDefinition("clear", MethodCallbacks(positional=deque_clear_method), "Remove all elements from the deque.", flags=4),
-             MethodDefinition("reverse", MethodCallbacks(positional=deque_reverse), "Reverse *IN PLACE*.", flags=4),
-             MethodDefinition("rotate", MethodCallbacks(positional=deque_rotate), "Rotate the deque n steps to the right. If n is negative, rotates left.", flags=1),
-             MethodDefinition("insert", MethodCallbacks(positional=deque_insert), "Insert value before index.", flags=1),
-             MethodDefinition("count", MethodCallbacks(positional=deque_count), "Return number of occurrences of value.", flags=8),
-             MethodDefinition("index", MethodCallbacks(positional=deque_index), "Return first index of value.", flags=1),
-             MethodDefinition("remove", MethodCallbacks(positional=deque_remove), "Remove first occurrence of value.", flags=8),
-             MethodDefinition("copy", MethodCallbacks(positional=deque_copy), "Return a shallow copy of a deque.", flags=4),
-             MethodDefinition("__copy__", MethodCallbacks(positional=deque_copy), "Return a shallow copy of a deque.", flags=4),
-             MethodDefinition("__reduce__", MethodCallbacks(positional=deque_reduce), "Return state information for pickling.", flags=4),
-             MethodDefinition("__reversed__", MethodCallbacks(positional=deque_reversed), "Return a reverse iterator over the deque.", flags=4),
-             MethodDefinition("__sizeof__", MethodCallbacks(positional=deque_sizeof), "Return the size of the deque in memory, in bytes.", flags=4),
-             MethodDefinition("__class_getitem__", MethodCallbacks(positional=jacpy_binding_generic_alias), "deques are generic over the type of their contents", flags=24)
+             MethodDefinition(
+                 "append",
+                 MethodCallbacks(positional=deque_append),
+                 "Add an element to the right side of the deque.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "appendleft",
+                 MethodCallbacks(positional=deque_appendleft),
+                 "Add an element to the left side of the deque.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "pop",
+                 MethodCallbacks(positional=deque_pop),
+                 "Remove and return the rightmost element.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "popleft",
+                 MethodCallbacks(positional=deque_popleft),
+                 "Remove and return the leftmost element.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "extend",
+                 MethodCallbacks(positional=deque_extend),
+                 "Extend the right side of the deque with elements from the iterable.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "extendleft",
+                 MethodCallbacks(positional=deque_extendleft),
+                 "Extend the left side of the deque with elements from the iterable.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "clear",
+                 MethodCallbacks(positional=deque_clear_method),
+                 "Remove all elements from the deque.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "reverse",
+                 MethodCallbacks(positional=deque_reverse),
+                 "Reverse *IN PLACE*.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "rotate",
+                 MethodCallbacks(positional=deque_rotate),
+                 "Rotate the deque n steps to the right. If n is negative, rotates left.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "insert",
+                 MethodCallbacks(positional=deque_insert),
+                 "Insert value before index.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "count",
+                 MethodCallbacks(positional=deque_count),
+                 "Return number of occurrences of value.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "index",
+                 MethodCallbacks(positional=deque_index),
+                 "Return first index of value.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "remove",
+                 MethodCallbacks(positional=deque_remove),
+                 "Remove first occurrence of value.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "copy",
+                 MethodCallbacks(positional=deque_copy),
+                 "Return a shallow copy of a deque.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "__copy__",
+                 MethodCallbacks(positional=deque_copy),
+                 "Return a shallow copy of a deque.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "__reduce__",
+                 MethodCallbacks(positional=deque_reduce),
+                 "Return state information for pickling.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "__reversed__",
+                 MethodCallbacks(positional=deque_reversed),
+                 "Return a reverse iterator over the deque.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "__sizeof__",
+                 MethodCallbacks(positional=deque_sizeof),
+                 "Return the size of the deque in memory, in bytes.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "__class_getitem__",
+                 MethodCallbacks(positional=jacpy_binding_generic_alias),
+                 "deques are generic over the type of their contents",
+                 flags=24
+             )
          ],
          flags
              | u64(
@@ -1054,11 +1160,36 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
          "collections.defaultdict",
          "defaultdict(default_factory=None, /, [...]) --> dict with default factory\n\nThe default factory is called without arguments to produce\na new value when a key is not present, in __getitem__ only.\nA defaultdict compares equal to a dict with the same items.\nAll remaining arguments are treated the same as if they were\npassed to the dict constructor, including keyword arguments.\n",
          [
-             MethodDefinition("__missing__", MethodCallbacks(positional=default_missing), "Called by __getitem__ for missing keys.", flags=8),
-             MethodDefinition("copy", MethodCallbacks(positional=default_copy), "D.copy() -> a shallow copy of D.", flags=4),
-             MethodDefinition("__copy__", MethodCallbacks(positional=default_copy), "D.copy() -> a shallow copy of D.", flags=4),
-             MethodDefinition("__reduce__", MethodCallbacks(positional=default_reduce), "Return state information for pickling.", flags=4),
-             MethodDefinition("__class_getitem__", MethodCallbacks(positional=jacpy_binding_generic_alias), "defaultdicts are generic over keys and values", flags=24)
+             MethodDefinition(
+                 "__missing__",
+                 MethodCallbacks(positional=default_missing),
+                 "Called by __getitem__ for missing keys.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "copy",
+                 MethodCallbacks(positional=default_copy),
+                 "D.copy() -> a shallow copy of D.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "__copy__",
+                 MethodCallbacks(positional=default_copy),
+                 "D.copy() -> a shallow copy of D.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "__reduce__",
+                 MethodCallbacks(positional=default_reduce),
+                 "Return state information for pickling.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "__class_getitem__",
+                 MethodCallbacks(positional=jacpy_binding_generic_alias),
+                 "defaultdicts are generic over keys and values",
+                 flags=24
+             )
          ],
          flags | u64(TypeFlags.BASETYPE.value),
          TypeHooks(
@@ -1079,7 +1210,11 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
      getter_type = TypeDefinition(
          "collections._tuplegetter",
          "",
-         [MethodDefinition("__reduce__", MethodCallbacks(positional=getter_reduce), "", flags=4)],
+         [
+             MethodDefinition(
+                 "__reduce__", MethodCallbacks(positional=getter_reduce), "", flags=4
+             )
+         ],
          flags,
          TypeHooks(
              create=getter_create,
@@ -1133,7 +1268,12 @@ glob:priv definition = ModuleDefinition(
          "_collections",
          "Native Jac collections.",
          [
-             MethodDefinition("_count_elements", MethodCallbacks(positional=count_elements), "", flags=1)
+             MethodDefinition(
+                 "_count_elements",
+                 MethodCallbacks(positional=count_elements),
+                 "",
+                 flags=1
+             )
          ],
          hooks=ModuleHooks(execute=execute),
          state_count=6

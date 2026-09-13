@@ -1,7 +1,8 @@
 """Python operator bindings and native accessor state."""
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
-    MethodCallbacks, MethodDefinition,
+    MethodCallbacks,
+    MethodDefinition,
     ModuleHooks,
     add_owned
 }
@@ -729,7 +730,12 @@ glob:priv itemgetter_type = TypeDefinition(
          "operator.itemgetter",
          "itemgetter(item, /, *items)\n--\n\nFetch items from an operand.",
          [
-             MethodDefinition("__reduce__", MethodCallbacks(positional=itemgetter_reduce), "Return state for pickling.", flags=4)
+             MethodDefinition(
+                 "__reduce__",
+                 MethodCallbacks(positional=itemgetter_reduce),
+                 "Return state for pickling.",
+                 flags=4
+             )
          ],
          u64(
              TypeFlags.GC.value | TypeFlags.IMMUTABLE.value | TypeFlags.VECTORCALL.value
@@ -777,7 +783,12 @@ glob:priv attrgetter_type = TypeDefinition(
          "operator.attrgetter",
          "attrgetter(attr, /, *attrs)\n--\n\nFetch attributes from an operand.",
          [
-             MethodDefinition("__reduce__", MethodCallbacks(positional=attrgetter_reduce), "Return state for pickling.", flags=4)
+             MethodDefinition(
+                 "__reduce__",
+                 MethodCallbacks(positional=attrgetter_reduce),
+                 "Return state for pickling.",
+                 flags=4
+             )
          ],
          u64(
              TypeFlags.GC.value | TypeFlags.IMMUTABLE.value | TypeFlags.VECTORCALL.value
@@ -825,7 +836,12 @@ glob:priv methodcaller_type = TypeDefinition(
          "operator.methodcaller",
          "methodcaller(name, /, *args, **kwargs)\n--\n\nCall a method on an operand.",
          [
-             MethodDefinition("__reduce__", MethodCallbacks(positional=methodcaller_reduce), "Return state for pickling.", flags=4)
+             MethodDefinition(
+                 "__reduce__",
+                 MethodCallbacks(positional=methodcaller_reduce),
+                 "Return state for pickling.",
+                 flags=4
+             )
          ],
          u64(
              TypeFlags.GC.value | TypeFlags.IMMUTABLE.value | TypeFlags.VECTORCALL.value
@@ -858,61 +874,335 @@ glob:priv definition = ModuleDefinition(
          "_operator",
          "Native Jac implementations of Python operators.",
          [
-             MethodDefinition("neg", MethodCallbacks(positional=neg_call), "neg($module, a, /)\n--\n\nApply the Python operator.", flags=8),
-             MethodDefinition("pos", MethodCallbacks(positional=pos_call), "pos($module, a, /)\n--\n\nApply the Python operator.", flags=8),
-             MethodDefinition("abs", MethodCallbacks(positional=abs_call), "abs($module, a, /)\n--\n\nApply the Python operator.", flags=8),
-             MethodDefinition("invert", MethodCallbacks(positional=invert_call), "invert($module, a, /)\n--\n\nApply the Python operator.", flags=8),
-             MethodDefinition("index", MethodCallbacks(positional=index_call), "index($module, a, /)\n--\n\nApply the Python operator.", flags=8),
-             MethodDefinition("truth", MethodCallbacks(positional=truth_call), "truth($module, a, /)\n--\n\nApply the Python operator.", flags=8),
-             MethodDefinition("not_", MethodCallbacks(positional=not__call), "not_($module, a, /)\n--\n\nApply the Python operator.", flags=8),
-             MethodDefinition("is_none", MethodCallbacks(positional=is_none_call), "is_none($module, a, /)\n--\n\nApply the Python operator.", flags=8),
-             MethodDefinition("is_not_none", MethodCallbacks(positional=is_not_none_call), "is_not_none($module, a, /)\n--\n\nApply the Python operator.", flags=8),
-             MethodDefinition("inv", MethodCallbacks(positional=invert_call), "inv($module, a, /)\n--\n\nSame as ~a.", flags=8),
-             MethodDefinition("add", MethodCallbacks(positional=add_call), "add($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("sub", MethodCallbacks(positional=sub_call), "sub($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("mul", MethodCallbacks(positional=mul_call), "mul($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("matmul", MethodCallbacks(positional=matmul_call), "matmul($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("floordiv", MethodCallbacks(positional=floordiv_call), "floordiv($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("truediv", MethodCallbacks(positional=truediv_call), "truediv($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("mod", MethodCallbacks(positional=mod_call), "mod($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("lshift", MethodCallbacks(positional=lshift_call), "lshift($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("rshift", MethodCallbacks(positional=rshift_call), "rshift($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("and_", MethodCallbacks(positional=and__call), "and_($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("xor", MethodCallbacks(positional=xor_call), "xor($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("or_", MethodCallbacks(positional=or__call), "or_($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("iadd", MethodCallbacks(positional=iadd_call), "iadd($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("isub", MethodCallbacks(positional=isub_call), "isub($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("imul", MethodCallbacks(positional=imul_call), "imul($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("imatmul", MethodCallbacks(positional=imatmul_call), "imatmul($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("ifloordiv", MethodCallbacks(positional=ifloordiv_call), "ifloordiv($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("itruediv", MethodCallbacks(positional=itruediv_call), "itruediv($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("imod", MethodCallbacks(positional=imod_call), "imod($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("ilshift", MethodCallbacks(positional=ilshift_call), "ilshift($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("irshift", MethodCallbacks(positional=irshift_call), "irshift($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("iand", MethodCallbacks(positional=iand_call), "iand($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("ixor", MethodCallbacks(positional=ixor_call), "ixor($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("ior", MethodCallbacks(positional=ior_call), "ior($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("concat", MethodCallbacks(positional=concat_call), "concat($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("iconcat", MethodCallbacks(positional=iconcat_call), "iconcat($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("getitem", MethodCallbacks(positional=getitem_call), "getitem($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("is_", MethodCallbacks(positional=is__call), "is_($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("is_not", MethodCallbacks(positional=is_not_call), "is_not($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("pow", MethodCallbacks(positional=pow_call), "pow($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("ipow", MethodCallbacks(positional=ipow_call), "ipow($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("contains", MethodCallbacks(positional=contains_call), "contains($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("indexOf", MethodCallbacks(positional=indexOf_call), "indexOf($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("countOf", MethodCallbacks(positional=countOf_call), "countOf($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("delitem", MethodCallbacks(positional=delitem_call), "delitem($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("lt", MethodCallbacks(positional=lt_call), "lt($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("le", MethodCallbacks(positional=le_call), "le($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("eq", MethodCallbacks(positional=eq_call), "eq($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("ne", MethodCallbacks(positional=ne_call), "ne($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("gt", MethodCallbacks(positional=gt_call), "gt($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("ge", MethodCallbacks(positional=ge_call), "ge($module, a, b, /)\n--\n\nApply the Python operator.", flags=1),
-             MethodDefinition("setitem", MethodCallbacks(positional=setitem_call), "setitem($module, a, b, c, /)\n--\n\nSame as a[b] = c.", flags=1),
-             MethodDefinition("length_hint", MethodCallbacks(positional=length_hint_call), "length_hint($module, obj, default=0, /)\n--\n\nEstimate an iterable's length.", flags=1),
-             MethodDefinition("call", MethodCallbacks(keywords=call_call), "call($module, obj, /, *args, **kwargs)\n--\n\nCall obj."),
-             MethodDefinition("_compare_digest", MethodCallbacks(positional=digest_call), "_compare_digest($module, a, b, /)\n--\n\nCompare without content-dependent timing.", flags=1)
+             MethodDefinition(
+                 "neg",
+                 MethodCallbacks(positional=neg_call),
+                 "neg($module, a, /)\n--\n\nApply the Python operator.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "pos",
+                 MethodCallbacks(positional=pos_call),
+                 "pos($module, a, /)\n--\n\nApply the Python operator.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "abs",
+                 MethodCallbacks(positional=abs_call),
+                 "abs($module, a, /)\n--\n\nApply the Python operator.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "invert",
+                 MethodCallbacks(positional=invert_call),
+                 "invert($module, a, /)\n--\n\nApply the Python operator.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "index",
+                 MethodCallbacks(positional=index_call),
+                 "index($module, a, /)\n--\n\nApply the Python operator.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "truth",
+                 MethodCallbacks(positional=truth_call),
+                 "truth($module, a, /)\n--\n\nApply the Python operator.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "not_",
+                 MethodCallbacks(positional=not__call),
+                 "not_($module, a, /)\n--\n\nApply the Python operator.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "is_none",
+                 MethodCallbacks(positional=is_none_call),
+                 "is_none($module, a, /)\n--\n\nApply the Python operator.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "is_not_none",
+                 MethodCallbacks(positional=is_not_none_call),
+                 "is_not_none($module, a, /)\n--\n\nApply the Python operator.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "inv",
+                 MethodCallbacks(positional=invert_call),
+                 "inv($module, a, /)\n--\n\nSame as ~a.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "add",
+                 MethodCallbacks(positional=add_call),
+                 "add($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "sub",
+                 MethodCallbacks(positional=sub_call),
+                 "sub($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "mul",
+                 MethodCallbacks(positional=mul_call),
+                 "mul($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "matmul",
+                 MethodCallbacks(positional=matmul_call),
+                 "matmul($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "floordiv",
+                 MethodCallbacks(positional=floordiv_call),
+                 "floordiv($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "truediv",
+                 MethodCallbacks(positional=truediv_call),
+                 "truediv($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "mod",
+                 MethodCallbacks(positional=mod_call),
+                 "mod($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "lshift",
+                 MethodCallbacks(positional=lshift_call),
+                 "lshift($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "rshift",
+                 MethodCallbacks(positional=rshift_call),
+                 "rshift($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "and_",
+                 MethodCallbacks(positional=and__call),
+                 "and_($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "xor",
+                 MethodCallbacks(positional=xor_call),
+                 "xor($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "or_",
+                 MethodCallbacks(positional=or__call),
+                 "or_($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "iadd",
+                 MethodCallbacks(positional=iadd_call),
+                 "iadd($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "isub",
+                 MethodCallbacks(positional=isub_call),
+                 "isub($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "imul",
+                 MethodCallbacks(positional=imul_call),
+                 "imul($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "imatmul",
+                 MethodCallbacks(positional=imatmul_call),
+                 "imatmul($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "ifloordiv",
+                 MethodCallbacks(positional=ifloordiv_call),
+                 "ifloordiv($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "itruediv",
+                 MethodCallbacks(positional=itruediv_call),
+                 "itruediv($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "imod",
+                 MethodCallbacks(positional=imod_call),
+                 "imod($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "ilshift",
+                 MethodCallbacks(positional=ilshift_call),
+                 "ilshift($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "irshift",
+                 MethodCallbacks(positional=irshift_call),
+                 "irshift($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "iand",
+                 MethodCallbacks(positional=iand_call),
+                 "iand($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "ixor",
+                 MethodCallbacks(positional=ixor_call),
+                 "ixor($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "ior",
+                 MethodCallbacks(positional=ior_call),
+                 "ior($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "concat",
+                 MethodCallbacks(positional=concat_call),
+                 "concat($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "iconcat",
+                 MethodCallbacks(positional=iconcat_call),
+                 "iconcat($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "getitem",
+                 MethodCallbacks(positional=getitem_call),
+                 "getitem($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "is_",
+                 MethodCallbacks(positional=is__call),
+                 "is_($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "is_not",
+                 MethodCallbacks(positional=is_not_call),
+                 "is_not($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "pow",
+                 MethodCallbacks(positional=pow_call),
+                 "pow($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "ipow",
+                 MethodCallbacks(positional=ipow_call),
+                 "ipow($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "contains",
+                 MethodCallbacks(positional=contains_call),
+                 "contains($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "indexOf",
+                 MethodCallbacks(positional=indexOf_call),
+                 "indexOf($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "countOf",
+                 MethodCallbacks(positional=countOf_call),
+                 "countOf($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "delitem",
+                 MethodCallbacks(positional=delitem_call),
+                 "delitem($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "lt",
+                 MethodCallbacks(positional=lt_call),
+                 "lt($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "le",
+                 MethodCallbacks(positional=le_call),
+                 "le($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "eq",
+                 MethodCallbacks(positional=eq_call),
+                 "eq($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "ne",
+                 MethodCallbacks(positional=ne_call),
+                 "ne($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "gt",
+                 MethodCallbacks(positional=gt_call),
+                 "gt($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "ge",
+                 MethodCallbacks(positional=ge_call),
+                 "ge($module, a, b, /)\n--\n\nApply the Python operator.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "setitem",
+                 MethodCallbacks(positional=setitem_call),
+                 "setitem($module, a, b, c, /)\n--\n\nSame as a[b] = c.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "length_hint",
+                 MethodCallbacks(positional=length_hint_call),
+                 "length_hint($module, obj, default=0, /)\n--\n\nEstimate an iterable's length.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "call",
+                 MethodCallbacks(keywords=call_call),
+                 "call($module, obj, /, *args, **kwargs)\n--\n\nCall obj."
+             ),
+             MethodDefinition(
+                 "_compare_digest",
+                 MethodCallbacks(positional=digest_call),
+                 "_compare_digest($module, a, b, /)\n--\n\nCompare without content-dependent timing.",
+                 flags=1
+             )
          ],
          ModuleHooks(execute=execute)
      );

@@ -1,7 +1,8 @@
 """Python Random type, signatures, and native Mersenne Twister state lifetime."""
 import from jaclang.runtime.python.bindings.module {
     ModuleDefinition,
-    MethodCallbacks, MethodDefinition,
+    MethodCallbacks,
+    MethodDefinition,
     ModuleHooks,
     add_state_owned
 }
@@ -179,11 +180,36 @@ glob:priv random_type = TypeDefinition(
          "_random.Random",
          "Random() -> create a random number generator with its own internal state.",
          [
-             MethodDefinition("seed", MethodCallbacks(positional=seed_call), "seed($self, n=None, /)\n--\n\nInitialize generator state.", flags=1),
-             MethodDefinition("random", MethodCallbacks(positional=random_call), "random($self, /)\n--\n\nReturn a random float in [0, 1).", flags=4),
-             MethodDefinition("getstate", MethodCallbacks(positional=getstate_call), "getstate($self, /)\n--\n\nReturn generator state.", flags=4),
-             MethodDefinition("setstate", MethodCallbacks(positional=setstate_call), "setstate($self, state, /)\n--\n\nRestore generator state.", flags=8),
-             MethodDefinition("getrandbits", MethodCallbacks(positional=bits_call), "getrandbits($self, k, /)\n--\n\nReturn an integer with k random bits.", flags=8)
+             MethodDefinition(
+                 "seed",
+                 MethodCallbacks(positional=seed_call),
+                 "seed($self, n=None, /)\n--\n\nInitialize generator state.",
+                 flags=1
+             ),
+             MethodDefinition(
+                 "random",
+                 MethodCallbacks(positional=random_call),
+                 "random($self, /)\n--\n\nReturn a random float in [0, 1).",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "getstate",
+                 MethodCallbacks(positional=getstate_call),
+                 "getstate($self, /)\n--\n\nReturn generator state.",
+                 flags=4
+             ),
+             MethodDefinition(
+                 "setstate",
+                 MethodCallbacks(positional=setstate_call),
+                 "setstate($self, state, /)\n--\n\nRestore generator state.",
+                 flags=8
+             ),
+             MethodDefinition(
+                 "getrandbits",
+                 MethodCallbacks(positional=bits_call),
+                 "getrandbits($self, k, /)\n--\n\nReturn an integer with k random bits.",
+                 flags=8
+             )
          ],
          u64(TypeFlags.BASETYPE.value),
          TypeHooks(create=create, initialize=initialize, dealloc=deallocate)
