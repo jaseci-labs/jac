@@ -1201,7 +1201,9 @@ impl NativeStrEmitter.emit_split(
     self: NativeStrEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
     if args {
-        return ctx.pass_ref._codegen_str_split(target, args[0]);
+        return ctx.pass_ref._codegen_str_split(
+            target, args[0], args[1] if len(args) > 1 else None
+        );
     }
     return None;
 }
@@ -1210,7 +1212,9 @@ impl NativeStrEmitter.emit_rsplit(
     self: NativeStrEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
     if args {
-        return ctx.pass_ref._codegen_str_split(target, args[0]);
+        return ctx.pass_ref._codegen_str_split(
+            target, args[0], args[1] if len(args) > 1 else None, True
+        );
     }
     return None;
 }

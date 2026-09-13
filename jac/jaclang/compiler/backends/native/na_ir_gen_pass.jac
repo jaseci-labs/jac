@@ -475,7 +475,12 @@ walker NaIRGenPass(Transform) {
         str_val: ir.Value, charset: (ir.Value | None), do_left: bool, do_right: bool
     ) -> (ir.Value | None);
 
-    def _codegen_str_split(str_val: ir.Value, sep_val: ir.Value) -> (ir.Value | None);
+    def _codegen_str_split(
+        str_val: ir.Value,
+        sep_val: ir.Value,
+        maxsplit: ir.Value | None = None,
+        reverse: bool = False
+    ) -> (ir.Value | None);
     def _emit_norm_slice_bounds(
         slice_node: uni.Slice, src_len: ir.Value
     ) -> (tuple | None);
@@ -2086,6 +2091,7 @@ walker NaIRGenPass(Transform) {
     def _restore_list_read(
         value: (ir.Value | None), collection: uni.UniNode
     ) -> (ir.Value | None);
+
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _typed_elem_llvm_of(
