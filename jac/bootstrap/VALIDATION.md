@@ -467,4 +467,16 @@ locations, default source paths, longest-prefix matching, path-component
 boundaries, scoped restoration, option cloning, and cache-key separation.
 The checksum-pinned prior compiler also successfully loaded the updated
 bootstrap recipe; current-only options are passed as typed keyword arguments.
-Full native regression, final packaging, and latest-head CI remain required.
+Revision `dc6cb86ef0` passed all 28 staged build and verification steps.
+Stage 1 compiled 757 modules in 479.38 seconds; Stage 2 independently rebuilt
+757 in 402.01 seconds. Both catalogs reported zero evaluation failures.
+The actual staged build emitted the same native Python object hash recorded
+above. The complete native suite passed 1,477 tests with ten skips in 1,290.07
+seconds. The packaged executable passed 24 image, interface, packaging,
+workspace and native reproducibility regressions in 34.25 seconds; SHA-256
+`23caac329aed7327bbc6415740cc94b3ac88e523691d475d94f10ebd82694843`.
+
+The follow-up applies the same source mapping to the two native debug-metadata
+emitters, preserving synthetic module names. Twenty-five focused tests passed,
+including byte-identical objects with debug information, shared libraries,
+RC debug behavior and cyclic imports. Latest-head CI remains required.

@@ -84,7 +84,7 @@ remain part of the product.
 
 Stage 1 maps its temporary native Python source directory to the stable
 `jaclang` prefix. The compiler applies source-prefix mappings to native symbol
-identity and embedded assertion locations, includes them in code-generation
+identity, embedded assertion locations and debug metadata, includes them in code-generation
 cache identity, and preserves them across native imports. Identical emitted
 objects let the runtime's existing content cache reuse CPython after compiler
 edits that leave the native Python implementation unchanged.

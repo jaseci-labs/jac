@@ -31,10 +31,13 @@ impl NaIRGenPass.postinit -> None {
     self.llvm_module.triple = _tm.triple;
 
     if _ni_src and _ni_opts.native_debug {
-        _ni_src_dir: str = _ni_os.path.dirname(_ni_os.path.abspath(_ni_src));
+        import from jaclang.compiler.driver.compilation_context { codegen_source_path }
+        _di_source = codegen_source_path(_ni_os.path.abspath(_ni_src));
+        _ni_src_dir: str = _ni_os.path.dirname(_di_source);
         try {
             self.di_file = self.llvm_module.add_debug_info(
-                "DIFile", {"filename": _ni_mod_name, "directory": _ni_src_dir}
+                "DIFile",
+                {"filename": _ni_os.path.basename(_di_source), "directory": _ni_src_dir}
             );
             self.di_cu = self.llvm_module.add_debug_info(
                 "DICompileUnit",

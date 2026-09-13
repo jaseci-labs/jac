@@ -13,7 +13,7 @@ import from jaclang.compiler.backends.native.shared_emit {
 }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 
-def emit_object(directory: Path, mapped: bool) -> bytes {
+def emit_object(directory: Path, mapped: bool, debug: bool = False) -> bytes {
     directory.mkdir();
     (directory / 'jac.toml').write_text('[project]\nname="reproducible"\n');
     (directory / 'helper.jac').write_text(
@@ -27,7 +27,8 @@ def emit_object(directory: Path, mapped: bool) -> bytes {
         aot_mode=True,
         default_codespace='native',
         no_ir_cache=True,
-        native_target=llvm.get_default_triple()
+        native_target=llvm.get_default_triple(),
+        native_debug=debug
     );
     if mapped {
         options.source_prefix_map = {str(directory): 'source'};
@@ -93,5 +94,15 @@ test "source mappings use path boundaries and remain scoped to code generation" 
         }
         assert codegen_source_path(str(child / 'helper.jac'))
             == str(child / 'helper.jac');
+    }
+}
+
+test "mapped debug objects retain reproducible source locations" {
+    with TemporaryDirectory() as td {
+        base = Path(td).resolve();
+        first = emit_object(base / 'debug_first', True, True);
+        second = emit_object(base / 'debug_second', True, True);
+        assert first == second;
+        assert str(base).encode() not in first;
     }
 }
