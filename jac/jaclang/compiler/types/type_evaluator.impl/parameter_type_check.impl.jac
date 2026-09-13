@@ -378,21 +378,17 @@ impl TypeEvaluator._validate_call_type(
                             and isinstance(arg.value, Bool) {
                             is_contravariant = arg.value.lit_value;
                         } elif arg.key.value == "bound" {
-                            bound_type = self.get_type_of_expression(arg.value);
-                            if isinstance(bound_type, ClassType)
-                                and bound_type.is_instantiable() {
-                                bound_type = bound_type.clone_as_instance();
-                            }
+                            bound_type = self._convert_to_instance(
+                                self.get_type_of_expression(arg.value)
+                            );
                         }
                     }
                     continue;
                 }
 
-                constraint_type = self.get_type_of_expression(arg);
-                if isinstance(constraint_type, ClassType)
-                    and constraint_type.is_instantiable() {
-                    constraint_type = constraint_type.clone_as_instance();
-                }
+                constraint_type = self._convert_to_instance(
+                    self.get_type_of_expression(arg)
+                );
                 constraint_types.append(constraint_type);
                 constraint_count += 1;
                 if first_constraint_arg is None {
@@ -434,11 +430,9 @@ impl TypeEvaluator._validate_call_type(
                         and isinstance(arg.value, Bool) {
                         is_contravariant = arg.value.lit_value;
                     } elif arg.key.value == "bound" {
-                        bound_type = self.get_type_of_expression(arg.value);
-                        if isinstance(bound_type, ClassType)
-                            and bound_type.is_instantiable() {
-                            bound_type = bound_type.clone_as_instance();
-                        }
+                        bound_type = self._convert_to_instance(
+                            self.get_type_of_expression(arg.value)
+                        );
                     }
                 }
             }
@@ -743,6 +737,12 @@ impl TypeEvaluator._get_method_with_overloads(
 impl TypeEvaluator.assign_type_to_type_var(
     param_type: TypeBase, arg_type: TypeBase, bindings: dict[str, TypeBase]
 ) -> bool {
+    if isinstance(arg_type, UnionType)
+        and arg_type.is_instantiable()
+        and self.prefetch.union_type_class is not None {
+        arg_type = self.prefetch.union_type_class.clone_as_instance();
+    }
+
     if isinstance(param_type, TypeVarType) {
         if not param_type.name {
             return True;
@@ -794,12 +794,6 @@ impl TypeEvaluator.assign_type_to_type_var(
     if isinstance(arg_type, (UnknownType, AnyType)) or arg_type.is_any_instance() {
         self.bind_type_vars_to_opaque(param_type, bindings, arg_type);
         return True;
-    }
-
-    if isinstance(arg_type, UnionType)
-        and arg_type.is_instantiable()
-        and self.prefetch.union_type_class is not None {
-        arg_type = self.prefetch.union_type_class.clone_as_instance();
     }
 
     if isinstance(arg_type, UnionType) {

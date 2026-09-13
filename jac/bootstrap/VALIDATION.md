@@ -304,8 +304,25 @@ counted as passing. The final staged rebuild is being verified separately.
 
 CI on `90bdbacc82` completed all three platform builds successfully. Linux
 Stage 1 took 2,243.23 seconds and Stage 2 took 3,099.97 seconds; subsequent warm
-materialization reused all 757 modules in 5.14 seconds. Its downstream checks
-are still running. These precede the compile-time cycle and source-contract fixes.
+materialization reused all 757 modules in 5.14 seconds. Its superseded downstream run was cancelled after the next revision started. These precede the compile-time cycle and source-contract fixes.
 
 Required checks and final-revision status are tracked on
 [PR #9149](https://github.com/jaseci-labs/jac/pull/9149).
+
+
+## Generic annotations and dynamic instance inference
+
+The source-contract rebuild exposed runtime-union flags leaking into fresh
+standard-library TypeVar bounds and constraints. TypeVar and ParamSpec now use
+the existing recursive annotation-to-instance conversion, and generic inference
+normalizes runtime union arguments before binding type variables. Two regressions
+fail on the preceding diagnostic image and pass after the fix.
+
+The broader source check also exposed dynamic indexing/iteration returning the
+`Any` type object. These expression paths now return instance types, and dynamic
+bitwise OR preserves `Any`. A loop regression reproduces the ELF linker's failure
+on the preceding compiler. The updated diagnostic image passes the ELF linker
+source check and 137 type-system tests (five skips), including all six runtime
+value regressions. Fresh-catalog, staged-build and final CI verification remain
+in progress; intermediate diagnostic images and incomplete runs are not release
+acceptance evidence.

@@ -363,6 +363,9 @@ def get_type_of_binary_operation(
                     ]
                 );
             }
+            if left_type.is_any_instance() or right_type.is_any_instance() {
+                return AnyType();
+            }
         }
         (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
 

@@ -914,7 +914,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     if self.is_any_type(lookup_type)
                         and self.prefetch.any_class is not None {
-                        return self.prefetch.any_class;
+                        return self._convert_to_instance(self.prefetch.any_class);
                     }
                     return UnknownType();
                 } elif base_type.is_class_instance() {
@@ -1105,7 +1105,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     if self.is_any_type(base_type)
                         and self.prefetch.any_class is not None {
-                        return self.prefetch.any_class;
+                        return self._convert_to_instance(self.prefetch.any_class);
                     }
                     return UnknownType();
                 } elif isinstance(base_type, EnumMemberType) {
@@ -1500,7 +1500,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                 }
                 if base_type.is_any_instance()
                     and self.prefetch.any_class is not None {
-                    return self.prefetch.any_class;
+                    return self._convert_to_instance(self.prefetch.any_class);
                 }
                 if isinstance(base_type, ClassType)
                     and base_type.is_instantiable_class() {
@@ -2675,8 +2675,8 @@ impl TypeEvaluator._get_type_of_symbol_decl(
 
                 if self.is_any_type(collection_type)
                     and self.prefetch.any_class is not None {
-                    node_.type = self.prefetch.any_class;
-                    return self.prefetch.any_class;
+                    node_.type = self._convert_to_instance(self.prefetch.any_class);
+                    return self._convert_to_instance(self.prefetch.any_class);
                 }
 
                 if isinstance(collection_type, AnyType) {
