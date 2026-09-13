@@ -228,7 +228,7 @@ oracle; the npm regression passed three tests with verification explicitly
 enabled. An additional whole-suite globally enabled verification stress run was
 stopped after over 33 minutes; it is not counted as passing.
 
-## Outstanding validation
+## Verification history
 
 The normal integration commit hook passed all 261 source checks in 1,738.67
 seconds. The downstream compiler fix passed all 11 normal source checks; analysis
@@ -240,8 +240,38 @@ Stage 2 took 3,060.59 seconds, and warm materialization reused all 757 modules i
 5.90 seconds. Both Stage-1 and final caches were saved. Total cold kit time was
 about 120 minutes; Linux ARM64 completed in about 92 minutes. The runtime test
 runner lost communication with GitHub without a test result. Downstream CI
-identified the ownership and typing issues described above, plus a cold-work
-limit failure (795 versus the unchanged 760 ceiling) being rechecked.
+identified the ownership and typing issues described above. Its cold-work
+limit failure (795 versus the unchanged 760 ceiling) was followed by a passing
+strict-verification run on the fixed compiler: 723 cold passes and zero warm passes.
 
-A complete rebuild of the final follow-up sources and required CI checks on the
-final revision remain in progress.
+Revision `90bdbacc82` passed all 28 staged build checks, 115 tests against its
+Stage-1 image, and 32 native/ownership tests plus 97 primitive equivalence tests
+with strict interface verification against its packaged runtime (one platform
+skip). Packaged Jac sources matched the checkout.
+
+## Compile-time alias cycle performance
+
+The Stage-2 build exposed an import-alias cycle in compile-time evaluation.
+The symbol guard ended before recursive alias evaluation, while the resolver's
+16-hop cutoff repeatedly returned another unresolved alias. A 45-second profile
+recorded 44,329 symbol evaluations from 40 name evaluations, with most time in
+alias resolution. The complete profiled binding compile took 587.76 seconds;
+that includes profiler overhead and is not a controlled wall-time baseline.
+
+Commit `2b1cd40984` retains the existing guard for the entire symbol evaluation
+and uses a visited-symbol set to terminate alias cycles without a hop cutoff.
+The same LLVM pass-manager binding compiled with zero diagnostics in 1.68 seconds
+and 1.91 seconds in two unprofiled runs. The second made 747 symbol-resolution
+calls. Its bounded-work regression fails on the preceding compiler and passes
+with the fix. A 40-module acyclic alias chain still folds correctly; all 21
+compile-time operator/cache/determinism/type-parameter tests passed. Both normal
+commit checks passed.
+
+The complete staged rebuild passed all 28 steps. Stage 1 reused 754 modules and
+rebuilt three in 171.23 seconds through the unchanged pinned producer. Stage 2
+rebuilt all 757 modules in 450.70 seconds, versus 761.77 seconds in the preceding
+local build: about 41% less time for that phase, with eight workers in both runs.
+These observed local timings are not a prediction of total CI duration.
+
+Required checks and final-revision status are tracked on
+[PR #9149](https://github.com/jaseci-labs/jac/pull/9149).
