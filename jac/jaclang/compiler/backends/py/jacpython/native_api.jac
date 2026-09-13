@@ -102,24 +102,7 @@ import from jaclang.runtime.python.modules.tee {
     jacpy_tee_split,
     jacpy_tee_next
 }
-import from jaclang.runtime.python.modules.functools {
-    jacpy_reduce,
-    jacpy_cmp_key,
-    jacpy_partial_new,
-    jacpy_partial_field,
-    jacpy_partial_clear,
-    jacpy_partial_init,
-    jacpy_partial_call,
-    jacpy_partial_restore,
-    jacpy_partial_repr,
-    jacpy_lru_new,
-    jacpy_lru_field,
-    jacpy_lru_destroy,
-    jacpy_lru_init,
-    jacpy_lru_call,
-    jacpy_lru_clear,
-    jacpy_lru_info
-}
+import from jaclang.runtime.python.bindings.functools { PyInit__functools }
 import from jaclang.runtime.python.bindings.math { PyInit_math }
 import from jaclang.runtime.python.modules.collections {
     jacpy_deque_new,

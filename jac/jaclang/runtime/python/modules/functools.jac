@@ -57,9 +57,6 @@ import from jaclang.runtime.python.capi {
     repr_value,
     type_name
 }
-import from c {
-    def jacpy_functools_key(type_handle: u64, key: u64, hash: i64) -> u64;
-}
 
 # A two-argument object call owns the callable arguments for the whole callback.
 def:pub jacpy_reduce(function: u64, iterable: u64, initial: u64) -> u64 {
@@ -446,7 +443,8 @@ def:pub jacpy_partial_repr(state: partial_state, owner: u64) -> u64 {
 }
 
 obj lru_state {
-    has function: u64 = 0,
+    has key_factory: Callable[[u64, u64, i64], u64],
+        function: u64 = 0,
         cache: u64 = 0,
         marker: u64 = 0,
         info_type: u64 = 0,
@@ -457,10 +455,6 @@ obj lru_state {
         typed: bool = False,
         hits: i64 = 0,
         misses: i64 = 0;
-}
-
-def:pub jacpy_lru_new -> lru_state {
-    return lru_state();
 }
 
 def:pub jacpy_lru_field(state: lru_state, field: i64) -> u64 {
@@ -662,7 +656,7 @@ def:pub jacpy_lru_call(state: lru_state, args: u64, keywords: u64) -> u64 {
         if hash == -1 and jacpy_error_pending() != 0 {
             raise boundary_failure();
         }
-        wrapped = required(jacpy_functools_key(state.key_type, key, hash));
+        wrapped = required(state.key_factory(state.key_type, key, hash));
         record = jacpy_dict_get(state.cache, wrapped);
         if record != 0 {
             if state.maximum > 0 {

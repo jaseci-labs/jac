@@ -24,14 +24,19 @@ import from c {
             repr: Callable[[u64], u64] = 0,
             vectorcall: Callable[[u64, u64, u64, u64], u64] = 0,
             iter: Callable[[u64], u64] = 0,
-            next: Callable[[u64], u64] = 0;
+            next: Callable[[u64], u64] = 0,
+            descriptor: Callable[[u64, u64, u64], u64] = 0,
+            compare: Callable[[u64, u64, i32], u64] = 0,
+            hash: Callable[[u64], i64] = 0;
     }  def jacpy_binding_type(
         name: str,
         doc: str,
         count: i64,
         flags: u64,
         hooks: TypeHooks,
-        property_count: i64
+        property_count: i64,
+        instance_dict: i64,
+        unhashable: i64
     ) -> u64;  def jacpy_binding_type_discard(handle: u64);  def jacpy_binding_type_create(
         handle: u64, module: u64, bases: u64
     ) -> u64;  def jacpy_binding_owner(type: u64, module_definition: u64) -> u64;  def jacpy_binding_typeof(
@@ -68,13 +73,22 @@ obj TypeDefinition {
         methods: list[MethodDefinition],
         flags: u64,
         hooks: TypeHooks,
-        properties: (list[PropertyDefinition] | None) = None
+        properties: (list[PropertyDefinition] | None) = None,
+        instance_dict: bool = False,
+        unhashable: bool = False
     ) {
         declarations: list[PropertyDefinition] = properties
             if properties is not None
             else [];
         self.handle = jacpy_binding_type(
-            name, doc, i64(len(methods)), flags, hooks, i64(len(declarations))
+            name,
+            doc,
+            i64(len(methods)),
+            flags,
+            hooks,
+            i64(len(declarations)),
+            i64(instance_dict),
+            i64(unhashable)
         );
         if self.handle != 0 and not install_methods(self.handle, methods) {
             jacpy_binding_type_discard(self.handle);
@@ -105,4 +119,18 @@ obj TypeDefinition {
     def create(module: u64, bases: u64 = 0) -> u64 {
         return jacpy_binding_type_create(self.handle, module, bases);
     }
+}
+
+import from c {
+    def jacpy_binding_dict_visit(
+        object: u64, definition: u64, visitor: u64, context: u64
+    ) -> i32;  def jacpy_binding_dict_clear(object: u64, definition: u64);  def jacpy_binding_dict_present(
+        object: u64
+    ) -> i64;  def jacpy_binding_dict_peek(object: u64) -> u64;  def jacpy_binding_dict_get(
+        object: u64, context: u64
+    ) -> u64;  def jacpy_binding_dict_set(
+        object: u64, value: u64, context: u64
+    ) -> i32;  def jacpy_binding_dict_replace(object: u64, dictionary: u64) -> i64;  def jacpy_binding_method_bind(
+        callable: u64, instance: u64
+    ) -> u64;  def jacpy_binding_enter_recursive(where: str) -> i64;  def jacpy_binding_leave_recursive;  def jacpy_binding_marker -> u64;
 }

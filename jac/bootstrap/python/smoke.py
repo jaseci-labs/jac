@@ -200,6 +200,26 @@ assert _heapq.heappop([1, 2, 3]) == 1
     assert cached.cache_info() == (2, 3, 2, 2)
     cached.cache_clear()
     assert cached.cache_info() == (0, 0, 2, 0)
+    # Callable state and instance dictionaries must expose callback cycles to GC.
+    import gc
+    import weakref
+    class CallableOwner:
+        def call(self, value):
+            return value
+
+    for factory in (lambda fn: _functools.partial(fn),
+                    lambda fn: _functools._lru_cache_wrapper(fn, 2, False, tuple)):
+        owner = CallableOwner()
+        owner.binding = factory(owner.call)
+        owner.binding.owner = owner
+        assert owner.binding(42) == 42
+        owner_ref = weakref.ref(owner)
+        binding_ref = weakref.ref(owner.binding)
+        del owner
+        gc.collect()
+        assert owner_ref() is None and binding_ref() is None, "Native callable retained a cycle"
+    key = _functools.cmp_to_key(lambda a, b: a - b)
+    assert type(key).__hash__ is None
     assert ctypes.pythonapi.jacpy_math_fsum
     assert math.factorial(100) // math.factorial(99) == 100
     assert math.isqrt(10 ** 200 - 1) == 10 ** 100 - 1

@@ -138,19 +138,24 @@ typedef struct {
     uint64_t (*vectorcall)(uint64_t, uint64_t, uint64_t, uint64_t);
     uint64_t (*iter)(uint64_t);
     uint64_t (*next)(uint64_t);
+    uint64_t (*descriptor)(uint64_t, uint64_t, uint64_t);
+    uint64_t (*compare)(uint64_t, uint64_t, int32_t);
+    int64_t (*hash)(uint64_t);
 } JacTypeHooks;
 
 typedef struct {
     void *state;
     vectorcallfunc vectorcall;
-} JacVectorPayload;
+    PyObject *dictionary;
+} JacInstancePayload;
 
 typedef struct {
     JacMethodTable table;
     PyType_Spec definition;
-    PyType_Slot slots[15];
+    PyType_Slot slots[18];
     vectorcallfunc vectorcall;
-    PyMemberDef members[2];
+    int instance_dict;
+    PyMemberDef members[3];
     PyGetSetDef *properties;
     PyMethodDef methods[];
 } JacTypeSpec;
@@ -170,7 +175,8 @@ void jacpy_binding_type_discard(uint64_t handle) {
 }
 
 uint64_t jacpy_binding_type(const char *name, const char *doc, int64_t count,
-                           uint64_t flags, JacTypeHooks hooks, int64_t property_count) {
+                           uint64_t flags, JacTypeHooks hooks, int64_t property_count,
+                           int64_t instance_dict, int64_t unhashable) {
     JacTypeSpec *spec = calloc(1, sizeof(*spec) + (count + 1) * sizeof(PyMethodDef));
     if (!spec) return 0;
     spec->table = (JacMethodTable){strdup(name), strdup(doc), spec->methods};
@@ -180,11 +186,18 @@ uint64_t jacpy_binding_type(const char *name, const char *doc, int64_t count,
         return 0;
     }
     spec->definition = (PyType_Spec){spec->table.name, -(int)sizeof(void *), 0, (unsigned int)flags, spec->slots};
+    int member = 0;
     if (hooks.vectorcall) {
-        spec->definition.basicsize = -(int)sizeof(JacVectorPayload);
+        spec->definition.basicsize = -(int)sizeof(JacInstancePayload);
         spec->vectorcall = (vectorcallfunc)hooks.vectorcall;
-        spec->members[0] = (PyMemberDef){"__vectorcalloffset__", Py_T_PYSSIZET,
-            offsetof(JacVectorPayload, vectorcall), Py_READONLY | Py_RELATIVE_OFFSET};
+        spec->members[member++] = (PyMemberDef){"__vectorcalloffset__", Py_T_PYSSIZET,
+            offsetof(JacInstancePayload, vectorcall), Py_READONLY | Py_RELATIVE_OFFSET};
+    }
+    if (instance_dict) {
+        spec->definition.basicsize = -(int)sizeof(JacInstancePayload);
+        spec->instance_dict = 1;
+        spec->members[member++] = (PyMemberDef){"__dictoffset__", Py_T_PYSSIZET,
+            offsetof(JacInstancePayload, dictionary), Py_READONLY | Py_RELATIVE_OFFSET};
     }
     int slot = 0;
 #define SLOT(field, id) if (hooks.field) spec->slots[slot++] = (PyType_Slot){id, (void *)hooks.field}
@@ -197,11 +210,15 @@ uint64_t jacpy_binding_type(const char *name, const char *doc, int64_t count,
     SLOT(repr, Py_tp_repr);
     SLOT(iter, Py_tp_iter);
     SLOT(next, Py_tp_iternext);
+    SLOT(descriptor, Py_tp_descr_get);
+    SLOT(compare, Py_tp_richcompare);
+    if (unhashable) spec->slots[slot++] = (PyType_Slot){Py_tp_hash, PyObject_HashNotImplemented};
+    else { SLOT(hash, Py_tp_hash); }
 #undef SLOT
     if (hooks.vectorcall) {
         if (!hooks.call) spec->slots[slot++] = (PyType_Slot){Py_tp_call, PyVectorcall_Call};
-        spec->slots[slot++] = (PyType_Slot){Py_tp_members, spec->members};
     }
+    if (member) spec->slots[slot++] = (PyType_Slot){Py_tp_members, spec->members};
     spec->slots[slot++] = (PyType_Slot){Py_tp_methods, spec->methods};
     spec->slots[slot++] = (PyType_Slot){Py_tp_doc, spec->table.doc};
     spec->slots[slot++] = (PyType_Slot){Py_tp_token, spec};
@@ -300,7 +317,7 @@ int64_t jacpy_binding_native_set(uint64_t object, uint64_t definition, void *sta
     if (state) jac_retain(state);
     *slot = state;
     JacTypeSpec *spec = P(definition);
-    if (spec->vectorcall) ((JacVectorPayload *)slot)->vectorcall = spec->vectorcall;
+    if (spec->vectorcall) ((JacInstancePayload *)slot)->vectorcall = spec->vectorcall;
     if (previous) jac_release(previous);
     return 0;
 }
@@ -316,3 +333,46 @@ int64_t jacpy_binding_vector_count(uint64_t count) { return PyVectorcall_NARGS((
 uint64_t jacpy_binding_vector_item(uint64_t arguments, int64_t index) {
     return H(((PyObject *const *)P(arguments))[index]);
 }
+
+/* Dictionary and descriptor primitives keep CPython's object layout opaque.
+ * Relative dictionary slots preserve lazy allocation, including the distinction
+ * between an untouched instance and an explicitly created empty dictionary. */
+int32_t jacpy_binding_dict_visit(uint64_t object, uint64_t definition,
+                                 uint64_t visitor, uint64_t context) {
+    JacTypeSpec *spec = P(definition);
+    if (!spec->instance_dict) return 0;
+    PyObject **dict = _PyObject_GetDictPtr(P(object));
+    return dict ? jacpy_binding_visit(H(*dict), visitor, context) : 0;
+}
+void jacpy_binding_dict_clear(uint64_t object, uint64_t definition) {
+    JacTypeSpec *spec = P(definition);
+    if (!spec->instance_dict) return;
+    PyObject **dict = _PyObject_GetDictPtr(P(object));
+    if (dict) Py_CLEAR(*dict);
+}
+int64_t jacpy_binding_dict_present(uint64_t object) {
+    PyObject **dict = _PyObject_GetDictPtr(P(object));
+    return dict && *dict;
+}
+uint64_t jacpy_binding_dict_peek(uint64_t object) {
+    PyObject **dict = _PyObject_GetDictPtr(P(object));
+    return H(dict ? Py_XNewRef(*dict) : NULL);
+}
+uint64_t jacpy_binding_dict_get(uint64_t object, uint64_t context) {
+    return H(PyObject_GenericGetDict(P(object), P(context)));
+}
+int32_t jacpy_binding_dict_set(uint64_t object, uint64_t value, uint64_t context) {
+    return PyObject_GenericSetDict(P(object), P(value), P(context));
+}
+int64_t jacpy_binding_dict_replace(uint64_t object, uint64_t dictionary) {
+    PyObject **dict = _PyObject_GetDictPtr(P(object));
+    if (!dict) { PyErr_SetString(PyExc_SystemError, "instance has no dictionary slot"); return -1; }
+    Py_XSETREF(*dict, Py_XNewRef((PyObject *)P(dictionary)));
+    return 0;
+}
+uint64_t jacpy_binding_method_bind(uint64_t callable, uint64_t instance) {
+    return H(PyMethod_New(P(callable), P(instance)));
+}
+int64_t jacpy_binding_enter_recursive(const char *where) { return Py_EnterRecursiveCall(where); }
+void jacpy_binding_leave_recursive(void) { Py_LeaveRecursiveCall(); }
+uint64_t jacpy_binding_marker(void) { return H(PyObject_CallNoArgs((PyObject *)&PyBaseObject_Type)); }

@@ -226,7 +226,7 @@ _struct
 cmath
 math
 _collections jac_modules/collections.c
-_functools jac_modules/functools.c
+_functools
 itertools jac_modules/itertools.c
 array jac_modules/array.c
 _pickle jac_modules/pickle.c
