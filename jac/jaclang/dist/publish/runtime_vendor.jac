@@ -138,26 +138,9 @@ def _compile_runtime_module(
         }
         return compile_jac(jac_source, str(path), impl_sources=impl_sources or None);
     }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    ir = prog.compile(file_path=str(path), options=CompileOptions(need_full_ast=True));
-    if prog.errors_had {
-        details = "\n".join(f"  {err}" for err in prog.errors_had);
-        raise ValueError(f"runtime vendor: {path.name} failed to compile:\n{details}");
-    }
-    if ir is None {
-        raise ValueError(
-            f"runtime vendor: {path.name}: compiler returned no module "
-            "(and reported no errors)."
-        );
-    }
-    py_out = str(ir.gen.py or "");
-    if not py_out.strip() {
-        raise ValueError(
-            f"runtime vendor: {path.name}: compiler produced no Python output "
-            "(and reported no errors)."
-        );
-    }
-    if native is not None and ir.gen.native_engine is not None {
+    import from jaclang.compiler.driver.source_products { python_source }
+    (py_out, ir) = python_source(str(path), prog);
+    if native is not None and ir is not None and ir.gen.native_engine is not None {
         import from jaclang.dist.source.native { write_native_product }
         with tempfile.TemporaryDirectory(prefix='jac-runtime-native-') as temporary {
             directory = Path(temporary);
