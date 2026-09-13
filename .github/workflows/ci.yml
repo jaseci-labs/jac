@@ -40,6 +40,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       installer: ${{ steps.filter.outputs.installer }}
       native: ${{ steps.filter.outputs.native }}
+      pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
@@ -56,6 +57,10 @@ jobs:
               - 'jac/jaclang/scale/**'
             byllm:
               - 'jac/jaclang/byllm/**'
+            pack_smoke:
+              - 'scripts/ci_perf.py'
+              - 'scripts/test_ci_perf.py'
+              - '.github/pack-smoke-budgets.json'
             docs:
               - 'jac/jaclang/cli/docs/**'
               - 'jac/jaclang/cli/skills/**'
@@ -985,10 +990,11 @@ jobs:
 
   test-jac-pack-smoke:
     needs: [changes, build-kit]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       JAC_NO_DEV_SOURCE: "1"
+      JAC_CI_PERF: ${{ github.workspace }}/scripts/ci_perf.py
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1000,6 +1006,9 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
       - uses: ./.github/actions/jac-kit
+
+      - name: Validate performance accounting
+        run: python3 -m unittest discover -s scripts -p test_ci_perf.py
 
       # The kit is already sealed: build-kit ran the precompiler over this
       # tree (or restored the binary main sealed from this exact tree), so this
@@ -1062,7 +1071,7 @@ jobs:
 
       - name: Type check the site
         working-directory: site
-        run: jac check
+        run: python3 "$JAC_CI_PERF" run site-check -- jac check
 
       # The site ships as a desktop app too (apps.desktop, backend jaclang.org):
       # the native engine needs WebKitGTK + a C toolchain to build libwebview,
@@ -1088,7 +1097,7 @@ jobs:
 
       - name: Build the desktop app
         working-directory: site
-        run: jac build desktop
+        run: python3 "$JAC_CI_PERF" run desktop-build -- jac build desktop
 
       - name: Desktop artifact audit
         working-directory: site
@@ -1146,6 +1155,7 @@ jobs:
       - name: Start the quickstart with bare jac run
         working-directory: site
         run: |
+          python3 "$JAC_CI_PERF" start quickstart-ready
           timeout 1200 jac run > /tmp/site-server.log 2>&1 &
           SERVER_PID=$!
           echo "SITE_PID=$SERVER_PID" >> $GITHUB_ENV
@@ -1162,6 +1172,7 @@ jobs:
       - name: Wait for site server to be ready
         run: |
           for i in $(seq 1 60); do
+            python3 "$JAC_CI_PERF" deadline quickstart-ready
             if ! kill -0 ${{ env.SITE_PID }} 2>/dev/null; then
               echo "Server process exited unexpectedly"
               cat /tmp/site-server.log
@@ -1169,6 +1180,7 @@ jobs:
             fi
             if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
               echo "site server is ready (attempt $i)"
+              python3 "$JAC_CI_PERF" ready quickstart-ready
               exit 0
             fi
             echo "Attempt $i/60: not ready, waiting 15s..."
@@ -1271,22 +1283,25 @@ jobs:
 
       - name: Build the production artifact
         working-directory: site
-        run: jac build --output dist
+        run: python3 "$JAC_CI_PERF" run production-build -- jac build --output dist
 
       - name: Serve the production artifact outside the source project
         working-directory: ${{ runner.temp }}
         run: |
+          python3 "$JAC_CI_PERF" start production-ready
           timeout 1200 jac run --port 8000 "${{ github.workspace }}/site/dist/site.jab" > /tmp/site-artifact.log 2>&1 &
           echo "ARTIFACT_PID=$!" >> $GITHUB_ENV
 
       - name: Wait for the production artifact
         run: |
           for i in $(seq 1 60); do
+            python3 "$JAC_CI_PERF" deadline production-ready
             if ! kill -0 "${{ env.ARTIFACT_PID }}" 2>/dev/null; then
               cat /tmp/site-artifact.log
               exit 1
             fi
             if curl -sf --max-time 10 http://localhost:8000/ -o /dev/null; then
+              python3 "$JAC_CI_PERF" ready production-ready
               exit 0
             fi
             sleep 5
@@ -1320,6 +1335,7 @@ jobs:
         env:
           JAC_DOCS_LOCAL: ${{ github.workspace }}
         run: |
+          python3 "$JAC_CI_PERF" start fleet-ready
           timeout 1800 jac run --serve --fleet --port 8000 web \
             > /tmp/site-ms.log 2>&1 &
           MS_PID=$!
@@ -1335,6 +1351,7 @@ jobs:
       - name: Wait for the gateway to be ready
         run: |
           for i in $(seq 1 90); do
+            python3 "$JAC_CI_PERF" deadline fleet-ready
             if ! kill -0 ${{ env.MS_PID }} 2>/dev/null; then
               echo "Gateway exited unexpectedly"
               tail -100 /tmp/site-ms.log
@@ -1342,6 +1359,7 @@ jobs:
             fi
             if curl -sf --max-time 10 http://localhost:8000/health -o /dev/null; then
               echo "gateway is ready (attempt $i)"
+              python3 "$JAC_CI_PERF" ready fleet-ready
               exit 0
             fi
             echo "Attempt $i/90: gateway not ready, waiting 15s..."
@@ -1448,6 +1466,19 @@ jobs:
           name: fullstack-ejected-logs
           path: /tmp/fullstack-ejected.log
           retention-days: 7
+
+      - name: Report performance budgets
+        if: always()
+        run: python3 "$JAC_CI_PERF" report
+
+      - name: Upload performance measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pack-smoke-performance
+          path: ${{ runner.temp }}/pack-smoke-performance
+          retention-days: 30
+          if-no-files-found: error
 
   # Body lives in _installer.yml so the nightly lane runs the same test
   # instead of a second copy of it. The PR lane lints install.sh; the nightly

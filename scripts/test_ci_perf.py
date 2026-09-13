@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 
@@ -69,18 +70,44 @@ class PerformanceBudgetTests(unittest.TestCase):
         self.assertEqual(metrics["exit_code"], 0)
         self.assertGreater(metrics["max_rss_mib"], 32)
 
+    def test_memory_in_a_waited_for_child_is_included(self) -> None:
+        self.set_budget(memory=32)
+        result = self.run_probe(
+            "import subprocess,sys; subprocess.run([sys.executable, '-c', "
+            "'data=bytearray(64*1024*1024)'], check=True)"
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("RSS", result.stdout)
+
     def test_command_failure_is_preserved(self) -> None:
         result = self.run_probe("raise SystemExit(7)")
         self.assertEqual(result.returncode, 7, result.stderr)
         self.assertNotEqual(self.invoke("report").returncode, 0)
 
     def test_startup_deadline_cannot_be_hidden_by_readiness(self) -> None:
-        self.set_budget(wall=0.01, memory=None)
+        self.set_budget(wall=1, memory=None)
         self.assertEqual(self.invoke("start", "probe").returncode, 0)
-        # The next Python process starts after this very small deadline.
+        (self.output / "probe.clock.json").write_text(
+            json.dumps({"started": time.monotonic() - 2})
+        )
+        self.assertEqual(self.invoke("deadline", "probe").returncode, 1)
         result = self.invoke("ready", "probe")
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("wall", result.stdout)
+
+    def test_clock_can_span_steps_but_cannot_be_restarted(self) -> None:
+        self.set_budget(memory=None)
+        self.assertEqual(self.invoke("start", "probe").returncode, 0)
+        self.assertNotEqual(self.invoke("start", "probe").returncode, 0)
+        self.assertEqual(self.invoke("deadline", "probe").returncode, 0)
+        self.assertEqual(self.invoke("ready", "probe").returncode, 0)
+        self.assertEqual(self.invoke("report").returncode, 0)
+
+    def test_nonfinite_budget_cannot_disable_the_gate(self) -> None:
+        self.set_budget(wall=float("nan"))
+        result = self.run_probe("print('must not execute')")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertNotIn("must not execute", result.stdout)
 
     def test_missing_measurements_and_unknown_phases_fail(self) -> None:
         self.assertNotEqual(self.invoke("report").returncode, 0)
