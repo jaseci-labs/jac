@@ -102,8 +102,10 @@ def main -> int {
     }
     for name in args.native_modules {
         replacement = importlib.import_module(name);
+        spec = replacement.__spec__;
         if name not in sys.builtin_module_names
-            or replacement.__spec__.origin != "built-in" {
+            or spec is None
+            or spec.origin != "built-in" {
             raise RuntimeError(f"Expected linked native Jac replacement: {name}");
         }
     }
