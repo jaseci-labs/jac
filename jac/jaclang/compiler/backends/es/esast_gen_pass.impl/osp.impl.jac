@@ -702,7 +702,8 @@ impl EsastGenPass._build_osp_filter_pred(
             and (len(cmp.rights) == 1) {
             _op_name = cmp.ops[0].name;
             _op_tok = Tok(_op_name) if (_op_name in Tok.__members__) else None;
-            if _op_tok in (Tok.EE, Tok.NE, Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
+            if _op_tok is not None
+                and _op_tok in (Tok.EE, Tok.NE, Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
                 _js_op = ES_COMPARISON_OPS.get(_op_tok);
             }
         }

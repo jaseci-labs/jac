@@ -629,8 +629,8 @@ impl EsastGenPass._fw_to_number(
 impl EsastGenPass._apply_fw_coercion(nd: uni.Expr) -> None {
     import from jaclang.runtime.scalars { shape_of }
     dst = nd.coerce_to;
-    cur = es.expression_node(nd.gen.es_ast);
-    if dst is None or cur is None {
+    cur = nd.gen.es_ast;
+    if dst is None or not isinstance(cur, es.Expression) {
         return;
     }
     dst_shape = shape_of(dst);

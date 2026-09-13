@@ -445,7 +445,7 @@ impl EsastGenPass.exit_archetype with uni.Archetype exit {
                     } elif (
                         isinstance(tgt, uni.Name)
                         and asn.value is not None
-                        and es.expression_node(asn.value.gen.es_ast) is not None
+                        and isinstance(asn.value.gen.es_ast, es.Expression)
                     ) {
                         body_stmts.append(
                             self.sync_loc(

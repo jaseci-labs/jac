@@ -15,10 +15,10 @@ def client_app_dir_for(config: JacConfig, entry_path: str = "") -> Path {
 }
 
 def client_app_root(
-    config: JacConfig, project_dir: Path, entry_path: str = ""
+    config: JacConfig | None, project_dir: Path, entry_path: str = ""
 ) -> Path {
     app = client_workspace_app(config, entry_path);
-    if app is None or config.project_root is None {
+    if config is None or app is None or config.project_root is None {
         return project_dir;
     }
     return Path(app.entry_path(str(config.project_root))).parent;
