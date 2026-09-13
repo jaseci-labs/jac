@@ -7,6 +7,7 @@ import io;
 import json;
 import logging;
 import os;
+import types;
 import re;
 import shutil;
 import uuid;
@@ -2265,7 +2266,8 @@ test "ensure_bundle retries a missing-bun failure and a build error alike" {
     import from jaclang.server.server { ModuleIntrospector }
     import from jaclang.client.client_bundle { ClientBundleError, MissingBunError }
     intro = ModuleIntrospector("serve_api", FIXTURES);
-    intro._module = object();
+    intro._module = types.ModuleType("serve_api");
+    intro._module.__file__ = fixture_abs_path("serve_api.jac");
     bun_missing = MagicMock();
     bun_missing.build.side_effect = MissingBunError("bun is not available");
     intro._bundle_builder = bun_missing;
@@ -2278,7 +2280,8 @@ test "ensure_bundle retries a missing-bun failure and a build error alike" {
     assert bun_missing.build.call_count == 2 , "missing bun must be re-checked on every call, not memoized";
 
     intro2 = ModuleIntrospector("serve_api", FIXTURES);
-    intro2._module = object();
+    intro2._module = types.ModuleType("serve_api");
+    intro2._module.__file__ = fixture_abs_path("serve_api.jac");
     broken = MagicMock();
     broken.build.side_effect = RuntimeError("vite exploded");
     intro2._bundle_builder = broken;
@@ -2321,7 +2324,8 @@ test "concurrent ensure_bundle callers share one build instead of each running t
     import from concurrent.futures { ThreadPoolExecutor }
     import from jaclang.server.server { ModuleIntrospector }
     intro = ModuleIntrospector("serve_api", FIXTURES);
-    intro._module = object();
+    intro._module = types.ModuleType("serve_api");
+    intro._module.__file__ = fixture_abs_path("serve_api.jac");
     builder = _SlowRealBuilder();
     intro._bundle_builder = builder;
 
@@ -2348,7 +2352,8 @@ test "a module reload during a build wins over the build's result" {
     import time;
     import from jaclang.server.server { ModuleIntrospector }
     intro = ModuleIntrospector("serve_api", FIXTURES);
-    intro._module = object();
+    intro._module = types.ModuleType("serve_api");
+    intro._module.__file__ = fixture_abs_path("serve_api.jac");
     builder = _SlowRealBuilder();
     intro._bundle_builder = builder;
 

@@ -520,24 +520,23 @@ impl ModuleIntrospector._register_prepared_bindings(
         if application is not None {
             src_path = source_for_origin(application, rel);
         }
+        if name in self._walkers or name in self._functions {
+            continue;
+        }
+        try {
+            target = resolve_prepared(src_path, name);
+        } except Exception {
+            logger.exception('Could not load endpoint %s from %s', name, src_path);
+            continue;
+        }
         if b.get('kind') == 'walker' {
-            if name in self._walkers {
-                continue;
-            }
-            wcls = resolve_prepared(src_path, name);
-            if isinstance(wcls, type) and issubclass(wcls, WalkerArchetype) {
-                self._walkers[name] = wcls;
+            if isinstance(target, type) and issubclass(target, WalkerArchetype) {
+                self._walkers[name] = target;
                 self._walker_access[name] = auth;
             }
-        } else {
-            if name in self._functions {
-                continue;
-            }
-            fn = resolve_prepared(src_path, name);
-            if fn is not None and callable(fn) {
-                self._functions[name] = fn;
-                self._function_access[name] = auth;
-            }
+        } elif callable(target) {
+            self._functions[name] = target;
+            self._function_access[name] = auth;
         }
     }
 }
