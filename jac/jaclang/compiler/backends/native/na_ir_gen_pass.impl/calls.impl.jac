@@ -2348,6 +2348,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     release_args: list[ir.Value] = [];
     _i8ptr = ir.IntType(8).as_pointer();
     for (i, arg) in enumerate(args) {
+        target_type = func.args[i].type if i < len(func.args) else None;
         if (
             _is_foreign
             and self._is_bytes_value(arg)
@@ -2367,6 +2368,15 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         ) {
             coerced.append(self._membrane_str_out(self.builder, arg));
             release_args.append(arg);
+        } elif (
+            _is_foreign
+            and isinstance(target_type, ir.PointerType)
+            and not target_type.is_opaque
+            and isinstance(target_type.pointee, ir.FunctionType)
+        ) {
+            _c = self._clib_coerce_callback(arg, target_type);
+            coerced.append(_c);
+            release_args.append(_c);
         } elif i < len(func.args) {
             _c = self._coerce_type(arg, func.args[i].type);
             coerced.append(_c);

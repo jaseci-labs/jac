@@ -20,6 +20,15 @@ impl NaIRGenPass._clib_detect_vtable_structs -> None {
 impl NaIRGenPass._clib_coerce_callback(
     val: ir.Value, c_fn_ty: ir.PointerType
 ) -> ir.Value {
+    if self._closure_struct_of(val.type) is not None {
+        self.emit(
+            E5092,
+            kind="expression",
+            name="Jac closure passed as a C function pointer",
+            help_text="A Jac Callable carries an environment and cannot be reinterpreted as a C code address. Use a named function in an explicit C-ABI callback record; pass captured state through the C API's context argument."
+        );
+        return ir.Constant(c_fn_ty, None);
+    }
     if isinstance(val, ir.Function) {
         if val.function_type == c_fn_ty.pointee {
             return self.builder.bitcast(val, c_fn_ty, name="clibcb.direct");
