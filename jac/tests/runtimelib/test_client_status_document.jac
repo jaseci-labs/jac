@@ -16,7 +16,8 @@ import logging;
 import uuid;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from jaclang.server.hmr { HotReloader, get_build_status }
+import from jaclang.server.hmr { HotReloader }
+import from jaclang.server.build_status { get_build_status }
 import from jaclang.server.watcher { JacFileWatcher }
 import from jaclang.testing.testing { JacTestClient }
 

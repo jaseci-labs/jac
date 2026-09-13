@@ -1,3 +1,4 @@
+import hashlib;
 import os;
 import types;
 import from jaclang.runtime.object_model { field }
@@ -106,7 +107,6 @@ def load_prepared_module(path: str) -> types.ModuleType {
     import from jaclang.jac0core.ext_registry { base_stem }
     import from jaclang.jac0core.sealed { image_for_bundle_dir }
     import from pathlib { Path }
-    import hashlib;
     import sys;
     path = os.path.realpath(path);
     if (prepared_code(path) is None) {
@@ -174,7 +174,6 @@ def clear {
 
 
 def application_namespace(application: PreparedApplication) -> str {
-    import hashlib;
     if application.namespace {
         return application.namespace;
     }
