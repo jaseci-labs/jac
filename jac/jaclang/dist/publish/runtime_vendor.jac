@@ -310,11 +310,20 @@ def vendor_runtime(
     extra_seeds: list[str] | None = None,
     prepared: bool = True
 ) -> int {
+    import from importlib.metadata { distribution }
+    runtime_distribution = distribution('jaclang');
+    metadata = runtime_distribution.read_text('METADATA');
+    if metadata is None {
+        raise RuntimeError('The Jac runtime distribution has no package metadata');
+    }
     closure = build_runtime_closure(user_codes, include_byllm, extra_seeds, prepared);
     for (relative, source) in closure.items() {
         target = backend_dir / 'jaclang' / relative;
         target.parent.mkdir(parents=True, exist_ok=True);
         target.write_bytes(source);
     }
+    metadata_dir = backend_dir / f'jaclang-{runtime_distribution.version}.dist-info';
+    metadata_dir.mkdir(parents=True, exist_ok=True);
+    (metadata_dir / 'METADATA').write_text(metadata, encoding='utf-8');
     return len(closure);
 }

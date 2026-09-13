@@ -133,6 +133,7 @@ def main(manifest_path: str, name: str = '', argv: list[str] | None = None) -> i
         mark_scale_runtime();
     }
     import from jaclang.runtime.runtime { JacRuntime as Jac }
+    Jac.set_base_path(application.root);
     Jac.set_full_target_path(application.entry);
     context = Jac.create_j_context(None, application.root, application.entry);
     Jac.set_context(context);
