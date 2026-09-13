@@ -2,8 +2,6 @@ import type from jaclang.compiler.backends.native.llvm.binding { ModuleRef }
 import type from jaclang.compiler.backends.native.llvm.binding.value { ValueRef }
 
 
-# Dependencies are already linked. Only the declared C ABI may interpose on
-# other libraries; hidden linker support and LLVM metadata remain available.
 def internalize_native_implementation(module: ModuleRef, exports: list[str]) {
     import from jaclang.compiler.backends.native.llvm.binding.value { Visibility }
     public = set(exports);
@@ -23,12 +21,6 @@ def internalize_native_implementation(module: ModuleRef, exports: list[str]) {
 }
 
 
-"""Expose allocation accounting only when a managed library requests it.
-
-The allocator header and list storage layout belong to the native backend.
-Foreign object adapters can account for opaque owned state without copying
-those layouts or estimating their allocation sizes.
-"""
 def inject_heap_accounting(llvm_ir_str: str) -> tuple[str, list[str]] {
     import re;
     import from jaclang.compiler.frontend.codeinfo { HDR_TOTAL }

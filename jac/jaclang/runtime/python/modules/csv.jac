@@ -287,9 +287,15 @@ def:priv unicode_field(characters: list[int]) -> u64 {
 }
 
 enum parse_state {
-    START_RECORD = 0, START_FIELD = 1, ESCAPED_CHAR = 2, IN_FIELD = 3,
-    IN_QUOTED_FIELD = 4, ESCAPE_IN_QUOTED_FIELD = 5,
-    QUOTE_IN_QUOTED_FIELD = 6, EAT_CRNL = 7, AFTER_ESCAPED_CRNL = 8
+    START_RECORD = 0,
+    START_FIELD = 1,
+    ESCAPED_CHAR = 2,
+    IN_FIELD = 3,
+    IN_QUOTED_FIELD = 4,
+    ESCAPE_IN_QUOTED_FIELD = 5,
+    QUOTE_IN_QUOTED_FIELD = 6,
+    EAT_CRNL = 7,
+    AFTER_ESCAPED_CRNL = 8
 }
 
 obj csv_reader {
@@ -357,7 +363,9 @@ obj csv_reader {
             self.unquoted = True;
             if character == 10 or character == 13 or character == -2 {
                 self.save(dialect);
-                self.state = parse_state.START_RECORD if character == -2 else parse_state.EAT_CRNL;
+                self.state = parse_state.START_RECORD
+                    if character == -2
+                    else parse_state.EAT_CRNL;
             } elif character == dialect.quotechar and dialect.quoting != 3 {
                 self.unquoted = False;
                 self.state = parse_state.IN_QUOTED_FIELD;
@@ -379,13 +387,16 @@ obj csv_reader {
             }
             self.append(10 if character == -2 else character, module, error);
             self.state = parse_state.IN_FIELD;
-        } elif self.state == parse_state.IN_FIELD or self.state == parse_state.AFTER_ESCAPED_CRNL {
+        } elif self.state == parse_state.IN_FIELD
+            or self.state == parse_state.AFTER_ESCAPED_CRNL {
             if self.state == parse_state.AFTER_ESCAPED_CRNL and character == -2 {
                 return;
             }
             if character == 10 or character == 13 or character == -2 {
                 self.save(dialect);
-                self.state = parse_state.START_RECORD if character == -2 else parse_state.EAT_CRNL;
+                self.state = parse_state.START_RECORD
+                    if character == -2
+                    else parse_state.EAT_CRNL;
             } elif character == dialect.escapechar {
                 self.state = parse_state.ESCAPED_CHAR;
             } elif character == dialect.delimiter {
@@ -401,7 +412,9 @@ obj csv_reader {
             if character == dialect.escapechar {
                 self.state = parse_state.ESCAPE_IN_QUOTED_FIELD;
             } elif character == dialect.quotechar and dialect.quoting != 3 {
-                self.state = parse_state.QUOTE_IN_QUOTED_FIELD if dialect.doublequote else parse_state.IN_FIELD;
+                self.state = parse_state.QUOTE_IN_QUOTED_FIELD
+                    if dialect.doublequote
+                    else parse_state.IN_FIELD;
             } else {
                 self.append(character, module, error);
             }
@@ -417,7 +430,9 @@ obj csv_reader {
                 self.state = parse_state.START_FIELD;
             } elif character == 10 or character == 13 or character == -2 {
                 self.save(dialect);
-                self.state = parse_state.START_RECORD if character == -2 else parse_state.EAT_CRNL;
+                self.state = parse_state.START_RECORD
+                    if character == -2
+                    else parse_state.EAT_CRNL;
             } elif not dialect.strict {
                 self.append(character, module, error);
                 self.state = parse_state.IN_FIELD;
@@ -450,6 +465,7 @@ obj csv_reader {
 def:pub jacpy_csv_reader_new -> csv_reader {
     return csv_reader();
 }
+
 def:pub jacpy_csv_reader_clear(reader: csv_reader) {
     old = reader.fields;
     reader.fields = 0;
@@ -459,9 +475,11 @@ def:pub jacpy_csv_reader_clear(reader: csv_reader) {
 def:pub jacpy_csv_reader_fields(reader: csv_reader) -> u64 {
     return reader.fields;
 }
+
 def:pub jacpy_csv_reader_line(reader: csv_reader) -> i64 {
     return i64(reader.line_num);
 }
+
 def:pub jacpy_csv_read(
     reader: csv_reader, iterator: u64, options: u64, module: u64, error: u64
 ) -> u64 {
@@ -472,7 +490,8 @@ def:pub jacpy_csv_read(
             line = jacpy_iter_next(iterator);
             if line == 0 {
                 pending();
-                if len(reader.field) != 0 or reader.state == parse_state.IN_QUOTED_FIELD {
+                if len(reader.field) != 0
+                    or reader.state == parse_state.IN_QUOTED_FIELD {
                     if dialect.strict {
                         csv_error(error, "unexpected end of data");
                     }
@@ -657,6 +676,7 @@ obj csv_writer {
 def:pub jacpy_csv_writer_new -> csv_writer {
     return csv_writer();
 }
+
 def:pub jacpy_csv_write(
     writer: csv_writer, value: u64, output: u64, options: u64, error: u64, many: i64
 ) -> u64 {

@@ -42,12 +42,15 @@ def retain_optional(value: u64) -> u64 {
 def:pub jacpy_pickler_new -> pickle_state {
     return pickle_state();
 }
+
 def:pub jacpy_pickler_clear(state: pickle_state) {
     state.clear();
 }
+
 def:pub jacpy_unpickler_new -> unpickle_state {
     return unpickle_state();
 }
+
 def:pub jacpy_unpickler_clear(state: unpickle_state) {
     state.clear();
 }
@@ -188,6 +191,7 @@ def:pub jacpy_unpickler_find(
 def:pub jacpy_unpickler_field_count(state: unpickle_state) -> i64 {
     return 9 + i64(len(state.stack));
 }
+
 def:pub jacpy_unpickler_field(state: unpickle_state, index: i64) -> u64 {
     if index >= 9 {
         return state.stack[int(index - 9)];
@@ -223,14 +227,17 @@ def:pub jacpy_unpickler_size(state: unpickle_state) -> i64 {
 def:pub jacpy_pickler_memo(state: pickle_state) -> u64 {
     return jacpy_dict_copy(state.memo) if state.memo != 0 else jacpy_dict_new();
 }
+
 def:pub jacpy_pickler_memo_clear(state: pickle_state) {
     if state.memo != 0 {
         jacpy_dict_clear(state.memo);
     }
 }
+
 def:pub jacpy_unpickler_memo(state: unpickle_state) -> u64 {
     return jacpy_dict_copy(state.memo) if state.memo != 0 else jacpy_dict_new();
 }
+
 def:pub jacpy_unpickler_memo_clear(state: unpickle_state) {
     if state.memo != 0 {
         jacpy_dict_clear(state.memo);

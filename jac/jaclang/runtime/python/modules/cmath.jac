@@ -39,13 +39,17 @@ import from jaclang.runtime.python.capi {
     jacpy_boolean,
     jacpy_error_pending,
     jacpy_release,
-    jacpy_truediv, jacpy_error_is, jacpy_clear_errno, jacpy_math_errno
+    jacpy_truediv,
+    jacpy_error_is,
+    jacpy_clear_errno,
+    jacpy_math_errno
 }
 
 obj complex_parts {
     has real: float,
         imag: float;
 }
+
 glob e: float = 2.718281828459045,
      _DBL_MAX: float = 1.7976931348623157e308,
      _DBL_MIN: float = 2.2250738585072014e-308,
@@ -1345,7 +1349,10 @@ def:pub jacpy_cmath_log(value: u64, base: u64) -> u64 {
                     _check_errno(_EDOM);
                 }
                 return required(quotient);
-            } finally { jacpy_release(numerator); jacpy_release(denominator); }
+            } finally {
+                jacpy_release(numerator);
+                jacpy_release(denominator);
+            }
         }
         _check_errno(result[2]);
         return jacpy_complex(result[0], result[1]);

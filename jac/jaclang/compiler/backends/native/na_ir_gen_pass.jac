@@ -481,6 +481,7 @@ walker NaIRGenPass(Transform) {
         maxsplit: ir.Value | None = None,
         reverse: bool = False
     ) -> (ir.Value | None);
+
     def _emit_norm_slice_bounds(
         slice_node: uni.Slice, src_len: ir.Value
     ) -> (tuple | None);

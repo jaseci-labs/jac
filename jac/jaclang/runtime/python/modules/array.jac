@@ -117,21 +117,27 @@ def:pub jacpy_array_clear(state: array_state) {
 def:pub jacpy_array_field(state: array_state) -> u64 {
     return state.storage;
 }
+
 def:pub jacpy_array_length(state: array_state) -> i64 {
     return state.length;
 }
+
 def:pub jacpy_array_code(state: array_state) -> i64 {
     return i64(state.code);
 }
+
 def:pub jacpy_array_itemsize(state: array_state) -> i64 {
     return i64(state.itemsize);
 }
+
 def:pub jacpy_array_address(state: array_state) -> u64 {
     return jacpy_bytes_address(state.storage);
 }
+
 def:pub jacpy_array_export(state: array_state, delta: i64) {
     state.exports += delta;
 }
+
 def:pub jacpy_array_memory(state: array_state) -> i64 {
     return jac_heap_size(u64(id(state))) + jacpy_bytearray_memory(state.storage);
 }
@@ -746,21 +752,26 @@ obj array_cursor {
     has owner: u64 = 0,
         index: i64 = 0;
 }
+
 import from c { def jacpy_array_state(handle: u64) -> array_state;  }
 def:pub jacpy_array_cursor_new(owner: u64) -> array_cursor {
     return array_cursor(owner=jacpy_retain(owner));
 }
+
 def:pub jacpy_array_cursor_owner(cursor: array_cursor) -> u64 {
     return cursor.owner;
 }
+
 def:pub jacpy_array_cursor_index(cursor: array_cursor) -> i64 {
     return cursor.index;
 }
+
 def:pub jacpy_array_cursor_clear(cursor: array_cursor) {
     owner = cursor.owner;
     cursor.owner = 0;
     jacpy_release(owner);
 }
+
 def:pub jacpy_array_cursor_set(cursor: array_cursor, index: i64) {
     if cursor.owner != 0 {
         state = jacpy_array_state(cursor.owner);

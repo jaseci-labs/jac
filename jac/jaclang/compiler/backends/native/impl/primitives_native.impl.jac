@@ -3273,10 +3273,6 @@ impl NativeListEmitter._emit_value_sort(
     target: ir.Value,
     reverse: (ir.Value | None)
 ) -> ir.Value {
-    # A stable bottom-up merge of borrowed slots. The original list anchors
-    # every value until the final permutation is copied back, so neither
-    # merging nor publication changes element reference counts. This path
-    # invokes no user callbacks; keyed sorting retains its existing path.
     p = ctx.pass_ref;
     b = get_builder(p);
     i32 = ir.IntType(32);

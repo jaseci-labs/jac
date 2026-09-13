@@ -1251,8 +1251,6 @@ impl NaIRGenPass._codegen_str_split(
         self._emit_rc_release_simple(last_ptr, op="str_split");
     }
     if reverse {
-        # Publish the tokens in source order by permuting their anchored slots.
-        # No decref/incref pair is needed when both strings stay in this list.
         i32 = ir.IntType(32);
         zero = ir.Constant(i32, 0);
         data = self.builder.load(

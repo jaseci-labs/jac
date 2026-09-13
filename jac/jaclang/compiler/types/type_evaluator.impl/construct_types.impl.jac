@@ -824,8 +824,6 @@ impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
             scope = declared.shared.symbol_table;
             if isinstance(scope, Archetype)
                 and scope.find_parent_of_type(Import) is None {
-                # A Jac object crossing a C boundary keeps its declared type.
-                # Only foreign layouts and unspecified values are opaque.
                 return self._convert_to_instance(declared);
             }
         }
