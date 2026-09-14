@@ -603,6 +603,23 @@ assert _heapq.heappop([1, 2, 3]) == 1
     assert [_heapq.heappop_max(heap) for _ in range(4)] == [4, 3, 2, 1]
     assert required_compiler() == 1
     assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
+    # PEG memo results can contain tokens. Their ownership must stay acyclic
+    # in the native compiler, which does not use Python's cyclic collector.
+    retention = subprocess.run([sys.executable, "-I", "-c", """
+import gc, resource, sys
+source = '\\n'.join(f'def function_{i}(value):\\n    return value + {i}\\n' for i in range(100))
+for _ in range(20):
+    compile(source, '<parser-lifetime>', 'exec')
+gc.collect()
+before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+for _ in range(100):
+    compile(source, '<parser-lifetime>', 'exec')
+gc.collect()
+after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+growth = (after - before) * (1 if sys.platform == 'darwin' else 1024)
+assert growth < 8 * 1024 * 1024, f'native compiler retained {growth} bytes across repeated requests'
+"""], capture_output=True, text=True)
+    assert retention.returncode == 0, retention.stdout + retention.stderr
     for retired in ("_jacpython_compile", "_jacpython_symtable", "_jacpython_tokenize", "_jacpython_image", "_jacpython_code"):
         assert not hasattr(sys, retired), retired
     assert not any(name.startswith("_jacpython_seed") for name in sys.modules)
