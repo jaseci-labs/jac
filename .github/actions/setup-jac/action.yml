@@ -266,7 +266,7 @@ runs:
           if zig build "${TARGET_ARG[@]}" "${PRE_ARG[@]}" "${SHIM_ARG[@]}" --summary all 2>&1 | tee "$LOG"; then
             exit 0
           fi
-          if grep -qE 'Seal aborted|Seal incomplete|seal-finalize failed' "$LOG"; then
+          if grep -qE 'mkpayload: precompile failed|Seal aborted|Seal incomplete|seal-finalize failed' "$LOG"; then
             echo "::error::zig build failed in the precompile step; that is deterministic, so it is not retried."
             exit 1
           fi
