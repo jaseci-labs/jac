@@ -30,6 +30,19 @@ Restoring a pair validates both members before replacing either destination.
 Inactive artifact directories expire after 30 days; locked producers are retained.
 Lock files keep stable inodes so concurrent processes continue to coordinate.
 JIR publication uses the same locking primitives around its section merge.
+Reachable dependencies that only need interfaces use the same JIR container,
+without a bytecode section. Precompile preserves those products when pruning
+its closure cache. The seal validates them against source and records their
+hashes in the existing payload map; they do not enter the executable module
+index. Bootstrap dependencies retain their separate bytecode owner until seed
+finalization completes their JIRs.
+Application sealing promotes an interface to bytecode when executable imports
+or serving exports require it, while retaining other reachable interfaces.
+Rewrapping debug sources reads the same validated module or packaged product
+through the interface registry, including when the source cache is empty.
+Registry lookups request their needed sections, so a bytecode-only source cache
+entry cannot hide a completed interface or dependency product in the package.
+Rewrapping uses metadata from the same validated JIR snapshot as its bytecode.
 Catalog build receipts and locks remain in the producer cache; runtime staging
 excludes them so timing and cache-hit metadata cannot change payload bytes.
 
@@ -75,6 +88,12 @@ worker identities, and temporary paths never belong in the shipped
 Stage transitions and cache outcomes atomically checkpoint the measurement file.
 An interrupted build retains completed stages and lists the stages still active
 at the last checkpoint, even when the producer cannot run its final cleanup.
+Precompilation checkpoints its existing worker report before dispatch, every 32
+completed jobs, and during cleanup. Its `complete` field distinguishes an
+unfinished checkpoint from a completed run; packaging rejects unfinished reports.
+While packaging runs, this report lives beside the main measurement file as
+`<report>.precompile.json`, where CI also retains it after a hard timeout. A hard
+termination can lose in-flight jobs and up to 32 completed job records.
 
 - `stages` records wall time, process CPU, waited child CPU, process peak RSS,
   and success. These stages are inclusive; do not sum nested entries.

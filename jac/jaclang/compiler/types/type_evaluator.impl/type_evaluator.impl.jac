@@ -706,7 +706,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if base_type.is_external or base_type.symbol_table is None {
                         if not base_type.is_external {
                             submodule = self._resolve_submodule_attr(
-                                base_type, expr.right.value
+                                base_type,
+                                expr.right.value,
+                                self._resolve_importer_path(expr)
                             );
                             if submodule is not None {
                                 expr.right.type = submodule;
@@ -781,7 +783,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
 
                     if submod_type
-                        := self._resolve_submodule_attr(base_type, expr.right.value) {
+                        := self._resolve_submodule_attr(
+                            base_type,
+                            expr.right.value,
+                            self._resolve_importer_path(expr)
+                        ) {
                         expr.right.type = submod_type;
                         return submod_type;
                     }

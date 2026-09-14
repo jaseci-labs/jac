@@ -6,7 +6,7 @@ import from jaclang.compiler.driver.compilation_context {
     SourceStore
 }
 import from jaclang.compiler.driver.dependency_graph { dependency_groups }
-import from jaclang.compiler.driver.jir { read_dep_rows, read_section_bytes, SEC_DEPS }
+import from jaclang.compiler.driver.jir { read_dep_rows, SEC_DEPS }
 
 obj PrecompilePlan {
     has groups: list[list[str]],
@@ -57,15 +57,11 @@ def plan_precompile(
             }
             program = precompile_context(path, package_root, session.program, app);
             dependencies: set[str] | None = None;
-            found = program.iface_registry()._module_jir(path);
+            found = program.iface_registry()._module_jir(path, (SEC_DEPS, ));
             if found is not None {
                 (data, base_dir) = found;
-                if read_section_bytes(data, SEC_DEPS) is not None {
-                    dependencies = {
-                        dep for (dep, _, _) in read_dep_rows(data, base_dir)
-                    };
-                    dependency_hits += 1;
-                }
+                dependencies = {dep for (dep, _, _) in read_dep_rows(data, base_dir)};
+                dependency_hits += 1;
             }
             if dependencies is None {
                 try {

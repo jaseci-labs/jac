@@ -318,6 +318,11 @@ test "a real pod binary seals and serves an entry named app" {
 test "sealing includes bytecode imports and serving exports despite client placement" {
     import json;
     import from unittest.mock { patch }
+    import from jaclang.compiler.driver.jir {
+        read_section_bytes,
+        SEC_BYTECODE,
+        SEC_IFACE
+    }
     import jaclang.dist.precompile_bytecode as precompiler;
     with tempfile.TemporaryDirectory(prefix="jac-seal-closure-") as tmp {
         base = Path(tmp) / "app";
@@ -329,7 +334,12 @@ test "sealing includes bytecode imports and serving exports despite client place
         shared = base / "shared.jac";
         exported = base / "exported.jac";
         unused = base / "unused.jac";
-        shared.write_text('def:pub value -> str { return "shared"; }\n');
+        leaf = base / "leaf.jac";
+        leaf.write_text('def:pub source_value -> str { return "shared"; }\n');
+        shared.write_text(
+            'import from leaf { source_value }\n'
+            'def:pub value -> str { return source_value(); }\n'
+        );
         exported.write_text('def:pub exposed -> str { return "exported"; }\n');
         unused.write_text('def:pub page -> JsxElement { return <div>unused</div>; }\n');
         main.write_text(
@@ -340,6 +350,16 @@ test "sealing includes bytecode imports and serving exports despite client place
         out = base / "_precompiled" / "units";
         out.mkdir(parents=True);
         (out / "main.jir").write_bytes(artifact);
+        for source in [shared, exported, unused, leaf] {
+            interface = precompiler.precompile_unit(
+                str(source), str(base), interface_only=True
+            );
+            assert interface is not None;
+            assert read_section_bytes(interface, SEC_IFACE) is not None;
+            assert read_section_bytes(interface, SEC_BYTECODE) is None;
+            (out / source.with_suffix(".jir").name).write_bytes(interface);
+        }
+        unused_interface = (out / "unused.jir").read_bytes();
         (base / ".jac").mkdir(exist_ok=True);
         (base / ".jac" / "serve_manifest.json").write_text(
             json.dumps(
@@ -365,14 +385,19 @@ test "sealing includes bytecode imports and serving exports despite client place
                     str(main): {"server"},
                     str(shared): {"client"},
                     str(exported): {"client"},
+                    str(leaf): {"client"},
                     str(unused): {"client"}
                 }
             }
         ) {
             assert precompiler.seal_runtime_closure(base, out, False);
-            assert (out / "shared.jir").is_file();
-            assert (out / "exported.jir").is_file();
-            assert not (out / "unused.jir").exists();
+            assert read_section_bytes((out / "shared.jir").read_bytes(), SEC_BYTECODE)
+                is not None;
+            assert read_section_bytes((out / "exported.jir").read_bytes(), SEC_BYTECODE)
+                is not None;
+            assert read_section_bytes((out / "leaf.jir").read_bytes(), SEC_BYTECODE)
+                is not None;
+            assert (out / "unused.jir").read_bytes() == unused_interface;
             assert precompiler._placement_cache[(str(base), "")][str(shared)]
                 == {"client", "server"};
         }

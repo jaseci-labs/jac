@@ -116,6 +116,41 @@ test "precompile sizes auto workers for its configured memory ceiling" {
     }
 }
 
+test "precompile releases startup trees from the execution program before forking" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
+    import from jaclang.runtime.runtime { JacRuntime }
+    with TemporaryDirectory() as directory {
+        package = Path(directory) / "library";
+        package.mkdir();
+        (package / "__init__.jac").write_text("");
+        program = JacProgram();
+        module = program.parse_str(
+            "def startup_value() -> int { return 42; }\n",
+            str(Path(directory) / "startup.jac")
+        );
+        tree = weakref.ref(module);
+        del module;
+        retained = CodeGenTarget();
+        program.hub.artifacts["startup-native"] = retained;
+        with patch.object(JacRuntime, "program", program), patch.object(
+            pool, "resolve_jobs", side_effect=InterruptedError
+        ) {
+            interrupted = False;
+            try {
+                run_precompile(directory, jobs_arg="auto");
+            } except InterruptedError {
+                interrupted = True;
+            }
+            assert interrupted;
+        }
+        gc.collect();
+        assert tree() is None , "workers would inherit the completed startup syntax";
+        assert not program.mod.hub;
+        assert program.hub.artifacts["startup-native"] is retained;
+    }
+}
+
 test "precompile publishes bytecode and interfaces across memory reclamation" {
     import from jaclang.compiler.driver.jir {
         SEC_BYTECODE,

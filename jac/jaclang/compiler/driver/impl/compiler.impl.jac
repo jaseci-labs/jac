@@ -215,7 +215,7 @@ impl JacCompiler._get_bytecode(
             bc = secs.get(SEC_BYTECODE);
             if bc is not None
                 and (
-                    actual_program.session is None
+                    self.selfhost.is_selfhost(actual_program)
                     or actual_program.iface_registry().dependencies_match(
                         full_target, jir_data
                     )
@@ -246,7 +246,9 @@ impl JacCompiler._get_bytecode(
     }
 
     allow_unsealed = (not rebuild) and (not no_precompile);
-    precompiled = self._get_precompiled_jir_bytecode(full_target, allow_unsealed);
+    precompiled = self._get_precompiled_jir_bytecode(
+        full_target, actual_program, allow_unsealed
+    );
     if precompiled is not None {
         (precompiled_bc, precompiled_ctdeps) = precompiled;
         try {
@@ -512,7 +514,7 @@ impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None
 }
 
 impl JacCompiler._get_precompiled_jir_bytecode(
-    full_target: str, allow_unsealed: bool = True
+    full_target: str, target_program: JacProgram, allow_unsealed: bool = True
 ) -> (tuple[bytes, bytes] | None) {
     import from jaclang.compiler.driver.jir {
         PRECOMPILE_SENTINEL,
@@ -529,6 +531,12 @@ impl JacCompiler._get_precompiled_jir_bytecode(
         return None;
     }
     (data, package_root) = found;
+    if not self.selfhost.is_selfhost(target_program)
+        and not target_program.iface_registry().dependencies_match(
+            full_target, data, package_root
+        ) {
+        return None;
+    }
     bytecode = read_bytecode_only(data);
     if bytecode is None {
         return None;
