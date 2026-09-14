@@ -495,9 +495,12 @@
                 const resp = await fetch(baseUrl + "/user/login", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ username, password }),
+                    body: JSON.stringify({
+                        identity: { type: "username", value: username },
+                        credential: { type: "password", password },
+                    }),
                 });
-                const result = await resp.json();
+                const result = (await resp.json().catch(() => null)) || {};
                 if (result.ok && result.data && result.data.token) {
                     authToken = result.data.token;
                     localStorage.setItem("jac_token", authToken);
@@ -505,8 +508,7 @@
                     updateHeaderButtons();
                     loadGraphData();
                 } else {
-                    errEl.textContent =
-                        (result.error && result.error.message) || "Invalid credentials";
+                    errEl.textContent = errorMessage(result, resp.status);
                     errEl.style.display = "block";
                 }
             } catch (err) {
@@ -515,6 +517,13 @@
             }
             btn.disabled = false;
             btn.textContent = "Sign In";
+        }
+
+        function errorMessage(result, status) {
+            const err = result.error || result.detail;
+            if (typeof err === "string") return err;
+            if (Array.isArray(err)) return err.map((e) => e.msg).join("; ");
+            return (err && err.message) || "Sign in failed (HTTP " + status + ")";
         }
 
         function doLogout() {

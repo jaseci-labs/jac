@@ -1,7 +1,7 @@
 import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
-import from jaclang.compiler.frontend.diagnostics { DiagnosticInfo }
+import from jaclang.project.diagnostics { DiagnosticInfo }
 import from jaclang.compiler.passes.transform { Transform }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.placement.placement_work { PlacementWork }
@@ -730,7 +730,7 @@ def _emit_solver_warning(
 }
 
 def _warn_state_forks(target: uni.Module, prog: any) {
-    import from jaclang.compiler.frontend.diagnostics { W6006 }
+    import from jaclang.project.diagnostics { W6006 }
     ps = get_module_summary(target, prog);
     written: set[int] = set();
     for es in ps.elements {

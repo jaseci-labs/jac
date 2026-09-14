@@ -16,12 +16,7 @@ though the constructor never returns.
 
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.pass_driver { deliver_alerts, run_pass }
-import from jaclang.compiler.frontend.diagnostics {
-    Category,
-    DiagnosticInfo,
-    E1030,
-    Severity
-}
+import from jaclang.project.diagnostics { Category, DiagnosticInfo, E1030, Severity }
 import from jaclang.compiler.passes { Transform }
 import from jaclang.compiler.passes.transform { DiagnosticPolicy }
 import from jaclang.compiler.driver.program { JacProgram }

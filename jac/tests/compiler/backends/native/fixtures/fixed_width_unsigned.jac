@@ -308,3 +308,25 @@ def:pub plain_int_is_not_sized -> int {
     }
     return ok;
 }
+
+
+obj WordBuffer {
+    has words: list[u32] = [u32(0xffffffff), u32(7)];
+}
+
+def:pub u32_list_read_preserves_width -> int {
+    values: list[u32] = [u32(0xffffffff), u32(3)];
+    value = wrapping_add(values[0], values[1]);
+    values[1] = value;
+    return int(values[1] ^ u32(7));
+}
+
+def:pub u32_field_list_read_preserves_width -> int {
+    buffer = WordBuffer();
+    return int(buffer.words[0] >> u32(31)) + int(wrapping_mul(buffer.words[1], u32(3)));
+}
+
+def:pub i8_list_read_preserves_sign -> int {
+    values: list[i8] = [i8(-128), i8(1)];
+    return int(values[0] >> i8(1)) + int(values[1]);
+}

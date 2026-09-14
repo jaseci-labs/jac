@@ -20,6 +20,7 @@
 /* These entry points are Jac-generated native code. No replacement bytecode
  * or Python callback is loaded by this adapter. String ABI arguments carry
  * owner, data, and explicit UTF-8 byte length. */
+extern PyObject *jacpy_exception_type(const char *);
 extern void *jac_str_new(const char *, int64_t);
 extern void jac_release(void *);
 extern void *jacpy_compile_object(uint64_t, uint64_t, void *, const char *, int64_t, int64_t, int64_t, int64_t);
@@ -67,7 +68,8 @@ static PyObject *jac_result(void *result)
     if (PyTuple_Check(value) && PyTuple_GET_SIZE(value) == 8) {
         /* Native Jac has classified and positioned the diagnostic. Construct
          * the corresponding retained CPython exception value at the ABI. */
-        PyObject *type=PyDict_GetItemWithError(PyEval_GetBuiltins(),PyTuple_GET_ITEM(value,0));
+        const char *name=PyUnicode_AsUTF8(PyTuple_GET_ITEM(value,0));
+        PyObject *type=name ? jacpy_exception_type(name) : NULL;
         if (type == NULL) { Py_DECREF(value); if (!PyErr_Occurred()) PyErr_SetString(PyExc_SystemError,"unknown native diagnostic"); return NULL; }
         if (PyObject_IsSubclass(type,PyExc_SyntaxError) > 0) {
             PyObject *location=PyTuple_GetSlice(value,2,8);

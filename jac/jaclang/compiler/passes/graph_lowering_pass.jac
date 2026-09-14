@@ -1,7 +1,7 @@
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.runtime.constants { EdgeDir }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.frontend.diagnostics { E0084, E0085 }
+import from jaclang.project.diagnostics { E0084, E0085 }
 import from jaclang.compiler.passes.uni_pass { UniPass }
 
 walker GraphLoweringPass(UniPass) {

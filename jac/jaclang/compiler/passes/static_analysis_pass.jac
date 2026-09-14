@@ -48,7 +48,7 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.compiler.frontend.constant { ExprCtx, SymbolType }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     W1103,
     W2001,
     W2002,

@@ -26,14 +26,7 @@ import from jaclang.compiler.frontend.unitree {
 import from jaclang.compiler.frontend.constant { ExprCtx }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.passes.uni_pass { UniPass }
-import from jaclang.compiler.frontend.diagnostics {
-    E2004,
-    E2005,
-    W2006,
-    W2007,
-    E2008,
-    W2029
-}
+import from jaclang.project.diagnostics { E2004, E2005, W2006, W2007, E2008, W2029 }
 
 def inform_from_walker(nd: UniNode) -> None;
 

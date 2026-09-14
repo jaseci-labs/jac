@@ -49,6 +49,14 @@ serial = [
     "jac/tests/scale/data/test_firebase_env.jac",
 ]
 
+# JacPython is a native-only library in checks, builds and cached imports.
+[native]
+require = [
+    "jaclang.compiler.frontend.python.*",
+    "jaclang.compiler.backends.py.jacpython.*",
+    "jaclang.runtime.python.*",
+]
+
 [check.lint]
 # "all" enables every autolint rule; the two strip-* entries are the opt-in
 # "deslop" rules (W3050/W3051) that remove all comments and docstrings. They

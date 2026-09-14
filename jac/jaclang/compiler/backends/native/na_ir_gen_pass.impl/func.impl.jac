@@ -124,7 +124,9 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
             import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
             _def_m = nd.find_parent_of_type(uni.Module);
             if _def_m is not None {
-                _emit_name = f"{name}.__jacp_{native_safe_sym(_def_m.name)}";
+                _emit_name = f"{name}.__jacp_{native_safe_sym(
+                    os.path.realpath(_def_m.source.file_path)
+                )}";
             }
         }
         func = ir.Function(self.llvm_module, fnty, name=_emit_name);

@@ -1,7 +1,7 @@
 import from collections { deque }
 import jaclang.compiler.tools.doc_ir as doc;
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.diagnostics { W5050, E5051 }
+import from jaclang.project.diagnostics { W5050, E5051 }
 import from jaclang.compiler.passes { Transform }
 
 walker JacFormatPass(Transform) {

@@ -238,7 +238,6 @@ impl NaIRGenPass._codegen_virtual_call(
     if not isinstance(obj_val.type, ir.PointerType) {
         return None;
     }
-    _vc_force_variants = False;
     indices = self.vtable_method_indices.get(obj_type_name);
     if indices is None or method_name not in indices {
         import from jaclang.compiler.passes.layout_pass {
@@ -253,7 +252,6 @@ impl NaIRGenPass._codegen_virtual_call(
             return None;
         }
         indices = _vc_lay.method_index;
-        _vc_force_variants = _vc_lay.vtable_by_dispatch;
     }
 
     func = self._resolve_method(obj_type_name, method_name);
@@ -306,10 +304,7 @@ impl NaIRGenPass._codegen_virtual_call(
             _vd_uniform = False;
         }
     }
-    if _vc_force_variants and not _vd_variants {
-        return None;
-    }
-    if (_vc_force_variants or not _vd_uniform) and _vd_variants {
+    if not _vd_uniform and _vd_variants {
         vtable_ptr_ptr = self.builder.gep(
             obj_val, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="vt.id.pp"
         );

@@ -2244,17 +2244,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                             target_val, idx_val, elem_type_name
                         );
 
-                        if result is not None and elem_type_name == "ptr" {
-                            cast_type = self._list_elem_llvm_of(nd.target);
-                            if (
-                                isinstance(cast_type, ir.PointerType)
-                                and result.type != cast_type
-                            ) {
-                                result = self.builder.bitcast(
-                                    result, cast_type, name="idx.cast"
-                                );
-                            }
-                        }
+                        result = self._restore_list_read(result, nd.target);
                         return self._finish_borrowed_read(target_val, result);
                     }
                 }
@@ -2387,17 +2377,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                                 target_val, idx_val, elem_type_name
                             );
 
-                            if result is not None and elem_type_name == "ptr" {
-                                cast_type = self._list_elem_llvm_of(nd.target);
-                                if (
-                                    isinstance(cast_type, ir.PointerType)
-                                    and result.type != cast_type
-                                ) {
-                                    result = self.builder.bitcast(
-                                        result, cast_type, name="chain.idx.cast"
-                                    );
-                                }
-                            }
+                            result = self._restore_list_read(result, nd.target);
                             return self._finish_borrowed_read(target_val, result);
                         }
                     }

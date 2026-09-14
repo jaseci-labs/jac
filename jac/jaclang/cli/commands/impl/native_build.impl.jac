@@ -270,6 +270,14 @@ impl native_build(
 
     try {
         mod = llvm.parse_assembly(llvm_ir_str);
+        if shared {
+            import from jaclang.compiler.backends.native.shared_emit {
+                internalize_native_implementation
+            }
+            internalize_native_implementation(
+                mod, export_symbols + ["__jac_shared_init"]
+            );
+        }
         mod.verify();
     } except Exception as e {
         console.error(f"LLVM IR verification failed: {e}");

@@ -18,8 +18,8 @@ def _mod_bitcode(mod: ModuleRef) -> bytes {
 
 impl native_compiler_fingerprint(options: CompileOptions) -> str {
     import hashlib;
-    import from jaclang.compiler.driver.jir { running_compiler_digest }
-    identity = running_compiler_digest() + ":" + options.codegen_identity();
+    import from jaclang.compiler.driver.jir { FORMAT_VERSION, running_compiler_digest }
+    identity = f"{FORMAT_VERSION};{running_compiler_digest()};{options.codegen_identity()}";
     return hashlib.sha256(identity.encode()).hexdigest()[:16];
 }
 
@@ -29,12 +29,13 @@ impl native_dep_cache_paths(
     import os as _dcp_os;
     import from jaclang.compiler.driver.jir { ct_dep_digest, get_native_cache_dir }
     _ir_cache_dir = str(get_native_cache_dir(real_path));
-    _src_stem = _dcp_os.path.splitext(_dcp_os.path.basename(real_path))[0];
-    _source_hash = ct_dep_digest(real_path, with_annexes=True)[:12];
-    _fp = native_compiler_fingerprint(options);
+    import from jaclang.compiler.frontend.codeinfo { native_module_key }
+    (module_stem, module_location) = native_module_key(real_path).rsplit(":", 1);
+    source_hash = ct_dep_digest(real_path, with_annexes=True)[:12];
+    prefix = f"{module_stem}.{module_location}.{native_compiler_fingerprint(options)}";
     return (
-        _dcp_os.path.join(_ir_cache_dir, f"{_src_stem}.{_source_hash}.{_fp}.ir_cache"),
-        _dcp_os.path.join(_ir_cache_dir, f"{_src_stem}.{_source_hash}.{_fp}.ir_meta")
+        _dcp_os.path.join(_ir_cache_dir, f"{prefix}.{source_hash}.ir_cache"),
+        _dcp_os.path.join(_ir_cache_dir, f"{prefix}.{source_hash}.ir_meta")
     );
 }
 
@@ -267,6 +268,21 @@ impl native_live_call_conflicts(
     return conflicts;
 }
 
+impl require_native_ir(llvm_ir_text: str) -> None {
+    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+    issues = native_lowering_issues(llvm_ir_text);
+    symbols = set(native_demoted_ir_symbols(llvm_ir_text));
+    symbols.update(issue.symbol for issue in issues);
+    if symbols {
+        details = "\n".join(issue.detail for issue in issues);
+        raise ValueError(
+            "Native-only compilation cannot use Python fallback or erased fields: "
+                + ", ".join(sorted(symbols))
+                + ("\n" + details if details else "")
+        );
+    }
+}
+
 impl native_demoted_ir_symbols(llvm_ir_text: str) -> list[str] {
     import re as _ds_re;
     _ds_def = _ds_re.compile(
@@ -392,6 +408,10 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             );
 
             module.gen.llvm_ir = mod;
+        }
+
+        if _compile_opts.native_required_for(module.loc.mod_path) {
+            require_native_ir(str(mod));
         }
 
         _is_kernel_unit = bool(getattr(_compile_opts, "kernel_unit", False));
@@ -716,6 +736,12 @@ impl NativeCompilePass._compile_and_link_native_imports(
         }
 
         if not os.path.exists(full_path) {
+            if _link_opts.native_required_for(module.loc.mod_path)
+                or _link_opts.native_required_for(full_path) {
+                raise FileNotFoundError(
+                    f"Required native module not found: {full_path}"
+                );
+            }
             self.emit(W5023, path=full_path);
             continue;
         }
@@ -740,7 +766,6 @@ impl NativeCompilePass._compile_and_link_native_imports(
         }
 
         import from jaclang.compiler.driver.jir { get_native_cache_dir }
-        _src_stem = os.path.splitext(os.path.basename(real_path))[0];
         _ir_cache_dir = str(get_native_cache_dir(real_path));
 
         _cache_ir_path = "";
@@ -988,15 +1013,16 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 os.makedirs(_ir_cache_dir, exist_ok=True);
 
                 import glob as _glob;
+                _cache_prefix = os.path.basename(_cache_ir_path).rsplit(".", 2)[0];
                 for stale in _glob.`glob(
-                    os.path.join(_ir_cache_dir, f"{_src_stem}.*.ir_cache")
+                    os.path.join(_ir_cache_dir, f"{_cache_prefix}.*.ir_cache")
                 ) {
                     if stale != _cache_ir_path {
                         os.remove(stale);
                     }
                 }
                 for stale in _glob.`glob(
-                    os.path.join(_ir_cache_dir, f"{_src_stem}.*.ir_meta")
+                    os.path.join(_ir_cache_dir, f"{_cache_prefix}.*.ir_meta")
                 ) {
                     if stale != _cache_meta_path {
                         os.remove(stale);

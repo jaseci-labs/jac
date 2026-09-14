@@ -151,6 +151,8 @@ cpython() {
         cp "$recipe/compiler_bridge.c" Python/jac_compile.c
         cp "$recipe/compiler_bridge.h" Python/jac_compile.h
         cp "$recipe/compiler_runtime.c" Python/jac_runtime.c
+        cp "$recipe/object_api.c" Python/jac_objects.c
+        cp "$recipe/binding_api.c" Python/jac_bindings.c
         cp "$work/native/jacpython.o" Python/jacpython.o
     fi
     # The shared interpreter must survive relocation into the Jac payload.
@@ -207,6 +209,27 @@ _curses
 _curses_panel
 readline
 SETUP
+    if [ -n "$host" ]; then
+        cat >> Modules/Setup.local <<'SETUP'
+*static*
+_bisect
+_heapq
+_random
+binascii
+_operator -lcrypto
+_queue
+_json
+_csv
+_struct
+cmath
+math
+_collections
+_functools
+itertools
+array
+_pickle
+SETUP
+    fi
     # CPython runs the compiler itself; dependency-oriented -O2 flags above
     # must not override the release interpreter's optimization settings.
     export CFLAGS='-O3 -fPIC -fno-semantic-interposition' LLVM_AR="$AR"
@@ -289,7 +312,7 @@ else
     cp -R "$deps/include" "$work/python/build/include"
     cp "$src/certifi/certifi/cacert.pem" "$work/python/build/cacert.pem"
 fi
-step smoke "$prefix/bin/python3.14" -I "$recipe/smoke.py" "$mode"
+step smoke env PYTHONFAULTHANDLER=1 "$prefix/bin/python3.14" -X faulthandler -I "$recipe/smoke.py" "$mode"
 # No compiled test modules, docs, or configuration machinery in the runtime.
 rm -rf "$prefix/share" "$prefix/lib/python3.14/test" \
     "$prefix/lib/python3.14/idlelib" "$prefix/lib/python3.14/tkinter" \

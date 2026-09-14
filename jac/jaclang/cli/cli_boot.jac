@@ -45,7 +45,7 @@ def _handle_purge {
         sys.`exit(0);
     }
 
-    import from jaclang.compiler.driver.cache_paths { get_jir_cache_dir }
+    import from jaclang.project.cache_paths { get_jir_cache_dir }
     jir_dir = get_jir_cache_dir();
 
     total_files = 0;

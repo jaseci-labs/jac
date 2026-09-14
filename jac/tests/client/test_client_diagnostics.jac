@@ -213,7 +213,7 @@ test "an unresolved npm import points at the .jac line and at jac.toml" {
         assert "dependencies.npm" in str(rel["label"]) , rel["label"];
         # One wording for the undeclared-npm case: the registry entry that
         # already owns it, not a copy under a second code.
-        import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
+        import from jaclang.project.diagnostics { DIAGNOSTICS }
         assert diag.help_text == DIAGNOSTICS["W1106"].format_help(name="left-pad") , diag.help_text;
         assert "jac install" in diag.help_text , diag.help_text;
         assert DIAGNOSTICS["E7002"].help_text != DIAGNOSTICS["W1106"].help_text , "E7002 duplicates W1106's help text";

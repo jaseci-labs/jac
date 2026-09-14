@@ -508,7 +508,7 @@ impl EsastGenPass._edge_tag_literal(
         }
     }
     if (_tag < 0) and hard {
-        import from jaclang.compiler.frontend.diagnostics { E5097 }
+        import from jaclang.project.diagnostics { E5097 }
         self.emit(
             E5097,
             node_override=nd,
@@ -519,7 +519,7 @@ impl EsastGenPass._edge_tag_literal(
 }
 
 impl EsastGenPass._build_edge_ref(nd: uni.EdgeRefTrailer) -> es.Expression {
-    import from jaclang.compiler.frontend.diagnostics { E5097 }
+    import from jaclang.project.diagnostics { E5097 }
     fail = self.sync_loc(es.ArrayExpression(elements=[]), jac_node=nd);
     chain = nd.chain;
     if not chain {
@@ -642,7 +642,7 @@ impl EsastGenPass._build_osp_filter(
 impl EsastGenPass._build_osp_filter_pred(
     nd: uni.UniNode, filt: uni.FilterCompr
 ) -> (es.Expression | None) {
-    import from jaclang.compiler.frontend.diagnostics { E5097 }
+    import from jaclang.project.diagnostics { E5097 }
     parts: list[es.Expression] = [];
     if filt.f_type is not None {
         _ntag = self._edge_tag_literal(nd, filt.f_type, True);

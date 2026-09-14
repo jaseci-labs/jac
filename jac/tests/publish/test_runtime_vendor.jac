@@ -19,7 +19,12 @@ test "prepared runtime closure excludes optional compiler services" {
     assert "runtime/source_app.py" in closure;
     assert "runtime/runtime.py" in closure;
     assert "extensions.py" in closure;
-    assert not any(path.startswith("compiler/") for path in closure);
+    compiler_paths = sorted(
+        path
+        for path in closure
+        if path.startswith("compiler/")
+    );
+    assert not compiler_paths , compiler_paths;
     assert "meta_importer.py" not in closure;
     manifest = json.loads(closure["runtime.json"]);
     assert all(

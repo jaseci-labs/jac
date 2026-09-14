@@ -1,6 +1,7 @@
 import time;
-import from jaclang.compiler.frontend.srcloc { CodeLocInfo, Span }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.compiler.frontend.srcloc { CodeLocInfo }
+import from jaclang.project.span { Span }
+import from jaclang.project.diagnostics {
     DiagnosticInfo,
     E9001,
     LINT_ALIASES,

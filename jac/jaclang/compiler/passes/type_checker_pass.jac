@@ -65,7 +65,7 @@ import from jaclang.compiler.frontend.unitree {
 import from jaclang.compiler.passes.uni_pass { UniPass }
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
+import from jaclang.project.diagnostics { E0033, E0108, E0109 }
 import from jaclang.compiler.types.ct_value { CT_DEFERRED, CtValue }
 import from jaclang.compiler.types.types {
     AnyType,
@@ -95,7 +95,7 @@ import from jaclang.compiler.types.operations {
 }
 import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
 import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     Category,
     DiagnosticInfo,
     E1001,

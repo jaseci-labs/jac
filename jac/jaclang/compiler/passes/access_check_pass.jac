@@ -13,7 +13,7 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.compiler.frontend.constant { SymbolAccess }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     E2034,
     W2034,
     E2035,

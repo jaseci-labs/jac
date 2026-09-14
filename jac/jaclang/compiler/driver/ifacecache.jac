@@ -91,7 +91,7 @@ def _span_record(span: any) -> list {
 }
 
 def _span_from_record(rec: list) -> any {
-    import from jaclang.compiler.frontend.srcloc { Span }
+    import from jaclang.project.span { Span }
     return Span(
         mod_path=rec[0],
         first_line=rec[1],
@@ -121,7 +121,7 @@ def _alert_record(alert: any) -> dict {
 }
 
 def _alert_from_record(rec: dict) -> any {
-    import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
+    import from jaclang.project.diagnostics { DIAGNOSTICS }
     import from jaclang.compiler.passes.transform { Alert, Transform }
     code_str: str = str(rec.get("code") or "");
     code = DIAGNOSTICS.get(code_str) if code_str else None;
@@ -935,8 +935,7 @@ obj IfaceRegistry {
             {
                 "compiler": running_compiler_digest(),
                 "no_cgen": bool(options.no_cgen),
-                "app": str(getattr(options, "target_app", "") or ""),
-                "app_kind": str(getattr(options, "app_kind", "") or ""),
+                "options": options.analysis_identity(),
                 "symtab": bool(options.symtab_ir_only),
                 "native_parity": bool(options.native_parity),
                 "suppress": sorted(pol.suppress_codes),

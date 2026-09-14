@@ -20,7 +20,7 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          ),
          NativeScopeEntry(module="jaclang.compiler.jc_materialize", strict=True),
          NativeScopeEntry(module="jaclang.compiler.jc_unit", strict=True),
-         NativeScopeEntry(module="jaclang.compiler.frontend.diagnostics", strict=True),
+         NativeScopeEntry(module="jaclang.project.diagnostics", strict=True),
          NativeScopeEntry(module="jaclang.compiler.passes.transform", strict=True),
          NativeScopeEntry(module="jaclang.compiler.passes.uni_pass", strict=True),
          NativeScopeEntry(

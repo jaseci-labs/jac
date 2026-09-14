@@ -22,7 +22,7 @@ import from .types {
     UnionType,
     UnknownType
 }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     E1010,
     E1033,
     E1035,

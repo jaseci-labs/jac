@@ -1117,7 +1117,10 @@ impl NaIRGenPass._codegen_str_strip_chars(
 }
 
 impl NaIRGenPass._codegen_str_split(
-    str_val: ir.Value, sep_val: ir.Value
+    str_val: ir.Value,
+    sep_val: ir.Value,
+    maxsplit: ir.Value | None = None,
+    reverse: bool = False
 ) -> (ir.Value | None) {
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
@@ -1130,22 +1133,32 @@ impl NaIRGenPass._codegen_str_split(
         return None;
     }
 
+    str_len = self._call_str_len(self.builder, str_val, name="str.len");
+    sep_len = self._call_str_len(self.builder, sep_val, name="sep.len");
+    self._emit_runtime_raise(
+        self.builder.icmp_unsigned("==", sep_len, ir.Constant(i64, 0)),
+        "ValueError",
+        "empty separator"
+    );
+    limit = self._coerce_type(maxsplit, i64)
+        if maxsplit is not None
+        else ir.Constant(i64, -1);
     self._set_rc_ctx("str_split", "");
     new_list = self.builder.call(helpers["new"], [], name="split.list");
     self._clear_rc_ctx();
     self._nogc_stamp_elem_drops(new_list, ["str"]);
 
-    str_len = self._call_str_len(self.builder, str_val, name="str.len");
-    sep_len = self._call_str_len(self.builder, sep_val, name="sep.len");
     memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-    strncmp_fn = self._get_or_declare_extern(
-        "strncmp", ir.IntType(32), [i8p, i8p, i64]
-    );
+    strncmp_fn = self._get_or_declare_extern("memcmp", ir.IntType(32), [i8p, i8p, i64]);
 
-    i_alloca = self.builder.alloca(i64, name="split.i");
-    token_start_alloca = self.builder.alloca(i64, name="split.token.start");
-    self.builder.store(ir.Constant(i64, 0), i_alloca);
-    self.builder.store(ir.Constant(i64, 0), token_start_alloca);
+    i_alloca = self._entry_alloca(i64, "split.i");
+    token_start_alloca = self._entry_alloca(i64, "split.token.start");
+    remaining = self._entry_alloca(i64, "split.remaining");
+    self.builder.store(limit, remaining);
+    self.builder.store(
+        self.builder.sub(str_len, sep_len) if reverse else ir.Constant(i64, 0), i_alloca
+    );
+    self.builder.store(str_len if reverse else ir.Constant(i64, 0), token_start_alloca);
     loop_check_bb = func.append_basic_block(name="split.check");
     loop_body_bb = func.append_basic_block(name="split.body");
     match_bb = func.append_basic_block(name="split.match");
@@ -1156,8 +1169,15 @@ impl NaIRGenPass._codegen_str_split(
     self.builder.position_at_end(loop_check_bb);
     cur_i = self.builder.load(i_alloca, name="cur.i");
 
-    i_plus_sep = self.builder.add(cur_i, sep_len, name="i.plus.sep");
-    can_match = self.builder.icmp_signed("<=", i_plus_sep, str_len, name="can.match");
+    can_match = self.builder.icmp_signed(">=", cur_i, ir.Constant(i64, 0))
+        if reverse
+        else self.builder.icmp_signed("<=", cur_i, self.builder.sub(str_len, sep_len));
+    can_match = self.builder.and_(
+        can_match,
+        self.builder.icmp_signed(
+            "!=", self.builder.load(remaining), ir.Constant(i64, 0)
+        )
+    );
     self.builder.cbranch(can_match, loop_body_bb, loop_done_bb);
 
     self.builder.position_at_end(loop_body_bb);
@@ -1172,43 +1192,91 @@ impl NaIRGenPass._codegen_str_split(
 
     self.builder.position_at_end(match_bb);
     ts = self.builder.load(token_start_alloca, name="token.start");
-    token_len = self.builder.sub(cur_i, ts, name="token.len");
+    token_source = self.builder.add(cur_i, sep_len) if reverse else ts;
+    token_len = self.builder.sub(ts, token_source)
+        if reverse
+        else self.builder.sub(cur_i, ts, name="token.len");
     alloc_len = self.builder.add(token_len, ir.Constant(i64, 1), name="token.alloc");
     self._set_rc_ctx("str_split", "");
     token_ptr = self._str_alloc(self.builder, alloc_len, name="token.ptr");
     self._clear_rc_ctx();
     self._mark_owned(token_ptr);
-    src = self.builder.gep(str_val, [ts], name="token.src");
+    src = self.builder.gep(str_val, [token_source], name="token.src");
     self.builder.call(memcpy, [token_ptr, src, token_len]);
     self._str_finish(self.builder, token_ptr, token_len);
     self._rc_call_with_ctx(helpers["append"], [new_list, token_ptr], op="str_split");
     if isinstance(token_ptr.type, ir.PointerType) and self._is_owned(token_ptr) {
         self._emit_rc_release_simple(token_ptr, op="str_split");
     }
-    new_i = self.builder.add(cur_i, sep_len, name="new.i");
+    new_i = self.builder.sub(cur_i, sep_len)
+        if reverse
+        else self.builder.add(cur_i, sep_len, name="new.i");
     self.builder.store(new_i, i_alloca);
-    self.builder.store(new_i, token_start_alloca);
+    self.builder.store(cur_i if reverse else new_i, token_start_alloca);
+    budget = self.builder.load(remaining);
+    self.builder.store(
+        self.builder.select(
+            self.builder.icmp_signed(">", budget, ir.Constant(i64, 0)),
+            self.builder.sub(budget, ir.Constant(i64, 1)),
+            budget
+        ),
+        remaining
+    );
     self.builder.branch(loop_check_bb);
 
     self.builder.position_at_end(no_match_bb);
-    next_i = self.builder.add(cur_i, ir.Constant(i64, 1), name="next.i");
+    next_i = self.builder.add(
+        cur_i, ir.Constant(i64, -1 if reverse else 1), name="next.i"
+    );
     self.builder.store(next_i, i_alloca);
     self.builder.branch(loop_check_bb);
 
     self.builder.position_at_end(loop_done_bb);
     final_ts = self.builder.load(token_start_alloca, name="final.ts");
-    last_len = self.builder.sub(str_len, final_ts, name="last.len");
+    last_len = final_ts
+        if reverse
+        else self.builder.sub(str_len, final_ts, name="last.len");
     last_alloc = self.builder.add(last_len, ir.Constant(i64, 1), name="last.alloc");
     self._set_rc_ctx("str_split", "");
     last_ptr = self._str_alloc(self.builder, last_alloc, name="last.ptr");
     self._clear_rc_ctx();
     self._mark_owned(last_ptr);
-    last_src = self.builder.gep(str_val, [final_ts], name="last.src");
+    last_src = self.builder.gep(
+        str_val, [ir.Constant(i64, 0) if reverse else final_ts], name="last.src"
+    );
     self.builder.call(memcpy, [last_ptr, last_src, last_len]);
     self._str_finish(self.builder, last_ptr, last_len);
     self._rc_call_with_ctx(helpers["append"], [new_list, last_ptr], op="str_split");
     if isinstance(last_ptr.type, ir.PointerType) and self._is_owned(last_ptr) {
         self._emit_rc_release_simple(last_ptr, op="str_split");
+    }
+    if reverse {
+        i32 = ir.IntType(32);
+        zero = ir.Constant(i32, 0);
+        data = self.builder.load(
+            self.builder.gep(new_list, [zero, ir.Constant(i32, 2)])
+        );
+        length = self.builder.load(self.builder.gep(new_list, [zero, zero]));
+        cursor = self._entry_alloca(i64, "split.reverse.index");
+        self.builder.store(ir.Constant(i64, 0), cursor);
+        check = func.append_basic_block("split.reverse.check");
+        swap = func.append_basic_block("split.reverse.swap");
+        done = func.append_basic_block("split.reverse.done");
+        self.builder.branch(check);
+        self.builder.position_at_end(check);
+        left = self.builder.load(cursor);
+        right = self.builder.sub(self.builder.sub(length, ir.Constant(i64, 1)), left);
+        self.builder.cbranch(self.builder.icmp_signed("<", left, right), swap, done);
+        self.builder.position_at_end(swap);
+        left_ptr = self.builder.gep(data, [left]);
+        right_ptr = self.builder.gep(data, [right]);
+        left_value = self.builder.load(left_ptr);
+        right_value = self.builder.load(right_ptr);
+        self.builder.store(right_value, left_ptr);
+        self.builder.store(left_value, right_ptr);
+        self.builder.store(self.builder.add(left, ir.Constant(i64, 1)), cursor);
+        self.builder.branch(check);
+        self.builder.position_at_end(done);
     }
     return new_list;
 }

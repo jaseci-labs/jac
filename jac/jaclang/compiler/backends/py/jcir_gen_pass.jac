@@ -148,7 +148,7 @@ import from jaclang.compiler.backends.py.jcir_facts {
 }
 import from jaclang.compiler.backends.common.ast_gen_base { BaseAstGenPass }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     E5001,
     E5002,
     E5003,

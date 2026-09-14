@@ -818,6 +818,15 @@ impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
             return AnyType(is_foreign=True, foreign_scalar=name);
         }
     }
+    if type_expr is not None {
+        declared = self.get_type_of_expression(type_expr);
+        if isinstance(declared, ClassType) and not declared.is_builtin() {
+            scope = declared.shared.symbol_table;
+            if isinstance(scope, Archetype) {
+                return self._convert_to_instance(declared);
+            }
+        }
+    }
     return AnyType(is_foreign=True);
 }
 

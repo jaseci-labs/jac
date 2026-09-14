@@ -31,7 +31,7 @@ glob CLASS_MODULES: tuple = (
          "jaclang.compiler.frontend.parser.tokens",
          "jaclang.compiler.frontend.roles",
          "jaclang.compiler.frontend.relations",
-         "jaclang.compiler.frontend.diagnostics",
+         "jaclang.project.diagnostics",
          "jaclang.compiler.passes.transform",
 
      );
@@ -507,7 +507,7 @@ class NativeCompiler {
             for alert in errors + warnings {
                 alert.from_pass = pass_cls;
                 if alert.code is not None {
-                    import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
+                    import from jaclang.project.diagnostics { DIAGNOSTICS }
                     alert.code = DIAGNOSTICS[alert.code.code];
                 }
             }

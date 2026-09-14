@@ -2,7 +2,7 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
 import from jaclang.compiler.driver.progstate { DiagLedger }
-import from jaclang.compiler.frontend.srcloc { Span }
+import from jaclang.project.span { Span }
 import from jaclang.compiler.passes.transform { Alert, Transform }
 
 def diagnostic(path: Path, message: str) -> Alert {

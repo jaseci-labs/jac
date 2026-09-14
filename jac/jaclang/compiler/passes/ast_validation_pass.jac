@@ -53,7 +53,7 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 import from jaclang.compiler.passes.uni_pass { UniPass }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     E0010,
     E0020,
     E0023,

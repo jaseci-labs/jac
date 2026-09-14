@@ -842,7 +842,7 @@ test "parser core sources are foreign-free" {
         "passes.transform",
         "CodeLocInfo",
         "JacProgram",
-        "compiler.frontend.diagnostics",
+        "project.diagnostics",
         "**kwargs",
         "pathlib",
         "import re"

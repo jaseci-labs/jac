@@ -22,7 +22,7 @@ import from jaclang.compiler.frontend.unitree {
     is_identifier_slot
 }
 import from jaclang.compiler.passes.transform { Transform }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     E2009,
     E2011,
     E2012,

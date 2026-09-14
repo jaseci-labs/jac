@@ -14,7 +14,7 @@ import from jaclang.compiler.backends.common.primitives {
     BuiltinEmitter
 }
 import type from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-import from jaclang.compiler.frontend.diagnostics { E5092 }
+import from jaclang.project.diagnostics { E5092 }
 import from jaclang.compiler.frontend.unitree { Expr, UniNode }
 
 obj NativeEmitCtx {
@@ -22,7 +22,8 @@ obj NativeEmitCtx {
         type_key: str = "",
         call_kwargs: dict = {},
         arg_nodes: list[UniNode] = [],
-        call_node: UniNode | None = None;
+        call_node: UniNode | None = None,
+        receiver_node: UniNode | None = None;
 }
 
 
@@ -1026,6 +1027,13 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         target: ir.Value,
         args: list[ir.Value]
     ) -> (ir.Value | None);
+
+    def _emit_value_sort(
+        self: NativeListEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        reverse: (ir.Value | None)
+    ) -> ir.Value;
 
     def emit_reverse(
         self: NativeListEmitter,

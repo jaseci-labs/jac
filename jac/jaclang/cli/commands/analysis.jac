@@ -436,16 +436,4 @@ def `test(
     jobs: str = ""
 ) -> int;
 
-comptime SPEC_GEN_PARSER: CommandSpec = CommandSpec(
-         name="gen_parser",
-         hidden=True,
-         help="Generate Jac parser (internal use)",
-         args=[],
-         examples=[("jac gen_parser", "Regenerate the Jac parser"), ],
-         group="analysis",
-         handler_name=ct_name(gen_parser)
-     );
-
-def gen_parser -> int;
-
 def grammar(output: str = "", strict: bool = False) -> int;

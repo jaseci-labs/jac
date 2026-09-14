@@ -945,10 +945,10 @@ impl JacCompiler.stamp_boundary_facts(
         );
 
     def resolve_native(module_name: str, inferred_ok: bool) -> (str | None) {
-        (src_mod_str, _full_path) = resolve_native_module(
+        (src_mod_str, full_path) = resolve_native_module(
             module_name, base_dir, allow_inferred=inferred_ok
         );
-        return src_mod_str;
+        return os.path.realpath(full_path) if full_path is not None else src_mod_str;
     }
 
     def source_mod_for(resolved_path: (str | None)) -> (uni.Module | None) {
@@ -1655,7 +1655,7 @@ impl JacCompiler._count_module_errors(
 impl JacCompiler._module_scoped_errors(
     target_program: JacProgram, mod_path: str
 ) -> bool {
-    import from jaclang.compiler.frontend.diagnostics { Category }
+    import from jaclang.project.diagnostics { Category }
     norm = os.path.normpath(mod_path);
 
     prefix = (norm[:-4] if norm.endswith('.jac') else norm) + '.';
@@ -1704,7 +1704,7 @@ impl JacCompiler._report_missing_native_ir(
     if not mod_path or JacCompiler._count_module_errors(target_program, mod_path) > 0 {
         return;
     }
-    import from jaclang.compiler.frontend.diagnostics { E5092 }
+    import from jaclang.project.diagnostics { E5092 }
     import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     import from jaclang.compiler.passes.transform { Alert }
     (_available, reason) = native_pipeline_available();

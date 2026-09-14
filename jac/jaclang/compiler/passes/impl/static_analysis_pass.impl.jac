@@ -481,7 +481,7 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
                 resolved = None;
             }
             if isinstance(resolved, str) and resolved.endswith('.jac') {
-                import from jaclang.compiler.frontend.diagnostics { W1105 }
+                import from jaclang.project.diagnostics { W1105 }
                 import from jaclang.compiler.placement.placement_pins {
                     is_client_npm_import
                 }
@@ -508,7 +508,7 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
                 continue;
             }
             import os;
-            import from jaclang.compiler.frontend.diagnostics { W1106 }
+            import from jaclang.project.diagnostics { W1106 }
             import from jaclang.project.modresolver { is_path_alias_import }
             import from jaclang.compiler.placement.placement_pins {
                 is_client_npm_import

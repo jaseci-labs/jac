@@ -132,6 +132,13 @@ jobs:
             lldb --batch -o 'settings set target.disable-aslr false' -o run \
               -k 'thread backtrace all' -k 'image list -o -f' \
               -- zig-out/bin/jac -c 'import ast, ctypes; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3; assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42'
+          elif [ -x .python-build/jacpython/macos-aarch64/python/install/bin/python3.14 ]; then
+            cold_cache=$(mktemp -d)
+            lldb --batch -o 'settings set target.disable-aslr false' -o run \
+              -k 'thread backtrace all' -k 'image list -o -f' \
+              -- .python-build/jacpython/macos-aarch64/python/install/bin/python3.14 \
+              -I -S -B -X faulthandler -X "pycache_prefix=$cold_cache" -OO \
+              -c 'import ast, ctypes, encodings, sys; assert eval("6 * 7") == 42; assert isinstance(ast.parse("x=1"), ast.Module); assert encodings.search_function.__code__.co_filename == encodings.__file__; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3'
           fi
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -140,6 +147,7 @@ jobs:
           path: |
             jac/.python-build/**/*.log
             jac/zig-out/bin/jac
+            ~/Library/Logs/DiagnosticReports/python*.ips
           include-hidden-files: true
 
   # The kit lane builds this checkout and publishes it for every test lane.
@@ -469,7 +477,7 @@ jobs:
         # Mirrors tests/compiler/test_diagnostic_registry.jac.
         run: |
           dupes=$(grep -Pzo '\b[EW]\d{4} = _(?:err|warn)\(\s*"\K[EW]\d{4}' \
-            jac/jaclang/compiler/frontend/diagnostics.jac | tr '\0' '\n' | sort | uniq -d)
+            jac/jaclang/project/diagnostics.jac | tr '\0' '\n' | sort | uniq -d)
           if [ -n "$dupes" ]; then
             echo "::error::diagnostic code(s) claimed more than once in diagnostics.jac: $(echo $dupes)"
             exit 1
@@ -525,6 +533,29 @@ jobs:
       - name: Check JacPython native code-object boundary
         if: matrix.chunk == 'passes-native'
         run: jac run scripts/test_jacpython_native.jac
+      - name: Check native standard-library replacements against CPython
+        if: matrix.chunk == 'passes-native'
+        run: |
+          jac install "hypothesis>=6,<7" --global
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_deque --native-modules _collections
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_defaultdict --native-modules _collections
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_collections --native-modules _collections
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_struct --native-modules _struct
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_functools --native-modules _functools
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_itertools --native-modules itertools
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_array --native-modules array
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_pickle --native-modules _pickle
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_math --native-modules math
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_cmath --native-modules cmath
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_csv --native-modules _csv
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_json --native-modules _json
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_queue --native-modules _queue
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_operator --native-modules _operator
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_hmac --native-modules _operator
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_binascii --native-modules binascii
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_bisect --native-modules _bisect
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_heapq --native-modules _heapq
+          jac run scripts/run_cpython_compiler_tests.jac --module test.test_random --native-modules _random
 
   # Everything except the compiler tests.
   test-runtime:

@@ -1684,12 +1684,6 @@ impl `test(
     return rc;
 }
 
-impl gen_parser -> int {
-    import from jaclang.compiler { gen_all_parsers }
-    gen_all_parsers();
-    console.success('Parser generated.');
-    return 0;
-}
 
 impl grammar(output: str = "", strict: bool = False) -> int {
     import from jaclang.compiler.driver.program { JacProgram }

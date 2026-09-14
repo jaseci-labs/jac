@@ -1,6 +1,7 @@
 import os;
 import re;
 import from pathlib { Path }
+import type from jaclang.project.diagnostics { DiagnosticInfo }
 import from jaclang.client.source_mapping { JacLocator, SourceLocation, _npm_specifier }
 
 glob _EXPORT_MISS_RE = re.compile(
@@ -25,8 +26,8 @@ glob _EXPORT_MISS_RE = re.compile(
      _RAW_HEADER = "--- Raw Error (debug=true) ---",
      _RAW_FOOTER = "--- End Raw Error ---";
 
-def _diag(code: str) -> any {
-    import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
+def _diag(code: str) -> DiagnosticInfo | None {
+    import from jaclang.project.diagnostics { DIAGNOSTICS }
     return DIAGNOSTICS.get(code);
 }
 

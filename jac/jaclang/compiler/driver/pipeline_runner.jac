@@ -164,7 +164,10 @@ obj ModuleCompilation {
     def native_checks {
         if (
             self.options.no_cgen
-            and self.options.native_parity
+            and (
+                self.options.native_parity
+                or self.options.native_required_for(self.path)
+            )
             and not self.options.symtab_ir_only
             and not self.parse_failed
             and not self.blocked
@@ -180,9 +183,25 @@ obj ModuleCompilation {
                     require_product,
                     CompilationProduct
                 }
-                require_product(
+                lowered = require_product(
                     self.program, self.module, CompilationProduct.NATIVE_IR
                 );
+                if lowered and self.options.native_required_for(self.path) {
+                    import copy;
+                    import from jaclang.compiler.backends.native.na_compile_pass {
+                        NativeCompilePass
+                    }
+                    previous = self.program.options;
+                    checked = copy.copy(previous);
+                    checked.aot_mode = True;
+                    checked.skip_native_engine = False;
+                    self.program.options = checked;
+                    try {
+                        self.program.run_schedule(self.module, [NativeCompilePass]);
+                    } finally {
+                        self.program.options = previous;
+                    }
+                }
             }
         }
     }

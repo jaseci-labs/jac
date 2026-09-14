@@ -17,7 +17,7 @@ import tempfile;
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.frontend.diagnostics { E5095, W6008 }
+import from jaclang.project.diagnostics { E5095, W6008 }
 import from jaclang.compiler.intrinsic_registry {
     INTRINSIC_REGISTRY,
     IntrinsicDispatch

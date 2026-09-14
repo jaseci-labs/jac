@@ -47,7 +47,7 @@ import time;
 
 import from pathlib { Path }
 import from tests.support { JAC_ROOT, TESTS_DIR }
-import from jaclang.compiler.driver.cache_paths { get_jir_cache_dir }
+import from jaclang.project.cache_paths { get_jir_cache_dir }
 
 glob PROBE: str = os.path.join(
          TESTS_DIR, "compiler", "fixtures", "compile_timing_probe.jac"

@@ -3,11 +3,11 @@ import jaclang.compiler.frontend.parser.lexer as na_lexer;
 import from .lexer { Lexer }
 import from .parser { Parser, parse_expression as _parse_expression }
 import from .tokens { CommentData, SrcDiag }
-import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
+import from jaclang.project.diagnostics { DIAGNOSTICS }
 import from jaclang.compiler.passes.transform { Alert }
 import type from jaclang.compiler.driver.program { JacProgram }
 import type from jaclang.compiler.native_compiler { NativeSyntax }
-import from jaclang.compiler.frontend.srcloc { Span }
+import from jaclang.project.span { Span }
 import from jaclang.compiler.frontend.unitree { CommentToken, Expr, Module, Source }
 
 def _replay_diags(

@@ -234,7 +234,7 @@ obj DiagLedger {
     }
 
     def extend(errors: Sequence[Alert], warnings: Sequence[Alert]) {
-        import from jaclang.compiler.frontend.srcloc { Span }
+        import from jaclang.project.span { Span }
         def span_key(span: Span) -> tuple {
             return (
                 span.mod_path,

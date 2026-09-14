@@ -1,5 +1,5 @@
 import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
-import from jaclang.compiler.frontend.diagnostics { E5081 }
+import from jaclang.project.diagnostics { E5081 }
 
 glob _BACKENDS: dict[str, FrameworkBackend] = {};
 

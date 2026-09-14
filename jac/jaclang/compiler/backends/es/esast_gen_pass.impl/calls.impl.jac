@@ -906,7 +906,7 @@ impl EsastGenPass._warn_rpc_callable_params(
         return;
     }
     import re;
-    import from jaclang.compiler.frontend.diagnostics { W6005 }
+    import from jaclang.project.diagnostics { W6005 }
     _sig = ability_node.signature;
     for _plist in [_sig.posonly_params, _sig.params or [], _sig.kwonlyargs] {
         for _p in _plist {
@@ -989,7 +989,7 @@ impl EsastGenPass._build_server_forwarder(
     self._inject_runtime_import('__jacCallFunction', jac_node);
     ret_label = self._forwarder_ret_label(ability_node);
     if ret_label {
-        import from jaclang.compiler.frontend.diagnostics { W6009 }
+        import from jaclang.project.diagnostics { W6009 }
         self.emit(W6009, node_override=jac_node, name=func_name, ret=ret_label);
     }
     return self.sync_loc(

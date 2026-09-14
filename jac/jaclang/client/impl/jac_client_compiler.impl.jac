@@ -737,7 +737,6 @@ impl JacClientCompiler.init(
     self.jac_compiler = JacToJSCompiler(
         compile_to_js_func, extract_exports_func, extract_globals_func
     );
-    self.import_processor = ImportProcessor();
     self.asset_processor = AssetProcessor();
     self._has_pages = False;
     self._route_scanner: (RouteScanner | None) = None;

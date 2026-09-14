@@ -65,3 +65,29 @@ test "native imports link through a source directory alias at a different depth"
         assert call() == 42;
     }
 }
+
+test "native caches distinguish identical sources and compilation modes" {
+    import from unittest.mock { patch }
+    with tempfile.TemporaryDirectory() as directory {
+        folder = Path(directory);
+        first = folder / "first" / "library.jac";
+        second = folder / "second" / "library.jac";
+        first.parent.mkdir();
+        second.parent.mkdir();
+        for source in (first, second) {
+            source.write_text("def value -> int { return 1; }\n");
+        }
+        ordinary = CompileOptions(aot_mode=True, default_codespace="native");
+        required = CompileOptions(aot_mode=True, native_required=True);
+        # Installed modules and modules in one project share a cache directory.
+        with patch(
+            "jaclang.compiler.driver.jir.get_native_cache_dir", return_value=folder
+        ) {
+            paths = [
+                native_dep_cache_paths(str(source), options)[0]
+                for source in (first, second) for options in (ordinary, required)
+            ];
+            assert len(set(paths)) == 4;
+        }
+    }
+}

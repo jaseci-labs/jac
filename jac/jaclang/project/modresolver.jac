@@ -1,4 +1,5 @@
 import from importlib.machinery { ModuleSpec }
+import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import os;
 import sys;
 import from pathlib { Path }
@@ -976,17 +977,21 @@ def _in_typeshed_tree(path: str) -> bool {
     return "/vendor/typeshed/" in path.replace("\\", "/");
 }
 
+def _active_stub_catalog -> StubCatalog | None {
+    state = sys.modules.get("jaclang.compiler.types.stubcat.state");
+    lookup = state.__dict__.get("active") if state is not None else None;
+    return lookup() if lookup is not None else None;
+}
+
 def _stub_catalog_active -> bool {
-    import from jaclang.compiler.types.stubcat.state { active }
-    return active() is not None;
+    return _active_stub_catalog() is not None;
 }
 
 def _candidate_from_stub_catalog(parts: list[str]) -> (tuple[(str, str)] | None) {
     if not parts {
         return None;
     }
-    import from jaclang.compiler.types.stubcat.state { active }
-    catalog: any = active();
+    catalog = _active_stub_catalog();
     if catalog is None {
         return None;
     }

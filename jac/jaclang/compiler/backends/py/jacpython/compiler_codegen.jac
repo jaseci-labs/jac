@@ -179,7 +179,6 @@ import from jaclang.compiler.frontend.python.ast_nodes {
     Name,
     BinOp,
     UnaryOp,
-    Call,
     Compare,
     Assign,
     Expr,
@@ -349,8 +348,6 @@ import from jaclang.compiler.backends.py.jacpython.compiler_emit {
     finish_control_unwind,
     emit_branch_if_test_false,
     emit_branch_if_test_true,
-    emit_call_instruction,
-    emit_call_keyword_values,
     emit_cmp_link,
     emit_folded_int,
     emit_function_defaults,
@@ -406,7 +403,6 @@ import from jaclang.compiler.backends.py.jacpython.codegen_util {
     try_fold_binop,
     call_func_loc,
     call_effective_args,
-    call_effective_keywords,
     top_loc,
     stmt_loc,
     seq_target_elts,
@@ -560,7 +556,7 @@ def compile_eval(
         filename=filename, name=name, qualname=name, firstlineno=firstlineno
     );
     if sym_top is not None {
-        u.varnames = fast_varnames_from_sym(sym_top);
+        u.set_varnames(fast_varnames_from_sym(sym_top));
         u.cellvars.extend(cellvars_from_sym(sym_top));
     }
     entry_blk = u.add_block();
@@ -584,21 +580,8 @@ def compile_eval(
     }
     g.emit_op(OP_RETURN_VALUE, 0, eloc);
     if cleanup is not None {
-        if isinstance(e, Call) {
-            ca = e as Call;
-            cloc_call = nloc(
-                ca.lineno, ca.end_lineno, ca.col_offset, ca.end_col_offset
-            );
-            emit_compare_cleanup(g, cleanup, cloc_call);
-            if len(call_effective_keywords(ca)) > 0 {
-                emit_call_keyword_values(g, ca, cloc_call);
-            }
-            emit_call_instruction(g, ca, cloc_call);
-            g.emit_op(OP_RETURN_VALUE, 0, eloc);
-        } else {
-            g.use(cleanup);
-            g.emit_op(OP_RETURN_VALUE, 0, eloc);
-        }
+        g.use(cleanup);
+        g.emit_op(OP_RETURN_VALUE, 0, eloc);
     }
     finish_source_scope(g, protect_start);
     u.flush_late_consts();
@@ -1153,22 +1136,7 @@ def visit_stmt(
         x = s as Expr;
         cmp_cleanup = visit_expr(g, x.value, False, False);
         eloc = nloc(x.lineno, x.end_lineno, x.col_offset, x.end_col_offset);
-        if cmp_cleanup is not None and isinstance(x.value, Call) {
-            ca = x.value as Call;
-            cloc_call = nloc(
-                ca.lineno, ca.end_lineno, ca.col_offset, ca.end_col_offset
-            );
-            finish_expression(g, eloc);
-            after = g.new_block();
-            g.emit_jump(OP_JUMP_FORWARD, after.id, eloc);
-            emit_compare_cleanup(g, cmp_cleanup, cloc_call);
-            if len(call_effective_keywords(ca)) > 0 {
-                emit_call_keyword_values(g, ca, cloc_call);
-            }
-            emit_call_instruction(g, ca, cloc_call);
-            finish_expression(g, eloc);
-            g.use(after);
-        } elif cmp_cleanup is not None {
+        if cmp_cleanup is not None {
             finish_expression(g, eloc);
             after = g.new_block();
             g.emit_jump(OP_JUMP_FORWARD, after.id, eloc);
@@ -1403,7 +1371,7 @@ def compile_exec(
     }
     u.interactive = interactive;
     if sym_top is not None {
-        u.varnames = fast_varnames_from_sym(sym_top);
+        u.set_varnames(fast_varnames_from_sym(sym_top));
         u.cellvars.extend(cellvars_from_sym(sym_top));
     }
     entry_blk = u.add_block();

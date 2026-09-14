@@ -2375,10 +2375,63 @@ test "a module reload during a build wins over the build's result" {
     );
 }
 
-"""/graph, /graph/data and /docs must be served by the stdlib server too -
-previously they existed only on the scale (FastAPI) server, so apps embedding
-them 404'd whenever serving fell back to the zero-dependency stack."""
+glob _GRAPH_LOGIN_HARNESS: str = """
+import { JSDOM } from "jsdom";
+
+const [base, username, password] = process.argv.slice(2);
+const html = await (await fetch(base + "/graph")).text();
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const until = async (ok) => { for (let i = 0; i < 400 && !ok(); i++) await sleep(25); };
+
+// `send` replaces the body on the wire, so the server's own rejection reaches the modal.
+const ROWS = [
+  { name: "valid credentials", password, token: true, badge: "User Graph", error: null },
+  { name: "wrong password", password: password + "x", token: false, badge: "Public Graph", error: "Invalid credentials" },
+  { name: "rejected body", password, send: { username, password }, token: false, badge: "Public Graph", error: "identity is required" },
+];
+
+let failed = 0;
+for (const row of ROWS) {
+  const calls = [];
+  const dom = new JSDOM(html, {
+    url: base + "/graph",
+    runScripts: "dangerously",
+    beforeParse(window) {
+      window.fetch = (url, init = {}) => {
+        calls.push({ url, auth: (init.headers || {}).Authorization });
+        const body = row.send && url.endsWith("/user/login") ? JSON.stringify(row.send) : init.body;
+        return fetch(url, { ...init, body });
+      };
+    },
+  });
+  const { document, localStorage } = dom.window;
+  const button = document.getElementById("login-btn");
+  document.getElementById("login-username").value = username;
+  document.getElementById("login-password").value = row.password;
+  button.click();
+  await until(() => !button.disabled);
+  const errorEl = document.getElementById("login-error");
+  const seen = {
+    token: Boolean(localStorage.getItem("jac_token")),
+    badge: document.getElementById("mode-badge").textContent,
+    error: errorEl.style.display === "block" ? errorEl.textContent : null,
+    authedGraph: calls.some((c) => c.url.endsWith("/graph/data") && Boolean(c.auth)),
+  };
+  const want = { token: row.token, badge: row.badge, error: row.error, authedGraph: row.token };
+  const ok = JSON.stringify(seen) === JSON.stringify(want);
+  console.log((ok ? "PASS  " : "FAIL  ") + row.name + ": " + JSON.stringify(seen) + (ok ? "" : " want " + JSON.stringify(want)));
+  failed += ok ? 0 : 1;
+}
+process.exit(failed ? 1 : 0);
+""";
+
+"""The stdlib server serves /graph, /graph/data and /docs, and the /graph login
+modal signs in against it (#8951)."""
 test "stdlib server serves graph visualizer and docs" {
+    import from jaclang.client.bun_installer { get_bun }
+    import from jaclang.server.settings { ServeSettings }
+    import from .jsdom_harness { REACT_JSDOM_DEPS, bun_install, run_harness }
+
     with TemporaryDirectory() as tmpdir {
         client = JacTestClient.from_file(
             fixture_abs_path("serve_shared_root.jac"), base_path=tmpdir
@@ -2401,6 +2454,33 @@ test "stdlib server serves graph visualizer and docs" {
         paths = spec.json()["paths"];
         assert "/walker/leave_note" in paths , "openapi should list the module's walkers";
         assert "/user/login" in paths , "openapi should list auth endpoints";
+        _require_client_integration();
+        bun = get_bun();
+        assert bun is not None , "bun is on PATH but get_bun() could not locate it";
+        registered = client.register_user("graph_viewer", "pw12345678");
+        assert registered.ok , f"register failed: {registered.text}";
+        client.server.settings = ServeSettings.load(
+            tmpdir, {"host": "127.0.0.1", "port": 0}
+        );
+        stop = client.server.serve_background(no_client=True);
+        try {
+            work = Path(tmpdir) / "graph_login";
+            work.mkdir();
+            bun_install(bun, work, "graph-login", {"jsdom": REACT_JSDOM_DEPS["jsdom"]});
+            (work / "harness.mjs").write_text(_GRAPH_LOGIN_HARNESS, encoding="utf-8");
+            run_harness(
+                bun,
+                work,
+                [
+                    f"http://127.0.0.1:{client.server.port}",
+                    "graph_viewer",
+                    "pw12345678"
+                ],
+                "graph login"
+            );
+        } finally {
+            stop();
+        }
         client.close();
     }
 }

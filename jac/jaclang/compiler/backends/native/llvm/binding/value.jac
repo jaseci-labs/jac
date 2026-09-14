@@ -177,7 +177,7 @@ class ValueRef(ffi.ObjectRef) {
     }
 
     @property
-    def name(self: ValueRef) -> object {
+    def name(self: ValueRef) -> str {
         return _decode_string(ffi.lib.LLVMPY_GetValueName(self));
     }
 

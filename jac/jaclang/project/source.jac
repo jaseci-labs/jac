@@ -1,5 +1,5 @@
 import os;
-import type from jaclang.compiler.frontend.srcloc { Span }
+import type from jaclang.project.span { Span }
 
 def pascal_to_snake(pascal_string: str) -> str {
     snake_string = '';
@@ -179,7 +179,7 @@ def format_related_spans(
 def span_for_file(
     mod_path: str, line: int, col: int, end_col: int = 0, source: str = ''
 ) -> Span {
-    import from jaclang.compiler.frontend.srcloc { Span }
+    import from jaclang.project.span { Span }
     bare = Span(
         mod_path=mod_path,
         first_line=line,

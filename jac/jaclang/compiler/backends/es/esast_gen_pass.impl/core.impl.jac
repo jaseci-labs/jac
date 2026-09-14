@@ -7,7 +7,7 @@ impl EsastGenPass._ensure_backend -> FrameworkBackend {
             self.backend = resolve_active_backend();
         } except ValueError {
             import from jaclang.project.config { get_config }
-            import from jaclang.compiler.frontend.diagnostics { E5081 }
+            import from jaclang.project.diagnostics { E5081 }
             import from jaclang.compiler.backends.es.backends.react { ReactBackend }
             cfg = get_config();
             fw = cfg.client.framework if (cfg and cfg.client) else "unknown";
@@ -182,7 +182,7 @@ impl EsastGenPass._get_ast_or_default(
         and (nd not in self._unlowered_reported)
         and self._is_client_destined(nd)
     ) {
-        import from jaclang.compiler.frontend.diagnostics { E5097 }
+        import from jaclang.project.diagnostics { E5097 }
         self._unlowered_reported.add(nd);
         self.emit(E5097, node_override=nd, kind=nd.__class__.__name__);
     }
@@ -506,7 +506,7 @@ impl EsastGenPass.before_pass -> None {
     import from jaclang.compiler.frontend.codeinfo { ClientManifest }
 
     import from jaclang.compiler.frontend.module_facts { client_capability_violations }
-    import from jaclang.compiler.frontend.diagnostics { E5096 }
+    import from jaclang.project.diagnostics { E5096 }
     if not self.ir_in.client_viols_reported {
         for (_vnode, _vkind) in client_capability_violations(self.ir_in) {
             self.emit(E5096, node_override=_vnode, kind=_vkind);

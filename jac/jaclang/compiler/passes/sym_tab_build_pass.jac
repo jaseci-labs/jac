@@ -54,7 +54,7 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.frontend.constant { SymbolAccess }
 import from jaclang.compiler.passes.uni_pass { UniPass }
-import from jaclang.compiler.frontend.diagnostics { E0064, E0077 }
+import from jaclang.project.diagnostics { E0064, E0077 }
 
 glob TEST_ASSERT_METHOD_NAMES: tuple[str, ...] = (
          'assertAlmostEqual',

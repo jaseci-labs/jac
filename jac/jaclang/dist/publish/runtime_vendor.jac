@@ -176,92 +176,99 @@ def build_runtime_closure(
     processed: set[str] = {'jaclang'};
     program = JacProgram();
     modules: list[dict] = [];
-    while pending {
-        module = min(pending);
-        pending.remove(module);
-        if module in processed {
-            continue;
-        }
-        parts = module.split('.');
-        parents = ['.'.join(parts[:i]) for i in range(2, len(parts))];
-        missing = [
-            parent
-            for parent in parents
-            if parent not in processed
-        ];
-        if missing {
-            pending.update(missing);
-            pending.add(module);
-            continue;
-        }
-        processed.add(module);
-        path = _module_to_file(pkg_root, module);
-        if path is None {
-            namespace = pkg_root.joinpath(*parts[1:]);
-            if namespace.is_dir() {
-                relative = '/'.join(parts[1:]) + '/__init__.py';
-                closure[relative] = b'';
+    try {
+        while pending {
+            module = min(pending);
+            pending.remove(module);
+            if module in processed {
                 continue;
             }
-            (parent, _, name) = module.rpartition('.');
-            exports = _declared_literal(sources[parent], '_LAZY_EXPORTS')
-                if parent in sources
-                else {};
-            if not isinstance(exports, dict) {
-                exports = {};
+            parts = module.split('.');
+            parents = ['.'.join(parts[:i]) for i in range(2, len(parts))];
+            missing = [
+                parent
+                for parent in parents
+                if parent not in processed
+            ];
+            if missing {
+                pending.update(missing);
+                pending.add(module);
+                continue;
             }
-            if name in exports {
-                pending.add(exports[name]);
+            processed.add(module);
+            path = _module_to_file(pkg_root, module);
+            if path is None {
+                namespace = pkg_root.joinpath(*parts[1:]);
+                if namespace.is_dir() {
+                    relative = '/'.join(parts[1:]) + '/__init__.py';
+                    closure[relative] = b'';
+                    continue;
+                }
+                (parent, _, name) = module.rpartition('.');
+                exports = _declared_literal(sources[parent], '_LAZY_EXPORTS')
+                    if parent in sources
+                    else {};
+                if not isinstance(exports, dict) {
+                    exports = {};
+                }
+                if name in exports {
+                    pending.add(exports[name]);
+                }
+                continue;
             }
-            continue;
-        }
-        native: dict = {};
-        source = _compile_runtime_module(
-            pkg_root, path, program, native, native_sources
-        );
-        tree = py_ast.parse(source, filename=str(path));
-        sources[module] = tree;
-        relative = module.removeprefix('jaclang.').replace('.', '/');
-        package = path.name.startswith('__init__.');
-        relative += '/__init__.py' if package else '.py';
-        closure[relative] = source.encode('utf-8');
-        resources = _declared_literal(tree, '__jac_resources__');
-        if resources is not None {
-            if not isinstance(resources, list)
-                or not all(isinstance(pattern, str) for pattern in resources) {
-                raise ValueError(
-                    f'{module}.__jac_resources__ must be a list of package-relative glob patterns'
-                );
-            }
-            for pattern in resources {
-                matches = [
-                    item
-                    for item in path.parent.glob(pattern)
-                    if item.is_file()
-                ];
-                if not matches {
+            native: dict = {};
+            source = _compile_runtime_module(
+                pkg_root, path, program, native, native_sources
+            );
+            tree = py_ast.parse(source, filename=str(path));
+            sources[module] = tree;
+            relative = module.removeprefix('jaclang.').replace('.', '/');
+            package = path.name.startswith('__init__.');
+            relative += '/__init__.py' if package else '.py';
+            closure[relative] = source.encode('utf-8');
+            resources = _declared_literal(tree, '__jac_resources__');
+            if resources is not None {
+                if not isinstance(resources, list)
+                    or not all(isinstance(pattern, str) for pattern in resources) {
                     raise ValueError(
-                        f'Resource declaration does not resolve: {module}: {pattern}'
+                        f'{module}.__jac_resources__ must be a list of package-relative glob patterns'
                     );
                 }
-                for item in matches {
-                    resolved = item.resolve();
-                    if not resolved.is_relative_to(pkg_root.resolve()) {
-                        raise ValueError(f'Resource escapes its package: {item}');
+                for pattern in resources {
+                    matches = [
+                        item
+                        for item in path.parent.glob(pattern)
+                        if item.is_file()
+                    ];
+                    if not matches {
+                        raise ValueError(
+                            f'Resource declaration does not resolve: {module}: {pattern}'
+                        );
                     }
-                    closure[item.relative_to(pkg_root).as_posix()] = item.read_bytes();
+                    for item in matches {
+                        resolved = item.resolve();
+                        if not resolved.is_relative_to(pkg_root.resolve()) {
+                            raise ValueError(f'Resource escapes its package: {item}');
+                        }
+                        closure[item.relative_to(pkg_root).as_posix()] = item.read_bytes();
+                    }
                 }
             }
+            record = {
+                'path': relative,
+                'origin': path.relative_to(pkg_root).as_posix()
+            };
+            if native {
+                record['native'] = native['record'];
+                closure[native['path']] = native['content'];
+            }
+            modules.append(record);
+            pending.update(
+                _runtime_dependencies(pkg_root, tree, module, package) - processed
+            );
         }
-        record = {'path': relative, 'origin': path.relative_to(pkg_root).as_posix()};
-        if native {
-            record['native'] = native['record'];
-            closure[native['path']] = native['content'];
-        }
-        modules.append(record);
-        pending.update(
-            _runtime_dependencies(pkg_root, tree, module, package) - processed
-        );
+    } finally {
+        program.release_compile_closure();
     }
     for relative in [
         name

@@ -10,7 +10,7 @@ import from jaclang.compiler.frontend.unitree {
     UniNode
 }
 import from jaclang.compiler.frontend.constant { TOKEN_MAP, Tokens as Tok }
-import from jaclang.compiler.frontend.diagnostics { E1126, E1127, E1128, E1130 }
+import from jaclang.project.diagnostics { E1126, E1127, E1128, E1130 }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY, NumericKind }
 import from jaclang.compiler.types.types {
     AnyType,

@@ -1,4 +1,4 @@
-import from jaclang.compiler.frontend.diagnostics { E1308, E1313 }
+import from jaclang.project.diagnostics { E1308, E1313 }
 
 impl OwnershipCheckPass._flow_for_stmts -> list[InForStmt] {
     import from jaclang.compiler.frontend.constant { Tokens as Tok }

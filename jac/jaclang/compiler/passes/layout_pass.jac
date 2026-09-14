@@ -17,6 +17,7 @@ import from jaclang.compiler.frontend.unitree {
     Module,
     ModuleItem,
     Name,
+    Null,
     TupleVal,
     TypeParam,
     UnaryExpr,
@@ -26,7 +27,7 @@ import from jaclang.compiler.passes.transform { Transform }
 import type from jaclang.compiler.types.types { TypeBase }
 import from jaclang.compiler.frontend.const_fold { fold_const }
 import from jaclang.compiler.frontend.constant { OwnershipKind, Tokens as Tok }
-import from jaclang.compiler.frontend.diagnostics { E5030, W5031, W5032 }
+import from jaclang.project.diagnostics { E5030, W5031, W5032 }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
 glob LAYOUT_COMPATIBLE_PRIMITIVES: set[str] = {
@@ -645,6 +646,7 @@ walker LayoutPass(Transform) {
     def _split_top_level(s: str, sep: str) -> list[str];
     def _build_vtable_layout(arch_name: str, arch_map: dict[str, Archetype]) -> None;
     def _validate_obj_fields(arch: Archetype, arch_map: dict[str, Archetype]) -> None;
+    def _is_layout_compatible_semantic_type(typ: TypeBase | None) -> bool;
     def _is_layout_compatible_type(
         type_node: (UniNode | None), arch_map: dict[str, Archetype]
     ) -> bool;

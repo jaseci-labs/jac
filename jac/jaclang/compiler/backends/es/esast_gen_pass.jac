@@ -30,7 +30,7 @@ import from jaclang.project.modresolver {
     relative_js_specifier,
     resolve_relative_path
 }
-import from jaclang.compiler.frontend.diagnostics {
+import from jaclang.project.diagnostics {
     E2025,
     E5010,
     E5011,

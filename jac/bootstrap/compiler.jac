@@ -101,12 +101,12 @@ def verify_source_isolation(program: JacProgram) {
 def compile_native_python(package: Path, output: Path, target: str) {
     import from jaclang.compiler.backends.native.na_compile_pass {
         native_linked_ir_text,
-        native_demoted_ir_symbols
+        require_native_ir
     }
-    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
     import from jaclang.compiler.backends.native.shared_emit {
         init_object_codegen,
-        inject_shared_init
+        inject_shared_init,
+        internalize_native_implementation
     }
     import jaclang.compiler.backends.native.llvm.binding as llvm;
     package = package.resolve(strict=True);
@@ -116,8 +116,9 @@ def compile_native_python(package: Path, output: Path, target: str) {
         snapshot = Path(work).resolve() / "jaclang";
         snapshot_sources(package, snapshot);
         program = JacProgram();
-        path_options: dict[str, dict[str, str]] = {
-            "source_prefix_map": {str(snapshot): "jaclang"}
+        native_options: dict[str, bool | dict[str, str]] = {
+            "source_prefix_map": {str(snapshot): "jaclang"},
+            "native_required": True
         };
         producer_resolver().push_import_base(str(snapshot.parent));
         try {
@@ -132,7 +133,7 @@ def compile_native_python(package: Path, output: Path, target: str) {
                     no_ir_cache=True,
                     opt_level=2,
                     native_target=target,
-                    **path_options
+                    **native_options
                 )
             );
             verify_source_isolation(program);
@@ -146,17 +147,18 @@ def compile_native_python(package: Path, output: Path, target: str) {
                 raise RuntimeError("JacPython native compilation produced no module");
             }
             ir_text = native_linked_ir_text(module);
-            issues = native_demoted_ir_symbols(ir_text);
-            issues.extend(issue.symbol for issue in native_lowering_issues(ir_text));
-            if issues {
-                raise RuntimeError(
-                    "JacPython may not demote to Python: "
-                        + ", ".join(sorted(set(issues)))
-                );
-            }
-            (ir_text, _) = inject_shared_init(ir_text, module.gen.interop_manifest);
+            require_native_ir(ir_text);
+            (ir_text, runtime_exports) = inject_shared_init(
+                ir_text, module.gen.interop_manifest
+            );
             init_object_codegen();
             compiled = llvm.parse_assembly(ir_text);
+            internalize_native_implementation(
+                compiled,
+                list(module.gen._exported_symbols)
+                    + runtime_exports
+                    + ["__jac_shared_init"]
+            );
             compiled.verify();
             machine = llvm.Target.from_triple(target).create_target_machine(
                 opt=2, reloc="pic", codemodel="small"

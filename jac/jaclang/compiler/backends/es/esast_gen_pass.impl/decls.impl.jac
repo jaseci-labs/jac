@@ -1,5 +1,5 @@
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
-import from jaclang.compiler.frontend.diagnostics { E5097 }
+import from jaclang.project.diagnostics { E5097 }
 
 impl EsastGenPass.exit_has_var with uni.HasVar exit {
     here.gen.es_ast = None;

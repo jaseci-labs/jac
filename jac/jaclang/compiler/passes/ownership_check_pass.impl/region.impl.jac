@@ -1,4 +1,4 @@
-import from jaclang.compiler.frontend.diagnostics { E1307, E1314, W1310 }
+import from jaclang.project.diagnostics { E1307, E1314, W1310 }
 import from jaclang.compiler.expr_keys { is_builtin_region_type }
 import from jaclang.compiler.symbol_utils { CallKind, classify_call }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }

@@ -118,7 +118,7 @@ test "purge avoids heavy imports" {
 
 test "purge uses the compilation cache owner and retains sibling directories" {
     import from unittest.mock { patch }
-    import jaclang.compiler.driver.cache_paths as cache_paths;
+    import jaclang.project.cache_paths as cache_paths;
     import from jaclang.cli.cli_boot { _handle_purge }
     with tempfile.TemporaryDirectory() as directory {
         cache = Path(directory) / "jir";
