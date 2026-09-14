@@ -326,13 +326,19 @@ jobs:
       # contract as the JIR tree above). Key mirrors setup-jac verbatim.
       - name: Restore cached payload deps-layer frame (dev channel)
         if: inputs.channel == 'dev'
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: jac/.payload-layers/jacpython
           key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.build-inputs.outputs.layers }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.build-inputs.outputs.layers }}-
             payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Record restored payload producers (dev channel)
+        id: restored-layers
+        if: inputs.channel == 'dev'
+        shell: bash
+        run: echo "digest=${{ hashFiles('jac/.payload-layers/jacpython/**') }}" >> "$GITHUB_OUTPUT"
 
       # Release channel: fetch the prebuilt, target-pinned shim that
       # build-shims.yml publishes on the rolling `deps` prerelease instead of
@@ -689,6 +695,17 @@ jobs:
             2>/dev/null || true
           gh release upload deps --repo "$GITHUB_REPOSITORY" \
             "dist-shim/$ASSET" "dist-shim/$ASSET.sha256" --clobber
+
+      # Mirror setup-jac: an inner miss can refresh an immutable outer cache,
+      # while unchanged producers do not consume another cache snapshot.
+      - name: Save changed payload producers (dev channel)
+        if: >-
+          inputs.channel == 'dev' &&
+          steps.restored-layers.outputs.digest != hashFiles('jac/.payload-layers/jacpython/**')
+        uses: actions/cache/save@v4
+        with:
+          path: jac/.payload-layers/jacpython
+          key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.build-inputs.outputs.layers }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Package asset (+ checksum)
         id: pkg
