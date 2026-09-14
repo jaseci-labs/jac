@@ -211,7 +211,7 @@ Two follow-ups sharpen the contract: read paths run without SERIALIZABLE predica
 
 ### Serving is one Jac-native HTTP stack; the FastAPI closure is gone ([#7969](https://github.com/jaseci-labs/jac/pull/7969), jaclang 0.36.0)
 
-The server behind `jac run` is the toolchain's own asyncio HTTP engine (`jaclang.server.serving`): router, websockets, SSE, multipart, middleware, auth, and OpenAPI generation, with no web framework behind it. It replaces both prior stacks -- the stdlib threading server and the FastAPI adapter the scale path exec'd -- and `fastapi`, `uvicorn`, `pydantic`, and `httpx` leave the serving dependency closure (`pydantic`/`httpx` remain only as byLLM optional deps; eject still *emits* a FastAPI project, since that is the exit's job). Scale reuses the same engine behind its gateway pods.
+The server behind `jac run` is the toolchain's own asyncio HTTP engine (`jaclang.server.serving`): router, websockets, SSE, multipart, middleware, auth, and OpenAPI generation, with no web framework behind it. It replaces both prior stacks -- the stdlib threading server and the FastAPI adapter the scale path exec'd -- and `fastapi`, `uvicorn`, `pydantic`, and `httpx` leave the serving dependency closure (`pydantic`/`httpx` remain only as byLLM optional deps). Scale reuses the same engine behind its gateway pods.
 
 **Impact:** endpoint behavior, `/docs`, and auth are unchanged from a caller's perspective. Anything that imported the serving stack's FastAPI app object or relied on starlette's `TestClient` must move to the Jac-native equivalents (`JacTestClient` for in-process testing).
 

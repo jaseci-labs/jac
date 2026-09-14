@@ -23,12 +23,16 @@ obj Node {
         loc: (SourceLocation | None) = None;
 }
 
-obj Identifier(Node) {
+obj Expression(Node) {}
+
+obj Statement(Node) {}
+
+obj Identifier(Expression) {
     has name: str = '',
         `type: TypingLiteral['Identifier'] = 'Identifier';
 }
 
-obj RawCode(Node) {
+obj RawCode(Expression) {
     has code: str = '',
         `type: TypingLiteral['RawCode'] = 'RawCode';
 }
@@ -38,7 +42,7 @@ obj PrivateIdentifier(Node) {
         `type: TypingLiteral['PrivateIdentifier'] = 'PrivateIdentifier';
 }
 
-obj Literal(Node) {
+obj Literal(Expression) {
     has value: str | bool | None | int | float = None,
         raw: (str | None) = None,
         `type: TypingLiteral['Literal'] = 'Literal';
@@ -49,39 +53,39 @@ obj Program(Node) {
         `type: TypingLiteral['Program'] = 'Program';
 }
 
-obj ExpressionStatement(Node) {
+obj ExpressionStatement(Statement) {
     has expression: (Expression | None) = None,
         `type: TypingLiteral['ExpressionStatement'] = 'ExpressionStatement';
 }
 
-obj BlockStatement(Node) {
+obj BlockStatement(Statement) {
     has body: list[Statement] = [],
         `type: TypingLiteral['BlockStatement'] = 'BlockStatement';
 }
 
-obj ReturnStatement(Node) {
+obj ReturnStatement(Statement) {
     has argument: (Expression | None) = None,
         `type: TypingLiteral['ReturnStatement'] = 'ReturnStatement';
 }
 
-obj BreakStatement(Node) {
+obj BreakStatement(Statement) {
     has label: (Identifier | None) = None,
         `type: TypingLiteral['BreakStatement'] = 'BreakStatement';
 }
 
-obj ContinueStatement(Node) {
+obj ContinueStatement(Statement) {
     has label: (Identifier | None) = None,
         `type: TypingLiteral['ContinueStatement'] = 'ContinueStatement';
 }
 
-obj IfStatement(Node) {
+obj IfStatement(Statement) {
     has `test: (Expression | None) = None,
         consequent: (Statement | None) = None,
         alternate: (Statement | None) = None,
         `type: TypingLiteral['IfStatement'] = 'IfStatement';
 }
 
-obj SwitchStatement(Node) {
+obj SwitchStatement(Statement) {
     has discriminant: (Expression | None) = None,
         cases: list[SwitchCase] = [],
         `type: TypingLiteral['SwitchStatement'] = 'SwitchStatement';
@@ -93,12 +97,12 @@ obj SwitchCase(Node) {
         `type: TypingLiteral['SwitchCase'] = 'SwitchCase';
 }
 
-obj ThrowStatement(Node) {
+obj ThrowStatement(Statement) {
     has argument: (Expression | None) = None,
         `type: TypingLiteral['ThrowStatement'] = 'ThrowStatement';
 }
 
-obj TryStatement(Node) {
+obj TryStatement(Statement) {
     has block: (BlockStatement | None) = None,
         handler: (CatchClause | None) = None,
         finalizer: (BlockStatement | None) = None,
@@ -111,13 +115,13 @@ obj CatchClause(Node) {
         `type: TypingLiteral['CatchClause'] = 'CatchClause';
 }
 
-obj WhileStatement(Node) {
+obj WhileStatement(Statement) {
     has `test: (Expression | None) = None,
         body: (Statement | None) = None,
         `type: TypingLiteral['WhileStatement'] = 'WhileStatement';
 }
 
-obj ForStatement(Node) {
+obj ForStatement(Statement) {
     has `init: VariableDeclaration | Expression | None = None,
         `test: (Expression | None) = None,
         update: (Expression | None) = None,
@@ -125,7 +129,7 @@ obj ForStatement(Node) {
         `type: TypingLiteral['ForStatement'] = 'ForStatement';
 }
 
-obj ForOfStatement(Node) {
+obj ForOfStatement(Statement) {
     has left: VariableDeclaration | Pattern | None = None,
         right: (Expression | None) = None,
         body: (Statement | None) = None,
@@ -133,7 +137,7 @@ obj ForOfStatement(Node) {
         `type: TypingLiteral['ForOfStatement'] = 'ForOfStatement';
 }
 
-obj FunctionDeclaration(Node) {
+obj FunctionDeclaration(Statement) {
     has id: (Identifier | None) = None,
         params: list[Pattern] = [],
         body: (BlockStatement | None) = None,
@@ -142,7 +146,7 @@ obj FunctionDeclaration(Node) {
         `type: TypingLiteral['FunctionDeclaration'] = 'FunctionDeclaration';
 }
 
-obj VariableDeclaration(Node) {
+obj VariableDeclaration(Statement) {
     has declarations: list[VariableDeclarator] = [],
         kind: VariableDeclarationKind = 'var',
         `type: TypingLiteral['VariableDeclaration'] = 'VariableDeclaration';
@@ -154,16 +158,16 @@ obj VariableDeclarator(Node) {
         `type: TypingLiteral['VariableDeclarator'] = 'VariableDeclarator';
 }
 
-obj ThisExpression(Node) {
+obj ThisExpression(Expression) {
     has `type: TypingLiteral['ThisExpression'] = 'ThisExpression';
 }
 
-obj ArrayExpression(Node) {
+obj ArrayExpression(Expression) {
     has elements: list[Expression | SpreadElement | None] = [],
         `type: TypingLiteral['ArrayExpression'] = 'ArrayExpression';
 }
 
-obj ObjectExpression(Node) {
+obj ObjectExpression(Expression) {
     has properties: list[(Property | SpreadElement)] = [],
         `type: TypingLiteral['ObjectExpression'] = 'ObjectExpression';
 }
@@ -178,7 +182,7 @@ obj Property(Node) {
         `type: TypingLiteral['Property'] = 'Property';
 }
 
-obj FunctionExpression(Node) {
+obj FunctionExpression(Expression) {
     has id: (Identifier | None) = None,
         params: list[Pattern] = [],
         body: (BlockStatement | None) = None,
@@ -187,7 +191,7 @@ obj FunctionExpression(Node) {
         `type: TypingLiteral['FunctionExpression'] = 'FunctionExpression';
 }
 
-obj ArrowFunctionExpression(Node) {
+obj ArrowFunctionExpression(Expression) {
     has params: list[Pattern] = [],
         body: BlockStatement | Expression | None = None,
         expression: bool = False,
@@ -195,35 +199,35 @@ obj ArrowFunctionExpression(Node) {
         `type: TypingLiteral['ArrowFunctionExpression'] = 'ArrowFunctionExpression';
 }
 
-obj UnaryExpression(Node) {
+obj UnaryExpression(Expression) {
     has operator: str = '',
         prefix: bool = True,
         argument: (Expression | None) = None,
         `type: TypingLiteral['UnaryExpression'] = 'UnaryExpression';
 }
 
-obj BinaryExpression(Node) {
+obj BinaryExpression(Expression) {
     has operator: str = '',
         left: (Expression | None) = None,
         right: (Expression | None) = None,
         `type: TypingLiteral['BinaryExpression'] = 'BinaryExpression';
 }
 
-obj AssignmentExpression(Node) {
+obj AssignmentExpression(Expression) {
     has operator: str = '=',
         left: Pattern | Expression | None = None,
         right: (Expression | None) = None,
         `type: TypingLiteral['AssignmentExpression'] = 'AssignmentExpression';
 }
 
-obj LogicalExpression(Node) {
+obj LogicalExpression(Expression) {
     has operator: str = '&&',
         left: (Expression | None) = None,
         right: (Expression | None) = None,
         `type: TypingLiteral['LogicalExpression'] = 'LogicalExpression';
 }
 
-obj MemberExpression(Node) {
+obj MemberExpression(Expression) {
     has object: Expression | None = None,
         property: (Expression | None) = None,
         computed: bool = False,
@@ -231,38 +235,38 @@ obj MemberExpression(Node) {
         `type: TypingLiteral['MemberExpression'] = 'MemberExpression';
 }
 
-obj ConditionalExpression(Node) {
+obj ConditionalExpression(Expression) {
     has `test: (Expression | None) = None,
         consequent: (Expression | None) = None,
         alternate: (Expression | None) = None,
         `type: TypingLiteral['ConditionalExpression'] = 'ConditionalExpression';
 }
 
-obj CallExpression(Node) {
+obj CallExpression(Expression) {
     has callee: Expression | None = None,
         arguments: list[(Expression | SpreadElement)] = [],
         optional: bool = False,
         `type: TypingLiteral['CallExpression'] = 'CallExpression';
 }
 
-obj NewExpression(Node) {
+obj NewExpression(Expression) {
     has callee: (Expression | None) = None,
         arguments: list[(Expression | SpreadElement)] = [],
         `type: TypingLiteral['NewExpression'] = 'NewExpression';
 }
 
-obj AwaitExpression(Node) {
+obj AwaitExpression(Expression) {
     has argument: (Expression | None) = None,
         `type: TypingLiteral['AwaitExpression'] = 'AwaitExpression';
 }
 
-obj YieldExpression(Node) {
+obj YieldExpression(Expression) {
     has argument: (Expression | None) = None,
         delegate: bool = False,
         `type: TypingLiteral['YieldExpression'] = 'YieldExpression';
 }
 
-obj TemplateLiteral(Node) {
+obj TemplateLiteral(Expression) {
     has quasis: list[TemplateElement] = [],
         expressions: list[Expression] = [],
         `type: TypingLiteral['TemplateLiteral'] = 'TemplateLiteral';
@@ -310,7 +314,7 @@ obj RestElement(Node) {
         `type: TypingLiteral['RestElement'] = 'RestElement';
 }
 
-obj ClassDeclaration(Node) {
+obj ClassDeclaration(Statement) {
     has id: (Identifier | None) = None,
         superClass: (Expression | None) = None,
         body: (ClassBody | None) = None,
@@ -424,14 +428,14 @@ obj JsxText(Node) {
         `type: TypingLiteral['JsxText'] = 'JsxText';
 }
 
-obj JsxElement(Node) {
+obj JsxElement(Expression) {
     has openingElement: (JsxOpeningElement | None) = None,
         children: list[JsxText | JsxExpressionContainer | JsxElement | JsxFragment] = [],
         closingElement: (JsxClosingElement | None) = None,
         `type: TypingLiteral['JsxElement'] = 'JsxElement';
 }
 
-obj JsxFragment(Node) {
+obj JsxFragment(Expression) {
     has children: list[JsxText | JsxExpressionContainer | JsxElement | JsxFragment] = [],
         `type: TypingLiteral['JsxFragment'] = 'JsxFragment';
 }
@@ -445,50 +449,14 @@ obj IndexInfo {
     has value: (Node | None) = None;
 }
 
-glob Statement = ExpressionStatement
-         | BlockStatement
-         | ReturnStatement
-         | BreakStatement
-         | ContinueStatement
-         | IfStatement
-         | SwitchStatement
-         | ThrowStatement
-         | TryStatement
-         | WhileStatement
-         | ForStatement
-         | ForOfStatement
-         | FunctionDeclaration
-         | VariableDeclaration
-         | ClassDeclaration,
-     Expression = (
-         Identifier
-         | RawCode
-         | Literal
-         | ThisExpression
-         | ArrayExpression
-         | ObjectExpression
-         | FunctionExpression
-         | ArrowFunctionExpression
-         | UnaryExpression
-         | BinaryExpression
-         | AssignmentExpression
-         | LogicalExpression
-         | MemberExpression
-         | ConditionalExpression
-         | CallExpression
-         | NewExpression
-         | AwaitExpression
-         | YieldExpression
-         | TemplateLiteral
-         | JsxElement
-         | JsxFragment
-     ),
-     Pattern = Identifier
+glob Pattern: TypeAlias = Identifier
          | ArrayPattern
          | ObjectPattern
          | AssignmentPattern
          | RestElement,
-     Declaration = FunctionDeclaration | VariableDeclaration | ClassDeclaration,
-     ModuleDeclaration = ImportDeclaration | ExportNamedDeclaration;
+     Declaration: TypeAlias = FunctionDeclaration
+         | VariableDeclaration
+         | ClassDeclaration,
+     ModuleDeclaration: TypeAlias = ImportDeclaration | ExportNamedDeclaration;
 
 def es_node_to_dict(nd: Node) -> dict[str, any];

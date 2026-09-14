@@ -1282,7 +1282,7 @@ test "plugin bridge links with full native stack" {
         "    respond(wv_handle, id, result_str);\n"
         "}\n"
         "import from webview { def webview_create(debug: i32, window: int) -> int; }\n"
-        "import from webview { Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n"
+        "import from webview { BindingCallback, Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n"
         "with entry {\n"
         "    Py_Initialize();\n"
         "    _wv_raw = webview_create(0, 0);\n"
@@ -1290,7 +1290,7 @@ test "plugin bridge links with full native stack" {
         "    wv = Webview(handle=_wv_raw);\n"
         '    wv.title("integration-test");\n'
         "    wv.size(640, 480, HINT_NONE);\n"
-        '    wv.bind("__jac_invoke", _jac_invoke_handler);\n'
+        '    wv.bind("__jac_invoke", BindingCallback(invoke=_jac_invoke_handler));\n'
         '    wv.html("<h1>integration</h1>");\n'
         "    ts = PyEval_SaveThread();\n"
         "    run_main_loop();\n"

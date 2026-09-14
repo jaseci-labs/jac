@@ -5,7 +5,7 @@ import from jaclang.server.serving.sse {
     consume_sse_events as consume_sse_stream,
     parse_sse as _parse_sse
 }
-import from jaclang.scale.plugin { JacScalePlugin }
+import from jaclang.scale.runtime.provider { JacScaleRuntime }
 
 
 obj _StubResp {
@@ -184,7 +184,7 @@ test "sv_service_call returns a generator when downstream emits SSE" {
         body_text=_sse_body(events_in), content_type="text/event-stream"
     );
     try {
-        gen = JacScalePlugin.sv_service_call("stream_mod", "stream_events", {});
+        gen = JacScaleRuntime.sv_service_call("stream_mod", "stream_events", {});
         out: list = [];
         for ev in gen {
             out.append(ev);
@@ -201,7 +201,7 @@ test "sv_service_call SSE path surfaces producer error as RuntimeError" {
         content_type="text/event-stream"
     );
     try {
-        gen = JacScalePlugin.sv_service_call("stream_err_mod", "stream_events", {});
+        gen = JacScaleRuntime.sv_service_call("stream_err_mod", "stream_events", {});
         raised_msg = "";
         try {
             for _ in gen {}
@@ -220,7 +220,7 @@ test "sv_service_call still unwraps JSON envelope when not SSE" {
         body_text=json.dumps({"ok": True, "data": {"result": "plain_json_ok"}})
     );
     try {
-        result = JacScalePlugin.sv_service_call("json_mod", "echo", {});
+        result = JacScaleRuntime.sv_service_call("json_mod", "echo", {});
         assert result == "plain_json_ok";
     } finally {
         sv_client._test_clients.pop("json_mod", None);
@@ -234,7 +234,7 @@ test "sv_walker_call carries the idempotency header through the scale transport"
     );
     sv_client._test_clients["hdr_mod"] = stub;
     try {
-        JacScalePlugin.sv_walker_call(
+        JacScaleRuntime.sv_walker_call(
             "hdr_mod", "Greet", {}, None, headers={"X-Jac-Idempotency-Key": "k-1"}
         );
         assert stub.headers_seen[0]["X-Jac-Idempotency-Key"] == "k-1";

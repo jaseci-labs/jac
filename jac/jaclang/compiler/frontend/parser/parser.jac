@@ -141,9 +141,9 @@ import from jaclang.compiler.frontend.unitree {
 }
 import from jaclang.compiler.frontend.unitree { Ellipsis as EllipsisLit }
 
+import from jaclang.runtime.constants { EdgeDir }
 import from jaclang.compiler.frontend.constant {
     Tokens as Tok,
-    EdgeDir,
     CodeContext,
     OwnershipKind,
     ParamKind

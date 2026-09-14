@@ -4,10 +4,10 @@ import unittest.mock as mock;
 import from pathlib { Path }
 import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
     ManifestBuilder,
-    GATEWAY_NAME,
     CONFIG_REVISION_ANNOTATION,
     with_config_revision
 }
+import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }

@@ -5,11 +5,13 @@ subprocess + embedded-server + CLI argparse path — exactly the interface a
 developer or operator uses.
 """
 
+import from tests.support { jac_command }
+
 import os;
 import subprocess;
-import sys;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
+import from jaclang.data.pgembed { PgRuntime }
 
 
 """Run a subprocess and return (rc, stdout, stderr)."""
@@ -18,6 +20,12 @@ def _run(cwd: str, argv: list) -> tuple {
     # -m jaclang must resolve to the source tree under test, not a
     # launcher-embedded snapshot.
     env = dict(os.environ);
+    cache_home = Path(cwd) / '.cache';
+    env['JAC_PG_DIST'] = PgRuntime(
+        data_dir=str(cache_home / 'pg' / 'main')
+    ).fetch_dist();
+    env['JAC_CACHE_HOME'] = str(cache_home);
+    env.pop('JAC_DB_URL', None);
     src = str(Path(jaclang.__file__).parent.parent);
     env['PYTHONPATH'] = src + os.pathsep + env.get('PYTHONPATH', '');
     result = subprocess.run(
@@ -28,7 +36,7 @@ def _run(cwd: str, argv: list) -> tuple {
 
 
 def _jac(cwd: str, args: list) -> tuple {
-    return _run(cwd, [sys.executable, "-m", "jaclang"] + args);
+    return _run(cwd, jac_command() + args);
 }
 
 

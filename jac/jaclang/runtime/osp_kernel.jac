@@ -413,7 +413,19 @@ obj OspEngine {
                     } else {
                         nxt = _dequeue(scope);
                         if nxt is not None {
-                            frames.append(Frame(loc=nxt));
+                            if f.plan is not None
+                                and not f.plan.n_exit_t
+                                and not f.plan.n_exit_u
+                                and not f.plan.w_exit {
+                                f.loc = nxt;
+                                f.phase = 0;
+                                f.band = 0;
+                                f.idx = 0;
+                                f.budget = 0;
+                                f.plan = None;
+                            } else {
+                                frames.append(Frame(loc=nxt));
+                            }
                         } else {
                             f.phase = 2;
                             scope.pending_fence = 0;

@@ -1,5 +1,5 @@
 impl EsastGenPass._osp_model -> OspModel {
-    import from jaclang.runtime.osp_model { get_osp_model }
+    import from jaclang.compiler.passes.osp_analysis { get_osp_model }
     _root = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
     return get_osp_model(_root);
 }
@@ -45,6 +45,7 @@ impl EsastGenPass._osp_const_decl(
 }
 
 impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
+    assert nd.name_ref is not None;
     self.needs_jac_runtime = True;
     is_walker = osp["kind"] == "walker";
     other_ref = self.sync_loc(es.Identifier(name="__other"), jac_node=nd);
@@ -315,7 +316,7 @@ impl EsastGenPass._build_osp_tags_js -> str {
         );
         lines.append(f"__ospC.osp_register_type({tag}, [{isa_members}]);");
     }
-    import from jaclang.runtime.osp_model { stable_osp_tag }
+    import from jaclang.runtime.osp_tag { stable_osp_tag }
     ge_tag = stable_osp_tag("GenericEdge");
     lines.append(f"__ospGenericEdge.prototype.__tag = {ge_tag};");
     lines.append(f"__ospC.osp_register_type({ge_tag}, []);");
@@ -376,7 +377,7 @@ impl EsastGenPass._osp_slots_js(slots: list, tags: dict) -> str {
                 ttag = tags[trig] if (trig in tags) else -1;
                 if ttag < 0 {
                     if self._arch_kind_by_name(trig) in ("node", "edge", "walker") {
-                        import from jaclang.runtime.osp_model { stable_osp_tag }
+                        import from jaclang.runtime.osp_tag { stable_osp_tag }
                         ttag = stable_osp_tag(trig);
                     }
                 }
@@ -506,7 +507,7 @@ impl EsastGenPass._edge_tag_literal(
             _xkind = self._arch_kind_of_type(self._expr_class_type(type_expr));
         }
         if _xkind in ("node", "edge") {
-            import from jaclang.runtime.osp_model { stable_osp_tag }
+            import from jaclang.runtime.osp_tag { stable_osp_tag }
             _tag = stable_osp_tag(_etname);
         }
     }
@@ -686,6 +687,14 @@ impl EsastGenPass._build_osp_filter_pred(
         );
     }
     for cmp in filt.compares {
+        if not isinstance(cmp, uni.CompareExpr) {
+            self.emit(
+                E5097,
+                node_override=cmp,
+                kind="a graph filter outside 'name <op> value' form"
+            );
+            return None;
+        }
         _lhs = cmp.left;
         _js_op: (str | None) = None;
         if isinstance(_lhs, uni.Name)
@@ -693,7 +702,8 @@ impl EsastGenPass._build_osp_filter_pred(
             and (len(cmp.rights) == 1) {
             _op_name = cmp.ops[0].name;
             _op_tok = Tok(_op_name) if (_op_name in Tok.__members__) else None;
-            if _op_tok in (Tok.EE, Tok.NE, Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
+            if _op_tok is not None
+                and _op_tok in (Tok.EE, Tok.NE, Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
                 _js_op = ES_COMPARISON_OPS.get(_op_tok);
             }
         }

@@ -10,6 +10,8 @@ const inputs = [_][]const u8{
     "bootstrap/python/build.sh",           "bootstrap/python/smoke.py",
     "bootstrap/python/finalize.py",        "bootstrap/python/compiler-bridge.patch",
     "bootstrap/python/compiler_runtime.c", "bootstrap/python/compiler_bridge.c",
+    "bootstrap/python/object_api.c",       "bootstrap/python/binding_api.c",
+
     "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
@@ -158,7 +160,8 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
     for (inputs) |path| {
         if (mode != .jacpython and (std.mem.endsWith(u8, path, "/compiler-bridge.patch") or
             std.mem.endsWith(u8, path, "/compiler_bridge.c") or std.mem.endsWith(u8, path, "/compiler_bridge.h") or
-            std.mem.endsWith(u8, path, "/prepare_native.py") or std.mem.endsWith(u8, path, "/compiler_runtime.c"))) continue;
+            std.mem.endsWith(u8, path, "/prepare_native.py") or std.mem.endsWith(u8, path, "/compiler_runtime.c") or
+            std.mem.endsWith(u8, path, "/object_api.c") or std.mem.endsWith(u8, path, "/binding_api.c"))) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
         const content = try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited);
         hash.update(path);
@@ -220,7 +223,7 @@ fn cSourceManifest(a: std.mem.Allocator, manifest: []const u8) ![]const u8 {
 }
 
 fn runSmoke(io: Io, python: []const u8, smoke: []const u8, mode: Mode) !void {
-    var check = try std.process.spawn(io, .{ .argv = &.{ python, "-I", smoke, @tagName(mode) } });
+    var check = try std.process.spawn(io, .{ .argv = &.{ python, "-X", "faulthandler", "-I", smoke, @tagName(mode) } });
     const result = try check.wait(io);
     if (result != .exited or result.exited != 0) {
         return error.RelocationFailed;

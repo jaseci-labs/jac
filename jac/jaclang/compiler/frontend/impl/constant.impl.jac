@@ -1,7 +1,3 @@
-impl Constants.__str__(self: Constants) -> str {
-    return self.value;
-}
-
 impl JacSemTokenModifier.as_str_list -> list[str] {
     return [
         i.name.lower()

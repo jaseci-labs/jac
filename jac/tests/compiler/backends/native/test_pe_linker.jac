@@ -20,10 +20,9 @@ import from jaclang.compiler.driver.compile_options {
 }
 import struct;
 import subprocess;
-import sys;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -335,10 +334,7 @@ test "linking is deterministic" {
 test "nacompile --target windows writes a valid PE via the CLI" {
     out = os.path.join(tempfile.mkdtemp(), "smoke.exe");
     proc = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
+        jac_command(
             "build",
             "--native",
             "--target",
@@ -346,7 +342,7 @@ test "nacompile --target windows writes a valid PE via the CLI" {
             os.path.join(FIXTURES, FIXTURE),
             "-o",
             out
-        ],
+        ),
         capture_output=True,
         text=True,
         timeout=300

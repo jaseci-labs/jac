@@ -1,5 +1,7 @@
 """E2E tests for the Preact framework backend (bundle + browser)."""
 
+import from tests.support { jac_command }
+
 import os;
 import re;
 import shutil;
@@ -76,10 +78,7 @@ def _write_preact_project(dest: Path) {
 """Start `jac run --serve` for a temp preact project. Returns (process, port, url)."""
 def _start_preact_server(project_dir: Path) -> tuple {
     import shutil as sh;
-    import sys;
-    jac_cmd = [sh.which("jac")]
-        if sh.which("jac")
-        else [sys.executable, "-m", "jaclang"];
+    jac_cmd = [sh.which("jac")] if sh.which("jac") else jac_command();
     port = _get_free_port();
     env = os.environ.copy();
     repo_jac = str(Path(__file__).resolve().parents[2]);

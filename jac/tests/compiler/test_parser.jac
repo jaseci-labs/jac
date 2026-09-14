@@ -18,7 +18,7 @@ import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext }
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+import from jaclang.project.source { read_file_with_encoding }
 import from jaclang.testing.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 
@@ -101,7 +101,7 @@ test "parser mod doc test" {
 
 test "all ast has normalize" {
     import from jaclang.compiler.tools.normalize_pass { NormalizePass }
-    import from jaclang.compiler.frontend.helpers { pascal_to_snake }
+    import from jaclang.project.source { pascal_to_snake }
 
     exclude = [
         "UniNode",

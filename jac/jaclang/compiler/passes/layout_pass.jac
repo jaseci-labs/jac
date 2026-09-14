@@ -17,6 +17,7 @@ import from jaclang.compiler.frontend.unitree {
     Module,
     ModuleItem,
     Name,
+    Null,
     TupleVal,
     TypeParam,
     UnaryExpr,
@@ -645,6 +646,7 @@ walker LayoutPass(Transform) {
     def _split_top_level(s: str, sep: str) -> list[str];
     def _build_vtable_layout(arch_name: str, arch_map: dict[str, Archetype]) -> None;
     def _validate_obj_fields(arch: Archetype, arch_map: dict[str, Archetype]) -> None;
+    def _is_layout_compatible_semantic_type(typ: TypeBase | None) -> bool;
     def _is_layout_compatible_type(
         type_node: (UniNode | None), arch_map: dict[str, Archetype]
     ) -> bool;

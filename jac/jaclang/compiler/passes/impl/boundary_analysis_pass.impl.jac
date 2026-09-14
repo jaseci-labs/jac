@@ -113,10 +113,7 @@ impl BoundaryAnalysisPass._native_source_module_of(
             )
         );
     } except ValueError {
-        return None;
-    }
-    if rel.startswith('..') {
-        return None;
+        rel = os.path.abspath(mod.loc.mod_path);
     }
     if rel.endswith('.jac') {
         return rel;

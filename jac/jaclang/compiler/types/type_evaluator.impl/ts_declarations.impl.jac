@@ -15,7 +15,7 @@ impl TypeEvaluator._ts_decl_path(from_loc: ModulePath) -> (str | None) {
     if cache_key in self._ts_decl_path_cache {
         return self._ts_decl_path_cache[cache_key];
     }
-    import from jaclang.compiler.driver.modresolver {
+    import from jaclang.project.modresolver {
         resolve_client_npm_declarations,
         sibling_declaration_file
     }
@@ -464,7 +464,7 @@ impl TypeEvaluator._untyped_external_is_error(node_: UniNode) -> bool {
     if not mod_path {
         return False;
     }
-    import from jaclang.compiler.driver.modresolver { find_jac_project_root }
+    import from jaclang.project.modresolver { find_jac_project_root }
     proj_root = find_jac_project_root(mod_path);
     if not proj_root {
         return False;
@@ -494,6 +494,6 @@ impl TypeEvaluator._jac_virtual_sibling_dts(
     if not import_node.is_virtual_jac or from_mod_type.file_uri is None {
         return None;
     }
-    import from jaclang.compiler.driver.modresolver { sibling_declaration_file }
+    import from jaclang.project.modresolver { sibling_declaration_file }
     return sibling_declaration_file(str(from_mod_type.file_uri));
 }

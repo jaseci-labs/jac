@@ -694,28 +694,7 @@ def finish_module_annotations(g: cfg_builder, plan: ann_scope_plan) {
         }
         ni2 = ni2 + 1;
     }
-    bi = 0;
-    while bi < len(g.u.blocks) {
-        ii2 = 0;
-        blk = g.u.blocks[bi];
-        while ii2 < len(blk.instrs) {
-            ins = blk.instrs[ii2];
-            if ins.opcode == OP_LOAD_CONST
-                and ins.oparg >= ci
-                and ins != plan.load_const_ins {
-                ins.oparg = ins.oparg + 1;
-            }
-            ii2 = ii2 + 1;
-        }
-        bi = bi + 1;
-    }
-    g.u.consts.append(co);
-    ri = len(g.u.consts) - 1;
-    while ri > ci {
-        g.u.consts[ri] = g.u.consts[ri - 1];
-        ri = ri - 1;
-    }
-    g.u.consts[ci] = co;
+    g.u.insert_const(co, ci, plan.load_const_ins);
     ni = g.u.add_name("__annotate__");
     lci.oparg = ci;
     sni = plan.store_name_ins;
@@ -832,7 +811,7 @@ def build_annotate_fn_cfg(
         }
         u.classdict_names = True;
     }
-    u.varnames = fast_varnames_from_sym(sym);
+    u.set_varnames(fast_varnames_from_sym(sym));
     hloc = plan.head_loc;
     if hloc is None {
         hloc = no_loc();

@@ -1,3 +1,4 @@
+import from jaclang.scale.runtime.context.util { GATEWAY_NAME, k8s_safe_name }
 import from jaclang.server { sv_client }
 import from jaclang.server.settings { ServeSettings }
 import from jaclang.scale.config.app_config { AppConfig }
@@ -17,10 +18,8 @@ import from jaclang.scale.deploy.autoscale.http_activation_config {
 import from enum { StrEnum }
 
 
-glob GATEWAY_NAME: str = "__gateway__",
-     CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
+glob CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
      _EXIT_CUSHION_S: int = 5,
-     _RFC1123_MAX_LEN: int = 253,
      _CLIENT_BUILD_ATTEMPTS: int = 3,
      _CLIENT_BUILD_RETRY_PAUSE_S: int = 3,
      _DEP_INSTALL_TIMEOUT_S: int = 900,
@@ -158,31 +157,6 @@ def _vite_env_keys(base: any) -> dict[str, list[str]] {
         }
     }
     return found;
-}
-
-
-def k8s_safe_name(svc_name: str) -> str {
-    if svc_name == GATEWAY_NAME {
-        return "gateway";
-    }
-    import re;
-    if "${" in svc_name {
-        raise ValueError(
-            f"'{svc_name}' still contains an unresolved ${{...}} placeholder, so "
-            f"the environment variable it names was not set where this deploy "
-            f"ran. Export it, or replace it with a literal name."
-        );
-    }
-    safe = re.sub(r"[^a-z0-9.-]", "-", svc_name.lower().replace("_", "-"));
-    safe = re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", safe)[:_RFC1123_MAX_LEN];
-    safe = re.sub(r"[^a-z0-9]+$", "", safe);
-    if not safe {
-        raise ValueError(
-            f"'{svc_name}' has no characters usable in a Kubernetes name; names "
-            f"must contain at least one letter or digit."
-        );
-    }
-    return safe;
 }
 
 
@@ -621,7 +595,7 @@ obj ManifestBuilder {
         candidates: list[str] = [];
         cfg = self._project_config();
         if cfg is not None {
-            import from jaclang.client.targets.registry { client_workspace_app }
+            import from jaclang.project.client_paths { client_workspace_app }
             app = client_workspace_app(
                 cfg, os.path.join(self.project_dir, entry_rel.as_posix())
             );

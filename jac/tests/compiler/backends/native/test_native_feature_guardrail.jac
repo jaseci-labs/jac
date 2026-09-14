@@ -1240,3 +1240,14 @@ test "guardrail: nested event ability demotes its function, not an ICE" {
         f"no demotion recorded for widget in:\n{log}"
     );
 }
+
+test "C callbacks reject a boxed Callable parameter instead of bitcasting it" {
+    program = compile_na_inline(
+        "clib_boxed_callback",
+        "import from c { def register(callback: Callable[[i32], i32]); }\n"
+        "def sign(value: i32) -> i32 { return value; }\n"
+        "def install(callback: Callable[[i32], i32]) { register(callback); }\n"
+        "with entry { install(sign); }\n"
+    );
+    assert has_error_code(program, "E5092") , fmt_errors(program);
+}

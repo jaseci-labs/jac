@@ -13,6 +13,8 @@ Fixtures exercised:
   - perf_deep_call_chain.jac
 """
 
+import from tests.support { jac_command }
+
 import os;
 import re;
 import shutil;
@@ -87,7 +89,7 @@ def _nacompile(fixture: str, out_bin: str) {
     src = os.path.join(FIXTURES, fixture);
     assert os.path.exists(src) , f"fixture missing: {src}";
     comp = subprocess.run(
-        [sys.executable, "-m", "jaclang", "build", "--native", src, "-o", out_bin],
+        jac_command("build", "--native", src, "-o", out_bin),
         capture_output=True,
         text=True,
         timeout=300,

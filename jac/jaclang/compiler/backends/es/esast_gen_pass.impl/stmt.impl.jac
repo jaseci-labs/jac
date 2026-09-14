@@ -360,8 +360,11 @@ def _raised_exc_identity(cause: (uni.Expr | None)) -> tuple[bool, (str | None)] 
     if ty is None {
         return (False, None);
     }
-    shared = ty?.shared;
-    if shared is None or not shared.is_builtin_class {
+    if not isinstance(ty, ClassType) {
+        return (True, None);
+    }
+    shared = ty.shared;
+    if not shared.is_builtin_class {
         return (True, None);
     }
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
@@ -481,12 +484,11 @@ impl EsastGenPass.exit_try_stmt with uni.TryStmt exit {
         async_boundary = AsyncBoundary(
             try_expr=try_iife, awaiting_expr=awaiting_iife, except_exprs=except_iifes
         );
-        self._ensure_backend();
-        for sym in self.backend.async_boundary_symbols(async_boundary) {
+        for sym in self.resolved_backend.async_boundary_symbols(async_boundary) {
             self._inject_runtime_import(sym, here);
         }
         wrapper = self.sync_loc(
-            self.backend.lower_async_boundary(async_boundary), jac_node=here
+            self.resolved_backend.lower_async_boundary(async_boundary), jac_node=here
         );
         outer = self._cur_view_acc();
         if outer is not None {
@@ -553,9 +555,9 @@ impl EsastGenPass.exit_try_stmt with uni.TryStmt exit {
 
             exc_type_name: (str | None) = None;
             if except_node.ex_type {
-                if hasattr(except_node.ex_type, 'sym_name') {
+                if isinstance(except_node.ex_type, uni.NameAtom) {
                     exc_type_name = except_node.ex_type.sym_name;
-                } elif hasattr(except_node.ex_type, 'value') {
+                } elif isinstance(except_node.ex_type, uni.Token) {
                     exc_type_name = except_node.ex_type.value;
                 }
             }
@@ -777,7 +779,7 @@ impl EsastGenPass.exit_iter_for_stmt with uni.IterForStmt exit {
         if isinstance(iter_gen, es.ExpressionStatement) {
             `init = cast(es.Expression, iter_gen.expression);
         } else {
-            `init = cast('es.VariableDeclaration | es.Expression', iter_gen);
+            `init = cast(es.VariableDeclaration | es.Expression, iter_gen);
         }
     }
     `test: (es.Expression | None) = None;

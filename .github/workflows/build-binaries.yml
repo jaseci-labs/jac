@@ -296,7 +296,7 @@ jobs:
             jac/jaclang/runtime \
             jac/jaclang/lib \
             jac/jaclang/cli/cli_boot.jac \
-            jac/jaclang/project/tomlio.jac \
+            jac/jaclang/project \
             jac/jaclang/dist/precompile_bytecode.jac \
             | grep -E '\.(jac|py)$' \
             | grep -vE '(^|/)(tests|test)/|\.test\.jac$' || true)"

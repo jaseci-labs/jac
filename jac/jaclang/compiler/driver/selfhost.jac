@@ -39,6 +39,9 @@ obj SelfHostCache {
             if self.is_selfhost(target_program) {
                 return self.program;
             }
+            if target_program.options.native_required_for(file_path) {
+                return target_program;
+            }
             directory = os.path.dirname(os.path.realpath(file_path));
             package_root = self.jaclang_root();
             while directory.startswith(package_root + os.sep) {
