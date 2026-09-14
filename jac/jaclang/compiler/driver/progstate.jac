@@ -245,6 +245,7 @@ class AnalysisCaches {
         tree_hits: dict[str, int],
         completed_passes: dict[int, set[str]],
         product_tasks: dict[int, dict[CompilationProduct, ProductTask]],
+        module_diagnostics: dict[int, dict[str, DiagLedger]],
         task_owners: dict[int, any],
         early_passes: dict[int, dict[str, PassResult]],
         cache_events: dict[str, int],
@@ -312,6 +313,7 @@ class AnalysisCaches {
         self.tree_hits = {};
         self.completed_passes = {};
         self.product_tasks = {};
+        self.module_diagnostics = {};
         self.task_owners = {};
         self.early_passes = {};
         self.cache_events: dict[str, int] = {};
@@ -333,6 +335,7 @@ class AnalysisCaches {
     def drop_tasks(self: AnalysisCaches, key: int) {
         self.completed_passes.pop(key, None);
         self.product_tasks.pop(key, None);
+        self.module_diagnostics.pop(key, None);
         self.early_passes.pop(key, None);
         self.task_owners.pop(key, None);
     }

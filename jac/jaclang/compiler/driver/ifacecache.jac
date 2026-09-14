@@ -1070,20 +1070,29 @@ obj IfaceRegistry {
             } except Exception {}
         }
         if options.no_cgen {
+            import from jaclang.compiler.driver.progstate { DiagLedger }
+            self.prog.analysis.retain_tasks(mod);
+            self.prog.analysis.module_diagnostics.setdefault(id(mod), {})[
+                self.analysis_profile(options)
+            ] = DiagLedger(
+                errors=list(self.prog.errors_had[err_start:]),
+                warnings=list(self.prog.warnings_had[warn_start:])
+            );
+        }
+        live_profiles = self.prog.analysis.module_diagnostics.get(id(mod), {});
+        if live_profiles {
             profiles = self._existing_profiles(resolved, sections[SEC_DEPS]);
-            errors: list = [];
-            for alert in self.prog.errors_had[err_start:] {
-                errors.append(_alert_record(alert));
-            }
-            warnings: list = [];
-            for alert in self.prog.warnings_had[warn_start:] {
-                warnings.append(_alert_record(alert));
-            }
-            _prof_key = self.analysis_profile(options);
-            if errors {
-                profiles.pop(_prof_key, None);
-            } else {
-                profiles[_prof_key] = {"errors": [], "warnings": warnings};
+            for (profile_key, diagnostics) in live_profiles.items() {
+                if diagnostics.errors {
+                    profiles.pop(profile_key, None);
+                } else {
+                    profiles[profile_key] = {
+                        "errors": [],
+                        "warnings": [
+                            _alert_record(alert) for alert in diagnostics.warnings
+                        ]
+                    };
+                }
             }
             sections[SEC_DIAG] = json.dumps(
                 {"schema": DIAG_SCHEMA, "profiles": profiles}

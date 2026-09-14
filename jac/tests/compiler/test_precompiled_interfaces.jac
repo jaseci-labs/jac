@@ -58,6 +58,45 @@ test "precompiled modules carry their type interface on cold and cached builds" 
     }
 }
 
+test "partial rebuilds preserve complete dependency and diagnostic products" {
+    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    import from jaclang.dist.precompile_bytecode {
+        precompile_unit_context,
+        precompile_worker_exit
+    }
+    with TemporaryDirectory() as directory {
+        package = _package(Path(directory));
+        (package / "dependency.jac").write_text("def answer() -> int { return 42; }\n");
+        source = package / "api.jac";
+        source.write_text(
+            "import from .dependency { answer }\n"
+                + "def run() -> int { return answer(); }\n"
+        );
+        artifacts: list[bytes] = [];
+        try {
+            for attempt in range(2) {
+                precompile_worker_exit();
+                data = precompile_unit(str(source), str(package), collect=False);
+                assert data is not None;
+                artifacts.append(data);
+                if attempt == 0 {
+                    with precompile_unit_context(
+                        str(source), str(package), collect=False
+                    ) as program {
+                        artifact_cache_path(str(source), program).unlink();
+                    }
+                }
+            }
+        } finally {
+            precompile_worker_exit();
+        }
+        assert read_section_bytes(artifacts[0], SEC_DIAG) is not None;
+        assert artifacts[0] == artifacts[1] , (
+            "rebuilding a consumer with cached dependencies changed its products"
+        );
+    }
+}
+
 test "annex bytecode is deterministic and resolves filenames after installation" {
     import marshal;
     import from unittest.mock { patch }
