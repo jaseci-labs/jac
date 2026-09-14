@@ -313,10 +313,12 @@
 -		$(TOKENIZER_HEADERS)
 +PARSER_OBJS= Parser/myreadline.o
 +PARSER_HEADERS= $(srcdir)/Include/internal/pycore_parser.h
-@@ -427,1 +391,3 @@
+@@ -427,1 +391,5 @@
 -		Python/Python-tokenize.o \
 +		Python/jac_compile.o \
 +		Python/jac_runtime.o \
++		Python/jac_objects.o \
++		Python/jac_bindings.o \
 +		Python/jacpython.o \
 @@ -429,3 +392,0 @@
 -		Python/assemble.o \
@@ -389,9 +391,11 @@
 @@ -2822,1 +2742,1 @@
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -3422,0 +3343,5 @@
+@@ -3422,0 +3343,7 @@
 +
 +# Compiler/parser objects are supplied by native Jac and retained-runtime ABI adapters.
 +Python/jac_compile.o: $(srcdir)/Python/jac_compile.c $(srcdir)/Python/jac_compile.h
 +Python/jac_runtime.o: $(srcdir)/Python/jac_runtime.c
++Python/jac_objects.o: $(srcdir)/Python/jac_objects.c
++Python/jac_bindings.o: $(srcdir)/Python/jac_bindings.c
 +Python/pythonrun.o Python/bltinmodule.o: $(srcdir)/Python/jac_compile.h

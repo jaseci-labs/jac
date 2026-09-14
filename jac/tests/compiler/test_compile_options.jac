@@ -729,3 +729,56 @@ test "symbol requests preserve their app and native target context" {
     assert child.codegen_identity() == parent.codegen_identity();
     assert not parent.no_cgen and not parent.symtab_ir_only;
 }
+
+test "native-only policy is retained in dependency and cache identities" {
+    ordinary = _pinned_opts(native_require=[]);
+    strict = _pinned_opts(native_required=True, native_require=[]);
+    scoped = _pinned_opts(native_require=["jaclang.runtime.python.*"]);
+    import from jaclang.compiler.driver.program { JacProgram }
+    registry = JacProgram().iface_registry();
+    for options in (strict, scoped) {
+        assert registry.analysis_profile(options)
+            != registry.analysis_profile(ordinary);
+        assert options.codegen_fingerprint() != ordinary.codegen_fingerprint();
+        assert options.analysis_fingerprint() != ordinary.analysis_fingerprint();
+        for inherited in (options.for_symbols(), options.clone_for_native_import()) {
+            assert inherited.native_required == options.native_required;
+            assert inherited.native_require == options.native_require;
+        }
+    }
+    assert scoped.native_required_for(
+        "/checkout/jaclang/runtime/python/bindings/module.jac"
+    );
+    assert not scoped.native_required_for("/checkout/jaclang/runtime/runtime.jac");
+}
+
+test "native-only dependencies stay in the target rather than the compiler host" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+    program = JacProgram();
+    program.options = _pinned_opts(native_require=["jaclang.runtime.python.*"]);
+    host = SelfHostCache(_jaclang_root="/checkout/jaclang");
+    assert host.resolve("/checkout/jaclang/runtime/python/capi.jac", program)
+        is program;
+    assert host.peek_program() is None;
+}
+
+test "native dependency caches use the running compiler identity" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        native_compiler_fingerprint
+    }
+    options = _pinned_opts();
+    with patch(
+        "jaclang.compiler.driver.jir.running_compiler_digest", return_value="compiler-a"
+    ) {
+        first = native_compiler_fingerprint(options);
+        assert first == native_compiler_fingerprint(options);
+        assert first != native_compiler_fingerprint(_pinned_opts(native_required=True));
+    }
+    with patch(
+        "jaclang.compiler.driver.jir.running_compiler_digest", return_value="compiler-b"
+    ) {
+        assert first != native_compiler_fingerprint(options);
+    }
+}

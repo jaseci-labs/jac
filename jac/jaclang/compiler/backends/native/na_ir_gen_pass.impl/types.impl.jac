@@ -522,6 +522,35 @@ impl NaIRGenPass._struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.
     return self.builder.gep(ptr, [_wide_idx], name="ptr.elem.ptr");
 }
 
+impl NaIRGenPass._restore_list_read(
+    value: (ir.Value | None), collection: uni.UniNode
+) -> (ir.Value | None) {
+    """Restore a list element's declared layout from shared container storage.
+
+    Integer list slots use i64 even for sized integers. Reading such a slot
+    recovers the declared bits; it is not an implicit narrowing conversion of
+    an arbitrary expression. Pointer slots likewise recover their pointee.
+    """;
+    if value is None {
+        return None;
+    }
+    expected = self._list_elem_llvm_of(collection);
+    if isinstance(expected, ir.FloatType) and isinstance(value.type, ir.DoubleType) {
+        return self.builder.fptrunc(value, expected, name="list.elem.float");
+    }
+    if isinstance(expected, ir.IntType)
+        and isinstance(value.type, ir.IntType)
+        and expected.width < value.type.width {
+        return self.builder.trunc(value, expected, name="list.elem.bits");
+    }
+    if isinstance(expected, ir.PointerType)
+        and isinstance(value.type, ir.PointerType)
+        and expected != value.type {
+        return self.builder.bitcast(value, expected, name="list.elem.ptr");
+    }
+    return value;
+}
+
 impl NaIRGenPass._list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
     return self._typed_elem_llvm_of(expr, "list[");
 }
@@ -694,7 +723,7 @@ impl NaIRGenPass._elem_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
     if self._str_desc_ty is not None and et == self._str_desc_ty {
         return "ptr";
     }
-    if isinstance(et, ir.DoubleType) {
+    if isinstance(et, (ir.DoubleType, ir.FloatType)) {
         return "f64";
     }
     if isinstance(et, ir.PointerType) {
@@ -4475,7 +4504,7 @@ impl NaIRGenPass._lower_list_for_elem(elem_llvm: ir.Type) -> ir.Type {
         _elem = ir.IntType(8).as_pointer();
     }
     spec = "i64";
-    if isinstance(_elem, ir.DoubleType) {
+    if isinstance(_elem, (ir.DoubleType, ir.FloatType)) {
         spec = "f64";
     } elif isinstance(_elem, ir.PointerType) {
         spec = "ptr";

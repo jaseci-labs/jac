@@ -1,5 +1,6 @@
 """Application preparation owns compilation; loading consumes its artifacts."""
 
+import dis;
 import os;
 import shutil;
 import tempfile;
@@ -93,6 +94,33 @@ test "executable import discovery includes package initializers and deferred imp
             source,
             'exec'
         );
+        assert runtime_sources(code, source, tmp)
+            == {str(base / name) for name in expected};
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+test "import discovery reads levels past a module's single-byte name pool" {
+    import from jaclang.compiler.backends.py.artifact_imports { runtime_sources }
+    tmp = tempfile.mkdtemp(prefix="jac-prepared-extended-");
+    try {
+        base = Path(tmp);
+        (base / 'pkg').mkdir();
+        expected = ['pkg/__init__.jac', 'pkg/util.jac'];
+        for name in expected {
+            (base / name).write_text('');
+        }
+        source = str(base / 'pkg' / 'main.jac');
+        padding = '\n'.join(f'name{index}()' for index in range(300));
+        code = compile(padding + '\nfrom .util import loader\n', source, 'exec');
+        imports = [
+            instruction
+            for instruction in dis.get_instructions(code)
+            if instruction.opname == 'IMPORT_NAME'
+        ];
+        assert imports[0].arg > 255;
         assert runtime_sources(code, source, tmp)
             == {str(base / name) for name in expected};
     } finally {

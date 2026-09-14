@@ -2,11 +2,7 @@ import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.placement.workspace {
-    AppSpec,
-    app_for_path,
-    workspace_for_path
-}
+import from jaclang.project.workspace { AppSpec, app_for_path, workspace_for_path }
 
 def _coerce_module(module: uni.Module, context: CodeContext) {
     module.set_code_context(context);
@@ -101,7 +97,9 @@ def is_server_anchored_module(module: (uni.Module | None)) -> bool {
         }
         resolved = imp.from_loc.resolve_relative_path();
         if not isinstance(resolved, str) or not resolved.endswith('.jac') {
-            import from jaclang.compiler.driver.modresolver { is_client_npm_import }
+            import from jaclang.compiler.placement.placement_pins {
+                is_client_npm_import
+            }
             if is_client_npm_import(
                 imp.from_loc.dot_path_str, module.loc.mod_path or ''
             ) {
@@ -269,7 +267,7 @@ def bridgeable_import_target(nd: uni.Import) -> (str | None) {
 }
 
 def is_service_app_entry(path: str) -> bool {
-    import from jaclang.compiler.placement.workspace { app_for_path }
+    import from jaclang.project.workspace { app_for_path }
     if not path {
         return False;
     }

@@ -1,5 +1,6 @@
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.constant { EdgeDir, Tokens as Tok }
+import from jaclang.runtime.constants { EdgeDir }
+import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E0084, E0085 }
 import from jaclang.compiler.passes.uni_pass { UniPass }
 

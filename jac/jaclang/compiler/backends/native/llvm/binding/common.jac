@@ -1,10 +1,10 @@
 import atexit;
-def _encode_string(s: any) -> object {
+def _encode_string(s: str) -> bytes {
     encoded = s.encode('utf-8');
     return encoded;
 }
 
-def _decode_string(b: any) -> object {
+def _decode_string(b: bytes) -> str {
     return b.decode('utf-8');
 }
 

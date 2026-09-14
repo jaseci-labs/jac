@@ -1,7 +1,7 @@
 import from jaclang.server.endpoint_contract { check_endpoint_contract }
 import logging;
 import os;
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.project.config { get_config }
 import from jaclang.server.endpoints.walkers { idempotency_key, request_caller }
 import from jaclang.server.outbox { remember_response, replay_cached }
@@ -61,7 +61,6 @@ def _outcome(result: any, fallback: str) -> TransportResponse {
         return TransportResponse.fail(
             code=str(result.get('error_code') or 'EXECUTION_ERROR').upper(),
             message=result.get('error', fallback),
-            details=result.get('traceback') if 'traceback' in result else None,
             meta=Meta(extra={'http_status': int(result.get('http_status') or 500)})
         );
     }

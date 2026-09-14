@@ -128,14 +128,14 @@ import from jaclang.compiler.frontend.unitree {
     YieldExpr,
     is_identifier_slot
 }
+import from jaclang.runtime.constants { EdgeDir }
 import from jaclang.compiler.frontend.constant {
     CodeContext,
-    EdgeDir,
     is_borrow_kind,
     OwnershipKind,
     SymbolStorage
 }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.runtime.scalars { shape_of }
 

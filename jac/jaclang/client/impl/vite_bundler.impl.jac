@@ -30,6 +30,9 @@ def _build_vite_command(build_dir: Path, args: list[str]) -> list[str] {
 }
 
 impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
+    if self.build_dir is not None {
+        return self.build_dir;
+    }
     try {
         import from jaclang.project.config { get_config }
         config = get_config();
@@ -49,11 +52,14 @@ impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
 }
 
 impl ViteBundler._client_app_dir(self: ViteBundler) -> Path {
+    if self.build_dir is not None {
+        return self.build_dir;
+    }
     client_dir = self._get_client_dir();
     try {
         import from jaclang.project.config { get_config }
-        import from jaclang.client.targets.registry { client_workspace_app }
-        app = client_workspace_app(get_config());
+        import from jaclang.project.client_paths { client_workspace_app }
+        app = client_workspace_app(get_config(), self.config_loader.entry_path);
         if app is not None {
             return client_dir / app.name;
         }
@@ -91,10 +97,11 @@ impl ViteBundler.create_package_json(
     dependencies = package_config.get('dependencies', {});
     dev_dependencies = package_config.get('devDependencies', {});
 
+    config_relative = os.path.relpath(configs_dir / 'vite.config.js', self.project_dir);
     scripts = {
-        'build': 'vite build --config .jac/client/configs/vite.config.js',
-        'dev': 'vite dev --config .jac/client/configs/vite.config.js',
-        'preview': 'vite preview --config .jac/client/configs/vite.config.js'
+        'build': f'vite build --config {config_relative}',
+        'dev': f'vite dev --config {config_relative}',
+        'preview': f'vite preview --config {config_relative}'
     };
     user_scripts = package_config.get('scripts', {});
     scripts.update(user_scripts);
@@ -440,6 +447,9 @@ impl ViteBundler._generate_vite_config_content(
     client_paths: (list[str] | None) = None
 ) -> str {
     build_dir = self._get_client_dir();
+    project_relative = Path(
+        os.path.relpath(self.project_dir, build_dir / 'configs')
+    ).as_posix();
     vite_config_data = self.config_loader.get_vite_config();
 
     try {
@@ -691,7 +701,7 @@ import fs from "fs";
 import {{ fileURLToPath }} from "url";
 {imports_section}const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.resolve(__dirname, "..");
-const projectRoot = path.resolve(__dirname, "../../..");
+const projectRoot = path.resolve(__dirname, "{project_relative}");
 import jacFastRefresh from "./jac-fast-refresh.js";
 import jacClientEvents, {{ recordClientEvent }} from "./jac-client-events.js";
 
@@ -930,9 +940,9 @@ import path from "path";
 import fs from "fs";
 import {{ fileURLToPath }} from "url";
 {imports_section}const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Config is in configs/ inside .jac/client/, so go up one level to .jac/client/, then up two more to project root
+// Resolve this configuration relative to its exported workspace.
 const buildDir = path.resolve(__dirname, "..");
-const projectRoot = path.resolve(__dirname, "../../..");
+const projectRoot = path.resolve(__dirname, "{project_relative}");
 
 // Jac source mapper plugin - chains the per-file column maps the Jac client
 // compiler writes, so a bundled stack keeps its way back to .jac coordinates.
@@ -1121,14 +1131,15 @@ impl ViteBundler.init(
     project_dir: Path,
     output_dir: Optional[Path] = None,
     minify: bool = False,
-    config_path: Optional[Path] = None
+    config_path: Optional[Path] = None,
+    entry_path: str = ""
 ) {
     import from jaclang.project.config { find_project_root }
     project_root = find_project_root(project_dir);
     self.project_dir = project_root[0] if project_root else project_dir;
     self.minify = minify;
     self.config_path = config_path;
-    self.config_loader = JacClientConfig(self.project_dir);
+    self.config_loader = JacClientConfig(self.project_dir, entry_path=entry_path);
 
     self.output_dir = output_dir or (self._client_app_dir() / 'dist');
 

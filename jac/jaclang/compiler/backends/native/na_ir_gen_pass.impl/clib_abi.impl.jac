@@ -210,7 +210,14 @@ impl NaIRGenPass._codegen_clib_call(
                 if pp.get("is_str") and isinstance(_cv.type, ir.PointerType) {
                     _cv = self._membrane_str_out(self.builder, _cv);
                 }
-                call_args.append(self._coerce_type(_cv, pp["type"]));
+                scalar_type = pp["type"];
+                if isinstance(scalar_type, ir.PointerType)
+                    and not scalar_type.is_opaque
+                    and isinstance(scalar_type.pointee, ir.FunctionType) {
+                    call_args.append(self._clib_coerce_callback(_cv, scalar_type));
+                } else {
+                    call_args.append(self._coerce_type(_cv, scalar_type));
+                }
             }
         } elif kind == "struct_mem" {
             if jac_val is None {

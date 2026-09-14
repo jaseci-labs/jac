@@ -127,7 +127,11 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
             }
         }
 
-        if isinstance(nd, uni.Expr) and self._elem_kind(_result.type) != "raw" {
+        if isinstance(nd, uni.Expr)
+            and (
+                self._elem_kind(_result.type) != "raw"
+                or self._opt_payload_of(_result.type) is not None
+            ) {
             import from jaclang.compiler.passes.rc_facts_pass {
                 Ownership,
                 result_ownership
@@ -1625,9 +1629,13 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
         }
 
         self.builder.position_at_end(rhs_bb);
-        _l_owned = isinstance(result.type, ir.PointerType) and self._is_owned(result);
+        _l_owned = self._is_owned(result)
+            and (
+                self._elem_kind(result.type) != "raw"
+                or self._opt_payload_of(result.type) is not None
+            );
         if _l_owned {
-            self._emit_rc_release_simple(result, op="bool_drop", loc="");
+            self._release_owned_args([result], op="bool_drop");
         }
         _bool_peer_saved = self._peer_container_ty;
         self._peer_container_ty = self._opt_ptr_payload_of(result.type);
@@ -1643,6 +1651,8 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
             result = cond;
             target_t = ir.IntType(1);
         }
+
+        rhs_owned = self._is_owned(rhs_val);
         if rhs_val.type != target_t {
             if self._opt_ptr_payload_of(rhs_val.type) == target_t {
                 rhs_val = self.builder.extract_value(rhs_val, 1, name="bool.opt.rpv");
@@ -1650,11 +1660,12 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
                 rhs_val = self._coerce_type(rhs_val, target_t);
             }
         }
-        _managed = isinstance(target_t, ir.PointerType);
-        _r_owned = _managed and self._is_owned(rhs_val);
+        _managed = self._elem_kind(target_t) != "raw"
+            or self._opt_payload_of(target_t) is not None;
+        _r_owned = _managed and (rhs_owned or self._is_owned(rhs_val));
         _own = _managed and (_l_owned or _r_owned);
         if _own and not _r_owned and not self.builder.block.is_terminated {
-            self._emit_rc_retain(rhs_val, op="bool_keep", loc="");
+            self._emit_take_ref(rhs_val, op="bool_keep");
         }
         rhs_end_bb = self.builder.block;
         if not self.builder.block.is_terminated {
@@ -1673,7 +1684,7 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
             }
         }
         if _own and not _l_owned {
-            self._emit_rc_retain(result, op="bool_keep", loc="");
+            self._emit_take_ref(result, op="bool_keep");
         }
         take_end_bb = self.builder.block;
         self.builder.branch(merge_bb);
@@ -2115,7 +2126,12 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 type_name = self._infer_type_name(obj_val);
             }
             if type_name is not None {
-                return self._read_field_or_refuse(nd, obj_val, right_name, type_name);
+                value = self._read_field_or_refuse(nd, obj_val, right_name, type_name);
+
+                if right_name not in self.struct_field_inline.get(type_name, set()) {
+                    return self._finish_borrowed_read(obj_val, value);
+                }
+                return value;
             }
         }
     }
@@ -2228,17 +2244,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                             target_val, idx_val, elem_type_name
                         );
 
-                        if result is not None and elem_type_name == "ptr" {
-                            cast_type = self._list_elem_llvm_of(nd.target);
-                            if (
-                                isinstance(cast_type, ir.PointerType)
-                                and result.type != cast_type
-                            ) {
-                                result = self.builder.bitcast(
-                                    result, cast_type, name="idx.cast"
-                                );
-                            }
-                        }
+                        result = self._restore_list_read(result, nd.target);
                         return self._finish_borrowed_read(target_val, result);
                     }
                 }
@@ -2371,17 +2377,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                                 target_val, idx_val, elem_type_name
                             );
 
-                            if result is not None and elem_type_name == "ptr" {
-                                cast_type = self._list_elem_llvm_of(nd.target);
-                                if (
-                                    isinstance(cast_type, ir.PointerType)
-                                    and result.type != cast_type
-                                ) {
-                                    result = self.builder.bitcast(
-                                        result, cast_type, name="chain.idx.cast"
-                                    );
-                                }
-                            }
+                            result = self._restore_list_read(result, nd.target);
                             return self._finish_borrowed_read(target_val, result);
                         }
                     }

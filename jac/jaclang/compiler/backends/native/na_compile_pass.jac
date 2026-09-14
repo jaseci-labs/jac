@@ -46,6 +46,7 @@ obj DepClibMeta {
 def native_compiler_fingerprint(options: CompileOptions) -> str;
 def native_dep_cache_paths(real_path: str, options: CompileOptions) -> tuple[str, str];
 def native_demoted_ir_symbols(llvm_ir_text: str) -> list[str];
+def require_native_ir(llvm_ir_text: str) -> None;
 def native_linked_ir_text(module: uni.Module) -> str;
 def native_ir_live_externs(llvm_ir_text: str) -> set[str];
 def native_prune_live_record(pending: dict, declared: set[str]) -> dict[str, set[str]];

@@ -456,7 +456,16 @@ target = ""               # "" or "host" (default), "wasm32", or an LLVM triple
 opt = 2                   # optimization level
 debug = false             # DWARF, unoptimized JIT path, and the RC trace machinery, together
 threads = 4               # `flow for` width; a built binary can override with JAC_THREADS
+require = []              # Module-name patterns whose native lowering must succeed
 ```
+
+`require` makes matching modules native-only during checking and building. For
+example, `require = ["jaclang.runtime.python.*"]` covers JacPython's runtime
+modules and bindings. Lowering failures remain errors; Python fallback and
+opaque field erasure cannot satisfy this contract. Required dependencies stay
+in the target compilation, and checks verify the native dependency closure
+without executing it. The policy is included in analysis and code-generation
+cache identities.
 
 A built binary reads two environment variables at run time and no others: `JAC_GC=off` disables collection for leak debugging (collection is on by default under `managed`), and `JAC_THREADS` overrides the `flow for` width. Nothing at compile time reads the environment; `jac explain memory|placement|ir` replaces the old diagnostic variables.
 

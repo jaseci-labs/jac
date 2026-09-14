@@ -9,7 +9,7 @@ import from types { UnionType }
 import from typing { ClassVar, TypeVar }
 import from uuid { UUID, uuid4 }
 import weakref;
-import from jaclang.compiler.frontend.constant { EdgeDir }
+import from jaclang.runtime.constants { EdgeDir }
 glob logger = getLogger(__name__),
      TARCH = TypeVar('TARCH', bound='Archetype'),
      TANCH = TypeVar('TANCH', bound='Anchor'),

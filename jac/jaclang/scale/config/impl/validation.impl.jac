@@ -6,10 +6,10 @@ import from jaclang.scale.config.plugin_config {
     JacScalePluginConfig,
     app_scale_schema
 }
-import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
+import from jaclang.scale.deploy.target.registry { DeploymentTargetRegistry }
 
 impl known_deploy_targets -> list[str] {
-    return DeploymentTargetFactory.known_targets();
+    return DeploymentTargetRegistry.known_targets();
 }
 
 impl scale_schema_options -> dict[str, any] {

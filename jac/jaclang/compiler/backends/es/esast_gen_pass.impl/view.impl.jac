@@ -161,8 +161,7 @@ impl EsastGenPass._jsx_fragment(
     children: es.Expression, anchor: uni.UniNode
 ) -> es.CallExpression {
     import from jaclang.client.client_surface { backend_jsx_factory_name }
-    self._ensure_backend();
-    factory_name = backend_jsx_factory_name(self.backend);
+    factory_name = backend_jsx_factory_name(self.resolved_backend);
     return self.sync_loc(
         es.CallExpression(
             callee=self.sync_loc(es.Identifier(name=factory_name), jac_node=anchor),
@@ -267,17 +266,16 @@ impl EsastGenPass.exit_jsx_element with uni.JsxElement exit {
     }
 
     if here.dynamic_tag is not None {
-        self._ensure_backend();
-        if self.backend.import_source("Dynamic") != self.backend.runtime_module() {
+        if self.resolved_backend.import_source("Dynamic")
+            != self.resolved_backend.runtime_module() {
             self._inject_runtime_import("Dynamic", here);
         }
     }
     here.gen.es_ast = self.jsx_processor.element(here);
 
-    self._ensure_backend();
     view = self.jsx_processor._view_by_node.get(id(here));
     if view is not None {
-        for sym in self.backend.view_runtime_symbols(view) {
+        for sym in self.resolved_backend.view_runtime_symbols(view) {
             self._inject_runtime_import(sym, here);
         }
     }
@@ -315,6 +313,7 @@ impl EsastGenPass._ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None) {
 }
 
 impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
+    assert isinstance(nd.signature, uni.EventSignature);
     inner = ModuleFacts.unwrap_body(nd);
     body_stmts = self._collect_stmt_body(inner);
     body_stmts = self._prepend_hoisted(nd, body_stmts);
@@ -322,7 +321,7 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
     is_entry = nd.signature.event.name == Tok.KW_ENTRY;
     is_async = nd.is_async;
 
-    deps_elements: list[es.Expression | es.SpreadElement | None] = [];
+    deps_elements: list[es.Expression] = [];
     arch_tag = nd.signature.arch_tag_info;
     if arch_tag {
         if isinstance(arch_tag, (uni.ListVal, uni.TupleVal)) {
@@ -338,11 +337,10 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
     effect = Effect(
         body=body_stmts, deps=deps_elements, is_entry=is_entry, is_async=is_async
     );
-    self._ensure_backend();
-    for sym in self.backend.effect_symbols(effect) {
+    for sym in self.resolved_backend.effect_symbols(effect) {
         self._inject_runtime_import(sym, nd);
     }
-    lowered = self.backend.lower_effect(effect);
+    lowered = self.resolved_backend.lower_effect(effect);
     if lowered {
         nd.gen.es_ast = self.sync_loc(lowered[0], jac_node=nd);
     }
@@ -385,11 +383,10 @@ impl EsastGenPass.exit_arch_has with uni.ArchHas exit {
                 }
             }
             ref_field = RefField(name=var_name, init_expr=ref_init);
-            self._ensure_backend();
-            for sym in self.backend.ref_field_symbols(ref_field) {
+            for sym in self.resolved_backend.ref_field_symbols(ref_field) {
                 self._inject_runtime_import(sym, here);
             }
-            for stmt in self.backend.lower_ref_field(ref_field) {
+            for stmt in self.resolved_backend.lower_ref_field(ref_field) {
                 statements.append(self.sync_loc(stmt, jac_node=has_var));
             }
             self._register_declaration(var_name);
@@ -403,17 +400,16 @@ impl EsastGenPass.exit_arch_has with uni.ArchHas exit {
             init_value = es.Identifier(name='undefined');
         }
 
-        self._ensure_backend();
-        setter_name = self.backend._get_setter_name(var_name);
+        setter_name = self.resolved_backend._get_setter_name(var_name);
         state_field = StateField(
             name=var_name,
             init_expr=init_value,
             bind_setter=not self._setter_name_taken(has_var, setter_name)
         );
-        for sym in self.backend.state_field_symbols(state_field) {
+        for sym in self.resolved_backend.state_field_symbols(state_field) {
             self._inject_runtime_import(sym, here);
         }
-        for stmt in self.backend.lower_state_field(state_field) {
+        for stmt in self.resolved_backend.lower_state_field(state_field) {
             statements.append(self.sync_loc(stmt, jac_node=has_var));
         }
 

@@ -106,7 +106,9 @@ impl EsastGenPass._is_ct_type_param(nd: uni.Name) -> bool {
     return isinstance(owner, uni.TypeParam) and owner.is_comptime;
 }
 
-impl EsastGenPass._ct_ctor_slots(nd: uni.UniNode) -> (list[tuple] | None) {
+impl EsastGenPass._ct_ctor_slots(
+    nd: uni.UniNode
+) -> (list[tuple[str, uni.Expr]] | None) {
     if not isinstance(nd, uni.AtomTrailer) or nd.is_attr {
         return None;
     }
@@ -114,8 +116,11 @@ impl EsastGenPass._ct_ctor_slots(nd: uni.UniNode) -> (list[tuple] | None) {
         return None;
     }
     t = nd.target.type;
-    shared = t?.shared;
-    if shared is None or not shared.ct_params {
+    if not isinstance(t, ClassType) {
+        return None;
+    }
+    shared = t.shared;
+    if not shared.ct_params {
         return None;
     }
     arch = shared.symbol_table;
@@ -124,13 +129,17 @@ impl EsastGenPass._ct_ctor_slots(nd: uni.UniNode) -> (list[tuple] | None) {
     }
     s0 = nd.right.slices[0] if nd.right.slices else None;
     head = s0.start if s0 is not None else None;
-    vals: list = `list(head.values)
+    vals: list[uni.Expr | uni.KWPair] = list(head.values)
         if isinstance(head, uni.TupleVal)
         else ([head] if head else []);
-    out: list[tuple] = [];
+    out: list[tuple[str, uni.Expr]] = [];
     for (i, tp) in enumerate(arch.type_params or []) {
         if tp.is_comptime and i < len(vals) {
-            out.append((tp.name.value, vals[i], ));
+            value = vals[i];
+            if not isinstance(value, uni.Expr) {
+                return None;
+            }
+            out.append((tp.name.value, value));
         }
     }
     return out;

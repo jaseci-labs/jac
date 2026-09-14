@@ -1,0 +1,8 @@
+{
+  "site-check": {"wall_seconds": 90, "max_rss_mib": 2560},
+  "desktop-build": {"wall_seconds": 240, "max_rss_mib": 6144},
+  "production-build": {"wall_seconds": 180, "max_rss_mib": 6144},
+  "quickstart-ready": {"wall_seconds": 120},
+  "production-ready": {"wall_seconds": 30},
+  "fleet-ready": {"wall_seconds": 180}
+}

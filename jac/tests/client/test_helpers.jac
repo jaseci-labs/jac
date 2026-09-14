@@ -1,10 +1,11 @@
 """Shared test utilities for jac-client tests."""
 
+import from tests.support { jac_command }
+
 import gc;
 import os;
 import shutil;
 import socket;
-import sys;
 import time;
 import from pathlib { Path }
 import from http.client { RemoteDisconnected }
@@ -28,7 +29,7 @@ def get_jac_command -> list[str] {
     if jac_path {
         return [jac_path];
     }
-    return [sys.executable, "-m", "jaclang"];
+    return jac_command();
 }
 
 """Get environment dict with bun in PATH."""

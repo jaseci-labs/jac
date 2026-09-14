@@ -1,4 +1,21 @@
 """Native request orchestration; CPython value conversion stays at the ABI."""
+import from jaclang.runtime.python.bindings.pickle { PyInit__pickle }
+import from jaclang.runtime.python.bindings.array { PyInit_array }
+import from jaclang.runtime.python.bindings.itertools { PyInit_itertools }
+import from jaclang.runtime.python.bindings.functools { PyInit__functools }
+import from jaclang.runtime.python.bindings.math { PyInit_math }
+import from jaclang.runtime.python.bindings.collections { PyInit__collections }
+import from jaclang.runtime.python.bindings.struct { PyInit__struct }
+import from jaclang.runtime.python.bindings.cmath { PyInit_cmath }
+
+import from jaclang.runtime.python.bindings.csv { PyInit__csv }
+import from jaclang.runtime.python.bindings.json { PyInit__json }
+import from jaclang.runtime.python.bindings.queue { PyInit__queue }
+import from jaclang.runtime.python.bindings.operator { PyInit__operator }
+import from jaclang.runtime.python.bindings.binascii { PyInit_binascii }
+import from jaclang.runtime.python.bindings.random { PyInit__random }
+import from jaclang.runtime.python.bindings.bisect { PyInit__bisect }
+import from jaclang.runtime.python.bindings.heapq { PyInit__heapq }
 import from jaclang.runtime.python.tokenize {
     token_iterator_state,
     token_iterator,

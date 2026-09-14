@@ -28,7 +28,7 @@ import from jaclang.compiler.backends.native.na_compile_pass { native_linked_ir_
 import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
 import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
 import from jaclang.compiler.backends.native.pe_linker { PeLinker }
-import from jaclang.compiler.backends.native.linker_common {
+import from jaclang.compiler.backends.native.floor {
     clib_needed_libs,
     clib_symbol_lib_map
 }
@@ -37,7 +37,8 @@ import from jaclang.compiler.backends.native.linker_common {
 # tests on the production code path -- a prior divergence here let a quoted-
 # symbol glob-init bug in _inject_shared_init slip past this whole file.
 import from jaclang.compiler.backends.native.shared_emit {
-    inject_shared_init as _inject_shared_init
+    inject_shared_init as _inject_shared_init,
+    internalize_native_implementation
 }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 
@@ -72,6 +73,7 @@ def emit_shared_object(fixture: str, triple: str) -> tuple {
         llvm.initialize_all_targets();
         llvm.initialize_all_asmprinters();
         mod = llvm.parse_assembly(src);
+        internalize_native_implementation(mod, exports + ["__jac_shared_init"]);
         mod.verify();
         tm = llvm.Target.from_triple(triple).create_target_machine(
             opt=2, reloc="pic", codemodel="small"
@@ -709,5 +711,108 @@ test "jac build --native --lib resolves a CPython C-API import from the host pro
         );
     } finally {
         shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+test "private native helpers cannot satisfy another library's C symbols" {
+    import ctypes;
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    native = llvm.parse_assembly(
+        """
+        @state = global i64 41
+        @public_state = global i64 9
+        declare i64 @foreign_operation(i64)
+        define hidden i32 @linker_support() { ret i32 0 }
+        define i64 @crc32() {
+            %value = load i64, ptr @state
+            %result = add i64 %value, 1
+            ret i64 %result
+        }
+        define i64 @native_probe() {
+            %result = call i64 @crc32()
+            ret i64 %result
+        }
+    """
+    );
+    internalize_native_implementation(native, ["native_probe", "public_state"]);
+    # Linking this second module used to collide with the implementation's
+    # global state and crc32. Dynamic linking could silently bind the wrong ABI.
+    library = llvm.parse_assembly(
+        """
+        @state = global i64 777
+        define i64 @crc32() {
+            %result = load i64, ptr @state
+            ret i64 %result
+        }
+        define i64 @library_probe() {
+            %result = call i64 @crc32()
+            ret i64 %result
+        }
+    """
+    );
+    native.link_in(library);
+    native.verify();
+    assert any(
+        value.name == "foreign_operation" and value.is_declaration
+        for value in native.functions
+    );
+    target = llvm.Target.from_default_triple().create_target_machine();
+    engine = llvm.create_mcjit_compiler(native, target);
+    engine.finalize_object();
+    call = ctypes.CFUNCTYPE(ctypes.c_int64);
+    assert call(engine.get_function_address("native_probe"))() == 42;
+    assert call(engine.get_function_address("library_probe"))() == 777;
+    assert engine.get_global_value_address("public_state") != 0;
+    assert engine.get_function_address("linker_support") != 0;
+    engine.close();
+}
+
+test "opaque native owners account for object and growing list allocations" {
+    import ctypes;
+    import from jaclang.compiler.backends.native.shared_emit { init_object_codegen }
+    program = JacProgram();
+    module = program.compile(
+        file_path=os.path.join(FIXTURES, "shared_heap_accounting.jac"),
+        options=CompileOptions(
+            aot_mode=True, default_codespace="native", memory_profile="managed"
+        )
+    );
+    assert not program.errors_had;
+    assert module is not None;
+    (source, exports) = _inject_shared_init(
+        native_linked_ir_text(module), module.gen.interop_manifest
+    );
+    assert "jac_heap_size" in exports and "jac_list_heap_size" in exports;
+    init_object_codegen();
+    compiled = llvm.parse_assembly(source);
+    compiled.verify();
+    target = llvm.Target.from_default_triple().create_target_machine();
+    engine = llvm.create_mcjit_compiler(compiled, target);
+    engine.finalize_object();
+    ctypes.CFUNCTYPE(None)(engine.get_function_address("__jac_shared_init"))();
+    make = ctypes.CFUNCTYPE(ctypes.c_void_p)(engine.get_function_address("make_owned"));
+    grow = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(
+        engine.get_function_address("grow_owned")
+    );
+    size = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_void_p)(
+        engine.get_function_address("owned_size")
+    );
+    release = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(
+        engine.get_function_address("jac_release")
+    );
+    heap_size = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_uint64)(
+        engine.get_function_address("jac_heap_size")
+    );
+    assert heap_size(0) == 0;
+    owner = make();
+    try {
+        before = size(owner);
+        assert before > 0;
+        grow(owner);
+        assert size(owner) >= before + 1000 * 8;
+    } finally {
+        release(owner);
     }
 }

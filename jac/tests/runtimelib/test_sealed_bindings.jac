@@ -4,6 +4,8 @@ still resolves when the served entry never loaded it."""
 
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
+import from jaclang.runtime.runtime { JacRuntime as Jac }
+import from jaclang.compiler.driver.application { prepare_application }
 import from jaclang.server.server { ModuleIntrospector }
 
 
@@ -18,8 +20,9 @@ test "a sealed binding resolves a server module with a relative import" {
         (pkg / "mod.jac").write_text(
             "import from .sib { helper }\n\ndef:pub answer -> str { return helper(); }\n"
         );
+        prepare_application(str(pkg / "mod.jac"), Jac.get_program(), str(img));
         intro = ModuleIntrospector("mod", str(pkg));
-        intro._register_sealed_bindings(
+        intro._register_prepared_bindings(
             {
                 "cross_bindings": [
                     {

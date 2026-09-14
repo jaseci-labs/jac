@@ -177,7 +177,7 @@ class ValueRef(ffi.ObjectRef) {
     }
 
     @property
-    def name(self: ValueRef) -> object {
+    def name(self: ValueRef) -> str {
         return _decode_string(ffi.lib.LLVMPY_GetValueName(self));
     }
 
@@ -251,6 +251,24 @@ class ValueRef(ffi.ObjectRef) {
         as a string. Kept for the wasm libc linker, which compares signatures
         to enforce the jac_host1 import contract (see wasm_build._link_wasm_libc).
         """
+    def function_signature(self: ValueRef) -> tuple[str, list[str], bool] {
+        if not self.is_function {
+            raise TypeError('Function signature requires a function value');
+        }
+        function_type = ffi.lib.LLVMPY_GlobalGetValueType(self);
+        result = ffi.ret_string(
+            ffi.lib.LLVMPY_PrintType(ffi.lib.LLVMPY_GetReturnType(function_type))
+        );
+        count = ffi.lib.LLVMPY_CountParamTypes(function_type);
+        parameters = (ffi.LLVMTypeRef * count)();
+        ffi.lib.LLVMPY_GetParamTypes(function_type, parameters);
+        return (
+            result,
+            [ffi.ret_string(ffi.lib.LLVMPY_PrintType(item)) for item in parameters],
+            bool(ffi.lib.LLVMPY_IsFunctionVararg(function_type))
+        );
+    }
+
     @property
     def global_value_type(self: ValueRef) -> object {
         assert (self.is_global or self.is_function);
@@ -590,6 +608,14 @@ with entry {
     ffi.lib.LLVMPY_GlobalGetValueType.restype = ffi.LLVMTypeRef;
     ffi.lib.LLVMPY_PrintType.argtypes = [ffi.LLVMTypeRef];
     ffi.lib.LLVMPY_PrintType.restype = c_void_p;
+    ffi.lib.LLVMPY_GetReturnType.argtypes = [ffi.LLVMTypeRef];
+    ffi.lib.LLVMPY_GetReturnType.restype = ffi.LLVMTypeRef;
+    ffi.lib.LLVMPY_CountParamTypes.argtypes = [ffi.LLVMTypeRef];
+    ffi.lib.LLVMPY_CountParamTypes.restype = c_uint;
+    ffi.lib.LLVMPY_GetParamTypes.argtypes = [ffi.LLVMTypeRef, POINTER(ffi.LLVMTypeRef)];
+    ffi.lib.LLVMPY_GetParamTypes.restype = None;
+    ffi.lib.LLVMPY_IsFunctionVararg.argtypes = [ffi.LLVMTypeRef];
+    ffi.lib.LLVMPY_IsFunctionVararg.restype = c_bool;
     ffi.lib.LLVMPY_GetLinkage.argtypes = [ffi.LLVMValueRef];
     ffi.lib.LLVMPY_GetLinkage.restype = c_int;
     ffi.lib.LLVMPY_SetLinkage.argtypes = [ffi.LLVMValueRef, c_int];

@@ -97,7 +97,7 @@ test "stdlib enum ancestry survives independently loaded class graphs" {
     program.compile(
         file_path="enum_base_identity.jac",
         use_str="import from enum { StrEnum, IntEnum }\n"
-            + "import from jaclang.compiler.frontend.constant { Constants }\n"
+            + "import from jaclang.runtime.constants { Constants }\n"
             + "class Label(StrEnum) { with entry { FIRST = 'first'; } }\n"
             + "class Number(IntEnum) { with entry { FIRST = 1; } }\n"
             + "def label -> str { return Label.FIRST.value; }\n"

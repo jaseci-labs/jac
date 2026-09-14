@@ -910,7 +910,7 @@ async def _ticked_stream_8932(llm: _byllm_llm_mod.BaseLLM) -> tuple[int, str] {
 
 
 test "async streaming delivers every provider shape" {
-    cases: list[tuple] = [
+    cases: list[tuple[str, _byllm_llm_mod.BaseLLM, str]] = [
         (
             "subclass inheriting the base method",
             FakeLLM(model_name="fake-8932", replies=[say("hello world")]),
@@ -952,7 +952,7 @@ async def _ainvoke_8932(llm: _byllm_llm_mod.BaseLLM, run: MTRuntime) -> object {
 
 test "Model hands async work to its delegate off the streaming path" {
     # Both ainvoke branches: handled_directly, and the tools-bound fall-through.
-    cases: list[tuple] = [
+    cases: list[tuple[str, MTRuntime]] = [
         ("no stream, no tools", mk_run()),
         ("tools bound", mk_run(tools=[_probe_tool_8932]))
     ];
