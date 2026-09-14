@@ -147,7 +147,10 @@ impl PositionCodec.position_from_client_units(
     if not lines {
         return Position(0, 0);
     }
-    line = max(0, min(position.line, len(lines) - 1));
+    if position.line >= len(lines) {
+        return Position(len(lines), 0);
+    }
+    line = max(0, position.line);
     text = lines[line].rstrip('\r\n');
     consumed = 0;
     index = 0;
@@ -168,7 +171,10 @@ impl PositionCodec.position_to_client_units(
     if not lines {
         return Position(0, 0);
     }
-    line = max(0, min(position.line, len(lines) - 1));
+    if position.line >= len(lines) {
+        return Position(position.line, 0);
+    }
+    line = max(0, position.line);
     return Position(
         line, self.client_num_units(lines[line][:max(0, position.character)])
     );
@@ -188,9 +194,8 @@ impl TextDocument.postinit -> None {
 
 impl TextDocument.source.getter -> str {
     if self._source is None {
-        with open(self.path, "r", encoding="utf-8") as f {
-            return f.read();
-        }
+        import from jaclang.project.source { read_file_with_encoding }
+        return read_file_with_encoding(self.path);
     }
     return self._source;
 }
@@ -276,13 +281,97 @@ impl Workspace.postinit -> None {
     }
 }
 
+impl Workspace.convert_positions(
+    value: any, uri: str = '', to_client: bool = True
+) -> any {
+    sources: dict[str, list[str]] = {};
+    def convert(item: any, document_uri: str) -> any {
+        if isinstance(item, list) {
+            return [convert(child, document_uri) for child in item];
+        }
+        if not isinstance(item, dict) {
+            return item;
+        }
+        selected = item.get('uri', item.get('targetUri'));
+        document = item.get('textDocument');
+        if isinstance(document, dict) {
+            selected = document.get('uri', selected);
+        }
+        if isinstance(selected, str) {
+            document_uri = selected;
+        }
+        if document_uri
+            and set(item) == {'line', 'character'}
+            and isinstance(item['line'], int)
+            and isinstance(item['character'], int) {
+            if document_uri not in sources {
+                try {
+                    sources[document_uri] = self.get_text_document(document_uri).lines;
+                } except OSError {
+                    sources[document_uri] = [];
+                }
+            }
+            lines = sources[document_uri];
+            if not lines {
+                return dict(item);
+            }
+            position = Position(item['line'], item['character']);
+            mapped = self._position_codec.position_to_client_units(lines, position)
+                if to_client
+                else self._position_codec.position_from_client_units(lines, position);
+            return {'line': mapped.line, 'character': mapped.character};
+        }
+        return {
+            key: convert(child, key if key.startswith('file:') else document_uri)
+            for (key, child) in item.items()
+        };
+    }
+    return convert(value, uri);
+}
+
+impl Workspace.encode_semantic_tokens(uri: str, data: list[int]) -> list[int] {
+    try {
+        lines = self.get_text_document(uri).lines;
+    } except OSError {
+        return list(data);
+    }
+    result: list[int] = [];
+    (line, column, previous_line, previous_column) = (0, 0, 0, 0);
+    for offset in range(0, len(data), 5) {
+        delta_line = data[offset];
+        line += delta_line;
+        column = data[offset + 1] if delta_line else column + data[offset + 1];
+        start = self._position_codec.position_to_client_units(
+            lines, Position(line, column)
+        );
+        end = self._position_codec.position_to_client_units(
+            lines, Position(line, column + data[offset + 2])
+        );
+        result.extend(
+            [
+                start.line - previous_line,
+                start.character
+                    if start.line != previous_line
+                    else start.character - previous_column,
+                end.character - start.character,
+                data[offset + 3],
+                data[offset + 4]
+            ]
+        );
+        (previous_line, previous_column) = (start.line, start.character);
+    }
+    return result;
+}
+
 impl Workspace.get_text_document(doc_uri: str) -> TextDocument {
     with self.lock {
         if doc_uri in self._text_documents {
             return self._text_documents[doc_uri];
         }
     }
-    return TextDocument(uri=doc_uri);
+    document = TextDocument(uri=doc_uri);
+    document._position_codec = self._position_codec;
+    return document;
 }
 
 impl Workspace.put_text_document(text_document: TextDocumentItem) -> None {
@@ -291,6 +380,7 @@ impl Workspace.put_text_document(text_document: TextDocumentItem) -> None {
         self._text_documents[doc_uri] = TextDocument(
             uri=doc_uri, _source=text_document.text, version=text_document.version
         );
+        self._text_documents[doc_uri]._position_codec = self._position_codec;
         self.revision += 1;
     }
 }
@@ -353,6 +443,7 @@ impl Workspace.rename_text_document(old_uri: str, new_uri: str) -> None {
             self._text_documents[new_uri] = TextDocument(
                 uri=new_uri, _source=previous.source, version=previous.version
             );
+            self._text_documents[new_uri]._position_codec = self._position_codec;
         }
         self.revision += 1;
     }
@@ -537,7 +628,10 @@ impl LanguageServer._run_request(request: Request) -> None {
         return;
     }
     try {
-        result = self._invoke_handler(request.method, request.params);
+        result = self._invoke_handler(
+            request.method,
+            self.workspace.convert_positions(request.params, to_client=False)
+        );
         if request.cancel_token.is_set() {
             self._finish_request(
                 request,
@@ -567,23 +661,50 @@ impl LanguageServer._finish_request(
     error: ResponseErrorCode | None = None,
     message: str = ''
 ) -> None {
+    if request.responded {
+        return;
+    }
+    encoded: any = None;
+    content: bytes | None = None;
+    if error is None {
+        document = request.params.get('textDocument', {});
+        uri = document.get('uri', '') if isinstance(document, dict) else '';
+        encoded = self.workspace.convert_positions(to_dict(result), uri);
+        if request.method == TEXT_DOCUMENT_SEMANTIC_TOKENS_FULL
+            and isinstance(encoded, dict) {
+            encoded['data'] = self.workspace.encode_semantic_tokens(
+                uri, encoded.get('data', [])
+            );
+        }
+        content = encode_message(
+            {'jsonrpc': '2.0', 'id': request.message_id, 'result': encoded}
+        );
+    }
     with self._request_lock {
         if request.responded {
             return;
         }
+        if error is None and request.cancel_token.is_set() {
+            error = ResponseErrorCode.RequestCancelled;
+            message = 'Request cancelled';
+        } elif error is None and request.revision != self.workspace.revision {
+            error = ResponseErrorCode.ContentModified;
+            message = 'Workspace changed';
+        }
         request.responded = True;
         self._requests.pop(request.message_id, None);
-        if error is not None {
-            self._write_message(
-                {
-                    'jsonrpc': '2.0',
-                    'id': request.message_id,
-                    'error': {'code': error.value, 'message': message}
-                }
-            );
-        } else {
-            self._send_response(request.message_id, result);
-        }
+    }
+    if error is not None {
+        self._write_message(
+            {
+                'jsonrpc': '2.0',
+                'id': request.message_id,
+                'error': {'code': error.value, 'message': message}
+            }
+        );
+    } else {
+        assert content is not None;
+        self._write_content(content);
     }
 }
 
@@ -592,12 +713,14 @@ impl LanguageServer._cancel_request(message_id: int | str) -> None {
         request = self._requests.get(message_id);
         if request is not None {
             request.cancel_token.set();
-            self._finish_request(
-                request,
-                error=ResponseErrorCode.RequestCancelled,
-                message='Request cancelled'
-            );
         }
+    }
+    if request is not None {
+        self._finish_request(
+            request,
+            error=ResponseErrorCode.RequestCancelled,
+            message='Request cancelled'
+        );
     }
 }
 
@@ -606,7 +729,9 @@ impl LanguageServer.publish_diagnostics(
 ) -> None {
     params: dict[str, any] = {
         'uri': uri,
-        'diagnostics': [to_dict(d) for d in diagnostics]
+        'diagnostics': self.workspace.convert_positions(
+            [to_dict(d) for d in diagnostics], uri
+        )
     };
     if version is not None {
         params['version'] = version;
@@ -659,10 +784,17 @@ impl LanguageServer._send_response(msg_id: any, result: any) -> None {
 }
 
 impl LanguageServer._write_message(body: dict) -> None {
+    self._write_content(encode_message(body));
+}
+
+impl encode_message(body: dict) -> bytes {
+    return json.dumps(body, ensure_ascii=False).encode('utf-8');
+}
+
+impl LanguageServer._write_content(content: bytes) -> None {
     if self._transport_writer is None {
         return;
     }
-    content = json.dumps(body, ensure_ascii=False).encode("utf-8");
     header = f"Content-Length: {len(content)}\r\n\r\n".encode("ascii");
     with self._write_lock {
         try {
@@ -704,6 +836,12 @@ impl LanguageServer._handle_initialize(params: dict) -> dict {
     root_uri = params.get("rootUri") or params.get("rootPath");
     self._workspace = Workspace(root_uri=root_uri);
     capabilities = params.get('capabilities', {});
+    for encoding in capabilities.get('general', {}).get('positionEncodings', []) {
+        if encoding in ('utf-8', 'utf-16', 'utf-32') {
+            self.workspace._position_codec.encoding = PositionEncodingKind(encoding);
+            break;
+        }
+    }
     workspace = capabilities.get('workspace', {});
     self._dynamic_file_watching = bool(
         workspace.get('didChangeWatchedFiles', {}).get('dynamicRegistration', False)
@@ -713,6 +851,7 @@ impl LanguageServer._handle_initialize(params: dict) -> dict {
 
 impl LanguageServer._build_capabilities -> dict {
     caps: dict[str, any] = {
+        'positionEncoding': self.workspace._position_codec.encoding.value,
         "textDocumentSync": {
             "openClose": True,
             "change": int(TextDocumentSyncKind.Incremental),

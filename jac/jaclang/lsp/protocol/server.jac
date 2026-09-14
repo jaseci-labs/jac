@@ -26,6 +26,7 @@ import from .types {
     TEXT_DOCUMENT_DID_CLOSE,
     Diagnostic,
     TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS,
+    TEXT_DOCUMENT_SEMANTIC_TOKENS_FULL,
     WINDOW_SHOW_MESSAGE,
     WINDOW_LOG_MESSAGE,
     INITIALIZE,
@@ -43,6 +44,7 @@ glob logger = logging.getLogger("jaclang.lsp.protocol.server"),
 def _to_camel_case(name: str) -> str;
 def _to_snake_case(name: str) -> str;
 def to_dict(`obj: any) -> any;
+def encode_message(body: dict) -> bytes;
 def from_dict(data: any, cls: any) -> any;
 
 enum ResponseErrorCode {
@@ -106,6 +108,8 @@ obj Workspace {
         lock: threading.RLock postinit,
         revision: int = 0;
 
+    def convert_positions(value: any, uri: str = '', to_client: bool = True) -> any;
+    def encode_semantic_tokens(uri: str, data: list[int]) -> list[int];
     def postinit -> None;
     def get_text_document(doc_uri: str) -> TextDocument;
     def put_text_document(text_document: TextDocumentItem) -> None;
@@ -175,6 +179,7 @@ obj LanguageServer {
     def shutdown -> None;
     def _send_notification(method: str, params: any) -> None;
     def _send_response(msg_id: any, result: any) -> None;
+    def _write_content(content: bytes) -> None;
     def _write_message(body: dict[str, any]) -> None;
     def _read_message(stream: any) -> Optional[dict[str, any]];
     def _handle_initialize(params: dict[str, any]) -> dict[str, any];

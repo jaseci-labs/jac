@@ -207,6 +207,13 @@ Completion can request symbol construction and evaluate the queried expression
 without waiting for workspace diagnostics. Text exclusion ranges and completion
 items are cached by the document or analysis state that owns them.
 
+Compiler and engine positions use Unicode code points. The protocol boundary
+converts request positions and response ranges to the client's negotiated
+UTF-8, UTF-16, or UTF-32 units, including semantic-token deltas. Conversion
+creates wire data without modifying cached editor products. Responses are
+prepared before claiming completion, so preparation failures receive an error
+and cancellation remains available while a response is being serialized.
+
 `ModuleManager` keeps editor products separate from mutable compiler graphs.
 Outlines and encoded semantic tokens contain protocol data and remain usable
 after an analysis tree is released. Invalidating a unit also invalidates its
