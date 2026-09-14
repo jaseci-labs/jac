@@ -1,11 +1,11 @@
 name: Nightly
 
-# Cron canaries against the shipped artifacts. On workflow_dispatch every job
+# Scheduled checks of source builds and shipped artifacts. On workflow_dispatch every job
 # runs; on schedule each job matches its own cron.
 
 on:
   schedule:
-    - cron: '0 3 * * *'   # notes-app CEF smoke
+    - cron: '0 3 * * *'   # source-build and native runtime checks
     - cron: '17 8 * * *'  # installer against the LIVE latest release
     - cron: '41 9 * * 1'  # Intel-Mac probe (the manual release leg)
   workflow_dispatch:
@@ -14,6 +14,79 @@ permissions:
   contents: read
 
 jobs:
+  # Validate the native runtime on the other automatic release platforms.
+  # Linux x86-64 is built and exercised by build-kit and its consumers.
+  # Intel macOS remains in the manually selected release leg.
+  jacpython-native:
+    name: jacpython-native (${{ matrix.os }})
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04-arm
+            zig_target: aarch64-linux-gnu.2.17
+          - os: macos-14
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      DTARGET: ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) || '' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+      - uses: actions/cache/restore@v4
+        with:
+          path: jac/.llvm-build
+          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+      - name: Build and smoke-test the native JacPython runtime
+        working-directory: jac
+        run: zig build build-python $DTARGET --summary all
+      - name: Build and probe the packaged native JacPython binary
+        working-directory: jac
+        env:
+          JAC_NO_DEV_SOURCE: "1"
+        run: |
+          zig build $DTARGET --summary all
+          zig-out/bin/jac -c '
+          import ast, ctypes, sys
+          assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
+          assert not hasattr(sys, "_jacpython_compile")
+          assert not hasattr(sys, "_jacpython_image")
+          assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42
+          print("Packaged JacPython: native compiler active")
+          '
+      - name: Diagnose macOS native startup failures
+        if: failure() && runner.os == 'macOS'
+        continue-on-error: true
+        working-directory: jac
+        env:
+          JAC_NO_DEV_SOURCE: "1"
+        run: |
+          if [ -x zig-out/bin/jac ]; then
+            lldb --batch -o 'settings set target.disable-aslr false' -o run \
+              -k 'thread backtrace all' -k 'image list -o -f' \
+              -- zig-out/bin/jac -c 'import ast, ctypes; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3; assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42'
+          elif [ -x .python-build/jacpython/macos-aarch64/python/install/bin/python3.14 ]; then
+            cold_cache=$(mktemp -d)
+            lldb --batch -o 'settings set target.disable-aslr false' -o run \
+              -k 'thread backtrace all' -k 'image list -o -f' \
+              -- .python-build/jacpython/macos-aarch64/python/install/bin/python3.14 \
+              -I -S -B -X faulthandler -X "pycache_prefix=$cold_cache" -OO \
+              -c 'import ast, ctypes, encodings, sys; assert eval("6 * 7") == 42; assert isinstance(ast.parse("x=1"), ast.Module); assert encodings.search_function.__code__.co_filename == encodings.__file__; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3'
+          fi
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: jacpython-native-build-logs-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            jac/.python-build/**/*.log
+            jac/zig-out/bin/jac
+            ~/Library/Logs/DiagnosticReports/python*.ips
+          include-hidden-files: true
+
   notes-app-cef-smoke:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
