@@ -82,7 +82,12 @@ test "package planning shares pristine syntax and resolves imports from annexes"
         with CompilationSession() as session {
             session.program.source_store = plan.sources;
             program = precompile_context(str(left), directory, session.program);
-            program._get_compiler().parse_str(left.read_text(), str(left), program);
+            planned = plan.sources.units[plan.sources.revisions[str(left)]].syntax;
+            compiled = program._get_compiler().parse_str(
+                left.read_text(), str(left), program
+            );
+            assert compiled is planned;
+            assert str(left) not in plan.sources.revisions;
             assert plan.sources.parses == 3;
             assert plan.sources.hits == 1;
         }

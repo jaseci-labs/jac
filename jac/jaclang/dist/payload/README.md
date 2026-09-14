@@ -80,8 +80,9 @@ at the last checkpoint, even when the producer cannot run its final cleanup.
   dependency barriers, so progress, failure handling, and worker retirement remain
   available between members of even the largest cycle.
 - Compiler `exclusive_seconds` subtracts nested phases and passes, including
-  dependency work. `frontend:parse` and `frontend:copy` separate parser work from
-  copying shared syntax. Product/cache events distinguish reuse from computation.
+  dependency work. `frontend:parse` records parser work. Discovery trees transfer
+  into their consuming module hub without copying; compatible later products
+  reuse that hub. Product/cache events distinguish reuse from computation.
   `frontend:collect` records bounded collection of discarded syntax.
   `frontend:dependencies` records import discovery and resolution.
 - `compilation.dependency_plan` reports planning duration, validated dependency

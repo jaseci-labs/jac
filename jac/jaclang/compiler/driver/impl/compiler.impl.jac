@@ -773,7 +773,11 @@ impl JacCompiler.parse_str(
             );
         } else {
             (mod, had_error) = target_program.source_store.parse(
-                source_str, file_path, target_program, annex_sources(file_path)
+                source_str,
+                file_path,
+                target_program,
+                annex_sources(file_path),
+                early_context=codespace or 'server'
             );
         }
         if (codespace == 'client') {

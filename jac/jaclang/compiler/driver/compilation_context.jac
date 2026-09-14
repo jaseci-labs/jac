@@ -58,12 +58,16 @@ obj SourceStore {
         parses: int = 0,
         hits: int = 0;
 
+    def _key(source: str, path: str, annexes: list[tuple[str, str]]) -> str {
+        return hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
+    }
+
     def load(
         source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
     ) -> SourceUnit {
         import from jaclang.compiler.frontend.parser.frontend { parse_woven }
         import from jaclang.compiler.driver.program { JacProgram }
-        key = hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
+        key = self._key(source, path, annexes);
         unit = self.units.pop(key, None);
         discarded = False;
         if unit is None {
@@ -108,16 +112,29 @@ obj SourceStore {
     }
 
     def parse(
-        source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
+        source: str,
+        path: str,
+        program: JacProgram,
+        annexes: list[tuple[str, str]],
+        early_context: str = ""
     ) -> tuple[Module, bool] {
-        unit = self.load(source, path, program, annexes);
-        with program.analysis.measure(path, "frontend:copy") {
-            syntax = copy.deepcopy(unit.syntax);
+        import from jaclang.compiler.frontend.parser.frontend { parse_woven }
+        key = self._key(source, path, annexes);
+        unit = self.units.pop(key, None);
+        previous = self.revisions.pop(path, None);
+        if previous is not None and previous != key {
+            self.units.pop(previous, None);
         }
-        assert isinstance(syntax, Module);
-        program.errors_had.extend(unit.errors);
-        program.warnings_had.extend(unit.warnings);
-        return (syntax, unit.failed);
+        if unit is not None {
+            self.hits += 1;
+            program.errors_had.extend(unit.errors);
+            program.warnings_had.extend(unit.warnings);
+            return (unit.syntax, unit.failed);
+        }
+        self.parses += 1;
+        with program.analysis.measure(path, "frontend:parse") {
+            return parse_woven(source, path, program, annexes, early_context);
+        }
     }
 }
 

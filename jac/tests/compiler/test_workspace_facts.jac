@@ -133,7 +133,7 @@ test "a normal import inherits its app and an entry import changes context" {
     }
 }
 
-test "shared syntax produces distinct app facts in either request order" {
+test "owned syntax produces distinct app facts in either request order" {
     for names in [('web', 'api'), ('api', 'web')] {
         with TemporaryDirectory() as td {
             base = Path(td);
@@ -155,7 +155,7 @@ test "shared syntax produces distinct app facts in either request order" {
             assert modules[0] is not modules[1];
             assert modules[0].app == names[0];
             assert modules[1].app == names[1];
-            assert program.source_store.hits > 0;
+            assert modules[0].body[0] is not modules[1].body[0];
         }
     }
 }

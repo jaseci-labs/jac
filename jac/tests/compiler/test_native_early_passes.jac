@@ -62,6 +62,39 @@ test "native validation preserves client code context" {
     }
 }
 
+test "source store preserves native early results and isolates mutable contexts" {
+    import from jaclang.compiler.driver.compilation_context { SourceStore }
+    kernel = ensure_loaded();
+    if kernel is not None {
+        assert kernel.supports_early;
+        store = SourceStore();
+        source = "def f(`from: str) -> str { return `from; }";
+        prior: Module | None = None;
+        for (context, expected) in [("server", 1), ("client", 0)] {
+            program = JacProgram();
+            (module, failed) = store.parse(
+                source, "owned_early_context.jac", program, [], context
+            );
+            assert not failed;
+            assert module is not prior;
+            assert "ASTValidationPass"
+                in program.analysis.early_passes[id(module)].results;
+            run_pass(ASTValidationPass, module, program);
+            run_pass(SymTabBuildPass, module, program);
+            assert len(
+                [
+                    e
+                    for e in program.errors_had
+                    if e.code and e.code.code == "E0067"
+                ]
+            )
+                == expected;
+            assert id(module) not in program.analysis.early_passes;
+            prior = module;
+        }
+    }
+}
+
 glob SOURCE: str = """
 obj Item {
     has value: int = 0;

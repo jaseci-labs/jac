@@ -147,7 +147,12 @@ profile and dependency checks still govern reuse. Dependencies outside the
 package retain their existing validation and source fallback.
 
 `CompilationSession` owns a bounded set of context programs across roots.
-Contexts share a `SourceStore` of pristine syntax; evaluated trees, type memos,
+Contexts share a `SourceStore` of unconsumed syntax from dependency discovery.
+Compilation transfers each tree into its context's module hub and removes it
+from the store. Compatible requests reuse that owned tree and its completed
+products. An incompatible context parses its own tree; copying complete mutable
+syntax graphs is not a prerequisite for compilation. Parser misses use the
+existing native early-pass path when available. Evaluated trees, type memos,
 catalog decodes, and product tasks belong to one context and worker. The default
 budget is 256 source modules or 32 root requests. At a completed request,
 reaching either budget, cancellation, or failure releases mutable analysis and
