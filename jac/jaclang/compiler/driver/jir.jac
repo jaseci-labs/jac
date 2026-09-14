@@ -39,6 +39,9 @@ import from jaclang.compiler.driver.image {
     write_precompiled_jir as encode_precompiled_jir
 }
 
+glob COMPILER_PATH_SENTINEL: str = "__JACLANG_ROOT__",
+     _COMPILER_PACKAGE_DIR: str = str(Path(__file__).resolve().parents[2]);
+
 obj JirPaths {
     has roots: list[str] = [],
         base_dir: str = "";
@@ -52,10 +55,27 @@ obj JirPaths {
                 + "/"
                 + os.path.relpath(path, self.base_dir).replace(os.sep, "/");
         }
+        if path == _COMPILER_PACKAGE_DIR
+            or path.startswith(_COMPILER_PACKAGE_DIR + os.sep) {
+            return COMPILER_PATH_SENTINEL
+                + "/"
+                + os.path.relpath(path, _COMPILER_PACKAGE_DIR).replace(os.sep, "/");
+        }
         return path;
     }
 
     def resolve(path: str) -> str {
+        if path == COMPILER_PATH_SENTINEL {
+            return _COMPILER_PACKAGE_DIR;
+        }
+        if path.startswith(COMPILER_PATH_SENTINEL + "/") {
+            return os.path.normpath(
+                os.path.join(
+                    _COMPILER_PACKAGE_DIR,
+                    *path[len(COMPILER_PATH_SENTINEL) + 1:].split("/")
+                )
+            );
+        }
         if not self.base_dir or not path {
             return path;
         }
@@ -440,7 +460,7 @@ def _ct_dep_store_path(path: str, base: str) -> str {
             return os.path.relpath(path, base);
         }
     } except ValueError {}
-    return path;
+    return JirPaths(base_dir=base).encode(path, base);
 }
 
 def _ct_dep_line(path: str, digest: str, is_body: bool, base: str) -> str {
@@ -471,7 +491,8 @@ def rebase_ct_deps_section(raw: bytes, base: str) -> bytes {
 
 def _ct_rows_fresh(rows: list[tuple[(str, str, bool)]], base: str) -> bool {
     for (path, digest, is_body) in rows {
-        full = path if os.path.isabs(path) else os.path.join(base, path);
+        resolved = JirPaths(base_dir=base).resolve(path);
+        full = resolved if os.path.isabs(resolved) else os.path.join(base, resolved);
         if not digest or ct_dep_digest(full, is_body) != digest {
             return False;
         }
@@ -498,9 +519,10 @@ def module_ct_deps_text(mod: any) -> str {
 def absolutize_ct_deps_section(raw: bytes, base: str) -> bytes {
     lines: list[str] = [];
     for (path, digest, is_body) in _ct_dep_rows(raw.decode("utf-8")) {
-        full = path
-            if os.path.isabs(path)
-            else os.path.normpath(os.path.join(base, path));
+        resolved = JirPaths(base_dir=base).resolve(path);
+        full = resolved
+            if os.path.isabs(resolved)
+            else os.path.normpath(os.path.join(base, resolved));
         lines.append(_ct_dep_line(full, digest, is_body, ""));
     }
     return "\n".join(lines).encode("utf-8");

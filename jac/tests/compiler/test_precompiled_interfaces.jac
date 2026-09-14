@@ -179,6 +179,40 @@ test "relocation changes path fields without rewriting diagnostic messages" {
     }
 }
 
+test "compiler dependency paths survive runtime extraction relocation" {
+    import tempfile;
+    import from pathlib { Path }
+    import from unittest.mock { patch }
+    import jaclang.compiler.driver.jir as jir;
+    with tempfile.TemporaryDirectory() as directory {
+        first = Path(directory, "first", "jaclang");
+        second = Path(directory, "second", "jaclang");
+        for root_dir in (first, second) {
+            root_dir.mkdir(parents=True);
+            (root_dir / "builtins.pyi").write_text("value: int\n");
+        }
+        app_dir = str(Path(directory, "app"));
+        paths = jir.JirPaths(base_dir=app_dir);
+        with patch.object(jir, "_COMPILER_PACKAGE_DIR", str(first)) {
+            encoded = paths.encode(str(first / "builtins.pyi"), app_dir);
+            deps = jir.ct_deps_section([str(first / "builtins.pyi")], base=app_dir);
+            assert str(first) not in encoded;
+            assert str(first).encode() not in deps;
+            neighbor = str(first) + "_other/builtins.pyi";
+            assert paths.encode(neighbor, app_dir) == neighbor;
+        }
+        with patch.object(jir, "_COMPILER_PACKAGE_DIR", str(second)) {
+            assert paths.resolve(encoded) == str(second / "builtins.pyi");
+            assert paths.encode(str(second / "builtins.pyi"), app_dir) == encoded;
+            assert jir.ct_dep_text_fresh(deps.decode(), app_dir);
+            assert str(second)
+                in jir.absolutize_ct_deps_section(deps, app_dir).decode();
+            (second / "builtins.pyi").write_text("value: str\n");
+            assert not jir.ct_dep_text_fresh(deps.decode(), app_dir);
+        }
+    }
+}
+
 test "fresh publishing initializes and preserves the type interface" {
     import os;
     import subprocess;

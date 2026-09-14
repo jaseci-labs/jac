@@ -59,7 +59,10 @@ impl _stub_npm_imports(
             return mobj.group(0);
         }
         state["changed"] = True;
-        clause = mobj.group("clause").strip();
+        clause = (mobj.group("clause") or "").strip();
+        if not clause {
+            return 'import "./' + _NPM_STUB_FILE + '";';
+        }
         brace = re.search(r"\{([^}]*)\}", clause);
         if brace {
             for ident in _NAMED_BINDING.findall(brace.group(1)) {
@@ -76,10 +79,10 @@ impl _stub_npm_imports(
         return 'import ' + clause + ' from "./' + _NPM_STUB_FILE + '";';
     }
 
-    rewritten_entry = _IMPORT_FROM.sub(repl, entry_js);
+    rewritten_entry = _STATIC_IMPORT.sub(repl, entry_js);
     rewritten_staged: dict[str, str] = {};
     for (staged_name, staged_js) in staged.items() {
-        rewritten_staged[staged_name] = _IMPORT_FROM.sub(repl, staged_js);
+        rewritten_staged[staged_name] = _STATIC_IMPORT.sub(repl, staged_js);
     }
 
     lines = ["const __jacNpmStub = new Proxy(function () {}, {"];
@@ -136,7 +139,7 @@ impl _collect_local_imports(
     pending: list[str] = [module_js];
     while pending {
         js = pending.pop(0);
-        for m in _IMPORT_FROM.finditer(js) {
+        for m in _STATIC_IMPORT.finditer(js) {
             spec = m.group("spec");
             if (not spec.startswith(".")) or (not spec.endswith(".js")) {
                 continue;
@@ -159,7 +162,7 @@ impl _collect_local_imports(
                 );
             }
             wanted = requested.setdefault(name, set());
-            brace = re.search(r"\{([^}]*)\}", m.group("clause"));
+            brace = re.search(r"\{([^}]*)\}", m.group("clause") or "");
             if brace {
                 for ident in _NAMED_BINDING.findall(brace.group(1)) {
                     if ident and (ident != "as") {
