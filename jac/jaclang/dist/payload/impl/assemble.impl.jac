@@ -196,10 +196,8 @@ impl build_compiler_kernel(repo_root: str, site: str, opts: MkPayloadOpts) {
     import hashlib;
     import json;
     import from pathlib { Path }
-    import from jaclang.compiler.driver.jir {
-        compiler_source_digest,
-        compute_content_sha256
-    }
+    import from jaclang.compiler.driver.jir { compute_content_sha256 }
+    import from jaclang.compiler.types.stubcat.locate { type_system_digest }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     import from jaclang.dist.payload.artifacts { ArtifactStore }
     cache = ArtifactStore(
@@ -209,7 +207,7 @@ impl build_compiler_kernel(repo_root: str, site: str, opts: MkPayloadOpts) {
     def input_key -> str {
         inputs = [
             "compiler-kernel-v1",
-            compiler_source_digest(os.path.join(repo_root, "jaclang")),
+            type_system_digest(os.path.join(repo_root, "jaclang")),
             compute_content_sha256(so),
             host_os_arch(),
             sys.version,

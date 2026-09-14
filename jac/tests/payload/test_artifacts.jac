@@ -122,6 +122,22 @@ test "kernel packaging restores a complete pair across staging directories" {
             source.write_text("def probe() -> int { return 43; }\n");
             assembly.build_compiler_kernel(str(repository), str(base / "three"), opts);
             assert len(produced) == 2;
+            internal_stub = source.parent / "types/kernel.pyi";
+            internal_stub.parent.mkdir(parents=True);
+            internal_stub.write_text("def probe() -> int: ...\n");
+            assembly.build_compiler_kernel(str(repository), str(base / "four"), opts);
+            assert len(produced) == 3;
+            typeshed = repository / "jaclang/vendor/typeshed/stdlib";
+            typeshed.mkdir(parents=True);
+            stub = typeshed / "builtins.pyi";
+            stub.write_text("class int: ...\n");
+            assembly.build_compiler_kernel(str(repository), str(base / "five"), opts);
+            assert len(produced) == 4;
+            before = stub.stat();
+            stub.write_text("class str: ...\n");
+            os.utime(stub, ns=(before.st_atime_ns, before.st_mtime_ns));
+            assembly.build_compiler_kernel(str(repository), str(base / "six"), opts);
+            assert len(produced) == 5;
         }
     }
 }

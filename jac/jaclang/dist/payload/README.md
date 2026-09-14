@@ -11,7 +11,7 @@ Each producer validates its own inputs and completed outputs before reuse.
 | --- | --- | --- |
 | CI binary and source snapshots | Tracked Git tree records captured once before restore or build mutations | `scripts/build_cache_keys.sh`, shared `build-inputs` action |
 | Module products | Compiler/toolchain, source and annex contents, compilation context, dependency interfaces, compile-time input contents | Compiler JIR and `IfaceRegistry` |
-| Native kernel and layout | Compiler sources, shim contents, host, interpreter, codegen options, ancestor project configuration, payload producer | `ArtifactStore` |
+| Native kernel and layout | Compiler sources and type stubs, shim contents, host, interpreter, codegen options, ancestor project configuration, payload producer | `ArtifactStore` |
 | Stub catalog | Compiler source identity, actual stub contents, Python/platform, catalog format, requested module selection | Catalog builder and its manifest |
 | Bootstrap products | Existing jac0 bytecode identity, full precompile identity, dependency facts, debug-source mode | Bootstrap importer and seed sealer |
 | Runtime wheel installation | Hash-locked requirements, target interpreter, bundled pip wheel, staging/archive producer | `ArtifactStore` |
