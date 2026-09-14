@@ -223,11 +223,6 @@ class AnalysisLedger {
     }
 }
 
-obj PendingPassResults {
-    has module: uni.Module,
-        results: dict[str, PassResult];
-}
-
 obj TimingSample {
     has runs: int = 0,
         wall_seconds: float = 0.0,
@@ -251,7 +246,7 @@ class AnalysisCaches {
         completed_passes: dict[int, set[str]],
         product_tasks: dict[int, dict[CompilationProduct, ProductTask]],
         task_owners: dict[int, any],
-        early_passes: dict[int, PendingPassResults],
+        early_passes: dict[int, dict[str, PassResult]],
         cache_events: dict[str, int],
         timings: dict[str, dict[str, TimingSample]] = {};
 
@@ -318,7 +313,7 @@ class AnalysisCaches {
         self.completed_passes = {};
         self.product_tasks = {};
         self.task_owners = {};
-        self.early_passes: dict[int, PendingPassResults] = {};
+        self.early_passes = {};
         self.cache_events: dict[str, int] = {};
     }
 
@@ -338,24 +333,27 @@ class AnalysisCaches {
     def drop_tasks(self: AnalysisCaches, key: int) {
         self.completed_passes.pop(key, None);
         self.product_tasks.pop(key, None);
+        self.early_passes.pop(key, None);
         self.task_owners.pop(key, None);
     }
 
     def record_early(
         self: AnalysisCaches, module: uni.Module, results: dict[str, PassResult]
     ) {
-        self.early_passes[id(module)] = PendingPassResults(module, results);
+        self.retain_tasks(module);
+        self.early_passes[id(module)] = results;
     }
 
     def take_early(
         self: AnalysisCaches, module: uni.Module, name: str
     ) -> (PassResult | None) {
+        self.retain_tasks(module);
         pending = self.early_passes.get(id(module));
         if pending is None {
             return None;
         }
-        result = pending.results.pop(name, None);
-        if not pending.results {
+        result = pending.pop(name, None);
+        if not pending {
             self.early_passes.pop(id(module));
         }
         return result;

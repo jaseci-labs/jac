@@ -27,9 +27,25 @@ test "released module trees are garbage collectable" {
     prog = JacProgram();
     (path, mod_ref, kid_ref, anchor_ref) = _probe(prog);
     prog.release_module(JacProgram.hub_key(path));
+    assert not prog.analysis.early_passes;
     gc.collect();
     dead = [mod_ref() is None, kid_ref() is None, anchor_ref() is None];
     assert all(dead) , f"leaked (module, kid, anchor): {dead}";
+}
+
+test "pending early results do not own an unattached syntax tree" {
+    import from jaclang.compiler.frontend.unitree { Module }
+    import from jaclang.compiler.passes.transform { PassResult }
+    program = JacProgram();
+    module = Module.make_stub();
+    program.analysis.record_early(module, {"ASTValidationPass": PassResult()});
+    assert program.analysis.early_passes;
+    held = weakref.ref(module);
+    del module;
+    gc.collect();
+    assert held() is None;
+    assert not program.analysis.early_passes;
+    assert not program.analysis.task_owners;
 }
 
 def _compile_probe(prog: JacProgram) -> tuple {

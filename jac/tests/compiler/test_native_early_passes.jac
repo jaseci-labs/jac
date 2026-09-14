@@ -77,8 +77,7 @@ test "source store preserves native early results and isolates mutable contexts"
             );
             assert not failed;
             assert module is not prior;
-            assert "ASTValidationPass"
-                in program.analysis.early_passes[id(module)].results;
+            assert "ASTValidationPass" in program.analysis.early_passes[id(module)];
             run_pass(ASTValidationPass, module, program);
             run_pass(SymTabBuildPass, module, program);
             assert len(
@@ -163,7 +162,7 @@ test "native early passes preserve the store parser's symbol graph" {
             SOURCE, "early_scopes.jac", native, [], early_context="server"
         );
         assert not failed;
-        assert "SymTabBuildPass" in native.analysis.early_passes[id(nat_mod)].results;
+        assert "SymTabBuildPass" in native.analysis.early_passes[id(nat_mod)];
         before = scope_profile(nat_mod);
         run_pass(ASTValidationPass, nat_mod, native);
         run_pass(SymTabBuildPass, nat_mod, native);
