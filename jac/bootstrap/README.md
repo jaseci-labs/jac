@@ -10,11 +10,13 @@ artifact for that host.
 
 The build graph has explicit artifacts:
 
-1. The pinned compiler builds the native frontend kernel and its class layout.
+1. The pinned compiler builds a temporary native frontend kernel and its class layout.
 2. The pinned compiler compiles the current compiler, runtime, CLI, and packaging
    modules into a stage-1 image using ordinary full compilation.
-3. A source-built C CPython host runs stage 1, which builds the typeshed catalog
-   and emits the native Python compiler object using the ordinary native backend.
+3. A source-built C CPython host runs the bootstrap image, which builds the typeshed
+   catalog and the shipped kernel with the current native backend. Image completion
+   replaces the temporary kernel and layout to produce stage 1. Stage 1 emits the
+   native Python compiler object using the same native backend.
 4. The runtime build consumes that explicit object. Packaging consumes the verified
    image, catalog, native libraries, and source-built native JacPython runtime.
 5. `compiler-stage2` rebuilds the kernel and image with stage 1. This checks the
@@ -87,9 +89,15 @@ implementation sources are excluded from the interpreted compiler image; their
 CPython license is preserved. The CPython virtual machine and object runtime
 remain part of the product.
 
-Stage 1 maps its temporary native Python source directory to the stable
+The current compiler maps temporary kernel and native Python source directories to the stable
 `jaclang` prefix. The compiler applies source-prefix mappings to native symbol
 identity, embedded assertion locations and debug metadata, includes them in code-generation
 cache identity, and preserves them across native imports. Identical emitted
 objects let the runtime's existing content cache reuse CPython after compiler
 edits that leave the native Python implementation unchanged.
+
+The predecessor cannot map native source paths, so its kernel is only a bootstrap
+input. The shipped kernel uses current code generation with stable source paths;
+random temporary directories therefore do not change its bytes or the final
+compiler identity. `bootstrap-kernel` builds the temporary predecessor artifact;
+`compiler-kernel` builds the current artifact that is shipped.

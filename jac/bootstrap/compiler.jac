@@ -182,22 +182,39 @@ def compile_kernel(package: Path, output: Path, target: str) {
         argv = sys.argv;
         producer_resolver().push_import_base(str(snapshot.parent));
         try {
-            sys.argv = [
-                "jac",
-                "build",
-                "--native",
-                "--lib",
-                "--target",
-                target,
-                str(snapshot / "compiler/jc_unit.jac"),
-                "-o",
-                str(output)
-            ];
-            try {
-                start_cli();
-            } except SystemExit as result {
-                if result.code {
-                    raise;
+            if hasattr(CompileOptions(), "source_prefix_map") {
+                import from jaclang.cli.commands.native_build { native_build }
+                kernel_options: dict[str, dict[str, str]] = {
+                    "source_prefix_map": {str(snapshot): "jaclang"}
+                };
+                result = native_build(
+                    str(snapshot / "compiler/jc_unit.jac"),
+                    output=str(output),
+                    lib=True,
+                    target=target,
+                    **kernel_options
+                );
+                if result {
+                    raise RuntimeError("Compiler kernel build failed");
+                }
+            } else {
+                sys.argv = [
+                    "jac",
+                    "build",
+                    "--native",
+                    "--lib",
+                    "--target",
+                    target,
+                    str(snapshot / "compiler/jc_unit.jac"),
+                    "-o",
+                    str(output)
+                ];
+                try {
+                    start_cli();
+                } except SystemExit as result {
+                    if result.code {
+                        raise;
+                    }
                 }
             }
         } finally {
@@ -544,10 +561,26 @@ def compile_image(
     );
 }
 
-def complete_image(source: Path, catalog: Path, output: Path) {
+def complete_image(
+    source: Path, catalog: Path | None, output: Path, kernel: Path | None = None
+) {
     source = source.resolve(strict=True);
-    catalog = catalog.resolve(strict=True);
     output = output.resolve();
+    artifacts: list[tuple[str, Path]] = [];
+    if catalog is not None {
+        artifacts.append(("_precompiled/stubcat.bin", catalog.resolve(strict=True)));
+    }
+    if kernel is not None {
+        if kernel.name not in ["libjac_compiler.so", "libjac_compiler.dylib"] {
+            raise ValueError("Unexpected compiler kernel filename");
+        }
+        for path in [kernel, Path(str(kernel) + ".layout.json")] {
+            artifacts.append(("compiler/" + path.name, path.resolve(strict=True)));
+        }
+    }
+    if not artifacts {
+        raise ValueError("Compiler image completion requires an artifact");
+    }
     codec = image_codec(str(source / "jaclang"));
     image = codec.load_image(source / "jaclang/_precompiled");
     if image is None {
@@ -558,20 +591,24 @@ def complete_image(source: Path, catalog: Path, output: Path) {
         output.rmdir();
     }
     shutil.copytree(source, output);
-    precompiled = output / "jaclang/_precompiled";
-    destination = precompiled / "stubcat.bin";
-    shutil.copyfile(catalog, destination);
+    package = output / "jaclang";
     manifest = dict(image.manifest);
-    manifest["payloads"] = {
-        ** manifest["payloads"],
-        "_precompiled/stubcat.bin": hashlib.sha256(destination.read_bytes()).hexdigest()
-    };
-    codec.write_compiler_manifest(precompiled, manifest);
+    payloads = dict(manifest["payloads"]);
+    for (relative, artifact) in artifacts {
+        destination = package / relative;
+        destination.parent.mkdir(parents=True, exist_ok=True);
+        shutil.copyfile(artifact, destination);
+        payloads[relative] = hashlib.sha256(destination.read_bytes()).hexdigest();
+    }
+    manifest["payloads"] = payloads;
+    codec.write_compiler_manifest(package / "_precompiled", manifest);
 }
 
 with entry:__main__ {
     if len(sys.argv) == 5 and sys.argv[1] == "complete" {
         complete_image(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]));
+    } elif len(sys.argv) == 5 and sys.argv[1] == "complete-kernel" {
+        complete_image(Path(sys.argv[2]), None, Path(sys.argv[4]), Path(sys.argv[3]));
     } elif len(sys.argv) == 5 and sys.argv[1] == "python-native" {
         compile_native_python(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4]);
     } elif len(sys.argv) == 5 and sys.argv[1] == "kernel" {

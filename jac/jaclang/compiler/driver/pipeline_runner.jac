@@ -448,7 +448,8 @@ def native_application(
     target: str = '',
     memory: str = '',
     debug: bool = False,
-    no_ir_cache: bool = False
+    no_ir_cache: bool = False,
+    source_prefix_map: dict[str, str] | None = None
 ) -> tuple[uni.Module, CompileOptions] {
     import from jaclang.compiler.driver.compile_options {
         CompileOptions,
@@ -463,7 +464,8 @@ def native_application(
             memory_profile=memory or None,
             native_target=target or None,
             native_debug=True if debug else None,
-            no_ir_cache=debug or no_ir_cache
+            no_ir_cache=debug or no_ir_cache,
+            source_prefix_map=dict(source_prefix_map or {})
         );
         module = program.compile(file_path=os.path.abspath(file_path), options=options);
         return (module, options);

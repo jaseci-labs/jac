@@ -1,4 +1,5 @@
 import tempfile;
+import hashlib;
 import shutil;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
@@ -179,5 +180,61 @@ test "the compiler image excludes native Python implementation sources and prese
         assert (snapshot / license_file).read_text() == "Python license";
         assert not list(snapshot.rglob("*.jac"));
         assert list(package.rglob("*.jac"));
+    }
+}
+
+
+test "final kernel replacement removes bootstrap identity variation" {
+    with tempfile.TemporaryDirectory() as directory {
+        workspace = Path(directory);
+        kernel = workspace / "libjac_compiler.so";
+        kernel.write_bytes(b"current-kernel");
+        Path(str(kernel) + ".layout.json").write_bytes(b"{}");
+        identities: list[str] = [];
+        for revision in range(2) {
+            source = workspace / ("source" + str(revision));
+            package = source / "jaclang";
+            (package / "compiler").mkdir(parents=True);
+            shutil.copyfile(Path(JAC_ROOT) / "jaclang/image.py", package / "image.py");
+            codec = image_codec(str(package));
+            precompiled = package / "_precompiled";
+            precompiled.mkdir();
+            payloads: dict[str, str] = {};
+            for (relative, data) in [
+                ("compiler/libjac_compiler.so", bytes([revision])),
+                ("compiler/libjac_compiler.so.layout.json", b"{}"),
+                ("_precompiled/stubcat.bin", b"catalog")
+            ] {
+                (package / relative).write_bytes(data);
+                payloads[relative] = hashlib.sha256(data).hexdigest();
+            }
+            codec.write_compiler_manifest(
+                precompiled,
+                {
+                    "package": "jaclang",
+                    "python_tag": codec.python_tag(),
+                    "modules": {},
+                    "payloads": payloads,
+                    "producer_digest": "test-producer"
+                }
+            );
+            output = workspace / ("output" + str(revision));
+            complete_image(source, None, output, kernel);
+            completed = codec.load_image(output / "jaclang/_precompiled");
+            assert completed is not None;
+            completed.verify();
+            identities.append(completed.manifest["compiler_digest"]);
+            assert (output / "jaclang/_precompiled/stubcat.bin").read_bytes()
+                == b"catalog";
+            assert (package / "compiler/libjac_compiler.so").read_bytes()
+                == bytes([revision]);
+        }
+        assert identities[0] == identities[1];
+        Path(str(kernel) + ".layout.json").unlink();
+        missing = workspace / "missing";
+        with testraises(FileNotFoundError) {
+            complete_image(source, None, missing, kernel);
+        }
+        assert not missing.exists();
     }
 }

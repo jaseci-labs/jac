@@ -106,3 +106,36 @@ test "mapped debug objects retain reproducible source locations" {
         assert str(base).encode() not in first;
     }
 }
+
+
+test "native library builds preserve reproducible mapped source identities" {
+    import from jaclang.cli.commands.native_build { native_build }
+    import sys;
+    with TemporaryDirectory() as td {
+        base = Path(td).resolve();
+        outputs: list[bytes] = [];
+        for name in ["first", "a_different_build_directory"] {
+            directory = base / name;
+            directory.mkdir();
+            (directory / "jac.toml").write_text('[project]\nname="reproducible"\n');
+            source = directory / "probe.jac";
+            source.write_text(
+                'def:pub echo(n: int) -> int { assert n >= 0; return n + 1; }\n'
+            );
+            output = directory
+                / ("libprobe.dylib" if sys.platform == "darwin" else "libprobe.so");
+            assert native_build(
+                str(source),
+                output=str(output),
+                lib=True,
+                no_ir_cache=True,
+                source_prefix_map={str(directory): "source"}
+            )
+                == 0;
+            outputs.append(output.read_bytes());
+        }
+        assert outputs[0] == outputs[1];
+        assert b"assertion failed at source/probe.jac" in outputs[0];
+        assert str(base).encode() not in outputs[0];
+    }
+}

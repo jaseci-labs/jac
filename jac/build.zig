@@ -235,8 +235,8 @@ pub fn build(b: *std.Build) void {
     kernel_build.step.dependOn(fetch_jac_step);
     kernel_build.step.dependOn(&fetch_ts.step);
     const compiler_kernel = configureCompilerKernel(b, kernel_build, target);
-    const kernel_step = b.step("compiler-kernel", "Build the compiler kernel with the pinned stage-0 toolchain");
-    kernel_step.dependOn(&kernel_build.step);
+    b.step("bootstrap-kernel", "Build the temporary kernel used to start the current compiler")
+        .dependOn(&kernel_build.step);
 
     // Stage 1 is an ordinary compiled image produced by the pinned release.
     // Its output is immutable and separate from both producer and target sources.
@@ -266,7 +266,21 @@ pub fn build(b: *std.Build) void {
     const stub_catalog = build_catalog.addOutputFileArg("stubcat.bin");
     b.step("stub-catalog", "Build the typeshed catalog with the current compiler image")
         .dependOn(&build_catalog.step);
-    const compiler_image = completeCompilerImage(b, bootstrap_tool, compiler_core, stub_catalog);
+    const bootstrap_image = completeCompilerImage(b, bootstrap_tool, compiler_core, stub_catalog);
+    var native_tool = bootstrap_tool;
+    native_tool.image = bootstrap_image;
+    // The predecessor cannot map native source paths. Its kernel only starts
+    // this image; the current compiler emits the reproducible shipped kernel.
+    const native_kernel_build = native_tool.run("jac", &.{ "run", "--backend", "python" });
+    const native_kernel = configureCompilerKernel(b, native_kernel_build, target);
+    b.step("compiler-kernel", "Build the shipped kernel with the current native compiler")
+        .dependOn(&native_kernel_build.step);
+    const finalize_kernel = native_tool.run("jac", &.{ "run", "--backend", "python" });
+    finalize_kernel.addFileArg(b.path("bootstrap/compiler.jac"));
+    finalize_kernel.addArg("complete-kernel");
+    finalize_kernel.addDirectoryArg(bootstrap_image);
+    finalize_kernel.addFileArg(native_kernel);
+    const compiler_image = finalize_kernel.addOutputDirectoryArg("compiler-site");
     const install_image = b.addInstallDirectory(.{
         .source_dir = compiler_image,
         .install_dir = .prefix,
