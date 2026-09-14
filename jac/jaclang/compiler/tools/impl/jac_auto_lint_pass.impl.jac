@@ -245,6 +245,35 @@ impl JacAutoLintPass.enter_archetype with uni.Archetype entry {
     self._combine_has_in_node(arch);
 }
 
+impl JacAutoLintPass._merge_run_into_base(
+    base: uni.UniNode,
+    combined_items: list,
+    items_attr: str,
+    role: type[Role],
+    strip_semi: bool,
+) -> None {
+    base_items = getattr(base, items_attr);
+    new_kid: list[uni.UniNode] = [];
+    for kid in base.kid {
+        if kid in base_items {
+            break;
+        }
+        new_kid.append(kid);
+    }
+    for (idx, item) in enumerate(combined_items) {
+        if idx > 0 {
+            new_kid.append(base.gen_token(Tok.COMMA));
+        }
+        if strip_semi and item.kid and isinstance(item.kid[-1], uni.Semi) {
+            item.set_kids(nodes=list(item.kid[:-1]));
+        }
+        new_kid.append(item);
+    }
+    new_kid.append(base.gen_token(Tok.SEMI));
+    base._role_set(role, combined_items);
+    base.set_kids(nodes=new_kid);
+}
+
 impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
     if len(body) <= 1 {
         return body;
@@ -277,27 +306,13 @@ impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
                 for `glob in merged_globs {
                     combined_assignments.extend(`glob.assignments);
                 }
-                new_kid: list[uni.UniNode] = [];
-                for kid in base_glob.kid {
-                    if kid in base_glob.assignments {
-                        break;
-                    }
-                    new_kid.append(kid);
-                }
-                for (idx, assign) in enumerate(combined_assignments) {
-                    if idx > 0 {
-                        new_kid.append(base_glob.gen_token(Tok.COMMA));
-                    }
-
-                    if assign.kid and isinstance(assign.kid[-1], uni.Semi) {
-                        assign_kids = list(assign.kid[:-1]);
-                        assign.set_kids(nodes=assign_kids);
-                    }
-                    new_kid.append(assign);
-                }
-                new_kid.append(base_glob.gen_token(Tok.SEMI));
-                base_glob._role_set(AssignmentsRole, combined_assignments);
-                base_glob.set_kids(nodes=new_kid);
+                self._merge_run_into_base(
+                    base_glob,
+                    combined_assignments,
+                    "assignments",
+                    AssignmentsRole,
+                    True,
+                );
                 new_body.append(base_glob);
             } else {
                 for g in merged_globs {
@@ -342,22 +357,9 @@ impl JacAutoLintPass.combine_consecutive_has(body: list) -> list {
                 for has_stmt in merged_has_list {
                     combined_vars.extend(has_stmt.vars);
                 }
-                new_kid: list[uni.UniNode] = [];
-                for kid in base_has.kid {
-                    if kid in base_has.vars {
-                        break;
-                    }
-                    new_kid.append(kid);
-                }
-                for (idx, var) in enumerate(combined_vars) {
-                    if idx > 0 {
-                        new_kid.append(base_has.gen_token(Tok.COMMA));
-                    }
-                    new_kid.append(var);
-                }
-                new_kid.append(base_has.gen_token(Tok.SEMI));
-                base_has._role_set(VarsRole, combined_vars);
-                base_has.set_kids(nodes=new_kid);
+                self._merge_run_into_base(
+                    base_has, combined_vars, "vars", VarsRole, False
+                );
                 new_body.append(base_has);
             } else {
                 new_body.append(stmt);
