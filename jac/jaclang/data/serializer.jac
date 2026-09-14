@@ -130,3 +130,16 @@ glob _register_hook: object = Archetype.install_subclass_hook(
      ),
      _register_root: object = Serializer.register(cast(type, Root)),
      _register_generic_edge: object = Serializer.register(cast(type, GenericEdge));
+
+glob _BUILTIN_MOVED_FROM: dict[type, list[str]] = {
+         Root: ['jaclang.jac0core.archetype.Root'],
+         GenericEdge: ['jaclang.jac0core.archetype.GenericEdge']
+     };
+
+with entry {
+    for (_cls, _old_names) in _BUILTIN_MOVED_FROM.items() {
+        for _old_name in _old_names {
+            Serializer.register_alias(_old_name, _cls);
+        }
+    }
+}

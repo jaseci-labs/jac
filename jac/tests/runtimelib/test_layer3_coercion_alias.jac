@@ -11,7 +11,7 @@ import logging;
 import from datetime { date, datetime, time }
 import from enum { Enum }
 import from uuid { UUID, uuid4 }
-import from jaclang.runtime.archetype { NodeAnchor, Root }
+import from jaclang.runtime.archetype { NodeAnchor, Root, GenericEdge }
 # archetype_alias is an ambient Jac builtin (no import). Serializer is
 # an explicit import because we directly test its internals here.
 import from jaclang.data.serializer { Serializer }
@@ -61,6 +61,55 @@ test "alias to same qualified name is a no-op (does not self-alias)" {
 test "_get_class returns None for truly unregistered class names" {
     resolved = Serializer._get_class("definitely.not", "Present");
     assert resolved is None;
+}
+
+
+# --- Persisted built-in identity + pre-move aliases (regression: #8747) ----
+#
+# Pins the module identity of jaclang's own persisted built-ins -- moving one
+# is a data migration, not a plain refactor. Base archetypes (NodeArchetype,
+# EdgeArchetype, WalkerArchetype, ObjectArchetype) are excluded: never
+# instantiated as themselves, so no stored row names them.
+#
+# If this fails because you moved a class: register its old name as an alias
+# in data/serializer.jac's _BUILTIN_MOVED_FROM first, add it to moved_from
+# below, then update module.
+glob _PERSISTED_BUILTIN_IDENTITIES: dict[str, dict] = {
+         'Root': {
+             'module': 'jaclang.runtime.archetype',
+             'moved_from': ['jaclang.jac0core.archetype']
+         },
+         'GenericEdge': {
+             'module': 'jaclang.runtime.archetype',
+             'moved_from': ['jaclang.jac0core.archetype']
+         }
+     };
+
+
+test "persisted built-ins keep their pinned identity and resolve every prior name" {
+    live = {'Root': Root, 'GenericEdge': GenericEdge};
+    for (name, spec) in _PERSISTED_BUILTIN_IDENTITIES.items() {
+        cls = live[name];
+        actual = f"{getattr(cls, '__module__')}.{getattr(cls, '__name__')}";
+        expected = f"{spec['module']}.{name}";
+        assert actual == expected , (
+            f"{name} moved from {expected} to {actual}. It is a persisted "
+            "built-in -- register the old name as an alias in "
+            "data/serializer.jac's _BUILTIN_MOVED_FROM, add it to this "
+            "entry's moved_from, then update this manifest entry."
+        );
+        for old_module in spec['moved_from'] {
+            old_key = f"{old_module}.{name}";
+            assert Serializer._aliases.get(old_key) == actual , (
+                f"no alias recorded for {name}'s pre-move name {old_key}: "
+                f"{Serializer._aliases}"
+            );
+            resolved = Serializer._get_class(old_module, name);
+            assert resolved is cls , (
+                f"_get_class did not resolve {old_key} to {cls}: got {resolved}"
+            );
+        }
+    }
 }
 
 

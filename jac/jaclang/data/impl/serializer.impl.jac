@@ -443,6 +443,10 @@ impl Serializer.register_alias(old_name: str, cls: type) -> None {
         logger.debug(f"archetype_alias: {old_name} == current name; alias is a no-op");
         return;
     }
+
+    if new_name not in Serializer._registry {
+        Serializer.register(cls);
+    }
     Serializer._aliases[old_name] = new_name;
 }
 
