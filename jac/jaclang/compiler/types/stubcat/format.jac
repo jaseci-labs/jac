@@ -49,7 +49,6 @@ glob MAGIC: bytes = b"JSCAT004",
      ACCESS_PUBLIC: int = 0,
      ACCESS_PRIVATE: int = 1,
      ACCESS_PROTECTED: int = 2,
-     # Bits 0-3 are reserved; body lifetime facts are not interface data.
      SYMF_HAS_DEFAULT: int = 16,
      SYMF_DEFER: int = 32,
      SYMF_INSTANCE_METHOD: int = 64;

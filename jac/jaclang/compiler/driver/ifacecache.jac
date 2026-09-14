@@ -1102,9 +1102,6 @@ obj IfaceRegistry {
             }
             diags = sections.get(SEC_DIAG);
             if diags is None {
-                # Publication can update interfaces without producing diagnostics.
-                # Retain only profiles the merged JIR kept for these dependencies;
-                # _existing_profiles also resolves their persisted source paths.
                 profiles = self._existing_profiles(resolved, sections[SEC_DEPS]);
                 if profiles {
                     diags = json.dumps(

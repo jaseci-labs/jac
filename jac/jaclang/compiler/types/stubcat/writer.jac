@@ -1162,8 +1162,7 @@ obj CatalogWriter {
             binding = 0;
         }
         put_uvar(out, binding);
-        # Body lifetime facts belong to the analyzed tree, not its exports.
-        # Serializing them makes the interface depend on whether codegen ran.
+
         symbits = 0;
         if self._jac_method_of(sym) is not None {
             symbits |= SYMF_INSTANCE_METHOD;
