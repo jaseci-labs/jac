@@ -816,48 +816,57 @@ impl NaIRGenPass._is_walker_arch(name: str) -> bool {
 }
 
 impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
-    if not nd.rights or not nd.ops {
-        return None;
-    }
-    _l_nd = nd.left.expr if isinstance(nd.left, uni.CfgExpr) else nd.left;
-    _left_is_empty_lit = (
-        isinstance(_l_nd, uni.ListVal) and not _l_nd.values and len(nd.rights) == 1
-    );
-    _cmp_peer_saved = self._peer_container_ty;
-    if _left_is_empty_lit {
-        right = self._codegen_expr(nd.rights[0]);
-        if right is None {
+    temporaries = self.owned_temp_slots.copy();
+    try {
+        if not nd.rights or not nd.ops {
             return None;
         }
-        self._peer_container_ty = right.type;
-        try {
-            left = self._codegen_expr(nd.left);
-        } finally {
-            self._peer_container_ty = _cmp_peer_saved;
-        }
-        if left is None {
-            return None;
-        }
-    } else {
-        left = self._codegen_expr(nd.left);
-        if left is None {
-            return None;
-        }
-        if len(nd.ops) > 1 and len(nd.rights) == len(nd.ops) {
-            return self._codegen_compare_chain(nd, left);
-        }
-        self._peer_container_ty = left.type;
-        try {
+        _l_nd = nd.left.expr if isinstance(nd.left, uni.CfgExpr) else nd.left;
+        _left_is_empty_lit = (
+            isinstance(_l_nd, uni.ListVal) and not _l_nd.values and len(nd.rights) == 1
+        );
+        _cmp_peer_saved = self._peer_container_ty;
+        if _left_is_empty_lit {
             right = self._codegen_expr(nd.rights[0]);
-        } finally {
-            self._peer_container_ty = _cmp_peer_saved;
+            if right is None {
+                return None;
+            }
+            right = self._borrow_owned_temp(right);
+            self._peer_container_ty = right.type;
+            try {
+                left = self._codegen_cleanup_operand(nd.left, temporaries);
+            } finally {
+                self._peer_container_ty = _cmp_peer_saved;
+            }
+            if left is None {
+                return None;
+            }
+        } else {
+            left = self._codegen_expr(nd.left);
+            if left is None {
+                return None;
+            }
+            left = self._borrow_owned_temp(left);
+            if len(nd.ops) > 1 and len(nd.rights) == len(nd.ops) {
+                return self._codegen_compare_chain(nd, left, temporaries);
+            }
+            self._peer_container_ty = left.type;
+            try {
+                right = self._codegen_cleanup_operand(nd.rights[0], temporaries);
+            } finally {
+                self._peer_container_ty = _cmp_peer_saved;
+            }
+            if right is None {
+                return None;
+            }
         }
-        if right is None {
-            return None;
-        }
+        left = self._borrow_owned_temp(left);
+        right = self._borrow_owned_temp(right);
+        op = nd.ops[0].name if isinstance(nd.ops[0], uni.Token) else str(nd.ops[0]);
+        return self._codegen_compare_link(op, left, right, nd.left, nd.rights[0]);
+    } finally {
+        self._release_temps_since(temporaries);
     }
-    op = nd.ops[0].name if isinstance(nd.ops[0], uni.Token) else str(nd.ops[0]);
-    return self._codegen_compare_link(op, left, right, nd.left, nd.rights[0]);
 }
 
 impl NaIRGenPass._codegen_compare_link(
@@ -865,8 +874,7 @@ impl NaIRGenPass._codegen_compare_link(
     left: ir.Value,
     right: ir.Value,
     left_node: uni.UniNode,
-    right_node: uni.UniNode,
-    release_operands: bool = True
+    right_node: uni.UniNode
 ) -> (ir.Value | None) {
     _cmp_left_orig = left;
     _cmp_right_orig = right;
@@ -966,6 +974,7 @@ impl NaIRGenPass._codegen_compare_link(
                 (left_coerced, _din_gate) = self._opt_membership_operand(
                     left, key_type
                 );
+                left_coerced = self._borrow_owned_temp(left_coerced);
                 (_has_fn, _kh) = self._static_key_op(helpers, "contains", _in_key_nd);
                 _has_args = [right, left_coerced];
                 if _kh is not None {
@@ -991,11 +1000,6 @@ impl NaIRGenPass._codegen_compare_link(
                     );
                 }
 
-                if release_operands {
-                    self._release_owned_operands(
-                        left_coerced, _cmp_right_orig, op="cmp_in_dict"
-                    );
-                }
                 return result;
             }
         }
@@ -1007,6 +1011,7 @@ impl NaIRGenPass._codegen_compare_link(
                 (left_coerced, _sin_gate) = self._opt_membership_operand(
                     left, elem_type
                 );
+                left_coerced = self._borrow_owned_temp(left_coerced);
                 (_has_fn, _kh) = self._static_key_op(helpers, "contains", _in_key_nd);
                 _has_args = [right, left_coerced];
                 if _kh is not None {
@@ -1031,11 +1036,6 @@ impl NaIRGenPass._codegen_compare_link(
                     );
                 }
 
-                if release_operands {
-                    self._release_owned_operands(
-                        left_coerced, _cmp_right_orig, op="cmp_in_set"
-                    );
-                }
                 return result;
             }
         }
@@ -1047,6 +1047,7 @@ impl NaIRGenPass._codegen_compare_link(
                 (left_coerced, _lin_gate) = self._opt_membership_operand(
                     left, elem_type
                 );
+                left_coerced = self._borrow_owned_temp(left_coerced);
                 list_len = self.builder.call(
                     helpers["len"], [right], name="list.in.len"
                 );
@@ -1133,11 +1134,6 @@ impl NaIRGenPass._codegen_compare_link(
                     result = self.builder.zext(result, i64, name="notin.i64");
                 }
 
-                if release_operands {
-                    self._release_owned_operands(
-                        left_coerced, _cmp_right_orig, op="cmp_in_list"
-                    );
-                }
                 return result;
             }
         }
@@ -1319,11 +1315,6 @@ impl NaIRGenPass._codegen_compare_link(
     if op == Tok.KW_IS or op == Tok.KW_ISN {
         _opt_ident = self._identity_over_optional(left, right, op == Tok.KW_ISN);
         if _opt_ident is not None {
-            if release_operands {
-                self._release_owned_operands(
-                    _cmp_left_orig, _cmp_right_orig, op="cmp_is_opt"
-                );
-            }
             return _opt_ident;
         }
     }
@@ -1335,11 +1326,6 @@ impl NaIRGenPass._codegen_compare_link(
                 right = self.builder.bitcast(right, left.type);
             }
             _is_result = self.builder.icmp_unsigned("==", left, right, name="is.eq");
-            if release_operands {
-                self._release_owned_operands(
-                    _cmp_left_orig, _cmp_right_orig, op="cmp_is"
-                );
-            }
             return _is_result;
         }
 
@@ -1356,11 +1342,6 @@ impl NaIRGenPass._codegen_compare_link(
                 right = self.builder.bitcast(right, left.type);
             }
             _isn_result = self.builder.icmp_unsigned("!=", left, right, name="is.ne");
-            if release_operands {
-                self._release_owned_operands(
-                    _cmp_left_orig, _cmp_right_orig, op="cmp_isn"
-                );
-            }
             return _isn_result;
         }
 
@@ -1380,9 +1361,6 @@ impl NaIRGenPass._codegen_compare_link(
     _cmp_result = self._emit_comparison(
         op, left, right, is_float, unsigned=_cmp_unsigned
     );
-    if release_operands {
-        self._release_owned_operands(_cmp_left_orig, _cmp_right_orig, op="cmp_op");
-    }
     return _cmp_result;
 }
 
@@ -1441,33 +1419,30 @@ impl NaIRGenPass._identity_over_optional(
 }
 
 impl NaIRGenPass._codegen_compare_chain(
-    nd: uni.CompareExpr, left: ir.Value
+    nd: uni.CompareExpr, left: ir.Value, retained: set[str]
 ) -> (ir.Value | None) {
     op_names: list[str] = [];
     for _o in nd.ops {
         _name = _o.name if isinstance(_o, uni.Token) else str(_o);
         op_names.append(_name);
     }
-    operands: list = [left];
     result: (ir.Value | None) = None;
     cur = left;
     for (i, op_name) in enumerate(op_names) {
         _chain_peer_saved = self._peer_container_ty;
         self._peer_container_ty = cur.type;
         try {
-            right = self._codegen_required(nd.rights[i]);
+            right = self._codegen_cleanup_operand(nd.rights[i], retained);
         } finally {
             self._peer_container_ty = _chain_peer_saved;
         }
         if right is None {
             return None;
         }
-        operands.append(right);
+        right = self._borrow_owned_temp(right);
         left_node = nd.left if i == 0 else nd.rights[i - 1];
         _errs_before = len(self.errors_had);
-        link = self._codegen_compare_link(
-            op_name, cur, right, left_node, nd.rights[i], release_operands=False
-        );
+        link = self._codegen_compare_link(op_name, cur, right, left_node, nd.rights[i]);
         if link is None {
             if len(self.errors_had) == _errs_before {
                 self.emit(
@@ -1485,7 +1460,6 @@ impl NaIRGenPass._codegen_compare_chain(
             else self.builder.and_(result, link, name=f"chain.and.{i}");
         cur = right;
     }
-    self._release_owned_args(operands, op="cmp_chain");
     return result;
 }
 

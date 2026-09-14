@@ -1,6 +1,7 @@
 impl NaIRGenPass._enter_bindings(inherit: bool = False) -> NativeBindingState {
     state = NativeBindingState(
         local_vars=self.local_vars,
+        owned_temp_slots=self.owned_temp_slots,
         param_vars=self.param_vars,
         nogc_no_free_vars=self.nogc_no_free_vars,
         nogc_owned_str_vars=self.nogc_owned_str_vars,
@@ -10,6 +11,7 @@ impl NaIRGenPass._enter_bindings(inherit: bool = False) -> NativeBindingState {
         closure_cell_handles=self.closure_cell_handles
     );
     self.local_vars = self.local_vars.copy() if inherit else {};
+    self.owned_temp_slots = self.owned_temp_slots.copy() if inherit else set();
     self.param_vars = self.param_vars.copy() if inherit else set();
     self.nogc_no_free_vars = self.nogc_no_free_vars.copy() if inherit else set();
     self.nogc_owned_str_vars = self.nogc_owned_str_vars.copy() if inherit else set();
@@ -32,6 +34,7 @@ impl NaIRGenPass._leave_bindings(
         self._emit_loop_iter_cleanup(locals);
     }
     self.local_vars = state.local_vars;
+    self.owned_temp_slots = state.owned_temp_slots;
     self.param_vars = state.param_vars;
     self.nogc_no_free_vars = state.nogc_no_free_vars;
     self.nogc_owned_str_vars = state.nogc_owned_str_vars;

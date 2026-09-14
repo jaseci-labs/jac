@@ -1342,6 +1342,7 @@ impl NaIRGenPass._osp_pred_pair(
     );
     _tf.linkage = "internal";
     _saved = self._builder;
+    _bindings = self._enter_bindings();
     self._builder = ir.IRBuilder(_tf.append_basic_block("entry"));
     _envp = self.builder.bitcast(_tf.args[1], _env_ty.as_pointer(), name="predp.envp");
     _keepc: ir.Value = ir.Constant(i1t, 1);
@@ -1365,9 +1366,7 @@ impl NaIRGenPass._osp_pred_pair(
             break;
         }
         _op = cmp.ops[0].name if isinstance(cmp.ops[0], uni.Token) else str(cmp.ops[0]);
-        _cres = self._codegen_compare_link(
-            _op, _fval, _rv, cmp.left, cmp.rights[0], release_operands=False
-        );
+        _cres = self._codegen_compare_link(_op, _fval, _rv, cmp.left, cmp.rights[0]);
         if _cres is None {
             _ok = False;
             break;
@@ -1379,6 +1378,7 @@ impl NaIRGenPass._osp_pred_pair(
         }
         _keepc = self.builder.and_(_keepc, _cres, name="predp.and");
     }
+    self._leave_bindings(_bindings, release=True);
     self.builder.ret(_keepc if _ok else ir.Constant(i1t, 0));
     self._builder = _saved;
     if not _ok {

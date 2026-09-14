@@ -1262,7 +1262,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
 
     _it_slot_var: (str | None) = None;
     if _gen_it_spill is None and owns_iter {
-        _it_slot_var = self._bind_loop_coll_slot(iter_val);
+        _it_slot_var = self._bind_owned_temp(iter_val, prefix="for.coll");
     }
 
     elem_slot = self._entry_alloca(elem_type, "iter.elem");
@@ -1330,7 +1330,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         iter_val = self.builder.load(_gen_it_spill, name="iterf.it.end");
     }
     if _it_slot_var is not None {
-        self._release_loop_coll_slot(_it_slot_var, op="iter_end", loc=_loc);
+        self._release_owned_temp(_it_slot_var, op="iter_end", loc=_loc);
     } elif owns_iter {
         self._emit_rc_release_simple(iter_val, op="iter_end", loc=_loc);
     }

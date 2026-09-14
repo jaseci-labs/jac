@@ -2289,6 +2289,10 @@ impl NaIRGenPass._emit_scope_cleanup(
     self._emit_region_leaves(len(self.region_open_stack));
     _region_handles: list = [];
     for (var_name, alloca) in reversed(list(self.local_vars.items())) {
+        if var_name in self.owned_temp_slots {
+            self._release_owned_temp(var_name, op="scope_exit", loc=loc);
+            continue;
+        }
         if var_name == "self" and not self._self_owned {
             continue;
         }
@@ -2373,6 +2377,10 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
     }
     _region_handles: list = [];
     for var_name in reversed(body_locals) {
+        if var_name in self.owned_temp_slots {
+            self._release_owned_temp(var_name, op="iter_end", loc=loc);
+            continue;
+        }
         if var_name == "self" or var_name in self.param_vars {
             continue;
         }
@@ -2435,29 +2443,47 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
     }
 }
 
-impl NaIRGenPass._bind_loop_coll_slot(val: ir.Value) -> (str | None) {
-    if not isinstance(val.type, ir.PointerType) {
-        return None;
-    }
-    _name = f"for.coll.{self._loop_coll_seq}";
-    self._loop_coll_seq += 1;
+impl NaIRGenPass._bind_owned_temp(val: ir.Value, prefix: str = "temp") -> str {
+    _name = f"{prefix}.{self._owned_temp_seq}";
+    self._owned_temp_seq += 1;
     _slot = self._entry_alloca(val.type, _name);
+    _slot.na_tuple_owned = val.na_tuple_owned;
     self.local_vars[_name] = _slot;
+    self.owned_temp_slots.add(_name);
     self.builder.store(val, _slot);
     return _name;
 }
 
-impl NaIRGenPass._release_loop_coll_slot(
+impl NaIRGenPass._borrow_owned_temp(val: ir.Value) -> ir.Value {
+    if self._is_owned(val) or val.na_tuple_owned is not None {
+        self._bind_owned_temp(val);
+        val.is_owned = False;
+        val.na_tuple_owned = None;
+    }
+    return val;
+}
+
+impl NaIRGenPass._release_temps_since(retained: set[str]) -> None {
+    names = [
+        name
+        for name in self.local_vars
+        if name in self.owned_temp_slots and name not in retained
+    ];
+    self._emit_loop_iter_cleanup(names);
+}
+
+impl NaIRGenPass._release_owned_temp(
     var_name: str, op: str = "", loc: str = ""
 ) -> None {
     _slot = self.local_vars.get(var_name);
     if _slot is None {
         return;
     }
-    _val = self.builder.load(_slot, name=f"{var_name}.end");
+    _val = self.builder.load(_slot, name=f"cleanup.{var_name}");
     self._mark_owned(_val);
-    self._emit_rc_release_simple(_val, op=op, loc=loc);
+    _val.na_tuple_owned = _slot.na_tuple_owned;
     self.builder.store(ir.Constant(_slot.pointee_type, None), _slot);
+    self._release_owned_args([_val], op=op);
 }
 
 impl NaIRGenPass._rc_strdup(

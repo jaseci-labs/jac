@@ -2758,54 +2758,64 @@ impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
     if operand is None {
         return None;
     }
-    if self._opt_payload_of(operand.type) is None {
-        if not isinstance(operand.type, ir.PointerType) {
-            return self._emit_isinstance_core(nd, operand);
-        }
+    temporaries = self.owned_temp_slots.copy();
+    operand = self._borrow_owned_temp(operand);
+    guard = self._begin_cleanup_guard(temporaries)
+        if not isinstance(params[1], uni.Name)
+        else None;
+    try {
+        if self._opt_payload_of(operand.type) is None {
+            if not isinstance(operand.type, ir.PointerType) {
+                return self._emit_isinstance_core(nd, operand);
+            }
 
-        _nn_fn = self.builder.block.function;
-        _nn_bb = _nn_fn.append_basic_block("isinst.nn");
-        _nn_done_bb = _nn_fn.append_basic_block("isinst.nn.done");
-        _nn_ok = self.builder.icmp_unsigned(
-            "!=", operand, ir.Constant(operand.type, None), name="isinst.nonnull"
+            _nn_fn = self.builder.block.function;
+            _nn_bb = _nn_fn.append_basic_block("isinst.nn");
+            _nn_done_bb = _nn_fn.append_basic_block("isinst.nn.done");
+            _nn_ok = self.builder.icmp_unsigned(
+                "!=", operand, ir.Constant(operand.type, None), name="isinst.nonnull"
+            );
+            _nn_entry = self.builder.block;
+            self.builder.cbranch(_nn_ok, _nn_bb, _nn_done_bb);
+            self.builder.position_at_end(_nn_bb);
+            _nn_inner = self._emit_isinstance_core(nd, operand);
+            _nn_inner_bb = self.builder.block;
+            self.builder.branch(_nn_done_bb);
+            self.builder.position_at_end(_nn_done_bb);
+            if _nn_inner is None {
+                return None;
+            }
+            _nn_res = self.builder.phi(i1, name="isinst.nn.res");
+            _nn_res.add_incoming(ir.Constant(i1, 0), _nn_entry);
+            _nn_res.add_incoming(_nn_inner, _nn_inner_bb);
+            return _nn_res;
+        }
+        fn = self.builder.block.function;
+        some_bb = fn.append_basic_block("isinst.opt.some");
+        done_bb = fn.append_basic_block("isinst.opt.done");
+        opt_tag = self.builder.extract_value(operand, 0, name="isinst.opt.tag");
+        opt_set = self.builder.icmp_signed(
+            "!=", opt_tag, ir.Constant(i8, 0), name="isinst.opt.set"
         );
-        _nn_entry = self.builder.block;
-        self.builder.cbranch(_nn_ok, _nn_bb, _nn_done_bb);
-        self.builder.position_at_end(_nn_bb);
-        _nn_inner = self._emit_isinstance_core(nd, operand);
-        _nn_inner_bb = self.builder.block;
-        self.builder.branch(_nn_done_bb);
-        self.builder.position_at_end(_nn_done_bb);
-        if _nn_inner is None {
+        payload = self.builder.extract_value(operand, 1, name="isinst.opt.val");
+        entry_bb = self.builder.block;
+        self.builder.cbranch(opt_set, some_bb, done_bb);
+        self.builder.position_at_end(some_bb);
+        inner = self._emit_isinstance_core(nd, payload);
+        inner_bb = self.builder.block;
+        self.builder.branch(done_bb);
+        self.builder.position_at_end(done_bb);
+        if inner is None {
             return None;
         }
-        _nn_res = self.builder.phi(i1, name="isinst.nn.res");
-        _nn_res.add_incoming(ir.Constant(i1, 0), _nn_entry);
-        _nn_res.add_incoming(_nn_inner, _nn_inner_bb);
-        return _nn_res;
+        res = self.builder.phi(i1, name="isinst.opt.res");
+        res.add_incoming(ir.Constant(i1, 0), entry_bb);
+        res.add_incoming(inner, inner_bb);
+        return res;
+    } finally {
+        self._end_cleanup_guard(guard);
+        self._release_temps_since(temporaries);
     }
-    fn = self.builder.block.function;
-    some_bb = fn.append_basic_block("isinst.opt.some");
-    done_bb = fn.append_basic_block("isinst.opt.done");
-    opt_tag = self.builder.extract_value(operand, 0, name="isinst.opt.tag");
-    opt_set = self.builder.icmp_signed(
-        "!=", opt_tag, ir.Constant(i8, 0), name="isinst.opt.set"
-    );
-    payload = self.builder.extract_value(operand, 1, name="isinst.opt.val");
-    entry_bb = self.builder.block;
-    self.builder.cbranch(opt_set, some_bb, done_bb);
-    self.builder.position_at_end(some_bb);
-    inner = self._emit_isinstance_core(nd, payload);
-    inner_bb = self.builder.block;
-    self.builder.branch(done_bb);
-    self.builder.position_at_end(done_bb);
-    if inner is None {
-        return None;
-    }
-    res = self.builder.phi(i1, name="isinst.opt.res");
-    res.add_incoming(ir.Constant(i1, 0), entry_bb);
-    res.add_incoming(inner, inner_bb);
-    return res;
 }
 
 impl NaIRGenPass._emit_isinstance_core(
