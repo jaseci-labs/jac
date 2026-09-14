@@ -203,7 +203,9 @@ test "native validation diagnostics retain inline suppression" {
                 assert errors[0].from_pass is ASTValidationPass;
                 assert errors[0].loc.mod_path == "early_diagnostic.jac";
                 assert errors[0].loc.first_line == 1;
-                assert errors[0].help_text == errors[0].code.help_text;
+                diagnostic = errors[0].code;
+                assert diagnostic is not None;
+                assert errors[0].help_text == diagnostic.help_text;
                 assert errors[0].help_text;
             }
         }
