@@ -118,6 +118,46 @@ test "dependency discovery does not populate descendant indexes on pristine synt
     }
 }
 
+test "failed precompile retains analysis measurements and a repaired source recovers" {
+    import json;
+    import os;
+    import from unittest.mock { patch }
+    import jaclang.dist.precompile_bytecode as pre;
+    with TemporaryDirectory() as directory {
+        package = Path(directory) / "sample";
+        package.mkdir();
+        (package / "__init__.jac").write_text("# Package entry.\n");
+        (package / "good.jac").write_text("def value() -> int { return 7; }\n");
+        broken = package / "broken.jac";
+        broken.write_text("def answer() -> int { return 'wrong'; }\n");
+        result_path = package / "_precompiled" / pre.RESULT_NAME;
+        with patch.object(pre, "precompile_exit") as leave, patch.dict(
+            os.environ, {"JAC_REBUILD": "0", "JAC_NO_PRECOMPILE": "0"}
+        ) {
+            pre.run_precompile(directory, jobs_arg="0");
+            assert leave.call_args[0][0] == 1;
+            cold = json.loads(result_path.read_text());
+            assert cold["failed"] == 1 and cold["compiled"] == 2;
+            failed = next(
+                result for worker in cold["workers"]
+                for result in worker["result"]
+                if result["status"] == "failed"
+            );
+            assert any(
+                record.get("parse_runs") and record.get("pass_runs")
+                for record in failed.get("analysis", [])
+            ) , "the failed module lost its compiler work measurements";
+            assert not list((package / "_precompiled").rglob("broken.jir"));
+            broken.write_text("def answer() -> int { return 42; }\n");
+            pre.run_precompile(directory, jobs_arg="0");
+            repaired = json.loads(result_path.read_text());
+            assert leave.call_args[0][0] == 0;
+            assert repaired["failed"] == 0;
+            assert repaired["compiled"] == 1 and repaired["reused"] == 2;
+        }
+    }
+}
+
 test "package precompile coordinates a diamond and cycles through warm and edited builds" {
     import json;
     import os;

@@ -1314,7 +1314,8 @@ def run_precompile(
                 return {
                     "status": "failed",
                     "rel": str(rel),
-                    "message": f"  SKIP (no bytecode): {rel}"
+                    "message": f"  SKIP (no bytecode): {rel}",
+                    "analysis": analysis
                 };
             }
             jir_path.parent.mkdir(parents=True, exist_ok=True);
