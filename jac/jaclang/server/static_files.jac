@@ -1,6 +1,10 @@
 import from pathlib { Path }
-import from jaclang.client.config_loader { JacClientConfig }
-import from jaclang.client.targets.registry { client_app_dir_for, client_app_root }
+import from jaclang.project.client_paths {
+    client_app_dir_for,
+    client_app_root,
+    client_assets_config,
+    client_assets_dir
+}
 import from jaclang.project.config { find_project_root, get_config, get_config_for_dir }
 import from jaclang.project.kinds { kind_has_client }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
@@ -30,7 +34,8 @@ glob DEFAULT_ASSET_EXTENSIONS: set[str] = {
 
 
 def asset_extensions -> set[str] {
-    return JacClientConfig().get_asset_extensions() or DEFAULT_ASSET_EXTENSIONS;
+    return set(client_assets_config(get_config()).get('custom_extensions', []))
+        or DEFAULT_ASSET_EXTENSIONS;
 }
 
 def resolve_static_base(base_path: str) -> Path {
@@ -68,7 +73,7 @@ def static_roots(
             roots.append(app_root);
         }
         dists.append(client_app_dir_for(cfg) / 'dist');
-        asset_dirs.append(JacClientConfig(base).get_assets_dir());
+        asset_dirs.append(client_assets_dir(cfg, base));
     }
     roots.append(base);
     base_dist = base / '.jac' / 'client' / 'dist';

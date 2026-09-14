@@ -315,7 +315,7 @@ impl EsastGenPass._convert_assignment_target(
         and target.op.name == Tok.STAR_MUL.value
     ) {
         (argument, _, _) = self._convert_assignment_target(target.operand);
-        pattern = self.sync_loc(
+        pattern: es.Pattern | es.Expression = self.sync_loc(
             es.RestElement(argument=cast(es.Pattern, argument)), jac_node=target
         );
         return (pattern, None, None);
@@ -393,7 +393,7 @@ impl EsastGenPass._convert_assignment_target(
     return (left, reference, None);
 }
 
-impl EsastGenPass._target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.Node {
+impl EsastGenPass._target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.Pattern {
     if isinstance(target, es.SpreadElement) {
         inner = self._target_to_pattern(target.argument, loc)
             if target.argument
@@ -401,7 +401,7 @@ impl EsastGenPass._target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.No
         return self.sync_loc(es.RestElement(argument=inner), jac_node=loc);
     }
     if isinstance(target, es.ArrayExpression) {
-        elements: list[(es.Node | None)] = [];
+        elements: list[es.Pattern | None] = [];
         for elem in target.elements {
             elements.append(
                 self._target_to_pattern(elem, loc) if elem is not None else None

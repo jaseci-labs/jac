@@ -73,7 +73,7 @@ def _write_if_managed(
 
 def _project_native_deps(project_root: Path) -> dict[str, str] {
     import from jaclang.project.config { get_config_for_dir }
-    import from jaclang.client.targets.registry { client_workspace_app }
+    import from jaclang.project.client_paths { client_workspace_app }
     config = get_config_for_dir(str(project_root));
     if config is None {
         toml_path = project_root / "jac.toml";

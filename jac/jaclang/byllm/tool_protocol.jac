@@ -108,7 +108,7 @@ def attach_tool_hint(messages: list, block: str) -> list {
 }
 
 
-def _field(val: object, key: str) -> object {
+def response_field(val: object, key: str) -> object {
     if isinstance(val, dict) {
         return val.get(key);
     }
@@ -117,9 +117,9 @@ def _field(val: object, key: str) -> object {
 
 
 def _tool_call_name_args(tc: object) -> tuple[str, dict] {
-    fn = _field(tc, "function");
-    name = _field(tc, "name") or _field(fn, "name");
-    raw_args = _field(tc, "arguments") or _field(fn, "arguments");
+    fn = response_field(tc, "function");
+    name = response_field(tc, "name") or response_field(fn, "name");
+    raw_args = response_field(tc, "arguments") or response_field(fn, "arguments");
     args: dict = {};
     if isinstance(raw_args, dict) {
         args = raw_args;
@@ -138,9 +138,9 @@ def _tool_call_name_args(tc: object) -> tuple[str, dict] {
 def linearize_tool_messages(messages: list) -> list {
     out: list = [];
     for m in messages {
-        if _field(m, "tool_call_id") is not None {
-            name = str(_field(m, "name") or "tool");
-            content = _field(m, "content");
+        if response_field(m, "tool_call_id") is not None {
+            name = str(response_field(m, "name") or "tool");
+            content = response_field(m, "content");
             out.append(
                 {
                     "role": "user",
@@ -149,9 +149,9 @@ def linearize_tool_messages(messages: list) -> list {
             );
             continue;
         }
-        tool_calls = _field(m, "tool_calls");
+        tool_calls = response_field(m, "tool_calls");
         if isinstance(tool_calls, list) and tool_calls {
-            text = str(_field(m, "content") or "").strip();
+            text = str(response_field(m, "content") or "").strip();
             parts: list = [text] if text else [];
             for tc in tool_calls {
                 (name, args) = _tool_call_name_args(tc);
@@ -447,9 +447,9 @@ def coerce_message_dict(message: object) -> dict {
     if isinstance(message, dict) {
         return message;
     }
-    out: dict = {"role": _field(message, "role") or "assistant"};
-    out["content"] = _field(message, "content");
-    tc = _field(message, "tool_calls");
+    out: dict = {"role": response_field(message, "role") or "assistant"};
+    out["content"] = response_field(message, "content");
+    tc = response_field(message, "tool_calls");
     if tc {
         out["tool_calls"] = tc;
     }

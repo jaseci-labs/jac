@@ -1,5 +1,7 @@
 import from pathlib { Path }
 
+glob __jac_resources__: list[str] = ["docs/**/*", "skills/**/*"];
+
 obj Guide {
     has name: str,
         description: str,

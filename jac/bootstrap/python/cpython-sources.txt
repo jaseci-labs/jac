@@ -8,8 +8,8 @@
 #
 # Commented source paths record exclusions for the JacPython replacement.
 # Counts use pinned CPython 3.14.6 source lines, including comments and blanks.
-# Excluded: 26 C files / 65,217 lines; 10 headers / 1,076 lines.
-# Total: 36 files / 66,293 source lines excluded from every shipped runtime.
+# Excluded: 42 C files / 103,864 lines; 25 headers / 11,178 lines.
+# Total: 67 files / 115,042 source lines excluded from every shipped runtime.
 # A separate build-only CPython host restores these marked entries to produce
 # the native object. The shipped JacPython runtime includes none of them.
 # Keep build dependencies and ABI adapters aligned with these exclusions.
@@ -305,11 +305,11 @@ Modules/Setup.bootstrap.in
 Modules/Setup.stdlib.in
 Modules/_abc.c
 Modules/_asynciomodule.c
-Modules/_bisectmodule.c
+# Modules/_bisectmodule.c  # removed: 484 source lines
 Modules/_bz2module.c
 Modules/_codecsmodule.c
-Modules/_collectionsmodule.c
-Modules/_csv.c
+# Modules/_collectionsmodule.c  # removed: 2,902 source lines
+# Modules/_csv.c  # removed: 1,864 source lines
 Modules/_ctypes/_ctypes.c
 Modules/_ctypes/callbacks.c
 Modules/_ctypes/callproc.c
@@ -324,7 +324,7 @@ Modules/_datetimemodule.c
 Modules/_decimal/_decimal.c
 Modules/_decimal/docstrings.h
 Modules/_elementtree.c
-Modules/_functoolsmodule.c
+# Modules/_functoolsmodule.c  # removed: 1,953 source lines
 Modules/_hacl/Hacl_HMAC.c
 Modules/_hacl/Hacl_HMAC.h
 Modules/_hacl/Hacl_Hash_Blake2b.c
@@ -367,7 +367,7 @@ Modules/_hacl/libintvector-shim.h
 Modules/_hacl/libintvector.h
 Modules/_hacl/python_hacl_namespaces.h
 Modules/_hashopenssl.c
-Modules/_heapqmodule.c
+# Modules/_heapqmodule.c  # removed: 811 source lines
 Modules/_interpchannelsmodule.c
 Modules/_interpqueuesmodule.c
 Modules/_interpreters_common.h
@@ -387,7 +387,7 @@ Modules/_io/fileio.c
 Modules/_io/iobase.c
 Modules/_io/stringio.c
 Modules/_io/textio.c
-Modules/_json.c
+# Modules/_json.c  # removed: 1,974 source lines
 Modules/_localemodule.c
 Modules/_lsprof.c
 Modules/_lzmamodule.c
@@ -400,11 +400,11 @@ Modules/_multiprocessing/multiprocessing.h
 Modules/_multiprocessing/posixshmem.c
 Modules/_multiprocessing/semaphore.c
 Modules/_opcode.c
-Modules/_operator.c
-Modules/_pickle.c
+# Modules/_operator.c  # removed: 2,032 source lines
+# Modules/_pickle.c  # removed: 8,179 source lines
 Modules/_posixsubprocess.c
-Modules/_queuemodule.c
-Modules/_randommodule.c
+# Modules/_queuemodule.c  # removed: 628 source lines
+# Modules/_randommodule.c  # removed: 679 source lines
 Modules/_remote_debugging_module.c
 Modules/_scproxy.c
 Modules/_sqlite/blob.c
@@ -448,7 +448,7 @@ Modules/_ssl/misc.c
 Modules/_ssl_data_35.h
 Modules/_stat.c
 Modules/_statisticsmodule.c
-Modules/_struct.c
+# Modules/_struct.c  # removed: 2,825 source lines
 Modules/_suggestions.c
 Modules/_sysconfig.c
 Modules/_threadmodule.c
@@ -470,9 +470,9 @@ Modules/_zstd/decompressor.c
 Modules/_zstd/zstddict.c
 Modules/_zstd/zstddict.h
 Modules/addrinfo.h
-Modules/arraymodule.c
+# Modules/arraymodule.c  # removed: 3,359 source lines
 Modules/atexitmodule.c
-Modules/binascii.c
+# Modules/binascii.c  # removed: 1,337 source lines
 Modules/blake2module.c
 Modules/cjkcodecs/_codecs_cn.c
 Modules/cjkcodecs/_codecs_hk.c
@@ -494,29 +494,29 @@ Modules/cjkcodecs/multibytecodec.c
 Modules/cjkcodecs/multibytecodec.h
 Modules/clinic/_abc.c.h
 Modules/clinic/_asynciomodule.c.h
-Modules/clinic/_bisectmodule.c.h
+# Modules/clinic/_bisectmodule.c.h  # removed: 449 source lines
 Modules/clinic/_bz2module.c.h
 Modules/clinic/_codecsmodule.c.h
-Modules/clinic/_collectionsmodule.c.h
-Modules/clinic/_csv.c.h
+# Modules/clinic/_collectionsmodule.c.h  # removed: 635 source lines
+# Modules/clinic/_csv.c.h  # removed: 210 source lines
 Modules/clinic/_datetimemodule.c.h
 Modules/clinic/_elementtree.c.h
-Modules/clinic/_functoolsmodule.c.h
+# Modules/clinic/_functoolsmodule.c.h  # removed: 195 source lines
 Modules/clinic/_hashopenssl.c.h
-Modules/clinic/_heapqmodule.c.h
+# Modules/clinic/_heapqmodule.c.h  # removed: 361 source lines
 Modules/clinic/_localemodule.c.h
 Modules/clinic/_lsprof.c.h
 Modules/clinic/_lzmamodule.c.h
 Modules/clinic/_opcode.c.h
-Modules/clinic/_operator.c.h
-Modules/clinic/_pickle.c.h
+# Modules/clinic/_operator.c.h  # removed: 1,510 source lines
+# Modules/clinic/_pickle.c.h  # removed: 1,101 source lines
 Modules/clinic/_posixsubprocess.c.h
-Modules/clinic/_queuemodule.c.h
-Modules/clinic/_randommodule.c.h
+# Modules/clinic/_queuemodule.c.h  # removed: 363 source lines
+# Modules/clinic/_randommodule.c.h  # removed: 177 source lines
 Modules/clinic/_remote_debugging_module.c.h
 Modules/clinic/_ssl.c.h
 Modules/clinic/_statisticsmodule.c.h
-Modules/clinic/_struct.c.h
+# Modules/clinic/_struct.c.h  # removed: 461 source lines
 Modules/clinic/_suggestions.c.h
 Modules/clinic/_sysconfig.c.h
 Modules/clinic/_threadmodule.c.h
@@ -524,16 +524,16 @@ Modules/clinic/_tracemalloc.c.h
 Modules/clinic/_typingmodule.c.h
 Modules/clinic/_weakref.c.h
 Modules/clinic/_zoneinfo.c.h
-Modules/clinic/arraymodule.c.h
-Modules/clinic/binascii.c.h
+# Modules/clinic/arraymodule.c.h  # removed: 777 source lines
+# Modules/clinic/binascii.c.h  # removed: 791 source lines
 Modules/clinic/blake2module.c.h
-Modules/clinic/cmathmodule.c.h
+# Modules/clinic/cmathmodule.c.h  # removed: 990 source lines
 Modules/clinic/fcntlmodule.c.h
 Modules/clinic/gcmodule.c.h
 Modules/clinic/grpmodule.c.h
 Modules/clinic/hmacmodule.c.h
-Modules/clinic/itertoolsmodule.c.h
-Modules/clinic/mathmodule.c.h
+# Modules/clinic/itertoolsmodule.c.h  # removed: 968 source lines
+# Modules/clinic/mathmodule.c.h  # removed: 1,114 source lines
 Modules/clinic/md5module.c.h
 Modules/clinic/mmapmodule.c.h
 Modules/clinic/posixmodule.c.h
@@ -552,7 +552,7 @@ Modules/clinic/termios.c.h
 Modules/clinic/timemodule.c.h
 Modules/clinic/unicodedata.c.h
 Modules/clinic/zlibmodule.c.h
-Modules/cmathmodule.c
+# Modules/cmathmodule.c  # removed: 1,315 source lines
 Modules/config.c.in
 Modules/errnomodule.c
 Modules/faulthandler.c
@@ -567,11 +567,11 @@ Modules/getpath_noop.c
 Modules/grpmodule.c
 Modules/hashlib.h
 Modules/hmacmodule.c
-Modules/itertoolsmodule.c
+# Modules/itertoolsmodule.c  # removed: 4,103 source lines
 Modules/ld_so_aix.in
 Modules/main.c
 Modules/makesetup
-Modules/mathmodule.c
+# Modules/mathmodule.c  # removed: 4,202 source lines
 Modules/md5module.c
 Modules/mmapmodule.c
 Modules/posixmodule.c

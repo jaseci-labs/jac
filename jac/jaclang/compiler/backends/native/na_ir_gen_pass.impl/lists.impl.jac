@@ -11,6 +11,10 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
         elem_type = ir.IntType(64);
     }
 
+    if elem_type_name == "f64" {
+        elem_type = ir.DoubleType();
+    }
+
     _list_layout = self._container_layout_dense([elem_type]);
     list_struct = self.llvm_module.context.get_identified_type(
         f"List.{elem_type_name}"
@@ -410,7 +414,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         elem_type_name = "ptr";
     } elif _lit_spec in ("i64", "f64")
         and _decl_elem is not None
-        and isinstance(_decl_elem, (ir.IntType, ir.DoubleType)) {
+        and isinstance(_decl_elem, (ir.IntType, ir.DoubleType, ir.FloatType)) {
         elem_type = _decl_elem;
         elem_type_name = _lit_spec or "i64";
     } else {
@@ -418,7 +422,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             if first_val is not None
             else _first_src_info["helpers"]["elem_type"];
         elem_type_name = "i64";
-        if isinstance(elem_type, ir.DoubleType) {
+        if isinstance(elem_type, (ir.DoubleType, ir.FloatType)) {
             elem_type_name = "f64";
         } elif isinstance(elem_type, ir.PointerType) {
             elem_type_name = "ptr";
@@ -605,7 +609,9 @@ impl NaIRGenPass._codegen_index(
     );
     above = self.builder.icmp_signed(">=", index_val, len_val, name="idx.oob.chk");
     is_oob = self.builder.or_(below, above, name="idx.range.chk");
-    self._emit_runtime_raise(is_oob, "IndexError", "list index out of range");
+    self._emit_runtime_raise(
+        is_oob, "IndexError", "list index out of range", [target_val]
+    );
     _got = self.builder.call(helpers["get"], [target_val, index_val], name="list.get");
     if elem_type_name == "u8" {
         return self.builder.zext(_got, i64, name="ba.get.zext");

@@ -1,4 +1,5 @@
-import from jaclang.project.config { get_config }
+import from jaclang.project.config { get_config_for_path }
+import from jaclang.client.artifact { client_output_dir }
 
 impl JacClient.render_page(
     introspector: ModuleIntrospector,
@@ -14,30 +15,15 @@ impl JacClient.render_page(
     if (function_name not in available_exports) {
         raise ValueError(f"Client function '{function_name}' not found");
     }
-    import from jaclang.project.config { find_project_root, get_config }
-    base_path_str = Jac.get_base_path_dir();
-    base_path_dir = Path(base_path_str) if base_path_str else Path.cwd();
-    project_root_result = find_project_root(base_path_dir);
-    if project_root_result {
-        (base_path, _) = project_root_result;
-    } else {
-        base_path = base_path_dir;
-    }
-    config = get_config();
+    source_path = Path(introspector._module.__file__);
+    dist_dir = client_output_dir(source_path);
+    config = get_config_for_path(source_path);
     if config is not None {
-        import from jaclang.client.targets.registry {
-            client_app_dir_for,
-            client_workspace_app
-        }
-        dist_dir = client_app_dir_for(config) / 'dist';
-        served_app = client_workspace_app(config);
+        import from jaclang.project.client_paths { client_workspace_app }
+        served_app = client_workspace_app(config, str(source_path));
         if served_app is not None {
-            try {
-                config = config.effective_for_app(served_app.name);
-            } except ValueError {}
+            config = config.effective_for_app(served_app.name);
         }
-    } else {
-        dist_dir = base_path / '.jac' / 'client' / 'dist';
     }
     is_pwa = (dist_dir / 'manifest.json').exists();
     if is_pwa {
@@ -98,24 +84,8 @@ impl JacClient.render_page(
 }
 
 impl JacClient.get_client_js(introspector: ModuleIntrospector) -> str {
-    import from jaclang.project.config { find_project_root, get_config }
-
-    base_path_str = Jac.get_base_path_dir();
-    base_path_dir = Path(base_path_str) if base_path_str else Path.cwd();
-    project_root_result = find_project_root(base_path_dir);
-    if project_root_result {
-        (base_path, _) = project_root_result;
-    } else {
-        base_path = base_path_dir;
-    }
-
-    config = get_config();
-    if config is not None {
-        dist_dir = config.get_client_dir() / 'dist';
-    } else {
-        dist_dir = base_path / '.jac' / 'client' / 'dist';
-    }
-
+    introspector.load();
+    dist_dir = client_output_dir(Path(introspector._module.__file__));
     is_pwa = dist_dir.exists() and (dist_dir / 'manifest.json').exists();
     if is_pwa {
         for client_js in dist_dir.`glob('client.*.js') {
@@ -123,7 +93,6 @@ impl JacClient.get_client_js(introspector: ModuleIntrospector) -> str {
         }
     }
 
-    introspector.load();
     introspector.ensure_bundle();
     return introspector._bundle.code;
 }

@@ -96,8 +96,17 @@ def resolve_app_kind(config: JacConfig, app: AppConfig, entry_path: str) -> str 
     if project_kind {
         return project_kind;
     }
-    import from jaclang.compiler.placement.placement_facts { pinned_module_space }
-    entry_pin = pinned_module_space(entry_path) if entry_path else '';
+    import from jaclang.project.placement { match_pin, validate_pins }
+    import from jaclang.project.workspace { workspace_for_path }
+    workspace = workspace_for_path(entry_path) if entry_path else None;
+    entry_pin = '';
+    if workspace is not None {
+        configured = workspace.app(app.name);
+        pins = configured.pins if configured is not None else workspace.base_pins;
+        entry_pin = match_pin(
+            entry_path, workspace.project_root, validate_pins(pins, workspace.toml_path)
+        );
+    }
     if (entry_pin == 'native') {
         return "cli-native";
     }

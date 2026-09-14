@@ -22,8 +22,7 @@ key from its spelling rather than from a lowered reference.
 import ast as ast3;
 import os;
 import subprocess;
-import sys;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { jac_command, TESTS_DIR, native_force_opts }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -136,10 +135,7 @@ test "the native nested function takes no phantom capture" {
 test "the annexed body computes the same value on both lanes" {
     src = os.path.join(FIXTURES, "kwarg_key_slot.jac");
     sv = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", src],
-        capture_output=True,
-        text=True,
-        timeout=900
+        jac_command("run", src), capture_output=True, text=True, timeout=900
     );
     assert sv.returncode == 0 , f"server run failed: {sv.stderr[-800:]}";
     assert sv.stdout.strip() == "34" , f"server lane printed {sv.stdout!r}";

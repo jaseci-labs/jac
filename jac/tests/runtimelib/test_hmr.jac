@@ -11,7 +11,8 @@ import from unittest.mock { MagicMock }
 
 import watchdog;
 
-import from jaclang.server.hmr { HotReloader, get_build_status }
+import from jaclang.server.hmr { HotReloader }
+import from jaclang.server.build_status { get_build_status }
 import from jaclang.server.watcher { ChangeType, FileChangeEvent, JacFileWatcher }
 
 def _as_any(v: any) -> any {

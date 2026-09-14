@@ -40,7 +40,7 @@ comptime SPEC_BUILD: CommandSpec = CommandSpec(
                      "What to emit: 'jab' (single-file sealed app bundle, default), "
                      "'sealed' (unpacked image dir), 'binary' (self-contained "
                      "executable), 'wheel' (PyPI), 'npm' (tarball), 'source' "
-                     "(ejected FastAPI+JS tree), 'client' (the app's client bundle only)"
+                     "(editable Python, JavaScript and C project), 'client' (the app's client bundle only)"
                  )
              ),
              Arg.create(

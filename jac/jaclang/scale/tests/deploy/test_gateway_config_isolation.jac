@@ -11,11 +11,8 @@ import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_c
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-    GATEWAY_NAME,
-    ManifestBuilder,
-    k8s_safe_name
-}
+import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
+import from jaclang.scale.runtime.context.util { GATEWAY_NAME, k8s_safe_name }
 
 
 def _load_broken_config -> str {

@@ -2110,7 +2110,7 @@ impl PyastBuildPass.is_canceled -> bool {
 }
 
 impl PyastBuildPass.convert(nd: py_ast.AST) -> UniNode {
-    import from jaclang.compiler.frontend.helpers { pascal_to_snake }
+    import from jaclang.project.source { pascal_to_snake }
     if self.is_canceled() {
         raise StopIteration;
     }

@@ -33,9 +33,8 @@ import contextlib;
 import io;
 import os;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { jac_command, TESTS_DIR, native_force_opts }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes.layout_pass { get_layout_registry }
@@ -78,7 +77,7 @@ def slots_of(ir: uni.Module, prog: JacProgram, name: str) -> dict {
 
 def sv_run(fixture: str) -> str {
     proc = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", os.path.join(FIXTURES, fixture)],
+        jac_command("run", os.path.join(FIXTURES, fixture)),
         capture_output=True,
         text=True,
         timeout=900
@@ -92,16 +91,9 @@ def sv_run(fixture: str) -> str {
 def na_run(fixture: str) -> str {
     out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
     comp = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            os.path.join(FIXTURES, fixture),
-            "-o",
-            out_bin
-        ],
+        jac_command(
+            "build", "--native", os.path.join(FIXTURES, fixture), "-o", out_bin
+        ),
         capture_output=True,
         text=True,
         timeout=900

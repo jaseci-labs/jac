@@ -1,7 +1,18 @@
 """Native module aliases retain their source module binding."""
 import ctypes;
-import from tests.support { compile_native, get_func }
+import tempfile;
+import from pathlib { Path }
+import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { compile_native, get_func, native_force_opts }
 import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+
+test "private helpers in modules with the same basename remain distinct" {
+    (engine, module) = compile_native("native_private_same_basename.jac");
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    probe = get_func(engine, "private_modules_probe", ctypes.c_int64);
+    assert probe() == 31;
+}
 
 test "module aliases resolve native functions and globals" {
     (engine, module) = compile_native("native_module_alias.jac");
@@ -57,4 +68,42 @@ test "module dispatch respects the binding rather than the source module spellin
     canonical = get_func(engine, "canonical_module_name_shadow_probe", ctypes.c_int64);
     assert standard() == 21;
     assert canonical() == 8;
+}
+
+
+test "cached public layouts do not demote another module's private helper" {
+    fixtures = Path(__file__).parent / "fixtures";
+    with tempfile.TemporaryDirectory() as directory {
+        workspace = Path(directory);
+        for side in ["private_left", "private_right"] {
+            (workspace / side).mkdir();
+            (workspace / side / "helpers.jac").write_text(
+                (fixtures / side / "helpers.jac").read_text()
+            );
+        }
+        source = workspace / "main.jac";
+        source.write_text((fixtures / "native_private_same_basename.jac").read_text());
+        first = JacProgram();
+        initial = first.compile(file_path=str(source), options=native_force_opts());
+        assert not first.errors_had , str(first.errors_had);
+        assert initial.gen.native_engine is not None;
+        probe = get_func(
+            initial.gen.native_engine, "private_modules_probe", ctypes.c_int64
+        );
+        assert probe() == 31;
+        # Recompile the caller while the dependency's public native layout is
+        # reusable. Its unexported `adjust` must not poison the caller's helper.
+        right = workspace / "private_right" / "helpers.jac";
+        right.write_text(right.read_text().replace("value * 2", "value * 3"));
+        second = JacProgram();
+        rebuilt = second.compile(file_path=str(source), options=native_force_opts());
+        assert not second.errors_had , str(second.errors_had);
+        issues = native_lowering_issues(str(rebuilt.gen.llvm_ir));
+        assert not issues , "\n".join(issue.detail for issue in issues);
+        assert rebuilt.gen.native_engine is not None;
+        updated = get_func(
+            rebuilt.gen.native_engine, "private_modules_probe", ctypes.c_int64
+        );
+        assert updated() == 41;
+    }
 }

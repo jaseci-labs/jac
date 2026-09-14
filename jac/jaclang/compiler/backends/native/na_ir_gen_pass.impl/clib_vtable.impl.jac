@@ -20,12 +20,36 @@ impl NaIRGenPass._clib_detect_vtable_structs -> None {
 impl NaIRGenPass._clib_coerce_callback(
     val: ir.Value, c_fn_ty: ir.PointerType
 ) -> ir.Value {
+    if self._closure_struct_of(val.type) is not None {
+        self.emit(
+            E5092,
+            kind="expression",
+            name="Jac closure passed as a C function pointer",
+            help_text="A Jac Callable carries an environment and cannot be reinterpreted as a C code address. Use a named function in an explicit C-ABI callback record; pass captured state through the C API's context argument."
+        );
+        return ir.Constant(c_fn_ty, None);
+    }
     if isinstance(val, ir.Function) {
         if val.function_type == c_fn_ty.pointee {
             return self.builder.bitcast(val, c_fn_ty, name="clibcb.direct");
         }
         tramp = self._emit_clib_c_trampoline(val, c_fn_ty);
         return self.builder.bitcast(tramp, c_fn_ty, name="clibcb.tramp");
+    }
+    typed_pointer = isinstance(val.type, ir.PointerType)
+        and not val.type.is_opaque
+        and isinstance(val.type.pointee, ir.FunctionType);
+    null_pointer = isinstance(val, ir.Constant) and val.constant in (None, 0);
+
+    native_address = val.type == ir.IntType(64);
+    if not typed_pointer and not null_pointer and not native_address {
+        self.emit(
+            E5092,
+            kind="expression",
+            name="erased value passed as a C function pointer",
+            help_text="A C callback requires a named function, native integer address, or typed C function pointer. A nullable or erased Jac Callable may carry an environment and cannot be cast to that address. Store named callbacks in an explicit C-ABI callback record."
+        );
+        return ir.Constant(c_fn_ty, None);
     }
     return self._coerce_type(val, c_fn_ty);
 }
@@ -93,22 +117,6 @@ impl NaIRGenPass._emit_clib_c_trampoline(
     self._builder = saved_builder;
     self.clib_trampoline_funcs[key] = tramp;
     return tramp;
-}
-
-impl NaIRGenPass._clib_alloc_vtable(name: str) -> ir.Value {
-    i8_ptr = ir.IntType(8).as_pointer();
-    i64 = ir.IntType(64);
-    calloc_fn = self._get_or_declare_extern("calloc", i8_ptr, [i64, i64]);
-    ct = self._clib_c_type(name);
-    null_ptr = ir.Constant(ct.as_pointer(), None);
-    size_gep = self.builder.gep(
-        null_ptr, [ir.Constant(ir.IntType(32), 1)], name="clib.vt.sizeof.gep"
-    );
-    size = self.builder.ptrtoint(size_gep, i64, name="clib.vt.sizeof");
-    raw = self.builder.call(calloc_fn, [ir.Constant(i64, 1), size], name="clib.vt.raw");
-    return self.builder.bitcast(
-        raw, self.struct_types[name].as_pointer(), name="clib.vt.ptr"
-    );
 }
 
 impl NaIRGenPass._lower_clib_function_type(

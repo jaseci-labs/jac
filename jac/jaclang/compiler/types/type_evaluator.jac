@@ -112,15 +112,15 @@ import from jaclang.compiler.frontend.unitree {
     WithStmt,
     YieldExpr
 }
+import from jaclang.runtime.constants { EdgeDir }
 import from jaclang.compiler.frontend.constant {
     TOKEN_MAP,
     BindingKind,
     CodeContext,
     SymbolType,
     Tokens as Tok,
-    EdgeDir,
     SymbolAccess,
-    OwnershipKind,
+    OwnershipKind
 }
 import from jaclang.compiler.types.types {
     AnyType,
@@ -145,7 +145,7 @@ import from jaclang.compiler.types.types {
     UnknownType,
     create_callable_type
 }
-import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+import from jaclang.project.source { read_file_with_encoding }
 import from jaclang.compiler.passes.transform { Transform }
 import type from jaclang.compiler.driver.program { JacProgram }
 

@@ -29,9 +29,7 @@ impl interpolate_env_vars(value: str) -> str {
 }
 
 impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
-    import from jaclang.compiler.driver.modresolver {
-        find_project_root as _find_project_root
-    }
+    import from jaclang.project.modresolver { find_project_root as _find_project_root }
     return _find_project_root(start);
 }
 
@@ -455,7 +453,7 @@ impl JacConfig.save -> None {
     old_doc: dict[str, any] = {};
     if self.toml_path.exists() {
         import tomllib;
-        import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+        import from jaclang.project.source { read_file_with_encoding }
         import from jaclang.project.tomlio { MalformedJacTomlError }
         text = read_file_with_encoding(str(self.toml_path));
         try {
@@ -1439,7 +1437,11 @@ impl get_config_for_path(
 ) -> JacConfig | None {
     explicit = get_explicit_config();
     if explicit is not None {
-        return explicit;
+        project_root = explicit.project_root;
+        if project_root is None
+            or start_path.resolve().is_relative_to(project_root.resolve()) {
+            return explicit;
+        }
     }
     result = find_project_root(start_path);
     if result is None {
@@ -1553,6 +1555,8 @@ impl JacConfig.app_for_target(entry_path: str = "") -> AppConfig | None {
 }
 
 impl JacConfig.app_for_path(abs_path: str) -> AppConfig | None {
+    import from jaclang.runtime.prepared { origin_for_source }
+    abs_path = origin_for_source(abs_path);
     if self.project_root is None {
         return None;
     }
@@ -1650,6 +1654,13 @@ def _apply_memory_native_placement(cfg: JacConfig, data: dict) {
     }
     if "native" in data and isinstance(data["native"], dict) {
         nat = data["native"];
+        if "require" in nat {
+            if not isinstance(nat["require"], list)
+                or not all(isinstance(pattern, str) for pattern in nat["require"]) {
+                raise ValueError("[native] require must be a list of module patterns");
+            }
+            cfg.native.require = list(nat["require"]);
+        }
         cfg.native.target = str(nat.get("target", cfg.native.target));
         try {
             cfg.native.opt = int(nat.get("opt", cfg.native.opt));

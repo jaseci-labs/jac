@@ -3108,5 +3108,7 @@ def compile_jac(
                 if isinstance(node, ImplDef):
                     cls = node.target.split(".")[0]
                     codegen.impl_registry.setdefault(cls, []).append(node)
+                else:
+                    module.body.append(node)
 
     return codegen.generate(module)

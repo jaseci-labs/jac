@@ -5,6 +5,39 @@
 #include <errno.h>
 #include "internal/pycore_unicodeobject.h"
 #include "internal/pycore_bytesobject.h"
+#include "internal/pycore_pyerrors.h"
+
+/* Exception identity belongs to the retained runtime, not the caller's
+ * mutable builtins dictionary. Shared by compiler and extension boundaries. */
+PyObject *jacpy_exception_type(const char *name) {
+#define EXCEPTION(kind) if (strcmp(name, #kind) == 0) return PyExc_##kind
+    EXCEPTION(BaseException); EXCEPTION(Exception); EXCEPTION(BaseExceptionGroup);
+    EXCEPTION(StopAsyncIteration); EXCEPTION(StopIteration); EXCEPTION(GeneratorExit);
+    EXCEPTION(ArithmeticError); EXCEPTION(LookupError); EXCEPTION(AssertionError);
+    EXCEPTION(AttributeError); EXCEPTION(BufferError); EXCEPTION(EOFError);
+    EXCEPTION(FloatingPointError); EXCEPTION(OSError); EXCEPTION(ImportError);
+    EXCEPTION(ModuleNotFoundError); EXCEPTION(IndexError); EXCEPTION(KeyError);
+    EXCEPTION(KeyboardInterrupt); EXCEPTION(MemoryError); EXCEPTION(NameError);
+    EXCEPTION(OverflowError); EXCEPTION(RuntimeError); EXCEPTION(RecursionError);
+    EXCEPTION(NotImplementedError); EXCEPTION(SyntaxError); EXCEPTION(IndentationError);
+    EXCEPTION(TabError); EXCEPTION(ReferenceError); EXCEPTION(SystemError);
+    EXCEPTION(SystemExit); EXCEPTION(TypeError); EXCEPTION(UnboundLocalError);
+    EXCEPTION(UnicodeError); EXCEPTION(UnicodeEncodeError); EXCEPTION(UnicodeDecodeError);
+    EXCEPTION(UnicodeTranslateError); EXCEPTION(ValueError); EXCEPTION(ZeroDivisionError);
+    EXCEPTION(BlockingIOError); EXCEPTION(BrokenPipeError); EXCEPTION(ChildProcessError);
+    EXCEPTION(ConnectionError); EXCEPTION(ConnectionAbortedError); EXCEPTION(ConnectionRefusedError);
+    EXCEPTION(ConnectionResetError); EXCEPTION(FileExistsError); EXCEPTION(FileNotFoundError);
+    EXCEPTION(InterruptedError); EXCEPTION(IsADirectoryError); EXCEPTION(NotADirectoryError);
+    EXCEPTION(PermissionError); EXCEPTION(ProcessLookupError); EXCEPTION(TimeoutError);
+    EXCEPTION(EnvironmentError); EXCEPTION(IOError); EXCEPTION(Warning);
+    EXCEPTION(UserWarning); EXCEPTION(DeprecationWarning); EXCEPTION(PendingDeprecationWarning);
+    EXCEPTION(SyntaxWarning); EXCEPTION(RuntimeWarning); EXCEPTION(FutureWarning);
+    EXCEPTION(ImportWarning); EXCEPTION(UnicodeWarning); EXCEPTION(BytesWarning);
+    EXCEPTION(EncodingWarning); EXCEPTION(ResourceWarning);
+#undef EXCEPTION
+    if (strcmp(name, "_IncompleteInputError") == 0) return PyExc_IncompleteInputError;
+    return NULL;
+}
 
 /* Values returned by this boundary are owned PyBytes handles. Callers hold
  * the GIL, copy the UTF-8 payload into Jac-owned storage, and release them. */
@@ -179,7 +212,7 @@ uint64_t jacpy_take_error_text(void) {
     return utf8_result(text);
 }
 int64_t jacpy_error_is(const char *name) {
-    PyObject *type = PyDict_GetItemString(PyEval_GetBuiltins(), name);
+    PyObject *type = jacpy_exception_type(name);
     return type != NULL && PyErr_ExceptionMatches(type);
 }
 
@@ -312,7 +345,7 @@ uint64_t jacpy_fd_line(int64_t fd) {
     return (uint64_t)(uintptr_t)result;
 }
 void jacpy_raise_error(const char *kind, const char *message, int64_t size) {
-    PyObject *type=PyDict_GetItemString(PyEval_GetBuiltins(),kind);
+    PyObject *type=jacpy_exception_type(kind);
     if (type == NULL) type=PyExc_SystemError;
     PyObject *text=PyUnicode_DecodeUTF8(message,size,"surrogatepass");
     if (text) { PyErr_SetObject(type,text); Py_DECREF(text); }

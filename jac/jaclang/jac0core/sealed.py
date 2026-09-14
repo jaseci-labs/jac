@@ -48,8 +48,8 @@ kind/capabilities/entry/payloads)::
           "package": false,
           "sha256": "..."                  # checked by register_image
         },
-        "compiler/driver/modresolver.jac": {
-          "module": "jaclang.compiler.driver.modresolver",
+        "project/modresolver.jac": {
+          "module": "jaclang.project.modresolver",
           "jir": "jac0core/modresolver.jir",
           "package": false,
           "sha256": "...",

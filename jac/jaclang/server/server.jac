@@ -116,7 +116,7 @@ obj ModuleIntrospector {
         _bundle: any = None,
         _bundle_error: (str | None) = None,
         _bundle_epoch: int = 0,
-        _bundle_builder: any postinit,
+        _bundle_builder: any = None,
         _bundle_lock: threading.Lock postinit,
         _function_access: dict[(str, bool)] = {},
         _walker_access: dict[(str, bool)] = {},
@@ -130,7 +130,7 @@ obj ModuleIntrospector {
     def _load_manifest -> None;
     def _extract_access_levels -> None;
     def _collect_cross_boundary_endpoints -> None;
-    def _register_sealed_bindings(sm: dict[str, any], img_root: str) -> None;
+    def _register_prepared_bindings(sm: dict[str, any], img_root: str) -> None;
     def _collect_functions -> dict[str, Callable[(..., any)]];
     def _collect_walkers -> dict[str, type[WalkerArchetype]];
     def _check_module_freshness -> None;

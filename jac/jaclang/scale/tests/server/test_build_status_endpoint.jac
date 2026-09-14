@@ -6,6 +6,8 @@ directly: `register_diagnostics_endpoints` against a recording host, then the
 endpoint's own callback.
 """
 
+import from jaclang.server.build_status { BuildMonitor }
+
 import asyncio;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
@@ -37,11 +39,11 @@ def _reset_client_globals {
     _error_rate_limiter._seen = {};
     _error_rate_limiter._count = 0;
     _error_rate_limiter._window_start = 0.0;
-    active = HotReloader._active;
+    active = BuildMonitor.active;
     if active is not None {
         active.stop();
     }
-    HotReloader._active = None;
+    BuildMonitor.active = None;
 }
 
 def _reloader(base: Path) -> HotReloader {

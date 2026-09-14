@@ -135,9 +135,7 @@ def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 Parser as _SyntaxParser
             }
             import from jaclang.compiler.frontend.unitree { Source as _Src }
-            import from jaclang.compiler.frontend.helpers {
-                read_file_with_encoding as _read_src
-            }
+            import from jaclang.project.source { read_file_with_encoding as _read_src }
             _src_txt = _read_src(file_path);
             (_had, _pd, _ld) = parse_diags(_src_txt, file_path);
             if _pd or _ld {
@@ -268,7 +266,7 @@ impl check(
         );
     }
 
-    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    import from jaclang.project.workspace { workspace_for_path }
     ws = workspace_for_path(os.getcwd()) if not paths else None;
     units: list[dict[(str, any)]] = [];
     had_path_errors = False;
@@ -691,7 +689,7 @@ def _format_single_file_worker(
 ) -> dict {
     import os;
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+    import from jaclang.project.source { read_file_with_encoding }
     path_obj = Path(file_path);
 
     effective_logical = logical_path or file_path;
@@ -1815,7 +1813,7 @@ def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
 }
 
 def _normalize_ignore_patterns(ignore: list) -> list {
-    import from jaclang.compiler.frontend.helpers { normalize_exclude_patterns }
+    import from jaclang.project.source { normalize_exclude_patterns }
     return normalize_exclude_patterns(ignore);
 }
 
@@ -1856,7 +1854,7 @@ def _drop_git_ignored(paths: list[str]) -> list[str] {
 
 
 def _should_ignore(file_path: str, ignore_patterns: list) -> bool {
-    import from jaclang.compiler.frontend.helpers { path_matches_exclude }
+    import from jaclang.project.source { path_matches_exclude }
     return path_matches_exclude(file_path, ignore_patterns);
 }
 

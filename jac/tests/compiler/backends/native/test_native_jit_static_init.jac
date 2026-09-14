@@ -26,15 +26,21 @@ failing one test.
 
 import os;
 import subprocess;
-import sys;
-import from tests.support { TESTS_DIR }
+import jaclang;
+import from tests.support { TESTS_DIR, compiler_python_command }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
      _JIT_DRIVER = """
 import ctypes
+import os
 import sys
+import jaclang
+
+assert os.path.realpath(jaclang.__file__) == os.path.realpath(sys.argv[3]), (
+    "JIT subprocess selected a different compiler package", jaclang.__file__, sys.argv[3]
+)
 
 from jaclang.compiler.driver.compile_options import CompileOptions
 from jaclang.compiler.driver.program import JacProgram
@@ -62,13 +68,15 @@ print(ctypes.CFUNCTYPE(ctypes.c_int64)(addr)())
 
 """Compile a fixture natively and call one of its functions, out of process.
 
-The child gets this process's `sys.path` verbatim so it resolves the same
-jaclang the test is exercising, rather than whatever an installed one would be.
+Put the loaded compiler's package root first: the test runner adds checkout
+paths after loading jaclang, so copying sys.path alone can switch compilers.
 """
 def _jit_call(fixture: str, symbol: str) -> tuple[(int, str, str)] {
-    source = "import sys\nsys.path[:] = " + repr(sys.path) + "\n" + _JIT_DRIVER;
+    package = str(jaclang.__file__);
     proc = subprocess.run(
-        [sys.executable, "-c", source, os.path.join(FIXTURES, fixture), symbol],
+        compiler_python_command(
+            _JIT_DRIVER, os.path.join(FIXTURES, fixture), symbol, package
+        ),
         capture_output=True,
         text=True,
         timeout=900

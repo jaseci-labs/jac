@@ -28,7 +28,8 @@ impl Image.postinit -> None {
         fmt: str = image.format or "PNG";
 
         self.mime_type = self._format_to_mime(fmt);
-        with BytesIO() as buffer {
+        buffer = BytesIO();
+        with buffer {
             image.save(buffer, format=fmt);
             data = buffer.getvalue();
             self.url = self._data_url_from_bytes(data, fmt);
@@ -39,7 +40,8 @@ impl Image.postinit -> None {
     if isinstance(value, PILImageCls) {
         pil: any = value;
         fmt: str = pil.format or "PNG";
-        with BytesIO() as buffer {
+        buffer = BytesIO();
+        with buffer {
             pil.save(buffer, format=fmt);
             data = buffer.getvalue();
             self.url = self._data_url_from_bytes(data, fmt);
@@ -56,7 +58,8 @@ impl Image.postinit -> None {
         try {
             self.url = self._data_url_from_bytes(raw, fmt);
         } except Exception {
-            with BytesIO() as buffer {
+            buffer = BytesIO();
+            with buffer {
                 img.save(buffer, format=fmt);
                 self.url = self._data_url_from_bytes(buffer.getvalue(), fmt);
             }

@@ -26,7 +26,9 @@ identifies the header decision rather than the override as the cause.
 """
 
 import os;
+import ctypes;
 import from tests.support { TESTS_DIR }
+import from tests.support { compile_native, get_func }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -69,6 +71,30 @@ def _all_seams(coverage: dict) -> list[str] {
         }
     }
     return out;
+}
+
+test "an abstract interface keeps its dispatch header across imported subclasses" {
+    (module, coverage) = _compile("abstract_slot_child.jac");
+    registry = module.gen.layout_registry;
+    assert not _all_seams(coverage) , str(_all_seams(coverage));
+    interface = registry.layouts["SlotInterface"];
+    storage = registry.layouts["SlotStorage"];
+    child = registry.layouts["SlotLeaf"];
+    assert interface.vtable_ptr_slot == 0;
+    assert storage.vtable_ptr_slot == child.vtable_ptr_slot == 0;
+    assert storage.field_index["values"] == child.field_index["values"];
+}
+
+test "separately compiled abstract dispatch and inherited fields execute together" {
+    (engine, _) = compile_native("abstract_slot_child.jac");
+    function = get_func(engine, "run_abstract_slots", ctypes.c_int64);
+    assert function() == 17;
+}
+
+test "an imported dispatcher invokes implementations absent from its own module" {
+    (engine, _) = compile_native("abstract_slot_child.jac");
+    function = get_func(engine, "run_imported_abstract_dispatch", ctypes.c_int64);
+    assert function() == 23;
 }
 
 

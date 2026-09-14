@@ -1,7 +1,5 @@
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-    GATEWAY_NAME,
-    ScalingMode
-}
+import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ScalingMode }
+import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
 import from jaclang.scale.runtime.cli._narrow {
     bget,
     dget,

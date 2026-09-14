@@ -921,89 +921,89 @@ obj CtEvaluator {
         self._active.add(skey);
         try {
             sym = self._resolve_symbol_deep(sym);
-        } finally {
-            self._active.discard(skey);
-        }
-        if self.demand {
-            sym = self._demand_tree(sym);
-        }
-        decl = sym.decl;
-        node_ = decl.name_of;
-        home = node_.find_parent_of_type(Module);
-        if isinstance(home, Module) and self._is_stub_module(home) {
-            nm = decl.sym_name;
-            home_path = _norm_path(home.loc.mod_path if home.loc else "");
-            if home is self.evaluator.builtins_module
-                or home_path.endswith("/builtins.pyi") {
-                if nm in CT_PY_TYPES or nm in CT_PY_EXCEPTIONS {
-                    return self._builtin_type(nm);
+            if self.demand {
+                sym = self._demand_tree(sym);
+            }
+            decl = sym.decl;
+            node_ = decl.name_of;
+            home = node_.find_parent_of_type(Module);
+            if isinstance(home, Module) and self._is_stub_module(home) {
+                nm = decl.sym_name;
+                home_path = _norm_path(home.loc.mod_path if home.loc else "");
+                if home is self.evaluator.builtins_module
+                    or home_path.endswith("/builtins.pyi") {
+                    if nm in CT_PY_TYPES or nm in CT_PY_EXCEPTIONS {
+                        return self._builtin_type(nm);
+                    }
+                    if nm in self._builtins {
+                        return self._builtins[nm];
+                    }
                 }
-                if nm in self._builtins {
-                    return self._builtins[nm];
-                }
-            }
-            if isinstance(node_, Archetype) and shape_of(nm) is not None {
-                return CtType(name=nm, module="jaclang.runtime.scalars");
-            }
-            raise CtNotComptime();
-        }
-        if isinstance(node_, Enum) {
-            return self._type_of_enum(node_);
-        }
-        if isinstance(node_, Archetype) {
-            return self._type_of_arch(node_);
-        }
-        if isinstance(node_, Ability) {
-            return self._func_of(node_);
-        }
-        if isinstance(node_, TypeParam) {
-            raise CtDeferredSignal();
-        }
-        if isinstance(node_, ParamVar) {
-            if node_.is_comptime {
-                raise CtDeferredSignal();
-            }
-            raise CtNotComptime();
-        }
-        if isinstance(node_, ModulePath) {
-            path = ".".join([p.value for p in (node_.path or [])]);
-            if path == "math" {
-                return _pymath;
-            }
-            raise CtNotComptime();
-        }
-        if isinstance(node_, Name) {
-            par = node_.parent;
-            if isinstance(par, ModuleItem) {
-                return self._resolve_module_item(par, use);
-            }
-            if isinstance(par, Assignment) {
-                if par.is_enum_stmt {
-                    return self._enum_member_of(par);
-                }
-                if par.is_comptime {
-                    return self._eval_binding(par);
-                }
-                if self._is_comptime_glob(par, node_.value) {
-                    return self._ct_module_glob(node_.value, use);
+                if isinstance(node_, Archetype) and shape_of(nm) is not None {
+                    return CtType(name=nm, module="jaclang.runtime.scalars");
                 }
                 raise CtNotComptime();
             }
-            if self._is_comptime_loop_target(node_) {
+            if isinstance(node_, Enum) {
+                return self._type_of_enum(node_);
+            }
+            if isinstance(node_, Archetype) {
+                return self._type_of_arch(node_);
+            }
+            if isinstance(node_, Ability) {
+                return self._func_of(node_);
+            }
+            if isinstance(node_, TypeParam) {
                 raise CtDeferredSignal();
             }
-            if node_.value in self._builtins
-                and sym.parent_tab is not None
-                and sym.parent_tab is self.evaluator.builtins_module {
-                return self._builtins[node_.value];
+            if isinstance(node_, ParamVar) {
+                if node_.is_comptime {
+                    raise CtDeferredSignal();
+                }
+                raise CtNotComptime();
+            }
+            if isinstance(node_, ModulePath) {
+                path = ".".join([p.value for p in (node_.path or [])]);
+                if path == "math" {
+                    return _pymath;
+                }
+                raise CtNotComptime();
+            }
+            if isinstance(node_, Name) {
+                par = node_.parent;
+                if isinstance(par, ModuleItem) {
+                    return self._resolve_module_item(par, use);
+                }
+                if isinstance(par, Assignment) {
+                    if par.is_enum_stmt {
+                        return self._enum_member_of(par);
+                    }
+                    if par.is_comptime {
+                        return self._eval_binding(par);
+                    }
+                    if self._is_comptime_glob(par, node_.value) {
+                        return self._ct_module_glob(node_.value, use);
+                    }
+                    raise CtNotComptime();
+                }
+                if self._is_comptime_loop_target(node_) {
+                    raise CtDeferredSignal();
+                }
+                if node_.value in self._builtins
+                    and sym.parent_tab is not None
+                    and sym.parent_tab is self.evaluator.builtins_module {
+                    return self._builtins[node_.value];
+                }
+                raise CtNotComptime();
+            }
+            decl_name = getattr(decl, "sym_name", "");
+            if decl_name and decl_name in self._builtins {
+                return self._builtins[decl_name];
             }
             raise CtNotComptime();
+        } finally {
+            self._active.discard(skey);
         }
-        decl_name = getattr(decl, "sym_name", "");
-        if decl_name and decl_name in self._builtins {
-            return self._builtins[decl_name];
-        }
-        raise CtNotComptime();
     }
 
     def _symbol_via_module_item(item: ModuleItem) -> (Symbol | None) {
@@ -1020,9 +1020,9 @@ obj CtEvaluator {
     }
 
     def _resolve_symbol_deep(sym: Symbol) -> Symbol {
-        hops = 0;
-        while hops < 16 {
-            hops += 1;
+        seen: set[int] = set();
+        while id(sym) not in seen {
+            seen.add(id(sym));
             sym = self.evaluator.resolve_imported_symbols(sym);
             sym = self.evaluator.resolve_to_definition_symbol(sym);
             node_ = sym.decl.name_of;
@@ -1036,7 +1036,7 @@ obj CtEvaluator {
             }
             return sym;
         }
-        return sym;
+        raise CtNotComptime();
     }
 
     def _resolve_module_item(item: ModuleItem, use: UniNode) -> any {

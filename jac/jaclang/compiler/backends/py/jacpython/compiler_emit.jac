@@ -514,14 +514,7 @@ def freevars_from_sym(block: sym_block) -> list[str] {
 }
 
 def varname_index(u: unverified_cfg, name: str) -> int {
-    vi = 0;
-    while vi < len(u.varnames) {
-        if u.varnames[vi] == name {
-            return vi;
-        }
-        vi = vi + 1;
-    }
-    return -1;
+    return u.varname_index(name);
 }
 
 # Merged locals-plus index for MAKE_CELL / LOAD_DEREF / LOAD_FAST_BORROW (CPython 3.11+).
@@ -1481,7 +1474,7 @@ def visit_compare(
 ) -> basicblock | None {
     n = len(c.ops);
     cloc_cmp = nloc(c.lineno, c.end_lineno, c.col_offset, c.end_col_offset);
-    visit_expr(g, c.left, false_shortcircuit_returns=false_shortcircuit_returns);
+    visit_expr(g, c.left);
     cleanup: basicblock | None = None;
     if n > 1 {
         cleanup = g.new_block();
@@ -1988,7 +1981,6 @@ def visit_expr(
             visit_expr(g, ca.func);
             g.emit_op(OP_PUSH_NULL, 0, floc);
         }
-        cmp_cleanup: basicblock | None = None;
         call_args = call_effective_args(ca);
         cloc_call = nloc(ca.lineno, ca.end_lineno, ca.col_offset, ca.end_col_offset);
         kws = call_effective_keywords(ca);
@@ -2013,17 +2005,16 @@ def visit_expr(
         if call_has_unpacking(ca) {
             # CALL_FUNCTION_EX site: build the positional slot here; the kwargs
             # mapping and the call itself go through emit_call_keyword_values /
-            # emit_call_instruction below (and in the compare-cleanup paths).
+            # emit_call_instruction below.
             emit_call_ex_positional(g, ca, cloc_call, not g.u.nested_code_emitted);
         } else {
             ai = 0;
             while ai < len(call_args) {
-                arg_cleanup = visit_expr(
-                    g, call_args[ai], False, False, not g.u.nested_code_emitted
-                );
-                if arg_cleanup is not None {
-                    cmp_cleanup = arg_cleanup;
-                }
+                # Each argument must join its own short-circuit paths before
+                # evaluating the next argument or invoking the callee. Returning
+                # a cleanup block to the surrounding statement skipped later
+                # arguments (and lost the call entirely in nested expressions).
+                visit_expr(g, call_args[ai], False, True, not g.u.nested_code_emitted);
                 ai = ai + 1;
             }
         }
@@ -2032,11 +2023,11 @@ def visit_expr(
                 g, ca, cloc_call, False, not g.u.nested_code_emitted
             );
             if codegen_busy(g) {
-                return cmp_cleanup;
+                return None;
             }
         }
         emit_call_instruction(g, ca, cloc_call);
-        return cmp_cleanup;
+        return None;
     }
     if isinstance(e, Attribute) {
         a = e as Attribute;
@@ -2733,14 +2724,7 @@ def fast_local_index(g: cfg_builder, name: str) -> int {
         }
     }
     name = g.scope_names.get(name, name);
-    vi = 0;
-    while vi < len(g.u.varnames) {
-        if g.u.varnames[vi] == name {
-            return vi;
-        }
-        vi = vi + 1;
-    }
-    return -1;
+    return g.u.varname_index(name);
 }
 
 # CPython 3.14 fuses two fast-local loads for binops (e.g. `return x + y`).
@@ -3782,7 +3766,7 @@ def compile_lambda_cfg(
     u.kwonlyargcount = kwonly;
     u.param_count = len(sym_fn.varnames);
     u.flags = function_code_flags(lam.args, in_class);
-    u.varnames = fast_varnames_from_sym(sym_fn);
+    u.set_varnames(fast_varnames_from_sym(sym_fn));
     if sym_fn.nested {
         u.flags = u.flags | CO_NESTED;
     }
@@ -3886,7 +3870,7 @@ def compile_genexp_cfg(
     if sym_fn.nested {
         u.flags = u.flags | CO_NESTED;
     }
-    u.varnames = fast_varnames_from_sym(sym_fn);
+    u.set_varnames(fast_varnames_from_sym(sym_fn));
     entry_blk = u.add_block();
     g = new_cfg_builder(u, entry_blk, sym_fn, private);
     protect_start = emit_function_prologue(g, sym_fn, ge.lineno, True);
