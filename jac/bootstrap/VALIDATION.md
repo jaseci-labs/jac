@@ -481,7 +481,6 @@ emitters, preserving synthetic module names. Twenty-five focused tests passed,
 including byte-identical objects with debug information, shared libraries,
 RC debug behavior and cyclic imports. Latest-head CI remains required.
 
-
 Revision `7ff42f86bc` passed all 28 staged build and verification steps after
 the debug-metadata change. Stage 1 reused 753 modules and rebuilt four in
 170.38 seconds; Stage 2 rebuilt 757 modules in 388.51 seconds. The native
@@ -504,7 +503,6 @@ passed in 91.94 seconds before the change and 89.72 seconds afterward. Process
 wall time was 92.75 versus 90.33 seconds; maximum RSS was 4,885,708,800 versus
 4,899,880,960 bytes on macOS. These results do not establish compliance with the
 unchanged CI wall-time and memory limits. Latest-head CI remains required.
-
 
 The diagnostic follow-up passed the complete compiler toplevel suite:
 1,102 tests passed, one skipped, in 581.62 seconds. All 28 staged build and
