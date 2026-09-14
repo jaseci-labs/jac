@@ -50,10 +50,14 @@ obj JirPaths {
         if not self.base_dir or not package_dir or not os.path.isabs(path) {
             return path;
         }
+        path = os.path.realpath(path);
+        package_dir = os.path.realpath(package_dir);
         if path == package_dir or path.startswith(package_dir + os.sep) {
             return PRECOMPILE_SENTINEL
                 + "/"
-                + os.path.relpath(path, self.base_dir).replace(os.sep, "/");
+                + os.path.relpath(path, os.path.realpath(self.base_dir)).replace(
+                    os.sep, "/"
+                );
         }
         if path == _COMPILER_PACKAGE_DIR
             or path.startswith(_COMPILER_PACKAGE_DIR + os.sep) {

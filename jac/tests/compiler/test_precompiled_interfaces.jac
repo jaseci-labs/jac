@@ -185,6 +185,7 @@ test "compiler dependency paths survive runtime extraction relocation" {
     import from unittest.mock { patch }
     import jaclang.compiler.driver.jir as jir;
     with tempfile.TemporaryDirectory() as directory {
+        directory = str(Path(directory).resolve());
         first = Path(directory, "first", "jaclang");
         second = Path(directory, "second", "jaclang");
         for root_dir in (first, second) {
@@ -283,5 +284,66 @@ test "publishing resolves conditional stub classes before application analysis" 
                 "sealing created an orphan class instead of a reusable interface reference"
             );
         }
+    }
+}
+
+test "bytecode completes a fresh symbol analysis without repeating its passes" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.program { JacProgram }
+    with TemporaryDirectory() as directory {
+        package = _package(Path(directory));
+        source = str((package / "api.jac").resolve());
+        Path(source).write_text("def answer() -> int { return 42; }\n");
+        program = JacProgram();
+        options = CompileOptions(default_codespace="server", entry_point=source);
+        analyzed = program.compile(source, options=options.for_symbols());
+        before = dict(program.analysis.pass_runs);
+        code = program._get_compiler().get_bytecode(source, program);
+        assert code is not None;
+        assert program.find_module(source) is analyzed;
+        assert program.analysis.pass_runs.get("ASTValidationPass", 0)
+            == before.get("ASTValidationPass", 0);
+        program.release_compile_closure();
+    }
+}
+
+test "native lowering follows a symbol only analysis" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.compilation_context { compilation_scope }
+    import from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
+    import from jaclang.compiler.driver.program { JacProgram }
+    with TemporaryDirectory() as directory {
+        package = _package(Path(directory));
+        source = str((package / "api.jac").resolve());
+        Path(source).write_text("def answer() -> int { return 42; }\n");
+        program = JacProgram();
+        options = CompileOptions(default_codespace="native", entry_point=source);
+        analyzed = program.compile(source, options=options.for_symbols());
+        assert not analyzed.codespace_inferred;
+        program.options = options;
+        task = ModuleCompilation(program._get_compiler(), program, source, options);
+        with compilation_scope(program.context_key, options) {
+            task.parse();
+        }
+        assert task.module is not analyzed;
+        assert task.module.codespace_inferred;
+        program.release_compile_closure();
+    }
+}
+
+test "sealed paths normalize symlink aliases before encoding" {
+    import from jaclang.compiler.driver.jir { JirPaths, PRECOMPILE_SENTINEL }
+    with TemporaryDirectory() as directory {
+        base = Path(directory).resolve();
+        package = _package(base);
+        source = package / "api.jac";
+        source.write_text("");
+        alias = base / "linked-library";
+        alias.symlink_to(package, target_is_directory=True);
+        paths = JirPaths(base_dir=str(alias));
+        encoded = paths.encode(str(alias / "api.jac"), str(package));
+        assert encoded == PRECOMPILE_SENTINEL + "/api.jac";
+        assert encoded == paths.encode(str(source), str(package));
+        assert Path(paths.resolve(encoded)).resolve() == source;
     }
 }

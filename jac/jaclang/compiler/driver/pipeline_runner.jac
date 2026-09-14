@@ -25,11 +25,28 @@ obj ModuleCompilation {
     }
 
     def parse {
+        import from jaclang.compiler.driver.boundary_classify { _default_codespace_for }
+        import from jaclang.compiler.native_scope {
+            in_native_scope_path,
+            scope_lowering_active
+        }
         existing = self.program.mod.hub.get(os.path.realpath(self.path));
+        needs_native_lowering = not self.options.no_cgen
+            and not self.options.symtab_ir_only
+            and (
+                _default_codespace_for(self.program) == 'native'
+                or (scope_lowering_active() and in_native_scope_path(self.path))
+            )
+            and existing is not None
+            and not existing.codespace_inferred
+            and not existing.declares_codespace(
+                CodeContext.NATIVE, path_hint=self.path
+            );
         if self.source is None
             and existing is not None
             and not existing.stub_only
             and not existing.parse_failed
+            and not needs_native_lowering
             and self.program.is_hub_entry_fresh(os.path.realpath(self.path))
             and id(existing) in self.program.analysis.completed_passes {
             self.module = existing;
