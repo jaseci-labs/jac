@@ -441,6 +441,8 @@ jobs:
 
       - name: Build the jac binary (one command)
         working-directory: jac
+        env:
+          JAC_BUILD_METRICS: ${{ github.workspace }}/jac/.build-metrics/payload.json
         # On a dev-channel shim-cache hit, stage the shim outside its in-tree
         # place path: the build copies -Dshim-bin back there, and a self-copy
         # would read the file it is truncating. Mirrors setup-jac. The
@@ -455,6 +457,16 @@ jobs:
             SHIM_ARG=(-Dshim-bin="${{ steps.shim-fetch.outputs.file }}")
           fi
           zig build $DTARGET "${SHIM_ARG[@]}" --summary all
+
+      - name: Upload build measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-measurements-${{ matrix.platform }}
+          path: jac/.build-metrics
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: ignore
 
       # Launcher unit tests (`zig build test`) live in ci.yml's `test-launcher`
       # job so they gate every PR on Linux + macOS, not just release time. The
