@@ -5,6 +5,39 @@ import from jaclang.compiler.driver.compilation_context { CompilationSession }
 import from jaclang.dist.precompile_plan { plan_precompile }
 import from jaclang.dist.precompile_bytecode { precompile_context }
 
+test "cycle members are separate retirement points behind a dependency barrier" {
+    import from jaclang.dist.precompile_plan { PrecompilePlan }
+    import from jaclang.compiler.driver.compilation_context { SourceStore }
+    import from jaclang.cli.workpool { WorkPool }
+    plan = PrecompilePlan(
+        groups=[["dependency"], ["cycle_a", "cycle_b"], ["consumer"]],
+        prerequisites={0: set(), 1: {0}, 2: {1}},
+        sources=SourceStore(),
+        measurements={}
+    );
+    (paths, prerequisites) = plan.work_queue();
+    finished: list[str] = [];
+    def job(request: dict[str, any]) -> str {
+        path = str(request["path"]);
+        if path == "cycle_a" {
+            raise RuntimeError("the first member failed");
+        }
+        return path;
+    }
+    def record(index: int, result: dict[str, any]) {
+        finished.append(paths[index]);
+        if paths[index] == "cycle_a" {
+            assert "the first member failed" in result["error"];
+        } else {
+            assert result["result"] == paths[index];
+        }
+    }
+    WorkPool(
+        items=paths, prerequisites=prerequisites, job=job, on_record=record
+    ).run_inline();
+    assert finished == ["dependency", "cycle_a", "cycle_b", "consumer"];
+}
+
 test "dependency groups are deterministic and keep import cycles together" {
     edges = {
         "root": ["right", "left"],
@@ -118,6 +151,12 @@ test "package precompile coordinates a diamond and cycles through warm and edite
             assert cold["compiled"] == 6;
             assert cold["failed"] == 0;
             assert cold["dependency_plan"]["groups"] == 5;
+            assert len(cold["workers"]) == 6;
+            assert all(len(worker["result"]) == 1 for worker in cold["workers"]);
+            if hasattr(os, "fork") {
+                assert all(worker["served"] == 1 for worker in cold["workers"]);
+                assert len({worker["worker_pid"] for worker in cold["workers"]}) == 6;
+            }
             before = {
                 path.name: path.read_bytes()
                 for path in (package_path / "_precompiled").rglob("*.jir")

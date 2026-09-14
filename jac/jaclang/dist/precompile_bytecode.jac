@@ -1228,6 +1228,7 @@ def run_precompile(
         and len(jac_files) > 1
     );
     _discovery_sources[:] = [plan.sources];
+    (work_items, prerequisites) = plan.work_queue();
     requested = set(jac_files);
     console.print(
         f"  Dependency plan: {len(plan.groups)} groups, {plan.measurements[
@@ -1315,8 +1316,8 @@ def run_precompile(
         sys.stderr.flush();
     }
 
-    def group_job(request: dict[str, any]) -> list[dict[str, any]] {
-        return [compile_unit(path) for path in plan.groups[int(request["idx"])]];
+    def unit_job(request: dict[str, any]) -> list[dict[str, any]] {
+        return [compile_unit(str(request["path"]))];
     }
 
     def on_record(idx: int, record: dict[str, any]) {
@@ -1330,7 +1331,7 @@ def run_precompile(
                     "rel": str(Path(path).relative_to(pkg_path)),
                     "message": str(detail)
                 }
-                for path in plan.groups[idx]
+                for path in [work_items[idx]]
                 if path in requested
             ];
         }
@@ -1348,11 +1349,11 @@ def run_precompile(
     }
 
     pool = WorkPool(
-        items=[members[0] for members in plan.groups],
-        prerequisites=plan.prerequisites,
-        job=group_job,
+        items=work_items,
+        prerequisites=prerequisites,
+        job=unit_job,
         on_record=on_record,
-        jobs=min(workers, len(plan.groups)),
+        jobs=min(workers, len(work_items)),
         retire=_precompile_retire,
         worker_init=precompile_worker_init,
         worker_exit=precompile_worker_exit,

@@ -13,6 +13,27 @@ obj PrecompilePlan {
         prerequisites: dict[int, set[int]],
         sources: SourceStore,
         measurements: dict[str, any];
+
+    def work_queue -> tuple[list[str], dict[int, set[int]]] {
+        paths: list[str] = [];
+        first: dict[int, int] = {};
+        last: dict[int, int] = {};
+        for (group, members) in enumerate(self.groups) {
+            first[group] = len(paths);
+            paths.extend(members);
+            last[group] = len(paths) - 1;
+        }
+        prerequisites: dict[int, set[int]] = {};
+        for group in first {
+            prerequisites[first[group]] = {
+                last[dependency] for dependency in self.prerequisites.get(group, set())
+            };
+            for index in range(first[group] + 1, last[group] + 1) {
+                prerequisites[index] = {index - 1};
+            }
+        }
+        return (paths, prerequisites);
+    }
 }
 
 def plan_precompile(

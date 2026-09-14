@@ -166,8 +166,10 @@ products. Released trees cannot publish new analysis, even when their encoded
 interfaces remain reusable.
 
 Package precompilation plans work with this same dependency graph and module
-resolver. Strongly connected components run together; the work pool releases a
-consumer only after its prerequisite groups finish. Completed dependency
+resolver. Each strongly connected component runs its members in order as
+separate jobs. The work pool releases a consumer only after its prerequisite
+groups finish. Progress, failure reporting, and worker retirement operate
+between members as well as between groups. Completed dependency
 interfaces are published through `IfaceRegistry` before worker eviction. A
 replacement worker hydrates those products; it never borrows another worker's
 mutable tree or evaluator. Cold discovery retains at most the syntax budget,
