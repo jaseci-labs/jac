@@ -141,10 +141,12 @@ class NodeAnchor(Anchor) {
         mixed: bool = field(`init=False, `default=False);
 
     def __getstate__(self: NodeAnchor) -> dict[(str, object)];
+    def __getattr__(self: NodeAnchor, name: str) -> object;
     def is_populated(self: NodeAnchor) -> bool;
     def edge_delta(self: NodeAnchor) -> (tuple[(set[UUID], set[UUID])] | None);
     def remove_edge(self: NodeAnchor, `edge: EdgeAnchor) -> None;
     def all_edges(self: NodeAnchor) -> list[EdgeAnchor];
+    def loaded_edges(self: NodeAnchor) -> list[EdgeAnchor];
     def has_heavy_edges(self: NodeAnchor) -> bool;
     def detach_light(self: NodeAnchor) -> None;
 }

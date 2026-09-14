@@ -8,6 +8,10 @@ adjacency from the edge rows' own src/dst, which is the authoritative source.
 
 These tests pin that a node's stored size is independent of its degree, that
 adjacency still resolves from the edge rows, and that the round trip is lossless.
+
+Loading a node does not read its edge rows either: the edge list is fetched, in
+pages, the first time something walks it, so a node load costs the same whatever
+its degree, and the list reflects the rows as they are at that moment.
 """
 
 import from pathlib { Path }
@@ -160,6 +164,98 @@ test "the stored props carry no edges key at all" {
         } finally {
             JacRuntime.exec_ctx = old;
             ctx.close();
+        }
+    }
+}
+
+
+def _edge_rows_from(ctx: ExecutionContext, hub_id: UUID) -> list[str] {
+    store = ctx.mem.store;
+    assert store is not None;
+    rows = store.rows(
+        "SELECT id FROM anchors WHERE kind = 'EdgeAnchor' "
+        "AND src = CAST(:i AS uuid) ORDER BY seq, id",
+        {"i": str(hub_id)}
+    );
+    return [str(r[0]) for r in rows];
+}
+
+
+test "loading a node does not read its edges until something walks them" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx1 = _make_ctx(td);
+        JacRuntime.exec_ctx = ctx1;
+        hub_id: UUID;
+        try {
+            hub_id = _fan(ctx1, 6);
+            ctx1.mem.commit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx1.close();
+        }
+        ctx2 = _make_ctx(td);
+        JacRuntime.exec_ctx = ctx2;
+        try {
+            hub = ctx2.mem.get(hub_id);
+            assert isinstance(hub, NodeAnchor);
+            assert hub.is_populated();
+            store = ctx2.mem.store;
+            assert store is not None;
+            victim = _edge_rows_from(ctx2, hub_id)[0];
+            store.rows(
+                "DELETE FROM anchors WHERE id = CAST(:i AS uuid)", {"i": victim}
+            );
+            ids = [str(e.id) for e in hub.edges];
+            assert len(ids) == 5 , (
+                f"the edge list was read at load time, not when walked: {len(ids)} "
+                f"edges after one row was removed underneath the loaded node"
+            );
+            assert victim not in ids , ids;
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx2.close();
+        }
+    }
+}
+
+
+test "a high-degree node's adjacency loads complete and in edge order, in pages" {
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx1 = _make_ctx(td);
+        JacRuntime.exec_ctx = ctx1;
+        hub_id: UUID;
+        try {
+            hub_id = _fan(ctx1, 2300);
+            ctx1.mem.commit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx1.close();
+        }
+        ctx2 = _make_ctx(td);
+        JacRuntime.exec_ctx = ctx2;
+        try {
+            hub = ctx2.mem.get(hub_id);
+            assert isinstance(hub, NodeAnchor);
+            got = [str(e.id) for e in hub.edges];
+            want = _edge_rows_from(ctx2, hub_id);
+            assert len(want) == 2300 , len(want);
+            assert got == want , (
+                f"adjacency paged wrong: {len(got)} of {len(want)} edges, "
+                f"first mismatch at "
+                f"{next(
+                    (
+                        i
+                        for (i, (a, b)) in enumerate(zip(got, want))
+                        if a != b
+                    ),
+                    len(got)
+                )}"
+            );
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx2.close();
         }
     }
 }
