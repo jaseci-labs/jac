@@ -141,6 +141,103 @@ test "partial rebuilds preserve complete dependency and diagnostic products" {
     }
 }
 
+test "shared module types retain each root dependency and reproduce fresh products" {
+    import from jaclang.compiler.driver.compilation_context {
+        CompilationSession,
+        artifact_cache_path,
+        cache_scope
+    }
+    import from jaclang.compiler.driver.jir { read_dep_rows }
+    import from jaclang.dist.precompile_bytecode {
+        _precompile_unit,
+        precompile_context
+    }
+    for statement in [
+        "import from .provider { Input }\ndef answer(item: Input) -> int { return 42; }\n",
+        "import provider;\ndef answer(item: provider.Input) -> int { return 42; }\n"
+    ] {
+        with TemporaryDirectory() as directory {
+            package = _package(Path(directory));
+            provider = package / "provider.jac";
+            provider.write_text("obj Input { has value: int = 7; }\n");
+            products: dict[str, bytes] = {};
+            with CompilationSession() as session {
+                for name in ["first", "second"] {
+                    source = package / (name + ".jac");
+                    source.write_text(statement);
+                    program = precompile_context(
+                        str(source), str(package), session.program
+                    );
+                    with cache_scope(program.context_key, program.options) {
+                        product = _precompile_unit(str(source), str(package), program);
+                    }
+                    assert product is not None;
+                    assert str(provider)
+                        in {
+                            dep for (dep, _, _) in read_dep_rows(product, str(package))
+                        } , "reusing a module type lost its consumer dependency";
+                    assert str(source) in program.transitive_dependents(str(provider));
+                    products[str(source)] = product;
+                }
+                assert program.analysis.parse_runs.get(str(provider)) == 1;
+                for path in products {
+                    artifact_cache_path(path, program).unlink();
+                }
+            }
+            for (path, shared_product) in products.items() {
+                with CompilationSession() as fresh {
+                    program = precompile_context(path, str(package), fresh.program);
+                    with cache_scope(program.context_key, program.options) {
+                        assert _precompile_unit(path, str(package), program)
+                            == shared_product;
+                    }
+                }
+            }
+        }
+    }
+}
+
+test "dependency hashes come from the interface owning compilation context" {
+    import copy;
+    import from jaclang.compiler.frontend.codeinfo { module_dotted_name }
+    import from jaclang.compiler.driver.compilation_context {
+        CompilationSession,
+        cache_scope,
+        context_program,
+        program_for
+    }
+    import from jaclang.compiler.driver.jir { read_dep_rows }
+    import from jaclang.dist.precompile_bytecode {
+        _precompile_unit,
+        precompile_context
+    }
+    with TemporaryDirectory() as directory, CompilationSession() as session {
+        package = _package(Path(directory));
+        provider = package / "provider.jac";
+        provider.write_text("def value() -> int { return 7; }\n");
+        source = package / "api.jac";
+        source.write_text(
+            "import from .provider { value }\ndef answer() -> int { return value(); }\n"
+        );
+        program = precompile_context(str(source), str(package), session.program);
+        options = copy.copy(program.options);
+        options.native_require = [module_dotted_name(str(provider))];
+        program = context_program(program, options);
+        owner = program_for(str(provider), program);
+        assert owner is not program;
+        interface = owner.iface_registry().ensure(str(provider));
+        assert interface is not None;
+        with cache_scope(program.context_key, program.options) {
+            product = _precompile_unit(str(source), str(package), program);
+        }
+        assert product is not None;
+        assert any(
+            path == str(provider) and digest == interface.digest
+            for (path, digest, _) in read_dep_rows(product, str(package))
+        );
+    }
+}
+
 test "interface publication includes dependencies discovered while encoding exports" {
     import from jaclang.dist.precompile_bytecode { precompile_worker_exit }
     with TemporaryDirectory() as directory {

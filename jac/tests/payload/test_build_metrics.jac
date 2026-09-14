@@ -96,10 +96,15 @@ test "failed and incomplete precompiler stages retain metrics and stop packaging
                 assert env is not None;
                 assert env["JAC_PRECOMPILE_METRICS"] == str(result);
                 fails = phase == "module_precompile" or "--seal-finalize" in argv;
-                result.write_text(json.dumps({
-                    "compiled": 1, "failed": int(fails),
-                    "complete": phase != "incomplete_precompile"
-                }));
+                result.write_text(
+                    json.dumps(
+                        {
+                            "compiled": 1,
+                            "failed": int(fails),
+                            "complete": phase != "incomplete_precompile"
+                        }
+                    )
+                );
                 return not fails;
             }
             failed = False;
@@ -120,9 +125,8 @@ test "failed and incomplete precompiler stages retain metrics and stop packaging
             assert failed , "a failed precompiler must stop packaging";
             data = json.loads(Path(measurements.output_path).read_text());
             stage = data["stages"][-1];
-            assert stage["name"] == (
-                "module_precompile" if phase == "incomplete_precompile" else phase
-            );
+            assert stage["name"]
+                == ("module_precompile" if phase == "incomplete_precompile" else phase);
             assert not stage["succeeded"];
             compilation = data["compilation"];
             if phase == "seal_finalize" {

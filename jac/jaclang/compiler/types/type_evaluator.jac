@@ -484,7 +484,7 @@ walker TypeEvaluator {
     def get_type_of_module(node_: ModulePath) -> TypeBase;
     def get_type_of_module_item(node_: ModuleItem) -> TypeBase;
     def _resolve_submodule_attr(
-        base_type: ModuleType, attr_name: str
+        base_type: ModuleType, attr_name: str, importer_path: str | None = None
     ) -> (ModuleType | None);
 
     def _resolve_star_import_symbol(

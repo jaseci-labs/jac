@@ -106,7 +106,8 @@ def seal_bootstrap(
             with precompile_unit_context(path, str(pkg_dir)) as program {
                 program.iface_registry().ensure(path);
                 program.iface_registry().publish_completed();
-                extra = _unit_extra(path, str(pkg_dir), embed_src);
+                found = program.iface_registry()._module_jir(path, (SEC_IFACE, ));
+                extra = _unit_extra(path, str(pkg_dir), embed_src, found);
             }
             if compute_precompile_module_key(path) != key {
                 raise RuntimeError(f"Source changed while freezing {source}");

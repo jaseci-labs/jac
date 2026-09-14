@@ -166,6 +166,136 @@ test "failed precompile retains analysis measurements and a repaired source reco
     }
 }
 
+test "interface-only dependencies survive fresh caches and retain sealed integrity" {
+    import json;
+    import os;
+    import shutil;
+    import sys;
+    import from unittest.mock { patch }
+    import jaclang.compiler.driver.jir as jir;
+    import jaclang.dist.precompile_bootstrap as bootstrap;
+    import jaclang.dist.precompile_bytecode as pre;
+    import from jaclang.jac0core.sealed { SealedImage }
+    with TemporaryDirectory() as directory {
+        package = Path(directory) / "jaclang";
+        provider = package / "runtime/na_stdlib/provider.jac";
+        provider.parent.mkdir(parents=True);
+        provider.write_text("def value() -> int { return 7; }\n");
+        entry_source = package / "__init__.jac";
+        entry_source.write_text(
+            "import from .runtime.na_stdlib.provider { value }\n"
+            "def answer() -> int { return value(); }\n"
+        );
+        assert pre.sealable_sources(str(package)) == [str(entry_source)];
+        cache = Path(directory) / "source-cache";
+        output = package / "_precompiled";
+        pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
+        interface = output / pyver / "runtime/na_stdlib/provider.jir";
+        result_path = Path(directory) / "metrics/precompile.json";
+        with patch.object(jir, "_module_cache_root", return_value=cache), patch.object(
+            pre, "precompile_exit"
+        ) as leave, patch.dict(
+            os.environ,
+            {
+                "JAC_PRECOMPILE_METRICS": str(result_path),
+                "JAC_REBUILD": "0",
+                "JAC_NO_PRECOMPILE": "0"
+            }
+        ), patch.object(bootstrap, "bootstrap_sources", return_value=[]), patch.object(
+            pre, "bootstrap_sources", return_value=[]
+        ) {
+            pre.run_precompile(directory, seal_compile=True, jobs_arg="0");
+            assert leave.call_args[0][0] == 0;
+            cold = json.loads(result_path.read_text());
+            assert cold["compiled"] == 1 and cold["interfaces"] == 1;
+            data = interface.read_bytes();
+            assert jir.read_section_bytes(data, jir.SEC_IFACE) is not None;
+            assert jir.read_section_bytes(data, jir.SEC_BYTECODE) is None;
+            original = {
+                str(p.relative_to(output)): p.read_bytes()
+                for p in output.rglob("*.jir")
+            };
+            shutil.rmtree(cache, ignore_errors=True);
+            with pre.precompile_unit_context(str(provider), str(package)) as program {
+                executable = pre._precompile_unit(str(provider), str(package), program);
+                assert executable is not None;
+                bytecode = jir.read_section_bytes(executable, jir.SEC_BYTECODE);
+                assert bytecode is not None;
+                cached = jir.get_module_cache_path(str(provider));
+                cached.unlink(missing_ok=True);
+                jir.write_module_cache(str(provider), bytecode);
+                assert jir.read_section_bytes(cached.read_bytes(), jir.SEC_IFACE)
+                    is None;
+            }
+            pre.run_precompile(directory, seal_compile=True, jobs_arg="0");
+            warm = json.loads(result_path.read_text());
+            assert warm["compiled"] == 0 and warm["reused"] == 1;
+            assert warm["dependency_plan"]["syntax_parses"] == 0;
+            assert all(
+                not any(record.get("pass_runs", {}).values())
+                    and not any(record.get("parse_runs", {}).values())
+                for worker in warm["workers"] for result in worker["result"]
+                for record in result.get("analysis", [])
+            );
+            assert original
+                == {
+                    str(p.relative_to(output)): p.read_bytes()
+                    for p in output.rglob("*.jir")
+                };
+            for embed_src in [True, False] {
+                shutil.rmtree(cache, ignore_errors=True);
+                pre.run_precompile(
+                    directory, seal_compile=True, jobs_arg="0", embed_src=embed_src
+                );
+                assert leave.call_args[0][0] == 0;
+                rewrapped = json.loads(result_path.read_text());
+                assert all(
+                    not any(record.get("pass_runs", {}).values())
+                        and not any(record.get("parse_runs", {}).values())
+                    for worker in rewrapped["workers"] for result in worker["result"]
+                    for record in result.get("analysis", [])
+                );
+                for product in output.rglob("*.jir") {
+                    wrapped = product.read_bytes();
+                    assert jir.read_section_bytes(wrapped, jir.SEC_IFACE) is not None;
+                    assert (jir.read_debug_source(wrapped) is not None) == embed_src;
+                }
+            }
+            assert original
+                == {
+                    str(p.relative_to(output)): p.read_bytes()
+                    for p in output.rglob("*.jir")
+                };
+            assert pre.seal_finalize(package, output, "jaclang", pyver, False) == 0;
+            manifest = json.loads((output / "MANIFEST.json").read_text());
+            assert "runtime/na_stdlib/provider.jac" not in manifest["modules"];
+            assert interface.relative_to(package).as_posix() in manifest["payloads"];
+            image = SealedImage(output, manifest);
+            assert image.find("jaclang.runtime.na_stdlib.provider") is None;
+            image.verify();
+            interface.write_bytes(b"damaged interface");
+            rejected = False;
+            try {
+                image.verify();
+            } except RuntimeError {
+                rejected = True;
+            } finally {
+                interface.write_bytes(data);
+            }
+            assert rejected , "the seal did not validate its interface payload";
+            provider.unlink();
+            assert pre.seal_finalize(package, output, "jaclang", pyver, False) == 1;
+            provider.write_text("def value() -> str { return 'changed'; }\n");
+            assert pre.seal_finalize(package, output, "jaclang", pyver, False) == 1;
+            (output / "MANIFEST.json").unlink();
+            shutil.rmtree(cache, ignore_errors=True);
+            pre.run_precompile(directory, seal_compile=True, jobs_arg="0");
+            assert leave.call_args[0][0] == 1;
+            assert json.loads(result_path.read_text())["failed"] == 1;
+        }
+    }
+}
+
 test "interrupted precompile checkpoints completed jobs as an unfinished report" {
     import json;
     import os;
@@ -178,19 +308,10 @@ test "interrupted precompile checkpoints completed jobs as an unfinished report"
         (package / "__init__.jac").write_text("# Package entry.\n");
         (package / "value.jac").write_text("def value() -> int { return 7; }\n");
         result_path = Path(directory) / "metrics/precompile.json";
-        original = WorkPool._run_job;
-        def interrupt(
-            worker: WorkPool, request: dict[str, any], served: int, setup_seconds: float
-        ) -> dict[str, any] {
-            if served == 2 {
-                raise KeyboardInterrupt();
-            }
-            return original(worker, request, served, setup_seconds);
-        }
         interrupted = False;
-        with patch.object(WorkPool, "_run_job", new=interrupt), patch.dict(
-            os.environ, {"JAC_PRECOMPILE_METRICS": str(result_path)}
-        ) {
+        with patch.object(
+            WorkPool, "_should_stop", side_effect=[False, KeyboardInterrupt()]
+        ), patch.dict(os.environ, {"JAC_PRECOMPILE_METRICS": str(result_path)}) {
             try {
                 pre.run_precompile(directory, jobs_arg="0");
             } except KeyboardInterrupt {
@@ -198,12 +319,12 @@ test "interrupted precompile checkpoints completed jobs as an unfinished report"
             }
         }
         assert interrupted;
-        report = json.loads(result_path.read_text());
-        assert not report["complete"];
-        assert report["compiled"] == 1 and report["total"] == 2;
-        assert len(report["workers"]) == 1;
-        assert report["workers"][0]["result"][0]["status"] == "compiled";
-        assert report["dependency_plan"]["modules"] == 2;
+        saved = json.loads(result_path.read_text());
+        assert not saved["complete"];
+        assert saved["compiled"] == 1 and saved["total"] == 2;
+        assert len(saved["workers"]) == 1;
+        assert saved["workers"][0]["result"][0]["status"] == "compiled";
+        assert saved["dependency_plan"]["modules"] == 2;
         assert not (package / "_precompiled/PRECOMPILE_RESULT.json").exists();
     }
 }

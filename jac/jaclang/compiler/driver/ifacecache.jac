@@ -334,6 +334,7 @@ obj IfaceRegistry {
     }
 
     def dep_rows(resolved_path: str, mod: any) -> list[tuple[str, str, str]] {
+        import from jaclang.compiler.driver.compilation_context { program_for }
         bucket = self.direct_deps.get(resolved_path, {});
         client = self._client_edges(mod) if mod is not None else set();
         out: list[tuple[str, str, str]] = [];
@@ -343,8 +344,9 @@ obj IfaceRegistry {
                 continue;
             }
             digest = bucket.get(path, "");
-            ent = self.entries.get(path);
-            memo = self._iface_bytes.get(path);
+            registry = program_for(path, self.prog).iface_registry();
+            ent = registry.entries.get(path);
+            memo = registry._iface_bytes.get(path);
             if memo is not None {
                 digest = memo.digest;
             } elif ent is not None {
@@ -420,9 +422,11 @@ obj IfaceRegistry {
         }
     }
 
-    def _module_jir(resolved: str) -> tuple[bytes, str] | None {
+    def _module_jir(
+        resolved: str, required_sections: tuple[int, ...] = ()
+    ) -> tuple[bytes, str] | None {
         with self._compilation_scope() {
-            return self._module_jir_in_context(resolved);
+            return self._module_jir_in_context(resolved, required_sections);
         }
     }
 
@@ -515,15 +519,27 @@ obj IfaceRegistry {
         }
     }
 
-    def _module_jir_in_context(resolved: str) -> (tuple[bytes, str] | None) {
+    def _module_jir_in_context(
+        resolved: str, required_sections: tuple[int, ...] = ()
+    ) -> (tuple[bytes, str] | None) {
+        def has_products(data: bytes) -> bool {
+            return all(
+                read_section_bytes(data, section) is not None
+                for section in required_sections
+            );
+        }
         try {
             cache_path = get_module_cache_path(resolved);
             if is_module_cache_valid(resolved, cache_path) {
-                return (cache_path.read_bytes(), "", );
+                data = cache_path.read_bytes();
+                if has_products(data) {
+                    return (data, "", );
+                }
             }
         } except Exception {}
         try {
-            return self.prog._get_compiler()._precompiled_jir_data(resolved);
+            found = self.prog._get_compiler()._precompiled_jir_data(resolved);
+            return found if found is not None and has_products(found[0]) else None;
         } except Exception {
             return None;
         }
@@ -531,7 +547,7 @@ obj IfaceRegistry {
 
     def _register_from_disk(resolved: str, check_deps: bool) -> (IfaceEntry | None) {
         codec = iface_codec();
-        found = self._module_jir(resolved);
+        found = self._module_jir(resolved, (SEC_IFACE, ));
         if codec is None or found is None {
             return None;
         }
@@ -862,7 +878,7 @@ obj IfaceRegistry {
         err0 = len(self.prog.errors_had);
         warn0 = len(self.prog.warnings_had);
         codec = iface_codec();
-        found = self._module_jir(resolved);
+        found = self._module_jir(resolved, (SEC_DIAG, ));
         if codec is None or found is None {
             return None;
         }
@@ -1166,7 +1182,7 @@ obj IfaceRegistry {
 
     def _disk_iface_digest(resolved: str) -> str {
         codec = iface_codec();
-        found = self._module_jir(resolved);
+        found = self._module_jir(resolved, (SEC_IFACE, ));
         if codec is None or found is None {
             return "";
         }
@@ -1174,7 +1190,7 @@ obj IfaceRegistry {
     }
 
     def _existing_profiles(resolved: str, dependencies: bytes) -> dict {
-        found = self._module_jir(resolved);
+        found = self._module_jir(resolved, (SEC_DIAG, ));
         if found is None {
             return {};
         }
@@ -1195,17 +1211,17 @@ obj IfaceRegistry {
 
     def client_boundary_facts(dep_path: str) -> (list[str] | None) {
         import json;
+        import from jaclang.compiler.driver.jir { SEC_INTEROP }
         resolved = os.path.realpath(dep_path);
         (rebuild, _) = cache_mode();
         if rebuild or not jir_cacheable_source_path(resolved) {
             return None;
         }
-        found = self._module_jir(resolved);
+        found = self._module_jir(resolved, (SEC_INTEROP, ));
         if found is None {
             return None;
         }
         (data, base_dir) = found;
-        import from jaclang.compiler.driver.jir { SEC_INTEROP }
         interop_bytes = read_section_bytes(data, SEC_INTEROP);
         if interop_bytes is None {
             return None;

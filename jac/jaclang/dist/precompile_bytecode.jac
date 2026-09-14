@@ -32,8 +32,6 @@ import from jaclang.compiler.driver.jir {
     SEC_PATH_ROOT,
     FORMAT_VERSION,
     compute_precompile_module_key,
-    get_module_cache_path,
-    is_module_cache_valid,
     precompiled_jir_matches_source,
     read_section_bytes,
     read_jir_paths,
@@ -379,13 +377,14 @@ def precompile_worker_init {
     }
 }
 
-def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, bytes] {
+def _unit_extra(
+    jac_path: str, pkg_root: str, embed_src: bool, found: tuple[bytes, str] | None
+) -> dict[int, bytes] {
     pkg_root = os.path.realpath(pkg_root);
     extra: dict[int, bytes] = {};
     try {
-        cache_path = get_module_cache_path(jac_path);
-        if cache_path.exists() and is_module_cache_valid(jac_path, cache_path) {
-            data = cache_path.read_bytes();
+        if found is not None {
+            (data, base_dir) = found;
             for section in (SEC_IFACE, SEC_DEPS, SEC_DIAG, SEC_PLACEMENT) {
                 raw = read_section_bytes(data, section);
                 if raw is not None {
@@ -393,7 +392,7 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
                 }
             }
             if extra {
-                paths = read_jir_paths(data);
+                paths = read_jir_paths(data, base_dir);
                 if not paths.base_dir {
                     paths.base_dir = os.path.dirname(os.path.realpath(jac_path));
                 }
@@ -534,21 +533,34 @@ def precompile_unit(
     embed_src: bool = False,
     collect: bool = True,
     app: str = "",
-    measurements: list[dict[str, any]] | None = None
+    measurements: list[dict[str, any]] | None = None,
+    interface_only: bool = False
 ) -> bytes | None {
     with precompile_unit_context(
         jac_path, pkg_root, collect, app, measurements
     ) as program {
-        return _precompile_unit(jac_path, pkg_root, program, embed_src);
+        return _precompile_unit(jac_path, pkg_root, program, embed_src, interface_only);
     }
 }
 
 def _precompile_unit(
-    jac_path: str, pkg_root: str, program: JacProgram, embed_src: bool = False
+    jac_path: str,
+    pkg_root: str,
+    program: JacProgram,
+    embed_src: bool = False,
+    interface_only: bool = False
 ) -> bytes | None {
     key = compute_precompile_module_key(jac_path);
-    def image(bytecode: bytes) -> bytes {
-        extra = _unit_extra(jac_path, pkg_root, embed_src);
+    def image(
+        bytecode: bytes | None, found: tuple[bytes, str] | None = None
+    ) -> bytes | None {
+        if found is None {
+            found = program.iface_registry()._module_jir(jac_path, (SEC_IFACE, ));
+        }
+        extra = _unit_extra(jac_path, pkg_root, embed_src, found);
+        if interface_only and SEC_IFACE not in extra {
+            return None;
+        }
         if compute_precompile_module_key(jac_path) != key {
             raise RuntimeError(f"Source changed while sealing {jac_path}");
         }
@@ -557,34 +569,45 @@ def _precompile_unit(
     try {
         import from jaclang.compiler.driver.jir { cache_mode }
         (rebuild_units, _np) = cache_mode();
-        cache_path = get_module_cache_path(jac_path);
-        if (not rebuild_units) and is_module_cache_valid(jac_path, cache_path) {
-            cached_data = cache_path.read_bytes();
+        required = (SEC_IFACE, ) if interface_only else (SEC_IFACE, SEC_BYTECODE);
+        found = program.iface_registry()._module_jir(jac_path, required)
+            if not rebuild_units
+            else None;
+        if found is not None {
+            (cached_data, base_dir) = found;
             cached_bc = read_section_bytes(cached_data, SEC_BYTECODE);
-            if cached_bc is not None
-                and read_section_bytes(cached_data, SEC_IFACE) is not None
-                and program.iface_registry().dependencies_match(
-                    jac_path, cached_data
-                ) {
+            if program.iface_registry().dependencies_match(
+                jac_path, cached_data, base_dir
+            ) {
+                if interface_only {
+                    return image(None, found);
+                }
+                assert cached_bc is not None;
                 rewrapped = patch_co_filenames_bytes(
                     cached_bc, pkg_root, PRECOMPILE_SENTINEL
                 );
-                return image(rewrapped);
+                return image(rewrapped, found);
             }
         }
     } except Exception {}
 
     compiler = program._get_compiler();
 
-    program.iface_registry().ensure(jac_path);
-    code = compiler.get_bytecode(full_target=jac_path, target_program=program);
-    if code is None {
+    available = program.iface_registry().ensure(jac_path) is not None;
+    code = None
+        if interface_only
+        else compiler.get_bytecode(full_target=jac_path, target_program=program);
+    if code is None and not interface_only {
         _emit_unit_diagnostics(jac_path, [program, compiler.selfhost.program]);
         return None;
     }
     with program.analysis.measure(jac_path, "product:interface_publication") {
         program.iface_registry().publish_completed();
     }
+    if interface_only {
+        return image(None) if available else None;
+    }
+    assert code is not None;
     patched = patch_co_filenames_bytes(
         marshal.dumps(code), pkg_root, PRECOMPILE_SENTINEL
     );
@@ -753,7 +776,8 @@ def seal_runtime_closure(
     def add_dependency(dependency: str) -> bool {
         relative = Path(dependency).relative_to(pkg_path);
         target = out_dir / relative.with_suffix(".jir");
-        if not target.is_file() {
+        if not target.is_file()
+            or read_section_bytes(target.read_bytes(), SEC_BYTECODE) is None {
             console.print(f"  Sealing runtime dependency: {relative}");
             data = precompile_unit(dependency, base, embed_src, app=app);
             if data is None {
@@ -789,12 +813,17 @@ def seal_runtime_closure(
         if source in visited {
             continue;
         }
-        visited.add(source);
-        bytecode = read_section_bytes(artifact.read_bytes(), SEC_BYTECODE);
+        data = artifact.read_bytes();
+        bytecode = read_section_bytes(data, SEC_BYTECODE);
         if bytecode is None {
+            if source not in sources
+                and read_section_bytes(data, SEC_IFACE) is not None {
+                continue;
+            }
             console.error(f"Seal aborted: no bytecode in {artifact}");
             return False;
         }
+        visited.add(source);
         for dependency in runtime_sources(marshal.loads(bytecode), source, base) {
             if not add_dependency(dependency) {
                 return False;
@@ -845,12 +874,14 @@ def seal_finalize(
         return 1;
     }
 
+    executable_sources = {
+        Path(path).relative_to(pkg_path).as_posix()
+        for path in sealable_sources(str(pkg_path), app)
+    };
     missing = [
-        str(Path(p).relative_to(pkg_path))
-        for p in sealable_sources(str(pkg_path), app)
-        if not (
-            precompiled_dir / pyver / Path(p).relative_to(pkg_path).with_suffix(".jir")
-        ).is_file()
+        source
+        for source in sorted(executable_sources)
+        if not (precompiled_dir / pyver / Path(source).with_suffix(".jir")).is_file()
     ];
     if missing {
         console.error(
@@ -862,25 +893,6 @@ def seal_finalize(
 
     identity = compiler_identity();
     foreign: list[str] = [];
-    for p in sealable_sources(str(pkg_path), app) {
-        rel = Path(p).relative_to(pkg_path);
-        jir = precompiled_dir / pyver / rel.with_suffix(".jir");
-        if not precompiled_jir_matches_source(
-            jir.read_bytes(), p, identity, str(pkg_path)
-        ) {
-            foreign.append(str(rel));
-        }
-    }
-    if foreign {
-        console.error(
-            f"Seal aborted: {len(foreign)} module(s) carry stale JIRs "
-            f"(first: {foreign[:5]}). Their source, compiler identity, or "
-            "compile-time dependencies no longer match. Delete "
-            f"{precompiled_dir} and re-run the precompile."
-        );
-        return 1;
-    }
-    console.print(f"  Compiler identity: {identity} (verified over every JIR)");
 
     out_dir = precompiled_dir / pyver;
 
@@ -908,15 +920,35 @@ def seal_finalize(
     }
 
     manifest_modules: dict[str, dict[str, any]] = {};
+    interface_payloads: dict[str, str] = {};
     n_boot = 0;
     for jir in sorted(out_dir.rglob("*.jir")) {
         rel_jir = jir.relative_to(out_dir).as_posix();
         (source_rel, fullname, is_pkg) = jir_to_module(pkg_name, rel_jir);
+        data = jir.read_bytes();
+        source_path = pkg_path / source_rel;
+        if not source_path.is_file()
+            or not precompiled_jir_matches_source(
+                data, str(source_path), identity, str(pkg_path)
+            ) {
+            foreign.append(source_rel);
+            continue;
+        }
+        digest = hashlib.sha256(data).hexdigest();
+        if read_section_bytes(data, SEC_BYTECODE) is None {
+            if source_rel in executable_sources
+                or read_section_bytes(data, SEC_IFACE) is None {
+                foreign.append(source_rel);
+            } else {
+                interface_payloads[jir.relative_to(pkg_path).as_posix()] = digest;
+            }
+            continue;
+        }
         `entry = {
             "module": fullname,
             "jir": rel_jir,
             "package": is_pkg,
-            "sha256": hashlib.sha256(jir.read_bytes()).hexdigest()
+            "sha256": digest
         };
         import from jaclang.bootstrap_manifest { is_seed_source }
         if is_seed_source(source_rel) {
@@ -925,9 +957,20 @@ def seal_finalize(
         }
         manifest_modules[source_rel] = `entry;
     }
+    if foreign {
+        console.error(
+            f"Seal aborted: {len(foreign)} module(s) carry incomplete or stale JIRs "
+            f"(first: {foreign[:5]}). Their requested products, source, compiler identity, or "
+            "compile-time dependencies no longer match. Delete "
+            f"{precompiled_dir} and re-run the precompile."
+        );
+        return 1;
+    }
+    console.print(f"  Compiler identity: {identity} (verified over every JIR)");
     console.print(f"  Manifest modules: {len(manifest_modules)} ({n_boot} bootstrap)");
 
     payloads = collect_payloads(pkg_path);
+    payloads.update(interface_payloads);
     if payloads {
         console.print(f"  Payload files: {len(payloads)}");
     }
@@ -1189,12 +1232,6 @@ def run_precompile(
             for path in bootstrap_sources(pkg_path)
         );
     }
-    for old_jir in sorted(out_dir.rglob("*.jir")) {
-        if str(old_jir.relative_to(out_dir)) not in expected {
-            old_jir.unlink();
-        }
-    }
-
     import from jaclang.compiler.driver.jir { read_debug_source }
     import from jaclang.cli.workpool {
         WORKER_MEM_BYTES,
@@ -1260,6 +1297,14 @@ def run_precompile(
     );
     _discovery_sources[:] = [plan.sources];
     (work_items, prerequisites) = plan.work_queue();
+    expected.update(
+        str(Path(path).relative_to(pkg_path).with_suffix(".jir")) for path in work_items
+    );
+    for old_jir in sorted(out_dir.rglob("*.jir")) {
+        if str(old_jir.relative_to(out_dir)) not in expected {
+            old_jir.unlink();
+        }
+    }
     requested = set(jac_files);
     console.print(
         f"  Dependency plan: {len(plan.groups)} groups, {plan.measurements[
@@ -1274,55 +1319,56 @@ def run_precompile(
         import from jaclang.jac0core.cache_paths { atomic_write }
         atomic_write(
             metrics_path,
-            (json.dumps({
-                "total": len(jac_files),
-                "compiled": counts["compiled"],
-                "reused": counts["reused"],
-                "failed": counts["failed"],
-                "complete": complete,
-                "measurement_schema": 1,
-                "startup": startup,
-                "inputs": {
-                    "compiler": compiler_identity(),
-                    "python": sys.version,
-                    "package": package_dir,
-                    "app": app,
-                    "jobs": workers if use_pool else 1,
-                    "frontend": os.environ.get("JAC_COMPILER_LIB", "auto")
-                },
-                "timing": "exclusive_seconds excludes nested phases and passes, including dependencies",
-                "workers": measurements,
-                "dependency_plan": plan.measurements,
-                "interfaces": counts.get("interface", 0),
-                "deferred_interfaces": counts.get("deferred", 0)
-            }) + "\n").encode("utf-8")
+            (
+                json.dumps(
+                    {
+                        "total": len(jac_files),
+                        "compiled": counts["compiled"],
+                        "reused": counts["reused"],
+                        "failed": counts["failed"],
+                        "complete": complete,
+                        "measurement_schema": 1,
+                        "startup": startup,
+                        "inputs": {
+                            "compiler": compiler_identity(),
+                            "python": sys.version,
+                            "package": package_dir,
+                            "app": app,
+                            "jobs": workers if use_pool else 1,
+                            "frontend": os.environ.get("JAC_COMPILER_LIB", "auto")
+                        },
+                        "timing": "exclusive_seconds excludes nested phases and passes, including dependencies",
+                        "workers": measurements,
+                        "dependency_plan": plan.measurements,
+                        "interfaces": counts.get("interface", 0),
+                        "deferred_interfaces": counts.get("deferred", 0)
+                    }
+                )
+                + "\n"
+            ).encode(
+                "utf-8"
+            )
         );
+    }
 
     def compile_unit(jac_path: str) -> dict[str, any] {
         import from jaclang.compiler.driver.jir { cache_mode }
+        import from jaclang.bootstrap_manifest { is_seed_source }
         analysis: list[dict[str, any]] = [];
         rel = Path(jac_path).relative_to(pkg_path);
         jir_path = out_dir / rel.with_suffix(".jir");
         try {
-            if jac_path not in requested {
-                with precompile_unit_context(
-                    jac_path, package_dir, app=app, measurements=analysis
-                ) as program {
-                    available = program.iface_registry().ensure(jac_path) is not None;
-                    program.iface_registry().publish_completed();
-                }
-                return {
-                    "status": "interface" if available else "deferred",
-                    "rel": str(rel),
-                    "analysis": analysis
-                };
-            }
+            interface_only = jac_path not in requested;
             (rebuild, no_precompile) = cache_mode();
             if not rebuild and not no_precompile and jir_path.is_file() {
                 existing = jir_path.read_bytes();
                 if precompiled_jir_matches_source(
                     existing, jac_path, package_root=package_dir
                 )
+                    and read_section_bytes(
+                        existing, SEC_IFACE if interface_only else SEC_BYTECODE
+                    )
+                        is not None
                     and embed_src == (read_debug_source(existing) is not None) {
                     with precompile_unit_context(
                         jac_path, package_dir, app=app, measurements=analysis
@@ -1333,7 +1379,7 @@ def run_precompile(
                     }
                     if reusable {
                         return {
-                            "status": "reused",
+                            "status": "interface" if interface_only else "reused",
                             "rel": str(rel),
                             "analysis": analysis
                         };
@@ -1346,21 +1392,32 @@ def run_precompile(
                 embed_src,
                 collect=not use_pool,
                 app=app,
-                measurements=analysis
+                measurements=analysis,
+                interface_only=interface_only
             );
             if jir_bytes is None {
                 jir_path.unlink(missing_ok=True);
                 return {
-                    "status": "failed",
+                    "status": "deferred" if interface_only else "failed",
                     "rel": str(rel),
-                    "message": f"  SKIP (no bytecode): {rel}",
+                    "message": f"  SKIP (missing requested product): {rel}",
                     "analysis": analysis
                 };
             }
-            jir_path.parent.mkdir(parents=True, exist_ok=True);
-            import from jaclang.jac0core.cache_paths { atomic_write }
-            atomic_write(jir_path, jir_bytes);
-            return {"status": "compiled", "rel": str(rel), "analysis": analysis};
+            if not (
+                interface_only
+                and pkg_name == "jaclang"
+                and is_seed_source(rel.as_posix())
+            ) {
+                jir_path.parent.mkdir(parents=True, exist_ok=True);
+                import from jaclang.jac0core.cache_paths { atomic_write }
+                atomic_write(jir_path, jir_bytes);
+            }
+            return {
+                "status": "interface" if interface_only else "compiled",
+                "rel": str(rel),
+                "analysis": analysis
+            };
         } except Exception as e {
             jir_path.unlink(missing_ok=True);
             return {
