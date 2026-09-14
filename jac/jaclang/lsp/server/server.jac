@@ -16,15 +16,15 @@ import jaclang.lsp.protocol.types as lspt;
 
 def debug(msg: str) -> None;
 
-async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) {
+def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) {
     ls.type_check(params.text_document.uri);
 }
 
-async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) {
+def did_save(ls: JacLangServer, params: lspt.DidSaveTextDocumentParams) {
     ls.type_check(params.text_document.uri);
 }
 
-async def did_change(ls: JacLangServer, params: lspt.DidChangeTextDocumentParams) {
+def did_change(ls: JacLangServer, params: lspt.DidChangeTextDocumentParams) {
     debug(f"Did change: Type checking started.");
     ls.type_check(params.text_document.uri);
 }
@@ -45,12 +45,12 @@ def did_close(ls: JacLangServer, params: lspt.DidCloseTextDocumentParams) -> Non
 
 def did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None;
 
-async def completion(
+def completion(
     ls: JacLangServer, params: lspt.CompletionParams
 ) -> lspt.CompletionList {
     file_path = params.text_document.uri;
     debug("Completion requested");
-    return await ls.get_completion(
+    return ls.get_completion(
         params.text_document.uri,
         params.position,
         (params.context.trigger_character if params.context else None)

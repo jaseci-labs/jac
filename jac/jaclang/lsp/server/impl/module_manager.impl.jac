@@ -17,17 +17,12 @@ impl ModuleManager.update(
     update_annexed: bool = True,
     files: (list[str] | None) = None
 ) -> None {
+    self.completions.clear();
     self.program.install_module(file_path, build);
 
     if update_annexed {
         for f in (files or [file_path]) {
             self.sem_managers[f] = SemTokManager(ir=build, target_path=f);
-        }
-
-        for (p, mod) in self.program.mod.hub.items() {
-            if p != file_path {
-                self.sem_managers[p] = SemTokManager(ir=mod, target_path=p);
-            }
         }
     }
 }

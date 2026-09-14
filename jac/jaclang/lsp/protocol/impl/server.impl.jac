@@ -133,53 +133,45 @@ impl PositionCodec.utf16_unit_offset(chars: str) -> int {
 }
 
 impl PositionCodec.client_num_units(chars: str) -> int {
-    utf32_units = len(chars);
-    if self.encoding == PositionEncodingKind.Utf32 {
-        return utf32_units;
-    }
     if self.encoding == PositionEncodingKind.Utf8 {
-        return utf32_units + (self.utf16_unit_offset(chars) * 2);
+        return len(chars.encode('utf-8'));
     }
-    return utf32_units + self.utf16_unit_offset(chars);
+    return len(chars)
+        if self.encoding == PositionEncodingKind.Utf32
+        else len(chars) + self.utf16_unit_offset(chars);
 }
 
 impl PositionCodec.position_from_client_units(
     lines: list[str], position: Position
 ) -> Position {
-    if len(lines) == 0 {
+    if not lines {
         return Position(0, 0);
     }
-    if position.line >= len(lines) {
-        return Position(len(lines) - 1, self.client_num_units(lines[-1]));
-    }
-    _line = lines[position.line].replace("\r\n", "\n");
-    _utf32_len = len(_line);
-    if self.client_num_units(_line) == 0 {
-        return Position(position.line, 0);
-    }
-    _client_end = self.client_num_units(_line);
-    char = position.character;
-    if char > _client_end {
-        char = _client_end - 1;
-    }
-    _client_index = 0;
-    utf32_index = 0;
-    while _client_index < char and utf32_index < _utf32_len {
-        _current_char = _line[utf32_index];
-        if ord(_current_char) > 0xFFFF {
-            if self.encoding == PositionEncodingKind.Utf32 {
-                _client_index += 1;
-            }
-            if self.encoding == PositionEncodingKind.Utf8 {
-                _client_index += 4;
-            }
-            _client_index += 2;
-        } else {
-            _client_index += 1;
+    line = max(0, min(position.line, len(lines) - 1));
+    text = lines[line].rstrip('\r\n');
+    consumed = 0;
+    index = 0;
+    while index < len(text) {
+        width = self.client_num_units(text[index]);
+        if consumed + width > position.character {
+            break;
         }
-        utf32_index += 1;
+        consumed += width;
+        index += 1;
     }
-    return Position(line=position.line, character=utf32_index);
+    return Position(line, index);
+}
+
+impl PositionCodec.position_to_client_units(
+    lines: list[str], position: Position
+) -> Position {
+    if not lines {
+        return Position(0, 0);
+    }
+    line = max(0, min(position.line, len(lines) - 1));
+    return Position(
+        line, self.client_num_units(lines[line][:max(0, position.character)])
+    );
 }
 
 impl PositionCodec.range_from_client_units(lines: list[str], range: Range) -> Range {
@@ -196,7 +188,7 @@ impl TextDocument.postinit -> None {
 
 impl TextDocument.source.getter -> str {
     if self._source is None {
-        with io.open(self.path, "r", encoding="utf-8") as f {
+        with open(self.path, "r", encoding="utf-8") as f {
             return f.read();
         }
     }
@@ -275,6 +267,7 @@ impl TextDocument._apply_full_change(change: any) -> None {
 }
 
 impl Workspace.postinit -> None {
+    self.lock = threading.RLock();
     self._position_codec = PositionCodec();
     if self.root_uri is not None {
         self._root_path = uris.to_fs_path(self.root_uri);
@@ -284,35 +277,78 @@ impl Workspace.postinit -> None {
 }
 
 impl Workspace.get_text_document(doc_uri: str) -> TextDocument {
-    if doc_uri in self._text_documents {
-        return self._text_documents[doc_uri];
+    with self.lock {
+        if doc_uri in self._text_documents {
+            return self._text_documents[doc_uri];
+        }
     }
     return TextDocument(uri=doc_uri);
 }
 
 impl Workspace.put_text_document(text_document: TextDocumentItem) -> None {
-    doc_uri = text_document.uri;
-    self._text_documents[doc_uri] = TextDocument(
-        uri=doc_uri, _source=text_document.text, version=text_document.version
-    );
+    with self.lock {
+        doc_uri = text_document.uri;
+        self._text_documents[doc_uri] = TextDocument(
+            uri=doc_uri, _source=text_document.text, version=text_document.version
+        );
+        self.revision += 1;
+    }
 }
 
 impl Workspace.update_text_document(
     text_doc: VersionedTextDocumentIdentifier, change: any
 ) -> None {
-    doc_uri = text_doc.uri;
-    if doc_uri in self._text_documents {
-        self._text_documents[doc_uri].apply_change(change);
-        self._text_documents[doc_uri].version = text_doc.version;
+    with self.lock {
+        doc_uri = text_doc.uri;
+        if doc_uri in self._text_documents {
+            self._text_documents[doc_uri].apply_change(change);
+            self._text_documents[doc_uri].version = text_doc.version;
+            self.revision += 1;
+        }
+    }
+}
+
+impl Workspace.change_text_document(params: DidChangeTextDocumentParams) -> None {
+    with self.lock {
+        identifier = params.text_document;
+        document = self._text_documents.get(identifier.uri);
+        if document is None
+            or (
+                document.version is not None and identifier.version <= document.version
+            ) {
+            return;
+        }
+        for change in params.content_changes {
+            document.apply_change(change);
+        }
+        document.version = identifier.version;
+        self.revision += 1;
+    }
+}
+
+impl Workspace.snapshot -> WorkspaceSnapshot {
+    with self.lock {
+        return WorkspaceSnapshot(
+            self.revision,
+            {
+                uri: TextDocument(
+                    uri=uri, _source=document.source, version=document.version
+                ) for (uri, document) in self._text_documents.items()
+            }
+        );
     }
 }
 
 impl Workspace.remove_text_document(doc_uri: str) -> None {
-    self._text_documents.pop(doc_uri, None);
+    with self.lock {
+        self._text_documents.pop(doc_uri, None);
+        self.revision += 1;
+    }
 }
 
 impl LanguageServer.postinit -> None {
     self._write_lock = threading.Lock();
+    self._request_lock = threading.RLock();
 }
 
 impl LanguageServer.workspace.getter -> Workspace {
@@ -340,10 +376,8 @@ impl LanguageServer.feature(method: str, options: any = None) -> Callable {
 impl LanguageServer.start_io -> None {
     stdin = sys.stdin.buffer;
     self._transport_writer = sys.stdout.buffer;
-    loop = asyncio.new_event_loop();
-    asyncio.set_event_loop(loop);
     try {
-        while not self._shutdown_flag {
+        while True {
             msg = self._read_message(stdin);
             if msg is None {
                 break;
@@ -351,91 +385,196 @@ impl LanguageServer.start_io -> None {
             method = msg.get("method");
             msg_id = msg.get("id");
             params = msg.get("params", {});
-
             if method is None {
                 continue;
             }
-
+            if method == EXIT {
+                break;
+            }
+            if method == '$/cancelRequest' {
+                self._cancel_request(params.get('id'));
+                continue;
+            }
             if method == INITIALIZE {
-                result = self._handle_initialize(params);
-                self._send_response(msg_id, result);
+                self._send_response(msg_id, self._handle_initialize(params));
                 continue;
             }
             if method == INITIALIZED {
                 continue;
             }
             if method == SHUTDOWN {
-                self._shutdown_flag = True;
                 self.shutdown();
                 self._send_response(msg_id, None);
                 continue;
             }
-            if method == EXIT {
-                break;
-            }
-
-            if method == TEXT_DOCUMENT_DID_OPEN {
-                typed_params = from_dict(params, DidOpenTextDocumentParams);
-                self.workspace.put_text_document(typed_params.text_document);
-            } elif method == TEXT_DOCUMENT_DID_CHANGE {
-                typed_params = from_dict(params, DidChangeTextDocumentParams);
-                for change in typed_params.content_changes {
-                    self.workspace.update_text_document(
-                        typed_params.text_document, change
-                    );
-                }
-            } elif method == TEXT_DOCUMENT_DID_CLOSE {
-                typed_params = from_dict(params, DidCloseTextDocumentParams);
-                self.workspace.remove_text_document(typed_params.text_document.uri);
-            }
-
-            handler = self._features.get(method);
-            if handler is None {
+            if self._shutdown_flag {
                 if msg_id is not None {
-                    self._send_response(msg_id, None);
+                    self._write_message(
+                        {
+                            'jsonrpc': '2.0',
+                            'id': msg_id,
+                            'error': {
+                                'code': ResponseErrorCode.InvalidRequest.value,
+                                'message': 'Server has shut down'
+                            }
+                        }
+                    );
                 }
                 continue;
             }
-
-            param_cls = METHOD_TO_PARAMS.get(method);
-            if param_cls is not None {
-                typed_params = from_dict(params, param_cls);
-            } else {
-                typed_params = params;
+            if method == TEXT_DOCUMENT_DID_OPEN {
+                opened = from_dict(params, DidOpenTextDocumentParams);
+                self.workspace.put_text_document(opened.text_document);
+            } elif method == TEXT_DOCUMENT_DID_CHANGE {
+                self.workspace.change_text_document(
+                    from_dict(params, DidChangeTextDocumentParams)
+                );
+            } elif method == TEXT_DOCUMENT_DID_CLOSE {
+                closed = from_dict(params, DidCloseTextDocumentParams);
+                self.workspace.remove_text_document(closed.text_document.uri);
             }
-
-            active_handler: Callable[[any, any], any] = handler;
-            try {
-                import inspect;
-                if inspect.iscoroutinefunction(active_handler) {
-                    result = loop.run_until_complete(
-                        active_handler(self, typed_params)
+            if msg_id is not None {
+                request = Request(msg_id, method, params, self.workspace.revision);
+                with self._request_lock {
+                    self._requests[msg_id] = request;
+                }
+                if method not in self._features {
+                    self._finish_request(
+                        request,
+                        error=ResponseErrorCode.MethodNotFound,
+                        message=f'Unknown method: {method}'
                     );
                 } else {
-                    result = active_handler(self, typed_params);
+                    self.submit_request(request);
                 }
-            } except Exception as e {
-                logger.exception(f"Handler error for {method}: {e}");
-                if msg_id is not None {
-                    self._send_response(msg_id, None);
+            } elif method in self._features {
+                try {
+                    self._invoke_handler(method, params);
+                } except Exception {
+                    logger.exception(f'Notification handler failed: {method}');
                 }
-                continue;
-            }
-
-            if msg_id is not None {
-                self._send_response(msg_id, result);
             }
         }
     } finally {
-        loop.close();
+        self.shutdown();
+        if self._request_executor is not None {
+            self._request_executor.shutdown(`wait=True, cancel_futures=True);
+        }
     }
 }
 
-impl LanguageServer.publish_diagnostics(uri: str, diagnostics: list) -> None {
-    self._send_notification(
-        TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS,
-        {"uri": uri, "diagnostics": [to_dict(d) for d in diagnostics]}
-    );
+impl LanguageServer._invoke_handler(method: str, params: any) -> any {
+    param_cls = METHOD_TO_PARAMS.get(method);
+    typed_params = from_dict(params, param_cls) if param_cls is not None else params;
+    handler = self._features[method];
+    return handler(self, typed_params);
+}
+
+impl LanguageServer.submit_request(request: Request) -> None {
+    if self._request_executor is None {
+        self._request_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix='lsp-requests'
+        );
+    }
+    self._request_executor.submit(self._run_request, request);
+}
+
+impl LanguageServer._run_request(request: Request) -> None {
+    if request.responded {
+        return;
+    }
+    if request.cancel_token.is_set() {
+        self._finish_request(
+            request,
+            error=ResponseErrorCode.RequestCancelled,
+            message='Request cancelled'
+        );
+        return;
+    }
+    if request.revision != self.workspace.revision {
+        self._finish_request(
+            request,
+            error=ResponseErrorCode.ContentModified,
+            message='Workspace changed'
+        );
+        return;
+    }
+    try {
+        result = self._invoke_handler(request.method, request.params);
+        if request.cancel_token.is_set() {
+            self._finish_request(
+                request,
+                error=ResponseErrorCode.RequestCancelled,
+                message='Request cancelled'
+            );
+        } elif request.revision != self.workspace.revision {
+            self._finish_request(
+                request,
+                error=ResponseErrorCode.ContentModified,
+                message='Workspace changed'
+            );
+        } else {
+            self._finish_request(request, result=result);
+        }
+    } except Exception {
+        logger.exception(f'Request handler failed: {request.method}');
+        self._finish_request(
+            request, error=ResponseErrorCode.InternalError, message='Request failed'
+        );
+    }
+}
+
+impl LanguageServer._finish_request(
+    request: Request,
+    result: any = None,
+    error: ResponseErrorCode | None = None,
+    message: str = ''
+) -> None {
+    with self._request_lock {
+        if request.responded {
+            return;
+        }
+        request.responded = True;
+        self._requests.pop(request.message_id, None);
+        if error is not None {
+            self._write_message(
+                {
+                    'jsonrpc': '2.0',
+                    'id': request.message_id,
+                    'error': {'code': error.value, 'message': message}
+                }
+            );
+        } else {
+            self._send_response(request.message_id, result);
+        }
+    }
+}
+
+impl LanguageServer._cancel_request(message_id: int | str) -> None {
+    with self._request_lock {
+        request = self._requests.get(message_id);
+        if request is not None {
+            request.cancel_token.set();
+            self._finish_request(
+                request,
+                error=ResponseErrorCode.RequestCancelled,
+                message='Request cancelled'
+            );
+        }
+    }
+}
+
+impl LanguageServer.publish_diagnostics(
+    uri: str, diagnostics: list[Diagnostic], version: int | None = None
+) -> None {
+    params: dict[str, any] = {
+        'uri': uri,
+        'diagnostics': [to_dict(d) for d in diagnostics]
+    };
+    if version is not None {
+        params['version'] = version;
+    }
+    self._send_notification(TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS, params);
 }
 
 impl LanguageServer.show_message(message: str, msg_type: any = None) -> None {

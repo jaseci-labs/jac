@@ -1,6 +1,5 @@
 """Test suite for Jac language server features."""
 
-import asyncio;
 import os;
 import tempfile;
 
@@ -104,7 +103,7 @@ obj LanguageServerTestHelper {
                 text=self.test_file.code
             )
         );
-        asyncio.run(did_open(self.ls, open_params));
+        did_open(self.ls, open_params);
         self.ls.wait_till_idle_sync(self.test_file.uri);
     }
 
@@ -121,7 +120,7 @@ obj LanguageServerTestHelper {
         save_params = DidSaveTextDocumentParams(
             text_document=TextDocumentIdentifier(uri=self.test_file.uri), text=content
         );
-        asyncio.run(did_save(self.ls, _as_any(save_params)));
+        did_save(self.ls, _as_any(save_params));
         self.ls.wait_till_idle_sync(self.test_file.uri);
     }
 
@@ -137,7 +136,7 @@ obj LanguageServerTestHelper {
             ),
             content_changes=_as_any([{"text": code}])
         );
-        asyncio.run(did_change(self.ls, change_params));
+        did_change(self.ls, change_params);
         self.ls.wait_till_idle_sync(self.test_file.uri);
     }
 

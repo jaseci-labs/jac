@@ -10,7 +10,6 @@ refresh after a dependency changed:
      dependents.
 """
 
-import asyncio;
 import os;
 import shutil;
 import tempfile;
@@ -87,7 +86,7 @@ test "stale dep refreshed on consumer save" {
             uri=app_uri, language_id="jac", version=1, text=APP_SRC
         );
         ls.workspace.put_text_document(app_doc);
-        asyncio.run(did_open(ls, DidOpenTextDocumentParams(text_document=app_doc)));
+        did_open(ls, DidOpenTextDocumentParams(text_document=app_doc));
         ls.wait_till_idle_sync(app_uri);
         assert _err_count(ls, app_uri) == 0 , (
             "baseline: app should have 0 errors when lib defines field x"
@@ -102,13 +101,11 @@ test "stale dep refreshed on consumer save" {
         # Phase 3: did_save the consumer. After Fix 1 (mtime-validated hub
         # lookups), the cached lib IR is rejected and a fresh recompile
         # surfaces the broken usage.
-        asyncio.run(
-            did_save(
-                ls,
-                _as_any(
-                    DidSaveTextDocumentParams(
-                        text_document=TextDocumentIdentifier(uri=app_uri), text=APP_SRC
-                    )
+        did_save(
+            ls,
+            _as_any(
+                DidSaveTextDocumentParams(
+                    text_document=TextDocumentIdentifier(uri=app_uri), text=APP_SRC
                 )
             )
         );
@@ -146,9 +143,9 @@ test "consumer auto-rechecked when dep receives did_change" {
         );
         ls.workspace.put_text_document(lib_doc);
         ls.workspace.put_text_document(app_doc);
-        asyncio.run(did_open(ls, DidOpenTextDocumentParams(text_document=lib_doc)));
+        did_open(ls, DidOpenTextDocumentParams(text_document=lib_doc));
         ls.wait_till_idle_sync(lib_uri);
-        asyncio.run(did_open(ls, DidOpenTextDocumentParams(text_document=app_doc)));
+        did_open(ls, DidOpenTextDocumentParams(text_document=app_doc));
         ls.wait_till_idle_sync(app_uri);
         assert _err_count(ls, app_uri) == 0;
 
@@ -158,15 +155,11 @@ test "consumer auto-rechecked when dep receives did_change" {
         );
         Path(lib_path).write_text(LIB_BREAK);
         _bump_mtime(lib_path);
-        asyncio.run(
-            did_change(
-                ls,
-                DidChangeTextDocumentParams(
-                    text_document=VersionedTextDocumentIdentifier(
-                        uri=lib_uri, version=2
-                    ),
-                    content_changes=_as_any([{"text": LIB_BREAK}])
-                )
+        did_change(
+            ls,
+            DidChangeTextDocumentParams(
+                text_document=VersionedTextDocumentIdentifier(uri=lib_uri, version=2),
+                content_changes=_as_any([{"text": LIB_BREAK}])
             )
         );
         # After Fix 2 (reverse-dep enqueue) the dep's check pushes the

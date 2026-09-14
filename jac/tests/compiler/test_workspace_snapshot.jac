@@ -67,8 +67,12 @@ test "dependency reads use an empty overlay and never persist it as disk content
         consumer.write_text('import from .lib { Foo }\nwith entry { f = Foo(x=1); }\n');
         program = JacProgram();
         program.source_store.set_overrides({str(library): ''});
+        dependency = program.load_dependency_module(str(library));
+        assert dependency.source.code == '' , 'the empty editor buffer must override disk';
+        program.source_store.set_overrides({str(library): 'obj Foo { has y: str; }\n'});
+        program.invalidate_module(str(library));
         program.compile(str(consumer), options=CompileOptions(no_cgen=True));
-        assert program.errors_had , 'the empty editor buffer must override the library on disk';
+        assert program.errors_had , 'the consumer must see the unsaved field change';
         assert library.read_text() == 'obj Foo { has x: int; }\n';
         clean = JacProgram();
         clean.compile(str(consumer), options=CompileOptions(no_cgen=True));

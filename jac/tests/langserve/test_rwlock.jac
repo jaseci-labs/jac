@@ -289,7 +289,7 @@ test "shutdown under active dispatch" {
         lsp.type_check_file(circle_uri);
 
         # Queue more work so dispatcher has something to do
-        lsp._do_type_check(circle_uri);
+        lsp.type_check(circle_uri);
 
         # Shutdown should complete without deadlock
         shutdown_done = threading.Event();

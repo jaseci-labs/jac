@@ -181,6 +181,16 @@ its outgoing dependencies. Failed or cancelled compilations conservatively
 retain the last known edges. Reverse dependency queries span application
 contexts.
 
+The protocol reader applies each document-change batch atomically and captures
+its revision. `lsp/server/scheduler.jac` coalesces checks per compilation unit,
+preserves work for other documents, and bounds the interactive request queue.
+One worker owns mutable compiler state and handles semantic requests; protocol
+input and cancellation continue while it works. Diagnostics include document
+versions and are published only if the captured workspace revision is current.
+Completion can request symbol construction and evaluate the queried expression
+without waiting for workspace diagnostics. Text exclusion ranges and completion
+items are cached by the document or analysis state that owns them.
+
 ### `project/`
 
 Handles `jac.toml` configuration parsing, dependency resolution, capability configuration, and project scaffolding templates.

@@ -1,4 +1,3 @@
-import asyncio;
 import enum;
 import io;
 import json;
@@ -7,6 +6,7 @@ import os;
 import re;
 import sys;
 import threading;
+import from concurrent.futures { ThreadPoolExecutor }
 import from typing { Optional, Union }
 
 import from .types {
@@ -45,12 +45,35 @@ def _to_snake_case(name: str) -> str;
 def to_dict(`obj: any) -> any;
 def from_dict(data: any, cls: any) -> any;
 
+enum ResponseErrorCode {
+    InvalidRequest = -32600,
+    MethodNotFound = -32601,
+    InternalError = -32603,
+    RequestCancelled = -32800,
+    ContentModified = -32801,
+    ServerCancelled = -32802
+}
+
+obj Request {
+    has message_id: int | str,
+        method: str,
+        params: any,
+        revision: int,
+        cancel_token: threading.Event postinit,
+        responded: bool = False;
+
+    def postinit {
+        self.cancel_token = threading.Event();
+    }
+}
+
 obj PositionCodec {
-    has encoding: str = PositionEncodingKind.Utf16;
+    has encoding: PositionEncodingKind = PositionEncodingKind.Utf16;
 
     def utf16_unit_offset(chars: str) -> int;
     def client_num_units(chars: str) -> int;
     def position_from_client_units(lines: list[str], position: Position) -> Position;
+    def position_to_client_units(lines: list[str], position: Position) -> Position;
     def range_from_client_units(lines: list[str], range: Range) -> Range;
 }
 
@@ -79,7 +102,9 @@ obj Workspace {
         _sync_kind: TextDocumentSyncKind = TextDocumentSyncKind.Incremental,
         _text_documents: dict[str, TextDocument] = {},
         _root_path: Optional[str] postinit,
-        _position_codec: PositionCodec postinit;
+        _position_codec: PositionCodec postinit,
+        lock: threading.RLock postinit,
+        revision: int = 0;
 
     def postinit -> None;
     def get_text_document(doc_uri: str) -> TextDocument;
@@ -89,6 +114,19 @@ obj Workspace {
     ) -> None;
 
     def remove_text_document(doc_uri: str) -> None;
+    def snapshot -> WorkspaceSnapshot;
+    def change_text_document(params: DidChangeTextDocumentParams) -> None;
+}
+
+obj WorkspaceSnapshot {
+    has revision: int,
+        documents: dict[str, TextDocument];
+
+    def sources -> dict[str, str] {
+        return {
+            os.path.realpath(doc.path): doc.source for doc in self.documents.values()
+        };
+    }
 }
 
 obj LanguageServer {
@@ -100,7 +138,10 @@ obj LanguageServer {
         _transport_writer: Optional[any] = None,
         _write_lock: threading.Lock postinit,
         _next_request_id: int = 0,
-        _shutdown_flag: bool = False;
+        _shutdown_flag: bool = False,
+        _requests: dict[int | str, Request] = {},
+        _request_lock: threading.RLock postinit,
+        _request_executor: ThreadPoolExecutor | None = None;
 
     def postinit -> None;
 
@@ -109,7 +150,21 @@ obj LanguageServer {
 
     def feature(method: str, options: any = None) -> Callable;
     def start_io -> None;
-    def publish_diagnostics(uri: str, diagnostics: list[Diagnostic]) -> None;
+    def publish_diagnostics(
+        uri: str, diagnostics: list[Diagnostic], version: int | None = None
+    ) -> None;
+
+    def submit_request(request: Request) -> None;
+    def _run_request(request: Request) -> None;
+    def _finish_request(
+        request: Request,
+        result: any = None,
+        error: ResponseErrorCode | None = None,
+        message: str = ''
+    ) -> None;
+
+    def _cancel_request(message_id: int | str) -> None;
+    def _invoke_handler(method: str, params: any) -> any;
     def show_message(message: str, msg_type: any = None) -> None;
     def show_message_log(message: str, msg_type: any = None) -> None;
     def send_request(method: str, params: any = None) -> None;

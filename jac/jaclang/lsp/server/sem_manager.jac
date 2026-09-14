@@ -6,17 +6,22 @@ import jaclang.lsp.protocol.types as lspt;
 
 glob logger = logging.getLogger("jaclang.lsp.server.sem_manager");
 
+obj SemanticToken {
+    has position: lspt.Position,
+        end_character: int,
+        length: int,
+        symbol: uni.NameAtom;
+}
+
 obj SemTokManager {
     has ir: uni.Module,
         target_path: (str | None) = None,
+        tokens_by_line: dict[int, list[uni.Token]] = {},
         sem_tokens: list[int] postinit,
-        static_sem_tokens:
-            list[tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] postinit;
+        static_sem_tokens: list[SemanticToken] postinit;
 
     def postinit -> None;
     def collect_resolved_nodes(ir: uni.Module) -> list[uni.NameAtom];
-    def gen_sem_tokens(ir: uni.Module) -> list[int];
-    def gen_sem_tok_node(
-        ir: uni.Module
-    ) -> list[tuple[(lspt.Position, int, int, uni.AstSymbolNode)]];
+    def encode_tokens -> list[int];
+    def gen_sem_tok_node(ir: uni.Module) -> list[SemanticToken];
 }
