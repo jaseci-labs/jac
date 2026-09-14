@@ -772,7 +772,7 @@ obj CatalogWriter {
             if isinstance(t, ClassType) {
                 shared = t._shared;
                 if shared is None {
-                    return ("unknown", flags, );
+                    return ("unknown", flags, False, True, );
                 }
                 return (
                     "class",
@@ -874,6 +874,15 @@ obj CatalogWriter {
             }
             if isinstance(t, NeverType) {
                 return ("never", flags, );
+            }
+            if isinstance(t, UnknownType) {
+                return (
+                    "unknown",
+                    flags,
+                    bool(t.is_diagnosed),
+                    bool(t.is_incomplete),
+
+                );
             }
             if isinstance(t, AnyType) {
                 return ("any", flags, bool(t.is_foreign), t.foreign_scalar or "", );
