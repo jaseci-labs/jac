@@ -1041,6 +1041,17 @@ impl NativeCompilePass._compile_and_link_native_imports(
                     }
                 }
             } except Exception {}
+            if os.path.exists(_cache_ir_path) and os.path.exists(_cache_meta_path) {
+                try {
+                    if imported_ir.gen.llvm_ir is not None {
+                        imported_ir.gen.llvm_ir.close();
+                    }
+                } except Exception {}
+                imported_ir.gen.llvm_ir = None;
+                try {
+                    self.prog.invalidate_module(real_path);
+                } except Exception {}
+            }
         }
 
         if not _link_opts.aot_mode {
