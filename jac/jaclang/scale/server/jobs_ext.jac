@@ -30,6 +30,17 @@ def _fail(code: str, message: str, status: int) -> TransportResponse {
 }
 
 
+def _job_cap -> int {
+    try {
+        return int(
+            get_scale_config().get_scheduler_config().get('max_jobs_per_user', 25)
+        );
+    } except Exception {
+        return 25;
+    }
+}
+
+
 def _err_response(e: Exception) -> TransportResponse {
     if isinstance(e, (PgWireError, OSError)) {
         logger.error(f"Storage failure on /jobs: {type(e).__name__}: {e}");
@@ -117,8 +128,7 @@ obj JobsExtension(ServerExtension) {
             if spec is None {
                 return spec_err or _fail('INVALID_REQUEST', 'Invalid schedule', 400);
             }
-            target: any = server.get_walkers().get(name)
-                or server.get_functions().get(name);
+            target: any = server.find_target(name);
             if target is None {
                 return _fail(
                     'NOT_FOUND', f'Walker or function "{name}" not found', 404
@@ -142,6 +152,20 @@ obj JobsExtension(ServerExtension) {
                     'targets can be scheduled through /jobs.',
                     400
                 );
+            }
+            cap = _job_cap();
+            if cap > 0 and not _is_admin(str(user_id)) {
+                (_held, held_total) = JacScaleScheduler.instance().list_jobs(
+                    limit=1, offset=0, created_by=str(user_id)
+                );
+                if held_total >= cap {
+                    return _fail(
+                        'QUOTA_EXCEEDED',
+                        f'{held_total} of {cap} scheduled jobs already in use; '
+                        'delete one or raise [scale.scheduler] max_jobs_per_user',
+                        429
+                    );
+                }
             }
             try {
                 job = JacScaleScheduler.instance().create_job(

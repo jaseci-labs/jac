@@ -136,6 +136,7 @@ obj ModuleIntrospector {
     def _check_module_freshness -> None;
     def get_functions -> dict[str, Callable[(..., any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
+    def find_target(name: str) -> any;
     def get_client_functions -> dict[str, Callable[(..., any)]];
     def resolve_root_app(configured: str = "") -> str;
     def introspect_callable(func: Callable[(..., any)]) -> dict[str, any];
@@ -212,6 +213,7 @@ obj JacAPIServer(EndpointHost) {
 
     def get_functions -> dict[str, Callable[(..., any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
+    def find_target(name: str) -> any;
     def print_endpoint_docs -> None;
     def _ensure_sv_siblings -> None;
     def _ensure_client_bundle -> None;

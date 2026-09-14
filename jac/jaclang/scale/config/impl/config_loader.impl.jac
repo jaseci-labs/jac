@@ -421,7 +421,9 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any]
         'system_user_password': scheduler_config.get(
             'system_user_password', '__no_login__'
         ),
-        'user_exists_ttl': float(scheduler_config.get('user_exists_ttl', 30.0))
+        'user_exists_ttl': float(scheduler_config.get('user_exists_ttl', 30.0)),
+        'min_interval': float(scheduler_config.get('min_interval', 1.0)),
+        'max_jobs_per_user': int(scheduler_config.get('max_jobs_per_user', 25))
     };
 }
 

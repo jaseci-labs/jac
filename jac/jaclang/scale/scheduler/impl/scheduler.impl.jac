@@ -2,6 +2,18 @@ def _utc_now_iso -> str {
     return datetime.datetime.now(datetime.timezone.utc).isoformat();
 }
 
+
+def _min_interval -> float {
+    try {
+        return float(
+            get_scale_config().get_scheduler_config().get('min_interval', 1.0)
+        );
+    } except Exception {
+        return 1.0;
+    }
+}
+
+
 impl TriggerSpec.validate(
     trigger: str,
     interval: float | None = None,
@@ -18,6 +30,13 @@ impl TriggerSpec.validate(
         }
         if float(interval) <= 0 {
             raise ValueError("interval must be > 0 seconds");
+        }
+        floor = _min_interval();
+        if float(interval) < floor {
+            raise ValueError(
+                f"interval must be at least {floor} seconds; "
+                "raise [scale.scheduler] min_interval to allow a shorter one"
+            );
         }
     } elif trigger == 'cron' {
         if not cron {
@@ -793,11 +812,16 @@ impl JacScaleScheduler._schedule_apscheduler_job(
         self._execute_task(name, user_id, is_walker, job_id=job_id);
     }
 
+    kwargs = spec.apscheduler_kwargs();
+    floor = _min_interval();
+    if spec.trigger == 'interval' and float(kwargs.get('seconds') or 0.0) < floor {
+        logger.warning(
+            f"job {job_id} asks for {kwargs.get('seconds')}s; clamped to the "
+            f"{floor}s floor from [scale.scheduler] min_interval"
+        );
+        kwargs['seconds'] = floor;
+    }
     self._apscheduler.add_job(
-        job_func,
-        spec.trigger,
-        id=job_id,
-        replace_existing=True,
-        **spec.apscheduler_kwargs()
+        job_func, spec.trigger, id=job_id, replace_existing=True, **kwargs
     );
 }

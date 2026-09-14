@@ -217,6 +217,18 @@ test "fixture loading registration and api exclusion" {
     };
     assert len(introspector.get_walkers()) == 0;
     assert len(introspector.get_functions()) == 0;
+
+    # ...but the scheduler API must still resolve them by name (#9025): the
+    # filter above is an HTTP-routing policy, not a statement that the target
+    # does not exist, and POST /jobs answered 404 for every DYNAMIC target
+    # while it shared that accessor.
+    for name in ["DateWalker", "IntervalWalker", "CronWalker"] {
+        assert introspector.find_target(name) is getattr(module, name) , name;
+    }
+    for name in ["date_function", "interval_function", "cron_function"] {
+        assert introspector.find_target(name) is getattr(module, name) , name;
+    }
+    assert introspector.find_target("NoSuchTarget") is None;
 }
 
 test "scheduler executes walkers and functions correctly" {
