@@ -3,7 +3,12 @@ import os;
 import time;
 import tarfile;
 
-import from compression.zstd { CompressionParameter, compress, decompress }
+import from compression.zstd {
+    CompressionParameter,
+    compress,
+    decompress,
+    zstd_version_info
+}
 import from jaclang.dist.payload.fetch { TYPESHED_VENDOR, fetch_typeshed }
 import from jaclang.dist.payload.fsutil {
     PayloadDie,
@@ -843,19 +848,23 @@ impl tar_zst_dir(
     atomic_write(out, deps_frame + jac_frame);
 }
 
-impl zstd_compress(data: bytes) -> bytes {
+impl zstd_options -> dict[int, int] {
     opts: dict[int, int] = {
         int(CompressionParameter.compression_level): PAYLOAD_ZSTD_LEVEL,
         int(CompressionParameter.window_log): PAYLOAD_WINDOW_LOG,
         int(CompressionParameter.checksum_flag): 0
     };
-    workers = min(os.cpu_count() or 1, 32);
-    try {
-        mt: dict[int, int] = dict(opts);
-        mt[int(CompressionParameter.nb_workers)] = workers;
-        return compress(data, options=mt);
-    } except Exception {}
-    return compress(data, options=opts);
+    (_, max_workers) = CompressionParameter.nb_workers.bounds();
+    if max_workers > 0 {
+        opts[int(CompressionParameter.nb_workers)] = min(
+            os.process_cpu_count() or 1, 32, max_workers
+        );
+    }
+    return opts;
+}
+
+impl zstd_compress(data: bytes) -> bytes {
+    return compress(data, options=zstd_options());
 }
 
 impl deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes {
@@ -871,7 +880,7 @@ impl compressed_frame_cached(
     import json;
     import sys;
     key = sha256_hex(
-        json.dumps([PAYLOAD_ZSTD_LEVEL, PAYLOAD_WINDOW_LOG, sys.version]).encode()
+        json.dumps([zstd_version_info, zstd_options(), sys.version]).encode()
             + tar_bytes
     );
     cache_path = (

@@ -407,6 +407,41 @@ test "payload is two zstd frames whose concatenation is the full tar" {
     }
 }
 
+test "compression errors propagate without a serial retry" {
+    import jaclang.dist.payload.assemble as assembly;
+    with patch.object(
+        assembly, "compress", side_effect=ValueError("invalid input")
+    ) as compressor {
+        caught = False;
+        try {
+            assembly.zstd_compress(b"payload");
+        } except ValueError as error {
+            caught = str(error) == "invalid input";
+        }
+        assert caught;
+        assert compressor.call_count == 1;
+    }
+}
+
+test "compression producer changes invalidate a verified frame" {
+    import jaclang.dist.payload.assemble as assembly;
+    with tempfile.TemporaryDirectory() as cache {
+        data = b"payload content";
+        original = assembly.compressed_frame_cached(cache, "deps", data);
+        path = sole_cache_entry(cache);
+        with patch.object(assembly, "zstd_version_info", (99, 0, 0)) {
+            with patch.object(
+                assembly, "zstd_compress", wraps=assembly.zstd_compress
+            ) as compressor {
+                rebuilt = assembly.compressed_frame_cached(cache, "deps", data);
+                assert compressor.call_count == 1;
+                assert sole_cache_entry(cache) != path;
+                assert decompress(rebuilt) == decompress(original) == data;
+            }
+        }
+    }
+}
+
 test "layer cache: verified reuse, corruption falls back, deps edit rolls the key" {
     base = tempfile.mkdtemp(prefix="jac-payload-layers-");
     try {

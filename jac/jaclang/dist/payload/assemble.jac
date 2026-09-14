@@ -128,6 +128,7 @@ def tar_zst_dir(
     measurements: BuildMeasurements | None = None
 );
 
+def zstd_options -> dict[int, int];
 def zstd_compress(data: bytes) -> bytes;
 def deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes;
 def compressed_frame_cached(
