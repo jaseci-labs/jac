@@ -1,6 +1,6 @@
 import copy;
 import from pathlib { Path }
-import type from jaclang.compiler.placement.workspace { AppSpec }
+import type from jaclang.project.workspace { AppSpec }
 import hashlib;
 import os;
 import from contextlib { contextmanager }
@@ -34,7 +34,7 @@ def cache_scope(
 def compilation_scope(
     identity: str, options: CompileOptions | None = None
 ) -> Iterator[None] {
-    import from jaclang.compiler.placement.workspace { workspace_scope }
+    import from jaclang.project.workspace { workspace_scope }
     with cache_scope(identity, options), workspace_scope() {
         yield ;
     }
@@ -94,7 +94,7 @@ obj SourceStore {
 def bind_options(
     path: str, program: JacProgram, options: CompileOptions
 ) -> CompileOptions {
-    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    import from jaclang.project.workspace { workspace_for_path }
     bound = copy.copy(options);
     if bound.native_required_for(path) {
         bound.default_codespace = 'native';
@@ -206,7 +206,7 @@ def program_for(path: str, program: JacProgram) -> JacProgram {
 }
 
 def context_app(path: str) -> AppSpec | None {
-    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    import from jaclang.project.workspace { workspace_for_path }
     workspace = workspace_for_path(path);
     if workspace is None {
         return None;

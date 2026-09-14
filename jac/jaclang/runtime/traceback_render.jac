@@ -1,5 +1,5 @@
 import from traceback { TracebackException }
-import from jaclang.compiler.frontend.helpers {
+import from jaclang.project.source {
     pretty_print_source_location,
     read_file_with_encoding
 }

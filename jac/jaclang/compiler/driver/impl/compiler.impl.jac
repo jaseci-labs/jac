@@ -31,7 +31,7 @@ impl JacCompiler.note_stub_tree_served(path: str, program: JacProgram) -> None {
     if self.stub_catalog() is not None {
         return;
     }
-    import from jaclang.compiler.driver.modresolver { _in_typeshed_tree }
+    import from jaclang.project.modresolver { _in_typeshed_tree }
     if _in_typeshed_tree(path) {
         self._stub_trees_served = True;
     }
@@ -129,6 +129,13 @@ impl JacCompiler.get_bytecode(
         bind_options,
         context_program,
         compilation_scope
+    }
+    if full_target.endswith('.py') {
+        import builtins;
+        import from jaclang.project.source { read_file_with_encoding }
+        return builtins.compile(
+            read_file_with_encoding(full_target), full_target, 'exec'
+        );
     }
     actual = self.selfhost.resolve(full_target, target_program);
     if not self.selfhost.is_selfhost(actual) {
@@ -349,7 +356,12 @@ impl JacCompiler._load_native_from_cache(
             manifest = self._deserialize_interop_table(cached_interop);
             gen.interop_manifest = manifest;
             if manifest.native_imports {
-                register_py_callbacks(manifest, py_func_table, callbacks_list);
+                register_py_callbacks(
+                    manifest.native_imports,
+                    py_func_table,
+                    callbacks_list,
+                    llvm.add_symbol
+                );
             }
         }
         install_native_static_init(engine, gen.interop_manifest);
@@ -417,7 +429,9 @@ impl JacCompiler._load_native_from_bitcode(
         manifest = self._deserialize_interop_table(cached_interop);
         gen.interop_manifest = manifest;
         if manifest.native_imports {
-            register_py_callbacks(manifest, py_func_table, callbacks_list);
+            register_py_callbacks(
+                manifest.native_imports, py_func_table, callbacks_list, llvm.add_symbol
+            );
         }
     }
     install_native_static_init(engine, gen.interop_manifest);
@@ -950,8 +964,8 @@ impl JacCompiler.stamp_native_import_facts(
 }
 
 impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) -> None {
-    import from jaclang.compiler.driver.modresolver { find_jac_project_root }
-    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    import from jaclang.project.modresolver { find_jac_project_root }
+    import from jaclang.project.workspace { workspace_for_path }
     opts = target_program.options;
     mod_path = mod.loc.mod_path if mod.loc else '';
     mod.jac_project_root = find_jac_project_root(mod_path) if mod_path else None;
@@ -970,7 +984,7 @@ impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) ->
     } else {
         mod.app_kind = '';
     }
-    import from jaclang.compiler.placement.workspace { UI_MOBUI }
+    import from jaclang.project.workspace { UI_MOBUI }
     override_ui = opts.ui if (opts is not None and opts.ui) else '';
     ui = override_ui or (app.ui if app is not None else '');
     if ui == UI_MOBUI {
@@ -1939,6 +1953,9 @@ impl JacCompiler.client_artifact_of(mod: uni.Module) -> (ClientArtifact | None) 
         return None;
     }
     native_sources: list[str] = [];
+    if mod.declares_codespace(CodeContext.NATIVE) {
+        native_sources.append(mod.loc.mod_path);
+    }
     for binding in mod.gen.interop_manifest.client_native_imports {
         if binding.source_module {
             native_sources.append(str(binding.source_module));

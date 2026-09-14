@@ -273,7 +273,7 @@ glob COMPILER_DIGEST_ROOTS: tuple = (
          "runtime",
          "lib",
          "cli/cli_boot.jac",
-         "project/tomlio.jac",
+         "project",
          "dist/precompile_bytecode.jac"
      ),
      COMPILER_DIGEST_SUFFIXES: tuple = (".jac", ".py"),
@@ -476,7 +476,7 @@ def _project_env_fingerprint(source_path: str) -> str {
         pins_digest,
         config_kind_space
     }
-    import from jaclang.compiler.placement.workspace {
+    import from jaclang.project.workspace {
         app_fact_digest,
         app_for_path,
         workspace_for_path

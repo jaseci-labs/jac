@@ -1,0 +1,513 @@
+--- a/lib/Target/CBackend/CBackend.cpp
++++ b/lib/Target/CBackend/CBackend.cpp
+@@ -19,6 +19,7 @@
+ #include "llvm/IR/InstIterator.h"
+ #include "llvm/IR/IntrinsicsPowerPC.h"
+ #include "llvm/IR/IntrinsicsX86.h"
++#include "llvm/IR/IntrinsicsWebAssembly.h"
+ #include "llvm/IR/PatternMatch.h"
+ #include "llvm/MC/TargetRegistry.h"
+ #include "llvm/Support/Debug.h"
+@@ -1679,8 +1680,8 @@
+   }
+ 
+   // Mangle globals with the standard mangler interface for LLC compatibility.
+-  if (isa<GlobalValue>(Operand)) {
+-    return CBEMangle(Name);
++  if (const auto *GV = dyn_cast<GlobalValue>(Operand)) {
++    return CBEMangle(GV->hasLocalLinkage() ? "__cbe_local_" + Name : Name);
+   }
+ 
+   std::string VarName;
+@@ -2132,7 +2133,7 @@
+ 
+ static void defineInt128(raw_ostream &Out) {
+   // Output typedefs for 128-bit integers
+-  Out << "#if defined(__GNUC__) && defined(__LP64__) /* 128-bit integer types "
++  Out << "#if defined(__SIZEOF_INT128__) /* 128-bit integer types "
+          "*/\n"
+       << "typedef int __attribute__((mode(TI))) int128_t;\n"
+       << "typedef unsigned __attribute__((mode(TI))) uint128_t;\n"
+@@ -2189,32 +2190,32 @@
+       << " return l.hi != r.hi || l.lo != r.lo; }\n"
+       << "static __forceinline bool llvm_icmp_ule_u128(uint128_t l, uint128_t "
+          "r) {"
+-      << " return l.hi < r.hi ? 1 : (l.hi == r.hi ? l.lo <= l.lo : 0); }\n"
++      << " return l.hi < r.hi ? 1 : (l.hi == r.hi ? l.lo <= r.lo : 0); }\n"
+       << "static __forceinline bool llvm_icmp_sle_i128(int128_t l, int128_t r) "
+          "{"
+       << " return (int64_t)l.hi < (int64_t)r.hi ? 1 : (l.hi == r.hi ? "
+-         "(int64_t)l.lo <= (int64_t)l.lo : 0); }\n"
++         "l.lo <= r.lo : 0); }\n"
+       << "static __forceinline bool llvm_icmp_uge_u128(uint128_t l, uint128_t "
+          "r) {"
+-      << " return l.hi > r.hi ? 1 : (l.hi == r.hi ? l.lo >= l.hi : 0); }\n"
++      << " return l.hi > r.hi ? 1 : (l.hi == r.hi ? l.lo >= r.lo : 0); }\n"
+       << "static __forceinline bool llvm_icmp_sge_i128(int128_t l, int128_t r) "
+          "{"
+       << " return (int64_t)l.hi > (int64_t)r.hi ? 1 : (l.hi == r.hi ? "
+-         "(int64_t)l.lo >= (int64_t)l.lo : 0); }\n"
++         "l.lo >= r.lo : 0); }\n"
+       << "static __forceinline bool llvm_icmp_ult_u128(uint128_t l, uint128_t "
+          "r) {"
+-      << " return l.hi < r.hi ? 1 : (l.hi == r.hi ? l.lo < l.hi : 0); }\n"
++      << " return l.hi < r.hi ? 1 : (l.hi == r.hi ? l.lo < r.lo : 0); }\n"
+       << "static __forceinline bool llvm_icmp_slt_i128(int128_t l, int128_t r) "
+          "{"
+       << " return (int64_t)l.hi < (int64_t)r.hi ? 1 : (l.hi == r.hi ? "
+-         "(int64_t)l.lo < (int64_t)l.lo : 0); }\n"
++         "l.lo < r.lo : 0); }\n"
+       << "static __forceinline bool llvm_icmp_ugt_u128(uint128_t l, uint128_t "
+          "r) {"
+-      << " return l.hi > r.hi ? 1 : (l.hi == r.hi ? l.lo > l.hi : 0); }\n"
++      << " return l.hi > r.hi ? 1 : (l.hi == r.hi ? l.lo > r.lo : 0); }\n"
+       << "static __forceinline bool llvm_icmp_sgt_i128(int128_t l, int128_t r) "
+          "{"
+       << " return (int64_t)l.hi > (int64_t)r.hi ? 1 : (l.hi == r.hi ? "
+-         "(int64_t)l.lo > (int64_t)l.lo : 0); }\n"
++         "l.lo > r.lo : 0); }\n"
+       << "#define __emulate_i128\n"
+       << "#endif\n\n";
+ }
+@@ -2457,8 +2458,6 @@
+   // Support for integers with explicit sizes. This one isn't conditional
+   // because virtually all CBE output will use it.
+   OutHeaders << "#include <stdint.h>\n"; // Sized integer support
+-  if (headerIncMath())
+-    OutHeaders << "#include <math.h>\n";
+   // Provide a definition for `bool' if not compiling with a C++ compiler.
+   OutHeaders << "#ifndef __cplusplus\ntypedef unsigned char bool;\n#endif\n";
+   OutHeaders << "\n";
+@@ -2585,7 +2584,9 @@
+       case Intrinsic::ssub_sat:
+       case Intrinsic::sshl_sat:
+       case Intrinsic::ushl_sat:
+-      case Intrinsic::bswap:
++      case Intrinsic::fshl:
++  case Intrinsic::fshr:
++  case Intrinsic::bswap:
+       case Intrinsic::ceil:
+       case Intrinsic::ctlz:
+       case Intrinsic::ctpop:
+@@ -2615,13 +2616,6 @@
+          (I->getName() == "setjmp" || I->getName() == "longjmp" ||
+           I->getName() == "_setjmp" || I->getName() == "siglongjmp" ||
+           I->getName() == "sigsetjmp")) ||
+-        (headerIncMath() &&
+-         (I->getName() == "pow" || I->getName() == "powf" ||
+-          I->getName() == "sqrt" || I->getName() == "sqrtf" ||
+-          I->getName() == "trunc" || I->getName() == "truncf" ||
+-          I->getName() == "rint" || I->getName() == "rintf" ||
+-          I->getName() == "floor" || I->getName() == "floorf" ||
+-          I->getName() == "ceil" || I->getName() == "ceilf")) ||
+         I->getName() == "alloca" || I->getName() == "_alloca" ||
+         I->getName() == "_chkstk" || I->getName() == "__chkstk" ||
+         I->getName() == "___chkstk_ms")
+@@ -2694,54 +2688,15 @@
+       if (I->hasLocalLinkage())
+         continue; // Internal Global
+ 
+-      if (I->hasDLLImportStorageClass())
+-        Out << "__declspec(dllimport) ";
+-      else if (I->hasDLLExportStorageClass())
+-        Out << "__declspec(dllexport) ";
+-
+-      // Thread Local Storage
+-      if (I->isThreadLocal())
+-        Out << "__thread ";
+-
+-      Type *ElTy = I->getValueType();
+-      GlobalObject *Aliasee = I->getAliaseeObject();
+-      MaybeAlign AliaseeAlign = isa<Function>(Aliasee)
+-                                    ? cast<Function>(Aliasee)->getAlign()
+-                                    : cast<GlobalVariable>(Aliasee)->getAlign();
+-      unsigned Alignment = AliaseeAlign ? AliaseeAlign->value() : 0;
+-      bool IsOveraligned = !ElTy->isFunctionTy() && Alignment &&
+-                           Alignment > TD->getABITypeAlign(ElTy).value();
+-      if (IsOveraligned) {
+-        headerUseAligns();
+-        Out << "__PREFIXALIGN__(" << Alignment << ") ";
+-      }
+-      std::optional<std::string> CastAs{};
+-      if (ElTy->isFunctionTy()) {
+-        std::string FunctionName =
+-            getFunctionName(cast<Function>(I->getAliaseeObject()));
+-        Out << FunctionName;
+-        CastAs = FunctionName;
+-      } else {
+-        printTypeName(Out, ElTy, false);
+-      }
+-      // GetValueName would resolve the alias, which is not what we want,
+-      // so use getName directly instead (assuming that the Alias has a name...)
+-      Out << " *" << I->getName();
+-      if (IsOveraligned) {
+-        headerUseAligns();
+-        Out << " __POSTFIXALIGN__(" << Alignment << ")";
+-      }
+-
+-      if (I->hasExternalWeakLinkage()) {
+-        headerUseExternalWeak();
+-        Out << " __EXTERNAL_WEAK__";
+-      }
+-      Out << " = ";
+-      if (CastAs.has_value()) {
+-        Out << '(' << CastAs.value() << "*)";
+-      }
+-      writeOperand(I->getAliasee(), ContextStatic);
+-      Out << ";\n";
++      const auto *Aliasee = I->getAliaseeObject();
++      if (!Aliasee)
++        errorWithMessage("alias requires a named global object");
++      Out << "extern __typeof__(" << GetValueName(Aliasee) << ") "
++          << CBEMangle(I->getName().str()) << " __attribute__((alias(\""
++          << GetValueName(Aliasee) << "\")";
++      if (I->isWeakForLinker())
++        Out << ", weak";
++      Out << "));\n";
+     }
+   }
+ 
+@@ -3070,11 +3025,11 @@
+         } else if (opcode == Instruction::FRem) {
+           // Output a call to fmod/fmodf instead of emitting a%b
+           if (ElemTy->isFloatTy())
+-            Out << "fmodf(a.vector[" << n << "], b.vector[" << n << "])";
++            Out << "__builtin_fmodf(a.vector[" << n << "], b.vector[" << n << "])";
+           else if (ElemTy->isDoubleTy())
+-            Out << "fmod(a.vector[" << n << "], b.vector[" << n << "])";
++            Out << "__builtin_fmod(a.vector[" << n << "], b.vector[" << n << "])";
+           else // all 3 flavors of long double
+-            Out << "fmodl(a.vector[" << n << "], b.vector[" << n << "])";
++            Out << "__builtin_fmodl(a.vector[" << n << "], b.vector[" << n << "])";
+         } else {
+           Out << "a.vector[" << n << "]";
+           switch (opcode) {
+@@ -3278,11 +3233,11 @@
+       } else if (opcode == Instruction::FRem) {
+         // Output a call to fmod/fmodf instead of emitting a%b
+         if (ElemTy->isFloatTy())
+-          Out << "fmodf(a, b)";
++          Out << "__builtin_fmodf(a, b)";
+         else if (ElemTy->isDoubleTy())
+-          Out << "fmod(a, b)";
++          Out << "__builtin_fmod(a, b)";
+         else // all 3 flavors of long double
+-          Out << "fmodl(a, b)";
++          Out << "__builtin_fmodl(a, b)";
+       } else {
+         Out << "a";
+         switch (opcode) {
+@@ -4214,11 +4169,11 @@
+   } else if (I.getOpcode() == Instruction::FRem) {
+     // Output a call to fmod/fmodf instead of emitting a%b
+     if (I.getType() == Type::getFloatTy(I.getContext()))
+-      Out << "fmodf(";
++      Out << "__builtin_fmodf(";
+     else if (I.getType() == Type::getDoubleTy(I.getContext()))
+-      Out << "fmod(";
++      Out << "__builtin_fmod(";
+     else // all 3 flavors of long double
+-      Out << "fmodl(";
++      Out << "__builtin_fmodl(";
+     writeOperand(I.getOperand(0), ContextCasted);
+     Out << ", ";
+     writeOperand(I.getOperand(1), ContextCasted);
+@@ -4597,52 +4552,39 @@
+       DBG_ERRS("Unsupported Intrinsic!" << Opcode);
+       errorWithMessage("unsupported instrinsic");
+ 
++    case Intrinsic::fshl:
++    case Intrinsic::fshr: {
++      unsigned width = elemIntT->getBitWidth();
++      Out << "  c %= " << width << ";\n";
++      if (Opcode == Intrinsic::fshl)
++        Out << "  r = c == 0 ? a : (a << c) | (b >> (" << width << " - c));\n";
++      else
++        Out << "  r = c == 0 ? b : (a << (" << width << " - c)) | (b >> c);\n";
++      break;
++    }
+     case Intrinsic::uadd_with_overflow:
++    case Intrinsic::sadd_with_overflow:
++    case Intrinsic::usub_with_overflow:
++    case Intrinsic::ssub_with_overflow:
++    case Intrinsic::umul_with_overflow:
++    case Intrinsic::smul_with_overflow: {
+       cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
+-      Out << "  r.field0 = a + b;\n";
+-      Out << "  r.field1 = (r.field0 < a);\n";
++      bool isSigned = Opcode == Intrinsic::sadd_with_overflow ||
++                      Opcode == Intrinsic::ssub_with_overflow ||
++                      Opcode == Intrinsic::smul_with_overflow;
++      const char *operation =
++          (Opcode == Intrinsic::uadd_with_overflow ||
++           Opcode == Intrinsic::sadd_with_overflow) ? "add" :
++          (Opcode == Intrinsic::usub_with_overflow ||
++           Opcode == Intrinsic::ssub_with_overflow) ? "sub" : "mul";
++      Out << "  ";
++      printTypeName(Out, elemT, isSigned);
++      Out << " value;\n";
++      Out << "  r.field1 = __builtin_" << operation
++          << "_overflow(a, b, &value);\n";
++      Out << "  r.field0 = value;\n";
+       break;
+-
+-    case Intrinsic::sadd_with_overflow:
+-      //   r.field0 = a + b;
+-      //   r.field1 = (b > 0 && a > XX_MAX - b) ||
+-      //              (b < 0 && a < XX_MIN - b);
+-      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
+-      Out << "  r.field0 = a + b;\n";
+-      Out << "  r.field1 = (b >= 0 ? a > ";
+-      printLimitValue(*elemIntT, true, true, Out);
+-      Out << " - b : a < ";
+-      printLimitValue(*elemIntT, true, false, Out);
+-      Out << " - b);\n";
+-      break;
+-
+-    case Intrinsic::usub_with_overflow:
+-      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
+-      Out << "  r.field0 = a - b;\n";
+-      Out << "  r.field1 = (a < b);\n";
+-      break;
+-
+-    case Intrinsic::ssub_with_overflow:
+-      //   r.field0 = a - b;
+-      //   r.field1 = (b <= 0 ? a > XX_MAX + b : a < XX_MIN + b);
+-      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
+-      Out << "  r.field0 = a - b;\n";
+-      Out << "  r.field1 = (b <= 0 ? a > ";
+-      printLimitValue(*elemIntT, true, true, Out);
+-      Out << " + b : a < ";
+-      printLimitValue(*elemIntT, true, false, Out);
+-      Out << " + b);\n";
+-      break;
+-
+-    case Intrinsic::umul_with_overflow:
+-      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
+-      Out << "  r.field1 = LLVMMul_uov(8 * sizeof(a), &a, &b, &r.field0);\n";
+-      break;
+-
+-    case Intrinsic::smul_with_overflow:
+-      cwriter_assert(cast<StructType>(retT)->getElementType(0) == elemT);
+-      Out << "  r.field1 = LLVMMul_sov(8 * sizeof(a), &a, &b, &r.field0);\n";
+-      break;
++    }
+ 
+     case Intrinsic::uadd_sat:
+       //   r = (a > XX_MAX - b) ? XX_MAX : a + b
+@@ -4817,19 +4759,19 @@
+       errorWithMessage("unsupported instrinsic");
+ 
+     case Intrinsic::ceil:
+-      Out << "  r = ceil" << suffix << "(a);\n";
++      Out << "  r = __builtin_ceil" << suffix << "(a);\n";
+       break;
+ 
+     case Intrinsic::fabs:
+-      Out << "  r = fabs" << suffix << "(a);\n";
++      Out << "  r = __builtin_fabs" << suffix << "(a);\n";
+       break;
+ 
+     case Intrinsic::floor:
+-      Out << "  r = floor" << suffix << "(a);\n";
++      Out << "  r = __builtin_floor" << suffix << "(a);\n";
+       break;
+ 
+     case Intrinsic::fma:
+-      Out << "  r = fma" << suffix << "(a, b, c);\n";
++      Out << "  r = __builtin_fma" << suffix << "(a, b, c);\n";
+       break;
+ 
+     case Intrinsic::fmuladd:
+@@ -4838,19 +4780,19 @@
+ 
+     case Intrinsic::pow:
+     case Intrinsic::powi:
+-      Out << "  r = pow" << suffix << "(a, b);\n";
++      Out << "  r = __builtin_pow" << suffix << "(a, b);\n";
+       break;
+ 
+     case Intrinsic::rint:
+-      Out << "  r = rint" << suffix << "(a);\n";
++      Out << "  r = __builtin_rint" << suffix << "(a);\n";
+       break;
+ 
+     case Intrinsic::sqrt:
+-      Out << "  r = sqrt" << suffix << "(a);\n";
++      Out << "  r = __builtin_sqrt" << suffix << "(a);\n";
+       break;
+ 
+     case Intrinsic::trunc:
+-      Out << "  r = trunc" << suffix << "(a);\n";
++      Out << "  r = __builtin_trunc" << suffix << "(a);\n";
+       break;
+     }
+   }
+@@ -4899,7 +4841,9 @@
+           case Intrinsic::ssub_sat:
+           case Intrinsic::ushl_sat:
+           case Intrinsic::sshl_sat:
+-          case Intrinsic::bswap:
++          case Intrinsic::fshl:
++  case Intrinsic::fshr:
++  case Intrinsic::bswap:
+           case Intrinsic::ceil:
+           case Intrinsic::ctlz:
+           case Intrinsic::ctpop:
+@@ -4924,6 +4868,9 @@
+           case Intrinsic::smax:
+           case Intrinsic::abs:
+           case Intrinsic::is_constant:
++          case Intrinsic::threadlocal_address:
++          case Intrinsic::wasm_memory_size:
++          case Intrinsic::wasm_memory_grow:
+             // We directly implement these intrinsics
+             break;
+ 
+@@ -5086,6 +5033,21 @@
+   case Intrinsic::dbg_declare:
+   case Intrinsic::dbg_assign:
+     return true; // ignore these intrinsics
++  case Intrinsic::threadlocal_address:
++    writeOperand(I.getArgOperand(0));
++    return true;
++  case Intrinsic::wasm_memory_size:
++  case Intrinsic::wasm_memory_grow:
++    Out << (ID == Intrinsic::wasm_memory_size
++                ? "__builtin_wasm_memory_size("
++                : "__builtin_wasm_memory_grow(");
++    writeOperand(I.getArgOperand(0));
++    if (ID == Intrinsic::wasm_memory_grow) {
++      Out << ", ";
++      writeOperand(I.getArgOperand(1));
++    }
++    Out << ")";
++    return true;
+   case Intrinsic::vastart:
+     headerUseStdarg();
+     Out << "0; ";
+@@ -5241,6 +5203,8 @@
+   case Intrinsic::usub_with_overflow:
+   case Intrinsic::umul_with_overflow:
+   case Intrinsic::smul_with_overflow:
++  case Intrinsic::fshl:
++  case Intrinsic::fshr:
+   case Intrinsic::bswap:
+   case Intrinsic::ctlz:
+   case Intrinsic::ctpop:
+@@ -5610,8 +5574,75 @@
+   }
+ }
+ 
++
++static unsigned atomicOrder(AtomicOrdering order) {
++  switch (order) {
++  case AtomicOrdering::NotAtomic:
++  case AtomicOrdering::Unordered:
++  case AtomicOrdering::Monotonic: return 0;
++  case AtomicOrdering::Acquire: return 2;
++  case AtomicOrdering::Release: return 3;
++  case AtomicOrdering::AcquireRelease: return 4;
++  case AtomicOrdering::SequentiallyConsistent: return 5;
++  }
++  llvm_unreachable("unknown atomic ordering");
++}
++
++void CWriter::visitAtomicRMWInst(AtomicRMWInst &I) {
++  CurInstr = &I;
++  Type *T = I.getType();
++  Out << "({ ";
++  printTypeName(Out, T); Out << " *p = (";
++  printTypeName(Out, T); Out << "*)"; writeOperand(I.getPointerOperand());
++  Out << "; "; printTypeName(Out, T); Out << " old, desired, value = ";
++  writeOperand(I.getValOperand());
++  Out << "; __atomic_load(p, &old, 0); do { desired = ";
++  switch (I.getOperation()) {
++  case AtomicRMWInst::Xchg: Out << "value"; break;
++  case AtomicRMWInst::Add:
++  case AtomicRMWInst::FAdd: Out << "old + value"; break;
++  case AtomicRMWInst::Sub:
++  case AtomicRMWInst::FSub: Out << "old - value"; break;
++  case AtomicRMWInst::And: Out << "old & value"; break;
++  case AtomicRMWInst::Nand: Out << "~(old & value)"; break;
++  case AtomicRMWInst::Or: Out << "old | value"; break;
++  case AtomicRMWInst::Xor: Out << "old ^ value"; break;
++  case AtomicRMWInst::Max:
++  case AtomicRMWInst::Min:
++    Out << "("; printTypeName(Out, T, true); Out << ")old "
++        << (I.getOperation() == AtomicRMWInst::Max ? ">" : "<") << " (";
++    printTypeName(Out, T, true); Out << ")value ? old : value";
++    break;
++  case AtomicRMWInst::UMax: Out << "old > value ? old : value"; break;
++  case AtomicRMWInst::UMin: Out << "old < value ? old : value"; break;
++  default: errorWithMessage("unsupported atomic read-modify-write operation");
++  }
++  Out << "; } while (!__atomic_compare_exchange(p, &old, &desired, 0, "
++      << atomicOrder(I.getOrdering()) << ", 0)); old; })";
++}
++
++void CWriter::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I) {
++  CurInstr = &I;
++  Type *T = I.getCompareOperand()->getType();
++  Out << "({ "; printTypeName(Out, I.getType()); Out << " result; ";
++  printTypeName(Out, T); Out << " old = "; writeOperand(I.getCompareOperand());
++  Out << ", desired = "; writeOperand(I.getNewValOperand());
++  Out << "; result.field1 = __atomic_compare_exchange((";
++  printTypeName(Out, T); Out << "*)"; writeOperand(I.getPointerOperand());
++  Out << ", &old, &desired, " << (I.isWeak() ? "1" : "0") << ", "
++      << atomicOrder(I.getSuccessOrdering()) << ", "
++      << atomicOrder(I.getFailureOrdering())
++      << "); result.field0 = old; result; })";
++}
++
+ void CWriter::visitLoadInst(LoadInst &I) {
+   CurInstr = &I;
++  if (I.isAtomic()) {
++    Out << "({ "; printTypeName(Out, I.getType()); Out << " value; __atomic_load((";
++    printTypeName(Out, I.getType()); Out << "*)"; writeOperand(I.getPointerOperand());
++    Out << ", &value, " << atomicOrder(I.getOrdering()) << "); value; })";
++    return;
++  }
+ 
+   writeMemoryAccess(I.getOperand(0), I.getType(), I.isVolatile(),
+                     I.getAlign().value());
+@@ -5619,6 +5650,14 @@
+ 
+ void CWriter::visitStoreInst(StoreInst &I) {
+   CurInstr = &I;
++  if (I.isAtomic()) {
++    Type *T = I.getValueOperand()->getType();
++    Out << "({ "; printTypeName(Out, T); Out << " value = ";
++    writeOperand(I.getValueOperand()); Out << "; __atomic_store((";
++    printTypeName(Out, T); Out << "*)"; writeOperand(I.getPointerOperand());
++    Out << ", &value, " << atomicOrder(I.getOrdering()) << "); })";
++    return;
++  }
+ 
+   writeMemoryAccess(I.getPointerOperand(), I.getOperand(0)->getType(),
+                     I.isVolatile(), I.getAlign().value());
+--- a/lib/Target/CBackend/CBackend.h
++++ b/lib/Target/CBackend/CBackend.h
+@@ -306,7 +306,10 @@
+   void visitFCmpInst(FCmpInst &I);
+ 
+   void visitCastInst(CastInst &I);
++  void visitAtomicRMWInst(AtomicRMWInst &I);
++  void visitAtomicCmpXchgInst(AtomicCmpXchgInst &I);
+   void visitSelectInst(SelectInst &I);
++  void visitFreezeInst(FreezeInst &I) { writeOperand(I.getOperand(0)); }
+   void visitCallInst(CallInst &I);
+   void visitInlineAsm(CallInst &I);
+   bool visitBuiltinCall(CallInst &I, Intrinsic::ID ID);
+--- a/lib/Target/CBackend/CTargetMachine.cpp
++++ b/lib/Target/CBackend/CTargetMachine.cpp
+@@ -37,8 +37,7 @@
+   PM.add(createLowerInvokePass());
+   PM.add(createUnreachableBlockEliminationPass());
+ 
+-  // Lower atomic operations to libcalls
+-  PM.add(createAtomicExpandLegacyPass());
++  // Preserve atomics for CWriter: the downstream C compiler owns lowering.
+ 
+   // Lower vector operations into shuffle sequences
+   PM.add(createExpandReductionsPass());

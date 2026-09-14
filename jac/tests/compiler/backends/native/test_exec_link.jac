@@ -1,3 +1,4 @@
+import from jaclang.compiler.backends.native.entry_points { inject_main }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,
@@ -12,11 +13,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
 import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
-import from jaclang.cli.commands.native_build {
-    _inject_entry_elf_static,
-    _collect_musl_static,
-    _musl_lib_dir
-}
+import from jaclang.cli.commands.native_build { _collect_musl_static, _musl_lib_dir }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
@@ -67,7 +64,7 @@ def _emit_for_tm(tm: any, triple: str) -> bytes {
 def _inject_elf(ir_txt: str) -> str {
     # Linux executables are now fully static against musl, whose crt1.o supplies
     # `_start`; we inject only `main` (the real path nacompile uses).
-    return _inject_entry_elf_static(ir_txt);
+    return inject_main(ir_txt);
 }
 
 

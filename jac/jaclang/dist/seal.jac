@@ -105,7 +105,7 @@ def ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
     import from jaclang.client { get_bun }
     import from jaclang.client.targets.web_target { WebTarget }
 
-    import from jaclang.client.targets.registry { client_app_dir_for }
+    import from jaclang.project.client_paths { client_app_dir_for }
     dist = client_app_dir_for(config, str(entry_file)) / 'dist';
     bun = None;
     try {

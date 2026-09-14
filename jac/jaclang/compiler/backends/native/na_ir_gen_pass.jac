@@ -65,7 +65,7 @@ import from jaclang.compiler.types.types {
     FunctionType as SemanticFunctionType
 }
 import from jaclang.compiler.frontend.const_fold { fold_const }
-import from jaclang.runtime.osp_model { stable_osp_tag }
+import from jaclang.runtime.osp_tag { stable_osp_tag }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.native.na_constants {
     LIVE_NODE_NEXT_OFF,

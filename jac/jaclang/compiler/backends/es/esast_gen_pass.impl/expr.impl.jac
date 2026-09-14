@@ -25,9 +25,8 @@ impl EsastGenPass._exit_name_impl(nd: uni.Name) -> None {
         }
     }
     if (nd.sym_name in self.reactive_vars) and not self._in_identifier_slot(nd) {
-        self._ensure_backend();
         nd.gen.es_ast = self.sync_loc(
-            self.backend.lower_state_read(nd.sym_name), jac_node=nd
+            self.resolved_backend.lower_state_read(nd.sym_name), jac_node=nd
         );
         return;
     }
@@ -551,12 +550,12 @@ impl EsastGenPass._build_compr_expr(
 
 impl EsastGenPass._compr_param(
     target: es.Expression, jac_node: uni.UniNode
-) -> es.Node {
+) -> es.Pattern {
     if isinstance(target, es.Identifier) {
         return self.sync_loc(es.Identifier(name=target.name), jac_node=jac_node);
     }
     if isinstance(target, es.ArrayExpression) {
-        elements: list[(es.Node | None)] = [];
+        elements: list[es.Pattern | None] = [];
         for elem in target.elements {
             if isinstance(elem, es.Identifier) {
                 elements.append(
@@ -610,7 +609,7 @@ impl EsastGenPass.exit_dict_val with uni.DictVal exit {
     here.gen.es_ast = obj_expr;
 }
 
-impl EsastGenPass._gen_seq_array(nd: uni.UniNode) -> None {
+impl EsastGenPass._gen_seq_array(nd: uni.ListVal | uni.TupleVal | uni.SetVal) -> None {
     elements: list[es.Expression | es.SpreadElement | None] = [];
     for item in nd.values {
         if (
@@ -708,16 +707,7 @@ impl EsastGenPass.exit_lambda_expr with uni.LambdaExpr exit {
             jac_node=here
         );
     } elif isinstance(here.body, list) {
-        body_stmts: list[es.Statement] = [];
-        for stmt in here.body {
-            if stmt.gen.es_ast {
-                if isinstance(stmt.gen.es_ast, list) {
-                    body_stmts.extend(stmt.gen.es_ast);
-                } else {
-                    body_stmts.append(stmt.gen.es_ast);
-                }
-            }
-        }
+        body_stmts = self._collect_stmt_body(here.body);
         body_stmts = self._prepend_hoisted(here, body_stmts);
         block_stmt = self.sync_loc(es.BlockStatement(body=body_stmts), jac_node=here);
         arrow_func = self.sync_loc(

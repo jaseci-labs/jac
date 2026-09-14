@@ -42,8 +42,8 @@ impl JacClientCompiler._client_app_dir(self: JacClientCompiler) -> Path {
     client_dir = self._get_client_dir();
     try {
         import from jaclang.project.config { get_config }
-        import from jaclang.client.targets.registry { client_workspace_app }
-        app = client_workspace_app(get_config());
+        import from jaclang.project.client_paths { client_workspace_app }
+        app = client_workspace_app(get_config(), self.entry_path);
         if app is not None {
             return client_dir / app.name;
         }
@@ -54,8 +54,8 @@ impl JacClientCompiler._client_app_dir(self: JacClientCompiler) -> Path {
 impl JacClientCompiler._app_root(self: JacClientCompiler) -> Path {
     try {
         import from jaclang.project.config { get_config }
-        import from jaclang.client.targets.registry { client_app_root }
-        return client_app_root(get_config(), self.project_dir);
+        import from jaclang.project.client_paths { client_app_root }
+        return client_app_root(get_config(), self.project_dir, self.entry_path);
     } except ImportError {}
     return self.project_dir;
 }
@@ -125,7 +125,7 @@ impl JacClientCompiler.compile(
         self.compile_runtime_utils(self.NATIVE_RUNTIME_FILE);
     }
     import from jaclang.client.config_loader { JacClientConfig as PwaConfig }
-    pwa_config = PwaConfig(self.project_dir);
+    pwa_config = PwaConfig(self.project_dir, entry_path=self.entry_path);
     if pwa_config.is_pwa_enabled() and not native {
         self.compile_pwa_runtime();
     }
@@ -137,7 +137,9 @@ impl JacClientCompiler.compile(
 
 impl JacClientCompiler.copy_root_assets(self: JacClientCompiler) -> None {
     import from jaclang.client.config_loader { JacClientConfig }
-    root_assets_dir = JacClientConfig(self.project_dir).get_assets_dir();
+    root_assets_dir = JacClientConfig(
+        self.project_dir, entry_path=self.entry_path
+    ).get_assets_dir();
     compiled_assets_dir = self.compiled_dir / 'assets';
     if (root_assets_dir.exists() and root_assets_dir.is_dir()) {
         self.asset_processor.copy_assets(root_assets_dir, compiled_assets_dir);
@@ -723,9 +725,11 @@ impl JacClientCompiler.init(
     extract_exports_func: Callable[[ClientManifest | None], list[str]],
     extract_globals_func:
         Callable[[ClientManifest | None, ModuleType | None], dict[str, any]],
-    compiled_dir: (Path | None) = None
+    compiled_dir: (Path | None) = None,
+    entry_path: str = ""
 ) {
     self.project_dir = project_dir;
+    self.entry_path = entry_path;
     self.runtime_path = runtime_path;
     self.compiled_dir = compiled_dir
         if compiled_dir is not None

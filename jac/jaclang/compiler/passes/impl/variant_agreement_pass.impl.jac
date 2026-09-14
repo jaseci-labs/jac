@@ -117,7 +117,7 @@ impl VariantAgreementPass._parse_sibling(path: str) -> (Module | None) {
     if found is not None and not found.parse_failed {
         return found;
     }
-    import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+    import from jaclang.project.source { read_file_with_encoding }
     import from jaclang.compiler.frontend.parser.frontend { parse }
     try {
         (mod, had_error) = parse(read_file_with_encoding(path), path, prog=None);

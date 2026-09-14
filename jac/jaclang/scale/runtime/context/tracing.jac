@@ -1,27 +1,15 @@
 import os;
 import logging;
 import from contextvars { ContextVar }
-import from jaclang.scale._optdeps.opentelemetry {
-    HAS_OTEL,
-    trace,
-    SpanContext,
-    NonRecordingSpan,
-    SpanKind,
-    TraceFlags,
-    set_span_in_context,
-    Resource,
-    TracerProvider,
-    BatchSpanProcessor,
-    ParentBased,
-    TraceIdRatioBased,
-    OTLPSpanExporter,
-    IdGenerator
-}
+import from jaclang.scale._optdeps.opentelemetry { HAS_OTEL }
+import type from opentelemetry.trace { Span, Tracer }
+import type from opentelemetry.sdk.trace { TracerProvider }
+import type from opentelemetry.util.types { AttributeValue }
 
 glob _logger: logging.Logger = logging.getLogger("jaclang.scale.tracing");
 
-glob _tracer: any = None,
-     _provider: any = None,
+glob _tracer: Tracer | None = None,
+     _provider: TracerProvider | None = None,
      _tracing_installed: bool = False,
      _tracing_active: bool = False;
 
@@ -32,7 +20,7 @@ glob _TP_VERSION: str = "00",
 
 glob _current_tp: ContextVar[str] = ContextVar("_jac_current_tp", `default="");
 
-glob _current_span: ContextVar[any] = ContextVar(
+glob _current_span: ContextVar[Span | None] = ContextVar(
          "_jac_current_span", `default=None
      );
 
@@ -75,7 +63,7 @@ def build_traceparent(
     return f"{_TP_VERSION}-{tid}-{sid}-{flg}";
 }
 
-def parse_traceparent(header: str | None) -> dict | None {
+def parse_traceparent(header: str | None) -> dict[str, int] | None {
     if not header {
         return None;
     }
@@ -115,19 +103,6 @@ def tracing_installed -> bool {
     return _tracing_installed;
 }
 
-class _JacIdGenerator(IdGenerator) {
-    def generate_span_id(self: any) -> int {
-        return new_span_id();
-    }
-
-    def generate_trace_id(self: any) -> int {
-        pend = _pending_trace_id.get(0);
-        if pend != 0 {
-            return pend;
-        }
-        return int.from_bytes(os.urandom(16), "big") & _MASK_128;
-    }
-}
 
 def install_tracing(
     enabled: bool = True,
@@ -146,6 +121,30 @@ def install_tracing(
     if not HAS_OTEL {
         _logger.debug("OpenTelemetry not installed; tracing disabled.");
         return False;
+    }
+
+    import from opentelemetry { trace }
+    import from opentelemetry.sdk.resources { Resource }
+    import from opentelemetry.sdk.trace { TracerProvider }
+    import from opentelemetry.sdk.trace.export { BatchSpanProcessor }
+    import from opentelemetry.sdk.trace.sampling { ParentBased, TraceIdRatioBased }
+    import from opentelemetry.sdk.trace.id_generator { IdGenerator }
+    import from opentelemetry.exporter.otlp.proto.http.trace_exporter {
+        OTLPSpanExporter
+    }
+
+    class _JacIdGenerator(IdGenerator) {
+        def generate_span_id(self: _JacIdGenerator) -> int {
+            return new_span_id();
+        }
+
+        def generate_trace_id(self: _JacIdGenerator) -> int {
+            pend = _pending_trace_id.get(0);
+            if pend != 0 {
+                return pend;
+            }
+            return int.from_bytes(os.urandom(16), "big") & _MASK_128;
+        }
     }
 
     try {
@@ -200,19 +199,26 @@ def start_server_span(
     name: str,
     trace_uuid: str | None,
     parent_traceparent: str | None = None,
-    attributes: dict | None = None
-) -> any {
+    attributes: dict[str, AttributeValue] | None = None
+) -> Span | None {
     if not _tracing_active or _tracer is None or not HAS_OTEL {
         return None;
     }
 
+    import from opentelemetry.trace {
+        SpanContext,
+        NonRecordingSpan,
+        SpanKind,
+        TraceFlags,
+        set_span_in_context
+    }
     tid = uuid_to_trace_id(trace_uuid);
     if tid == 0 {
         tid = int.from_bytes(os.urandom(16), "big") & _MASK_128;
     }
 
     parsed = parse_traceparent(parent_traceparent);
-    span = None;
+    span: Span;
     if parsed is not None {
         flags = TraceFlags(_FLAG_SAMPLED if parsed["sampled"] else 0);
         parent_ctx = SpanContext(
@@ -241,7 +247,7 @@ def start_server_span(
     return span;
 }
 
-def end_span(span: any) {
+def end_span(span: Span | None) {
     if span is not None {
         try {
             span.end();
@@ -253,10 +259,13 @@ def end_span(span: any) {
     _current_span.set(None);
 }
 
-def start_memory_span(name: str, attributes: dict | None = None) -> any {
+def start_memory_span(
+    name: str, attributes: dict[str, AttributeValue] | None = None
+) -> Span | None {
     if not _tracing_active or _tracer is None or not HAS_OTEL {
         return None;
     }
+    import from opentelemetry.trace { SpanKind, set_span_in_context }
     parent = _current_span.get(None);
     if parent is None {
         return None;
@@ -276,7 +285,7 @@ def start_memory_span(name: str, attributes: dict | None = None) -> any {
     }
 }
 
-def end_memory_span(span: any) {
+def end_memory_span(span: Span | None) {
     if span is not None {
         try {
             span.end();
@@ -286,7 +295,7 @@ def end_memory_span(span: any) {
     }
 }
 
-def _span_traceparent(span: any) -> str | None {
+def _span_traceparent(span: Span) -> str | None {
     sc = span.get_span_context();
     if sc is not None and sc.trace_id != 0 and sc.span_id != 0 {
         return build_traceparent(

@@ -28,7 +28,7 @@ import from jaclang.compiler.backends.native.na_compile_pass { native_linked_ir_
 import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
 import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
 import from jaclang.compiler.backends.native.pe_linker { PeLinker }
-import from jaclang.compiler.backends.native.linker_common {
+import from jaclang.compiler.backends.native.floor {
     clib_needed_libs,
     clib_symbol_lib_map
 }
