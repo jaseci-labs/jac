@@ -4466,6 +4466,15 @@ impl NaIRGenPass._build_jc_layout -> str {
                 code = "optref";
                 _opn = getattr(ft.elements[1].pointee, "name", "") or "";
                 aux = _opn;
+                semantic = semantic_fields.get(fname);
+                if isinstance(semantic, UnionType)
+                    and any(
+                        isinstance(member, ClassType)
+                            and member.shared.class_name == "str"
+                        for member in semantic.types
+                    ) {
+                    code = "optstr";
+                }
             } elif isinstance(ft, ir.IntType) {
                 code = "bool" if ft.width == 1 else "int";
             } elif isinstance(ft, ir.DoubleType) {

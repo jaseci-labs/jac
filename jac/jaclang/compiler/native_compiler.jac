@@ -203,8 +203,9 @@ class NativeCompiler {
                 nat_code = CODE_INT;
             } elif code == "bool" {
                 nat_code = CODE_BOOL;
-            } elif code == "str" {
+            } elif code in ("str", "optstr") {
                 nat_code = CODE_STR;
+                flags = 1 if code == "optstr" else 0;
             } elif code == "enum" {
                 ecls = _enum_class(aux, cls);
                 table = _enum_table(ecls) if ecls else None;

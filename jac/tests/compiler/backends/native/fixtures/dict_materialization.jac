@@ -4,7 +4,11 @@ import from jaclang.compiler.jc_materialize {
     CODE_NATDICT,
     CODE_OBJ,
     CODE_STR,
+    ClassRow,
+    FieldRow,
     Mz,
+    _K,
+    _copy_fields,
     _copy_value,
     _enqueue_value,
     jc_reg_value
@@ -15,6 +19,27 @@ import from jaclang.runtime.osp_graph { osp_adj_pairs }
 node DictionaryOwner {
     has values: dict[str, str] = {},
         children: dict[str, DictionaryOwner] = {};
+}
+
+obj OptionalText {
+    has value: str | None = None;
+}
+
+def:pub copy_optional_text(
+    mode: int, size: int, offset: int, target: int, key: int, none: int, empty: int
+) -> int {
+    owner = OptionalText();
+    if mode == 1 {
+        owner.value = "";
+    } elif mode == 2 {
+        owner.value = "diagnostic help: café";
+    }
+    _K.none_h = none;
+    _K.empty_h = empty;
+    row = ClassRow(cls_h=0, size=size);
+    row.rows.append(FieldRow(key_h=key, code=CODE_STR, off=offset, flags=1));
+    _copy_fields(Mz(), row, id(owner), target);
+    return 0;
 }
 
 def:pub copy_sparse_dictionary(key_off: int, data_off: int, order_off: int) -> int {
