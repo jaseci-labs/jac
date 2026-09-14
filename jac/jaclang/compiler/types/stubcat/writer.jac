@@ -76,10 +76,6 @@ import from jaclang.compiler.types.stubcat.format {
     SYMF_DEFER,
     SYMF_HAS_DEFAULT,
     SYMF_INSTANCE_METHOD,
-    SYMF_NA_ESCAPES,
-    SYMF_NA_REGION_HANDLE,
-    SYMF_NA_STACK_OK,
-    SYMF_PARAM_REBOUND,
     TV_CLASS_PARAM,
     TV_CONTRAVARIANT,
     TV_COVARIANT,
@@ -1166,19 +1162,9 @@ obj CatalogWriter {
             binding = 0;
         }
         put_uvar(out, binding);
+        # Body lifetime facts belong to the analyzed tree, not its exports.
+        # Serializing them makes the interface depend on whether codegen ran.
         symbits = 0;
-        if sym.param_rebound {
-            symbits |= SYMF_PARAM_REBOUND;
-        }
-        if sym.na_escapes {
-            symbits |= SYMF_NA_ESCAPES;
-        }
-        if sym.na_region_handle {
-            symbits |= SYMF_NA_REGION_HANDLE;
-        }
-        if sym.na_stack_ok {
-            symbits |= SYMF_NA_STACK_OK;
-        }
         if self._jac_method_of(sym) is not None {
             symbits |= SYMF_INSTANCE_METHOD;
         }

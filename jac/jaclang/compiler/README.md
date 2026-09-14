@@ -100,6 +100,10 @@ whose executable bytecode is produced by jac0. A bytecode-only cache is
 upgraded through `IfaceRegistry` instead of introducing a second analyzer.
 An executable request extends the live module's completed passes, including
 for selfhost modules. Missing bytecode does not invalidate unchanged analysis.
+Interface hashes describe declarations and exported types. Local escape,
+stack-allocation, region-handle, and parameter-rebinding facts stay on the
+analyzed tree; running lifetime analysis or code generation cannot change
+an interface merely by filling in those facts.
 Client invalidation removes the client section through the shared JIR writer;
 it preserves executable and interface products. Closure publication prepares
 all available interfaces before recording dependency hashes, then republishes
