@@ -956,7 +956,6 @@ impl JacLangServer._release_document(uri: str, deleted: bool = False) -> None {
     self.module_manager.forget(path);
     self._published_diagnostics.pop(uri, None);
     self.program.release_module(path);
-    self.program.source_store.forget(path);
     if deleted {
         for edges in self.program.dependency_graphs() {
             edges.forget(path);

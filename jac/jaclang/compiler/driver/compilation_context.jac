@@ -8,7 +8,6 @@ import from contextvars { ContextVar }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.passes.transform { Alert }
 import from jaclang.compiler.driver.progstate { DepGraph }
 
 obj CompilationContext {
@@ -52,15 +51,6 @@ def compilation_scope(
 
 def cache_identity -> str {
     return _cache_context.get();
-}
-
-obj SourceUnit {
-    has path: str,
-        syntax: Module,
-        failed: bool,
-        errors: list[Alert],
-        warnings: list[Alert],
-        nodes: int;
 }
 
 def source_bytes(path: str) -> bytes | None {
@@ -178,15 +168,8 @@ obj SourceSnapshot {
 }
 
 obj SourceStore {
-    has units: dict[str, SourceUnit] = {},
-        revisions: dict[str, str] = {},
-        overrides: dict[str, str] = {},
-        max_units: int = 64,
-        max_nodes: int = 100000,
-        cached_nodes: int = 0,
-        evictions: int = 0,
+    has overrides: dict[str, str] = {},
         parses: int = 0,
-        hits: int = 0,
         snapshot: SourceSnapshot | None = None;
 
     @contextmanager
@@ -282,77 +265,17 @@ obj SourceStore {
         }
     }
 
-    def forget(path: str) {
-        previous = self.revisions.pop(os.path.realpath(path), None);
-        if previous is not None {
-            self.discard(previous);
-        }
-    }
-
-    def discard(key: str) {
-        previous = self.units.pop(key, None);
-        if previous is not None {
-            self.cached_nodes -= previous.nodes;
-            if self.revisions.get(previous.path) == key {
-                self.revisions.pop(previous.path, None);
-            }
-        }
-    }
-
     def clear {
-        self.units.clear();
-        self.revisions.clear();
         self.overrides.clear();
-        self.cached_nodes = 0;
     }
 
     def parse(
         source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
     ) -> tuple[Module, bool] {
         import from jaclang.compiler.frontend.parser.frontend { parse_woven }
-        import from jaclang.compiler.driver.program { JacProgram }
-        path = os.path.realpath(path);
-        key = hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
-        unit = self.units.get(key);
-        if unit is None {
-            diagnostics = JacProgram();
-            (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
-            unit = SourceUnit(
-                path,
-                syntax,
-                failed,
-                list(diagnostics.errors_had),
-                list(diagnostics.warnings_had),
-                len(syntax._in_mod_nodes)
-            );
-            previous = self.revisions.get(path);
-            if previous is not None {
-                self.discard(previous);
-            }
-            if self.max_units > 0 and unit.nodes <= self.max_nodes {
-                while self.units
-                    and (
-                        len(self.units) >= self.max_units
-                        or self.cached_nodes + unit.nodes > self.max_nodes
-                    ) {
-                    self.discard(next(iter(self.units)));
-                    self.evictions += 1;
-                }
-                self.revisions[path] = key;
-                self.units[key] = unit;
-                self.cached_nodes += unit.nodes;
-            }
-            self.parses += 1;
-        } else {
-            del self.units[key];
-            self.units[key] = unit;
-            self.hits += 1;
-        }
-        syntax = copy.deepcopy(unit.syntax);
-        assert isinstance(syntax, Module);
-        program.errors_had.extend(unit.errors);
-        program.warnings_had.extend(unit.warnings);
-        return (syntax, unit.failed);
+
+        self.parses += 1;
+        return parse_woven(source, os.path.realpath(path), program, annexes);
     }
 }
 

@@ -191,8 +191,9 @@ another workspace's compilation settings.
 
 The module hub owns both lookup entries and links from the program root.
 Replacement, invalidation, and release detach displaced trees through that
-shared owner. The source store keeps recently used, unbound syntax within
-limits of 64 units and 100,000 syntax nodes; dependency records have a separate
+shared owner. Parser trees transfer directly to their compilation context;
+the source store retains no duplicate syntax graphs. Reuse happens through
+the compiler's module and analysis products. Dependency records have a separate
 lifetime and survive eviction of those trees.
 Executable artifacts also have a separate lifetime: dropping an analysis tree
 does not unload code that is still executing.
