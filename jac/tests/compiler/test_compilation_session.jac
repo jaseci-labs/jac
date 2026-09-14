@@ -109,6 +109,51 @@ test "a failed request releases its session state" {
     }
 }
 
+test "cancelled analysis cannot publish products and a later request recovers" {
+    for before_parse in (False, True) {
+        with TemporaryDirectory() as directory, CompilationSession() as session {
+            source = Path(directory) / "cancelled.jac";
+            source.write_text("def answer() -> int { return 42; }\n");
+            path = str(source);
+            cancelled = Event();
+            analysed: list[str] = [];
+            original = getattr(ModuleCompilation, "analysis");
+            def interrupt(task: ModuleCompilation) {
+                original(task);
+                if task.path == path {
+                    analysed.append(path);
+                    cancelled.set();
+                }
+            }
+            if before_parse {
+                cancelled.set();
+            }
+            with patch.object(ModuleCompilation, "analysis", interrupt) {
+                module = session.program.compile(
+                    path, options=CompileOptions(no_cgen=True, cancel_token=cancelled)
+                );
+            }
+            assert analysed == ([] if before_parse else [path]);
+            assert module.parse_failed;
+            assert module.gen.py_bytecode is None;
+            for program in session.programs() {
+                assert path not in program.mod.hub;
+                assert id(module) not in program.analysis.completed_passes;
+                assert program.iface_registry()._module_jir(path) is None;
+            }
+            session.checkpoint();
+            assert session.evictions == 1;
+            cancelled.clear();
+            bytecode = session.program.get_bytecode(path);
+            assert bytecode is not None;
+            namespace: dict[str, any] = {};
+            exec(bytecode, namespace);
+            assert namespace["answer"]() == 42;
+            assert not session.program.errors_had;
+        }
+    }
+}
+
 test "syntax eviction collects discarded cyclic trees within the release budget" {
     import gc;
     import weakref;
