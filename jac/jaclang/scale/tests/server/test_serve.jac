@@ -180,10 +180,8 @@ test "static and schema endpoints" {
         }
 
         response = client.get("/static/client.js");
-        assert response.status_code in [200, 503, 500];
-        if response.status_code == 200 {
-            assert "application/javascript" in response.headers.get("content-type", "");
-        }
+        assert response.status_code == 200 , response.text[:400];
+        assert "application/javascript" in response.headers.get("content-type", "");
 
         response = client.get("/graph");
         assert response.status_code == 200;
