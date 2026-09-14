@@ -911,8 +911,7 @@ obj IfaceRegistry {
         ident = json.dumps(
             {
                 "no_cgen": bool(options.no_cgen),
-                "app": str(getattr(options, "target_app", "") or ""),
-                "app_kind": str(getattr(options, "app_kind", "") or ""),
+                "options": options.analysis_identity(),
                 "symtab": bool(options.symtab_ir_only),
                 "native_parity": bool(options.native_parity),
                 "suppress": sorted(pol.suppress_codes),
@@ -1308,16 +1307,11 @@ obj IfaceRegistry {
             import from jaclang.compiler.driver.compile_options { CompileOptions }
             prog2 = self._fresh_verify_program();
             try {
-                prog2.compile(
-                    resolved,
-                    options=CompileOptions(
-                        no_cgen=options.no_cgen,
-                        native_parity=options.native_parity,
-                        force_target_program=True,
-                        suppress_codes=list(options.suppress_codes or []),
-                        need_full_ast=True
-                    )
-                );
+                import copy;
+                verified_options = copy.copy(options);
+                verified_options.force_target_program = True;
+                verified_options.need_full_ast = True;
+                prog2.compile(resolved, options=verified_options);
             } except Exception {}
 
             def digestible(alert: any) -> tuple {

@@ -65,3 +65,104 @@ test "invalid lowering metadata cannot silently pass coverage" {
     }
     assert failed;
 }
+
+test "native-only checking rejects a method that mixed compilation demotes" {
+    import os;
+    import from tests.support { JAC_ROOT }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    path = os.path.join(
+        JAC_ROOT, "tests/compiler/backends/native/fixtures/partial_native.jac"
+    );
+    for checking in (True, False) {
+        program = JacProgram();
+        module = program.compile(
+            path,
+            options=CompileOptions(
+                no_cgen=checking,
+                native_parity=checking,
+                aot_mode=not checking,
+                native_required=True,
+                force_target_program=True
+            )
+        );
+        assert program.errors_had , "Native-only compilation accepted eval fallback";
+        assert any("eval" in str(error) for error in program.errors_had);
+        assert module.gen.native_engine is None;
+    }
+}
+
+test "native-only output validation rejects erased fields and legacy demotions" {
+    import from jaclang.compiler.backends.native.na_compile_pass { require_native_ir }
+    module = ir.Module(name="erased");
+    NativeLoweringIssue(
+        symbol="Record.data",
+        kind=NativeLoweringKind.FIELD,
+        source="record.jac",
+        code="E5092",
+        detail="field has no native layout"
+    ).record(
+        module
+    );
+    for text in (str(module), 'define i64 @"legacy.__jac_demoted"() { ret i64 0 }') {
+        failed = False;
+        try {
+            require_native_ir(text);
+        } except ValueError {
+            failed = True;
+        }
+        assert failed , "Native-only validation accepted an incomplete artifact";
+    }
+}
+
+test "native-only checks link providers outside the entry directory" {
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        native_linked_ir_text
+    }
+    with tempfile.TemporaryDirectory() as directory {
+        fixture_dir = Path(directory);
+        (fixture_dir / "library").mkdir();
+        (fixture_dir / "application").mkdir();
+        (fixture_dir / "library" / "nested").mkdir();
+        (fixture_dir / "library" / "nested" / "numbers.jac").write_text(
+            "def increment(value: int) -> int { return value + 1; }\n"
+        );
+        (fixture_dir / "library" / "relay.jac").write_text(
+            "import from .nested.numbers { increment }\n"
+                + "def relay(value: int) -> int { return increment(value); }\n"
+        );
+        entry_file = fixture_dir / "application" / "main.jac";
+        entry_file.write_text(
+            "import from ..library.relay { relay }\n"
+                + "def answer -> int { return relay(41); }\n"
+        );
+        for checking in (True, False) {
+            program = JacProgram();
+            module = program.compile(
+                str(entry_file),
+                options=CompileOptions(
+                    no_cgen=checking,
+                    native_parity=checking,
+                    aot_mode=not checking,
+                    native_required=True,
+                    force_target_program=True
+                )
+            );
+            assert not program.errors_had , str(program.errors_had);
+            assert not any(
+                error.code is not None and error.code.code == "W5023"
+                for error in program.warnings_had
+            );
+            text = native_linked_ir_text(module);
+            linked = llvm.parse_assembly(text);
+            import from jaclang.compiler.backends.native.llvm.binding.value { ValueRef }
+            function = linked.get_function("increment");
+            assert isinstance(function, ValueRef);
+            assert not function.is_declaration;
+        }
+    }
+}

@@ -13,9 +13,8 @@ table cannot express.
 
 import os;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "passes", "fixtures", "nogc_ownfield", "ref_loop.jac"
@@ -32,7 +31,7 @@ test "ref-loop mutation is visible and mode-identical" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"rl_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
+                jac_command("build", "--native", FIXTURE)
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

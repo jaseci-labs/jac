@@ -5,9 +5,10 @@ subprocess + embedded-server + CLI argparse path — exactly the interface a
 developer or operator uses.
 """
 
+import from tests.support { jac_command }
+
 import os;
 import subprocess;
-import sys;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.data.pgembed { PgRuntime }
@@ -35,7 +36,7 @@ def _run(cwd: str, argv: list) -> tuple {
 
 
 def _jac(cwd: str, args: list) -> tuple {
-    return _run(cwd, [sys.executable, "-m", "jaclang"] + args);
+    return _run(cwd, jac_command() + args);
 }
 
 

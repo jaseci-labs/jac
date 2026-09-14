@@ -176,6 +176,7 @@ walker NaIRGenPass(Transform) {
         _interned_strs: dict[str, ir.GlobalVariable] = {},
         extern_funcs: dict[str, ir.Function] = {},
         clib_extern_names: set[str] = set(),
+        _pending_clib_abilities: list[uni.Ability] = [],
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
         _foreign_modules: list = [],
@@ -474,7 +475,13 @@ walker NaIRGenPass(Transform) {
         str_val: ir.Value, charset: (ir.Value | None), do_left: bool, do_right: bool
     ) -> (ir.Value | None);
 
-    def _codegen_str_split(str_val: ir.Value, sep_val: ir.Value) -> (ir.Value | None);
+    def _codegen_str_split(
+        str_val: ir.Value,
+        sep_val: ir.Value,
+        maxsplit: ir.Value | None = None,
+        reverse: bool = False
+    ) -> (ir.Value | None);
+
     def _emit_norm_slice_bounds(
         slice_node: uni.Slice, src_len: ir.Value
     ) -> (tuple | None);
@@ -707,7 +714,6 @@ walker NaIRGenPass(Transform) {
         jac_fn: ir.Function, c_fn_ty: ir.PointerType
     ) -> ir.Function;
 
-    def _clib_alloc_vtable(name: str) -> ir.Value;
     def _lower_clib_function_type(arch_name: str, fname: str, t: any) -> ir.Type;
     def _clib_fnptr_arg(val: ir.Value, target: ir.Type) -> ir.Value;
     def _clib_fnptr_ret(arch_name: str, fname: str, result: ir.Value) -> ir.Value;
@@ -924,6 +930,7 @@ walker NaIRGenPass(Transform) {
 
     def _rename_demoted_symbol(name: str, func: ir.Function) -> None;
     def _process_clib_imports(module: uni.Module) -> None;
+    def _declare_pending_clib_abilities -> None;
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _llvm_type_str(ty: ir.Type) -> str;
     def _export_native_layout -> None;
@@ -1087,7 +1094,13 @@ walker NaIRGenPass(Transform) {
     def _emit_exc_push_helper -> None;
     def _emit_exc_pop_helper -> None;
     def _emit_exc_raise_helper -> None;
-    def _emit_runtime_raise(is_error: ir.Value, exc_type_name: str, msg: str) -> None;
+    def _emit_runtime_raise(
+        is_error: ir.Value,
+        exc_type_name: str,
+        msg: str,
+        release_on_error: list[ir.Value] = []
+    ) -> None;
+
     def _get_or_register_exc_type(exc_name: str) -> int;
     def _get_exc_descendants(type_name: str) -> list[str];
     def _codegen_raise(nd: uni.RaiseStmt) -> None;
@@ -2081,6 +2094,10 @@ walker NaIRGenPass(Transform) {
     def _ptr_box_kind(rt: any) -> int;
     def _struct_ptr_pointee_name(val: ir.Value) -> (str | None);
     def _struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value;
+    def _restore_list_read(
+        value: (ir.Value | None), collection: uni.UniNode
+    ) -> (ir.Value | None);
+
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _typed_elem_llvm_of(

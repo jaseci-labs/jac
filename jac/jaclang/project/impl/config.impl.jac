@@ -1654,6 +1654,13 @@ def _apply_memory_native_placement(cfg: JacConfig, data: dict) {
     }
     if "native" in data and isinstance(data["native"], dict) {
         nat = data["native"];
+        if "require" in nat {
+            if not isinstance(nat["require"], list)
+                or not all(isinstance(pattern, str) for pattern in nat["require"]) {
+                raise ValueError("[native] require must be a list of module patterns");
+            }
+            cfg.native.require = list(nat["require"]);
+        }
         cfg.native.target = str(nat.get("target", cfg.native.target));
         try {
             cfg.native.opt = int(nat.get("opt", cfg.native.opt));

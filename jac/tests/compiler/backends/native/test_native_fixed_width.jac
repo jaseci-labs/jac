@@ -121,3 +121,10 @@ test "sized casts unwrap narrowed optional fields" {
     assert get_func(eng, "present_end", ctypes.c_int64)() == 42;
     assert get_func(eng, "absent_end", ctypes.c_int64)() == -1;
 }
+
+
+test "sized list reads restore declared width and signedness" {
+    assert probe("u32_list_read_preserves_width") == 5;
+    assert probe("u32_field_list_read_preserves_width") == 22;
+    assert probe("i8_list_read_preserves_sign") == -63;
+}

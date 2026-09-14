@@ -27,3 +27,44 @@ test "sibling native errno import retains its platform filename" {
         set_native_target_override(prior);
     }
 }
+
+test "native package imports use the same provider as semantic imports" {
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.project.modresolver { resolve_module }
+    import from jaclang.compiler.native_scope {
+        activate_scope_lowering,
+        deactivate_scope_lowering
+    }
+    with TemporaryDirectory() as directory {
+        compiler = os.path.join(directory, "jaclang", "compiler");
+        os.makedirs(compiler);
+        os.mkdir(os.path.join(directory, "jaclang", "jac0core"));
+        checkout = os.path.join(compiler, "jc_materialize.jac");
+        with open(checkout, "w") as source {
+            source.write("def:pub local_provider -> int { return 42; }\n");
+        }
+        fixture = os.path.join(directory, "tests", "fixture.jac");
+        os.mkdir(os.path.dirname(fixture));
+        with open(fixture, "w") as source {
+            source.write("");
+        }
+        activate_scope_lowering(checkout);
+        try {
+            for importer in [fixture, os.path.join(compiler, "entry.jac")] {
+                (expected, language) = resolve_module(
+                    "jaclang.compiler.jc_materialize", importer
+                );
+                assert language == "jac";
+                (_, actual) = resolve_native_module(
+                    "jaclang.compiler.jc_materialize", os.path.dirname(importer)
+                );
+                assert actual is not None;
+                assert os.path.realpath(actual) == os.path.realpath(expected);
+                assert (os.path.realpath(actual) == os.path.realpath(checkout))
+                    == (os.path.dirname(importer) == compiler);
+            }
+        } finally {
+            deactivate_scope_lowering();
+        }
+    }
+}

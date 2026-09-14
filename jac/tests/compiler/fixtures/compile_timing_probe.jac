@@ -2,11 +2,10 @@
 
 Run by `tests/compiler/test_compile_timing.jac` as a subprocess, once against
 the checkout under test and once against a snapshot of the pinned baseline ref.
-The probe lives outside both trees and is addressed by absolute path; which
-compiler measures it is decided entirely by the subprocess cwd, because
-`_jac_finder` resolves `[dev] jaclang_source` from the nearest `jac.toml` above
-the cwd. So the same file, byte for byte, drives both halves of the comparison
-and neither tree needs to carry a copy.
+The probe lives outside both trees and is addressed by absolute path. The
+harness explicitly selects the compiler tree for each subprocess; the probe
+verifies that selection before measuring. The same file, byte for byte, drives
+both halves of the comparison and neither tree needs to carry a copy.
 
 Corpus paths are resolved against the cwd and so name the sources of whichever
 tree is being measured. The schedule phases (parse, ir_gen, analysis, boundary,
@@ -28,6 +27,7 @@ count (default 6, which is where the corpus stopped moving between runs here).
 """
 
 import json;
+import jaclang;
 import os;
 import time;
 
@@ -106,6 +106,10 @@ def phase_row(src: str) -> dict {
 
 with entry {
     tree = Path(os.getcwd());
+    compiler_tree = Path(str(jaclang.__file__)).resolve().parent.parent;
+    assert compiler_tree == tree.resolve() , (
+        f"timing {tree} with the wrong compiler: {compiler_tree}"
+    );
     reps = int(os.environ.get("JAC_TIMING_REPS", "6"));
     for rel in CORPUS {
         src = str(tree / rel);

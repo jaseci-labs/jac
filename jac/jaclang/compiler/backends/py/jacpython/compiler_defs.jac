@@ -84,7 +84,12 @@ import from jaclang.compiler.backends.py.jacpython.compiler_ir {
     stmt_cont,
     unverified_cfg,
 }
-import from jaclang.compiler.frontend.python.compiler_symtable { sym_block }
+import from jaclang.compiler.frontend.python.compiler_symtable {
+    sym_block,
+    sym_dict_get,
+    sym_scope_of,
+    SCOPE_GLOBAL_EXPLICIT
+}
 import from jaclang.compiler.backends.py.jacpython.flowgraph { verify_cfg }
 import from jaclang.compiler.backends.py.jacpython.assembler { assemble }
 import from jaclang.compiler.backends.py.jacpython.compiler_emit {
@@ -282,6 +287,20 @@ def visit_import_from(g: cfg_builder, imp: ImportFrom) -> stmt_cont {
 }
 
 
+# Explicit global definitions have module-level identities, even inside a
+# function or class. Use the same mangled binding as load/store lowering.
+def definition_qualname(g: cfg_builder, name: str) -> str {
+    if g.sym_top is None {
+        return name;
+    }
+    flags = sym_dict_get(g.sym_top.symbols, codegen_mangle(g, name), 0);
+    if sym_scope_of(flags) == SCOPE_GLOBAL_EXPLICIT {
+        return name;
+    }
+    return nested_code_qualname(g.sym_top.block_type, g.u.qualname, name);
+}
+
+
 def sym_class_qualname(
     cd: ClassDef, sym_cls: sym_block, enclosing_private: str | None
 ) -> str {
@@ -463,7 +482,7 @@ def visit_class_def(g: cfg_builder, cd: ClassDef) -> stmt_cont {
         visit_expr(g, decorator);
     }
     firstlineno = decorators[0].lineno if decorators else cd.lineno;
-    qualname = nested_code_qualname(g.sym_top.block_type, g.u.qualname, cd.name);
+    qualname = definition_qualname(g, cd.name);
     generic = bool(cd.type_params);
     scope: sym_block | None = g.sym_top;
     if generic {
@@ -594,7 +613,7 @@ def compile_class_cfg(
     # survive into the class-body code object so method creation inside the
     # body can close over those cells.
     u.freevars = freevars_from_sym(sym_cls);
-    u.varnames = inline_storage_names(sym_cls);
+    u.set_varnames(inline_storage_names(sym_cls));
     u.cellvars.extend(inline_storage_names(sym_cls, True));
     # Implicit __class__ cell first (CPython compiler_unit appends it before
     # __classdict__; observed oracle order ('__class__', '__classdict__')).
@@ -669,7 +688,7 @@ def visit_function_def(
     }
     decorators = fd.decorator_list or [];
     firstlineno = decorators[0].lineno if decorators else fd.lineno;
-    qualname = nested_code_qualname(g.sym_top.block_type, g.u.qualname, fd.name);
+    qualname = definition_qualname(g, fd.name);
     generic = bool(fd.type_params);
     scope: sym_block | None = g.sym_top;
     if generic {
@@ -767,7 +786,7 @@ def generic_definition_builder(
         firstlineno=firstlineno
     );
     u.flags = CO_OPTIMIZED | CO_NEWLOCALS | (CO_NESTED if scope.nested else 0);
-    u.varnames = fast_varnames_from_sym(scope);
+    u.set_varnames(fast_varnames_from_sym(scope));
     u.argcount = len(scope.varnames);
     u.param_count = u.argcount;
     u.classdict_names = scope.can_see_class_scope;
@@ -933,7 +952,7 @@ def compile_fn_cfg(
     } elif sym_fn.coroutine {
         u.flags = u.flags | CO_COROUTINE;
     }
-    u.varnames = fast_varnames_from_sym(sym_fn);
+    u.set_varnames(fast_varnames_from_sym(sym_fn));
     entry_blk = u.add_block();
     g = new_cfg_builder(u, entry_blk, sym_fn, private);
     protect_start = emit_function_prologue(g, sym_fn, body_firstlineno, is_suspendable);
@@ -1046,7 +1065,7 @@ def type_expression_cfg(
     if sym_v.nested {
         u.flags = u.flags | CO_NESTED;
     }
-    u.varnames = fast_varnames_from_sym(sym_v);
+    u.set_varnames(fast_varnames_from_sym(sym_v));
     u.freevars = freevars_from_sym(sym_v);
     if in_class {
         # Directly inside a class body the lazy scope closes over the class
@@ -1120,7 +1139,7 @@ def typealias_genparams_cfg(
     if sym_gp.nested {
         u.flags = u.flags | CO_NESTED;
     }
-    u.varnames = fast_varnames_from_sym(sym_gp);
+    u.set_varnames(fast_varnames_from_sym(sym_gp));
     u.freevars = freevars_from_sym(sym_gp);
     if in_class and "__classdict__" not in u.freevars {
         u.freevars.append("__classdict__");

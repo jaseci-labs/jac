@@ -1115,9 +1115,9 @@ impl NaIRGenPass._emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None
         self._emit_rc_retain(value, op=op, loc=loc);
         return;
     }
-    if self._opt_ptr_payload_of(value.type) is not None and not self._is_owned(value) {
+    if self._opt_payload_of(value.type) is not None and not self._is_owned(value) {
         _tr_pv = self.builder.extract_value(value, 1, name="takeref.opt.pv");
-        self._emit_rc_retain(_tr_pv, op=op, loc=loc);
+        self._emit_take_ref(_tr_pv, op=op, loc=loc);
     }
     if self.jacval_type is not None
         and value.type == self.jacval_type
@@ -2338,12 +2338,17 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             _clib_ret_name = declared_type_name(_clib_sig.return_type) or "";
             _clib_str_ret = _clib_ret_name == "str";
-            _clib_managed_ret = _clib_ret_name.split("[")[0] in ("list", "dict", "set");
+            _clib_managed_ret = _clib_ret_name.split("[")[0] in ("list", "dict", "set")
+                or (
+                    _clib_ret_name in self.struct_types
+                    and _clib_ret_name not in self.clib_struct_names
+                );
         }
     }
     release_args: list[ir.Value] = [];
     _i8ptr = ir.IntType(8).as_pointer();
     for (i, arg) in enumerate(args) {
+        target_type = func.args[i].type if i < len(func.args) else None;
         if (
             _is_foreign
             and self._is_bytes_value(arg)
@@ -2363,6 +2368,15 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         ) {
             coerced.append(self._membrane_str_out(self.builder, arg));
             release_args.append(arg);
+        } elif (
+            _is_foreign
+            and isinstance(target_type, ir.PointerType)
+            and not target_type.is_opaque
+            and isinstance(target_type.pointee, ir.FunctionType)
+        ) {
+            _c = self._clib_coerce_callback(arg, target_type);
+            coerced.append(_c);
+            release_args.append(_c);
         } elif i < len(func.args) {
             _c = self._coerce_type(arg, func.args[i].type);
             coerced.append(_c);

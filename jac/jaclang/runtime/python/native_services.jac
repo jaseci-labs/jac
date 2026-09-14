@@ -1,3 +1,4 @@
+import from jaclang.runtime.python.capi { read_buffer }
 import from jaclang.runtime.python.objects { PyObj }
 import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
 import from jaclang.runtime.python.compiler_integer { integer_from_marshal }
@@ -21,15 +22,11 @@ def take_buffer(handle: u64) -> list[int] {
     if handle == 0 {
         raise runtime_failure();
     }
-    result: list[int] = [];
     try {
-        for index in range(int(jacpy_buffer_size(handle))) {
-            result.append(int(jacpy_buffer_byte(handle, i64(index))));
-        }
+        return read_buffer(handle);
     } finally {
         jacpy_release(handle);
     }
-    return result;
 }
 
 def take_error_text -> str {

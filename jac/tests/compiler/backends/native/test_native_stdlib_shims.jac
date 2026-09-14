@@ -38,6 +38,8 @@ type-erased natively: `ContextVar[int]` is refused rather than lowered
 line rather than a defect.
 """
 
+import from tests.support { jac_command }
+
 import os;
 import subprocess;
 import sys;
@@ -49,10 +51,7 @@ glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 def _sv_run(fixture: str) -> tuple[(str, str)] {
     src = os.path.join(FIXTURES, fixture);
     proc = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", src],
-        capture_output=True,
-        text=True,
-        timeout=900
+        jac_command("run", src), capture_output=True, text=True, timeout=900
     );
     assert proc.returncode == 0 , f"sv run failed: {proc.stderr[-800:]
         if proc.stderr
@@ -64,7 +63,7 @@ def _na_run(fixture: str) -> tuple[(str, str)] {
     src = os.path.join(FIXTURES, fixture);
     out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
     comp = subprocess.run(
-        [sys.executable, "-m", "jaclang", "build", "--native", src, "-o", out_bin],
+        jac_command("build", "--native", src, "-o", out_bin),
         capture_output=True,
         text=True,
         timeout=900
@@ -139,7 +138,7 @@ test "a ContextVar at a scalar type argument is refused, not lowered" {
     src = os.path.join(FIXTURES, "contextvars_unsupported.jac");
     out_bin = os.path.join(tempfile.mkdtemp(), "nope.bin");
     comp = subprocess.run(
-        [sys.executable, "-m", "jaclang", "build", "--native", src, "-o", out_bin],
+        jac_command("build", "--native", src, "-o", out_bin),
         capture_output=True,
         text=True,
         timeout=900

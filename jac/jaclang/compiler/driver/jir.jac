@@ -380,6 +380,7 @@ def _analysis_fingerprint_for(source_path: str) -> str {
     mem_cfg = cfg.memory if cfg is not None else None;
     native_cfg = cfg.native if cfg is not None else None;
     return CompileOptions(
+        native_require=(list(native_cfg.require) if native_cfg else []),
         memory_profile=(mem_cfg.profile if mem_cfg else "managed"),
         memory_enforce=(list(mem_cfg.enforce) if mem_cfg else []),
         memory_exempt=(list(mem_cfg.exempt) if mem_cfg else []),

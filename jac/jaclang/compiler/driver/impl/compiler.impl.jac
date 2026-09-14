@@ -1008,10 +1008,10 @@ impl JacCompiler.stamp_boundary_facts(
         );
 
     def resolve_native(module_name: str, inferred_ok: bool) -> (str | None) {
-        (src_mod_str, _full_path) = resolve_native_module(
+        (src_mod_str, full_path) = resolve_native_module(
             module_name, base_dir, allow_inferred=inferred_ok
         );
-        return src_mod_str;
+        return os.path.realpath(full_path) if full_path is not None else src_mod_str;
     }
 
     def source_mod_for(resolved_path: (str | None)) -> (uni.Module | None) {

@@ -505,8 +505,8 @@ impl pool_available -> bool {
 }
 
 impl worker_rss_mb -> int {
-    import from jaclang.runtime.resource_usage { peak_rss_mb }
-    return peak_rss_mb();
+    import from jaclang.runtime.resource_usage { resident_rss_mb }
+    return resident_rss_mb();
 }
 
 impl should_retire(served: int, recycle: int, rss_mb: int, rss_cap: int) -> bool {
