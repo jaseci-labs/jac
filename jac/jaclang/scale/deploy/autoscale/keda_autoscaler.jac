@@ -2,6 +2,8 @@ import from jaclang.scale._optdeps.kubernetes { client, ApiException, Autoscalin
 import from jaclang.scale.deploy.autoscale.autoscaler {
     Autoscaler,
     AutoscalerSpec,
+    AutoscalerState,
+    AutoscalerRuntimeStatus,
     Trigger,
     TriggerAuth,
     DEFAULT_CPU_UTILIZATION_TARGET,
@@ -84,4 +86,13 @@ obj KEDAAutoscaler(Autoscaler) {
     def _capabilities_cache_key -> str;
     def _check_service_address(core_api: any, address: str) -> (str | None);
     def format_capabilities(caps: KEDACapabilities) -> str;
+    def _normalize_keda_status(
+        scaled_object: (dict[str, any] | None),
+        hpa: (dict[str, any] | None),
+        deployment: (dict[str, any] | None)
+    ) -> AutoscalerRuntimeStatus;
+
+    def get_runtime_status(
+        autoscaler_name: str, scale_target_name: str, namespace: str
+    ) -> AutoscalerRuntimeStatus;
 }

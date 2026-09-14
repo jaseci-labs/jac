@@ -16,10 +16,10 @@ token_hex of 0 bytes is the empty string instead of 64 hex characters.
 import from zlib { adler32 }
 import from secrets { token_hex }
 
-def adler32_default_seed() -> int {
+def adler32_default_seed -> int {
     return adler32(b"hello");
 }
 
-def token_hex_default_len() -> int {
+def token_hex_default_len -> int {
     return len(token_hex());
 }
