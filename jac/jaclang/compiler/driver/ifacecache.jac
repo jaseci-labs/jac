@@ -461,6 +461,7 @@ obj IfaceRegistry {
     }
 
     def publish_completed {
+        import from jaclang.compiler.frontend.unitree { Module }
         import from jaclang.compiler.driver.compilation_context {
             defer_interface_publication
         }
@@ -475,15 +476,33 @@ obj IfaceRegistry {
         }
         options = self.prog.options.for_executable();
         with self._compilation_scope() {
-            ready: list[tuple[str, any]] = [];
-            for (path, module) in list(self.prog.mod.hub.items()) {
-                completed = self.prog.analysis.completed_passes.get(id(module), set());
-                if module.stub_only or "DeclImplMatchPass" not in completed {
-                    continue;
+            ready: list[tuple[str, Module]] = [];
+            prepared: set[int] = set();
+            while True {
+                pending: list[tuple[str, Module]] = [];
+                for (path, module) in list(self.prog.mod.hub.items()) {
+                    completed = self.prog.analysis.completed_passes.get(
+                        id(module), set()
+                    );
+                    if id(module) not in prepared
+                        and not module.stub_only
+                        and "DeclImplMatchPass" in completed {
+                        pending.append((path, module));
+                    }
                 }
-                if self._prepare_interface_in_context(path, module) {
-                    ready.append((path, module));
+                if not pending {
+                    break;
                 }
+                for (path, module) in pending {
+                    prepared.add(id(module));
+                    if self._prepare_interface_in_context(path, module) {
+                        ready.append((path, module));
+                    }
+                }
+            }
+            if self.prog.errors_had
+                or (cancel_token is not None and cancel_token.is_set()) {
+                return;
             }
             for (path, module) in ready {
                 self._persist_in_context(path, module, options, 0, 0);

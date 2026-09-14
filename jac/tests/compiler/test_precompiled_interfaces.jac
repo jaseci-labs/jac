@@ -97,6 +97,41 @@ test "partial rebuilds preserve complete dependency and diagnostic products" {
     }
 }
 
+test "interface publication includes dependencies discovered while encoding exports" {
+    import from jaclang.dist.precompile_bytecode { precompile_worker_exit }
+    with TemporaryDirectory() as directory {
+        package = _package(Path(directory));
+        (package / "base.jac").write_text("def answer() -> int { return 42; }\n");
+        (package / "dependency.jac").write_text(
+            "import from .base { answer }\n"
+                + "def unused() -> int { return answer(); }\n"
+                + "def used() -> int { return 1; }\n"
+        );
+        source = package / "api.jac";
+        source.write_text(
+            "import from .dependency { used }\n"
+                + "def run() -> int { return used(); }\n"
+        );
+        try {
+            precompile_worker_exit();
+            cold = precompile_unit(str(source), str(package), collect=False);
+            assert cold is not None;
+            precompile_worker_exit();
+            measurements: list[dict[str, any]] = [];
+            warm = precompile_unit(
+                str(source), str(package), collect=False, measurements=measurements
+            );
+            assert warm == cold;
+            assert sum(sum(row.get("pass_runs", {}).values()) for row in measurements)
+                == 0;
+            assert sum(sum(row.get("parse_runs", {}).values()) for row in measurements)
+                == 0;
+        } finally {
+            precompile_worker_exit();
+        }
+    }
+}
+
 test "annex bytecode is deterministic and resolves filenames after installation" {
     import marshal;
     import from unittest.mock { patch }

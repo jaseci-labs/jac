@@ -104,10 +104,17 @@ Interface hashes describe declarations and exported types. Local escape,
 stack-allocation, region-handle, and parameter-rebinding facts stay on the
 analyzed tree; running lifetime analysis or code generation cannot change
 an interface merely by filling in those facts.
+Equivalent unknown types share their serialized identity, including their
+diagnosed and incomplete flags; allocating another equivalent type object must
+not change the exported interface.
 Client invalidation removes the client section through the shared JIR writer;
 it preserves executable and interface products. Closure publication prepares
 all available interfaces before recording dependency hashes, then republishes
 validated live executable products against that completed dependency set.
+Preparation includes modules discovered while encoding another module's exports.
+Completed diagnostic profiles remain owned by the module's analysis state while
+dependency hashes are finalized and executable products are added. Source
+invalidation and session eviction discard them through the shared task cleanup.
 Application traversal batches this publication across its roots and contexts,
 then publishes each completed context once. Single-module requests still publish
 at their own boundary. Nested traversal shares the enclosing publication scope;
