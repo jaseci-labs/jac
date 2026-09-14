@@ -38,6 +38,10 @@ if sys.platform == "darwin":
 sample = b"Jac source-built runtime" * 100
 for codec in (bz2, lzma, zlib, zstd):
     assert codec.decompress(codec.compress(sample)) == sample
+# Payload compression requests workers; a serial-only static zstd silently
+# forced every cold kit build through the producer's single-thread fallback.
+threaded = zstd.compress(sample, options={zstd.CompressionParameter.nb_workers: 2})
+assert zstd.decompress(threaded) == sample
 assert sqlite3.connect(":memory:").execute("select 6 * 7").fetchone() == (42,)
 assert str(decimal.Decimal("0.1") + decimal.Decimal("0.2")) == "0.3"
 assert hashlib.sha256(sample).digest()

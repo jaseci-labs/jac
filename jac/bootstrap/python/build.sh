@@ -97,7 +97,7 @@ bzip2() {
 }
 zstd() {
     cd "$src/zstd"
-    make -C lib -j"$jobs" libzstd.a ZSTD_LEGACY_SUPPORT=0
+    make -C lib -j"$jobs" libzstd.a-mt ZSTD_LEGACY_SUPPORT=0
     cp lib/libzstd.a "$deps/lib/"
     cp lib/zstd.h lib/zdict.h lib/zstd_errors.h "$deps/include/"
 }
@@ -188,7 +188,7 @@ SH
     export LIBFFI_CFLAGS="-I$deps/include" LIBFFI_LIBS="$deps/lib/libffi.a"
     export LIBMPDEC_CFLAGS="-I$deps/include" LIBMPDEC_LIBS="$deps/lib/libmpdec.a -lm"
     export LIBSQLITE3_CFLAGS="-I$deps/include" LIBSQLITE3_LIBS="$deps/lib/libsqlite3.a -lm -lpthread"
-    export LIBZSTD_CFLAGS="-I$deps/include" LIBZSTD_LIBS="$deps/lib/libzstd.a"
+    export LIBZSTD_CFLAGS="-I$deps/include" LIBZSTD_LIBS="$deps/lib/libzstd.a -pthread"
     export ZLIB_CFLAGS="-I$deps/include" ZLIB_LIBS="$deps/lib/libz.a"
     export BZIP2_CFLAGS="-I$deps/include" BZIP2_LIBS="$deps/lib/libbz2.a"
     export LIBLZMA_CFLAGS="-I$deps/include" LIBLZMA_LIBS="$deps/lib/liblzma.a"
