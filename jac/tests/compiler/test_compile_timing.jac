@@ -148,16 +148,12 @@ def publish(name: str, text: str) {
     (out_dir / f"{name}.txt").write_text(text + "\n", encoding="utf-8");
 }
 
-"""Environment for a probe subprocess, pinned to `cache` and to nothing else.
-
-`JAC_DEV_SOURCE` is dropped rather than overridden: `_jac_finder` re-derives it
-from the nearest `jac.toml` above the subprocess cwd, and an inherited value
-would be a second, contradicting answer to the one question this harness needs
-the subprocess to answer for itself -- which compiler is running.
-"""
-def _probe_env(cache: str) -> dict[str, str] {
+"""Keep the probe's imports and native tooling on its selected compiler tree."""
+def _probe_env(cache: str, tree_dir: str) -> dict[str, str] {
     env = dict(os.environ);
-    env.pop("JAC_DEV_SOURCE", None);
+    env.pop("JAC_NO_DEV_SOURCE", None);
+    env["JAC_DEV_SOURCE"] = os.path.abspath(tree_dir);
+    env["JAC_NO_PRECOMPILE"] = "1";
     env["XDG_CACHE_HOME"] = cache;
     return env;
 }
@@ -173,9 +169,9 @@ def run_probe(tree_dir: str, cache: str, round_no: int = 0) -> list[dict] {
         return _PROBE_CACHE[key];
     }
     proc = subprocess.run(
-        jac_command("run", PROBE),
+        jac_command("run", PROBE, compiler_root=tree_dir),
         cwd=tree_dir,
-        env=_probe_env(cache),
+        env=_probe_env(cache, tree_dir),
         capture_output=True,
         text=True,
         timeout=1800
@@ -345,6 +341,35 @@ def delta_table(baseline: list[dict], current: list[dict]) -> str {
     }
     out.append(totals);
     return "\n".join(out);
+}
+
+test "timing subprocess selects each requested compiler checkout" {
+    with tempfile.TemporaryDirectory() as tmp {
+        for name in ("baseline", "head") {
+            tree = Path(tmp) / name;
+            package = tree / "jaclang";
+            package.mkdir(parents=True);
+            bootstrap = package / "jac0core";
+            bootstrap.mkdir();
+            shutil.copyfile(
+                str(Path(JAC_ROOT) / "jaclang" / "jac0core" / "ext_registry.py"),
+                str(bootstrap / "ext_registry.py")
+            );
+            (package / "__init__.py").write_text("");
+            (package / "__main__.py").write_text(
+                "import json, os, sys\nfrom pathlib import Path\n"
+                    + "print('TIMING_ROW ' + json.dumps({"
+                    + "'compiler': str(Path(__file__).resolve().parent.parent),"
+                    + "'dev_source': os.environ.get('JAC_DEV_SOURCE'),"
+                    + "'args': sys.argv[1:]}))\n"
+            );
+            rows = run_probe(str(tree), str(Path(tmp) / "cache"));
+            assert len(rows) == 1;
+            assert rows[0]["compiler"] == str(tree);
+            assert rows[0]["dev_source"] == str(tree);
+            assert rows[0]["args"] == ["run", PROBE];
+        }
+    }
 }
 
 test "the timing corpus names modules that are in this checkout" {
