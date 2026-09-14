@@ -1793,7 +1793,9 @@ walker NaIRGenPass(Transform) {
         left_orig: ir.Value, right_orig: ir.Value, op: str = ""
     ) -> None;
 
-    def _release_owned_args(call_args: list[ir.Value], op: str = "call_arg") -> None;
+    def _release_owned_args(
+        call_args: list[ir.Value], op: str = "call_arg", loc: str = ""
+    ) -> None;
     def _rc_call_with_ctx(
         fn: ir.Function, args: list, op: str, loc: str = "", name: str = ""
     ) -> ir.Value;
@@ -1809,7 +1811,7 @@ walker NaIRGenPass(Transform) {
     def _begin_cleanup_guard(retained: set[str]) -> NativeCleanupGuard | None;
     def _end_cleanup_guard(guard: NativeCleanupGuard | None) -> None;
     def _codegen_cleanup_operand(
-        nd: uni.UniNode, retained: set[str]
+        nd: uni.UniNode, retained: set[str], required: bool = False
     ) -> ir.Value | None;
 
     def _release_owned_temp(var_name: str, op: str = "", loc: str = "") -> None;

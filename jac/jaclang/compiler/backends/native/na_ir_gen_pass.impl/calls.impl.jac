@@ -2825,6 +2825,11 @@ impl NaIRGenPass._emit_isinstance_core(
     i8 = ir.IntType(8);
     params = nd.params or [];
 
+    source_expr = params[0];
+    if not isinstance(source_expr, uni.Expr) {
+        self._emit_unsupported_builtin_call(nd, "isinstance");
+        return None;
+    }
     type_arg = params[1];
     if not isinstance(type_arg, uni.TupleVal) {
         _rt_res = self._emit_isinstance_runtime(nd, operand, type_arg);
@@ -2855,7 +2860,7 @@ impl NaIRGenPass._emit_isinstance_core(
     unresolved: list[str] = [];
     static_seen = False;
     static_hit = False;
-    source_type = params[0].type;
+    source_type = source_expr.type;
     source_members = source_type.types
         if isinstance(source_type, UnionType)
         else [source_type];
@@ -2890,13 +2895,10 @@ impl NaIRGenPass._emit_isinstance_core(
         }
     }
     if static_hit {
-        if isinstance(operand.type, ir.PointerType) and self._is_owned(operand) {
-            self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
-        }
         return ir.Constant(i1, 1);
     }
     if unresolved {
-        (_enum_tags, unresolved) = self._enum_union_tags(params[0], unresolved);
+        (_enum_tags, unresolved) = self._enum_union_tags(source_expr, unresolved);
         for _et in _enum_tags {
             if _et not in tags {
                 tags.append(_et);
@@ -2911,9 +2913,6 @@ impl NaIRGenPass._emit_isinstance_core(
     }
     if not tags {
         if static_seen {
-            if isinstance(operand.type, ir.PointerType) and self._is_owned(operand) {
-                self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
-            }
             return ir.Constant(i1, 0);
         }
         self._emit_unsupported_builtin_call(nd, "isinstance");
@@ -2921,9 +2920,6 @@ impl NaIRGenPass._emit_isinstance_core(
     }
     if isinstance(operand.type, ir.PointerType) {
         _pt_res = self._emit_isinstance_ptr_tags(operand, tags);
-        if self._is_owned(operand) {
-            self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
-        }
         return _pt_res;
     }
     boxed = self._box_to_jacval(operand);
@@ -2938,9 +2934,6 @@ impl NaIRGenPass._emit_isinstance_core(
             else self.builder.or_(result, cmp, name="isinst.or");
     }
 
-    if isinstance(operand.type, ir.PointerType) and self._is_owned(operand) {
-        self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
-    }
     return result;
 }
 
@@ -3095,9 +3088,6 @@ impl NaIRGenPass._emit_isinstance_mixed(
     result.add_incoming(ir.Constant(i1, 0), obj_bb);
     result.add_incoming(user_or, end_load);
 
-    if isinstance(operand.type, ir.PointerType) and self._is_owned(operand) {
-        self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
-    }
     return result;
 }
 
@@ -3126,9 +3116,6 @@ impl NaIRGenPass._emit_isinstance_user(
             self._emit_unsupported_builtin_call(nd, "isinstance");
             return None;
         }
-        if self._is_owned(operand) {
-            self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
-        }
         return _nm_hit;
     }
 
@@ -3144,9 +3131,6 @@ impl NaIRGenPass._emit_isinstance_user(
         and struct_name in self.struct_types
         and not self._arch_has_vtable(struct_name)
     ) {
-        if self._is_owned(operand) {
-            self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
-        }
         return ir.Constant(i1, 0);
     }
 
@@ -3172,9 +3156,6 @@ impl NaIRGenPass._emit_isinstance_user(
         cmp = eq if cmp is None else self.builder.or_(cmp, eq, name="isinst.or");
     }
 
-    if self._is_owned(operand) {
-        self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
-    }
     end_nonnull = self.builder.block;
     self.builder.branch(merge_bb);
 

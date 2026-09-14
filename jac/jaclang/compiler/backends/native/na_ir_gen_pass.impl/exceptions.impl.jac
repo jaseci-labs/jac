@@ -946,7 +946,7 @@ impl NaIRGenPass._end_cleanup_guard(guard: NativeCleanupGuard | None) -> None {
 }
 
 impl NaIRGenPass._codegen_cleanup_operand(
-    nd: uni.UniNode, retained: set[str]
+    nd: uni.UniNode, retained: set[str], required: bool = False
 ) -> ir.Value | None {
     expr = nd.expr if isinstance(nd, uni.CfgExpr) else nd;
     guard = self._begin_cleanup_guard(retained)
@@ -955,7 +955,7 @@ impl NaIRGenPass._codegen_cleanup_operand(
         )
         else None;
     try {
-        return self._codegen_expr(nd);
+        return self._codegen_required(nd) if required else self._codegen_expr(nd);
     } finally {
         self._end_cleanup_guard(guard);
     }

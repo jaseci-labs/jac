@@ -1252,7 +1252,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     (iter_val, elem_name, elem_type) = built;
     i8p = ir.IntType(8).as_pointer();
     _loc = "iter_for";
-    is_tuple_target = isinstance(nd.target, uni.TupleVal);
+    loop_target = nd.target;
 
     _gen_it_spill: (ir.Value | None) = None;
     if self._gen_ctx is not None and self.builder.function is self._gen_ctx.resume_fn {
@@ -1266,14 +1266,14 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     }
 
     elem_slot = self._entry_alloca(elem_type, "iter.elem");
-    if is_tuple_target {
-        targets = nd.target.values or [];
+    if isinstance(loop_target, uni.TupleVal) {
+        targets = loop_target.values or [];
         if not isinstance(elem_type, ir.LiteralStructType)
             or len(targets) != len(elem_type.elements)
             or any(self._get_name(target) is None for target in targets) {
             return False;
         }
-    } elif self._get_name(nd.target) is None {
+    } elif self._get_name(loop_target) is None {
         return False;
     }
     func = self.builder.function;
@@ -1292,8 +1292,8 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     self.builder.position_at_end(body_bb);
     yielded = self.builder.load(elem_slot, name="iterf.value");
 
-    if is_tuple_target {
-        if not self._codegen_tuple_unpack(nd.target.values, yielded, None) {
+    if isinstance(loop_target, uni.TupleVal) {
+        if not self._codegen_tuple_unpack(loop_target.values, yielded, None) {
             return False;
         }
     } else {
@@ -1301,7 +1301,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         binding = self.builder.insert_value(
             ir.Constant(binding_type, None), yielded, 0, name="iterf.binding"
         );
-        if not self._codegen_tuple_unpack([nd.target], binding, None) {
+        if not self._codegen_tuple_unpack([loop_target], binding, None) {
             return False;
         }
     }

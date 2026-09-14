@@ -1432,7 +1432,9 @@ impl NaIRGenPass._codegen_compare_chain(
         _chain_peer_saved = self._peer_container_ty;
         self._peer_container_ty = cur.type;
         try {
-            right = self._codegen_cleanup_operand(nd.rights[i], retained);
+            right = self._codegen_cleanup_operand(
+                nd.rights[i], retained, required=True
+            );
         } finally {
             self._peer_container_ty = _chain_peer_saved;
         }

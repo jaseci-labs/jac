@@ -687,11 +687,11 @@ impl NaIRGenPass._release_owned_operands(
 }
 
 impl NaIRGenPass._release_owned_args(
-    call_args: list[ir.Value], op: str = "call_arg"
+    call_args: list[ir.Value], op: str = "call_arg", loc: str = ""
 ) -> None {
     for _arg in call_args {
         if self._elem_kind(_arg.type) in ("rc_ptr", "str") and self._is_owned(_arg) {
-            self._emit_rc_release_simple(_arg, op=op, loc="");
+            self._emit_rc_release_simple(_arg, op=op, loc=loc);
         } elif (
             self?.jacval_type is not None
             and _arg.type == self.jacval_type
@@ -700,7 +700,7 @@ impl NaIRGenPass._release_owned_args(
             self._emit_elem_release(self.builder, _arg.type, _arg);
         } elif self._opt_payload_of(_arg.type) is not None and self._is_owned(_arg) {
             payload = self.builder.extract_value(_arg, 1, name="arg.optional.payload");
-            self._release_owned_args([self._mark_owned(payload)], op=op);
+            self._release_owned_args([self._mark_owned(payload)], op=op, loc=loc);
         } elif isinstance(_arg.type, ir.LiteralStructType)
             and self._gc_mode() != "none" {
             owned = _arg.na_tuple_owned;
@@ -710,7 +710,9 @@ impl NaIRGenPass._release_owned_args(
                         value = self.builder.extract_value(
                             _arg, index, name="arg.tuple.field"
                         );
-                        self._release_owned_args([self._mark_owned(value)], op=op);
+                        self._release_owned_args(
+                            [self._mark_owned(value)], op=op, loc=loc
+                        );
                     }
                 }
             }
@@ -2483,7 +2485,7 @@ impl NaIRGenPass._release_owned_temp(
     self._mark_owned(_val);
     _val.na_tuple_owned = _slot.na_tuple_owned;
     self.builder.store(ir.Constant(_slot.pointee_type, None), _slot);
-    self._release_owned_args([_val], op=op);
+    self._release_owned_args([_val], op=op, loc=loc);
 }
 
 impl NaIRGenPass._rc_strdup(
