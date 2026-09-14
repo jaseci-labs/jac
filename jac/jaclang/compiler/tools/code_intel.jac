@@ -1,23 +1,14 @@
 import os;
 import time;
-import json;
-import zlib;
 import jaclang.compiler.frontend.unitree as uni;
 import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes { Alert }
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
-import from jaclang.compiler.driver.jir {
-    SEC_SYMINDEX,
-    SECTIONS_MAGIC,
-    HEADER_SIZE,
-    create_header,
-    parse_header,
-    write_sections,
-    read_sections,
-    get_module_cache_path
+import from jaclang.compiler.tools.symbol_index {
+    SourceRef,
+    SymbolInfo,
+    SymbolExtractor
 }
-import from jaclang.compiler.driver.bccache { discover_annex_files }
 import from jaclang.jac0core.ext_registry {
     ANNEX_SUFFIXES,
     ANNEX_FOLDER,
@@ -35,14 +26,6 @@ glob _SKIP_DIRS: set[str] = {
          "dist",
          ".mypy_cache",
          ".pytest_cache"
-     },
-     _ARCH_KIND: dict[str, str] = {
-         "node": "node",
-         "walker": "walker",
-         "edge": "edge",
-         "obj": "obj",
-         "class": "class",
-         "enum": "enum"
      };
 
 
@@ -51,103 +34,6 @@ def _real(path: str) -> str {
         return str(Path(path).resolve());
     } except Exception {
         return path;
-    }
-}
-
-
-obj SourceRef {
-    has file: str,
-        line: int,
-        col: int = 0,
-        role: str = "use",
-        snippet: str = "";
-
-    def render -> str {
-        loc = f"{self.file}:{self.line}";
-        return f"{loc}  {self.snippet}" if self.snippet else loc;
-    }
-
-    def to_dict -> dict {
-        return {
-            "file": self.file,
-            "line": self.line,
-            "col": self.col,
-            "role": self.role,
-            "snippet": self.snippet
-        };
-    }
-}
-
-
-obj SymbolInfo {
-    has name: str,
-        kind: str,
-        file: str,
-        line: int,
-        col: int = 0,
-        type_str: str = "",
-        doc: str = "",
-        signature: str = "",
-        fields: list[str] = [],
-        abilities: list[str] = [],
-        base_classes: list[str] = [],
-        is_genai: bool = False;
-
-    def render -> str {
-        head = f"{self.kind} {self.name}";
-        if self.signature {
-            head += self.signature;
-        } elif self.type_str {
-            head += f": {self.type_str}";
-        }
-        lines = [f"{head}    [{self.file}:{self.line}]"];
-        if self.base_classes {
-            lines.append("  extends: " + ", ".join(self.base_classes));
-        }
-        for f in self.fields {
-            lines.append(f"  has {f}");
-        }
-        for a in self.abilities {
-            lines.append(f"  def {a}");
-        }
-        if self.doc {
-            lines.append("  " + self.doc.strip().splitlines()[0]);
-        }
-        return "\n".join(lines);
-    }
-
-    def to_dict -> dict {
-        return {
-            "name": self.name,
-            "kind": self.kind,
-            "file": self.file,
-            "line": self.line,
-            "col": self.col,
-            "type_str": self.type_str,
-            "doc": self.doc,
-            "signature": self.signature,
-            "fields": self.fields,
-            "abilities": self.abilities,
-            "base_classes": self.base_classes,
-            "is_genai": self.is_genai
-        };
-    }
-
-    static def from_dict(d: dict) -> SymbolInfo {
-        return SymbolInfo(
-            name=str(d.get("name", "")),
-            kind=str(d.get("kind", "symbol")),
-            file=str(d.get("file", "")),
-            line=int(d.get("line", 0)),
-            col=int(d.get("col", 0)),
-            type_str=str(d.get("type_str", "")),
-            doc=str(d.get("doc", "")),
-            signature=str(d.get("signature", "")),
-            fields=list(d.get("fields", [])),
-            abilities=list(d.get("abilities", [])),
-            base_classes=list(d.get("base_classes", [])),
-            is_genai=bool(d.get("is_genai", False))
-        );
     }
 }
 
@@ -214,37 +100,6 @@ obj EntryPoint {
 }
 
 
-def _combined_source_hash(file: str) -> int {
-    crc = 0;
-    try {
-        with open(file, 'rb') as f {
-            crc = zlib.crc32(f.read(), crc);
-        }
-    } except OSError as e {
-        _ = e;
-        return -1;
-    }
-    annexes: list[str] = [];
-    for suffix in ANNEX_SUFFIXES {
-        try {
-            annexes.extend(discover_annex_files(file, suffix));
-        } except Exception as e {
-            _ = e;
-        }
-    }
-    for annex in sorted(set(annexes)) {
-        try {
-            with open(annex, 'rb') as f {
-                crc = zlib.crc32(f.read(), crc);
-            }
-        } except OSError as e {
-            _ = e;
-        }
-    }
-    return crc & 0xFFFFFFFF;
-}
-
-
 obj ContextSlice {
     has query: str,
         target: SymbolInfo | None = None,
@@ -282,7 +137,7 @@ obj ContextSlice {
 }
 
 
-obj CodeIntelligence {
+obj CodeIntelligence(SymbolExtractor) {
     has proj_dir: str,
         on_event: any = None;
 
@@ -495,20 +350,6 @@ obj CodeIntelligence {
         return list(self._compiled.values());
     }
 
-    def _collect_syms(scope: uni.UniScopeNode, out: list[uni.Symbol]) {
-        for sym in scope.names_in_scope.values() {
-            out.append(sym);
-        }
-        for bucket in scope.names_in_scope_overload.values() {
-            for sym in bucket {
-                out.append(sym);
-            }
-        }
-        for kid in scope.kid_scope {
-            self._collect_syms(kid, out);
-        }
-    }
-
     def _all_syms -> list[uni.Symbol] {
         out: list[uni.Symbol] = [];
         for mod in self._modules() {
@@ -519,128 +360,6 @@ obj CodeIntelligence {
             }
         }
         return out;
-    }
-
-    def _kind_of(owner: uni.UniNode) -> str {
-        if isinstance(owner, uni.Archetype) {
-            raw = "";
-            try {
-                raw = str(owner.arch_type.value);
-            } except Exception as e {
-                _ = e;
-            }
-            return _ARCH_KIND.get(raw, raw or "obj");
-        }
-        if isinstance(owner, uni.Enum) {
-            return "enum";
-        }
-        if isinstance(owner, uni.Ability) {
-            return "ability";
-        }
-        if isinstance(owner, uni.HasVar) {
-            return "field";
-        }
-        if isinstance(owner, uni.Module) {
-            return "module";
-        }
-        return "symbol";
-    }
-
-    def _expr_str(expr: uni.UniNode | None) -> str {
-        if expr is None {
-            return "";
-        }
-        try {
-            return str(unparse_node(expr)).strip();
-        } except Exception as e {
-            _ = e;
-            return "";
-        }
-    }
-
-    def _doc_of(owner: uni.UniNode) -> str {
-        try {
-            if isinstance(owner, uni.AstDocNode) {
-                doc = owner.doc;
-                if doc is not None and doc.value {
-                    return str(doc.value).strip().strip('"');
-                }
-            }
-        } except Exception as e {
-            _ = e;
-        }
-        return "";
-    }
-
-    def _info(sym: uni.Symbol) -> SymbolInfo | None {
-        decl = sym.decl;
-        if decl is None {
-            return None;
-        }
-        owner: uni.UniNode = decl;
-        try {
-            owner = decl.name_of;
-        } except Exception as e {
-            _ = e;
-        }
-        loc = decl.loc;
-        info = SymbolInfo(
-            name=sym.sym_name,
-            kind=self._kind_of(owner),
-            file=loc.mod_path if loc else "",
-            line=loc.first_line if loc else 0,
-            col=loc.col_start if loc else 0,
-            doc=self._doc_of(owner)
-        );
-        if isinstance(owner, uni.Archetype) {
-            self._fill_archetype(info, owner);
-        } elif isinstance(owner, uni.Ability) {
-            info.signature = self._expr_str(owner.signature);
-            info.is_genai = bool(getattr(owner, "is_genai_ability", False));
-        } elif isinstance(owner, uni.HasVar) {
-            info.type_str = self._expr_str(owner.type_tag.tag)
-                if owner.type_tag
-                else "";
-        } else {
-            try {
-                owner_type = owner?.type;
-                info.type_str = str(owner_type) if owner_type else "";
-            } except Exception as e {
-                _ = e;
-            }
-        }
-        return info;
-    }
-
-    def _fill_archetype(info: SymbolInfo, arch: uni.Archetype) {
-        try {
-            for v in arch.get_has_vars() {
-                vt = self._expr_str(v.type_tag.tag) if v.type_tag else "";
-                info.fields.append(
-                    f"{v.name.sym_name}: {vt}" if vt else v.name.sym_name
-                );
-            }
-        } except Exception as e {
-            _ = e;
-        }
-        try {
-            for m in arch.get_methods() {
-                mname = m.name_ref.sym_name if m.name_ref else "?";
-                tag = " by llm" if getattr(m, "is_genai_ability", False) else "";
-                info.abilities.append(mname + "()" + tag);
-            }
-        } except Exception as e {
-            _ = e;
-        }
-        try {
-            if arch.base_classes {
-                for b in arch.base_classes {
-                    info.base_classes.append(self._expr_str(b));
-                }
-            }
-        } except Exception as e {
-            _ = e;
-        }
     }
 
     def _resolve(name: str) -> list[uni.Symbol] {

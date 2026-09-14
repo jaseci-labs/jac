@@ -5,6 +5,7 @@ Run from the repository root with a Jac executable that includes
 
 ```sh
 jac run scripts/lsp_bench.jac --scenario medium --rounds 5 --output /tmp/lsp-results
+jac run scripts/lsp_bench.jac --scenario annex --rounds 5 --output /tmp/lsp-results
 jac run scripts/lsp_bench.jac --scenario workspace --documents 20 --rounds 3 --output /tmp/lsp-results
 jac run scripts/lsp_bench.jac --scenario soak --iterations 100 --output /tmp/lsp-results
 ```
@@ -12,7 +13,8 @@ jac run scripts/lsp_bench.jac --scenario soak --iterations 100 --output /tmp/lsp
 `small`, `medium`, and `large` generate 10, 250, and 1,250 functions. They measure
 opening, the first and subsequent semantic queries, edit-to-diagnostics latency,
 completion and hover queued immediately after an edit, a ten-edit burst, and
-cancellation. `workspace` changes a closed dependency and verifies diagnostics
+cancellation. `annex` moves the 250 function bodies into an implementation annex,
+edits that annex, and queries the declaration file. `workspace` changes a closed dependency and verifies diagnostics
 in every open consumer through repeated break/fix cycles. `soak` opens, edits,
 and closes different modules with different imports, retaining a memory sample
 after every completed close.

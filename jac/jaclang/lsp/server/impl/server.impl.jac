@@ -84,7 +84,9 @@ impl rename(
 impl references(
     ls: JacLangServer, params: lspt.ReferenceParams
 ) -> list[lspt.Location] {
-    return ls.get_references(params.text_document.uri, params.position);
+    return ls.get_references(
+        params.text_document.uri, params.position, params.context.include_declaration
+    );
 }
 
 impl definition(

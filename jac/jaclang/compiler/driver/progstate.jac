@@ -2,6 +2,7 @@ import os;
 import sys;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
+import from jaclang.compiler.frontend.roles { MainRole }
 import from jaclang.compiler.passes.transform { Alert, PassResult }
 import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
@@ -60,7 +61,7 @@ obj ModuleHub {
         if prev is None or prev is mod {
             return None;
         }
-        was_main = self.mod.main is prev;
+        was_main = any(item is prev for item in [self.mod->:MainRole:->]);
         self.detach(prev);
         if was_main {
             self.mod.main_mod = mod;
@@ -70,7 +71,7 @@ obj ModuleHub {
     }
 
     def detach(module: uni.Module) {
-        if self.mod.main is module {
+        if any(item is module for item in [self.mod->:MainRole:->]) {
             self.mod.main_mod = None;
         }
         self.mod.set_kids(

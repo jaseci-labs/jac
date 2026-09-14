@@ -98,16 +98,59 @@ impl JacProgram.release_analysis_context(self: JacProgram, identity: str) -> set
         return set();
     }
     program = context.program;
-    programs = program.owned_contexts() if program is owner else [program];
-    if any(item.scratch.compile_depth for item in programs) {
+    if program.scratch.compile_depth {
         raise RuntimeError('Cannot release an active analysis context');
     }
-    paths = {path for item in programs for path in item.mod.hub};
-    program.release_compile_closure(collect=False, retain_inputs=True);
+    paths = set(program.mod.hub);
+    program._release_local_state(retain_stubs=False, retain_inputs=True);
     if program is not owner {
         context.program = None;
     }
     return paths;
+}
+
+impl JacProgram.analysis_cache_usage(self: JacProgram) -> tuple[int, int] {
+    context_count = 0;
+    modules: dict[int, uni.Module] = {};
+    for context in self.owned_contexts() {
+        if context.mod.hub {
+            context_count += 1;
+        }
+        for module in context.mod.hub.values() {
+            modules[id(module)] = module;
+        }
+    }
+    return (
+        context_count,
+        sum(len(module._in_mod_nodes) for module in modules.values())
+    );
+}
+
+impl JacProgram.trim_analysis_cache(
+    self: JacProgram, budget: AnalysisCacheBudget
+) -> set[str] {
+    owner = self.context_root if self.context_root is not None else self;
+    released: set[str] = set();
+    for identity in list(owner.contexts) {
+        (context_count, node_count) = owner.analysis_cache_usage();
+        if context_count <= budget.max_contexts and node_count <= budget.max_nodes {
+            return released;
+        }
+        released.update(owner.release_analysis_context(identity));
+    }
+
+    for context in owner.owned_contexts() {
+        (context_count, node_count) = owner.analysis_cache_usage();
+        if context_count <= budget.max_contexts and node_count <= budget.max_nodes {
+            break;
+        }
+        if context.scratch.compile_depth {
+            raise RuntimeError('Cannot trim an active analysis context');
+        }
+        released.update(context.mod.hub);
+        context._release_local_state(retain_stubs=False, retain_inputs=True);
+    }
+    return released;
 }
 
 impl JacProgram.install_module(
@@ -449,6 +492,16 @@ impl JacProgram.release_compile_closure(
             self.source_store.clear();
         }
     }
+    self._release_local_state(retain_stubs, retain_inputs);
+    if collect and unit_collect_budget.due() {
+        import gc;
+        gc.collect();
+    }
+}
+
+impl JacProgram._release_local_state(
+    self: JacProgram, retain_stubs: bool, retain_inputs: bool
+) -> None {
     self.release_native_dep_units();
     self.hub.reset(retain_stubs=retain_stubs);
     self.mod = self.hub.mod;
@@ -468,10 +521,6 @@ impl JacProgram.release_compile_closure(
     self.analysis.task_owners.clear();
     if self._iface is not None {
         self._iface.on_closure_release();
-    }
-    if collect and unit_collect_budget.due() {
-        import gc;
-        gc.collect();
     }
 }
 

@@ -182,9 +182,33 @@ impl JacLangServer._ensure_query(request: Request) -> None {
     }
     self._sync_sources(self.workspace.snapshot());
     path = discover_base_file(_path_of(uri)) or _path_of(uri);
-    if self.program.find_module(path) is None
-        or _path_of(uri) not in self.sem_managers {
-        self.type_check_file(uri, request.cancel_token, symbols_only=True);
+    products = self.module_manager.products.get(_path_of(uri));
+    if products is not None
+        and products.inputs is not None
+        and not products.inputs.is_current(self.program.source_store) {
+        self.module_manager.invalidate(products.unit_path);
+        products = None;
+    }
+    if products is not None
+        and request.method
+            in (
+                lspt.TEXT_DOCUMENT_DOCUMENT_SYMBOL,
+                lspt.TEXT_DOCUMENT_SEMANTIC_TOKENS_FULL
+            ) {
+        return;
+    }
+    needs_types = request.method
+        in (lspt.TEXT_DOCUMENT_REFERENCES, lspt.TEXT_DOCUMENT_RENAME);
+    module = self.program.find_module(path);
+    owner = self.program.module_owner(module) if module is not None else None;
+    if module is None
+        or _path_of(uri) not in self.sem_managers
+        or (
+            needs_types
+            and owner is not None
+            and not owner.analysis.analyses_run.provides(module, AnalysisFact.TYPE_OF)
+        ) {
+        self.type_check_file(uri, request.cancel_token, symbols_only=not needs_types);
     }
 }
 
@@ -409,6 +433,9 @@ impl JacLangServer.dispatcher -> None {
                 );
             }
         } finally {
+            with self._compiler_lock {
+                self.module_manager.trim();
+            }
             self.work.finish(item, complete=not item.cancel_token.is_set());
         }
     }
@@ -465,15 +492,13 @@ impl JacLangServer.get_semantic_tokens(file_path: str) -> lspt.SemanticTokens {
 impl JacLangServer.rename_symbol(
     file_path: str, position: lspt.Position, new_name: str
 ) -> Optional[lspt.WorkspaceEdit] {
-    node_selected = self.get_token_at_position(file_path, position);
-    if node_selected and node_selected.sym {
+    references = self.get_references(file_path, position);
+    if references {
         changes: dict[str, list[lspt.TextEdit]] = {};
-        for nd in [*node_selected.sym.uses, node_selected.sym.defn[0]] {
-            key = _uri_of(nd.loc.mod_path);
-            new_edit = lspt.TextEdit(
-                range=utils.create_range(nd.loc), new_text=new_name
+        for ref in references {
+            utils.add_unique_text_edit(
+                changes, ref.uri, lspt.TextEdit(range=ref.range, new_text=new_name)
             );
-            utils.add_unique_text_edit(changes, key, new_edit);
         }
         return lspt.WorkspaceEdit(changes=changes);
     }
@@ -481,33 +506,24 @@ impl JacLangServer.rename_symbol(
 }
 
 impl JacLangServer.get_references(
-    file_path: str, position: lspt.Position
+    file_path: str, position: lspt.Position, include_declaration: bool = True
 ) -> list[lspt.Location] {
     node_selected = self.get_token_at_position(file_path, position);
     if node_selected and node_selected.sym {
-        list_of_references: list[lspt.Location] = [
+        return [
             lspt.Location(
-                uri=_uri_of(cur_node.loc.mod_path),
-                range=utils.create_range(cur_node.loc)
-            ) for cur_node in [*node_selected.sym.defn, *node_selected.sym.uses]
+                uri=_uri_of(ref.file),
+                range=lspt.Range(
+                    start=lspt.Position(max(0, ref.line - 1), max(0, ref.col - 1)),
+                    end=lspt.Position(max(0, ref.end_line - 1), max(0, ref.end_col - 1))
+                )
+            )
+            for ref in self.module_manager.index.references_for_symbol(
+                node_selected.sym, self.program.source_store, include_declaration
+            )
         ];
-        return list_of_references;
     }
     return [];
-}
-
-def _definition_symbol(sym: uni.Symbol) -> uni.Symbol {
-    cur = sym;
-    seen: set[int] = set();
-    while cur.provider is not None and id(cur) not in seen {
-        seen.add(id(cur));
-        target = cur.provider.definition();
-        if target is None or target is cur {
-            break;
-        }
-        cur = target;
-    }
-    return cur;
 }
 
 impl JacLangServer.get_definition(

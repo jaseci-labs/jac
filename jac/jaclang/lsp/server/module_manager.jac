@@ -1,11 +1,19 @@
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compilation_context {
+    AnalysisCacheBudget,
+    InputManifest
+}
+import from jaclang.compiler.tools.symbol_index { SymbolIndex }
+import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import from .sem_manager { SemTokManager }
 import from .source_view { SourceView }
 import jaclang.lsp.protocol.types as lspt;
 
 obj DocumentProducts {
-    has semantic_tokens: list[int],
+    has unit_path: str,
+        inputs: InputManifest | None,
+        semantic_tokens: list[int],
         outline: list[lspt.DocumentSymbol] | None = None;
 }
 
@@ -14,8 +22,11 @@ obj ModuleManager {
         sem_managers: dict[str, SemTokManager],
         source_views: dict[str, SourceView] = {},
         products: dict[str, DocumentProducts] = {},
-        completions: dict[int, list[lspt.CompletionItem]] = {};
+        completions: dict[int, list[lspt.CompletionItem]] = {},
+        index: SymbolIndex = SymbolIndex(),
+        budget: AnalysisCacheBudget = AnalysisCacheBudget();
 
+    def trim -> None;
     def invalidate(path: str) {
         self.program.invalidate_module(path);
         self.program.drop_module_alerts(path);
@@ -30,6 +41,11 @@ obj ModuleManager {
             self.products.pop(file, None);
         }
         self.products.pop(path, None);
+        for file in list(self.products) {
+            if self.products[file].unit_path == path {
+                self.products.pop(file);
+            }
+        }
     }
 
     def forget(path: str) {

@@ -819,7 +819,7 @@ impl JacCompiler.parse_str(
         target_program.install_module(hub_key, mod);
         return mod;
     }
-    if target_program.mod.main.stub_only {
+    if target_program.mod.main_mod is None {
         old_hub = target_program.mod.hub;
         target_program.reset_module_root(uni.ProgramModule(main_mod=mod));
 

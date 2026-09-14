@@ -8,7 +8,10 @@ This is the memory contract per-module release relies on.
 import gc;
 import weakref;
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compilation_context { CompilationContext }
+import from jaclang.compiler.driver.compilation_context {
+    CompilationContext,
+    AnalysisCacheBudget
+}
 
 glob SRC = "def area(r: float) -> float { return 3.14 * r * r; }\n";
 
@@ -87,6 +90,52 @@ test "execution artifacts survive tree release until their module is invalidated
     assert program.hub.artifacts[path] is carrier;
     program.invalidate_module(path);
     assert path not in program.hub.artifacts;
+}
+
+test "retiring the root analysis context leaves other contexts alive" {
+    import from jaclang.compiler.driver.compilation_context { context_program }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    owner = JacProgram.for_analysis();
+    first = context_program(owner, CompileOptions(entry_point='/tmp/root-context.jac'));
+    second = context_program(
+        owner, CompileOptions(entry_point='/tmp/other-context.jac')
+    );
+    (first_path, first_ref, _, _) = _probe(first);
+    second_module = second.parse_str(SRC, 'other-context.jac');
+    first_identity = first.context_key;
+    owner.release_analysis_context(first_identity);
+    gc.collect();
+    assert first_ref() is None;
+    assert second.mod.hub[second_module.loc.mod_path] is second_module;
+    assert owner.contexts[second.context_key].program is second;
+    assert owner.find_module(first_path) is None;
+    owner.release_compile_closure();
+}
+
+test "analysis cache budgets retire least recently used contexts and oversized units" {
+    import from jaclang.compiler.driver.compilation_context { context_program }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    owner = JacProgram.for_analysis();
+    options = [CompileOptions(entry_point=f'/tmp/budget-{i}.jac') for i in range(3)];
+    refs: list = [];
+    for (i, option) in enumerate(options) {
+        program = context_program(owner, option);
+        module = program.parse_str(SRC, f'/tmp/budget-{i}.jac');
+        refs.append(weakref.ref(module));
+    }
+    del module;
+    del program;
+    context_program(owner, options[0]);
+    owner.trim_analysis_cache(AnalysisCacheBudget(max_contexts=2));
+    gc.collect();
+    assert refs[0]() is not None and refs[1]() is None and refs[2]() is not None;
+    assert owner.analysis_cache_usage()[0] == 2;
+    owner.trim_analysis_cache(AnalysisCacheBudget(max_nodes=0));
+    gc.collect();
+    assert all(ref() is None for ref in refs);
+    assert owner.analysis_cache_usage() == (0, 0);
+    assert len(owner.contexts) == 3 , 'tree eviction erased context identities';
+    owner.release_compile_closure();
 }
 
 test "retiring a context releases its compiler and preserves its dependency identity" {

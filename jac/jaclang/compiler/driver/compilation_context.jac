@@ -16,6 +16,11 @@ obj CompilationContext {
         program: JacProgram | None = None;
 }
 
+obj AnalysisCacheBudget {
+    has max_contexts: int = 8,
+        max_nodes: int = 100000;
+}
+
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
          'jac_active_options', `default=None
      ),

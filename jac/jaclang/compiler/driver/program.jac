@@ -20,7 +20,8 @@ import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.passes.transform { Transform }
 import type from jaclang.compiler.driver.compilation_context {
     SourceStore,
-    CompilationContext
+    CompilationContext,
+    AnalysisCacheBudget
 }
 
 class JacProgram {
@@ -48,6 +49,12 @@ class JacProgram {
     def dependency_graphs(self: JacProgram) -> list[DepGraph];
     def module_owner(self: JacProgram, module: uni.Module) -> JacProgram | None;
     def release_analysis_context(self: JacProgram, identity: str) -> set[str];
+    def analysis_cache_usage(self: JacProgram) -> tuple[int, int];
+    def trim_analysis_cache(self: JacProgram, budget: AnalysisCacheBudget) -> set[str];
+    def _release_local_state(
+        self: JacProgram, retain_stubs: bool, retain_inputs: bool
+    ) -> None;
+
     def _get_compiler(self: JacProgram) -> JacCompiler;
     def iface_registry(self: JacProgram) -> any;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;

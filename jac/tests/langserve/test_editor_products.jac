@@ -7,6 +7,7 @@ import from unittest.mock { patch }
 import from jaclang.lsp.server.engine { JacLangServer }
 import from jaclang.lsp.protocol.server { Request }
 import from io { BytesIO }
+import jaclang.lsp.protocol.types as lspt;
 
 test "cached outlines and tokens survive compiler graph release" {
     with TemporaryDirectory() as directory {
@@ -115,6 +116,73 @@ test "lazy queries validate cached compiler inputs before publishing" {
             assert server.program.find_module(str(path)) is None;
             assert server.program.source_store.snapshot is None;
             assert request.inputs_current is None;
+        } finally {
+            server.shutdown();
+        }
+    }
+}
+
+test "evicted compiler contexts keep navigation products and rebuild only for semantic queries" {
+    with TemporaryDirectory() as directory {
+        library = Path(directory) / 'lib.jac';
+        consumer = Path(directory) / 'main.jac';
+        library.write_text('def answer -> int { return 42; }\n');
+        consumer.write_text(
+            'import from .lib { answer }\ndef run -> int { return answer(); }\n'
+        );
+        server = JacLangServer();
+        server.work.stop();
+        server.worker.join();
+        try {
+            server.module_manager.budget.max_contexts = 1;
+            assert server.type_check_file(library.as_uri());
+            module = server.sem_managers[str(library)].ir;
+            reference = weakref.ref(module);
+            del module;
+            assert server.type_check_file(consumer.as_uri());
+            server.module_manager.trim();
+            gc.collect();
+            assert reference() is None;
+            assert str(library) not in server.sem_managers;
+            assert server.get_outline(library.as_uri());
+            assert server.get_semantic_tokens(library.as_uri()).data;
+            request = Request(
+                1,
+                lspt.TEXT_DOCUMENT_DOCUMENT_SYMBOL,
+                {'textDocument': {'uri': library.as_uri()}},
+                server.workspace.revision
+            );
+            with patch.object(
+                server,
+                'type_check_file',
+                side_effect=AssertionError('outline recompiled an evicted tree')
+            ) {
+                server._ensure_query(request);
+            }
+            refs = server.get_references(consumer.as_uri(), lspt.Position(1, 27));
+            assert {ref.uri for ref in refs} == {library.as_uri(), consumer.as_uri()} , str(
+                refs
+            );
+            uses = server.get_references(
+                consumer.as_uri(), lspt.Position(1, 27), False
+            );
+            assert uses and all(ref.uri == consumer.as_uri() for ref in uses) , str(
+                uses
+            );
+            request = Request(
+                2,
+                lspt.TEXT_DOCUMENT_HOVER,
+                {'textDocument': {'uri': library.as_uri()}},
+                server.workspace.revision
+            );
+            with patch.object(server, 'log_error') as errors {
+                server._ensure_query(request);
+                assert not errors.called , str(errors.call_args_list);
+            }
+            assert str(library) in server.sem_managers , (
+                f'{request.method} {request.params}, query revision {request.revision}, workspace {server.workspace.revision}, '
+                f'cancelled {request.cancel_token.is_set()}, responded {request.responded}'
+            );
         } finally {
             server.shutdown();
         }

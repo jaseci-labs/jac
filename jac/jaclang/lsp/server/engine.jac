@@ -6,8 +6,12 @@ import from typing { Optional }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { SymbolType }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import from jaclang.compiler.passes.transform { Alert }
 import from jaclang.compiler.driver.bccache { discover_base_file }
+import from jaclang.compiler.tools.symbol_index {
+    definition_symbol as _definition_symbol
+}
 import from jaclang.lsp.server.utils { doc_of_sym, get_completion_items }
 import from jaclang.compiler.types.types {
     ClassType,
@@ -140,7 +144,10 @@ obj JacLangServer(LanguageServer) {
         from_loc: uni.ModulePath, item_name: str
     ) -> Optional[lspt.Location];
 
-    def get_references(file_path: str, position: lspt.Position) -> list[lspt.Location];
+    def get_references(
+        file_path: str, position: lspt.Position, include_declaration: bool = True
+    ) -> list[lspt.Location];
+
     def rename_symbol(
         file_path: str, position: lspt.Position, new_name: str
     ) -> Optional[lspt.WorkspaceEdit];

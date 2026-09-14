@@ -37,33 +37,44 @@ obj Samples {
     }
 }
 
-def fixture(directory: Path, functions: int) -> tuple[Path, str, dict] {
+def fixture(
+    directory: Path, functions: int, annex: bool = False
+) -> tuple[Path, str, dict] {
     (directory / 'jac.toml').write_text('[project]\nname="lsp-benchmark"\n');
     source = (
         'obj Counter {\n    has value: int = 0;\n'
         '    def add(delta: int) -> int {\n'
         '        return self.value + delta;\n    }\n}\n'
     );
+    implementation = '';
     for index in range(functions) {
-        source += f'def calc_{index}(x: int) -> int {{\n    y = x + {index};\n    return y * 2;\n}}\n';
+        body = f'calc_{index}(x: int) -> int {{\n    y = x + {index};\n    return y * 2;\n}}\n';
+        if annex {
+            source += f'def calc_{index}(x: int) -> int;\n';
+            implementation += 'impl ' + body;
+        } else {
+            source += 'def ' + body;
+        }
     }
     source += 'with entry {\n    counter = Counter();\n    print(counter.add(calc_0(1)));\n}\n';
     path = directory / 'main.jac';
     path.write_text(source);
-    return (
-        path,
-        source,
-        {
-            'textDocument': {'uri': path.as_uri()},
-            'position': {'line': len(source.splitlines()) - 2, 'character': 11}
-        }
-    );
+    params = {
+        'textDocument': {'uri': path.as_uri()},
+        'position': {'line': len(source.splitlines()) - 2, 'character': 11}
+    };
+    if annex {
+        path = directory / 'main.impl.jac';
+        source = implementation;
+        path.write_text(source);
+    }
+    return (path, source, params);
 }
 
 def single_file(
-    client: LspClient, directory: Path, functions: int, rounds: int
+    client: LspClient, directory: Path, functions: int, rounds: int, annex: bool = False
 ) -> dict[str, Samples] {
-    (path, source, params) = fixture(directory, functions);
+    (path, source, params) = fixture(directory, functions, annex);
     times: dict[str, Samples] = {};
     opened = Samples();
     start = time.monotonic();
@@ -276,7 +287,7 @@ def main -> int {
     );
     parser.add_argument(
         '--scenario',
-        choices=['small', 'medium', 'large', 'workspace', 'soak'],
+        choices=['small', 'medium', 'large', 'annex', 'workspace', 'soak'],
         `default='medium'
     );
     parser.add_argument('--rounds', type=int, `default=5);
@@ -337,8 +348,11 @@ def main -> int {
                     else single_file(
                         client,
                         Path(directory),
-                        {'small': 10, 'medium': 250, 'large': 1250}[args.scenario],
-                        args.rounds
+                        {'small': 10, 'medium': 250, 'large': 1250, 'annex': 250}[
+                            args.scenario
+                        ],
+                        args.rounds,
+                        annex=args.scenario == 'annex'
                     );
             }
             results['operations'] = {

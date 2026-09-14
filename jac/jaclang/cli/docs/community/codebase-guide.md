@@ -197,6 +197,12 @@ lifetime and survive eviction of those trees.
 Executable artifacts also have a separate lifetime: dropping an analysis tree
 does not unload code that is still executing.
 
+Each `CompilationContext` keeps its dependency graph independently of its
+optional live compiler program. The language service retires the least recently
+used contexts when retained analysis exceeds eight contexts or 100,000 syntax
+nodes. The root context can release its own trees without releasing other
+contexts. These are retention limits; a compilation can temporarily exceed them.
+
 The protocol reader applies each document-change batch atomically and captures
 its revision. `lsp/server/scheduler.jac` coalesces checks per compilation unit,
 preserves work for other documents, and bounds the interactive request queue.
@@ -221,6 +227,15 @@ annex products. File watcher notifications use the same dependency invalidation
 path as buffer edits; renaming an open document preserves its unsaved text and
 version. The server registers file watchers when the client supports dynamic
 registration.
+
+`compiler/tools/symbol_index.jac` shares symbol descriptions with code
+intelligence and stores definitions and reference locations without tree
+references. Index shards carry content digests, annex membership, and a
+compilation-context identity. The existing JIR symbol-index section persists
+shards alongside other compiler products. Loading validates the complete input
+manifest, and dirty editor inputs stay in memory. Reference and rename queries
+combine these records with the current declaration, so retiring compiler trees
+does not discard previously indexed references.
 
 ### `project/`
 
