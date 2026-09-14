@@ -117,6 +117,11 @@ impl JacLangServer._sync_sources(
         }
     }
     affected: set[str] = set();
+    open_units = {
+        discover_base_file(os.path.realpath(document.path))
+            or os.path.realpath(document.path)
+        for document in snapshot.documents.values()
+    };
     for path in changed {
         owner = discover_base_file(path) or path;
         affected.add(owner);
@@ -125,7 +130,7 @@ impl JacLangServer._sync_sources(
     for path in affected {
         self.module_manager.invalidate(path);
         uri = _uri_of(path);
-        if uri in snapshot.documents {
+        if path in open_units {
             with self.work.condition {
                 if uri not in self.work.pending
                     and not (

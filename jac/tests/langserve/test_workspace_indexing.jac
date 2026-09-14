@@ -3,6 +3,7 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
 import from jaclang.lsp.protocol.server { Workspace, Request }
+import from jaclang.lsp.protocol.types { TextDocumentItem }
 import from jaclang.lsp.server.engine { JacLangServer }
 import from jaclang.lsp.server.scheduler { WorkQueue, WorkItem, WorkKind }
 
@@ -128,4 +129,27 @@ test "workspace indexing completes before rename while other requests stay respo
     assert work.take() is rename;
     work.finish(rename);
     work.stop();
+}
+
+test "an open implementation annex schedules its compilation unit as editor work" {
+    with TemporaryDirectory() as directory {
+        base = Path(directory) / 'main.jac';
+        annex = Path(directory) / 'main.impl.jac';
+        base.write_text('def answer -> int;\n');
+        annex.write_text('impl answer -> int { return 42; }\n');
+        server = JacLangServer();
+        server.work.stop();
+        server.worker.join();
+        server.work = WorkQueue();
+        try {
+            server.workspace.put_text_document(
+                TextDocumentItem(uri=annex.as_uri(), text=annex.read_text(), version=1)
+            );
+            server._sync_sources(server.workspace.snapshot());
+            assert server.work.pending[base.as_uri()].kind == WorkKind.CHECK;
+            assert annex.as_uri() not in server.work.pending;
+        } finally {
+            server.shutdown();
+        }
+    }
 }

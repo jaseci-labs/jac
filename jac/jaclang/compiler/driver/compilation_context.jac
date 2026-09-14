@@ -212,7 +212,7 @@ obj SourceStore {
         captured = SourceSnapshot(dict(self.overrides));
         self.snapshot = captured;
         try {
-            with source_scope(captured.read) {
+            with source_scope(captured.read, self.annexes) {
                 yield captured;
             }
         } finally {
@@ -241,16 +241,13 @@ obj SourceStore {
     }
 
     def discover_annex_paths(path: str) -> list[str] {
-        import from jaclang.compiler.driver.bccache {
-            discover_annex_files,
-            discover_base_file
-        }
+        import from jaclang.compiler.driver.bccache { discover_base_file }
+        import from jaclang.project.source { disk_annex_paths }
         path = os.path.realpath(path);
         if not path.endswith('.jac') or discover_base_file(path) is not None {
             return [];
         }
-        paths = set(discover_annex_files(path, '.impl.jac'));
-        paths.update(discover_annex_files(path, '.test.jac'));
+        paths = set(disk_annex_paths(path));
         paths.update(
             candidate
             for candidate in self.overrides
@@ -287,9 +284,9 @@ obj SourceStore {
     }
 
     def fingerprint(path: str) -> str {
+        import from jaclang.project.source { source_unit_revision }
         try {
-            inputs = (os.path.realpath(path), self.read(path), self.annexes(path));
-            return hashlib.sha256(repr(inputs).encode()).hexdigest();
+            return source_unit_revision(path, self.read(path), self.annexes(path));
         } except OSError {
             return '';
         }

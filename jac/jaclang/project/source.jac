@@ -1,20 +1,61 @@
 import os;
+import hashlib;
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 import type from jaclang.compiler.frontend.srcloc { Span }
 
-glob _source_reader: ContextVar[Callable[[str], str] | None] = ContextVar(
-         'jac_source_reader', `default=None
+obj SourceAccess {
+    has read: Callable[[str], str],
+        annexes: Callable[[str], list[tuple[str, str]]] | None = None;
+}
+
+glob _source_access: ContextVar[SourceAccess | None] = ContextVar(
+         'jac_source_access', `default=None
      );
 
 @contextmanager
-def source_scope(reader: Callable[[str], str]) -> Iterator[None] {
-    token = _source_reader.set(reader);
+def source_scope(
+    reader: Callable[[str], str],
+    annexes: Callable[[str], list[tuple[str, str]]] | None = None
+) -> Iterator[None] {
+    token = _source_access.set(SourceAccess(reader, annexes));
     try {
         yield ;
     } finally {
-        _source_reader.reset(token);
+        _source_access.reset(token);
     }
+}
+
+def disk_annex_paths(path: str) -> list[str] {
+    import from jaclang.compiler.driver.bccache {
+        discover_annex_files,
+        discover_base_file
+    }
+    if not path.endswith('.jac') or discover_base_file(path) is not None {
+        return [];
+    }
+    return sorted(
+        set(discover_annex_files(path, '.impl.jac'))
+            | set(discover_annex_files(path, '.test.jac'))
+    );
+}
+
+def read_source_unit(path: str) -> tuple[str, list[tuple[str, str]]] {
+    access = _source_access.get();
+    annexes = access.annexes(path)
+        if access is not None and access.annexes is not None
+        else [
+            (read_file_with_encoding(annex), annex) for annex in disk_annex_paths(path)
+        ];
+    return (read_file_with_encoding(path), annexes);
+}
+
+def source_unit_revision(
+    path: str, source: str, annexes: list[tuple[str, str]]
+) -> str {
+    return hashlib.sha256(
+        repr((os.path.realpath(path), source, annexes)).encode()
+    ).hexdigest();
 }
 
 def iter_source_units(directory: str) -> Iterator[str] {
@@ -341,9 +382,9 @@ def decode_source(data: bytes, file_path: str = '') -> str {
 
 
 def read_file_with_encoding(file_path: str) -> str {
-    reader = _source_reader.get();
-    if reader is not None {
-        return reader(file_path);
+    access = _source_access.get();
+    if access is not None {
+        return access.read(file_path);
     }
     try {
         with open(file_path, 'rb') as source {
@@ -358,12 +399,12 @@ def read_file_with_encoding(file_path: str) -> str {
 }
 
 def source_exists(file_path: str) -> bool {
-    reader = _source_reader.get();
-    if reader is None {
+    access = _source_access.get();
+    if access is None {
         return os.path.isfile(file_path);
     }
     try {
-        reader(file_path);
+        access.read(file_path);
         return True;
     } except OSError {
         return False;
