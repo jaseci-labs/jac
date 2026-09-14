@@ -532,6 +532,39 @@ def resolve_native_module(
     clean = module_name.lstrip('.');
     path_name = clean.replace('.', os.sep);
 
+    if clean.startswith('jaclang.') {
+        import from jaclang.project.modresolver { resolve_module }
+        import from jaclang.compiler.native_scope {
+            in_native_scope_path,
+            scope_lowering_active
+        }
+        (candidate, language) = resolve_module(clean, os.path.join(base_dir, ""));
+        if language != 'jac' or not candidate.endswith('.jac') {
+            return (None, None);
+        }
+        candidate = os.path.realpath(candidate);
+        if (scope_lowering_active() and in_native_scope_path(candidate))
+            or clean in SHARED_RUNTIME_MODULES {
+            return (candidate, candidate);
+        }
+        if allow_inferred {
+            search = os.path.abspath(base_dir);
+            while True {
+                local = _native_variant_path(os.path.join(search, path_name));
+                if local is not None {
+                    native = _inferred_native_path(candidate);
+                    return (native, native);
+                }
+                parent = os.path.dirname(search);
+                if parent == search {
+                    break;
+                }
+                search = parent;
+            }
+        }
+        return (None, None);
+    }
+
     if allow_inferred {
         local = _inferred_native_path(
             _native_variant_path(os.path.join(base_dir, clean))
@@ -555,25 +588,6 @@ def resolve_native_module(
                 }
                 search = parent;
             }
-        }
-    }
-
-    if clean.startswith('jaclang.') {
-        import jaclang as _jl;
-        _pkg = os.path.dirname(os.path.abspath(_jl.__file__));
-        _parts = clean.split('.')[1:];
-        _cand = os.path.join(_pkg, *_parts) + '.jac';
-        import from jaclang.compiler.native_scope {
-            in_native_scope_path,
-            scope_lowering_active
-        }
-        if scope_lowering_active() {
-            if in_native_scope_path(_cand) and os.path.isfile(_cand) {
-                return (path_name, _cand);
-            }
-        }
-        if clean in SHARED_RUNTIME_MODULES and os.path.isfile(_cand) {
-            return (path_name, _cand);
         }
     }
 
