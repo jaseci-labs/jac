@@ -274,6 +274,7 @@ impl TextDocument._apply_full_change(change: any) -> None {
 impl Workspace.postinit -> None {
     self.lock = threading.RLock();
     self._position_codec = PositionCodec();
+    self._view = ContextVar('lsp_workspace_view', `default=None);
     if self.root_uri is not None {
         self._root_path = uris.to_fs_path(self.root_uri);
     } else {
@@ -364,6 +365,17 @@ impl Workspace.encode_semantic_tokens(uri: str, data: list[int]) -> list[int] {
 }
 
 impl Workspace.get_text_document(doc_uri: str) -> TextDocument {
+    view = self._view.get();
+    if view is not None {
+        previous = view.snapshot.documents.get(doc_uri);
+        document = TextDocument(
+            uri=doc_uri,
+            _source=view.reader(uris.to_fs_path(doc_uri) or doc_uri),
+            version=previous.version if previous is not None else None
+        );
+        document._position_codec = self._position_codec;
+        return document;
+    }
     with self.lock {
         if doc_uri in self._text_documents {
             return self._text_documents[doc_uri];
@@ -416,7 +428,11 @@ impl Workspace.change_text_document(params: DidChangeTextDocumentParams) -> None
     }
 }
 
-impl Workspace.snapshot -> WorkspaceSnapshot {
+impl Workspace.snapshot(live: bool = False) -> WorkspaceSnapshot {
+    view = self._view.get();
+    if view is not None and not live {
+        return view.snapshot;
+    }
     with self.lock {
         return WorkspaceSnapshot(
             self.revision,
@@ -622,7 +638,7 @@ impl LanguageServer._run_request(request: Request) -> None {
         );
         return;
     }
-    if request.revision != self.workspace.revision {
+    if not request.is_current(self.workspace) {
         self._finish_request(
             request,
             error=ResponseErrorCode.ContentModified,
@@ -641,7 +657,7 @@ impl LanguageServer._run_request(request: Request) -> None {
                 error=ResponseErrorCode.RequestCancelled,
                 message='Request cancelled'
             );
-        } elif request.revision != self.workspace.revision {
+        } elif not request.is_current(self.workspace) {
             self._finish_request(
                 request,
                 error=ResponseErrorCode.ContentModified,
@@ -687,18 +703,19 @@ impl LanguageServer._finish_request(
             message = 'Analysis inputs changed';
         }
     }
-    with self._request_lock {
+    with self.workspace.lock, self._request_lock {
         if request.responded {
             return;
         }
         if error is None and request.cancel_token.is_set() {
             error = ResponseErrorCode.RequestCancelled;
             message = 'Request cancelled';
-        } elif error is None and request.revision != self.workspace.revision {
+        } elif error is None and not request.is_current(self.workspace) {
             error = ResponseErrorCode.ContentModified;
             message = 'Workspace changed';
         }
         request.responded = True;
+        request.snapshot = None;
         self._requests.pop(request.message_id, None);
     }
     if error is not None {

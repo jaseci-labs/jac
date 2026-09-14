@@ -188,9 +188,16 @@ obj SourceSnapshot {
     }
 
     def is_current(store: SourceStore) -> bool {
-        return self.overrides == store.overrides
-            and all(source_bytes(path) == data for (path, data) in self.disk.items())
-            and all(
+        for path in self.disk.keys() | self.modules | self.read_paths {
+            expected = self.overrides[path].encode('utf-8')
+                if path in self.overrides else self.disk.get(path);
+            actual = store.overrides[path].encode('utf-8')
+                if path in store.overrides else source_bytes(path);
+            if actual != expected {
+                return False;
+            }
+        }
+        return all(
                 store.discover_annex_paths(path) == paths
                 for (path, paths) in self.annex_paths.items()
             );
@@ -315,9 +322,7 @@ def bind_options(
         bound.default_codespace = 'native';
         bound.force_codespace = 'native';
     }
-    new_entry = bool(
-        options.entry_point and options.entry_point != program.options.entry_point
-    );
+    new_entry = bool(options.entry_point);
     if not new_entry and not (bound.nogc_enforce_all or bound.memory_enforce) {
         bound.nogc_enforce_all = program.options.nogc_enforce_all;
         bound.memory_enforce = list(program.options.memory_enforce or []);

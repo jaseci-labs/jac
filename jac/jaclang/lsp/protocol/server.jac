@@ -6,6 +6,8 @@ import os;
 import re;
 import sys;
 import threading;
+import from contextlib { contextmanager }
+import from contextvars { ContextVar }
 import from concurrent.futures { ThreadPoolExecutor }
 import from typing { Optional, Union }
 
@@ -62,11 +64,17 @@ obj Request {
         params: any,
         revision: int,
         cancel_token: threading.Event postinit,
+        snapshot: WorkspaceSnapshot | None = None,
         inputs_current: Callable[[], bool] | None = None,
         responded: bool = False;
 
     def postinit {
         self.cancel_token = threading.Event();
+    }
+
+    def is_current(workspace: Workspace) -> bool {
+        return self.inputs_current() if self.inputs_current is not None
+            else self.revision == workspace.revision;
     }
 }
 
@@ -106,6 +114,7 @@ obj Workspace {
         _text_documents: dict[str, TextDocument] = {},
         _root_path: Optional[str] postinit,
         _position_codec: PositionCodec postinit,
+        _view: ContextVar[WorkspaceView | None] postinit,
         lock: threading.RLock postinit,
         revision: int = 0;
 
@@ -121,8 +130,24 @@ obj Workspace {
     def remove_text_document(doc_uri: str) -> None;
     def rename_text_document(old_uri: str, new_uri: str) -> None;
     def touch -> None;
-    def snapshot -> WorkspaceSnapshot;
+    def snapshot(live: bool = False) -> WorkspaceSnapshot;
+    @contextmanager
+    def read_scope(
+        snapshot: WorkspaceSnapshot, reader: Callable[[str], str]
+    ) -> Iterator[None] {
+        token = self._view.set(WorkspaceView(snapshot, reader));
+        try {
+            yield ;
+        } finally {
+            self._view.reset(token);
+        }
+    }
     def change_text_document(params: DidChangeTextDocumentParams) -> None;
+}
+
+obj WorkspaceView {
+    has snapshot: WorkspaceSnapshot,
+        reader: Callable[[str], str];
 }
 
 obj WorkspaceSnapshot {

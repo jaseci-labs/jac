@@ -91,6 +91,9 @@ impl JacLangServer.type_check(file_uri: str) -> None {
 }
 
 impl JacLangServer.submit_request(request: Request) -> None {
+    if request.snapshot is None {
+        request.snapshot = self.workspace.snapshot(live=True);
+    }
     if not self.work.submit(
         request,
         after_workspace=request.method
@@ -109,13 +112,6 @@ impl JacLangServer._sync_sources(
 ) -> None {
     changed = self.program.source_store.set_overrides(snapshot.sources());
     changed.update(changed_paths or set());
-    for context in self.program.owned_contexts() {
-        for path in list(context.mod.hub) {
-            if not context.is_hub_entry_fresh(path) {
-                changed.add(path);
-            }
-        }
-    }
     affected: set[str] = set();
     open_units = {
         discover_base_file(os.path.realpath(document.path))
@@ -236,7 +232,7 @@ impl JacLangServer._refresh_file(uri: str) -> None {
 impl JacLangServer._ensure_query(request: Request) -> None {
     if request.responded
         or request.cancel_token.is_set()
-        or request.revision != self.workspace.revision {
+        or not request.is_current(self.workspace) {
         return;
     }
     document = request.params.get('textDocument');
@@ -355,10 +351,14 @@ impl JacLangServer.type_check_file(
                         self.program.warnings_had.extend(merged_warns);
                     }
                     assert build is not None;
-                    inputs_current = inputs.is_current(self.program.source_store);
                     with self.workspace.lock {
+                        import from jaclang.compiler.driver.compilation_context {
+                            SourceStore
+                        }
+                        inputs_current = inputs.is_current(
+                            SourceStore(self.workspace.snapshot(live=True).sources())
+                        );
                         if not inputs_current
-                            or snapshot.revision != self.workspace.revision
                             or (cancel_token is not None and cancel_token.is_set()) {
                             for path in inputs.modules {
                                 self.module_manager.invalidate(path);
@@ -417,13 +417,39 @@ impl JacLangServer.type_check_file(
 impl JacLangServer._run_query(request: Request) -> None {
     import from pathlib { Path }
     import from jaclang.project.config { config_scope }
-    if request.responded
-        or request.cancel_token.is_set()
-        or request.revision != self.workspace.revision {
+    import from jaclang.compiler.driver.compilation_context { SourceStore }
+    if request.responded or request.cancel_token.is_set() {
         self._run_request(request);
         return;
     }
-    snapshot = self.workspace.snapshot();
+    snapshot = self.workspace.snapshot(live=True);
+    document = request.params.get('textDocument', {});
+    uri = document.get('uri', '') if isinstance(document, dict) else '';
+    accepted = request.snapshot;
+    if accepted is None and request.revision != snapshot.revision {
+        self._finish_request(
+            request,
+            error=ResponseErrorCode.ContentModified,
+            message='Workspace changed before request was captured'
+        );
+        return;
+    }
+    if accepted is not None and uri {
+        before = accepted.documents.get(uri);
+        now = snapshot.documents.get(uri);
+        if (before is None) != (now is None)
+            or (
+                before is not None and now is not None
+                and (before.version != now.version or before.source != now.source)
+            ) {
+            self._finish_request(
+                request,
+                error=ResponseErrorCode.ContentModified,
+                message='Requested document changed'
+            );
+            return;
+        }
+    }
     self._sync_sources(snapshot);
     if request.method in (lspt.TEXT_DOCUMENT_REFERENCES, lspt.TEXT_DOCUMENT_RENAME) {
         with self.work.condition {
@@ -433,20 +459,19 @@ impl JacLangServer._run_query(request: Request) -> None {
             }
         }
     }
-    document = request.params.get('textDocument', {});
-    uri = document.get('uri', '') if isinstance(document, dict) else '';
     start = Path(_path_of(uri)).parent
         if uri
         else Path(self.workspace._root_path or os.getcwd());
-    with self.program.source_store.capture() as inputs, config_scope(start) {
-        for context in self.program.owned_contexts() {
-            for path in context.mod.hub {
-                self.program.source_store.record_module(path);
-                self.program.source_store.annexes(path);
-            }
+    with self.program.source_store.capture() as inputs, config_scope(start), self.workspace.read_scope(
+        snapshot, inputs.read
+    ) {
+        if uri {
+            self.program.source_store.record_module(_path_of(uri));
         }
         def current -> bool {
-            return inputs.is_current(self.program.source_store);
+            return inputs.is_current(
+                SourceStore(self.workspace.snapshot(live=True).sources())
+            );
         }
         request.inputs_current = current;
         try {
@@ -458,11 +483,7 @@ impl JacLangServer._run_query(request: Request) -> None {
                 for path in inputs.modules {
                     self.module_manager.invalidate(path);
                 }
-                self.workspace.touch();
-                for open_uri in snapshot.documents {
-                    self.work.schedule(open_uri, immediate=True, interrupt=False);
-                }
-            }
+                self._sync_sources(self.workspace.snapshot(live=True), inputs.modules);
         }
     }
 }
