@@ -1,6 +1,7 @@
 import logging;
 import from uuid { UUID }
 
+import from jaclang.data.store { Store }
 import from jaclang.runtime.graph_query { GraphQuery, QHop, QPred }
 
 glob logger = logging.getLogger(__name__),
@@ -17,6 +18,7 @@ obj CompiledQuery {
 def compile_query(
     q: GraphQuery,
     upto: int,
+    store: Store,
     promotions: (dict | None) = None,
     count_only: bool = False,
     acl_root: (str | None) = None

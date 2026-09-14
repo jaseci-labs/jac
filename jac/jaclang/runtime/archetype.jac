@@ -130,10 +130,12 @@ obj NodeAnchor(Anchor) {
         mixed: bool = field(`init=False, `default=False);
 
     def __getstate__ -> dict[(str, object)];
+    def __getattr__(name: str) -> object;
     def is_populated -> bool;
     def edge_delta -> (tuple[(set[UUID], set[UUID])] | None);
     def remove_edge(`edge: EdgeAnchor) -> None;
     def all_edges -> list[EdgeAnchor];
+    def loaded_edges -> list[EdgeAnchor];
     def has_heavy_edges -> bool;
     def detach_light -> None;
 }

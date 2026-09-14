@@ -155,7 +155,8 @@ impl Serializer._serialize_value(
                 );
         }
         if isinstance(val, NodeAnchor) {
-            result['edges'] = [str(e.ensure_id()) for e in val.edges];
+            edges = val.edges if api_mode else val.loaded_edges();
+            result['edges'] = [str(e.ensure_id()) for e in edges];
 
             result['version'] = val.version;
         }

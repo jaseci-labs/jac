@@ -830,11 +830,7 @@ impl PgStore.load_full(ids: list[UUID]) -> dict[UUID, AnchorRow] {
     rows = self._run(
         """
         SELECT a.id, a.kind, a.arch_type, a.arch_module, a.fingerprint,
-               a.root_id, a.src, a.dst, a.undirected, a.props, a.version,
-               CASE WHEN a.kind = 'NodeAnchor' THEN
-                   (SELECT string_agg(e.id::text, ',' ORDER BY e.seq, e.id)
-                      FROM anchors e WHERE e.src = a.id OR e.dst = a.id)
-               END
+               a.root_id, a.src, a.dst, a.undirected, a.props, a.version
         FROM anchors a WHERE a.id = ANY(CAST(:ids AS uuid[]))
         """,
         {'ids': [str(i) for i in ids]}
@@ -844,19 +840,6 @@ impl PgStore.load_full(ids: list[UUID]) -> dict[UUID, AnchorRow] {
         props: dict = (
             raw_props if isinstance(raw_props, dict) else json.loads(str(raw_props))
         );
-        adjacency: (list[UUID] | None) = None;
-        if str(r[1]) == 'NodeAnchor' {
-            adjacency = [];
-            if r[11] {
-                seen_e: set[str] = set();
-                for tok in str(r[11]).split(',') {
-                    if tok and tok not in seen_e {
-                        seen_e.add(tok);
-                        adjacency.append(UUID(tok));
-                    }
-                }
-            }
-        }
         row = AnchorRow(
             id=UUID(str(r[0])),
             kind=str(r[1]),
@@ -868,12 +851,38 @@ impl PgStore.load_full(ids: list[UUID]) -> dict[UUID, AnchorRow] {
             src=UUID(str(r[6])) if r[6] else None,
             dst=UUID(str(r[7])) if r[7] else None,
             undirected=bool(r[8]),
-            version=int(str(r[10])),
-            adjacency=adjacency
+            version=int(str(r[10]))
         );
         out[row.id] = row;
     }
     return out;
+}
+
+
+impl PgStore.adjacency(
+    node_id: UUID, after: (tuple[int, UUID] | None), limit: int
+) -> list[tuple[int, UUID]] {
+    rows = self._run(
+        """
+        SELECT u.seq, u.id FROM (
+            SELECT e.seq, e.id FROM anchors e
+             WHERE e.kind = 'EdgeAnchor' AND e.src = CAST(:i AS uuid)
+            UNION ALL
+            SELECT e.seq, e.id FROM anchors e
+             WHERE e.kind = 'EdgeAnchor' AND e.dst = CAST(:i AS uuid)
+               AND e.src <> CAST(:i AS uuid)
+        ) u
+        WHERE (u.seq, u.id) > (CAST(:s AS bigint), CAST(:a AS uuid))
+        ORDER BY u.seq, u.id LIMIT CAST(:n AS bigint)
+        """,
+        {
+            'i': str(node_id),
+            's': int(after[0]) if after is not None else -1,
+            'a': str(after[1]) if after is not None else str(UUID(int=0)),
+            'n': int(limit)
+        }
+    );
+    return [(int(str(r[0])), UUID(str(r[1]))) for r in rows];
 }
 
 
