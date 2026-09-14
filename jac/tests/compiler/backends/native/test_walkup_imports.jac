@@ -4,9 +4,10 @@ rule that a dependency compiled under the native default codespace carries
 native intent for its own imports, so sibling resolution runs even before the
 module's codespace is decided."""
 
+import from tests.support { jac_command }
+
 import os;
 import subprocess;
-import sys;
 import tempfile;
 
 glob FIXTURE: str = os.path.abspath(
@@ -28,16 +29,7 @@ test "dotted walk-up import then a relative sibling import lowers natively" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "walkup");
         res = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "build",
-                "--native",
-                FIXTURE,
-                "-o",
-                out_bin
-            ],
+            jac_command("build", "--native", FIXTURE, "-o", out_bin),
             capture_output=True,
             text=True
         );

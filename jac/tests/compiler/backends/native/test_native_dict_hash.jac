@@ -12,9 +12,14 @@ a clean exit: the fixture asserts internally and prints OK.
 import ctypes;
 import os;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
+import from tests.support {
+    jac_command,
+    TESTS_DIR,
+    compile_native,
+    get_func,
+    native_force_opts
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -78,7 +83,7 @@ test "dict f64 keys hash and compare" {
 def _run_fixture_with_gc(extra_flags: list[str], tag: str) {
     src = os.path.join(FIXTURES, PROG);
     out_bin = os.path.join(tempfile.mkdtemp(), f"dict_hash_ops_{tag}.bin");
-    cmd = [sys.executable, "-m", "jaclang", "build", "--native", src];
+    cmd = jac_command("build", "--native", src);
     cmd += extra_flags;
     cmd += ["-o", out_bin];
     comp = subprocess.run(cmd, capture_output=True, text=True, timeout=300);
@@ -111,18 +116,7 @@ test "dict ops pass under headerless --memory nogc" {
     src = os.path.join(FIXTURES, "nogc", "dict_hash_nogc.jac");
     out_bin = os.path.join(tempfile.mkdtemp(), "dict_hash_nogc.bin");
     comp = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "build",
-            "--native",
-            src,
-            "--memory",
-            "nogc",
-            "-o",
-            out_bin
-        ],
+        jac_command("build", "--native", src, "--memory", "nogc", "-o", out_bin),
         capture_output=True,
         text=True,
         timeout=300
