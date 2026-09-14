@@ -130,13 +130,19 @@ test "failed precompile retains analysis measurements and a repaired source reco
         (package / "good.jac").write_text("def value() -> int { return 7; }\n");
         broken = package / "broken.jac";
         broken.write_text("def answer() -> int { return 'wrong'; }\n");
-        result_path = package / "_precompiled" / pre.RESULT_NAME;
+        result_path = Path(directory) / "metrics" / "precompile.json";
         with patch.object(pre, "precompile_exit") as leave, patch.dict(
-            os.environ, {"JAC_REBUILD": "0", "JAC_NO_PRECOMPILE": "0"}
+            os.environ,
+            {
+                "JAC_REBUILD": "0",
+                "JAC_NO_PRECOMPILE": "0",
+                "JAC_PRECOMPILE_METRICS": str(result_path)
+            }
         ) {
             pre.run_precompile(directory, jobs_arg="0");
             assert leave.call_args[0][0] == 1;
             cold = json.loads(result_path.read_text());
+            assert not (package / "_precompiled/PRECOMPILE_RESULT.json").exists();
             assert cold["failed"] == 1 and cold["compiled"] == 2;
             failed = next(
                 result for worker in cold["workers"]
@@ -181,11 +187,12 @@ test "package precompile coordinates a diamond and cycles through warm and edite
         (package_path / "cycle_b.jac").write_text(
             "import from cycle_a { first }\ndef second() -> int { return 7; }\n"
         );
-        result_path = package_path / "_precompiled" / pre.RESULT_NAME;
+        result_path = Path(directory) / "precompile.json";
         with patch.object(pre, "precompile_exit") as leave, patch.dict(
             os.environ,
             {
                 "JAC_PRECOMPILE_RECYCLE": "1",
+                "JAC_PRECOMPILE_METRICS": str(result_path),
                 "JAC_REBUILD": "0",
                 "JAC_NO_PRECOMPILE": "0"
             }

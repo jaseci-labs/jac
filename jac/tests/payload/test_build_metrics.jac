@@ -86,14 +86,15 @@ test "failed precompiler stages retain their metrics and stop packaging" {
             producer = site / "jaclang/dist/precompile_bytecode.jac";
             producer.parent.mkdir(parents=True);
             producer.write_text("");
-            result = site / "jaclang/_precompiled/PRECOMPILE_RESULT.json";
-            result.parent.mkdir(parents=True);
+            result = Path(directory) / "precompile-result.json";
             measurements = BuildMeasurements(
                 output_path=str(Path(directory) / "metrics.json")
             );
             def child(
                 argv: list[str], env: dict[str, str] | None, allow_fail: bool
             ) -> bool {
+                assert env is not None;
+                assert env["JAC_PRECOMPILE_METRICS"] == str(result);
                 fails = phase == "module_precompile" or "--seal-finalize" in argv;
                 result.write_text(json.dumps({"compiled": 1, "failed": int(fails)}));
                 return not fails;

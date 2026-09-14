@@ -477,7 +477,8 @@ impl precompile(
         env["JAC_STUBCAT_BUILDING"] = "1";
     }
     pre_dir = os.path.join(site, "jaclang", "_precompiled");
-    result = os.path.join(pre_dir, "PRECOMPILE_RESULT.json");
+    result = os.path.join(os.path.dirname(site), "precompile-result.json");
+    env["JAC_PRECOMPILE_METRICS"] = result;
     import json;
     with timings.stage("module_precompile") {
         env["JAC_PRECOMPILE_START_TIME"] = str(time.perf_counter());

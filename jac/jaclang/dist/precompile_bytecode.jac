@@ -54,8 +54,6 @@ import from jaclang.jac0core.sealed {
     SEC_DEBUG_SRC as SEALED_SEC_DEBUG_SRC
 }
 
-glob RESULT_NAME: str = "PRECOMPILE_RESULT.json";
-
 def compiler_identity -> str {
     digest = running_compiler_digest();
     if digest.startswith("0:") {
@@ -1110,6 +1108,10 @@ def run_precompile(
     app: str = ""
 ) {
     entered = time.perf_counter();
+    metrics_path = os.environ.get("JAC_PRECOMPILE_METRICS", "");
+    if metrics_path {
+        Path(metrics_path).unlink(missing_ok=True);
+    }
     started = os.environ.pop("JAC_PRECOMPILE_START_TIME", "");
     booted = os.environ.pop("JAC_PRECOMPILE_BOOT_TIME", "");
     startup: dict[str, float] = {};
@@ -1174,7 +1176,7 @@ def run_precompile(
 
     out_dir = precompiled_dir / pyver;
     out_dir.mkdir(parents=True, exist_ok=True);
-    (precompiled_dir / RESULT_NAME).unlink(missing_ok=True);
+    (precompiled_dir / "PRECOMPILE_RESULT.json").unlink(missing_ok=True);
 
     prune_stale_precompiled_dirs(precompiled_dir, pyver);
     pkg_path = Path(package_dir);
@@ -1414,33 +1416,40 @@ def run_precompile(
     console.print(f"  Output: {precompiled_dir}");
     console.print(f"  Python version: {pyver}");
 
-    (precompiled_dir / RESULT_NAME).write_text(
-        json.dumps(
-            {
-                "total": len(jac_files),
-                "compiled": compiled,
-                "reused": reused,
-                "failed": failed,
-                "measurement_schema": 1,
-                "startup": startup,
-                "inputs": {
-                    "compiler": compiler_identity(),
-                    "python": sys.version,
-                    "package": package_dir,
-                    "app": app,
-                    "jobs": workers if use_pool else 1,
-                    "frontend": os.environ.get("JAC_COMPILER_LIB", "auto")
-                },
-                "timing": "exclusive_seconds excludes nested phases and passes, including dependencies",
-                "workers": measurements,
-                "dependency_plan": plan.measurements,
-                "interfaces": counts.get("interface", 0),
-                "deferred_interfaces": counts.get("deferred", 0)
-            }
-        )
-            + "\n",
-        encoding="utf-8"
-    );
+    if metrics_path {
+        import from jaclang.jac0core.cache_paths { atomic_write }
+        atomic_write(
+            metrics_path,
+            (
+                json.dumps(
+                    {
+                        "total": len(jac_files),
+                        "compiled": compiled,
+                        "reused": reused,
+                        "failed": failed,
+                        "measurement_schema": 1,
+                        "startup": startup,
+                        "inputs": {
+                            "compiler": compiler_identity(),
+                            "python": sys.version,
+                            "package": package_dir,
+                            "app": app,
+                            "jobs": workers if use_pool else 1,
+                            "frontend": os.environ.get("JAC_COMPILER_LIB", "auto")
+                        },
+                        "timing": "exclusive_seconds excludes nested phases and passes, including dependencies",
+                        "workers": measurements,
+                        "dependency_plan": plan.measurements,
+                        "interfaces": counts.get("interface", 0),
+                        "deferred_interfaces": counts.get("deferred", 0)
+                    }
+                )
+                + "\n"
+            ).encode(
+                "utf-8"
+            )
+        );
+    }
 
     if seal {
         precompile_exit(

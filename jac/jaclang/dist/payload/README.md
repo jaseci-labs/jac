@@ -66,6 +66,11 @@ reuse their completed bytecode.
 Set `JAC_BUILD_METRICS` to choose the producer report path. Otherwise the report
 is written beside the payload as `<output>.metrics.json`, including on failure.
 CI uploads `jac/.build-metrics` as `build-kit-measurements`.
+Standalone precompilation writes detailed work records only when
+`JAC_PRECOMPILE_METRICS` names an output file. Packaging requests that report in
+its build directory and incorporates it into the producer report. Timings,
+worker identities, and temporary paths never belong in the shipped
+`_precompiled` tree or a content-addressed application bundle.
 
 Stage transitions and cache outcomes atomically checkpoint the measurement file.
 An interrupted build retains completed stages and lists the stages still active
