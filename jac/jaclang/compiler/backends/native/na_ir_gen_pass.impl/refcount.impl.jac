@@ -2450,7 +2450,7 @@ impl NaIRGenPass._bind_owned_temp(val: ir.Value, prefix: str = "temp") -> str {
     self._owned_temp_seq += 1;
     _slot = self._entry_alloca(val.type, _name);
     _slot.na_tuple_owned = val.na_tuple_owned;
-    self.local_vars[_name] = _slot;
+    self._bind_local_slot(_name, _slot);
     self.owned_temp_slots.add(_name);
     self.builder.store(val, _slot);
     return _name;

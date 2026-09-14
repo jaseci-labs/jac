@@ -411,7 +411,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         for (i, arg) in enumerate(anon_fn.args) {
             alloca = self._entry_alloca(arg.type, all_param_names[i]);
             self.builder.store(arg, alloca);
-            self.local_vars[all_param_names[i]] = alloca;
+            self._bind_local_slot(all_param_names[i], alloca);
             self.param_vars.add(all_param_names[i]);
         }
 
@@ -603,7 +603,7 @@ impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
             self._emit_rc_retain(value, op="walrus", loc=_loc);
         }
         self.builder.store(value, alloca);
-        self.local_vars[var_name] = alloca;
+        self._bind_local_slot(var_name, alloca);
     }
 
     return self.builder.load(alloca, name=var_name);

@@ -541,7 +541,7 @@ impl NaIRGenPass._codegen_try_unwind(
                     alloca = self._entry_alloca(i8p, var_name);
                     self.builder.store(handler_exc_msg, alloca);
                 }
-                self.local_vars[var_name] = alloca;
+                self._bind_local_slot(var_name, alloca);
             }
 
             self._caught_error_stack.append((func, self._exception_values(exc_state)));
@@ -824,7 +824,7 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
             }
         }
         if except_node.name is not None {
-            self.local_vars[var_name] = alloca;
+            self._bind_local_slot(var_name, alloca);
         }
         if isinstance(except_node.body, (list, tuple)) {
             self._codegen_body(except_node.body);

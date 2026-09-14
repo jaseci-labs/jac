@@ -700,7 +700,7 @@ impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
         _synth = f".region.{id(nd)}";
         _slot = self._entry_alloca(_i8p, _synth);
         self.builder.store(_hdl, _slot);
-        self.local_vars[_synth] = _slot;
+        self._bind_local_slot(_synth, _slot);
         self.region_handle_vars.add(_synth);
     }
     self._region_enter(_hdl);
@@ -1430,7 +1430,7 @@ impl NaIRGenPass._bind_match_capture(
             self.builder.store(ir.Constant(val.type, None), alloca);
             self.builder.position_at_end(_cur_bb);
         }
-        self.local_vars[cap_name] = alloca;
+        self._bind_local_slot(cap_name, alloca);
     }
     if isinstance(val.type, ir.PointerType) {
         if not owned and not self._is_owned(val) {
@@ -2038,7 +2038,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     if _declared_type is not None
                         and _declared_type != alloca.pointee_type {
                         alloca = self._entry_alloca(_declared_type, var_name);
-                        self.local_vars[var_name] = alloca;
+                        self._bind_local_slot(var_name, alloca);
                     }
                 }
             }
@@ -3030,7 +3030,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 }
             }
             self.builder.store(value, alloca);
-            self.local_vars[var_name] = alloca;
+            self._bind_local_slot(var_name, alloca);
         }
 
         if self._pending_lambda_captures is not None {
@@ -3676,12 +3676,12 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
                 self.nogc_no_free_vars.add(loop_var);
             }
         }
-        self.local_vars[loop_var] = _lv_alloca;
+        self._bind_local_slot(loop_var, _lv_alloca);
         _red_slots: list = [];
         for (_ri, _red) in enumerate(_reds) {
             _rslot = self._entry_alloca(i64, _red[0]);
             self.builder.store(ir.Constant(i64, _red_identity[_red[1]]), _rslot);
-            self.local_vars[_red[0]] = _rslot;
+            self._bind_local_slot(_red[0], _rslot);
             _red_slots.append(_rslot);
         }
         _idx_alloca = self._entry_alloca(i64, "ffor.idx");
@@ -4157,7 +4157,7 @@ impl NaIRGenPass._codegen_for_indexed(
         len_val = collection_val;
         idx_alloca = self._entry_alloca(i64, var_names[0]);
         self.builder.store(range_start, idx_alloca);
-        self.local_vars[var_names[0]] = idx_alloca;
+        self._bind_local_slot(var_names[0], idx_alloca);
         allocas = [idx_alloca];
         if _gen_yield_loop {
             _gen_stop_slot = self._entry_alloca(i64, "for.stop.slot");
@@ -4214,7 +4214,7 @@ impl NaIRGenPass._codegen_for_indexed(
                 }
             }
             assert alloca is not None;
-            self.local_vars[vname] = alloca;
+            self._bind_local_slot(vname, alloca);
             if rc_vars
                 and isinstance(vtype, ir.PointerType)
                 and self._gc_mode() == "none" {
@@ -4505,7 +4505,7 @@ impl NaIRGenPass._try_chunked_for(nd: uni.InForStmt) -> bool {
     assert isinstance(collection_type, ir.PointerType);
     _hdr = self._entry_alloca(collection_type.pointee, f"{loop_var}.chunk.hdr");
     _lv_alloca = self._entry_alloca(coll.type, loop_var);
-    self.local_vars[loop_var] = _lv_alloca;
+    self._bind_local_slot(loop_var, _lv_alloca);
     self.nogc_no_free_vars.add(loop_var);
     _ci_slot = self._entry_alloca(i64, "chunk.ci");
     self.builder.store(ir.Constant(i64, 0), _ci_slot);

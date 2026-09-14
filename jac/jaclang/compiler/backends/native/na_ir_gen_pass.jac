@@ -541,7 +541,8 @@ walker NaIRGenPass(Transform) {
     def _emit_bytes_repeat(bv: ir.Value, count: ir.Value) -> ir.Value;
     def _enter_bindings(inherit: bool = False) -> NativeBindingState;
     def _leave_bindings(state: NativeBindingState, release: bool = False) -> None;
-    def _shadow_bindings(names: list[str]) -> None;
+    def _shadow_bindings(names: list[str], preserve: bool = False) -> None;
+    def _bind_local_slot(name: str, slot: ir.Value) -> None;
     def _enter_function(func: ir.Function) -> NativeFunctionState;
     def _bind_function_parameter(
         name: str, value: ir.Value, borrowed: bool = True, rebound: bool = False

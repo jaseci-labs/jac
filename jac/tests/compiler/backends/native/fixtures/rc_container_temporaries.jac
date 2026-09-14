@@ -158,3 +158,82 @@ def borrowed_string_receiver -> int {
     assert value.startswith("3");
     return len(value);
 }
+
+obj OtherItem {
+    has value: int;
+}
+
+def retyped_loop(mode: int) -> int {
+    first = [Item(3)];
+    second: list[OtherItem] = [OtherItem(4)] if mode == 1 else [];
+    held: list[Holder] = [];
+    result = 0;
+    for item in first {
+        held.append(Holder(item));
+        result += item.value;
+    }
+    if mode < 2 {
+        for item in second {
+            result += item.value;
+        }
+    }
+    return result + held[0].item.value;
+}
+
+def empty_retyped_loop -> int {
+    return retyped_loop(0);
+}
+def populated_retyped_loop -> int {
+    return retyped_loop(1);
+}
+def skipped_retyped_loop -> int {
+    return retyped_loop(2);
+}
+
+def repeated_retyped_loop -> int {
+    result = 0;
+    for turn in range(3) {
+        first = [Item(turn)];
+        second: list[OtherItem] = [];
+        held: list[Holder] = [];
+        for item in first {
+            held.append(Holder(item));
+        }
+        for item in second {
+            result += item.value;
+        }
+        result += held[0].item.value;
+    }
+    return result;
+}
+
+def scalar_retyped_loop -> int {
+    held: list[Holder] = [];
+    for item in [Item(3)] {
+        held.append(Holder(item));
+    }
+    for item in range(0) {
+        return item;
+    }
+    return held[0].item.value;
+}
+
+def redeclared_local -> int {
+    item: Item | None = Item(3);
+    held = Holder(item);
+    item: Item = Item(4);
+    return held.item.value + item.value;
+}
+
+def retyped_parameter(item: Item) -> int {
+    held = Holder(item);
+    for item in [OtherItem(4)] {
+        item.value += 1;
+    }
+    return held.item.value + item.value;
+}
+
+def borrowed_retyped_parameter -> int {
+    item = Item(3);
+    return retyped_parameter(item) + item.value;
+}

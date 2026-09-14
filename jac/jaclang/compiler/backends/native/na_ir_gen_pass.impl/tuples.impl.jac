@@ -170,7 +170,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
                 }
             }
             self.builder.store(elem_val, alloca);
-            self.local_vars[var_name] = alloca;
+            self._bind_local_slot(var_name, alloca);
         }
     }
 

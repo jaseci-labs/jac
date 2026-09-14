@@ -65,6 +65,29 @@ faster together. Total build ranges overlap (3.423–4.193 s baseline,
 3.340–4.145 s new), so the end-to-end figure is a local measurement rather than a
 guaranteed speedup. Both generated executables completed an automatic game.
 
+## Native storage and temporary ownership
+
+Native emitters register local storage through `NaIRGenPass._bind_local_slot`.
+When a source name acquires a different native representation, the previous
+slot and its ownership metadata remain in the existing frame cleanup. Entry
+initialization makes cleanup safe on paths that skip either binding. Lexical
+scopes use `_enter_bindings`, `_shadow_bindings`, and `_leave_bindings`; nested
+functions use the corresponding function-state boundary.
+
+`RcFactsPass` records early release by storage name. Every use of that name
+constrains its lifetime, including uses through borrowed parameters and other
+symbols that cannot independently request early release. Escaping bindings
+retain the ordinary frame cleanup. A symbol's final use is insufficient when
+another symbol lowers to the same storage name.
+
+Owned expression temporaries use the same frame through `_borrow_owned_temp`
+and `_release_temps_since`. Predicate operands and primitive receivers retain
+their cleanup across exceptions; returning an input alias establishes its
+ownership before the input temporaries are released. Primitive dispatch
+evaluates the receiver once. Native ownership regressions check both destructor
+counts and the existing debug allocation registry under reference counting and
+cycle collection, so leaked container buffers and strings are covered too.
+
 ## Native hash containers
 
 Dictionaries and sets share `backends/native/na_ir_gen_pass.impl/hash_core.impl.jac`

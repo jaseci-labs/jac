@@ -533,7 +533,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
             self.builder.store(ir.Constant(actual_elem_type, None), loop_alloca);
             self.builder.position_at_end(_compr_saved_block);
         }
-        self.local_vars[loop_var_name] = loop_alloca;
+        self._bind_local_slot(loop_var_name, loop_alloca);
     }
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="compr.cond");
@@ -660,7 +660,7 @@ impl NaIRGenPass._codegen_compr_range_walk(
     self._shadow_bindings([loop_var_name]);
     loop_alloca = self._entry_alloca(i64, loop_var_name);
     self.builder.store(start_val, loop_alloca);
-    self.local_vars[loop_var_name] = loop_alloca;
+    self._bind_local_slot(loop_var_name, loop_alloca);
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="compr.range.cond");
     body_bb = func.append_basic_block(name="compr.range.body");

@@ -44,17 +44,60 @@ impl NaIRGenPass._leave_bindings(
     self.closure_cell_handles = state.closure_cell_handles;
 }
 
-impl NaIRGenPass._shadow_bindings(names: list[str]) -> None {
+impl NaIRGenPass._shadow_bindings(names: list[str], preserve: bool = False) -> None {
     for name in names {
-        self.local_vars.pop(name, None);
-        self.param_vars.discard(name);
-        self.nogc_no_free_vars.discard(name);
-        self.nogc_owned_str_vars.discard(name);
-        self.region_handle_vars.discard(name);
-        self.var_list_elem_struct.pop(name, None);
-        self.closure_cell_vars.discard(name);
-        self.closure_cell_handles.pop(name, None);
+        previous: str | None = None;
+        if preserve and name in self.local_vars {
+            previous = f"binding.previous.{self._owned_temp_seq}";
+            self._owned_temp_seq += 1;
+        }
+        slot = self.local_vars.pop(name, None);
+        if previous is not None and slot is not None {
+            self.local_vars[previous] = slot;
+        }
+        for flags in [
+            self.owned_temp_slots,
+            self.param_vars,
+            self.nogc_no_free_vars,
+            self.nogc_owned_str_vars,
+            self.region_handle_vars,
+            self.closure_cell_vars
+        ] {
+            if name in flags {
+                flags.discard(name);
+                if previous is not None {
+                    flags.add(previous);
+                }
+            }
+        }
+        if name in self.var_list_elem_struct {
+            elem = self.var_list_elem_struct.pop(name);
+            if previous is not None {
+                self.var_list_elem_struct[previous] = elem;
+            }
+        }
+        cell = self.closure_cell_handles.pop(name, None);
+        if previous is not None and cell is not None {
+            self.closure_cell_handles[previous] = cell;
+        }
     }
+}
+
+"""Register storage without discarding the previous representation's ownership.
+
+A source name can acquire several native representations. The frame owns each
+slot, including on paths that skip its replacement. Preserve old slots and their
+ownership metadata for the existing cleanup walk.
+"""
+impl NaIRGenPass._bind_local_slot(name: str, slot: ir.Value) -> None {
+    previous = self.local_vars.get(name);
+    if previous is slot {
+        return;
+    }
+    if previous is not None {
+        self._shadow_bindings([name], preserve=True);
+    }
+    self.local_vars[name] = slot;
 }
 
 impl NaIRGenPass._enter_function(func: ir.Function) -> NativeFunctionState {
@@ -97,7 +140,7 @@ impl NaIRGenPass._bind_function_parameter(
     if name in self.closure_cell_vars {
         slot = self._emit_closure_cell(name, value.type);
         self.builder.store(value, slot);
-        self.local_vars[name] = slot;
+        self._bind_local_slot(name, slot);
         if borrowed and self._elem_kind(value.type) in ("rc_ptr", "str") {
             self._emit_rc_retain(value, op="param_cell", loc=name);
         } elif borrowed and self._opt_ptr_payload_of(value.type) is not None {
@@ -108,7 +151,7 @@ impl NaIRGenPass._bind_function_parameter(
     }
     slot = self._entry_alloca(value.type, name);
     self.builder.store(value, slot);
-    self.local_vars[name] = slot;
+    self._bind_local_slot(name, slot);
     if rebound and self._elem_kind(value.type) in ("rc_ptr", "str") {
         self._emit_rc_retain(value, op="param_promote", loc=name);
     } elif rebound and self._opt_ptr_payload_of(value.type) is not None {

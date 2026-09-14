@@ -239,7 +239,7 @@ impl NaIRGenPass._lower_partition_unpack(nd: uni.Assignment) -> bool {
         _slot = self.local_vars.get(tgt.sym_name);
         if _slot is None {
             _slot = self._entry_alloca(_i8p, tgt.sym_name);
-            self.local_vars[tgt.sym_name] = _slot;
+            self._bind_local_slot(tgt.sym_name, _slot);
         }
         self.builder.store(_child, _slot);
         self.region_handle_vars.add(tgt.sym_name);

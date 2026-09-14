@@ -67,7 +67,14 @@ def check_containers(profile: str) {
         ("string_receiver_evaluations", 1, 0),
         ("bytes_receiver", 1, 0),
         ("chained_string_receiver", 1, 0),
-        ("borrowed_string_receiver", 1, 0)
+        ("borrowed_string_receiver", 1, 0),
+        ("empty_retyped_loop", 6, 1),
+        ("populated_retyped_loop", 10, 1),
+        ("skipped_retyped_loop", 6, 1),
+        ("repeated_retyped_loop", 3, 3),
+        ("scalar_retyped_loop", 3, 1),
+        ("redeclared_local", 7, 2),
+        ("borrowed_retyped_parameter", 11, 1)
     ] {
         address = engine.get_function_address(name);
         assert address != 0;

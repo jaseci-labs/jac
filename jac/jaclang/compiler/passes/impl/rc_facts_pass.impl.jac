@@ -243,17 +243,22 @@ impl RcFactsPass._stamp_last_use(ir_in: Module) -> None {
     ir_in.rc_last_use = out;
 }
 
+"""Track every use of a storage name before scheduling its early release.
+
+Distinct symbols can lower to the same local name, including loop targets that
+shadow parameters. Borrowed and escaping symbols still constrain that name's
+lifetime even though they cannot independently request an early release.
+"""
 impl RcFactsPass._collect_last_use(
     owner: UniNode, body: Sequence[UniNode], out: dict[int, list[str]]
 ) -> None {
-    sym_last: dict[int, tuple[int, str]] = {};
+    name_last: dict[str, int] = {};
+    tracked: set[str] = set();
+    escaping: set[str] = set();
     for (idx, stmt) in enumerate(body) {
         for nm in stmt.get_all_sub_nodes(Name) {
             sym = nm.sym;
-            if sym is None
-                or sym.na_escapes
-                or (nm.sym_name == "self" and sym.ownership != OwnershipKind.OWN)
-                or not self._last_use_tracked(sym) {
+            if sym is None {
                 continue;
             }
             if not same_lexical_scope(self._enclosing_fn_scope(nm), owner) {
@@ -266,12 +271,21 @@ impl RcFactsPass._collect_last_use(
                 ) {
                 continue;
             }
-            sym_last[id(sym)] = (idx, nm.sym_name);
+            name = nm.sym_name;
+            name_last[name] = idx;
+            if sym.na_escapes {
+                escaping.add(name);
+            }
+            if (name != "self" or sym.ownership == OwnershipKind.OWN)
+                and self._last_use_tracked(sym) {
+                tracked.add(name);
+            }
         }
     }
-    for `entry in sym_last.values() {
-        _idx: int = `entry[0];
-        _name: str = `entry[1];
+    for (_name, _idx) in name_last.items() {
+        if _name not in tracked or _name in escaping {
+            continue;
+        }
         key = id(body[_idx]);
         if key not in out {
             out[key] = [];
