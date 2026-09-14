@@ -54,14 +54,70 @@ obj SourceUnit {
 obj SourceStore {
     has units: dict[str, SourceUnit] = {},
         revisions: dict[str, str] = {},
+        overrides: dict[str, str] = {},
         parses: int = 0,
         hits: int = 0;
+
+    def read(path: str) -> str {
+        import from jaclang.project.source { read_file_with_encoding }
+        source = self.overrides.get(os.path.realpath(path));
+        return source if source is not None else read_file_with_encoding(path);
+    }
+
+    def annexes(path: str) -> list[tuple[str, str]] {
+        import from jaclang.compiler.driver.bccache {
+            discover_annex_files,
+            discover_base_file
+        }
+        path = os.path.realpath(path);
+        if not path.endswith('.jac') or discover_base_file(path) is not None {
+            return [];
+        }
+        paths = set(discover_annex_files(path, '.impl.jac'));
+        paths.update(discover_annex_files(path, '.test.jac'));
+        paths.update(
+            candidate
+            for candidate in self.overrides
+            if discover_base_file(candidate) == path
+        );
+        return [(self.read(candidate), candidate) for candidate in sorted(paths)];
+    }
+
+    def set_overrides(sources: dict[str, str]) -> set[str] {
+        current = {
+            os.path.realpath(path): source for (path, source) in sources.items()
+        };
+        changed = {
+            path
+            for path in self.overrides.keys() | current.keys()
+            if self.overrides.get(path) != current.get(path)
+        };
+        self.overrides = current;
+        return changed;
+    }
+
+    def fingerprint(path: str) -> str {
+        try {
+            inputs = (os.path.realpath(path), self.read(path), self.annexes(path));
+            return hashlib.sha256(repr(inputs).encode()).hexdigest();
+        } except OSError {
+            return '';
+        }
+    }
+
+    def forget(path: str) {
+        previous = self.revisions.pop(os.path.realpath(path), None);
+        if previous is not None {
+            self.units.pop(previous, None);
+        }
+    }
 
     def parse(
         source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
     ) -> tuple[Module, bool] {
         import from jaclang.compiler.frontend.parser.frontend { parse_woven }
         import from jaclang.compiler.driver.program { JacProgram }
+        path = os.path.realpath(path);
         key = hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
         unit = self.units.get(key);
         if unit is None {

@@ -39,6 +39,11 @@ impl JacProgram.install_module(
     self: JacProgram, resolved_path: str, mod: uni.Module
 ) -> None {
     displaced = self.hub.install(resolved_path, mod);
+    if self.source_store.overrides {
+        self.hub.source_revisions[resolved_path] = self.source_store.fingerprint(
+            resolved_path
+        );
+    }
     if displaced is None {
         return;
     }
@@ -53,6 +58,10 @@ impl JacProgram.install_module(
 }
 
 impl JacProgram.is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool {
+    if self.source_store.overrides or resolved_path in self.hub.source_revisions {
+        return self.hub.source_revisions.get(resolved_path)
+            == self.source_store.fingerprint(resolved_path);
+    }
     return self.hub.is_fresh(resolved_path);
 }
 
@@ -63,7 +72,28 @@ impl JacProgram.record_dependency(
 }
 
 impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set[str] {
-    return self.deps.transitive_dependents(target_path);
+    owner = self.context_root if self.context_root is not None else self;
+    graphs = [owner.deps];
+    graphs.extend(
+        context.deps
+        for context in owner.contexts.values()
+        if context is not owner
+    );
+    seen: set[str] = set();
+    pending = [JacProgram.hub_key(target_path)];
+    while pending {
+        current = pending.pop();
+        for edges in graphs {
+            for importer in edges.dependents.get(current, set()) {
+                if importer not in seen {
+                    seen.add(importer);
+                    pending.append(importer);
+                }
+            }
+        }
+    }
+    seen.discard(JacProgram.hub_key(target_path));
+    return seen;
 }
 
 impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None {
@@ -99,7 +129,6 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
     if self._iface is not None {
         self._iface.forget(resolved_path);
     }
-    self.deps.forget(resolved_path);
 }
 
 impl JacProgram.release_module(self: JacProgram, resolved_path: str) -> None {
@@ -365,6 +394,7 @@ impl JacProgram.release_compile_closure(
         self.context_key = '';
         self.source_store.units.clear();
         self.source_store.revisions.clear();
+        self.source_store.overrides.clear();
     }
     self.release_native_dep_units();
     self.hub.reset(retain_stubs=retain_stubs);

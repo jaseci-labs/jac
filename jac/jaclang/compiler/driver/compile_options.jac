@@ -1,4 +1,5 @@
 import from jaclang.runtime.object_model { field }
+import from threading { Event }
 
 glob _config_probe: dict = {"active": False};
 
@@ -55,7 +56,7 @@ obj CompileOptions {
         ui: str = "",
         project_root: (str | None) = None,
         native_module_walk_order: (str | None) = None,
-        cancel_token: any = None;
+        cancel_token: Event | None = None;
 
     def postinit {
         cfg = _project_config();

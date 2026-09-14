@@ -261,20 +261,32 @@ def compile_module(
 ) -> Module {
     import from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
     task = ModuleCompilation(compiler, program, path, options, source);
-    for step in module_pipeline() {
-        if options.cancel_token is not None and options.cancel_token.is_set() {
-            break;
+    program.deps.begin(path);
+    complete = False;
+    try {
+        for step in module_pipeline() {
+            if options.cancel_token is not None and options.cancel_token.is_set() {
+                break;
+            }
+            started = time.perf_counter();
+            try {
+                step.execute(task);
+            } finally {
+                name = step.phase.name;
+                program.analysis.phase_time[name] = (
+                    program.analysis.phase_time.get(name, 0.0) + time.perf_counter()
+                    - started
+                );
+            }
         }
-        started = time.perf_counter();
-        try {
-            step.execute(task);
-        } finally {
-            name = step.phase.name;
-            program.analysis.phase_time[name] = (
-                program.analysis.phase_time.get(name, 0.0) + time.perf_counter()
-                - started
-            );
+        if program.deps.tracking {
+            program.deps.record_module(task.module);
         }
+        complete = not task.parse_failed
+            and not task.blocked
+            and (options.cancel_token is None or not options.cancel_token.is_set());
+    } finally {
+        program.deps.finish(path, complete);
     }
     return task.module;
 }

@@ -39,3 +39,39 @@ test "source revisions parse once and return isolated syntax" {
     store.parse('glob value = 2;\n', '/tmp/context-source.jac', program, []);
     assert store.parses == 2 and len(store.units) == 1;
 }
+
+test "source overlays include unsaved and newly created annexes" {
+    with TemporaryDirectory() as td {
+        base = Path(td) / 'sample.jac';
+        annex = Path(td) / 'sample.impl.jac';
+        base.write_text('def answer -> int;\n');
+        store = SourceStore();
+        source = 'impl answer -> int { return 42; }\n';
+        assert store.set_overrides({str(annex): source}) == {str(annex)};
+        assert store.annexes(str(base)) == [(source, str(annex))];
+        before = store.fingerprint(str(base));
+        store.set_overrides({str(annex): source.replace('42', '43')});
+        assert store.fingerprint(str(base)) != before;
+        assert not annex.exists();
+        assert store.set_overrides({}) == {str(annex)};
+        assert store.annexes(str(base)) == [];
+    }
+}
+
+test "dependency reads use an empty overlay and never persist it as disk content" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    with TemporaryDirectory() as td {
+        library = Path(td) / 'lib.jac';
+        consumer = Path(td) / 'app.jac';
+        library.write_text('obj Foo { has x: int; }\n');
+        consumer.write_text('import from .lib { Foo }\nwith entry { f = Foo(x=1); }\n');
+        program = JacProgram();
+        program.source_store.set_overrides({str(library): ''});
+        program.compile(str(consumer), options=CompileOptions(no_cgen=True));
+        assert program.errors_had , 'the empty editor buffer must override the library on disk';
+        assert library.read_text() == 'obj Foo { has x: int; }\n';
+        clean = JacProgram();
+        clean.compile(str(consumer), options=CompileOptions(no_cgen=True));
+        assert not clean.errors_had , [str(e) for e in clean.errors_had];
+    }
+}

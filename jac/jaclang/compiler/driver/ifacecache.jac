@@ -512,6 +512,9 @@ obj IfaceRegistry {
     def _ensure_in_context(
         path: str, compile_on_miss: bool = True
     ) -> (IfaceEntry | None) {
+        if self.prog.source_store.overrides {
+            return None;
+        }
         resolved = os.path.realpath(path);
         if not _interface_source_path(resolved) {
             return None;
@@ -687,6 +690,9 @@ obj IfaceRegistry {
     }
 
     def eligible(compiler: any, resolved: str, options: any) -> bool {
+        if self.prog.source_store.overrides {
+            return False;
+        }
         if options.aot_mode
             or bool(options.force_codespace)
             or bool(options.default_codespace) {
@@ -935,6 +941,10 @@ obj IfaceRegistry {
         resolved: str, mod: any, options: any, err_start: int, warn_start: int
     ) -> None {
         import json;
+
+        if self.prog.source_store.overrides {
+            return;
+        }
 
         if mod is None
             or mod.parse_failed

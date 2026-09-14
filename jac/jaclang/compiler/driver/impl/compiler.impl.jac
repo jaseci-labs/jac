@@ -728,10 +728,7 @@ impl JacCompiler.parse_str(
                 "'jac fix placement' to migrate the project."
             );
         }
-        import from jaclang.compiler.frontend.parser.frontend {
-            annex_sources,
-            parse_woven
-        }
+        import from jaclang.compiler.frontend.parser.frontend { parse_woven }
         codespace = '';
         import from jaclang.compiler.frontend.codeinfo {
             is_client_by_location as _cbl,
@@ -794,12 +791,15 @@ impl JacCompiler.parse_str(
                 source_str,
                 file_path,
                 target_program,
-                annex_sources(file_path),
+                target_program.source_store.annexes(file_path),
                 early_context=codespace or 'server'
             );
         } else {
             (mod, had_error) = target_program.source_store.parse(
-                source_str, file_path, target_program, annex_sources(file_path)
+                source_str,
+                file_path,
+                target_program,
+                target_program.source_store.annexes(file_path)
             );
         }
         if (codespace == 'client') {
@@ -1591,6 +1591,11 @@ impl JacCompiler._compile_once(
     use_str: (str | None) = None,
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
+    if use_str is None {
+        use_str = target_program.source_store.overrides.get(
+            os.path.realpath(file_path)
+        );
+    }
     import from jaclang.jac0core.ext_registry { is_annex }
     if (use_str is None and options.resolve_annex_parent and is_annex(file_path)) {
         import from jaclang.compiler.driver.bccache { discover_base_file }

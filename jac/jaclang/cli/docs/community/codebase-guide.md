@@ -171,6 +171,16 @@ Two sibling areas round out the picture: `client/` holds the client toolchain an
 
 This module powers IDE support, in two halves. `lsp/protocol/` implements the Language Server Protocol surface (message types, URIs, the protocol server). `lsp/server/` is the engine underneath -- it manages open modules, coordinates incremental recompilation, and feeds semantic data to the protocol layer (completions, diagnostics, go-to-definition, hover). If you're working on IDE features, you'll usually start in `lsp/protocol/` for the protocol handling and drop into `lsp/server/` for the semantic logic.
 
+Source inputs and dependency lifetime belong to `compiler/driver/`. `SourceStore`
+captures editor overrides alongside disk sources, including implementation and
+test annexes, and returns isolated syntax for each compilation context. Unsaved
+inputs must never populate a disk-keyed interface cache. `DepGraph` keeps both
+directions of dependency edges: invalidating a resident module preserves the
+edges needed to recover after an error, while a completed compilation replaces
+its outgoing dependencies. Failed or cancelled compilations conservatively
+retain the last known edges. Reverse dependency queries span application
+contexts.
+
 ### `project/`
 
 Handles `jac.toml` configuration parsing, dependency resolution, capability configuration, and project scaffolding templates.
