@@ -92,8 +92,9 @@ at the last checkpoint, even when the producer cannot run its final cleanup.
   through the first Python statement from compiler/CLI initialization through
   precompile entry. Worker setup and replacement remain in the worker records.
 
-RSS is the process high-water mark, not a sum of live objects or a peak across
-the entire process tree. Worker RSS is recorded separately. Child CPU includes
+Stage RSS is the process high-water mark, not a sum of live objects or a peak
+across the entire process tree. Worker RSS records the current resident set on
+Linux and macOS, with peak RSS as a fallback on other platforms. Child CPU includes
 children already waited for; it is not a measure of parallel wall time.
 
 For comparisons, keep the source revision, machine, Python/shim/kernel inputs,

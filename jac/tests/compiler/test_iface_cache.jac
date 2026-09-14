@@ -127,6 +127,40 @@ test "a warm no-edit check replays diagnostics and runs zero passes" {
     assert warm_diags == cold_diags , "warm diagnostics diverge from cold";
 }
 
+test "a partially cached import cycle retains exported declarations" {
+    with tempfile.TemporaryDirectory() as directory {
+        api = Path(directory) / "api.jac";
+        factory = Path(directory) / "factory.jac";
+        main = Path(directory) / "main.jac";
+        api.write_text(
+            "import from factory { create }\n"
+            "obj Box { has value: int = 42; }\n"
+            "def build() -> Box { return create(); }\n"
+        );
+        factory.write_text(
+            "import from api { Box }\n" "def create() -> Box { return Box(); }\n"
+        );
+        main.write_text(
+            "import from api { build }\nwith entry { print(build().value); }\n"
+        );
+        (_, cold_diags) = _check(str(main));
+        assert not cold_diags , cold_diags;
+        cache = _cache_path(str(factory), str(main));
+        original = read_section_bytes(cache.read_bytes(), SEC_IFACE);
+        assert original is not None;
+        # Checking a new consumer loads api's cached interface and discovers
+        # the changed factory while validating its dependencies. Factory's
+        # import back into api must still see Box before api is in the hub.
+        factory.write_text(factory.read_text() + "\n# body edit\n");
+        main.write_text(main.read_text() + "\n# new consumer\n");
+        (_, partial_diags) = _check(str(main));
+        assert partial_diags == cold_diags , partial_diags;
+        assert read_section_bytes(cache.read_bytes(), SEC_IFACE) == original;
+        (_, warm_diags) = _check(str(main));
+        assert warm_diags == cold_diags , warm_diags;
+    }
+}
+
 test "dependency ingestion hydrates from the interface, not the source" {
     (main, dep) = _project();
     _check(main);

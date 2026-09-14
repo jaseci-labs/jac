@@ -169,6 +169,10 @@ The dependency graph records both imported modules and compile-time file reads.
 Compile-time symbol resolution tracks visited import aliases and keeps its
 recursion guard active through value evaluation. Cyclic reexports terminate
 without a compile-time value; long acyclic chains resolve without a hop limit.
+Type imports use the program's module hub and interface registry to resolve
+cycles. An import encountered during cache validation can hydrate the module's
+interface or enter its source pipeline; the evaluator does not replace an
+in-progress module with an empty symbol table.
 An edit invalidates affected live products and their consumers. Disk replay uses
 interface hashes for ordinary imports and content hashes for compile-time inputs,
 so body-only edits retain the existing interface cutoff. Restored timestamps do

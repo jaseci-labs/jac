@@ -471,26 +471,9 @@ impl TypeEvaluator._resolve_submodule_attr(
 impl TypeEvaluator._import_module_from_path(
     path: str, importer_path: (str | None) = None, need_tree: bool = False
 ) -> Module {
-    resolved_path = str(Path(path).resolve());
-
-    if resolved_path in self._modules_in_compile {
-        _pending = self.program.find_module(resolved_path);
-        if _pending is not None {
-            mod = _pending;
-        } else {
-            return Module.make_stub(inject_name=Path(resolved_path).stem);
-        }
-    } else {
-        self._modules_in_compile.add(resolved_path);
-        try {
-            mod = self.program.load_dependency_module(
-                path, importer_path=importer_path, need_tree=need_tree
-            );
-        } finally {
-            self._modules_in_compile.discard(resolved_path);
-        }
-    }
-
+    mod = self.program.load_dependency_module(
+        path, importer_path=importer_path, need_tree=need_tree
+    );
     if mod.parent_scope is None and mod is not self.builtins_module {
         mod.parent_scope = self.builtins_module;
     }
