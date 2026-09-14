@@ -96,8 +96,12 @@ Boxed values use the shared reference-acquisition and release helpers for local
 assignments, loop and comprehension bindings, pattern captures, walrus bindings,
 and rebound parameters. Tuple fields participate in acquisition, destruction,
 and cycle tracing; unpacking acquires all replacement values before releasing
-any old value. Boxed local values participate in iteration and frame cleanup;
-optional field stores preserve the ownership of the whole incoming value.
+any old value. Reference-counted tuple returns use that same boxing path to
+acquire each borrowed field, including repeated aliases and normalized string
+temporaries. Field coercion carries ownership through the conversion instead
+of inferring a move from the source expression's name. Boxed local values
+participate in iteration and frame cleanup; optional field stores preserve
+the ownership of the whole incoming value.
 Member lookup uses the current native binding's layout after a name changes
 representation, while preserving a flow-narrowed subtype of that binding.
 

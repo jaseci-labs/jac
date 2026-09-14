@@ -396,7 +396,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 and nd.expr.sym_name not in self.closure_cell_handles
                 and not self._is_owned(val) {
                 skip_var = nd.expr.sym_name;
-            } elif isinstance(nd.expr, uni.TupleVal) {
+            } elif isinstance(nd.expr, uni.TupleVal) and self._gc_mode() == "none" {
                 tup_elems = nd.expr.values or [];
                 for tup_elem in tup_elems {
                     elem_name: (str | None) = None;

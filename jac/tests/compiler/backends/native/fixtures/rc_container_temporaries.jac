@@ -534,3 +534,38 @@ def boxed_nested_parameter_binding -> int {
     result = consume(item);
     return result + int(dropped == before + 1);
 }
+
+def substring_tuple -> tuple[str, str] {
+    text = substring_text();
+    part = text[0:3];
+    return (part, part);
+}
+
+def returned_substring_tuple -> int {
+    pair = substring_tuple();
+    return int(pair[0] == "pre" and pair[1] == "pre");
+}
+
+def aliased_local_tuple -> tuple[Item, Item] {
+    item = Item(7);
+    return (item, item);
+}
+
+def returned_aliased_local_tuple -> int {
+    before = dropped;
+    pair = aliased_local_tuple();
+    return pair[0].value + pair[1].value + int(dropped == before);
+}
+
+def boxed_local_tuple -> tuple[object, object] {
+    item: object = Item(7);
+    return (item, item);
+}
+
+def returned_boxed_local_tuple -> int {
+    before = dropped;
+    pair = boxed_local_tuple();
+    return int(isinstance(pair[0], Item))
+        + int(isinstance(pair[1], Item))
+        + int(dropped == before);
+}

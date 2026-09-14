@@ -10,11 +10,11 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         declared_fields = list(declared.pointee.elements);
     }
 
-    _in_return = False;
+    _linear_return = False;
     _anc = nd.parent;
-    while _anc is not None {
+    while self._gc_mode() == "none" and _anc is not None {
         if isinstance(_anc, uni.ReturnStmt) {
-            _in_return = True;
+            _linear_return = True;
             break;
         }
         if not isinstance(_anc, uni.TupleVal) {
@@ -35,12 +35,14 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         }
 
         _owns = self._is_owned(v);
-        if _in_return and isinstance(v.type, ir.PointerType) and not _owns {
+        # Reference-counted tuple boxes acquire borrowed fields themselves.
+        # Only linear returns transfer local storage by source name: coercion
+        # can replace a string local with a separately owned frame temporary.
+        if _linear_return and isinstance(v.type, ir.PointerType) and not _owns {
             is_named_local = isinstance(val, uni.Name)
                 and val.sym_name in self.local_vars
                 and val.sym_name not in self.param_vars;
             if not is_named_local {
-                self._emit_rc_retain(v, op="return_tuple_elem");
                 self._mark_owned(v);
                 _owns = True;
             } elif _ret_direct {
@@ -265,18 +267,21 @@ impl NaIRGenPass._coerce_tuple_to_struct(
         return val;
     }
     out: ir.Value = ir.Constant(target_struct, ir.Undefined);
+    source_owned = val.na_tuple_owned;
+    field_owned: list[bool] = [];
     for i in range(len(target_struct.elements)) {
         fld = self.builder.extract_value(val, i, name=f"tcoerce.{i}");
+        if source_owned is not None and i < len(source_owned) and source_owned[i] {
+            self._mark_owned(fld);
+        }
         tgt_ty = target_struct.elements[i];
         if fld.type != tgt_ty {
             fld = self._coerce_type(fld, tgt_ty);
         }
+        field_owned.append(self._is_owned(fld));
         out = self.builder.insert_value(out, fld, i, name=f"tcoerce.ins.{i}");
     }
-    _tc_owned = val?.na_tuple_owned;
-    if _tc_owned is not None {
-        out.na_tuple_owned = _tc_owned;
-    }
+    out.na_tuple_owned = field_owned;
     return out;
 }
 
