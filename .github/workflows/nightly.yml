@@ -1,7 +1,7 @@
 name: Nightly
 
-# Scheduled checks of source builds and shipped artifacts. On workflow_dispatch every job
-# runs; on schedule each job matches its own cron.
+# Scheduled checks of source builds and shipped artifacts. Manual runs default
+# to every job; native_only selects the JacPython probes. Scheduled jobs match their cron.
 
 on:
   schedule:
@@ -9,6 +9,11 @@ on:
     - cron: '17 8 * * *'  # installer against the LIVE latest release
     - cron: '41 9 * * 1'  # Intel-Mac probe (the manual release leg)
   workflow_dispatch:
+    inputs:
+      native_only:
+        description: Run only the JacPython runtime and packaged binary probes
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -92,7 +97,7 @@ jobs:
           include-hidden-files: true
 
   notes-app-cef-smoke:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && !inputs.native_only) || github.event.schedule == '0 3 * * *' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - uses: actions/checkout@v5
@@ -156,7 +161,7 @@ jobs:
   # when scripts/install.sh changes; this runs it daily, so a release that
   # ships a missing or broken asset is caught without an installer PR.
   installer-live:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 8 * * *' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && !inputs.native_only) || github.event.schedule == '17 8 * * *' }}
     uses: ./.github/workflows/_installer.yml
 
   # The darwin native lane: sealed macOS kit + the Mach-O / wasm-floor /
@@ -166,7 +171,7 @@ jobs:
   # This is also the only caller that runs on main, so it is what seeds the
   # shared macOS caches -- setup-jac gates every cache save to main.
   macos-native:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && !inputs.native_only) || github.event.schedule == '0 3 * * *' }}
     uses: ./.github/workflows/_macos-native.yml
 
   # The Intel-Mac leg left the release matrix: it is `manual` in
@@ -177,7 +182,7 @@ jobs:
   # weeks the way it once did inside the matrix. No tag, so nothing is
   # uploaded and the post-build jobs stay skipped.
   intel-mac-probe:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '41 9 * * 1' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && !inputs.native_only) || github.event.schedule == '41 9 * * 1' }}
     permissions:
       contents: write
     uses: ./.github/workflows/build-binaries.yml
@@ -192,7 +197,7 @@ jobs:
   # binary via docker/jaclang.Dockerfile (baked-runtime path).
   k8s-real-e2e:
     name: microservice e2e (k8s, ${{ matrix.base }})
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && !inputs.native_only) || github.event.schedule == '0 3 * * *' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 40
     strategy:
