@@ -131,7 +131,6 @@ obj ModuleHub {
         self.stamps.clear();
         self.source_revisions.clear();
         self.stamps.update(retained_stamps);
-        self.artifacts.clear();
         self.client_artifacts.clear();
     }
 }

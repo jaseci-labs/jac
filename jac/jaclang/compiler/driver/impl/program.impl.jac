@@ -31,6 +31,41 @@ impl JacProgram.iface_registry(self: JacProgram) -> any {
     return reg;
 }
 
+impl JacProgram.for_analysis -> JacProgram {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+    program = JacProgram();
+    internal = JacProgram();
+    compiler = JacCompiler(_selfhost=SelfHostCache(_program=internal));
+    program._compiler = compiler;
+    internal._compiler = compiler;
+    internal.context_root = program;
+    internal.source_store = program.source_store;
+    program.deps.tracking = True;
+    internal.deps.tracking = True;
+    return program;
+}
+
+impl JacProgram.owned_contexts(self: JacProgram) -> list[JacProgram] {
+    owner = self.context_root if self.context_root is not None else self;
+    contexts = [owner];
+    contexts.extend(
+        context
+        for context in owner.contexts.values()
+        if context is not owner
+    );
+    compiler = owner._compiler;
+    if compiler is not None and compiler._selfhost is not None {
+        internal = compiler._selfhost.peek_program();
+        if internal is not None
+            and internal.context_root is owner
+            and all(internal is not context for context in contexts) {
+            contexts.append(internal);
+        }
+    }
+    return contexts;
+}
+
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
     self.hub.stamp(resolved_path);
 }
@@ -39,7 +74,7 @@ impl JacProgram.install_module(
     self: JacProgram, resolved_path: str, mod: uni.Module
 ) -> None {
     displaced = self.hub.install(resolved_path, mod);
-    if self.source_store.overrides {
+    if self.source_store.overrides or self.source_store.snapshot is not None {
         self.hub.source_revisions[resolved_path] = self.source_store.fingerprint(
             resolved_path
         );
@@ -72,13 +107,7 @@ impl JacProgram.record_dependency(
 }
 
 impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set[str] {
-    owner = self.context_root if self.context_root is not None else self;
-    graphs = [owner.deps];
-    graphs.extend(
-        context.deps
-        for context in owner.contexts.values()
-        if context is not owner
-    );
+    graphs = [context.deps for context in self.owned_contexts()];
     seen: set[str] = set();
     pending = [JacProgram.hub_key(target_path)];
     while pending {
@@ -98,7 +127,7 @@ impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set
 
 impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None {
     if self.context_root is None {
-        for context in list(self.contexts.values()) {
+        for context in self.owned_contexts() {
             if context is not self {
                 context.invalidate_module(resolved_path);
             }
@@ -146,6 +175,7 @@ impl JacProgram.load_dependency_module(
     import from pathlib { Path }
 
     resolved_path = str(Path(source_path).resolve());
+    self.source_store.record_module(resolved_path);
     if resolved_path.endswith('.pyi') {
         catalog = self.stub_catalog();
         if catalog is not None {
@@ -355,7 +385,7 @@ impl JacProgram.release_compile_closure(
     }
 
     if self.context_root is None {
-        for context in list(self.contexts.values()) {
+        for context in self.owned_contexts() {
             if context is not self {
                 context.release_compile_closure(
                     collect=False, retain_stubs=retain_stubs

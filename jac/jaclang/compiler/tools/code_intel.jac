@@ -288,9 +288,7 @@ obj CodeIntelligence {
 
     def postinit {
         self._root_real: str = _real(self.proj_dir);
-        self.prog: JacProgram = JacProgram();
-
-        self.prog.deps.tracking = True;
+        self.prog: JacProgram = JacProgram.for_analysis();
         self._files: list[str] = [];
         self._file_set: set[str] = set();
         self._compiled: dict[str, uni.Module] = {};

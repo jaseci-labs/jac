@@ -59,6 +59,35 @@ test "invalidation releases graph roots in every application context" {
     assert owner.transitive_dependents(path) == {JacProgram.hub_key('consumer.jac')};
 }
 
+test "analysis sessions own private compiler contexts and release them together" {
+    first = JacProgram.for_analysis();
+    second = JacProgram.for_analysis();
+    first_internal = first._get_compiler().selfhost.program;
+    second_internal = second._get_compiler().selfhost.program;
+    assert first_internal is not second_internal;
+    assert first_internal._get_compiler() is first._get_compiler();
+    assert first_internal.source_store is first.source_store;
+    assert first.source_store is not second.source_store;
+    assert any(first_internal is context for context in first.owned_contexts());
+    (_, internal_ref, _, _) = _probe(first_internal);
+    first.release_compile_closure();
+    gc.collect();
+    assert internal_ref() is None;
+    assert any(first_internal is context for context in first.owned_contexts());
+}
+
+test "execution artifacts survive tree release until their module is invalidated" {
+    import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
+    program = JacProgram();
+    path = JacProgram.hub_key('retained_execution.jac');
+    carrier = CodeGenTarget();
+    program.hub.artifacts[path] = carrier;
+    program.release_compile_closure();
+    assert program.hub.artifacts[path] is carrier;
+    program.invalidate_module(path);
+    assert path not in program.hub.artifacts;
+}
+
 def _compile_probe(prog: JacProgram) -> tuple {
     mod = prog.compile(file_path="release_closure_probe.jac", use_str=SRC);
     assert mod is not None;

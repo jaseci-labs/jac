@@ -2,13 +2,20 @@ import from importlib.machinery { ModuleSpec }
 import os;
 import sys;
 import from pathlib { Path }
+import from contextlib { contextmanager }
+import from contextvars { ContextVar }
 import from jaclang.jac0core.ext_registry {
     MODULE_SUFFIXES,
     is_jac_namespace_package,
     language_of
 }
 
-glob _project_root_cache: dict = {},
+glob _project_root_cache: ContextVar[dict[str, tuple[Path, Path] | None] | None] = ContextVar(
+         'jac_project_roots', `default=None
+     ),
+     _source_exists: ContextVar[Callable[[str], bool] | None] = ContextVar(
+         'jac_source_exists', `default=None
+     ),
      _import_base_stack: list = [],
      COMPILER_PACKAGE: str = 'jaclang';
 
@@ -93,7 +100,25 @@ def _find_spec_no_exec(target: str) -> (ModuleSpec | None) {
     return spec;
 }
 
-def find_project_root(start: (Path | None) = None) -> (tuple | None) {
+@contextmanager
+def project_resolution_scope(
+    file_exists: Callable[[str], bool] | None = None
+) -> Iterator[None] {
+    if _project_root_cache.get() is not None {
+        yield ;
+        return;
+    }
+    token = _project_root_cache.set({});
+    reader_token = _source_exists.set(file_exists);
+    try {
+        yield ;
+    } finally {
+        _project_root_cache.reset(token);
+        _source_exists.reset(reader_token);
+    }
+}
+
+def find_project_root(start: (Path | None) = None) -> tuple[Path, Path] | None {
     if start is None {
         start = Path.cwd();
     }
@@ -101,18 +126,31 @@ def find_project_root(start: (Path | None) = None) -> (tuple | None) {
     if current.is_file() {
         current = current.parent;
     }
+    cache = _project_root_cache.get();
+    exists = _source_exists.get() or os.path.isfile;
+    key = str(current);
+    if cache is not None and key in cache {
+        return cache[key];
+    }
+    result: tuple[Path, Path] | None = None;
     while current != current.parent {
         toml_path = current / 'jac.toml';
-        if toml_path.exists() {
-            return (current, toml_path);
+        if exists(str(toml_path)) {
+            result = (current, toml_path);
+            break;
         }
         current = current.parent;
     }
-    toml_path = current / 'jac.toml';
-    if toml_path.exists() {
-        return (current, toml_path);
+    if result is None {
+        toml_path = current / 'jac.toml';
+        if exists(str(toml_path)) {
+            result = (current, toml_path);
+        }
     }
-    return None;
+    if cache is not None {
+        cache[key] = result;
+    }
+    return result;
 }
 
 def find_jac_project_root(start: (str | None) = None) -> (str | None) {
@@ -124,14 +162,8 @@ def find_jac_project_root(start: (str | None) = None) -> (str | None) {
     } else {
         current = os.getcwd();
     }
-    if (current in _project_root_cache) {
-        return _project_root_cache[current];
-    }
-
     result = find_project_root(Path(current));
-    found = str(result[0]) if result else None;
-    _project_root_cache[current] = found;
-    return found;
+    return str(result[0]) if result else None;
 }
 
 def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {

@@ -1,20 +1,24 @@
 import from jaclang.runtime.object_model { field }
 import from threading { Event }
+import from contextvars { ContextVar }
+import type from jaclang.project.config { JacConfig }
 
-glob _config_probe: dict = {"active": False};
+glob _config_probe: ContextVar[bool] = ContextVar(
+         'jac_config_probe', `default=False
+     );
 
-def _project_config -> any {
-    if _config_probe["active"] {
+def _project_config -> JacConfig | None {
+    if _config_probe.get() {
         return None;
     }
-    _config_probe["active"] = True;
+    token = _config_probe.set(True);
     try {
         config_mod = __import__("jaclang.project.config", fromlist=["get_config"]);
         return config_mod.get_config();
     } except Exception {
         return None;
     } finally {
-        _config_probe["active"] = False;
+        _config_probe.reset(token);
     }
 }
 

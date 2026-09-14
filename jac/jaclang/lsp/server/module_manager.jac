@@ -17,6 +17,8 @@ obj ModuleManager {
         completions: dict[int, list[lspt.CompletionItem]] = {};
 
     def invalidate(path: str) {
+        self.program.invalidate_module(path);
+        self.program.drop_module_alerts(path);
         self.completions.clear();
         affected = [
             file

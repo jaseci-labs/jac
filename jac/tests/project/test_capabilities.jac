@@ -38,7 +38,7 @@ import from jaclang.project.capabilities {
 
 def reset_config {
     import from jaclang.project { config as config_mod }
-    config_mod._config = None;
+    config_mod.config_state().current = None;
 }
 
 def make_project(toml: str) -> tuple[str, Path] {

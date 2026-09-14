@@ -5,7 +5,6 @@ import hashlib;
 import os;
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
-import from collections.abc { Iterator }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree { Module }
@@ -53,6 +52,62 @@ obj SourceUnit {
         nodes: int;
 }
 
+def source_bytes(path: str) -> bytes | None {
+    try {
+        return Path(path).read_bytes();
+    } except OSError {
+        return None;
+    }
+}
+
+obj SourceSnapshot {
+    has overrides: dict[str, str],
+        files: dict[str, str] = {},
+        disk: dict[str, bytes | None] = {},
+        annex_paths: dict[str, list[str]] = {},
+        modules: set[str] = set();
+
+    def watch(path: str) {
+        if path not in self.disk {
+            self.disk[path] = source_bytes(path);
+        }
+    }
+
+    def watch_configuration(path: str) {
+        for directory in Path(path).parents {
+            for name in ('jac.toml', 'jac.lock', '.env') {
+                self.watch(str(directory / name));
+            }
+        }
+    }
+
+    def read(path: str) -> str {
+        import from jaclang.project.source { decode_source }
+        path = os.path.realpath(path);
+        if path in self.overrides {
+            return self.overrides[path];
+        }
+        if path not in self.files {
+            self.watch(path);
+            data = self.disk[path];
+            if data is None {
+                raise OSError(f"Could not read file {path}");
+            }
+            self.files[path] = decode_source(data, path);
+        }
+        return self.files[path];
+    }
+
+    def is_current(store: SourceStore) -> bool {
+        return self.overrides == store.overrides
+            and all(source_bytes(path) == data for (path, data) in self.disk.items())
+            and all(
+                store.discover_annex_paths(path) == paths
+                for (path, paths) in self.annex_paths.items()
+            );
+    }
+}
+
 obj SourceStore {
     has units: dict[str, SourceUnit] = {},
         revisions: dict[str, str] = {},
@@ -62,15 +117,48 @@ obj SourceStore {
         cached_nodes: int = 0,
         evictions: int = 0,
         parses: int = 0,
-        hits: int = 0;
+        hits: int = 0,
+        snapshot: SourceSnapshot | None = None;
+
+    @contextmanager
+    def capture -> Iterator[SourceSnapshot] {
+        import from jaclang.project.source { source_scope }
+        if self.snapshot is not None {
+            yield self.snapshot;
+            return;
+        }
+        captured = SourceSnapshot(dict(self.overrides));
+        self.snapshot = captured;
+        try {
+            with source_scope(captured.read) {
+                yield captured;
+            }
+        } finally {
+            self.snapshot = None;
+        }
+    }
+
+    def record_module(path: str) {
+        if self.snapshot is not None {
+            path = os.path.realpath(path);
+            self.snapshot.modules.add(path);
+            self.snapshot.watch_configuration(path);
+            if path not in self.snapshot.overrides {
+                self.snapshot.watch(path);
+            }
+        }
+    }
 
     def read(path: str) -> str {
         import from jaclang.project.source { read_file_with_encoding }
+        if self.snapshot is not None {
+            return self.snapshot.read(path);
+        }
         source = self.overrides.get(os.path.realpath(path));
         return source if source is not None else read_file_with_encoding(path);
     }
 
-    def annexes(path: str) -> list[tuple[str, str]] {
+    def discover_annex_paths(path: str) -> list[str] {
         import from jaclang.compiler.driver.bccache {
             discover_annex_files,
             discover_base_file
@@ -86,7 +174,21 @@ obj SourceStore {
             for candidate in self.overrides
             if discover_base_file(candidate) == path
         );
-        return [(self.read(candidate), candidate) for candidate in sorted(paths)];
+        return sorted(paths);
+    }
+
+    def annexes(path: str) -> list[tuple[str, str]] {
+        path = os.path.realpath(path);
+        snapshot = self.snapshot;
+        if snapshot is None {
+            paths = self.discover_annex_paths(path);
+        } else {
+            if path not in snapshot.annex_paths {
+                snapshot.annex_paths[path] = self.discover_annex_paths(path);
+            }
+            paths = snapshot.annex_paths[path];
+        }
+        return [(self.read(candidate), candidate) for candidate in paths];
     }
 
     def set_overrides(sources: dict[str, str]) -> set[str] {

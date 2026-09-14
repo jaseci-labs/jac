@@ -28,9 +28,9 @@ import from jaclang.cli.commands { execution as execution_cmds }
 """Reset the config singleton so each run rediscovers from scratch."""
 def reset_config {
     import from jaclang.project { config as config_mod }
-    config_mod._config = None;
-    config_mod._config_explicit = False;
-    config_mod._config_by_root = {};
+    config_mod.config_state().current = None;
+    config_mod.config_state().explicit = False;
+    config_mod.config_state().by_root = {};
 }
 
 

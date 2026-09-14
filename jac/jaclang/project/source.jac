@@ -1,5 +1,21 @@
 import os;
+import from contextlib { contextmanager }
+import from contextvars { ContextVar }
 import type from jaclang.compiler.frontend.srcloc { Span }
+
+glob _source_reader: ContextVar[Callable[[str], str] | None] = ContextVar(
+         'jac_source_reader', `default=None
+     );
+
+@contextmanager
+def source_scope(reader: Callable[[str], str]) -> Iterator[None] {
+    token = _source_reader.set(reader);
+    try {
+        yield ;
+    } finally {
+        _source_reader.reset(token);
+    }
+}
 
 def pascal_to_snake(pascal_string: str) -> str {
     snake_string = '';
@@ -293,18 +309,12 @@ glob _JAC_TEXT_ENCODINGS = [
          'utf-16be'
      ];
 
-def read_file_with_encoding(file_path: str) -> str {
+def decode_source(data: bytes, file_path: str = '') -> str {
     for encoding in _JAC_TEXT_ENCODINGS {
         try {
-            with open(file_path, encoding=encoding) as f {
-                return f.read();
-            }
+            return data.decode(encoding).replace('\r\n', '\n').replace('\r', '\n');
         } except UnicodeError {
             continue;
-        } except Exception as e {
-            raise OSError(
-                f"Could not read file {file_path}: {e}. Report this issue: https://github.com/jaseci-labs/jaseci/issues"
-            );
         }
     }
     raise OSError(
@@ -312,6 +322,36 @@ def read_file_with_encoding(file_path: str) -> str {
     );
 }
 
+
+def read_file_with_encoding(file_path: str) -> str {
+    reader = _source_reader.get();
+    if reader is not None {
+        return reader(file_path);
+    }
+    try {
+        with open(file_path, 'rb') as source {
+            data = source.read();
+        }
+    } except OSError as error {
+        raise OSError(
+            f"Could not read file {file_path}: {error}. Report this issue: https://github.com/jaseci-labs/jaseci/issues"
+        );
+    }
+    return decode_source(data, file_path);
+}
+
+def source_exists(file_path: str) -> bool {
+    reader = _source_reader.get();
+    if reader is None {
+        return os.path.isfile(file_path);
+    }
+    try {
+        reader(file_path);
+        return True;
+    } except OSError {
+        return False;
+    }
+}
 
 def _to_posix_path(raw_path: str) -> str {
     return raw_path.replace(os.sep, '/');

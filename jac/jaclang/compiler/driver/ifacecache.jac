@@ -416,6 +416,7 @@ obj IfaceRegistry {
 
     def ensure(path: str, compile_on_miss: bool = True) -> IfaceEntry | None {
         import from jaclang.compiler.driver.compilation_context { program_for }
+        self.prog.source_store.record_module(path);
         actual = program_for(path, self.prog);
         if actual is not self.prog {
             return actual.iface_registry().ensure(path, compile_on_miss);

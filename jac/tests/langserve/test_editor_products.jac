@@ -3,6 +3,7 @@ import gc;
 import weakref;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
+import from unittest.mock { patch }
 import from jaclang.lsp.server.engine { JacLangServer }
 
 test "cached outlines and tokens survive compiler graph release" {
@@ -42,6 +43,39 @@ test "invalidating a compilation unit drops all annex products" {
             assert set(server.module_manager.products) == {str(path), str(annex)};
             server.module_manager.invalidate(str(path));
             assert not server.module_manager.products and not server.sem_managers;
+        } finally {
+            server.shutdown();
+        }
+    }
+}
+
+test "a disk dependency changed during analysis cannot publish a result" {
+    with TemporaryDirectory() as directory {
+        path = Path(directory) / 'main.jac';
+        library = Path(directory) / 'lib.jac';
+        library.write_text('obj Foo { has x: int; }\n');
+        path.write_text('import from .lib { Foo }\nwith entry { f = Foo(x=1); }\n');
+        server = JacLangServer();
+        server.work.stop();
+        original = server.program.compile;
+        def concurrent_change(*args: any, **kwargs: any) -> any {
+            result = original(*args, **kwargs);
+            library.write_text('obj Foo { has y: str; }\n');
+            return result;
+        }
+        try {
+            before = server.workspace.revision;
+            with patch.object(
+                server.program, 'compile', side_effect=concurrent_change
+            ) {
+                assert not server.type_check_file(path.as_uri());
+            }
+            assert not server.diagnostics and not server.module_manager.products;
+            assert server.program.find_module(str(path)) is None;
+            assert server.workspace.revision > before;
+            assert server.program.source_store.snapshot is None;
+            assert server.type_check_file(path.as_uri());
+            assert server.diagnostics[path.as_uri()];
         } finally {
             server.shutdown();
         }

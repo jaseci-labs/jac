@@ -27,7 +27,7 @@ import from jaclang.cli.commands { analysis as analysis_cmds }
 """Reset the config singleton so each run rediscovers jac.toml from cwd."""
 def reset_config {
     import from jaclang.project { config as config_mod }
-    config_mod._config = None;
+    config_mod.config_state().current = None;
 }
 
 

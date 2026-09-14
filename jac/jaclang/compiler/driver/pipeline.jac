@@ -261,6 +261,7 @@ def compile_module(
 ) -> Module {
     import from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
     task = ModuleCompilation(compiler, program, path, options, source);
+    program.source_store.record_module(path);
     program.deps.begin(path);
     complete = False;
     try {

@@ -40,6 +40,8 @@ class JacProgram {
         contexts: dict[str, JacProgram];
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
+    static def for_analysis -> JacProgram;
+    def owned_contexts(self: JacProgram) -> list[JacProgram];
     def _get_compiler(self: JacProgram) -> JacCompiler;
     def iface_registry(self: JacProgram) -> any;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;

@@ -71,9 +71,11 @@ impl JacLangServer.postinit -> None {
     super.postinit();
     self.name = 'jac-lsp';
     self.version = 'v0.1';
-    self.watch_patterns = ['**/*.{jac,py,pyi}', '**/{jac.toml,jac.lock,.env}'];
-    self.program = JacProgram();
-    self.program.deps.tracking = True;
+    self.watch_patterns = [
+        '**/*.{jac,py,pyi}',
+        '**/{jac.toml,jac.*.toml,jac.lock,.env}'
+    ];
+    self.program = JacProgram.for_analysis();
     self._compiler_lock = threading.RLock();
     self.module_manager = ModuleManager(self.program, self.sem_managers);
     self.work = WorkQueue();
@@ -111,13 +113,7 @@ impl JacLangServer._sync_sources(
     }
     changed = self.program.source_store.set_overrides(snapshot.sources());
     changed.update(changed_paths or set());
-    contexts = [self.program];
-    contexts.extend(
-        context
-        for context in self.program.contexts.values()
-        if context is not self.program
-    );
-    for context in contexts {
+    for context in self.program.owned_contexts() {
         for path in list(context.mod.hub) {
             if not context.is_hub_entry_fresh(path) {
                 changed.add(path);
@@ -131,8 +127,6 @@ impl JacLangServer._sync_sources(
         affected.update(self.program.transitive_dependents(owner));
     }
     for path in affected {
-        self.program.invalidate_module(path);
-        self.program.drop_module_alerts(path);
         self.module_manager.invalidate(path);
         uri = _uri_of(path);
         if uri in snapshot.documents {
@@ -161,12 +155,11 @@ impl JacLangServer._refresh_file(uri: str) -> None {
     path = _path_of(uri);
     snapshot = self.workspace.snapshot();
     changed = {path};
-    if os.path.basename(path) in ('jac.toml', 'jac.lock', '.env') {
-        import from pathlib { Path }
-        import from jaclang.project.config { get_config }
-        get_config(Path(path).parent, force_discover=True);
+    name = os.path.basename(path);
+    if name in ('jac.toml', 'jac.lock', '.env')
+        or (name.startswith('jac.') and name.endswith('.toml')) {
         changed.update(snapshot.sources());
-        for context in [self.program, *self.program.contexts.values()] {
+        for context in self.program.owned_contexts() {
             changed.update(context.mod.hub);
         }
     }
@@ -189,7 +182,8 @@ impl JacLangServer._ensure_query(request: Request) -> None {
     }
     self._sync_sources(self.workspace.snapshot());
     path = discover_base_file(_path_of(uri)) or _path_of(uri);
-    if self.program.find_module(path) is None {
+    if self.program.find_module(path) is None
+        or _path_of(uri) not in self.sem_managers {
         self.type_check_file(uri, request.cancel_token, symbols_only=True);
     }
 }
@@ -203,108 +197,136 @@ impl JacLangServer.type_check_file(
         if cancel_token and cancel_token.is_set() {
             return False;
         }
+        touched: set[str] = set();
         try {
             snapshot = self.workspace.snapshot();
             self._sync_sources(snapshot);
-            fs_path = _path_of(file_uri);
-            main_path = discover_base_file(fs_path) or fs_path;
-            files_to_check = [main_path];
-            files_to_check.extend(
-                path for (_, path) in self.program.source_store.annexes(main_path)
-            );
-            import from jaclang.compiler.driver.compile_options { CompileOptions }
-            import from jaclang.project.workspace { workspace_for_path }
-            ws = workspace_for_path(main_path);
-            app = ws.app_for_path(main_path) if ws is not None else None;
-            proj_root = ws.project_root if ws is not None else None;
-            targets: list[tuple[str, str]] = [];
-            if ws is None or app is not None {
-                targets = [(app.name if app else '', app.kind if app else '')];
-            } else {
-                targets = [
-                    (a.name, a.kind)
-                    for a in list(ws.apps.values())[:LSP_SHARED_APP_LIMIT]
-                ];
-            }
-            multi = len(targets) > 1;
-            collected: list[AppDiagnostics] = [];
-            build: (uni.Module | None) = None;
-            for (app_name, app_kind) in targets {
-                build = self.program.compile(
-                    file_path=main_path,
-                    options=CompileOptions(
-                        no_cgen=True,
-                        symtab_ir_only=symbols_only,
-                        need_full_ast=True,
-                        force_target_program=True,
-                        cancel_token=cancel_token,
-                        target_app=app_name,
-                        app_kind=app_kind,
-                        entry_point=ws.apps[app_name].`entry
-                            if ws is not None and app_name in ws.apps
-                            else main_path,
-                        project_root=proj_root
-                    )
-                );
-                if cancel_token and cancel_token.is_set() {
-                    self.program.invalidate_module(main_path);
-                    self.program.drop_module_alerts(main_path);
-                    return False;
-                }
-                if multi {
-                    collected.append(
-                        AppDiagnostics(
-                            app_name,
-                            [
-                                e
-                                for e in self.program.errors_had
-                                if e.loc.mod_path in files_to_check
-                            ],
-                            [
-                                w
-                                for w in self.program.warnings_had
-                                if w.loc.mod_path in files_to_check
-                            ]
-                        )
+            import from pathlib { Path }
+            import from jaclang.project.config { config_scope }
+            with self.program.source_store.capture() as inputs {
+                touched = inputs.modules;
+                inputs.watch_configuration(_path_of(file_uri));
+                with config_scope(Path(_path_of(file_uri)).parent) {
+                    fs_path = _path_of(file_uri);
+                    main_path = discover_base_file(fs_path) or fs_path;
+                    inputs.watch_configuration(main_path);
+                    files_to_check = [main_path];
+                    files_to_check.extend(
+                        path
+                        for (_, path) in self.program.source_store.annexes(main_path)
                     );
-                    for f in files_to_check {
-                        self._clear_alerts_for_file(f);
+                    import from jaclang.compiler.driver.compile_options {
+                        CompileOptions
                     }
-                }
-            }
-            if multi {
-                (merged_errs, merged_warns) = _merge_app_alerts(collected);
-                self.program.errors_had.extend(merged_errs);
-                self.program.warnings_had.extend(merged_warns);
-            }
-            assert build is not None;
-            with self.workspace.lock {
-                if snapshot.revision != self.workspace.revision
-                    or (cancel_token is not None and cancel_token.is_set()) {
-                    self.program.invalidate_module(main_path);
-                    self.program.drop_module_alerts(main_path);
-                    return False;
-                }
-                self.update_modules(main_path, build, files=files_to_check);
-                if not symbols_only {
-                    all_errors = list(self.program.errors_had);
-                    all_warnings = list(self.program.warnings_had);
-                    for path in files_to_check {
-                        uri = _uri_of(path);
-                        file_diags = utils.gen_diagnostics(
-                            path, all_errors, all_warnings
+                    import from jaclang.project.workspace { workspace_for_path }
+                    ws = workspace_for_path(main_path);
+                    app = ws.app_for_path(main_path) if ws is not None else None;
+                    proj_root = ws.project_root if ws is not None else None;
+                    targets: list[tuple[str, str]] = [];
+                    if ws is None or app is not None {
+                        targets = [(app.name if app else '', app.kind if app else '')];
+                    } else {
+                        targets = [
+                            (a.name, a.kind)
+                            for a in list(ws.apps.values())[:LSP_SHARED_APP_LIMIT]
+                        ];
+                    }
+                    multi = len(targets) > 1;
+                    collected: list[AppDiagnostics] = [];
+                    build: (uni.Module | None) = None;
+                    for (app_name, app_kind) in targets {
+                        build = self.program.compile(
+                            file_path=main_path,
+                            options=CompileOptions(
+                                no_cgen=True,
+                                symtab_ir_only=symbols_only,
+                                need_full_ast=True,
+                                force_target_program=True,
+                                cancel_token=cancel_token,
+                                target_app=app_name,
+                                app_kind=app_kind,
+                                entry_point=ws.apps[app_name].`entry
+                                    if ws is not None and app_name in ws.apps
+                                    else main_path,
+                                project_root=proj_root
+                            )
                         );
-                        document = snapshot.documents.get(uri);
-                        self._published_diagnostics[uri] = file_diags;
-                        self.publish_diagnostics(
-                            uri,
-                            file_diags,
-                            version=document.version if document is not None else None
-                        );
+                        if cancel_token and cancel_token.is_set() {
+                            for path in inputs.modules {
+                                self.module_manager.invalidate(path);
+                            }
+                            return False;
+                        }
+                        if multi {
+                            collected.append(
+                                AppDiagnostics(
+                                    app_name,
+                                    [
+                                        e
+                                        for e in self.program.errors_had
+                                        if e.loc.mod_path in files_to_check
+                                    ],
+                                    [
+                                        w
+                                        for w in self.program.warnings_had
+                                        if w.loc.mod_path in files_to_check
+                                    ]
+                                )
+                            );
+                            for f in files_to_check {
+                                self._clear_alerts_for_file(f);
+                            }
+                        }
+                    }
+                    if multi {
+                        (merged_errs, merged_warns) = _merge_app_alerts(collected);
+                        self.program.errors_had.extend(merged_errs);
+                        self.program.warnings_had.extend(merged_warns);
+                    }
+                    assert build is not None;
+                    inputs_current = inputs.is_current(self.program.source_store);
+                    with self.workspace.lock {
+                        if not inputs_current
+                            or snapshot.revision != self.workspace.revision
+                            or (cancel_token is not None and cancel_token.is_set()) {
+                            for path in inputs.modules {
+                                self.module_manager.invalidate(path);
+                            }
+                            if not inputs_current {
+                                self.workspace.touch();
+                                self.work.schedule(
+                                    file_uri, immediate=True, interrupt=False
+                                );
+                            }
+                            return False;
+                        }
+                        self.update_modules(main_path, build, files=files_to_check);
+                        if not symbols_only {
+                            all_errors = list(self.program.errors_had);
+                            all_warnings = list(self.program.warnings_had);
+                            for path in files_to_check {
+                                uri = _uri_of(path);
+                                file_diags = utils.gen_diagnostics(
+                                    path, all_errors, all_warnings
+                                );
+                                document = snapshot.documents.get(uri);
+                                self._published_diagnostics[uri] = file_diags;
+                                self.publish_diagnostics(
+                                    uri,
+                                    file_diags,
+                                    version=document.version
+                                        if document is not None
+                                        else None
+                                );
+                            }
+                        }
                     }
                 }
             }
         } except Exception as e {
+            for path in touched {
+                self.module_manager.invalidate(path);
+            }
             self.log_error(f"Error during type check: {e}");
             return False;
         }

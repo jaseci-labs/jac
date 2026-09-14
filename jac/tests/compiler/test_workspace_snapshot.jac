@@ -98,3 +98,66 @@ test "dependency reads use an empty overlay and never persist it as disk content
         assert not clean.errors_had , [str(e) for e in clean.errors_had];
     }
 }
+
+test "captured disk sources remain stable and detect concurrent writes" {
+    with TemporaryDirectory() as directory {
+        path = Path(directory) / 'main.jac';
+        path.write_text('glob value = 1;\n');
+        store = SourceStore();
+        with store.capture() as inputs {
+            before = store.read(str(path));
+            assert inputs.is_current(store);
+            path.write_text('glob value = 2;\n');
+            assert store.read(str(path)) == before;
+            assert not inputs.is_current(store);
+            with store.capture() as nested {
+                assert nested is inputs;
+            }
+            assert store.snapshot is inputs;
+        }
+        assert store.snapshot is None;
+        with store.capture() as fresh {
+            assert store.read(str(path)) == 'glob value = 2;\n';
+            assert fresh.is_current(store);
+        }
+    }
+}
+
+test "captured annex membership and configuration are revision inputs" {
+    with TemporaryDirectory() as directory {
+        path = Path(directory) / 'main.jac';
+        annex = Path(directory) / 'main.impl.jac';
+        config = Path(directory) / 'jac.toml';
+        path.write_text('def answer -> int;\n');
+        store = SourceStore();
+        with store.capture() as inputs {
+            store.record_module(str(path));
+            assert store.annexes(str(path)) == [];
+            annex.write_text('impl answer -> int { return 42; }\n');
+            assert store.annexes(str(path)) == [];
+            assert not inputs.is_current(store);
+        }
+        with store.capture() as configured {
+            store.record_module(str(path));
+            assert len(store.annexes(str(path))) == 1;
+            assert configured.is_current(store);
+            config.write_text('[project]\nname="changed"\n');
+            assert not configured.is_current(store);
+        }
+    }
+}
+
+test "an editor override is frozen and capture ends after failure" {
+    store = SourceStore();
+    path = '/tmp/unsaved-source-snapshot.jac';
+    store.set_overrides({path: 'before'});
+    try {
+        with store.capture() as inputs {
+            store.set_overrides({path: 'after'});
+            assert store.read(path) == 'before';
+            assert not inputs.is_current(store);
+            raise RuntimeError('abandoned compilation');
+        }
+    } except RuntimeError {}
+    assert store.snapshot is None and store.read(path) == 'after';
+}

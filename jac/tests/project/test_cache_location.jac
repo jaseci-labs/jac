@@ -30,7 +30,7 @@ def make_temp_project(temp_dir: Path) -> Path {
 # User module cache should be project-local
 # ===========================================================================
 test "user module cache path is under project local .jac directory" {
-    old_config = config_mod._config;
+    old_config = config_mod.config_state().current;
     try {
         with TemporaryDirectory() as tmpdir {
             tmpdir = os.path.realpath(tmpdir);
@@ -58,7 +58,7 @@ test "user module cache path is under project local .jac directory" {
             );
         }
     } finally {
-        config_mod._config = old_config;
+        config_mod.config_state().current = old_config;
     }
 }
 
@@ -78,7 +78,7 @@ test "bootstrap and compiler cache remains in global cache" {
 }
 
 test "external packages use global cache even with active project" {
-    old_config = config_mod._config;
+    old_config = config_mod.config_state().current;
     try {
         with TemporaryDirectory() as tmpdir {
             tmpdir = os.path.realpath(tmpdir);
@@ -103,15 +103,15 @@ test "external packages use global cache even with active project" {
             );
         }
     } finally {
-        config_mod._config = old_config;
+        config_mod.config_state().current = old_config;
     }
 }
 
 test "user module cache uses .jac dir relative to source when no project context" {
-    old_config = config_mod._config;
+    old_config = config_mod.config_state().current;
     try {
         # Set an invalid config to prevent auto-discovery from cwd
-        config_mod._config = JacConfig();
+        config_mod.config_state().current = JacConfig();
 
         with TemporaryDirectory() as tmpdir {
             tmpdir = os.path.realpath(tmpdir);
@@ -135,6 +135,6 @@ test "user module cache uses .jac dir relative to source when no project context
             );
         }
     } finally {
-        config_mod._config = old_config;
+        config_mod.config_state().current = old_config;
     }
 }

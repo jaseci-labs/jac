@@ -181,11 +181,21 @@ its outgoing dependencies. Failed or cancelled compilations conservatively
 retain the last known edges. Reverse dependency queries span application
 contexts.
 
+`JacProgram.for_analysis()` gives each service its own compiler and internal
+compiler program. `owned_contexts()` defines the shared invalidation and release
+boundary. A source capture freezes the bytes read by both source and project
+configuration readers, then checks those contents before publishing. File
+timestamps alone do not identify a revision. `project/config.jac` scopes project
+selection and discovery caches to an operation, so one workspace cannot change
+another workspace's compilation settings.
+
 The module hub owns both lookup entries and links from the program root.
 Replacement, invalidation, and release detach displaced trees through that
 shared owner. The source store keeps recently used, unbound syntax within
 limits of 64 units and 100,000 syntax nodes; dependency records have a separate
 lifetime and survive eviction of those trees.
+Executable artifacts also have a separate lifetime: dropping an analysis tree
+does not unload code that is still executing.
 
 The protocol reader applies each document-change batch atomically and captures
 its revision. `lsp/server/scheduler.jac` coalesces checks per compilation unit,

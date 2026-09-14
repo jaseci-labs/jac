@@ -81,11 +81,11 @@ test "a module's env key is the same inside and outside the config probe guards"
             plain = module_env_fingerprint(path);
             # The enclosing-project kind chain and its probe guard are gone
             # (#8823): the config probe is the only re-entrancy guard left.
-            compile_options._config_probe["active"] = True;
+            token = compile_options._config_probe.set(True);
             try {
                 guarded = module_env_fingerprint(path);
             } finally {
-                compile_options._config_probe["active"] = False;
+                compile_options._config_probe.reset(token);
             }
             assert plain == guarded , (
                 f"the env key of {os.path.basename(path)} must not depend on the "
