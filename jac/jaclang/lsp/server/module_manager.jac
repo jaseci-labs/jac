@@ -2,9 +2,10 @@ import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compilation_context {
     AnalysisCacheBudget,
-    InputManifest
+    InputManifest,
+    SourceStore
 }
-import from jaclang.compiler.tools.symbol_index { SymbolIndex }
+import from jaclang.compiler.tools.symbol_index { IndexShard, SymbolIndex }
 import from jaclang.compiler.tools.workspace_index { WorkspaceIndexer }
 import from .sem_manager { SemTokManager }
 import from .source_view { SourceView }
@@ -14,7 +15,15 @@ obj DocumentProducts {
     has unit_path: str,
         inputs: InputManifest | None,
         semantic_tokens: list[int],
-        outline: list[lspt.DocumentSymbol] | None = None;
+        outline: list[lspt.DocumentSymbol] | None = None,
+        index_shards: tuple[IndexShard, ...] = ();
+
+    def is_current(store: SourceStore) -> bool {
+        if self.index_shards {
+            return all(shard.inputs.is_current(store) for shard in self.index_shards);
+        }
+        return self.inputs is not None and self.inputs.is_current(store);
+    }
 }
 
 obj ModuleManager {
@@ -32,7 +41,23 @@ obj ModuleManager {
     }
 
     def trim -> None;
-    def invalidate(path: str) {
+    def has_current_analysis(path: str) -> bool {
+        products = self.products.get(path);
+        return products is not None and bool(products.index_shards)
+            and products.is_current(self.program.source_store);
+    }
+
+    def invalidate(path: str, retain_products: bool = False) {
+        if retain_products {
+            import from jaclang.lsp.server.utils { get_symbols_for_outline }
+            for (file, manager) in self.sem_managers.items() {
+                products = self.products.get(file);
+                if products is not None and products.unit_path == path
+                    and products.outline is None {
+                    products.outline = get_symbols_for_outline(manager.ir.sym_tab, file);
+                }
+            }
+        }
         self.program.invalidate_module(path);
         self.program.drop_module_alerts(path);
         self.completions.clear();
@@ -43,7 +68,12 @@ obj ModuleManager {
         ];
         for file in affected {
             self.sem_managers.pop(file, None);
-            self.products.pop(file, None);
+            if not retain_products {
+                self.products.pop(file, None);
+            }
+        }
+        if retain_products {
+            return;
         }
         self.products.pop(path, None);
         for file in list(self.products) {

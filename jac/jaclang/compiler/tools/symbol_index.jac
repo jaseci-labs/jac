@@ -337,17 +337,21 @@ obj IndexShard {
         inputs: InputManifest,
         definitions: dict[str, SymbolInfo],
         references: dict[str, list[SourceRef]],
-        dependencies: dict[str, list[str]] = {};
+        dependencies: dict[str, list[str]] = {},
+        interface: str | None = None,
+        body_dependencies: set[str] = set();
 
     def to_bytes -> bytes {
         return zlib.compress(
             json.dumps(
                 {
-                    'version': 2,
+                    'version': 3,
                     'path': self.path,
                     'context': self.context,
                     'inputs': self.inputs.to_dict(),
                     'dependencies': self.dependencies,
+                    'interface': self.interface,
+                    'body_dependencies': sorted(self.body_dependencies),
                     'definitions': {
                         key: info.to_dict() for (key, info) in self.definitions.items()
                     },
@@ -365,7 +369,7 @@ obj IndexShard {
 
     static def from_bytes(data: bytes) -> IndexShard {
         value = json.loads(zlib.decompress(data));
-        if value['version'] != 2 {
+        if value['version'] != 3 {
             raise ValueError('Unsupported symbol index format');
         }
         return IndexShard(
@@ -383,7 +387,9 @@ obj IndexShard {
             {
                 str(path): [str(target) for target in targets]
                 for (path, targets) in value['dependencies'].items()
-            }
+            },
+            str(value['interface']) if value['interface'] is not None else None,
+            {str(path) for path in value['body_dependencies']}
         );
     }
 }
@@ -392,6 +398,43 @@ obj SymbolIndex(SymbolExtractor) {
     has shards: dict[tuple[str, str], IndexShard] = {},
         symbols: dict[str, set[tuple[str, str]]] = {},
         names: dict[str, set[tuple[str, str]]] = {};
+
+    def refresh_dependents(previous: IndexShard, current: IndexShard) {
+        if previous.interface is None or previous.interface != current.interface {
+            return;
+        }
+        paths = {previous.path, *previous.inputs.annexes.get(previous.path, [])};
+        if previous.inputs.annexes.get(previous.path, [])
+            != current.inputs.annexes.get(current.path, []) {
+            return;
+        }
+        changed = {
+            path for path in paths
+            if previous.inputs.files.get(path) != current.inputs.files.get(path)
+        };
+        if not changed {
+            return;
+        }
+        for shard in self.shards.values() {
+            if shard.context != current.context
+                or shard.path in paths
+                or shard.body_dependencies & paths {
+                continue;
+            }
+            relevant = changed & shard.inputs.files.keys();
+            if not relevant or any(
+                shard.inputs.files[path] != previous.inputs.files.get(path)
+                for path in relevant
+            ) {
+                continue;
+            }
+            files = dict(shard.inputs.files);
+            for path in relevant {
+                files[path] = current.inputs.files.get(path);
+            }
+            shard.inputs = InputManifest(files, dict(shard.inputs.annexes));
+        }
+    }
 
     def discard(path: str, context: str) {
         key = (context, os.path.realpath(path));

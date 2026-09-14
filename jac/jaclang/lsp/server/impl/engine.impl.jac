@@ -113,18 +113,18 @@ impl JacLangServer._sync_sources(
     changed = self.program.source_store.set_overrides(snapshot.sources());
     changed.update(changed_paths or set());
     affected: set[str] = set();
+    producers = {discover_base_file(path) or path for path in changed};
     open_units = {
         discover_base_file(os.path.realpath(document.path))
             or os.path.realpath(document.path)
         for document in snapshot.documents.values()
     };
-    for path in changed {
-        owner = discover_base_file(path) or path;
+    for owner in producers {
         affected.add(owner);
         affected.update(self.program.transitive_dependents(owner));
     }
-    for path in affected {
-        self.module_manager.invalidate(path);
+    for path in [*sorted(producers), *sorted(affected - producers)] {
+        self.module_manager.invalidate(path, retain_products=path not in producers);
         uri = _uri_of(path);
         if path in open_units {
             with self.work.condition {
@@ -246,9 +246,7 @@ impl JacLangServer._ensure_query(request: Request) -> None {
     self._sync_sources(self.workspace.snapshot());
     path = discover_base_file(_path_of(uri)) or _path_of(uri);
     products = self.module_manager.products.get(_path_of(uri));
-    if products is not None
-        and products.inputs is not None
-        and not products.inputs.is_current(self.program.source_store) {
+    if products is not None and not products.is_current(self.program.source_store) {
         self.module_manager.invalidate(products.unit_path);
         products = None;
     }
@@ -375,11 +373,21 @@ impl JacLangServer.type_check_file(
                             return False;
                         }
                         manifest = inputs.manifest();
+                        import from jaclang.compiler.tools.symbol_index { IndexShard }
+                        shards: list[IndexShard] = [];
                         for checked in builds {
-                            self.module_manager.indexer.collect(checked, manifest);
+                            shard = self.module_manager.indexer.collect(checked, manifest);
+                            if shard is not None {
+                                shards.append(shard);
+                            }
                         }
                         if publish {
                             self.update_modules(main_path, build, files=files_to_check);
+                            if len(shards) == len(builds) {
+                                for path in files_to_check {
+                                    self.module_manager.products[path].index_shards = tuple(shards);
+                                }
+                            }
                         }
                         if publish and not symbols_only {
                             all_errors = list(self.program.errors_had);
@@ -496,7 +504,12 @@ impl JacLangServer.dispatcher -> None {
                 if isinstance(item, Request) {
                     self._run_query(item);
                 } elif item.kind == WorkKind.CHECK {
-                    complete = self.type_check_file(item.uri, item.cancel_token);
+                    self._sync_sources(self.workspace.snapshot());
+                    path = discover_base_file(_path_of(item.uri)) or _path_of(item.uri);
+                    complete = self.module_manager.has_current_analysis(path);
+                    if not complete {
+                        complete = self.type_check_file(item.uri, item.cancel_token);
+                    }
                     if complete {
                         self.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
                     }

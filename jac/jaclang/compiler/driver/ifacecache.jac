@@ -438,6 +438,35 @@ obj IfaceRegistry {
         }
     }
 
+    def analysis_signature(mod: any) -> str | None {
+        import hashlib;
+        import from jaclang.compiler.placement.placement {
+            get_module_summary,
+            summary_to_bytes
+        }
+        if mod.parse_failed
+            or mod.stub_only
+            or not self.prog.analysis.analyses_run.provides(mod, AnalysisFact.TYPE_OF)
+            or self.prog.errors_had {
+            return None;
+        }
+        codec = iface_codec();
+        if codec is None {
+            return None;
+        }
+        with self._compilation_scope() {
+            encoded = self._encode_iface(
+                codec, mod, JirPaths(base_dir=os.path.dirname(mod.loc.mod_path))
+            );
+            if encoded is None {
+                return None;
+            }
+            return hashlib.sha256(
+                encoded + summary_to_bytes(get_module_summary(mod, self.prog))
+            ).hexdigest();
+        }
+    }
+
     def persist_after_compile(
         resolved: str, mod: any, options: any, err_start: int, warn_start: int
     ) {
