@@ -157,3 +157,22 @@ test "symbols-only requests never resolve types to serialize an interface" {
         assert not program.analysis.analyses_run.provides(module, AnalysisFact.TYPE_OF);
     }
 }
+
+test "a cancelled pass cannot claim its analysis facts" {
+    import from threading { Event }
+    import from types { SimpleNamespace }
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.pipeline { execute_passes }
+    program = JacProgram();
+    module = program.parse_str('glob value = 1;\n', 'cancelled-pass.jac');
+    cancelled = Event();
+    def interrupt(*args: any, **kwargs: any) -> SimpleNamespace {
+        cancelled.set();
+        return SimpleNamespace(ir_out=module);
+    }
+    with patch('jaclang.compiler.driver.pass_driver.run_pass', side_effect=interrupt) {
+        execute_passes(program, module, [TypeCheckPass], cancelled);
+    }
+    assert not program.analysis.analyses_run.provides(module, AnalysisFact.TYPE_OF);
+    assert 'TypeCheckPass' not in program.analysis.completed_passes[id(module)];
+}

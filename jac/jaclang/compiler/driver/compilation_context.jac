@@ -45,16 +45,22 @@ def cache_identity -> str {
 }
 
 obj SourceUnit {
-    has syntax: Module,
+    has path: str,
+        syntax: Module,
         failed: bool,
         errors: list[Alert],
-        warnings: list[Alert];
+        warnings: list[Alert],
+        nodes: int;
 }
 
 obj SourceStore {
     has units: dict[str, SourceUnit] = {},
         revisions: dict[str, str] = {},
         overrides: dict[str, str] = {},
+        max_units: int = 64,
+        max_nodes: int = 100000,
+        cached_nodes: int = 0,
+        evictions: int = 0,
         parses: int = 0,
         hits: int = 0;
 
@@ -108,8 +114,25 @@ obj SourceStore {
     def forget(path: str) {
         previous = self.revisions.pop(os.path.realpath(path), None);
         if previous is not None {
-            self.units.pop(previous, None);
+            self.discard(previous);
         }
+    }
+
+    def discard(key: str) {
+        previous = self.units.pop(key, None);
+        if previous is not None {
+            self.cached_nodes -= previous.nodes;
+            if self.revisions.get(previous.path) == key {
+                self.revisions.pop(previous.path, None);
+            }
+        }
+    }
+
+    def clear {
+        self.units.clear();
+        self.revisions.clear();
+        self.overrides.clear();
+        self.cached_nodes = 0;
     }
 
     def parse(
@@ -124,19 +147,34 @@ obj SourceStore {
             diagnostics = JacProgram();
             (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
             unit = SourceUnit(
+                path,
                 syntax,
                 failed,
                 list(diagnostics.errors_had),
-                list(diagnostics.warnings_had)
+                list(diagnostics.warnings_had),
+                len(syntax._in_mod_nodes)
             );
             previous = self.revisions.get(path);
             if previous is not None {
-                self.units.pop(previous, None);
+                self.discard(previous);
             }
-            self.revisions[path] = key;
-            self.units[key] = unit;
+            if self.max_units > 0 and unit.nodes <= self.max_nodes {
+                while self.units
+                    and (
+                        len(self.units) >= self.max_units
+                        or self.cached_nodes + unit.nodes > self.max_nodes
+                    ) {
+                    self.discard(next(iter(self.units)));
+                    self.evictions += 1;
+                }
+                self.revisions[path] = key;
+                self.units[key] = unit;
+                self.cached_nodes += unit.nodes;
+            }
             self.parses += 1;
         } else {
+            del self.units[key];
+            self.units[key] = unit;
             self.hits += 1;
         }
         syntax = copy.deepcopy(unit.syntax);

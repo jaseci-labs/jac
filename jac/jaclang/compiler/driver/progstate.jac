@@ -60,13 +60,42 @@ obj ModuleHub {
         if prev is None or prev is mod {
             return None;
         }
+        was_main = self.mod.main_mod is prev;
+        self.detach(prev);
+        if was_main {
+            self.mod.main_mod = mod;
+            self.mod.add_kids_right([mod]);
+        }
         return prev;
+    }
+
+    def detach(module: uni.Module) {
+        if self.mod.main_mod is module {
+            self.mod.main_mod = None;
+        }
+        self.mod.set_kids(
+            [
+                child
+                for child in self.mod.kid
+                if child is not module
+            ],
+            pos_update=False
+        );
+        del [edge module<-:ScopeChild:<-];
+        if self.mod.kid {
+            (first_tok, last_tok) = self.mod.resolve_tok_range();
+            self.mod.loc.update_token_range(first_tok, last_tok);
+        } else {
+            empty_tok = uni.EmptyToken();
+            self.mod.loc.update_token_range(empty_tok, empty_tok);
+        }
     }
 
     def evict(resolved_path: str) {
         self.source_revisions.pop(resolved_path, None);
-        if resolved_path in self.mod.hub {
-            self.mod.hub.pop(resolved_path);
+        previous = self.mod.hub.pop(resolved_path, None);
+        if previous is not None {
+            self.detach(previous);
         }
         if resolved_path in self.stamps {
             del self.stamps[resolved_path];
@@ -93,28 +122,16 @@ obj ModuleHub {
                 dropped.append(mod);
             }
         }
-        dropped_ids: set[int] = set(id(m) for m in dropped);
         prog_root = self.mod;
-        main = prog_root.main_mod;
-        if main is not None and id(main) in dropped_ids {
-            prog_root.main_mod = None;
-        }
-        prog_root.set_kids(
-            [
-                k
-                for k in prog_root.kid
-                if id(k) not in dropped_ids
-            ],
-            pos_update=False
-        );
         for mod in dropped {
-            del [edge mod<-:ScopeChild:<-];
+            self.detach(mod);
         }
         prog_root.hub.clear();
         prog_root.hub.update(retained_mods);
         self.stamps.clear();
         self.source_revisions.clear();
         self.stamps.update(retained_stamps);
+        self.artifacts.clear();
         self.client_artifacts.clear();
     }
 }

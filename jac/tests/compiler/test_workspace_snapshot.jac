@@ -40,6 +40,25 @@ test "source revisions parse once and return isolated syntax" {
     assert store.parses == 2 and len(store.units) == 1;
 }
 
+test "syntax retention respects both entry and node budgets" {
+    store = SourceStore(max_units=2);
+    program = JacProgram();
+    source = 'glob value = 1;\n';
+    store.parse(source, '/tmp/recent-a.jac', program, []);
+    store.parse(source, '/tmp/recent-b.jac', program, []);
+    store.parse(source, '/tmp/recent-a.jac', program, []);
+    store.parse(source, '/tmp/recent-c.jac', program, []);
+    assert set(store.revisions) == {'/tmp/recent-a.jac', '/tmp/recent-c.jac'};
+    assert store.evictions == 1 and store.hits == 1;
+    store.max_nodes = 1;
+    store.parse(source + '# large\n', '/tmp/recent-a.jac', program, []);
+    assert '/tmp/recent-a.jac' not in store.revisions;
+    store.forget('/tmp/recent-c.jac');
+    assert not store.units and store.cached_nodes == 0;
+    store.clear();
+    assert not store.revisions;
+}
+
 test "source overlays include unsaved and newly created annexes" {
     with TemporaryDirectory() as td {
         base = Path(td) / 'sample.jac';

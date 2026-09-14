@@ -32,6 +32,33 @@ test "released module trees are garbage collectable" {
     assert all(dead) , f"leaked (module, kid, anchor): {dead}";
 }
 
+test "replacing a main module releases the previous root" {
+    prog = JacProgram();
+    for _ in range(4) {
+        (path, mod_ref, kid_ref, anchor_ref) = _probe(prog);
+        replacement = prog.parse_str(SRC + "# new revision\n", path);
+        assert prog.mod.main_mod is replacement;
+        gc.collect();
+        assert mod_ref() is None and kid_ref() is None and anchor_ref() is None;
+        prog.release_module(JacProgram.hub_key(path));
+    }
+}
+
+test "invalidation releases graph roots in every application context" {
+    owner = JacProgram();
+    child = JacProgram();
+    child.context_root = owner;
+    owner.contexts['second'] = child;
+    (path, owner_ref, _, _) = _probe(owner);
+    (_, child_ref, _, _) = _probe(child);
+    owner.record_dependency('consumer.jac', path);
+    owner.invalidate_module(JacProgram.hub_key(path));
+    gc.collect();
+    assert owner_ref() is None and child_ref() is None;
+    assert owner.mod.main_mod is None and child.mod.main_mod is None;
+    assert owner.transitive_dependents(path) == {JacProgram.hub_key('consumer.jac')};
+}
+
 def _compile_probe(prog: JacProgram) -> tuple {
     mod = prog.compile(file_path="release_closure_probe.jac", use_str=SRC);
     assert mod is not None;

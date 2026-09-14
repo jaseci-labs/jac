@@ -754,8 +754,8 @@ def execute_passes(
         module = run_pass(
             step, module, program, cancel_token=cancel_token, policy=policy
         ).ir_out;
-        provided.update(pass_provides(step));
         if cancel_token is None or not cancel_token.is_set() {
+            provided.update(pass_provides(step));
             completed.add(step.__name__);
         }
     }

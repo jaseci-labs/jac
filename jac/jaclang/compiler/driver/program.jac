@@ -3,7 +3,6 @@ import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import types;
 import from threading { Event }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.relations { ScopeChild }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.passes.transform { Alert }
 import from jaclang.compiler.driver.progstate {
