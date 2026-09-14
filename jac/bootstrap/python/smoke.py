@@ -755,7 +755,7 @@ else:
     with tempfile.TemporaryDirectory(prefix="jac-python-cold-") as cache:
         for optimization in ([], ["-O"], ["-OO"]):
             subprocess.run(
-                [sys.executable, "-I", "-S", "-B", "-X", "pycache_prefix=" + cache]
+                [sys.executable, "-I", "-S", "-B", "-X", "faulthandler", "-X", "pycache_prefix=" + cache]
                 + optimization + ["-c", "import ast, ctypes, encodings, sys; "
                                   "ok = eval('6 * 7') == 42 and isinstance(ast.parse('x=1'), ast.Module); "
                                   "ok = ok and encodings.search_function.__code__.co_filename == encodings.__file__; "

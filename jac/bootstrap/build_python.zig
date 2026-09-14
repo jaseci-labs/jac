@@ -223,7 +223,7 @@ fn cSourceManifest(a: std.mem.Allocator, manifest: []const u8) ![]const u8 {
 }
 
 fn runSmoke(io: Io, python: []const u8, smoke: []const u8, mode: Mode) !void {
-    var check = try std.process.spawn(io, .{ .argv = &.{ python, "-I", smoke, @tagName(mode) } });
+    var check = try std.process.spawn(io, .{ .argv = &.{ python, "-X", "faulthandler", "-I", smoke, @tagName(mode) } });
     const result = try check.wait(io);
     if (result != .exited or result.exited != 0) {
         return error.RelocationFailed;
