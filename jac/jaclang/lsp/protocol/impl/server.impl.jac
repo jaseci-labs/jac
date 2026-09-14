@@ -528,6 +528,9 @@ impl LanguageServer.start_io -> None {
                         }
                     );
                 }
+                if method in self._features {
+                    self._invoke_handler(method, params);
+                }
                 continue;
             }
             if method == SHUTDOWN {
@@ -871,7 +874,8 @@ impl LanguageServer._build_capabilities -> dict {
         "textDocument/rename": "renameProvider",
         "textDocument/formatting": "documentFormattingProvider",
         "textDocument/semanticTokens/full": "semanticTokensProvider",
-        "textDocument/inlayHint": "inlayHintProvider"
+        "textDocument/inlayHint": "inlayHintProvider",
+        "workspace/symbol": "workspaceSymbolProvider"
     };
     for (method, cap_key) in _cap_map.items() {
         if method in self._features {

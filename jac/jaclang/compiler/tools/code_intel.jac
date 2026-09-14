@@ -2,6 +2,7 @@ import os;
 import time;
 import jaclang.compiler.frontend.unitree as uni;
 import from pathlib { Path }
+import from jaclang.project.source { iter_source_units }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes { Alert }
 import from jaclang.compiler.tools.symbol_index {
@@ -15,18 +16,6 @@ import from jaclang.jac0core.ext_registry {
     IMPL_SUFFIX,
     is_annex
 }
-
-glob _SKIP_DIRS: set[str] = {
-         "__pycache__",
-         ".git",
-         ".venv",
-         "venv",
-         "node_modules",
-         "build",
-         "dist",
-         ".mypy_cache",
-         ".pytest_cache"
-     };
 
 
 def _real(path: str) -> str {
@@ -327,22 +316,7 @@ obj CodeIntelligence(SymbolExtractor) {
     }
 
     def _discover -> list[str] {
-        found: list[str] = [];
-        base = Path(self._root_real);
-        if not base.exists() {
-            return found;
-        }
-        for p in sorted(base.rglob("*.jac")) {
-            if any([part in _SKIP_DIRS or part.startswith(".") for part in p.parts]) {
-                continue;
-            }
-            name = p.name;
-            if is_annex(name) {
-                continue;
-            }
-            found.append(str(p));
-        }
-        return found;
+        return sorted(iter_source_units(self._root_real));
     }
 
     def _modules -> list[uni.Module] {

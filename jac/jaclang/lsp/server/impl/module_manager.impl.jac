@@ -20,15 +20,6 @@ impl ModuleManager.update(
     self.completions.clear();
     snapshot = self.program.source_store.snapshot;
     inputs = snapshot.manifest() if snapshot is not None else None;
-    owner = self.program.module_owner(build);
-    if owner is not None
-        and inputs is not None
-        and owner.analysis.analyses_run.provides(build, AnalysisFact.TYPE_OF) {
-        shard = self.index.collect(build, owner.context_key, inputs);
-        self.index.install(shard);
-        self.index.persist(shard, owner.options);
-    }
-
     if update_annexed {
         for f in (files or [file_path]) {
             manager = SemTokManager(ir=build, target_path=f);

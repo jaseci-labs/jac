@@ -37,6 +37,16 @@ obj Samples {
     }
 }
 
+def semantic_result(method: str, event: RpcEvent) -> RpcEvent {
+    value = event.body.get('result');
+    if not value
+        or (method == 'completion' and not value.get('items'))
+        or (method == 'semanticTokens/full' and not value.get('data')) {
+        raise RuntimeError(f'{method} returned no semantic result: {event.body}');
+    }
+    return event;
+}
+
 def fixture(
     directory: Path, functions: int, annex: bool = False
 ) -> tuple[Path, str, dict] {
@@ -98,13 +108,20 @@ def single_file(
         first = Samples();
         start = time.monotonic();
         first.add(
-            start, client.request('textDocument/' + method, params, timeout=120.0)
+            start,
+            semantic_result(
+                method, client.request('textDocument/' + method, params, timeout=120.0)
+            )
         );
         times[method.replace('/', '-') + '-first'] = first;
         for _ in range(rounds) {
             start = time.monotonic();
             samples.add(
-                start, client.request('textDocument/' + method, params, timeout=120.0)
+                start,
+                semantic_result(
+                    method,
+                    client.request('textDocument/' + method, params, timeout=120.0)
+                )
             );
         }
         times[method.replace('/', '-')] = samples;
@@ -133,8 +150,13 @@ def single_file(
         );
         completion = client.send_request('textDocument/completion', params);
         hover = client.send_request('textDocument/hover', params);
-        completions.add(start, client.response(completion, timeout=120.0));
-        hovers.add(start, client.response(hover, timeout=120.0));
+        completions.add(
+            start,
+            semantic_result('completion', client.response(completion, timeout=120.0))
+        );
+        hovers.add(
+            start, semantic_result('hover', client.response(hover, timeout=120.0))
+        );
         client.diagnostics(
             str(path), version, timeout=120.0, since=start, allow_unversioned=True
         );

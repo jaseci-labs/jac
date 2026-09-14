@@ -11,6 +11,16 @@ import from .engine { JacLangServer }
 
 import jaclang.lsp.protocol.types as lspt;
 
+def initialized(ls: JacLangServer, params: dict) {
+    ls.start_indexing();
+}
+
+def workspace_symbol(
+    ls: JacLangServer, params: lspt.WorkspaceSymbolParams
+) -> list[lspt.SymbolInformation] {
+    return ls.get_workspace_symbols(params.query);
+}
+
 def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) {
     ls.type_check(params.text_document.uri);
 }

@@ -5,7 +5,12 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.compilation_context { SourceStore, cache_scope }
+import from jaclang.compiler.driver.compilation_context {
+    SourceStore,
+    InputManifest,
+    content_digest,
+    cache_scope
+}
 import from jaclang.compiler.tools.symbol_index { SymbolIndex, IndexShard }
 import from jaclang.project.config { config_scope }
 import from jaclang.compiler.driver.jir {
@@ -119,5 +124,21 @@ test "creating an annex invalidates an otherwise unchanged symbol shard" {
         assert not shard.inputs.is_current(program.source_store);
         assert not index.lookup('answer', program.source_store);
         program.release_compile_closure();
+    }
+}
+
+test "indexed reads participate in the query capture without a resident compiler module" {
+    with TemporaryDirectory() as directory {
+        path = Path(directory) / 'lib.jac';
+        path.write_text('glob value = 1;\n');
+        store = SourceStore();
+        manifest = InputManifest({str(path): content_digest(path.read_bytes())}, {});
+        with store.capture() as inputs {
+            assert manifest.is_current(store);
+            path.write_text('glob value = 2;\n');
+            assert manifest.is_current(store);
+            assert not inputs.is_current(store);
+        }
+        assert not manifest.is_current(store);
     }
 }

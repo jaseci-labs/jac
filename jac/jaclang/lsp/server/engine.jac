@@ -36,8 +36,6 @@ import from . { utils }
 import from .module_manager { ModuleManager }
 import from .scheduler { WorkQueue, WorkItem, WorkKind }
 
-glob LSP_SHARED_APP_LIMIT: int = 4;
-
 def _uri_of(path: str) -> str;
 def _path_of(uri: str) -> str;
 obj AppDiagnostics {
@@ -58,7 +56,7 @@ obj JacLangServer(LanguageServer) {
         worker: threading.Thread postinit,
         _compiler_lock: threading.RLock postinit,
         _shutdown_called: bool = False,
-        _dep_edges_seeded: bool = False,
+        _index_paths: Iterator[str] | None = None,
         _published_diagnostics: dict[str, list[lspt.Diagnostic]] = {};
 
     def postinit -> None;
@@ -77,7 +75,8 @@ obj JacLangServer(LanguageServer) {
     def type_check_file(
         file_uri: str,
         cancel_token: threading.Event | None = None,
-        symbols_only: bool = False
+        symbols_only: bool = False,
+        publish: bool = True
     ) -> bool;
 
     def type_check(file_uri: str) -> None;
@@ -87,6 +86,10 @@ obj JacLangServer(LanguageServer) {
     ) -> None;
 
     def files_changed(uris: list[str]) -> None;
+    def start_indexing -> None;
+    def _scan_workspace(uri: str) -> None;
+    def _index_file(item: WorkItem) -> None;
+    def get_workspace_symbols(query: str) -> list[lspt.SymbolInformation];
     def _refresh_file(uri: str) -> None;
     def _ensure_query(request: Request) -> None;
     def _run_query(request: Request) -> None;

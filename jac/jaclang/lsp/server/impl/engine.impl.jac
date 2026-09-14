@@ -91,7 +91,11 @@ impl JacLangServer.type_check(file_uri: str) -> None {
 }
 
 impl JacLangServer.submit_request(request: Request) -> None {
-    if not self.work.submit(request) {
+    if not self.work.submit(
+        request,
+        after_workspace=request.method
+            in (lspt.TEXT_DOCUMENT_REFERENCES, lspt.TEXT_DOCUMENT_RENAME)
+    ) {
         self._finish_request(
             request,
             error=ResponseErrorCode.ServerCancelled,
@@ -103,14 +107,6 @@ impl JacLangServer.submit_request(request: Request) -> None {
 impl JacLangServer._sync_sources(
     snapshot: WorkspaceSnapshot, changed_paths: set[str] | None = None
 ) -> None {
-    if not self._dep_edges_seeded {
-        self._dep_edges_seeded = True;
-        ws_root = self.workspace._root_path;
-        if ws_root {
-            import from jaclang.compiler.driver.ifacecache { seed_dep_edges }
-            seed_dep_edges(self.program, ws_root);
-        }
-    }
     changed = self.program.source_store.set_overrides(snapshot.sources());
     changed.update(changed_paths or set());
     for context in self.program.owned_contexts() {
@@ -140,6 +136,8 @@ impl JacLangServer._sync_sources(
                     self.work.schedule(uri, immediate=True, interrupt=False);
                 }
             }
+        } elif path.endswith('.jac') and os.path.isfile(path) {
+            self.work.schedule(uri, WorkKind.INDEX, immediate=True, interrupt=False);
         }
     }
 }
@@ -149,6 +147,68 @@ impl JacLangServer.files_changed(uris: list[str]) -> None {
     for uri in uris {
         self.work.schedule(uri, WorkKind.REFRESH, immediate=True);
     }
+}
+
+impl JacLangServer.start_indexing -> None {
+    directory = self.workspace._root_path;
+    if directory is not None {
+        self.work.schedule(
+            _uri_of(directory), WorkKind.SCAN, immediate=True, interrupt=False
+        );
+    }
+}
+
+impl JacLangServer._scan_workspace(uri: str) -> None {
+    import from jaclang.project.source { iter_source_units }
+    if self._index_paths is None {
+        self._index_paths = iter_source_units(_path_of(uri));
+    }
+    path = next(self._index_paths, None);
+    if path is None {
+        self._index_paths = None;
+        return;
+    }
+    self.work.schedule(_uri_of(path), WorkKind.INDEX, immediate=True, interrupt=False);
+    self.work.schedule(uri, WorkKind.SCAN, immediate=True, interrupt=False);
+}
+
+impl JacLangServer._index_file(item: WorkItem) -> None {
+    self._sync_sources(self.workspace.snapshot());
+    path = discover_base_file(_path_of(item.uri)) or _path_of(item.uri);
+    if not item.cancel_token.is_set()
+        and os.path.isfile(path)
+        and not self.module_manager.indexer.load(path) {
+        self.type_check_file(_uri_of(path), item.cancel_token, publish=False);
+    }
+}
+
+impl JacLangServer.get_workspace_symbols(query: str) -> list[lspt.SymbolInformation] {
+    kinds = {
+        'ability': lspt.SymbolKind.Function,
+        'enum': lspt.SymbolKind.Enum,
+        'module': lspt.SymbolKind.Module,
+        'field': lspt.SymbolKind.Field,
+        'obj': lspt.SymbolKind.Class,
+        'class': lspt.SymbolKind.Class,
+        'node': lspt.SymbolKind.Class,
+        'edge': lspt.SymbolKind.Class,
+        'walker': lspt.SymbolKind.Class
+    };
+    return [
+        lspt.SymbolInformation(
+            info.name,
+            kinds.get(info.kind, lspt.SymbolKind.Variable),
+            lspt.Location(
+                _uri_of(info.file),
+                lspt.Range(
+                    lspt.Position(max(0, info.line - 1), max(0, info.col - 1)),
+                    lspt.Position(
+                        max(0, info.line - 1), max(0, info.col - 1) + len(info.name)
+                    )
+                )
+            )
+        ) for info in self.module_manager.index.search(query, self.program.source_store)
+    ];
 }
 
 impl JacLangServer._refresh_file(uri: str) -> None {
@@ -162,6 +222,8 @@ impl JacLangServer._refresh_file(uri: str) -> None {
         for context in self.program.owned_contexts() {
             changed.update(context.mod.hub);
         }
+        self._index_paths = None;
+        self.start_indexing();
     }
     self._sync_sources(snapshot, changed);
 }
@@ -215,7 +277,8 @@ impl JacLangServer._ensure_query(request: Request) -> None {
 impl JacLangServer.type_check_file(
     file_uri: str,
     cancel_token: threading.Event | None = None,
-    symbols_only: bool = False
+    symbols_only: bool = False,
+    publish: bool = True
 ) -> bool {
     with self._compiler_lock {
         if cancel_token and cancel_token.is_set() {
@@ -239,42 +302,21 @@ impl JacLangServer.type_check_file(
                         path
                         for (_, path) in self.program.source_store.annexes(main_path)
                     );
-                    import from jaclang.compiler.driver.compile_options {
-                        CompileOptions
+                    import from jaclang.compiler.driver.compilation_context {
+                        analysis_options
                     }
-                    import from jaclang.project.workspace { workspace_for_path }
-                    ws = workspace_for_path(main_path);
-                    app = ws.app_for_path(main_path) if ws is not None else None;
-                    proj_root = ws.project_root if ws is not None else None;
-                    targets: list[tuple[str, str]] = [];
-                    if ws is None or app is not None {
-                        targets = [(app.name if app else '', app.kind if app else '')];
-                    } else {
-                        targets = [
-                            (a.name, a.kind)
-                            for a in list(ws.apps.values())[:LSP_SHARED_APP_LIMIT]
-                        ];
-                    }
+                    targets = analysis_options(
+                        main_path, self.program, symbols_only, cancel_token
+                    );
                     multi = len(targets) > 1;
                     collected: list[AppDiagnostics] = [];
                     build: (uni.Module | None) = None;
-                    for (app_name, app_kind) in targets {
+                    builds: list[uni.Module] = [];
+                    for options in targets {
                         build = self.program.compile(
-                            file_path=main_path,
-                            options=CompileOptions(
-                                no_cgen=True,
-                                symtab_ir_only=symbols_only,
-                                need_full_ast=True,
-                                force_target_program=True,
-                                cancel_token=cancel_token,
-                                target_app=app_name,
-                                app_kind=app_kind,
-                                entry_point=ws.apps[app_name].`entry
-                                    if ws is not None and app_name in ws.apps
-                                    else main_path,
-                                project_root=proj_root
-                            )
+                            file_path=main_path, options=options
                         );
+                        builds.append(build);
                         if cancel_token and cancel_token.is_set() {
                             for path in inputs.modules {
                                 self.module_manager.invalidate(path);
@@ -284,7 +326,7 @@ impl JacLangServer.type_check_file(
                         if multi {
                             collected.append(
                                 AppDiagnostics(
-                                    app_name,
+                                    options.target_app,
                                     [
                                         e
                                         for e in self.program.errors_had
@@ -319,13 +361,22 @@ impl JacLangServer.type_check_file(
                             if not inputs_current {
                                 self.workspace.touch();
                                 self.work.schedule(
-                                    file_uri, immediate=True, interrupt=False
+                                    file_uri,
+                                    WorkKind.CHECK if publish else WorkKind.INDEX,
+                                    immediate=True,
+                                    interrupt=False
                                 );
                             }
                             return False;
                         }
-                        self.update_modules(main_path, build, files=files_to_check);
-                        if not symbols_only {
+                        manifest = inputs.manifest();
+                        for checked in builds {
+                            self.module_manager.indexer.collect(checked, manifest);
+                        }
+                        if publish {
+                            self.update_modules(main_path, build, files=files_to_check);
+                        }
+                        if publish and not symbols_only {
                             all_errors = list(self.program.errors_had);
                             all_warnings = list(self.program.warnings_had);
                             for path in files_to_check {
@@ -369,6 +420,14 @@ impl JacLangServer._run_query(request: Request) -> None {
     }
     snapshot = self.workspace.snapshot();
     self._sync_sources(snapshot);
+    if request.method in (lspt.TEXT_DOCUMENT_REFERENCES, lspt.TEXT_DOCUMENT_RENAME) {
+        with self.work.condition {
+            if self.work.pending {
+                self.submit_request(request);
+                return;
+            }
+        }
+    }
     document = request.params.get('textDocument', {});
     uri = document.get('uri', '') if isinstance(document, dict) else '';
     start = Path(_path_of(uri)).parent
@@ -417,6 +476,10 @@ impl JacLangServer.dispatcher -> None {
                     }
                 } elif item.kind == WorkKind.REFRESH {
                     self._refresh_file(item.uri);
+                } elif item.kind == WorkKind.SCAN {
+                    self._scan_workspace(item.uri);
+                } elif item.kind == WorkKind.INDEX {
+                    self._index_file(item);
                 } else {
                     self._release_document(
                         item.uri, deleted=item.kind == WorkKind.DELETE
@@ -960,6 +1023,13 @@ impl JacLangServer._release_document(uri: str, deleted: bool = False) -> None {
         for edges in self.program.dependency_graphs() {
             edges.forget(path);
         }
+        for (context, indexed_path) in list(self.module_manager.index.shards) {
+            if indexed_path == path {
+                self.module_manager.index.discard(path, context);
+            }
+        }
+    } elif path.endswith('.jac') and os.path.isfile(path) {
+        self.work.schedule(uri, WorkKind.INDEX, immediate=True, interrupt=False);
     }
     self.publish_diagnostics(uri, []);
 }

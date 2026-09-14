@@ -5,7 +5,7 @@ import from jaclang.compiler.driver.compilation_context {
     InputManifest
 }
 import from jaclang.compiler.tools.symbol_index { SymbolIndex }
-import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
+import from jaclang.compiler.tools.workspace_index { WorkspaceIndexer }
 import from .sem_manager { SemTokManager }
 import from .source_view { SourceView }
 import jaclang.lsp.protocol.types as lspt;
@@ -24,7 +24,12 @@ obj ModuleManager {
         products: dict[str, DocumentProducts] = {},
         completions: dict[int, list[lspt.CompletionItem]] = {},
         index: SymbolIndex = SymbolIndex(),
+        indexer: WorkspaceIndexer postinit,
         budget: AnalysisCacheBudget = AnalysisCacheBudget();
+
+    def postinit {
+        self.indexer = WorkspaceIndexer(self.program, self.index);
+    }
 
     def trim -> None;
     def invalidate(path: str) {

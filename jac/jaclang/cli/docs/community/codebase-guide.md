@@ -238,6 +238,17 @@ manifest, and dirty editor inputs stay in memory. Reference and rename queries
 combine these records with the current declaration, so retiring compiler trees
 does not discard previously indexed references.
 
+`compiler/tools/workspace_index.jac` restores valid shards and dependency edges
+without constructing live compiler programs. Analysis and indexing use the same
+application target planning. Workspace discovery shares the lazy source-unit
+iterator used by code intelligence; it queues one file at a time and skips
+generated and dependency directories. Indexing yields to editor requests and
+checks. Once a file is indexed, its unopened references and workspace symbols
+remain available after its compiler trees are retired. Workspace symbol search
+returns at most 256 matching declarations and excludes function locals.
+Index reads join the query's input capture, so even results with no resident
+compiler module are checked for concurrent source changes before publication.
+
 ### `project/`
 
 Handles `jac.toml` configuration parsing, dependency resolution, capability configuration, and project scaffolding templates.

@@ -1,5 +1,6 @@
 import copy;
 import from pathlib { Path }
+import from threading { Event }
 import type from jaclang.project.workspace { AppSpec }
 import hashlib;
 import os;
@@ -71,18 +72,31 @@ obj InputManifest {
 
     def is_current(store: SourceStore | None = None) -> bool {
         for (path, digest) in self.files.items() {
-            data = store.overrides[path].encode('utf-8')
-                if store is not None and path in store.overrides
-                else source_bytes(path);
-            if content_digest(data) != digest {
+            snapshot = store.snapshot if store is not None else None;
+            actual = snapshot.digest(path)
+                if snapshot is not None
+                else content_digest(
+                    store.overrides[path].encode('utf-8')
+                        if store is not None and path in store.overrides
+                        else source_bytes(path)
+                );
+            if actual != digest {
                 return False;
             }
         }
         discovery = store if store is not None else SourceStore();
-        return all(
-            discovery.discover_annex_paths(path) == paths
-            for (path, paths) in self.annexes.items()
-        );
+        for (path, paths) in self.annexes.items() {
+            actual_paths = discovery.discover_annex_paths(path);
+            if discovery.snapshot is not None {
+                actual_paths = discovery.snapshot.annex_paths.setdefault(
+                    path, actual_paths
+                );
+            }
+            if actual_paths != paths {
+                return False;
+            }
+        }
+        return True;
     }
 
     def to_dict -> dict {
@@ -109,7 +123,23 @@ obj SourceSnapshot {
         disk: dict[str, bytes | None] = {},
         annex_paths: dict[str, list[str]] = {},
         modules: set[str] = set(),
-        read_paths: set[str] = set();
+        read_paths: set[str] = set(),
+        digests: dict[str, str | None] = {};
+
+    def digest(path: str) -> str | None {
+        self.read_paths.add(path);
+        if path not in self.digests {
+            if path not in self.overrides {
+                self.watch(path);
+            }
+            self.digests[path] = content_digest(
+                self.overrides[path].encode('utf-8')
+                    if path in self.overrides
+                    else self.disk[path]
+            );
+        }
+        return self.digests[path];
+    }
 
     def manifest -> InputManifest {
         paths = self.disk.keys() | self.modules | self.read_paths;
@@ -354,6 +384,39 @@ def context_identity(options: CompileOptions) -> str {
             )
         ).encode()
     ).hexdigest()[:20];
+}
+
+def analysis_options(
+    path: str,
+    program: JacProgram,
+    symbols_only: bool = False,
+    cancel_token: Event | None = None,
+    shared_app_limit: int = 4
+) -> list[CompileOptions] {
+    import from jaclang.project.workspace { workspace_for_path }
+    workspace = workspace_for_path(path);
+    declared = workspace.app_for_path(path) if workspace is not None else None;
+    apps = [declared]
+        if workspace is None or declared is not None
+        else list(workspace.apps.values())[:shared_app_limit];
+    return [
+        bind_options(
+            path,
+            program,
+            CompileOptions(
+                no_cgen=True,
+                symtab_ir_only=symbols_only,
+                need_full_ast=True,
+                force_target_program=True,
+                cancel_token=cancel_token,
+                target_app=app.name if app is not None else '',
+                app_kind=app.kind if app is not None else '',
+                ui=app.ui if app is not None else '',
+                entry_point=app.`entry if app is not None else path,
+                project_root=workspace.project_root if workspace is not None else None
+            )
+        ) for app in apps
+    ];
 }
 
 def context_program(program: JacProgram, options: CompileOptions) -> JacProgram {

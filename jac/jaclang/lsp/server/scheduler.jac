@@ -8,7 +8,9 @@ enum WorkKind {
     CHECK = 'check',
     CLOSE = 'close',
     DELETE = 'delete',
-    REFRESH = 'refresh'
+    REFRESH = 'refresh',
+    SCAN = 'scan',
+    INDEX = 'index'
 }
 
 obj WorkItem {
@@ -29,6 +31,7 @@ obj WorkQueue {
         condition: threading.Condition postinit,
         pending: dict[str, WorkItem] = {},
         requests: deque[Request] postinit,
+        workspace_requests: deque[Request] postinit,
         active: WorkItem | Request | None = None,
         stopped: bool = False,
         request_streak: int = 0,
@@ -40,6 +43,7 @@ obj WorkQueue {
     def postinit {
         self.condition = threading.Condition();
         self.requests = deque();
+        self.workspace_requests = deque();
     }
 
     def schedule(
@@ -52,6 +56,12 @@ obj WorkQueue {
             if self.stopped {
                 return;
             }
+            previous = self.pending.get(uri);
+            if kind == WorkKind.INDEX
+                and previous is not None
+                and previous.kind != WorkKind.INDEX {
+                return;
+            }
             deadline = time.monotonic() + (0.0 if immediate else self.debounce);
             self.pending[uri] = WorkItem(uri, kind, deadline);
             if interrupt and isinstance(self.active, WorkItem) {
@@ -62,13 +72,21 @@ obj WorkQueue {
         }
     }
 
-    def submit(request: Request) -> bool {
+    def submit(request: Request, after_workspace: bool = False) -> bool {
         with self.condition {
-            if self.stopped or len(self.requests) >= self.request_limit {
+            if self.stopped
+                or len(self.requests) + len(self.workspace_requests)
+                    >= self.request_limit {
                 return False;
             }
-            self.requests.append(request);
-            if isinstance(self.active, WorkItem) and not self.background_turn {
+            if after_workspace {
+                self.workspace_requests.append(request);
+            } else {
+                self.requests.append(request);
+            }
+            if not after_workspace
+                and isinstance(self.active, WorkItem)
+                and not self.background_turn {
                 self.active.cancel_token.set();
             }
             self.condition.notify_all();
@@ -80,15 +98,35 @@ obj WorkQueue {
         with self.condition {
             while not self.stopped {
                 now = time.monotonic();
+                if self.workspace_requests
+                    and (
+                        self.workspace_requests[0].responded
+                        or self.workspace_requests[0].cancel_token.is_set()
+                        or not self.pending
+                    ) {
+                    self.requests.append(self.workspace_requests.popleft());
+                }
                 ready = next(
                     (
                         item
                         for item in self.pending.values()
                         if item.ready_at <= now
+                            and item.kind not in (WorkKind.SCAN, WorkKind.INDEX)
                     ),
                     None
                 );
+                if ready is None {
+                    ready = next(
+                        (
+                            item
+                            for item in self.pending.values()
+                            if item.ready_at <= now
+                        ),
+                        None
+                    );
+                }
                 self.background_turn = ready is not None
+                    and ready.kind not in (WorkKind.SCAN, WorkKind.INDEX)
                     and self.request_streak >= self.request_burst;
                 if self.requests and not self.background_turn {
                     self.active = self.requests.popleft();
@@ -135,7 +173,12 @@ obj WorkQueue {
             }
             self.condition.notify_all();
             while not self.stopped
-                and (self.pending or self.requests or self.active is not None) {
+                and (
+                    self.pending
+                    or self.requests
+                    or self.workspace_requests
+                    or self.active is not None
+                ) {
                 self.condition.`wait();
             }
         }
@@ -147,8 +190,9 @@ obj WorkQueue {
             if self.active is not None {
                 self.active.cancel_token.set();
             }
-            abandoned = list(self.requests);
+            abandoned = [*self.requests, *self.workspace_requests];
             self.requests.clear();
+            self.workspace_requests.clear();
             self.pending.clear();
             self.condition.notify_all();
             return abandoned;

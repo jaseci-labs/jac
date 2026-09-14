@@ -2,6 +2,8 @@ impl run_lang_server -> None {
     logging.getLogger().setLevel(logging.CRITICAL);
     server = JacLangServer();
 
+    server.feature(lspt.INITIALIZED)(initialized);
+    server.feature(lspt.WORKSPACE_SYMBOL)(workspace_symbol);
     server.feature(lspt.TEXT_DOCUMENT_DID_OPEN)(did_open);
     server.feature(lspt.TEXT_DOCUMENT_DID_SAVE)(did_save);
     server.feature(lspt.TEXT_DOCUMENT_DID_CHANGE)(did_change);

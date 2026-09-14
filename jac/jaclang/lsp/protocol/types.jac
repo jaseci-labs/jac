@@ -20,6 +20,7 @@ glob TEXT_DOCUMENT_DID_OPEN = "textDocument/didOpen",
      WORKSPACE_DID_DELETE_FILES = "workspace/didDeleteFiles",
      WORKSPACE_DID_CHANGE_WATCHED_FILES = "workspace/didChangeWatchedFiles",
      WORKSPACE_DID_CHANGE_CONFIGURATION = "workspace/didChangeConfiguration",
+     WORKSPACE_SYMBOL = "workspace/symbol",
      TEXT_DOCUMENT_LINTFIX_FORMATTING = "jac/lintfixFormat",
      WORKSPACE_SEMANTIC_TOKENS_REFRESH = "workspace/semanticTokens/refresh",
      INITIALIZE = "initialize",
@@ -324,6 +325,16 @@ obj DocumentSymbol {
         children: Optional[list[DocumentSymbol]] = None;
 }
 
+obj WorkspaceSymbolParams {
+    has query: str = '';
+}
+
+obj SymbolInformation {
+    has name: str,
+        kind: SymbolKind,
+        location: Location;
+}
+
 obj SemanticTokens {
     has data: list[int] = [];
 }
@@ -376,5 +387,6 @@ glob METHOD_TO_PARAMS: dict[str, type] = {
          WORKSPACE_DID_RENAME_FILES: RenameFilesParams,
          WORKSPACE_DID_DELETE_FILES: DeleteFilesParams,
          WORKSPACE_DID_CHANGE_WATCHED_FILES: DidChangeWatchedFilesParams,
+         WORKSPACE_SYMBOL: WorkspaceSymbolParams,
          TEXT_DOCUMENT_LINTFIX_FORMATTING: DocumentFormattingParams
      };

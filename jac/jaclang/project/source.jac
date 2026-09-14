@@ -17,6 +17,23 @@ def source_scope(reader: Callable[[str], str]) -> Iterator[None] {
     }
 }
 
+def iter_source_units(directory: str) -> Iterator[str] {
+    import from jaclang.jac0core.ext_registry { is_annex }
+    excluded = {'__pycache__', 'venv', 'node_modules', 'build', 'dist'};
+    for (parent, directories, files) in os.walk(os.path.realpath(directory)) {
+        directories[:] = sorted(
+            name
+            for name in directories
+            if not name.startswith('.') and name not in excluded
+        );
+        for name in sorted(files) {
+            if name.endswith('.jac') and not is_annex(name) {
+                yield os.path.realpath(os.path.join(parent, name));
+            }
+        }
+    }
+}
+
 def pascal_to_snake(pascal_string: str) -> str {
     snake_string = '';
     for (idx, ch) in enumerate(pascal_string) {

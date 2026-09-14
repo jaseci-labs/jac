@@ -4,6 +4,7 @@ import zlib;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.tools.unparse_pass { unparse_node }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.driver.progstate { DepGraph }
 import from jaclang.compiler.driver.compilation_context {
     InputManifest,
     SourceStore,
@@ -91,7 +92,8 @@ obj SymbolInfo {
         fields: list[str] = [],
         abilities: list[str] = [],
         base_classes: list[str] = [],
-        is_genai: bool = False;
+        is_genai: bool = False,
+        workspace_visible: bool = True;
 
     def render -> str {
         head = f"{self.kind} {self.name}";
@@ -129,7 +131,8 @@ obj SymbolInfo {
             "fields": self.fields,
             "abilities": self.abilities,
             "base_classes": self.base_classes,
-            "is_genai": self.is_genai
+            "is_genai": self.is_genai,
+            "workspace_visible": self.workspace_visible
         };
     }
 
@@ -146,7 +149,8 @@ obj SymbolInfo {
             fields=list(d.get("fields", [])),
             abilities=list(d.get("abilities", [])),
             base_classes=list(d.get("base_classes", [])),
-            is_genai=bool(d.get("is_genai", False))
+            is_genai=bool(d.get("is_genai", False)),
+            workspace_visible=bool(d.get("workspace_visible", True))
         );
     }
 }
@@ -236,7 +240,10 @@ obj SymbolExtractor {
             file=loc.mod_path if loc else "",
             line=loc.first_line if loc else 0,
             col=loc.col_start if loc else 0,
-            doc=self._doc_of(owner)
+            doc=self._doc_of(owner),
+            workspace_visible=isinstance(
+                sym.parent_tab, (uni.Module, uni.Archetype, uni.Enum)
+            )
         );
         if isinstance(owner, uni.Archetype) {
             self._fill_archetype(info, owner);
@@ -329,16 +336,18 @@ obj IndexShard {
         context: str,
         inputs: InputManifest,
         definitions: dict[str, SymbolInfo],
-        references: dict[str, list[SourceRef]];
+        references: dict[str, list[SourceRef]],
+        dependencies: dict[str, list[str]] = {};
 
     def to_bytes -> bytes {
         return zlib.compress(
             json.dumps(
                 {
-                    'version': 1,
+                    'version': 2,
                     'path': self.path,
                     'context': self.context,
                     'inputs': self.inputs.to_dict(),
+                    'dependencies': self.dependencies,
                     'definitions': {
                         key: info.to_dict() for (key, info) in self.definitions.items()
                     },
@@ -356,7 +365,7 @@ obj IndexShard {
 
     static def from_bytes(data: bytes) -> IndexShard {
         value = json.loads(zlib.decompress(data));
-        if value['version'] != 1 {
+        if value['version'] != 2 {
             raise ValueError('Unsupported symbol index format');
         }
         return IndexShard(
@@ -370,6 +379,10 @@ obj IndexShard {
             {
                 str(key): [SourceRef.from_dict(ref) for ref in refs]
                 for (key, refs) in value['references'].items()
+            },
+            {
+                str(path): [str(target) for target in targets]
+                for (path, targets) in value['dependencies'].items()
             }
         );
     }
@@ -415,7 +428,12 @@ obj SymbolIndex(SymbolExtractor) {
         }
     }
 
-    def collect(module: uni.Module, context: str, inputs: InputManifest) -> IndexShard {
+    def collect(
+        module: uni.Module,
+        context: str,
+        inputs: InputManifest,
+        deps: DepGraph | None = None
+    ) -> IndexShard {
         paths = {os.path.realpath(module.loc.mod_path)};
         paths.update(inputs.annexes.get(os.path.realpath(module.loc.mod_path), []));
         definitions: dict[str, SymbolInfo] = {};
@@ -453,7 +471,14 @@ obj SymbolIndex(SymbolExtractor) {
             context,
             inputs,
             definitions,
-            references
+            references,
+            {
+                path: sorted(targets)
+                for (path, targets) in deps.dependencies.items()
+                if path in inputs.files
+            }
+                if deps is not None
+                else {}
         );
     }
 
@@ -497,7 +522,14 @@ obj SymbolIndex(SymbolExtractor) {
                 self.install(shard);
                 return True;
             }
-        } except (OSError, ValueError, KeyError, TypeError, zlib.error) {
+        } except (
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+            AttributeError,
+            zlib.error
+        ) {
             return False;
         }
     }
@@ -550,5 +582,23 @@ obj SymbolIndex(SymbolExtractor) {
             }
         }
         return [found[key] for key in sorted(found)];
+    }
+
+    def search(query: str, store: SourceStore, limit: int = 256) -> list[SymbolInfo] {
+        found: list[SymbolInfo] = [];
+        query = query.casefold();
+        for name in sorted(self.names) {
+            if query in name.casefold() {
+                found.extend(
+                    info
+                    for info in self.lookup(name, store)
+                    if info.workspace_visible
+                );
+                if len(found) >= limit {
+                    break;
+                }
+            }
+        }
+        return found[:limit];
     }
 }
