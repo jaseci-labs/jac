@@ -23,7 +23,32 @@ glob _PG_IDENTITY_SCHEMA: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_identity_lookups_user
         ON identity_lookups (user_id)
     """
-     ];
+     ],
+     _PG_ACCOUNT_LOOKUP_TABLES: list[str] = ['identity_lookups', 'sso_lookups'];
+
+
+def _pg_account_fk_ddl(table: str) -> str {
+    return f"""
+    DO $$
+    BEGIN
+        LOCK TABLE {table} IN SHARE ROW EXCLUSIVE MODE;
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = CAST('{table}' AS regclass)
+              AND conname = '{table}_user_id_fkey'
+        ) THEN
+            DELETE FROM {table} lk
+            WHERE NOT EXISTS (
+                SELECT 1 FROM identity_users u WHERE u.user_id = lk.user_id
+            );
+            ALTER TABLE {table}
+                ADD CONSTRAINT {table}_user_id_fkey
+                FOREIGN KEY (user_id) REFERENCES identity_users (user_id)
+                ON DELETE CASCADE;
+        END IF;
+    END $$
+    """;
+}
 
 
 def _pg_json_default(o: object) -> str {
@@ -31,13 +56,13 @@ def _pg_json_default(o: object) -> str {
 }
 
 
-def _pg_unique_violation(e: Exception) -> bool {
+def _pg_sqlstate(e: Exception) -> str {
     for arg in getattr(e, 'args', ()) {
-        if isinstance(arg, dict) and arg.get('C') == '23505' {
-            return True;
+        if isinstance(arg, dict) and arg.get('C') {
+            return str(arg['C']);
         }
     }
-    return False;
+    return '';
 }
 
 
@@ -69,6 +94,9 @@ impl PgIdentityStorage.postinit -> None {
 impl PgIdentityStorage.ensure_indexes -> None {
     for stmt in _PG_IDENTITY_SCHEMA {
         self.store.rows(stmt, {});
+    }
+    for table in _PG_ACCOUNT_LOOKUP_TABLES {
+        self.store.rows(_pg_account_fk_ddl(table), {});
     }
 }
 
@@ -149,20 +177,28 @@ impl PgIdentityStorage._user_exists(user_id: str) -> bool {
     );
 }
 
-impl PgIdentityStorage._claim_lookup(value_normalized: str, user_id: str) -> None {
-    rows = self.store.rows(
-        """
-        INSERT INTO identity_lookups (value_normalized, user_id)
-        VALUES (:v, :u)
-        ON CONFLICT (value_normalized) DO UPDATE SET user_id = identity_lookups.user_id
-        WHERE identity_lookups.user_id = EXCLUDED.user_id
-        RETURNING user_id
-        """,
-        {'v': value_normalized, 'u': user_id}
-    );
+impl PgIdentityStorage._claim_lookup(value_normalized: str, user_id: str) -> bool {
+    try {
+        rows = self.store.rows(
+            """
+            INSERT INTO identity_lookups (value_normalized, user_id)
+            VALUES (:v, :u)
+            ON CONFLICT (value_normalized) DO UPDATE SET user_id = identity_lookups.user_id
+            WHERE identity_lookups.user_id = EXCLUDED.user_id
+            RETURNING user_id
+            """,
+            {'v': value_normalized, 'u': user_id}
+        );
+    } except Exception as e {
+        if _pg_sqlstate(e) == '23503' {
+            return False;
+        }
+        raise;
+    }
     if not rows {
         raise IdentityTakenError();
     }
+    return True;
 }
 
 impl PgIdentityStorage._append_identity(
@@ -198,8 +234,6 @@ impl PgIdentityStorage._append_identity(
 }
 
 impl PgIdentityStorage.delete_user(user_id: str) -> bool {
-    self.store.rows('DELETE FROM identity_lookups WHERE user_id = :u', {'u': user_id});
-    self.store.rows('DELETE FROM sso_lookups WHERE user_id = :u', {'u': user_id});
     rows = self.store.rows(
         'DELETE FROM identity_users WHERE user_id = :u RETURNING user_id',
         {'u': user_id}
@@ -268,9 +302,6 @@ impl PgIdentityStorage._get_identities(user_id: str) -> list[dict[str, any]] {
 }
 
 impl PgIdentityStorage._add_identity(user_id: str, identity: dict[str, any]) -> bool {
-    if not self._user_exists(user_id) {
-        return False;
-    }
     if identity.get('type') == 'sso' and identity.get('provider') {
         try {
             self.store.rows(
@@ -285,13 +316,19 @@ impl PgIdentityStorage._add_identity(user_id: str, identity: dict[str, any]) -> 
                 }
             );
         } except Exception as e {
-            if _pg_unique_violation(e) {
+            state = _pg_sqlstate(e);
+            if state == '23505' {
                 raise IdentityTakenError();
+            }
+            if state == '23503' {
+                return False;
             }
             raise;
         }
     } elif identity.get('value_normalized') {
-        self._claim_lookup(identity['value_normalized'], user_id);
+        if not self._claim_lookup(identity['value_normalized'], user_id) {
+            return False;
+        }
     }
     if self._append_identity(user_id, identity) {
         return True;
@@ -367,10 +404,9 @@ impl PgIdentityStorage._remove_sso_identity(user_id: str, platform: str) -> bool
 impl PgIdentityStorage._replace_username(
     user_id: str, identity: dict[str, any]
 ) -> bool {
-    if not self._user_exists(user_id) {
+    if not self._claim_lookup(identity['value_normalized'], user_id) {
         return False;
     }
-    self._claim_lookup(identity['value_normalized'], user_id);
     rows = self.store.rows(
         """
         WITH prev AS (
