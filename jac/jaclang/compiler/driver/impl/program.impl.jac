@@ -363,8 +363,7 @@ impl JacProgram.release_compile_closure(
         }
         self.contexts.clear();
         self.context_key = '';
-        self.source_store.units.clear();
-        self.source_store.revisions.clear();
+        self.source_store.clear();
     }
     self.release_native_dep_units();
     self.hub.reset(retain_stubs=retain_stubs);

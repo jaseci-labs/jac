@@ -6,6 +6,7 @@ import from .tokens { CommentData, SrcDiag }
 import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
 import from jaclang.compiler.passes.transform { Alert }
 import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.native_compiler { NativeSyntax }
 import from jaclang.compiler.frontend.srcloc { Span }
 import from jaclang.compiler.frontend.unitree { CommentToken, Expr, Module, Source }
 
@@ -181,6 +182,34 @@ def parse_woven(
     if nat is not None {
         return nat;
     }
+    return _python_parse_woven(source_str, file_path, prog, annexes);
+}
+
+def parse_woven_snapshot(
+    source_str: str, file_path: str, prog: JacProgram, annexes: list[tuple[str, str]]
+) -> tuple[Module, bool, NativeSyntax | None] {
+    import from jaclang.compiler.native_compiler { ensure_loaded }
+    kernel = ensure_loaded();
+    if kernel is not None {
+        snapshot = kernel.freeze(source_str, file_path, annexes);
+        try {
+            parsed = snapshot.materialize(prog);
+            if parsed is not None {
+                return (parsed[0], parsed[1], snapshot);
+            }
+        } except BaseException {
+            snapshot.close();
+            raise;
+        }
+        snapshot.close();
+    }
+    (module, failed) = _python_parse_woven(source_str, file_path, prog, annexes);
+    return (module, failed, None);
+}
+
+def _python_parse_woven(
+    source_str: str, file_path: str, prog: JacProgram | None, annexes: list
+) -> tuple[Module, bool] {
     (module, had_error) = parse(source_str, file_path, prog=prog);
     if had_error or not annexes {
         return (module, had_error);

@@ -8,6 +8,7 @@ import from contextvars { ContextVar }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.native_compiler { NativeSyntax }
 import from jaclang.compiler.passes.transform { Alert }
 
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
@@ -75,10 +76,25 @@ def codegen_source_path(path: str) -> str {
 }
 
 obj SourceUnit {
-    has syntax: Module,
+    has syntax: Module | NativeSyntax,
         failed: bool,
         errors: list[Alert],
         warnings: list[Alert];
+
+    def close {
+        if not isinstance(self.syntax, Module) {
+            self.syntax.close();
+        }
+    }
+
+    def materialize -> Module {
+        if isinstance(self.syntax, Module) {
+            return copy.deepcopy(self.syntax);
+        }
+        parsed = self.syntax.materialize();
+        assert parsed is not None;
+        return parsed[0];
+    }
 }
 
 obj SourceStore {
@@ -87,25 +103,42 @@ obj SourceStore {
         parses: int = 0,
         hits: int = 0;
 
+    def clear {
+        for unit in self.units.values() {
+            unit.close();
+        }
+        self.units.clear();
+        self.revisions.clear();
+    }
+
     def parse(
         source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
     ) -> tuple[Module, bool] {
-        import from jaclang.compiler.frontend.parser.frontend { parse_woven }
+        import from jaclang.compiler.frontend.parser.frontend { parse_woven_snapshot }
         import from jaclang.compiler.driver.program { JacProgram }
         key = hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
         unit = self.units.get(key);
+        fresh: Module | None = None;
         if unit is None {
             diagnostics = JacProgram();
-            (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
+            (syntax, failed, snapshot) = parse_woven_snapshot(
+                source, path, diagnostics, annexes
+            );
+            if snapshot is not None {
+                fresh = syntax;
+            }
             unit = SourceUnit(
-                syntax,
+                snapshot if snapshot is not None else syntax,
                 failed,
                 list(diagnostics.errors_had),
                 list(diagnostics.warnings_had)
             );
             previous = self.revisions.get(path);
             if previous is not None {
-                self.units.pop(previous, None);
+                replaced = self.units.pop(previous, None);
+                if replaced is not None {
+                    replaced.close();
+                }
             }
             self.revisions[path] = key;
             self.units[key] = unit;
@@ -113,8 +146,7 @@ obj SourceStore {
         } else {
             self.hits += 1;
         }
-        syntax = copy.deepcopy(unit.syntax);
-        assert isinstance(syntax, Module);
+        syntax = fresh if fresh is not None else unit.materialize();
         program.diags.extend(unit.errors, unit.warnings);
         return (syntax, unit.failed);
     }

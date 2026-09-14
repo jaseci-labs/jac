@@ -5,6 +5,8 @@ import sys;
 import from ctypes { c_char_p, c_double, c_int64, c_void_p, cast, py_object }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
 import type from jaclang.compiler.passes.transform { PassResult }
+import type from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.driver.program { JacProgram }
 
 glob _DECREF: any = ctypes.PYFUNCTYPE(None, py_object)(
          ("Py_DecRef", ctypes.pythonapi)
@@ -107,6 +109,22 @@ class NativeCompiler {
             fn.argtypes = [];
             fn.restype = c_void_p;
         }
+        L.jc_snapshot_region.argtypes = [];
+        L.jc_snapshot_region.restype = c_void_p;
+        L.jc_snapshot.argtypes = [
+            c_void_p,
+            c_void_p,
+            c_int64,
+            c_void_p,
+            c_void_p,
+            c_int64,
+            c_void_p
+        ];
+        L.jc_snapshot.restype = c_void_p;
+        L.jc_snapshot_materialize.argtypes = [c_void_p, c_void_p];
+        L.jc_snapshot_materialize.restype = c_int64;
+        L.jc_snapshot_close.argtypes = [c_int64];
+        L.jc_snapshot_close.restype = c_int64;
         L.jc_reg_consts.argtypes = [c_int64] * 12;
         L.jc_reg_consts.restype = c_int64;
         L.jc_reg_shape_roles.argtypes = [c_int64] * 3;
@@ -396,7 +414,9 @@ class NativeCompiler {
         );
     }
 
-    def _call_str2(self: NativeCompiler, name: str, a: str, b: str) -> int {
+    def _call_str2(
+        self: NativeCompiler, name: str, a: str, b: str, region: int = 0
+    ) -> int {
         fn = getattr(self.lib, name);
         ab = a.encode();
         bb = b.encode();
@@ -410,7 +430,8 @@ class NativeCompiler {
                 c_int64(len(ab)),
                 c_void_p(pb),
                 c_void_p(pb),
-                c_int64(len(bb))
+                c_int64(len(bb)),
+                *((c_void_p(region), ) if region else ())
             );
         } finally {
             self.lib.jac_release(pb);
@@ -424,6 +445,31 @@ class NativeCompiler {
 
     def run(self: NativeCompiler, source: str, path: str) -> int {
         return self._call_str2("jc_run", source, path);
+    }
+
+    def freeze(
+        self: NativeCompiler, source: str, path: str, annexes: list[tuple[str, str]]
+    ) -> NativeSyntax {
+        snapshot = NativeSyntax(self);
+        snapshot.region = int(self.lib.jc_snapshot_region() or 0);
+        if not snapshot.region {
+            raise MemoryError("Native frontend could not allocate a syntax region");
+        }
+        try {
+            for (text, annex_path) in annexes {
+                self.annex(text, annex_path);
+            }
+            snapshot.handle = int(
+                self._call_str2("jc_snapshot", source, path, snapshot.region) or 0
+            );
+            if not snapshot.handle {
+                raise RuntimeError("Native frontend produced no syntax snapshot");
+            }
+            return snapshot;
+        } except BaseException {
+            snapshot.close();
+            raise;
+        }
     }
 
     def prepare_early(self: NativeCompiler, context: str) {
@@ -505,6 +551,50 @@ class NativeCompiler {
     }
 }
 
+
+obj NativeSyntax {
+    has kernel: NativeCompiler,
+        region: int = 0,
+        handle: int = 0;
+
+    def close {
+        region = self.region;
+        self.region = 0;
+        self.handle = 0;
+        if region {
+            self.kernel.lib.jc_snapshot_close(region);
+        }
+    }
+
+    def __del__ {
+        self.close();
+    }
+
+    def materialize(program: JacProgram | None = None) -> tuple[Module, bool] | None {
+        if not self.region {
+            raise RuntimeError("Cannot materialize a closed syntax snapshot");
+        }
+        if self.kernel.lib.jc_snapshot_materialize(self.handle, self.region) != 0 {
+            return None;
+        }
+        import from jaclang.compiler.frontend.unitree { Module }
+        import from jaclang.compiler.frontend.parser.frontend { _finish_parse }
+        module = self.kernel.take_module();
+        if not isinstance(module, Module) {
+            raise RuntimeError("Native frontend produced no syntax module");
+        }
+        failed = _finish_parse(
+            module,
+            self.kernel.err_count(),
+            self.kernel.take_diags(),
+            self.kernel.take_comments(),
+            self.kernel.take_lexdiags(),
+            self.kernel.lex_errs(),
+            program
+        );
+        return (module, failed);
+    }
+}
 
 glob _KERNEL_CELL: list = [],
      _RESOLVED: list = [];
