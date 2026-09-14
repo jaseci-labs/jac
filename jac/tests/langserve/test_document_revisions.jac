@@ -44,3 +44,22 @@ test "snapshot preserves the previous text and accepts UTF16 change batches" {
     assert not workspace.snapshot().documents;
     assert uri in after.documents;
 }
+
+test "renaming an open document preserves its unsaved revision" {
+    workspace = Workspace();
+    old_uri = 'file:///before.jac';
+    new_uri = 'file:///after.jac';
+    workspace.put_text_document(
+        TextDocumentItem(uri=old_uri, language_id='jac', version=7, text='unsaved')
+    );
+    before = workspace.snapshot();
+    workspace.rename_text_document(old_uri, new_uri);
+    after = workspace.snapshot();
+    assert old_uri not in after.documents and new_uri not in before.documents;
+    assert after.documents[new_uri].source == 'unsaved';
+    assert after.documents[new_uri].version == 7;
+    assert after.documents[new_uri].path == '/after.jac';
+    assert after.revision > before.revision;
+    workspace.touch();
+    assert workspace.revision > after.revision;
+}

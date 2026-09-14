@@ -346,6 +346,24 @@ impl Workspace.remove_text_document(doc_uri: str) -> None {
     }
 }
 
+impl Workspace.rename_text_document(old_uri: str, new_uri: str) -> None {
+    with self.lock {
+        previous = self._text_documents.pop(old_uri, None);
+        if previous is not None {
+            self._text_documents[new_uri] = TextDocument(
+                uri=new_uri, _source=previous.source, version=previous.version
+            );
+        }
+        self.revision += 1;
+    }
+}
+
+impl Workspace.touch -> None {
+    with self.lock {
+        self.revision += 1;
+    }
+}
+
 impl LanguageServer.postinit -> None {
     self._write_lock = threading.Lock();
     self._request_lock = threading.RLock();
@@ -400,6 +418,25 @@ impl LanguageServer.start_io -> None {
                 continue;
             }
             if method == INITIALIZED {
+                if self._dynamic_file_watching and self.watch_patterns {
+                    self.send_request(
+                        'client/registerCapability',
+                        {
+                            'registrations': [
+                                {
+                                    'id': 'workspace-inputs',
+                                    'method': 'workspace/didChangeWatchedFiles',
+                                    'registerOptions': {
+                                        'watchers': [
+                                            {'globPattern': pattern}
+                                            for pattern in self.watch_patterns
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    );
+                }
                 continue;
             }
             if method == SHUTDOWN {
@@ -666,6 +703,11 @@ impl LanguageServer._read_message(stream: any) -> Optional[dict] {
 impl LanguageServer._handle_initialize(params: dict) -> dict {
     root_uri = params.get("rootUri") or params.get("rootPath");
     self._workspace = Workspace(root_uri=root_uri);
+    capabilities = params.get('capabilities', {});
+    workspace = capabilities.get('workspace', {});
+    self._dynamic_file_watching = bool(
+        workspace.get('didChangeWatchedFiles', {}).get('dynamicRegistration', False)
+    );
     return {"capabilities": self._build_capabilities()};
 }
 

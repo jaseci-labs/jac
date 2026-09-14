@@ -1,6 +1,3 @@
-import asyncio;
-import sys;
-import time;
 import logging;
 
 import from typing { Optional }
@@ -14,8 +11,6 @@ import from .engine { JacLangServer }
 
 import jaclang.lsp.protocol.types as lspt;
 
-def debug(msg: str) -> None;
-
 def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) {
     ls.type_check(params.text_document.uri);
 }
@@ -25,7 +20,6 @@ def did_save(ls: JacLangServer, params: lspt.DidSaveTextDocumentParams) {
 }
 
 def did_change(ls: JacLangServer, params: lspt.DidChangeTextDocumentParams) {
-    debug(f"Did change: Type checking started.");
     ls.type_check(params.text_document.uri);
 }
 
@@ -37,7 +31,26 @@ def lintfix_formatting(
     ls: JacLangServer, params: lspt.DocumentFormattingParams
 ) -> list[lspt.TextEdit];
 
-def did_create_files(ls: JacLangServer, params: lspt.CreateFilesParams) {}
+def did_create_files(ls: JacLangServer, params: lspt.CreateFilesParams) {
+    ls.files_changed([file.uri for file in params.files]);
+}
+
+def did_change_watched_files(
+    ls: JacLangServer, params: lspt.DidChangeWatchedFilesParams
+) {
+    ls.files_changed([file.uri for file in params.changes]);
+}
+
+def did_change_configuration(ls: JacLangServer, params: dict) {
+    import os;
+    import from jaclang.lsp.protocol { uris }
+    directory = ls.workspace._root_path;
+    if directory is not None {
+        ls.files_changed(
+            [uris.from_fs_path(os.path.join(directory, 'jac.toml')) or '']
+        );
+    }
+}
 
 def did_rename_files(ls: JacLangServer, params: lspt.RenameFilesParams) -> None;
 
@@ -48,8 +61,6 @@ def did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None;
 def completion(
     ls: JacLangServer, params: lspt.CompletionParams
 ) -> lspt.CompletionList {
-    file_path = params.text_document.uri;
-    debug("Completion requested");
     return ls.get_completion(
         params.text_document.uri,
         params.position,

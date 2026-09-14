@@ -95,3 +95,59 @@ test "stdio dependency diagnostics recover through repeated unsaved changes" {
         }
     }
 }
+
+test "watched closed dependencies invalidate consumers and recover after deletion" {
+    with TemporaryDirectory() as directory {
+        library = Path(directory) / 'lib.jac';
+        consumer = Path(directory) / 'app.jac';
+        good = 'obj Foo { has x: int; }\n';
+        bad = 'obj Foo { has y: str; }\n';
+        source = 'import from .lib { Foo }\nwith entry { f = Foo(x=1); print(f.x); }\n';
+        library.write_text(good);
+        consumer.write_text(source);
+        client = LspClient(directory);
+        try {
+            registration = client.until(
+                lambda (body: dict) -> bool { return body.get('method')
+                    == 'client/registerCapability'; }
+            );
+            assert registration.body['params']['registrations'][0]['method']
+                == 'workspace/didChangeWatchedFiles';
+            client.open(str(consumer), source);
+            assert client.diagnostics(str(consumer), 1, timeout=60.0).body['params'][
+                'diagnostics'
+            ]
+                == [];
+            for step in range(4) {
+                started = time.monotonic();
+                change_type = 2;
+                if step == 2 {
+                    library.unlink();
+                    change_type = 3;
+                } else {
+                    library.write_text(bad if step == 0 else good);
+                    change_type = 1 if step == 3 else 2;
+                }
+                client.notify(
+                    'workspace/didChangeWatchedFiles',
+                    {'changes': [{'uri': library.as_uri(), 'type': change_type}]}
+                );
+                event = client.until(
+                    lambda (body: dict) -> bool { return body.get('method')
+                        == 'textDocument/publishDiagnostics'
+                        and body.get('params', {}).get('uri') == consumer.as_uri(); },
+                    since=started,
+                    timeout=60.0
+                );
+                errors = [
+                    item
+                    for item in event.body['params']['diagnostics']
+                    if item.get('severity') == 1
+                ];
+                assert bool(errors) == (step in (0, 2));
+            }
+        } finally {
+            client.close();
+        }
+    }
+}

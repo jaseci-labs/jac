@@ -114,6 +114,8 @@ obj Workspace {
     ) -> None;
 
     def remove_text_document(doc_uri: str) -> None;
+    def rename_text_document(old_uri: str, new_uri: str) -> None;
+    def touch -> None;
     def snapshot -> WorkspaceSnapshot;
     def change_text_document(params: DidChangeTextDocumentParams) -> None;
 }
@@ -141,6 +143,8 @@ obj LanguageServer {
         _shutdown_flag: bool = False,
         _requests: dict[int | str, Request] = {},
         _request_lock: threading.RLock postinit,
+        watch_patterns: list[str] = [],
+        _dynamic_file_watching: bool = False,
         _request_executor: ThreadPoolExecutor | None = None;
 
     def postinit -> None;

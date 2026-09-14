@@ -4,7 +4,12 @@ import from collections { deque }
 import from enum { Enum }
 import from jaclang.lsp.protocol.server { Request }
 
-enum WorkKind { CHECK = 'check', CLOSE = 'close', DELETE = 'delete' }
+enum WorkKind {
+    CHECK = 'check',
+    CLOSE = 'close',
+    DELETE = 'delete',
+    REFRESH = 'refresh'
+}
 
 obj WorkItem {
     has uri: str,

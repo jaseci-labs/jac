@@ -1,5 +1,3 @@
-import from jaclang.cli.console { console }
-
 impl run_lang_server -> None {
     logging.getLogger().setLevel(logging.CRITICAL);
     server = JacLangServer();
@@ -8,6 +6,8 @@ impl run_lang_server -> None {
     server.feature(lspt.TEXT_DOCUMENT_DID_SAVE)(did_save);
     server.feature(lspt.TEXT_DOCUMENT_DID_CHANGE)(did_change);
     server.feature(lspt.TEXT_DOCUMENT_DID_CLOSE)(did_close);
+    server.feature(lspt.WORKSPACE_DID_CHANGE_WATCHED_FILES)(did_change_watched_files);
+    server.feature(lspt.WORKSPACE_DID_CHANGE_CONFIGURATION)(did_change_configuration);
     server.feature(lspt.TEXT_DOCUMENT_FORMATTING)(formatting);
     server.feature(lspt.TEXT_DOCUMENT_INLAY_HINT)(inlay_hint);
     server.feature(
@@ -139,8 +139,4 @@ impl lintfix_formatting(
     ls: JacLangServer, params: lspt.DocumentFormattingParams
 ) -> list[lspt.TextEdit] {
     return ls.format_document(params.text_document.uri, auto_lint=True);
-}
-
-impl debug(msg: str) -> None {
-    console.error(f"[SERVER] {msg}");
 }

@@ -181,6 +181,12 @@ its outgoing dependencies. Failed or cancelled compilations conservatively
 retain the last known edges. Reverse dependency queries span application
 contexts.
 
+The module hub owns both lookup entries and links from the program root.
+Replacement, invalidation, and release detach displaced trees through that
+shared owner. The source store keeps recently used, unbound syntax within
+limits of 64 units and 100,000 syntax nodes; dependency records have a separate
+lifetime and survive eviction of those trees.
+
 The protocol reader applies each document-change batch atomically and captures
 its revision. `lsp/server/scheduler.jac` coalesces checks per compilation unit,
 preserves work for other documents, and bounds the interactive request queue.
@@ -190,6 +196,14 @@ versions and are published only if the captured workspace revision is current.
 Completion can request symbol construction and evaluate the queried expression
 without waiting for workspace diagnostics. Text exclusion ranges and completion
 items are cached by the document or analysis state that owns them.
+
+`ModuleManager` keeps editor products separate from mutable compiler graphs.
+Outlines and encoded semantic tokens contain protocol data and remain usable
+after an analysis tree is released. Invalidating a unit also invalidates its
+annex products. File watcher notifications use the same dependency invalidation
+path as buffer edits; renaming an open document preserves its unsaved text and
+version. The server registers file watchers when the client supports dynamic
+registration.
 
 ### `project/`
 

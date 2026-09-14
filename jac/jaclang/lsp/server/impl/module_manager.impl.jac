@@ -22,7 +22,9 @@ impl ModuleManager.update(
 
     if update_annexed {
         for f in (files or [file_path]) {
-            self.sem_managers[f] = SemTokManager(ir=build, target_path=f);
+            manager = SemTokManager(ir=build, target_path=f);
+            self.sem_managers[f] = manager;
+            self.products[f] = DocumentProducts(list(manager.sem_tokens));
         }
     }
 }

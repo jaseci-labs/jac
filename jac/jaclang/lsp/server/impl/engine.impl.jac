@@ -71,6 +71,7 @@ impl JacLangServer.postinit -> None {
     super.postinit();
     self.name = 'jac-lsp';
     self.version = 'v0.1';
+    self.watch_patterns = ['**/*.{jac,py,pyi}', '**/{jac.toml,jac.lock,.env}'];
     self.program = JacProgram();
     self.program.deps.tracking = True;
     self._compiler_lock = threading.RLock();
@@ -97,7 +98,9 @@ impl JacLangServer.submit_request(request: Request) -> None {
     }
 }
 
-impl JacLangServer._sync_sources(snapshot: WorkspaceSnapshot) -> None {
+impl JacLangServer._sync_sources(
+    snapshot: WorkspaceSnapshot, changed_paths: set[str] | None = None
+) -> None {
     if not self._dep_edges_seeded {
         self._dep_edges_seeded = True;
         ws_root = self.workspace._root_path;
@@ -107,9 +110,18 @@ impl JacLangServer._sync_sources(snapshot: WorkspaceSnapshot) -> None {
         }
     }
     changed = self.program.source_store.set_overrides(snapshot.sources());
-    for path in list(self.program.mod.hub) {
-        if not self.program.is_hub_entry_fresh(path) {
-            changed.add(path);
+    changed.update(changed_paths or set());
+    contexts = [self.program];
+    contexts.extend(
+        context
+        for context in self.program.contexts.values()
+        if context is not self.program
+    );
+    for context in contexts {
+        for path in list(context.mod.hub) {
+            if not context.is_hub_entry_fresh(path) {
+                changed.add(path);
+            }
         }
     }
     affected: set[str] = set();
@@ -121,7 +133,7 @@ impl JacLangServer._sync_sources(snapshot: WorkspaceSnapshot) -> None {
     for path in affected {
         self.program.invalidate_module(path);
         self.program.drop_module_alerts(path);
-        self.sem_managers.pop(path, None);
+        self.module_manager.invalidate(path);
         uri = _uri_of(path);
         if uri in snapshot.documents {
             with self.work.condition {
@@ -129,6 +141,7 @@ impl JacLangServer._sync_sources(snapshot: WorkspaceSnapshot) -> None {
                     and not (
                         isinstance(self.work.active, WorkItem)
                         and self.work.active.uri == uri
+                        and self.work.active.kind == WorkKind.CHECK
                     ) {
                     self.work.schedule(uri, immediate=True, interrupt=False);
                 }
@@ -137,8 +150,33 @@ impl JacLangServer._sync_sources(snapshot: WorkspaceSnapshot) -> None {
     }
 }
 
+impl JacLangServer.files_changed(uris: list[str]) -> None {
+    self.workspace.touch();
+    for uri in uris {
+        self.work.schedule(uri, WorkKind.REFRESH, immediate=True);
+    }
+}
+
+impl JacLangServer._refresh_file(uri: str) -> None {
+    path = _path_of(uri);
+    snapshot = self.workspace.snapshot();
+    changed = {path};
+    if os.path.basename(path) in ('jac.toml', 'jac.lock', '.env') {
+        import from pathlib { Path }
+        import from jaclang.project.config { get_config }
+        get_config(Path(path).parent, force_discover=True);
+        changed.update(snapshot.sources());
+        for context in [self.program, *self.program.contexts.values()] {
+            changed.update(context.mod.hub);
+        }
+    }
+    self._sync_sources(snapshot, changed);
+}
+
 impl JacLangServer._ensure_query(request: Request) -> None {
-    if request.responded or request.cancel_token.is_set() {
+    if request.responded
+        or request.cancel_token.is_set()
+        or request.revision != self.workspace.revision {
         return;
     }
     document = request.params.get('textDocument');
@@ -287,6 +325,8 @@ impl JacLangServer.dispatcher -> None {
                     if complete {
                         self.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
                     }
+                } elif item.kind == WorkKind.REFRESH {
+                    self._refresh_file(item.uri);
                 } else {
                     self._release_document(
                         item.uri, deleted=item.kind == WorkKind.DELETE
@@ -348,11 +388,11 @@ impl JacLangServer.log_error(message: str) -> None {
 impl JacLangServer.get_semantic_tokens(file_path: str) -> lspt.SemanticTokens {
     fs_path = _path_of(file_path);
     with self._compiler_lock {
-        sem_mgr = self.sem_managers.get(fs_path);
-        if not sem_mgr {
+        products = self.module_manager.products.get(fs_path);
+        if products is None {
             return lspt.SemanticTokens(data=[]);
         }
-        return lspt.SemanticTokens(data=list(sem_mgr.sem_tokens));
+        return lspt.SemanticTokens(data=list(products.semantic_tokens));
     }
 }
 
@@ -390,10 +430,10 @@ impl JacLangServer.get_references(
     return [];
 }
 
-def _definition_symbol(sym: uni.Symbol | None) -> uni.Symbol | None {
+def _definition_symbol(sym: uni.Symbol) -> uni.Symbol {
     cur = sym;
     seen: set[int] = set();
-    while cur is not None and cur.provider is not None and id(cur) not in seen {
+    while cur.provider is not None and id(cur) not in seen {
         seen.add(id(cur));
         target = cur.provider.definition();
         if target is None or target is cur {
@@ -666,9 +706,17 @@ impl JacLangServer._npm_item_location(
 impl JacLangServer.get_outline(file_path: str) -> list[lspt.DocumentSymbol] {
     fs_path = _path_of(file_path);
     with self._compiler_lock {
-        if fs_path in self.program.mod.hub
-            and (root_node := self.program.mod.hub[fs_path].sym_tab) {
-            return utils.get_symbols_for_outline(root_node);
+        products = self.module_manager.products.get(fs_path);
+        if products is not None and products.outline is not None {
+            return list(products.outline);
+        }
+        manager = self.sem_managers.get(fs_path);
+        if manager is not None {
+            symbols = utils.get_symbols_for_outline(manager.ir.sym_tab, fs_path);
+            if products is not None {
+                products.outline = symbols;
+            }
+            return list(symbols);
         }
     }
     return [];
@@ -810,20 +858,20 @@ impl JacLangServer.close_module(uri: str) -> None {
 }
 
 impl JacLangServer.delete_module(uri: str) -> None {
+    self.workspace.remove_text_document(uri);
     self.work.schedule(uri, WorkKind.DELETE, immediate=True);
 }
 
 impl JacLangServer.rename_module(old_path: str, new_path: str) -> None {
+    self.workspace.rename_text_document(old_path, new_path);
     self.delete_module(old_path);
-    self.type_check(new_path);
+    self.files_changed([new_path]);
 }
 
 impl JacLangServer._release_document(uri: str, deleted: bool = False) -> None {
     path = _path_of(uri);
-    self._sync_sources(self.workspace.snapshot());
-    self.sem_managers.pop(path, None);
-    self.module_manager.source_views.pop(path, None);
-    self.module_manager.completions.clear();
+    self._sync_sources(self.workspace.snapshot(), {path} if deleted else None);
+    self.module_manager.forget(path);
     self._published_diagnostics.pop(uri, None);
     self.program.release_module(path);
     self.program.source_store.forget(path);

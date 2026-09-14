@@ -266,6 +266,15 @@ test "test_go_to_definition_md_path" {
         import_file = uris.from_fs_path(fixture_path("md_path.jac"));
         assert import_file is not None;
         lsp.type_check_file(import_file);
+        protocol_source = (
+            Path(JAC_ROOT) / 'jaclang/lsp/protocol/server.jac'
+        ).read_text();
+        server_line = next(
+            index
+            for (index, line) in enumerate(protocol_source.splitlines())
+            if line.startswith('obj LanguageServer(')
+                or line.startswith('obj LanguageServer {')
+        );
         positions = [
             (3, 11, "asyncio/__init__.pyi:0:0-0:0"),
             (6, 17, "concurrent/__init__.pyi:0:0-0:0"),
@@ -285,7 +294,11 @@ test "test_go_to_definition_md_path" {
             (20, 40, "jaclang/compiler/frontend/unitree.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 37, "jaclang/lsp/protocol/uris.jac:0:0-0:0"),
-            (24, 44, "jaclang/lsp/protocol/server.jac:93:4-93:18"),
+            (
+                24,
+                44,
+                f"jaclang/lsp/protocol/server.jac:{server_line}:4-{server_line}:18"
+            ),
             (26, 31, "jaclang/lsp/protocol/types.jac:0:0-0:0"),
 
         ];

@@ -78,7 +78,12 @@ obj JacLangServer(LanguageServer) {
 
     def type_check(file_uri: str) -> None;
     def submit_request(request: Request) -> None;
-    def _sync_sources(snapshot: WorkspaceSnapshot) -> None;
+    def _sync_sources(
+        snapshot: WorkspaceSnapshot, changed_paths: set[str] | None = None
+    ) -> None;
+
+    def files_changed(uris: list[str]) -> None;
+    def _refresh_file(uri: str) -> None;
     def _ensure_query(request: Request) -> None;
     def _release_document(uri: str, deleted: bool = False) -> None;
     def get_token_at_position(
