@@ -46,3 +46,32 @@ test "independent builds own their measurements" {
     assert len(first.measurements.stages) == 1;
     assert not second.measurements.stages;
 }
+
+test "stage checkpoints retain completed work during an unfinished build" {
+    with TemporaryDirectory() as directory {
+        output = Path(directory) / "metrics/payload.json";
+        measurements = BuildMeasurements(output_path=str(output));
+        with measurements.stage("payload") {
+            with measurements.stage("kernel") {
+                data = json.loads(output.read_text());
+                assert data["active_stages"] == ["payload", "kernel"];
+                assert not data["stages"];
+                measurements.cache_outcome("kernel", "hit");
+                assert json.loads(output.read_text())["cache_outcomes"]["kernel"]
+                    == {"hit": 1};
+            }
+            data = json.loads(output.read_text());
+            assert data["active_stages"] == ["payload"];
+            assert data["stages"][0]["name"] == "kernel";
+            try {
+                with measurements.stage("catalog") {
+                    raise ValueError("producer failed");
+                }
+            } except ValueError {}
+            data = json.loads(output.read_text());
+            assert data["active_stages"] == ["payload"];
+            assert not data["stages"][-1]["succeeded"];
+        }
+        assert not json.loads(output.read_text())["active_stages"];
+    }
+}

@@ -36,6 +36,8 @@ import from jaclang.dist.payload.pins { py_ver }
 import from jaclang.dist.payload.vendor { MUSL_ARTIFACTS }
 
 impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) {
+    opts.measurements.output_path = os.environ.get("JAC_BUILD_METRICS", "")
+        or out + ".metrics.json";
     try {
         with opts.measurements.stage("payload") {
             py = resolve_python(python_dir);
@@ -92,9 +94,7 @@ impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
             delete_tree(work);
         }
     } finally {
-        opts.measurements.write(
-            os.environ.get("JAC_BUILD_METRICS", "") or out + ".metrics.json"
-        );
+        opts.measurements.flush();
     }
 }
 

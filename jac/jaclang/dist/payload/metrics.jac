@@ -26,11 +26,14 @@ obj StageMeasurement {
 obj BuildMeasurements {
     has stages: list[StageMeasurement] = [],
         cache_outcomes: dict[str, dict[str, int]] = {},
-        compilation: dict[str, any] = {};
+        compilation: dict[str, any] = {},
+        output_path: str = "",
+        active_stages: list[str] = [];
 
     def cache_outcome(producer: str, outcome: str) {
         outcomes = self.cache_outcomes.setdefault(producer, {});
         outcomes[outcome] = outcomes.get(outcome, 0) + 1;
+        self.flush();
     }
 
     @contextmanager
@@ -39,6 +42,8 @@ obj BuildMeasurements {
         cpu = time.process_time();
         children = child_cpu_seconds();
         succeeded = False;
+        self.active_stages.append(name);
+        self.flush();
         try {
             yield ;
             succeeded = True;
@@ -53,6 +58,14 @@ obj BuildMeasurements {
                     succeeded
                 )
             );
+            self.active_stages.pop();
+            self.flush();
+        }
+    }
+
+    def flush {
+        if self.output_path {
+            self.write(self.output_path);
         }
     }
 
@@ -64,6 +77,7 @@ obj BuildMeasurements {
                 "timing": "inclusive; nested stages must not be summed",
                 "memory": "process peak RSS, excluding child processes",
                 "stages": [stage.record() for stage in self.stages],
+                "active_stages": self.active_stages,
                 "cache_outcomes": self.cache_outcomes,
                 "compilation": self.compilation
             },

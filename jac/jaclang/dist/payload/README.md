@@ -67,6 +67,10 @@ Set `JAC_BUILD_METRICS` to choose the producer report path. Otherwise the report
 is written beside the payload as `<output>.metrics.json`, including on failure.
 CI uploads `jac/.build-metrics` as `build-kit-measurements`.
 
+Stage transitions and cache outcomes atomically checkpoint the measurement file.
+An interrupted build retains completed stages and lists the stages still active
+at the last checkpoint, even when the producer cannot run its final cleanup.
+
 - `stages` records wall time, process CPU, waited child CPU, process peak RSS,
   and success. These stages are inclusive; do not sum nested entries.
 - `cache_outcomes` records producer hits, misses, and compiled/reused file counts.
