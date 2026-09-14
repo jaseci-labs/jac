@@ -1,3 +1,4 @@
+import from jaclang.scale.deploy.target.registry { DeploymentTargetRegistry }
 import from jaclang.scale.deploy.target.deployment_target { DeploymentTarget }
 import from jaclang.scale.observability.logger { Logger }
 import from jaclang.scale._optdeps.optional_deps { require_optional }
@@ -5,15 +6,6 @@ import from jaclang.project.capabilities {
     ensure_global_capability,
     missing_capability_dists
 }
-
-type TargetFactory = Callable[[dict[str, any], Logger | None], DeploymentTarget];
-
-glob BUILTIN_TARGET_TYPES: tuple = (
-         "kubernetes",
-         "kubernetes-microservice",
-         "aws",
-         "gcp"
-     );
 
 def ensure_deploy_tooling(dry_run: bool = False) {
     if dry_run {
@@ -43,19 +35,7 @@ def require_deploy_tooling(dry_run: bool = False) {
     require_optional("kubernetes", "deploy.k8s");
 }
 
-class DeploymentTargetFactory {
-    static has _registry: dict[str, TargetFactory] = {};
-
-    static def register(target_type: str, factory: TargetFactory) {
-        DeploymentTargetFactory._registry[target_type] = factory;
-    }
-
-    static def known_targets -> list[str] {
-        names: set[str] = set(BUILTIN_TARGET_TYPES);
-        names.update(DeploymentTargetFactory._registry.keys());
-        return sorted(names);
-    }
-
+class DeploymentTargetFactory(DeploymentTargetRegistry) {
     static def create(
         target_type: str,
         config: dict[str, any],

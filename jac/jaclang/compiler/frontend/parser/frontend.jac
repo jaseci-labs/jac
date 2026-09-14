@@ -199,7 +199,7 @@ def annex_sources(file_path: str) -> list[tuple[str, str]] {
             discover_annex_files,
             discover_base_file
         }
-        import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+        import from jaclang.project.source { read_file_with_encoding }
         if discover_base_file(file_path) is not None {
             return [];
         }

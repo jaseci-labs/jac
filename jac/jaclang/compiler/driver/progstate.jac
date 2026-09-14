@@ -7,7 +7,7 @@ import from contextvars { ContextVar }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
 import from jaclang.compiler.passes.transform { Alert, PassResult }
-import type from jaclang.compiler.driver.mtp { Info }
+import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
 import from jaclang.compiler.driver.pipeline_types {
     AnalysisFact,

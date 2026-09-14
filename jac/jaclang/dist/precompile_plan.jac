@@ -42,7 +42,7 @@ def plan_precompile(
     started = time.monotonic();
     import from jaclang.dist.precompile_bytecode { precompile_context }
     import from jaclang.compiler.frontend.parser.frontend { annex_sources }
-    import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+    import from jaclang.project.source { read_file_with_encoding }
     import from jaclang.bootstrap_manifest { is_native_only_seed }
     with CompilationSession() as session {
         dependencies_graph = session.program.deps;

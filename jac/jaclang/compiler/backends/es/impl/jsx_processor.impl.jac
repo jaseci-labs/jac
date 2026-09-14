@@ -116,8 +116,7 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
     }
     view = ViewElement(tag=tag, attrs=attrs, children=children, jac_node=nd);
     self._view_by_node[id(nd)] = view;
-    self.pass_ref._ensure_backend();
-    backend = self.pass_ref.backend;
+    backend = self.pass_ref.resolved_backend;
     assert backend is not None , "framework backend was not initialized";
     return backend.lower_view(view, self.pass_ref.sync_loc);
 }

@@ -1025,9 +1025,9 @@ obj CtEvaluator {
     }
 
     def _resolve_symbol_deep(sym: Symbol) -> Symbol {
-        visited: set[int] = set();
-        while id(sym) not in visited {
-            visited.add(id(sym));
+        seen: set[int] = set();
+        while id(sym) not in seen {
+            seen.add(id(sym));
             sym = self.evaluator.resolve_imported_symbols(sym);
             sym = self.evaluator.resolve_to_definition_symbol(sym);
             node_ = sym.decl.name_of;

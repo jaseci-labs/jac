@@ -243,7 +243,7 @@ impl JacProgram.load_dependency_module(
             import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
             import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
             import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
-            import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+            import from jaclang.project.source { read_file_with_encoding }
             src = use_str or read_file_with_encoding(source_path);
             uni_source = uni.Source(src, source_path);
             converted = run_utility(

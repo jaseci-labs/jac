@@ -98,7 +98,7 @@ default_model = "anthropic/claude-sonnet-5"
 
 [dependencies.npm]
 "@noble/hashes" = "^2.0.1"
-react-native-web = "^0.19.13"
+react-native-web = "^0.21.2"
 embla-carousel-react = "*"
 "@hugeicons/core-free-icons" = "*"
 "@hugeicons/react" = "*"

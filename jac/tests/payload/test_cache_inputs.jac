@@ -65,6 +65,16 @@ test "restored artifacts and dirty generated files cannot change checkout keys" 
         _git(checkout, ["mv", str(source), str(compiler / "renamed.jac")]);
         _git(checkout, ["commit", "--quiet", "-m", "rename"]);
         assert _keys(checkout)["compiler"] != changed["compiler"];
+        project = checkout / "jac/jaclang/project/source.jac";
+        project.parent.mkdir();
+        project.write_text("def read_source() -> str { return 'first'; }\n");
+        _git(checkout, ["add", str(project)]);
+        _git(checkout, ["commit", "--quiet", "-m", "project source services"]);
+        before_project = _keys(checkout);
+        project.write_text("def read_source() -> str { return 'changed'; }\n");
+        _git(checkout, ["add", str(project)]);
+        _git(checkout, ["commit", "--quiet", "-m", "source reader change"]);
+        assert _keys(checkout)["compiler"] != before_project["compiler"];
     }
 }
 

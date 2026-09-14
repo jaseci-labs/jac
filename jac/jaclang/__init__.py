@@ -1,24 +1,31 @@
 """The Jac Programming Language."""
 
 import sys
+from importlib import import_module
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from jaclang.meta_importer import JacMetaImporter  # noqa: E402
 
-# Register JacMetaImporter BEFORE anything else, so .jac modules can be imported
-if not any(isinstance(f, JacMetaImporter) for f in sys.meta_path):
-    sys.meta_path.insert(0, JacMetaImporter())
+def _install_importer() -> None:
+    package_dir = Path(__file__).parent
+    if (package_dir / "runtime.json").is_file():
+        from jaclang.runtime.source_app import load_runtime
 
-# Put the current project's .jac/venv on sys.path so per-project dependencies
-# (jac install [-e] <pkg>) and the on-demand feature capabilities (byllm, scale,
-# ...) are importable. In the single binary this already ran via sitecustomize
-# during interpreter startup; this call is the library-use fallback (plain
-# `import jaclang` with no sitecustomize). The helper is idempotent and uses
-# addsitedir, so editable .pth links are processed.
-with __import__("contextlib").suppress(Exception):
-    import _jac_finder as _jf
+        load_runtime(package_dir)
+        return
 
-    _jf.add_project_venv_to_path()
+    # Source loading is an optional build service. Exported packages install
+    # their prepared importer from the same initialization entry point.
+    importer = import_module("jaclang.meta_importer").JacMetaImporter
+    if not any(isinstance(f, importer) for f in sys.meta_path):
+        sys.meta_path.insert(0, importer())
+
+    # The binary already adds the project environment through sitecustomize;
+    # ordinary Python library imports need the same idempotent setup.
+    with __import__("contextlib").suppress(Exception):
+        import _jac_finder as _jf
+
+        _jf.add_project_venv_to_path()
 
 
 # --- Lazy compiler/runtime bootstrap -------------------------------------
@@ -43,8 +50,6 @@ def _load_jac_runtime() -> None:
     )
 
 
-
-
 # The names below are bound at runtime by `_load_jac_runtime()` / `__getattr__`
 # (PEP 562), which keeps `import jaclang` cheap. A type checker cannot see a
 # name injected into globals(), so declare them here for static resolution
@@ -67,3 +72,5 @@ def __getattr__(name: str) -> object:
 
 
 __all__ = ["JacRuntimeInterface", "JacRuntime", "compiler"]
+
+_install_importer()

@@ -1,3 +1,5 @@
+import type from jaclang.compiler.frontend.codeinfo { InteropBinding }
+
 def inject_shared_init(llvm_ir_str: str, manifest: any) -> tuple[str, list[str]] {
     init_calls: list[str] = [];
     transitive_sources: list[str] = [];
@@ -314,7 +316,7 @@ def emit_shared_library(
             );
         } elif is_macos {
             import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
-            import from jaclang.compiler.backends.native.linker_common {
+            import from jaclang.compiler.backends.native.floor {
                 collect_floor_archives
             }
             (_floor_members, _floor_handled) = collect_floor_archives(
@@ -336,7 +338,7 @@ def emit_shared_library(
             );
         } else {
             import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
-            import from jaclang.compiler.backends.native.linker_common {
+            import from jaclang.compiler.backends.native.floor {
                 collect_floor_archives as _cfa_elf
             }
             (_floor_members_elf, _fh_elf) = _cfa_elf(
@@ -362,4 +364,53 @@ def emit_shared_library(
         return (False, "shared-library link failed: could not parse object file");
     }
     return (True, "");
+}
+
+
+def bind_shared_callbacks(
+    llvm_ir: str, bindings: list[InteropBinding]
+) -> tuple[str, list[InteropBinding]] {
+    import jaclang.compiler.backends.native.llvm.binding as llvm;
+    import from jaclang.compiler.backends.native.llvm.ir.types { _wrapname }
+    module = llvm.parse_assembly(llvm_ir);
+    assert isinstance(module, llvm.ModuleRef);
+    definitions: list[str] = [];
+    callbacks: list[InteropBinding] = [];
+    for binding in bindings {
+        function = module.get_function(binding.name);
+        assert isinstance(function, llvm.ValueRef);
+        if not function.is_declaration {
+            continue;
+        }
+        (result, parameters, variadic) = function.function_signature();
+        if variadic {
+            raise ValueError(
+                f'Python callbacks cannot use a variadic ABI: {binding.name}'
+            );
+        }
+        callbacks.append(binding);
+        name = _wrapname(binding.name);
+        slot = _wrapname('__jac_callback_' + binding.name);
+        bind_function = _wrapname('__jac_bind_' + binding.name);
+        arguments = ', '.join(
+            f'{kind} %arg{index}' for (index, kind) in enumerate(parameters)
+        );
+        call = f'call {result} %function({arguments})';
+        body = f'  {call}\n  ret void'
+            if result == 'void'
+            else f'  %result = {call}\n  ret {result} %result';
+        definitions.extend(
+            [
+                f'@{slot} = internal global ptr null',
+                f'define void @{bind_function}(ptr %callback) {{\n  store ptr %callback, ptr @{slot}\n  ret void\n}}',
+                f'define {result} @{name}({arguments}) {{\n  %function = load ptr, ptr @{slot}\n{body}\n}}'
+            ]
+        );
+    }
+    if definitions {
+        callback_module = llvm.parse_assembly('\n'.join(definitions));
+        module.link_in(callback_module);
+    }
+    module.verify();
+    return (str(module), callbacks);
 }

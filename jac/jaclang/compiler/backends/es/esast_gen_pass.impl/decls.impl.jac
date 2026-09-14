@@ -55,6 +55,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
         return;
     }
 
+    assert here.name_ref is not None;
     ref_param: (uni.ParamVar | None) = None;
     if (
         here.code_context == CodeContext.CLIENT

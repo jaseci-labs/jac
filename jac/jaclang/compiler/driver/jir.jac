@@ -396,7 +396,7 @@ def _project_env_fingerprint(source_path: str) -> str {
         pins_digest,
         config_kind_space
     }
-    import from jaclang.compiler.placement.workspace {
+    import from jaclang.project.workspace {
         app_fact_digest,
         app_for_path,
         workspace_for_path
