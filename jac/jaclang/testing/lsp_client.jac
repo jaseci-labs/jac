@@ -17,6 +17,7 @@ obj RpcEvent {
 obj LspClient {
     has directory: str,
         command: list[str] | None = None,
+        environment: dict[str, str] | None = None,
         process: subprocess.Popen[bytes] postinit,
         transport: LanguageServer postinit,
         condition: threading.Condition postinit,
@@ -38,7 +39,10 @@ obj LspClient {
                 self.command or [sys.executable, 'lsp'],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=self.error_log
+                stderr=self.error_log,
+                env={** os.environ, ** self.environment}
+                    if self.environment is not None
+                    else None
             );
         } except Exception {
             self.error_log.close();
@@ -182,26 +186,36 @@ obj LspClient {
         );
     }
 
-    def diagnostics(path: str, version: int, timeout: float = 30.0) -> RpcEvent {
+    def diagnostics(
+        path: str,
+        version: int,
+        timeout: float = 30.0,
+        since: float = 0.0,
+        allow_unversioned: bool = False
+    ) -> RpcEvent {
         uri = Path(path).as_uri();
         return self.until(
             lambda (body: dict) -> bool {
                 params = body.get('params', {});
                 return body.get('method') == 'textDocument/publishDiagnostics'
                     and params.get('uri') == uri
-                    and params.get('version') == version;
+                    and (
+                        params.get('version') == version
+                        or (allow_unversioned and params.get('version') is None)
+                    );
             },
+            since=since,
             timeout=timeout
         );
     }
 
-    def rss_mib -> float | None {
+    def rss_mib(peak: bool = False) -> float | None {
         status = Path(f'/proc/{self.process.pid}/status');
         if not status.is_file() {
             return None;
         }
         for line in status.read_text().splitlines() {
-            if line.startswith('VmRSS:') {
+            if line.startswith('VmHWM:' if peak else 'VmRSS:') {
                 return float(line.split()[1]) / 1024.0;
             }
         }
