@@ -141,6 +141,10 @@ jobs:
           assert not hasattr(sys, "_jacpython_compile")
           assert not hasattr(sys, "_jacpython_image")
           assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42
+          from watchdog.observers import Observer
+          if sys.platform == "darwin":
+              from watchdog.observers.fsevents import FSEventsObserver
+              assert Observer is FSEventsObserver
           print("Packaged JacPython: native compiler active")
           '
       - name: Diagnose macOS native startup failures

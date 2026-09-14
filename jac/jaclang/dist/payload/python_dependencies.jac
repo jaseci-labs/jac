@@ -1,18 +1,29 @@
 import hashlib;
 import csv;
 import json;
+import os;
 import shutil;
 import subprocess;
 import tarfile;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.dist.payload.artifacts { ArtifactStore }
-import from jaclang.dist.payload.python_runtime { interpreter_identity }
+import from jaclang.dist.payload.python_runtime {
+    interpreter_identity,
+    interpreter_build_identity
+}
 
 def install_dependencies(python: str, site: str, cache_dir: str) -> bool {
     import from jaclang.dist.payload.assemble { tar_stage }
     requirements = Path(__file__).with_name("python_dependencies.txt");
+    constraints = Path(__file__).with_name("python_build_constraints.txt");
     identity = interpreter_identity(python);
+    native_build = identity.get("platform", "").startswith("macosx");
+    if native_build {
+        identity["build"] = json.dumps(
+            interpreter_build_identity(python), sort_keys=True
+        );
+    }
     installer = subprocess.run(
         [
             python,
@@ -29,6 +40,7 @@ def install_dependencies(python: str, site: str, cache_dir: str) -> bool {
     identity["installer"] = installer.stdout.strip();
     digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode());
     digest.update(requirements.read_bytes());
+    digest.update(constraints.read_bytes());
     digest.update(Path(__file__).read_bytes());
 
     digest.update(
@@ -50,6 +62,11 @@ def install_dependencies(python: str, site: str, cache_dir: str) -> bool {
                     "runpy.run_module('pip', run_name='__main__')"
                 );
                 target = Path(work) / "dependencies";
+                build_env = dict(os.environ);
+                build_env["SOURCE_DATE_EPOCH"] = "0";
+                if native_build {
+                    build_env["CFLAGS"] = build_env.get("CFLAGS", "") + " -g0";
+                }
                 subprocess.run(
                     [
                         python,
@@ -60,15 +77,19 @@ def install_dependencies(python: str, site: str, cache_dir: str) -> bool {
                         "--quiet",
                         "--disable-pip-version-check",
                         "--no-compile",
-                        "--only-binary=:all:",
+                        "--no-cache-dir",
+                        "--only-binary=pip,tomlkit,setuptools,wheel",
                         "--require-hashes",
                         "--no-deps",
+                        "--build-constraint",
+                        str(constraints),
                         "--target",
                         str(bootstrap),
                         "-r",
                         str(requirements)
                     ],
-                    check=True
+                    check=True,
+                    env=build_env
                 );
 
                 shutil.rmtree(bootstrap / "bin", ignore_errors=True);

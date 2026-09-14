@@ -14,7 +14,7 @@ Each producer validates its own inputs and completed outputs before reuse.
 | Native kernel and layout | Compiler sources and type stubs, shim contents, host, interpreter, codegen options, ancestor project configuration, payload producer | `ArtifactStore` |
 | Stub catalog | Compiler source identity, actual stub contents, Python/platform, catalog format, requested module selection | Catalog builder and its manifest |
 | Bootstrap products | Existing jac0 bytecode identity, full precompile identity, dependency facts, debug-source mode | Bootstrap importer and seed sealer |
-| Runtime wheel installation | Hash-locked requirements, target interpreter, bundled pip wheel, staging/archive producer | `ArtifactStore` |
+| Runtime dependency installation | Hash-locked requirements and build constraints, target interpreter, bundled pip wheel, native compiler/SDK where required, staging/archive producer | `ArtifactStore` |
 | Python bytecode | Target interpreter, source contents, normalized filename, optimization mode | `ArtifactStore`, standard `py_compile` |
 | Compressed frames | Deterministic tar contents, compression parameters, interpreter | Existing frame cache with decoded-content verification |
 
@@ -47,7 +47,14 @@ The kernel loader performs its usual compatibility checks.
 
 `python_dependencies.txt` pins wheel versions and SHA-256 hashes. Installation
 uses the target interpreter's bundled pip wheel with hash verification, without
-upgrading the build interpreter's environment. Generated command wrappers are
+upgrading the build interpreter's environment. Watchdog can use its verified
+source distribution when a compatible wheel is unavailable, including Python
+3.14 on macOS. Pip's isolated build environment uses the verified setuptools and
+wheel inputs in `python_build_constraints.txt`; native products also identify the
+compiler, SDK, interpreter build flags, and requested environment flags. Cold
+producers disable pip's wheel cache, fix `SOURCE_DATE_EPOCH`, and omit native debug
+paths; completed installations reuse the verified artifact cache.
+Generated command wrappers are
 removed because they embed temporary paths; runtime tools run as Python modules.
 The floor's existing `site-packages` is excluded from staging. Python bytecode
 uses unchecked source hashes and `/jac-rt/` filenames. A distinct target
@@ -65,6 +72,9 @@ CI uploads `jac/.build-metrics` as `build-kit-measurements`.
 - `cache_outcomes` records producer hits, misses, and compiled/reused file counts.
 - `compilation` includes the dependency plan, compiler and Python identities,
   worker configuration, per-job PID/setup/time/RSS, and per-file compiler work.
+  Each job completes one module. Cycle members run in order behind their external
+  dependency barriers, so progress, failure handling, and worker retirement remain
+  available between members of even the largest cycle.
 - Compiler `exclusive_seconds` subtracts nested phases and passes, including
   dependency work. `frontend:parse` and `frontend:copy` separate parser work from
   copying shared syntax. Product/cache events distinguish reuse from computation.

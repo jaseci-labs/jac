@@ -32,3 +32,45 @@ def interpreter_identity(python: str) -> dict[str, str] {
     );
     return json.loads(probe.stdout);
 }
+
+def interpreter_build_identity(python: str) -> dict[str, str] {
+    import os;
+    import shlex;
+    probe = subprocess.run(
+        [
+            python,
+            "-I",
+            "-c",
+            "import json, sysconfig; print(json.dumps({"
+            "key: str(sysconfig.get_config_var(key) or '') for key in "
+            "('CC', 'CFLAGS', 'CCSHARED', 'LDSHARED', 'LDFLAGS', 'MACOSX_DEPLOYMENT_TARGET')}))"
+        ],
+        check=True,
+        capture_output=True,
+        text=True
+    );
+    config: dict[str, str] = json.loads(probe.stdout);
+    compiler = shlex.split(os.environ.get("CC") or config.get("CC") or "cc");
+    version = subprocess.run(
+        compiler + ["--version"], check=True, capture_output=True, text=True
+    );
+    config["compiler_version"] = version.stdout + version.stderr;
+    if sys.platform == "darwin" {
+        sdk = subprocess.run(
+            ["xcrun", "--show-sdk-version"], check=True, capture_output=True, text=True
+        );
+        config["sdk_version"] = sdk.stdout.strip();
+    }
+    for name in (
+        "CC",
+        "CFLAGS",
+        "CPPFLAGS",
+        "LDFLAGS",
+        "ARCHFLAGS",
+        "SDKROOT",
+        "MACOSX_DEPLOYMENT_TARGET"
+    ) {
+        config["env:" + name] = os.environ.get(name, "");
+    }
+    return config;
+}
