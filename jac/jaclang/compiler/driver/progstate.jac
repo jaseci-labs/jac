@@ -340,6 +340,14 @@ class AnalysisCaches {
         self.task_owners.pop(key, None);
     }
 
+    def clear_tasks(self: AnalysisCaches) {
+        self.completed_passes.clear();
+        self.product_tasks.clear();
+        self.module_diagnostics.clear();
+        self.early_passes.clear();
+        self.task_owners.clear();
+    }
+
     def record_early(
         self: AnalysisCaches, module: uni.Module, results: dict[str, PassResult]
     ) {

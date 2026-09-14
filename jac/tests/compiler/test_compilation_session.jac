@@ -56,6 +56,7 @@ test "two roots share their analyzed dependency until the session budget expires
         assert not program.source_store.units;
         assert program.type_evaluator is None;
         assert not program.analysis.product_tasks;
+        assert not program.analysis.module_diagnostics;
     }
     assert session.closed;
 }

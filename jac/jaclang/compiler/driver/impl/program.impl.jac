@@ -442,10 +442,7 @@ impl JacProgram.release_compile_closure(
     self.scratch.clear();
     self.analysis.analyses_run.clear();
     self.analysis.placement_state.pop('work', None);
-    self.analysis.early_passes.clear();
-    self.analysis.product_tasks.clear();
-    self.analysis.completed_passes.clear();
-    self.analysis.task_owners.clear();
+    self.analysis.clear_tasks();
     if self._iface is not None {
         self._iface.on_closure_release();
     }
