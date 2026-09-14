@@ -55,6 +55,9 @@ impl WorkPool._run_job(
     record["cpu_seconds"] = time.process_time() - cpu;
     record["setup_seconds"] = setup_seconds if served == 1 else 0.0;
     record["rss"] = worker_rss_mb();
+    record["retirement_seconds"] = 0.0;
+    record["retirement_cpu_seconds"] = 0.0;
+    record["rss_after_retirement"] = record["rss"];
     record["served"] = served;
     return record;
 }
@@ -225,11 +228,16 @@ impl WorkPool._worker_loop(dispatch_fd: int, result_fd: int) -> None {
         rss = int(record["rss"]);
         retire_now = bool(request.get("isolate"));
         if not retire_now and retire_hook is not None {
+            retirement_wall = time.perf_counter();
+            retirement_cpu = time.process_time();
             try {
                 retire_now = bool(retire_hook(served, rss));
             } except Exception {
                 retire_now = False;
             }
+            record["retirement_seconds"] = time.perf_counter() - retirement_wall;
+            record["retirement_cpu_seconds"] = time.process_time() - retirement_cpu;
+            record["rss_after_retirement"] = worker_rss_mb();
         }
         record["idx"] = request["idx"];
         record["retire"] = retire_now;

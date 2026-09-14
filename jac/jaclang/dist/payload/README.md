@@ -81,6 +81,11 @@ at the last checkpoint, even when the producer cannot run its final cleanup.
 - `cache_outcomes` records producer hits, misses, and compiled/reused file counts.
 - `compilation` includes the dependency plan, compiler and Python identities,
   worker configuration, per-job PID/setup/time/RSS, and per-file compiler work.
+  `wall_seconds` and `cpu_seconds` measure the job itself. The separate
+  `retirement_seconds` and `retirement_cpu_seconds` include the retirement hook's
+  collection and session eviction, even when the worker survives. `rss` is the
+  job's final RSS; `rss_after_retirement` reports it after the hook. Inline jobs
+  do not invoke retirement and report zero retirement time.
   Each job completes one module. Cycle members run in order behind their external
   dependency barriers, so progress, failure handling, and worker retirement remain
   available between members of even the largest cycle.
