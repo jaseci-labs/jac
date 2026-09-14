@@ -1100,12 +1100,26 @@ obj IfaceRegistry {
             if not self.prog.is_hub_entry_fresh(resolved) {
                 return;
             }
+            diags = sections.get(SEC_DIAG);
+            if diags is None {
+                # Publication can update interfaces without producing diagnostics.
+                # Retain only profiles the merged JIR kept for these dependencies;
+                # _existing_profiles also resolves their persisted source paths.
+                profiles = self._existing_profiles(resolved, sections[SEC_DEPS]);
+                if profiles {
+                    diags = json.dumps(
+                        {"schema": DIAG_SCHEMA, "profiles": profiles}
+                    ).encode(
+                        "utf-8"
+                    );
+                }
+            }
             self._register(
                 resolved,
                 digest,
                 sections.get(SEC_IFACE),
                 sections.get(SEC_PLACEMENT),
-                diags=sections.get(SEC_DIAG),
+                diags=diags,
                 paths=memo.paths if memo is not None else None
             );
         }

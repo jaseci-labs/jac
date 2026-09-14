@@ -162,6 +162,26 @@ test "a partially cached import cycle retains exported declarations" {
     }
 }
 
+test "explicit codespace checks do not publish unused portable interfaces" {
+    for codespace in ("server", "client", "native") {
+        for options in (
+            CompileOptions(no_cgen=True, force_codespace=codespace),
+            CompileOptions(no_cgen=True, default_codespace=codespace)
+        ) {
+            with tempfile.TemporaryDirectory() as directory {
+                source = Path(directory) / "main.jac";
+                source.write_text("def answer -> int { return 42; }\n");
+                program = JacProgram();
+                program.compile(str(source), options=options);
+                assert not program.errors_had , program.errors_had;
+                for cache in Path(directory).rglob("*.jir") {
+                    assert read_section_bytes(cache.read_bytes(), SEC_IFACE) is None;
+                }
+            }
+        }
+    }
+}
+
 test "dependency ingestion hydrates from the interface, not the source" {
     (main, dep) = _project();
     _check(main);

@@ -1337,7 +1337,12 @@ impl JacCompiler.compile(
                         and not options.symtab_ir_only
                         and use_str is None
                         and not self.selfhost.is_selfhost(_wrap_prog) {
-                        _wrap_prog.iface_registry().publish_completed();
+                        registry = _wrap_prog.iface_registry();
+                        if registry.eligible(
+                            self, os.path.realpath(file_path), options
+                        ) {
+                            registry.publish_completed();
+                        }
                     }
                     return module;
                 }
