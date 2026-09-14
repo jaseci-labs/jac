@@ -183,10 +183,17 @@ obj CompilationSession {
             or cancelled
             or count >= self.max_modules
             or self.roots >= self.max_roots {
-            self.program.release_compile_closure(retain_stubs=False);
-            self.roots = 0;
-            self.evictions += 1;
+            self.evict();
         }
+    }
+
+    def evict {
+        if self.closed {
+            raise RuntimeError("Compilation session is closed");
+        }
+        self.program.release_compile_closure(retain_stubs=False);
+        self.roots = 0;
+        self.evictions += 1;
     }
 
     def close {

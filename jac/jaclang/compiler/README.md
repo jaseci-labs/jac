@@ -206,6 +206,10 @@ Before forking, precompile loads the shared compiler schedules and catalog once,
 then releases completed compiler execution state. Automatic worker selection
 uses at least the same memory budget as worker retirement; explicit worker
 counts remain available for controlled measurements.
+At a memory limit, workers collect released objects first, then evict the
+session's retained trees and collect again before deciding to retire. This
+also releases inherited discovery syntax: a planner cache larger than the
+worker limit must not force a fresh worker for every subsequent module.
 
 The compiler's execution program has a separate lifetime from owned source
 sessions. Nested importer execution defers cleanup until the outer execution

@@ -1013,6 +1013,12 @@ def _precompile_retire(served: int, rss_mb: int) -> bool {
         gc.collect();
         maybe_malloc_trim();
         current = worker_rss_mb();
+        if current >= cap and _unit_session {
+            _unit_session[0].evict();
+            gc.collect();
+            maybe_malloc_trim();
+            current = worker_rss_mb();
+        }
         if os.environ.get("JAC_PRECOMPILE_RSS_LOG") {
             sys.stderr.write(f"[gc] precompile rss={rss_mb}->{current}MB\n");
             sys.stderr.flush();
