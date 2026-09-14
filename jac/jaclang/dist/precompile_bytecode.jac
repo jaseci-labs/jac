@@ -1224,7 +1224,7 @@ def run_precompile(
     import from jaclang.dist.precompile_plan { plan_precompile }
     import from jaclang.runtime.runtime { JacRuntime }
     compiler = JacRuntime.get_compiler();
-    compiler.release_compile_state(compiler.selfhost.program);
+    compiler.release_compile_state(JacRuntime.get_program());
     maybe_malloc_trim();
     plan = plan_precompile(jac_files, package_dir, app);
     preparation_started = time.monotonic();
@@ -1239,7 +1239,7 @@ def run_precompile(
     get_ir_gen_sched();
     get_analysis_sched();
     get_py_code_gen(native=False);
-    compiler.release_compile_state(compiler.selfhost.program);
+    compiler.release_compile_state(JacRuntime.get_program());
     maybe_malloc_trim();
     plan.measurements["worker_preparation_seconds"] = time.monotonic()
         - preparation_started;
