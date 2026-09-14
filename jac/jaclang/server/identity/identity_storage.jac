@@ -84,7 +84,7 @@ obj PgIdentityStorage(IdentityStorage) {
     def _update_credentials(user_id: str, credentials: list[dict[str, any]]) -> None;
     def _get_identities(user_id: str) -> list[dict[str, any]];
     def _add_identity(user_id: str, identity: dict[str, any]) -> bool;
-    def _claim_lookup(value_normalized: str, user_id: str) -> None;
+    def _claim_lookup(value_normalized: str, user_id: str) -> bool;
     def _user_exists(user_id: str) -> bool;
     def _append_identity(user_id: str, identity: dict[str, any]) -> bool;
     def _remove_sso_identity(user_id: str, platform: str) -> bool;

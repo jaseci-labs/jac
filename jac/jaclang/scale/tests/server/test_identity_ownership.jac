@@ -12,7 +12,12 @@ import threading;
 import time;
 import uuid;
 import from tempfile { mkdtemp }
-import from jaclang.server.identity.identity_storage { IdentityTakenError }
+import from jaclang.data.pgembed { PgRuntime }
+import from jaclang.data.store { PgStore }
+import from jaclang.server.identity.identity_storage {
+    IdentityTakenError,
+    PgIdentityStorage
+}
 import from jaclang.server.identity.user_manager { UserManager }
 
 
@@ -51,6 +56,21 @@ def _types_holding(users: UserManager, user_id: str, value: str) -> list[str] {
         for i in user.get('identities', [])
         if i.get('value_normalized') == value
     ];
+}
+
+
+def _wait_until_blocked(conn: any, table: str) {
+    deadline = time.monotonic() + 10;
+    while not conn.run(
+        """
+        SELECT 1 FROM pg_stat_activity
+        WHERE wait_event_type = 'Lock' AND pid <> pg_backend_pid() AND query LIKE :q
+        """,
+        q=f"%{table}%"
+    ) {
+        assert time.monotonic() < deadline , f"nothing waited for the lock on {table}";
+        time.sleep(0.05);
+    }
 }
 
 
@@ -198,21 +218,12 @@ test "a rename keeps an identity that lands while the rename waits for the row" 
         }
         conn.run('BEGIN');
         conn.run(
-            'SELECT doc FROM identity_users WHERE user_id = :u FOR UPDATE', u=user_id
+            'SELECT doc FROM identity_users WHERE user_id = :u FOR NO KEY UPDATE',
+            u=user_id
         );
         renamer = threading.Thread(target=_rename, daemon=True);
         renamer.start();
-        deadline = time.monotonic() + 10;
-        while not conn.run(
-            """
-            SELECT 1 FROM pg_stat_activity
-            WHERE wait_event_type = 'Lock' AND pid <> pg_backend_pid()
-              AND query LIKE '%identity_users%'
-            """
-        ) {
-            assert time.monotonic() < deadline , 'the rename never waited for the row';
-            time.sleep(0.05);
-        }
+        _wait_until_blocked(conn, 'identity_users');
         conn.run(
             """
             UPDATE identity_users
@@ -244,4 +255,127 @@ test "a rename keeps an identity that lands while the rename waits for the row" 
         }
         shutil.rmtree(test_dir, ignore_errors=True);
     }
+}
+
+
+test "deleting an account frees every value it held" {
+    (test_dir, users) = _manager();
+    try {
+        tag = uuid.uuid4().hex[:8];
+        name = f"held_{tag}";
+        addr = f"held_{tag}@example.com";
+        user_id = str(users.create_user(name, 'pw12345')['user_id']);
+        assert users.add_identity(user_id, _email_identity(addr));
+        linked = users.link_sso_account(user_id, 'github', f"ext_{tag}");
+        assert 'error' not in linked , linked;
+        deleted = users.delete_user(user_id);
+        assert 'error' not in deleted , deleted;
+        storage = users._identity_storage;
+        assert not storage.identity_taken(name);
+        assert not storage.identity_taken(addr);
+        assert not storage.store.rows(
+            'SELECT 1 FROM identity_lookups WHERE user_id = :u', {'u': user_id}
+        );
+        assert not storage.store.rows(
+            'SELECT 1 FROM sso_lookups WHERE user_id = :u', {'u': user_id}
+        );
+        other_id = str(users.create_user(name, 'pw12345')['user_id']);
+        assert users.add_identity(other_id, _email_identity(addr));
+        relinked = users.link_sso_account(other_id, 'github', f"ext_{tag}");
+        assert 'error' not in relinked , relinked;
+    } finally {
+        shutil.rmtree(test_dir, ignore_errors=True);
+    }
+}
+
+
+test "an account deleted while a claim is in flight leaves nothing behind" {
+    (test_dir, users) = _manager();
+    storage = users._identity_storage;
+    conn = storage.store._side();
+    committed = False;
+    try {
+        tag = uuid.uuid4().hex[:8];
+        addr = f"gone_{tag}@example.com";
+        user_id = str(users.create_user(f"gone_{tag}", 'pw12345')['user_id']);
+        outcome: dict = {};
+
+        def _attach {
+            outcome['added'] = users.add_identity(user_id, _email_identity(addr));
+        }
+        conn.run('BEGIN');
+        conn.run('DELETE FROM identity_users WHERE user_id = :u', u=user_id);
+        attacher = threading.Thread(target=_attach, daemon=True);
+        attacher.start();
+        _wait_until_blocked(conn, 'identity_lookups');
+        conn.run('COMMIT');
+        committed = True;
+        attacher.join(30);
+        assert not attacher.is_alive() , 'the claim did not finish after the delete committed';
+        assert outcome.get('added') is False , outcome;
+        assert not storage.identity_taken(addr);
+        assert users.find_user_by_identity(addr) is None;
+        other = users.create_user(addr, 'pw12345');
+        assert 'error' not in other , other;
+        assert users.authenticate(addr, 'pw12345') is not None;
+    } finally {
+        if not committed {
+            conn.run('ROLLBACK');
+        }
+        shutil.rmtree(test_dir, ignore_errors=True);
+    }
+}
+
+
+test "an existing database gains the account foreign key and drops orphaned lookups" {
+    store = None;
+    try {
+        rt = PgRuntime(data_dir=mkdtemp(prefix='jacfk_') + '/data');
+        store = PgStore(conninfo=rt.ensure());
+    } except Exception as e {
+        print(f"[skip] embedded postgres unavailable: {e}");
+        return;
+    }
+    store.rows(
+        'CREATE TABLE identity_users (user_id text PRIMARY KEY, doc jsonb NOT NULL)', {}
+    );
+    store.rows(
+        'CREATE TABLE identity_lookups '
+        '(value_normalized text PRIMARY KEY, user_id text NOT NULL)',
+        {}
+    );
+    store.rows(
+        'CREATE TABLE sso_lookups (provider text NOT NULL, external_id text NOT NULL, '
+        'user_id text NOT NULL, PRIMARY KEY (provider, external_id))',
+        {}
+    );
+    store.rows(
+        "INSERT INTO identity_users (user_id, doc) VALUES ('kept', CAST(:d AS jsonb))",
+        {'d': json.dumps({'user_id': 'kept', 'identities': []})}
+    );
+    store.rows(
+        "INSERT INTO identity_lookups (value_normalized, user_id) "
+        "VALUES ('kept@example.com', 'kept'), ('ghost@example.com', 'ghost')",
+        {}
+    );
+    store.rows(
+        "INSERT INTO sso_lookups (provider, external_id, user_id) "
+        "VALUES ('github', 'kept-ext', 'kept'), ('github', 'ghost-ext', 'ghost')",
+        {}
+    );
+    storage = PgIdentityStorage(store=store);
+    constraints = store.rows(
+        "SELECT conname FROM pg_constraint WHERE conname IN "
+        "('identity_lookups_user_id_fkey', 'sso_lookups_user_id_fkey')",
+        {}
+    );
+    assert len(constraints) == 2 , constraints;
+    assert storage.identity_taken('kept@example.com');
+    assert not storage.identity_taken('ghost@example.com');
+    assert store.rows("SELECT 1 FROM sso_lookups WHERE user_id = 'kept'", {});
+    assert not store.rows("SELECT 1 FROM sso_lookups WHERE user_id = 'ghost'", {});
+    assert storage._claim_lookup('ghost@example.com', 'kept');
+    assert not storage._claim_lookup('later@example.com', 'ghost');
+    again = PgIdentityStorage(store=store);
+    assert again.identity_taken('ghost@example.com');
 }
