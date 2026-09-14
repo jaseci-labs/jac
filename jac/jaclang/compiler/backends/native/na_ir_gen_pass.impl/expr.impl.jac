@@ -588,23 +588,14 @@ impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
         alloca = self.local_vars[var_name];
         slot_type = alloca.pointee_type;
         value = self._coerce_type(value, slot_type);
-        if isinstance(slot_type, ir.PointerType) {
-            if not self._is_owned(value) {
-                self._emit_rc_retain(value, op="walrus", loc=_loc);
-            }
-            old_val = self.builder.load(alloca, name=f"{var_name}.old");
-            self._emit_rc_release_typed(old_val, op="overwrite", loc=_loc);
-        }
-        self.builder.store(value, alloca);
     } else {
         var_type = value.type;
         alloca = self._entry_alloca(var_type, var_name);
-        if isinstance(var_type, ir.PointerType) and not self._is_owned(value) {
-            self._emit_rc_retain(value, op="walrus", loc=_loc);
-        }
-        self.builder.store(value, alloca);
         self._bind_local_slot(var_name, alloca);
     }
+    self._emit_take_ref(value, op="walrus", loc=_loc);
+    self._release_owned_temp(var_name, op="overwrite", loc=_loc);
+    self.builder.store(value, alloca);
 
     return self.builder.load(alloca, name=var_name);
 }

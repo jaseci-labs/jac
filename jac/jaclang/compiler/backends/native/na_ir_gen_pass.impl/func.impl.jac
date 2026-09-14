@@ -717,7 +717,11 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         }
         for (i, arg) in enumerate(fn.args) {
             if i < len(param_names) {
-                self._bind_function_parameter(param_names[i], arg);
+                self._bind_function_parameter(
+                    param_names[i],
+                    arg,
+                    rebound=bool(sig_params[i].name?.sym?.param_rebound)
+                );
                 continue;
             }
             (cap_name, cap_mode, _cap_type) = captures[i - len(param_names)];

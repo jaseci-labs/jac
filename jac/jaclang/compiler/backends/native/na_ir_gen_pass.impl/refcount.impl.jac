@@ -1294,6 +1294,9 @@ impl NaIRGenPass._str_norm(val: ir.Value) -> ir.Value {
     if self._str_desc_ty is None or val.type != self._str_desc_ty {
         return val;
     }
+    if not self._nogc_headerless() {
+        return self._borrow_owned_temp(self._str_materialize(val));
+    }
     if self.str_unwrap_fn is None {
         self._emit_str_desc_helpers();
     }
@@ -1313,6 +1316,7 @@ impl NaIRGenPass._str_materialize(val: ir.Value) -> ir.Value {
     }
     result = self.builder.call(self.str_materialize_fn, [val], name="s.materialized");
     self._release_owned_args([val], op="str_materialize");
+    val.is_owned = False;
     return self._mark_owned(result);
 }
 
@@ -2309,6 +2313,14 @@ impl NaIRGenPass._emit_scope_cleanup(
             continue;
         }
 
+        if self.jacval_type is not None and alloca.pointee_type == self.jacval_type {
+            if var_name == skip_var {
+                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
+            } else {
+                self._release_owned_temp(var_name, op="scope_exit", loc=loc);
+            }
+            continue;
+        }
         if self._str_desc_ty is not None
             and isinstance(alloca.type, ir.PointerType)
             and alloca.pointee_type == self._str_desc_ty {
@@ -2396,6 +2408,10 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
         if alloca is None {
             continue;
         }
+        if self.jacval_type is not None and alloca.pointee_type == self.jacval_type {
+            self._release_owned_temp(var_name, op="iter_end", loc=loc);
+            continue;
+        }
         if self._str_desc_ty is not None
             and isinstance(alloca.type, ir.PointerType)
             and alloca.pointee_type == self._str_desc_ty {
@@ -2452,6 +2468,7 @@ impl NaIRGenPass._bind_owned_temp(val: ir.Value, prefix: str = "temp") -> str {
     _slot.na_tuple_owned = val.na_tuple_owned;
     self._bind_local_slot(_name, _slot);
     self.owned_temp_slots.add(_name);
+    self._release_owned_temp(_name, op="temp_replace");
     self.builder.store(val, _slot);
     return _name;
 }

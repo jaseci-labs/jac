@@ -144,6 +144,12 @@ impl NaIRGenPass._emit_dict_helpers(
 }
 
 impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
+    if self._str_desc_ty is not None
+        and value.type == self._str_desc_ty
+        and not self._nogc_headerless() {
+        materialized = self._str_materialize(value);
+        return self._mark_owned(self._box_to_jacval(materialized));
+    }
     value = self._str_norm(value);
     b = self.builder;
     i8 = ir.IntType(8);

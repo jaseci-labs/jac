@@ -404,6 +404,21 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
         }
         return self._self_arch;
     }
+    if isinstance(expr, uni.Name) {
+        slot = self.local_vars.get(expr.value);
+        if slot is not None {
+            storage = self._opt_payload_of(slot.pointee_type) or slot.pointee_type;
+            if isinstance(storage, ir.PointerType)
+                and isinstance(storage.pointee, ir.IdentifiedStructType) {
+                bound = self._struct_name_for_key(storage.pointee.name);
+                if bound is not None
+                    and bound != _narrowed
+                    and (_narrowed is None or bound not in self._mro_of(_narrowed)) {
+                    return bound;
+                }
+            }
+        }
+    }
     return _narrowed;
 }
 

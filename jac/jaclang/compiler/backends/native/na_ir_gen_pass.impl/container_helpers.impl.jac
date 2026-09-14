@@ -1188,7 +1188,7 @@ impl NaIRGenPass._tuple_box_trace_fn(
             );
         }
         fval = b.load(fptr, name=f"tr.f{idx}");
-        b.call(_vis, [b.bitcast(fval, i8_ptr, name=f"tr.f{idx}.i8")]);
+        b = self._emit_elem_trace(b, fval, _vis);
     }
     b.branch(done_bb);
     b = ir.IRBuilder(done_bb);

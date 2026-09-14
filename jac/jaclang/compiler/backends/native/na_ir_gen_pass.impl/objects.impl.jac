@@ -4145,10 +4145,7 @@ impl NaIRGenPass._codegen_field_assign(
         _fs_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{target.loc.first_line
             if target.loc
             else 0}";
-        _fs_new_pv = self.builder.extract_value(
-            value, 1, name=f"field.{field_name}.newpv"
-        );
-        self._emit_take_ref(_fs_new_pv, op="field_set", loc=_fs_loc);
+        self._emit_take_ref(value, op="field_set", loc=_fs_loc);
         _fs_old = self.builder.load(field_ptr, name=f"field.{field_name}.old");
         _fs_old_pv = self.builder.extract_value(
             _fs_old, 1, name=f"field.{field_name}.oldpv"

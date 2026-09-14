@@ -83,12 +83,6 @@ impl NaIRGenPass._shadow_bindings(names: list[str], preserve: bool = False) -> N
     }
 }
 
-"""Register storage without discarding the previous representation's ownership.
-
-A source name can acquire several native representations. The frame owns each
-slot, including on paths that skip its replacement. Preserve old slots and their
-ownership metadata for the existing cleanup walk.
-"""
 impl NaIRGenPass._bind_local_slot(name: str, slot: ir.Value) -> None {
     previous = self.local_vars.get(name);
     if previous is slot {
@@ -141,22 +135,18 @@ impl NaIRGenPass._bind_function_parameter(
         slot = self._emit_closure_cell(name, value.type);
         self.builder.store(value, slot);
         self._bind_local_slot(name, slot);
-        if borrowed and self._elem_kind(value.type) in ("rc_ptr", "str") {
-            self._emit_rc_retain(value, op="param_cell", loc=name);
-        } elif borrowed and self._opt_ptr_payload_of(value.type) is not None {
-            payload = self.builder.extract_value(value, 1, name="param.cell.payload");
-            self._emit_rc_retain(payload, op="param_cell", loc=name);
+        if borrowed {
+            self._emit_take_ref(value, op="param_cell", loc=name);
         }
         return;
     }
     slot = self._entry_alloca(value.type, name);
     self.builder.store(value, slot);
     self._bind_local_slot(name, slot);
-    if rebound and self._elem_kind(value.type) in ("rc_ptr", "str") {
-        self._emit_rc_retain(value, op="param_promote", loc=name);
-    } elif rebound and self._opt_ptr_payload_of(value.type) is not None {
-        payload = self.builder.extract_value(value, 1, name="param.promote.payload");
-        self._emit_rc_retain(payload, op="param_promote", loc=name);
+    if rebound {
+        if borrowed {
+            self._emit_take_ref(value, op="param_promote", loc=name);
+        }
     } elif borrowed {
         self.param_vars.add(name);
     }

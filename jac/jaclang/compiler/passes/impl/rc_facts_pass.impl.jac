@@ -243,12 +243,6 @@ impl RcFactsPass._stamp_last_use(ir_in: Module) -> None {
     ir_in.rc_last_use = out;
 }
 
-"""Track every use of a storage name before scheduling its early release.
-
-Distinct symbols can lower to the same local name, including loop targets that
-shadow parameters. Borrowed and escaping symbols still constrain that name's
-lifetime even though they cannot independently request an early release.
-"""
 impl RcFactsPass._collect_last_use(
     owner: UniNode, body: Sequence[UniNode], out: dict[int, list[str]]
 ) -> None {
@@ -350,21 +344,33 @@ impl RcFactsPass._stamp_param_rebound(ir_in: Module) -> None {
     for pv in ir_in.get_all_sub_nodes(ParamVar) {
         sym = pv.name.sym if pv.name else None;
         if sym is not None {
-            sym.param_rebound = self._param_plainly_rebound(sym);
+            sym.param_rebound = self._param_is_rebound(sym);
         }
     }
 }
 
-impl RcFactsPass._param_plainly_rebound(sym: Symbol) -> bool {
+impl RcFactsPass._param_is_rebound(sym: Symbol) -> bool {
     for d in (list(sym.defn) + list(sym.uses)) {
-        asg = d.find_parent_of_type(Assignment);
-        if asg is None or asg.aug_op is not None {
-            continue;
+        target: UniNode = d;
+        while isinstance(target.parent, (TupleVal, ListVal)) {
+            target = target.parent;
         }
-        targets = asg.target
-            if isinstance(asg.target, (list, tuple))
-            else [(asg.target)];
-        if d in targets {
+        parent = target.parent;
+        if isinstance(parent, Assignment)
+            and parent.aug_op is None
+            and target in parent.target {
+            return True;
+        }
+        if isinstance(parent, BinaryExpr)
+            and isinstance(parent.op, Token)
+            and parent.op.name == Tok.WALRUS_EQ
+            and parent.left is target {
+            return True;
+        }
+        if isinstance(parent, InForStmt) and parent.target is target {
+            return True;
+        }
+        if isinstance(parent, MatchAs) and parent.name is target {
             return True;
         }
     }

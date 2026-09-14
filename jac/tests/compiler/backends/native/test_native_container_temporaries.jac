@@ -74,14 +74,43 @@ def check_containers(profile: str) {
         ("repeated_retyped_loop", 3, 3),
         ("scalar_retyped_loop", 3, 1),
         ("redeclared_local", 7, 2),
-        ("borrowed_retyped_parameter", 11, 1)
+        ("borrowed_retyped_parameter", 11, 1),
+        ("owned_optional_field", 3, 1),
+        ("borrowed_optional_field", 4, 1),
+        ("aliased_optional_field", 5, 1),
+        ("overwritten_optional_field", 7, 2),
+        ("borrowed_substring_lookup", 21, 0),
+        ("borrowed_substring_receiver", 1, 0),
+        ("owned_substring_prefix", 1, 0),
+        ("owned_substring_suffix", 1, 0),
+        ("escaped_substring_container", 1, 0),
+        ("compared_substring_loop", 3, 0),
+        ("returned_boxed_substring", 1, 0),
+        ("substring_builtin_identity", 1, 0),
+        ("boxed_substring_container", 1, 0),
+        ("boxed_local_overwrite", 3, 2),
+        ("boxed_borrowed_local", 4, 1),
+        ("boxed_loop_local", 3, 3),
+        ("returned_boxed_local", 6, 1),
+        ("boxed_loop_binding", 1, 2),
+        ("boxed_comprehension_binding", 1, 2),
+        ("boxed_match_binding", 1, 1),
+        ("boxed_tuple_binding", 1, 2),
+        ("boxed_parameter_binding", 1, 2),
+        ("boxed_walrus_binding", 1, 1),
+        ("boxed_dict_binding", 4, 2),
+        ("boxed_tuple_escape", 3, 1),
+        ("boxed_tuple_swap", 3, 2),
+        ("boxed_walrus_parameter_binding", 3, 2),
+        ("boxed_nested_parameter_binding", 2, 2)
     ] {
         address = engine.get_function_address(name);
         assert address != 0;
         call = ctypes.CFUNCTYPE(ctypes.c_int64)(address);
         before = dropped();
         before_live = live_allocations(live_address);
-        assert call() == expected , name;
+        result = call();
+        assert result == expected , (name, result, expected);
         assert dropped() - before == allocations , name;
         assert live_allocations(live_address) == before_live , (
             name,

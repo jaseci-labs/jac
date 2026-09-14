@@ -1574,6 +1574,7 @@ impl NaIRGenPass._dispatch_primitive_method(
     kwargs: (dict | None) = None,
     kw_node: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
+    temporaries = self.owned_temp_slots.copy();
     target = self._str_norm(target);
     args = [self._str_norm(_a) for _a in args];
     _emitter = self._ensure_emitters().get(type_name);
@@ -1598,7 +1599,6 @@ impl NaIRGenPass._dispatch_primitive_method(
         and isinstance(kw_node.target, uni.AtomTrailer) {
         _ctx.receiver_node = kw_node.target.target;
     }
-    temporaries = self.owned_temp_slots.copy();
     linear = self._nogc_headerless();
     if not linear {
         target = self._borrow_owned_temp(target);
