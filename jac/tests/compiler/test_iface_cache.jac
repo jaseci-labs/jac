@@ -499,6 +499,7 @@ test "a compile acting on an inferred native verdict persists no interface" {
     mod.decided_codespace = "native";
     mod.codespace_inferred = True;
     reg.persist_after_compile(dep, mod, CompileOptions(), 0, 0);
+    reg.publish_completed();
     assert reg.prog.analysis.cache_events.get("iface_encode", 0) == encodes , "an inferred verdict was encoded into an interface";
     assert read_iface_hash(read_section_bytes(_cache_path(dep).read_bytes(), SEC_IFACE))
         == before , "an inferred verdict overwrote the persisted interface";

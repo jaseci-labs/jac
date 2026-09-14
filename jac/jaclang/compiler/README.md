@@ -185,10 +185,14 @@ Type imports use the program's module hub and interface registry to resolve
 cycles. An import encountered during cache validation can hydrate the module's
 interface or enter its source pipeline; the evaluator does not replace an
 in-progress module with an empty symbol table.
-Successful outer analysis requests publish their completed interface cohort
-before returning, using the same publisher as precompile. This fills dependency
+Successful outer analysis and executable requests publish their completed
+interface cohort before returning, using the same publisher as precompile. This fills dependency
 hashes that only become available when a cycle finishes, without rerunning
 completed analysis. Failed or cancelled requests cannot publish that cohort.
+An inferred native placement keeps the ordinary analysis interface unchanged,
+but publishes its dependency records after the cohort's interface digests are
+ready. A bytecode cache hit therefore has complete dependency proofs even when
+the executable itself cannot publish an analysis interface.
 An edit invalidates affected live products and their consumers. Disk replay uses
 interface hashes for ordinary imports and content hashes for compile-time inputs,
 so body-only edits retain the existing interface cutoff. Restored timestamps do

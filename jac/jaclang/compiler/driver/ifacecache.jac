@@ -499,7 +499,8 @@ obj IfaceRegistry {
                 }
                 for (path, module) in pending {
                     prepared.add(id(module));
-                    if self._prepare_interface_in_context(path, module) {
+                    if module.codespace_inferred
+                        or self._prepare_interface_in_context(path, module) {
                         ready.append((path, module));
                     }
                 }

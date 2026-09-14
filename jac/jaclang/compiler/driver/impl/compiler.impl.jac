@@ -1341,7 +1341,6 @@ impl JacCompiler.compile(
 
                 def completed(module: uni.Module) -> uni.Module {
                     if _depth_prev == 0
-                        and options.no_cgen
                         and not options.symtab_ir_only
                         and use_str is None
                         and not self.selfhost.is_selfhost(_wrap_prog) {
