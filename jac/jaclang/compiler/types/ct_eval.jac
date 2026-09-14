@@ -1849,6 +1849,12 @@ obj CtEvaluator {
         raise CtError(f"{callee!r} is not callable in comptime code");
     }
 
+    def _require_execution {
+        if not self.frames and not self.demand {
+            raise CtNotComptime();
+        }
+    }
+
     def _construct(t: CtType, args: list, kwargs: dict) -> any {
         if t.module == "builtins" {
             if t.name in CT_PY_TYPES {
@@ -1860,6 +1866,7 @@ obj CtEvaluator {
             }
             raise CtError(f"cannot construct builtin '{t.name}' at compile time");
         }
+        self._require_execution();
         ct = self._class_type_of(t);
         node_ = self._arch_node_of(ct);
         if isinstance(node_, Enum) {
@@ -1951,9 +1958,7 @@ obj CtEvaluator {
         ability: Ability, args: list, kwargs: dict, self_val: any = None
     ) -> any {
         self.burn(20);
-        if not self.frames and not self.demand {
-            raise CtNotComptime();
-        }
+        self._require_execution();
         name = ability.name_ref.sym_name if ability.name_ref else "unnamed";
         if ability.is_abstract {
             raise CtError(f"{name} is abstract");

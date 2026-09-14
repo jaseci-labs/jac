@@ -58,6 +58,50 @@ test "precompiled modules carry their type interface on cold and cached builds" 
     }
 }
 
+test "runtime construction has identical dependency products with cached classes" {
+    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    import from jaclang.compiler.driver.jir { read_ct_deps }
+    import from jaclang.dist.precompile_bytecode {
+        precompile_unit_context,
+        precompile_worker_exit
+    }
+    for constructor in ["", "def init(v: int) { self.value = v; print(v); }"] {
+        with TemporaryDirectory() as directory {
+            package = _package(Path(directory));
+            (package / "dependency.jac").write_text(
+                "obj Box { has value: int; " + constructor + " }\n"
+            );
+            source = package / "api.jac";
+            source.write_text(
+                "import from .dependency { Box }\n"
+                    + "def run() -> int { return Box(42).value; }\n"
+            );
+            artifacts: list[bytes] = [];
+            try {
+                for _attempt in range(2) {
+                    precompile_worker_exit();
+                    data = precompile_unit(str(source), str(package), collect=False);
+                    assert data is not None;
+                    assert not read_ct_deps(data) , (
+                        "runtime construction recorded speculative compile-time body dependencies"
+                    );
+                    artifacts.append(data);
+                    with precompile_unit_context(
+                        str(source), str(package), collect=False
+                    ) as program {
+                        artifact_cache_path(str(source), program).unlink();
+                    }
+                }
+            } finally {
+                precompile_worker_exit();
+            }
+            assert artifacts[0] == artifacts[1] , (
+                "cached class interfaces changed runtime constructor metadata"
+            );
+        }
+    }
+}
+
 test "partial rebuilds preserve complete dependency and diagnostic products" {
     import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
     import from jaclang.dist.precompile_bytecode {

@@ -244,6 +244,11 @@ changes the stub lens of an active application compilation.
 Build artifact identities, stage measurements, and the cold/warm validation
 procedure are described in [`dist/payload/README.md`](../dist/payload/README.md).
 
+Compile-time execution of user constructors follows the same demand/frame rule
+as user functions. Speculative typing of a runtime constructor must not execute
+its body, force its implementation dependencies, or record compile-time body
+dependencies that disappear when the class is loaded from an interface.
+
 ## Rules
 
 **Backends consume facts, they do not compute them.** Types are read from
