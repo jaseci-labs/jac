@@ -86,7 +86,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: jac/zig-out/lib/libjacllvm.*
-        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.llvm-digest }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.zig') }}
+        key: jac-shim-v2-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.llvm-digest }}-${{ hashFiles('jac/native/**', 'jac/bootstrap/llvm_shim.zig', 'jac/bootstrap/build_options.zig', 'jac/bootstrap/pins.zig') }}
 
     # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
     # shim, so `zig build` needs that LLVM extracted first (there is no llvmlite
@@ -252,7 +252,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: jac/zig-out/lib/libjacllvm.*
-        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.llvm-digest }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.zig') }}
+        key: jac-shim-v2-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.llvm-digest }}-${{ hashFiles('jac/native/**', 'jac/bootstrap/llvm_shim.zig', 'jac/bootstrap/build_options.zig', 'jac/bootstrap/pins.zig') }}
 
     - name: Save LLVM cache (trusted refs only)
       if: >-

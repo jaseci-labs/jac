@@ -101,3 +101,8 @@ input. The shipped kernel uses current code generation with stable source paths;
 random temporary directories therefore do not change its bytes or the final
 compiler identity. `bootstrap-kernel` builds the temporary predecessor artifact;
 `compiler-kernel` builds the current artifact that is shipped.
+
+LLVM shim construction lives in `llvm_shim.zig`; target and optimization defaults
+live in `build_options.zig`. CI fingerprints those inputs, the native shim sources,
+the LLVM pin, Zig version, and platform SDK. Changes to the compiler image graph
+in `build.zig` do not invalidate the shim cache.

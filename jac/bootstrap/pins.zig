@@ -104,3 +104,21 @@ pub fn pyMinor(b: *std.Build) []const u8 {
     const second = std.mem.indexOfScalarPos(u8, patch, first + 1, '.') orelse return patch;
     return patch[0..second];
 }
+
+/// Map a target to the os-arch token the build-python subcommand understands,
+/// or null for targets we don't ship a binary for yet.
+pub fn osArchString(t: std.Target) ?[]const u8 {
+    return switch (t.os.tag) {
+        .macos => switch (t.cpu.arch) {
+            .aarch64 => "macos-aarch64",
+            .x86_64 => "macos-x86_64",
+            else => null,
+        },
+        .linux => switch (t.cpu.arch) {
+            .x86_64 => "linux-x86_64",
+            .aarch64 => "linux-aarch64",
+            else => null,
+        },
+        else => null,
+    };
+}
