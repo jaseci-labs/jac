@@ -113,3 +113,48 @@ def borrowed_field_write -> int {
 def drop_count -> int {
     return dropped;
 }
+
+
+glob text_builds: int = 0;
+def make_text(value: int) -> str {
+    text_builds += 1;
+    return str(value);
+}
+
+def join_generator -> int {
+    items = [Item(3)];
+    text = ",".join(str(item.value) for item in items);
+    return len(text);
+}
+
+def join_comprehension -> int {
+    items = [Item(3)];
+    text = ",".join([str(item.value) for item in items]);
+    return len(text);
+}
+
+def list_generator -> int {
+    items = [Item(3)];
+    values = list(item.value for item in items);
+    return sum(values);
+}
+
+def string_receiver_evaluations -> int {
+    before = text_builds;
+    assert make_text(3).startswith("3");
+    return text_builds - before;
+}
+
+def bytes_receiver -> int {
+    return len(make_text(3).encode().decode());
+}
+
+def chained_string_receiver -> int {
+    return (" " + make_text(3) + " ").strip().count("3");
+}
+
+def borrowed_string_receiver -> int {
+    value = make_text(3);
+    assert value.startswith("3");
+    return len(value);
+}
