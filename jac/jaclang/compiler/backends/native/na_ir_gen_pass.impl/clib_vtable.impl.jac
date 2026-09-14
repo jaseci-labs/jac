@@ -119,22 +119,6 @@ impl NaIRGenPass._emit_clib_c_trampoline(
     return tramp;
 }
 
-impl NaIRGenPass._clib_alloc_vtable(name: str) -> ir.Value {
-    i8_ptr = ir.IntType(8).as_pointer();
-    i64 = ir.IntType(64);
-    calloc_fn = self._get_or_declare_extern("calloc", i8_ptr, [i64, i64]);
-    ct = self._clib_c_type(name);
-    null_ptr = ir.Constant(ct.as_pointer(), None);
-    size_gep = self.builder.gep(
-        null_ptr, [ir.Constant(ir.IntType(32), 1)], name="clib.vt.sizeof.gep"
-    );
-    size = self.builder.ptrtoint(size_gep, i64, name="clib.vt.sizeof");
-    raw = self.builder.call(calloc_fn, [ir.Constant(i64, 1), size], name="clib.vt.raw");
-    return self.builder.bitcast(
-        raw, self.struct_types[name].as_pointer(), name="clib.vt.ptr"
-    );
-}
-
 impl NaIRGenPass._lower_clib_function_type(
     arch_name: str, fname: str, t: any
 ) -> ir.Type {

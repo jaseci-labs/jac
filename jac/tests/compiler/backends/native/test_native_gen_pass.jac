@@ -4859,19 +4859,6 @@ def _clib_vtable_trampoline__clib_vtable_trampolines_are_cached_per_fn_type_pair
     assert "_on_event.__clibcb.1" not in llvm_ir_str;
 }
 
-# --- Flat (no-RC) allocation for clib vtable structs (issue #6571) ---
-"""clib vtable structs allocate flat without RC header (issue #6571)"""
-def _clib_vtable_trampoline__clib_vtable_structs_allocate_flat_without_rc_header_issue_6571(
-    _eng: any, ir: any
-) {
-    llvm_ir_str = str(ir.gen.llvm_ir);
-    # C reads the vtable starting at field 0 (CEF validates struct->size
-    # there) and owns its lifetime, so the instance must be plain zeroed C
-    # memory — no RC header, no destructor, no type tag.
-    assert "clib.vt.raw" in llvm_ir_str , "vtable must allocate through the flat calloc path";
-    assert "__rc_release_event_handler_vt" not in llvm_ir_str , "C-owned vtable struct must not get an RC destructor";
-}
-
 test "clib_vtable_trampoline" {
     (_eng, _ir) = compile_native("clib_vtable_trampoline.jac");
     _clib_vtable_trampoline__clib_vtable_slot_store_emits_c_abi_trampoline_issue_6570(
@@ -4880,9 +4867,8 @@ test "clib_vtable_trampoline" {
     _clib_vtable_trampoline__clib_vtable_trampolines_are_cached_per_fn_type_pair_issue_6570(
         _eng, _ir
     );
-    _clib_vtable_trampoline__clib_vtable_structs_allocate_flat_without_rc_header_issue_6571(
-        _eng, _ir
-    );
+    handler_size = get_func(_eng, "make_handler", ctypes.c_int64);
+    assert handler_size() == 24;
 }
 
 test "clib vtable: C invokes Jac callback through trampoline (issue #6570)" {

@@ -714,7 +714,6 @@ walker NaIRGenPass(Transform) {
         jac_fn: ir.Function, c_fn_ty: ir.PointerType
     ) -> ir.Function;
 
-    def _clib_alloc_vtable(name: str) -> ir.Value;
     def _lower_clib_function_type(arch_name: str, fname: str, t: any) -> ir.Type;
     def _clib_fnptr_arg(val: ir.Value, target: ir.Type) -> ir.Value;
     def _clib_fnptr_ret(arch_name: str, fname: str, result: ir.Value) -> ir.Value;

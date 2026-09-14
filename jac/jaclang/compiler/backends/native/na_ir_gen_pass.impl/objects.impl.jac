@@ -1931,8 +1931,6 @@ impl NaIRGenPass._codegen_instantiation(
         if self.rc_set_type_fn is not None {
             self._emit_set_type_tag(self.builder, _stk_i8, type_name);
         }
-    } elif _vt_struct {
-        obj_ptr = self._clib_alloc_vtable(type_name);
     } else {
         null_ptr = ir.Constant(struct_ptr_type, None);
         size_gep = self.builder.gep(
@@ -1940,7 +1938,8 @@ impl NaIRGenPass._codegen_instantiation(
         );
         size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="sizeof");
         _region_eligible = (
-            id(nd) != self._managed_ctor_node
+            not _vt_struct
+            and id(nd) != self._managed_ctor_node
             and not self._arch_is_walker_name(type_name)
             and not bool(getattr(self.prog.options, "kernel_unit", False))
         );
@@ -2097,15 +2096,13 @@ impl NaIRGenPass._codegen_instantiation(
             val = self._coerce_type(val, ftype);
         }
 
-        if not _vt_struct {
-            self._emit_take_ref(
-                val,
-                op="ctor_field",
-                loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                    if nd.loc
-                    else 0}"
-            );
-        }
+        self._emit_take_ref(
+            val,
+            op="ctor_field",
+            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                if nd.loc
+                else 0}"
+        );
         field_ptr = self.builder.gep(
             obj_ptr,
             [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), idx)],
@@ -2154,15 +2151,13 @@ impl NaIRGenPass._codegen_instantiation(
                     val = self._coerce_type(val, ftype);
                 }
 
-                if not _vt_struct {
-                    self._emit_take_ref(
-                        val,
-                        op="ctor_field",
-                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                            if nd.loc
-                            else 0}"
-                    );
-                }
+                self._emit_take_ref(
+                    val,
+                    op="ctor_field",
+                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                        if nd.loc
+                        else 0}"
+                );
                 field_ptr = self.builder.gep(
                     obj_ptr,
                     [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), idx)],
@@ -4114,7 +4109,7 @@ impl NaIRGenPass._codegen_field_assign(
     }
 
     _borrow_field = field_name in self.struct_field_borrow.get(type_name, set());
-    if self._elem_kind(ftype) != "raw" and not _vt_struct and not _borrow_field {
+    if self._elem_kind(ftype) != "raw" and not _borrow_field {
         self._emit_take_ref(
             value,
             op="field_set",
@@ -4135,7 +4130,6 @@ impl NaIRGenPass._codegen_field_assign(
     _fs_opt = self._opt_payload_of(ftype);
     if _fs_opt is not None
         and isinstance(_fs_opt, ir.PointerType)
-        and not _vt_struct
         and not _borrow_field {
         _fs_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{target.loc.first_line
             if target.loc
