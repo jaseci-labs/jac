@@ -57,6 +57,11 @@ entries are rebuilt. The image codec in `compiler/driver/image.py` owns the wire
 format, bytecode loading, and path relocation; application publishing uses the
 same codec.
 
+Native libraries and their generated class layouts are assembled into the image
+after source compilation. They are verified image payloads, but are not inputs
+to the pinned producer's module cache. Changing the target parser therefore
+does not invalidate unrelated Python modules.
+
 Image modules contain executable bytecode and the compile-time dependencies
 needed to validate build-cache reuse. They do not carry the producer's analysis
 interfaces or diagnostics. The running compiler owns those results and caches

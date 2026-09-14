@@ -31,6 +31,13 @@ def snapshot_sources(package: Path, destination: Path) {
     import from jaclang.dist.payload.fsutil { copy_tree, skip_jaclang }
     def excluded(path: str) -> bool {
         return skip_jaclang(path)
+            or Path(path).name
+                in (
+                    "libjac_compiler.so",
+                    "libjac_compiler.so.layout.json",
+                    "libjac_compiler.dylib",
+                    "libjac_compiler.dylib.layout.json"
+                )
             or any(
                 (part.startswith(".") and part not in (".gitignore", ".env.example"))
                     or part in ("tests", "test") for part in Path(path).parts
@@ -318,6 +325,24 @@ def compile_module(
 }
 
 
+def module_cache_identity(snapshot: Path, producer_digest: str) -> str {
+    digest = hashlib.sha256(producer_digest.encode());
+    digest.update(Path(__file__).read_bytes());
+    digest.update((snapshot / "compiler/driver/image.py").read_bytes());
+    digest.update((snapshot.parent / "jac.toml").read_bytes());
+    precompiled = snapshot / "_precompiled";
+    for path in sorted(snapshot.rglob("*")) {
+        if path.is_file() and precompiled not in path.parents {
+            relative = path.relative_to(snapshot).as_posix();
+            digest.update(relative.encode() + b"\0");
+            if path.suffix in (".toml", ".json") {
+                digest.update(path.read_bytes());
+            }
+        }
+    }
+    return digest.hexdigest();
+}
+
 def compile_image(
     package: Path,
     output: Path,
@@ -381,35 +406,12 @@ def compile_image(
         if finder.is_file() {
             shutil.copyfile(finder, site / finder.name);
         }
-        kernel_name = "libjac_compiler.dylib"
-            if sys.platform == "darwin"
-            else "libjac_compiler.so";
-        kernel_target = snapshot / "compiler" / kernel_name;
-        shutil.copyfile(kernel, kernel_target);
-        shutil.copyfile(layout, Path(str(kernel_target) + ".layout.json"));
-        shim_name = "libjacllvm.dylib" if sys.platform == "darwin" else "libjacllvm.so";
-        shutil.copyfile(
-            shim, snapshot / "compiler" / "backends" / "native" / "llvm" / shim_name
-        );
         pyver = str(sys.implementation.cache_tag);
         precompiled = snapshot / "_precompiled";
         artifacts = precompiled / pyver;
         artifacts.mkdir(parents=True, exist_ok=True);
         codec = image_codec(str(snapshot));
-        layout_digest = hashlib.sha256(producer_digest.encode());
-        layout_digest.update(Path(__file__).read_bytes());
-        layout_digest.update((snapshot / "compiler/driver/image.py").read_bytes());
-        layout_digest.update((site / "jac.toml").read_bytes());
-        for path in sorted(snapshot.rglob("*")) {
-            if path.is_file() and precompiled not in path.parents {
-                relative_path = path.relative_to(snapshot).as_posix();
-                layout_digest.update(relative_path.encode() + b"\0");
-                if path.suffix in (".toml", ".json") {
-                    layout_digest.update(path.read_bytes());
-                }
-            }
-        }
-        cache_identity = layout_digest.hexdigest();
+        cache_identity = module_cache_identity(snapshot, producer_digest);
         module_cache = cache / cache_identity if cache is not None else None;
         sources = [
             source
@@ -465,6 +467,16 @@ def compile_image(
         if failures or len(modules) != len(sources) {
             raise RuntimeError(f"Incomplete compiler image: {failures}");
         }
+        kernel_name = "libjac_compiler.dylib"
+            if sys.platform == "darwin"
+            else "libjac_compiler.so";
+        kernel_target = snapshot / "compiler" / kernel_name;
+        shutil.copyfile(kernel, kernel_target);
+        shutil.copyfile(layout, Path(str(kernel_target) + ".layout.json"));
+        shim_name = "libjacllvm.dylib" if sys.platform == "darwin" else "libjacllvm.so";
+        shutil.copyfile(
+            shim, snapshot / "compiler" / "backends" / "native" / "llvm" / shim_name
+        );
         resolver_marker.rmdir();
         (site / "jac.toml").unlink();
         payloads: dict[str, str] = {};

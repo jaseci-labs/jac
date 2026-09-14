@@ -7,6 +7,7 @@ import from bootstrap.compiler {
     complete_image,
     exclude_native_python_sources,
     native_python_sources,
+    module_cache_identity,
     image_codec,
     snapshot_sources
 }
@@ -48,6 +49,52 @@ test "image completion accepts an empty build output and preserves occupied outp
             complete_image(source, catalog, output);
         }
         assert (output / "jaclang/_precompiled/stubcat.bin").is_file();
+    }
+}
+
+test "native build outputs do not invalidate compiler source artifacts" {
+    with tempfile.TemporaryDirectory() as directory {
+        workspace = Path(directory);
+        package = workspace / "source" / "jaclang";
+        driver = package / "compiler/driver";
+        driver.mkdir(parents=True);
+        shutil.copyfile(
+            Path(JAC_ROOT) / "jaclang/compiler/driver/image.py", driver / "image.py"
+        );
+        (package.parent / "jac.toml").write_text(
+            '[project]\nname = "jaclang"\nversion = "0.1.0"\n'
+                + '[placement]\ndefault = "server"\n'
+        );
+        (package / "probe.jac").write_text("def answer -> int { return 42; }\n");
+        (package / "config.json").write_text('{"mode": "first"}');
+        cache = workspace / "cache";
+        identities: list[str] = [];
+        for revision in range(2) {
+            for extension in ("so", "dylib") {
+                library = package / "compiler" / ("libjac_compiler." + extension);
+                library.write_bytes(bytes([revision]));
+                Path(str(library) + ".layout.json").write_text(
+                    '{"revision": ' + str(revision) + '}'
+                );
+            }
+            snapshot = workspace / str(revision) / "jaclang";
+            snapshot_sources(package, snapshot);
+            assert not list(snapshot.rglob("libjac_compiler.*"));
+            identity = module_cache_identity(snapshot, "same-producer");
+            identities.append(identity);
+            result = compile_module(
+                snapshot / "probe.jac",
+                snapshot,
+                workspace / (str(revision) + ".jir"),
+                cache,
+                identity
+            );
+            assert bool(result.get("cached")) == bool(revision);
+        }
+        assert identities[0] == identities[1];
+        assert module_cache_identity(snapshot, "different-producer") != identity;
+        (snapshot / "config.json").write_text('{"mode": "second"}');
+        assert module_cache_identity(snapshot, "same-producer") != identity;
     }
 }
 
