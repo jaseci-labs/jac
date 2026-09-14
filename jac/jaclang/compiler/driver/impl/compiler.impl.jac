@@ -201,10 +201,8 @@ impl JacCompiler._get_bytecode(
                 } else {
                     return marshal.loads(bc);
                 }
-            } else {
-                if SEC_IFACE not in secs and SEC_CLIENT not in secs {
-                    cache_path.unlink(missing_ok=True);
-                }
+            } elif SEC_IFACE not in secs and SEC_CLIENT not in secs {
+                cache_path.unlink(missing_ok=True);
             }
         } except Exception {}
     }

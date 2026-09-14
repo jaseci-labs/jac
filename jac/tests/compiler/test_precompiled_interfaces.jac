@@ -347,3 +347,32 @@ test "sealed paths normalize symlink aliases before encoding" {
         assert Path(paths.resolve(encoded)).resolve() == source;
     }
 }
+
+test "native lowering also completes modules with an individually pinned function" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.compilation_context { compilation_scope }
+    import from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
+    import from jaclang.compiler.driver.program { JacProgram }
+    with TemporaryDirectory() as directory {
+        package = _package(Path(directory));
+        (package / "jac.toml").write_text(
+            '[project]\nname="library"\n[placement.pins]\n"api.one"="native"\n'
+        );
+        source = str((package / "api.jac").resolve());
+        Path(source).write_text(
+            "def one() -> int { return 1; }\ndef two() -> int { return 2; }\n"
+        );
+        program = JacProgram();
+        options = CompileOptions(default_codespace="native", entry_point=source);
+        analyzed = program.compile(source, options=options.for_symbols());
+        assert not analyzed.codespace_inferred;
+        program.options = options;
+        task = ModuleCompilation(program._get_compiler(), program, source, options);
+        with compilation_scope(program.context_key, options) {
+            task.parse();
+        }
+        assert task.module is not analyzed;
+        assert task.module.codespace_inferred;
+        program.release_compile_closure();
+    }
+}

@@ -38,10 +38,7 @@ obj ModuleCompilation {
                 or (scope_lowering_active() and in_native_scope_path(self.path))
             )
             and existing is not None
-            and not existing.codespace_inferred
-            and not existing.declares_codespace(
-                CodeContext.NATIVE, path_hint=self.path
-            );
+            and not existing.codespace_inferred;
         if self.source is None
             and existing is not None
             and not existing.stub_only
