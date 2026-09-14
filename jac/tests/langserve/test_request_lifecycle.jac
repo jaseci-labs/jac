@@ -64,3 +64,20 @@ test "cancellation remains available while a response is being prepared" {
     assert response is not None and response['error']['code'] == -32800;
     assert server._read_message(messages) is None;
 }
+
+test "a captured input validator supersedes unrelated workspace revisions" {
+    server = LanguageServer();
+    output = BytesIO();
+    server._transport_writer = output;
+    def respond(ls: any, params: any) -> any {
+        ls.workspace.touch();
+        return {'value': 42};
+    }
+    server._features['probe'] = respond;
+    request = Request(1, 'probe', {}, server.workspace.revision);
+    request.inputs_current = lambda () -> bool { return True; };
+    server._requests[1] = request;
+    server._run_request(request);
+    response = server._read_message(BytesIO(output.getvalue()));
+    assert response is not None and response['result'] == {'value': 42};
+}

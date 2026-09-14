@@ -63,3 +63,25 @@ test "renaming an open document preserves its unsaved revision" {
     workspace.touch();
     assert workspace.revision > after.revision;
 }
+
+test "request position conversion uses its captured source and restores the live view" {
+    import from jaclang.compiler.driver.compilation_context { SourceStore }
+    workspace = Workspace();
+    uri = 'file:///captured-unicode.jac';
+    workspace.put_text_document(
+        TextDocumentItem(uri=uri, language_id='jac', version=1, text='a😀b\n')
+    );
+    snapshot = workspace.snapshot();
+    store = SourceStore(snapshot.sources());
+    with store.capture() as inputs, workspace.read_scope(snapshot, inputs.read) {
+        workspace.put_text_document(
+            TextDocumentItem(uri=uri, language_id='jac', version=2, text='axb\n')
+        );
+        assert workspace.get_text_document(uri).source == 'a😀b\n';
+        assert workspace.convert_positions({'line': 0, 'character': 2}, uri)
+            == {'line': 0, 'character': 3};
+        assert workspace.snapshot().revision == snapshot.revision;
+        assert not inputs.is_current(SourceStore(workspace.snapshot(live=True).sources()));
+    }
+    assert workspace.get_text_document(uri).source == 'axb\n';
+}

@@ -426,6 +426,17 @@ class AnalysisCaches {
         self.completed_passes.pop(key, None);
         self.product_tasks.pop(key, None);
         self.task_owners.pop(key, None);
+        self.early_passes.pop(key, None);
+    }
+
+    def release(self: AnalysisCaches) {
+        self.analyses_run.clear();
+        self.placement_summaries.clear();
+        self.placement_state.clear();
+        self.early_passes.clear();
+        self.product_tasks.clear();
+        self.completed_passes.clear();
+        self.task_owners.clear();
     }
 
     def record_early(

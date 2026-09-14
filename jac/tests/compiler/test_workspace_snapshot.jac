@@ -152,3 +152,16 @@ test "an editor override is frozen and capture ends after failure" {
     } except RuntimeError {}
     assert store.snapshot is None and store.read(path) == 'after';
 }
+
+test "only read overrides participate in an operation revision" {
+    first = '/tmp/read-set-first.jac';
+    second = '/tmp/read-set-second.jac';
+    store = SourceStore({first: 'first', second: 'before'});
+    with store.capture() as inputs {
+        assert store.read(first) == 'first';
+        store.set_overrides({first: 'first', second: 'after'});
+        assert inputs.is_current(store);
+        assert store.read(second) == 'before';
+        assert not inputs.is_current(store);
+    }
+}

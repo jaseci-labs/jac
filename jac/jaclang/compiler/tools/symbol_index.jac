@@ -403,7 +403,8 @@ obj SymbolIndex(SymbolExtractor) {
         if previous.interface is None or previous.interface != current.interface {
             return;
         }
-        paths = {previous.path, *previous.inputs.annexes.get(previous.path, [])};
+        paths = {previous.path};
+        paths.update(previous.inputs.annexes.get(previous.path, []));
         if previous.inputs.annexes.get(previous.path, [])
             != current.inputs.annexes.get(current.path, []) {
             return;

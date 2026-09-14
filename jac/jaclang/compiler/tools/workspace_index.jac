@@ -27,6 +27,10 @@ obj WorkspaceIndexer {
         }
         shard = self.index.collect(module, owner.context_key, inputs, owner.deps);
         signature = owner.iface_registry().analysis_signature(module);
+        snapshot = owner.source_store.snapshot;
+        if snapshot is not None {
+            shard.inputs = snapshot.manifest();
+        }
         if signature is not None {
             visible = {
                 key: info.to_dict() for (key, info) in shard.definitions.items()
@@ -36,7 +40,7 @@ obj WorkspaceIndexer {
                 (signature + json.dumps(visible, sort_keys=True)).encode('utf-8')
             ).hexdigest();
         }
-        for path in inputs.files {
+        for path in shard.inputs.files {
             dependency = owner.mod.hub.get(path);
             if dependency is not None {
                 shard.body_dependencies.update(

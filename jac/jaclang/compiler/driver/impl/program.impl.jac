@@ -389,7 +389,8 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
     self.analysis.placement_state.pop('work', None);
     self.type_evaluator = None;
     if clear_hub {
-        self.mod.hub.clear();
+        self.hub.reset(retain_stubs=False);
+        self.analysis.release();
         return;
     }
 
@@ -513,12 +514,7 @@ impl JacProgram._release_local_state(
     self.type_evaluator = None;
     self.diags.clear();
     self.scratch.clear();
-    self.analysis.analyses_run.clear();
-    self.analysis.placement_state.pop('work', None);
-    self.analysis.early_passes.clear();
-    self.analysis.product_tasks.clear();
-    self.analysis.completed_passes.clear();
-    self.analysis.task_owners.clear();
+    self.analysis.release();
     if self._iface is not None {
         self._iface.on_closure_release();
     }

@@ -26,6 +26,12 @@ obj DocumentProducts {
     }
 }
 
+obj EditorCacheBudget {
+    has max_source_views: int = 64,
+        max_source_chars: int = 4000000,
+        max_completion_items: int = 20000;
+}
+
 obj ModuleManager {
     has program: JacProgram,
         sem_managers: dict[str, SemTokManager],
@@ -34,13 +40,29 @@ obj ModuleManager {
         completions: dict[int, list[lspt.CompletionItem]] = {},
         index: SymbolIndex = SymbolIndex(),
         indexer: WorkspaceIndexer postinit,
-        budget: AnalysisCacheBudget = AnalysisCacheBudget();
+        budget: AnalysisCacheBudget = AnalysisCacheBudget(),
+        editor_budget: EditorCacheBudget = EditorCacheBudget();
 
     def postinit {
         self.indexer = WorkspaceIndexer(self.program, self.index);
     }
 
     def trim -> None;
+    def trim_editor_caches {
+        chars = sum(len(view.source) for view in self.source_views.values());
+        while self.source_views and (
+            len(self.source_views) > self.editor_budget.max_source_views
+            or chars > self.editor_budget.max_source_chars
+        ) {
+            oldest = next(iter(self.source_views));
+            chars -= len(self.source_views.pop(oldest).source);
+        }
+        count = sum(len(items) for items in self.completions.values());
+        while self.completions and count > self.editor_budget.max_completion_items {
+            oldest = next(iter(self.completions));
+            count -= len(self.completions.pop(oldest));
+        }
+    }
     def has_current_analysis(path: str) -> bool {
         products = self.products.get(path);
         return products is not None and bool(products.index_shards)
@@ -89,11 +111,12 @@ obj ModuleManager {
     }
 
     def source_view(path: str, source: str) -> SourceView {
-        previous = self.source_views.get(path);
+        previous = self.source_views.pop(path, None);
         if previous is None or previous.source != source {
             previous = SourceView(source, path);
-            self.source_views[path] = previous;
         }
+        self.source_views[path] = previous;
+        self.trim_editor_caches();
         return previous;
     }
 

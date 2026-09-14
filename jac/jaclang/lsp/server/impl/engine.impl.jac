@@ -349,6 +349,23 @@ impl JacLangServer.type_check_file(
                         self.program.warnings_had.extend(merged_warns);
                     }
                     assert build is not None;
+                    manifest = inputs.manifest();
+                    import from jaclang.compiler.tools.symbol_index { IndexShard }
+                    shards: list[IndexShard] = [];
+                    for checked in builds {
+                        shard = self.module_manager.indexer.collect(checked, manifest);
+                        if shard is not None {
+                            shards.append(shard);
+                        }
+                    }
+                    if publish {
+                        self.update_modules(main_path, build, files=files_to_check);
+                        if len(shards) == len(builds) {
+                            for path in files_to_check {
+                                self.module_manager.products[path].index_shards = tuple(shards);
+                            }
+                        }
+                    }
                     with self.workspace.lock {
                         import from jaclang.compiler.driver.compilation_context {
                             SourceStore
@@ -371,23 +388,6 @@ impl JacLangServer.type_check_file(
                                 );
                             }
                             return False;
-                        }
-                        manifest = inputs.manifest();
-                        import from jaclang.compiler.tools.symbol_index { IndexShard }
-                        shards: list[IndexShard] = [];
-                        for checked in builds {
-                            shard = self.module_manager.indexer.collect(checked, manifest);
-                            if shard is not None {
-                                shards.append(shard);
-                            }
-                        }
-                        if publish {
-                            self.update_modules(main_path, build, files=files_to_check);
-                            if len(shards) == len(builds) {
-                                for path in files_to_check {
-                                    self.module_manager.products[path].index_shards = tuple(shards);
-                                }
-                            }
                         }
                         if publish and not symbols_only {
                             all_errors = list(self.program.errors_had);
@@ -1076,11 +1076,12 @@ impl JacLangServer._release_document(uri: str, deleted: bool = False) -> None {
 impl JacLangServer.get_completion_items_of(
     ty: TypeBase | uni.UniScopeNode
 ) -> lspt.CompletionList {
-    items = self.module_manager.completions.get(id(ty));
+    items = self.module_manager.completions.pop(id(ty), None);
     if items is None {
         items = get_completion_items(ty);
-        self.module_manager.completions[id(ty)] = items;
     }
+    self.module_manager.completions[id(ty)] = items;
+    self.module_manager.trim_editor_caches();
     return lspt.CompletionList(is_incomplete=False, items=list(items));
 }
 

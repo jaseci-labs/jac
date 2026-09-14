@@ -32,6 +32,7 @@ impl ModuleManager.update(
 }
 
 impl ModuleManager.trim -> None {
+    self.trim_editor_caches();
     (contexts, nodes) = self.program.analysis_cache_usage();
     if contexts <= self.budget.max_contexts and nodes <= self.budget.max_nodes {
         return;
