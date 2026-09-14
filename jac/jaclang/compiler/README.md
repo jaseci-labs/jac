@@ -157,6 +157,9 @@ at its configured RSS limit. Neither bound interrupts an in-progress pass.
 
 Source changes are checked at outer request boundaries and before publication.
 The dependency graph records both imported modules and compile-time file reads.
+Compile-time symbol resolution tracks visited import aliases and keeps its
+recursion guard active through value evaluation. Cyclic reexports terminate
+without a compile-time value; long acyclic chains resolve without a hop limit.
 An edit invalidates affected live products and their consumers. Disk replay uses
 interface hashes for ordinary imports and content hashes for compile-time inputs,
 so body-only edits retain the existing interface cutoff. Restored timestamps do
