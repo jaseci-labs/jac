@@ -1330,6 +1330,18 @@ impl JacCompiler.compile(
                 }
                 _pre_errs = len(_wrap_prog.errors_had);
                 _pre_warns = len(_wrap_prog.warnings_had);
+
+                def completed(module: uni.Module) -> uni.Module {
+                    if _depth_prev == 0
+                        and options.no_cgen
+                        and not options.symtab_ir_only
+                        and use_str is None
+                        and not self.selfhost.is_selfhost(_wrap_prog) {
+                        _wrap_prog.iface_registry().publish_completed();
+                    }
+                    return module;
+                }
+
                 _mod: (uni.Module | None) = None;
                 _crash: (Exception | None) = None;
                 try {
@@ -1372,7 +1384,7 @@ impl JacCompiler.compile(
                         raise _crash;
                     }
                     assert _mod is not None;
-                    return _mod;
+                    return completed(_mod);
                 }
 
                 _is_ice = _crash is not None
@@ -1424,11 +1436,13 @@ impl JacCompiler.compile(
                     );
                     _note_console.print(_note_msg, style=_note_style, file=sys.stderr);
                 } except Exception {}
-                return self._compile_once(
-                    file_path=file_path,
-                    target_program=target_program,
-                    use_str=use_str,
-                    options=options
+                return completed(
+                    self._compile_once(
+                        file_path=file_path,
+                        target_program=target_program,
+                        use_str=use_str,
+                        options=options
+                    )
                 );
             } finally {
                 if target_program is not caller_program

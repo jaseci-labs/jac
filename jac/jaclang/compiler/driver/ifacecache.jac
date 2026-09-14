@@ -461,7 +461,10 @@ obj IfaceRegistry {
     }
 
     def publish_completed {
-        if not self.ready() or self.prog.errors_had {
+        cancel_token = self.prog.options.cancel_token;
+        if not self.ready()
+            or self.prog.errors_had
+            or (cancel_token is not None and cancel_token.is_set()) {
             return;
         }
         options = self.prog.options.for_executable();

@@ -156,8 +156,9 @@ test "a partially cached import cycle retains exported declarations" {
         (_, partial_diags) = _check(str(main));
         assert partial_diags == cold_diags , partial_diags;
         assert read_section_bytes(cache.read_bytes(), SEC_IFACE) == original;
-        (_, warm_diags) = _check(str(main));
+        (warm, warm_diags) = _check(str(main));
         assert warm_diags == cold_diags , warm_diags;
+        assert not warm.analysis.pass_runs , warm.analysis.pass_runs;
     }
 }
 
