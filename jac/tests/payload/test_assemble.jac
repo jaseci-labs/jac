@@ -184,7 +184,7 @@ test "payload interface sealing uses the fresh staged catalog" {
                     "interface sealing disabled its stub authority"
                 );
                 assert rf(os.path.join(pre, "stubcat.bin")) == b"fresh catalog";
-                wf(base, "precompile-result.json", b"{}");
+                wf(base, "precompile-result.json", b'{"complete":true}');
                 calls.append("interfaces");
             }
             return True;
@@ -244,7 +244,7 @@ test "skipping the payload catalog cannot reuse a cached catalog" {
             assert argv[2].endswith("precompile_boot.py");
             assert env is not None and env.get("JAC_STUBCAT_BUILDING") == "1";
             assert not os.path.exists(os.path.join(pre, "stubcat.bin"));
-            wf(base, "precompile-result.json", b"{}");
+            wf(base, "precompile-result.json", b'{"complete":true}');
             return True;
         }
         with patch.object(assembly, "run_child", side_effect=child) as runner {

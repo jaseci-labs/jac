@@ -75,6 +75,12 @@ worker identities, and temporary paths never belong in the shipped
 Stage transitions and cache outcomes atomically checkpoint the measurement file.
 An interrupted build retains completed stages and lists the stages still active
 at the last checkpoint, even when the producer cannot run its final cleanup.
+Precompilation checkpoints its existing worker report before dispatch, every 32
+completed jobs, and during cleanup. Its `complete` field distinguishes an
+unfinished checkpoint from a completed run; packaging rejects unfinished reports.
+While packaging runs, this report lives beside the main measurement file as
+`<report>.precompile.json`, where CI also retains it after a hard timeout. A hard
+termination can lose in-flight jobs and up to 32 completed job records.
 
 - `stages` records wall time, process CPU, waited child CPU, process peak RSS,
   and success. These stages are inclusive; do not sum nested entries.

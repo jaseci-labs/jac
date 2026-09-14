@@ -76,17 +76,17 @@ test "stage checkpoints retain completed work during an unfinished build" {
     }
 }
 
-test "failed precompiler stages retain their metrics and stop packaging" {
+test "failed and incomplete precompiler stages retain metrics and stop packaging" {
     import from unittest.mock { patch }
     import jaclang.dist.payload.assemble as assembly;
     import from jaclang.dist.payload.fsutil { PayloadDie }
-    for phase in ("module_precompile", "seal_finalize") {
+    for phase in ("module_precompile", "seal_finalize", "incomplete_precompile") {
         with TemporaryDirectory() as directory {
             site = Path(directory) / "site";
             producer = site / "jaclang/dist/precompile_bytecode.jac";
             producer.parent.mkdir(parents=True);
             producer.write_text("");
-            result = Path(directory) / "precompile-result.json";
+            result = Path(directory) / "metrics.json.precompile.json";
             measurements = BuildMeasurements(
                 output_path=str(Path(directory) / "metrics.json")
             );
@@ -96,7 +96,10 @@ test "failed precompiler stages retain their metrics and stop packaging" {
                 assert env is not None;
                 assert env["JAC_PRECOMPILE_METRICS"] == str(result);
                 fails = phase == "module_precompile" or "--seal-finalize" in argv;
-                result.write_text(json.dumps({"compiled": 1, "failed": int(fails)}));
+                result.write_text(json.dumps({
+                    "compiled": 1, "failed": int(fails),
+                    "complete": phase != "incomplete_precompile"
+                }));
                 return not fails;
             }
             failed = False;
@@ -117,14 +120,16 @@ test "failed precompiler stages retain their metrics and stop packaging" {
             assert failed , "a failed precompiler must stop packaging";
             data = json.loads(Path(measurements.output_path).read_text());
             stage = data["stages"][-1];
-            assert stage["name"] == phase;
+            assert stage["name"] == (
+                "module_precompile" if phase == "incomplete_precompile" else phase
+            );
             assert not stage["succeeded"];
             compilation = data["compilation"];
             if phase == "seal_finalize" {
                 compilation = compilation["seal"];
             }
             assert compilation["compiled"] == 1;
-            assert compilation["failed"] == 1;
+            assert compilation["failed"] == int(phase != "incomplete_precompile");
         }
     }
 }

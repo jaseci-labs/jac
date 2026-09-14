@@ -142,6 +142,7 @@ test "failed precompile retains analysis measurements and a repaired source reco
             pre.run_precompile(directory, jobs_arg="0");
             assert leave.call_args[0][0] == 1;
             cold = json.loads(result_path.read_text());
+            assert cold["complete"];
             assert not (package / "_precompiled/PRECOMPILE_RESULT.json").exists();
             assert cold["failed"] == 1 and cold["compiled"] == 2;
             failed = next(
@@ -157,10 +158,53 @@ test "failed precompile retains analysis measurements and a repaired source reco
             broken.write_text("def answer() -> int { return 42; }\n");
             pre.run_precompile(directory, jobs_arg="0");
             repaired = json.loads(result_path.read_text());
+            assert repaired["complete"];
             assert leave.call_args[0][0] == 0;
             assert repaired["failed"] == 0;
             assert repaired["compiled"] == 1 and repaired["reused"] == 2;
         }
+    }
+}
+
+test "interrupted precompile checkpoints completed jobs as an unfinished report" {
+    import json;
+    import os;
+    import from unittest.mock { patch }
+    import from jaclang.cli.workpool { WorkPool }
+    import jaclang.dist.precompile_bytecode as pre;
+    with TemporaryDirectory() as directory {
+        package = Path(directory) / "sample";
+        package.mkdir();
+        (package / "__init__.jac").write_text("# Package entry.\n");
+        (package / "value.jac").write_text("def value() -> int { return 7; }\n");
+        result_path = Path(directory) / "metrics/precompile.json";
+        original = WorkPool._run_job;
+        def interrupt(
+            worker: WorkPool, request: dict[str, any], served: int, setup_seconds: float
+        ) -> dict[str, any] {
+            if served == 2 {
+                raise KeyboardInterrupt();
+            }
+            return original(worker, request, served, setup_seconds);
+        }
+        interrupted = False;
+        with patch.object(WorkPool, "_run_job", new=interrupt), patch.dict(
+            os.environ, {"JAC_PRECOMPILE_METRICS": str(result_path)}
+        ) {
+            try {
+                pre.run_precompile(directory, jobs_arg="0");
+            } except KeyboardInterrupt {
+                interrupted = True;
+            }
+        }
+        assert interrupted;
+        report = json.loads(result_path.read_text());
+        assert not report["complete"];
+        assert report["compiled"] == 1 and report["total"] == 2;
+        assert len(report["workers"]) == 1;
+        assert report["workers"][0]["result"][0]["status"] == "compiled";
+        assert report["dependency_plan"]["modules"] == 2;
+        assert not (package / "_precompiled/PRECOMPILE_RESULT.json").exists();
     }
 }
 

@@ -477,7 +477,9 @@ impl precompile(
         env["JAC_STUBCAT_BUILDING"] = "1";
     }
     pre_dir = os.path.join(site, "jaclang", "_precompiled");
-    result = os.path.join(os.path.dirname(site), "precompile-result.json");
+    result = os.path.abspath(timings.output_path) + ".precompile.json"
+        if timings.output_path
+        else os.path.join(os.path.dirname(site), "precompile-result.json");
     env["JAC_PRECOMPILE_METRICS"] = result;
     import json;
     with timings.stage("module_precompile") {
@@ -489,7 +491,9 @@ impl precompile(
         with open(result, "r", encoding="utf-8") as metrics_file {
             timings.compilation = json.load(metrics_file);
         }
-        if not compiled or timings.compilation.get("failed", 0) {
+        if not compiled
+            or not timings.compilation.get("complete", False)
+            or timings.compilation.get("failed", 0) {
             die("mkpayload: precompile failed (see log above).");
         }
     }

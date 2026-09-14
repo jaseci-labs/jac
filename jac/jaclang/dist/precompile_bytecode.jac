@@ -1267,6 +1267,37 @@ def run_precompile(
         ]} modules"
     );
 
+    def write_measurements(complete: bool) {
+        if not metrics_path {
+            return;
+        }
+        import from jaclang.jac0core.cache_paths { atomic_write }
+        atomic_write(
+            metrics_path,
+            (json.dumps({
+                "total": len(jac_files),
+                "compiled": counts["compiled"],
+                "reused": counts["reused"],
+                "failed": counts["failed"],
+                "complete": complete,
+                "measurement_schema": 1,
+                "startup": startup,
+                "inputs": {
+                    "compiler": compiler_identity(),
+                    "python": sys.version,
+                    "package": package_dir,
+                    "app": app,
+                    "jobs": workers if use_pool else 1,
+                    "frontend": os.environ.get("JAC_COMPILER_LIB", "auto")
+                },
+                "timing": "exclusive_seconds excludes nested phases and passes, including dependencies",
+                "workers": measurements,
+                "dependency_plan": plan.measurements,
+                "interfaces": counts.get("interface", 0),
+                "deferred_interfaces": counts.get("deferred", 0)
+            }) + "\n").encode("utf-8")
+        );
+
     def compile_unit(jac_path: str) -> dict[str, any] {
         import from jaclang.compiler.driver.jir { cache_mode }
         analysis: list[dict[str, any]] = [];
@@ -1378,6 +1409,9 @@ def run_precompile(
             }
             counts[status] = counts.get(status, 0) + 1;
         }
+        if len(measurements) % 32 == 0 {
+            write_measurements(False);
+        }
     }
 
     pool = WorkPool(
@@ -1393,14 +1427,18 @@ def run_precompile(
         rss_log_env="JAC_PRECOMPILE_RSS_LOG",
         crash_prefix="jac-precompile-crash-"
     );
+    complete = False;
+    write_measurements(False);
     try {
         if use_pool {
             pool.run();
         } else {
             pool.run_inline();
         }
+        complete = len(measurements) == len(work_items);
     } finally {
         _discovery_sources.clear();
+        write_measurements(complete);
     }
     compiled = counts["compiled"];
     reused = counts["reused"];
@@ -1416,42 +1454,7 @@ def run_precompile(
     console.print(f"  Output: {precompiled_dir}");
     console.print(f"  Python version: {pyver}");
 
-    if metrics_path {
-        import from jaclang.jac0core.cache_paths { atomic_write }
-        atomic_write(
-            metrics_path,
-            (
-                json.dumps(
-                    {
-                        "total": len(jac_files),
-                        "compiled": compiled,
-                        "reused": reused,
-                        "failed": failed,
-                        "measurement_schema": 1,
-                        "startup": startup,
-                        "inputs": {
-                            "compiler": compiler_identity(),
-                            "python": sys.version,
-                            "package": package_dir,
-                            "app": app,
-                            "jobs": workers if use_pool else 1,
-                            "frontend": os.environ.get("JAC_COMPILER_LIB", "auto")
-                        },
-                        "timing": "exclusive_seconds excludes nested phases and passes, including dependencies",
-                        "workers": measurements,
-                        "dependency_plan": plan.measurements,
-                        "interfaces": counts.get("interface", 0),
-                        "deferred_interfaces": counts.get("deferred", 0)
-                    }
-                )
-                + "\n"
-            ).encode(
-                "utf-8"
-            )
-        );
-    }
-
-    if seal {
+    if seal and complete {
         precompile_exit(
             seal_finalize(
                 pkg_path, precompiled_dir, pkg_name, pyver, embed_src, app, startup
@@ -1459,7 +1462,7 @@ def run_precompile(
         );
     }
 
-    precompile_exit(1 if failed else 0);
+    precompile_exit(1 if failed or not complete else 0);
 }
 
 with entry:__main__ {
