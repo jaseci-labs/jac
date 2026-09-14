@@ -293,6 +293,7 @@ test "application publication scales with completed modules and preserves warm c
             original(registry, path, module, options, err_start, warn_start);
         }
         options = CompileOptions(no_cgen=True, iface_ok=True, project_root=directory);
+        warnings: list[tuple[str, int, int, str]] = [];
         for warm in (False, True) {
             publications.clear();
             program = JacProgram();
@@ -300,15 +301,84 @@ test "application publication scales with completed modules and preserves warm c
                 compile_application(program, str(entry_path), options);
             }
             assert not program.errors_had;
+            observed = sorted(
+                (
+                    alert.loc.mod_path,
+                    alert.loc.first_line,
+                    alert.loc.col_start,
+                    alert.msg
+                ) for context in program.context_programs()
+                for alert in context.warnings_had
+            );
             if warm {
                 assert not publications;
                 assert not any(
                     p.analysis.pass_runs for p in program.context_programs()
                 );
+                assert observed == warnings;
             } else {
                 assert len(publications) <= 3 * 9 , 'the completed closure was republished for each root';
+                warnings = observed;
             }
             program.release_compile_closure();
+        }
+    }
+}
+
+test "cancelled application traversal resets publication scope before retrying" {
+    import from threading { Event }
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.pipeline { compile_application }
+    import from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
+    for before_parse in (False, True) {
+        with TemporaryDirectory() as directory {
+            path = str(Path(directory) / 'main.jac');
+            Path(path).write_text('def answer() -> int { return 42; }\n');
+            cancelled = Event();
+            options = CompileOptions(
+                no_cgen=True,
+                iface_ok=True,
+                project_root=directory,
+                cancel_token=cancelled
+            );
+            original = getattr(ModuleCompilation, 'analysis');
+            def interrupt(task: ModuleCompilation) {
+                original(task);
+                if task.path == path {
+                    cancelled.set();
+                }
+            }
+            if before_parse {
+                cancelled.set();
+            }
+            program = JacProgram();
+            raised = False;
+            with patch.object(ModuleCompilation, 'analysis', interrupt) {
+                try {
+                    module = compile_application(program, path, options);
+                    assert module.parse_failed;
+                } except RuntimeError as error {
+                    assert before_parse;
+                    assert str(error)
+                        == f'Application compilation cancelled before parsing {path}';
+                    raised = True;
+                }
+            }
+            assert raised == before_parse;
+            for context in program.context_programs() {
+                assert context.iface_registry()._module_jir(path) is None;
+            }
+            cancelled.clear();
+            compile_application(program, path, options);
+            assert not program.errors_had;
+            warm = JacProgram();
+            compile_application(warm, path, options);
+            assert not warm.errors_had;
+            assert not any(
+                context.analysis.pass_runs for context in warm.context_programs()
+            );
+            program.release_compile_closure();
+            warm.release_compile_closure();
         }
     }
 }
