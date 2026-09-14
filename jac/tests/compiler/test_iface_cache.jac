@@ -29,6 +29,7 @@ import from jaclang.compiler.driver.jir {
     SECTIONS_MAGIC,
     compiler_source_digest,
     parse_header,
+    read_dep_hashes,
     read_section_bytes,
     read_sections,
     write_module_cache,
@@ -493,7 +494,7 @@ test "a compile acting on an inferred native verdict persists no interface" {
     );
     # The rule itself, on a machine whose native toolchain may not let the
     # verdict pass: an inferred verdict skips the interface, a declared one
-    # reaches it through the analysis flavor; codegen never encodes.
+    # reaches it through the analysis flavor; persistence uses the prepared view.
     reg = gen.iface_registry();
     encodes = reg.prog.analysis.cache_events.get("iface_encode", 0);
     mod.decided_codespace = "native";
@@ -870,24 +871,38 @@ test "a cross-reference into a stub is answered by the catalog" {
     assert shared is not None , "NoneType did not resolve to a class";
 }
 
-test "a codegen compile records dependency rows but encodes no interface" {
+test "a codegen closure publishes complete dependency proofs before analysis" {
     (main, dep) = _project();
     prog = JacProgram();
-    prog.compile(main, options=CompileOptions(force_target_program=True));
+    module = prog.compile(main, options=CompileOptions(force_target_program=True));
+    assert not prog.errors_had;
     data = _cache_path(main).read_bytes();
-    assert read_section_bytes(data, SEC_DEPS) is not None , "no SEC_DEPS after codegen";
-    assert read_section_bytes(data, SEC_IFACE) is None , (
-        "a codegen compile encoded an interface; encoding belongs to the frontier"
+    dependencies = read_dep_hashes(data);
+    assert dependencies and all(digest for (_, digest) in dependencies) , (
+        "the completed codegen closure left incomplete dependency proofs"
     );
-    assert prog.analysis.cache_events.get("iface_encode", 0) == 0 , (
-        f"codegen compile encoded (events: {prog.analysis.cache_events})"
-    );
+    assert read_section_bytes(_cache_path(dep, main).read_bytes(), SEC_IFACE)
+        is not None , ("the completed dependency interface was not published");
+    if module.codespace_inferred {
+        assert read_section_bytes(data, SEC_IFACE) is None , (
+            "an inferred native view replaced the ordinary analysis interface"
+        );
+    } else {
+        assert read_section_bytes(data, SEC_IFACE) is not None , (
+            "a compatible completed interface was not published"
+        );
+    }
+    bytecode = read_section_bytes(data, SEC_BYTECODE);
+    assert bytecode is not None;
     _check(main);
     data = _cache_path(main).read_bytes();
     assert read_section_bytes(data, SEC_IFACE) is not None , (
-        "the frontier compile did not add the interface to the merged JIR"
+        "the analysis compile did not add the interface to the merged JIR"
     );
-    assert read_section_bytes(data, SEC_DEPS) is not None , (
-        "the frontier merge dropped the dependency rows"
+    assert read_dep_hashes(data) == dependencies , (
+        "the analysis merge changed the completed dependency proofs"
+    );
+    assert read_section_bytes(data, SEC_BYTECODE) == bytecode , (
+        "the analysis merge changed the valid executable product"
     );
 }
