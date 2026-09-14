@@ -157,7 +157,20 @@ impl JacConfig.apply_profile(
             profile_section: dict[str, any] = profile[section];
             for (key, value) in profile_section.items() {
                 if hasattr(obj, key) {
-                    setattr(obj, key, value);
+                    current = getattr(obj, key);
+                    if isinstance(value, dict)
+                        and (current is not None)
+                        and (not isinstance(current, dict))
+                        and hasattr(current, "__dict__") {
+                        for (sub_key, sub_value) in value.items() {
+                            sub_attr = str(sub_key);
+                            if hasattr(current, sub_attr) {
+                                setattr(current, sub_attr, sub_value);
+                            }
+                        }
+                    } else {
+                        setattr(obj, key, value);
+                    }
                 }
             }
         }
@@ -281,7 +294,20 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             data_section: dict[str, any] = data[section];
             for (key, value) in data_section.items() {
                 if hasattr(obj, key) {
-                    setattr(obj, key, value);
+                    current = getattr(obj, key);
+                    if isinstance(value, dict)
+                        and (current is not None)
+                        and (not isinstance(current, dict))
+                        and hasattr(current, "__dict__") {
+                        for (sub_key, sub_value) in value.items() {
+                            sub_attr = str(sub_key);
+                            if hasattr(current, sub_attr) {
+                                setattr(current, sub_attr, sub_value);
+                            }
+                        }
+                    } else {
+                        setattr(obj, key, value);
+                    }
                 }
             }
         }
@@ -1108,6 +1134,16 @@ impl _parse_toml_data(
     _apply_memory_native_placement(config, data);
     if "test" in data {
         test_data = data["test"];
+        client_data = dict(test_data.get("client", {}) or {});
+        on_stub = str(client_data.get("on_stub", "note")).strip().lower();
+        if on_stub not in ("note", "warn", "error") {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[test.client] on_stub='{client_data.get('on_stub')}' is not "
+                "'note', 'warn' or 'error'; defaulting to 'note'."
+            );
+            on_stub = "note";
+        }
         config.`test = TestConfig(
             directory=test_data.get("directory", ""),
             directories=[str(_d) for _d in test_data.get("directories", [])],
@@ -1116,7 +1152,14 @@ impl _parse_toml_data(
             filter=test_data.get("filter", ""),
             verbose=test_data.get("verbose", False),
             fail_fast=test_data.get("fail_fast", False),
-            max_failures=test_data.get("max_failures", 0)
+            max_failures=test_data.get("max_failures", 0),
+            client=ClientTestConfig(
+                on_stub=on_stub,
+                mocks={
+                    str(spec): str(path)
+                    for (spec, path) in dict(client_data.get("mocks", {}) or {}).items()
+                }
+            )
         );
     }
     if "serve" in data {
@@ -1448,6 +1491,11 @@ impl get_config_for_path(
         return None;
     }
     (project_root, _) = result;
+    if (_config is not None)
+        and (_config.project_root is not None)
+        and (Path(_config.project_root).resolve() == project_root.resolve()) {
+        return _config;
+    }
     key = str(project_root);
     cached = _config_by_root.get(key);
     if force_discover

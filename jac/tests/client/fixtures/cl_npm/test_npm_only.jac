@@ -9,6 +9,7 @@ it against.
 import from "fake-npm-pkg" { helper }
 
 test "an npm import is neutralized without a backend" {
+    # `helper` resolves to the universal Proxy stub; calling it must not throw.
     helper();
     assert 1 + 1 == 2;
 }
