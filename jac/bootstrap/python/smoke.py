@@ -605,7 +605,13 @@ assert _heapq.heappop([1, 2, 3]) == 1
     assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
     # PEG memo results can contain tokens. Their ownership must stay acyclic
     # in the native compiler, which does not use Python's cyclic collector.
-    retention = subprocess.run([sys.executable, "-I", "-c", """
+    # A child inherits the resident high-water mark of its parent's image at
+    # exec. Spawn through a small interpreter so earlier smoke allocations
+    # cannot hide growth in the measured compiler process.
+    retention = subprocess.run([sys.executable, "-I", "-c",
+        "import subprocess, sys\n"
+        "raise SystemExit(subprocess.call([sys.executable, '-I', '-c', sys.argv[1]]))\n",
+        """
 import gc, resource, sys
 source = '\\n'.join(f'def function_{i}(value):\\n    return value + {i}\\n' for i in range(100))
 for _ in range(20):
