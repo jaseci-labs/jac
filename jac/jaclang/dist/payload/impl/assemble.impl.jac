@@ -476,21 +476,21 @@ impl precompile(
     if skip_stubcat {
         env["JAC_STUBCAT_BUILDING"] = "1";
     }
-    with timings.stage("module_precompile") {
-        env["JAC_PRECOMPILE_START_TIME"] = str(time.perf_counter());
-        run_child(argv, env, True);
-    }
-
     pre_dir = os.path.join(site, "jaclang", "_precompiled");
     result = os.path.join(pre_dir, "PRECOMPILE_RESULT.json");
-    if not file_exists(result) {
-        die(
-            f"mkpayload: precompiler did not run to completion (no {result}); it likely crashed. Fail rather than ship a slow cold-start binary."
-        );
-    }
     import json;
-    with open(result, "r", encoding="utf-8") as metrics_file {
-        timings.compilation = json.load(metrics_file);
+    with timings.stage("module_precompile") {
+        env["JAC_PRECOMPILE_START_TIME"] = str(time.perf_counter());
+        compiled = run_child(argv, env, True);
+        if not file_exists(result) {
+            die(f"mkpayload: precompiler produced no completion result: {result}");
+        }
+        with open(result, "r", encoding="utf-8") as metrics_file {
+            timings.compilation = json.load(metrics_file);
+        }
+        if not compiled or timings.compilation.get("failed", 0) {
+            die("mkpayload: precompile failed (see log above).");
+        }
     }
     delete_file(result);
     log("   _precompiled: compile pass ran to completion");
@@ -507,21 +507,19 @@ impl precompile(
     with timings.stage("seal_finalize") {
         env["JAC_PRECOMPILE_START_TIME"] = str(time.perf_counter());
         sealed = run_child(fin, env, True);
-    }
-    if not sealed {
-        die("mkpayload: seal-finalize failed (see log above).");
-    }
-    if file_exists(result) {
-        with open(result, "r", encoding="utf-8") as metrics_file {
-            timings.compilation["seal"] = json.load(metrics_file);
+        if file_exists(result) {
+            with open(result, "r", encoding="utf-8") as metrics_file {
+                timings.compilation["seal"] = json.load(metrics_file);
+            }
         }
-        delete_file(result);
+        if not sealed {
+            die("mkpayload: seal-finalize failed (see log above).");
+        }
+        if not file_exists(os.path.join(pre_dir, "MANIFEST.json")) {
+            die("mkpayload: seal produced no MANIFEST.json (see log above).");
+        }
     }
-    if not file_exists(os.path.join(pre_dir, "MANIFEST.json")) {
-        die(
-            "mkpayload: seal produced no MANIFEST.json; the seal failed (see log above)."
-        );
-    }
+    delete_file(result);
     log(
         "   sealed: MANIFEST.json present; payload boots from JIR (sources ship for tracebacks, never compiled)."
     );

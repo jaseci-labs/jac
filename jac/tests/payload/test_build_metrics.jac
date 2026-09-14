@@ -75,3 +75,55 @@ test "stage checkpoints retain completed work during an unfinished build" {
         assert not json.loads(output.read_text())["active_stages"];
     }
 }
+
+test "failed precompiler stages retain their metrics and stop packaging" {
+    import from unittest.mock { patch }
+    import jaclang.dist.payload.assemble as assembly;
+    import from jaclang.dist.payload.fsutil { PayloadDie }
+    for phase in ("module_precompile", "seal_finalize") {
+        with TemporaryDirectory() as directory {
+            site = Path(directory) / "site";
+            producer = site / "jaclang/dist/precompile_bytecode.jac";
+            producer.parent.mkdir(parents=True);
+            producer.write_text("");
+            result = site / "jaclang/_precompiled/PRECOMPILE_RESULT.json";
+            result.parent.mkdir(parents=True);
+            measurements = BuildMeasurements(
+                output_path=str(Path(directory) / "metrics.json")
+            );
+            def child(
+                argv: list[str], env: dict[str, str] | None, allow_fail: bool
+            ) -> bool {
+                fails = phase == "module_precompile" or "--seal-finalize" in argv;
+                result.write_text(json.dumps({"compiled": 1, "failed": int(fails)}));
+                return not fails;
+            }
+            failed = False;
+            with patch.object(assembly, "run_child", side_effect=child) {
+                try {
+                    assembly.precompile(
+                        "python",
+                        directory,
+                        str(site),
+                        phase == "seal_finalize",
+                        False,
+                        measurements=measurements
+                    );
+                } except PayloadDie {
+                    failed = True;
+                }
+            }
+            assert failed , "a failed precompiler must stop packaging";
+            data = json.loads(Path(measurements.output_path).read_text());
+            stage = data["stages"][-1];
+            assert stage["name"] == phase;
+            assert not stage["succeeded"];
+            compilation = data["compilation"];
+            if phase == "seal_finalize" {
+                compilation = compilation["seal"];
+            }
+            assert compilation["compiled"] == 1;
+            assert compilation["failed"] == 1;
+        }
+    }
+}
