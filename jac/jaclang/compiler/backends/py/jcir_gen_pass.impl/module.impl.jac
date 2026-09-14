@@ -5,6 +5,13 @@ impl JcirGenPass.ir_bytes -> bytes {
     return module_container_bytes(self._module_path, self._module_root);
 }
 
+impl JcirGenPass._annex_filename(path: str) -> CgNode {
+    import os;
+    return self.const_of(
+        os.path.relpath(path, os.path.dirname(self.ir_out.loc.mod_path))
+    );
+}
+
 impl JcirGenPass.exit_sub_tag with SubTag exit {
     tag_node = here.tag;
     if isinstance(tag_node, UniNode) {
@@ -329,7 +336,7 @@ impl JcirGenPass.exit_test with Test exit {
                     self.nod(
                         'keyword',
                         ['arg', 'value'],
-                        ['file_loc', self.const_of(here.loc.mod_path)]
+                        ['file_loc', self._annex_filename(here.loc.mod_path)]
                     )
                 ]
             )

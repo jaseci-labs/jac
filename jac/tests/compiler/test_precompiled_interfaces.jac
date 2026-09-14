@@ -58,6 +58,59 @@ test "precompiled modules carry their type interface on cold and cached builds" 
     }
 }
 
+test "annex bytecode is deterministic and resolves filenames after installation" {
+    import marshal;
+    import from unittest.mock { patch }
+    import jaclang.lib.jaclib as jaclib;
+    import from jaclang.compiler.driver.jir {
+        SEC_BYTECODE,
+        PRECOMPILE_SENTINEL,
+        patch_co_filenames_bytes
+    }
+    with TemporaryDirectory() as directory {
+        artifacts: list[bytes] = [];
+        for stage in ("first", "second-longer-path") {
+            package = _package(Path(directory) / stage);
+            source = package / "api.jac";
+            source.write_text("def answer() -> int;\n");
+            annexes = package / "impl";
+            annexes.mkdir();
+            (annexes / "api.impl.jac").write_text("impl answer { return 42; }\n");
+            (package / "api.test.jac").write_text("test { assert answer() == 42; }\n");
+            data = precompile_unit(str(source), str(package), collect=False);
+            assert data is not None;
+            bytecode = read_section_bytes(data, SEC_BYTECODE);
+            assert bytecode is not None;
+            artifacts.append(bytecode);
+            installed = Path(directory) / (stage + "-installed") / "library";
+            installed.parent.mkdir();
+            shutil.move(str(package), str(installed));
+            code = marshal.loads(
+                patch_co_filenames_bytes(bytecode, PRECOMPILE_SENTINEL, str(installed))
+            );
+            namespace: dict[str, any] = {"__name__": "annex_relocation_fixture"};
+            tests: list[Callable] = [];
+            def capture(description: str = "") -> Callable {
+                def register(function: Callable) -> Callable {
+                    tests.append(function);
+                    return function;
+                }
+                return register;
+            }
+            with patch.object(jaclib, "jac_test", capture) {
+                exec(code, namespace);
+            }
+            assert namespace["answer"]() == 42;
+            assert namespace["answer"].__code__.co_filename
+                == str(installed / "impl" / "api.impl.jac");
+            assert len(tests) == 1;
+            assert tests[0].__code__.co_filename == str(installed / "api.test.jac");
+            tests[0]();
+        }
+        assert artifacts[0] == artifacts[1];
+    }
+}
+
 test "an installed precompiled interface resolves paths without rebuilding its source" {
     import from jaclang.jac0core { sealed }
     import from jaclang.compiler.driver.program { JacProgram }

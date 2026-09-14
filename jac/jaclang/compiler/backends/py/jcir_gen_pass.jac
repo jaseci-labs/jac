@@ -401,6 +401,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def _fw_aug_assign(nd: Assignment, target: any, value: any) -> (CgNode | None);
     def val(nd: UniNode) -> CgNode;
     def const_of(value: any, jac_node: (UniNode | None) = None) -> CgNode;
+    def _annex_filename(path: str) -> CgNode;
     def _ct_kind(v: any) -> str;
     def _ct_order_key(v: any) -> str;
     def _ct_materializable(v: any) -> bool;
