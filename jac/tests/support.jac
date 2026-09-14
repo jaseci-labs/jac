@@ -10,7 +10,7 @@ Imported as `from tests.support`, which resolves identically under the single
 `jac` binary and a source checkout (same mechanism as `tests.fixtures_list`).
 """
 
-import from jaclang.cli.cli_boot { jac_command }
+import from jaclang.cli.cli_boot { jac_command, compiler_python_command }
 import ctypes;
 import jaclang;
 import sys;
@@ -254,8 +254,7 @@ def native_build(
     import sys;
     assert os.path.exists(src) , f"fixture missing: {src}";
     cmd = (
-        jac_command()
-        + ["build", src, "--native"]
+        jac_command("build", src, "--native")
         + native_memory_flags(memory)
         + list(extra or [])
         + ["-o", out_bin]
@@ -306,7 +305,7 @@ def python_run(src: str, args: list[str] | None = None, timeout: int = 120) -> s
     import subprocess;
     import sys;
     proc = subprocess.run(
-        jac_command() + ["run", "--backend", "python", src] + list(args or []),
+        jac_command("run", "--backend", "python", src) + list(args or []),
         capture_output=True,
         text=True,
         timeout=timeout

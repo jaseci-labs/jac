@@ -4,7 +4,7 @@ import json;
 import os;
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
-import from jaclang.compiler.driver.modresolver { find_jac_project_root }
+import from jaclang.project.modresolver { find_jac_project_root }
 
 import from jaclang.project.app_kinds {
     kind_codespace,

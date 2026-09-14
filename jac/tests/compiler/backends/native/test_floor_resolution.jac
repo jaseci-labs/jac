@@ -14,10 +14,7 @@ dir so the resolution is covered without a real pbs build or a relocated jaclang
 import os;
 import tempfile;
 import from unittest.mock { patch }
-import from jaclang.compiler.backends.native.linker_common {
-    resolve_floor_dir,
-    floor_lib_dir
-}
+import from jaclang.compiler.backends.native.floor { resolve_floor_dir, floor_lib_dir }
 import from jaclang.cli.commands.native_build { _resolve_ca_bundle, _floor_ca_bundle }
 
 

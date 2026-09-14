@@ -21,7 +21,7 @@ impl JacCompiler.note_stub_tree_served(path: str, program: JacProgram) -> None {
     if self.stub_catalog() is not None {
         return;
     }
-    import from jaclang.compiler.driver.modresolver { _in_typeshed_tree }
+    import from jaclang.project.modresolver { _in_typeshed_tree }
     if _in_typeshed_tree(path) {
         self._stub_trees_served = True;
     }
@@ -114,6 +114,13 @@ impl JacCompiler.get_bytecode(
         bind_options,
         context_program,
         compilation_scope
+    }
+    if full_target.endswith('.py') {
+        import builtins;
+        import from jaclang.project.source { read_file_with_encoding }
+        return builtins.compile(
+            read_file_with_encoding(full_target), full_target, 'exec'
+        );
     }
     actual = target_program;
     options = bind_options(full_target, actual, actual.options);
@@ -291,7 +298,12 @@ impl JacCompiler._load_native_from_cache(
             manifest = self._deserialize_interop_table(cached_interop);
             gen.interop_manifest = manifest;
             if manifest.native_imports {
-                register_py_callbacks(manifest, py_func_table, callbacks_list);
+                register_py_callbacks(
+                    manifest.native_imports,
+                    py_func_table,
+                    callbacks_list,
+                    llvm.add_symbol
+                );
             }
         }
         install_native_static_init(engine, gen.interop_manifest);
@@ -359,7 +371,9 @@ impl JacCompiler._load_native_from_bitcode(
         manifest = self._deserialize_interop_table(cached_interop);
         gen.interop_manifest = manifest;
         if manifest.native_imports {
-            register_py_callbacks(manifest, py_func_table, callbacks_list);
+            register_py_callbacks(
+                manifest.native_imports, py_func_table, callbacks_list, llvm.add_symbol
+            );
         }
     }
     install_native_static_init(engine, gen.interop_manifest);
@@ -441,7 +455,7 @@ impl JacCompiler._restore_sections(
 
 impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None) {
     import from pathlib { Path as _Path }
-    import from jaclang.compiler.driver { image as _sealed }
+    import from jaclang { image as _sealed }
     norm_file = os.path.normpath(os.path.abspath(full_target));
     d = os.path.dirname(norm_file);
     pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
@@ -486,7 +500,7 @@ impl JacCompiler._get_precompiled_jir_bytecode(
         absolutize_ct_deps_section,
         cache_mode
     }
-    import from jaclang.compiler.driver { image as _sealed }
+    import from jaclang { image as _sealed }
     (rebuild_flag, no_precompile) = cache_mode();
     if rebuild_flag or no_precompile {
         return None;
@@ -636,7 +650,7 @@ impl JacCompiler.parse_str(
         assert isinstance(converted, uni.Module);
         mod = converted;
     } else {
-        import from jaclang.compiler.driver.extensions {
+        import from jaclang.extensions {
             is_retired_client_marker,
             is_retired_native_marker
         }
@@ -866,8 +880,8 @@ impl JacCompiler.stamp_native_import_facts(
 }
 
 impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) -> None {
-    import from jaclang.compiler.driver.modresolver { find_jac_project_root }
-    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    import from jaclang.project.modresolver { find_jac_project_root }
+    import from jaclang.project.workspace { workspace_for_path }
     opts = target_program.options;
     mod_path = mod.loc.mod_path if mod.loc else '';
     mod.jac_project_root = find_jac_project_root(mod_path) if mod_path else None;
@@ -886,7 +900,7 @@ impl JacCompiler.stamp_app_facts(mod: uni.Module, target_program: JacProgram) ->
     } else {
         mod.app_kind = '';
     }
-    import from jaclang.compiler.placement.workspace { UI_MOBUI }
+    import from jaclang.project.workspace { UI_MOBUI }
     override_ui = opts.ui if (opts is not None and opts.ui) else '';
     ui = override_ui or (app.ui if app is not None else '');
     if ui == UI_MOBUI {
@@ -1462,7 +1476,7 @@ impl JacCompiler._compile_once(
     use_str: (str | None) = None,
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
-    import from jaclang.compiler.driver.extensions { is_annex }
+    import from jaclang.extensions { is_annex }
     if (use_str is None and options.resolve_annex_parent and is_annex(file_path)) {
         import from jaclang.compiler.driver.bccache { discover_base_file }
         base_path = discover_base_file(file_path);
@@ -1814,6 +1828,9 @@ impl JacCompiler.client_artifact_of(mod: uni.Module) -> (ClientArtifact | None) 
         return None;
     }
     native_sources: list[str] = [];
+    if mod.declares_codespace(CodeContext.NATIVE) {
+        native_sources.append(mod.loc.mod_path);
+    }
     for binding in mod.gen.interop_manifest.client_native_imports {
         if binding.source_module {
             native_sources.append(str(binding.source_module));

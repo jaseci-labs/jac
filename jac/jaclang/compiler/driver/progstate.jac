@@ -4,7 +4,7 @@ import from contextlib { contextmanager }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
 import from jaclang.compiler.passes.transform { Alert, PassResult }
-import type from jaclang.compiler.driver.mtp { Info }
+import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
 import from jaclang.compiler.driver.pipeline_types {
     AnalysisFact,
@@ -339,7 +339,7 @@ obj DiagLedger {
     }
 
     def _owned(alert: Alert, path: str) -> bool {
-        import from jaclang.compiler.driver.extensions { is_annex_path_of }
+        import from jaclang.extensions { is_annex_path_of }
         return alert.owner == path or is_annex_path_of(alert.owner, path);
     }
 

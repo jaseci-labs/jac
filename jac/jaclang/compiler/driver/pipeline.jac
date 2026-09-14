@@ -596,7 +596,7 @@ def compile_application(
     }
     import from jaclang.compiler.frontend.unitree { Import, ModulePath }
     import from jaclang.compiler.backends.py.artifact_imports { package_sources }
-    import from jaclang.compiler.driver.extensions { is_annex }
+    import from jaclang.extensions { is_annex }
     import from jaclang.project.app_kinds { kind_has_client }
     entry_path = os.path.realpath(entry_path);
     project_root = os.path.realpath(

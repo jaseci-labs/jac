@@ -12,7 +12,7 @@ impl EsastGenPass._has_import(name: str) -> bool {
 }
 
 impl EsastGenPass._register_jac_virtual_import(module_id: str) -> None {
-    import from jaclang.compiler.driver.modresolver { resolve_jac_virtual_module_path }
+    import from jaclang.project.modresolver { resolve_jac_virtual_module_path }
     if not self.client_manifest or module_id in self.client_manifest.imports {
         return;
     }
@@ -23,17 +23,15 @@ impl EsastGenPass._register_jac_virtual_import(module_id: str) -> None {
 }
 
 impl EsastGenPass._register_jac_runtime_import -> None {
-    self._ensure_backend();
-    self._register_jac_virtual_import(self._ensure_backend().runtime_module());
+    self._register_jac_virtual_import(self.resolved_backend.runtime_module());
 }
 
 impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
     import from jaclang.client.client_surface { runtime_import_source }
-    self._ensure_backend();
     if name in self.injected_imports or self._has_import(name) {
         return;
     }
-    src = runtime_import_source(name, self.backend);
+    src = runtime_import_source(name, self.resolved_backend);
     specifier = self.sync_loc(
         es.ImportSpecifier(
             imported=es.Identifier(name=name), local=es.Identifier(name=name)
@@ -107,7 +105,7 @@ impl EsastGenPass.exit_import with uni.Import exit {
         first_item = here.items[0];
         if (isinstance(first_item, uni.ModulePath) and first_item.path) {
             path_elem = first_item.path[0];
-            import_key = cast(str, path_elem.lit_value)
+            import_key = str(path_elem.lit_value)
                 if isinstance(path_elem, uni.String)
                 else path_elem.value;
         } else {

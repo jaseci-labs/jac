@@ -9,7 +9,7 @@ import type from jaclang.runtime.archetype {
     WalkerArchetype as Walker,
     JsxElement
 }
-import type from jaclang.compiler.frontend.constant { EdgeDir }
+import type from jaclang.runtime.constants { EdgeDir }
 import type from jaclang.runtime.graph_query { GraphQuery, QHop, QOrder, QPred }
 import type from jaclang.runtime.runtime { JacRuntimeInterface }
 import type from jaclang.runtime.object_model { field }
@@ -71,7 +71,7 @@ glob __all__ = [
          "peek_item": ("..runtime.deletion", "peek_item"),
          "DSFunc": ("..runtime.archetype", "ObjectSpatialFunction"),
          "Edge": ("..runtime.archetype", "EdgeArchetype"),
-         "EdgeDir": ("..compiler.frontend.constant", "EdgeDir"),
+         "EdgeDir": ("..runtime.constants", "EdgeDir"),
          "GenericEdge": ("..runtime.archetype", "GenericEdge"),
          "GraphQuery": ("..runtime.graph_query", "GraphQuery"),
          "JacRuntimeInterface": ("..runtime.runtime", "JacRuntimeInterface"),

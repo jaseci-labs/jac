@@ -64,7 +64,7 @@ test "full compiler output initializes the runtime foundation without a seed" {
         "runtime/archetype",
         "lib/jaclib",
         "lib/__init__",
-        "compiler/frontend/constant"
+        "runtime/constants"
     ];
     with tempfile.TemporaryDirectory() as directory {
         destination = Path(directory) / "jaclang";
@@ -131,5 +131,32 @@ test "full compiler output initializes the runtime foundation without a seed" {
             text=True
         );
         assert result.returncode == 0 , result.stderr;
+    }
+}
+
+
+test "prepared callable filename retains its registered source origin" {
+    import from jaclang.runtime.prepared { PreparedApplication, publish, forget }
+    def answer -> int {
+        return 42;
+    }
+    with tempfile.TemporaryDirectory() as directory {
+        base = Path(directory).resolve();
+        path = str(base / "module.py");
+        answer.__code__ = answer.__code__.replace(co_filename=path);
+        prior = answer.__code__;
+        application = PreparedApplication(str(base), path);
+        application.code[path] = prior;
+        application.origins[path] = "module.impl.jac";
+        finders = list(sys.meta_path);
+        try {
+            publish(application);
+            assert impl_patch_filename("relocated.impl.jac")(answer) is answer;
+            assert answer.__code__ is prior;
+            assert answer() == 42;
+        } finally {
+            forget(path);
+            sys.meta_path[:] = finders;
+        }
     }
 }

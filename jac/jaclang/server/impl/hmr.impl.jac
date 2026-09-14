@@ -1,3 +1,4 @@
+import from jaclang.server.build_status { BuildMonitor }
 import json;
 import logging;
 import os;
@@ -25,7 +26,7 @@ impl HotReloader.start -> None {
 
     self.watcher.start();
     self._running = True;
-    HotReloader._active = self;
+    BuildMonitor.active = self;
     logger.debug(f"Hot reloader started for module: {self.module_name}");
 }
 
@@ -34,8 +35,8 @@ impl HotReloader.stop -> None {
         return;
     }
     self._running = False;
-    if HotReloader._active is self {
-        HotReloader._active = None;
+    if BuildMonitor.active is self {
+        BuildMonitor.active = None;
     }
 
     self.watcher.stop();
@@ -163,14 +164,6 @@ impl HotReloader._sync_status_file -> None {
     } except OSError {}
 }
 
-impl get_build_status -> dict {
-    reloader = HotReloader._active;
-    if not reloader {
-        return {"status": BuildStatus.UNAVAILABLE.value, "diagnostics": []};
-    }
-    return reloader.build_status();
-}
-
 impl HotReloader.on_file_change(event: any) -> None {
     if not self._running {
         return;
@@ -221,7 +214,7 @@ impl HotReloader._dispatch_change(file_path: str, is_directory: bool = False) ->
         return;
     }
 
-    import from jaclang.compiler.driver.extensions { is_impl }
+    import from jaclang.extensions { is_impl }
     target_path = file_path;
     if is_impl(file_path) {
         base = discover_base_file(file_path);
@@ -698,7 +691,7 @@ impl HotReloader._recompile_client_code(
 }
 
 impl HotReloader._get_js_filename(file_path: str) -> str {
-    import from jaclang.compiler.driver.extensions { base_stem }
+    import from jaclang.extensions { base_stem }
     path = Path(file_path);
 
     return base_stem(path.name) + ".js";
@@ -741,7 +734,7 @@ impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool, boo
 }
 
 impl HotReloader._path_to_module(file_path: str) -> str {
-    import from jaclang.compiler.driver.extensions { base_stem }
+    import from jaclang.extensions { base_stem }
 
     path = Path(file_path);
     base = Path(self.base_path).resolve();

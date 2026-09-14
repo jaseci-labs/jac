@@ -1,7 +1,7 @@
 import from pathlib { Path }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.tools.unparse_pass { unparse_node }
-import from jaclang.compiler.driver.mtp {
+import from jaclang.runtime.semantic {
     ClassInfo,
     FieldInfo,
     FunctionInfo,
@@ -354,7 +354,7 @@ impl MTIRGenPass._extract_method_info(
 }
 
 impl MTIRGenPass._get_scope_str(nd: UniScopeNode) -> str {
-    import from jaclang.compiler.driver.extensions { STEM_REKEY_SUFFIXES }
+    import from jaclang.extensions { STEM_REKEY_SUFFIXES }
 
     if isinstance(nd, Module) {
         mod_path = nd.loc.mod_path;

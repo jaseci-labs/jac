@@ -17,11 +17,8 @@ test "image completion accepts an empty build output and preserves occupied outp
         workspace = Path(directory);
         source = workspace / "source";
         package = source / "jaclang";
-        driver = package / "compiler/driver";
-        driver.mkdir(parents=True);
-        shutil.copyfile(
-            Path(JAC_ROOT) / "jaclang/compiler/driver/image.py", driver / "image.py"
-        );
+        package.mkdir(parents=True);
+        shutil.copyfile(Path(JAC_ROOT) / "jaclang/image.py", package / "image.py");
         codec = image_codec(str(package));
         precompiled = package / "_precompiled";
         precompiled.mkdir();
@@ -56,11 +53,8 @@ test "native build outputs do not invalidate compiler source artifacts" {
     with tempfile.TemporaryDirectory() as directory {
         workspace = Path(directory);
         package = workspace / "source" / "jaclang";
-        driver = package / "compiler/driver";
-        driver.mkdir(parents=True);
-        shutil.copyfile(
-            Path(JAC_ROOT) / "jaclang/compiler/driver/image.py", driver / "image.py"
-        );
+        package.mkdir(parents=True);
+        shutil.copyfile(Path(JAC_ROOT) / "jaclang/image.py", package / "image.py");
         (package.parent / "jac.toml").write_text(
             '[project]\nname = "jaclang"\nversion = "0.1.0"\n'
                 + '[placement]\ndefault = "server"\n'
@@ -69,6 +63,7 @@ test "native build outputs do not invalidate compiler source artifacts" {
         (package / "config.json").write_text('{"mode": "first"}');
         cache = workspace / "cache";
         identities: list[str] = [];
+        (package / "compiler").mkdir();
         for revision in range(2) {
             for extension in ("so", "dylib") {
                 library = package / "compiler" / ("libjac_compiler." + extension);

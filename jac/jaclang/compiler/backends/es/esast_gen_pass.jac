@@ -4,12 +4,12 @@ import from typing { cast }
 import jaclang.compiler.backends.es.estree as es;
 import jaclang.compiler.frontend.unitree as uni;
 import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.es.es_unparse { JSCodeGenerator, es_to_js }
+import from jaclang.compiler.backends.es.es_unparse { es_to_js, JSCodeGenerator }
+import from jaclang.compiler.types.types { TypeBase, ClassType }
 import from jaclang.compiler.backends.es.primitives_es { ESEmitCtx, ESBuiltinEmitter }
-import from jaclang.compiler.types.types { ClassType, TypeBase }
 import from jaclang.compiler.frontend.constant { CodeContext, SymbolType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.runtime.osp_model { OspAnalysis, OspModel }
+import from jaclang.compiler.passes.osp_analysis { OspAnalysis, OspModel }
 import from jaclang.compiler.backends.common.ast_gen_base { BaseAstGenPass }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.backends.es.jsx_processor { EsJsxProcessor }
@@ -25,7 +25,7 @@ import from jaclang.compiler.backends.es.free_ident_audit {
     client_ambient_globals,
     free_identifiers
 }
-import from jaclang.compiler.driver.modresolver {
+import from jaclang.project.modresolver {
     convert_to_js_import_path,
     relative_js_specifier,
     resolve_relative_path
@@ -238,9 +238,9 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         exports: list[es.ExportNamedDeclaration] = [],
         scope_stack: list[ScopeInfo] = [],
         scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {},
-        backend: (FrameworkBackend | None) = None,
-        client_manifest: ClientManifest postinit,
-        jsx_processor: EsJsxProcessor postinit,
+        backend: FrameworkBackend | None = None,
+        client_manifest: ClientManifest = ClientManifest(),
+        _jsx_processor: EsJsxProcessor | None = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
         reactive_vars: set[str] = set(),
         component_export_names: set[str] = set(),
@@ -266,12 +266,27 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         _unbound_reported: set[str] = set(),
         _osp_var_arch_cache: (dict | None) = None,
         _primitive_emitters: dict[str, object] = {},
+        _emitters_ready: bool = False,
         _builtin_emitter: ESBuiltinEmitter = ESBuiltinEmitter(),
         _poly_methods: (set[str] | None) = None;
 
+    has resolved_backend: FrameworkBackend {
+        getter {
+            return self._ensure_backend();
+        }
+    }
+
+    has jsx_processor: EsJsxProcessor {
+        getter {
+            if self._jsx_processor is None {
+                self._jsx_processor = EsJsxProcessor(self);
+            }
+            return self._jsx_processor;
+        }
+    }
+
     static has HOST_PASS: bool = True;
 
-    override def postinit -> None;
     def before_pass -> None;
     can enter_walk with uni.UniNode entry;
     can exit_walk with uni.UniNode exit;
@@ -397,7 +412,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _ct_only_name(nd: uni.Name) -> bool;
     def _comptime_only_names -> set[str];
     def _is_ct_type_param(nd: uni.Name) -> bool;
-    def _ct_ctor_slots(nd: uni.UniNode) -> (list[tuple[str, uni.UniNode]] | None);
+    def _ct_ctor_slots(nd: uni.UniNode) -> (list[tuple[str, uni.Expr]] | None);
     def _trailer_reaches_ct_class(nd: uni.AtomTrailer) -> bool;
     def _build_block_statement(
         scope_node: uni.UniScopeNode, body_nodes: (Sequence[uni.UniNode] | None)
@@ -703,7 +718,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     can exit_atom_unit with uni.AtomUnit exit;
     can exit_list_val with uni.ListVal exit;
     can exit_set_val with uni.SetVal exit;
-    def _gen_seq_array(nd: uni.TupleVal | uni.ListVal) -> None;
+    def _gen_seq_array(nd: uni.ListVal | uni.TupleVal | uni.SetVal) -> None;
     can exit_tuple_val with uni.TupleVal exit;
     can exit_dict_val with uni.DictVal exit;
     can exit_k_v_pair with uni.KVPair exit;

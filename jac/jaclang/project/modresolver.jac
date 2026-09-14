@@ -2,7 +2,7 @@ import from importlib.machinery { ModuleSpec }
 import os;
 import sys;
 import from pathlib { Path }
-import from jaclang.compiler.driver.extensions {
+import from jaclang.extensions {
     MODULE_SUFFIXES,
     is_jac_namespace_package,
     language_of
@@ -669,31 +669,6 @@ def _resolve_pkg_exports(
 
 def has_client_npm_package(spec: str, base_path: str) -> bool {
     return _find_npm_package(spec, base_path) is not None;
-}
-
-glob _FRAMEWORK_PACKAGES: dict[str, set[str]] = {
-         "react": {"react", "react-dom"},
-         "preact": {"preact"},
-         "solid": {"solid-js"}
-     };
-
-
-def is_client_npm_import(spec: str, source_path: str) -> bool {
-    if not spec {
-        return False;
-    }
-    import from jaclang.compiler.placement.placement_pins {
-        client_framework,
-        npm_dependency_names
-    }
-    pkg_root = npm_package_root(spec);
-    if pkg_root in npm_dependency_names(source_path) {
-        return True;
-    }
-    if pkg_root in _FRAMEWORK_PACKAGES.get(client_framework(source_path), set()) {
-        return True;
-    }
-    return has_client_npm_package(spec, source_path);
 }
 
 def npm_package_root(spec: str) -> str {

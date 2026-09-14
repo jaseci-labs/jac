@@ -25,6 +25,7 @@ count (default 6, which is where the corpus stopped moving between runs here).
 """
 
 import json;
+import jaclang;
 import os;
 import time;
 
@@ -101,6 +102,10 @@ def phase_row(src: str) -> dict {
 
 with entry {
     tree = Path(os.getcwd());
+    compiler_tree = Path(str(jaclang.__file__)).resolve().parent.parent;
+    assert compiler_tree == tree.resolve() , (
+        f"timing {tree} with the wrong compiler: {compiler_tree}"
+    );
     reps = int(os.environ.get("JAC_TIMING_REPS", "6"));
     for rel in CORPUS {
         src = str(tree / rel);

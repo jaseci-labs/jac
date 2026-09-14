@@ -19,9 +19,9 @@ bare build reproduces the annotated digest.
 """
 
 import from tests.support { jac_command }
+
 import os;
 import subprocess;
-import sys;
 import tempfile;
 import from pathlib { Path }
 
@@ -51,10 +51,7 @@ def _mode_flags(mode: str) -> list[str] {
 """Compile `src` to `out_bin` under `mode`; assert success."""
 def _nacompile(src: str, mode: str, out_bin: str) {
     comp = subprocess.run(
-        jac_command()
-            + ["build", "--native", src]
-            + _mode_flags(mode)
-            + ["-o", out_bin],
+        jac_command("build", "--native", src) + _mode_flags(mode) + ["-o", out_bin],
         capture_output=True,
         text=True,
         timeout=300,
@@ -151,7 +148,7 @@ test "ownbench erasure round-trip: aos reproduces annotated digest" {
     args = SMALL_ARGS["own_aos"];
     with tempfile.TemporaryDirectory() as tmp {
         erased = subprocess.run(
-            jac_command() + ["run", eraser, src],
+            jac_command("run", eraser, src),
             capture_output=True,
             text=True,
             timeout=120,
@@ -180,7 +177,7 @@ test "ownbench erasure round-trip: deriv reproduces annotated digest" {
     args = SMALL_ARGS["own_deriv"];
     with tempfile.TemporaryDirectory() as tmp {
         erased = subprocess.run(
-            jac_command() + ["run", eraser, src],
+            jac_command("run", eraser, src),
             capture_output=True,
             text=True,
             timeout=120,

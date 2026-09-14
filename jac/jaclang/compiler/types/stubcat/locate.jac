@@ -24,7 +24,7 @@ def jac_internal_stub_dir(pkg_dir: str) -> str {
 }
 
 def type_system_digest(pkg_dir: (str | None) = None) -> str {
-    import from jaclang.compiler.driver.image { load_image }
+    import from jaclang.image { load_image }
     package = pkg_dir if pkg_dir is not None else jaclang_pkg_dir();
     image = load_image(os.path.join(package, "_precompiled"));
     if image is None {

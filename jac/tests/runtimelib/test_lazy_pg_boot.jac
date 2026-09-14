@@ -23,7 +23,7 @@ import from tempfile { TemporaryDirectory }
 import from uuid { UUID }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.data.pgembed { PgRuntime }
 import from jaclang.server.session { Session, RuntimeLease }
 import from unittest.mock { patch }

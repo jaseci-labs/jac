@@ -156,7 +156,7 @@ test "native construction runtime sharing does not include compiler internals" {
         is_shared_runtime_module,
         resolve_native_module
     }
-    import from jaclang.compiler.driver.modresolver { resolve_relative_path }
+    import from jaclang.project.modresolver { resolve_relative_path }
     import from tempfile { gettempdir }
     (_, runtime) = resolve_native_module(
         "jaclang.runtime.graph_fragment", gettempdir()

@@ -73,7 +73,7 @@ test "the payload seed is reusable only for the compiler that wrote it" {
 
 test "the running compiler digest names its compiled image" {
     import jaclang;
-    import from jaclang.compiler.driver.image { load_image }
+    import from jaclang.image { load_image }
     image = load_image(Path(jaclang.__file__).parent / "_precompiled");
     assert image is not None;
     assert running_compiler_digest() == image.manifest["compiler_digest"];

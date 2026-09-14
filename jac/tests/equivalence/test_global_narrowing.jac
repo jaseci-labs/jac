@@ -34,8 +34,7 @@ glob BATCH_DIR = str(
 """Type-check `files` in one program the way `jac check` batches a run.
 
 Mirrors the CLI's per-file loop: an impl annex is resolved back to its base
-module and every entry is compiled into the shared program with
-`force_target_program` so they land in one hub. Returns the emitted messages.
+module and every entry is compiled into the shared program. Returns the emitted messages.
 """
 def check_batch(files: list[str]) -> list[str] {
     prog = JacProgram();

@@ -20,8 +20,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
 
-from jaclang.compiler.driver import extensions as ext_registry
-from jaclang.compiler.driver import image as _sealed
+from jaclang import extensions as ext_registry
+from jaclang import image as _sealed
 
 # Inline logging config (previously in jaclang.compiler.driver.log)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
@@ -56,7 +56,7 @@ def _module_scoped_alerts(program: object, file_path: str) -> list:
 
 # The resolver must be executable before the Jac finder is registered.
 # Its code comes from the same image as every other compiler module.
-_resolver_name = "jaclang.compiler.driver.modresolver"
+_resolver_name = "jaclang.project.modresolver"
 _resolver_entry = _sealed.find_module(_resolver_name)
 if _resolver_entry is None:
     raise ImportError(
@@ -68,25 +68,12 @@ _modresolver_code = _resolver_image.code(_resolver_name)
 if _modresolver_code is None:
     raise ImportError("compiler image contains no executable module resolver")
 _modresolver_origin = _resolver_image.virtual_origin(_resolver_source)
-_modresolver = types.ModuleType("jaclang.compiler.driver.modresolver")
+_modresolver = types.ModuleType("jaclang.project.modresolver")
 _modresolver.__file__ = _modresolver_origin
-_modresolver.__package__ = "jaclang.compiler.driver"
+_modresolver.__package__ = "jaclang.project"
 exec(_modresolver_code, _modresolver.__dict__)  # noqa: S102
-sys.modules["jaclang.compiler.driver.modresolver"] = _modresolver
+sys.modules["jaclang.project.modresolver"] = _modresolver
 get_jac_search_paths = _modresolver.get_jac_search_paths
-
-
-class _PreparedAliasLoader(Loader):
-    """A relative import of an app entry resolves to the provider instance."""
-
-    def __init__(self, target: str) -> None:
-        self.target = target
-
-    def create_module(self, spec: ModuleSpec) -> ModuleType:
-        return importlib.import_module(self.target)
-
-    def exec_module(self, module: ModuleType) -> None:
-        pass
 
 
 class JacMetaImporter(MetaPathFinder, Loader):
@@ -99,15 +86,6 @@ class JacMetaImporter(MetaPathFinder, Loader):
         target: ModuleType | None = None,
     ) -> ModuleSpec | None:
         """Find the spec for the module."""
-        registry = sys.modules.get("jaclang.runtime.prepared")
-        alias_for = getattr(registry, "entry_alias", None)
-        alias = alias_for(fullname) if alias_for is not None else None
-        if alias is not None:
-            target_name, origin = alias
-            return importlib.util.spec_from_loader(
-                fullname, _PreparedAliasLoader(target_name), origin=origin
-            )
-
         # Sealed image is authoritative: a sealed binary resolves its modules
         # from the manifest by name, with no filesystem probing for .jac. This
         # is the primary path (not a fallback) so a sealed runtime never touches
@@ -229,15 +207,17 @@ class JacMetaImporter(MetaPathFinder, Loader):
         if not module.__name__.startswith("jaclang."):
             Jac.load_module(module.__name__, module)
 
-        # Get and execute bytecode using the compiler singleton
-        compiler = Jac.get_compiler()
-        program = Jac.get_program()
         # The registry is itself Jac. Read it only after its import completes;
         # importing it here would recurse while bootstrapping the compiler.
         registry = sys.modules.get("jaclang.runtime.prepared")
         lookup = getattr(registry, "application_for", None)
         prepared = lookup(file_path, module.__name__) if lookup is not None else None
         prepared_path = os.path.realpath(file_path)
+        if prepared is not None and prepared_path in prepared.code:
+            registry.execute_module(module, prepared)
+            return
+        compiler = Jac.get_compiler()
+        program = Jac.get_program()
         if prepared is None:
             containing_lookup = getattr(registry, "containing_application", None)
             containing = (

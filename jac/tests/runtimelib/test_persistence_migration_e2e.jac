@@ -9,9 +9,9 @@ for SqliteMemory internals (schema, quarantine, legacy pickle migration).
 """
 
 import from tests.support { jac_command }
+
 import os;
 import subprocess;
-import sys;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
@@ -19,7 +19,7 @@ import from tempfile { TemporaryDirectory }
 """Run `jac enter <file> <entrypoint>` and return (rc, stdout, stderr)."""
 def _jac_enter(cwd: str, app_path: str, entrypoint: str) -> tuple {
     result = subprocess.run(
-        jac_command() + ["run", "--entry", entrypoint, app_path],
+        jac_command("run", "--entry", entrypoint, app_path),
         cwd=cwd,
         capture_output=True,
         text=True,

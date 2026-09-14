@@ -1,6 +1,6 @@
 import os;
 import from jaclang.cli.console { console }
-import from jaclang.compiler.driver.extensions { base_stem, is_jac, is_python }
+import from jaclang.extensions { base_stem, is_jac, is_python }
 
 
 def proc_file(filename: str) -> tuple {

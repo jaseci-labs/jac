@@ -1,5 +1,5 @@
 impl EsastGenPass._osp_model -> OspModel {
-    import from jaclang.runtime.osp_model { get_osp_model }
+    import from jaclang.compiler.passes.osp_analysis { get_osp_model }
     _root = self.ir_in;
     return get_osp_model(_root);
 }
@@ -45,6 +45,7 @@ impl EsastGenPass._osp_const_decl(
 }
 
 impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
+    assert nd.name_ref is not None;
     self.needs_jac_runtime = True;
     is_walker = osp["kind"] == "walker";
     other_ref = self.sync_loc(es.Identifier(name="__other"), jac_node=nd);
@@ -311,7 +312,7 @@ impl EsastGenPass._build_osp_tags_js -> str {
         );
         lines.append(f"__ospC.osp_register_type({tag}, [{isa_members}]);");
     }
-    import from jaclang.runtime.osp_model { stable_osp_tag }
+    import from jaclang.runtime.osp_tag { stable_osp_tag }
     ge_tag = stable_osp_tag("GenericEdge");
     lines.append(f"__ospGenericEdge.prototype.__tag = {ge_tag};");
     lines.append(f"__ospC.osp_register_type({ge_tag}, []);");
@@ -372,7 +373,7 @@ impl EsastGenPass._osp_slots_js(slots: list, tags: dict) -> str {
                 ttag = tags[trig] if (trig in tags) else -1;
                 if ttag < 0 {
                     if self._arch_kind_by_name(trig) in ("node", "edge", "walker") {
-                        import from jaclang.runtime.osp_model { stable_osp_tag }
+                        import from jaclang.runtime.osp_tag { stable_osp_tag }
                         ttag = stable_osp_tag(trig);
                     }
                 }
@@ -502,7 +503,7 @@ impl EsastGenPass._edge_tag_literal(
             _xkind = self._arch_kind_of_type(self._expr_class_type(type_expr));
         }
         if _xkind in ("node", "edge") {
-            import from jaclang.runtime.osp_model { stable_osp_tag }
+            import from jaclang.runtime.osp_tag { stable_osp_tag }
             _tag = stable_osp_tag(_etname);
         }
     }
@@ -685,7 +686,7 @@ impl EsastGenPass._build_osp_filter_pred(
         if not isinstance(cmp, uni.CompareExpr) {
             self.emit(
                 E5097,
-                node_override=nd,
+                node_override=cmp,
                 kind="a graph filter outside 'name <op> value' form"
             );
             return None;

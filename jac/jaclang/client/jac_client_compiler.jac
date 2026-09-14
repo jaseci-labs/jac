@@ -7,7 +7,7 @@ import from jaclang.client.asset_processor { AssetProcessor }
 import from jaclang.client.import_processor { ImportProcessor }
 import from jaclang.client.jac_to_js { JacToJSCompiler }
 import from jaclang.client.route_scanner { RouteScanner, resolve_route_exports }
-import from jaclang.compiler.driver.extensions { ANNEX_SUFFIXES }
+import from jaclang.extensions { ANNEX_SUFFIXES }
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
 
 with entry {
@@ -15,6 +15,9 @@ with entry {
 }
 
 class JacClientCompiler {
+    has entry_path: str = "",
+        na_wasm_modules: set[str] = set();
+
     with entry {
         ROUTER_EXPORTS = [
             'Router',
@@ -45,7 +48,8 @@ class JacClientCompiler {
         extract_exports_func: Callable[[ClientManifest | None], list[str]],
         extract_globals_func:
             Callable[[ClientManifest | None, ModuleType | None], dict[str, any]],
-        compiled_dir: (Path | None) = None
+        compiled_dir: (Path | None) = None,
+        entry_path: str = ""
     );
 
     def _get_client_dir(self: JacClientCompiler) -> Path;

@@ -315,7 +315,7 @@ impl EsastGenPass._convert_assignment_target(
         and target.op.name == Tok.STAR_MUL.value
     ) {
         (argument, _, _) = self._convert_assignment_target(target.operand);
-        pattern: es.Pattern = self.sync_loc(
+        pattern: es.Pattern | es.Expression = self.sync_loc(
             es.RestElement(argument=cast(es.Pattern, argument)), jac_node=target
         );
         return (pattern, None, None);

@@ -11,9 +11,14 @@ import ctypes;
 import os;
 import shutil;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
+import from tests.support {
+    jac_command,
+    TESTS_DIR,
+    compile_native,
+    get_func,
+    native_force_opts
+}
 import jaclang;
 
 import from jaclang.compiler.driver.program { JacProgram }
@@ -107,7 +112,7 @@ test "clib rpath: emitted dynamic executables carry DT_RUNPATH $ORIGIN" {
     with tempfile.TemporaryDirectory() as tmpdir {
         out_bin = os.path.join(tmpdir, "rpath_probe");
         comp = subprocess.run(
-            jac_command() + ["build", "--native", fixture, "-o", out_bin],
+            jac_command("build", "--native", fixture, "-o", out_bin),
             capture_output=True,
             text=True,
             timeout=180

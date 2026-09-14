@@ -59,7 +59,7 @@ test "precompiled modules carry their type interface on cold and cached builds" 
 }
 
 test "an installed precompiled interface resolves paths without rebuilding its source" {
-    import from jaclang.compiler.driver { image as sealed }
+    import from jaclang { image as sealed }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.types.types { FunctionType, ClassType }
     with TemporaryDirectory() as directory {

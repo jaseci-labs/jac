@@ -18,11 +18,10 @@ import from jaclang.compiler.driver.compile_options {
     pop_native_target
 }
 import subprocess;
-import sys;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -214,16 +213,15 @@ test "linking is deterministic" {
 test "nacompile --target wasm32 writes a valid module via the CLI" {
     out = os.path.join(tempfile.mkdtemp(), "game.wasm");
     proc = subprocess.run(
-        jac_command()
-            + [
-                "build",
-                "--native",
-                "--target",
-                "wasm32",
-                os.path.join(FIXTURES, FIXTURE),
-                "-o",
-                out
-            ],
+        jac_command(
+            "build",
+            "--native",
+            "--target",
+            "wasm32",
+            os.path.join(FIXTURES, FIXTURE),
+            "-o",
+            out
+        ),
         capture_output=True,
         text=True,
         timeout=300

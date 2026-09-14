@@ -6,7 +6,7 @@ import sys;
 import zlib;
 import from pathlib { Path }
 
-import from jaclang.compiler.driver.image {
+import from jaclang.image {
     MAGIC,
     FORMAT_VERSION,
     HEADER_SIZE,
@@ -275,7 +275,7 @@ glob _COMPILER_DIGEST_CACHE: list[str] = [];
 
 def running_compiler_digest -> str {
     if not _COMPILER_DIGEST_CACHE {
-        import from jaclang.compiler.driver.image { _jaclang_image }
+        import from jaclang.image { _jaclang_image }
         image = _jaclang_image();
         if image is None {
             raise RuntimeError("The running compiler image has no identity");
@@ -355,7 +355,7 @@ def _project_env_fingerprint(source_path: str) -> str {
         pins_digest,
         config_kind_space
     }
-    import from jaclang.compiler.placement.workspace {
+    import from jaclang.project.workspace {
         app_fact_digest,
         app_for_path,
         workspace_for_path

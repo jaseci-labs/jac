@@ -3,7 +3,7 @@
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.modresolver { resolve_relative_path }
+import from jaclang.project.modresolver { resolve_relative_path }
 import from jaclang.compiler.frontend.codeinfo {
     native_stdlib_root,
     resolve_native_module,

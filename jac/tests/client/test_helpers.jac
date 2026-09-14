@@ -1,11 +1,11 @@
 """Shared test utilities for jac-client tests."""
 
 import from tests.support { jac_command }
+
 import gc;
 import os;
 import shutil;
 import socket;
-import sys;
 import time;
 import from pathlib { Path }
 import from http.client { RemoteDisconnected }

@@ -2,7 +2,7 @@ import sys;
 
 import from pathlib { Path }
 import from jaclang.cli.console { console }
-import from jaclang.compiler.driver.image { python_tag }
+import from jaclang.image { python_tag }
 import from jaclang.project.config { JacConfig }
 import from jaclang.project.providers { get_python_provider, resolve_plan }
 import from jaclang.dist.jab_vendor {

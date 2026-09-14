@@ -9,7 +9,7 @@ import from jaclang.compiler.driver.compilation_context {
     cache_scope
 }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.placement.workspace {
+import from jaclang.project.workspace {
     app_for_path,
     workspace_for_path,
     app_fact_digest

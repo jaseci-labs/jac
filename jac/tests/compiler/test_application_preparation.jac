@@ -238,7 +238,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
     import json;
     import hashlib;
     import sys;
-    import from jaclang.compiler.driver { image as sealed }
+    import from jaclang { image as sealed }
     import site;
     site_before = sys.modules['site'];
     images_before = list(sealed._images);
@@ -376,7 +376,7 @@ test "failed preparation does not replace the last working revision" {
 
 test "preparation infrastructure is present in the compiler image" {
     import jaclang;
-    import from jaclang.compiler.driver.image { load_image }
+    import from jaclang.image { load_image }
     image = load_image(Path(jaclang.__file__).parent / "_precompiled");
     assert image is not None;
     for module in [

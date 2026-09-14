@@ -466,7 +466,7 @@ obj IfaceRegistry {
                 return (cache_path.read_bytes(), "", );
             }
         } except Exception {}
-        import from jaclang.compiler.driver.image { find_source }
+        import from jaclang.image { find_source }
         import from jaclang.compiler.driver.jir { precompiled_jir_matches_source }
         found = find_source(resolved);
         if found is not None {

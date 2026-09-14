@@ -22,7 +22,7 @@ def _find_project_toml() -> str | None:
     """Walk up from the cwd to the nearest ``jac.toml``; return its path or None.
 
     Deliberate plain-Python MIRROR of the single canonical resolver
-    ``jaclang.compiler.frontend.helpers.find_project_root``. It cannot import that one
+    ``jaclang.project.modresolver.find_project_root``. It cannot import that one
     because this module runs during ``sitecustomize``/launcher boot, BEFORE
     ``import jaclang`` is possible -- it is what sets jaclang up. Keep the walk
     semantics (nearest jac.toml, cwd-anchored at boot) in lockstep with the
@@ -116,7 +116,7 @@ def add_project_venv_to_path() -> None:
         pass
 
 
-# The canonical extension registry lives in jaclang/compiler/driver/extensions.py.
+# The canonical extension registry lives in jaclang/extensions.py.
 # Importing it via the ``jaclang`` package would trigger the heavy
 # ``jaclang/__init__`` bootstrap, defeating this lazy finder — so it is loaded
 # by file path on first use and cached. This keeps the suffix lists in one
@@ -129,7 +129,7 @@ def _ext_registry() -> ModuleType:
     global _registry
     if _registry is None:
         base = os.environ.get("JAC_COMPILER_IMAGE") or os.path.dirname(__file__)
-        path = os.path.join(base, "jaclang", "compiler", "driver", "extensions.py")
+        path = os.path.join(base, "jaclang", "extensions.py")
         spec = importlib.util.spec_from_file_location("_jac_ext_registry", path)
         if spec is None or spec.loader is None:
             raise ImportError(f"cannot load extension registry from {path}")

@@ -1,5 +1,7 @@
+import from jaclang.compiler.backends.es.primitives_es { ESEmitCtx }
+
 impl EsastGenPass._ensure_emitters -> None {
-    if self._primitive_emitters {
+    if self._emitters_ready {
         return;
     }
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
@@ -21,6 +23,7 @@ impl EsastGenPass._ensure_emitters -> None {
         }
     }
     self._poly_methods = _poly;
+    self._emitters_ready = True;
 }
 
 impl EsastGenPass._resolve_primitive_type_name(_obj_type: TypeBase | None) -> str {
@@ -294,6 +297,7 @@ impl EsastGenPass.exit_compare_expr with uni.CompareExpr exit {
         return;
     }
     comparisons: list[es.Expression] = [];
+    comparison: es.Expression;
     left: es.Expression = cast(
         es.Expression,
         self._get_ast_or_default(
@@ -360,7 +364,6 @@ impl EsastGenPass.exit_compare_expr with uni.CompareExpr exit {
                 continue;
             }
         }
-        comparison: es.Expression;
         if (op_tok in (Tok.KW_IN, Tok.KW_NIN)) {
             contains_callee = self.sync_loc(
                 es.MemberExpression(

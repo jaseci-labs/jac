@@ -619,8 +619,8 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
                             isinstance(member, es.MethodDefinition)
                             and (member.kind == "constructor")
                         ) {
-                            assert member.value is not None;
-                            assert member.value.body is not None;
+                            assert member.value is not None
+                                and member.value.body is not None;
                             member.value.body.body.append(
                                 es.IfStatement(
                                     `test=es.CallExpression(

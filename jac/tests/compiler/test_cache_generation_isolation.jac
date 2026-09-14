@@ -143,7 +143,7 @@ test "a zero TTL disables the sweep" {
 test "JacPython uses the native runtime boundary" {
     import ctypes;
     import jaclang;
-    import from jaclang.compiler.driver.image { load_image }
+    import from jaclang.image { load_image }
     image = load_image(Path(jaclang.__file__).parent / "_precompiled");
     assert image is not None;
     for prefix in (

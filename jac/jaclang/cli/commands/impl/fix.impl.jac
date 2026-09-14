@@ -519,7 +519,7 @@ def _verify_claims(
 ) {
     import from jaclang.compiler.placement.placement { element_display_name }
     import from jaclang.compiler.placement.placement_pins { _module_dot_path }
-    import from jaclang.compiler.driver.modresolver { find_jac_project_root }
+    import from jaclang.project.modresolver { find_jac_project_root }
     import from jaclang.compiler.driver.program { JacProgram }
     proj_root = find_jac_project_root(file_path);
     if not proj_root {
@@ -661,7 +661,7 @@ impl fix(
         }
     }
 
-    import from jaclang.compiler.driver.modresolver { find_jac_project_root }
+    import from jaclang.project.modresolver { find_jac_project_root }
     pins_by_root: dict[str, dict[str, str]] = {};
     unverified: list[str] = [];
     if strip_only {

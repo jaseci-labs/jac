@@ -11,8 +11,8 @@ tests corrupt the store out of band and drive the real read path end to end.
 """
 
 import from tests.support { jac_command }
+
 import subprocess;
-import sys;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from uuid { UUID }

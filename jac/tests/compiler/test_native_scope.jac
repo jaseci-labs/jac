@@ -1,5 +1,5 @@
 import from jaclang.compiler.native_scope { NATIVE_SCOPE, NativeScopeEntry }
-import from jaclang.compiler.driver.image { _jaclang_image }
+import from jaclang.image { _jaclang_image }
 
 test "the running image records its native kernel and layout as verified payloads" {
     image = _jaclang_image();

@@ -356,7 +356,7 @@ test "stage_floor stages the floor allow-list + CA bundle, skips non-floor archi
 test "payload assembly consumes and verifies a compiler image without source writes" {
     import hashlib;
     import json;
-    import jaclang.compiler.driver.image as images;
+    import jaclang.image as images;
     base = tempfile.mkdtemp(prefix="jac-payload-image-");
     try {
         repo = os.path.join(base, "repo");

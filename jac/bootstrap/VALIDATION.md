@@ -515,3 +515,34 @@ SHA-256 `c227dc9183d5ccc4866567f4eb4a0bb7c9c68adc754076f18fdd1a39239d121f`.
 The final packaged compiler also passed the repository-wide CI source-check
 selection: all 941 files passed in 1,628.97 seconds with two workers. The
 performance budgets and latest-head CI acceptance criterion remain unchanged.
+
+## Native syntax snapshots and source cache inputs (05254fbac7)
+
+The complete staged graph passed all 28 build and verification steps. Stage 1
+compiled all 757 modules in 476.652 seconds; Stage 2 compiled all 757 in 283.257
+seconds. Both catalogs reported 597 modules, 37,127 symbols, 111,120 types, and
+zero evaluation failures. The pinned producer emitted diagnostics for some
+newer source constructs while still producing the required module bytecode.
+These are local macOS measurements with eight workers, not CI timings.
+
+The resulting packaged executable passed 71 focused regressions in 67.46 seconds,
+covering syntax snapshots, native interfaces, compilation contexts and compiler
+image construction. Its SHA-256 was
+`2e1939115c48c034bb99cb9850f1f4ad436944d5c0b2f114886ea873cfae50c0`.
+
+Native syntax snapshots now own explicitly released native regions and
+materialize separate Python graphs for separate analysis contexts. A controlled
+six-app comparison passed in 120.17 seconds versus 144.46 seconds, with maximum
+RSS 4,060,938,240 bytes versus 4,897,538,048 bytes. This was approximately a 17%
+reduction in both measures, but does not establish compliance with CI's
+90-second and 2,560-MiB site-check budgets.
+
+Generated native parser libraries and layout JSON remain verified image
+payloads. They are excluded from source snapshots and the Python-module cache
+identity; target native output changes therefore no longer invalidate every
+Python module. Source and compile-time dependency validation still uses JIR's
+existing cache contracts.
+
+These results precede the integration of upstream revision 36d9995606. The
+merged compiler requires its own full build and regression results; required
+PR CI remains the final acceptance gate.

@@ -95,7 +95,7 @@ test "a module with compile errors is never classified client-only" {
 test "sealed images persist placement and expose it without re-derivation" {
     import json;
     import from jaclang.compiler.placement.placement_facts { sealed_spaces_for }
-    import from jaclang.compiler.driver.image { SealedImage, MANIFEST_FORMAT }
+    import from jaclang.image { SealedImage, MANIFEST_FORMAT }
     d = tempfile.mkdtemp(prefix="jac-sealed-facts-");
     pre = os.path.join(d, "_precompiled");
     os.makedirs(pre);
@@ -128,8 +128,10 @@ test "placement_pins imports stay within the documented allowlist" {
         "jaclang/compiler/driver/impl/compiler.impl.jac",
         "jaclang/compiler/driver/jir.jac",
         "jaclang/compiler/driver/na_coverage.jac",
-        "jaclang/compiler/driver/modresolver.jac",
+        "jaclang/project/modresolver.jac",
         "jaclang/compiler/passes/impl/boundary_analysis_pass.impl.jac",
+        "jaclang/compiler/passes/impl/static_analysis_pass.impl.jac",
+        "jaclang/lsp/server/impl/engine.impl.jac",
         "jaclang/compiler/placement/placement.jac",
         "jaclang/compiler/placement/placement_facts.jac",
         "jaclang/compiler/placement/placement_pins.jac",

@@ -31,15 +31,8 @@ impl WorkspaceSpec.module_dot_path(abs_path: str) -> str {
     if not abs_path {
         return '';
     }
-    real = os.path.realpath(os.path.abspath(abs_path));
-    rel = os.path.relpath(real, os.path.realpath(self.project_root));
-    if rel.startswith('..') {
-        rel = os.path.basename(real);
-    }
-    if rel.endswith('.jac') {
-        rel = rel[:-4];
-    }
-    return rel.replace(os.sep, '.');
+    import from jaclang.project.placement { module_dot_path }
+    return module_dot_path(abs_path, self.project_root);
 }
 
 impl _real(path: str) -> str {

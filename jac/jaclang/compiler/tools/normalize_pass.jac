@@ -1,6 +1,7 @@
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.passes { UniPass }
-import from jaclang.compiler.frontend.constant { CodeContext, EdgeDir }
+import from jaclang.runtime.constants { EdgeDir }
+import from jaclang.compiler.frontend.constant { CodeContext }
 import from jaclang.compiler.frontend.unitree { Tok, EmptyToken, Token }
 import from jaclang.compiler.frontend.roles { BodyRole, ItemsRole }
 

@@ -15,8 +15,7 @@ import from jaclang.compiler.driver.compile_options {
     pop_native_target
 }
 import subprocess;
-import sys;
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -83,7 +82,7 @@ test "headerless mode: borrowed-only owner is stack-promoted" {
 
 test "jac explain memory reports the promoted count" {
     res = subprocess.run(
-        jac_command() + ["explain", "memory", FIXTURE, "--memory", "rc"],
+        jac_command("explain", "memory", FIXTURE, "--memory", "rc"),
         capture_output=True,
         text=True
     );

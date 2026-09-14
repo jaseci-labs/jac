@@ -312,6 +312,7 @@ impl _chrome_args(chrome: str, profile: Path, viewport: str) -> list {
         f"--user-data-dir={profile}",
         "--no-first-run",
         "--no-default-browser-check",
+        "--disable-dev-shm-usage",
         f"--window-size={w},{h}",
         "--use-angle=swiftshader",
         "--enable-unsafe-swiftshader",

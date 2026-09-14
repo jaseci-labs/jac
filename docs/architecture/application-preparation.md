@@ -90,3 +90,54 @@ client compilation. This favors consistent application revisions over maintainin
 two independent serving preparation paths.
 Compilation errors leave the existing live modules registered; the next edit
 can prepare and initialize a replacement.
+
+## Editable source products
+
+`jac build <app> --as source` writes `dist/source` (or `-o <directory>`). It
+prepares the selected application and its services through the same coordinator,
+then exports Python source, the client compiler's JavaScript workspace, and C
+source for native code. `project.json` retains each application's module identity,
+serving contracts, native bindings, and client output paths. The prepared cache
+also retains the client's native dependency inventory and page-routing state.
+`compiler/driver/source_products.jac` owns Python source extraction for application
+export, runtime vendoring, and wheel transpilation. Prepared origin mappings retain
+the original app identity after `.jac` modules become `.py`.
+Client compilation receives the selected entry and compiler program explicitly; it does not infer
+another application's pages from mutable runtime target state.
+
+The output contains `requirements.txt`, `build.py`, and `main.py`. Install the
+requirements with Python, run `python build.py`, then `python main.py`. Server
+applications accept `--host` and `--port`; `--app` selects an exported application.
+CLI arguments are forwarded to Python and native executable entries. JavaScript
+builds use Node/npm or Bun. C builds use Clang (overridable through `CC`), with a
+WASI sysroot for WebAssembly (`WASI_SYSROOT`). Jac is not required in the exported
+build or runtime environment. Original project resources remain available to
+applications that serve source files or other data.
+
+The Python runtime is a transitive projection of the actual infrastructure,
+including package initialization and module-declared `__jac_resources__` data.
+Runtime modules own execution; optional build services own compiler operations.
+There is no separately maintained server adapter. Module resolution and project
+paths live under `jaclang.project`; semantic metadata lives under `jaclang.runtime`.
+
+Native C is produced from the existing native backend's LLVM IR. Binary and source
+products share lowering validation, entry initialization, and callback bindings.
+`dist/native_product.jac` packages both forms. Wheels use the existing native
+shared-library emitter directly and do not require the C projection toolchain.
+The C projection uses a pinned LLVM C backend and a versioned compatibility patch;
+its provenance and license ship with exports. The generated C retains the selected
+target ABI and external native library requirements. Exporting C requires CMake and LLVM
+22 development files, or an explicit `JAC_LLVM_CBE` executable. Unsupported lowering
+fails at export instead of substituting a Python implementation.
+
+Prepared applications isolate their project imports under a private namespace.
+Exported runtime packages retain their public package namespace and ordinary
+Python import rules; their artifact records explicitly disable project import
+scoping. Both use the same loader for executable code, native bindings, and
+semantic metadata.
+
+The `jac-pack-eject` CI job rebuilds the full `jaclang_org` site without Jac and runs
+the shared browser journey, including native game frames. It also rebuilds the
+existing native arena replay from C and compares its six state snapshots. This is
+an integration compatibility gate; it does not exhaustively cover every Jac
+feature, external library, or target platform.

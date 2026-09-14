@@ -2,9 +2,9 @@ import os;
 import sys;
 
 import from jaclang { JacRuntime as Jac }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import type from jaclang.runtime.context { ExecutionContext }
-import from jaclang.compiler.driver.extensions { base_stem }
+import from jaclang.extensions { base_stem }
 import from jaclang.server.server { JacAPIServer, ServerExtension }
 import from jaclang.server.settings { ServeSettings }
 
@@ -67,7 +67,7 @@ def prepare_inprocess_runtime(
         );
     }
 
-    import from jaclang.scale.plugin { mark_scale_runtime }
+    import from jaclang.scale.runtime.provider { mark_scale_runtime }
     (base, _) = os.path.split(jac_file);
     base = base or "./";
     mod = base_stem(jac_file);

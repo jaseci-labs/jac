@@ -65,7 +65,7 @@ import from jaclang.compiler.types.types {
     FunctionType as SemanticFunctionType
 }
 import from jaclang.compiler.frontend.const_fold { fold_const }
-import from jaclang.runtime.osp_model { stable_osp_tag }
+import from jaclang.runtime.osp_tag { stable_osp_tag }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.native.na_constants {
     LIVE_NODE_NEXT_OFF,
@@ -1087,7 +1087,13 @@ walker NaIRGenPass(Transform) {
     def _emit_exc_push_helper -> None;
     def _emit_exc_pop_helper -> None;
     def _emit_exc_raise_helper -> None;
-    def _emit_runtime_raise(is_error: ir.Value, exc_type_name: str, msg: str) -> None;
+    def _emit_runtime_raise(
+        is_error: ir.Value,
+        exc_type_name: str,
+        msg: str,
+        release_on_error: list[ir.Value] = []
+    ) -> None;
+
     def _get_or_register_exc_type(exc_name: str) -> int;
     def _get_exc_descendants(type_name: str) -> list[str];
     def _codegen_raise(nd: uni.RaiseStmt) -> None;

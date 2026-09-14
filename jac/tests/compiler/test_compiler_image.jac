@@ -3,7 +3,7 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.image { _jaclang_image }
+import from jaclang.image { _jaclang_image }
 
 test "compiled compiler initializes and runs in an isolated interpreter" {
     image = _jaclang_image();
@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 import jaclang
-from jaclang.compiler.driver.image import _jaclang_image
+from jaclang.image import _jaclang_image
 image = _jaclang_image()
 assert image is not None
 image.verify()
@@ -33,6 +33,8 @@ for name in ("auth_contract", "endpoint_cache", "client_react_core", "client_run
 assert not (package / "jac0.py").exists()
 assert not (package / "jac0core").exists()
 assert not (package / "bootstrap_manifest.py").exists()
+from jaclang.project import JacConfig
+assert JacConfig is not None
 from jaclang.compiler.driver.program import JacProgram
 from jaclang.compiler.driver.compile_options import CompileOptions
 from jaclang.compiler.native_compiler import ensure_loaded

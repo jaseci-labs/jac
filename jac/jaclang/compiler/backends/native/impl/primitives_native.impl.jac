@@ -2728,6 +2728,7 @@ impl NativeListEmitter.emit_extend(
     if _aos_struct is not None and src_helpers is helpers {
         b.store(ir.Constant(i64, 0), src_len_ptr);
     }
+    p._release_owned_args(args, op="extend_arg");
     return ir.Constant(i64, 0);
 }
 
@@ -3393,14 +3394,15 @@ impl NativeDictEmitter.emit_get(
     result = b.phi(result_type, name="dget.result");
     result.add_incoming(val, found_bb);
     result.add_incoming(default_val, notfound_bb);
-    if isinstance(val_type, ir.PointerType) {
-        if p.rc_retain_fn is None {
-            p._emit_rc_helpers();
-        }
-        _res_cast = b.bitcast(result, ir.IntType(8).as_pointer(), name="dget.ret.cast");
-        b.call(p.rc_retain_fn, [_res_cast]);
+    retained = b.extract_value(result, 1, name="dget.payload")
+        if wrap_optional
+        else result;
+    p._emit_elem_retain(b, val_type, retained);
+    p._release_owned_args(args, op="dict_get_arg");
+    p._release_owned_args([target], op="dict_get_receiver");
+    if p._elem_kind(val_type) != "raw" {
+        p._mark_owned(result);
     }
-    p._release_owned_args([key], op="dict_method_key");
     return result;
 }
 
@@ -3761,7 +3763,8 @@ impl NativeDictEmitter.emit_setdefault(
     result = b.phi(val_type, name="sdef.result");
     result.add_incoming(existing, found_bb);
     result.add_incoming(default_val, notfound_bb);
-    p._release_owned_args([key], op="dict_method_key");
+    p._emit_take_ref(result, op="dict_setdefault_result");
+    p._release_owned_args(args, op="dict_setdefault_arg");
     return result;
 }
 

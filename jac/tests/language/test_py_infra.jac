@@ -24,7 +24,7 @@ import from jaclang.compiler.driver.jir { get_jir_cache_dir, get_module_cache_pa
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
 import from jaclang.compiler.tools.unparse_pass { unparse_module }
-import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+import from jaclang.project.source { read_file_with_encoding }
 import from jaclang.project.tomlio { read_toml_with_encoding }
 import tomllib;
 

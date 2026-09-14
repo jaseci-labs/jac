@@ -3,17 +3,38 @@ import sys;
 import shutil;
 import from pathlib { Path }
 
-"""Invoke the current compiler image without letting a checkout shadow it."""
-def jac_command -> list[str] {
+"""Run Python with the selected compiler package ahead of the working directory."""
+def compiler_python_command(
+    source: str, *args: str, compiler_root: str | None = None
+) -> list[str] {
     import jaclang;
-    compiler_site = str(Path(jaclang.__file__).resolve().parent.parent);
-    script = (
-        "import runpy, sys; "
-        + f"sys.path.insert(0, {compiler_site!r}); "
-        + "sys.argv[0] = 'jac'; "
-        + "runpy.run_module('jaclang', run_name='__main__', alter_sys=True)"
+    selected = compiler_root or os.environ.get("JAC_COMPILER_IMAGE");
+    package_root = str(Path(selected).resolve())
+        if selected
+        else str(Path(str(jaclang.__file__)).resolve().parent.parent);
+    if not (Path(package_root) / "jaclang" / "__init__.py").is_file() {
+        raise ValueError(f"No compiler package at {package_root}");
+    }
+    boot = (
+        "import sys\nsys.path.insert(0, "
+        + repr(package_root)
+        + ")\n"
+        + "sys.path.extend("
+        + repr(sys.path)
+        + ")\n"
+        + source
     );
-    return [sys.executable, "-P", "-c", script];
+    return [sys.executable, "-P", "-c", boot, *args];
+}
+
+"""Invoke the selected compiler's CLI without letting a checkout shadow it."""
+def jac_command(*args: str, compiler_root: str | None = None) -> list[str] {
+    return compiler_python_command(
+        "import runpy\nsys.argv[0] = 'jac'\n"
+            + "runpy.run_module('jaclang', run_name='__main__', alter_sys=True)",
+        *args,
+        compiler_root=compiler_root
+    );
 }
 
 def _handle_purge {

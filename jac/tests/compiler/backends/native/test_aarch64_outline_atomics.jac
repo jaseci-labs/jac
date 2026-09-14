@@ -70,9 +70,9 @@ value, the stored new value, sub-word CAS's zero-extension of a caller's wide
 """
 
 import from tests.support { jac_command }
+
 import os;
 import subprocess;
-import sys;
 import tempfile;
 import from pathlib { Path }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
@@ -80,7 +80,7 @@ import from jaclang.compiler.backends.native.shared_emit {
     aarch64_floor_atomics_ir,
     aarch64_outline_atomics_ir
 }
-import from jaclang.cli.commands.native_build { _finalize_native_ir }
+import from jaclang.compiler.backends.native.entry_points { finalize_native_ir }
 
 glob EXEC_STUB = 'define void @"jac_entry"() {\nentry:\n  ret void\n}\n',
      FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
@@ -218,7 +218,7 @@ def _finalized(
     is_macos: bool = False,
     static_musl: bool = False
 ) -> str {
-    (out, _exports) = _finalize_native_ir(
+    (out, _exports) = finalize_native_ir(
         llvm_ir_str=EXEC_STUB,
         triple=triple,
         clib_paths=clib_paths,
@@ -339,7 +339,7 @@ test "the aarch64 executable path assembles to a real object (#8788)" {
     # where a host-only asm parser is no help at all.
     fixture = os.path.join(FIXTURES, "emit_aarch64_atomics_obj.jac");
     res = subprocess.run(
-        jac_command() + ["run", fixture], capture_output=True, text=True, timeout=900
+        jac_command("run", fixture), capture_output=True, text=True, timeout=900
     );
     assert res.returncode == 0 , (
         f"emitting an aarch64 object out of the executable path exited "
@@ -371,17 +371,16 @@ test "jac build --native itself registers a parser for its target (#8788)" {
     work = tempfile.mkdtemp();
     out_bin = os.path.join(work, "crc32_aarch64");
     res = subprocess.run(
-        jac_command()
-            + [
-                "build",
-                "--native",
-                "--debug",
-                "--target",
-                "aarch64-unknown-linux-gnu",
-                os.path.join(FIXTURES, "static_archive_crc32.jac"),
-                "-o",
-                out_bin
-            ],
+        jac_command(
+            "build",
+            "--native",
+            "--debug",
+            "--target",
+            "aarch64-unknown-linux-gnu",
+            os.path.join(FIXTURES, "static_archive_crc32.jac"),
+            "-o",
+            out_bin
+        ),
         capture_output=True,
         text=True,
         timeout=900

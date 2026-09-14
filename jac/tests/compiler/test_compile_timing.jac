@@ -15,14 +15,10 @@ or a phase that took no time at all -- because a wall-clock gate on a developer
 laptop is a coin flip, and a coin flip that fails the suite teaches people to
 ignore it.
 
-`against the pinned baseline` is the same corpus measured on this checkout and
-on a snapshot of `BASELINE_REF`, in alternating rounds, so the delta belongs to
-the branch rather than to the machine or to the order the two were run in. The
-snapshot is a `git archive` of the pinned ref plus symlinks to this checkout's
-gitignored build artifacts, cached under the jac cache root and reused across
-runs. It is opt-in (`JAC_TIMING_BASELINE=1`) because the first run bootstraps a
-second compiler from scratch, which takes minutes and belongs in a deliberate
-measurement, never in `jac test`.
+`against an explicit baseline image` measures the same corpus with this
+compiler and the independently built image selected by
+`JAC_TIMING_BASELINE_IMAGE`, in alternating rounds. The comparison is opt-in
+because it requires a compatible baseline image and several full corpus runs.
 
 `the chess AOT binary` is a real GATE, and the only one here. The AOT lane's
 output is the product; if a compiled chess game gets multiples slower, that is
@@ -46,7 +42,6 @@ import os;
 import shutil;
 import statistics;
 import subprocess;
-import sys;
 import tempfile;
 import time;
 
@@ -147,7 +142,7 @@ def run_probe(
         return _PROBE_CACHE[key];
     }
     proc = subprocess.run(
-        jac_command() + ["run", PROBE],
+        jac_command("run", PROBE, compiler_root=image or None),
         cwd=tree_dir,
         env=env,
         capture_output=True,
@@ -256,6 +251,33 @@ def delta_table(baseline: list[dict], current: list[dict]) -> str {
     }
     out.append(totals);
     return "\n".join(out);
+}
+
+test "timing subprocess selects each requested compiler image" {
+    import from jaclang.image { _jaclang_image }
+    import from unittest.mock { patch }
+    image = _jaclang_image();
+    assert image is not None;
+    with tempfile.TemporaryDirectory() as tmp {
+        probe = Path(tmp) / "selection.jac";
+        probe.write_text(
+            "import json; import jaclang; import from pathlib { Path }\n"
+                + 'with entry { print("TIMING_ROW " + json.dumps({"compiler": '
+                + "str(Path(jaclang.__file__).resolve().parent.parent)})); }\n"
+        );
+        with patch.dict(globals(), {"PROBE": str(probe)}) {
+            for name in ("baseline", "head") {
+                tree = Path(tmp) / name;
+                shutil.copytree(image.pkg_dir, tree / "jaclang");
+                shutil.copyfile(
+                    image.pkg_dir.parent / "_jac_finder.py", tree / "_jac_finder.py"
+                );
+                rows = run_probe(str(tree), str(Path(tmp) / "cache"), image=str(tree));
+                assert len(rows) == 1;
+                assert rows[0]["compiler"] == str(tree.resolve());
+            }
+        }
+    }
 }
 
 test "the timing corpus names modules that are in this checkout" {

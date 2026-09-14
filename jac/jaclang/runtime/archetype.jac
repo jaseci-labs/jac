@@ -16,7 +16,7 @@ import from types { UnionType }
 import from uuid { UUID, uuid4 }
 import weakref;
 import from jaclang.runtime.access_level { AccessLevel }
-import from jaclang.compiler.frontend.constant { EdgeDir }
+import from jaclang.runtime.constants { EdgeDir }
 glob logger = getLogger(__name__),
      TARCH = RuntimeTypeVar('TARCH', bound='Archetype'),
      TANCH = RuntimeTypeVar('TANCH', bound='Anchor'),

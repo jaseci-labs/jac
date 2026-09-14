@@ -2339,7 +2339,7 @@ impl Import.is_jac.getter -> bool {
 }
 
 impl Import.__jac_detected.getter -> bool {
-    import from jaclang.compiler.driver.extensions { is_jac, INIT_FILES }
+    import from jaclang.extensions { is_jac, INIT_FILES }
     if self.from_loc {
         if is_jac(self.from_loc.resolve_relative_path()) {
             return True;
@@ -2463,7 +2463,7 @@ impl ModulePath.base_module_name.getter -> str {
 }
 
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
-    import from jaclang.compiler.driver.modresolver { resolve_relative_path }
+    import from jaclang.project.modresolver { resolve_relative_path }
     bundled = self.native_bundled_path();
     if bundled is not None {
         return bundled;

@@ -17,7 +17,10 @@ def check_endpoint_contract(
     if application is not None {
         app = application.manifests.get(os.path.realpath(path), {}).get('app', app);
     }
-    source = os.path.relpath(path, application.root).replace(os.sep, "/")
+    source = application.origins.get(
+        os.path.realpath(path),
+        os.path.relpath(path, application.root).replace(os.sep, "/")
+    )
         if application is not None
         else getattr(module, "__name__", "");
     try {

@@ -43,9 +43,9 @@ kind/capabilities/entry/payloads)::
           "package": false,
           "sha256": "..."                  # checked by register_image
         },
-        "compiler/driver/modresolver.jac": {
-          "module": "jaclang.compiler.driver.modresolver",
-          "jir": "compiler/driver/modresolver.jir",
+        "project/modresolver.jac": {
+          "module": "jaclang.project.modresolver",
+          "jir": "project/modresolver.jir",
           "package": false,
           "sha256": "...",
         }, ...
@@ -251,7 +251,7 @@ class SealedImage:
         self._build_index()
 
     def _build_index(self) -> None:
-        from jaclang.compiler.driver import extensions as ext_registry
+        from jaclang import extensions as ext_registry
 
         # MODULE_SUFFIXES precedence: earlier (shorter) suffixes win -- same
         # rule the filesystem finder applies. Process in precedence-sorted
@@ -454,7 +454,7 @@ def _jaclang_image() -> SealedImage | None:
         # must run unsealed) removes any seeded manifest before this module
         # can probe, so "no manifest" IS the build/dev tier -- a build stage,
         # not a mode anyone selects (#8139 Step 1).
-        pkg_dir = Path(__file__).resolve().parents[2]
+        pkg_dir = Path(__file__).resolve().parent
         image = load_image(pkg_dir / "_precompiled")
         if image is not None:
             if os.environ.get("JAC_COMPILER_IMAGE"):

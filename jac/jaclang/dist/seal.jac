@@ -95,7 +95,7 @@ def ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
     import from jaclang.client { get_bun }
     import from jaclang.client.targets.web_target { WebTarget }
 
-    import from jaclang.client.targets.registry { client_app_dir_for }
+    import from jaclang.project.client_paths { client_app_dir_for }
     dist = client_app_dir_for(config, str(entry_file)) / 'dist';
     bun = None;
     try {
@@ -130,7 +130,7 @@ def ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
 
 def bake_native_payloads(config: any, pkg_copy: Path, app: str = "") -> bool {
     import os;
-    import from jaclang.compiler.driver.extensions { base_stem }
+    import from jaclang.extensions { base_stem }
     import from jaclang.compiler.placement.placement_solver { native_default_path_ok }
     import from jaclang.server.sealed_serve { NATIVE_DIR_REL }
 
@@ -214,7 +214,7 @@ def make_sealed_image(
 ) -> (Path | None) {
     import shutil;
     import tempfile;
-    import from jaclang.compiler.driver { extensions as ext_registry }
+    import from jaclang { extensions as ext_registry }
 
     proj_root = config.project_root;
     if proj_root is None {
@@ -284,7 +284,7 @@ def make_sealed_image(
 
 def vendor_jab_deps(config: any, img: Path) -> bool {
     import from jaclang.project.providers { resolve_plan, get_python_provider }
-    import from jaclang.compiler.driver.image { python_tag }
+    import from jaclang.image { python_tag }
     import from jaclang.dist.jab_vendor {
         wheels_dir,
         download_wheels,

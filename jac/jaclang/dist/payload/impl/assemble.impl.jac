@@ -89,7 +89,7 @@ impl resolve_python(python_dir: str) -> str {
 }
 
 impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
-    import from jaclang.compiler.driver.image { load_image }
+    import from jaclang.image { load_image }
     image_site = opts.compiler_image;
     if image_site is None {
         raise PayloadDie(

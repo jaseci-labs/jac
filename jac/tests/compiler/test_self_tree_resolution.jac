@@ -19,7 +19,7 @@ import sys;
 import tempfile;
 import importlib;
 import from pathlib { Path }
-import from jaclang.compiler.driver.modresolver { resolve_relative_path }
+import from jaclang.project.modresolver { resolve_relative_path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -113,7 +113,7 @@ test "a directory without a marker resolves as the namespace package the runtime
     # source as an implicit namespace package; the resolver answered nothing
     # for the bare directory, so `import from pkg { sub }` could not find
     # `sub` and go-to-definition had nowhere to land.
-    import from jaclang.compiler.driver.modresolver { resolve_module }
+    import from jaclang.project.modresolver { resolve_module }
     base_dir = tempfile.mkdtemp();
     try {
         pkg = os.path.join(base_dir, "nspkg");
@@ -158,7 +158,7 @@ test "dotted spec lookup keeps a loaded parent's namespace search path" {
     import from importlib.machinery { ModuleSpec }
     import from types { ModuleType }
     import from unittest.mock { patch, Mock }
-    import from jaclang.compiler.driver.modresolver { _find_spec_no_exec }
+    import from jaclang.project.modresolver { _find_spec_no_exec }
     parent = ModuleType("selected_parent");
     parent.__path__ = ["/selected/parent"];
     namespace = ModuleSpec("selected_parent.child", None, is_package=True);

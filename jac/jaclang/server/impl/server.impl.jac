@@ -7,9 +7,9 @@ import os;
 import from inspect { iscoroutine }
 import from typing { get_type_hints }
 import from jaclang.data.serializer { Serializer }
-import from jaclang.client.client_bundle { ClientBundleError, MissingBunError }
+import from jaclang.client.artifact { ClientBundleError, MissingBunError }
 import from jaclang.runtime.exceptions { ReadOnlyRetry, WriteConflict }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.server.net { PORT_RETRY_LIMIT }
 import from jaclang.server.serving.server { ServingServer }
 import type from jaclang.runtime.constructs { Archetype }
@@ -408,7 +408,6 @@ impl ExecutionManager.spawn_walker_async(
 
 impl ModuleIntrospector.postinit -> None {
     import threading;
-    self._bundle_builder = Jac.get_client_bundle_builder();
     self._bundle_lock = threading.Lock();
 }
 
@@ -486,12 +485,12 @@ impl ModuleIntrospector._extract_access_levels -> None {
 }
 
 
-impl ModuleIntrospector._register_sealed_bindings(
+impl ModuleIntrospector._register_prepared_bindings(
     sm: dict[str, any], img_root: str
 ) -> None {
     import from jaclang.runtime.constructs { WalkerArchetype }
 
-    def resolve_sealed(src_path: str, name: str) -> any {
+    def resolve_prepared(src_path: str, name: str) -> any {
         for loaded in list(Jac.loaded_modules.values()) {
             f = loaded?.__file__;
             if f and os.path.abspath(f) == os.path.abspath(src_path) {
@@ -501,30 +500,9 @@ impl ModuleIntrospector._register_sealed_bindings(
                 }
             }
         }
-        rel = os.path.relpath(src_path, img_root).replace(os.sep, '/');
-        if rel.endswith('.jac') {
-            rel = rel.removesuffix('.jac');
-        }
-        try {
-            imported = Jac.jac_import(
-                target=rel.replace('/', '.'), base_path=img_root, lng='jac'
-            );
-            if imported {
-                return getattr(imported[0], name, None);
-            }
-        } except Exception as e {
-            import logging;
-            logging.getLogger("jaclang.serve").warning(
-                "sealed cross-boundary endpoint '%s' unavailable: server module "
-                "%r failed to import (%s: %s)",
-                name,
-                src_path,
-                type(e).__name__,
-                e
-            );
-            return None;
-        }
-        return None;
+        import from jaclang.runtime.prepared { load_prepared_module }
+        module = load_prepared_module(src_path);
+        return getattr(module, name);
     }
 
     for b in sm.get('cross_bindings', []) or [] {
@@ -535,24 +513,30 @@ impl ModuleIntrospector._register_sealed_bindings(
         }
         auth = bool(b.get('auth', True));
         src_path = os.path.join(img_root, rel);
+        import from jaclang.runtime.prepared { application_for, source_for_origin }
+        application = application_for(self._module.__file__, self._module.__name__)
+            if self._module is not None
+            else None;
+        if application is not None {
+            src_path = source_for_origin(application, rel);
+        }
+        if name in self._walkers or name in self._functions {
+            continue;
+        }
+        try {
+            target = resolve_prepared(src_path, name);
+        } except Exception {
+            logger.exception('Could not load endpoint %s from %s', name, src_path);
+            continue;
+        }
         if b.get('kind') == 'walker' {
-            if name in self._walkers {
-                continue;
-            }
-            wcls = resolve_sealed(src_path, name);
-            if isinstance(wcls, type) and issubclass(wcls, WalkerArchetype) {
-                self._walkers[name] = wcls;
+            if isinstance(target, type) and issubclass(target, WalkerArchetype) {
+                self._walkers[name] = target;
                 self._walker_access[name] = auth;
             }
-        } else {
-            if name in self._functions {
-                continue;
-            }
-            fn = resolve_sealed(src_path, name);
-            if fn is not None and callable(fn) {
-                self._functions[name] = fn;
-                self._function_access[name] = auth;
-            }
+        } elif callable(target) {
+            self._functions[name] = target;
+            self._function_access[name] = auth;
         }
     }
 }
@@ -567,7 +551,7 @@ impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
     if manifest is None {
         raise RuntimeError(f"No prepared boundary metadata for '{path}'.");
     }
-    self._register_sealed_bindings(
+    self._register_prepared_bindings(
         manifest, manifest.get('root') or sealed_root_for(path) or ""
     );
 }
@@ -840,7 +824,15 @@ impl ModuleIntrospector.ensure_bundle -> str {
             raise ClientBundleError(self._bundle_error);
         }
         try {
-            self._bundle = self._bundle_builder.build(self._module);
+            import from jaclang.client.artifact { prebuilt_bundle }
+            import from pathlib { Path }
+            self._bundle = prebuilt_bundle(self._module, Path(self._module.__file__));
+            if self._bundle is None {
+                if self._bundle_builder is None {
+                    self._bundle_builder = Jac.get_client_bundle_builder();
+                }
+                self._bundle = self._bundle_builder.build(self._module);
+            }
             self._bundle_error = None;
             self._bundle_epoch += 1;
             return self._bundle.hash;
@@ -1345,7 +1337,7 @@ impl JacAPIServer._ensure_client_bundle -> None {
     if not client_exports {
         return;
     }
-    import from jaclang.client.targets.registry { client_app_dir_for }
+    import from jaclang.project.client_paths { client_app_dir_for }
     config = get_config();
     dist_dir = client_app_dir_for(config) / 'dist'
         if config

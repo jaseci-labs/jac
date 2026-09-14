@@ -94,7 +94,7 @@ obj BundleSourceFilter {
     has ignore_patterns: list[str];
 
     def parks(rel: Path) -> bool {
-        import from jaclang.compiler.frontend.helpers { path_matches_exclude }
+        import from jaclang.project.source { path_matches_exclude }
 
         return path_matches_exclude(rel.as_posix(), self.ignore_patterns);
     }
@@ -128,7 +128,7 @@ obj BundleSourceFilter {
     }
 
     def matching_ignore_pattern(rel: Path) -> str {
-        import from jaclang.compiler.frontend.helpers { path_matches_exclude }
+        import from jaclang.project.source { path_matches_exclude }
 
         for pattern in self.ignore_patterns {
             if path_matches_exclude(rel.as_posix(), [pattern]) {
@@ -170,7 +170,7 @@ obj BundleSourceFilter {
 
 
 def source_filter_for(base: Path) -> BundleSourceFilter {
-    import from jaclang.compiler.frontend.helpers { read_jacignore_patterns }
+    import from jaclang.project.source { read_jacignore_patterns }
 
     return BundleSourceFilter(ignore_patterns=read_jacignore_patterns(str(base)));
 }

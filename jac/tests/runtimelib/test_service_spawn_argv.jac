@@ -9,6 +9,8 @@ healthy". These tests capture the argv each spawn site actually builds (Popen
 is mocked - nothing runs) and feed it to the parser the `jac` binary really
 uses, so a flag rename fails here instead of in production."""
 
+import from tests.support { jac_command }
+
 import os;
 import unittest.mock;
 import from pathlib { Path }

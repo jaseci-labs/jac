@@ -699,6 +699,9 @@ impl NaIRGenPass._release_owned_args(
             and self._is_owned(_arg)
         ) {
             self._emit_elem_release(self.builder, _arg.type, _arg);
+        } elif self._opt_payload_of(_arg.type) is not None and self._is_owned(_arg) {
+            payload = self.builder.extract_value(_arg, 1, name="arg.optional.payload");
+            self._release_owned_args([self._mark_owned(payload)], op=op);
         } elif isinstance(_arg.type, ir.LiteralStructType)
             and self._gc_mode() != "none" {
             owned = _arg.na_tuple_owned;

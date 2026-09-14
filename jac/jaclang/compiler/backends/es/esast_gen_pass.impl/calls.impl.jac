@@ -1,3 +1,5 @@
+import from jaclang.compiler.backends.es.primitives_es { ESEmitCtx }
+
 import from jaclang.compiler.tools.unparse_pass { unparse_node }
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
 
@@ -210,7 +212,10 @@ impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
     if not return_type_is_jsx(rt) {
         return None;
     }
-    name = nd.sym_name;
+    if nd.name_ref is None {
+        return None;
+    }
+    name = nd.name_ref.sym_name;
     if not name or not ('a' <= name[0] and name[0] <= 'z') {
         return None;
     }
@@ -354,7 +359,7 @@ impl EsastGenPass._pos_params_from_ability(
     if not isinstance(sig, uni.FuncSignature) {
         return [];
     }
-    return list(sig.posonly_params or []) + list(sig.params or []);
+    return list(sig.posonly_params) + list(sig.params or []);
 }
 
 impl EsastGenPass._param_names_from_ability(ability_node: uni.Ability) -> list[str] {
@@ -627,6 +632,7 @@ impl EsastGenPass._resolve_call_arg_slots(
             self.emit(E5080, node_override=nd, name=kw_name, func=func_name);
         }
         seen_names.add(kw_name);
+        assert kw.value is not None;
         by_name[kw_name] = kw.value;
     }
     resolved: list[CallArgSlot] = [];
@@ -1366,14 +1372,13 @@ impl EsastGenPass.exit_func_call with uni.FuncCall exit {
     }
 
     _target_type = here.target?.type;
-    if _target_type is not None {
-        _emit_new = isinstance(_target_type, ClassType)
-            and _target_type.is_instantiable_class()
+    if isinstance(_target_type, ClassType) {
+        _emit_new = _target_type.is_instantiable_class()
             and not _target_type.shared.is_builtin_class;
     } else {
         _emit_new = _call_kind == "instantiation";
     }
-    if _emit_new and isinstance(callee, es.Expression) {
+    if _emit_new {
         result_expr: es.Expression = self.sync_loc(
             es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=here
         );

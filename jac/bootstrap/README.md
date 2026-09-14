@@ -53,7 +53,7 @@ The `.compiler-build` cache stores JIR modules using the existing source and
 compile-time dependency checks. Its generation includes the producing compiler,
 build recipe, source layout, and configuration. Source edits invalidate their
 consumers, while a changed producer or recipe starts a new generation. Corrupt
-entries are rebuilt. The image codec in `compiler/driver/image.py` owns the wire
+entries are rebuilt. The image codec in `image.py` owns the wire
 format, bytecode loading, and path relocation; application publishing uses the
 same codec.
 

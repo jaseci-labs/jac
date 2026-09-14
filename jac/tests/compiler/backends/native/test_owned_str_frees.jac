@@ -8,9 +8,8 @@ import from tests.support { jac_command }
 import os;
 import shutil;
 import subprocess;
-import sys;
 import tempfile;
-import from tests.support { TESTS_DIR }
+import from tests.support { jac_command, TESTS_DIR }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "owned_str_frees.jac"
@@ -28,8 +27,7 @@ test "owned-str drops are byte-identical across modes and leak-free" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"osf_{mode}");
             res = subprocess.run(
-                jac_command()
-                    + ["build", "--native", FIXTURE]
+                jac_command("build", "--native", FIXTURE)
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

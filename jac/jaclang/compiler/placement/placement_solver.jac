@@ -43,7 +43,7 @@ def _native_dep_scan(
     path: str, hold_exempt: bool = False
 ) -> (tuple[str, list[str]] | None) {
     import from jaclang.compiler.placement.placement_pins { _is_demoted_native }
-    import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+    import from jaclang.project.source { read_file_with_encoding }
     import from jaclang.compiler.driver.program { JacProgram }
     if _is_demoted_native(os.path.realpath(path)) {
         return ("previously-demoted", []);

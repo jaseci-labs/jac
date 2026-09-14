@@ -3,7 +3,7 @@ import from jaclang.scale._optdeps.kubernetes { client }
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists
 }
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { k8s_safe_name }
+import from jaclang.scale.runtime.context.util { k8s_safe_name }
 
 
 obj DatabaseProvisioner {

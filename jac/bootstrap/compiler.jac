@@ -6,16 +6,13 @@ import json;
 import sys;
 import time;
 import importlib.util;
+import importlib;
 import from functools { lru_cache }
 import from types { ModuleType }
+import from typing { cast }
 import from pathlib { Path }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.modresolver {
-    push_import_base,
-    pop_import_base,
-    find_project_root
-}
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.placement.placement_facts { toolchain_native_by_policy }
 import from jaclang.compiler.driver.jir {
@@ -25,6 +22,23 @@ import from jaclang.compiler.driver.jir {
     precompiled_jir_matches_source,
     ct_deps_section,
     SEC_CTDEPS
+}
+
+class ProducerResolver(Protocol) {
+    def push_import_base(self: ProducerResolver, base_dir: str) -> None;
+    def pop_import_base(self: ProducerResolver) -> None;
+    def find_project_root(
+        self: ProducerResolver, start: Path | None = None
+    ) -> tuple[Path, Path] | None;
+}
+
+@lru_cache(maxsize=1)
+def producer_resolver -> ProducerResolver {
+    package = Path(str(jaclang.__file__)).resolve().parent;
+    name = "jaclang.project.modresolver"
+        if (package / "project/modresolver.jac").is_file()
+        else "jaclang.compiler.driver.modresolver";
+    return cast(ProducerResolver, importlib.import_module(name));
 }
 
 def snapshot_sources(package: Path, destination: Path) {
@@ -44,7 +58,7 @@ def snapshot_sources(package: Path, destination: Path) {
             );
     }
     copy_tree(str(package), str(destination), excluded);
-    project = find_project_root(package);
+    project = producer_resolver().find_project_root(package);
     if project is None {
         raise ValueError("Compiler sources have no project manifest");
     }
@@ -105,7 +119,7 @@ def compile_native_python(package: Path, output: Path, target: str) {
         path_options: dict[str, dict[str, str]] = {
             "source_prefix_map": {str(snapshot): "jaclang"}
         };
-        push_import_base(str(snapshot.parent));
+        producer_resolver().push_import_base(str(snapshot.parent));
         try {
             module = program.compile(
                 file_path=str(
@@ -149,7 +163,7 @@ def compile_native_python(package: Path, output: Path, target: str) {
             );
             output.write_bytes(machine.emit_object(compiled));
         } finally {
-            pop_import_base();
+            producer_resolver().pop_import_base();
             program.release_compile_closure(collect=True);
         }
     }
@@ -164,7 +178,7 @@ def compile_kernel(package: Path, output: Path, target: str) {
         snapshot = Path(work).resolve() / "jaclang";
         snapshot_sources(package, snapshot);
         argv = sys.argv;
-        push_import_base(str(snapshot.parent));
+        producer_resolver().push_import_base(str(snapshot.parent));
         try {
             sys.argv = [
                 "jac",
@@ -185,7 +199,7 @@ def compile_kernel(package: Path, output: Path, target: str) {
                 }
             }
         } finally {
-            pop_import_base();
+            producer_resolver().pop_import_base();
             sys.argv = argv;
         }
     }
@@ -199,7 +213,7 @@ def compile_kernel(package: Path, output: Path, target: str) {
 @lru_cache(maxsize=4)
 def image_codec(package: str) -> ModuleType {
     spec = importlib.util.spec_from_file_location(
-        "_jac_compiler_image_codec", str(Path(package) / "compiler/driver/image.py")
+        "_jac_compiler_image_codec", str(Path(package) / "image.py")
     );
     if spec is None or spec.loader is None {
         raise RuntimeError("Missing target compiler image codec");
@@ -248,7 +262,7 @@ def compile_module(
         } except (OSError, ValueError, EOFError, TypeError) {}
     }
     program = JacProgram();
-    push_import_base(str(package.parent));
+    producer_resolver().push_import_base(str(package.parent));
     try {
         options = CompileOptions(
             force_codespace="server",
@@ -319,7 +333,7 @@ def compile_module(
             "diagnostics": len(program.errors_had)
         };
     } finally {
-        pop_import_base();
+        producer_resolver().pop_import_base();
         program.release_compile_closure();
     }
 }
@@ -328,7 +342,7 @@ def compile_module(
 def module_cache_identity(snapshot: Path, producer_digest: str) -> str {
     digest = hashlib.sha256(producer_digest.encode());
     digest.update(Path(__file__).read_bytes());
-    digest.update((snapshot / "compiler/driver/image.py").read_bytes());
+    digest.update((snapshot / "image.py").read_bytes());
     digest.update((snapshot.parent / "jac.toml").read_bytes());
     precompiled = snapshot / "_precompiled";
     for path in sorted(snapshot.rglob("*")) {
@@ -380,7 +394,7 @@ def compile_image(
     output.parent.mkdir(parents=True, exist_ok=True);
     started = time.monotonic();
     producer_digest = running_compiler_digest();
-    project = find_project_root(package);
+    project = producer_resolver().find_project_root(package);
     if project is None {
         raise ValueError("Compiler sources have no project manifest");
     }

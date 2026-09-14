@@ -1,6 +1,6 @@
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+import from jaclang.project.source { read_file_with_encoding }
 
 test "builtin extensions preserve the original stub source" {
     program = JacProgram();
