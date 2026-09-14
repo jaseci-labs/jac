@@ -62,6 +62,7 @@ obj Request {
         params: any,
         revision: int,
         cancel_token: threading.Event postinit,
+        inputs_current: Callable[[], bool] | None = None,
         responded: bool = False;
 
     def postinit {

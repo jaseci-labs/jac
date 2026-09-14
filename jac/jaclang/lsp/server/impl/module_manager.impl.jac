@@ -18,7 +18,6 @@ impl ModuleManager.update(
     files: (list[str] | None) = None
 ) -> None {
     self.completions.clear();
-    self.program.install_module(file_path, build);
 
     if update_annexed {
         for f in (files or [file_path]) {

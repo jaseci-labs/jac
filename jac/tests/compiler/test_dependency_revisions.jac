@@ -2,6 +2,7 @@
 import os;
 import from jaclang.compiler.driver.progstate { DepGraph }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compilation_context { CompilationContext }
 
 test "replacement commits only a complete dependency set" {
     edges = DepGraph();
@@ -26,7 +27,7 @@ test "invalidation preserves recovery and cross context fanout" {
     owner = JacProgram();
     context = JacProgram();
     context.context_root = owner;
-    owner.contexts['app'] = context;
+    owner.contexts['app'] = CompilationContext(context.deps, context);
     library = os.path.realpath('library.jac');
     middle = os.path.realpath('middle.jac');
     consumer = os.path.realpath('consumer.jac');

@@ -101,7 +101,7 @@ test "lazy compiler bytecode does not inherit the caller's analysis request" {
         );
         assert sum(
             context.analysis.cache_events.get("iface_encode", 0)
-            for context in [program] + list(program.contexts.values())
+            for context in program.owned_contexts()
         )
             > 0 , "the outer application analysis lost its interface request";
         assert compiler._closure_opts is None;
@@ -151,7 +151,7 @@ test "application analysis does not eagerly publish selfhost dependency interfac
         );
         assert sum(
             context.analysis.cache_events.get("iface_encode", 0)
-            for context in [program] + list(program.contexts.values())
+            for context in program.owned_contexts()
         )
             > 0 , "application analysis must still publish its requested interface";
         plugin = toolchain / "plugin.jac";

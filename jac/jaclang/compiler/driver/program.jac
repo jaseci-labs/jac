@@ -18,7 +18,10 @@ import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.passes.transform { Transform }
-import type from jaclang.compiler.driver.compilation_context { SourceStore }
+import type from jaclang.compiler.driver.compilation_context {
+    SourceStore,
+    CompilationContext
+}
 
 class JacProgram {
     has hub: ModuleHub,
@@ -37,18 +40,24 @@ class JacProgram {
         source_store: SourceStore,
         context_root: JacProgram | None,
         context_key: str,
-        contexts: dict[str, JacProgram];
+        contexts: dict[str, CompilationContext];
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     static def for_analysis -> JacProgram;
     def owned_contexts(self: JacProgram) -> list[JacProgram];
+    def dependency_graphs(self: JacProgram) -> list[DepGraph];
+    def module_owner(self: JacProgram, module: uni.Module) -> JacProgram | None;
+    def release_analysis_context(self: JacProgram, identity: str) -> set[str];
     def _get_compiler(self: JacProgram) -> JacCompiler;
     def iface_registry(self: JacProgram) -> any;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
     def stub_catalog(self: JacProgram) -> StubCatalog | None;
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
     def release_compile_closure(
-        self: JacProgram, collect: bool = True, retain_stubs: bool = True
+        self: JacProgram,
+        collect: bool = True,
+        retain_stubs: bool = True,
+        retain_inputs: bool = False
     ) -> None;
 
     def release_native_dep_units(self: JacProgram) -> None;

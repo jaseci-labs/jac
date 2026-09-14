@@ -194,7 +194,7 @@ def _application_sources(package_dir: str, app: str) -> list[str] | None {
         key = (os.path.abspath(package_dir), app);
         facts: dict[str, set[str]] = {};
         source_apps: dict[str, str] = {};
-        for context in [program] + list(program.contexts.values()) {
+        for context in program.owned_contexts() {
             for (path, module) in context.mod.hub.items() {
                 path = os.path.realpath(path);
                 if not path.startswith(key[0] + os.sep) or not os.path.isfile(path) {

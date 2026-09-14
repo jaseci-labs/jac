@@ -50,9 +50,9 @@ impl JacProgram.owned_contexts(self: JacProgram) -> list[JacProgram] {
     owner = self.context_root if self.context_root is not None else self;
     contexts = [owner];
     contexts.extend(
-        context
+        context.program
         for context in owner.contexts.values()
-        if context is not owner
+        if context.program is not None and context.program is not owner
     );
     compiler = owner._compiler;
     if compiler is not None and compiler._selfhost is not None {
@@ -66,8 +66,48 @@ impl JacProgram.owned_contexts(self: JacProgram) -> list[JacProgram] {
     return contexts;
 }
 
+impl JacProgram.dependency_graphs(self: JacProgram) -> list[DepGraph] {
+    owner = self.context_root if self.context_root is not None else self;
+    graphs = {id(context.deps): context.deps for context in self.owned_contexts()};
+    for context in owner.contexts.values() {
+        graphs[id(context.deps)] = context.deps;
+    }
+    return list(graphs.values());
+}
+
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
     self.hub.stamp(resolved_path);
+}
+
+impl JacProgram.module_owner(
+    self: JacProgram, module: uni.Module
+) -> JacProgram | None {
+    path = module.loc.mod_path;
+    for context in self.owned_contexts() {
+        if context.mod.hub.get(path) is module {
+            return context;
+        }
+    }
+    return None;
+}
+
+impl JacProgram.release_analysis_context(self: JacProgram, identity: str) -> set[str] {
+    owner = self.context_root if self.context_root is not None else self;
+    context = owner.contexts.get(identity);
+    if context is None or context.program is None {
+        return set();
+    }
+    program = context.program;
+    programs = program.owned_contexts() if program is owner else [program];
+    if any(item.scratch.compile_depth for item in programs) {
+        raise RuntimeError('Cannot release an active analysis context');
+    }
+    paths = {path for item in programs for path in item.mod.hub};
+    program.release_compile_closure(collect=False, retain_inputs=True);
+    if program is not owner {
+        context.program = None;
+    }
+    return paths;
 }
 
 impl JacProgram.install_module(
@@ -107,7 +147,7 @@ impl JacProgram.record_dependency(
 }
 
 impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set[str] {
-    graphs = [context.deps for context in self.owned_contexts()];
+    graphs = self.dependency_graphs();
     seen: set[str] = set();
     pending = [JacProgram.hub_key(target_path)];
     while pending {
@@ -377,7 +417,10 @@ impl JacProgram.release_check_caches(self: JacProgram) -> None {
 }
 
 impl JacProgram.release_compile_closure(
-    self: JacProgram, collect: bool = True, retain_stubs: bool = True
+    self: JacProgram,
+    collect: bool = True,
+    retain_stubs: bool = True,
+    retain_inputs: bool = False
 ) -> None {
     import os;
     if os.environ.get("JAC_NO_UNIT_EVICT") {
@@ -388,18 +431,32 @@ impl JacProgram.release_compile_closure(
         for context in self.owned_contexts() {
             if context is not self {
                 context.release_compile_closure(
-                    collect=False, retain_stubs=retain_stubs
+                    collect=False,
+                    retain_stubs=retain_stubs,
+                    retain_inputs=retain_inputs
                 );
             }
         }
-        self.contexts.clear();
-        self.context_key = '';
-        self.source_store.clear();
+        if retain_inputs {
+            for context in self.contexts.values() {
+                if context.program is not self {
+                    context.program = None;
+                }
+            }
+        } else {
+            self.contexts.clear();
+            self.context_key = '';
+            self.source_store.clear();
+        }
     }
     self.release_native_dep_units();
     self.hub.reset(retain_stubs=retain_stubs);
     self.mod = self.hub.mod;
-    self.deps.clear();
+    if retain_inputs {
+        self.deps.pending.clear();
+    } else {
+        self.deps.clear();
+    }
     self.type_evaluator = None;
     self.diags.clear();
     self.scratch.clear();
@@ -450,7 +507,7 @@ impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) 
     }
 
     if self.context_root is None {
-        for context in self.contexts.values() {
+        for context in self.owned_contexts() {
             if context is not self and context.options.entry_point == keyed {
                 return context.find_module(keyed);
             }

@@ -8,6 +8,7 @@ This is the memory contract per-module release relies on.
 import gc;
 import weakref;
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compilation_context { CompilationContext }
 
 glob SRC = "def area(r: float) -> float { return 3.14 * r * r; }\n";
 
@@ -48,7 +49,7 @@ test "invalidation releases graph roots in every application context" {
     owner = JacProgram();
     child = JacProgram();
     child.context_root = owner;
-    owner.contexts['second'] = child;
+    owner.contexts['second'] = CompilationContext(child.deps, child);
     (path, owner_ref, _, _) = _probe(owner);
     (_, child_ref, _, _) = _probe(child);
     owner.record_dependency('consumer.jac', path);
@@ -86,6 +87,68 @@ test "execution artifacts survive tree release until their module is invalidated
     assert program.hub.artifacts[path] is carrier;
     program.invalidate_module(path);
     assert path not in program.hub.artifacts;
+}
+
+test "retiring a context releases its compiler and preserves its dependency identity" {
+    import from jaclang.compiler.driver.compilation_context { context_program }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import os;
+    owner = JacProgram.for_analysis();
+    first = context_program(
+        owner, CompileOptions(entry_point='/tmp/context-first.jac')
+    );
+    options = CompileOptions(entry_point='/tmp/context-second.jac');
+    second = context_program(owner, options);
+    (path, module_ref, _, _) = _probe(second);
+    dependency = os.path.realpath('retained-dependency.jac');
+    second.record_dependency(path, dependency);
+    edges = second.deps;
+    assert edges.tracking;
+    identity = second.context_key;
+    reference = weakref.ref(second);
+    owner.source_store.set_overrides({path: SRC});
+    assert owner.module_owner(module_ref()) is second;
+    assert path in owner.release_analysis_context(identity);
+    del second;
+    gc.collect();
+    assert reference() is None and module_ref() is None;
+    assert owner.contexts[identity].program is None;
+    assert owner.transitive_dependents(dependency) == {path};
+    assert owner.source_store.overrides == {path: SRC};
+    replacement = context_program(owner, options);
+    assert replacement.deps is edges;
+    assert replacement.source_store is owner.source_store;
+    assert replacement is context_program(owner, options);
+    assert first is owner;
+    owner.release_compile_closure(retain_inputs=True);
+    assert owner.transitive_dependents(dependency) == {path};
+    assert owner.source_store.overrides == {path: SRC};
+    owner.release_compile_closure();
+    assert not owner.contexts and not owner.source_store.overrides;
+}
+
+test "retiring an active context leaves its state intact" {
+    import from jaclang.compiler.driver.compilation_context { context_program }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    owner = JacProgram.for_analysis();
+    context_program(owner, CompileOptions(entry_point='/tmp/active-context.jac'));
+    owner.scratch.compile_depth = 1;
+    try {
+        owner.release_analysis_context(owner.context_key);
+        assert False , 'an active context was released';
+    } except RuntimeError {}
+    assert owner.scratch.compile_depth == 1;
+    owner.scratch.compile_depth = 0;
+}
+
+test "releasing a stub main detaches its main role as well as its hub entry" {
+    program = JacProgram();
+    (path, reference, _, _) = _probe(program);
+    program.mod.main.stub_only = True;
+    assert program.mod.main_mod is None;
+    program.release_module(JacProgram.hub_key(path));
+    gc.collect();
+    assert reference() is None;
 }
 
 def _compile_probe(prog: JacProgram) -> tuple {

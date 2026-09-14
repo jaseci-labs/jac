@@ -9,6 +9,12 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.unitree { Module }
 import from jaclang.compiler.passes.transform { Alert }
+import from jaclang.compiler.driver.progstate { DepGraph }
+
+obj CompilationContext {
+    has deps: DepGraph,
+        program: JacProgram | None = None;
+}
 
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
          'jac_active_options', `default=None
@@ -60,12 +66,69 @@ def source_bytes(path: str) -> bytes | None {
     }
 }
 
+def content_digest(data: bytes | None) -> str | None {
+    return hashlib.sha256(data).hexdigest() if data is not None else None;
+}
+
+obj InputManifest {
+    has files: dict[str, str | None],
+        annexes: dict[str, list[str]];
+
+    def is_current(store: SourceStore | None = None) -> bool {
+        for (path, digest) in self.files.items() {
+            data = store.overrides[path].encode('utf-8')
+                if store is not None and path in store.overrides
+                else source_bytes(path);
+            if content_digest(data) != digest {
+                return False;
+            }
+        }
+        discovery = store if store is not None else SourceStore();
+        return all(
+            discovery.discover_annex_paths(path) == paths
+            for (path, paths) in self.annexes.items()
+        );
+    }
+
+    def to_dict -> dict {
+        return {'files': self.files, 'annexes': self.annexes};
+    }
+
+    static def from_dict(data: dict) -> InputManifest {
+        return InputManifest(
+            {
+                str(path): str(value) if value is not None else None
+                for (path, value) in data['files'].items()
+            },
+            {
+                str(path): [str(item) for item in paths]
+                for (path, paths) in data['annexes'].items()
+            }
+        );
+    }
+}
+
 obj SourceSnapshot {
     has overrides: dict[str, str],
         files: dict[str, str] = {},
         disk: dict[str, bytes | None] = {},
         annex_paths: dict[str, list[str]] = {},
-        modules: set[str] = set();
+        modules: set[str] = set(),
+        read_paths: set[str] = set();
+
+    def manifest -> InputManifest {
+        paths = self.disk.keys() | self.modules | self.read_paths;
+        return InputManifest(
+            {
+                path: content_digest(
+                    self.overrides[path].encode('utf-8')
+                        if path in self.overrides
+                        else self.disk.get(path)
+                ) for path in paths
+            },
+            {path: list(paths) for (path, paths) in self.annex_paths.items()}
+        );
+    }
 
     def watch(path: str) {
         if path not in self.disk {
@@ -84,6 +147,7 @@ obj SourceSnapshot {
     def read(path: str) -> str {
         import from jaclang.project.source { decode_source }
         path = os.path.realpath(path);
+        self.read_paths.add(path);
         if path in self.overrides {
             return self.overrides[path];
         }
@@ -370,25 +434,30 @@ def context_program(program: JacProgram, options: CompileOptions) -> JacProgram 
         if program.context_root is not None
         else program;
     identity = context_identity(options);
-    if identity == program.context_key {
-        return program;
-    }
     existing = context_root.contexts.get(identity);
-    if existing is not None {
-        return existing;
+    if existing is not None and existing.program is not None {
+        del context_root.contexts[identity];
+        context_root.contexts[identity] = existing;
+        return existing.program;
     }
-    if not context_root.context_key {
+    if identity == program.context_key {
+        selected = program;
+    } elif not context_root.context_key {
         selected = context_root;
     } else {
         selected = JacProgram();
         selected.context_root = context_root;
         selected._compiler = context_root._get_compiler();
         selected.source_store = context_root.source_store;
+        selected.deps.tracking = context_root.deps.tracking;
         selected.options = options;
+    }
+    if existing is not None {
+        selected.deps = existing.deps;
     }
     selected.options = options;
     selected.context_key = identity;
-    context_root.contexts[identity] = selected;
+    context_root.contexts[identity] = CompilationContext(selected.deps, selected);
     return selected;
 }
 

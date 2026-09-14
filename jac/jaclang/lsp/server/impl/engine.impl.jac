@@ -334,14 +334,58 @@ impl JacLangServer.type_check_file(
     }
 }
 
+impl JacLangServer._run_query(request: Request) -> None {
+    import from pathlib { Path }
+    import from jaclang.project.config { config_scope }
+    if request.responded
+        or request.cancel_token.is_set()
+        or request.revision != self.workspace.revision {
+        self._run_request(request);
+        return;
+    }
+    snapshot = self.workspace.snapshot();
+    self._sync_sources(snapshot);
+    document = request.params.get('textDocument', {});
+    uri = document.get('uri', '') if isinstance(document, dict) else '';
+    start = Path(_path_of(uri)).parent
+        if uri
+        else Path(self.workspace._root_path or os.getcwd());
+    with self.program.source_store.capture() as inputs, config_scope(start) {
+        for context in self.program.owned_contexts() {
+            for path in context.mod.hub {
+                self.program.source_store.record_module(path);
+                self.program.source_store.annexes(path);
+            }
+        }
+        def current -> bool {
+            return inputs.is_current(self.program.source_store);
+        }
+        request.inputs_current = current;
+        try {
+            self._ensure_query(request);
+            self._run_request(request);
+        } finally {
+            request.inputs_current = None;
+            if not current() {
+                for path in inputs.modules {
+                    self.module_manager.invalidate(path);
+                }
+                self.workspace.touch();
+                for open_uri in snapshot.documents {
+                    self.work.schedule(open_uri, immediate=True, interrupt=False);
+                }
+            }
+        }
+    }
+}
+
 impl JacLangServer.dispatcher -> None {
     while (item := self.work.take()) is not None {
         complete = True;
         try {
             with self._compiler_lock {
                 if isinstance(item, Request) {
-                    self._ensure_query(item);
-                    self._run_request(item);
+                    self._run_query(item);
                 } elif item.kind == WorkKind.CHECK {
                     complete = self.type_check_file(item.uri, item.cancel_token);
                     if complete {
@@ -559,7 +603,7 @@ impl JacLangServer.get_definition(
                 if Path(mod_path).exists() and not Path(mod_path).is_dir() {
                     resolved_path = str(Path(mod_path).resolve());
                     with self._compiler_lock {
-                        target_mod = self.program.mod.hub.get(resolved_path);
+                        target_mod = self.program.find_module(resolved_path);
                     }
                     if target_mod {
                         sym = target_mod.lookup(
@@ -804,7 +848,7 @@ impl JacLangServer.get_inlay_hints(
 ) -> list[lspt.InlayHint] {
     import from jaclang.compiler.passes.ownership_hints { inferred_hints }
     fs_path = _path_of(file_path);
-    mod = self.program.mod.hub.get(fs_path);
+    mod = self.program.find_module(fs_path);
     if mod is None {
         return [];
     }
@@ -898,7 +942,9 @@ impl JacLangServer._release_document(uri: str, deleted: bool = False) -> None {
     self.program.release_module(path);
     self.program.source_store.forget(path);
     if deleted {
-        self.program.deps.forget(path);
+        for edges in self.program.dependency_graphs() {
+            edges.forget(path);
+        }
     }
     self.publish_diagnostics(uri, []);
 }
@@ -963,7 +1009,12 @@ impl JacLangServer.get_node_type(n: uni.UniNode) -> Optional[TypeBase] {
     if isinstance(n, uni.Expr) {
         typ = n.type;
         if typ is None {
-            typ = self.program.get_type_evaluator().get_type_of_expression(n);
+            manager = self.sem_managers.get(n.loc.mod_path);
+            owner = self.program.module_owner(manager.ir)
+                if manager is not None
+                else None;
+            program = owner if owner is not None else self.program;
+            typ = program.get_type_evaluator().get_type_of_expression(n);
         }
         return typ;
     }

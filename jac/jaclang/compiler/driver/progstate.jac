@@ -60,7 +60,7 @@ obj ModuleHub {
         if prev is None or prev is mod {
             return None;
         }
-        was_main = self.mod.main_mod is prev;
+        was_main = self.mod.main is prev;
         self.detach(prev);
         if was_main {
             self.mod.main_mod = mod;
@@ -70,7 +70,7 @@ obj ModuleHub {
     }
 
     def detach(module: uni.Module) {
-        if self.mod.main_mod is module {
+        if self.mod.main is module {
             self.mod.main_mod = None;
         }
         self.mod.set_kids(

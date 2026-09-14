@@ -85,6 +85,7 @@ obj JacLangServer(LanguageServer) {
     def files_changed(uris: list[str]) -> None;
     def _refresh_file(uri: str) -> None;
     def _ensure_query(request: Request) -> None;
+    def _run_query(request: Request) -> None;
     def _release_document(uri: str, deleted: bool = False) -> None;
     def get_token_at_position(
         file_path: str, position: lspt.Position
