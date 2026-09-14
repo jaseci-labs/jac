@@ -1,42 +1,14 @@
 import from jaclang.compiler.driver.compilation_context { context_app }
-import fnmatch;
 import json;
 import os;
-import from jaclang.compiler.driver.modresolver { find_jac_project_root }
-import from jaclang.compiler.placement.workspace {
+import from jaclang.project.modresolver { find_jac_project_root }
+import from jaclang.project.workspace {
     app_fact_digest,
     kind_codespace,
     workspace_for_path
 }
 
-glob _VALID_SPACES: tuple = ('server', 'client', 'native');
-
-
-def _validated_pins(pins: dict[str, str], toml_path: str) -> dict[str, str] {
-    for (key, space) in pins.items() {
-        if space not in _VALID_SPACES {
-            raise ValueError(
-                f"[placement.pins] in {toml_path}: '{key}' pins to "
-                f"'{space}', expected one of {list(_VALID_SPACES)}."
-            );
-        }
-    }
-    return pins;
-}
-
-
-def _module_dot_path(source_path: str, root_dir: str) -> str {
-    abs_path = os.path.realpath(os.path.abspath(source_path));
-    rel = os.path.relpath(abs_path, os.path.realpath(root_dir));
-    if rel.startswith("..") {
-        rel = os.path.basename(abs_path);
-    }
-    if rel.endswith(".jac") {
-        rel = rel[:-4];
-    }
-    return rel.replace(os.sep, ".");
-}
-
+import from jaclang.project.placement { validate_pins, match_pin }
 
 def config_pins_for(source_path: str) -> dict[str, str] {
     if not source_path {
@@ -48,7 +20,7 @@ def config_pins_for(source_path: str) -> dict[str, str] {
     }
     app = context_app(source_path);
     pins = app.pins if app is not None else ws.base_pins;
-    return _validated_pins(pins, ws.toml_path);
+    return validate_pins(pins, ws.toml_path);
 }
 
 
@@ -64,16 +36,7 @@ def config_pin_for(source_path: str, element_name: str) -> str {
     if not pins {
         return '';
     }
-    mod_dot = _module_dot_path(source_path, ws.project_root);
-    for (pattern, space) in pins.items() {
-        if element_name and fnmatch.fnmatchcase(f"{mod_dot}.{element_name}", pattern) {
-            return space;
-        }
-        if fnmatch.fnmatchcase(mod_dot, pattern) {
-            return space;
-        }
-    }
-    return '';
+    return match_pin(source_path, ws.project_root, pins, element_name);
 }
 
 
@@ -294,4 +257,26 @@ def client_framework(source_path: str) -> str {
     }
     _framework_cache[root_dir] = (mtime, fw);
     return fw;
+}
+
+glob _FRAMEWORK_PACKAGES: dict[str, set[str]] = {
+         "react": {"react", "react-dom"},
+         "preact": {"preact"},
+         "solid": {"solid-js"}
+     };
+
+
+def is_client_npm_import(spec: str, source_path: str) -> bool {
+    if not spec {
+        return False;
+    }
+    import from jaclang.project.modresolver { npm_package_root, has_client_npm_package }
+    pkg_root = npm_package_root(spec);
+    if pkg_root in npm_dependency_names(source_path) {
+        return True;
+    }
+    if pkg_root in _FRAMEWORK_PACKAGES.get(client_framework(source_path), set()) {
+        return True;
+    }
+    return has_client_npm_package(spec, source_path);
 }

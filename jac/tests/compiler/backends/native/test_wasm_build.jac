@@ -21,9 +21,9 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.backends.native.wasm_build {
     emit_wasm_from_ir,
-    wasm_import_map,
     _wasm_libc_dir
 }
+import from jaclang.compiler.backends.native.wasm_artifact { wasm_import_map }
 import from jaclang.compiler.backends.native.wasm_host_abi {
     WASM_HOST_ABI,
     WASM_HOST_MODULE

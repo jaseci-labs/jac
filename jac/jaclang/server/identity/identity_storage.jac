@@ -7,7 +7,7 @@ import from jaclang.server.serving.authcrypt {
 }
 import uuid;
 import from datetime { datetime, UTC }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.server.identity.config { password_hash_cost }
 
 obj IdentityTakenError(Exception) {}

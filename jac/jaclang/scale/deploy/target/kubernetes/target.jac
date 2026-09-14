@@ -27,10 +27,9 @@ import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
     with_config_revision,
     CONFIG_REVISION_ANNOTATION,
     ManifestBuilder,
-    GATEWAY_NAME,
-    k8s_safe_name,
     ScalingMode
 }
+import from jaclang.scale.runtime.context.util { GATEWAY_NAME, k8s_safe_name }
 import from jaclang.scale.deploy.target.kubernetes.database_provisioner {
     DatabaseProvisioner
 }

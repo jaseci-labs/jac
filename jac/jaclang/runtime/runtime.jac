@@ -33,7 +33,7 @@ import from jaclang.runtime.archetype {
     light_hop,
     light_hop_answers
 }
-import from jaclang.compiler.frontend.constant { EdgeDir, colors }
+import from jaclang.runtime.constants { EdgeDir, colors }
 import from jaclang.runtime.graph_query { GraphQuery, QHop }
 import from jaclang.runtime.constructs {
     AccessLevel,
@@ -49,13 +49,13 @@ import from jaclang.runtime.constructs {
     WalkerAnchor,
     WalkerArchetype
 }
-import from jaclang.compiler.driver.modresolver {
+import from jaclang.project.modresolver {
     infer_language,
     find_jac_project_root,
     push_import_base,
     pop_import_base
 }
-import from jaclang.compiler.driver.mtp { Info }
+import from jaclang.runtime.semantic { Info }
 import type from jaclang.byllm.mtir { MTRuntime }
 import type from jaclang.cli.console { JacConsole as ConsoleImpl }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
@@ -96,8 +96,8 @@ def _scale_provider -> any {
     }
     result: any = None;
     try {
-        import from jaclang.scale.plugin { JacScalePlugin }
-        result = JacScalePlugin;
+        import from jaclang.scale.runtime.provider { JacScaleRuntime }
+        result = JacScaleRuntime;
     } except ImportError as e {
         _scale_provider_error[0] = e;
     }

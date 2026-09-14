@@ -154,7 +154,7 @@ glob _sealable_cache: dict[tuple[str, str], list[str]] = {},
 
 def _application_sources(package_dir: str, app: str) -> list[str] | None {
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    import from jaclang.project.workspace { workspace_for_path }
     import from jaclang.compiler.driver.compilation_context { bind_options }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     import from jaclang.compiler.driver.pipeline { compile_application }

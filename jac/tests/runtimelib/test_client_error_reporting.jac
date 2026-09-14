@@ -150,10 +150,12 @@ test "client error endpoint rejects empty payload" {
 test "prod render_page injects early error handler before module bundle script" {
     import types;
     import from jaclang.client.serving { JacClient }
+    module = types.ModuleType('stub');
+    module.__file__ = __file__;
     introspector = types.SimpleNamespace(
         _client_manifest={'exports': ['app'], 'endpoint_effects': {}},
         _bundle=None,
-        _module=None,
+        _module=module,
         module_name='stub',
         load=lambda { None; },
         get_client_functions=lambda { {'app': None}; },

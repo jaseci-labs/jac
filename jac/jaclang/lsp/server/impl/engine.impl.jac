@@ -235,7 +235,7 @@ impl JacLangServer.type_check_file(
         if cancel_token and cancel_token.is_set() {
             return False;
         }
-        import from jaclang.compiler.placement.workspace { workspace_for_path }
+        import from jaclang.project.workspace { workspace_for_path }
         ws = workspace_for_path(main_path);
         app = ws.app_for_path(main_path) if ws is not None else None;
         proj_root = ws.project_root if ws is not None else None;
@@ -660,11 +660,11 @@ impl JacLangServer._string_import_definition(
 
 impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
     import os;
-    import from jaclang.compiler.driver.modresolver {
-        is_client_npm_import,
+    import from jaclang.project.modresolver {
         resolve_client_npm_declarations,
         resolve_client_npm_package
     }
+    import from jaclang.compiler.placement.placement_pins { is_client_npm_import }
     try {
         resolved = mp.resolve_relative_path();
         if os.path.isfile(resolved) {
@@ -694,11 +694,11 @@ impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
 impl JacLangServer._npm_item_location(
     from_loc: uni.ModulePath, item_name: str
 ) -> Optional[lspt.Location] {
-    import from jaclang.compiler.driver.modresolver {
-        is_client_npm_import,
+    import from jaclang.project.modresolver {
         resolve_client_npm_declarations,
         resolve_client_npm_package
     }
+    import from jaclang.compiler.placement.placement_pins { is_client_npm_import }
     def at_file(path_: str, rng: Optional[lspt.Range]) -> Optional[lspt.Location] {
         path_uri = uris.from_fs_path(path_);
         if path_uri is None {

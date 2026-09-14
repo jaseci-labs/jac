@@ -20,30 +20,6 @@ impl ClientBundleBuilder.postinit -> None {
     }
 }
 
-impl _prebuilt_bundle(module: ModuleType, source_path: Path) -> (ClientBundle | None) {
-    import from jaclang.server.sealed_serve { client_dist_for, serve_manifest_for }
-    dist = client_dist_for(str(source_path));
-    if dist is None {
-        return None;
-    }
-    candidates = sorted(dist.`glob('client.*.js'));
-    if not candidates {
-        return None;
-    }
-    bundle_js = candidates[-1];
-    parts = bundle_js.name.split('.');
-    bundle_hash = parts[1] if len(parts) >= 3 else '';
-    sm = serve_manifest_for(str(source_path)) or {};
-    client_meta = sm.get('client', {}) or {};
-    return ClientBundle(
-        module_name=module.__name__,
-        code=bundle_js.read_text(encoding='utf-8'),
-        client_functions=list(client_meta.get('exports', []) or []),
-        client_globals=list(client_meta.get('globals', []) or []),
-        hash=bundle_hash
-    );
-}
-
 impl ClientBundleBuilder.build(
     module: ModuleType, force: bool = False
 ) -> ClientBundle {
@@ -52,22 +28,16 @@ impl ClientBundleBuilder.build(
             f"Module '{module.__name__}' has no __file__ attribute"
         );
     }
-    module_path = module.__file__.replace('.py', '.jac');
+    module_path = module.__file__;
     source_path = Path(module_path).resolve();
-    prebuilt = _prebuilt_bundle(module, source_path);
+    prebuilt = prebuilt_bundle(module, source_path);
     if prebuilt is not None {
         self._cache[module.__name__] = _CachedBundle(
-            signature='sealed', bundle=prebuilt
+            signature='prepared', bundle=prebuilt
         );
         return prebuilt;
     }
-    import from jaclang { JacRuntime as Jac }
-    program = Jac.program;
-    if program is None {
-        raise ClientBundleError(
-            f"No active Jac program; cannot build client bundle for '{source_path}'."
-        );
-    }
+    program = client_program(self.program);
     mod = program.find_module(str(source_path));
     manifest = (
         mod.gen.client_manifest if mod else self._compile_to_js(source_path).manifest
@@ -127,13 +97,7 @@ impl ClientBundleBuilder._compile_bundle(
 }
 
 impl ClientBundleBuilder._compile_to_js(source_path: Path) -> ClientArtifact {
-    import from jaclang { JacRuntime as Jac }
-    program = Jac.program;
-    if program is None {
-        raise ClientBundleError(
-            f"No active Jac program; cannot compile '{source_path}' for client bundle."
-        );
-    }
+    program = client_program(self.program);
     diagnostic_program = program._get_compiler().selfhost.resolve(
         str(source_path), program
     );

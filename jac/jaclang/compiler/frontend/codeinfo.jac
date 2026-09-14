@@ -13,7 +13,7 @@ import type from jaclang.compiler.backends.es.estree { Node as EsNode }
 import type from jaclang.compiler.frontend.unitree { CommentToken }
 import type from jaclang.compiler.tools.doc_ir { Doc }
 import type from jaclang.compiler.frontend.unitree { Source, Token }
-import type from jaclang.runtime.osp_model { OspModel }
+import type from jaclang.compiler.passes.osp_analysis { OspModel }
 import type from jaclang.compiler.backends.native.llvm.ir { Module as IRModule }
 import type from jaclang.compiler.backends.native.llvm.binding {
     ModuleRef,
@@ -771,6 +771,7 @@ obj CodeGenTarget {
         _interop_callbacks: list[any] = field(default_factory=`list),
         native_layout: (NativeModuleLayout | None) = None,
         osp_model: (OspModel | None) = None,
+        component_call_abi: str = "",
         jc_layout: (str | None) = None,
         has_root_access: (bool | None) = None,
         nogc_enforced: bool = False,
@@ -788,7 +789,7 @@ obj CodeGenTarget {
 
 def endpoint_descriptor(module: any, kind: str, name: str) -> dict {
     import os;
-    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    import from jaclang.project.workspace { workspace_for_path }
     path = module.loc.mod_path;
     workspace = workspace_for_path(path);
     owner = workspace.app_for_path(path) if workspace else None;

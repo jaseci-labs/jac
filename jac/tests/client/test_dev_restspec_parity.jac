@@ -249,6 +249,7 @@ test "in dev the API port never builds a production client bundle" {
     # so "refused" has to mean refused before the build, not a
     # ClientBundleError raised after one.
     import from jaclang.client.client_bundle { ClientBundleError }
+    import from types { SimpleNamespace }
 
     with TemporaryDirectory() as tmp {
         app = _spa_app(tmp);
@@ -256,7 +257,7 @@ test "in dev the API port never builds a production client bundle" {
         (builds, spy) = _build_spy();
         try {
             introspector = client.server.introspector;
-            setattr(introspector._bundle_builder, "build", spy);
+            introspector._bundle_builder = SimpleNamespace(build=spy);
             client.server.resolved_settings().dev = True;
             introspector.dev_mode = True;
             root_app = introspector.resolve_root_app();

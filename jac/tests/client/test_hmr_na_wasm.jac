@@ -163,10 +163,10 @@ test "a tracked native module owes a wasm even when the hub has forgotten it" {
         );
         compiler = make_client_bundle_builder(base_path=Path(tmp))._get_compiler();
         compiler.jac_client_compiler.na_wasm_modules = {str(na_file.resolve())};
-        owed = compiler._owes_wasm(na_file);
+        owed = na_file.resolve() in compiler._wasm_targets(na_file);
         stranger = Path(tmp) / "game" / "unrelated.jac";
         stranger.write_text("glob READY: bool = True;\n", encoding="utf-8");
-        not_owed = compiler._owes_wasm(stranger);
+        not_owed = stranger.resolve() in compiler._wasm_targets(stranger);
     }
     assert owed , (
         "a module the client compile recorded as a native import owes a wasm "
@@ -246,8 +246,7 @@ test "wasm and its import manifest follow the client bundle output directory" {
             );
             compiler = builder._get_compiler();
             with patch(
-                "jaclang.compiler.backends.native.wasm_build.compile_to_wasm",
-                return_value=wasm
+                "jaclang.compiler.driver.pipeline.build_wasm", return_value=wasm
             ) {
                 assert compiler._emit_wasm_module(project / "arena.jac");
             }

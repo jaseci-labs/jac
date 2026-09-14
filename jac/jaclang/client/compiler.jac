@@ -1,3 +1,4 @@
+import type from jaclang.compiler.driver.program { JacProgram }
 import contextlib;
 import from pathlib { Path }
 import from types { ModuleType }
@@ -16,6 +17,8 @@ with entry {
 }
 
 class ViteCompiler {
+    has program: JacProgram | None = None;
+
     def init(
         self: ViteCompiler,
         vite_package_json: Path,
@@ -25,7 +28,9 @@ class ViteCompiler {
         compile_to_js_func: Callable[[Path], ClientArtifact],
         extract_exports_func: Callable[[ClientManifest | None], list[str]],
         extract_globals_func:
-            Callable[[ClientManifest | None, ModuleType | None], dict[str, any]]
+            Callable[[ClientManifest | None, ModuleType | None], dict[str, any]],
+        entry_path: str = "",
+        program: JacProgram | None = None
     );
 
     def compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[str]];
@@ -33,7 +38,6 @@ class ViteCompiler {
     def _entry_module_name(self: ViteCompiler, module_path: Path) -> str;
     def create_entry_file(self: ViteCompiler, module_path: Path) -> None;
     def _create_pages_entry_content(self: ViteCompiler, module_path: Path) -> str;
-    def _owes_wasm(self: ViteCompiler, module_path: Path) -> bool;
     def _emit_na_wasm(self: ViteCompiler, module_path: Path) -> None;
     def _emit_wasm_module(self: ViteCompiler, module_path: Path) -> bool;
     def _wasm_targets(self: ViteCompiler, module_path: Path) -> list[Path];

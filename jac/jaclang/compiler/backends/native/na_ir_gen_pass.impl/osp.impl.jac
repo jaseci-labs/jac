@@ -60,7 +60,7 @@ impl NaIRGenPass._compute_osp_model(archetypes: list[uni.Archetype]) -> None {
             self.arch_ast_map[_n] = arch;
         }
     }
-    import from jaclang.runtime.osp_model { get_osp_model }
+    import from jaclang.compiler.passes.osp_analysis { get_osp_model }
     _model = get_osp_model(
         self.ir_in,
         archetypes=(list(archetypes) + list(self.arch_ast_map.values())),

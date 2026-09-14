@@ -80,7 +80,7 @@ import from jaclang.compiler.backends.native.shared_emit {
     aarch64_floor_atomics_ir,
     aarch64_outline_atomics_ir
 }
-import from jaclang.cli.commands.native_build { _finalize_native_ir }
+import from jaclang.compiler.backends.native.entry_points { finalize_native_ir }
 
 glob EXEC_STUB = 'define void @"jac_entry"() {\nentry:\n  ret void\n}\n',
      FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
@@ -218,7 +218,7 @@ def _finalized(
     is_macos: bool = False,
     static_musl: bool = False
 ) -> str {
-    (out, _exports) = _finalize_native_ir(
+    (out, _exports) = finalize_native_ir(
         llvm_ir_str=EXEC_STUB,
         triple=triple,
         clib_paths=clib_paths,

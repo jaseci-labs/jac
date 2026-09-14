@@ -9,7 +9,7 @@ impl DesktopTarget.engine(project_dir: Path) -> str {
 }
 
 impl DesktopTarget.out_dir_for(entry_file: Path, project_dir: Path) -> Path {
-    import from jaclang.client.targets.registry { client_app_dir_for }
+    import from jaclang.project.client_paths { client_app_dir_for }
     import from jaclang.project.config { get_config_for_dir }
     config = get_config_for_dir(str(project_dir));
     if config is None {
