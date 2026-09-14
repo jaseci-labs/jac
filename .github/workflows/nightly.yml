@@ -33,7 +33,10 @@ jobs:
             zig_target: aarch64-linux-gnu.2.17
           - os: macos-14
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    # Cold native builds include a 22–26 minute runtime build before packaging.
+    # Keep a separate packaging limit so a slow payload still leaves time to
+    # upload its measurements and logs before the job deadline.
+    timeout-minutes: 120
     env:
       DTARGET: ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) || '' }}
     steps:
@@ -50,11 +53,18 @@ jobs:
         working-directory: jac
         run: zig build build-python $DTARGET --summary all
       - name: Build and probe the packaged native JacPython binary
+        timeout-minutes: 90
         working-directory: jac
         env:
           JAC_NO_DEV_SOURCE: "1"
+          JAC_BUILD_METRICS: ${{ github.workspace }}/jac/.build-metrics/payload.json
+          JAC_PRECOMPILE_RSS_LOG: "1"
         run: |
-          zig build $DTARGET --summary all
+          mkdir -p .build-metrics
+          # This job builds from source without a Zig artifact cache. Streaming
+          # makes stalled or timed-out producers visible in the retained log.
+          set -o pipefail
+          zig build $DTARGET -Dpayload-progress --summary all 2>&1 | tee .build-metrics/native-build.log
           zig-out/bin/jac -c '
           import ast, ctypes, sys
           assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
@@ -87,11 +97,12 @@ jobs:
               -c 'import ast, ctypes, encodings, sys; assert eval("6 * 7") == 42; assert isinstance(ast.parse("x=1"), ast.Module); assert encodings.search_function.__code__.co_filename == encodings.__file__; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3'
           fi
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: jacpython-native-build-logs-${{ runner.os }}-${{ runner.arch }}
           path: |
             jac/.python-build/**/*.log
+            jac/.build-metrics/
             jac/zig-out/bin/jac
             ~/Library/Logs/DiagnosticReports/python*.ips
           include-hidden-files: true
