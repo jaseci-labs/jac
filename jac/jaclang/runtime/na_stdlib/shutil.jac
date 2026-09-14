@@ -4,6 +4,7 @@ import from c { def unlink(path: str) -> i32;  }
 import from c { def rmdir(path: str) -> i32;  }
 import from c { def rename(oldp: str, newp: str) -> i32;  }
 import from _directory_native { directory_names }
+import from _errno_native { errno_message }
 
 
 def:pub which(cmd: str) -> (str | None) {
@@ -73,11 +74,11 @@ def:pub rmtree(path: str) {
         child = os.path.join(path, nm);
         if os.path.isdir(child) {
             rmtree(child);
-        } else {
-            unlink(child);
+        } elif unlink(child) != 0 {
+            raise ValueError(f"rmtree: could not remove '{child}': {errno_message()}");
         }
     }
     if rmdir(path) != 0 {
-        raise ValueError(f"rmtree: could not remove '{path}'");
+        raise ValueError(f"rmtree: could not remove '{path}': {errno_message()}");
     }
 }

@@ -665,6 +665,7 @@ test "native print renders bools as True and False" {
 }
 
 test "bundled shutil" {
+    import os;
     import platform;
     if platform.system() == "Darwin" {
         # The dirent floor is darwin-correct (#7626 C3), but rmtree also
@@ -675,6 +676,17 @@ test "bundled shutil" {
     }
     run_with_both(
         "prim_shutil.jac", "shutil_py", "shutil_cl", "shutil_na", require=["na"]
+    );
+    if os.geteuid() == 0 {
+        # root ignores the mode bits the fixture locks the directory with.
+        testskip("rmtree diagnostic needs a uid the directory mode applies to");
+    }
+    # #9053: the error must name the child that could not be unlinked, not the
+    # parent whose rmdir failed as a consequence.
+    (eng, _) = compile_native("prim_shutil.jac");
+    names_file = get_func(eng, "locked_error_names_file_na", ctypes.c_int64);
+    assert names_file() == 1 , (
+        "rmtree must report the file it could not unlink, not its parent"
     );
 }
 

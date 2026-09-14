@@ -301,6 +301,8 @@
 "prim_secrets.secrets_na" = "native"
 "prim_set.set_cl" = "client"
 "prim_set.set_na" = "native"
+"prim_shutil._locked_error_na" = "native"
+"prim_shutil.locked_error_names_file_na" = "native"
 "prim_shutil.shutil_cl" = "client"
 "prim_shutil.shutil_na" = "native"
 "prim_socket.from:socket" = "native"

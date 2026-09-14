@@ -211,6 +211,10 @@ def:pub gc_stale(cache_dir: str, keep_key: str) {
             continue;
         }
         say(f"  removing stale runtime {full}...");
-        shutil.rmtree(full);
+        try {
+            shutil.rmtree(full);
+        } except Exception as e {
+            say(f"  could not remove it: {e}; leaving it for the next run");
+        }
     }
 }
