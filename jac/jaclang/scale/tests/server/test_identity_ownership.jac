@@ -6,7 +6,10 @@ plus the matching email identity), and renaming a username never frees a lookup
 row that another identity on the same account still uses.
 """
 
+import json;
 import shutil;
+import threading;
+import time;
 import uuid;
 import from tempfile { mkdtemp }
 import from jaclang.server.identity.identity_storage { IdentityTakenError }
@@ -174,6 +177,71 @@ test "renaming a username away keeps a shared value on the email identity" {
         assert users.find_user_by_identity(f"plain_{tag}") is None;
         assert users.authenticate(addr, 'pw12345') is not None;
     } finally {
+        shutil.rmtree(test_dir, ignore_errors=True);
+    }
+}
+
+
+test "a rename keeps an identity that lands while the rename waits for the row" {
+    (test_dir, users) = _manager();
+    storage = users._identity_storage;
+    conn = storage.store._side();
+    committed = False;
+    try {
+        tag = uuid.uuid4().hex[:8];
+        addr = f"race_{tag}@example.com";
+        user_id = str(users.create_user(addr, 'pw12345')['user_id']);
+        outcome: dict = {};
+
+        def _rename {
+            outcome['renamed'] = users.rename_username(user_id, f"raced_{tag}");
+        }
+        conn.run('BEGIN');
+        conn.run(
+            'SELECT doc FROM identity_users WHERE user_id = :u FOR UPDATE', u=user_id
+        );
+        renamer = threading.Thread(target=_rename, daemon=True);
+        renamer.start();
+        deadline = time.monotonic() + 10;
+        while not conn.run(
+            """
+            SELECT 1 FROM pg_stat_activity
+            WHERE wait_event_type = 'Lock' AND pid <> pg_backend_pid()
+              AND query LIKE '%identity_users%'
+            """
+        ) {
+            assert time.monotonic() < deadline , 'the rename never waited for the row';
+            time.sleep(0.05);
+        }
+        conn.run(
+            """
+            UPDATE identity_users
+            SET doc = jsonb_set(
+                doc, '{identities}',
+                doc->'identities' || jsonb_build_array(CAST(:i AS jsonb)), true
+            )
+            WHERE user_id = :u
+            """,
+            u=user_id,
+            i=json.dumps(_email_identity(addr))
+        );
+        conn.run('COMMIT');
+        committed = True;
+        renamer.join(30);
+        assert not renamer.is_alive() , 'the rename did not finish after the row was released';
+        renamed = outcome.get('renamed') or {};
+        assert 'error' not in renamed , renamed;
+        user = users.get_user(user_id) or {};
+        assert [str(i.get('type')) for i in user.get('identities', [])]
+            == ['username', 'email'];
+        assert _types_holding(users, user_id, addr) == ['email'];
+        assert str((users.find_user_by_identity(addr) or {}).get('user_id')) == user_id;
+        assert users.authenticate(addr, 'pw12345') is not None;
+        assert users.authenticate(f"raced_{tag}", 'pw12345') is not None;
+    } finally {
+        if not committed {
+            conn.run('ROLLBACK');
+        }
         shutil.rmtree(test_dir, ignore_errors=True);
     }
 }

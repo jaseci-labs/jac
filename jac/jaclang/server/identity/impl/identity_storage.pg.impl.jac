@@ -367,42 +367,64 @@ impl PgIdentityStorage._remove_sso_identity(user_id: str, platform: str) -> bool
 impl PgIdentityStorage._replace_username(
     user_id: str, identity: dict[str, any]
 ) -> bool {
-    rows = self.store.rows(
-        'SELECT doc FROM identity_users WHERE user_id = :u', {'u': user_id}
-    );
-    if not rows {
+    if not self._user_exists(user_id) {
         return False;
     }
-    identities: list[dict[str, any]] = list(
-        _pg_load_doc(rows[0][0]).get('identities') or []
-    );
-    kept = [
-        i
-        for i in identities
-        if i.get('type') != 'username'
-    ];
-    old_values = [
-        str(i.get('value_normalized') or '')
-        for i in identities
-        if i.get('type') == 'username'
-    ];
-    still_used = {str(i.get('value_normalized') or '') for i in kept};
     self._claim_lookup(identity['value_normalized'], user_id);
-    for old in old_values {
-        if old and old != identity['value_normalized'] and old not in still_used {
-            self.store.rows(
-                'DELETE FROM identity_lookups WHERE value_normalized = :v AND user_id = :u',
-                {'v': old, 'u': user_id}
-            );
+    rows = self.store.rows(
+        """
+        WITH prev AS (
+            SELECT user_id, doc FROM identity_users WHERE user_id = :u FOR UPDATE
+        ),
+        kept AS (
+            SELECT h.held, h.ord
+            FROM prev,
+                jsonb_array_elements(COALESCE(prev.doc->'identities', CAST('[]' AS jsonb)))
+                    WITH ORDINALITY AS h(held, ord)
+            WHERE COALESCE(h.held->>'type', '') <> 'username'
+        ),
+        old_names AS (
+            SELECT held->>'value_normalized' AS value_normalized
+            FROM prev,
+                jsonb_array_elements(COALESCE(prev.doc->'identities', CAST('[]' AS jsonb))) held
+            WHERE held->>'type' = 'username'
+        ),
+        renamed AS (
+            UPDATE identity_users t
+            SET doc = jsonb_set(
+                prev.doc,
+                '{identities}',
+                jsonb_build_array(CAST(:i AS jsonb)) || COALESCE(
+                    (SELECT jsonb_agg(kept.held ORDER BY kept.ord) FROM kept),
+                    CAST('[]' AS jsonb)
+                ),
+                true
+            ) || CAST(:p AS jsonb)
+            FROM prev
+            WHERE t.user_id = prev.user_id
+            RETURNING t.user_id
+        ),
+        freed AS (
+            DELETE FROM identity_lookups lk
+            USING old_names
+            WHERE lk.user_id = :u
+              AND lk.value_normalized = old_names.value_normalized
+              AND lk.value_normalized <> :v
+              AND lk.value_normalized NOT IN (
+                SELECT kept.held->>'value_normalized' FROM kept
+                WHERE kept.held->>'value_normalized' IS NOT NULL
+              )
+        )
+        SELECT user_id FROM renamed
+        """,
+        {
+            'u': user_id,
+            'v': identity['value_normalized'],
+            'i': json.dumps(identity, `default=_pg_json_default),
+            'p': json.dumps({'updated_at': datetime.now(UTC).isoformat()})
         }
-    }
-    kept.insert(0, identity);
-    patch = {'identities': kept, 'updated_at': datetime.now(UTC).isoformat()};
-    self.store.rows(
-        'UPDATE identity_users SET doc = doc || CAST(:p AS jsonb) WHERE user_id = :u',
-        {'u': user_id, 'p': json.dumps(patch, `default=_pg_json_default)}
     );
-    return True;
+    return bool(rows);
 }
 
 impl PgIdentityStorage._find_sso_link(
