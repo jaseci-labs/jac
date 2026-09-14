@@ -2,19 +2,19 @@ import os;
 import type from collections.abc { Sequence }
 import type from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
 import from jaclang.compiler.frontend.srcloc { CodeLocInfo }
+import from jaclang.runtime.constants { EdgeDir }
 import from jaclang.compiler.frontend.constant {
     BUILTIN_CALLABLE_NAMES,
     DELIM_MAP,
     BindingKind,
     CodeContext,
-    EdgeDir,
     ExprCtx,
     OwnershipKind,
     SymbolAccess,
     SymbolStorage,
     SymbolType
 }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.compiler.frontend.constant { JacSemTokenModifier as SemTokMod }
 import from jaclang.compiler.frontend.constant { JacSemTokenType as SemTokType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }

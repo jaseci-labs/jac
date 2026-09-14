@@ -6,7 +6,7 @@ import tempfile;
 import time;
 import from pathlib { Path }
 import type from jaclang.runtime.prepared { PreparedApplication }
-glob _FORMAT: int = 4,
+glob _FORMAT: int = 5,
      _SKIP: set[str] = {'.jac', '.git', '.venv', 'venv', 'node_modules', '__pycache__'};
 
 def _inventory(`root: any, inputs: bool = False) -> dict {
@@ -95,6 +95,20 @@ def _project_modules(program: any, `root: any) -> dict {
         }
     }
     return result;
+}
+
+def _semantic_metadata(revision: PreparedApplication, program: any) {
+    import from jaclang.compiler.driver.compilation_context { program_for }
+    import from jaclang.jac0core.ext_registry { base_stem }
+    for path in revision.code {
+        actual = program_for(path, program);
+        prefix = base_stem(path) + '.';
+        revision.semantic[path] = {
+            key: value
+            for (key, value) in actual.mtir_map.items()
+            if key.startswith(prefix)
+        };
+    }
 }
 
 def _manifest(program: any, path: any, `root: any, mod: any = None) -> dict {
@@ -259,6 +273,19 @@ def _prepare_sealed(
         if path in revision.code {
             continue;
         }
+        if Path(path).suffix == '.py' {
+            code = compiler.get_bytecode(path, program);
+            if code is None {
+                raise RuntimeError(
+                    f'Sealed application has no Python artifact: {path}'
+                );
+            }
+            revision.code[path] = code;
+            pending.update(
+                runtime_sources(code, path, image_root) - revision.code.keys()
+            );
+            continue;
+        }
         sealed = compiler._sealed_jir_data(path);
         if sealed is None {
             raise RuntimeError(
@@ -371,6 +398,13 @@ def prepare_application(
                     );
                 }
                 revision = applications[0];
+                for application in applications {
+                    application.name = application.manifests.get(
+                        application.entry, {}
+                    ).get(
+                        'app', ''
+                    );
+                }
                 revision.services = tuple(entries[1:]);
                 revision.applications = applications[1:];
                 publish(revision);
@@ -428,7 +462,9 @@ def _prepare(
     builder = None;
     if client {
         import from jaclang.client.vite_client_bundle { make_client_bundle_builder }
-        builder = make_client_bundle_builder(Path(`root));
+        builder = make_client_bundle_builder(
+            Path(`root), entry_path=`entry, program=program
+        );
         revision.client_compiler = builder._get_compiler();
         revision.client_dist = str(revision.client_compiler.vite_bundler.output_dir);
     }
@@ -437,6 +473,15 @@ def _prepare(
         if not record['has_client'] {
             revision.client_compiler = None;
             revision.client_dist = '';
+        }
+        if revision.client_compiler is not None {
+            revision.client_compiler.jac_client_compiler.na_wasm_modules = set(
+                record['client_native_sources']
+            );
+            revision.client_compiler._has_pages = record['client_has_pages'];
+            revision.client_compiler.jac_client_compiler._has_pages = record[
+                'client_has_pages'
+            ];
         }
         revision.code = record['code'];
         revision.manifests = record['manifests'];
@@ -451,6 +496,7 @@ def _prepare(
         for path in revision.code {
             revision.native[path] = compiler.get_native_interop_setup(path, program);
         }
+        _semantic_metadata(revision, program);
         return revision;
     }
     console.print('  Compiling server modules and placement metadata...');
@@ -472,6 +518,7 @@ def _prepare(
                 or (Path(`entry).parent / 'pages').is_dir()
         );
     if has_client {
+        assert revision.client_compiler is not None;
         console.print('  Compiling client and native artifacts...');
         revision.client_compiler.compile(None, Path(`entry));
         if not dev {
@@ -534,6 +581,7 @@ def _prepare(
     }
     outputs = {};
     if has_client {
+        assert revision.client_compiler is not None;
         for directory in (
             revision.client_compiler.compiled_dir,
             revision.client_compiler.vite_bundler.output_dir
@@ -576,6 +624,14 @@ def _prepare(
         `dict(
             key=key,
             has_client=has_client,
+            client_native_sources=sorted(
+                revision.client_compiler.jac_client_compiler.na_wasm_modules
+            )
+                if revision.client_compiler is not None
+                else [],
+            client_has_pages=revision.client_compiler._has_pages
+                if revision.client_compiler is not None
+                else False,
             code=revision.code,
             manifests=revision.manifests,
             sections=sections,
@@ -583,6 +639,7 @@ def _prepare(
             dependencies=dependencies
         )
     );
+    _semantic_metadata(revision, program);
     return revision;
 }
 

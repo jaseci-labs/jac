@@ -17,7 +17,7 @@ import from jaclang.compiler.driver.progstate {
 import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
 import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
-import type from jaclang.compiler.driver.mtp { Info }
+import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.passes.transform { Transform }
 import type from jaclang.compiler.driver.compilation_context { SourceStore }
 

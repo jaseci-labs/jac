@@ -2,7 +2,7 @@ import from pathlib { Path }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.tools.unparse_pass { unparse_node }
 import from jaclang { JacRuntime as Jac }
-import from jaclang.compiler.driver.mtp {
+import from jaclang.runtime.semantic {
     ClassInfo,
     FieldInfo,
     FunctionInfo,

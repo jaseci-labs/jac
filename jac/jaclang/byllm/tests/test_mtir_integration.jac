@@ -19,7 +19,7 @@ import from pathlib { Path }
 
 import from jaclang { JacRuntime }
 import from jaclang { JacRuntimeInterface as Jac }
-import from jaclang.compiler.driver.mtp {
+import from jaclang.runtime.semantic {
     ClassInfo,
     EnumInfo,
     FieldInfo,
@@ -212,7 +212,7 @@ test "method tool in class" {
 # Python Library Fallback Tests
 # =============================================================================
 test "mtruntime without mtir info" {
-    import from jaclang.compiler.driver.mtp { MTIR }
+    import from jaclang.runtime.semantic { MTIR }
 
     def sample_func(x: int, y: str) -> str {
         return f"{y}: {x}";

@@ -1,6 +1,6 @@
 import logging;
 import from pathlib { Path }
-import from jaclang.compiler.frontend.constant { Constants as Con }
+import from jaclang.runtime.constants { Constants as Con }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 import from jaclang.server.serving.datatypes {
     HTMLResponse,
@@ -394,7 +394,7 @@ def register_graph_endpoints(server: JacAPIServer) {
 
 def register_diagnostics_endpoints(server: JacAPIServer) {
     async def build_status(request: Request) -> JSONResponse {
-        import from jaclang.server.hmr { get_build_status }
+        import from jaclang.server.build_status { get_build_status }
         return JSONResponse(content=get_build_status());
     }
     server.add_endpoint(

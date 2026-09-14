@@ -138,7 +138,7 @@ impl AccessCheckPass._module_app_facts(
     if not mod_path {
         return (None, mod.jac_project_root);
     }
-    import from jaclang.compiler.driver.modresolver { find_jac_project_root }
+    import from jaclang.project.modresolver { find_jac_project_root }
     import from jaclang.compiler.driver.compilation_context { context_app }
     app = context_app(mod_path);
     return (

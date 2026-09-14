@@ -31,7 +31,7 @@ import from jaclang.compiler.frontend.unitree {
     UniScopeNode,
     VisitStmt
 }
-import from jaclang.compiler.driver.mtp {
+import from jaclang.runtime.semantic {
     ClassInfo,
     EnumInfo,
     FieldInfo,

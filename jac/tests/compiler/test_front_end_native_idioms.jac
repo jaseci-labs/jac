@@ -20,7 +20,7 @@ import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
-import from jaclang.compiler.frontend.helpers { pascal_to_snake }
+import from jaclang.project.source { pascal_to_snake }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -145,13 +145,7 @@ test "native_safe_sym keeps distinct sources distinct after sanitizing" {
 # helpers.jac: the Python-only tenants moved to their own modules
 # ─────────────────────────────────────────────────────────────────────
 
-# `helpers.jac` sits under most of the front end, so every module-scope
-# import it carried was inherited by every closure above it. The debugger
-# (`pdb`/`dis`/`marshal`), the jac.toml reader (`tomllib`), and the traceback
-# renderer (`traceback`) each moved to their own module, leaving `os` as the
-# only module object bound at helpers' module scope. This is the acceptance
-# criterion for that move, spelled so re-adding an import fails here.
-test "helpers module scope binds os and nothing else" {
+test "helpers module scope binds no Python modules" {
     bound = sorted(
         [
             nm
@@ -159,7 +153,7 @@ test "helpers module scope binds os and nothing else" {
             if isinstance(val, types.ModuleType) and not nm.startswith("__")
         ]
     );
-    assert bound == ["os"] , f"helpers.jac module scope grew imports: {bound}";
+    assert bound == [] , f"helpers.jac module scope grew imports: {bound}";
 }
 
 # Sitting under most of the front end only pays if the module can be linked.
@@ -170,14 +164,14 @@ test "helpers module scope binds os and nothing else" {
 # there is no callable to demote a signature to. Every one of them is fixed
 # or demotable now, so the module reaches the backend and the constructs that
 # genuinely cannot lower become seams instead of a whole-module refusal.
-test "helpers.jac lowers when a native unit reaches it" {
+test "source helpers lower when a native unit reaches them" {
     import jaclang;
     import from jaclang.compiler.driver.na_coverage {
         na_coverage_begin,
         na_coverage_end
     }
     helpers_path = os.path.join(
-        os.path.dirname(jaclang.__file__), "compiler", "frontend", "helpers.jac"
+        os.path.dirname(jaclang.__file__), "project", "source.jac"
     );
     prog = JacProgram();
     opts = CompileOptions(
@@ -193,15 +187,15 @@ test "helpers.jac lowers when a native unit reaches it" {
         coverage = na_coverage_end();
     }
     assert not prog.errors_had , (
-        f"helpers.jac must reach the backend, not refuse on a signature no "
+        f"project/source.jac must reach the backend, not refuse on a signature no "
         f"callable owns: {[str(e) for e in prog.errors_had]}"
     );
     assert ir is not None and ir.gen.llvm_ir is not None , (
-        "no LLVM IR for helpers.jac, so every consumer that links it inherits "
+        "no LLVM IR for project/source.jac, so every consumer that links it inherits "
         "a module-level refusal"
     );
     rec = coverage.get(os.path.realpath(helpers_path));
-    assert rec is not None , "the coverage recorded nothing for helpers.jac";
+    assert rec is not None , "the coverage recorded nothing for project/source.jac";
     seams = [str(s) for s in (rec["seams"] or [])];
     reader = [
         s

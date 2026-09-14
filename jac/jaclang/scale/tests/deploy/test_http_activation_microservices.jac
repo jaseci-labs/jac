@@ -1,9 +1,9 @@
 import from kubernetes.client.exceptions { ApiException }
 import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
     ManifestBuilder,
-    GATEWAY_NAME,
     ScalingMode
 }
+import from jaclang.scale.runtime.context.util { GATEWAY_NAME }
 import from jaclang.scale.deploy.target.kubernetes.target {
     KubernetesTarget,
     apply_http_activations_for_bundle,

@@ -8,7 +8,7 @@ import from contextlib { suppress }
 glob logger: logging.Logger = logging.getLogger(__name__);
 import from enum { StrEnum }
 import from io { BytesIO }
-import from typing { IO, TypeAlias, get_type_hints }
+import from typing { IO, get_type_hints }
 
 import from jaclang.byllm._optdeps.pillow { PILImageCls, open_image }
 import from jaclang.byllm._optdeps.litellm { LiteLLMMessage }
@@ -16,10 +16,10 @@ import from jaclang.byllm._optdeps.pydantic { TypeAdapter }
 import from .schema { tool_to_schema }
 import from jaclang.byllm.exceptions { ByLLMError, FinishToolError }
 
-import from jaclang.compiler.driver.mtp { Info }
+import from jaclang.runtime.semantic { Info }
 import from jaclang.byllm.mcp { McpTool }
 
-glob MessageType: TypeAlias = 'Message | LiteLLMMessage';
+type MessageType = Message | LiteLLMMessage | dict[str, object];
 
 enum MessageRole(StrEnum) {
     SYSTEM = "system",
@@ -307,4 +307,19 @@ def _split_tool_msg_images(msg: dict) -> tuple {
         stripped_content = text_blocks;
     }
     return ({** msg, "content": stripped_content}, image_blocks);
+}
+
+
+def response_dict(value: object) -> dict {
+    if isinstance(value, dict) {
+        return value;
+    }
+    dump = value?.model_dump;
+    result = dump() if callable(dump) else None;
+    if not isinstance(result, dict) {
+        raise TypeError(
+            f'Expected a model response mapping, got {type(value).__name__}'
+        );
+    }
+    return result;
 }

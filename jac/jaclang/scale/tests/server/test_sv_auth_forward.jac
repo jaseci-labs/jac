@@ -5,7 +5,7 @@ import from jaclang.scale.runtime.context.auth_ctx {
     reset_current_auth,
     get_current_auth
 }
-import from jaclang.scale.plugin { JacScalePlugin }
+import from jaclang.scale.runtime.provider { JacScaleRuntime }
 import jaclang.scale.runtime.rpc.rpc as rpc_mod;
 
 
@@ -112,7 +112,7 @@ test "sv_service_call forwards Authorization header when auth set" {
         sv_client.register("demo_mod", "http://demo.invalid");
         tok = set_current_auth("Bearer xyz");
         try {
-            result = JacScalePlugin.sv_service_call("demo_mod", "echo", {"x": 1});
+            result = JacScaleRuntime.sv_service_call("demo_mod", "echo", {"x": 1});
         } finally {
             reset_current_auth(tok);
         }
@@ -138,7 +138,7 @@ test "sv_service_call omits Authorization when no auth context" {
     try {
         sv_client.register("demo_mod2", "http://demo.invalid");
 
-        result = JacScalePlugin.sv_service_call("demo_mod2", "echo", {});
+        result = JacScaleRuntime.sv_service_call("demo_mod2", "echo", {});
         assert captured["auth"] == "";
         assert result == "ok";
     } finally {
@@ -160,7 +160,7 @@ test "sv_service_call surfaces application-level error from envelope" {
         sv_client.register("demo_mod3", "http://demo.invalid");
         raised = False;
         try {
-            JacScalePlugin.sv_service_call("demo_mod3", "fail", {});
+            JacScaleRuntime.sv_service_call("demo_mod3", "fail", {});
         } except RuntimeError as e {
             raised = "boom" in str(e);
         }
@@ -186,7 +186,7 @@ test "sv_service_call retries on transport error and succeeds on 2nd attempt" {
 
     try {
         sv_client.register("retry_mod", "http://demo.invalid");
-        result = JacScalePlugin.sv_service_call("retry_mod", "ping", {});
+        result = JacScaleRuntime.sv_service_call("retry_mod", "ping", {});
         assert result == "ok";
         assert call_count["n"] == 2;
     } finally {
@@ -209,7 +209,7 @@ test "sv_service_call gives up after max_attempts on persistent transport error"
         sv_client.register("dead_mod", "http://demo.invalid");
         raised_msg = "";
         try {
-            JacScalePlugin.sv_service_call("dead_mod", "ping", {});
+            JacScaleRuntime.sv_service_call("dead_mod", "ping", {});
         } except RuntimeError as e {
             raised_msg = str(e);
         }
@@ -268,7 +268,7 @@ test "sv_service_call forwards X-Trace-Id when set in context" {
         sv_client.register("trace_mod", "http://demo.invalid");
         tok = set_current_trace("test-trace-xyz");
         try {
-            JacScalePlugin.sv_service_call("trace_mod", "ping", {});
+            JacScaleRuntime.sv_service_call("trace_mod", "ping", {});
         } finally {
             reset_current_trace(tok);
         }
@@ -292,7 +292,7 @@ test "sv_service_call omits X-Trace-Id when no trace context is set" {
     try {
         sv_client.register("trace_mod2", "http://demo.invalid");
 
-        JacScalePlugin.sv_service_call("trace_mod2", "ping", {});
+        JacScaleRuntime.sv_service_call("trace_mod2", "ping", {});
         assert captured["trace"] == "";
     } finally {
         sv_http.post_stream_aware_sync = original_post;
@@ -320,7 +320,7 @@ test "breaker trips OPEN after N consecutive transport failures and fails fast" 
 
     raised_msg = "";
     try {
-        JacScalePlugin.sv_service_call(mod, "anything", {});
+        JacScaleRuntime.sv_service_call(mod, "anything", {});
     } except RuntimeError as e {
         raised_msg = str(e);
     }
@@ -420,7 +420,7 @@ test "walker_call records one breaker failure per failed round trip" {
     try {
         sv_client.register(mod, "http://demo.invalid");
         try {
-            JacScalePlugin.sv_walker_call(mod, "Ping", {}, None);
+            JacScaleRuntime.sv_walker_call(mod, "Ping", {}, None);
         } except RuntimeError {}
 
         st = _breaker_peek(mod);
@@ -446,7 +446,7 @@ test "breaker opens after exactly the trip threshold of failed round trips" {
         while not breaker_should_skip(mod) and calls < _BREAKER_TRIP_THRESHOLD {
             calls += 1;
             try {
-                JacScalePlugin.sv_service_call(mod, "ping", {});
+                JacScaleRuntime.sv_service_call(mod, "ping", {});
             } except RuntimeError {}
         }
 
@@ -481,7 +481,7 @@ test "a breaker that trips mid-call abandons the remaining retries" {
         sv_client.register(mod, "http://demo.invalid");
         raised_msg = "";
         try {
-            JacScalePlugin.sv_service_call(mod, "ping", {});
+            JacScaleRuntime.sv_service_call(mod, "ping", {});
         } except RuntimeError as e {
             raised_msg = str(e);
         }
@@ -517,7 +517,7 @@ test "application error envelope does NOT trip the breaker" {
         sv_client.register(mod, "http://demo.invalid");
         for _ in range(_BREAKER_TRIP_THRESHOLD) {
             try {
-                JacScalePlugin.sv_service_call(mod, "fail", {});
+                JacScaleRuntime.sv_service_call(mod, "fail", {});
             } except RuntimeError {}
         }
 
@@ -548,7 +548,7 @@ test "sv_service_call does NOT retry on application error envelope" {
         sv_client.register("app_err_mod", "http://demo.invalid");
         raised_msg = "";
         try {
-            JacScalePlugin.sv_service_call("app_err_mod", "fail", {});
+            JacScaleRuntime.sv_service_call("app_err_mod", "fail", {});
         } except RuntimeError as e {
             raised_msg = str(e);
         }
@@ -574,7 +574,7 @@ test "sv_service_call uses the default 10s timeout when no per-service override"
 
     try {
         sv_client.register("default_to_mod", "http://demo.invalid");
-        JacScalePlugin.sv_service_call("default_to_mod", "run", {});
+        JacScaleRuntime.sv_service_call("default_to_mod", "run", {});
         assert captured["timeout"] == 10.0;
     } finally {
         sv_http.post_stream_aware_sync = original_post;
@@ -596,7 +596,7 @@ test "sv_service_call honors per-service rpc_timeout from config" {
 
     try {
         sv_client.register("slow_mod", "http://demo.invalid");
-        JacScalePlugin.sv_service_call("slow_mod", "run", {});
+        JacScaleRuntime.sv_service_call("slow_mod", "run", {});
         assert captured["timeout"] == 75.5;
     } finally {
         _restore_rpc_timeout(original_resolver);
@@ -639,7 +639,7 @@ test "sv_service_call uses URL from get_sv_registry hookspec when present" {
             sv_client.unregister("k9_test_mod");
         }
 
-        result = JacScalePlugin.sv_service_call("k9_test_mod", "do", {});
+        result = JacScaleRuntime.sv_service_call("k9_test_mod", "do", {});
         assert result == "via-hookspec";
 
         assert "k9-test-mod-service.prod.svc.cluster.local" in captured["url"];
@@ -668,7 +668,7 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
 
     try {
         sv_client.register("k9_fallback_mod", "http://fallback.invalid:9999");
-        result = JacScalePlugin.sv_service_call("k9_fallback_mod", "do", {});
+        result = JacScaleRuntime.sv_service_call("k9_fallback_mod", "do", {});
         assert result == "via-fallback";
         assert "fallback.invalid:9999" in captured["url"];
     } finally {
@@ -746,7 +746,7 @@ test "walker_call sends exactly one POST to a peer that never replies" {
         sv_client.register(mod, f"http://127.0.0.1:{port}");
         raised_msg = "";
         try {
-            JacScalePlugin.sv_walker_call(mod, "Ping", {}, None);
+            JacScaleRuntime.sv_walker_call(mod, "Ping", {}, None);
         } except RuntimeError as e {
             raised_msg = str(e);
         }
@@ -772,7 +772,7 @@ test "service_call sends exactly one POST to a peer that never replies" {
         sv_client.register(mod, f"http://127.0.0.1:{port}");
         raised_msg = "";
         try {
-            JacScalePlugin.sv_service_call(mod, "ping", {});
+            JacScaleRuntime.sv_service_call(mod, "ping", {});
         } except RuntimeError as e {
             raised_msg = str(e);
         }
@@ -804,7 +804,7 @@ test "service_call does not retry an HTTP 500" {
         sv_client.register(mod, f"http://127.0.0.1:{port}");
         raised_msg = "";
         try {
-            JacScalePlugin.sv_service_call(mod, "boom", {});
+            JacScaleRuntime.sv_service_call(mod, "boom", {});
         } except RuntimeError as e {
             raised_msg = str(e);
         }
@@ -890,7 +890,7 @@ test "a compiled consumer's declared route is not appended to a bare peer URL" {
         assert sv_client.registered_route(mod) == "";
         assert sv_client.resolve_url(mod) == f"http://127.0.0.1:{port}";
 
-        JacScalePlugin.sv_walker_call(mod, "Ping", {}, None);
+        JacScaleRuntime.sv_walker_call(mod, "Ping", {}, None);
         assert paths == ["/walker/Ping"] , paths;
     } finally {
         _reset_peer(mod);
@@ -910,12 +910,12 @@ test "a route registered together with a URL is appended (gateway base)" {
         assert sv_client.registered_route(mod) == "/api/peer";
         assert sv_client.resolve_url(mod) == f"http://127.0.0.1:{port}/api/peer";
 
-        JacScalePlugin.sv_walker_call(mod, "Ping", {}, None);
+        JacScaleRuntime.sv_walker_call(mod, "Ping", {}, None);
         assert paths == ["/api/peer/walker/Ping"] , paths;
 
         sv_client.register(mod, f"http://127.0.0.1:{port}");
         assert sv_client.registered_route(mod) == "";
-        JacScalePlugin.sv_walker_call(mod, "Ping", {}, None);
+        JacScaleRuntime.sv_walker_call(mod, "Ping", {}, None);
         assert paths == ["/api/peer/walker/Ping", "/walker/Ping"] , paths;
     } finally {
         _reset_peer(mod);

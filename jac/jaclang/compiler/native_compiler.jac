@@ -31,17 +31,23 @@ glob CLASS_MODULES: tuple = (
      );
 
 
-def _enum_class(name: str) -> any {
-    import importlib;
-    for modname in (
-        "jaclang.compiler.frontend.constant",
-        "jaclang.compiler.frontend.parser.tokens",
-        "jaclang.compiler.frontend.diagnostics"
-    ) {
-        mod = importlib.import_module(modname);
-        cls = getattr(mod, name, None);
-        if isinstance(cls, `type) {
-            return cls;
+def _enum_class(name: str, owner: type) -> type | None {
+    import from enum { Enum }
+    for base in owner.__mro__ {
+        module = sys.modules.get(base.__module__);
+        if module is None {
+            continue;
+        }
+        candidate = getattr(module, name, None);
+        if isinstance(candidate, `type) and issubclass(candidate, Enum) {
+            return candidate;
+        }
+        for candidate in vars(module).values() {
+            if isinstance(candidate, `type)
+                and issubclass(candidate, Enum)
+                and candidate.__name__ == name {
+                return candidate;
+            }
         }
     }
     return None;
@@ -200,10 +206,12 @@ class NativeCompiler {
             } elif code == "str" {
                 nat_code = CODE_STR;
             } elif code == "enum" {
-                ecls = _enum_class(aux);
+                ecls = _enum_class(aux, cls);
                 table = _enum_table(ecls) if ecls else None;
                 if table is None {
-                    continue;
+                    raise ValueError(
+                        f'Native field {cls.__module__}.{name}.{fname} has unresolved enum {aux}'
+                    );
                 }
                 nat_code = CODE_ENUM;
                 enum_h = self._hold(table);
@@ -233,7 +241,7 @@ class NativeCompiler {
                 if not m {
                     continue;
                 }
-                ecls = _enum_class(m.group(1));
+                ecls = _enum_class(m.group(1), cls);
                 table = _enum_table(ecls) if ecls else None;
                 if table is None {
                     continue;

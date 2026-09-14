@@ -172,7 +172,10 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
 }
 
 impl NaIRGenPass._emit_runtime_raise(
-    is_error: ir.Value, exc_type_name: str, msg: str
+    is_error: ir.Value,
+    exc_type_name: str,
+    msg: str,
+    release_on_error: list[ir.Value] = []
 ) -> None {
     if not self._slot_lowering_active() and self._exc_raise_fn is None {
         self._declare_exception_runtime();
@@ -187,6 +190,12 @@ impl NaIRGenPass._emit_runtime_raise(
     self.builder.cbranch(is_error, raise_bb, ok_bb);
 
     self.builder.position_at_end(raise_bb);
+
+    for value in release_on_error {
+        if self._is_owned(value) {
+            self._emit_rc_release_simple(value, op="read_error");
+        }
+    }
     exc_type_id = self._get_or_register_exc_type(exc_type_name);
 
     if msg in self._rt_error_msgs {

@@ -12,6 +12,7 @@ import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.project.config { JacConfig }
 import from jaclang.dist.publish.metadata { generate_metadata, generate_pyproject_toml }
 import from jaclang.dist.publish.py_imports { rewrite_imports, wheel_module_name }
+import from jaclang.compiler.driver.source_products { python_source }
 import from jaclang.dist.publish.runtime_vendor {
     build_runtime_closure,
     scan_jaclang_imports
@@ -102,26 +103,6 @@ def _module_is_client_source(source_path: Path) -> bool {
     }
 }
 
-
-def _transpile_jac_to_py(program: JacProgram, source_path: Path) -> str {
-    prev = len(program.errors_had);
-    ir = program.compile(file_path=str(source_path));
-    new_errors = program.errors_had[prev:];
-    if new_errors {
-        details = "\n".join(f"  {err}" for err in new_errors);
-        raise ValueError(f"Transpilation failed for {source_path}:\n{details}");
-    }
-    if ir is None {
-        raise ValueError(
-            f"Transpilation failed for {source_path}: compiler returned no module."
-        );
-    }
-    code = ir.gen.py;
-    if not code {
-        raise ValueError(f"{source_path} produced no Python (not a valid Jac module).");
-    }
-    return str(code);
-}
 
 def _bootstrap_shim(top: str, primary_pkg: str) -> str {
     here = "os.path.dirname(os.path.abspath(__file__))";
@@ -235,7 +216,7 @@ impl WheelBuilder._assemble_src_data -> dict[str, bytes] {
             }
             target = wp[:-len(".jac")] + ".py";
             _claim(target);
-            texts[target] = _transpile_jac_to_py(program, src_path);
+            texts[target] = python_source(str(src_path), program)[0];
             origins[target] = src_path;
             transpiled.add(target);
         } elif self.transpile_jac and wp.endswith(".py") and (src_path is not None) {
@@ -300,7 +281,22 @@ impl WheelBuilder._vendor_runtime_into(
             for imp in needed
         )
     );
-    closure = build_runtime_closure(codes, include_byllm=include_byllm);
+    closure = build_runtime_closure(
+        codes, include_byllm=include_byllm, native_sources=False
+    );
+    runtime = json.loads(closure['runtime.json']);
+    native_records = [
+        module['native']
+        for module in runtime['modules']
+        if module.get('native')
+    ];
+    if native_records {
+        import sysconfig;
+        self.pure_python = False;
+        self.platform_tag = sysconfig.get_platform().replace('-', '_').replace(
+            '.', '_'
+        );
+    }
 
     tops = sorted(
         {
@@ -324,7 +320,7 @@ impl WheelBuilder._vendor_runtime_into(
         }
     }
     for (rel, src) in sorted(closure.items()) {
-        src_data[f"{vendor_root}/jaclang/{rel}"] = src.encode("utf-8");
+        src_data[f"{vendor_root}/jaclang/{rel}"] = src;
     }
     self.vendored_runtime_modules = len(
         [
@@ -359,6 +355,7 @@ impl WheelBuilder.build -> bytes {
         raise ValueError("Cannot build wheel: project_root is not set.");
     }
 
+    src_data: dict[str, bytes] = self.source_data();
     dist_info = dist_info_dirname(self.config);
 
     metadata_bytes = generate_metadata(self.config, project_root=proj_root).encode(
@@ -374,7 +371,6 @@ impl WheelBuilder.build -> bytes {
     );
     ep_bytes: bytes | None = generate_entry_points(self.config).encode("utf-8") or None;
 
-    src_data: dict[str, bytes] = self.source_data();
     top_level_bytes = ("\n".join(self._top_level_names(src_data)) + "\n").encode(
         "utf-8"
     );
@@ -418,6 +414,7 @@ impl WheelBuilder.build -> bytes {
 }
 
 impl WheelBuilder.build_to(output_dir: Path) -> Path {
+    content = self.build();
     output_dir.mkdir(parents=True, exist_ok=True);
     fname = wheel_filename(
         self.config,
@@ -426,7 +423,7 @@ impl WheelBuilder.build_to(output_dir: Path) -> Path {
         platform_tag=self.platform_tag,
     );
     dest = output_dir / fname;
-    dest.write_bytes(self.build());
+    dest.write_bytes(content);
     return dest;
 }
 

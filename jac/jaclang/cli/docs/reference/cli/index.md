@@ -1569,7 +1569,7 @@ jac build [-h] [--all] [--as {jab,sealed,binary,wheel,npm,source,native,client}]
 | `binary` | A self-contained app executable: a copy of the `jac` launcher with your sealed `.jab` appended as an overlay | -- |
 | `wheel` | A `pip install`-ready Python wheel in `dist/` | `jac bundle` |
 | `npm` | An npm tarball | `jac bundle --target npm` |
-| `source` | An editable FastAPI + JavaScript source tree (zero `.jac` files) | `jac eject` |
+| `source` | Editable Python, JavaScript, and C with the required Jac runtime source | `jac eject` |
 | `client` | Only the app's client bundle (the browser bundle of a `web-app` / `web-static`, the desktop binary of a `desktop` app, the platform build of a `mobile` app) | -- |
 
 **The type-check gate.** `jac build` refuses to emit an artifact if the program fails type checking, and there is no flag that skips it. Because every compilation type-checks, the artifact compile *is* the gate rather than a separate pass over the project. Use `--check_only` to run the whole-project check and emit nothing (useful in CI).
@@ -1627,9 +1627,28 @@ jac build --as npm
 # Standalone native binary from one module
 jac build main.jac --native
 
-# Editable FastAPI + JavaScript source tree (formerly `jac eject`)
+# Editable Python, JavaScript, and C source tree
 jac build --as source -o /tmp/myapp-out
 ```
+
+Source export follows the selected app and its colocated services. The output
+contains application code, serving and import metadata, declared resources, and
+the shared runtime modules those applications require. Rebuild and run it without
+Jac:
+
+```bash
+cd /tmp/myapp-out
+python -m pip install -r requirements.txt
+python build.py
+python main.py
+```
+
+JavaScript builds use Node/npm or Bun. Native code is emitted as C from the
+existing native lowering and built with Clang; browser native modules also need
+a WASI sysroot. Exporting native source requires LLVM 22 development files and
+CMake, or a configured `JAC_LLVM_CBE`. Generated C retains the selected target's
+ABI. Original `.jac` files can remain as application resources, such as the site's
+source browser; executable modules use the exported Python, JavaScript, and C.
 
 **Building apps of a workspace:**
 
