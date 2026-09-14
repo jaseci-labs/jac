@@ -300,7 +300,26 @@ impl TypeCheckPass._check_intrinsic_call(nd: FuncCall) -> None {
             reason=f"expected {intr.arity()} argument(s), got {len(positional)}"
         );
     }
-    if intr.result_spec != "none" {
+    if intr.result_spec == "call_result" {
+        if len(positional) == 1 and isinstance(positional[0], FuncCall) {
+            nd.type = self.evaluator.get_type_of_expression(positional[0]);
+        } else {
+            self.emit(
+                E5095,
+                node_override=nd,
+                name=intr.name,
+                reason="the operand must be a function call"
+            );
+        }
+        if not isinstance(nd.parent, ReturnStmt) or nd.parent.expr is not nd {
+            self.emit(
+                E5095,
+                node_override=nd,
+                name=intr.name,
+                reason="must be the complete expression of a return statement"
+            );
+        }
+    } elif intr.result_spec != "none" {
         if self.evaluator.na_builtins_module is not None {
             result_cls = self.evaluator._get_type_from_module(
                 self.evaluator.na_builtins_module, intr.result_spec
@@ -825,6 +844,18 @@ impl TypeCheckPass.exit_import with Import exit {
     }
 }
 
+impl TypeCheckPass.exit_compiler_annotation with CompilerAnnotation exit {
+    import from jaclang.compiler.frontend.diagnostics { E1321 }
+    if not here.in_native_context() {
+        self.emit(E1321, node_override=here,
+            reason="foreign contracts require the native codespace");
+    }
+    if not isinstance(here.parent, (Ability, Archetype)) {
+        self.emit(E1321, node_override=here,
+            reason="foreign contracts annotate C functions or opaque objects");
+    }
+}
+
 impl TypeCheckPass.enter_ability with Ability entry {
     for decor in (here.decorators or []) {
         ty = self.evaluator.get_type_of_expression(decor);
@@ -837,6 +868,7 @@ impl TypeCheckPass.enter_ability with Ability entry {
 
 impl TypeCheckPass.exit_ability with Ability exit {
     import from jaclang.compiler.frontend.constant { OwnershipKind }
+    self.evaluator.get_type_of_ability(here);
     self.evaluator.validate_typevar_variance(here);
 
     self._check_intrinsic_collision(here);

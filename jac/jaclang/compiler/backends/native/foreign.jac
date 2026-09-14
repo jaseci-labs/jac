@@ -1,5 +1,6 @@
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+import from jaclang.compiler.frontend.constant { OwnershipKind }
 
 def collect_foreign_structs(modules: list) -> dict {
     out: dict = {};
@@ -45,6 +46,7 @@ def declared_type_name(type_expr: (uni.UniNode | None)) -> (str | None) {
 
 def collect_foreign_fns(modules: list) -> dict {
     out: dict = {};
+    structs = collect_foreign_structs(modules);
     for mod in modules {
         if mod is None {
             continue;
@@ -73,6 +75,16 @@ def collect_foreign_fns(modules: list) -> dict {
                     ptn = declared_type_name(p.type_tag.tag)
                         if (p.type_tag and p.type_tag.tag)
                         else None;
+                    # A borrowed C record is an address, including an opaque
+                    # forward declaration. It must not consume the register
+                    # slots of a record passed by value (zero for an opaque
+                    # record), which would shift every subsequent argument.
+                    if ptn in structs and p.type_tag is not None
+                        and p.type_tag.ownership in (
+                            OwnershipKind.BORROW, OwnershipKind.MUT_BORROW
+                        ) {
+                        ptn = None;
+                    }
                     params.append((p.name.value if p.name else None, ptn));
                 }
                 out[fname] = {

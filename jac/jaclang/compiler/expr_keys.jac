@@ -344,18 +344,20 @@ def expr_is_builtin_region(expr: (UniNode | None)) -> bool {
 
 
 def type_tag_borrows(expr: (UniNode | None)) -> bool {
-    import from jaclang.compiler.frontend.unitree { SubTag, UnaryExpr }
+    import from jaclang.compiler.frontend.unitree { Expr, SubTag, UnaryExpr }
     import from jaclang.compiler.frontend.constant { is_borrow_kind }
+    import from jaclang.compiler.types.types { FunctionType }
     if expr is None {
         return False;
     }
     if isinstance(expr, SubTag) and is_borrow_kind(expr.ownership) {
         return True;
     }
-    for un in expr.get_all_sub_nodes(UnaryExpr) {
-        if is_borrow_kind(un.ownership) {
-            return True;
-        }
+    if isinstance(expr, UnaryExpr) and is_borrow_kind(expr.ownership) {
+        return True;
     }
-    return isinstance(expr, UnaryExpr) and is_borrow_kind(expr.ownership);
+    if isinstance(expr, Expr) and isinstance(expr.type, FunctionType) {
+        return False;
+    }
+    return any(type_tag_borrows(child) for child in expr.kid);
 }

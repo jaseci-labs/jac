@@ -9,6 +9,7 @@ Run with any Python >= 3.11; both subjects must match bootstrap's CPython pin:
 Compilation, imports, process startup, and warmup are outside measured regions.
 Each sample runs in a fresh process; baseline/candidate order alternates. This
 is an execution benchmark, not proof that the candidate evaluator is native Jac.
+Untimed ownership checks run first, in separate processes using the same artifact.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import marshal
 import math
 from pathlib import Path
 import platform
+import shlex
 import statistics
 import subprocess
 import sys
@@ -72,6 +74,7 @@ class Sample:
 
 
 def runtime_metadata() -> dict[str, object]:
+    configure = str(sysconfig.get_config_var("CONFIG_ARGS") or "")
     return {
         "executable": sys.executable,
         "version": list(sys.version_info[:3]),
@@ -79,10 +82,19 @@ def runtime_metadata() -> dict[str, object]:
         "build": sys.version,
         "platform": sys.platform,
         "machine": platform.machine(),
+        "compiler": platform.python_compiler(),
         "debug": bool(sysconfig.get_config_var("Py_DEBUG")),
         "free_threaded": bool(sysconfig.get_config_var("Py_GIL_DISABLED")),
         "tail_call_interpreter": bool(sysconfig.get_config_var("Py_TAIL_CALL_INTERP")),
-        "configure": sysconfig.get_config_var("CONFIG_ARGS"),
+        "configure": configure,
+        "optimization_config": sorted(
+            flag for flag in shlex.split(configure)
+            if flag.startswith((
+                "--enable-optimizations", "--enable-bolt", "--enable-experimental-jit",
+                "--with-lto", "--without-lto", "--with-pymalloc", "--without-pymalloc",
+                "--with-mimalloc", "--without-mimalloc",
+            ))
+        ),
         "cflags": sysconfig.get_config_var("PY_CFLAGS"),
         "cflags_nodist": sysconfig.get_config_var("PY_CFLAGS_NODIST"),
         "jit_enabled": bool(getattr(sys, "_jit", None) and sys._jit.is_enabled()),
@@ -90,14 +102,30 @@ def runtime_metadata() -> dict[str, object]:
     }
 
 
-def load_workloads(artifact: Path) -> dict[str, tuple[Callable[[], int], int]]:
+def load_namespace(artifact: Path) -> dict[str, object]:
     with artifact.open("rb") as stream:
         version, code = marshal.load(stream)
     if tuple(version) != sys.version_info[:3] or not isinstance(code, CodeType):
         raise RuntimeError("bytecode artifact does not match this interpreter")
     namespace: dict[str, object] = {"__name__": "evaluator_workloads"}
     exec(code, namespace)
-    return cast(dict[str, tuple[Callable[[], int], int]], namespace["WORKLOADS"])
+    return namespace
+
+
+def load_workloads(artifact: Path) -> dict[str, tuple[Callable[[], int], int]]:
+    return cast(dict[str, tuple[Callable[[], int], int]], load_namespace(artifact)["WORKLOADS"])
+
+
+def check_ownership(artifact: Path) -> list[str]:
+    checks = cast(dict[str, Callable[[], None]], load_namespace(artifact)["OWNERSHIP_CHECKS"])
+    if not checks:
+        raise ValueError("expected nonempty evaluator ownership checks")
+    for name, check in checks.items():
+        try:
+            check()
+        except Exception as error:
+            raise AssertionError(f"evaluator ownership check failed: {name}") from error
+    return list(checks)
 
 
 def measure(function: Callable[[], int], expected: int, loops: int) -> Sample:
@@ -113,7 +141,7 @@ def measure(function: Callable[[], int], expected: int, loops: int) -> Sample:
 
 def worker_main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["_prepare", "_sample", "_metadata"])
+    parser.add_argument("mode", choices=["_prepare", "_sample", "_metadata", "_ownership"])
     parser.add_argument("--artifact", type=Path)
     parser.add_argument("--case")
     parser.add_argument("--loops", type=int, default=0)
@@ -125,6 +153,9 @@ def worker_main() -> None:
         return
     if args.artifact is None:
         parser.error("--artifact is required")
+    if args.mode == "_ownership":
+        print(json.dumps({"passed": check_ownership(args.artifact)}))
+        return
     if args.mode == "_prepare":
         # Only the reference compiler produces the artifact. Candidate startup
         # may use its own compiler, but the timed functions cannot do so.
@@ -179,7 +210,12 @@ def validate_runtimes(baseline: dict[str, object], candidate: dict[str, object])
     for name, runtime in (("baseline", baseline), ("candidate", candidate)):
         if runtime["implementation"] != "cpython" or runtime["version"] != version:
             raise ValueError(f"{name} must use the pinned CPython {pin['version']}")
-    for field in ("platform", "machine", "debug", "free_threaded", "jit_enabled"):
+    if not baseline["tail_call_interpreter"]:
+        raise ValueError("baseline must use CPython's tail-call interpreter")
+    for field in (
+        "platform", "machine", "compiler", "debug", "free_threaded", "jit_enabled",
+        "optimization_config", "cflags", "cflags_nodist",
+    ):
         if baseline[field] != candidate[field]:
             raise ValueError(f"incomparable runtime setting {field}: {baseline[field]} != {candidate[field]}")
 
@@ -241,6 +277,12 @@ def main() -> int:
         prepared = cast(PreparedWorkloads, run_worker(
             baseline_path, "_prepare", "--artifact", str(artifact),
         ))
+        ownership = {
+            name: run_worker(executable, "_ownership", "--artifact", str(artifact))
+            for name, executable in (("baseline", baseline_path), ("candidate", candidate_path))
+        }
+        if ownership["baseline"] != ownership["candidate"]:
+            raise ValueError("runtimes executed different evaluator ownership checks")
         cases = args.cases or prepared["cases"]
         if len(set(cases)) != len(cases) or any(case not in prepared["cases"] for case in cases):
             parser.error(f"choose distinct workloads from {prepared['cases']}")
@@ -272,6 +314,7 @@ def main() -> int:
         "same_executable": baseline_path.samefile(candidate_path),
         "source_sha256": prepared["source_sha256"],
         "bytecode_sha256": prepared["bytecode_sha256"],
+        "ownership": ownership,
         "warmups": args.warmups,
         "minimum_sample_seconds": args.min_time,
         "max_slowdown": args.max_slowdown,

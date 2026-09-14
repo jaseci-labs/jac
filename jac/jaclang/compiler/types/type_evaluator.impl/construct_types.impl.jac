@@ -451,6 +451,12 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
                         ),
                         default_value=extern_param.value,
                         param_kind=_convert_param_kind(extern_param.param_kind),
+                        ownership=extern_param.type_tag.ownership
+                            if extern_param.type_tag
+                            else OwnershipKind.NONE,
+                        linear=extern_param.type_tag.linear
+                            if extern_param.type_tag
+                            else False,
                     )
                 );
             }
@@ -460,7 +466,19 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
             func_name=node_.name_spec.sym_name,
             return_type=ret_type,
             parameters=extern_params,
+            return_ownership=node_.signature.return_type.ownership
+                if isinstance(node_.signature.return_type, UnaryExpr)
+                else OwnershipKind.NONE,
         );
+        self._set_lifetime_contract(
+            extern_fn,
+            [
+                p.type_tag.tag if p.type_tag else None
+                for p in node_.signature.get_parameters()
+            ],
+            node_.signature.return_type
+        );
+        self._set_foreign_call_contract(extern_fn, node_);
         node_.name_spec.type = extern_fn;
         return extern_fn;
     }
@@ -517,6 +535,10 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
                 is_cls=is_cls_param,
                 param_kind=_convert_param_kind(param.param_kind),
                 is_comptime=param.is_comptime,
+                ownership=param.type_tag.ownership
+                    if param.type_tag
+                    else OwnershipKind.NONE,
+                linear=param.type_tag.linear if param.type_tag else False,
             )
         );
     }
@@ -552,7 +574,19 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
         is_async=node_.is_async,
         type_guard=guarded_type,
         type_guard_is_strict=guard_is_strict,
+        return_ownership=node_.signature.return_type.ownership
+            if isinstance(node_.signature.return_type, UnaryExpr)
+            else OwnershipKind.NONE,
     );
+    self._set_lifetime_contract(
+        func_type,
+        [
+            p.type_tag.tag if p.type_tag else None
+            for p in node_.signature.get_parameters()
+        ],
+        node_.signature.return_type
+    );
+    self._set_foreign_call_contract(func_type, node_);
     func_type = self._apply_function_decorators(node_, func_type);
     node_.name_spec.type = func_type;
     return func_type;
@@ -703,6 +737,7 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
     }
 
     node_.name_spec.type = cls_type;
+    self._set_foreign_resource_contract(cls_type, node_);
     return cls_type;
 }
 
@@ -892,6 +927,16 @@ impl TypeEvaluator._extern_field_type(field: HasVar) -> TypeBase {
     tag = annotation.tag;
     declared = self.get_type_of_expression(tag);
     if isinstance(declared, FunctionType) {
+        # A C callback's resource contract is part of its type. Rebuilding it
+        # from scalar positions would erase its moves and borrowed results.
+        if declared.return_ownership != OwnershipKind.NONE
+            or declared.return_sources or declared.return_linear
+            or declared.required_capabilities or declared.reentrant
+            or declared.foreign_errors != "jac"
+            or any(p.ownership != OwnershipKind.NONE or p.linear or p.lifetime_sources
+                for p in declared.parameters) {
+            return declared;
+        }
         param_types: list[TypeBase] = [];
         typed = False;
         for p in declared.parameters or [] {
@@ -931,4 +976,305 @@ impl TypeEvaluator._get_class_from_module(
     }
     resolved = self._get_type_from_module(module, name);
     return resolved if isinstance(resolved, ClassType) else None;
+}
+
+
+impl TypeEvaluator._set_lifetime_contract(
+    fn: FunctionType, annotations: list[Expr | None], result: Expr | None
+) -> None {
+    import from jaclang.compiler.frontend.diagnostics { E1320 }
+    names = [p.name for p in fn.parameters];
+    all_annotations = list(annotations);
+    all_annotations.append(result);
+    for (index, annotation) in enumerate(all_annotations) {
+        if not isinstance(annotation, UnaryExpr) {
+            continue;
+        }
+        sources: list[int] = [];
+        for source in getattr(annotation, "lifetime_sources", []) {
+            if names.count(source) != 1 {
+                self.emit_diag(
+                    E1320,
+                    annotation,
+                    reason="unknown or ambiguous source '" + source + "'"
+                );
+                continue;
+            }
+            source_index = names.index(source);
+            if source_index == index {
+                self.emit_diag(
+                    E1320, annotation, reason="a parameter cannot depend on itself"
+                );
+                continue;
+            }
+            if source_index in sources {
+                self.emit_diag(
+                    E1320, annotation, reason="duplicate source '" + source + "'"
+                );
+                continue;
+            }
+            sources.append(source_index);
+        }
+        sources.sort();
+        if index < len(fn.parameters) {
+            fn.parameters[index].lifetime_sources = sources;
+        } else {
+            fn.return_sources = sources;
+            fn.return_linear = getattr(annotation, "linear", False);
+        }
+    }
+    for (index, parameter) in enumerate(fn.parameters) {
+        pending = list(parameter.lifetime_sources);
+        visited: set[int] = set();
+        while pending {
+            source = pending.pop();
+            if source == index {
+                annotation = annotations[index];
+                if annotation is not None {
+                    self.emit_diag(
+                        E1320, annotation, reason="cyclic parameter dependencies"
+                    );
+                }
+                break;
+            }
+            if source not in visited {
+                visited.add(source);
+                pending.extend(fn.parameters[source].lifetime_sources);
+            }
+        }
+    }
+}
+
+
+impl TypeEvaluator._set_foreign_call_contract(
+    fn: FunctionType, ability: Ability
+) -> None {
+    import from jaclang.compiler.frontend.diagnostics { E1321 }
+    seen = False;
+    for annotation in ability.decorators or [] {
+        if not isinstance(annotation, CompilerAnnotation) {
+            continue;
+        }
+        if annotation.annotation_kind != "foreign_call" {
+            self.emit_diag(
+                E1321,
+                annotation,
+                reason="foreign_resource requires an opaque object declaration"
+            );
+            continue;
+        }
+        if seen {
+            self.emit_diag(
+                E1321, annotation, reason="duplicate foreign_call declaration"
+            );
+        }
+        seen = True;
+        imported = ability.find_parent_of_type(Import);
+        if imported is None or ability not in imported.clib_decls {
+            self.emit_diag(
+                E1321,
+                annotation,
+                reason="trusted foreign_call declarations belong inside import from c"
+            );
+            continue;
+        }
+        options: dict[str, Expr] = {};
+        for argument in annotation.arguments {
+            if argument.key is None {
+                continue;
+            }
+            key = argument.key.sym_name;
+            if key in options or key not in ("requires", "errors", "reentrant") {
+                self.emit_diag(
+                    E1321,
+                    annotation,
+                    reason="unknown or duplicate option '" + key + "'"
+                );
+            }
+            options[key] = argument.value;
+        }
+        requires = options.get("requires");
+        if requires is not None {
+            if not isinstance(requires, ListVal) {
+                self.emit_diag(
+                    E1321, requires, reason="requires must be a literal capability list"
+                );
+            } else {
+                capabilities: list[str] = [];
+                for item in requires.values {
+                    capability = literal_string_value(item);
+                    if capability != "gil" or capability in capabilities {
+                        self.emit_diag(
+                            E1321, item, reason="unknown or duplicate capability"
+                        );
+                    } else {
+                        capabilities.append(capability);
+                    }
+                }
+                fn.required_capabilities = capabilities;
+            }
+        }
+        errors = options.get("errors");
+        if errors is not None {
+            protocol = literal_string_value(errors);
+            if protocol not in ("python", "none") {
+                self.emit_diag(
+                    E1321, errors, reason="C error protocol must be python or none"
+                );
+            } else {
+                fn.foreign_errors = protocol;
+            }
+        } else {
+            self.emit_diag(
+                E1321,
+                annotation,
+                reason="foreign_call requires an explicit errors protocol"
+            );
+        }
+        reentrant = options.get("reentrant");
+        if not isinstance(reentrant, Bool) {
+            self.emit_diag(
+                E1321,
+                annotation,
+                reason="foreign_call requires a literal reentrant boolean"
+            );
+        } else {
+            fn.reentrant = reentrant.lit_value;
+        }
+    }
+}
+
+
+impl TypeEvaluator._set_foreign_resource_contract(
+    typ: ClassType, arch: Archetype
+) -> None {
+    import from jaclang.compiler.frontend.diagnostics { E1321 }
+    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+    seen = False;
+    for annotation in arch.decorators or [] {
+        if not isinstance(annotation, CompilerAnnotation) {
+            continue;
+        }
+        if annotation.annotation_kind != "foreign_resource" {
+            self.emit_diag(
+                E1321,
+                annotation,
+                reason="foreign_call requires a C function declaration"
+            );
+            continue;
+        }
+        if seen {
+            self.emit_diag(
+                E1321, annotation, reason="duplicate foreign_resource declaration"
+            );
+        }
+        seen = True;
+        if arch.base_classes or arch.type_params or ModuleFacts.unwrap_body(arch) {
+            self.emit_diag(
+                E1321,
+                arch,
+                reason="a foreign resource must be opaque, with no bases, fields, methods, or type parameters"
+            );
+        }
+        options: dict[str, Expr] = {};
+        for argument in annotation.arguments {
+            if argument.key is None {
+                continue;
+            }
+            key = argument.key.sym_name;
+            if key in options
+                or key not in ("abi", "empty", "drop", "aliasing", "reentrant_drop") {
+                self.emit_diag(
+                    E1321,
+                    annotation,
+                    reason="unknown or duplicate option '" + key + "'"
+                );
+            }
+            options[key] = argument.value;
+        }
+        abi_expr = options.get("abi");
+        abi = literal_string_value(abi_expr) if abi_expr is not None else None;
+        empty = options.get("empty");
+        drop = options.get("drop");
+        aliasing_expr = options.get("aliasing");
+        aliasing = literal_string_value(aliasing_expr)
+            if aliasing_expr is not None
+            else None;
+        reentrant = options.get("reentrant_drop");
+        if abi not in ("pointer", "word") or aliasing not in ("shared", "exclusive") {
+            self.emit_diag(
+                E1321,
+                annotation,
+                reason="declare abi=pointer or word and aliasing=shared or exclusive"
+            );
+            continue;
+        }
+        if not isinstance(empty, Int)
+            or empty.lit_value < 0
+            or empty.lit_value >= (1 << 64) {
+            self.emit_diag(
+                E1321,
+                annotation,
+                reason="empty must be an unsigned machine-word literal"
+            );
+            continue;
+        }
+        if not isinstance(drop, Name) or not isinstance(reentrant, Bool) {
+            self.emit_diag(
+                E1321,
+                annotation,
+                reason="drop must name a C function and reentrant_drop must be a literal boolean"
+            );
+            continue;
+        }
+        typ.shared.foreign_resource = (
+            abi,
+            empty.lit_value,
+            drop.sym_name,
+            aliasing,
+            reentrant.lit_value
+        );
+        drop_type = self.get_type_of_expression(drop);
+        declaration = drop.sym.decl.name_of
+            if drop.sym is not None and drop.sym.decl is not None
+            else None;
+        if not isinstance(declaration, Ability)
+            or declaration.find_parent_of_type(Import) is None {
+            self.emit_diag(
+                E1321,
+                drop,
+                reason="resource cleanup must be declared at the C ABI boundary"
+            );
+            continue;
+        }
+        if not isinstance(drop_type, FunctionType) or len(drop_type.parameters) != 1 {
+            self.emit_diag(
+                E1321, drop, reason="resource cleanup takes exactly one owned resource"
+            );
+            continue;
+        }
+        parameter = drop_type.parameters[0];
+        if parameter.ownership != OwnershipKind.OWN
+            or not isinstance(parameter.param_type, ClassType)
+            or not parameter.param_type.shared.same_class(typ.shared)
+            or not isinstance(declaration.signature, FuncSignature)
+            or (
+                declaration.signature.return_type is not None
+                and not isinstance(declaration.signature.return_type, Null)
+            ) {
+            self.emit_diag(
+                E1321,
+                drop,
+                reason="resource cleanup must consume this resource and return None"
+            );
+        }
+        if drop_type.foreign_errors != "none"
+            or drop_type.reentrant != reentrant.lit_value {
+            self.emit_diag(
+                E1321,
+                drop,
+                reason="cleanup must declare errors=none and matching reentrancy"
+            );
+        }
+    }
 }

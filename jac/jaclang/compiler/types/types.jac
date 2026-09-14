@@ -1,5 +1,6 @@
 import from enum { IntEnum, auto }
 import from pathlib { Path }
+import from jaclang.compiler.frontend.constant { OwnershipKind }
 import type from jaclang.compiler.frontend.unitree { Expr, Symbol }
 import type from jaclang.compiler.frontend.unitree { UniScopeNode as SymbolTable }
 import from jaclang.compiler.frontend.relations {
@@ -150,6 +151,7 @@ node TypeVarType(TypeBase) {
 }
 
 node ClassDetailsShared {
+    has foreign_resource: tuple[str, int, str, str, bool] | None = None;
     has class_name: str = "",
         is_builtin_class: bool = False,
         is_from_stdlib_stub: bool = False,
@@ -213,7 +215,8 @@ node ClassDetailsShared {
         enum_members: (dict[str, EnumMemberInfo] | None) = None,
         _identity_key: (tuple[str, int, int, str] | None) = None,
         _derived_special_types: (dict[str, ClassType] | None) = None,
-        ct_params: (list[str] | None) = None
+        ct_params: (list[str] | None) = None,
+        foreign_resource: tuple[str, int, str, str, bool] | None = None
     ) -> None;
 
     def canonical_key -> (tuple[str, int, int, str] | None);
@@ -310,7 +313,10 @@ node Parameter {
         is_cls: bool = False,
         param_kind: ParamKind = ParamKind.NORMAL,
         has_default: bool = False,
-        is_comptime: bool = False;
+        is_comptime: bool = False,
+        ownership: OwnershipKind = OwnershipKind.NONE,
+        linear: bool = False;
+    has lifetime_sources: list[int] = [];
 
     has param_type: (TypeBase | None) {
         getter;
@@ -329,7 +335,10 @@ node Parameter {
         is_cls: bool = False,
         param_kind: ParamKind = ParamKind.NORMAL,
         has_default: bool = False,
-        is_comptime: bool = False
+        is_comptime: bool = False,
+        ownership: OwnershipKind = OwnershipKind.NONE,
+        linear: bool = False,
+        lifetime_sources: list[int] | None = None
     ) -> None;
 
     def clone -> Parameter;
@@ -342,7 +351,14 @@ node FunctionType(TypeBase) {
         function_flags: int = 0,
         is_async: bool = False,
         type_guard_is_strict: bool = False,
+        return_ownership: OwnershipKind = OwnershipKind.NONE,
         _params_cache: (list[Parameter] | None) = None;
+
+    has return_sources: list[int] = [];
+    has return_linear: bool = False;
+    has required_capabilities: list[str] = [];
+    has foreign_errors: str = "jac";
+    has reentrant: bool = False;
 
     static has CATEGORY: TypeCategory = TypeCategory.Function;
     has return_type: (TypeBase | None) {
@@ -375,6 +391,12 @@ node FunctionType(TypeBase) {
         is_async: bool = False,
         type_guard: (TypeBase | None) = None,
         type_guard_is_strict: bool = False,
+        return_ownership: OwnershipKind = OwnershipKind.NONE,
+        return_sources: list[int] | None = None,
+        return_linear: bool = False,
+        required_capabilities: list[str] | None = None,
+        foreign_errors: str = "jac",
+        reentrant: bool = False,
         flags: TypeFlags = TypeFlags.Null
     ) -> None;
 

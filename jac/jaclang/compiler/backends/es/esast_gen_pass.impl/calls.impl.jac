@@ -1037,6 +1037,15 @@ impl EsastGenPass._bind_client_value_refs(nd: uni.Module) -> list[es.Statement] 
 }
 
 impl EsastGenPass.exit_func_call with uni.FuncCall exit {
+    if isinstance(here.target, uni.Name) and here.target.sym_name == "__musttail" {
+        import from jaclang.compiler.frontend.diagnostics { E5109 }
+        self.emit(
+            E5109,
+            node_override=here,
+            name="__musttail",
+            reason="requires the native backend"
+        );
+    }
     place_op = self._lower_place_builtin(here);
     if place_op is not None {
         here.gen.es_ast = place_op;

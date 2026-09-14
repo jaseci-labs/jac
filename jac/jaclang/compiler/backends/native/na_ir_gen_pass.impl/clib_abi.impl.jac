@@ -179,7 +179,7 @@ impl NaIRGenPass._clib_box_c_ptr(c_ptr: ir.Value, name: str) -> ir.Value {
 }
 
 impl NaIRGenPass._codegen_clib_call(
-    func: ir.Function, func_name: str, args: list[ir.Value]
+    func: ir.Function, func_name: str, args: list[ir.Value], call: uni.FuncCall
 ) -> (ir.Value | None) {
     plan = self.clib_fn_abi[func_name];
     param_plans = plan["params"];
@@ -216,7 +216,7 @@ impl NaIRGenPass._codegen_clib_call(
                     and isinstance(scalar_type.pointee, ir.FunctionType) {
                     call_args.append(self._clib_coerce_callback(_cv, scalar_type));
                 } else {
-                    call_args.append(self._coerce_type(_cv, scalar_type));
+                    call_args.append(self._clib_reinterpret(_cv, scalar_type, name="foreign.arg"));
                 }
             }
         } elif kind == "struct_mem" {
@@ -278,9 +278,12 @@ impl NaIRGenPass._codegen_clib_call(
             );
         }
     }
+    release_args = self._transfer_own_args(call, func, args, args);
     result: ir.Value = self.builder.call(
         func, call_args, name=f"call.{func_name}", arg_attrs=arg_attrs
     );
+    self._release_owned_args(release_args, op="call_arg");
+    self._emit_err_check(self._callee_ability_of(call) or self._linked_callee_decl(func), call=call);
     rkind = ret_plan["kind"];
     if rkind == "sret" {
         assert sret_buf is not None , "the sret buffer is allocated whenever the plan asks for one";
@@ -325,13 +328,15 @@ impl NaIRGenPass._codegen_clib_call(
         and not isinstance(_declared_ret, ir.VoidType)
         and result.type != _declared_ret
     ) {
-        return self._clib_reinterpret(result, _declared_ret, name="clib.ret");
+        result = self._clib_reinterpret(result, _declared_ret, name="clib.ret");
     }
     if isinstance(result.type, ir.PointerType) {
         if ret_plan.get("is_str") {
             result = self._membrane_str_in(self.builder, result);
         }
-        self._mark_owned(result);
+        if not ret_plan.get("borrowed_cpython", False) {
+            self._mark_owned(result);
+        }
     }
     return result;
 }
@@ -341,6 +346,16 @@ impl NaIRGenPass._clib_reinterpret(
 ) -> ir.Value {
     if val.type == want {
         return val;
+    }
+    if self._foreign_word_type(val.type) and want == ir.IntType(64) {
+        return self.builder.ptrtoint(val, want, name=name);
+    }
+    if val.type == ir.IntType(64) and self._foreign_word_type(want) {
+        return self.builder.inttoptr(val, want, name=name);
+    }
+    if self._cpython_ref_kind(val.type) is not None
+        or self._cpython_ref_kind(want) is not None {
+        return self._coerce_type(val, want);
     }
     if isinstance(val.type, ir.PointerType) and isinstance(want, ir.IntType) {
         return self.builder.ptrtoint(val, want, name=name);

@@ -16,7 +16,9 @@ jac explain memory main.jac
 
 - `own` is affine: transfer consumes the binding; unused values may be dropped. `lin` requires consumption on every accepted path. `imm` is deeply immutable.
 - `&value` borrows shared access; `&mut value` borrows exclusive access. Do not move or destroy an owner while dependent borrows remain live.
+- Track dependency separately from ownership. The evaluator migration adds `T from owner` and `T from (a, b)` contracts, including named Callable parameters. Preserve dependency metadata across moves and interface caches; an owned dependent value pins its sources through destruction. Consult the implementation-status note in `internals/foreign-lifetime-contracts` before assuming a backend or storage shape is supported.
 - Local and returned views retain dependencies on their source parameters or receiver. A view is not an unrestricted owner or sendable value.
+- Foreign ownership represents a release obligation. Shared foreign referents do not gain exclusivity, deep immutability, or thread safety. Preserve nonzero empty sentinels, publish replacement state before reentrant cleanup, and check GIL and error-state contracts transitively.
 - `take` and owned-container operations transfer values out of places. Overwriting a place must account for the old value's cleanup.
 - Managed stores can seal owners. Reboxing supports specified scalar/string copies; it is not a general deep-copy operation.
 - `in handle { ... }` opens a region dynamically, including helper allocations. Escapes retain handle-borrow obligations. Moving a sendable region handle transfers its contents within the supported process/task setting; it does not serialize a network message.
@@ -24,6 +26,21 @@ jac explain memory main.jac
 - Raising calls require the applicable handling contract. Do not replace error propagation with a blanket abort-at-frame-boundary rule.
 
 ## Retrieve before using an advanced form
+
+Use `from` at the value whose lifetime depends on another binding, including
+owned results:
+
+```jac
+def open_cursor(connection: &Connection) -> own Cursor from connection;
+type Choose = Callable[[a: &Item, b: &Item], &Item from (a, b)];
+```
+
+Keep the source alive through an owned dependent's destructor. Moving a
+dependent does not promote it to independent ownership. At a C boundary,
+declare `foreign_resource` cleanup and `foreign_call` effects explicitly;
+import CPython reference types and primitives from
+`jaclang.runtime.python.references` instead of assuming ambient type names;
+do not infer safety from a function name or a zero-valued integer handle.
 
 ```bash
 jac guide reference/agent-patterns/jac-native-memory --sections

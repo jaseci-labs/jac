@@ -347,6 +347,15 @@ impl NaIRGenPass._emit_overflow_op(
 }
 
 impl NaIRGenPass._emit_checked_neg(val: ir.Value) -> ir.Value {
+    if isinstance(val, ir.Constant)
+        and isinstance(val.type, ir.IntType)
+        and isinstance(val.constant, int) {
+        result = -val.constant;
+        limit = 1 << (val.type.width - 1);
+        if -limit <= val.constant < limit and -limit <= result < limit {
+            return ir.Constant(val.type, result);
+        }
+    }
     return self._emit_overflow_op("sub", ir.Constant(val.type, 0), val, False);
 }
 

@@ -469,7 +469,8 @@ impl JcirGenPass._emit_jobj_ref(nd: UnaryExpr) -> None {
 }
 
 impl JcirGenPass.exit_unary_expr with UnaryExpr exit {
-    if here.ownership in (OwnershipKind.OWN, OwnershipKind.IMM) {
+    if getattr(here, "lifetime_sources", []) or getattr(here, "annotation_name", "")
+        or here.ownership in (OwnershipKind.OWN, OwnershipKind.IMM) {
         self.set_out(here, [self.val(here.operand)]);
         return;
     }

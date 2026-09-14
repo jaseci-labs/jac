@@ -11,6 +11,8 @@ impl NaIRGenPass._forward_declare_functions(module: uni.Module) -> None {
 impl NaIRGenPass._apply_ownership_param_attrs(
     func: ir.Function, params: list[uni.ParamVar], base: int
 ) -> None {
+    python_abi = self._cpython_ref_kind(func.function_type.return_type) is not None
+        or any(self._cpython_ref_kind(arg.type) is not None for arg in func.args);
     for (i, p) in enumerate(params) {
         if p.type_tag is None {
             continue;
@@ -20,7 +22,16 @@ impl NaIRGenPass._apply_ownership_param_attrs(
             continue;
         }
         arg = func.args[i + base];
-        if not isinstance(arg.type, ir.PointerType) {
+
+        if self._cpython_ref_kind(arg.type) is not None {
+            if kind not in (OwnershipKind.OWN, OwnershipKind.BORROW) {
+                self.emit(
+                    E5120, reason="CPython parameters require own or a shared borrow"
+                );
+            }
+            continue;
+        }
+        if python_abi or not isinstance(arg.type, ir.PointerType) {
             continue;
         }
         if kind
@@ -88,12 +99,16 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         and not isinstance(nd.parent, uni.Archetype)
         and nd.find_parent_of_type(uni.Ability) is None
         and name not in self.generator_fns {
-        for _dx in nd.decorators {
+        _runtime_decorators = [
+            decorator for decorator in nd.decorators
+            if not isinstance(decorator, uni.CompilerAnnotation)
+        ];
+        for _dx in _runtime_decorators {
             if isinstance(_dx, uni.Name) {
                 _dec_names.append(_dx.value);
             }
         }
-        if len(_dec_names) != len(nd.decorators) {
+        if len(_dec_names) != len(_runtime_decorators) {
             _dec_names = [];
         }
     }
@@ -136,6 +151,8 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
     }
     self._apply_ownership_param_attrs(func, sig.get_parameters(), 0);
+    self._record_tail_requirement(func, nd);
+    self._record_cpython_requirement(func, nd);
     self.func_symtab[name] = func;
     _fdm = nd.find_parent_of_type(uni.Module);
     if _fdm is not None {
@@ -318,7 +335,11 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
             }
         } else {
             sysv_ret_type = self._resolve_clib_type(sig.return_type);
-            sysv_ret_plan["type"] = sysv_ret_type;
+            sysv_ret_plan["type"] = self._resolve_jac_type(sig.return_type)
+                if isinstance(sig.return_type, uni.Expr)
+                    and isinstance(sig.return_type.type, ClassType)
+                    and sig.return_type.type.shared.foreign_resource is not None
+                else sysv_ret_type;
         }
         sysv_fnty = ir.FunctionType(
             sysv_ret_type, sysv_param_types, var_arg=is_variadic
@@ -363,6 +384,8 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
             }
         }
         sysv_ret_plan["is_str"] = _fdecl["ret"] == "str";
+        import from jaclang.compiler.foreign_refs { cpython_borrow_source }
+        sysv_ret_plan["borrowed_cpython"] = cpython_borrow_source(nd) is not None;
         self.clib_fn_abi[name] = {
             "params": param_plan,
             "ret": sysv_ret_plan,
@@ -392,7 +415,12 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     ret_type = self._resolve_clib_type(sig.return_type);
 
     fnty = ir.FunctionType(ret_type, param_types, var_arg=is_variadic);
-    self.clib_declared_sigs[name] = (ret_type, list(param_types));
+    declared_ret = self._resolve_jac_type(sig.return_type)
+        if isinstance(sig.return_type, uni.Expr)
+            and isinstance(sig.return_type.type, ClassType)
+            and sig.return_type.type.shared.foreign_resource is not None
+        else ret_type;
+    self.clib_declared_sigs[name] = (declared_ret, list(param_types));
     if name in self.extern_funcs {
         func = self.extern_funcs[name];
     } elif name in self.func_symtab {
@@ -429,6 +457,8 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         return;
     }
 
+    self._record_tail_requirement(func, nd);
+    self._record_cpython_requirement(func, nd);
     _pre_viols = self._capability_demotions.get(id(nd));
     if _pre_viols is not None {
         self._claimed_capability_demotions.add(id(nd));

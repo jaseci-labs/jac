@@ -26,6 +26,103 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
+test "borrowed C records preserve pointer ABI and following arguments" {
+    cc = shutil.which("cc") or shutil.which("gcc");
+    if not cc {
+        testskip("no C compiler available for the reference library");
+    }
+    with tempfile.TemporaryDirectory() as directory {
+        c_source = os.path.join(directory, "borrowed_records.c");
+        with open(c_source, "w") as stream {
+            stream.write(
+                '#include <stdint.h>\n#include <string.h>\n'
+                'typedef struct Opaque Opaque;\n'
+                'typedef struct { int64_t value; } Record;\n'
+                'int64_t inspect_opaque(Opaque *value, const char *text, int64_t marker) {\n'
+                ' return (uintptr_t)value == 0x1357 && strcmp(text, "sentinel") == 0 ? marker : -1;\n}\n'
+                'int64_t inspect_record(const Record *value, int64_t marker) { return value->value + marker; }\n'
+                'int64_t inspect_value(Record value, int64_t marker) { return value.value + marker; }\n'
+            );
+        }
+        library = os.path.join(directory, "borrowed_records.so");
+        built = subprocess.run([cc, "-shared", "-fPIC", c_source, "-o", library],
+            capture_output=True, text=True, timeout=60);
+        assert built.returncode == 0 , built.stderr;
+        source = f'import from "{library}" {{ obj Opaque; obj Record {{ has value: i64; }} '
+            'def inspect_opaque(value: &Opaque, text: str, marker: i64) -> i64; '
+            'def inspect_record(value: &Record, marker: i64) -> i64; '
+            'def inspect_value(value: Record, marker: i64) -> i64; } '
+            'def opaque(value: &Opaque, marker: i64) -> i64 { return inspect_opaque(value, "sentinel", marker); } '
+            'def record(value: &Record, marker: i64) -> i64 { return inspect_record(value, marker); } '
+            'def by_value(value: &Record, marker: i64) -> i64 { return inspect_value(value, marker); }';
+        program = JacProgram();
+        module = program.compile(os.path.join(directory, "borrowed_records.jac"),
+            use_str=source, options=native_force_opts());
+        assert not program.errors_had , str(program.errors_had);
+        assert module is not None and module.gen.native_engine is not None;
+        opaque = get_func(module.gen.native_engine, "opaque", ctypes.c_int64, ctypes.c_void_p, ctypes.c_int64);
+        assert opaque(0x1357, 9188) == 9188;
+        value = ctypes.c_int64(40);
+        for name in ("record", "by_value") {
+            inspect = get_func(module.gen.native_engine, name, ctypes.c_int64, ctypes.c_void_p, ctypes.c_int64);
+            assert inspect(ctypes.byref(value), 2) == 42;
+        }
+    }
+}
+
+test "scalar C returns are not boxed as unrelated single field records" {
+    cc = shutil.which("cc") or shutil.which("gcc");
+    if not cc {
+        testskip("no C compiler available for the reference library");
+    }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        csrc = os.path.join(tmpdir, "scalar_records.c");
+        with open(csrc, "w") as stream {
+            stream.write(
+                "#include <stdint.h>\n"
+                "typedef struct { int64_t value; } Word;\n"
+                "typedef struct { double value; } Real;\n"
+                "int64_t integer_value(int64_t n) { return n; }\n"
+                "double real_value(double n) { return n; }\n"
+                "Word make_word(int64_t n) { return (Word){n}; }\n"
+                "Real make_real(double n) { return (Real){n}; }\n"
+            );
+        }
+        library = os.path.join(tmpdir, "scalar_records.so");
+        built = subprocess.run(
+            [cc, "-shared", "-fPIC", csrc, "-o", library],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+        assert built.returncode == 0 , built.stderr;
+        source = (
+            f"import from \"{library}\" {{ "
+            "obj Word { has value: i64; } obj Real { has value: f64; } "
+            "def integer_value(n: i64) -> i64; def real_value(n: f64) -> f64; "
+            "def make_word(n: i64) -> Word; def make_real(n: f64) -> Real; } "
+            "def integers(n: i64) -> i64 { value = integer_value(n); word = make_word(n); return value + word.value; } "
+            "def reals(n: f64) -> f64 { value = real_value(n); real = make_real(n); return value + real.value; }"
+        );
+        program = JacProgram();
+        module = program.compile(
+            file_path=os.path.join(tmpdir, "scalar_records.jac"),
+            use_str=source,
+            options=native_force_opts()
+        );
+        assert not program.errors_had , str(program.errors_had);
+        assert module is not None and module.gen.native_engine is not None;
+        integers = get_func(
+            module.gen.native_engine, "integers", ctypes.c_int64, ctypes.c_int64
+        );
+        reals = get_func(
+            module.gen.native_engine, "reals", ctypes.c_double, ctypes.c_double
+        );
+        assert integers(21) == 42 and integers(-21) == -42;
+        assert reals(1.25) == 2.5 and reals(-1.25) == -2.5;
+    }
+}
+
 test "clib sext: negative C int return stays negative through int and any" {
     (eng, _) = compile_native("clib_sext.jac");
     f = get_func(eng, "neg_direct", ctypes.c_int64);

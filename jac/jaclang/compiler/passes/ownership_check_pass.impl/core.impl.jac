@@ -107,6 +107,7 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self.name_uses_by_sym = {};
     self.imm_decl = {};
     self.view_syms = set();
+    self.dependent_syms = set();
     self.view_elision_fns = {};
     ir_in.own_move_sites = set();
     self.receiver_modes = {};
@@ -116,12 +117,16 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self._build_index(ir_in);
     self._stamp_receiver_modes();
     self._stamp_raises_effects();
+    self._stamp_foreign_effects();
     self._stamp_ownership();
     self._stamp_loop_borrows();
     self._stamp_region_borrows();
     self._stamp_arch_view_bindings();
     self._process_partition_sugar();
     self._nogc_setup();
+    self._stamp_lifetime_dependencies();
+    self._stamp_dependency_cleanup_order();
+    self._emit_lifetime_diagnostics();
     self._emit_place_intrinsic_diagnostics();
     if not self.owned_decl
         and not self.borrow_meta
@@ -675,7 +680,6 @@ impl OwnershipCheckPass._call_move_gen(nd: UniCFGNode) -> set[SymId] {
                 gen.add(recv_owned);
             }
         }
-        consumes_all = self._call_consumes_args(call);
         for param in self._call_params(call) {
             arg: Expr | None = None;
             if isinstance(param, KWPair) {
@@ -683,7 +687,7 @@ impl OwnershipCheckPass._call_move_gen(nd: UniCFGNode) -> set[SymId] {
             } elif isinstance(param, Expr) {
                 arg = param;
             }
-            if not consumes_all and not self._grow_arg_moves(call, arg) {
+            if not self._call_consumes_arg(call, arg) and not self._grow_arg_moves(call, arg) {
                 continue;
             }
             owned = self._owned_sym_of(arg);
@@ -990,7 +994,7 @@ impl OwnershipCheckPass._borrow_assign_kill_gen(
             kill.add(borrow_id);
             if self._borrow_source_owner(nd) is not None
                 or (
-                    borrow_id in self.arch_view_syms
+                    (borrow_id in self.arch_view_syms or borrow_id in self.view_syms)
                     and self.borrow_created_at.get(borrow_id) is nd
                 ) {
                 gen.add(borrow_id);
@@ -1637,7 +1641,7 @@ impl OwnershipCheckPass._is_move_producing_use(nd: Name) -> bool {
         _call = nd.find_parent_of_type(FuncCall);
         return (
             _call is None
-            or self._call_consumes_args(_call)
+            or self._call_consumes_arg(_call, nd)
             or self._grow_arg_moves(_call, nd)
         );
     }
@@ -1702,20 +1706,28 @@ impl OwnershipCheckPass._owned_name(sym_id: SymId, fallback: str) -> str {
 }
 
 impl OwnershipCheckPass._borrow_owners_of(borrow_id: SymId) -> list[SymId] {
-    meta = self.borrow_meta.get(borrow_id);
-    if meta is None {
-        return [];
-    }
-    out: list[SymId] = [];
-    if meta.owner is not None {
-        out.append(meta.owner);
-    }
-    for extra in meta.extra_owners {
-        if extra not in out {
-            out.append(extra);
+    result: list[SymId] = [];
+    pending = [borrow_id];
+    seen: set[SymId] = {borrow_id};
+    while pending {
+        current = pending.pop();
+        meta = self.borrow_meta.get(current);
+        if meta is None {
+            continue;
+        }
+        sources = list(meta.extra_owners);
+        if meta.owner is not None {
+            sources.insert(0, meta.owner);
+        }
+        for source in sources {
+            if source not in seen {
+                seen.add(source);
+                result.append(source);
+                pending.append(source);
+            }
         }
     }
-    return out;
+    return result;
 }
 
 impl OwnershipCheckPass._borrow_owner_of(borrow_id: SymId) -> (SymId | None) {
@@ -1835,9 +1847,19 @@ impl OwnershipCheckPass._earlier_move_in_node(nd: Name, sid: SymId) -> (Name | N
 }
 
 impl OwnershipCheckPass._active_borrows_at(cfg: UniCFGNode) -> set[SymId] {
-    return self.in_live_borrows.get(id(cfg), set()).intersection(
-        self.in_reaching_borrows.get(id(cfg), set())
-    );
+    reaching = self.in_reaching_borrows.get(id(cfg), set());
+    active = self.in_live_borrows.get(id(cfg), set()).intersection(reaching);
+    consumed = self.in_consumed.get(id(cfg), set());
+    for sid in self.dependent_syms {
+        if sid in self.owned_decl and sid not in consumed {
+            site = self.borrow_created_at.get(sid);
+            if sid in reaching or (isinstance(site, ParamVar)
+                and site.find_parent_of_type(Ability) is cfg.find_parent_of_type(Ability)) {
+                active.add(sid);
+            }
+        }
+    }
+    return active;
 }
 
 impl OwnershipCheckPass._consumed_gen_at(nd: UniCFGNode) -> set[SymId] {
@@ -1870,7 +1892,8 @@ impl OwnershipCheckPass._emit_move_while_borrowed(cfg_nodes: list[UniCFGNode]) -
             }
             for borrow_id in active {
                 if owner_id in self._borrow_owners_of(borrow_id)
-                    and borrow_id not in self.e1304_borrow_ids {
+                    and borrow_id not in self.e1304_borrow_ids
+                    and not self._lifetime_cotransfer(n, borrow_id, owner_id) {
                     borrow_site = self.borrow_created_at.get(borrow_id);
                     borrow_name = self._borrow_display_name(borrow_id, "");
                     e1304_related = [

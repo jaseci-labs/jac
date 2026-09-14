@@ -679,8 +679,19 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
     }
 }
 
-impl NaIRGenPass._emit_err_check(callee: (uni.Ability | None)) -> None {
-    if callee is None or not self._slot_lowering_active() {
+impl NaIRGenPass._emit_err_check(
+    callee: (uni.Ability | None),
+    call: uni.FuncCall | None = None,
+    indirect: bool = False
+) -> None {
+    if (callee is None and not indirect) or not self._slot_lowering_active() {
+        return;
+    }
+    import from jaclang.compiler.foreign_refs { cpython_error_call }
+    if not indirect and cpython_error_call(callee) {
+        return;
+    }
+    if call is not None and self._tail_transfer_requested(call) {
         return;
     }
     if self._builder is None or self.builder.block.is_terminated {

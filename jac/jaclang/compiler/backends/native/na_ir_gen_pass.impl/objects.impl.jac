@@ -31,6 +31,11 @@ impl NaIRGenPass._native_archetypes(module: uni.Module) -> list[uni.Archetype] {
     layout_reg = get_layout_registry(self.ir_in, self.prog);
     out: list[uni.Archetype] = [];
     for a in result.values() {
+        typ = a.name_spec.type;
+        if isinstance(typ, ClassType) and typ.shared.foreign_resource is not None {
+            self._foreign_resource_type(typ);
+            continue;
+        }
         if a.type_params {
             aname = a.name.value if a.name else "unknown";
             if layout_reg.get_layout(aname) is None {
@@ -1153,6 +1158,28 @@ impl NaIRGenPass._demote_method_if_unlowerable(
         return False;
     }
     _own = list(self.errors_had[local_mark:]);
+
+    if any(error.code in (E5109, E5120) for error in _own) {
+        return False;
+    }
+    if func in self._cpython_required_functions {
+        self.emit(
+            E5120,
+            node_override=self._cpython_required_functions[func],
+            reason="a function using CPython references cannot be demoted to Python"
+        );
+        return False;
+    }
+    required = self._tail_required_functions.get(func);
+    if required is not None {
+        self.emit(
+            E5109,
+            node_override=required,
+            name="__musttail",
+            reason="a function requiring a tail transfer cannot be demoted to Python"
+        );
+        return False;
+    }
 
     _na_debug = self._na_debug_on();
     if self._seam_warnings_on()
@@ -2618,9 +2645,12 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                 _fn_ty = _fld_ty.pointee;
                 _is_clib = _fld_struct in self.clib_struct_names;
                 _cargs: list[ir.Value] = [];
+                _raw_args: list[ir.Value] = [];
+                _tail_has_temps = self._is_owned(_obj_v);
                 for (_i, _p) in enumerate(nd.params or []) {
                     _pv = self._codegen_expr(_p);
                     if _pv is not None {
+                        _raw_args.append(_pv);
                         if _i < len(_fn_ty.args) {
                             _pv = (
                                 self._clib_fnptr_arg(_pv, _fn_ty.args[_i])
@@ -2631,12 +2661,39 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                         _cargs.append(_pv);
                     }
                 }
-                _r = self.builder.call(_fnp, _cargs, name=f"icall.{method_name}");
-                if isinstance(_fn_ty.return_type, ir.VoidType) {
+                _release_args = self._transfer_own_args(nd, None, _cargs, _raw_args);
+                _tail_has_temps = _tail_has_temps
+                    or any(self._is_owned(arg) for arg in _release_args);
+                if self._tail_transfer_requested(nd)
+                    and (_tail_has_temps or _is_clib) {
+                    self.emit(
+                        E5109,
+                        node_override=nd,
+                        name="__musttail",
+                        reason="a function pointer transfer requires a native record and borrowed arguments without temporary cleanup"
+                    );
                     return None;
                 }
+                _r = self.builder.call(_fnp, _cargs, name=f"icall.{method_name}");
+                for arg in _release_args {
+                    if isinstance(arg.type, ir.PointerType)
+                        and self._is_owned(arg) {
+                        self._emit_rc_release_simple(arg, op="icall_arg", loc="");
+                    }
+                }
+                self._emit_err_check(None, call=nd, indirect=True);
+                if isinstance(_fn_ty.return_type, ir.VoidType) {
+                    return _r;
+                }
                 if _is_clib {
-                    return self._clib_fnptr_ret(_fld_struct, method_name, _r);
+                    _r = self._clib_fnptr_ret(_fld_struct, method_name, _r);
+                }
+                if self._cpython_ref_kind(_r.type) is not None {
+                    function_type = nd.target.type;
+                    if not isinstance(function_type, SemanticFunctionType)
+                        or function_type.return_ownership != OwnershipKind.BORROW {
+                        self._mark_owned(_r);
+                    }
                 }
                 return _r;
             }

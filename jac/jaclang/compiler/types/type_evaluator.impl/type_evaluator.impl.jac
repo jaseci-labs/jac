@@ -46,6 +46,9 @@ impl TypeEvaluator._get_type_of_expression_core(
         return AnyType();
     }
     match expr {
+        case CompilerAnnotation():
+            return AnyType();
+
         case CfgExpr():
             return self._get_type_of_expression_core(expr.expr, expected_type);
 
@@ -565,6 +568,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                             category=ParameterCategory.Positional,
                             param_type=param_type,
                             default_value=param.value,
+                            ownership=param.type_tag.ownership
+                                if param.type_tag else OwnershipKind.NONE,
+                            linear=param.type_tag.linear if param.type_tag else False,
                         )
                     );
                 }
@@ -583,13 +589,8 @@ impl TypeEvaluator._get_type_of_expression_core(
             }
 
             if has_unresolved_param {
-                return FunctionType(
-                    func_name="<lambda>",
-                    return_type=UnknownType(),
-                    parameters=parameters,
-                );
-            }
-            if isinstance(expr.body, Expr) {
+                return_type = UnknownType();
+            } elif isinstance(expr.body, Expr) {
                 body_type = self.get_type_of_expression(expr.body);
                 if isinstance(return_type, UnknownType) {
                     return_type = body_type;
@@ -597,9 +598,21 @@ impl TypeEvaluator._get_type_of_expression_core(
             } elif isinstance(return_type, UnknownType) {
                 return_type = self._infer_lambda_block_return_type(expr.body);
             }
-            return FunctionType(
+            function = FunctionType(
                 func_name="<lambda>", return_type=return_type, parameters=parameters,
             );
+            if isinstance(expr.signature, FuncSignature) {
+                annotation = expr.signature.return_type;
+                function.return_ownership = annotation.ownership
+                    if isinstance(annotation, UnaryExpr) else OwnershipKind.NONE;
+                self._set_lifetime_contract(
+                    function,
+                    [p.type_tag.tag if p.type_tag else None
+                        for p in expr.signature.get_parameters()],
+                    annotation
+                );
+            }
+            return function;
 
         case JsxElement():
             if self.prefetch and self.prefetch.jsx_element_class {
@@ -1867,6 +1880,9 @@ impl TypeEvaluator._get_type_of_expression_core(
             return UnknownType();
 
         case UnaryExpr():
+            if getattr(expr, "lifetime_sources", []) or getattr(expr, "annotation_name", "") {
+                return self.get_type_of_expression(expr.operand);
+            }
             if isinstance(expr.op, Token) {
                 if expr.op.name == Tok.BW_AND {
                     _ref_t = self.get_type_of_expression(expr.operand);
@@ -2761,6 +2777,28 @@ impl TypeEvaluator._get_enum_member_type_for_decl(
 impl TypeEvaluator._assign_callable(
     src_func: FunctionType, dest_func: FunctionType, strict: bool = False
 ) -> bool {
+    import from jaclang.compiler.foreign_refs { contains_cpython_ref }
+    foreign_contract = any(
+        bool(getattr(fn, "required_capabilities", [])) or getattr(fn, "foreign_errors", "jac") != "jac" or getattr(fn, "reentrant", False)
+            or fn.return_ownership != OwnershipKind.NONE
+            or bool(fn.return_sources) or fn.return_linear
+            or any(p.ownership != OwnershipKind.NONE or p.linear or bool(p.lifetime_sources) for p in fn.parameters)
+            or contains_cpython_ref(fn.return_type)
+            or any(contains_cpython_ref(p.param_type) for p in fn.parameters)
+        for fn in (src_func, dest_func)
+    );
+    if foreign_contract {
+        if src_func.is_gradual_callable_form()
+            or dest_func.is_gradual_callable_form()
+            or src_func.return_ownership != dest_func.return_ownership
+            or src_func.return_sources != dest_func.return_sources
+            or src_func.return_linear != dest_func.return_linear
+            or not set(getattr(src_func, "required_capabilities", [])).issubset(set(getattr(dest_func, "required_capabilities", [])))
+            or getattr(src_func, "foreign_errors", "jac") != getattr(dest_func, "foreign_errors", "jac")
+            or (getattr(src_func, "reentrant", False) and not getattr(dest_func, "reentrant", False)) {
+            return False;
+        }
+    }
     if dest_func.is_gradual_callable_form() {
         if dest_func.return_type and src_func.return_type {
             return self.assign_type(
@@ -2785,10 +2823,23 @@ impl TypeEvaluator._assign_callable(
         if not p.is_self and not p.is_cls
     ];
 
+    if foreign_contract and len(src_params) != len(dest_params) {
+        return False;
+    }
+
     overlap = min(len(src_params), len(dest_params));
     for i in range(overlap) {
         dest_param = dest_params[i];
         src_param = src_params[i];
+
+        if foreign_contract
+            and (
+                src_param.ownership != dest_param.ownership
+                or src_param.linear != dest_param.linear
+                or src_param.lifetime_sources != dest_param.lifetime_sources
+            ) {
+            return False;
+        }
 
         if dest_param.param_type is None or src_param.param_type is None {
             continue;

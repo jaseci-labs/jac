@@ -44,6 +44,8 @@ import from jaclang.compiler.frontend.diagnostics {
     E5091,
     E5092,
     E5095,
+    E5109,
+    E5120,
     E9001,
     E9002
 }
@@ -187,6 +189,7 @@ walker NaIRGenPass(Transform) {
         clib_fn_abi: dict[str, dict] = {},
         clib_vtable_structs: set[str] = set(),
         clib_fnptr_str_ret: dict[str, set[str]] = {},
+        clib_fnptr_resource_ret: dict[str, dict[str, ir.Type]] = {},
         clib_trampoline_funcs: dict[str, ir.Function] = {},
         enum_values: dict[str, ir.Constant] = {},
         enum_types: dict[str, ir.IntType] = {},
@@ -200,6 +203,10 @@ walker NaIRGenPass(Transform) {
         struct_field_elem_keys: dict[str, dict] = {},
         loop_stack: list[tuple] = [],
         _loop_coll_seq: int = 0,
+        _tail_transfers: dict[ir.Function, uni.FuncCall] = {},
+        _tail_required_functions: dict[ir.Function, uni.FuncCall] = {},
+        _foreign_resource_specs: dict[str, tuple[str, int, str, str, bool]] = {},
+        _cpython_required_functions: dict[ir.Function, uni.Ability] = {},
         _str_count: int = 0,
         struct_types: dict[str, ir.IdentifiedStructType] = {},
         struct_field_indices: dict[str, dict] = {},
@@ -562,6 +569,13 @@ walker NaIRGenPass(Transform) {
         nd: uni.FuncCall, intr: IntrinsicEntry
     ) -> (ir.Value | None);
 
+    def _tail_transfer_requested(nd: uni.FuncCall) -> bool;
+    def _tail_slot_was_cleared(slot: ir.Value) -> bool;
+    def _emit_intrinsic_musttail(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+    ) -> (ir.Value | None);
+
+    def _validate_tail_frame(func: ir.Function) -> None;
     def _emit_intrinsic_misuse(
         nd: uni.FuncCall, intr: IntrinsicEntry, reason: str
     ) -> None;
@@ -702,7 +716,7 @@ walker NaIRGenPass(Transform) {
     def _clib_copy_c_to_jac(c_ptr: ir.Value, jac_ptr: ir.Value, name: str) -> None;
     def _clib_alloc_box(name: str) -> ir.Value;
     def _codegen_clib_call(
-        func: ir.Function, func_name: str, args: list[ir.Value]
+        func: ir.Function, func_name: str, args: list[ir.Value], call: uni.FuncCall
     ) -> (ir.Value | None);
 
     def _clib_reinterpret(val: ir.Value, want: ir.Type, name: str) -> ir.Value;
@@ -922,6 +936,7 @@ walker NaIRGenPass(Transform) {
     ) -> None;
 
     def _record_linked_decl(func: (ir.Function | None), decl: uni.Ability) -> None;
+    def _record_tail_requirement(func: ir.Function, decl: uni.Ability) -> None;
     def _ensure_dep_inference(dep_mod: uni.Module) -> None;
     def _imported_function_demotions(imported_mod: uni.Module) -> (set | None);
     def _predemote_capability_unit(
@@ -2076,6 +2091,13 @@ walker NaIRGenPass(Transform) {
     def _lower_type(t: any) -> (ir.Type | None);
     def _unify_repr_lowering(reprs: list) -> (ir.Type | None);
     def _lower_class_type(t: ClassType) -> (ir.Type | None);
+    def _cpython_ref_kind(typ: ir.Type) -> str | None;
+    def _foreign_resource_type(typ: ClassType) -> ir.Type;
+    def _foreign_word_type(typ: ir.Type) -> bool;
+    def _cpython_ref_close(value: ir.Value) -> bool;
+    def _record_cpython_requirement(func: ir.Function, decl: uni.Ability) -> None;
+    def _validate_cpython_refs -> None;
+    def _cpython_ref_exprs(origin: uni.UniNode) -> list[uni.Expr];
     def _lower_function_type(t: SemanticFunctionType) -> ir.PointerType;
     def _type_key_of(expr: (uni.UniNode | None)) -> (str | None);
     def _enum_name_of(expr: (uni.UniNode | None)) -> (str | None);
@@ -2234,7 +2256,12 @@ walker NaIRGenPass(Transform) {
     def _slot_lowering_active -> bool;
     def _nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value];
     def _emit_finalizers(loop_depth: int = 0) -> bool;
-    def _emit_err_check(callee: (uni.Ability | None)) -> None;
+    def _emit_err_check(
+        callee: (uni.Ability | None),
+        call: uni.FuncCall | None = None,
+        indirect: bool = False
+    ) -> None;
+
     def _emit_err_propagate(loc: str = "") -> None;
     def _codegen_raise_slot(payload: ir.Value, type_id: int, msg: ir.Value) -> None;
     def _codegen_try_slot(nd: uni.TryStmt) -> None;

@@ -422,6 +422,13 @@ impl native_capability_violations(
             }
 
             if isinstance(nd, (Ability, ArchSpec, ImplDef)) and nd.decorators {
+                _runtime_decorators = [
+                    decorator for decorator in nd.decorators
+                    if not isinstance(decorator, CompilerAnnotation)
+                ];
+                if not _runtime_decorators {
+                    continue;
+                }
                 _dec_static_fn = (
                     isinstance(nd, Ability)
                     and not isinstance(nd.parent, Archetype)
@@ -429,7 +436,7 @@ impl native_capability_violations(
                     and not nd.get_all_sub_nodes(typ=YieldExpr)
                 );
                 if _dec_static_fn {
-                    for _dexpr in nd.decorators {
+                    for _dexpr in _runtime_decorators {
                         if not isinstance(_dexpr, Name) {
                             _dec_static_fn = False;
                             break;
@@ -445,7 +452,7 @@ impl native_capability_violations(
                     }
                     out.append(
                         (
-                            nd.decorators[0],
+                            _runtime_decorators[0],
                             "decorator",
                             f"on {_dec_owner}",
                             _NATIVE_DECORATOR_HELP

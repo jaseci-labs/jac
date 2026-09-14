@@ -811,6 +811,18 @@ impl UnparsePass.exit_lambda_expr with uni.LambdaExpr exit {
 }
 
 impl UnparsePass.exit_unary_expr with uni.UnaryExpr exit {
+    if here.annotation_name {
+        here.gen.jac = here.annotation_name + ": " + here.operand.gen.jac;
+        return;
+    }
+    if here.lifetime_sources {
+        sources = ", ".join(here.lifetime_sources);
+        if len(here.lifetime_sources) > 1 {
+            sources = "(" + sources + ")";
+        }
+        here.gen.jac = here.operand.gen.jac + " from " + sources;
+        return;
+    }
     if is_mut_kind(here.ownership) {
         here.gen.jac = here.op.gen.jac + "mut " + here.operand.gen.jac;
     } else {
@@ -1212,4 +1224,9 @@ impl UnparsePass.exit_match_arch with uni.MatchArch exit {
         parts.extend([k.gen.jac for k in here.kw_patterns]);
     }
     here.gen.jac = here.name.gen.jac + "(" + ", ".join(parts) + ")";
+}
+
+
+impl UnparsePass.exit_compiler_annotation with uni.CompilerAnnotation exit {
+    here.gen.jac = here.annotation_kind + "(" + self._comma_sep(here.arguments) + ")";
 }

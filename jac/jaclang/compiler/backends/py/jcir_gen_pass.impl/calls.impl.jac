@@ -408,6 +408,17 @@ impl JcirGenPass._lower_swap(nd: FuncCall) -> (CgNode | None) {
 }
 
 impl JcirGenPass._exit_func_call_impl(nd: FuncCall) -> None {
+    if isinstance(nd.target, Name)
+        and nd.target.sym_name == "__musttail"
+        and nd.codespace() != CodeContext.NATIVE {
+        import from jaclang.compiler.frontend.diagnostics { E5109 }
+        self.emit(
+            E5109,
+            node_override=nd,
+            name="__musttail",
+            reason="requires the native backend"
+        );
+    }
     if isinstance(nd.target, Name) and nd.target.sym_name in ('take', 'swap') {
         import from jaclang.compiler.symbol_utils { CallKind, classify_call }
         lowered = (

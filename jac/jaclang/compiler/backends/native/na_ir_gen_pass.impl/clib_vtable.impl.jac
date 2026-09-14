@@ -86,6 +86,20 @@ impl NaIRGenPass._emit_clib_c_trampoline(
     saved_builder = self._builder;
     self._builder = ir.IRBuilder(`entry);
     jac_params = jac_fn.function_type.args;
+    if any(
+        self._cpython_ref_kind(typ) is not None
+        for typ in list(jac_params)
+            + list(c_fn_ty.pointee.args)
+            + [jac_fn.function_type.return_type, c_fn_ty.pointee.return_type]
+    ) {
+        self.emit(
+            E5120,
+            reason="CPython callbacks require an exact ABI; adapting their arguments or results cannot establish ownership"
+        );
+        self.builder.unreachable();
+        self._builder = saved_builder;
+        return tramp;
+    }
     call_args: list[ir.Value] = [];
     for (i, arg) in enumerate(tramp.args) {
         arg.name = f"c.arg{i}";
@@ -130,6 +144,9 @@ impl NaIRGenPass._lower_clib_function_type(
         if lowered is None {
             return ir.IntType(64);
         }
+        if self._foreign_word_type(lowered) {
+            return ir.IntType(64);
+        }
         if _sd is not None and lowered == _sd {
             return i8p;
         }
@@ -147,6 +164,12 @@ impl NaIRGenPass._lower_clib_function_type(
                     self.clib_fnptr_str_ret[arch_name] = set();
                 }
                 self.clib_fnptr_str_ret[arch_name].add(fname);
+            }
+            if self._cpython_ref_kind(_r) is not None {
+                if arch_name not in self.clib_fnptr_resource_ret {
+                    self.clib_fnptr_resource_ret[arch_name] = {};
+                }
+                self.clib_fnptr_resource_ret[arch_name][fname] = _r;
             }
             ret_type = c_scalar(_r);
         }
@@ -169,12 +192,16 @@ impl NaIRGenPass._clib_fnptr_arg(val: ir.Value, target: ir.Type) -> ir.Value {
             return self._membrane_str_out(self.builder, val);
         }
     }
-    return self._coerce_type(val, target);
+    return self._clib_reinterpret(val, target);
 }
 
 impl NaIRGenPass._clib_fnptr_ret(
     arch_name: str, fname: str, result: ir.Value
 ) -> ir.Value {
+    resource_type = self.clib_fnptr_resource_ret.get(arch_name, {}).get(fname);
+    if resource_type is not None {
+        return self._clib_reinterpret(result, resource_type);
+    }
     if fname in self.clib_fnptr_str_ret.get(arch_name, set())
         and isinstance(result.type, ir.PointerType) {
         wrapped = self._membrane_str_in(self.builder, result);

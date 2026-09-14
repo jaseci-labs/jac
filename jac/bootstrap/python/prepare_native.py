@@ -1,7 +1,7 @@
-"""Build JacPython's native object using the pinned build-time CPython.
+"""Build JacPython's native objects using the pinned build-time CPython.
 
 No compiler bytecode, request seed, or Python adapter is shipped. The output
-object contains the native Jac compiler and its native runtime support.
+objects contain the native Jac compiler and evaluator support.
 """
 import hashlib
 import json
@@ -65,7 +65,52 @@ machine = llvm.Target.from_triple(triple).create_target_machine(
 object_bytes = machine.emit_object(compiled)
 (output / "jacpython.o").write_bytes(object_bytes)
 (output / "sha256").write_text(hashlib.sha256(object_bytes).hexdigest() + "\n")
-print("JacPython: built native compiler object; no interpreted demotions", flush=True)
+# Evaluator support uses its own ownership profile and object. Its exported
+# C ABI entry points replace definitions removed from ceval.c by the recipe.
+support_program = JacProgram()
+support_entry = root / "jaclang/runtime/python/evaluator_support.jac"
+support = support_program.compile(file_path=str(support_entry), options=CompileOptions(
+    aot_mode=True, default_codespace="native", force_target_program=True,
+    native_required=True,
+    memory_profile="nogc", no_ir_cache=False, opt_level=2, native_target=triple,
+))
+if support_program.errors_had:
+    for error in support_program.errors_had:
+        print(error.pretty_print(), file=sys.stderr)
+    raise RuntimeError("JacPython native evaluator support compilation failed")
+if support is None:
+    raise RuntimeError("JacPython native evaluator support produced no module")
+support_ir = native_linked_ir_text(support)
+require_native_ir(support_ir)
+support_module = llvm.parse_assembly(support_ir)
+support_exports = [
+    "_PyEval_SliceIndex", "_PyEval_SliceIndexNotNone",
+    "_PyEval_GetAwaitable", "_PyEval_GetANext",
+    "_PyEval_CheckExceptTypeValid", "_PyEval_CheckExceptStarTypeValid",
+]
+defined = {function.name for function in support_module.functions if not function.is_declaration}
+if set(support_exports) - defined:
+    raise RuntimeError("Native evaluator support is missing required definitions")
+internalize_native_implementation(support_module, support_exports)
+support_module.verify()
+# Remove unused record/runtime helpers after selecting the actual C exports.
+with llvm.create_pipeline_tuning_options(speed_level=2) as tuning:
+    with llvm.create_pass_builder(machine, tuning) as passes:
+        with passes.getModulePassManager() as manager:
+            manager.run(support_module, passes)
+support_module.verify()
+for function in support_module.functions:
+    if function.name.startswith("__jac_") or function.name in {
+        "malloc", "calloc", "realloc", "free", "pthread_getspecific",
+        "pthread_setspecific", "pthread_key_create",
+    }:
+        raise RuntimeError("Evaluator support retains Jac runtime machinery: " + function.name)
+support_bytes = machine.emit_object(support_module)
+(output / "evaluator_support.o").write_bytes(support_bytes)
+(output / "evaluator_support.sha256").write_text(
+    hashlib.sha256(support_bytes).hexdigest() + "\n"
+)
+print("JacPython: built native compiler and evaluator support objects; no interpreted demotions", flush=True)
 # This one-shot emitter has closed both artifact files. Let the OS reclaim its
 # compiler graph and LLVM context rather than traversing them again at Python
 # shutdown; no runtime initialization or cache work is deferred to that phase.

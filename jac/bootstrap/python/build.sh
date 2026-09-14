@@ -153,7 +153,10 @@ cpython() {
         cp "$recipe/compiler_runtime.c" Python/jac_runtime.c
         cp "$recipe/object_api.c" Python/jac_objects.c
         cp "$recipe/binding_api.c" Python/jac_bindings.c
+        cp "$recipe/evaluator_refs.c" Python/jac_evaluator_refs.c
+        cp "$recipe/evaluator_refs.h" Python/evaluator_refs.h
         cp "$work/native/jacpython.o" Python/jacpython.o
+        cp "$work/native/evaluator_support.o" Python/jac_evaluator_support.o
     fi
     # The shared interpreter must survive relocation into the Jac payload.
     case "$platform" in
@@ -305,6 +308,7 @@ cp "$deps/lib/"*.a "$work/python/build/lib/"
 if [ -n "$host" ]; then
     cp "$host/python/build/cacert.pem" "$work/python/build/cacert.pem"
     cp "$work/native/sha256" "$work/python/build/jacpython-native-sha256"
+    cp "$work/native/evaluator_support.sha256" "$work/python/build/jacpython-evaluator-support-sha256"
     rm -rf "$work/native"
 else
     # Only dependency headers/archives are reused by the target build. Host

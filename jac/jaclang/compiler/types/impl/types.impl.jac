@@ -265,9 +265,11 @@ impl ClassDetailsShared.init(
     enum_members: (dict[str, EnumMemberInfo] | None) = None,
     _identity_key: (tuple[str, int, int, str] | None) = None,
     _derived_special_types: (dict[str, ClassType] | None) = None,
-    ct_params: (list[str] | None) = None
+    ct_params: (list[str] | None) = None,
+    foreign_resource: tuple[str, int, str, str, bool] | None = None
 ) -> None {
     self.class_name = class_name;
+    self.foreign_resource = foreign_resource;
     self.is_builtin_class = is_builtin_class;
     self.is_from_stdlib_stub = is_from_stdlib_stub;
     self.is_data_class = is_data_class;
@@ -429,7 +431,10 @@ impl Parameter.init(
     is_cls: bool = False,
     param_kind: ParamKind = ParamKind.NORMAL,
     has_default: bool = False,
-    is_comptime: bool = False
+    is_comptime: bool = False,
+    ownership: OwnershipKind = OwnershipKind.NONE,
+    linear: bool = False,
+    lifetime_sources: list[int] | None = None
 ) -> None {
     self.name = name;
     self.category = category;
@@ -438,6 +443,9 @@ impl Parameter.init(
     self.param_kind = param_kind;
     self.has_default = has_default;
     self.is_comptime = is_comptime;
+    self.ownership = ownership;
+    self.linear = linear;
+    self.lifetime_sources = list(lifetime_sources or []);
     self.param_type = param_type;
     self.default_value = default_value;
 }
@@ -508,12 +516,24 @@ impl FunctionType.init(
     is_async: bool = False,
     type_guard: (TypeBase | None) = None,
     type_guard_is_strict: bool = False,
+    return_ownership: OwnershipKind = OwnershipKind.NONE,
+    return_sources: list[int] | None = None,
+    return_linear: bool = False,
+    required_capabilities: list[str] | None = None,
+    foreign_errors: str = "jac",
+    reentrant: bool = False,
     flags: TypeFlags = TypeFlags.Null
 ) -> None {
     self.func_name = func_name;
     self.function_flags = function_flags;
     self.is_async = is_async;
     self.type_guard_is_strict = type_guard_is_strict;
+    self.return_ownership = return_ownership;
+    self.return_sources = list(return_sources or []);
+    self.return_linear = return_linear;
+    self.required_capabilities = list(required_capabilities or []);
+    self.foreign_errors = foreign_errors;
+    self.reentrant = reentrant;
     self.flags = flags;
     self.return_type = return_type;
     self.parameters = parameters or [];
@@ -847,7 +867,10 @@ impl Parameter.clone -> Parameter {
         is_cls=self.is_cls,
         param_kind=self.param_kind,
         has_default=self.has_default,
-        is_comptime=self.is_comptime
+        is_comptime=self.is_comptime,
+        ownership=self.ownership,
+        linear=self.linear,
+        lifetime_sources=list(self.lifetime_sources)
     );
 }
 
@@ -865,6 +888,12 @@ impl FunctionType.clone -> FunctionType {
         is_async=self.is_async,
         type_guard=self.type_guard,
         type_guard_is_strict=self.type_guard_is_strict,
+        return_ownership=self.return_ownership,
+        return_sources=list(self.return_sources),
+        return_linear=self.return_linear,
+        required_capabilities=list(self.required_capabilities),
+        foreign_errors=self.foreign_errors,
+        reentrant=self.reentrant,
         flags=self.flags,
     );
 }

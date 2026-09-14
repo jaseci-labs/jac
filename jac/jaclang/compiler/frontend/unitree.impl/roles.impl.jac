@@ -2487,6 +2487,9 @@ impl UnaryExpr.init(
     kid: Sequence[UniNode] = []
 ) -> None {
     self.ownership = ownership;
+    self.linear = False;
+    self.lifetime_sources = [];
+    self.annotation_name = "";
     self._link(kid, {OperandRole: operand, OpRole: op});
     self.postinit();
 }
@@ -2933,5 +2936,16 @@ impl MatchArch.init(
         kid,
         {NameRole: name, ArgPatternsRole: arg_patterns, KwPatternsRole: kw_patterns}
     );
+    self.postinit();
+}
+
+
+impl CompilerAnnotation.arguments.getter -> list[KWPair] {
+    return [self->:KvPairsRole:->];
+}
+
+impl CompilerAnnotation.init(*, annotation_kind: str, arguments: list[KWPair], kid: Sequence[UniNode] = []) -> None {
+    self.annotation_kind = annotation_kind;
+    self._link(kid, {KvPairsRole: arguments});
     self.postinit();
 }

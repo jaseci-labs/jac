@@ -804,6 +804,9 @@ obj CatalogWriter {
                             bool(p.is_cls),
                             bool(p.has_default or p.default_value is not None),
                             bool(p.is_comptime),
+                            int(p.ownership),
+                            bool(p.linear),
+                            tuple(p.lifetime_sources),
 
                         )
                     );
@@ -815,6 +818,12 @@ obj CatalogWriter {
                     int(t.function_flags),
                     bool(t.is_async),
                     bool(t.type_guard_is_strict),
+                    int(t.return_ownership),
+                    tuple(t.return_sources),
+                    bool(t.return_linear),
+                    tuple(t.required_capabilities),
+                    t.foreign_errors,
+                    t.reentrant,
                     self._type_ident(t.return_type)
                         if t.return_type is not None
                         else -1,
@@ -1226,6 +1235,15 @@ obj CatalogWriter {
             put_uvar(out, int(t.function_flags));
             put_uvar(out, 1 if t.is_async else 0);
             put_uvar(out, 1 if t.type_guard_is_strict else 0);
+            put_uvar(out, int(t.return_ownership));
+            put_refs(out, t.return_sources);
+            put_uvar(out, 1 if t.return_linear else 0);
+            put_uvar(out, len(t.required_capabilities));
+            for capability in t.required_capabilities {
+                put_uvar(out, self.sid(capability));
+            }
+            put_uvar(out, self.sid(t.foreign_errors));
+            put_uvar(out, 1 if t.reentrant else 0);
             put_ref(out, self.ref_type(t.return_type));
             put_ref(out, self.ref_type(t.type_guard));
             tps: list[TypeBase] = [];
@@ -1254,6 +1272,9 @@ obj CatalogWriter {
                     bits |= PM_COMPTIME;
                 }
                 put_uvar(out, bits);
+                put_uvar(out, int(p.ownership));
+                put_uvar(out, 1 if p.linear else 0);
+                put_refs(out, p.lifetime_sources);
             }
             return bytes(out);
         }
@@ -1396,6 +1417,15 @@ obj CatalogWriter {
             bits |= SH_ENUM;
         }
         put_uvar(out, bits);
+        resource = sh.foreign_resource;
+        put_uvar(out, 1 if resource is not None else 0);
+        if resource is not None {
+            put_uvar(out, self.sid(resource[0]));
+            put_uvar(out, resource[1]);
+            put_uvar(out, self.sid(resource[2]));
+            put_uvar(out, self.sid(resource[3]));
+            put_uvar(out, 1 if resource[4] else 0);
+        }
         scope_ref = self.ref_scope(sh.symbol_table);
         if scope_ref < 0
             and self.boundary is not None

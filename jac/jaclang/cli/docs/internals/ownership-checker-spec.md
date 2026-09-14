@@ -106,6 +106,24 @@ The analysis stamps documented facts; consumers read them:
   as does the sendability rule. Parser-stamped syntax facts
   (`SubTag.ownership` / `UnaryExpr.ownership`) remain available and are what
   survives the JIR cache.
+- **Explicit lifetime signatures**: `Parameter.lifetime_sources` and
+  `FunctionType.return_sources` contain normalized parameter indices. The
+  source spellings live on annotation nodes only. Ownership, linearity, and
+  dependencies survive callable cloning and interface serialization together;
+  a cached signature must not silently remove any part of the contract.
+- **Owned dependents**: a dependent binding can remain `OwnershipKind.OWN`.
+  Its transitive `BorrowMeta` roots pin sources through consumption or cleanup,
+  including after its last ordinary read. Matching consuming call parameters
+  can transfer source and dependent together. `Module.own_dependency_order`
+  records destruction order per ability, with dependents preceding sources.
+  See the [migration contract and validation status](foreign-lifetime-contracts.md)
+  for storage shapes and backend gates still under implementation.
+- **Foreign contracts**: `ClassDetailsShared.foreign_resource` carries the
+  declared ABI, empty sentinel, deallocator symbol, aliasing policy, and
+  destructor reentrancy. `FunctionType.required_capabilities`, `foreign_errors`,
+  and `reentrant` describe call requirements and effects. A Python error
+  protocol is distinct from Jac's error slot; an empty `raises` set is not
+  evidence that arithmetic or cleanup cannot raise.
 - **`Assignment.na_move_lowerable`**: stamped by the core `RcFactsPass`
   (scheduled in the native codegen slot) from a backward-liveness proof on the
   shared dataflow framework -- a `b = a` alias whose LOCAL source is dead-out

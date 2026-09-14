@@ -4,6 +4,7 @@ import from jaclang.compiler.frontend.unitree {
     Archetype,
     AtomTrailer,
     Assignment,
+    CompilerAnnotation,
     CtrlStmt,
     EdgeOpRef,
     EdgeRefTrailer,

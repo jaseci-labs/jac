@@ -156,3 +156,19 @@ Under `--memory nogc` an enforced module compiles **headerless**: owned payloads
 - Spell the must-consume marker `lin`, not `linear`. A static ownership contract does not validate aliases hidden behind `any`, opaque C/Wasm handles, or separately obtained managed references.
 - `managed(x)` is the identity function on the Python backend; annotations there are checked, then erased.
 - `jac build --as native` does not take the gc flags; use file-level `jac build --native` for zero-RC builds.
+
+
+## Evaluator lifetime contracts
+
+The accepted design and its current implementation status are documented in
+[Lifetime contracts for the native evaluator](../../internals/foreign-lifetime-contracts.md).
+It separates `own`/`lin` release obligations from `from` dependencies, preserves
+contracts in named Callable parameters and interface caches, and specifies
+foreign-resource ABI, reentry, GIL, and error-state requirements. Follow that
+status when working on PR 9188; do not infer completed evaluator migration from
+a successful ownership test or a `nogc` build.
+
+Import CPython resource types and primitives from
+`jaclang.runtime.python.references`. They use the ordinary `foreign_resource`
+and `foreign_call` declarations; spelling a type `PyObjectRef` or naming a C
+function `jacpy_*` does not establish a lifetime or error contract.

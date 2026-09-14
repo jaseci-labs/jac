@@ -2228,6 +2228,7 @@ impl Module.postinit -> None {
     self.rc_move_in = _rc_move_in;
     _own_move_sites: set[int] = set();
     self.own_move_sites = _own_move_sites;
+    self.own_dependency_order = {};
     UniNode.postinit(self);
     UniScopeNode._init_scope(self, name=self.name);
 }
@@ -4461,4 +4462,10 @@ impl Ability.event_triggers.setter(event_triggers: (list[TypeBase] | None)) -> N
     for t in (event_triggers or []) {
         self +>:EventTriggerOf:+> t;
     }
+}
+
+
+impl CompilerAnnotation.postinit -> None {
+    UniNode.postinit(self);
+    Expr.postinit(self);
 }

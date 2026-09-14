@@ -260,7 +260,7 @@ impl JcirGenPass.exit_test with Test exit {
     test_sig_roots: list[UniNode] = [];
     if here.decorators {
         for d in here.decorators {
-            if d {
+            if d and not isinstance(d, CompilerAnnotation) {
                 test_sig_roots.append(d);
             }
         }
@@ -301,7 +301,7 @@ impl JcirGenPass.exit_test with Test exit {
                 [[], [], [], None, None, [], []]
             ),
             body_stmts,
-            [self.val(i) for i in here.decorators] if here.decorators else [],
+            [self.val(i) for i in here.decorators if not isinstance(i, CompilerAnnotation)] if here.decorators else [],
             self.const_of(None),
             None,
             []

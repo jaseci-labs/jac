@@ -981,10 +981,64 @@ def validate_suspensions(
     return validation_ok();
 }
 
+def validate_async_generator_returns(roots: list[ast_node]) -> validation_result {
+    pending = list(roots);
+    while pending {
+        item = pending.pop();
+        pending.extend(child.value for child in ast_children(item));
+        if not isinstance(item, AsyncFunctionDef) {
+            continue;
+        }
+        body: list[ast_node] = [statement for statement in reversed(item.body)];
+        yields = False;
+        value_return: Return | None = None;
+        while body {
+            statement = body.pop();
+            if isinstance(statement, Yield) {
+                yields = True;
+            } elif isinstance(statement, Return)
+                and statement.value is not None
+                and value_return is None {
+                value_return = statement;
+            }
+            if isinstance(statement, (ListComp, SetComp, DictComp, GeneratorExp)) {
+                if statement.generators {
+                    body.append(statement.generators[0].iter);
+                }
+                continue;
+            }
+            children: list[ast_node] = [];
+            for child in ast_children(statement) {
+                if isinstance(
+                    statement, (FunctionDef, AsyncFunctionDef, Lambda, ClassDef)
+                )
+                    and child.field == "body" {
+                    continue;
+                }
+                children.append(child.value);
+            }
+            body.extend(reversed(children));
+        }
+        if yields and value_return is not None {
+            return validation_error(
+                "SyntaxError",
+                "'return' with value in async generator",
+                value_return.lineno,
+                value_return.col_offset
+            );
+        }
+    }
+    return validation_ok();
+}
+
 def validate_module_body(
     body: list[stmt], allow_top_await: bool = False
 ) -> validation_result {
     result = validate_suspensions([item for item in body], allow_top_await);
+    if result.diag is not None {
+        return result;
+    }
+    result = validate_async_generator_returns([item for item in body]);
     if result.diag is not None {
         return result;
     }

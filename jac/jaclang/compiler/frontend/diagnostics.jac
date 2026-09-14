@@ -1074,6 +1074,19 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " swap(&mut a, &mut b) requires two writable places of the same type."
          " Use pop() to move an owned container element out."
      ),
+     E1320 = _err(
+         "E1320", Category.SEMANTIC,
+         "Invalid lifetime contract: {reason}",
+         help="A from clause names parameters or owners that must remain alive."
+         " Preserve these dependencies when moving, returning, or storing the value.",
+         blocks_codegen=True
+     ),
+     E1321 = _err(
+         "E1321", Category.SEMANTIC,
+         "Invalid foreign contract: {reason}",
+         help="Foreign resource and call declarations must describe the actual C ABI, cleanup, and effects.",
+         blocks_codegen=True
+     ),
      W1310 = _warn(
          "W1310",
          Category.LINT,
@@ -1939,6 +1952,20 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Invalid call to reserved intrinsic '{name}': {reason}",
          help="Double-underscore names in the compiler's intrinsic registry are reserved: every call lowers to the registered intrinsic, whose signature is fixed by the registry. Match the registered arity and operand types; an invalid intrinsic call never falls back to a user definition or a default value."
+     ),
+     E5109 = _err(
+         "E5109",
+         Category.CODEGEN,
+         "Required native tail transfer '{name}' cannot be guaranteed: {reason}",
+         help="A required tail transfer must preserve the caller's ABI, exception slot, cleanup obligations, and reference lifetimes. Use matching native signatures and move the transfer outside active handlers and cleanup scopes. This requirement cannot fall back to Python execution.",
+         blocks_codegen=True
+     ),
+     E5120 = _err(
+         "E5120",
+         Category.CODEGEN,
+         "Invalid native CPython reference operation: {reason}",
+         help="CPython references are sealed foreign resources. Use the typed reference ABI in native nogc code, and preserve the Python object's lifetime across calls, cleanup and suspension.",
+         blocks_codegen=True
      ),
      E5093 = _err(
          "E5093",
