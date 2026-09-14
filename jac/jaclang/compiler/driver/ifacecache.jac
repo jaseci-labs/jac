@@ -461,6 +461,12 @@ obj IfaceRegistry {
     }
 
     def publish_completed {
+        import from jaclang.compiler.driver.compilation_context {
+            defer_interface_publication
+        }
+        if defer_interface_publication(self) {
+            return;
+        }
         cancel_token = self.prog.options.cancel_token;
         if not self.ready()
             or self.prog.errors_had

@@ -248,3 +248,67 @@ test "application traversal checks imported bodies on cold and warm requests" {
         }
     }
 }
+
+test "application publication scales with completed modules and preserves warm cycles" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.ifacecache { IfaceRegistry }
+    import from jaclang.compiler.driver.pipeline { compile_application }
+    import from jaclang.compiler.frontend.unitree { Module }
+    with TemporaryDirectory() as directory {
+        base = Path(directory);
+        (base / 'jac.toml').write_text(
+            '[project]\nname="example"\n[placement]\ndefault="server"\n'
+        );
+        (base / 'api.jac').write_text(
+            'import from factory { create }\nobj Box { has value: int = 42; }\n'
+            'def build() -> Box { return create(); }\n'
+        );
+        (base / 'factory.jac').write_text(
+            'import from api { Box }\ndef create() -> Box { return Box(); }\n'
+        );
+        imports = ['import from api { build }'];
+        for index in range(6) {
+            (base / f'leaf{index}.jac').write_text(
+                f'def value{index}() -> int {{ return {index}; }}\n'
+            );
+            imports.append(f'import from leaf{index} {{ value{index} }}');
+        }
+        entry_path = base / 'main.jac';
+        entry_path.write_text(
+            '\n'.join(imports) + '\ndef answer() -> int { return build().value; }\n'
+        );
+        publications: list[str] = [];
+        original = getattr(IfaceRegistry, '_persist_in_context');
+        def record(
+            registry: IfaceRegistry,
+            path: str,
+            module: Module,
+            options: CompileOptions,
+            err_start: int,
+            warn_start: int
+        ) {
+            if path.startswith(directory) {
+                publications.append(path);
+            }
+            original(registry, path, module, options, err_start, warn_start);
+        }
+        options = CompileOptions(no_cgen=True, iface_ok=True, project_root=directory);
+        for warm in (False, True) {
+            publications.clear();
+            program = JacProgram();
+            with patch.object(IfaceRegistry, '_persist_in_context', record) {
+                compile_application(program, str(entry_path), options);
+            }
+            assert not program.errors_had;
+            if warm {
+                assert not publications;
+                assert not any(
+                    p.analysis.pass_runs for p in program.context_programs()
+                );
+            } else {
+                assert len(publications) <= 3 * 9 , 'the completed closure was republished for each root';
+            }
+            program.release_compile_closure();
+        }
+    }
+}

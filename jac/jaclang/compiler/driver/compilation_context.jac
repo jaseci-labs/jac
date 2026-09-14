@@ -8,13 +8,44 @@ import from contextvars { ContextVar }
 import from collections.abc { Iterator }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import from jaclang.compiler.frontend.unitree { Module }
 import from jaclang.compiler.passes.transform { Alert }
 
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
          'jac_active_options', `default=None
      ),
-     _cache_context: ContextVar[str] = ContextVar('jac_compilation_cache', `default='');
+     _cache_context: ContextVar[str] = ContextVar('jac_compilation_cache', `default=''),
+     _pending_interfaces: ContextVar[dict[int, IfaceRegistry] | None] = ContextVar(
+         'jac_pending_interfaces', `default=None
+     );
+
+@contextmanager
+def interface_publication_scope -> Iterator[None] {
+    if _pending_interfaces.get() is not None {
+        yield ;
+        return;
+    }
+    pending: dict[int, IfaceRegistry] = {};
+    token = _pending_interfaces.set(pending);
+    try {
+        yield ;
+    } finally {
+        _pending_interfaces.reset(token);
+    }
+    for registry in pending.values() {
+        registry.publish_completed();
+    }
+}
+
+def defer_interface_publication(registry: IfaceRegistry) -> bool {
+    pending = _pending_interfaces.get();
+    if pending is None {
+        return False;
+    }
+    pending[id(registry)] = registry;
+    return True;
+}
 
 @contextmanager
 def cache_scope(

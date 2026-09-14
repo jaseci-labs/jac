@@ -108,6 +108,11 @@ Client invalidation removes the client section through the shared JIR writer;
 it preserves executable and interface products. Closure publication prepares
 all available interfaces before recording dependency hashes, then republishes
 validated live executable products against that completed dependency set.
+Application traversal batches this publication across its roots and contexts,
+then publishes each completed context once. Single-module requests still publish
+at their own boundary. Nested traversal shares the enclosing publication scope;
+exceptions discard pending publication, and cancellation retains the registry's
+normal eligibility checks.
 Live source revisions use the same content and annex-membership identity as
 disk products, so restored timestamps and deleted annexes cannot hide edits.
 At an outer request, `JacProgram.refresh_compile_inputs` checks retained inputs

@@ -838,6 +838,17 @@ def route_exports(program: JacProgram, path: str) -> tuple[str | None, str | Non
 def compile_application(
     program: JacProgram, entry_path: str, options: CompileOptions
 ) -> Module {
+    import from jaclang.compiler.driver.compilation_context {
+        interface_publication_scope
+    }
+    with interface_publication_scope() {
+        return _compile_application(program, entry_path, options);
+    }
+}
+
+def _compile_application(
+    program: JacProgram, entry_path: str, options: CompileOptions
+) -> Module {
     import copy;
     import from pathlib { Path }
     import from jaclang.compiler.driver.compilation_context {
