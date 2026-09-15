@@ -19,7 +19,7 @@ def _probe(prog: JacProgram) -> tuple {
     mod = prog.parse_str(SRC, "release_probe.jac");
     assert mod is not None;
     return (
-        mod.loc.mod_path,
+        JacProgram.hub_key(mod.loc.mod_path),
         weakref.ref(mod),
         weakref.ref(mod.kid[0]),
         weakref.ref(getattr(mod.kid[0], "__jac__")),
@@ -106,7 +106,8 @@ test "retiring the root analysis context leaves other contexts alive" {
     owner.release_analysis_context(first_identity);
     gc.collect();
     assert first_ref() is None;
-    assert second.mod.hub[second_module.loc.mod_path] is second_module;
+    assert second.mod.hub[JacProgram.hub_key(second_module.loc.mod_path)]
+        is second_module;
     assert owner.contexts[second.context_key].program is second;
     assert owner.find_module(first_path) is None;
     owner.release_compile_closure();

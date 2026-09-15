@@ -82,7 +82,7 @@ impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
 impl JacProgram.module_owner(
     self: JacProgram, module: uni.Module
 ) -> JacProgram | None {
-    path = module.loc.mod_path;
+    path = JacProgram.hub_key(module.loc.mod_path);
     for context in self.owned_contexts() {
         if context.mod.hub.get(path) is module {
             return context;
