@@ -65,7 +65,7 @@ impl TriggerSpec.apscheduler_kwargs -> dict {
         if self.interval is None {
             raise ValueError("interval (seconds) required for trigger='interval'");
         }
-        return {'seconds': float(self.interval)};
+        return {'seconds': float(self.interval), 'start_date': _EPOCH};
     }
     if self.trigger == 'cron' {
         parts = (self.cron or '').strip().split();
@@ -81,18 +81,24 @@ impl TriggerSpec.apscheduler_kwargs -> dict {
     return {'run_date': self.date};
 }
 
-def _doc_row(raw: any) -> dict {
-    return raw if isinstance(raw, dict) else json.loads(str(raw));
+impl TriggerSpec.due_tick(now: datetime.datetime) -> int {
+    if self.trigger == 'interval' and self.interval {
+        step = datetime.timedelta(seconds=float(self.interval));
+        if step > datetime.timedelta(0) {
+            return tick_of(_EPOCH + step * ((now - _EPOCH) // step));
+        }
+    }
+    if self.trigger == 'cron' {
+        return tick_of(now.replace(second=0, microsecond=0));
+    }
+    if self.trigger == 'date' and self.date {
+        return tick_of(datetime.datetime.fromisoformat(str(self.date)));
+    }
+    return tick_of(now);
 }
 
-def _fire_lease_ttl(spec: TriggerSpec) -> int {
-    if spec.trigger == 'interval' and spec.interval {
-        return max(1, min(300, int(float(spec.interval) * 0.8)));
-    }
-    if spec.trigger == 'cron' {
-        return 45;
-    }
-    return 300;
+def _doc_row(raw: any) -> dict {
+    return raw if isinstance(raw, dict) else json.loads(str(raw));
 }
 
 def _where_sql(where: dict | None, params: dict) -> str {
@@ -125,8 +131,12 @@ impl PgJobStore.find_active(
     trigger: str | None = None,
     created_by: str | None = None
 ) -> tuple[list[dict], int] {
-    conds: list[str] = ["collection = :c", "doc->>'status' = 'active'"];
-    params: dict[str, any] = {'c': self._collection};
+    conds: list[str] = [
+        "collection = :c",
+        "doc->>'status' = 'active'",
+        "COALESCE(doc->>'service', :svc) = :svc"
+    ];
+    params: dict[str, any] = {'c': self._collection, 'svc': self._service};
     if trigger {
         conds.append("doc->>'trigger' = :t");
         params['t'] = trigger;
@@ -155,8 +165,8 @@ impl PgJobStore.find_active(
 impl PgJobStore.find_active_one(job_id: str) -> dict | None {
     rows = self.store.rows(
         "SELECT doc FROM jac_docs WHERE collection = :c AND id = :i "
-        "AND doc->>'status' = 'active'",
-        {'c': self._collection, 'i': job_id}
+        "AND doc->>'status' = 'active' AND COALESCE(doc->>'service', :svc) = :svc",
+        {'c': self._collection, 'i': job_id, 'svc': self._service}
     );
     return _doc_row(rows[0][0]) if rows else None;
 }
@@ -165,22 +175,25 @@ impl PgJobStore.update(job_id: str, updates: dict, where: dict | None = None) ->
     params: dict[str, any] = {
         'c': self._collection,
         'i': job_id,
+        'svc': self._service,
         'u': json.dumps(dict(updates), `default=str)
     };
     cond = _where_sql(where, params);
     rows = self.store.rows(
         f"UPDATE jac_docs SET doc = doc || CAST(:u AS jsonb) "
-        f"WHERE collection = :c AND id = :i{cond} RETURNING id",
+        f"WHERE collection = :c AND id = :i "
+        f"AND COALESCE(doc->>'service', :svc) = :svc{cond} RETURNING id",
         params
     );
     return len(rows) > 0;
 }
 
 impl PgJobStore.delete(job_id: str, where: dict | None = None) -> bool {
-    params: dict[str, any] = {'c': self._collection, 'i': job_id};
+    params: dict[str, any] = {'c': self._collection, 'i': job_id, 'svc': self._service};
     cond = _where_sql(where, params);
     rows = self.store.rows(
-        f"DELETE FROM jac_docs WHERE collection = :c AND id = :i{cond} RETURNING id",
+        f"DELETE FROM jac_docs WHERE collection = :c AND id = :i "
+        f"AND COALESCE(doc->>'service', :svc) = :svc{cond} RETURNING id",
         params
     );
     return len(rows) > 0;
@@ -333,6 +346,7 @@ impl JacScaleScheduler.instance -> JacScaleScheduler {
 impl JacScaleScheduler.setup(system_user_id: str, server: any | None = None) -> None {
     self._system_user_id = system_user_id;
     self._server = server;
+    self._service = schedule_namespace(str(server.module_name)) if server else '';
 
     def _dynamic_handler(task: any) {
         self._execute_task(task.name, self._system_user_id, task.is_walker);
@@ -348,7 +362,9 @@ impl JacScaleScheduler.setup(system_user_id: str, server: any | None = None) -> 
         logger.warning(f"scheduler job store unavailable: {e}");
     }
     if store is not None {
-        self._store = PgJobStore(store=store, _collection=collection);
+        self._store = PgJobStore(
+            store=store, _collection=collection, _service=self._service
+        );
         logger.debug("database configured - jobs will be persisted");
     } else {
         logger.warning(
@@ -424,12 +440,21 @@ impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
     restored = 0;
     orphaned = 0;
     failed = 0;
+    foreign = 0;
     for job_data in jobs {
         job_id = str(job_data.get('job_id', str(uuid4())));
         name = job_data.get('name', '');
         user_id = job_data.get('created_by', self._system_user_id);
         is_walker = job_data.get('is_walker', True);
         if not name {
+            continue;
+        }
+        if not self._serves(job_data) {
+            logger.debug(
+                f"Not restoring '{name}' (id={job_id}): this service does not "
+                "serve its target"
+            );
+            foreign += 1;
             continue;
         }
         if user_id != self._system_user_id and not self._user_is_live(user_id) {
@@ -464,10 +489,11 @@ impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
             failed += 1;
         }
     }
-    if restored or failed or orphaned {
+    if restored or failed or orphaned or foreign {
         logger.info(
             f"Dynamic job restoration complete: {restored} restored, "
-            f"{orphaned} orphaned, {failed} failed"
+            f"{orphaned} orphaned, {failed} failed, "
+            f"{foreign} left to the service that serves them"
         );
     } else {
         logger.info("No persisted dynamic jobs to restore");
@@ -495,7 +521,8 @@ impl JacScaleScheduler.create_job(
         'created_by': created_by,
         'is_walker': is_walker,
         'created_at': now_str,
-        'status': 'active'
+        'status': 'active',
+        'service': self._service
     };
     job_data.update(spec.to_dict());
 
@@ -562,7 +589,7 @@ impl JacScaleScheduler.update_job(
     if not self._require_store().update(job_id, updates, where=where) {
         return None;
     }
-    if self._apscheduler is not None {
+    if self._apscheduler is not None and self._serves(existing) {
         self._schedule_apscheduler_job(
             job_id=job_id, name=name, spec=spec, user_id=user_id, is_walker=is_walker
         );
@@ -607,12 +634,7 @@ impl JacScaleScheduler._execute_task(
             self._mark_failed(job_id, 'server reference not set');
             return;
         }
-        introspector = self._server.introspector;
-        registry: dict[str, any] = (
-            introspector._walkers if is_walker else introspector._functions
-        )
-            or {};
-        target = registry.get(name);
+        target = self._target(name, is_walker);
         if target is None {
             logger.warning(
                 f"Scheduled {label} '{name}' is no longer registered in the server"
@@ -678,20 +700,54 @@ impl JacScaleScheduler._mark_failed(job_id: str | None, reason: str) -> None {
     }
 }
 
-impl JacScaleScheduler._acquire_fire_lease(job_id: str, spec: TriggerSpec) -> bool {
+impl JacScaleScheduler._target(name: str, is_walker: bool) -> any {
+    if self._server is None {
+        return None;
+    }
+    introspector = self._server.introspector;
+    registry: dict[str, any] = (
+        introspector._walkers if is_walker else introspector._functions
+    )
+        or {};
+    return registry.get(name);
+}
+
+impl JacScaleScheduler._serves(job: dict) -> bool {
+    if 'service' in job {
+        return job.get('service') == self._service;
+    }
+    if self._server is None {
+        return True;
+    }
+    return self._target(str(job.get('name', '')), bool(job.get('is_walker', True)))
+        is not None;
+}
+
+impl JacScaleScheduler._claim_fire(
+    job_id: str, spec: TriggerSpec, now: datetime.datetime
+) -> bool {
     store = self._store;
     if not isinstance(store, PgJobStore) {
         return True;
     }
-    import from jaclang.scale.state.pg_state_backend { PgStateBackend }
+    key = f"job:{job_id}";
     try {
-        return PgStateBackend(store=store.store).acquire_lock(
-            f"sched:{job_id}", _fire_lease_ttl(spec)
-        );
+        won = bool(store.store.kv_claim_tick(key, spec.due_tick(now)));
     } except Exception as e {
-        logger.warning(f"fire-lease check failed for job {job_id}: {e}; firing anyway");
-        return True;
+        if key not in self._failing_claims {
+            self._failing_claims.add(key);
+            logger.warning(
+                f"could not claim a tick for job {job_id}: {e}; skipping its "
+                "ticks until a claim succeeds"
+            );
+        }
+        return False;
     }
+    if key in self._failing_claims {
+        self._failing_claims.discard(key);
+        logger.info(f"tick claims for job {job_id} are succeeding again");
+    }
+    return won;
 }
 
 impl JacScaleScheduler._notify_jobs_changed(job_id: str) -> None {
@@ -736,7 +792,7 @@ impl JacScaleScheduler._on_jobs_changed(payload: str) -> None {
         logger.warning(f"jobs-changed reconcile failed for {job_id}: {e}");
         return;
     }
-    if job is None {
+    if job is None or not self._serves(job) {
         try {
             self._apscheduler.remove_job(job_id);
             logger.debug(f"jobs-changed: removed local schedule for {job_id}");
@@ -765,7 +821,9 @@ impl JacScaleScheduler._schedule_apscheduler_job(
     }
 
     def job_func {
-        if not self._acquire_fire_lease(job_id, spec) {
+        if not self._claim_fire(
+            job_id, spec, datetime.datetime.now(datetime.timezone.utc)
+        ) {
             logger.debug(f"job {job_id} already fired on another pod; skipping");
             return;
         }
