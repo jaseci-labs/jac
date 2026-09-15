@@ -11,6 +11,7 @@ import shutil;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
+import from unittest.mock { patch }
 import from jaclang.project.config { JacConfig }
 import from jaclang.project.jac_store {
     JacDepError,
@@ -27,6 +28,7 @@ import from jaclang.project.jac_provider {
     manifest_jac_deps,
     parse_jac_spec,
     pth_lines,
+    read_deps_map,
     read_deps_roots,
     version_satisfied
 }
@@ -776,6 +778,73 @@ test "failed replacement restores the previous dependency entry" {
         assert "libb" in disk_deps;
         assert str(disk_deps["libb"].get("path", "")) == "../libb";
     } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+test "failed no-save install restores the recorded package state" {
+    # A mid-closure materialization failure must not leave .jac/packages
+    # holding code the deps map does not describe: the sweep failure rolls
+    # package dirs back to the deps map recorded on disk.
+    (store_tmp, old_env) = isolate_store();
+    try {
+        outer = tempfile.mkdtemp(prefix="jac_nosave_t_");
+        libb_origin = make_git_repo(
+            Path(outer) / "libb",
+            '[project]\nname = "libb"\nversion = "1.0.0"\n',
+            {"libb.jac": "def b() -> int { return 2; }\n"}
+        );
+        fresh_origin = make_git_repo(
+            Path(outer) / "fresh1",
+            '[project]\nname = "fresh1"\nversion = "1.0.0"\n',
+            {"fresh1.jac": "def f() -> int { return 1; }\n"}
+        );
+        broken_origin = make_git_repo(
+            Path(outer) / "breakme",
+            '[project]\nname = "breakme"\nversion = "1.0.0"\n',
+            {"breakme.jac": "def m() -> int { return 0; }\n"}
+        );
+        toml_text = (
+            '[project]\nname = "proj"\nversion = "0.1.0"\n\n'
+            '[dependencies.jac]\nlibb = { git = "file://' + libb_origin + '" }\n'
+        );
+        (config, tmp) = make_project(toml_text);
+        provider = JacGitProvider();
+        # Seed a good recorded state: resolve, materialize, save the map.
+        seeded = provider.resolve_closure(config, InstallContext());
+        provider.save_deps_map(config, seeded);
+        packages_root = config.get_build_dir() / "packages";
+        assert (packages_root / "libb").is_dir();
+        def fake_materialize(src: Path, dest: Path) -> Path {
+            if Path(str(dest)).name == "breakme" {
+                raise OSError("simulated mid-sweep failure");
+            }
+            return materialize(src, dest);
+        }
+        with patch(
+            "jaclang.project.jac_provider.materialize", fake_materialize
+        ) {
+            ok = provider.install_no_save(
+                config,
+                ["jac:file://" + fresh_origin, "jac:file://" + broken_origin],
+                InstallContext()
+            );
+        }
+        assert ok is False;
+        data = read_deps_map(config);
+        names = sorted(
+            p.get("name", "")
+            for p in data.get("packages", [])
+            if isinstance(p, dict)
+        );
+        assert names == ["libb"];
+        assert (packages_root / "libb").is_dir();
+        assert not (packages_root / "fresh1").exists();
+        assert not (packages_root / "breakme").exists();
+        shutil.rmtree(outer, ignore_errors=True);
+    } finally {
+        restore_store(store_tmp, old_env);
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }

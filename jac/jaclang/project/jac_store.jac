@@ -154,7 +154,15 @@ def _read_origin_meta(marker: Path) -> dict {
 
 def _write_origin_meta(dest: Path, meta: dict) {
     import json;
-    (dest / ORIGIN_MARKER).write_text(
+    marker = dest / ORIGIN_MARKER;
+    # The fetched tree is dependency-controlled input: a checked-out
+    # .jac-origin could be a symlink to a file outside the staging tree,
+    # and Path.write_text follows it. Unlink first (removes a symlink,
+    # never its target) so the marker is always a regular file we own.
+    if marker.is_symlink() or marker.exists() {
+        marker.unlink();
+    }
+    marker.write_text(
         json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     );
 }

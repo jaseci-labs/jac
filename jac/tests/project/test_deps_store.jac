@@ -97,3 +97,30 @@ test "why_chains appends the direct npm chain" {
     assert why_chains({"jac": {"a": {"requested_by": ["root"]}}}, "ghost")
         == [("jac", ["ghost"])];
 }
+
+test "origin marker write replaces a planted symlink" {
+    # A fetched tree is dependency-controlled input: a checked-out
+    # .jac-origin could be a symlink to a file outside the staging tree.
+    # The store metadata write must never follow it.
+    tmp = tempfile.mkdtemp(prefix="jac_marker_link_");
+    try {
+        tree = Path(tmp) / "tree";
+        tree.mkdir();
+        (tree / "lib.jac").write_text(
+            "def f -> int { return 1; }\n", encoding="utf-8"
+        );
+        outside = Path(tmp) / "outside.txt";
+        outside.write_text("keep", encoding="utf-8");
+        os.symlink(str(outside), str(tree / ORIGIN_MARKER));
+        _write_origin_meta(
+            tree, {"url": "https://x/y", "sha": "b" * 40, "tree": "t"}
+        );
+        assert not (tree / ORIGIN_MARKER).is_symlink();
+        assert outside.read_text(encoding="utf-8") == "keep";
+        import json;
+        meta = json.loads((tree / ORIGIN_MARKER).read_text(encoding="utf-8"));
+        assert meta.get("sha") == "b" * 40;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}

@@ -292,6 +292,44 @@ def read_deps_map(config: JacConfig) -> dict {
 }
 
 
+def restore_saved_packages(config: JacConfig) -> None {
+    # Rebuild .jac/packages from the deps map recorded on disk. Used when
+    # a materialization sweep fails midway so live packages keep matching
+    # the metadata that is still on disk: recorded packages are
+    # re-materialized from their roots, unrecorded leftover dirs from the
+    # failed sweep are removed.
+    data = read_deps_map(config);
+    packages_root = config.get_build_dir() / "packages";
+    known: set[str] = set();
+    for row in data.get("packages", []) {
+        if not isinstance(row, dict) {
+            continue;
+        }
+        name = str(row.get("name", ""));
+        src_root = str(row.get("root", ""));
+        if not name or not _safe_dep_name(name) {
+            continue;
+        }
+        known.add(name);
+        if src_root and os.path.isdir(src_root) {
+            materialize(Path(src_root), packages_root / name);
+        }
+    }
+    if packages_root.is_dir() {
+        for child in packages_root.iterdir() {
+            if child.name in known or not _safe_dep_name(child.name) {
+                continue;
+            }
+            if child.is_symlink() or not child.is_dir() {
+                child.unlink(missing_ok=True);
+            } else {
+                shutil.rmtree(child, ignore_errors=True);
+            }
+        }
+    }
+}
+
+
 def read_deps_roots(project_root: Path) -> list[str] {
     import from jaclang.project.config { get_config_for_path }
     try {
@@ -904,7 +942,23 @@ obj JacGitProvider(EcosystemProvider) {
                 section[name] = ent;
             }
             resolved = self.resolve_closure(config, ctx, collect_only=True);
-            self.materialize_closure(config, resolved, ctx);
+            try {
+                self.materialize_closure(config, resolved, ctx);
+            } except Exception as e {
+                # A mid-closure copy failure must not leave .jac/packages
+                # holding code the deps map does not describe: rebuild the
+                # package dirs from the deps map still on disk.
+                console.error(str(e));
+                try {
+                    restore_saved_packages(config);
+                } except Exception {
+                    console.warning(
+                        "Could not restore previous packages; run "
+                        "'jac install' to repair .jac/ state."
+                    );
+                }
+                return False;
+            }
             self.save_deps_map(config, resolved);
             write_pth(config, resolved);
             for pkg in resolved.values() {
