@@ -35,18 +35,50 @@ impl JacAPIServerAdmin._require_user_manager -> UserManager {
     return manager;
 }
 
-impl JacAPIServerAdmin.register_admin_endpoints -> None {
-    admin_config = get_scale_config().get_admin_config();
-    if not admin_config.get('enabled', True) {
-        logger.info("Admin portal is disabled");
+impl JacAPIServerAdmin._warn_dormant_admin(admin_username: str) -> None {
+    manager = self.user_manager;
+    if manager is None {
         return;
     }
+    try {
+        existing = manager.find_user_by_identity(admin_username);
+        dormant = existing is not None
+            and manager.is_admin(str(existing.get('user_id', '')));
+    } except Exception as e {
+        logger.debug(
+            f"Skipped the dormant admin check for '{admin_username}': the identity "
+            f"store is not reachable yet ({type(e).__name__}: {e})"
+        );
+        return;
+    }
+    if not dormant {
+        return;
+    }
+    logger.warning(
+        f"Admin account '{admin_username}' exists in the identity store but the "
+        "admin portal is disabled, so it cannot log in. Set [scale.admin] "
+        "enabled = true or JAC_ADMIN_ENABLED=true to serve /admin again."
+    );
+}
 
-    self.bootstrap_admin();
+impl JacAPIServerAdmin.register_admin_endpoints -> bool {
+    admin_config = get_scale_config().get_admin_config();
+    if not admin_config.get('enabled', False) {
+        logger.info(
+            "Admin portal is disabled. Set [scale.admin] enabled = true in "
+            "jac.toml to serve it."
+        );
+        self._warn_dormant_admin(str(admin_config.get('username', 'admin')));
+        return False;
+    }
+
+    if not self.bootstrap_admin() {
+        return False;
+    }
 
     server = self.server;
     if server is None {
-        return;
+        return False;
     }
 
     server.add_endpoint(
@@ -531,25 +563,24 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
         )
     );
     logger.info("Admin portal endpoints registered at /admin");
+    return True;
 }
 
-impl JacAPIServerAdmin.bootstrap_admin -> None {
+impl JacAPIServerAdmin.bootstrap_admin -> bool {
     admin_config = get_scale_config().get_admin_config();
-    if not admin_config.get('enabled', True) {
-        return;
-    }
     result = self._require_user_manager().bootstrap_admin_user(
         admin_username=str(admin_config.get('username', 'admin')),
-        default_password=str(admin_config.get('default_password', 'changeme'))
+        bootstrap_password=str(admin_config.get('default_password') or ''),
+        require_password_reset=bool(admin_config.get('require_password_reset', True))
     );
-    if 'error' not in result {
-        if 'created' in result.get('message', '').lower() {
-            logger.warning(
-                f"Admin user created with default credentials. "
-                "Please change the password immediately!"
-            );
-        }
+    if 'error' in result {
+        logger.error(
+            f"Admin portal not served: {result.get('error', 'bootstrap failed')}. "
+            "Set [scale.admin] default_password or JAC_ADMIN_PASSWORD."
+        );
+        return False;
     }
+    return True;
 }
 
 impl JacAPIServerAdmin.validate_admin_token(Authorization: str | None) -> (str | None) {
@@ -562,6 +593,9 @@ impl JacAPIServerAdmin.validate_admin_token(Authorization: str | None) -> (str |
         return None;
     }
     if not self._require_user_manager().is_admin(user_id) {
+        return None;
+    }
+    if self._require_user_manager().requires_password_reset(user_id) {
         return None;
     }
     return user_id;
@@ -678,8 +712,6 @@ impl JacAPIServerAdmin.reset_password(
             meta=Meta(extra={'http_status': 400})
         );
     }
-
-    self._require_user_manager().set_requires_password_reset(user_id, False);
 
     new_token = self._require_user_manager().create_jwt_token(user_id);
     return TransportResponse.success(

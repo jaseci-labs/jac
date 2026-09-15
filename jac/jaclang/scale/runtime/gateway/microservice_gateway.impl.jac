@@ -204,6 +204,11 @@ impl MicroserviceGateway.serve_spa_fallback -> Response | None {
 }
 
 impl MicroserviceGateway.bootstrap_admin_ui -> None {
+    import from jaclang.scale.config.config_loader { get_scale_config }
+
+    if not get_scale_config().get_admin_config().get('enabled', False) {
+        return;
+    }
     if (Path(self.admin_dist_dir) / "index.html").is_file() {
         return;
     }
@@ -602,6 +607,11 @@ impl MicroserviceGateway.probe_services(
 }
 
 impl MicroserviceGateway.handle_admin(path: str) -> Response | None {
+    import from jaclang.scale.config.config_loader { get_scale_config }
+
+    if not get_scale_config().get_admin_config().get('enabled', False) {
+        return None;
+    }
     if path == "/admin" {
         import from jaclang.server.serving.datatypes { RedirectResponse }
         return RedirectResponse(url="/admin/", status_code=302);
@@ -1102,23 +1112,22 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.user_manager = self.identity();
     self.app.add_middleware(jwt_middleware(self.user_manager));
 
-    self.register_admin_endpoints();
-    self.register_logs_endpoints();
-    self.register_llm_telemetry_endpoints();
-    self.register_workloads_endpoints();
-
-    self.register_traces_endpoints();
-    self.register_ops_endpoints();
-    self.register_deploy_health_endpoints();
-    self.register_network_endpoints();
-    self.register_podenv_endpoints();
+    if self.register_admin_endpoints() {
+        self.register_logs_endpoints();
+        self.register_llm_telemetry_endpoints();
+        self.register_workloads_endpoints();
+        self.register_traces_endpoints();
+        self.register_ops_endpoints();
+        self.register_deploy_health_endpoints();
+        self.register_network_endpoints();
+        self.register_podenv_endpoints();
+        logger.info(
+            "Admin JSON API installed on gateway "
+            "(/admin/login, /admin/me, /admin/users, /admin/workloads/*, /admin/logs/*, ...)"
+        );
+    }
 
     register_auth_endpoints(self);
-
-    logger.info(
-        "Admin JSON API installed on gateway "
-        "(/admin/login, /admin/me, /admin/users, /admin/workloads/*, /admin/logs/*, ...)"
-    );
     logger.info(
         "Gateway-owned identity installed "
         "(/user/register, /user/login, /user/me served by the gateway)"

@@ -75,10 +75,10 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'k8s_metrics_enabled': True
         },
         'admin': {
-            'enabled': True,
+            'enabled': False,
             'username': 'admin',
             'email': 'admin@localhost',
-            'default_password': 'changeme',
+            'default_password': None,
             'session_expiry_hours': 24,
             'require_password_reset': True
         },
@@ -404,6 +404,30 @@ impl reset_scale_config -> None {
     _app_scale_cache.clear();
 }
 
+impl resolve_admin_enabled(configured: bool) -> bool {
+    raw = os.environ.get('JAC_ADMIN_ENABLED');
+    if raw is None {
+        return configured;
+    }
+    value = raw.strip().lower();
+    if not value {
+        return configured;
+    }
+    if value in ('true', '1', 'yes', 'on') {
+        return True;
+    }
+    if value in ('false', '0', 'no', 'off') {
+        return False;
+    }
+    import logging;
+    logging.getLogger(__name__).warning(
+        f"JAC_ADMIN_ENABLED={raw!r} is not a recognized boolean, so the admin "
+        "portal is being left disabled. Set it to one of true/1/yes/on or "
+        "false/0/no/off to override [scale.admin] enabled in jac.toml."
+    );
+    return False;
+}
+
 impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     telemetry_config = config.get('telemetry', {});
@@ -593,11 +617,20 @@ impl normalize_gateway_config(gateway_config: dict[str, any] | None) -> dict[str
 impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     admin_config = config.get('admin', {});
+
+    enabled: bool = resolve_admin_enabled(bool(admin_config.get('enabled', False)));
+
+    password: str | None = admin_config.get('default_password', None);
+    password_env: str | None = os.environ.get('JAC_ADMIN_PASSWORD');
+    if password_env {
+        password = password_env;
+    }
+
     return {
-        'enabled': admin_config.get('enabled', True),
+        'enabled': enabled,
         'username': admin_config.get('username', 'admin'),
         'email': admin_config.get('email', 'admin@localhost'),
-        'default_password': admin_config.get('default_password', 'changeme'),
+        'default_password': password,
         'session_expiry_hours': int(admin_config.get('session_expiry_hours', 24)),
         'require_password_reset': admin_config.get('require_password_reset', True)
     };

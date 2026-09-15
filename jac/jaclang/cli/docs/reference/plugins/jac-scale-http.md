@@ -1209,31 +1209,51 @@ jac-scale includes a built-in admin portal for managing users, roles, and SSO co
 
 ### Accessing the Admin Portal
 
-Navigate to `http://localhost:8000/admin` to access the admin dashboard. On first server start, an admin user is automatically bootstrapped.
+The admin portal is **disabled by default**. Nothing is served under `/admin` and no
+admin account is created until you opt in, so a deployment that never configures it
+has no admin surface at all.
 
-### Configuration
+To turn it on, set `enabled` and supply a bootstrap password. There is no default
+password: if `enabled = true` and no password is configured, the portal refuses to
+start and logs an error rather than provisioning a guessable account.
 
 ```toml
 [scale.admin]
 enabled = true
 username = "admin"
+default_password = "..."   # required; prefer JAC_ADMIN_PASSWORD, see below
 session_expiry_hours = 24
 ```
 
+Once enabled, navigate to `http://localhost:8000/admin`. The bootstrap account is
+created on first start with `requires_password_reset` set, and that flag is enforced
+server-side: the account can call `/admin/reset-password` and nothing else until the
+password is rotated.
+
+If an account with the configured username already exists, it is adopted rather than
+created: an existing admin keeps its own password, an existing admin still carrying the
+old `changeme` placeholder has it replaced by the configured password (with the reset
+flag applied), and a non-admin account is promoted only when the configured password
+authenticates it. A username someone registered ahead of you is never promoted on its
+own.
+
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `enabled` | bool | `true` | Enable/disable admin portal |
+| `enabled` | bool | `false` | Serve the admin portal and create the bootstrap admin user |
 | `username` | string | `"admin"` | Admin username |
+| `default_password` | string | none | Bootstrap password. Required when `enabled = true`; the historical placeholder `changeme` is refused |
 | `session_expiry_hours` | int | `24` | Admin session duration in hours |
-| `require_password_reset` | bool | `true` | Force admin to change the default password on first login |
+| `require_password_reset` | bool | `true` | Force the bootstrap admin to rotate its password on first login |
 
 **Environment Variables:**
 
+Prefer these over `jac.toml` for the password so the credential is injected at deploy
+time (a Kubernetes Secret, for example) instead of being committed to the repository.
+
 | Variable | Description |
 |----------|-------------|
-| `ADMIN_USERNAME` | Admin username (overrides jac.toml) |
-| `ADMIN_EMAIL` | Admin email (overrides jac.toml) |
-| `ADMIN_DEFAULT_PASSWORD` | Initial password (overrides jac.toml) |
+| `JAC_ADMIN_ENABLED` | Enable/disable the portal, overrides jac.toml. Accepts `true`/`1`/`yes`/`on` and `false`/`0`/`no`/`off` (case and surrounding whitespace are ignored); any other value logs a warning and leaves the portal disabled |
+| `JAC_ADMIN_PASSWORD` | Bootstrap admin password, overrides jac.toml |
 
 ### User Roles
 
