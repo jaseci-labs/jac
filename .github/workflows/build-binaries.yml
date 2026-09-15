@@ -845,123 +845,20 @@ jobs:
             "dist/${{ steps.pkg.outputs.asset }}.sha256" \
             --clobber
 
-  # Publishes jaseci/jaclang (Docker Hub) from the binaries this run produced:
-  #   <version> + latest on the release channel, dev on the rolling prerelease.
-  # The image bakes the extracted runtime and the scale serve closure (see
-  # docker/jaclang.Dockerfile), so it doubles as the deployment base image.
-  #
-  # Setup (one-time, repo secrets): DOCKERHUB_USERNAME + DOCKERHUB_TOKEN, an
-  # access token from the `jaseci` Docker Hub org with write access. The job
-  # is skipped when the secrets are absent (forks).
+  # Docker remains a release gate. The reusable workflow can also be
+  # dispatched on its own to retry image publishing from existing assets.
   docker-image:
     needs: build
-    # Not on a filtered matrix: a single-leg run (the manual Intel-Mac lane)
-    # produces no linux artifact for this job to consume, and its release
-    # already carries what this job builds.
     if: (github.event_name == 'release' || inputs.tag != '') && inputs.only == ''
-    runs-on: ubuntu-latest
     permissions:
-      contents: read
-    env:
+      # The called workflow also supports manual draft finalization. That
+      # write job is skipped for normal releases, whose publish job stays in
+      # release.yml; the image job itself retains read-only permissions.
+      contents: write
+    uses: ./.github/workflows/publish-docker.yml
+    with:
+      tag: ${{ inputs.tag || github.event.release.tag_name }}
+      commit: ${{ inputs.channel == 'dev' && github.sha || inputs.commit || inputs.tag || github.event.release.tag_name }}
+    secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      # Presence flag ("true"/"false"): `secrets` is not available in step
-      # `if:` expressions, and the token value itself must not sit in env.
-      DOCKERHUB_TOKEN_SET: ${{ secrets.DOCKERHUB_TOKEN != '' }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          ref: ${{ inputs.channel == 'dev' && github.sha || inputs.commit || inputs.tag || github.event.release.tag_name }}
-
-      - name: Read version (from jac.toml)
-        id: ver
-        run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
-
-      # Dev-channel legs keep no workflow artifact; that path pulls the
-      # binaries this run just re-published on the rolling prerelease instead.
-      - name: Fetch this run's linux-x86_64 binary (release channel)
-        if: inputs.channel != 'dev'
-        uses: actions/download-artifact@v4
-        with:
-          name: jac-${{ steps.ver.outputs.version }}-linux-x86_64
-          path: ctx/amd64
-
-      - name: Fetch this run's linux-aarch64 binary (release channel)
-        if: inputs.channel != 'dev'
-        uses: actions/download-artifact@v4
-        with:
-          name: jac-${{ steps.ver.outputs.version }}-linux-aarch64
-          path: ctx/arm64
-
-      - name: Stage binaries into the build context
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euxo pipefail
-          mkdir -p ctx/amd64 ctx/arm64
-          if [ "${{ inputs.channel }}" = "dev" ]; then
-            gh release download dev --repo "$GITHUB_REPOSITORY" \
-              --pattern "jac-dev-linux-x86_64" --dir ctx/amd64 --clobber
-            gh release download dev --repo "$GITHUB_REPOSITORY" \
-              --pattern "jac-dev-linux-aarch64" --dir ctx/arm64 --clobber
-          fi
-          # The release-channel artifact carries the binary's .sha256 beside
-          # it; drop it so the rename glob matches exactly one file.
-          rm -f ctx/amd64/*.sha256 ctx/arm64/*.sha256
-          mv ctx/amd64/jac-* ctx/amd64/jac
-          mv ctx/arm64/jac-* ctx/arm64/jac
-          chmod +x ctx/amd64/jac ctx/arm64/jac
-          cp docker/jaclang.Dockerfile ctx/Dockerfile
-
-      # Forks skip publishing quietly, but on the org repo missing secrets
-      # mean a misconfiguration (e.g. a caller not passing them through) --
-      # fail loudly instead of green-skipping the publish.
-      - name: Fail if publishing secrets are missing (org repo)
-        if: github.repository == 'jaseci-labs/jac' && (env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN_SET != 'true')
-        run: |
-          echo "::error::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN did not reach this job; workflow_call callers must pass them via 'secrets:'."
-          exit 1
-
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
-        if: env.DOCKERHUB_USERNAME != ''
-
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-        if: env.DOCKERHUB_USERNAME != ''
-
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
-        if: env.DOCKERHUB_USERNAME != ''
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Compute image tags
-        id: tags
-        if: env.DOCKERHUB_USERNAME != ''
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          IMAGE="jaseci/jaclang"
-          VERSION="${{ steps.ver.outputs.version }}"
-          if [ "${{ inputs.channel }}" = "dev" ]; then
-            TAGS="$IMAGE:dev"
-          else
-            # :latest never moves backwards: a backport (0.34.8 after 0.35.0)
-            # pushes its version tag only. Mirrors release.yml's publish guard.
-            TAGS="$IMAGE:${VERSION}"
-            latest_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || echo "")"
-            if [ "$(printf '%s\n%s\n' "${latest_tag#v}" "$VERSION" | sort -V | tail -1)" = "$VERSION" ]; then
-              TAGS="$TAGS,$IMAGE:latest"
-            else
-              echo "Backport: $latest_tag stays :latest, pushing $IMAGE:$VERSION only."
-            fi
-          fi
-          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push (linux/amd64, linux/arm64)
-        if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
-        with:
-          context: ctx
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
