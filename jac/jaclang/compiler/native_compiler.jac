@@ -436,7 +436,9 @@ class NativeCompiler {
     }
 
     def take_pass_results(self: NativeCompiler) -> dict[str, PassResult] {
-        import type from jaclang.compiler.passes.context { PassResult }
+        import from jaclang.compiler.passes.context {
+            PassResult as CompletedPassResult
+        }
         import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
         import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
         out: dict[str, PassResult] = {};
@@ -458,7 +460,7 @@ class NativeCompiler {
                     alert.code = DIAGNOSTICS[alert.code.code];
                 }
             }
-            out[pass_cls.__name__] = PassResult(
+            out[pass_cls.__name__] = CompletedPassResult(
                 errors_had=errors,
                 warnings_had=warnings,
                 time_taken=self.lib.jc_pass_time(pass_id)
