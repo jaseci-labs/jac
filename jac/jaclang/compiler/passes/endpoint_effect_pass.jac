@@ -1,4 +1,3 @@
-import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -27,11 +26,11 @@ import from jaclang.compiler.passes.uni_pass { UniPass }
 walker EndpointEffectPass(UniPass) {
     has _is_writer: bool = False,
         _unknown: bool = False,
-        _declared_reads: set[str] = field(default_factory=set),
-        _declared_writes: set[str] = field(default_factory=set),
-        _assumptions: set[str] = field(default_factory=set),
-        _touches: set[str] = field(default_factory=`set),
-        _visited: set[int] = field(default_factory=set);
+        _declared_reads: set[str] = set(),
+        _declared_writes: set[str] = set(),
+        _assumptions: set[str] = set(),
+        _touches: set[str] = set(),
+        _visited: set[int] = set();
 
     def before_pass {
         self._is_writer = False;

@@ -2,27 +2,26 @@ import hashlib;
 import os;
 import types;
 import from jaclang.jac0core.ext_registry { base_stem }
-import from jaclang.runtime.object_model { field }
 import type from jaclang.runtime.semantic { Info }
 import type from jaclang.client.compiler { ViteCompiler }
 
 obj PreparedApplication {
     has `root: str,
         `entry: str,
-        code: dict[str, types.CodeType] = field(default_factory=`dict),
-        manifests: dict[str, dict] = field(default_factory=`dict),
-        semantic: dict[str, dict[str, Info]] = field(default_factory=`dict),
-        origins: dict[str, str] = field(default_factory=`dict),
+        code: dict[str, types.CodeType] = {},
+        manifests: dict[str, dict] = {},
+        semantic: dict[str, dict[str, Info]] = {},
+        origins: dict[str, str] = {},
         name: str = '',
         namespace: str = '',
         scope_imports: bool = True,
         client_compiler: ViteCompiler | None = None,
         client_enabled: bool = False,
-        native: dict[str, tuple] = field(default_factory=`dict),
+        native: dict[str, tuple] = {},
         services: tuple = (),
         dev: bool = True,
         client_dist: str = "",
-        applications: list[PreparedApplication] = field(default_factory=list);
+        applications: list[PreparedApplication] = [];
 }
 
 glob _applications: dict[str, PreparedApplication] = {};

@@ -668,7 +668,7 @@ impl JcirGenPass.exit_has_var with HasVar exit {
         value = self.val(here.value) if here.value else None;
     } elif here.defer {
         value = self.call_node(
-            self.jaclib_obj('field'),
+            self.jaclib_obj('ObjectField'),
             [],
             [self.nod('keyword', ['arg', 'value'], ['init', self.const_of(False)])]
         );
@@ -679,7 +679,7 @@ impl JcirGenPass.exit_has_var with HasVar exit {
             value = value_expr;
         } else {
             value = self.call_node(
-                self.jaclib_obj('field'),
+                self.jaclib_obj('ObjectField'),
                 [],
                 [
                     self.nod(

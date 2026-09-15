@@ -2,7 +2,6 @@ import os;
 import json;
 import from collections.abc { Callable }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 
 glob PLACEMENT_SCHEMA: int = 1,
@@ -37,12 +36,12 @@ obj ElementSummary {
         sv_import: bool = False,
         import_eco: str = '',
         import_jac_target: str = '',
-        import_items: list[str] = field(default_factory=`list),
-        import_py_targets: list[str] = field(default_factory=`list),
-        reqs: list = field(default_factory=`list),
-        refs: list[int] = field(default_factory=`list),
-        escapes: list = field(default_factory=`list),
-        glob_writes: list[int] = field(default_factory=`list);
+        import_items: list[str] = [],
+        import_py_targets: list[str] = [],
+        reqs: list = [],
+        refs: list[int] = [],
+        escapes: list = [],
+        glob_writes: list[int] = [];
 
     def to_dict -> dict {
         return {
@@ -87,11 +86,11 @@ obj PlacementSummary {
     has schema: int = 1,
         mod_path: str = '',
         decided: str = '',
-        anchors: list[str] = field(default_factory=`list),
+        anchors: list[str] = [],
         native_blocker: str = '',
-        jac_deps: list[str] = field(default_factory=`list),
+        jac_deps: list[str] = [],
         has_refs: bool = False,
-        elements: list[ElementSummary] = field(default_factory=`list);
+        elements: list[ElementSummary] = [];
 
     def to_dict -> dict {
         return {

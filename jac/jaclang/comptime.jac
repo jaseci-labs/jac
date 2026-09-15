@@ -1,6 +1,9 @@
 import sys;
 import platform as _platform;
-import from jaclang.runtime.object_model { MISSING as _MISSING, field as _object_field }
+import from jaclang.runtime.object_model {
+    MISSING as _MISSING,
+    ObjectField as _ObjectField
+}
 import from jaclang.runtime.object_interop {
     fields as _record_fields,
     is_record as _is_record
@@ -296,9 +299,9 @@ def specialize(cls: type, **ct: any) -> type {
             def copy_default(value: object = v) -> object {
                 return _copy.copy(value);
             }
-            ns[k] = _object_field(default_factory=copy_default, kw_only=True);
+            ns[k] = _ObjectField(default_factory=copy_default, kw_only=True);
         } else {
-            ns[k] = _object_field(`default=v, kw_only=True);
+            ns[k] = _ObjectField(`default=v, kw_only=True);
         }
     }
     made = `type(cls.__name__, (cls, ), ns);

@@ -497,8 +497,9 @@ The Python AST is reconstructed from the container inside
 `JcirBytecodeGenPass` and dies there, so nothing downstream holds a handle
 back to the originating nodes.
 
-Archetype `has` fields become dataclass fields wrapped with
-`_.field(default=…)` or `_.field(factory=lambda: …)`. Walkers, nodes, and
+Archetype `has` fields use Jac object descriptors. Nonconstant defaults
+lower to internal `ObjectField(default_factory=lambda: …)` calls; constant
+defaults remain direct values. Walkers, nodes, and
 edges descend from the corresponding `Archetype` subclasses in
 [`runtime/archetype.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/archetype.jac).
 Builtins and language keywords ultimately resolve to methods on

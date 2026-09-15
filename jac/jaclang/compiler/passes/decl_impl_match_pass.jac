@@ -1,4 +1,3 @@
-import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -34,7 +33,7 @@ import from jaclang.compiler.frontend.diagnostics {
 }
 
 walker DeclImplMatchPass(Transform) {
-    has _e2026_reported: set[int] = field(default_factory=`set);
+    has _e2026_reported: set[int] = set();
 
     def transform(ir_in: Module) -> Module;
     def _run_impl(ir_in: Module) -> Module;

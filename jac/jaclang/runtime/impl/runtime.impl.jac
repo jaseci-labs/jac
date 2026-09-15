@@ -642,9 +642,7 @@ impl JacArchetype.make_archetype(cls: type[Archetype]) -> type[Archetype] {
         }
         cls.__annotations__['reports'] = list;
         setattr(
-            cls,
-            'reports',
-            field(default_factory=`list, init=False, repr=False, compare=False)
+            cls, 'reports', ObjectField(default_factory=`list, init=False, repr=False)
         );
     }
     if cls.__dict__.get('__annotations__') and not cls.__doc__ {
