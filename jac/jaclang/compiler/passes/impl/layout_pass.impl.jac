@@ -71,12 +71,12 @@ impl LayoutPass._collect_isinstance_targets(module: Module) -> None {
         if not (isinstance(tgt, Name) and tgt.value == "isinstance") {
             continue;
         }
-        params = call.params or [];
+        params: list[Expr | KWPair] = list(call.params or []);
         if len(params) < 2 {
             continue;
         }
         type_arg = params[1];
-        cands: list = [];
+        cands: list[Expr | KWPair] = [];
         if isinstance(type_arg, TupleVal) {
             for v in (type_arg.values or []) {
                 cands.append(v);
@@ -207,7 +207,7 @@ impl LayoutRegistry.dependency_order(names: list[str]) -> list[str] {
         if aname in visited {
             continue;
         }
-        stack: list[tuple] = [(aname, False)];
+        stack: list[tuple[str, bool]] = [(aname, False)];
         while stack {
             (name, processed) = stack.pop();
             if name in visited {

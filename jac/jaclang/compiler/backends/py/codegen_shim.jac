@@ -3,6 +3,7 @@ import marshal;
 import struct;
 import sys;
 import types;
+import from collections.abc { Callable }
 
 import from jaclang.compiler.backends.py.codegen_ir {
     CirContainer,
@@ -31,8 +32,8 @@ import from jaclang.compiler.backends.py.codegen_ir {
     _r_varint
 }
 
-def decode_ops(code: bytes, container: CirContainer) -> list {
-    ops: list = [];
+def decode_ops(code: bytes, container: CirContainer) -> list[tuple[any, ...]] {
+    ops: list[tuple[any, ...]] = [];
     pos = 0;
     loc_l1 = 0;
     loc_c1 = 0;
@@ -157,12 +158,12 @@ def decode_ops(code: bytes, container: CirContainer) -> list {
     return ops;
 }
 
-def _call_kw(cls: any, kw: dict) -> any {
+def _call_kw(cls: any, kw: dict[str, object]) -> any {
     return cls(**kw);
 }
 
 obj CirSplice {
-    has stmts: list = [];
+    has stmts: list[ast.stmt] = [];
 }
 
 obj CirCompiledModule {
@@ -173,12 +174,12 @@ obj CirCompiledModule {
 }
 
 obj CirResult {
-    has modules: list = [],
-        diags: list = [];
+    has modules: list[CirCompiledModule] = [],
+        diags: list[CirDiag] = [];
 }
 
-def cir_bind_classes(class_names: list) -> list {
-    out: list = [];
+def cir_bind_classes(class_names: list[str]) -> list[type] {
+    out: list[type] = [];
     for name in class_names {
         cls = getattr(ast, name, None);
         if cls is None {
@@ -193,8 +194,8 @@ def cir_bind_classes(class_names: list) -> list {
     return out;
 }
 
-def cir_bind_keys(key_names: list) -> list {
-    out: list = [];
+def cir_bind_keys(key_names: list[str]) -> list[str] {
+    out: list[str] = [];
     for name in key_names {
         out.append(sys.intern(name));
     }
@@ -224,13 +225,13 @@ def _parse_splice(
     return CirSplice(stmts=list(tree.body));
 }
 
-def _pop_values(stack: list, n: int, what: str) -> list {
+def _pop_values(stack: list[object], n: int, what: str) -> list[object] {
     if n > len(stack) {
         raise CodegenIrFormatError(
             f"{what} pops {n} values but only {len(stack)} are on the stack"
         );
     }
-    vals: list = [];
+    vals: list[object] = [];
     i = 0;
     while i < n {
         vals.append(stack.pop());
@@ -242,13 +243,13 @@ def _pop_values(stack: list, n: int, what: str) -> list {
 
 def transcribe_module(
     mod: CirModule,
-    classes: list,
-    keys: list,
+    classes: list[type],
+    keys: list[str],
     container: CirContainer,
     python_compiler: any = None
 ) -> any {
     ops = decode_ops(mod.code, container);
-    stack: list = [];
+    stack: list[object] = [];
     loc_set = False;
     l1 = 0;
     c1 = 0;
@@ -266,7 +267,7 @@ def transcribe_module(
             cls = classes[op[1]];
             krefs = op[2];
             vals = _pop_values(stack, len(krefs), f"OP_NODE {cls.__name__}");
-            kw: dict = {};
+            kw: dict[str, object] = {};
             j = 0;
             while j < len(krefs) {
                 if isinstance(vals[j], CirSplice) {
@@ -311,7 +312,7 @@ def transcribe_module(
             stack.append(Ellipsis);
         } elif kind == OP_LIST {
             vals = _pop_values(stack, op[1], "OP_LIST");
-            out: list = [];
+            out: list[object] = [];
             for v in vals {
                 if isinstance(v, CirSplice) {
                     out.extend(v.stmts);
@@ -357,11 +358,11 @@ def transcribe_module(
     raise CodegenIrFormatError(f"module stream for {mod.mod_path} has no OP_END");
 }
 
-def transcribe(ir_bytes: bytes) -> tuple {
+def transcribe(ir_bytes: bytes) -> tuple[list[tuple[str, ast.Module]], list[CirDiag]] {
     container = read_container(ir_bytes);
     classes = cir_bind_classes(container.class_names);
     keys = cir_bind_keys(container.key_names);
-    mods: list = [];
+    mods: list[tuple[str, ast.Module]] = [];
     for m in container.modules {
         mods.append((m.mod_path, transcribe_module(m, classes, keys, container), ));
     }
@@ -373,7 +374,7 @@ def compile_ir(ir_bytes: bytes, python_compiler: any = None) -> CirResult {
     classes = cir_bind_classes(container.class_names);
     keys = cir_bind_keys(container.key_names);
     diags = list(container.diags);
-    modules: list = [];
+    modules: list[CirCompiledModule] = [];
     compile_ast = python_compiler if python_compiler is not None else compile;
     for m in container.modules {
         built_root: ast.Module = transcribe_module(

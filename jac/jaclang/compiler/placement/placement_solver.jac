@@ -14,7 +14,11 @@ import from jaclang.compiler.placement.placement {
     summarize_module
 }
 
-glob _na_scan_memo: dict[tuple, tuple] = {},
+glob _na_scan_memo:
+         dict[
+             tuple[str, bool],
+             tuple[tuple[tuple[str, int, int], ...], str, list[str]]
+         ] = {},
      _SPACE_BY_NAME: dict[str, CodeContext] = {
          'server': CodeContext.SERVER,
          'client': CodeContext.CLIENT,
@@ -53,7 +57,7 @@ def _native_dep_scan(
     files = [path]
         + discover_annex_files(path, '.impl.jac')
         + discover_annex_files(path, '.test.jac');
-    fresh_parts: list[tuple] = [];
+    fresh_parts: list[tuple[str, int, int]] = [];
     for f in files {
         try {
             st = os.stat(f);
@@ -110,7 +114,7 @@ def _native_deps_ok(
         scope_lowering_active
     }
     cap = effective_native_closure_cap();
-    edges: dict[str, list[str]] = {root_path: list(root_deps)};
+    edges: dict[str, list[str]] = {root_path: list[str](root_deps)};
     queue: list[str] = list(root_deps);
     while queue {
         if len(edges) > cap {

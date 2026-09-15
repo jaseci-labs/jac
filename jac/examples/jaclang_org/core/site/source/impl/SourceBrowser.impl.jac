@@ -12,7 +12,7 @@ impl _ancestors_of(d: str) -> list[str] {
     return out;
 }
 
-impl _dir_paths(rows: list[dict]) -> list[str] {
+impl _dir_paths(rows: list[dict[str, any]]) -> list[str] {
     out: list[str] = [];
     for r in rows {
         if r["kind"] == "dir" {
@@ -22,8 +22,8 @@ impl _dir_paths(rows: list[dict]) -> list[str] {
     return out;
 }
 
-impl _build_rows(tree: list[SourceFile]) -> list[dict] {
-    rows: list[dict] = [];
+impl _build_rows(tree: list[SourceFile]) -> list[dict[str, any]] {
+    rows: list[dict[str, any]] = [];
     seen: list[str] = [];
     for f in tree {
         chain = _ancestors_of(f.dir);
@@ -76,7 +76,7 @@ impl SourceBrowser.toggle_dir(d: str) {
     }
 }
 
-impl SourceBrowser.is_visible(row: dict) -> bool {
+impl SourceBrowser.is_visible(row: dict[str, any]) -> bool {
     for a in (row["ancestors"] as list[str]) {
         if a in closed {
             return False;

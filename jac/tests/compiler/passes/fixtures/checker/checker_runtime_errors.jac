@@ -24,7 +24,7 @@ obj Spec {
 }
 
 obj SpatialFunc {
-    has trigger: (type | UnionType | tuple | None) = None,
+    has trigger: (type | UnionType | tuple[any, ...] | None) = None,
         func: str = "noop";
 }
 
@@ -36,7 +36,7 @@ def use_type(t: type) -> str {
     return str(t);
 }
 
-def use_types(t: (type | UnionType | tuple)) -> str {
+def use_types(t: (type | UnionType | tuple[any, ...])) -> str {
     return str(t);
 }
 
@@ -44,7 +44,9 @@ def use_spec(s: Spec) -> str {
     return s.loader;
 }
 
-def all_issubclass(classes: (type | UnionType | tuple), target: type) -> bool {
+def all_issubclass(
+    classes: (type | UnionType | tuple[any, ...]), target: type
+) -> bool {
     return True;
 }
 

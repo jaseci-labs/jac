@@ -1,11 +1,11 @@
 """Fullstack Jac app fixture: server function + client component with has (useState) and async can with entry (useEffect)."""
 
-def:pub get_items -> list {
+def:pub get_items -> list[any] {
     return [{"name": "alpha"}, {"name": "beta"}];
 }
 
 def:pub app -> JsxElement {
-    has items: list = [];
+    has items: list[any] = [];
 
     async can with entry {
         items = await get_items();

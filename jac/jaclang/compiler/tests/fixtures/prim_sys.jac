@@ -7,7 +7,7 @@ by the "sys argv via nacompile" test. ES/JS opts out.
 
 import sys;
 
-def sys_py() -> dict {
+def sys_py() -> dict[any, any] {
     stdout_n = sys.stdout.write("eq-out\n");
     stderr_n = sys.stderr.write("eq-err\n");
     sys.stdout.flush();
@@ -23,7 +23,7 @@ def sys_py() -> dict {
     };
 }
 
-def sys_cl() -> dict {
+def sys_cl() -> dict[any, any] {
     return {};
 }
 

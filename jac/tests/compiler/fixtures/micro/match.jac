@@ -7,7 +7,7 @@ obj Outer {
     }
 }
 
-def match_example(data: dict) {
+def match_example(data: dict[any, any]) {
     match data {
         # MatchValue
         case 42:

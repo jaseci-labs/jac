@@ -358,7 +358,7 @@ test "every import shape binding a deprecated typing alias is refused with E1123
     ]}";
 
     # The remedy has to be in the message the author reads, not just the help.
-    refused = {};
+    refused: dict[str, str] = {};
     for e in e1123 {
         for (alias, builtin) in [
             ("List", "list"),

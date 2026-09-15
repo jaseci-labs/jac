@@ -18,7 +18,7 @@ walker list_items {
     }
 }
 
-def:pub server_stats -> dict {
+def:pub server_stats -> dict[any, any] {
     return {"cwd": os.getcwd()};
 }
 

@@ -20,7 +20,7 @@ import from jaclang.data.store { PgStore }
 import from jaclang.scale.events.broker { Event }
 import from jaclang.scale.events.streams.postgres { PgEventStream, _STREAM_SCHEMA }
 
-glob _holder: dict = {};
+glob _holder: dict[str, any] = {};
 
 
 """Fresh stream on the shared embedded cluster, or None when it is unavailable."""

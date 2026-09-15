@@ -8,7 +8,7 @@ obj ClusterProvider {
     def prometheus_scrape_port(container_port: int) -> int;
     def ingress_controller_service(
         service_name: str, namespace: str, controller_name: str, ingress_node_port: int
-    ) -> dict;
+    ) -> dict[str, any];
 
     def log_ingress_deployed(
         logger: (Logger | None), app_name: str, ingress_node_port: int
@@ -36,7 +36,7 @@ obj AWSProvider(ClusterProvider) {
 
     def ingress_controller_service(
         service_name: str, namespace: str, controller_name: str, ingress_node_port: int
-    ) -> dict {
+    ) -> dict[str, any] {
         return {
             'apiVersion': 'v1',
             'kind': 'Service',
@@ -84,12 +84,15 @@ obj LocalProvider(ClusterProvider) {
         v1 = client.CoreV1Api();
         all_services = v1.list_service_for_all_namespaces();
         used_ports: dict[int, str] = {};
-        for svc in (all_services.items or []) {
+
+        svc_items: list[any] = all_services.items or [];
+        for svc in svc_items {
             if svc.metadata.namespace == current_namespace {
                 continue;
             }
             svc_id = f"{svc.metadata.namespace}/{svc.metadata.name}";
-            for port_obj in (svc.spec.ports or []) {
+            svc_ports: list[any] = svc.spec.ports or [];
+            for port_obj in svc_ports {
                 if port_obj.node_port is not None {
                     used_ports[port_obj.node_port] = svc_id;
                 }
@@ -116,7 +119,7 @@ obj LocalProvider(ClusterProvider) {
 
     def ingress_controller_service(
         service_name: str, namespace: str, controller_name: str, ingress_node_port: int
-    ) -> dict {
+    ) -> dict[str, any] {
         return {
             'apiVersion': 'v1',
             'kind': 'Service',

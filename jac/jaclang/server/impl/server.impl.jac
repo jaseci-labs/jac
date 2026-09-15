@@ -1420,10 +1420,11 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         return target;
     }
     self.introspector.load();
-    for (registry, is_walker) in [
+    registries: list[tuple[dict[str, any], bool]] = [
         (dict(self.introspector._walkers), True),
         (dict(self.introspector._functions), False)
-    ] {
+    ];
+    for (registry, is_walker) in registries {
         for (name, item) in registry.items() {
             spec = item?.schedule_spec;
             if not isinstance(spec, ScheduleSpec) {

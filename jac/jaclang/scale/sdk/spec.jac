@@ -138,7 +138,7 @@ obj DeploySpec {
 
     def app_overrides -> dict[str, dict[str, any]] {
         return {
-            str(name): dict(cfg)
+            str(name): dict[str, any](cfg)
             for (name, cfg) in self.apps.items()
             if isinstance(cfg, dict)
         };

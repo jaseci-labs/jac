@@ -13,5 +13,5 @@ class DeploymentTarget {
     def get_status(self: DeploymentTarget, app_name: str) -> ResourceStatusInfo;
     def scale(self: DeploymentTarget, app_name: str, replicas: int) -> None;
     def get_service_url(self: DeploymentTarget, app_name: str) -> (str | None);
-    def get_full_status(self: DeploymentTarget, app_name: str) -> dict;
+    def get_full_status(self: DeploymentTarget, app_name: str) -> dict[str, any];
 }

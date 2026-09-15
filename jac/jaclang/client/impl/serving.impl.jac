@@ -98,7 +98,7 @@ impl JacClient.get_client_js(introspector: ModuleIntrospector) -> str {
 }
 
 impl HeaderBuilder.build_head -> str {
-    lines: list = [];
+    lines: list[str] = [];
     lines.extend(self._build_special_tags());
     lines.extend(self._build_meta_tags());
     lines.extend(self._build_og_tags());
@@ -117,7 +117,7 @@ impl HeaderBuilder.build_scripts -> list[str] {
     if not isinstance(specs, list) {
         return [];
     }
-    lines: list = [];
+    lines: list[str] = [];
     for item in specs {
         spec = {"src": item} if isinstance(item, str) else item;
         if not isinstance(spec, dict) {
@@ -130,13 +130,13 @@ impl HeaderBuilder.build_scripts -> list[str] {
     return lines;
 }
 
-impl HeaderBuilder._script_tag(spec: dict) -> str {
+impl HeaderBuilder._script_tag(spec: dict[str, any]) -> str {
     src = str(spec.get("src") or "").strip();
     body = str(spec.get("content") or "");
     if not src and not body {
         return "";
     }
-    attrs: list = [f'src="{html.escape(src)}"'] if src else [];
+    attrs: list[str] = [f'src="{html.escape(src)}"'] if src else [];
     for (key, val) in spec.items() {
         if key in ("src", "content") or val is None {
             continue;
@@ -164,7 +164,7 @@ impl HeaderBuilder._script_tag(spec: dict) -> str {
 }
 
 impl HeaderBuilder._build_generic_meta_tags -> list[str] {
-    lines: list = [];
+    lines: list[str] = [];
     for (key, val) in self.meta_data.items() {
         if key.startswith("meta_") and val {
             name = key[5:].replace("_", "-");
@@ -177,7 +177,7 @@ impl HeaderBuilder._build_generic_meta_tags -> list[str] {
 }
 
 impl HeaderBuilder._build_link_tags -> list[str] {
-    lines: list = [];
+    lines: list[str] = [];
     special_links = {
         "canonical": "canonical",
         "icon": "icon",
@@ -216,7 +216,7 @@ impl HeaderBuilder._og_property(suffix: str) -> str {
 }
 
 impl HeaderBuilder._build_og_tags -> list[str] {
-    lines: list = [];
+    lines: list[str] = [];
     for (key, val) in self.meta_data.items() {
         if key.startswith("og_") and val {
             property_name = self._og_property(key[3:]);
@@ -231,7 +231,7 @@ impl HeaderBuilder._build_og_tags -> list[str] {
 }
 
 impl HeaderBuilder._build_twitter_tags -> list[str] {
-    lines: list = [];
+    lines: list[str] = [];
     for (key, val) in self.meta_data.items() {
         if key.startswith("twitter_") and val {
             name = key[8:].replace("_", ":");
@@ -244,7 +244,7 @@ impl HeaderBuilder._build_twitter_tags -> list[str] {
 }
 
 impl HeaderBuilder._build_meta_tags -> list[str] {
-    lines: list = [];
+    lines: list[str] = [];
     for key in self.standard_tags {
         if val := self._get_value(key) {
             name = key.replace("_", "-");
@@ -255,7 +255,7 @@ impl HeaderBuilder._build_meta_tags -> list[str] {
 }
 
 impl HeaderBuilder._build_special_tags -> list[str] {
-    lines: list = [];
+    lines: list[str] = [];
     if charset := self._get_value("charset") {
         lines.append(f'<meta charset="{html.escape(charset)}" />');
     }

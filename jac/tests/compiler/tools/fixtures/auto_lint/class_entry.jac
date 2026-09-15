@@ -22,7 +22,7 @@ class MyClass {
     has instance_var: int = 0;
 
     has another_var: str = "";
-    has list_var: list = [];
+    has list_var: list[any] = [];
 
     with entry {
         instance_var = 42;

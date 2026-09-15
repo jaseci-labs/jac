@@ -1214,7 +1214,7 @@ impl UniNode.detached_copy -> UniNode {
     return copy.deepcopy(self);
 }
 
-impl UniNode.__deepcopy__(memo: dict) -> UniNode {
+impl UniNode.__deepcopy__(memo: dict[int, object]) -> UniNode {
     import copy;
 
     dup = object.__new__(type(self));

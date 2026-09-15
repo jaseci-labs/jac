@@ -255,10 +255,10 @@ impl JacWalker.`visit(
     if not isinstance(`walker, WalkerArchetype) {
         raise TypeError('Invalid walker object');
     }
-    items: list = `list(expr)
+    items: list[any] = `list(expr)
         if isinstance(expr, `list)
         else ([expr] if isinstance(expr, (NodeArchetype, EdgeArchetype)) else []);
-    targets: list = [];
+    targets: list[any] = [];
     for arch in items {
         anchor = arch.__jac__;
         if not isinstance(anchor, (NodeAnchor, EdgeAnchor)) {
@@ -294,7 +294,7 @@ impl JacWalker.spawn_call(
     import from jaclang.runtime.osp_kernel { osp_spawn }
     import from jaclang.runtime.osp_kernel_sv { desc_for, make_sv_runtime }
     warch = `walker.archetype;
-    starts: list = [a.archetype for a in `walker.next];
+    starts: list[any] = [a.archetype for a in `walker.next];
     osp_spawn(make_sv_runtime(), warch, desc_for(`type(warch)), starts);
     return warch;
 }
@@ -405,7 +405,7 @@ impl JacBuiltin.printgraph(
     format: str
 ) -> str {
     import from jaclang.runtime.graph_utils { traverse_graph }
-    edge_type = edge_type or [];
+    edge_type: list[type] = edge_type or [];
     visited_nodes: list[NodeArchetype] = [];
     node_depths: dict[(NodeArchetype, int)] = {nd: 0};
     queue: list[tuple[NodeArchetype, int]] = [(nd, 0)];
@@ -540,7 +540,7 @@ impl JacContext.reset_graph(root_node: (Root | None) = None) -> int {
     ranchor = root_node.__jac__ if root_node else ctx.user_root;
     deleted_count = 0;
     deleted_ids: set[UUID] = `set();
-    cand_map: dict = {};
+    cand_map: dict[UUID, str | None] = {};
     store = mem?.store;
     if store is not None {
         mem.read_barrier();
@@ -901,7 +901,7 @@ impl JacGraph.refs(
         ctx = JacRuntimeInterface.get_context();
     }
 
-    def _archetypes(planned: list) -> list {
+    def _archetypes(planned: list[any]) -> list[(NodeArchetype | EdgeArchetype)] {
         out: list[(NodeArchetype | EdgeArchetype)] = [];
         for a in planned {
             arch = a.archetype;
@@ -930,7 +930,7 @@ impl JacGraph.refs(
     ctx.note_traversal_reads([nd.__jac__ for nd in path.origin]);
     store_mem = cast(Session, ctx.mem);
 
-    def _run(q: GraphQuery) -> list {
+    def _run(q: GraphQuery) -> list[(NodeArchetype | EdgeArchetype)] {
         return _archetypes(
             resolve_query_edges(store_mem, q)
                 if q.edges_only
@@ -961,7 +961,7 @@ impl JacGraph.connect(
     right: (NodeArchetype | list[NodeArchetype]),
     `edge: type[EdgeArchetype] | EdgeArchetype | None = None,
     undir: bool = False,
-    conn_assign: (tuple[(tuple, tuple)] | None) = None,
+    conn_assign: (tuple[(tuple[any, ...], tuple[any, ...])] | None) = None,
     edges_only: bool = False
 ) -> (NodeArchetype | list[NodeArchetype] | list[EdgeArchetype]) {
     if (
@@ -1038,7 +1038,7 @@ impl JacGraph.connect(
 
 impl JacGraph.hop(
     origin: any, dir: int, edge_type: (type | None) = None, edges_only: bool = False
-) -> list {
+) -> list[any] {
     if not isinstance(origin, `list) {
         anchor = origin.__jac__;
         if (
@@ -1177,7 +1177,7 @@ impl JacGraph.disconnect(
 }
 
 impl JacGraph.assign_all(
-    target: list[T], attr_val: tuple[(tuple[str], tuple[any])]
+    target: list[T], attr_val: tuple[(tuple[str, ...], tuple[any, ...])]
 ) -> list[T] {
     for `obj in target {
         (attrs, values) = attr_val;
@@ -1208,7 +1208,7 @@ impl JacGraph.get_all_root -> list[Root] {
 impl JacGraph.build_edge(
     is_undirected: bool,
     conn_type: type[EdgeArchetype] | EdgeArchetype | None,
-    conn_assign: (tuple[(tuple, tuple)] | None)
+    conn_assign: (tuple[(tuple[any, ...], tuple[any, ...])] | None)
 ) -> Callable[([NodeAnchor, NodeAnchor], EdgeArchetype)] {
     ct = conn_type or GenericEdge;
     cls = ct if isinstance(ct, `type) else `type(ct);
@@ -1230,7 +1230,7 @@ impl JacGraph.heavy_edge(
     target: NodeAnchor,
     conn_type: type[EdgeArchetype] | EdgeArchetype | None,
     is_undirected: bool,
-    conn_assign: (tuple[(tuple, tuple)] | None)
+    conn_assign: (tuple[(tuple[any, ...], tuple[any, ...])] | None)
 ) -> EdgeArchetype {
     import from jaclang.runtime.osp_graph_sv { sv_conn }
     ct = conn_type or GenericEdge;
@@ -1603,7 +1603,7 @@ impl JacLLM.default_llm -> LLMModel {
         }
     }
 
-    merged_config: dict = dict(model_config);
+    merged_config: dict[str, any] = dict(model_config);
     if chosen.startswith("local:") {
         for (k, v) in local_config.items() {
             merged_config[k] = v;
@@ -1794,7 +1794,9 @@ impl JacModule.update_walker(
 }
 
 impl JacIntrospection.spawn_node(
-    node_name: str, attributes: (dict | None) = None, module_name: str = '__main__'
+    node_name: str,
+    attributes: (dict[str, any] | None) = None,
+    module_name: str = '__main__'
 ) -> NodeArchetype {
     node_class = JacRuntimeInterface.get_archetype(module_name, node_name);
     if (isinstance(node_class, `type) and issubclass(node_class, NodeArchetype)) {
@@ -1809,7 +1811,9 @@ impl JacIntrospection.spawn_node(
 }
 
 impl JacIntrospection.spawn_walker(
-    walker_name: str, attributes: (dict | None) = None, module_name: str = '__main__'
+    walker_name: str,
+    attributes: (dict[str, any] | None) = None,
+    module_name: str = '__main__'
 ) -> WalkerArchetype {
     walker_class = JacRuntimeInterface.get_archetype(module_name, walker_name);
     if (
@@ -1866,7 +1870,7 @@ impl JacPersistence.store(
     return LocalStorage(base_path=base_path, create_dirs=create_dirs);
 }
 
-impl JacPersistence.get_persistent_memory(config: dict) -> any {
+impl JacPersistence.get_persistent_memory(config: dict[str, any]) -> any {
     provider = _persistent_memory_provider[0];
     if provider is not None {
         return provider(config);

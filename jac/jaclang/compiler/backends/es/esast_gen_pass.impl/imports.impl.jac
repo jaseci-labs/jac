@@ -70,7 +70,7 @@ impl EsastGenPass.exit_import with uni.Import exit {
         here.gen.es_ast = None;
         return;
     }
-    emit_items: list = list(here.items);
+    emit_items: list[uni.ModuleItem | uni.ModulePath] = list(here.items);
     if (here.from_loc and here.items) {
         resolved_path = here.from_loc.resolve_relative_path();
         partition = self._partition_client_import_items(here);
@@ -193,7 +193,10 @@ impl EsastGenPass.exit_import with uni.Import exit {
 
 impl EsastGenPass._partition_client_import_items(
     nd: uni.Import
-) -> (tuple[list, list] | None) {
+) -> (
+    tuple[list[uni.ModuleItem | uni.ModulePath], list[uni.ModuleItem | uni.ModulePath]]
+    | None
+) {
     import from jaclang.compiler.symbol_utils {
         ClientImportVerdict,
         classify_client_import_item,
@@ -212,8 +215,8 @@ impl EsastGenPass._partition_client_import_items(
     if source_mod is None {
         return ([], list(nd.items)) if pinned_server else None;
     }
-    kept: list = [];
-    bridged: list = [];
+    kept: list[uni.ModuleItem | uni.ModulePath] = [];
+    bridged: list[uni.ModuleItem | uni.ModulePath] = [];
     for item in nd.items {
         if isinstance(item, uni.ModuleItem) {
             local_name = item.alias.sym_name if item.alias else item.name.value;
@@ -249,7 +252,7 @@ impl EsastGenPass._partition_client_import_items(
 }
 
 impl EsastGenPass._generate_sv_import_stubs(
-    nd: uni.Import, items: (Sequence[uni.ModuleItem] | None) = None
+    nd: uni.Import, items: (Sequence[uni.ModuleItem | uni.ModulePath] | None) = None
 ) -> None {
     manifest = self.ir_in.gen.interop_manifest;
     stubs: list[es.Statement] = [];
@@ -393,8 +396,8 @@ impl EsastGenPass._is_client_native_import(nd: uni.Import) -> bool {
 impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
     import json;
-    contracts: dict = {};
-    host_imports: dict = {};
+    contracts: dict[str, dict[str, any]] = {};
+    host_imports: dict[str, any] = {};
     assert nd.from_loc is not None;
     resolved_path = nd.from_loc.resolve_relative_path();
     stem = native_wasm_stem(resolved_path);
@@ -548,7 +551,7 @@ impl EsastGenPass._finalize_runtime_imports(program: es.Program) -> None {
 
     import re;
     referenced: set[str] = set();
-    pending: list[any] = [value_body];
+    pending: list[object] = [value_body];
     while pending {
         value = pending.pop();
         if isinstance(value, (es.Identifier, es.JsxIdentifier)) {

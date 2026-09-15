@@ -1,6 +1,5 @@
 """Plain client-side kwargs calls should lower by known function signature."""
 
-
 def add(a: int, b: int) -> int {
     return a + b;
 }
@@ -13,7 +12,7 @@ def add_defaults(a: int = 1, b: int = 2) -> int {
     return a + b;
 }
 
-def get_kw -> dict {
+def get_kw -> dict[any, any] {
     return {"a": 1, "b": 2, "c": 3};
 }
 
@@ -37,10 +36,10 @@ def:pub index -> JsxElement {
         total = add(b=10, a=5);
         mixed = add(1, b=2);
         defaulted = add_defaults(b=99);
-        kw: dict = {"a": 7, "b": 8};
+        kw: dict[any, any] = {"a": 7, "b": 8};
         spread_total = add(**kw);
-        kw1: dict = {"a": 1, "b": 2};
-        kw2: dict = {"b": 20, "c": 30};
+        kw1: dict[any, any] = {"a": 1, "b": 2};
+        kw2: dict[any, any] = {"b": 20, "c": 30};
         spread_call_total = add3(**get_kw());
         spread_merge_total = add3(**kw1, **kw2);
         spread_override_total = add3(**kw1, **kw2, b=99);

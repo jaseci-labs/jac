@@ -74,8 +74,9 @@ while :; do
 
     missing=""
     for p in "${REQUIRED[@]}"; do
-        printf '%s\n' "$assets" | grep -qxF "jac-${VERSION}-${p}" \
-            || missing="${missing} jac-${VERSION}-${p}"
+        for asset in "jac-${VERSION}-${p}" "jac-${VERSION}-${p}.sha256"; do
+            grep -qxF "$asset" <<< "$assets" || missing="${missing} ${asset}"
+        done
     done
     missing="${missing# }"
 

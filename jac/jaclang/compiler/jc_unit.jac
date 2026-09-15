@@ -285,7 +285,7 @@ def:pub jc_lex_errs -> int {
     return _JC.lex_errs;
 }
 
-def _mz_list(items: list, hint: int) -> int {
+def _mz_list(items: list[any], hint: int) -> int {
     out = PyList_New(len(items));
     i = 0;
     for it in items {

@@ -242,7 +242,7 @@ obj CgItem {}
 obj CgNode(CgItem) {
     has cls: str,
         keys: list[str],
-        vals: list,
+        vals: list[any],
         l1: int = 0,
         c1: int = 0,
         l2: int = 0,
@@ -368,19 +368,31 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def _is_native_ext_module -> bool;
     def _refuse(nd: (UniNode | None), construct: str) -> None;
     def nod(
-        cls_name: str, keys: list[str], vals: list, jac_node: (UniNode | None) = None
+        cls_name: str,
+        keys: list[str],
+        vals: list[any],
+        jac_node: (UniNode | None) = None
     ) -> CgNode;
 
     def nod_loc(
-        cls_name: str, keys: list[str], vals: list, l1: int, c1: int, l2: int, c2: int
+        cls_name: str,
+        keys: list[str],
+        vals: list[any],
+        l1: int,
+        c1: int,
+        l2: int,
+        c2: int
     ) -> CgNode;
 
-    def _move_release_stmts(stmt: CodeBlockStmt) -> list[CgNode];
+    def _move_release_stmts(stmt: UniNode) -> list[CgNode];
     def _release_name_stmt(name: str, source: UniNode) -> CgNode;
     def _scope_cleanup_body(scope: UniNode, body: list[CgNode]) -> list[CgNode];
-    def _stmts_with_releases(stmts: list) -> list[CgItem];
+    def _stmts_with_releases(stmts: Sequence[UniNode]) -> list[CgItem];
     def call_node(
-        func: CgNode, args: list, keywords: list, jac_node: (UniNode | None) = None
+        func: CgNode,
+        args: Sequence[CgItem],
+        keywords: Sequence[CgItem],
+        jac_node: (UniNode | None) = None
     ) -> CgNode;
 
     def outs(nd: UniNode) -> list[CgItem];
@@ -388,8 +400,11 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def _apply_coercion(nd: Expr) -> None;
     def _apply_fw(nd: Expr) -> None;
     def _fw_helper(name: str) -> CgNode;
-    def _fw_call_node(helper: str, args: list, jac_node: UniNode) -> CgNode;
-    def _fw_wrap_call(nd: Expr, helper: str, args: list) -> None;
+    def _fw_call_node(
+        helper: str, args: Sequence[CgItem], jac_node: UniNode
+    ) -> CgNode;
+
+    def _fw_wrap_call(nd: Expr, helper: str, args: Sequence[CgItem]) -> None;
     def _fw_binary(nd: BinaryExpr, name: str) -> None;
     def _fw_unary(nd: UnaryExpr, name: str) -> None;
     def _fw_call(nd: FuncCall) -> None;
@@ -410,7 +425,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def _record_bypasses_init(v: any) -> bool;
     def _is_ct_type_param(nd: Name) -> bool;
     def _ct_param_decls(cls_expr: Expr) -> (list[TypeParam] | None);
-    def _ct_ctor_slots(nd: AtomTrailer) -> (list[tuple] | None);
+    def _ct_ctor_slots(nd: AtomTrailer) -> (list[tuple[str, UniNode]] | None);
     def _trailer_reaches_ct_class(nd: AtomTrailer) -> bool;
     def _ct_param_fields(nd: Archetype) -> list[CgNode];
     def _import_ref(module: str, name: str, jac_node: UniNode) -> CgNode;
@@ -441,9 +456,9 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def _function_expr_from_def(func_def: CgNode, jac_node: UniNode) -> CgNode;
     def _get_sem_decorator(nd: UniNode) -> (CgNode | None);
     def _gen_native_interop_stubs(nd: UniNode) -> None;
-    def _native_import_registration_map -> dict;
-    def _top_level_bound_names(items: any) -> list;
-    def _native_test_shim_stmts(nd: Test) -> list;
+    def _native_import_registration_map -> dict[str, list[CgSplice]];
+    def _top_level_bound_names(items: any) -> list[str];
+    def _native_test_shim_stmts(nd: Test) -> list[CgItem];
     def _generate_sv_to_sv_stubs(nd: Import) -> bool;
     def _gen_py_sv_boundary_types -> None;
     def _gen_py_wire_methods -> list[str];
@@ -451,7 +466,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def _sv_endpoint_effects(binding: InteropBinding, key: str) -> list[str];
     def _sv_bridge_walker_call(expr: Expr) -> (FuncCall | None);
     def _sv_wire_args_dict(
-        names: list[str], types: list[str], boundary_types: dict
+        names: list[str], types: list[str], boundary_types: dict[str, BoundaryTypeInfo]
     ) -> str;
 
     def _gen_py_sv_func_stub(
@@ -475,10 +490,13 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
         model: CgNode, caller: CgNode, args: CgNode, is_async: bool = False
     ) -> CgNode;
 
-    def gen_llm_body(nd: Ability) -> list;
+    def gen_llm_body(nd: Ability) -> list[CgNode];
     def _is_edge_ref_target(target: UniNode) -> bool;
     def _cmp_op_str(op: CgNode) -> (str | None);
-    def _query_filter_kws(fc: FilterCompr, type_arg: str, preds_arg: str) -> list;
+    def _query_filter_kws(
+        fc: FilterCompr, type_arg: str, preds_arg: str
+    ) -> list[CgNode];
+
     def _order_name_of(x: Expr) -> (tuple[str, bool] | None);
     def _query_filter_kws_ord(
         fc: FilterCompr,
@@ -506,7 +524,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     def _resolve_self_type(nd: Name) -> (CgNode | None);
     def _is_in_type_annotation(nd: UniNode) -> bool;
     def _is_descendant_of(nd: UniNode, ancestor: UniNode) -> bool;
-    def gen_call_args(nd: FuncCall) -> tuple[(list, list)];
+    def gen_call_args(nd: FuncCall) -> tuple[list[CgNode], list[CgNode]];
     def _del_ctx_target(target: Expr, ctx_cls: str) -> CgNode;
     def _destroy_call(value: CgNode, strict: bool) -> CgNode;
     def _del_is_trivial(cgn: CgNode) -> bool;
@@ -571,7 +589,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     can exit_cast_expr with CastExpr exit;
     can exit_assignment with Assignment exit;
     can exit_binary_expr with BinaryExpr exit;
-    def translate_jac_bin_op(nd: BinaryExpr) -> list;
+    def translate_jac_bin_op(nd: BinaryExpr) -> list[CgItem];
     can exit_compare_expr with CompareExpr exit;
     can exit_cfg_expr with CfgExpr exit;
     can exit_bool_expr with BoolExpr exit;
@@ -582,7 +600,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     can exit_unary_expr with UnaryExpr exit;
     def _emit_jobj_ref(nd: UnaryExpr) -> None;
     can exit_if_else_expr with IfElseExpr exit;
-    def _multi_string_pieces(str_seq: Sequence[UniNode]) -> list;
+    def _multi_string_pieces(str_seq: Sequence[UniNode]) -> list[str | bytes | CgNode];
     can exit_multi_string with MultiString exit;
     can exit_f_string with FString exit;
     can exit_formatted_value with FormattedValue exit;
@@ -602,7 +620,7 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     can exit_atom_trailer with AtomTrailer exit;
     can exit_atom_unit with AtomUnit exit;
     can exit_func_call with FuncCall exit;
-    def _place_parts(arg: UniNode) -> (tuple | None);
+    def _place_parts(arg: UniNode) -> (tuple[str, any, any] | None);
     def _name_take_expr(owner: str) -> CgNode;
     def _name_swap_expr(store_id: str, value: CgNode) -> CgNode;
     def _lower_take(nd: FuncCall) -> (CgNode | None);

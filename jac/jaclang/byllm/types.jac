@@ -33,7 +33,9 @@ obj Message {
         content: str | list[Media];
 
     def to_dict -> dict[str, object];
-    static def from_dict(d: dict) -> Message | LiteLLMMessage | dict;
+    static def from_dict(
+        d: dict[str, any]
+    ) -> Message | LiteLLMMessage | dict[str, any];
 }
 
 obj ToolCallResultMsg(Message) {
@@ -60,15 +62,18 @@ obj Tool {
     static def make_finish_tool(resp_type: type) -> Tool;
     def is_finish_tool -> bool;
     def get_json_schema -> dict[str, object];
-    def parse_arguments(args_json: dict | str) -> dict;
-    def _parse_finish_arguments(args_json: dict, params: dict) -> dict;
-    def _required_params(params: dict) -> list;
+    def parse_arguments(args_json: dict[str, any] | str) -> dict[str, any];
+    def _parse_finish_arguments(
+        args_json: dict[str, any], params: dict[str, any]
+    ) -> dict[str, any];
+
+    def _required_params(params: dict[str, any]) -> list[str];
 }
 
 obj ToolCall {
     has call_id: str,
         tool: Tool | McpTool,
-        args: dict;
+        args: dict[str, any];
 
     def __call__ -> ToolCallResultMsg;
     def __str__ -> str;
@@ -77,29 +82,35 @@ obj ToolCall {
 }
 
 obj MockToolCall {
-    has tool: Callable,
-        args: dict;
+    has tool: Callable | str,
+        args: dict[str, any] | str = {},
+        call_id: str = "";
 
     def to_tool_call -> ToolCall;
 }
 
 obj MockRawResponse {
-    has content: str;
+    has content: str = "",
+        tool_calls: list[MockToolCall] = [],
+        usage: dict[str, any] | None = None,
+        finish_reason: str = "";
 }
 
 obj MockError {
-    has error: Exception;
+    has error: Exception,
+        content: str = "",
+        after: int = 0;
 }
 
 obj CompletionResult {
     has output: object,
         tool_calls: list[ToolCall],
-        usage: dict = {};
+        usage: dict[str, any] = {};
 }
 
 obj StreamEvent {
     has event_type: str,
-        data: dict;
+        data: dict[str, any];
 }
 
 enum IterationAction(StrEnum) {
@@ -110,7 +121,7 @@ enum IterationAction(StrEnum) {
 
 obj IterationContext {
     has iteration: int,
-        messages: list,
+        messages: list[MessageType],
         last_tool: str,
         last_result: str,
         total_tokens: int,
@@ -118,13 +129,13 @@ obj IterationContext {
 }
 
 obj Media {
-    def to_dict -> list[dict];
+    def to_dict -> list[dict[str, any]];
 }
 
 obj Text(Media) {
     has text: str;
 
-    def to_dict -> list[dict];
+    def to_dict -> list[dict[str, any]];
 }
 
 obj Image(Media) {
@@ -145,7 +156,7 @@ obj Image(Media) {
     def postinit -> None;
     def _format_to_mime(fmt: str | None) -> str;
     def _data_url_from_bytes(data: bytes, fmt: str | None) -> str;
-    def to_dict -> list[dict];
+    def to_dict -> list[dict[str, any]];
 }
 
 obj Video(Media) {
@@ -155,12 +166,12 @@ obj Video(Media) {
 
     def postinit -> None;
     def load_frames -> None;
-    def to_dict -> list[dict];
+    def to_dict -> list[dict[str, any]];
 }
 
 
-def serialize_media_content(content: list) -> list[dict] {
-    blocks: list = [];
+def serialize_media_content(content: list[any]) -> list[dict[str, any]] {
+    blocks: list[dict[str, any]] = [];
     for item in content {
         if isinstance(item, dict) {
             blocks.append(item);
@@ -180,7 +191,7 @@ def serialize_media_content(content: list) -> list[dict] {
 }
 
 
-def normalize_tool_result(value: any) -> str | list {
+def normalize_tool_result(value: any) -> str | list[Media] {
     if isinstance(value, str) {
         return value;
     }
@@ -205,7 +216,7 @@ def content_preview(content: any, max_len: int) -> str {
     if not isinstance(content, list) {
         return str(content)[:max_len];
     }
-    parts: list = [];
+    parts: list[str] = [];
     for item in content {
         if isinstance(item, str) {
             parts.append(item);
@@ -220,16 +231,18 @@ def content_preview(content: any, max_len: int) -> str {
 }
 
 
-def reroute_tool_images_to_user_message(messages: list) -> list {
+def reroute_tool_images_to_user_message(
+    messages: list[dict[str, object] | LiteLLMMessage]
+) -> list[dict[str, object] | LiteLLMMessage] {
     if not any(_tool_msg_has_image(m) for m in messages) {
         return messages;
     }
 
-    out: list = [];
-    pending: list = [];
+    out: list[dict[str, object] | LiteLLMMessage] = [];
+    pending: list[dict[str, any]] = [];
 
     for msg in messages {
-        if _tool_msg_has_image(msg) {
+        if isinstance(msg, dict) and _tool_msg_has_image(msg) {
             (stripped, images) = _split_tool_msg_images(msg);
             out.append(stripped);
             name = msg.get("name", "tool");
@@ -277,13 +290,15 @@ def _tool_msg_has_image(msg: object) -> bool {
 }
 
 
-def _split_tool_msg_images(msg: dict) -> tuple {
+def _split_tool_msg_images(
+    msg: dict[str, any]
+) -> tuple[dict[str, any], list[dict[str, any]]] {
     content = msg.get("content");
     if not isinstance(content, list) {
         return (msg, []);
     }
-    text_blocks: list = [];
-    image_blocks: list = [];
+    text_blocks: list[dict[str, any]] = [];
+    image_blocks: list[dict[str, any]] = [];
     for block in content {
         if isinstance(block, dict) and block.get("type") in ("image_url", "image") {
             image_blocks.append(block);
@@ -297,7 +312,7 @@ def _split_tool_msg_images(msg: dict) -> tuple {
     text_only = all(
         isinstance(b, dict) and b.get("type") == "text" for b in text_blocks
     );
-    stripped_content: str | list = "";
+    stripped_content: str | list[any] = "";
     if text_only {
         stripped_content = " ".join(b.get("text", "") for b in text_blocks).strip();
         if not stripped_content {
@@ -310,7 +325,7 @@ def _split_tool_msg_images(msg: dict) -> tuple {
 }
 
 
-def response_dict(value: object) -> dict {
+def response_dict(value: object) -> dict[str, any] {
     if isinstance(value, dict) {
         return value;
     }

@@ -3,11 +3,10 @@
 Tests that typed obj returns work across separate .jac / .jac files.
 """
 
-
 import from .typed_return_obj { create_todo, get_todos }
 
 def:pub app -> JsxElement {
-    has todos: list = [],
+    has todos: list[any] = [],
         loading: bool = True;
 
     async can with entry {

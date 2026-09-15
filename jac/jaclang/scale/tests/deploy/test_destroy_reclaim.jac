@@ -156,7 +156,7 @@ test "a missing namespace is not owned" {
 
 
 test "a failed monitoring teardown keeps the namespace" {
-    deleted_namespaces: list = [];
+    deleted_namespaces: list[str] = [];
     core_v1 = unittest.mock.MagicMock();
     core_v1.list_namespaced_service.return_value = SimpleNamespace(items=[]);
     monitoring = unittest.mock.MagicMock();
@@ -177,7 +177,7 @@ test "a failed monitoring teardown keeps the namespace" {
 
 
 test "a namespace this app created but no longer holds alone is kept" {
-    deleted_namespaces: list = [];
+    deleted_namespaces: list[str] = [];
     apps_v1 = unittest.mock.MagicMock();
     apps_v1.list_namespaced_stateful_set.return_value = SimpleNamespace(
         items=[SimpleNamespace(metadata=SimpleNamespace(name=f"{CO_TENANT}-postgres"))]
@@ -203,7 +203,7 @@ test "a namespace this app created but no longer holds alone is kept" {
 
 
 test "a namespace this app created and holds alone is still reclaimed" {
-    deleted_namespaces: list = [];
+    deleted_namespaces: list[str] = [];
     apps_v1 = unittest.mock.MagicMock();
     apps_v1.list_namespaced_stateful_set.return_value = SimpleNamespace(
         items=[SimpleNamespace(metadata=SimpleNamespace(name=f"{APP}-postgres"))]
@@ -237,7 +237,7 @@ test "destroying the database keeps the volume holding the app's code" {
         component="database"
     );
 
-    deleted: list = [
+    deleted: list[str] = [
         call.args[0]
         for call in core_v1.delete_namespaced_persistent_volume_claim.call_args_list
     ];
@@ -261,7 +261,7 @@ test "an app on an external database loses its connection-string secret" {
 
     _run_destroy(unittest.mock.MagicMock(), core_v1, unittest.mock.MagicMock());
 
-    deleted: list = [
+    deleted: list[str] = [
         call.kwargs.get("name")
         for call in core_v1.delete_namespaced_secret.call_args_list
     ];

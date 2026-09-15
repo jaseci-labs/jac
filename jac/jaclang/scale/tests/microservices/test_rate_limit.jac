@@ -104,7 +104,7 @@ test "middleware 429s once the per-IP bucket is empty" {
         return JSONResponse({"ok": True});
     }
     r = _req(path="/api/x", client_host="9.9.9.9");
-    async def run -> list {
+    async def run -> list[any] {
         results = [];
         for _ in range(4) {
             resp = await mw(r, next_handler);
@@ -135,7 +135,7 @@ test "middleware exempts configured paths" {
         return JSONResponse({"ok": True});
     }
     health = _req(path="/health", client_host="9.9.9.9");
-    async def run -> list {
+    async def run -> list[any] {
         out = [];
         for _ in range(5) {
             r = await mw(health, next_handler);
@@ -166,7 +166,7 @@ test "per-user bucket applies on top of per-IP when Authorization is set" {
     r = _req(
         path="/api/x", headers={"Authorization": "Bearer abc"}, client_host="9.9.9.9"
     );
-    async def run -> list {
+    async def run -> list[any] {
         out = [];
         for _ in range(3) {
             resp = await mw(r, next_handler);
@@ -205,7 +205,7 @@ test "429 envelope carries RATE_LIMITED code + Retry-After header" {
     assert getattr(resp, "status_code") == 429;
     headers = getattr(resp, "headers");
     assert headers.get("Retry-After") is not None;
-    body: dict = json.loads(bytes(getattr(resp, "body")).decode());
+    body: dict[str, any] = json.loads(bytes(getattr(resp, "body")).decode());
     assert body["ok"] == False;
     assert body["error"]["code"] == "RATE_LIMITED";
 }
@@ -333,7 +333,7 @@ test "forged X-Forwarded-For cannot mint fresh per-IP buckets" {
     req_b = _req(
         path="/api/x", headers={"X-Forwarded-For": "203.0.113.2"}, client_host="9.9.9.9"
     );
-    async def run -> list {
+    async def run -> list[any] {
         r1 = await mw(req_a, next_handler);
         r2 = await mw(req_b, next_handler);
         return [getattr(r1, "status_code"), getattr(r2, "status_code")];
@@ -361,7 +361,7 @@ test "distinct resolved clients get distinct buckets" {
     }
     req_a = _req(path="/api/x", client_host="203.0.113.1");
     req_b = _req(path="/api/x", client_host="203.0.113.2");
-    async def run -> list {
+    async def run -> list[any] {
         r1 = await mw(req_a, next_handler);
         r2 = await mw(req_b, next_handler);
         r3 = await mw(req_a, next_handler);

@@ -139,7 +139,7 @@ def _run(coro: any) -> any {
 
 
 test "stream_forward streams SSE end-to-end with Content-Type preserved" {
-    async def body -> dict {
+    async def body -> dict[str, any] {
         (stop_upstream, server, base) = _spawn_upstream();
         try {
             fr = await stream_forward("GET", f"{base}/sse", {}, b"");
@@ -165,7 +165,7 @@ test "stream_forward streams SSE end-to-end with Content-Type preserved" {
 
 
 test "stream_forward streams chunked large body without buffering" {
-    async def body -> dict {
+    async def body -> dict[str, any] {
         (stop_upstream, server, base) = _spawn_upstream();
         try {
             fr = await stream_forward("GET", f"{base}/big", {}, b"");
@@ -192,7 +192,7 @@ test "stream_forward streams chunked large body without buffering" {
 
 
 test "stream_forward.cleanup closes session without streaming" {
-    async def body -> dict {
+    async def body -> dict[str, any] {
         (stop_upstream, server, base) = _spawn_upstream();
         try {
             fr = await stream_forward("GET", f"{base}/fourofour", {}, b"");
@@ -309,7 +309,7 @@ test "ws route rejects with 1012 during drain" {
 
 obj FakeClientWS {
     has inbound: any,
-        sent: list,
+        sent: list[tuple[str, str | bytes]],
         closed: bool = False,
         close_code: int = 0,
         client_host: str = "",
@@ -319,7 +319,7 @@ obj FakeClientWS {
         self.accepts.append(subprotocol);
     }
 
-    async def receive -> dict {
+    async def receive -> dict[str, any] {
         return await self.inbound.get();
     }
 
@@ -340,7 +340,7 @@ obj FakeClientWS {
 
 """Upstream websocket echo, served by the native ws codec."""
 def _spawn_ws_upstream(
-    captured_headers: list | None = None
+    captured_headers: list[any] | None = None
 ) -> tuple[object, object, str] {
     import from jaclang.server.serving.app { ServingApp }
     import from jaclang.server.serving.endpoint { WSEndPoint }
@@ -375,7 +375,7 @@ def _spawn_ws_upstream(
 }
 
 test "websocket_forward round-trips text and binary through a real upstream ws" {
-    async def body -> dict {
+    async def body -> dict[str, any] {
         upstream_headers: list[dict[str, str]] = [];
         (stop_upstream, server, base) = _spawn_ws_upstream(upstream_headers);
         try {
@@ -435,7 +435,7 @@ test "websocket_forward round-trips text and binary through a real upstream ws" 
 
 
 test "websocket_forward closes the client with 1011 when the upstream handshake fails" {
-    async def body -> dict {
+    async def body -> dict[str, any] {
         client = FakeClientWS(inbound=asyncio.Queue(), sent=[]);
         await websocket_forward(client, "http://127.0.0.1:1/ws", {});
         return {"closed": client.closed, "code": client.close_code};
@@ -475,7 +475,7 @@ def _spawn_ws_upstream_with_protocol(protocol: str) -> tuple[any, any, str] {
 
 
 test "the client is accepted once, after the upstream chose the subprotocol" {
-    async def body -> dict {
+    async def body -> dict[str, any] {
         (stop_upstream, server, base) = _spawn_ws_upstream_with_protocol("vite-hmr");
         try {
             client = FakeClientWS(
@@ -514,7 +514,7 @@ test "the client is accepted once, after the upstream chose the subprotocol" {
 
 
 test "a failed upstream handshake never accepts the client" {
-    async def body -> dict {
+    async def body -> dict[str, any] {
         client = FakeClientWS(
             inbound=asyncio.Queue(), sent=[], accepts=[], client_host="127.0.0.1"
         );

@@ -1,4 +1,4 @@
-impl NaIRGenPass._foreign_model -> dict {
+impl NaIRGenPass._foreign_model -> dict[str, list[tuple[str, str | None]]] {
     import from jaclang.compiler.backends.native.foreign { collect_foreign_structs }
     universe = [self.ir_in] + self._foreign_modules;
     if self._foreign_structs is None or self._foreign_model_nmods != len(universe) {
@@ -8,7 +8,7 @@ impl NaIRGenPass._foreign_model -> dict {
     return self._foreign_structs;
 }
 
-impl NaIRGenPass._foreign_fns -> dict {
+impl NaIRGenPass._foreign_fns -> dict[str, dict[str, any]] {
     import from jaclang.compiler.backends.native.foreign { collect_foreign_fns }
     universe = [self.ir_in] + self._foreign_modules;
     if self._foreign_fn_decls is None or self._foreign_fns_nmods != len(universe) {
@@ -18,10 +18,10 @@ impl NaIRGenPass._foreign_fns -> dict {
     return self._foreign_fn_decls;
 }
 
-impl NaIRGenPass._foreign_fields_of(name: str) -> list {
+impl NaIRGenPass._foreign_fields_of(name: str) -> list[tuple[str, str | None]] {
     model = self._foreign_model();
     indices = self.struct_field_indices.get(name, {});
-    out: list = [];
+    out: list[tuple[str, str | None]] = [];
     for (i, (fn, tn)) in enumerate(model.get(name, [])) {
         assert fn not in indices or indices[fn] == i , f"foreign field order mismatch for {name}.{fn}";
         out.append((fn, tn if (tn is not None and tn in model) else None));
@@ -29,7 +29,9 @@ impl NaIRGenPass._foreign_fields_of(name: str) -> list {
     return out;
 }
 
-impl NaIRGenPass._clib_struct_layout(name: str) -> tuple {
+impl NaIRGenPass._clib_struct_layout(
+    name: str
+) -> tuple[int, int, list[tuple[int, bool, int]]] {
     import from jaclang.compiler.backends.native.foreign { foreign_struct_layout }
     return foreign_struct_layout(self._foreign_model(), name);
 }
@@ -54,7 +56,7 @@ impl NaIRGenPass._clib_c_type(name: str) -> ir.Type {
     ct = self.llvm_module.context.get_identified_type(key);
     self.struct_types[key] = ct;
     ftypes = self.struct_field_types.get(name, {});
-    body: list = [];
+    body: list[ir.Type] = [];
     for (fn, nested) in self._foreign_fields_of(name) {
         if nested is not None {
             body.append(self._clib_c_type(nested));
@@ -184,9 +186,9 @@ impl NaIRGenPass._codegen_clib_call(
     plan = self.clib_fn_abi[func_name];
     param_plans = plan["params"];
     ret_plan = plan["ret"];
-    call_args: list = [];
+    call_args: list[ir.Value] = [];
 
-    arg_attrs: dict = {};
+    arg_attrs: dict[int, ir.ArgumentAttributes] = {};
     sret_buf = None;
     if plan["sret"] {
         sret_ct = self._clib_c_type(ret_plan["sname"]);

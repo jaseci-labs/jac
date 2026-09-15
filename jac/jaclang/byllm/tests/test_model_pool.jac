@@ -17,7 +17,7 @@ def router(pool: ModelPool) -> any {
 """A litellm Router completion that answers `content`, standing in for a live
 deployment."""
 def _pool_reply(content: str) -> Callable {
-    def _completion(**_kwargs: object) -> dict {
+    def _completion(**_kwargs: object) -> dict[str, any] {
         return {
             "model": "mock-pool-model",
             "choices": [
@@ -66,7 +66,7 @@ test "every routing strategy dispatches through the router and answers" {
 
         answer = f"{strategy}_answer";
         if is_async {
-            async def _acompletion(**_kwargs: object) -> dict {
+            async def _acompletion(**_kwargs: object) -> dict[str, any] {
                 return _pool_reply(answer)();
             }
             router(pool).acompletion = _acompletion;
@@ -149,10 +149,14 @@ def _stream_chunk(text: str) -> object {
 test "a pool that fails before streaming falls back to the next deployment" {
     import from litellm.exceptions { RateLimitError }
     pool = _pool("fallback", ["gpt-3.5-turbo", "gpt-4"]);
-    tried: list = [];
+    tried: list[str] = [];
 
     def _completion(
-        model: str, messages: list, stream: bool, fallbacks: list, **_kw: object
+        model: str,
+        messages: list[dict[str, any]],
+        stream: bool,
+        fallbacks: list[any],
+        **_kw: object
     ) -> object {
         tried.append(model);
         if model == "pool-primary" {
@@ -188,10 +192,14 @@ test "a pool that fails mid-stream raises rather than splicing in a fallback" {
     # yielded guard turns that into a raise instead.
     import from litellm.exceptions { RateLimitError }
     pool = _pool("fallback", ["gpt-3.5-turbo", "gpt-4"]);
-    tried: list = [];
+    tried: list[str] = [];
 
     def _completion(
-        model: str, messages: list, stream: bool, fallbacks: list, **_kw: object
+        model: str,
+        messages: list[dict[str, any]],
+        stream: bool,
+        fallbacks: list[any],
+        **_kw: object
     ) -> object {
         tried.append(model);
         if model == "pool-primary" {
@@ -214,7 +222,7 @@ test "a pool that fails mid-stream raises rather than splicing in a fallback" {
 
     def stream_answer(question: str) -> str by pool(stream=True);
 
-    chunks: list = [];
+    chunks: list[any] = [];
     raised: any = None;
     try {
         for chunk in stream_answer("test question") {

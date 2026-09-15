@@ -447,6 +447,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1035 = _err(
          "E1035", Category.TYPE, "Type \"{src}\" is not assignable to type \"{dest}\""
      ),
+     E1036 = _err(
+         "E1036",
+         Category.TYPE,
+         "Generic type \"{type}\" requires explicit type arguments",
+         help="Name the element types, for example \"dict[str, int]\" or"
+         " \"list[Item]\". Where the values are genuinely heterogeneous, say so"
+         " explicitly with \"dict[str, any]\"; a bare \"{type}\" no longer"
+         " defaults to any."
+     ),
      W1036 = _warn(
          "W1036",
          Category.TYPE,

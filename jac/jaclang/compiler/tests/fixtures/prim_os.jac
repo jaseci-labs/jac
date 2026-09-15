@@ -13,7 +13,7 @@ resolve identically on both backends since they run on the same host.
 
 import os;
 
-def os_py() -> dict {
+def os_py() -> dict[any, any] {
     made_ok: int = 0;
     p: str = "/tmp/jac_eq_py_dir";
     os.mkdir(p);
@@ -62,7 +62,7 @@ def os_py() -> dict {
     };
 }
 
-def os_cl() -> dict {
+def os_cl() -> dict[any, any] {
     return {};
 }
 

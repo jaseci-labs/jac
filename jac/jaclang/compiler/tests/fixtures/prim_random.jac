@@ -8,7 +8,7 @@ ES/JS opts out.
 
 import random;
 
-def random_py() -> dict {
+def random_py() -> dict[any, any] {
     random.seed(42);
     r1: float = random.random();
     r2: float = random.random();
@@ -40,7 +40,7 @@ def random_py() -> dict {
     };
 }
 
-def random_cl() -> dict {
+def random_cl() -> dict[any, any] {
     return {};
 }
 

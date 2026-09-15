@@ -159,7 +159,7 @@ def fields(t: type) -> list[FieldInfo] {
         hints = {};
     }
     inner = t?._jac_semstr_inner;
-    sems: dict = inner if isinstance(inner, dict) else {};
+    sems: dict[str, any] = inner if isinstance(inner, dict) else {};
     for f in _record_fields(t) {
         if f.name.startswith("_") {
             continue;
@@ -201,7 +201,7 @@ def set_field(target: any, field: str, value: any) {
     setattr(target, field, value);
 }
 
-def members(e: type) -> list {
+def members(e: type) -> list[any] {
     if isinstance(e, `type) and issubclass(e, _PyEnum) {
         return `list(e);
     }
@@ -224,7 +224,7 @@ def embed_bytes(path: str) -> bytes {
     }
 }
 
-def _scalar_size_align(t: any) -> (tuple | None) {
+def _scalar_size_align(t: any) -> (tuple[int, int] | None) {
     import from jaclang.runtime.scalars { shape_of }
     name = t?.__name__ if isinstance(t, `type) else str(t);
     if name == "bool" {
@@ -241,7 +241,7 @@ def _scalar_size_align(t: any) -> (tuple | None) {
     return None;
 }
 
-def _size_align(t: any) -> tuple {
+def _size_align(t: any) -> tuple[int, int] {
     scalar = _scalar_size_align(t);
     if scalar is not None {
         return scalar;
@@ -282,7 +282,7 @@ def record(cls: type, **fields: any) -> any {
     return inst;
 }
 
-glob _SPECIALIZED: dict = {};
+glob _SPECIALIZED: dict[tuple[object, ...], type] = {};
 
 def specialize(cls: type, **ct: any) -> type {
     import copy as _copy;
@@ -291,8 +291,8 @@ def specialize(cls: type, **ct: any) -> type {
     if hit is not None {
         return hit;
     }
-    annotations: dict = {};
-    ns: dict = {"__annotations__": annotations, "__ct_args__": dict(ct)};
+    annotations: dict[str, any] = {};
+    ns: dict[str, any] = {"__annotations__": annotations, "__ct_args__": dict(ct)};
     for (k, v) in ct.items() {
         annotations[k] = `type(v);
         if isinstance(v, (list, dict, set)) {
@@ -309,6 +309,6 @@ def specialize(cls: type, **ct: any) -> type {
     return made;
 }
 
-def _ct_sort_key(item: tuple) -> str {
+def _ct_sort_key(item: tuple[str, any]) -> str {
     return str(item[0]);
 }

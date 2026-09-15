@@ -13,7 +13,7 @@ needed.
 import from "@jac/runtime" { __jacCallFunction, __setLocalStorage }
 
 """A minimal mock `fetch` Response carrying `body` from `.json()`."""
-def _resp(body: dict, status: int = 200) -> dict {
+def _resp(body: dict[str, any], status: int = 200) -> dict[str, any] {
     return {
         "ok": status < 300,
         "status": status,
@@ -23,7 +23,7 @@ def _resp(body: dict, status: int = 200) -> dict {
 }
 
 """Pretend we're inside the desktop shell and record every fetch."""
-def _install_desktop -> list {
+def _install_desktop -> list[any] {
     seen = [];
     globalThis.window = globalThis.window or {};
     globalThis.__JAC_DESKTOP__ = True;

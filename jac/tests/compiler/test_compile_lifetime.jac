@@ -52,7 +52,7 @@ def compile_once -> JacProgram {
 }
 
 test "a compiled program is released once its owner drops it" {
-    holder: list = [compile_once()];
+    holder: list[any] = [compile_once()];
     ref = weakref.ref(holder[0]);
     holder.clear();
     gc.collect();

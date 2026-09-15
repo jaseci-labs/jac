@@ -7,7 +7,7 @@ Uses bytes([...]) constructor since b"" literals may not be available in cl def.
 
 # ---- Search & encoding methods ----
 
-def bytes_search_py() -> dict {
+def bytes_search_py() -> dict[any, any] {
     b = bytes([104, 101, 108, 108, 111]);  # b"hello"
     sub = bytes([108, 108]);  # b"ll"
 
@@ -18,7 +18,7 @@ def bytes_search_py() -> dict {
     hx: str = b.hex();
 
     # fromhex (static method)
-    from_hx: list = list(bytes.fromhex("68656c6c6f"));
+    from_hx: list[any] = list(bytes.fromhex("68656c6c6f"));
 
     # count
     count_l: int = b.count(bytes([108]));
@@ -57,13 +57,13 @@ def bytes_search_py() -> dict {
     };
 }
 
-def bytes_search_cl() -> dict {
+def bytes_search_cl() -> dict[any, any] {
     b = bytes([104, 101, 108, 108, 111]);
     sub = bytes([108, 108]);
 
     decoded: str = b.decode();
     hx: str = b.hex();
-    from_hx: list = list(bytes.fromhex("68656c6c6f"));
+    from_hx: list[any] = list(bytes.fromhex("68656c6c6f"));
     count_l: int = b.count(bytes([108]));
     count_miss: int = b.count(bytes([120]));
     find_hit: int = b.find(sub);
@@ -96,38 +96,38 @@ def bytes_search_cl() -> dict {
 
 # ---- Modification methods ----
 
-def bytes_modify_py() -> dict {
+def bytes_modify_py() -> dict[any, any] {
     b = bytes([104, 101, 108, 108, 111]);  # b"hello"
 
     # replace
-    replaced: list = list(b.replace(bytes([108]), bytes([76])));
+    replaced: list[any] = list(b.replace(bytes([108]), bytes([76])));
 
     # strip / lstrip / rstrip
     padded = bytes([32, 104, 105, 32]);
-    stripped: list = list(padded.strip());
-    lstripped: list = list(padded.lstrip());
-    rstripped: list = list(padded.rstrip());
+    stripped: list[any] = list(padded.strip());
+    lstripped: list[any] = list(padded.lstrip());
+    rstripped: list[any] = list(padded.rstrip());
 
     # removeprefix / removesuffix
-    rp: list = list(b.removeprefix(bytes([104, 101])));
-    rs: list = list(b.removesuffix(bytes([108, 111])));
+    rp: list[any] = list(b.removeprefix(bytes([104, 101])));
+    rs: list[any] = list(b.removesuffix(bytes([108, 111])));
 
     # split / rsplit
     data = bytes([97, 44, 98, 44, 99]);  # b"a,b,c"
     sep = bytes([44]);  # b","
-    split_r: list = [list(chunk) for chunk in data.split(sep)];
-    rsplit_r: list = [list(chunk) for chunk in data.rsplit(sep)];
+    split_r: list[any] = [list(chunk) for chunk in data.split(sep)];
+    rsplit_r: list[any] = [list(chunk) for chunk in data.rsplit(sep)];
 
     # splitlines
     lines = bytes([97, 10, 98, 10, 99]);  # b"a\nb\nc"
-    splitlines_r: list = [list(line) for line in lines.splitlines()];
+    splitlines_r: list[any] = [list(line) for line in lines.splitlines()];
 
     # join
-    joined: list = list(sep.join([bytes([97]), bytes([98]), bytes([99])]));
+    joined: list[any] = list(sep.join([bytes([97]), bytes([98]), bytes([99])]));
 
     # partition / rpartition
-    p: list = [list(x) for x in data.partition(sep)];
-    rp2: list = [list(x) for x in data.rpartition(sep)];
+    p: list[any] = [list(x) for x in data.partition(sep)];
+    rp2: list[any] = [list(x) for x in data.rpartition(sep)];
 
     return {
         "replaced": replaced,
@@ -145,37 +145,37 @@ def bytes_modify_py() -> dict {
     };
 }
 
-def bytes_modify_cl() -> dict {
+def bytes_modify_cl() -> dict[any, any] {
     b = bytes([104, 101, 108, 108, 111]);
 
-    replaced: list = list(b.replace(bytes([108]), bytes([76])));
+    replaced: list[any] = list(b.replace(bytes([108]), bytes([76])));
 
     padded = bytes([32, 104, 105, 32]);
-    stripped: list = list(padded.strip());
-    lstripped: list = list(padded.lstrip());
-    rstripped: list = list(padded.rstrip());
+    stripped: list[any] = list(padded.strip());
+    lstripped: list[any] = list(padded.lstrip());
+    rstripped: list[any] = list(padded.rstrip());
 
-    rp: list = list(b.removeprefix(bytes([104, 101])));
-    rs: list = list(b.removesuffix(bytes([108, 111])));
+    rp: list[any] = list(b.removeprefix(bytes([104, 101])));
+    rs: list[any] = list(b.removesuffix(bytes([108, 111])));
 
     data = bytes([97, 44, 98, 44, 99]);
     sep = bytes([44]);
     # Extract method calls from comprehensions for proper type dispatch
     split_raw = data.split(sep);
-    split_r: list = [list(chunk) for chunk in split_raw];
+    split_r: list[any] = [list(chunk) for chunk in split_raw];
     rsplit_raw = data.rsplit(sep);
-    rsplit_r: list = [list(chunk) for chunk in rsplit_raw];
+    rsplit_r: list[any] = [list(chunk) for chunk in rsplit_raw];
 
     lines = bytes([97, 10, 98, 10, 99]);
     lines_raw = lines.splitlines();
-    splitlines_r: list = [list(line) for line in lines_raw];
+    splitlines_r: list[any] = [list(line) for line in lines_raw];
 
-    joined: list = list(sep.join([bytes([97]), bytes([98]), bytes([99])]));
+    joined: list[any] = list(sep.join([bytes([97]), bytes([98]), bytes([99])]));
 
     p_raw = data.partition(sep);
-    p: list = [list(x) for x in p_raw];
+    p: list[any] = [list(x) for x in p_raw];
     rp2_raw = data.rpartition(sep);
-    rp2: list = [list(x) for x in rp2_raw];
+    rp2: list[any] = [list(x) for x in rp2_raw];
 
     return {
         "replaced": replaced,
@@ -195,30 +195,30 @@ def bytes_modify_cl() -> dict {
 
 # ---- Case & alignment methods ----
 
-def bytes_case_py() -> dict {
+def bytes_case_py() -> dict[any, any] {
     b = bytes([104, 101, 108, 108, 111]);  # b"hello"
 
-    cap: list = list(b.capitalize());
-    lower: list = list(b.lower());
-    upper: list = list(b.upper());
-    title: list = list(
+    cap: list[any] = list(b.capitalize());
+    lower: list[any] = list(b.lower());
+    upper: list[any] = list(b.upper());
+    title: list[any] = list(
         bytes([104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]).title()
     );
-    swap: list = list(bytes([72, 101, 76, 76, 79]).swapcase());
+    swap: list[any] = list(bytes([72, 101, 76, 76, 79]).swapcase());
 
     # alignment (pad with space=32)
-    center: list = list(b.center(9));
-    ljust: list = list(b.ljust(8));
-    rjust: list = list(b.rjust(8));
-    zfill: list = list(bytes([52, 50]).zfill(5));
+    center: list[any] = list(b.center(9));
+    ljust: list[any] = list(b.ljust(8));
+    rjust: list[any] = list(b.rjust(8));
+    zfill: list[any] = list(bytes([52, 50]).zfill(5));
 
     # expandtabs
     tabbed = bytes([97, 9, 98]);  # b"a\tb"
-    et: list = list(tabbed.expandtabs(4));
+    et: list[any] = list(tabbed.expandtabs(4));
 
     # translate + maketrans
     tbl = bytes.maketrans(bytes([104]), bytes([72]));
-    tr: list = list(b.translate(tbl));
+    tr: list[any] = list(b.translate(tbl));
 
     return {
         "cap": cap,
@@ -235,27 +235,27 @@ def bytes_case_py() -> dict {
     };
 }
 
-def bytes_case_cl() -> dict {
+def bytes_case_cl() -> dict[any, any] {
     b = bytes([104, 101, 108, 108, 111]);
 
-    cap: list = list(b.capitalize());
-    lower: list = list(b.lower());
-    upper: list = list(b.upper());
-    title: list = list(
+    cap: list[any] = list(b.capitalize());
+    lower: list[any] = list(b.lower());
+    upper: list[any] = list(b.upper());
+    title: list[any] = list(
         bytes([104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]).title()
     );
-    swap: list = list(bytes([72, 101, 76, 76, 79]).swapcase());
+    swap: list[any] = list(bytes([72, 101, 76, 76, 79]).swapcase());
 
-    center: list = list(b.center(9));
-    ljust: list = list(b.ljust(8));
-    rjust: list = list(b.rjust(8));
-    zfill: list = list(bytes([52, 50]).zfill(5));
+    center: list[any] = list(b.center(9));
+    ljust: list[any] = list(b.ljust(8));
+    rjust: list[any] = list(b.rjust(8));
+    zfill: list[any] = list(bytes([52, 50]).zfill(5));
 
     tabbed = bytes([97, 9, 98]);
-    et: list = list(tabbed.expandtabs(4));
+    et: list[any] = list(tabbed.expandtabs(4));
 
     tbl = bytes.maketrans(bytes([104]), bytes([72]));
-    tr: list = list(b.translate(tbl));
+    tr: list[any] = list(b.translate(tbl));
 
     return {
         "cap": cap,
@@ -274,7 +274,7 @@ def bytes_case_cl() -> dict {
 
 # ---- Boolean test methods ----
 
-def bytes_test_py() -> dict {
+def bytes_test_py() -> dict[any, any] {
     alpha = bytes([97, 98, 99]);  # b"abc"
     digit = bytes([49, 50, 51]);  # b"123"
     mixed = bytes([97, 49]);  # b"a1"
@@ -332,7 +332,7 @@ def bytes_test_py() -> dict {
     };
 }
 
-def bytes_test_cl() -> dict {
+def bytes_test_cl() -> dict[any, any] {
     alpha = bytes([97, 98, 99]);
     digit = bytes([49, 50, 51]);
     mixed = bytes([97, 49]);
@@ -393,12 +393,15 @@ def bytes_test_cl() -> dict {
 def bytes_search_na() -> dict[str, any] {
     return {};
 }
+
 def bytes_modify_na() -> dict[str, any] {
     return {};
 }
+
 def bytes_case_na() -> dict[str, any] {
     return {};
 }
+
 def bytes_test_na() -> dict[str, any] {
     return {};
 }

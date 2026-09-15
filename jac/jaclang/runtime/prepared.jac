@@ -9,7 +9,7 @@ obj PreparedApplication {
     has `root: str,
         `entry: str,
         code: dict[str, types.CodeType] = {},
-        manifests: dict[str, dict] = {},
+        manifests: dict[str, dict[str, any]] = {},
         semantic: dict[str, dict[str, Info]] = {},
         origins: dict[str, str] = {},
         name: str = '',
@@ -17,8 +17,8 @@ obj PreparedApplication {
         scope_imports: bool = True,
         client_compiler: ViteCompiler | None = None,
         client_enabled: bool = False,
-        native: dict[str, tuple] = {},
-        services: tuple = (),
+        native: dict[str, tuple[object | None, dict[str, object] | None]] = {},
+        services: tuple[str, ...] = (),
         dev: bool = True,
         client_dist: str = "",
         applications: list[PreparedApplication] = [];
@@ -66,7 +66,7 @@ def prepared_code(path: str) -> (types.CodeType | None) {
     return application.code.get(os.path.realpath(path)) if application else None;
 }
 
-def prepared_manifest(path: str) -> (dict | None) {
+def prepared_manifest(path: str) -> (dict[str, any] | None) {
     application = application_for(path);
     return application.manifests.get(os.path.realpath(path)) if application else None;
 }
@@ -270,7 +270,7 @@ def entry_alias(fullname: str) -> tuple[str, str] | None {
     return None;
 }
 
-def module_builtins(application: PreparedApplication, source: str) -> dict {
+def module_builtins(application: PreparedApplication, source: str) -> dict[str, any] {
     import builtins;
     import importlib;
     if not application.scope_imports {

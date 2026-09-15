@@ -4,6 +4,6 @@ obj Item {
     has name: str;
 }
 
-def:pub add_item(name: str) -> dict {
+def:pub add_item(name: str) -> dict[any, any] {
     return {"name": name};
 }

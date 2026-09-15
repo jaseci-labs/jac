@@ -12,7 +12,7 @@ obj SearchFilter {
 }
 
 obj SearchResult {
-    has items: list,
+    has items: list[any],
         total_count: int,
         has_more: bool;
 }

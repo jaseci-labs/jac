@@ -398,7 +398,7 @@ test "a registered plugin target owns its section" {
     before = validate_scale_config({"fly": {"app_name": "demo"}});
     assert len(before) == 1 , f"expected 1 finding, got {before}";
 
-    def _factory(config: dict, logger: any = None) -> any {
+    def _factory(config: dict[str, any], logger: any = None) -> any {
         return None;
     }
     DeploymentTargetFactory.register("fly", _factory);

@@ -152,7 +152,7 @@ def release(info: any, conn: any) -> None {
 }
 
 
-def _evict_oldest_locked(keep: int) -> list {
+def _evict_oldest_locked(keep: int) -> list[any] {
     total = sum(len(bucket) for bucket in _pools.values());
     if total <= keep {
         return [];

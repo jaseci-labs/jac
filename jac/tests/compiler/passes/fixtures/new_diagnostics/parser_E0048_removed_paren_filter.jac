@@ -5,6 +5,6 @@ node MyObj {
 }
 
 with entry {
-    my_list: list = [MyObj(a=1), MyObj(a=2), MyObj(a=5)];
+    my_list: list[any] = [MyObj(a=1), MyObj(a=2), MyObj(a=5)];
     print(my_list(?:MyObj, a<4));
 }

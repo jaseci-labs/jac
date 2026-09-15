@@ -39,7 +39,7 @@ walker:pub read_todos {
 }
 
 def:pub app -> JsxElement {
-    has todos: list = [],
+    has todos: list[any] = [],
         inputValue: str = "",
         filter: str = "all";
 
@@ -80,7 +80,7 @@ def:pub app -> JsxElement {
         ];
     }
 
-    def getFilteredTodos -> list {
+    def getFilteredTodos -> list[any] {
         if filter == "active" {
             return [
                 todo

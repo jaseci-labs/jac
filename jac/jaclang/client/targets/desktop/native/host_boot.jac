@@ -6,7 +6,7 @@ import importlib;
 import from pathlib { Path }
 
 
-glob PLUGIN_BOOTSTRAP_MODULES: list = [
+glob PLUGIN_BOOTSTRAP_MODULES: list[str] = [
          "manifest",
          "desktop_plugin",
          "webview_lib",
@@ -77,7 +77,7 @@ def _apply_extra_deps {
 }
 
 
-def _bootstrap_plugin_host(plugin_configs: dict) -> any {
+def _bootstrap_plugin_host(plugin_configs: dict[str, any]) -> any {
     import jaclang;
     pdir = os.path.join(
         os.path.dirname(str(jaclang.__file__)), "client", "targets", "desktop", "plugin"
@@ -100,7 +100,7 @@ def _ensure_jac_meta_importer {
 }
 
 
-def resolve_program(program: dict, app_dir: str) -> str {
+def resolve_program(program: dict[str, any], app_dir: str) -> str {
     jab = str(program.get("jab") or "");
     if jab {
         import from jaclang.dist.jab { jab_app_meta, materialize_jab }
@@ -205,9 +205,9 @@ def boot(config_json: str) -> HostContext {
     cfg = json.loads(config_json);
     app_name = str(cfg.get("app_name") or "app");
     mode = str(cfg.get("mode") or "webview");
-    program = (cfg.get("program") or {}) as dict;
+    program = (cfg.get("program") or {}) as dict[str, any];
     backend = str(cfg.get("backend") or EMBEDDED);
-    plugin_configs = (cfg.get("plugins") or {}) as dict;
+    plugin_configs = (cfg.get("plugins") or {}) as dict[str, any];
 
     app_dir = str(cfg.get("app_dir") or "") or _app_root();
     data_dir = str(os.environ.get("JAC_DATA_PATH", app_dir));

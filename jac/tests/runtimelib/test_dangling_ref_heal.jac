@@ -22,7 +22,7 @@ import from jaclang.data.store { PgStore, TxnIsolation }
 
 
 """Run `python -m jaclang <args>` in cwd; return (rc, stdout, stderr)."""
-def _jac(cwd: str, args: list) -> tuple[int, str, str] {
+def _jac(cwd: str, args: list[any]) -> tuple[int, str, str] {
     result = subprocess.run(
         jac_command() + args, cwd=cwd, capture_output=True, text=True, timeout=180
     );

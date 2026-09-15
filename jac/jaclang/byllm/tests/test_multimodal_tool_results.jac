@@ -99,10 +99,12 @@ test "reroute: consecutive tool messages flush ONE trailing user msg with all im
     assert out[2]["role"] == "tool" and out[2]["content"] == "text-only result";
     assert out[3]["role"] == "tool" and "image attached" in out[3]["content"];
     assert out[4]["role"] == "user";
+    user_content = out[4]["content"];
+    assert isinstance(user_content, list);
     img_urls = [
         b["image_url"]["url"]
-        for b in out[4]["content"]
-        if b.get("type") == "image_url"
+        for b in user_content
+        if isinstance(b, dict) and b.get("type") == "image_url"
     ];
     assert img_urls == ["u1", "u3"];
 }

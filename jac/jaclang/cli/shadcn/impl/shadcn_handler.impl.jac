@@ -335,7 +335,7 @@ impl add_shadcn_components(config: any, component_names: list[str]) -> bool {
         return True;
     }
 
-    auto_added: list = [];
+    auto_added: list[str] = [];
     for name in to_install {
         if name not in component_names {
             auto_added.append(name);
@@ -349,12 +349,12 @@ impl add_shadcn_components(config: any, component_names: list[str]) -> bool {
 
     ui_dir.mkdir(parents=True, exist_ok=True);
 
-    all_npm_deps: dict = {};
+    all_npm_deps: dict[str, str] = {};
     shared_deps = registry_data.get("sharedDeps", {});
     all_npm_deps.update(shared_deps);
     dep_versions = registry_data.get("depVersions", {});
 
-    added: list = [];
+    added: list[str] = [];
     for name in to_install {
         comp_data = resolve_single_component(name, style);
 
@@ -430,7 +430,7 @@ impl remove_shadcn_components(config: any, component_names: list[str]) -> bool {
     registry_data = load_registry();
     components_meta = registry_data.get("components", {});
 
-    removed: list = [];
+    removed: list[str] = [];
     for name in component_names {
         comp = components_meta.get(name);
         filename = str(

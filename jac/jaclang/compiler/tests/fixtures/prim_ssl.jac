@@ -29,7 +29,7 @@ import socket;
 
 """CPython reference: a verifying TLS GET against the loopback server, trusting
 the test cert. Pins the server + the positive path (na must match this status)."""
-def ssl_py -> dict {
+def ssl_py -> dict[any, any] {
     port = int(os.getenv("JAC_SSL_TEST_PORT"));
     cafile = os.getenv("JAC_SSL_TEST_CAFILE");
     ctx = ssl.create_default_context(cafile=cafile);

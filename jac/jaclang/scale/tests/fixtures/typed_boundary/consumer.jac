@@ -23,7 +23,7 @@ import from scoring {
 }
 import from scoring { ScoreWalker as AliasedWalker, walker_value }
 
-async def:pub check_score -> dict {
+async def:pub check_score -> dict[str, any] {
     payload = await fetch_score();
     assert isinstance(payload, ScoredPayload);
     assert isinstance(payload.meta, RepoMeta) , "nested RepoMeta stayed a dict";

@@ -73,8 +73,11 @@ walker EndpointEffectPass(UniPass) {
     }
 
     def _classify(
-        body_nodes: list, kind: str, name: str, declaration: Ability | None = None
-    ) -> dict {
+        body_nodes: list[UniNode],
+        kind: str,
+        name: str,
+        declaration: Ability | None = None
+    ) -> dict[str, any] {
         import from jaclang.compiler.frontend.codeinfo { endpoint_descriptor }
         self._is_writer = False;
         self._unknown = False;
@@ -95,7 +98,7 @@ walker EndpointEffectPass(UniPass) {
                 self._scan(nd);
             }
         }
-        result = endpoint_descriptor(self.ir_in, kind, name);
+        result: dict[str, any] = endpoint_descriptor(self.ir_in, kind, name);
         result["reads"] = sorted(list(self._declared_reads))
             if declared is not None
             else ["*"];
@@ -191,8 +194,12 @@ walker EndpointEffectPass(UniPass) {
     def _call_target_symbol(call: FuncCall) -> (Symbol | None) {
         if isinstance(call.target, Name) {
             sym = call.target.sym;
-            if not sym and call.target.sym_tab {
-                sym = call.target.sym_tab.lookup(call.target.sym_name, deep=True);
+            if not sym {
+                try {
+                    sym = call.target.sym_tab.lookup(call.target.sym_name, deep=True);
+                } except ValueError {
+                    return None;
+                }
             }
             return sym;
         }
@@ -209,12 +216,12 @@ walker EndpointEffectPass(UniPass) {
         return None;
     }
 
-    def _declared_effects(call: FuncCall) -> dict | None {
+    def _declared_effects(call: FuncCall) -> dict[str, list[str]] | None {
         decl = ability_of_symbol(self._call_target_symbol(call));
         return self._declaration_effects(decl) if decl is not None else None;
     }
 
-    def _declaration_effects(decl: Ability) -> dict | None {
+    def _declaration_effects(decl: Ability) -> dict[str, list[str]] | None {
         import ast;
         for decorator in decl.decorators or [] {
             if not isinstance(decorator, FuncCall) {
@@ -228,7 +235,7 @@ walker EndpointEffectPass(UniPass) {
                 continue;
             }
             import from jaclang.compiler.tools.unparse_pass { unparse_node }
-            result: dict = {"reads": [], "writes": []};
+            result: dict[str, list[str]] = {"reads": [], "writes": []};
             for pair in decorator.params or [] {
                 if not isinstance(pair, KWPair)
                     or pair.key is None
@@ -251,7 +258,7 @@ walker EndpointEffectPass(UniPass) {
         return None;
     }
 
-    def _callee_body(call: FuncCall) -> list {
+    def _callee_body(call: FuncCall) -> list[UniNode] {
         sym = self._call_target_symbol(call);
         if not sym or not sym.defn {
             return [];
@@ -269,7 +276,7 @@ walker EndpointEffectPass(UniPass) {
         return [];
     }
 
-    def _resolved_body(owner: UniNode) -> list {
+    def _resolved_body(owner: UniNode) -> list[UniNode] {
         if isinstance(owner, Archetype) {
             return owner._get_impl_resolved_body();
         }

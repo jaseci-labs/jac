@@ -2,7 +2,7 @@ import from unittest.mock { MagicMock }
 import from jaclang.scale.sso.github { GithubSSOProvider }
 
 obj FakeTokens {
-    has records: dict = {},
+    has records: dict[str, any] = {},
         counter: int = 0;
 
     def create_token(
@@ -18,12 +18,12 @@ obj FakeTokens {
         return key;
     }
 
-    def peek_token(token: str, purpose: str) -> dict | None {
+    def peek_token(token: str, purpose: str) -> dict[str, any] | None {
         record = self.records.get(token);
         return record if record and record["purpose"] == purpose else None;
     }
 
-    def consume_token(token: str, purpose: str) -> dict | None {
+    def consume_token(token: str, purpose: str) -> dict[str, any] | None {
         record = self.peek_token(token, purpose);
         if record {
             del self.records[token];

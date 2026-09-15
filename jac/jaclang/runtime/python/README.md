@@ -1,9 +1,9 @@
 # Python compiler replacement
 
-Every `zig build` compiles Python source and ASTs using native Jac machine
+`JACPYTHON=1 zig build` compiles Python source and ASTs using native Jac machine
 code. CPython still provides Python objects, the execution engine, and the
-standard library. There is no optional interpreted replacement or alternate
-shipped compiler.
+standard library. Plain `zig build` uses stock CPython. The environment variable
+selects the compiler at build time; each binary contains one runtime.
 
 | Location (from repository root) | Responsibility |
 | --- | --- |
@@ -33,7 +33,7 @@ Rebuild after editing the replacement:
 
 ```sh
 cd jac
-zig build
+JACPYTHON=1 zig build
 JAC_NO_DEV_SOURCE=1 zig-out/bin/jac -c 'assert eval("6 * 7") == 42'
 ```
 

@@ -12,7 +12,7 @@ import statistics;
 import from statistics { fmean, mean, median, pstdev, pvariance, stdev, variance }
 
 
-def statistics_py -> dict {
+def statistics_py -> dict[any, any] {
     times = [900, 100, 500];
     med_bare = int(statistics.median(times));
     med_odd = int(median([5, 1, 9]));
@@ -53,7 +53,7 @@ def statistics_py -> dict {
     };
 }
 
-def statistics_cl -> dict {
+def statistics_cl -> dict[any, any] {
     return {};
 }
 

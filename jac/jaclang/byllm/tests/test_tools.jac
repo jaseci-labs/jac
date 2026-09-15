@@ -1,7 +1,8 @@
 """Tool use and the ReAct loop: finish_tool, and recovering when a model skips it."""
 
 import from jaclang.byllm.types { IterationAction, IterationContext }
-import from support_tests { FakeLLM, call, finish, prompt_text, say, tool_names }
+import from jaclang.byllm.lib { MockLLM }
+import from support_tests { call, finish, prompt_text, say, tool_names }
 
 
 """A chat message from one person."""
@@ -22,7 +23,7 @@ test "plain text instead of finish_tool is re-prompted, not accepted" {
     # calling finish_tool. invoke should notice, re-prompt with finish_tool
     # forced, and extract the typed result from the second turn.
     line = "Greetings traveller, I have wares to trade!";
-    llm = FakeLLM(replies=[say(line), finish({"person": "Merchant", "message": line})]);
+    llm = MockLLM(outputs=[say(line), finish({"person": "Merchant", "message": line})]);
 
     """Generate the NPC's opening line given a player name."""
     def generate_npc_line(player_name: str, npc_name: str) -> Chat by llm(
@@ -59,8 +60,8 @@ test "the answer is extracted however the model delivers it past max iterations"
             return "km/h";
         }
 
-        llm = FakeLLM(
-            replies=[
+        llm = MockLLM(
+            outputs=[
                 call("get_live_wind_speed", {"city": "Puttalam"}),
                 call("get_speed_unit", {}),
                 final
@@ -94,14 +95,14 @@ test "an on_iteration hook can stop the loop, with or without a summary" {
             "SUMMARY_OUTPUT"
         )
     ] {
-        seen: list = [];
+        seen: list[str] = [];
 
         def get_data(key: str) -> str {
             seen.append(key);
             return f"value_for_{key}";
         }
 
-        fired: list = [];
+        fired: list[int] = [];
 
         def hook(ctx: IterationContext) -> IterationAction {
             if ctx.iteration > 2 {
@@ -110,8 +111,8 @@ test "an on_iteration hook can stop the loop, with or without a summary" {
             }
             return IterationAction.CONTINUE;
         }
-        llm = FakeLLM(
-            replies=[call("get_data", {"key": "a"}), call("get_data", {"key": "b"})]
+        llm = MockLLM(
+            outputs=[call("get_data", {"key": "a"}), call("get_data", {"key": "b"})]
                 + extra_replies
         );
 
@@ -129,10 +130,10 @@ test "an on_iteration hook can stop the loop, with or without a summary" {
 }
 
 
-glob _calc_llm = FakeLLM();
+glob _calc_llm = MockLLM();
 
 obj Calculator {
-    has calls: list = [];
+    has calls: list[tuple[int, int]] = [];
 
     def add(num1: int, num2: int) -> int {
         self.calls.append((num1, num2));
@@ -146,8 +147,7 @@ obj Calculator {
 
 
 test "a bound method can be a tool, and runs against its own receiver" {
-    _calc_llm.replies.extend([call("add", {"num1": 12, "num2": 34}), say("46")]);
-    _calc_llm.postinit();
+    _calc_llm.outputs.extend([call("add", {"num1": 12, "num2": 34}), say("46")]);
     calc = Calculator();
 
     assert calc.eval_expr("What is 12 + 34?") == "46";

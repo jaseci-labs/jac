@@ -281,7 +281,7 @@ impl TypeEvaluator._get_typeddict_indexed_type(
     if not (isinstance(key_type, ClassType) and key_type.is_builtin("str")) {
         return None;
     }
-    fields = base_type.shared.typeddict_fields or {};
+    fields: dict[str, TypeBase] = base_type.shared.typeddict_fields or {};
     lit = key_type.get_literal_value();
     if not isinstance(lit, str) {
         return self._typeddict_value_union(base_type);
@@ -483,7 +483,7 @@ impl TypeEvaluator.get_type_of_member(
 ) -> TypeBase {
     raw_type = self.get_type_of_symbol(member.symbol);
     if isinstance(raw_type, FunctionType) {
-        params = raw_type.parameters or [];
+        params: list[Parameter] = raw_type.parameters or [];
         is_static_cls = (
             len(params) >= 1
             and params[0].is_cls

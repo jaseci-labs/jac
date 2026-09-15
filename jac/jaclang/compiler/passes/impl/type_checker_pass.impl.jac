@@ -276,7 +276,7 @@ impl TypeCheckPass._check_intrinsic_call(nd: FuncCall) -> None {
     if intr is None {
         return;
     }
-    positional: list = [];
+    positional: list[Expr] = [];
     has_kw = False;
     for p in (nd.params or []) {
         if isinstance(p, KWPair) {
@@ -359,7 +359,7 @@ impl TypeCheckPass.exit_compare_expr with CompareExpr exit {
     }
     _ord_ops = (Tok.LT, Tok.LTE, Tok.GT, Tok.GTE);
     _mem_ops = (Tok.KW_IN, Tok.KW_NIN);
-    operands: list = [here.left];
+    operands: list[Expr] = [here.left];
     operands.extend(here.rights);
     for (i, op) in enumerate(here.ops) {
         _opname = op.name if isinstance(op, Token) else str(op);
@@ -1103,21 +1103,109 @@ impl TypeCheckPass._body_always_returns(body: list[CodeBlockStmt]) -> bool {
     return self.evaluator._collect_return_types(body, []);
 }
 
-impl TypeCheckPass._check_bare_generic(ann_node: UniNode, ty: object) -> None {
+impl TypeCheckPass._check_bare_generic(
+    ann_node: UniNode, ty: object, shape: (UniNode | None) = None, nested: bool = False
+) -> None {
+    at = shape if nested else ann_node;
     if isinstance(ty, UnionType) and ty.types {
+        leaves = self._union_leaves(at);
         for branch in ty.types {
-            self._check_bare_generic(ann_node, branch);
+            match_at: (UniNode | None) = None;
+            if isinstance(branch, ClassType) {
+                for leaf in leaves {
+                    if self._written_type_args(leaf, branch) is not None {
+                        match_at = leaf;
+                        break;
+                    }
+                }
+            }
+            self._check_bare_generic(ann_node, branch, match_at, True);
         }
         return;
     }
-    if (
-        isinstance(ty, ClassType)
-        and ty.shared
-        and ty.shared.type_params
-        and (not ty.private or not ty.private.type_args)
-    ) {
-        self.emit(W1036, node_override=ann_node, type=ty.shared.class_name);
+    if not isinstance(ty, ClassType) or not ty.shared {
+        return;
     }
+    arg_nodes = self._written_type_args(at, ty);
+    type_args: list[TypeBase] = ty.private.type_args if ty.private else [];
+    if ty.shared.type_params and not type_args {
+        if arg_nodes is None {
+            if ty.is_builtin(BARE_GENERIC_REQUIRED) {
+                self.emit(E1036, node_override=ann_node, type=ty.shared.class_name);
+            } else {
+                self.emit(W1036, node_override=ann_node, type=ty.shared.class_name);
+            }
+        }
+        return;
+    }
+    for (i, arg) in enumerate(type_args) {
+        child: (UniNode | None) = None;
+        if arg_nodes is not None and len(arg_nodes) == len(type_args) {
+            child = arg_nodes[i];
+        }
+        self._check_bare_generic(ann_node, arg, child, True);
+    }
+}
+
+impl TypeCheckPass._written_type_args(
+    shape: (UniNode | None), ty: ClassType
+) -> (list[Expr] | None) {
+    if not (isinstance(shape, AtomTrailer) and isinstance(shape.right, IndexSlice)) {
+        return None;
+    }
+    target_ty = self.evaluator.get_type_of_expression(shape.target);
+    if not (
+        isinstance(target_ty, ClassType)
+        and target_ty.shared
+        and target_ty.shared.same_class(ty.shared)
+    ) {
+        return None;
+    }
+    return self._index_args(shape.right);
+}
+
+impl TypeCheckPass._index_args(index: IndexSlice) -> list[Expr] {
+    start = index.slices[0].start if index.slices else None;
+    if start is None {
+        return [];
+    }
+    if isinstance(start, TupleVal) {
+        return [
+            v
+            for v in (start.values or [])
+            if isinstance(v, Expr)
+        ];
+    }
+    return [start];
+}
+
+impl TypeCheckPass._union_leaves(shape: (UniNode | None)) -> list[UniNode] {
+    if shape is None {
+        return [];
+    }
+    if isinstance(shape, BinaryExpr)
+        and isinstance(shape.op, Token)
+        and shape.op.name == Tok.BW_OR {
+        return self._union_leaves(shape.left) + self._union_leaves(shape.right);
+    }
+    if isinstance(shape, AtomTrailer)
+        and isinstance(shape.right, IndexSlice)
+        and self._names_union_form(shape.target) {
+        leaves: list[UniNode] = [];
+        for arg in self._index_args(shape.right) {
+            leaves.extend(self._union_leaves(arg));
+        }
+        return leaves;
+    }
+    return [shape];
+}
+
+impl TypeCheckPass._names_union_form(target: Expr) -> bool {
+    name: UniNode = target;
+    if isinstance(target, AtomTrailer) and target.is_attr {
+        name = target.right;
+    }
+    return isinstance(name, Name) and name.value in ("Optional", "Union");
 }
 
 impl TypeCheckPass._check_unresolved_lambda_params -> None {
@@ -2032,7 +2120,7 @@ impl TypeCheckPass._eval_unpacking_names(container: Expr) -> None {
 impl TypeCheckPass._stamp_fixed_width -> None {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     import from jaclang.compiler.types.fixed_width { numeric_name_of }
-    stack: list = [self.ir_in];
+    stack: list[UniNode] = [self.ir_in];
     while stack {
         nd = stack.pop();
         if isinstance(nd, Expr) {

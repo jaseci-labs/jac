@@ -457,13 +457,7 @@ def _resolve_ca_bundle(pkg_root: str) -> (str | None) {
     bundles = sorted(
         `glob.`glob(
             os.path.join(
-                pkg_root,
-                ".python-build",
-                "jacpython",
-                "*",
-                "python",
-                "build",
-                "cacert.pem"
+                pkg_root, ".python-build", "*", "*", "python", "build", "cacert.pem"
             )
         )
     );
@@ -554,7 +548,9 @@ def _musl_lib_dir(triple: str) -> (str | None) {
 }
 
 
-def _collect_musl_static(obj_bytes: bytes, triple: str) -> (tuple | None) {
+def _collect_musl_static(
+    obj_bytes: bytes, triple: str
+) -> (tuple[list[bytes], list[bytes]] | None) {
     import os;
     import from jaclang.compiler.backends.native.linker_common {
         select_ar_members,

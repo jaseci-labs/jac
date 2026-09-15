@@ -3,7 +3,7 @@ impl NaIRGenPass._ensure_bytearray_type -> ir.Type {
     return self.list_types["u8"].as_pointer();
 }
 
-impl NaIRGenPass._bytearray_runtime_fns -> dict {
+impl NaIRGenPass._bytearray_runtime_fns -> dict[str, ir.Function] {
     if self._bytearray_fns {
         return self._bytearray_fns;
     }
@@ -149,7 +149,9 @@ impl NaIRGenPass._bytearray_runtime_fns -> dict {
     return self._bytearray_fns;
 }
 
-impl NaIRGenPass._bytearray_src_of(val: ir.Value) -> (tuple | None) {
+impl NaIRGenPass._bytearray_src_of(
+    val: ir.Value
+) -> (tuple[ir.Value, ir.Value] | None) {
     if self._is_bytes_value(val) {
         return (self._bytes_data_ptr(val), self._bytes_len_val(val));
     }
@@ -175,7 +177,7 @@ impl NaIRGenPass._dispatch_bytearray_method(
     fns = self._bytearray_runtime_fns();
     i8 = ir.IntType(8);
     i64 = ir.IntType(64);
-    params = nd.params or [];
+    params: Sequence[any] = nd.params or [];
     if method_name == "append" {
         if not params {
             return None;
@@ -211,7 +213,7 @@ impl NaIRGenPass._dispatch_bytearray_method(
 
 impl NaIRGenPass._emit_struct_pack_into(
     nd: uni.FuncCall,
-    params: list,
+    params: Sequence[uni.Expr | uni.KWPair],
     fields: list[tuple[str, int, bool]],
     total: int,
     little: bool
@@ -266,7 +268,7 @@ impl NaIRGenPass._emit_struct_pack_into(
         );
         return None;
     }
-    arg_vals: list = [];
+    arg_vals: list[ir.Value] = [];
     for p in params[3:] {
         v = self._codegen_expr(p);
         if v is not None {

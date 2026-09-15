@@ -35,7 +35,7 @@ def native_lowering_issues(llvm_ir_text: str) -> list[NativeLoweringIssue] {
     if not roots {
         return [];
     }
-    definitions = dict(
+    definitions: dict[str, str] = dict(
         re.findall(
             r'^!(\d+)\s*=\s*!\{\s*!"([0-9a-f]+)"\s*\}', llvm_ir_text, re.MULTILINE
         )

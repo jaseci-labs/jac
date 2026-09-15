@@ -17,7 +17,7 @@ import from tempfile { TemporaryDirectory }
 
 
 """Run `jac enter <file> <entrypoint>` and return (rc, stdout, stderr)."""
-def _jac_enter(cwd: str, app_path: str, entrypoint: str) -> tuple {
+def _jac_enter(cwd: str, app_path: str, entrypoint: str) -> tuple[any, ...] {
     result = subprocess.run(
         jac_command("run", "--entry", entrypoint, app_path),
         cwd=cwd,

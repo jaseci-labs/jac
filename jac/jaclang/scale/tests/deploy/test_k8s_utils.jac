@@ -167,7 +167,7 @@ test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
     core_v1_new.patch_namespaced_persistent_volume_claim.assert_not_called();
 }
 
-def _test_parse_storage_valid(pair: tuple) {
+def _test_parse_storage_valid(pair: tuple[any, ...]) {
     raw = pair[0];
     expected = pair[1];
     result = parse_storage_quantity(raw);
