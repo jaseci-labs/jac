@@ -225,7 +225,7 @@ test "solver does not propose native for capability-violating modules" {
     try {
         prog = JacProgram();
         mod = prog.compile(os.path.join(d, "pymod.jac"), no_cgen=True);
-        (ok, reason) = native_default_verdict(mod);
+        (ok, reason) = native_default_verdict(mod, prog);
         assert not ok , "capability-violating module must not prefer native";
     } finally {
         shutil.rmtree(d, ignore_errors=True);

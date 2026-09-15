@@ -164,7 +164,9 @@ def require_product(
                 f"Compilation dependency cycle: {product.value} of {module.loc.mod_path}"
             );
         }
-        return task.state == TaskState.SUCCEEDED;
+        if task.state != TaskState.CANCELLED {
+            return task.state == TaskState.SUCCEEDED;
+        }
     }
     task = ProductTask(product, TaskState.RUNNING);
     tasks[product] = task;
@@ -261,20 +263,34 @@ def compile_module(
 ) -> Module {
     import from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
     task = ModuleCompilation(compiler, program, path, options, source);
-    for step in module_pipeline() {
-        if options.cancel_token is not None and options.cancel_token.is_set() {
-            break;
+    program.source_store.record_module(path);
+    program.deps.begin(path);
+    complete = False;
+    try {
+        for step in module_pipeline() {
+            if options.cancel_token is not None and options.cancel_token.is_set() {
+                break;
+            }
+            started = time.perf_counter();
+            try {
+                step.execute(task);
+            } finally {
+                name = step.phase.name;
+                program.analysis.phase_time[name] = (
+                    program.analysis.phase_time.get(name, 0.0) + time.perf_counter()
+                    - started
+                );
+            }
         }
-        started = time.perf_counter();
-        try {
-            step.execute(task);
-        } finally {
-            name = step.phase.name;
-            program.analysis.phase_time[name] = (
-                program.analysis.phase_time.get(name, 0.0) + time.perf_counter()
-                - started
-            );
+        if program.deps.tracking {
+            program.deps.record_module(task.module);
         }
+        complete = not task.parse_failed
+            and not task.blocked
+            and not program.diags.owned_errors(path)
+            and (options.cancel_token is None or not options.cancel_token.is_set());
+    } finally {
+        program.deps.finish(path, complete);
     }
     return task.module;
 }
@@ -742,8 +758,8 @@ def execute_passes(
         module = run_pass(
             step, module, program, cancel_token=cancel_token, policy=policy
         ).ir_out;
-        provided.update(pass_provides(step));
         if cancel_token is None or not cancel_token.is_set() {
+            provided.update(pass_provides(step));
             completed.add(step.__name__);
         }
     }
@@ -849,11 +865,6 @@ def compile_application(
         }
         dependencies = package_sources(path, project_root);
         dependencies.update(context.iface_registry().direct_deps.get(path, {}));
-        dependencies.update(
-            dependency
-            for (dependency, importers) in context.deps.dependents.items()
-            if path in importers
-        );
         for statement in module.get_all_sub_nodes(Import) {
             if not statement.is_jac or statement.is_virtual_jac {
                 continue;

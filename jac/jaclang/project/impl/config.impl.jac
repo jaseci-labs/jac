@@ -61,7 +61,8 @@ impl JacConfig.discover(
 
 impl JacConfig.load(toml_path: Path) -> JacConfig {
     import from jaclang.project.tomlio { read_toml_with_encoding }
-    if not toml_path.exists() {
+    import from jaclang.project.source { source_exists }
+    if not source_exists(str(toml_path)) {
         raise FileNotFoundError(f"Configuration file not found: {toml_path}");
     }
     data = read_toml_with_encoding(str(toml_path));
@@ -273,7 +274,8 @@ impl JacConfig.apply_profile_overlay(profile_name: str | None = None) -> None {
 
 impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     import from jaclang.project.tomlio { read_toml_with_encoding }
-    if not toml_path.exists() {
+    import from jaclang.project.source { source_exists }
+    if not source_exists(str(toml_path)) {
         return;
     }
     data: dict[str, any] = read_toml_with_encoding(str(toml_path));
@@ -1379,48 +1381,56 @@ impl get_config(
     force_discover: bool = False,
     profile: str | None = None
 ) -> JacConfig | None {
+    state = config_state();
     if force_discover {
-        _config = None;
-        _config_explicit = False;
-        _config_by_root = {};
+        state.current = None;
+        state.explicit = False;
+        state.by_root = {};
     }
-    if _config_explicit {
-        return _config;
+    if state.explicit {
+        return state.current;
     }
-    if _config is None or profile is not None {
-        base = start_path or (_config.project_root if _config else None) or Path.cwd();
-        _config = get_config_for_path(base, profile=profile);
-        if _config is not None and _config.project_root is not None {
-            _config.discovered_from_ancestor = (
-                _config.project_root.resolve() != base.resolve()
+    if state.current is None or profile is not None {
+        base = start_path
+            or (state.current.project_root if state.current else None)
+            or state.start_path
+            or Path.cwd();
+        state.current = get_config_for_path(base, profile=profile);
+        if state.current is not None and state.current.project_root is not None {
+            state.current.discovered_from_ancestor = (
+                state.current.project_root.resolve() != base.resolve()
             );
         }
     }
-    return _config;
+    return state.current;
 }
 
 impl pin_project_scope(config: JacConfig | None) -> None {
-    _config = config;
+    state = config_state();
+    state.current = config;
 
-    _config_explicit = True;
+    state.explicit = True;
 
-    _config_by_root = {};
+    state.by_root = {};
 }
 
 impl project_scope_is_pinned -> bool {
-    return _config_explicit;
+    state = config_state();
+    return state.explicit;
 }
 
 impl set_config(config: JacConfig | None) -> None {
-    _config = config;
+    state = config_state();
+    state.current = config;
 
-    _config_explicit = config is not None;
+    state.explicit = config is not None;
 
-    _config_by_root = {};
+    state.by_root = {};
 }
 
 impl get_explicit_config -> JacConfig | None {
-    return _config if _config_explicit else None;
+    state = config_state();
+    return state.current if state.explicit else None;
 }
 
 impl get_config_for_dir(start_dir: str) -> JacConfig | None {
@@ -1438,6 +1448,7 @@ impl active_profile_name(config: JacConfig | None) -> str {
 impl get_config_for_path(
     start_path: Path, profile: str | None = None, force_discover: bool = False
 ) -> JacConfig | None {
+    state = config_state();
     explicit = get_explicit_config();
     if explicit is not None {
         project_root = explicit.project_root;
@@ -1452,9 +1463,9 @@ impl get_config_for_path(
     }
     (project_root, _) = result;
     key = str(project_root);
-    cached = _config_by_root.get(key);
+    cached = state.by_root.get(key);
     if force_discover
-        or key not in _config_by_root
+        or key not in state.by_root
         or (
             profile is not None
             and cached is not None
@@ -1463,14 +1474,14 @@ impl get_config_for_path(
         selected = profile
             if profile is not None
             else (cached.profile_override if cached is not None else None);
-        _config_by_root[key] = JacConfig.resolve(
+        state.by_root[key] = JacConfig.resolve(
             start_path=project_root, profile=selected
         );
-        if _config is not None and _config.project_root == project_root {
-            _config = _config_by_root[key];
+        if state.current is not None and state.current.project_root == project_root {
+            state.current = state.by_root[key];
         }
     }
-    return _config_by_root[key];
+    return state.by_root[key];
 }
 
 impl JacConfig.app(name: str) -> AppConfig | None {

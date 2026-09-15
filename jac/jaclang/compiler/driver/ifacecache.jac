@@ -1,3 +1,13 @@
+import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.driver.compiler { JacCompiler }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.frontend.unitree { Module }
+import json;
+import from jaclang.compiler.driver.inputs {
+    InputManifest,
+    content_digest,
+    source_bytes
+}
 import from contextlib { contextmanager }
 import from collections.abc { Callable, Iterator }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
@@ -8,6 +18,7 @@ import from jaclang.compiler.driver.jir {
     SEC_DEPS,
     SEC_DIAG,
     SEC_IFACE,
+    SEC_INPUTS,
     SEC_PLACEMENT,
     SEC_PATH_ROOT,
     JirPaths,
@@ -181,7 +192,7 @@ obj EncodedInterface {
 }
 
 obj IfaceRegistry {
-    has prog: any,
+    has prog: JacProgram,
         entries: dict[str, IfaceEntry] = {},
         building: set[str] postinit,
         checking: set[str] postinit,
@@ -305,7 +316,7 @@ obj IfaceRegistry {
         bucket[real] = digest;
     }
 
-    def _client_edges(mod: any) -> set[str] {
+    def _client_edges(mod: Module) -> set[str] {
         import jaclang.compiler.frontend.unitree as uni;
         import from jaclang.compiler.frontend.constant { CodeContext }
         out: set[str] = set();
@@ -330,7 +341,7 @@ obj IfaceRegistry {
         return out;
     }
 
-    def dep_rows(resolved_path: str, mod: any) -> list[tuple[str, str, str]] {
+    def dep_rows(resolved_path: str, mod: Module) -> list[tuple[str, str, str]] {
         bucket = self.direct_deps.get(resolved_path, {});
         client = self._client_edges(mod) if mod is not None else set();
         out: list[tuple[str, str, str]] = [];
@@ -342,6 +353,10 @@ obj IfaceRegistry {
 
     def _entry_fresh(ent: IfaceEntry) -> bool {
         import from jaclang.compiler.driver.bccache { discover_annex_files }
+        found = self._module_jir(ent.path);
+        if found is None {
+            return False;
+        }
         try {
             if os.path.getmtime(ent.path) > ent.stamp {
                 return False;
@@ -416,6 +431,7 @@ obj IfaceRegistry {
 
     def ensure(path: str, compile_on_miss: bool = True) -> IfaceEntry | None {
         import from jaclang.compiler.driver.compilation_context { program_for }
+        self.prog.source_store.record_module(path);
         actual = program_for(path, self.prog);
         if actual is not self.prog {
             return actual.iface_registry().ensure(path, compile_on_miss);
@@ -425,35 +441,93 @@ obj IfaceRegistry {
         }
     }
 
-    def serve(compiler: any, resolved: str, options: any) -> any {
+    def serve(
+        compiler: JacCompiler, resolved: str, options: CompileOptions
+    ) -> Module | None {
         with self._compilation_scope() {
             return self._serve_in_context(compiler, resolved, options);
         }
     }
 
-    def prepare_interface(resolved: str, mod: any) -> bool {
+    def prepare_interface(resolved: str, mod: Module) -> bool {
         with self._compilation_scope() {
             return self._prepare_interface_in_context(resolved, mod);
         }
     }
 
+    def analysis_signature(mod: Module) -> str | None {
+        import hashlib;
+        import from jaclang.compiler.placement.placement {
+            get_module_summary,
+            summary_to_bytes
+        }
+        if mod.parse_failed
+            or mod.stub_only
+            or not self.prog.analysis.analyses_run.provides(mod, AnalysisFact.TYPE_OF)
+            or self.prog.errors_had {
+            return None;
+        }
+        codec = iface_codec();
+        if codec is None {
+            return None;
+        }
+        with self._compilation_scope() {
+            encoded = self._encode_iface(
+                codec, mod, JirPaths(base_dir=os.path.dirname(mod.loc.mod_path))
+            );
+            if encoded is None {
+                return None;
+            }
+            return hashlib.sha256(
+                encoded + summary_to_bytes(get_module_summary(mod, self.prog))
+            ).hexdigest();
+        }
+    }
+
     def persist_after_compile(
-        resolved: str, mod: any, options: any, err_start: int, warn_start: int
+        resolved: str,
+        mod: Module,
+        options: CompileOptions,
+        err_start: int,
+        warn_start: int
     ) {
         with self._compilation_scope() {
             self._persist_in_context(resolved, mod, options, err_start, warn_start);
         }
     }
 
+    def _inputs_match(data: bytes) -> bool {
+        encoded = read_section_bytes(data, SEC_INPUTS);
+        if encoded is not None {
+            try {
+                return self.prog.source_store.matches_manifest(encoded);
+            } except (ValueError, KeyError, TypeError) {
+                return False;
+            }
+        }
+
+        return all(
+            content_digest(source.encode('utf-8'))
+                == content_digest(source_bytes(path))
+            for (path, source) in self.prog.source_store.overrides.items()
+        );
+    }
+
     def _module_jir_in_context(resolved: str) -> (tuple[bytes, str] | None) {
         try {
             cache_path = get_module_cache_path(resolved);
             if is_module_cache_valid(resolved, cache_path) {
-                return (cache_path.read_bytes(), "", );
+                data = cache_path.read_bytes();
+                if self._inputs_match(data) {
+                    return (data, "", );
+                }
             }
         } except Exception {}
         try {
-            return self.prog._get_compiler()._sealed_jir_data(resolved);
+            found = self.prog._get_compiler()._sealed_jir_data(resolved);
+            return found
+                if found is not None and self._inputs_match(found[0])
+                else None;
         } except Exception {
             return None;
         }
@@ -615,7 +689,7 @@ obj IfaceRegistry {
         } except Exception {}
     }
 
-    def _prepare(ent: IfaceEntry, mod: any) {
+    def _prepare(ent: IfaceEntry, mod: Module) {
         self.prog._get_compiler().stamp_app_facts(mod, self.prog);
         self._restore_placement(ent);
         self.prog.analysis.analyses_run.mark(mod, _symtab_provides());
@@ -689,7 +763,9 @@ obj IfaceRegistry {
         }
     }
 
-    def eligible(compiler: any, resolved: str, options: any) -> bool {
+    def eligible(
+        compiler: JacCompiler, resolved: str, options: CompileOptions
+    ) -> bool {
         if options.aot_mode
             or bool(options.force_codespace)
             or bool(options.default_codespace) {
@@ -708,7 +784,9 @@ obj IfaceRegistry {
         return iface_codec() is not None;
     }
 
-    def _serve_in_context(compiler: any, resolved: str, options: any) -> any {
+    def _serve_in_context(
+        compiler: JacCompiler, resolved: str, options: CompileOptions
+    ) -> Module | None {
         if not options.iface_ok or options.need_full_ast or not self.ready() {
             return None;
         }
@@ -769,7 +847,9 @@ obj IfaceRegistry {
         return mod;
     }
 
-    def _serve_analysis(compiler: any, resolved: str, options: any) -> any {
+    def _serve_analysis(
+        compiler: JacCompiler, resolved: str, options: CompileOptions
+    ) -> Module | None {
         err0 = len(self.prog.errors_had);
         warn0 = len(self.prog.warnings_had);
         codec = iface_codec();
@@ -831,7 +911,7 @@ obj IfaceRegistry {
         return mod;
     }
 
-    def analysis_profile(options: any) -> str {
+    def analysis_profile(options: CompileOptions) -> str {
         import hashlib;
         import json;
         import from jaclang.compiler.driver.pass_driver {
@@ -866,7 +946,7 @@ obj IfaceRegistry {
         return hashlib.sha256(ident.encode()).hexdigest()[:16];
     }
 
-    def _ensure_flow_graph(mod: any) -> None {
+    def _ensure_flow_graph(mod: Module) -> None {
         if getattr(mod, "stub_only", False)
             or getattr(mod, "is_raised_from_py", False) {
             return;
@@ -885,7 +965,9 @@ obj IfaceRegistry {
         self._event("iface_cfg");
     }
 
-    def _encode_iface(codec: IfaceCodec, mod: any, paths: JirPaths) -> (bytes | None) {
+    def _encode_iface(
+        codec: IfaceCodec, mod: Module, paths: JirPaths
+    ) -> (bytes | None) {
         import from jaclang.compiler.types.stubcat.modiface { IncoherentInterface }
         self._event("iface_encode");
         self._ensure_flow_graph(mod);
@@ -905,7 +987,7 @@ obj IfaceRegistry {
         }
     }
 
-    def _prepare_interface_in_context(resolved: str, mod: any) -> bool {
+    def _prepare_interface_in_context(resolved: str, mod: Module) -> bool {
         if mod.parse_failed
             or mod.codespace_inferred
             or not _interface_source_path(resolved)
@@ -935,9 +1017,45 @@ obj IfaceRegistry {
     }
 
     def _persist_in_context(
-        resolved: str, mod: any, options: any, err_start: int, warn_start: int
+        resolved: str,
+        mod: Module,
+        options: CompileOptions,
+        err_start: int,
+        warn_start: int
     ) -> None {
         import json;
+
+        snapshot = self.prog.source_store.snapshot;
+        inputs: InputManifest | None = None;
+        if snapshot is not None {
+            inputs = snapshot.manifest();
+            if not inputs.is_current() {
+                return;
+            }
+            dependencies = snapshot.modules - {resolved};
+            module_inputs = set(dependencies);
+            for dependency in dependencies {
+                module_inputs.update(snapshot.annex_paths.get(dependency, []));
+            }
+            inputs = InputManifest(
+                {
+                    path: digest
+                    for (path, digest) in inputs.files.items()
+                    if path not in module_inputs
+                },
+                {
+                    path: paths
+                    for (path, paths) in inputs.annexes.items()
+                    if path not in dependencies
+                }
+            );
+        } elif any(
+            content_digest(source.encode('utf-8'))
+                != content_digest(source_bytes(path))
+            for (path, source) in self.prog.source_store.overrides.items()
+        ) {
+            return;
+        }
 
         if mod is None
             or mod.parse_failed
@@ -950,6 +1068,9 @@ obj IfaceRegistry {
             return;
         }
         sections: dict[int, bytes] = {};
+        if inputs is not None {
+            sections[SEC_INPUTS] = json.dumps(inputs.to_dict()).encode('utf-8');
+        }
         modkey = "";
         try {
             modkey = module_cache_key(resolved);
@@ -1096,12 +1217,15 @@ obj IfaceRegistry {
                 return None;
             }
             import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
-            carrier = self.prog.hub.artifacts.get(resolved);
+            module = self.prog.mod.hub.get(resolved);
+            carrier = module.gen
+                if module is not None
+                else self.prog.hub.artifacts.get(resolved);
             if carrier is None {
                 carrier = CodeGenTarget();
-                self.prog.hub.artifacts[resolved] = carrier;
             }
             carrier.interop_manifest = manifest;
+            self.prog.hub.artifacts[resolved] = carrier;
         }
         edges: list[str] = [];
         import from jaclang.compiler.driver.jir { read_dep_rows }
@@ -1221,7 +1345,7 @@ obj IfaceRegistry {
         }
     }
 
-    def _verify_analysis(resolved: str, options: any, prof: dict[str, any]) {
+    def _verify_analysis(resolved: str, options: CompileOptions, prof: dict[str, any]) {
         self.verifying = True;
         try {
             import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -1266,42 +1390,4 @@ obj IfaceRegistry {
             self.verifying = False;
         }
     }
-}
-
-def seed_dep_edges(prog: any, root_dir: str, limit: int = 5000) -> int {
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
-    seeded = 0;
-    scanned = 0;
-    skip_dirs = {".git", ".jac", "node_modules", "__pycache__", ".venv", "venv"};
-    for (walk_dir, dirs, files) in os.walk(root_dir) {
-        dirs[:] = [
-            d
-            for d in dirs
-            if not d.startswith(".") and d not in skip_dirs
-        ];
-        for name in files {
-            if not name.endswith(".jac") {
-                continue;
-            }
-            scanned += 1;
-            if scanned > limit {
-                return seeded;
-            }
-            full = os.path.realpath(os.path.join(walk_dir, name));
-            try {
-                cache_path = artifact_cache_path(full, prog);
-                if not cache_path.exists() {
-                    continue;
-                }
-                data: bytes = cache_path.read_bytes();
-            } except Exception {
-                continue;
-            }
-            for (dep, _digest) in read_dep_hashes(data) {
-                prog.deps.record(full, dep);
-                seeded += 1;
-            }
-        }
-    }
-    return seeded;
 }

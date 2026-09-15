@@ -33,8 +33,8 @@ test "standalone client build releases application trees before bundling" {
         }
         def bundle(self: ViteBundler, *args: any, **kwargs: any) {
             program = Jac.get_program();
-            assert not program.source_store.units , (
-                "application source trees remain live while the bundler runs"
+            assert program.source_store.snapshot is None , (
+                "application source capture remains active while the bundler runs"
             );
             assert not program.contexts , (
                 "application compilation contexts remain live while the bundler runs"

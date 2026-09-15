@@ -2,7 +2,6 @@ import fnmatch;
 import hashlib;
 import json;
 import os;
-import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 import from jaclang.project.modresolver { find_jac_project_root }
@@ -52,20 +51,23 @@ obj WorkspaceResolution {
         workspaces: dict[str, WorkspaceSpec | None] = {};
 }
 
-glob _ws_cache: dict[str, tuple[tuple[float, ...], WorkspaceSpec]] = {},
+glob _ws_cache: dict[str, tuple[tuple[str, ...], WorkspaceSpec]] = {},
      _resolution: ContextVar[WorkspaceResolution | None] = ContextVar(
          'jac_workspace_resolution', `default=None
      );
 
 @contextmanager
 def workspace_scope -> Iterator[None] {
+    import from jaclang.project.modresolver { project_resolution_scope }
     if _resolution.get() is not None {
         yield ;
         return;
     }
     token = _resolution.set(WorkspaceResolution());
     try {
-        yield ;
+        with project_resolution_scope() {
+            yield ;
+        }
     } finally {
         _resolution.reset(token);
     }
@@ -81,7 +83,7 @@ def _read_toml(toml_path: str) -> dict[str, any];
 def _table(raw: any, *keys: str) -> dict[str, any];
 def _pins_of(raw: any) -> dict[str, str];
 def _npm_names_of(raw: any) -> set[str];
-def _chain_stamp(root_dir: str) -> tuple[float, ...];
+def _chain_stamp(root_dir: str) -> tuple[str, ...];
 def _implicit_kind(root_dir: str, project: dict[str, any]) -> str;
 def _build_workspace(
     root_dir: str, toml_path: str, doc: dict[str, any]

@@ -1,3 +1,4 @@
+import from contextlib { nullcontext }
 import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
@@ -14,20 +15,11 @@ import from jaclang.compiler.placement.placement {
     summarize_module
 }
 
-glob _na_scan_memo:
-         dict[
-             tuple[str, bool],
-             tuple[tuple[tuple[str, int, int], ...], str, list[str]]
-         ] = {},
-     _SPACE_BY_NAME: dict[str, CodeContext] = {
+glob _SPACE_BY_NAME: dict[str, CodeContext] = {
          'server': CodeContext.SERVER,
          'client': CodeContext.CLIENT,
          'native': CodeContext.NATIVE
      };
-
-def native_scan_memo_clear {
-    _na_scan_memo.clear();
-}
 
 def placement_work(prog: any) -> PlacementWork {
     state = placement_state(prog);
@@ -44,45 +36,41 @@ def refresh_placement_module(module: uni.Module, prog: any) {
 }
 
 def _native_dep_scan(
-    path: str, hold_exempt: bool = False
+    path: str, program: JacProgram, hold_exempt: bool = False
 ) -> (tuple[str, list[str]] | None) {
-    import from jaclang.compiler.placement.placement_pins { _is_demoted_native }
-    import from jaclang.project.source { read_file_with_encoding }
-    import from jaclang.compiler.driver.program { JacProgram }
-    if _is_demoted_native(os.path.realpath(path)) {
-        return ("previously-demoted", []);
-    }
-    import from jaclang.compiler.driver.bccache { discover_annex_files }
-    import from jaclang.compiler.frontend.parser { parse as rd_parse }
-    files = [path]
-        + discover_annex_files(path, '.impl.jac')
-        + discover_annex_files(path, '.test.jac');
-    fresh_parts: list[tuple[str, int, int]] = [];
-    for f in files {
+    import from pathlib { Path }
+    import from jaclang.project.config { config_scope }
+    snapshot = program.source_store.snapshot;
+    scope = snapshot.scope() if snapshot is not None else nullcontext();
+    with scope, config_scope(Path(path).parent) {
+        if snapshot is not None {
+            snapshot.watch_configuration(path);
+        }
+        import from jaclang.compiler.placement.placement_pins { _is_demoted_native }
+        import from jaclang.project.source { read_source_unit }
+        import from jaclang.compiler.driver.progstate { NativeScanRecord }
+        if _is_demoted_native(os.path.realpath(path)) {
+            return ("previously-demoted", []);
+        }
+        import from jaclang.compiler.frontend.parser { parse as rd_parse }
+        path = os.path.realpath(path);
         try {
-            st = os.stat(f);
-            fresh_parts.append((f, st.st_mtime_ns, st.st_size));
+            (source, annexes) = read_source_unit(path);
         } except OSError {
             return None;
         }
-    }
-    fresh_key = tuple(fresh_parts);
-    cached = _na_scan_memo.get((path, hold_exempt, ));
-    if cached is not None and cached[0] == fresh_key {
-        return (cached[1], cached[2]);
-    }
-    sv_reason = '';
-    deps: list[str] = [];
-    if not sv_reason {
+        cache = program.analysis.native_scans;
+        cached = cache.get((path, hold_exempt));
+        if cached is not None and cached.inputs.is_current(program.source_store) {
+            del cache[(path, hold_exempt)];
+            cache[(path, hold_exempt)] = cached;
+            return (cached.server_reason, list(cached.dependencies));
+        }
+        sv_reason = '';
+        deps: list[str] = [];
         base_dir = os.path.dirname(os.path.abspath(path)) or '.';
-        for f in files {
-            try {
-                src = read_file_with_encoding(f);
-            } except Exception {
-                sv_reason = "unreadable annex";
-                break;
-            }
-            (dep_mod, had_err) = rd_parse(src, f, prog=JacProgram());
+        for (src, f) in [(source, path), *annexes] {
+            (dep_mod, had_err) = rd_parse(src, f);
             if had_err {
                 sv_reason = "parse error";
                 break;
@@ -96,16 +84,25 @@ def _native_dep_scan(
             }
             deps.extend(f_deps);
         }
+        if sv_reason {
+            deps = [];
+        }
+        snapshot = program.source_store.snapshot;
+        if snapshot is not None {
+            cache.pop((path, hold_exempt), None);
+            if len(cache) >= 1024 {
+                cache.pop(next(iter(cache)));
+            }
+            cache[(path, hold_exempt)] = NativeScanRecord(
+                snapshot.manifest(), sv_reason, tuple(deps)
+            );
+        }
+        return (sv_reason, deps);
     }
-    if sv_reason {
-        deps = [];
-    }
-    _na_scan_memo[(path, hold_exempt, )] = (fresh_key, sv_reason, deps);
-    return (sv_reason, deps);
 }
 
 def _native_deps_ok(
-    root_path: str, root_deps: list[str], hold_exempt: bool = False
+    root_path: str, root_deps: list[str], program: JacProgram, hold_exempt: bool = False
 ) -> bool {
     import from jaclang.compiler.frontend.codeinfo { effective_native_closure_cap }
     import from jaclang.compiler.driver.na_coverage { _note_native_closure_cap }
@@ -128,7 +125,7 @@ def _native_deps_ok(
         if in_native_scope_path(dep) and not scope_lowering_active() {
             return False;
         }
-        info = _native_dep_scan(dep, hold_exempt=hold_exempt);
+        info = _native_dep_scan(dep, program, hold_exempt=hold_exempt);
         if info is None {
             return False;
         }
@@ -147,11 +144,14 @@ def _native_deps_ok(
 }
 
 def native_default_path_ok(path: str) -> bool {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compilation_context { active_program }
+    program = active_program() or JacProgram();
     ap = os.path.abspath(path);
 
     _ap_posix = ap.replace(os.sep, "/");
     exempt = any(marker in _ap_posix for marker in PLACEMENT_HOLD_EXEMPT_ROOTS);
-    info = _native_dep_scan(ap, hold_exempt=exempt);
+    info = _native_dep_scan(ap, program, hold_exempt=exempt);
     if info is None {
         return False;
     }
@@ -159,10 +159,12 @@ def native_default_path_ok(path: str) -> bool {
     if has_sv {
         return False;
     }
-    return _native_deps_ok(ap, deps, hold_exempt=exempt);
+    return _native_deps_ok(ap, deps, program, hold_exempt=exempt);
 }
 
-def native_default_verdict(module: uni.Module) -> tuple[bool, str] {
+def native_default_verdict(
+    module: uni.Module, program: JacProgram
+) -> tuple[bool, str] {
     import from jaclang.compiler.driver.pipeline { native_pipeline_available }
     import from jaclang.compiler.placement.placement_pins { _is_demoted_native }
 
@@ -195,7 +197,7 @@ def native_default_verdict(module: uni.Module) -> tuple[bool, str] {
     if sv_reason {
         return (False, sv_reason);
     }
-    if not _native_deps_ok(os.path.abspath(mod_path), deps) {
+    if not _native_deps_ok(os.path.abspath(mod_path), deps, program) {
         return (False, "import-closure (sv dep or cap)");
     }
     return (True, '');

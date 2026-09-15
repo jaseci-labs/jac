@@ -628,7 +628,7 @@ test "typing_import_flips_native_placement" {
         }
         program = JacProgram();
         mod = program.compile(path, options=NO_TC);
-        (na_ok, na_why) = native_default_verdict(mod);
+        (na_ok, na_why) = native_default_verdict(mod, program);
         REPORT.append(
             "placement: " + header + " -> ok=" + str(na_ok) + " why=" + na_why
         );

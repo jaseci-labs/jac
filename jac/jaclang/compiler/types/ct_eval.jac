@@ -2051,9 +2051,8 @@ obj CtEvaluator {
         path = rel if os.path.isabs(rel) else os.path.join(base, rel);
         path = os.path.normpath(path);
         try {
-            with open(path, "rb") as fh {
-                data = fh.read();
-            }
+            import from jaclang.project.source { read_file_bytes }
+            data = read_file_bytes(path);
         } except OSError as e {
             raise CtError(f"embed_file: cannot read {path}: {e}");
         }

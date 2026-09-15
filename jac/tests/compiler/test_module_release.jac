@@ -60,8 +60,8 @@ test "a compiler phase boundary collects both application and selfhost trees" {
     compiler.release_compile_state(prog);
     assert app_ref() is None;
     assert internal_ref() is None;
-    assert not prog.source_store.units;
-    assert not internal.source_store.units;
+    assert prog.source_store.snapshot is None;
+    assert internal.source_store.snapshot is None;
     # Releasing working state must leave the compiler reusable.
     (_, next_ref, _, _) = _probe(prog);
     assert next_ref() is not None;

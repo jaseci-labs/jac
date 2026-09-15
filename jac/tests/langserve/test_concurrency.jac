@@ -1,4 +1,4 @@
-"""Tests for ReadWriteLock concurrency correctness."""
+"""Concurrent requests and shutdown share the language server worker."""
 
 import threading;
 import time;
@@ -11,7 +11,6 @@ import from tests.support { JAC_ROOT }
 import jaclang.lsp.protocol.types as lspt;
 
 import jaclang;
-import from jaclang.lsp.server.rwlock { ReadWriteLock }
 import from jaclang.lsp.server.engine { JacLangServer }
 import from jaclang.lsp.protocol { uris }
 import from jaclang.lsp.protocol.server { Workspace }
@@ -56,126 +55,6 @@ def create_server(workspace_path: str | None = None) -> JacLangServer {
     lsp.lsp._workspace = workspace_val;
     _active_servers.append(lsp);
     return lsp;
-}
-
-"""Verify multiple readers run concurrently, writers get exclusive access,
-    and writer priority prevents reader starvation of writers."""
-test "rwlock concurrent readers and exclusive writer" {
-    setup_test();
-    try {
-        lock = ReadWriteLock();
-        results: list[str] = [];
-        barrier = threading.Barrier(3);  # Sync 3 reader threads
-
-        def reader_work(reader_id: int) {
-            with lock.read_lock() {
-                # All readers should be able to enter concurrently
-                barrier.`wait(timeout=5);  # Would deadlock if readers blocked each other
-                results.append(f"reader_{reader_id}_in");
-                time.sleep(0.05);  # Hold lock briefly
-                results.append(f"reader_{reader_id}_out");
-            }
-        }
-
-        # Phase 1: Concurrent readers don't block each other
-        threads = [threading.Thread(target=reader_work, args=[i]) for i in range(3)];
-        for t in threads {
-            t.start();
-        }
-        for t in threads {
-            t.join(timeout=10);
-        }
-        # All 3 readers entered the lock (barrier would timeout otherwise)
-        assert len(results) == 6 , f"Expected 6 results, got {len(results)}: {results}";
-
-        # Phase 2: Writer excludes readers
-        results.clear();
-        writer_entered = threading.Event();
-        writer_done = threading.Event();
-        reader_entered = threading.Event();
-
-        def writer_work {
-            with lock.write_lock() {
-                writer_entered.set();
-                results.append("writer_in");
-                time.sleep(0.15);  # Hold write lock
-                results.append("writer_out");
-            }
-            writer_done.set();
-        }
-
-        def reader_after_writer {
-            # Wait until writer has started, then try to read
-            writer_entered.`wait(timeout=5);
-            time.sleep(0.02);  # Small delay to ensure writer is holding lock
-            with lock.read_lock() {
-                reader_entered.set();
-                results.append("reader_after");
-            }
-        }
-
-        wt = threading.Thread(target=writer_work);
-        rt = threading.Thread(target=reader_after_writer);
-        wt.start();
-        rt.start();
-        wt.join(timeout=10);
-        rt.join(timeout=10);
-
-        # Writer must complete before reader enters
-        assert results.index("writer_out") < results.index("reader_after") , (
-            f"Writer should finish before reader enters: {results}"
-        );
-
-        # Phase 3: Writer priority — waiting writer blocks new readers
-        results.clear();
-        hold_read = threading.Event();
-        writer_waiting = threading.Event();
-
-        def holding_reader {
-            with lock.read_lock() {
-                results.append("hold_reader_in");
-                hold_read.`wait(timeout=5);  # Hold read lock until signaled
-                results.append("hold_reader_out");
-            }
-        }
-
-        def priority_writer {
-            writer_waiting.set();
-            with lock.write_lock() {
-                results.append("priority_writer");
-            }
-        }
-
-        def late_reader {
-            writer_waiting.`wait(timeout=5);
-            time.sleep(0.05);  # Ensure writer is queued first
-            with lock.read_lock() {
-                results.append("late_reader");
-            }
-        }
-
-        t1 = threading.Thread(target=holding_reader);
-        t1.start();
-        time.sleep(0.05);  # Let reader acquire lock
-
-        t2 = threading.Thread(target=priority_writer);
-        t3 = threading.Thread(target=late_reader);
-        t2.start();
-        t3.start();
-        time.sleep(0.1);  # Let writer and late reader queue up
-
-        hold_read.set();  # Release the holding reader
-        t1.join(timeout=10);
-        t2.join(timeout=10);
-        t3.join(timeout=10);
-
-        # Writer should run before late reader (writer priority)
-        assert results.index("priority_writer") < results.index("late_reader") , (
-            f"Writer should have priority over late reader: {results}"
-        );
-    } finally {
-        teardown_test();
-    }
 }
 
 """Verify that read operations (hover, outline, semantic tokens) can proceed
@@ -289,7 +168,7 @@ test "shutdown under active dispatch" {
         lsp.type_check_file(circle_uri);
 
         # Queue more work so dispatcher has something to do
-        lsp._do_type_check(circle_uri);
+        lsp.type_check(circle_uri);
 
         # Shutdown should complete without deadlock
         shutdown_done = threading.Event();

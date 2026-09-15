@@ -107,6 +107,7 @@ SEED_PATHS: tuple[str, ...] = (
     "cli/cli_boot.jac",
     "jac0core/cli_boot.jac",
     "project/__init__.jac",
+    "project/config.jac",
     "project/tomlio.jac",
     "project/source.jac",
     "project/apps.jac",

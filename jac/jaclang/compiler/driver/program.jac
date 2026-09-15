@@ -1,9 +1,10 @@
+import type from jaclang.compiler.driver.analysis_service { AnalysisService }
+import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import from jaclang.compiler.driver.pipeline_types { AnalysisFact }
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import types;
 import from threading { Event }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.relations { ScopeChild }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.passes.transform { Alert }
 import from jaclang.compiler.driver.progstate {
@@ -19,7 +20,11 @@ import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.runtime.semantic { Info }
 import type from jaclang.compiler.passes.transform { Transform }
-import type from jaclang.compiler.driver.compilation_context { SourceStore }
+import type from jaclang.compiler.driver.compilation_context {
+    CompilationContext,
+    AnalysisCacheBudget
+}
+import type from jaclang.compiler.driver.inputs { SourceStore }
 
 class JacProgram {
     has hub: ModuleHub,
@@ -34,20 +39,36 @@ class JacProgram {
         mtir_map: dict[(str, Info)],
         type_evaluator: TypeEvaluator | None,
         _compiler: JacCompiler | None,
-        _iface: any,
+        _iface: IfaceRegistry | None,
+        _analysis_service: AnalysisService | None,
         source_store: SourceStore,
         context_root: JacProgram | None,
         context_key: str,
-        contexts: dict[str, JacProgram];
+        contexts: dict[str, CompilationContext];
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
+    static def for_analysis -> JacProgram;
+    def owned_contexts(self: JacProgram) -> list[JacProgram];
+    def dependency_graphs(self: JacProgram) -> list[DepGraph];
+    def module_owner(self: JacProgram, module: uni.Module) -> JacProgram | None;
+    def release_analysis_context(self: JacProgram, identity: str) -> set[str];
+    def analysis_cache_usage(self: JacProgram) -> tuple[int, int];
+    def trim_analysis_cache(self: JacProgram, budget: AnalysisCacheBudget) -> set[str];
+    def _release_local_state(
+        self: JacProgram, retain_stubs: bool, retain_inputs: bool
+    ) -> None;
+
     def _get_compiler(self: JacProgram) -> JacCompiler;
-    def iface_registry(self: JacProgram) -> any;
+    def iface_registry(self: JacProgram) -> IfaceRegistry;
+    def analysis_service(self: JacProgram) -> AnalysisService;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
     def stub_catalog(self: JacProgram) -> StubCatalog | None;
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
     def release_compile_closure(
-        self: JacProgram, collect: bool = True, retain_stubs: bool = True
+        self: JacProgram,
+        collect: bool = True,
+        retain_stubs: bool = True,
+        retain_inputs: bool = False
     ) -> None;
 
     def release_native_dep_units(self: JacProgram) -> None;

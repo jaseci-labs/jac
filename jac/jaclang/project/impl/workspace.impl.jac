@@ -49,11 +49,9 @@ impl _real(path: str) -> str {
 }
 
 impl _read_toml(toml_path: str) -> dict[str, any] {
-    import tomllib;
+    import from jaclang.project.tomlio { read_toml_with_encoding }
     try {
-        with open(toml_path, 'rb') as f {
-            doc = tomllib.load(f);
-        }
+        doc = read_toml_with_encoding(toml_path);
     } except Exception {
         return {};
     }
@@ -102,8 +100,9 @@ impl _npm_names_of(raw: any) -> set[str] {
     return names;
 }
 
-impl _chain_stamp(root_dir: str) -> tuple[float, ...] {
-    stamps: list[float] = [];
+impl _chain_stamp(root_dir: str) -> tuple[str, ...] {
+    import from jaclang.project.source { read_file_with_encoding }
+    stamps: list[str] = [];
     cur: (str | None) = root_dir;
     seen: set[str] = set();
     while cur {
@@ -113,9 +112,13 @@ impl _chain_stamp(root_dir: str) -> tuple[float, ...] {
         }
         seen.add(key);
         try {
-            stamps.append(os.path.getmtime(os.path.join(cur, 'jac.toml')));
+            stamps.append(
+                hashlib.sha256(
+                    read_file_with_encoding(os.path.join(cur, 'jac.toml')).encode()
+                ).hexdigest()
+            );
         } except OSError {
-            stamps.append(-1.0);
+            stamps.append('');
         }
         parent = os.path.dirname(os.path.realpath(cur));
         if not parent or parent == os.path.realpath(cur) {

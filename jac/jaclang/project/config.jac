@@ -3,6 +3,8 @@ import re;
 import sys;
 import tomllib;
 import from pathlib { Path }
+import from contextlib { contextmanager }
+import from contextvars { ContextVar }
 import from jaclang.project.apps { AppConfig, implicit_app, parse_apps }
 glob CAPABILITY_SECTIONS: tuple[str, ...] = (
          "byllm",
@@ -359,9 +361,43 @@ def _parse_include(raw: dict[str, any]) -> PackageIncludeConfig;
 
 def _interpolate_recursive(`obj: any) -> any;
 
-glob _config: JacConfig | None = None,
-     _config_explicit: bool = False,
-     _config_by_root: dict[str, JacConfig | None] = {};
+obj ConfigState {
+    has current: JacConfig | None = None,
+        start_path: Path | None = None,
+        explicit: bool = False,
+        by_root: dict[str, JacConfig | None] = {};
+}
+
+glob _default_state = ConfigState(),
+     _scoped_state: ContextVar[ConfigState | None] = ContextVar(
+         'jac_config_state', `default=None
+     );
+
+def config_state -> ConfigState {
+    scoped = _scoped_state.get();
+    return scoped if scoped is not None else _default_state;
+}
+
+@contextmanager
+def config_scope(
+    start_path: Path | None = None, inherit_explicit: bool = True
+) -> Iterator[ConfigState] {
+    import from jaclang.project.modresolver { project_resolution_scope }
+    parent = config_state();
+    state = ConfigState(
+        current=parent.current if inherit_explicit and parent.explicit else None,
+        start_path=start_path,
+        explicit=inherit_explicit and parent.explicit
+    );
+    token = _scoped_state.set(state);
+    try {
+        with project_resolution_scope() {
+            yield state;
+        }
+    } finally {
+        _scoped_state.reset(token);
+    }
+}
 
 def get_config(
     start_path: Path | None = None,

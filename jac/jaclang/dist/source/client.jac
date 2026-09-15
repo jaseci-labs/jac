@@ -17,10 +17,16 @@ def write_client(application: PreparedApplication, base: Path) -> str {
             f'Application {application.name!r} has no prepared client product'
         );
     }
+    compiled_dir = compiler.compiled_dir;
+    if compiled_dir is None {
+        raise ValueError(
+            f'Application {application.name!r} has no compiled client directory'
+        );
+    }
     directory = base / 'applications' / application.name;
     workspace = directory / 'client';
     compiled = workspace / 'compiled';
-    shutil.copytree(compiler.compiled_dir, compiled, dirs_exist_ok=True);
+    shutil.copytree(compiled_dir, compiled, dirs_exist_ok=True);
     bundler = ViteBundler(Path(application.root), entry_path=application.entry);
     bundler.build_dir = workspace;
     bundler.output_dir = workspace / 'dist';
