@@ -673,6 +673,16 @@ class JacScalePluginConfig {
                             "default": False,
                             "description": "Allow mutating operations from the ops console"
                         },
+                        "app_grafana_metrics": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Give each app's own Grafana a datasource on the cluster's shared Prometheus. Off by default: that Prometheus holds every app's series and has no authentication, so on a cluster with more than one tenant an app owner can read another app's metrics from Grafana's Explore. Turn it on only where every app on the cluster is trusted, e.g. a single-tenant self-hosted install. App metrics remain available per-app through the deployment's own status API either way."
+                        },
+                        "observability_namespace": {
+                            "type": "string",
+                            "default": "jac-observability",
+                            "description": "Namespace holding the cluster's shared observability collectors (Prometheus, kube-state-metrics, node-exporter, Alloy). One tier serves every app on the cluster; all apps on a cluster must agree on this value."
+                        },
                         "kube_context": {
                             "type": "string",
                             "default": "",
@@ -1057,7 +1067,7 @@ class JacScalePluginConfig {
                 "monitoring": {
                     "type": "dict",
                     "default": {},
-                    "description": "Monitoring configuration for the HTTP /metrics endpoint and Kubernetes Prometheus + Grafana stack",
+                    "description": "Monitoring configuration for the HTTP /metrics endpoint and Kubernetes Prometheus + Grafana stack. On Kubernetes one Prometheus serves every app on the cluster, so it holds every tenant's series and has no authentication in front of it. Per-app Grafana is therefore not given a datasource on it unless [scale.kubernetes] app_grafana_metrics is set, which should only be done where every app on the cluster is trusted.",
                     "nested": {
                         "enabled": {
                             "type": "bool",
