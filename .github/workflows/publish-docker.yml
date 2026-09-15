@@ -18,6 +18,9 @@ permissions:
 
 jobs:
   image:
+    permissions:
+      # Draft release downloads require push access, even for reads.
+      contents: write
     uses: ./.github/workflows/docker-image.yml
     with:
       tag: ${{ inputs.tag }}

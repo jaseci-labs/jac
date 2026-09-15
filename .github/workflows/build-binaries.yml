@@ -863,7 +863,8 @@ jobs:
     needs: build
     if: (github.event_name == 'release' || inputs.tag != '') && inputs.only == ''
     permissions:
-      contents: read
+      # Allow the called image job to download assets from the draft release.
+      contents: write
     uses: ./.github/workflows/docker-image.yml
     with:
       tag: ${{ inputs.tag || github.event.release.tag_name }}
