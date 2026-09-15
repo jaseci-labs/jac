@@ -1,5 +1,7 @@
-import from typing { cast }
 import from jaclang.compiler.frontend.unitree {
+    Module,
+    TreeWalker,
+    UniNode,
     Ability,
     Archetype,
     AssertStmt,
@@ -47,14 +49,24 @@ import from jaclang.compiler.frontend.unitree {
     TypeAlias,
     TypedCtxBlock,
     UniCFGNode,
-    UniNode,
     WhileStmt,
     WithStmt
 }
-import from jaclang.compiler.passes.uni_pass { UniPass }
+import from jaclang.compiler.passes.context { CompileContext }
+import from typing { cast }
 
-walker CFGBuildPass(UniPass) {
-    def before_pass -> None;
+walker CFGBuildPass(TreeWalker) {
+    can enter_walk with UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext,
+        module: Module;
+
     def link_bbs(source: UniCFGNode, target: UniCFGNode) -> None;
     def _link_sequential(body: Sequence[CodeBlockStmt]) -> None;
     def _exit_wired(nd: UniCFGNode) -> bool;
@@ -136,11 +148,21 @@ walker CFGBuildPass(UniPass) {
     can exit_test with Test exit;
 }
 
-walker CoalesceBBPass(UniPass) {
-    has basic_blocks: dict[int, dict[str, list[UniCFGNode]]] = {},
+walker CoalesceBBPass(TreeWalker) {
+    can enter_walk with UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext,
+        module: Module,
+        basic_blocks: dict[int, dict[str, list[UniCFGNode]]] = {},
         bb_counter: int = 0;
 
-    def before_pass -> None;
+    can prepare with entry;
     def get_bb(nd: UniCFGNode) -> list[UniCFGNode];
     can coalesce_collect with UniNode entry;
     def printgraph_cfg -> str;

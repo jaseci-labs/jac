@@ -1,3 +1,4 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -13,13 +14,12 @@ import from jaclang.compiler.frontend.unitree {
     Test,
     UniNode
 }
-import from jaclang.compiler.passes.transform { Transform }
 
-walker RegionInferPass(Transform) {
-    has ir_in: Module,
+walker RegionInferPass {
+    has ctx: CompileContext,
+        module: Module,
         _use_index: (dict[int, list[NameAtom]] | None) = None;
 
-    def transform(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _run_impl(ir_in: Module) -> Module;
     def _sym_of(nm: NameAtom) -> (Symbol | None);

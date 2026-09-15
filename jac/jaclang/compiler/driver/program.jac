@@ -5,7 +5,7 @@ import from threading { Event }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.passes.transform { Alert }
+import from jaclang.compiler.passes.context { Alert }
 import from jaclang.compiler.driver.progstate {
     AnalysisCaches,
     BuildScratch,
@@ -18,7 +18,7 @@ import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
 import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.runtime.semantic { Info }
-import type from jaclang.compiler.passes.transform { Transform }
+
 import type from jaclang.compiler.driver.compilation_context { SourceStore }
 
 class JacProgram {
@@ -105,7 +105,7 @@ class JacProgram {
     def run_schedule(
         self: JacProgram,
         mod: uni.Module,
-        passes: list[type[Transform]],
+        passes: list[type],
         cancel_token: (Event | None) = None
     ) -> None;
 

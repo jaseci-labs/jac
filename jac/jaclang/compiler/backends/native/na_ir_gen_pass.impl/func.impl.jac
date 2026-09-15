@@ -1,7 +1,6 @@
 import from jaclang.compiler.backends.native.abi { classify_foreign_fn }
 import from jaclang.compiler.frontend.constant { OwnershipKind }
 
-
 impl NaIRGenPass._forward_declare_functions(module: uni.Module) -> None {
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
         self._maybe_declare_ability(stmt);
@@ -58,7 +57,7 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     }
     sig = nd.signature;
 
-    _sig_mark = len(self.errors_had);
+    _sig_mark = len(self.ctx.errors_had);
     _saved_sig_kind = self._sig_decl_kind;
     self._sig_decl_kind = "signature type";
 
@@ -147,11 +146,11 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     self._record_ret_facts(name, sig);
     self.has_native_code = True;
 
-    if len(self.errors_had) > _sig_mark {
+    if len(self.ctx.errors_had) > _sig_mark {
         self.generator_fns.pop(name, None);
         self.decorated_fns.pop(name, None);
 
-        _fd_imported = _fdm is not None and _fdm is not self.ir_in;
+        _fd_imported = _fdm is not None and _fdm is not self.module;
         if self._demote_method_if_unlowerable(
             name, func, _sig_mark, stub_body=not _fd_imported
         )
@@ -450,7 +449,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         return;
     }
 
-    _local_mark = len(self.errors_had);
+    _local_mark = len(self.ctx.errors_had);
     state = self._enter_function(func);
     try {
         self._attach_di_subprogram(
@@ -487,7 +486,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         }
 
         if not self.builder.block.is_terminated {
-            _fc_loc = f"{self.ir_in.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
+            _fc_loc = f"{self.module.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
 
             self._emit_scope_cleanup(skip_var=None, loc=_fc_loc);
             ret_type = func.return_value.type;
@@ -508,7 +507,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             sys.stderr.write(f"NA_DEBUG raise {name}\n");
             traceback.print_exc(file=sys.stderr);
         }
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="function (native emitter error in)",
@@ -531,9 +530,9 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     }
 
     _is_pub = nd.access and nd.access.tag.name == Tok.KW_PUB;
-    if _is_pub and self.ir_in?.gen and func.name.isidentifier() {
-        if func.name not in self.ir_in.gen._exported_symbols {
-            self.ir_in.gen._exported_symbols.append(func.name);
+    if _is_pub and self.module?.gen and func.name.isidentifier() {
+        if func.name not in self.module.gen._exported_symbols {
+            self.module.gen._exported_symbols.append(func.name);
         }
     }
 }
@@ -584,7 +583,7 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
 
         self.builder.position_at_end(success_bb);
         self.builder.call(self._exc_pop_fn, []);
-        _tc_loc = f"{self.ir_in.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
+        _tc_loc = f"{self.module.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
         self._emit_scope_cleanup(skip_var=None, loc=_tc_loc);
         self.builder.ret(ir.Constant(i8p, None));
 
@@ -610,7 +609,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     name = nd.name_ref.sym_name if nd.name_ref else "unnamed";
     sig = nd.signature;
     if sig is not None and not isinstance(sig, uni.FuncSignature) {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="function",
@@ -1005,7 +1004,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
 
     elem_type = self._generator_elem_type(nd);
     if elem_type is None {
-        self.emit(
+        self.ctx.emit(
             E5092,
             node_override=nd,
             kind="function",
@@ -1071,7 +1070,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
         }
 
         if not self.builder.block.is_terminated {
-            _gd_loc = f"{self.ir_in.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
+            _gd_loc = f"{self.module.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
             self._emit_scope_cleanup(skip_var=None, loc=_gd_loc);
             _ip_done = self.builder.bitcast(gc.frame_i8, i64p, name="gen.ip.done");
             self.builder.store(ir.Constant(i64, -1), _ip_done);
@@ -1248,7 +1247,7 @@ impl NaIRGenPass._emit_glob_init_func -> None {
     try {
         if self?._global_init_nodes and self._global_init_nodes {
             self._scan_closure_escapes(
-                self.ir_in, [t[1] for t in self._global_init_nodes]
+                self.module, [t[1] for t in self._global_init_nodes]
             );
         }
 
@@ -1337,9 +1336,9 @@ impl NaIRGenPass._apply_static_decorators -> None {
         for dec in reversed(dec_names) {
             d_fn = self.func_symtab.get(dec);
             if d_fn is None or len(d_fn.args) != 1 {
-                self.emit(
+                self.ctx.emit(
                     E5092,
-                    node_override=self.ir_in,
+                    node_override=self.module,
                     kind="decorator",
                     name=dec,
                     help_text="A native decorator must resolve to a module-level native function taking exactly one argument."
@@ -1457,7 +1456,7 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
             b_on.branch(_gc_cont);
             self._builder = ir.IRBuilder(_gc_cont);
         }
-        _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
+        _manifest = self.module.gen.interop_manifest if (self.module?.gen) else None;
         _all_na_sources = _manifest.native_transitive_sources if _manifest else [];
         _seen_init_mods: set = set();
         for _source_mod in _all_na_sources {
@@ -1566,7 +1565,7 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
             _last = nodes[-1];
             self._emit_scope_cleanup(
                 skip_var=None,
-                loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{_last.loc.last_line
+                loc=f"{os.path.basename(self.module.loc.mod_path)}:{_last.loc.last_line
                     if _last.loc
                     else 0}"
             );

@@ -693,8 +693,8 @@ impl EsastGenPass._emit_boundary_type_stubs(nd: uni.Module) -> list[es.Statement
 }
 
 impl EsastGenPass._boundary_type_name(info: BoundaryTypeInfo) -> str {
-    manifest = self.ir_in.gen.interop_manifest;
-    if info.type_scope == self.ir_in.loc.mod_path {
+    manifest = self.module.gen.interop_manifest;
+    if info.type_scope == self.module.loc.mod_path {
         return info.name;
     }
     matches = [

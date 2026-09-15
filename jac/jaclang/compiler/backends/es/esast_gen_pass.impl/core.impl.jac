@@ -1,3 +1,4 @@
+import from jaclang.runtime.osp_kernel { osp_skip_rest }
 impl EsastGenPass._ensure_backend -> FrameworkBackend {
     if self.backend is None {
         import from jaclang.compiler.backends.es.backends.registry {
@@ -11,7 +12,7 @@ impl EsastGenPass._ensure_backend -> FrameworkBackend {
             import from jaclang.compiler.backends.es.backends.react { ReactBackend }
             cfg = get_config();
             fw = cfg.client.framework if (cfg and cfg.client) else "unknown";
-            self.emit(E5081, framework=fw);
+            self.ctx.emit(E5081, framework=fw);
             self.backend = ReactBackend();
         }
     }
@@ -110,7 +111,7 @@ impl EsastGenPass._audit_free_identifiers(nd: uni.Module, program: es.Program) -
             continue;
         }
         reported.add(free.name);
-        self.emit(
+        self.ctx.emit(
             E5103,
             node_override=self._free_ident_site(names, free) or nd,
             name=free.name
@@ -137,7 +138,7 @@ impl EsastGenPass._audit_free_identifiers(nd: uni.Module, program: es.Program) -
             continue;
         }
         reported.add(free.name);
-        self.emit(E5101, node_override=origin, name=free.name);
+        self.ctx.emit(E5101, node_override=origin, name=free.name);
     }
 }
 
@@ -184,10 +185,10 @@ impl EsastGenPass._get_ast_or_default(
     ) {
         import from jaclang.compiler.frontend.diagnostics { E5097 }
         self._unlowered_reported.add(nd);
-        self.emit(E5097, node_override=nd, kind=nd.__class__.__name__);
+        self.ctx.emit(E5097, node_override=nd, kind=nd.__class__.__name__);
     }
     fallback = default_factory(nd);
-    jac_ref = nd if (nd is not None) else self.cur_node;
+    jac_ref = nd if (nd is not None) else self.ctx.current_node;
     return self.sync_loc(fallback, jac_node=jac_ref);
 }
 
@@ -222,7 +223,7 @@ impl EsastGenPass._collect_stmt_body(
             and not getattr(stmt, "is_comptime", False)
         ) {
             cls_name = stmt.__class__.__name__;
-            self.emit(
+            self.ctx.emit(
                 E5017,
                 node_override=stmt,
                 construct=ES_STMT_DISPLAY.get(cls_name, cls_name)
@@ -241,8 +242,10 @@ impl EsastGenPass._expr_from_node(
     if isinstance(generated, es.Expression) {
         return generated;
     }
-    self.emit(E5011, node_override=nd);
-    return self.sync_loc(es.Literal(value=`default), jac_node=(nd or self.cur_node));
+    self.ctx.emit(E5011, node_override=nd);
+    return self.sync_loc(
+        es.Literal(value=`default), jac_node=(nd or self.ctx.current_node)
+    );
 }
 
 impl EsastGenPass._prepend_hoisted(
@@ -346,7 +349,7 @@ impl EsastGenPass._pop_scope(nd: uni.UniScopeNode) -> None {
                     }
                 }
             }
-            self.emit(
+            self.ctx.emit(
                 E5085,
                 node_override=nd,
                 names=", ".join(names) or "<unknown>",
@@ -402,7 +405,7 @@ impl EsastGenPass._alt_branch_scope_to_finalize(
 
 impl EsastGenPass.sync_loc(es_node: _T, jac_node: (uni.UniNode | None) = None) -> _T {
     if not jac_node {
-        jac_node = self.cur_node;
+        jac_node = self.ctx.current_node;
     }
     es_node.loc = es.SourceLocation(
         start=es.Position(line=jac_node.loc.first_line, column=jac_node.loc.col_start),
@@ -416,8 +419,8 @@ impl EsastGenPass.exit_walk with uni.UniNode exit {
         osp_skip_rest();
         return;
     }
-    self.cur_node = here;
-    if self.is_canceled() {
+    self.ctx.current_node = here;
+    if self.ctx.is_canceled() {
         osp_skip_rest();
         return;
     }
@@ -456,11 +459,11 @@ impl EsastGenPass.finish_scope with uni.UniScopeNode exit {
 }
 
 impl EsastGenPass.enter_walk with uni.UniNode entry {
-    if self.is_canceled() or here.ct_pruned {
+    if self.ctx.is_canceled() or here.ct_pruned {
         osp_skip_rest();
         return;
     }
-    self.cur_node = here;
+    self.ctx.current_node = here;
     if (
         isinstance(here, uni.ElementStmt)
         and isinstance(here, uni.ContextAwareNode)
@@ -499,39 +502,42 @@ impl EsastGenPass.enter_walk with uni.UniNode entry {
     }
 }
 
-impl EsastGenPass.before_pass -> None {
-    for nd in self.ir_in.flatten() {
+impl EsastGenPass.prepare with entry {
+    if self.ctx.nested_depth {
+        return;
+    }
+    for nd in self.module.flatten() {
         nd.gen.es_ast = None;
     }
     import from jaclang.compiler.frontend.codeinfo { ClientManifest }
 
     import from jaclang.compiler.frontend.module_facts { client_capability_violations }
     import from jaclang.compiler.frontend.diagnostics { E5096 }
-    if not self.ir_in.client_viols_reported {
-        for (_vnode, _vkind) in client_capability_violations(self.ir_in) {
-            self.emit(E5096, node_override=_vnode, kind=_vkind);
+    if not self.module.client_viols_reported {
+        for (_vnode, _vkind) in client_capability_violations(self.module) {
+            self.ctx.emit(E5096, node_override=_vnode, kind=_vkind);
         }
-        self.ir_in.client_viols_reported = True;
+        self.module.client_viols_reported = True;
     }
     self.child_passes = self._init_child_passes(EsastGenPass);
     self.client_manifest = ClientManifest();
     self.component_export_names = set();
 
     self.client_manifest.endpoint_effects = dict(
-        self.ir_in.gen.interop_manifest.endpoint_effects
+        self.module.gen.interop_manifest.endpoint_effects
     );
 
     import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     self.shared_arch_names: set[str] = {
         a.name.value
         for a in ModuleFacts.shared_archetypes_for_context(
-            self.ir_in, CodeContext.CLIENT
+            self.module, CodeContext.CLIENT
         )
         if a.name is not None
     };
     self._jsx_processor = EsJsxProcessor(self);
 
     self.scoped_styles = load_style_annex(
-        self.ir_in.annexable_by or self.ir_in.loc.mod_path
+        self.module.annexable_by or self.module.loc.mod_path
     );
 }

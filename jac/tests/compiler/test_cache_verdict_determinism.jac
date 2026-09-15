@@ -22,7 +22,7 @@ import jaclang.compiler.frontend.unitree as uni;
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.passes { Transform }
+
 import from jaclang.compiler.driver.pipeline {
     _native_env_memo,
     native_pipeline_available
@@ -43,7 +43,6 @@ def collect(n: int) -> list[Branded] {
          TESTS_DIR, "compiler", "fixtures", "distinct", "_brand_determinism.jac"
      );
 
-
 """Check the branded snippet with the codespace forced, reporting E1053 texts."""
 def brand_errors(space: str) -> list[str] {
     prog = JacProgram();
@@ -60,7 +59,6 @@ def brand_errors(space: str) -> list[str] {
         if alrt.code is not None and alrt.code.code == "E1053"
     ];
 }
-
 
 """Check the branded snippet with the codespace inferred, as `jac build` does."""
 def inferred_brand_errors -> list[str] {
@@ -79,12 +77,10 @@ def inferred_brand_errors -> list[str] {
     ];
 }
 
-
 """Stand in for an inference schedule that cannot be built at this instant."""
-def unbuilt_sched -> list[type[Transform]] {
+def unbuilt_sched -> list[type] {
     return [];
 }
-
 
 """True when the vendored typeshed stubs the checker needs are on disk."""
 def typeshed_on_disk -> bool {
@@ -99,7 +95,6 @@ def typeshed_on_disk -> bool {
     );
 }
 
-
 test "a distinct brand is enforced in every codespace" {
     server_errs = brand_errors("server");
     native_errs = brand_errors("native");
@@ -110,7 +105,6 @@ test "a distinct brand is enforced in every codespace" {
         f"native={native_errs}"
     );
 }
-
 
 test "the native env verdict does not depend on transient schedule state" {
     saved_memo = dict(_native_env_memo);
@@ -136,7 +130,6 @@ test "the native env verdict does not depend on transient schedule state" {
         _native_env_memo.update(saved_memo);
     }
 }
-
 
 test "the same source checks the same whichever verdict the probe memoized" {
     saved_memo = dict(_native_env_memo);

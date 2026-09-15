@@ -41,20 +41,12 @@ impl SemDefMatchPass.resolve_sem_target(
 }
 
 impl SemDefMatchPass._run_impl(ir_in: Module) -> Module {
-    self.cur_node = ir_in;
+    self.ctx.current_node = ir_in;
 
     self.connect_sems(ir_in.sym_tab, ir_in.sym_tab);
     return ir_in;
 }
 
-impl SemDefMatchPass.transform(ir_in: Module) -> Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, Module);
-    return out;
-}
-
 impl SemDefMatchPass.run_walk with Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }

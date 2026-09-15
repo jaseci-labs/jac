@@ -1,8 +1,9 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import os;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { DiagnosticInfo }
-import from jaclang.compiler.passes.transform { Transform }
+
 import type from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.placement.placement_work { PlacementWork }
 import from jaclang.compiler.placement.placement {
@@ -419,7 +420,6 @@ def _closure_pullable(
     return True;
 }
 
-
 def _module_externally_pinned(mod_path: str) -> bool {
     import from jaclang.compiler.placement.placement_pins { config_module_pin }
     return config_module_pin(mod_path) != '';
@@ -706,7 +706,7 @@ def solve_module_placement(
 def _emit_solver_warning(
     prog: any, diag: DiagnosticInfo, nd: uni.UniNode, **kwargs: any
 ) {
-    import from jaclang.compiler.passes.transform { Alert }
+    import from jaclang.compiler.passes.context { Alert }
     for w in prog.warnings_had {
         if (
             w.code is diag
@@ -959,21 +959,15 @@ def demote_client_pulled_elements(
     return True;
 }
 
-walker PlacementApplyPass(Transform) {
-    has prog: JacProgram,
-        ir_in: uni.Module,
-        cancel_token: any = None;
+walker PlacementApplyPass {
+    has ctx: CompileContext,
+        prog: JacProgram,
+        module: uni.Module;
 
     static has HOST_PASS: bool = True;
 
-    def postinit -> None;
-    def transform(ir_in: uni.Module) -> uni.Module;
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
-}
-
-impl PlacementApplyPass.postinit -> None {
-    super.postinit();
 }
 
 impl PlacementApplyPass._run_impl(ir_in: uni.Module) -> uni.Module {
@@ -986,14 +980,6 @@ impl PlacementApplyPass._run_impl(ir_in: uni.Module) -> uni.Module {
     return ir_in;
 }
 
-impl PlacementApplyPass.transform(ir_in: uni.Module) -> uni.Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, uni.Module);
-    return out;
-}
-
 impl PlacementApplyPass.run_walk with uni.Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }

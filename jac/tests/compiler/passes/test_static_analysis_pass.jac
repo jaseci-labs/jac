@@ -240,7 +240,7 @@ test "bootstrap-compiled modules keep the ambient-import advisory" {
     }
     assert is_bootstrap_compiled_module("/repo/jac/jaclang/runtime/runtime.jac");
     assert is_bootstrap_compiled_module(
-        "/repo/jac/jaclang/compiler/passes/uni_pass.jac"
+        "/repo/jac/jaclang/compiler/passes/execution.jac"
     );
     assert is_bootstrap_compiled_module("C:\\repo\\jac\\jaclang\\runtime\\runtime.jac");
     assert not is_bootstrap_compiled_module(

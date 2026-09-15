@@ -52,7 +52,7 @@ test "solid returned cleanup runs on invalidation and disposal" {
     with TemporaryDirectory() as tmp {
         work = Path(tmp);
         (work / "component.js").write_text(
-            es_to_js(result.ir_out.gen.es_ast), encoding="utf-8"
+            es_to_js(result.module.gen.es_ast), encoding="utf-8"
         );
         (work / "harness.mjs").write_text(HARNESS, encoding="utf-8");
         bun_install(bun, work, "solid-effect-cleanup-test", {"solid-js": "^1.9.13"});

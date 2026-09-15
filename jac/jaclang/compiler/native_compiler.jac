@@ -4,7 +4,7 @@ import os;
 import sys;
 import from ctypes { c_char_p, c_double, c_int64, c_void_p, cast, py_object }
 import from jaclang.runtime.osp_tag { stable_osp_tag }
-import type from jaclang.compiler.passes.transform { Alert, PassResult }
+import type from jaclang.compiler.passes.context { Alert, PassResult }
 import type from jaclang.compiler.frontend.parser.tokens { CommentData, SrcDiag }
 
 glob CODE_INT: int = 1,
@@ -27,10 +27,9 @@ glob CLASS_MODULES: tuple[str, ...] = (
          "jaclang.compiler.frontend.roles",
          "jaclang.compiler.frontend.relations",
          "jaclang.compiler.frontend.diagnostics",
-         "jaclang.compiler.passes.transform",
+         "jaclang.compiler.passes.context",
 
      );
-
 
 def _enum_class(name: str, owner: type) -> type | None {
     import from enum { Enum }
@@ -69,7 +68,6 @@ def _enum_table(cls: any) -> (dict[int, object] | None) {
     }
     return {i: members[i] for i in range(len(members))};
 }
-
 
 class NativeCompiler {
     def init(self: NativeCompiler, lib_path: str) {
@@ -440,7 +438,9 @@ class NativeCompiler {
     }
 
     def take_pass_results(self: NativeCompiler) -> dict[str, PassResult] {
-        import from jaclang.compiler.passes.transform { PassResult }
+        import from jaclang.compiler.passes.context {
+            PassResult as CompletedPassResult
+        }
         import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
         import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
         out: dict[str, PassResult] = {};
@@ -464,7 +464,7 @@ class NativeCompiler {
                     alert.code = DIAGNOSTICS[alert.code.code];
                 }
             }
-            out[pass_cls.__name__] = PassResult(
+            out[pass_cls.__name__] = CompletedPassResult(
                 errors_had=errors,
                 warnings_had=warnings,
                 time_taken=self.lib.jc_pass_time(pass_id)
@@ -516,14 +516,12 @@ class NativeCompiler {
 glob _KERNEL_CELL: list[NativeCompiler] = [],
      _RESOLVED: list[None] = [];
 
-
 def _lib_name -> str {
     if sys.platform == "darwin" {
         return "libjac_compiler.dylib";
     }
     return "libjac_compiler.so";
 }
-
 
 def _kit_site_present -> bool {
     shim = "libjacllvm.dylib" if sys.platform == "darwin" else "libjacllvm.so";
@@ -543,7 +541,6 @@ def _kit_site_present -> bool {
     }
     return False;
 }
-
 
 def _find_lib -> (str | None) {
     if os.environ.get("JAC_STUBCAT_BUILDING") {
@@ -590,7 +587,6 @@ def _find_lib -> (str | None) {
     }
     return None;
 }
-
 
 def ensure_loaded -> (NativeCompiler | None) {
     if _KERNEL_CELL {

@@ -1,9 +1,11 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.codeinfo { NodeComments }
-import from jaclang.compiler.passes { Transform }
 
-walker CommentAttachPass(Transform) {
-    def transform(ir_in: uni.Module) -> uni.Module;
+walker CommentAttachPass {
+    has ctx: CompileContext,
+        module: uni.Module;
+
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
     def _node_comments(nd: uni.UniNode) -> NodeComments;
