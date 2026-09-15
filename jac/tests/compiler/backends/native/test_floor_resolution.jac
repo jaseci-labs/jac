@@ -1,7 +1,7 @@
 """Unit gate for the floor locator's two shipping shapes (#6978 Phase 0.2).
 
 `nacompile` static-links a bundled C floor from a `.a` it resolves at compile
-time. `resolve_floor_dir` (in `compiler.backends.native.linker_common`) and
+time. `resolve_floor_dir` (in `compiler.backends.native.floor`) and
 `_resolve_ca_bundle` map the jaclang package root + a
 target triple to that archive dir (and the CA bundle) under either the dev
 `.python-build` tree or the installed `python/floor` payload layout (staged into the
@@ -67,6 +67,36 @@ test "JacPython resolves its development archives and CA bundle" {
         }
         assert resolve_floor_dir(base, "x86_64-unknown-linux-gnu") == libdir;
         assert _resolve_ca_bundle(base) == ca;
+    }
+}
+
+test "CPython resolves its release archives and CA bundle on macOS and Linux" {
+    for (osarch, triple) in [
+        ("macos-aarch64", "arm64-apple-darwin"),
+        ("linux-x86_64", "x86_64-unknown-linux-gnu"),
+        ("linux-aarch64", "aarch64-unknown-linux-gnu")
+    ] {
+        with tempfile.TemporaryDirectory() as base {
+            build = _mk(
+                os.path.join(
+                    base, ".python-build", "cpython", osarch, "python", "build"
+                )
+            );
+            libdir = _mk(os.path.join(build, "lib"));
+            ca = os.path.join(build, "cacert.pem");
+            with open(ca, "w") as f {
+                f.write("# test CA bundle\n");
+            }
+            assert resolve_floor_dir(base, triple) == libdir;
+            assert _resolve_ca_bundle(base) == ca;
+            # A second variant in a warm checkout must not hide the default build.
+            _mk(
+                os.path.join(
+                    base, ".python-build", "jacpython", osarch, "python", "build", "lib"
+                )
+            );
+            assert resolve_floor_dir(base, triple) == libdir;
+        }
     }
 }
 

@@ -457,13 +457,7 @@ def _resolve_ca_bundle(pkg_root: str) -> (str | None) {
     bundles = sorted(
         `glob.`glob(
             os.path.join(
-                pkg_root,
-                ".python-build",
-                "jacpython",
-                "*",
-                "python",
-                "build",
-                "cacert.pem"
+                pkg_root, ".python-build", "*", "*", "python", "build", "cacert.pem"
             )
         )
     );
