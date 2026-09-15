@@ -2197,7 +2197,10 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             _source_payload = self.builder.extract_value(
                 val, 1, name="opt.cast.payload"
             );
-            _converted_payload = self._coerce_type_inner(_source_payload, _opt_tgt);
+            if self._is_owned(val) {
+                self._mark_owned(_source_payload);
+            }
+            _converted_payload = self._coerce_type(_source_payload, _opt_tgt);
             _converted = self.builder.insert_value(
                 ir.Constant(target_type, None),
                 ir.Constant(ir.IntType(8), 1),
@@ -2223,7 +2226,9 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
                 ir.Constant(target_type, None), _source_block
             );
             _optional_result.add_incoming(_converted, _converted_block);
-            return _optional_result;
+            return self._mark_owned(_optional_result)
+                if self._is_owned(_converted_payload)
+                else _optional_result;
         }
         _tgt_is_ptr = isinstance(_opt_tgt, ir.PointerType);
         _tgt_is_jacval = bool(self?.jacval_type) and _opt_tgt == self.jacval_type;
@@ -2260,7 +2265,10 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
                 _jv_is_none, ir.Constant(target_type, None), _jv_ov, name="opt.jv.sel"
             );
         }
-        _pv = self._coerce_type_inner(val, _opt_tgt);
+        # Payload conversion may acquire ownership even when the source is
+        # borrowed (for example, materializing a string descriptor). Carry
+        # that ownership through the wrapper so its consumer can release it.
+        _pv = self._coerce_type(val, _opt_tgt);
         _ov = self.builder.insert_value(
             ir.Constant(target_type, None),
             ir.Constant(ir.IntType(8), 1),
@@ -2272,7 +2280,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             _pv_nn = self.builder.icmp_unsigned(
                 "!=", _pv, ir.Constant(_opt_tgt, None), name="opt.wrap.nn"
             );
-            return self.builder.select(
+            _ov = self.builder.select(
                 _pv_nn, _ov, ir.Constant(target_type, None), name="opt.wrap.sel"
             );
         }
@@ -2280,14 +2288,14 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             _object_present = self.builder.icmp_unsigned(
                 "!=", val, ir.Constant(val.type, None), name="opt.object.has"
             );
-            return self.builder.select(
+            _ov = self.builder.select(
                 _object_present,
                 _ov,
                 ir.Constant(target_type, None),
                 name="opt.object.wrap"
             );
         }
-        return _ov;
+        return self._mark_owned(_ov) if self._is_owned(_pv) else _ov;
     }
     _opt_src = self._opt_payload_of(val.type);
     if _opt_src is not None {

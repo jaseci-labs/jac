@@ -602,3 +602,29 @@ def explicit_cast_binding -> int {
     item = LayoutRight("right");
     return read_cast_layout(item as LayoutLeft);
 }
+
+def optional_text_length(value: str | None = None) -> int {
+    if value is None {
+        return 0;
+    }
+    return len(value);
+}
+
+def borrowed_optional_string_argument -> int {
+    text = substring_text();
+    return optional_text_length(text) + int(text.startswith("pre"));
+}
+
+def owned_optional_string_argument -> int {
+    return optional_text_length(substring_text()[0:3]);
+}
+
+def borrowed_optional_substring_argument -> int {
+    text = substring_text();
+    part = text[0:3];
+    return optional_text_length(part) + int(part == "pre");
+}
+
+def absent_optional_string_argument -> int {
+    return optional_text_length() + optional_text_length(None);
+}

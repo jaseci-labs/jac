@@ -107,7 +107,11 @@ def check_containers(profile: str) {
         ("returned_aliased_local_tuple", 15, 1),
         ("returned_boxed_local_tuple", 3, 1),
         ("narrowed_union_binding", 1, 0),
-        ("explicit_cast_binding", 5, 0)
+        ("explicit_cast_binding", 5, 0),
+        ("borrowed_optional_string_argument", 8, 0),
+        ("owned_optional_string_argument", 3, 0),
+        ("borrowed_optional_substring_argument", 4, 0),
+        ("absent_optional_string_argument", 0, 0)
     ] {
         address = engine.get_function_address(name);
         assert address != 0;
