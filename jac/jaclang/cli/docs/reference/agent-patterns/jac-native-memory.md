@@ -194,3 +194,13 @@ owns the active-frame cleanup obligation, not a generator's embedded allocation.
 Close dependent executable references before consuming a thread frame. Consult
 the migration status before assuming general foreign storage or reentry stability
 is implemented; the current opcode evaluator remains C.
+
+For staged foreign transfers, describe the release obligation separately from
+the caller's storage. `evaluator_binding.PyBindingRef` tracks the unconsumed
+argument suffix and preserves stackref bits when moving values into locals.
+`evaluator_calls.PyCallArgsRef` frees its temporary array only after frame
+binding consumes the entries. A returned frame must retain dependencies on
+borrowed caller arguments; freeing an array alone does not make borrowed
+references heap-safe. Conditional C transfer slots must state when ownership
+moves and what happens before that point; do not silently turn a conditional
+steal into an unconditional `own` parameter.

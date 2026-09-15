@@ -159,6 +159,8 @@ cpython() {
         cp "$recipe/evaluator_frames.h" Python/evaluator_frames.h
         cp "$recipe/evaluator_objects.c" Python/jac_evaluator_objects.c
         cp "$recipe/evaluator_objects.h" Python/evaluator_objects.h
+        cp "$recipe/evaluator_binding.c" Python/jac_evaluator_binding.c
+        cp "$recipe/evaluator_binding.h" Python/evaluator_binding.h
         cp "$work/native/jacpython.o" Python/jacpython.o
         cp "$work/native/evaluator_support.o" Python/jac_evaluator_support.o
         cp "$work/native/evaluator_frames.o" Python/jac_evaluator_frame_clear.o
@@ -167,6 +169,8 @@ cpython() {
         cp "$work/native/evaluator_imports.o" Python/jac_evaluator_imports.o
         cp "$work/native/evaluator_exceptions.o" Python/jac_evaluator_exceptions.o
         cp "$work/native/evaluator_arguments.o" Python/jac_evaluator_arguments.o
+        cp "$work/native/evaluator_binding.o" Python/jac_evaluator_bind_locals.o
+        cp "$work/native/evaluator_calls.o" Python/jac_evaluator_calls.o
     fi
     # The shared interpreter must survive relocation into the Jac payload.
     case "$platform" in
@@ -325,6 +329,8 @@ if [ -n "$host" ]; then
     cp "$work/native/evaluator_imports.sha256" "$work/python/build/jacpython-evaluator-imports-sha256"
     cp "$work/native/evaluator_exceptions.sha256" "$work/python/build/jacpython-evaluator-exceptions-sha256"
     cp "$work/native/evaluator_arguments.sha256" "$work/python/build/jacpython-evaluator-arguments-sha256"
+    cp "$work/native/evaluator_binding.sha256" "$work/python/build/jacpython-evaluator-binding-sha256"
+    cp "$work/native/evaluator_calls.sha256" "$work/python/build/jacpython-evaluator-calls-sha256"
     cp "$work/native/evaluator-provenance.json" "$work/python/build/jacpython-evaluator-provenance.json"
     rm -rf "$work/native"
 else

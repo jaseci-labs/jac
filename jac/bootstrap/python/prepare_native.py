@@ -157,6 +157,12 @@ emit_evaluator_unit("evaluator_exceptions", "evaluator_exceptions", [
 emit_evaluator_unit("evaluator_arguments", "evaluator_arguments", [
     "jacpy_missing_arguments", "jacpy_too_many_positional", "jacpy_positional_only_as_keyword",
 ])
+emit_evaluator_unit("evaluator_binding", "evaluator_binding", [
+    "jacpy_bind_locals", "jacpy_binding_close_impl", "jacpy_frame_push_impl",
+])
+emit_evaluator_unit("evaluator_calls", "evaluator_calls", [
+    "jacpy_eval_vector_impl", "jacpy_callargs_close_impl", "jacpy_frame_push_ex_impl",
+])
 provenance_inputs = [
     "jaclang/runtime/python/references.jac",
     "jaclang/runtime/python/evaluator_lookup.jac",
@@ -167,6 +173,8 @@ provenance_inputs = [
     "bootstrap/python/evaluator_frames.h",
     "bootstrap/python/evaluator_objects.c",
     "bootstrap/python/evaluator_objects.h",
+    "bootstrap/python/evaluator_binding.c",
+    "bootstrap/python/evaluator_binding.h",
 ]
 (output / "evaluator-provenance.json").write_text(json.dumps({
     "schema": 1,

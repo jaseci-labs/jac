@@ -72,3 +72,13 @@ jac guide reference/agent-patterns/jac-native-memory --sections
 The reference retains the full examples, error-code mappings, receiver rules, view constraints, container layouts, region transfers, cleanup, and concurrency restrictions. Retrieve the section matching the construct or diagnostic rather than loading all of it. `jac-concurrency` covers the choice between async work, expression tasks, and lent loops.
 
 Verify with `jac check`, build the actual target/profile, and test observable ownership transfer and cleanup where the change depends on them. A passing managed build does not establish native `nogc` behavior.
+
+For staged foreign transfers, describe the release obligation separately from
+the caller's storage. `evaluator_binding.PyBindingRef` tracks the unconsumed
+argument suffix and preserves stackref bits when moving values into locals.
+`evaluator_calls.PyCallArgsRef` frees its temporary array only after frame
+binding consumes the entries. A returned frame must retain dependencies on
+borrowed caller arguments; freeing an array alone does not make borrowed
+references heap-safe. Conditional C transfer slots must state when ownership
+moves and what happens before that point; do not silently turn a conditional
+steal into an unconditional `own` parameter.
