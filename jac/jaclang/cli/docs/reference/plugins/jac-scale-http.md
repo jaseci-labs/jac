@@ -1910,6 +1910,7 @@ Always call `sv_client.clear_test_clients()` between tests to avoid bleed-over f
 | `async call(app, fn, kwargs)` / `async spawn_walker(app, walker, kwargs, cls)` | What the generated stubs call. |
 | `spawn_deferred(app, walker, kwargs, idempotency_key = "") -> str` | Enqueue a deferred spawn; returns the outbox entry id. |
 | `get_consumer_providers(consumer_app: str) -> list[str]` | The provider apps a consumer declared (the app DAG's edges out of it). |
+| `hydrate_walker_envelope(data, app, walker, cls)` / `function_result(data, app, fn)` | Decode a provider's response envelope: the executed walker rebuilt as an instance of `cls` from `data.result` with `data.reports` attached, or a function's `result`. Both raise `BridgeError` on a non-ok envelope; a custom transport ends with one of them. |
 
 ## CLI Commands
 

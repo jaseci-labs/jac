@@ -26,7 +26,7 @@ def replay_response(cached: str) -> any {
 }
 
 
-obj BridgeError(Exception) {
+obj BridgeError(RuntimeError) {
     has app: str = "",
         name: str = "",
         detail: str = "",

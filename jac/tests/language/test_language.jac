@@ -1028,6 +1028,12 @@ test "root keyword trigger is rejected at compile time" {
     assert "root" in err_text , "the diagnostic must name the offending trigger";
 }
 
+test "report reaches the walk from node methods, nested defs, nested objs and impls" {
+    output = run_jac(os.path.join(FIXTURES, "report_in_node_ability.jac"));
+    assert "['helper', 'hi', 'inner', 'nested']" in output;
+    assert "['impl']" in output;
+}
+
 test "native property getter/setter/deleter with impl separation" {
     # `has <name>: <type> { getter; setter; deleter; }` declares a property
     # over explicitly-declared backing storage; no `field` keyword is used.
