@@ -1409,7 +1409,20 @@ impl TypeCheckPass.exit_has_var with HasVar exit {
                     self.evaluator.match_args_to_params(None, value_expr, right_type);
                     right_type = right_type.return_type or UnknownType();
                 } elif isinstance(right_type, ClassType) {
-                    right_type = self.evaluator._convert_to_instance(right_type);
+                    call = FuncCall(
+                        target=value_expr,
+                        params=None,
+                        genai_call=None,
+                        kid=[value_expr]
+                    );
+                    call.set_parent(here);
+                    try {
+                        right_type = self.evaluator._validate_call_type(
+                            call, right_type
+                        );
+                    } finally {
+                        del [edge call-->];
+                    }
                 }
             }
             verdict = self.evaluator.assign_expr(

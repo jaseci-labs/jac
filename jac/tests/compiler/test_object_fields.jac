@@ -70,6 +70,27 @@ test "factories requiring arguments are rejected" {
     assert errors , "A field factory must be callable without arguments";
 }
 
+test "class factories must accept an empty constructor call" {
+    for declaration in [
+        "obj Item { has required: int; }",
+        "class Item { def init(self: Item, required: int) {} }"
+    ] {
+        errors = check_fields(
+            "import from jaclang.runtime.object_model { ObjectField }\n"
+                + declaration
+                + "\n"
+                + "obj Example { has item: Item = ObjectField(default_factory=Item); }\n"
+        );
+        assert any("required" in error for error in errors) , str(errors);
+    }
+    errors = check_fields(
+        "import from jaclang.runtime.object_model { ObjectField }\n"
+            + "obj Item { has value: int = 4; }\n"
+            + "obj Example { has item: Item = ObjectField(default_factory=Item), values: list[int] = ObjectField(default_factory=`list); }\n"
+    );
+    assert not errors , str(errors);
+}
+
 test "a same-named ordinary function does not bypass assignment checking" {
     errors = check_fields(
         "def ObjectField -> str { return 'wrong'; }\n"
