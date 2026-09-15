@@ -6,7 +6,9 @@ import from jaclang.scale.runtime.routing {
     GATEWAY_BUILTIN_PREFIXES,
     GATEWAY_BARE_API_PATHS,
     GATEWAY_DISCOVERY_SEGMENTS,
-    GATEWAY_REPLICATED_SEGMENTS
+    GATEWAY_PAGE_SEGMENTS,
+    GATEWAY_REPLICATED_SEGMENTS,
+    is_gateway_owned_segment
 }
 
 
@@ -445,13 +447,25 @@ impl MicroserviceGateway.root_member -> ServiceEntry | None {
 }
 
 impl MicroserviceGateway.shell_answers(request: Request, path: str) -> bool {
-    if request.method != "GET" {
+    if request.method not in ("GET", "HEAD") {
         return False;
     }
     if not (Path(self.client_dist_dir) / "index.html").is_file() {
         return False;
     }
-    return not path.lstrip("/") or "text/html" in request.headers.get("accept", "");
+    rel: str = path.strip("/");
+    if not rel {
+        return True;
+    }
+    if Path(rel).suffix {
+        return False;
+    }
+    seg: str = rel.split("/")[0];
+    if is_gateway_owned_segment(seg) and seg not in GATEWAY_PAGE_SEGMENTS {
+        return False;
+    }
+    accept: str = str(request.headers.get("accept") or "");
+    return "text/html" in accept or "application/json" not in accept;
 }
 
 impl MicroserviceGateway.forward_to_root(
@@ -761,21 +775,6 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
     return None;
 }
 
-impl MicroserviceGateway.handle_spa_fallback(
-    request: Request, path: str
-) -> Response | None {
-    if request.method != "GET" {
-        return None;
-    }
-    if not path.lstrip("/") {
-        return self.serve_spa_fallback();
-    }
-    if "text/html" in request.headers.get("accept", "") {
-        return self.serve_spa_fallback();
-    }
-    return None;
-}
-
 impl MicroserviceGateway.setup -> ServingApp {
     import time;
     self.app = ServingApp(title="Jac Gateway");
@@ -878,19 +877,11 @@ impl MicroserviceGateway.setup -> ServingApp {
                     resp = gw.handle_docs();
                 }
             } elif decision.kind == ROUTE_CLIENT_PAGE {
-                page_resp: Response | None = None;
                 root_svc = gw.root_member();
-                if request.method == "GET"
-                    and (root_svc is None or not root_svc.owns_root()) {
-                    page_resp = gw.serve_spa_fallback();
-                    if page_resp is None {
-                        import from jaclang.scale.runtime.context.errors { not_found }
-                        page_resp = not_found(path);
-                    }
-                }
-                if page_resp is not None {
+                if (root_svc is None or not root_svc.owns_root())
+                    and gw.shell_answers(request, path) {
                     svc_label = "__static__";
-                    resp = page_resp;
+                    resp = gw.serve_spa_fallback();
                 }
             } elif decision.kind == ROUTE_ADMIN {
                 svc_label = "__admin__";
@@ -956,12 +947,9 @@ impl MicroserviceGateway.setup -> ServingApp {
                     resp = static_from_root;
                 }
             }
-            if resp is None {
-                spa_resp = gw.handle_spa_fallback(request, path);
-                if spa_resp is not None {
-                    svc_label = "__static__";
-                    resp = spa_resp;
-                }
+            if resp is None and gw.shell_answers(request, path) {
+                svc_label = "__static__";
+                resp = gw.serve_spa_fallback();
             }
             if resp is None {
                 import from jaclang.scale.runtime.context.errors { not_found }
