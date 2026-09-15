@@ -27,6 +27,30 @@ import os
 # participate in the producing compiler identity and the sealed release image.
 SOURCE_ONLY_PATHS: tuple[str, ...] = ()
 
+# One producer boundary for runtime JIR identities and tracked CI restore keys.
+COMPILER_DIGEST_ROOTS: tuple[str, ...] = (
+    "jac0.py", "bootstrap_manifest.py", "meta_importer.py", "jac0core",
+    "compiler", "runtime", "lib", "cli/cli_boot.jac", "project",
+    "dist/precompile_bytecode.jac", "dist/precompile_bootstrap.jac",
+    "dist/precompile_plan.jac",
+)
+COMPILER_DIGEST_SUFFIXES: tuple[str, ...] = (".jac", ".py")
+COMPILER_DIGEST_SKIP_DIRS: tuple[str, ...] = ("tests", "test", "__pycache__")
+
+
+def is_compiler_input(relative_path: str) -> bool:
+    """Whether a package-relative source participates in compiler identity."""
+    parts = relative_path.split("/")
+    return (
+        relative_path.endswith(COMPILER_DIGEST_SUFFIXES)
+        and ".test." not in parts[-1]
+        and not any(part.startswith(".") or part in COMPILER_DIGEST_SKIP_DIRS
+                    for part in parts[:-1])
+        and not any(relative_path.startswith(prefix) for prefix in SOURCE_ONLY_PATHS)
+        and any(relative_path == entry or relative_path.startswith(entry + "/")
+                for entry in COMPILER_DIGEST_ROOTS)
+    )
+
 # Everything the jac0 tier compiles. Directory entries cover subtrees.
 # compiler/passes/ and compiler/backends/ are deliberately listed file by
 # file (or implementation/parser subtree): their siblings (backends/es/,
@@ -88,6 +112,7 @@ SEED_PATHS: tuple[str, ...] = (
     "runtime/object_model.jac",
     "runtime/object_interop.jac",
     "runtime/region.jac",
+    "runtime/resource_usage.jac",
     "runtime/archetype.jac",
     "runtime/constructs.jac",
     "runtime/graph_query.jac",

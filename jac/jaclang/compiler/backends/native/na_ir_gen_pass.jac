@@ -96,11 +96,19 @@ obj NativeFinalizer {
 }
 
 obj NativeErrorHandler {
-    has dispatch: ir.Block;
+    has dispatch: ir.Block,
+        owned_temps: set[str] = set();
 }
 
 obj NativeGeneratorHandler(NativeErrorHandler) {
     has state: ir.Value;
+}
+
+obj NativeCleanupGuard {
+    has state: ir.Value,
+        depth: ir.Value,
+        dispatch: ir.Block,
+        retained: set[str];
 }
 
 obj NativeGeneratorCellInit {
@@ -125,6 +133,8 @@ obj NativeGeneratorState {
 
 obj NativeBindingState {
     has local_vars: dict[str, ir.Value],
+        retyped_vars: set[str],
+        owned_temp_slots: set[str],
         param_vars: set[str],
         nogc_no_free_vars: set[str],
         nogc_owned_str_vars: set[str],
@@ -166,6 +176,8 @@ walker NaIRGenPass(Transform) {
         _builder: (ir.IRBuilder | None) = None,
         func_symtab: dict[str, ir.Function] = {},
         local_vars: dict[str, ir.Value] = {},
+        retyped_vars: set[str] = set(),
+        owned_temp_slots: set[str] = set(),
         param_vars: set[str] = set(),
         _unlowered_locals: dict[str, set[str]] = {},
         flow_future_meta: dict = {},
@@ -199,7 +211,7 @@ walker NaIRGenPass(Transform) {
         struct_field_enum_type: dict[str, dict] = {},
         struct_field_elem_keys: dict[str, dict] = {},
         loop_stack: list[tuple] = [],
-        _loop_coll_seq: int = 0,
+        _owned_temp_seq: int = 0,
         _str_count: int = 0,
         struct_types: dict[str, ir.IdentifiedStructType] = {},
         struct_field_indices: dict[str, dict] = {},
@@ -531,7 +543,8 @@ walker NaIRGenPass(Transform) {
     def _emit_bytes_repeat(bv: ir.Value, count: ir.Value) -> ir.Value;
     def _enter_bindings(inherit: bool = False) -> NativeBindingState;
     def _leave_bindings(state: NativeBindingState, release: bool = False) -> None;
-    def _shadow_bindings(names: list[str]) -> None;
+    def _shadow_bindings(names: list[str], preserve: bool = False) -> None;
+    def _bind_local_slot(name: str, slot: ir.Value) -> None;
     def _enter_function(func: ir.Function) -> NativeFunctionState;
     def _bind_function_parameter(
         name: str, value: ir.Value, borrowed: bool = True, rebound: bool = False
@@ -1118,7 +1131,7 @@ walker NaIRGenPass(Transform) {
     def _codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None);
     def _codegen_compare_chain(
-        nd: uni.CompareExpr, left: ir.Value
+        nd: uni.CompareExpr, left: ir.Value, retained: set[str]
     ) -> (ir.Value | None);
 
     def _codegen_compare_link(
@@ -1126,8 +1139,7 @@ walker NaIRGenPass(Transform) {
         left: ir.Value,
         right: ir.Value,
         left_node: uni.UniNode,
-        right_node: uni.UniNode,
-        release_operands: bool = True
+        right_node: uni.UniNode
     ) -> (ir.Value | None);
 
     def _identity_over_optional(
@@ -1784,7 +1796,10 @@ walker NaIRGenPass(Transform) {
         left_orig: ir.Value, right_orig: ir.Value, op: str = ""
     ) -> None;
 
-    def _release_owned_args(call_args: list[ir.Value], op: str = "call_arg") -> None;
+    def _release_owned_args(
+        call_args: list[ir.Value], op: str = "call_arg", loc: str = ""
+    ) -> None;
+
     def _rc_call_with_ctx(
         fn: ir.Function, args: list, op: str, loc: str = "", name: str = ""
     ) -> ir.Value;
@@ -1794,8 +1809,16 @@ walker NaIRGenPass(Transform) {
     ) -> None;
 
     def _emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> None;
-    def _bind_loop_coll_slot(val: ir.Value) -> (str | None);
-    def _release_loop_coll_slot(var_name: str, op: str = "", loc: str = "") -> None;
+    def _bind_owned_temp(val: ir.Value, prefix: str = "temp") -> str;
+    def _borrow_owned_temp(val: ir.Value) -> ir.Value;
+    def _release_temps_since(retained: set[str]) -> None;
+    def _begin_cleanup_guard(retained: set[str]) -> NativeCleanupGuard | None;
+    def _end_cleanup_guard(guard: NativeCleanupGuard | None) -> None;
+    def _codegen_cleanup_operand(
+        nd: uni.UniNode, retained: set[str], required: bool = False
+    ) -> ir.Value | None;
+
+    def _release_owned_temp(var_name: str, op: str = "", loc: str = "") -> None;
     def _rc_strdup(ptr: ir.Value, name: str = "rc.str", raw: bool = False) -> ir.Value;
     def _emit_struct_release_fn(arch_name: str) -> None;
     def _emit_container_repr(
@@ -2029,8 +2052,10 @@ walker NaIRGenPass(Transform) {
     def _get_struct_size(struct_type: ir.LiteralStructType) -> int;
     def _sizeof_llvm(ty: ir.Type) -> ir.Value;
     def _box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value;
-    def _rc_slot_ref(val: ir.Value) -> (ir.Value | None);
-    def _tuple_managed_fields(struct_type: ir.LiteralStructType) -> list;
+    def _tuple_managed_fields(
+        struct_type: ir.LiteralStructType
+    ) -> list[tuple[int, bool]];
+
     def _coerce_tuple_to_struct(val: ir.Value, target_struct: ir.Type) -> ir.Value;
     def _jac_optional_type(payload: ir.Type) -> ir.Type;
     def _opt_payload_of(t: ir.Type) -> (ir.Type | None);

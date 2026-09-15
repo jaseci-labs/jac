@@ -8,19 +8,6 @@ glob ENV_FILE: str = "JAC_STUBCAT_FILE",
      ENV_OFF: str = "JAC_STUBCAT_OFF",
      ENV_LEN: str = "JAC_STUBCAT_LEN",
      ENV_BUILDING: str = "JAC_STUBCAT_BUILDING",
-     TYPE_SYSTEM_ROOTS: tuple[str, ...] = (
-         "compiler/types",
-         "compiler/passes/pyast_load_pass.jac",
-         "compiler/passes/impl/pyast_load_pass.impl.jac",
-         "compiler/passes/sym_tab_build_pass.jac",
-         "compiler/passes/impl/sym_tab_build_pass.impl.jac",
-         "compiler/frontend/unitree.jac",
-         "compiler/frontend/helpers.jac",
-         "compiler/symbol_utils.jac",
-         "vendor/typeshed/PIN"
-     ),
-     DIGEST_SUFFIXES: tuple[str, ...] = (".jac", ".pyi", ".py", "PIN"),
-     _DIGEST_CACHE: list[str] = [],
      _CATALOG_CACHE: list[StubCatalog] = [];
 
 def jaclang_pkg_dir -> str {
@@ -36,55 +23,26 @@ def jac_internal_stub_dir(pkg_dir: str) -> str {
     return os.path.join(pkg_dir, "compiler", "types");
 }
 
-def _digest_files(pkg_dir: str) -> list[str] {
-    rels: list[str] = [];
-    for root_entry in TYPE_SYSTEM_ROOTS {
-        target = os.path.join(pkg_dir, *root_entry.split("/"));
-        if os.path.isfile(target) {
-            rels.append(root_entry);
-            continue;
-        }
-        if not os.path.isdir(target) {
-            continue;
-        }
-        for (walk_dir, dirs, files) in os.walk(target) {
-            dirs[:] = sorted(
-                d
-                for d in dirs
-                if not d.startswith(".")
-                    and d not in ("__pycache__", "tests", "fixtures")
-            );
-            for name in sorted(files) {
-                if not name.endswith(DIGEST_SUFFIXES) or ".test." in name {
-                    continue;
-                }
-                rel = os.path.relpath(os.path.join(walk_dir, name), pkg_dir);
-                rels.append(rel.replace(os.sep, "/"));
-            }
-        }
+def type_system_digest(pkg_dir: str | None = None) -> str {
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.jir {
+        compiler_source_digest,
+        compute_content_sha256
     }
-    return sorted(rels);
-}
+    pkg = Path(pkg_dir or jaclang_pkg_dir());
+    digest = hashlib.sha256(compiler_source_digest(str(pkg)).encode());
 
-def type_system_digest(pkg_dir: (str | None) = None) -> str {
-    if _DIGEST_CACHE {
-        return _DIGEST_CACHE[0];
-    }
-    pkg = pkg_dir or jaclang_pkg_dir();
-    h = hashlib.sha256();
-    for rel in _digest_files(pkg) {
-        h.update(rel.encode());
-        try {
-            with open(os.path.join(pkg, *rel.split("/")), "rb") as f {
-                h.update(hashlib.sha256(f.read()).digest());
+    for input_dir in [pkg / "compiler/types", pkg / "vendor/typeshed"] {
+        for path in sorted(input_dir.rglob("*")) {
+            if not path.is_file()
+                or (path.suffix != ".pyi" and path.name not in ("PIN", "VERSIONS")) {
+                continue;
             }
-        } except OSError {
-            h.update(b"?");
+            digest.update(path.relative_to(pkg).as_posix().encode());
+            digest.update(compute_content_sha256(str(path)).encode());
         }
     }
-    digest = h.hexdigest();
-    _DIGEST_CACHE.append(digest);
-    return digest;
+    return digest.hexdigest();
 }
 
 def catalog_key(pkg_dir: (str | None) = None) -> str {
@@ -136,12 +94,17 @@ def _build_dev_catalog(path: str, pkg_dir: str) {
         "jac: building the stub catalog (one-time per type-system change)...\n"
     );
     sys.stderr.flush();
+    previous = os.environ.get(ENV_BUILDING);
     os.environ[ENV_BUILDING] = "1";
     try {
         import from jaclang.compiler.types.stubcat.build { build_catalog }
         build_catalog(path, pkg_dir=pkg_dir, quiet=True);
     } finally {
-        os.environ.pop(ENV_BUILDING, None);
+        if previous is None {
+            os.environ.pop(ENV_BUILDING, None);
+        } else {
+            os.environ[ENV_BUILDING] = previous;
+        }
     }
 }
 
@@ -152,7 +115,7 @@ def _current_for_source(cat: StubCatalog, pkg: str) -> bool {
     try {
         return cat.key() == catalog_key(pkg);
     } except Exception {
-        return True;
+        return False;
     }
 }
 
@@ -232,6 +195,5 @@ def ensure_catalog -> StubCatalog | None {
 def reset_catalog_cache {
     import from jaclang.jac0core.stubcat_hook { set_active }
     _CATALOG_CACHE.clear();
-    _DIGEST_CACHE.clear();
     set_active(None);
 }

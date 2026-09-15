@@ -133,7 +133,7 @@ test "a normal import inherits its app and an entry import changes context" {
     }
 }
 
-test "shared syntax produces distinct app facts in either request order" {
+test "owned syntax produces distinct app facts in either request order" {
     for names in [('web', 'api'), ('api', 'web')] {
         with TemporaryDirectory() as td {
             base = Path(td);
@@ -155,7 +155,7 @@ test "shared syntax produces distinct app facts in either request order" {
             assert modules[0] is not modules[1];
             assert modules[0].app == names[0];
             assert modules[1].app == names[1];
-            assert program.source_store.hits > 0;
+            assert modules[0].body[0] is not modules[1].body[0];
         }
     }
 }
@@ -245,6 +245,140 @@ test "application traversal checks imported bodies on cold and warm requests" {
                     and alert.code is not None
                     and alert.code.code == 'E1002' for alert in checked.errors_had
             ) , f'imported body escaped checking on request {iteration}';
+        }
+    }
+}
+
+test "application publication scales with completed modules and preserves warm cycles" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.ifacecache { IfaceRegistry }
+    import from jaclang.compiler.driver.pipeline { compile_application }
+    import from jaclang.compiler.frontend.unitree { Module }
+    with TemporaryDirectory() as directory {
+        base = Path(directory);
+        (base / 'jac.toml').write_text(
+            '[project]\nname="example"\n[placement]\ndefault="server"\n'
+        );
+        (base / 'api.jac').write_text(
+            'import from factory { create }\nobj Box { has value: int = 42; }\n'
+            'def build() -> Box { return create(); }\n'
+        );
+        (base / 'factory.jac').write_text(
+            'import from api { Box }\ndef create() -> Box { return Box(); }\n'
+        );
+        imports = ['import from api { build }'];
+        for index in range(6) {
+            (base / f'leaf{index}.jac').write_text(
+                f'def value{index}() -> int {{ return {index}; }}\n'
+            );
+            imports.append(f'import from leaf{index} {{ value{index} }}');
+        }
+        entry_path = base / 'main.jac';
+        entry_path.write_text(
+            '\n'.join(imports) + '\ndef answer() -> int { return build().value; }\n'
+        );
+        publications: list[str] = [];
+        original = getattr(IfaceRegistry, '_persist_in_context');
+        def record(
+            registry: IfaceRegistry,
+            path: str,
+            module: Module,
+            options: CompileOptions,
+            err_start: int,
+            warn_start: int
+        ) {
+            if path.startswith(directory) {
+                publications.append(path);
+            }
+            original(registry, path, module, options, err_start, warn_start);
+        }
+        options = CompileOptions(no_cgen=True, iface_ok=True, project_root=directory);
+        warnings: list[tuple[str, int, int, str]] = [];
+        for warm in (False, True) {
+            publications.clear();
+            program = JacProgram();
+            with patch.object(IfaceRegistry, '_persist_in_context', record) {
+                compile_application(program, str(entry_path), options);
+            }
+            assert not program.errors_had;
+            observed = sorted(
+                (
+                    alert.loc.mod_path,
+                    alert.loc.first_line,
+                    alert.loc.col_start,
+                    alert.msg
+                ) for context in program.context_programs()
+                for alert in context.warnings_had
+            );
+            if warm {
+                assert not publications;
+                assert not any(
+                    p.analysis.pass_runs for p in program.context_programs()
+                );
+                assert observed == warnings;
+            } else {
+                assert len(publications) <= 3 * 9 , 'the completed closure was republished for each root';
+                warnings = observed;
+            }
+            program.release_compile_closure();
+        }
+    }
+}
+
+test "cancelled application traversal resets publication scope before retrying" {
+    import from threading { Event }
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.pipeline { compile_application }
+    import from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
+    for before_parse in (False, True) {
+        with TemporaryDirectory() as directory {
+            path = str(Path(directory) / 'main.jac');
+            Path(path).write_text('def answer() -> int { return 42; }\n');
+            cancelled = Event();
+            options = CompileOptions(
+                no_cgen=True,
+                iface_ok=True,
+                project_root=directory,
+                cancel_token=cancelled
+            );
+            original = getattr(ModuleCompilation, 'analysis');
+            def interrupt(task: ModuleCompilation) {
+                original(task);
+                if task.path == path {
+                    cancelled.set();
+                }
+            }
+            if before_parse {
+                cancelled.set();
+            }
+            program = JacProgram();
+            raised = False;
+            with patch.object(ModuleCompilation, 'analysis', interrupt) {
+                try {
+                    module = compile_application(program, path, options);
+                    assert module.parse_failed;
+                } except RuntimeError as error {
+                    assert before_parse;
+                    assert str(error)
+                        == f'Application compilation cancelled before parsing {path}';
+                    raised = True;
+                }
+            }
+            assert raised == before_parse;
+            for context in program.context_programs() {
+                assert context.iface_registry()._module_jir(path) is None;
+            }
+            cancelled.clear();
+            compile_application(program, path, options);
+            assert not program.errors_had;
+            warm = JacProgram();
+            compile_application(warm, path, options);
+            assert not warm.errors_had;
+            assert not any(
+                context.analysis.pass_runs for context in warm.context_programs()
+            );
+            program.release_compile_closure();
+            warm.release_compile_closure();
         }
     }
 }

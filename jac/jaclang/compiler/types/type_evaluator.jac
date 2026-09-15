@@ -371,7 +371,6 @@ walker TypeEvaluator {
         _flow_pending_symbols: set[int] postinit,
         _flow_pending_keys: set[str] postinit,
         _module_type_cache: dict[str, ModuleType] = {},
-        _modules_in_compile: set[str] postinit,
         _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
         _sv_async_syms_cache: dict[int, set[int]] = {},
@@ -485,7 +484,7 @@ walker TypeEvaluator {
     def get_type_of_module(node_: ModulePath) -> TypeBase;
     def get_type_of_module_item(node_: ModuleItem) -> TypeBase;
     def _resolve_submodule_attr(
-        base_type: ModuleType, attr_name: str
+        base_type: ModuleType, attr_name: str, importer_path: str | None = None
     ) -> (ModuleType | None);
 
     def _resolve_star_import_symbol(

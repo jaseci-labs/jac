@@ -73,3 +73,31 @@ test "every item completes when a worker retires after each one" {
         assert after <= before + 4 , f"file descriptors leaked: {before} -> {after}";
     }
 }
+
+test "inline workers release ownership when a result callback fails" {
+    lifecycle: list[str] = [];
+    def started {
+        lifecycle.append("start");
+    }
+    def stopped {
+        lifecycle.append("stop");
+    }
+    def failed(idx: int, record: dict[str, any]) {
+        raise RuntimeError("callback failed");
+    }
+    pool = WorkPool(
+        items=["item"],
+        job=_job,
+        on_record=failed,
+        worker_init=started,
+        worker_exit=stopped
+    );
+    caught = False;
+    try {
+        pool.run_inline();
+    } except RuntimeError {
+        caught = True;
+    }
+    assert caught;
+    assert lifecycle == ["start", "stop"];
+}

@@ -71,3 +71,30 @@ test "the proof refuses a loop-carried source re-read via the back-edge" {
     marks = move_marks("rc_facts_cases.jac");
     assert not marks["b8"] , "a source live across the loop back-edge must not be move-lowered";
 }
+
+test "last-use release includes later reads through a shadowed parameter name" {
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=os.path.join(
+            TESTS_DIR,
+            "compiler",
+            "backends",
+            "native",
+            "fixtures",
+            "rc_container_temporaries.jac"
+        )
+    );
+    assert not prog.errors_had , [str(error) for error in prog.errors_had];
+    run_pass(RcFactsPass, ir, prog);
+    checked = False;
+    for ability in ir.get_all_sub_nodes(uni.Ability) {
+        if ability.name_ref is not None
+            and ability.name_ref.sym_name == "retyped_parameter" {
+            for loop in ability.get_all_sub_nodes(uni.InForStmt) {
+                assert "item" not in ir.rc_last_use.get(id(loop), []);
+                checked = True;
+            }
+        }
+    }
+    assert checked;
+}

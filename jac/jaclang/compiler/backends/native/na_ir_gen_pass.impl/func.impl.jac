@@ -717,16 +717,20 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         }
         for (i, arg) in enumerate(fn.args) {
             if i < len(param_names) {
-                self._bind_function_parameter(param_names[i], arg);
+                self._bind_function_parameter(
+                    param_names[i],
+                    arg,
+                    rebound=bool(sig_params[i].name?.sym?.param_rebound)
+                );
                 continue;
             }
             (cap_name, cap_mode, _cap_type) = captures[i - len(param_names)];
             if cap_mode == "ptr" {
-                self.local_vars[cap_name] = arg;
+                self._bind_local_slot(cap_name, arg);
             } else {
                 alloca = self._entry_alloca(arg.type, cap_name);
                 self.builder.store(arg, alloca);
-                self.local_vars[cap_name] = alloca;
+                self._bind_local_slot(cap_name, alloca);
             }
             self.param_vars.add(cap_name);
         }
@@ -1053,7 +1057,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
                 (_sn, _soff, _st) = gc.slots[-1];
                 param_slots.append((pname, _soff, ptype, i));
             }
-            self.local_vars[pname] = slot;
+            self._bind_local_slot(pname, slot);
             self.param_vars.add(pname);
         }
 

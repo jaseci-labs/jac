@@ -168,10 +168,14 @@ obj JacCompiler {
     ) -> None;
 
     def _get_precompiled_jir_bytecode(
-        full_target: str, allow_unsealed: bool = True
+        full_target: str, target_program: JacProgram, allow_unsealed: bool = True
     ) -> (tuple[bytes, bytes] | None);
 
     def _sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None);
+    def _precompiled_jir_data(
+        full_target: str, allow_unsealed: bool = True
+    ) -> (tuple[bytes, str] | None);
+
     def _build_interop_dict(result: uni.Module) -> dict;
     def _deserialize_interop_table(cached_interop: dict[str, any]) -> InteropManifest;
     def parse_str(

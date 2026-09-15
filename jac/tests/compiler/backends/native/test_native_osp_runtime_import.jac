@@ -33,3 +33,10 @@ test "native edge peers require a live edge incident to the origin" {
     assert probe();
     assert probe();
 }
+
+test "native graph retirement releases storage and preserves other regions" {
+    (engine, _) = compile_native("osp_store_retirement.jac");
+    probe = get_func(engine, "probe", ctypes.c_bool);
+    assert probe();
+    assert probe();
+}

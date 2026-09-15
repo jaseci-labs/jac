@@ -306,6 +306,11 @@ obj CtEvaluator {
         if owner_path and os.path.realpath(owner_path) == path {
             return;
         }
+        if owner_path {
+            self.evaluator.program.record_dependency(
+                os.path.realpath(owner_path), os.path.realpath(path)
+            );
+        }
         if path not in owner.ct_file_deps {
             owner.ct_file_deps.append(path);
         }
@@ -1844,6 +1849,12 @@ obj CtEvaluator {
         raise CtError(f"{callee!r} is not callable in comptime code");
     }
 
+    def _require_execution {
+        if not self.frames and not self.demand {
+            raise CtNotComptime();
+        }
+    }
+
     def _construct(t: CtType, args: list, kwargs: dict) -> any {
         if t.module == "builtins" {
             if t.name in CT_PY_TYPES {
@@ -1855,6 +1866,7 @@ obj CtEvaluator {
             }
             raise CtError(f"cannot construct builtin '{t.name}' at compile time");
         }
+        self._require_execution();
         ct = self._class_type_of(t);
         node_ = self._arch_node_of(ct);
         if isinstance(node_, Enum) {
@@ -1946,9 +1958,7 @@ obj CtEvaluator {
         ability: Ability, args: list, kwargs: dict, self_val: any = None
     ) -> any {
         self.burn(20);
-        if not self.frames and not self.demand {
-            raise CtNotComptime();
-        }
+        self._require_execution();
         name = ability.name_ref.sym_name if ability.name_ref else "unnamed";
         if ability.is_abstract {
             raise CtError(f"{name} is abstract");
@@ -2043,6 +2053,7 @@ obj CtEvaluator {
         base = os.path.dirname(mod.loc.mod_path) if mod is not None and mod.loc else "";
         path = rel if os.path.isabs(rel) else os.path.join(base, rel);
         path = os.path.normpath(path);
+        self._note_ct_path(path);
         try {
             with open(path, "rb") as fh {
                 data = fh.read();
@@ -2053,7 +2064,6 @@ obj CtEvaluator {
         if mod is not None and path not in mod.ct_file_deps {
             mod.ct_file_deps.append(path);
         }
-        self._note_ct_path(path);
         self.burn(len(data) // 64 + 1);
         if as_bytes {
             return data;

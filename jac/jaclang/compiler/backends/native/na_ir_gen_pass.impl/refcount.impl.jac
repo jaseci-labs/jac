@@ -687,11 +687,11 @@ impl NaIRGenPass._release_owned_operands(
 }
 
 impl NaIRGenPass._release_owned_args(
-    call_args: list[ir.Value], op: str = "call_arg"
+    call_args: list[ir.Value], op: str = "call_arg", loc: str = ""
 ) -> None {
     for _arg in call_args {
         if self._elem_kind(_arg.type) in ("rc_ptr", "str") and self._is_owned(_arg) {
-            self._emit_rc_release_simple(_arg, op=op, loc="");
+            self._emit_rc_release_simple(_arg, op=op, loc=loc);
         } elif (
             self?.jacval_type is not None
             and _arg.type == self.jacval_type
@@ -700,7 +700,7 @@ impl NaIRGenPass._release_owned_args(
             self._emit_elem_release(self.builder, _arg.type, _arg);
         } elif self._opt_payload_of(_arg.type) is not None and self._is_owned(_arg) {
             payload = self.builder.extract_value(_arg, 1, name="arg.optional.payload");
-            self._release_owned_args([self._mark_owned(payload)], op=op);
+            self._release_owned_args([self._mark_owned(payload)], op=op, loc=loc);
         } elif isinstance(_arg.type, ir.LiteralStructType)
             and self._gc_mode() != "none" {
             owned = _arg.na_tuple_owned;
@@ -710,7 +710,9 @@ impl NaIRGenPass._release_owned_args(
                         value = self.builder.extract_value(
                             _arg, index, name="arg.tuple.field"
                         );
-                        self._release_owned_args([self._mark_owned(value)], op=op);
+                        self._release_owned_args(
+                            [self._mark_owned(value)], op=op, loc=loc
+                        );
                     }
                 }
             }
@@ -1292,6 +1294,9 @@ impl NaIRGenPass._str_norm(val: ir.Value) -> ir.Value {
     if self._str_desc_ty is None or val.type != self._str_desc_ty {
         return val;
     }
+    if not self._nogc_headerless() {
+        return self._borrow_owned_temp(self._str_materialize(val));
+    }
     if self.str_unwrap_fn is None {
         self._emit_str_desc_helpers();
     }
@@ -1311,6 +1316,7 @@ impl NaIRGenPass._str_materialize(val: ir.Value) -> ir.Value {
     }
     result = self.builder.call(self.str_materialize_fn, [val], name="s.materialized");
     self._release_owned_args([val], op="str_materialize");
+    val.is_owned = False;
     return self._mark_owned(result);
 }
 
@@ -2289,6 +2295,10 @@ impl NaIRGenPass._emit_scope_cleanup(
     self._emit_region_leaves(len(self.region_open_stack));
     _region_handles: list = [];
     for (var_name, alloca) in reversed(list(self.local_vars.items())) {
+        if var_name in self.owned_temp_slots {
+            self._release_owned_temp(var_name, op="scope_exit", loc=loc);
+            continue;
+        }
         if var_name == "self" and not self._self_owned {
             continue;
         }
@@ -2303,6 +2313,14 @@ impl NaIRGenPass._emit_scope_cleanup(
             continue;
         }
 
+        if self.jacval_type is not None and alloca.pointee_type == self.jacval_type {
+            if var_name == skip_var {
+                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
+            } else {
+                self._release_owned_temp(var_name, op="scope_exit", loc=loc);
+            }
+            continue;
+        }
         if self._str_desc_ty is not None
             and isinstance(alloca.type, ir.PointerType)
             and alloca.pointee_type == self._str_desc_ty {
@@ -2373,6 +2391,10 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
     }
     _region_handles: list = [];
     for var_name in reversed(body_locals) {
+        if var_name in self.owned_temp_slots {
+            self._release_owned_temp(var_name, op="iter_end", loc=loc);
+            continue;
+        }
         if var_name == "self" or var_name in self.param_vars {
             continue;
         }
@@ -2384,6 +2406,10 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
         }
         alloca = self.local_vars.get(var_name);
         if alloca is None {
+            continue;
+        }
+        if self.jacval_type is not None and alloca.pointee_type == self.jacval_type {
+            self._release_owned_temp(var_name, op="iter_end", loc=loc);
             continue;
         }
         if self._str_desc_ty is not None
@@ -2435,29 +2461,48 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
     }
 }
 
-impl NaIRGenPass._bind_loop_coll_slot(val: ir.Value) -> (str | None) {
-    if not isinstance(val.type, ir.PointerType) {
-        return None;
-    }
-    _name = f"for.coll.{self._loop_coll_seq}";
-    self._loop_coll_seq += 1;
+impl NaIRGenPass._bind_owned_temp(val: ir.Value, prefix: str = "temp") -> str {
+    _name = f"{prefix}.{self._owned_temp_seq}";
+    self._owned_temp_seq += 1;
     _slot = self._entry_alloca(val.type, _name);
-    self.local_vars[_name] = _slot;
+    _slot.na_tuple_owned = val.na_tuple_owned;
+    self._bind_local_slot(_name, _slot);
+    self.owned_temp_slots.add(_name);
+    self._release_owned_temp(_name, op="temp_replace");
     self.builder.store(val, _slot);
     return _name;
 }
 
-impl NaIRGenPass._release_loop_coll_slot(
+impl NaIRGenPass._borrow_owned_temp(val: ir.Value) -> ir.Value {
+    if self._is_owned(val) or val.na_tuple_owned is not None {
+        self._bind_owned_temp(val);
+        val.is_owned = False;
+        val.na_tuple_owned = None;
+    }
+    return val;
+}
+
+impl NaIRGenPass._release_temps_since(retained: set[str]) -> None {
+    names = [
+        name
+        for name in self.local_vars
+        if name in self.owned_temp_slots and name not in retained
+    ];
+    self._emit_loop_iter_cleanup(names);
+}
+
+impl NaIRGenPass._release_owned_temp(
     var_name: str, op: str = "", loc: str = ""
 ) -> None {
     _slot = self.local_vars.get(var_name);
     if _slot is None {
         return;
     }
-    _val = self.builder.load(_slot, name=f"{var_name}.end");
+    _val = self.builder.load(_slot, name=f"cleanup.{var_name}");
     self._mark_owned(_val);
-    self._emit_rc_release_simple(_val, op=op, loc=loc);
+    _val.na_tuple_owned = _slot.na_tuple_owned;
     self.builder.store(ir.Constant(_slot.pointee_type, None), _slot);
+    self._release_owned_args([_val], op=op, loc=loc);
 }
 
 impl NaIRGenPass._rc_strdup(

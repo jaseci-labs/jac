@@ -24,18 +24,24 @@ test "unrelated broken source is not discovery input" {
     }
 }
 
-test "source revisions parse once and return isolated syntax" {
+test "discovered syntax transfers once and later contexts remain isolated" {
     store = SourceStore();
     program = JacProgram();
+    discovered = store.load(
+        'glob value = 1;\n', '/tmp/context-source.jac', program, []
+    );
     (first, failed) = store.parse(
         'glob value = 1;\n', '/tmp/context-source.jac', program, []
     );
     assert not failed;
+    assert first is discovered.syntax;
+    assert store.parses == 1 and store.hits == 1;
+    assert not store.units and not store.revisions;
     (second, failed) = store.parse(
-        'glob value = 1;\n', '/tmp/context-source.jac', program, []
+        'glob value = 1;\n', '/tmp/context-source.jac', JacProgram(), []
     );
-    assert not failed and store.parses == 1 and store.hits == 1;
+    assert not failed;
     assert first is not second and first.body[0] is not second.body[0];
     store.parse('glob value = 2;\n', '/tmp/context-source.jac', program, []);
-    assert store.parses == 2 and len(store.units) == 1;
+    assert store.parses == 3 and not store.units;
 }

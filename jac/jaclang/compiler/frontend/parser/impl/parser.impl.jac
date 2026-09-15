@@ -443,7 +443,7 @@ impl Parser.parse_module -> Module {
     }
     kid.extend(body);
     if len(kid) == 0 {
-        kid.append(EmptyToken());
+        kid.append(EmptyToken(orig_src=self.source));
     }
     mod_name = self.file_path;
     if mod_name {

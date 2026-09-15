@@ -21,6 +21,12 @@ The payload excludes these implementation directories from its ordinary
 Python/JIR precompile; their CPython license is retained.
 The native implementation currently uses Jac's managed memory profile.
 
+Each parser owns its token stream and memo chains. Memo results may contain
+tokens, so tokens must not own memo entries: that back-reference would retain
+parse results in the native runtime. Resetting for the diagnostic pass clears
+the parser's memo table while preserving token positions. The runtime smoke
+test checks that repeated compilation stays within a bounded memory footprint.
+
 The build-time host is ordinary CPython. `prepare_native.py` uses Jac's native
 backend to emit the replacement object, rejects interpreted demotions, and
 verifies LLVM IR before emission. Zig compiles the retained C sources and links

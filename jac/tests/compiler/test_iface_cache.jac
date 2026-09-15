@@ -29,11 +29,11 @@ import from jaclang.compiler.driver.jir {
     SECTIONS_MAGIC,
     compiler_source_digest,
     parse_header,
+    read_dep_hashes,
     read_section_bytes,
     read_sections,
     write_module_cache,
-    write_precompiled_jir,
-    _manifest_compiler_digest
+    write_precompiled_jir
 }
 import from jaclang.compiler.types.stubcat.modiface { read_iface_hash }
 
@@ -126,6 +126,61 @@ test "a warm no-edit check replays diagnostics and runs zero passes" {
         f"warm no-edit check ran passes: {sorted(warm_prog.analysis.pass_runs)}"
     );
     assert warm_diags == cold_diags , "warm diagnostics diverge from cold";
+}
+
+test "a partially cached import cycle retains exported declarations" {
+    with tempfile.TemporaryDirectory() as directory {
+        api = Path(directory) / "api.jac";
+        factory = Path(directory) / "factory.jac";
+        main = Path(directory) / "main.jac";
+        api.write_text(
+            "import from factory { create }\n"
+            "obj Box { has value: int = 42; }\n"
+            "def build() -> Box { return create(); }\n"
+        );
+        factory.write_text(
+            "import from api { Box }\n" "def create() -> Box { return Box(); }\n"
+        );
+        main.write_text(
+            "import from api { build }\nwith entry { print(build().value); }\n"
+        );
+        (_, cold_diags) = _check(str(main));
+        assert not cold_diags , cold_diags;
+        cache = _cache_path(str(factory), str(main));
+        original = read_section_bytes(cache.read_bytes(), SEC_IFACE);
+        assert original is not None;
+        # Checking a new consumer loads api's cached interface and discovers
+        # the changed factory while validating its dependencies. Factory's
+        # import back into api must still see Box before api is in the hub.
+        factory.write_text(factory.read_text() + "\n# body edit\n");
+        main.write_text(main.read_text() + "\n# new consumer\n");
+        (_, partial_diags) = _check(str(main));
+        assert partial_diags == cold_diags , partial_diags;
+        assert read_section_bytes(cache.read_bytes(), SEC_IFACE) == original;
+        (warm, warm_diags) = _check(str(main));
+        assert warm_diags == cold_diags , warm_diags;
+        assert not warm.analysis.pass_runs , warm.analysis.pass_runs;
+    }
+}
+
+test "explicit codespace checks do not publish unused portable interfaces" {
+    for codespace in ("server", "client", "native") {
+        for options in (
+            CompileOptions(no_cgen=True, force_codespace=codespace),
+            CompileOptions(no_cgen=True, default_codespace=codespace)
+        ) {
+            with tempfile.TemporaryDirectory() as directory {
+                source = Path(directory) / "main.jac";
+                source.write_text("def answer -> int { return 42; }\n");
+                program = JacProgram();
+                program.compile(str(source), options=options);
+                assert not program.errors_had , program.errors_had;
+                for cache in Path(directory).rglob("*.jir") {
+                    assert read_section_bytes(cache.read_bytes(), SEC_IFACE) is None;
+                }
+            }
+        }
+    }
 }
 
 test "dependency ingestion hydrates from the interface, not the source" {
@@ -296,24 +351,18 @@ test "verify mode accepts an honest cache and rejects a corrupted one" {
     }
 }
 
-test "the compiler digest manifest reproduces the full sweep exactly" {
-    pkg = tempfile.mkdtemp();
-    comp = Path(pkg) / "compiler";
-    comp.mkdir();
-    (comp / "a.jac").write_text("with entry { print(1); }\n");
-    (comp / "b.py").write_text("x = 1\n");
-    full = compiler_source_digest(pkg);
-    assert _manifest_compiler_digest(pkg) == full , "manifest digest diverged";
-    assert _manifest_compiler_digest(pkg) == full , "second (stat-only) run diverged";
-    import time;
-    (comp / "a.jac").write_text("with entry { print(2); }\n");
-    future = time.time() + 2.0;
-    os.utime(comp / "a.jac", (future, future));
-    changed = compiler_source_digest(pkg);
-    assert changed != full;
-    assert _manifest_compiler_digest(pkg) == changed , (
-        "manifest digest missed an edited file"
-    );
+test "compiler identity detects same-size edits with restored timestamps" {
+    with tempfile.TemporaryDirectory() as pkg {
+        source = Path(pkg) / "compiler/a.jac";
+        source.parent.mkdir();
+        source.write_text("with entry { print(1); }\n");
+        before = source.stat();
+        original = compiler_source_digest(pkg);
+        assert compiler_source_digest(pkg) == original;
+        source.write_text("with entry { print(2); }\n");
+        os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns));
+        assert compiler_source_digest(pkg) != original;
+    }
 }
 
 test "a typed third-party Python dependency is fingerprinted, never encoded as a target" {
@@ -445,12 +494,13 @@ test "a compile acting on an inferred native verdict persists no interface" {
     );
     # The rule itself, on a machine whose native toolchain may not let the
     # verdict pass: an inferred verdict skips the interface, a declared one
-    # reaches it through the analysis flavor; codegen never encodes.
+    # reaches it through the analysis flavor; persistence uses the prepared view.
     reg = gen.iface_registry();
     encodes = reg.prog.analysis.cache_events.get("iface_encode", 0);
     mod.decided_codespace = "native";
     mod.codespace_inferred = True;
     reg.persist_after_compile(dep, mod, CompileOptions(), 0, 0);
+    reg.publish_completed();
     assert reg.prog.analysis.cache_events.get("iface_encode", 0) == encodes , "an inferred verdict was encoded into an interface";
     assert read_iface_hash(read_section_bytes(_cache_path(dep).read_bytes(), SEC_IFACE))
         == before , "an inferred verdict overwrote the persisted interface";
@@ -465,7 +515,7 @@ test "a compile acting on an inferred native verdict persists no interface" {
         != before , "a declared native placement must reach the interface";
 }
 
-test "the interface-bytes memo outlives the compile closure" {
+test "the interface-bytes memo outlives the compile closure without republishing released analysis" {
     # Encoding an interface forces every exported symbol's type, which pulls
     # the module's dependencies in; re-persisting an unchanged module (the
     # client-boundary walk re-enters package modules dozens of times per
@@ -477,10 +527,17 @@ test "the interface-bytes memo outlives the compile closure" {
     reg = prog.iface_registry();
     events = prog.analysis.cache_events;
     assert events.get("iface_encode", 0) == 1 , f"the cold persist did not encode (events: {events})";
+    encoded = reg._iface_bytes[dep];
+    cache = _cache_path(dep);
+    before = cache.read_bytes();
     prog.release_compile_closure();
+    assert reg._iface_bytes[dep] is encoded;
     reg.persist_after_compile(dep, mod, _check_opts(), 0, 0);
     events = prog.analysis.cache_events;
-    assert events.get("iface_persist", 0) == 2 , f"expected a second persist of the unchanged module (events: {events})";
+    # Compact products survive, but a released tree has no live dependency proof
+    # and must not replace persisted diagnostics or dependency revisions.
+    assert events.get("iface_persist", 0) == 1;
+    assert cache.read_bytes() == before;
     assert events.get("iface_encode", 0) == 1 , f"the unchanged module was re-encoded after closure release (events: {events})";
 }
 
@@ -814,24 +871,38 @@ test "a cross-reference into a stub is answered by the catalog" {
     assert shared is not None , "NoneType did not resolve to a class";
 }
 
-test "a codegen compile records dependency rows but encodes no interface" {
+test "a codegen closure publishes complete dependency proofs before analysis" {
     (main, dep) = _project();
     prog = JacProgram();
-    prog.compile(main, options=CompileOptions(force_target_program=True));
+    module = prog.compile(main, options=CompileOptions(force_target_program=True));
+    assert not prog.errors_had;
     data = _cache_path(main).read_bytes();
-    assert read_section_bytes(data, SEC_DEPS) is not None , "no SEC_DEPS after codegen";
-    assert read_section_bytes(data, SEC_IFACE) is None , (
-        "a codegen compile encoded an interface; encoding belongs to the frontier"
+    dependencies = read_dep_hashes(data);
+    assert dependencies and all(digest for (_, digest) in dependencies) , (
+        "the completed codegen closure left incomplete dependency proofs"
     );
-    assert prog.analysis.cache_events.get("iface_encode", 0) == 0 , (
-        f"codegen compile encoded (events: {prog.analysis.cache_events})"
-    );
+    assert read_section_bytes(_cache_path(dep, main).read_bytes(), SEC_IFACE)
+        is not None , ("the completed dependency interface was not published");
+    if module.codespace_inferred {
+        assert read_section_bytes(data, SEC_IFACE) is None , (
+            "an inferred native view replaced the ordinary analysis interface"
+        );
+    } else {
+        assert read_section_bytes(data, SEC_IFACE) is not None , (
+            "a compatible completed interface was not published"
+        );
+    }
+    bytecode = read_section_bytes(data, SEC_BYTECODE);
+    assert bytecode is not None;
     _check(main);
     data = _cache_path(main).read_bytes();
     assert read_section_bytes(data, SEC_IFACE) is not None , (
-        "the frontier compile did not add the interface to the merged JIR"
+        "the analysis compile did not add the interface to the merged JIR"
     );
-    assert read_section_bytes(data, SEC_DEPS) is not None , (
-        "the frontier merge dropped the dependency rows"
+    assert read_dep_hashes(data) == dependencies , (
+        "the analysis merge changed the completed dependency proofs"
+    );
+    assert read_section_bytes(data, SEC_BYTECODE) == bytecode , (
+        "the analysis merge changed the valid executable product"
     );
 }

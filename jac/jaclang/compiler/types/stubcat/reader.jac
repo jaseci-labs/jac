@@ -64,10 +64,6 @@ import from jaclang.compiler.types.stubcat.format {
     SH_STDLIB,
     SH_TYPEDDICT,
     SH_XREF,
-    SYMF_NA_ESCAPES,
-    SYMF_NA_REGION_HANDLE,
-    SYMF_NA_STACK_OK,
-    SYMF_PARAM_REBOUND,
     TV_CLASS_PARAM,
     TV_CONTRAVARIANT,
     TV_COVARIANT,
@@ -298,6 +294,12 @@ obj StubCatalog {
         _mod_rel: dict[str, int] postinit,
         _mod_recs: list[tuple[str, str, int, int, str]] postinit,
         _base_dir: str postinit;
+
+    def for_session -> StubCatalog {
+        return StubCatalog(
+            buf=self.buf, pkg_dir=self.pkg_dir, keepalive=self.keepalive
+        );
+    }
 
     def postinit {
         hdr = unpack_header(self.buf);
@@ -699,10 +701,6 @@ obj StubCatalog {
         } elif rec.binding == 3 {
             sym._binding_kind = BindingKind.BOTH;
         }
-        sym.param_rebound = (rec.symbits & SYMF_PARAM_REBOUND) != 0;
-        sym.na_escapes = (rec.symbits & SYMF_NA_ESCAPES) != 0;
-        sym.na_region_handle = (rec.symbits & SYMF_NA_REGION_HANDLE) != 0;
-        sym.na_stack_ok = (rec.symbits & SYMF_NA_STACK_OK) != 0;
         self._sym_memo[sid] = sym;
         return sym;
     }

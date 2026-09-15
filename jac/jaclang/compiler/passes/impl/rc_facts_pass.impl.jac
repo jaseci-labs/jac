@@ -246,14 +246,13 @@ impl RcFactsPass._stamp_last_use(ir_in: Module) -> None {
 impl RcFactsPass._collect_last_use(
     owner: UniNode, body: Sequence[UniNode], out: dict[int, list[str]]
 ) -> None {
-    sym_last: dict[int, tuple[int, str]] = {};
+    name_last: dict[str, int] = {};
+    tracked: set[str] = set();
+    escaping: set[str] = set();
     for (idx, stmt) in enumerate(body) {
         for nm in stmt.get_all_sub_nodes(Name) {
             sym = nm.sym;
-            if sym is None
-                or sym.na_escapes
-                or (nm.sym_name == "self" and sym.ownership != OwnershipKind.OWN)
-                or not self._last_use_tracked(sym) {
+            if sym is None {
                 continue;
             }
             if not same_lexical_scope(self._enclosing_fn_scope(nm), owner) {
@@ -266,12 +265,21 @@ impl RcFactsPass._collect_last_use(
                 ) {
                 continue;
             }
-            sym_last[id(sym)] = (idx, nm.sym_name);
+            name = nm.sym_name;
+            name_last[name] = idx;
+            if sym.na_escapes {
+                escaping.add(name);
+            }
+            if (name != "self" or sym.ownership == OwnershipKind.OWN)
+                and self._last_use_tracked(sym) {
+                tracked.add(name);
+            }
         }
     }
-    for `entry in sym_last.values() {
-        _idx: int = `entry[0];
-        _name: str = `entry[1];
+    for (_name, _idx) in name_last.items() {
+        if _name not in tracked or _name in escaping {
+            continue;
+        }
         key = id(body[_idx]);
         if key not in out {
             out[key] = [];
@@ -336,21 +344,33 @@ impl RcFactsPass._stamp_param_rebound(ir_in: Module) -> None {
     for pv in ir_in.get_all_sub_nodes(ParamVar) {
         sym = pv.name.sym if pv.name else None;
         if sym is not None {
-            sym.param_rebound = self._param_plainly_rebound(sym);
+            sym.param_rebound = self._param_is_rebound(sym);
         }
     }
 }
 
-impl RcFactsPass._param_plainly_rebound(sym: Symbol) -> bool {
+impl RcFactsPass._param_is_rebound(sym: Symbol) -> bool {
     for d in (list(sym.defn) + list(sym.uses)) {
-        asg = d.find_parent_of_type(Assignment);
-        if asg is None or asg.aug_op is not None {
-            continue;
+        target: UniNode = d;
+        while isinstance(target.parent, (TupleVal, ListVal)) {
+            target = target.parent;
         }
-        targets = asg.target
-            if isinstance(asg.target, (list, tuple))
-            else [(asg.target)];
-        if d in targets {
+        parent = target.parent;
+        if isinstance(parent, Assignment)
+            and parent.aug_op is None
+            and target in parent.target {
+            return True;
+        }
+        if isinstance(parent, BinaryExpr)
+            and isinstance(parent.op, Token)
+            and parent.op.name == Tok.WALRUS_EQ
+            and parent.left is target {
+            return True;
+        }
+        if isinstance(parent, InForStmt) and parent.target is target {
+            return True;
+        }
+        if isinstance(parent, MatchAs) and parent.name is target {
             return True;
         }
     }

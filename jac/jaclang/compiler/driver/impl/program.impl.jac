@@ -13,7 +13,9 @@ impl JacProgram.init(
     self.mtir_map: dict[(str, Info)] = self.analysis.mtir_map;
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
-    self._iface: any = None;
+    self._iface = None;
+    self._catalog = None;
+    self.session = None;
     import from jaclang.compiler.driver.compilation_context { SourceStore }
     self.source_store = SourceStore();
     self.context_root = None;
@@ -21,7 +23,7 @@ impl JacProgram.init(
     self.contexts = {};
 }
 
-impl JacProgram.iface_registry(self: JacProgram) -> any {
+impl JacProgram.iface_registry(self: JacProgram) -> IfaceRegistry {
     reg = self._iface;
     if reg is None {
         import from jaclang.compiler.driver.ifacecache { IfaceRegistry }
@@ -29,6 +31,48 @@ impl JacProgram.iface_registry(self: JacProgram) -> any {
         self._iface = reg;
     }
     return reg;
+}
+
+impl JacProgram.context_programs(self: JacProgram) -> list[JacProgram] {
+    owner = self.context_root if self.context_root is not None else self;
+    return [owner]
+        + [
+            context
+            for context in owner.contexts.values()
+            if context is not owner
+        ];
+}
+
+impl JacProgram.refresh_compile_inputs(self: JacProgram) -> None {
+    if self.session is not None and self.session.closed {
+        raise RuntimeError("Compilation session is closed");
+    }
+    compiler = self._get_compiler();
+    if compiler._reentrant_depth
+        or self.scratch.compile_depth
+        or (self.session is None and compiler.selfhost.is_selfhost(self)) {
+        return;
+    }
+    programs = self.context_programs();
+    stale: set[str] = {
+        path for program in programs
+        for path in program.hub.stamps
+        if not program.hub.is_fresh(path)
+    };
+    affected: list[tuple[JacProgram, set[str]]] = [];
+    for program in programs {
+        paths = set(stale);
+        for path in stale {
+            paths.update(program.transitive_dependents(path));
+        }
+        affected.append((program, paths));
+    }
+    for (program, paths) in affected {
+        for path in paths {
+            program.invalidate_module(path);
+            program.drop_module_alerts(path);
+        }
+    }
 }
 
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
@@ -42,6 +86,7 @@ impl JacProgram.install_module(
     if displaced is None {
         return;
     }
+    self.analysis.drop_tasks(id(displaced));
     work = self.analysis.placement_state.get('work');
     if work is not None {
         work.forget(displaced);
@@ -56,10 +101,22 @@ impl JacProgram.is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool
     return self.hub.is_fresh(resolved_path);
 }
 
+impl JacProgram.is_compile_closure_fresh(self: JacProgram, resolved_path: str) -> bool {
+    paths = self.deps.transitive_dependencies(resolved_path) | {resolved_path};
+    return all(
+        self.hub.is_fresh(path)
+        for path in paths
+        if path in self.hub.stamps
+    );
+}
+
 impl JacProgram.record_dependency(
     self: JacProgram, importer_path: str, target_path: str
 ) -> None {
     self.deps.record(importer_path, target_path);
+    if target_path not in self.hub.stamps {
+        self.hub.stamp(target_path);
+    }
 }
 
 impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set[str] {
@@ -260,7 +317,14 @@ impl JacProgram._get_compiler(self: JacProgram) -> JacCompiler {
 }
 
 impl JacProgram.stub_catalog(self: JacProgram) -> StubCatalog | None {
-    return self._get_compiler().stub_catalog();
+    base = self._get_compiler().stub_catalog();
+    if base is None {
+        return None;
+    }
+    if self._catalog is None {
+        self._catalog = base.for_session();
+    }
+    return self._catalog;
 }
 
 impl JacProgram.get_type_evaluator(self: JacProgram) -> TypeEvaluator {
@@ -349,7 +413,7 @@ impl JacProgram.release_compile_closure(
     self: JacProgram, collect: bool = True, retain_stubs: bool = True
 ) -> None {
     import os;
-    if os.environ.get("JAC_NO_UNIT_EVICT") {
+    if self.session is None and os.environ.get("JAC_NO_UNIT_EVICT") {
         return;
     }
 
@@ -371,14 +435,14 @@ impl JacProgram.release_compile_closure(
     self.mod = self.hub.mod;
     self.deps.clear();
     self.type_evaluator = None;
+    if not retain_stubs {
+        self._catalog = None;
+    }
     self.diags.clear();
     self.scratch.clear();
     self.analysis.analyses_run.clear();
     self.analysis.placement_state.pop('work', None);
-    self.analysis.early_passes.clear();
-    self.analysis.product_tasks.clear();
-    self.analysis.completed_passes.clear();
-    self.analysis.task_owners.clear();
+    self.analysis.clear_tasks();
     if self._iface is not None {
         self._iface.on_closure_release();
     }
@@ -390,6 +454,9 @@ impl JacProgram.release_compile_closure(
 
 impl JacProgram._search_hubs(self: JacProgram) -> list[dict[(str, uni.Module)]] {
     hubs: list[dict[(str, uni.Module)]] = [self.mod.hub];
+    if self.session is not None {
+        return hubs;
+    }
     internal = self._get_compiler().selfhost.program;
     if internal is not self {
         hubs.append(internal.mod.hub);

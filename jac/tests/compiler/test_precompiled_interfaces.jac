@@ -58,6 +58,274 @@ test "precompiled modules carry their type interface on cold and cached builds" 
     }
 }
 
+test "runtime construction has identical dependency products with cached classes" {
+    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    import from jaclang.compiler.driver.jir { read_ct_deps }
+    import from jaclang.dist.precompile_bytecode {
+        precompile_unit_context,
+        precompile_worker_exit
+    }
+    for constructor in ["", "def init(v: int) { self.value = v; print(v); }"] {
+        with TemporaryDirectory() as directory {
+            package = _package(Path(directory));
+            (package / "dependency.jac").write_text(
+                "obj Box { has value: int; " + constructor + " }\n"
+            );
+            source = package / "api.jac";
+            source.write_text(
+                "import from .dependency { Box }\n"
+                    + "def run() -> int { return Box(42).value; }\n"
+            );
+            artifacts: list[bytes] = [];
+            try {
+                for _attempt in range(2) {
+                    precompile_worker_exit();
+                    data = precompile_unit(str(source), str(package), collect=False);
+                    assert data is not None;
+                    assert not read_ct_deps(data) , (
+                        "runtime construction recorded speculative compile-time body dependencies"
+                    );
+                    artifacts.append(data);
+                    with precompile_unit_context(
+                        str(source), str(package), collect=False
+                    ) as program {
+                        artifact_cache_path(str(source), program).unlink();
+                    }
+                }
+            } finally {
+                precompile_worker_exit();
+            }
+            assert artifacts[0] == artifacts[1] , (
+                "cached class interfaces changed runtime constructor metadata"
+            );
+        }
+    }
+}
+
+test "partial rebuilds preserve complete dependency and diagnostic products" {
+    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+    import from jaclang.dist.precompile_bytecode {
+        precompile_unit_context,
+        precompile_worker_exit
+    }
+    with TemporaryDirectory() as directory {
+        package = _package(Path(directory));
+        (package / "dependency.jac").write_text("def answer() -> int { return 42; }\n");
+        source = package / "api.jac";
+        source.write_text(
+            "import from .dependency { answer }\n"
+                + "def run() -> int { return answer(); }\n"
+        );
+        artifacts: list[bytes] = [];
+        try {
+            for attempt in range(2) {
+                precompile_worker_exit();
+                data = precompile_unit(str(source), str(package), collect=False);
+                assert data is not None;
+                artifacts.append(data);
+                if attempt == 0 {
+                    with precompile_unit_context(
+                        str(source), str(package), collect=False
+                    ) as program {
+                        artifact_cache_path(str(source), program).unlink();
+                    }
+                }
+            }
+        } finally {
+            precompile_worker_exit();
+        }
+        assert read_section_bytes(artifacts[0], SEC_DIAG) is not None;
+        assert artifacts[0] == artifacts[1] , (
+            "rebuilding a consumer with cached dependencies changed its products"
+        );
+    }
+}
+
+test "shared module types retain each root dependency and reproduce fresh products" {
+    import from jaclang.compiler.driver.compilation_context {
+        CompilationSession,
+        artifact_cache_path,
+        cache_scope
+    }
+    import from jaclang.compiler.driver.jir { read_dep_rows }
+    import from jaclang.dist.precompile_bytecode {
+        _precompile_unit,
+        precompile_context
+    }
+    for statement in [
+        "import from .provider { Input }\ndef answer(item: Input) -> int { return 42; }\n",
+        "import provider;\ndef answer(item: provider.Input) -> int { return 42; }\n"
+    ] {
+        with TemporaryDirectory() as directory {
+            package = _package(Path(directory));
+            provider = package / "provider.jac";
+            provider.write_text("obj Input { has value: int = 7; }\n");
+            products: dict[str, bytes] = {};
+            with CompilationSession() as session {
+                for name in ["first", "second"] {
+                    source = package / (name + ".jac");
+                    source.write_text(statement);
+                    program = precompile_context(
+                        str(source), str(package), session.program
+                    );
+                    with cache_scope(program.context_key, program.options) {
+                        product = _precompile_unit(str(source), str(package), program);
+                    }
+                    assert product is not None;
+                    assert str(provider)
+                        in {
+                            dep for (dep, _, _) in read_dep_rows(product, str(package))
+                        } , "reusing a module type lost its consumer dependency";
+                    assert str(source) in program.transitive_dependents(str(provider));
+                    products[str(source)] = product;
+                }
+                assert program.analysis.parse_runs.get(str(provider)) == 1;
+                for path in products {
+                    artifact_cache_path(path, program).unlink();
+                }
+            }
+            for (path, shared_product) in products.items() {
+                with CompilationSession() as fresh {
+                    program = precompile_context(path, str(package), fresh.program);
+                    with cache_scope(program.context_key, program.options) {
+                        assert _precompile_unit(path, str(package), program)
+                            == shared_product;
+                    }
+                }
+            }
+        }
+    }
+}
+
+test "dependency hashes come from the interface owning compilation context" {
+    import copy;
+    import from jaclang.compiler.frontend.codeinfo { module_dotted_name }
+    import from jaclang.compiler.driver.compilation_context {
+        CompilationSession,
+        cache_scope,
+        context_program,
+        program_for
+    }
+    import from jaclang.compiler.driver.jir { read_dep_rows }
+    import from jaclang.dist.precompile_bytecode {
+        _precompile_unit,
+        precompile_context
+    }
+    with TemporaryDirectory() as directory, CompilationSession() as session {
+        package = _package(Path(directory));
+        provider = package / "provider.jac";
+        provider.write_text("def value() -> int { return 7; }\n");
+        source = package / "api.jac";
+        source.write_text(
+            "import from .provider { value }\ndef answer() -> int { return value(); }\n"
+        );
+        program = precompile_context(str(source), str(package), session.program);
+        options = copy.copy(program.options);
+        options.native_require = [module_dotted_name(str(provider))];
+        program = context_program(program, options);
+        owner = program_for(str(provider), program);
+        assert owner is not program;
+        interface = owner.iface_registry().ensure(str(provider));
+        assert interface is not None;
+        with cache_scope(program.context_key, program.options) {
+            product = _precompile_unit(str(source), str(package), program);
+        }
+        assert product is not None;
+        assert any(
+            path == str(provider) and digest == interface.digest
+            for (path, digest, _) in read_dep_rows(product, str(package))
+        );
+    }
+}
+
+test "interface publication includes dependencies discovered while encoding exports" {
+    import from jaclang.dist.precompile_bytecode { precompile_worker_exit }
+    with TemporaryDirectory() as directory {
+        package = _package(Path(directory));
+        (package / "base.jac").write_text("def answer() -> int { return 42; }\n");
+        (package / "dependency.jac").write_text(
+            "import from .base { answer }\n"
+                + "def unused() -> int { return answer(); }\n"
+                + "def used() -> int { return 1; }\n"
+        );
+        source = package / "api.jac";
+        source.write_text(
+            "import from .dependency { used }\n"
+                + "def run() -> int { return used(); }\n"
+        );
+        try {
+            precompile_worker_exit();
+            cold = precompile_unit(str(source), str(package), collect=False);
+            assert cold is not None;
+            precompile_worker_exit();
+            measurements: list[dict[str, any]] = [];
+            warm = precompile_unit(
+                str(source), str(package), collect=False, measurements=measurements
+            );
+            assert warm == cold;
+            assert sum(sum(row.get("pass_runs", {}).values()) for row in measurements)
+                == 0;
+            assert sum(sum(row.get("parse_runs", {}).values()) for row in measurements)
+                == 0;
+        } finally {
+            precompile_worker_exit();
+        }
+    }
+}
+
+test "annex bytecode is deterministic and resolves filenames after installation" {
+    import marshal;
+    import from unittest.mock { patch }
+    import jaclang.lib.jaclib as jaclib;
+    import from jaclang.compiler.driver.jir {
+        SEC_BYTECODE,
+        PRECOMPILE_SENTINEL,
+        patch_co_filenames_bytes
+    }
+    with TemporaryDirectory() as directory {
+        artifacts: list[bytes] = [];
+        for stage in ("first", "second-longer-path") {
+            package = _package(Path(directory) / stage);
+            source = package / "api.jac";
+            source.write_text("def answer() -> int;\n");
+            annexes = package / "impl";
+            annexes.mkdir();
+            (annexes / "api.impl.jac").write_text("impl answer { return 42; }\n");
+            (package / "api.test.jac").write_text("test { assert answer() == 42; }\n");
+            data = precompile_unit(str(source), str(package), collect=False);
+            assert data is not None;
+            bytecode = read_section_bytes(data, SEC_BYTECODE);
+            assert bytecode is not None;
+            artifacts.append(bytecode);
+            installed = Path(directory) / (stage + "-installed") / "library";
+            installed.parent.mkdir();
+            shutil.move(str(package), str(installed));
+            code = marshal.loads(
+                patch_co_filenames_bytes(bytecode, PRECOMPILE_SENTINEL, str(installed))
+            );
+            namespace: dict[str, any] = {"__name__": "annex_relocation_fixture"};
+            tests: list[Callable] = [];
+            def capture(description: str = "") -> Callable {
+                def register(function: Callable) -> Callable {
+                    tests.append(function);
+                    return function;
+                }
+                return register;
+            }
+            with patch.object(jaclib, "jac_test", capture) {
+                exec(code, namespace);
+            }
+            assert namespace["answer"]() == 42;
+            assert namespace["answer"].__code__.co_filename
+                == str(installed / "impl" / "api.impl.jac");
+            assert len(tests) == 1;
+            assert tests[0].__code__.co_filename == str(installed / "api.test.jac");
+            tests[0]();
+        }
+        assert artifacts[0] == artifacts[1];
+    }
+}
+
 test "an installed precompiled interface resolves paths without rebuilding its source" {
     import from jaclang.jac0core { sealed }
     import from jaclang.compiler.driver.program { JacProgram }
@@ -189,10 +457,8 @@ test "freezing bootstrap bytecode initializes and preserves its interface" {
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
-from jaclang.dist.precompile_bytecode import seal_bootstrap, _unit_program
-from jaclang.compiler.driver.compiler import JacCompiler
-from jaclang.compiler.driver.program import JacProgram
-from jaclang.compiler.driver.selfhost import SelfHostCache
+from jaclang.dist.precompile_bytecode import seal_bootstrap
+from jaclang.compiler.driver.compilation_context import CompilationSession
 from jaclang.compiler.driver.jir import SEC_IFACE, read_section_bytes
 from jaclang.jac0core import sealed
 with TemporaryDirectory() as directory:
@@ -202,13 +468,10 @@ with TemporaryDirectory() as directory:
     (package / '__init__.jac').write_text('')
     source = driver / 'example.jac'
     source.write_text('def answer() -> int { return 42; }\\n')
-    program = JacProgram()
-    program._compiler = JacCompiler(_selfhost=SelfHostCache(
-        _program=program, _jaclang_root=str(package)))
-    _unit_program.append(program)
     out = package / '_precompiled' / sealed.python_tag()
-    with patch('jaclang.bootstrap_manifest.seed_abs_entries',
-               return_value=([], [str(source)])):
+    with CompilationSession() as session, \
+            patch('jaclang.dist.precompile_bytecode._unit_session', [session]), \
+            patch('jaclang.dist.precompile_bootstrap.bootstrap_sources', return_value=[source]):
         assert seal_bootstrap(package, out, False) == 0
     data = (out / 'compiler' / 'driver' / 'example.jir').read_bytes()
     assert read_section_bytes(data, SEC_IFACE) is not None, (
@@ -229,25 +492,19 @@ with TemporaryDirectory() as directory:
 test "selfhost sealing resolves conditional stub classes before application analysis" {
     import os;
     import from unittest.mock { patch }
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+    import from jaclang.compiler.driver.compilation_context { CompilationSession }
     import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
     import from jaclang.compiler.types.stubcat.writer { module_of }
     import jaclang.dist.precompile_bytecode as precompile;
     import jaclang.jac0core.stubcat_hook as hook;
     package = jaclang_pkg_dir();
-    compiler = JacCompiler();
-    internal = JacProgram();
-    internal._compiler = compiler;
-    compiler._selfhost = SelfHostCache(_program=internal);
     source = os.path.join(package, "compiler", "driver", "compile_options.jac");
     stub = os.path.join(package, "vendor", "typeshed", "stdlib", "types.pyi");
     # A fresh finalizer has no active catalog. Symbol-only selfhost work
     # must prepare its own stub authority before resolving interface xrefs.
-    with patch.object(precompile, "_unit_program", [internal]), patch.object(
-        hook, "active", return_value=None
-    ) {
+    with CompilationSession() as session, patch.object(
+        precompile, "_unit_session", [session]
+    ), patch.object(hook, "active", return_value=None) {
         with precompile.precompile_unit_context(
             source, package, collect=False
         ) as program {

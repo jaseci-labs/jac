@@ -76,7 +76,7 @@ impl NaIRGenPass._codegen_with_recursive(
                 );
             }
             self.builder.store(enter_result, alloca);
-            self.local_vars[alias_name] = alloca;
+            self._bind_local_slot(alias_name, alloca);
         }
     }
 

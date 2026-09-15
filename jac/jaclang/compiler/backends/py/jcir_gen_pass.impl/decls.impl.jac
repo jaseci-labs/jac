@@ -301,7 +301,7 @@ impl JcirGenPass.exit_ability with Ability exit {
         decorator_list.append(
             self.call_node(
                 self.jaclib_obj('impl_patch_filename'),
-                [self.const_of(here.body.loc.mod_path)],
+                [self._annex_filename(here.body.loc.mod_path)],
                 []
             )
         );

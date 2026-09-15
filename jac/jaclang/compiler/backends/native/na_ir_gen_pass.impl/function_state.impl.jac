@@ -1,6 +1,8 @@
 impl NaIRGenPass._enter_bindings(inherit: bool = False) -> NativeBindingState {
     state = NativeBindingState(
         local_vars=self.local_vars,
+        retyped_vars=self.retyped_vars,
+        owned_temp_slots=self.owned_temp_slots,
         param_vars=self.param_vars,
         nogc_no_free_vars=self.nogc_no_free_vars,
         nogc_owned_str_vars=self.nogc_owned_str_vars,
@@ -10,6 +12,8 @@ impl NaIRGenPass._enter_bindings(inherit: bool = False) -> NativeBindingState {
         closure_cell_handles=self.closure_cell_handles
     );
     self.local_vars = self.local_vars.copy() if inherit else {};
+    self.retyped_vars = self.retyped_vars.copy() if inherit else set();
+    self.owned_temp_slots = self.owned_temp_slots.copy() if inherit else set();
     self.param_vars = self.param_vars.copy() if inherit else set();
     self.nogc_no_free_vars = self.nogc_no_free_vars.copy() if inherit else set();
     self.nogc_owned_str_vars = self.nogc_owned_str_vars.copy() if inherit else set();
@@ -32,6 +36,8 @@ impl NaIRGenPass._leave_bindings(
         self._emit_loop_iter_cleanup(locals);
     }
     self.local_vars = state.local_vars;
+    self.retyped_vars = state.retyped_vars;
+    self.owned_temp_slots = state.owned_temp_slots;
     self.param_vars = state.param_vars;
     self.nogc_no_free_vars = state.nogc_no_free_vars;
     self.nogc_owned_str_vars = state.nogc_owned_str_vars;
@@ -41,16 +47,59 @@ impl NaIRGenPass._leave_bindings(
     self.closure_cell_handles = state.closure_cell_handles;
 }
 
-impl NaIRGenPass._shadow_bindings(names: list[str]) -> None {
+impl NaIRGenPass._shadow_bindings(names: list[str], preserve: bool = False) -> None {
     for name in names {
-        self.local_vars.pop(name, None);
-        self.param_vars.discard(name);
-        self.nogc_no_free_vars.discard(name);
-        self.nogc_owned_str_vars.discard(name);
-        self.region_handle_vars.discard(name);
-        self.var_list_elem_struct.pop(name, None);
-        self.closure_cell_vars.discard(name);
-        self.closure_cell_handles.pop(name, None);
+        previous: str | None = None;
+        if preserve and name in self.local_vars {
+            previous = f"binding.previous.{self._owned_temp_seq}";
+            self._owned_temp_seq += 1;
+        }
+        slot = self.local_vars.pop(name, None);
+        if previous is not None and slot is not None {
+            self.local_vars[previous] = slot;
+        }
+        for flags in [
+            self.retyped_vars,
+            self.owned_temp_slots,
+            self.param_vars,
+            self.nogc_no_free_vars,
+            self.nogc_owned_str_vars,
+            self.region_handle_vars,
+            self.closure_cell_vars
+        ] {
+            if name in flags {
+                flags.discard(name);
+                if previous is not None {
+                    flags.add(previous);
+                }
+            }
+        }
+        if name in self.var_list_elem_struct {
+            elem = self.var_list_elem_struct.pop(name);
+            if previous is not None {
+                self.var_list_elem_struct[previous] = elem;
+            }
+        }
+        cell = self.closure_cell_handles.pop(name, None);
+        if previous is not None and cell is not None {
+            self.closure_cell_handles[previous] = cell;
+        }
+    }
+}
+
+impl NaIRGenPass._bind_local_slot(name: str, slot: ir.Value) -> None {
+    previous = self.local_vars.get(name);
+    if previous is slot {
+        return;
+    }
+    retyped = name in self.retyped_vars
+        or (previous is not None and previous.pointee_type != slot.pointee_type);
+    if previous is not None {
+        self._shadow_bindings([name], preserve=True);
+    }
+    self.local_vars[name] = slot;
+    if retyped {
+        self.retyped_vars.add(name);
     }
 }
 
@@ -94,23 +143,19 @@ impl NaIRGenPass._bind_function_parameter(
     if name in self.closure_cell_vars {
         slot = self._emit_closure_cell(name, value.type);
         self.builder.store(value, slot);
-        self.local_vars[name] = slot;
-        if borrowed and self._elem_kind(value.type) in ("rc_ptr", "str") {
-            self._emit_rc_retain(value, op="param_cell", loc=name);
-        } elif borrowed and self._opt_ptr_payload_of(value.type) is not None {
-            payload = self.builder.extract_value(value, 1, name="param.cell.payload");
-            self._emit_rc_retain(payload, op="param_cell", loc=name);
+        self._bind_local_slot(name, slot);
+        if borrowed {
+            self._emit_take_ref(value, op="param_cell", loc=name);
         }
         return;
     }
     slot = self._entry_alloca(value.type, name);
     self.builder.store(value, slot);
-    self.local_vars[name] = slot;
-    if rebound and self._elem_kind(value.type) in ("rc_ptr", "str") {
-        self._emit_rc_retain(value, op="param_promote", loc=name);
-    } elif rebound and self._opt_ptr_payload_of(value.type) is not None {
-        payload = self.builder.extract_value(value, 1, name="param.promote.payload");
-        self._emit_rc_retain(payload, op="param_promote", loc=name);
+    self._bind_local_slot(name, slot);
+    if rebound {
+        if borrowed {
+            self._emit_take_ref(value, op="param_promote", loc=name);
+        }
     } elif borrowed {
         self.param_vars.add(name);
     }

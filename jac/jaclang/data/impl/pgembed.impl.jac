@@ -1,3 +1,4 @@
+import from jaclang.jac0core.cache_paths { FileLock }
 impl pinned_major -> int {
     `override = os.environ.get('JAC_PG_VERSION', '');
     if `override {
@@ -498,9 +499,8 @@ impl PgRuntime._download_zonky(major: int) -> (str | None) {
         return bin_dir;
     }
 
-    import from jaclang.toolchains.store { InstallLock }
     lock_path = Path(dist_cache_dir()) / f".{slug}-{version}.lock";
-    with InstallLock(lock_path) {
+    with FileLock(lock_path) {
         if os.path.isfile(os.path.join(bin_dir, 'postgres')) {
             return bin_dir;
         }

@@ -44,6 +44,28 @@ test "precompile retires when live memory still exceeds its budget" {
     }
 }
 
+test "memory pressure evicts retained syntax before replacing the worker" {
+    import from jaclang.compiler.driver.compilation_context { CompilationSession }
+    with CompilationSession() as session {
+        unit = session.program.source_store.load(
+            "def answer() -> int { return 42; }\n", "/pressure.jac", session.program, []
+        );
+        tree = weakref.ref(unit.syntax);
+        del unit;
+        with patch.object(packaging, "_unit_session", [session]), patch.dict(
+            os.environ,
+            {"JAC_PRECOMPILE_RECYCLE": "0", "JAC_PRECOMPILE_RECYCLE_MB": "2048"}
+        ), patch.object(pool, "worker_rss_mb", side_effect=[2300, 512]), patch.object(
+            pool, "maybe_malloc_trim"
+        ) {
+            assert not _precompile_retire(1, 2300);
+        }
+        assert session.evictions == 1;
+        assert not session.program.source_store.units;
+        assert tree() is None;
+    }
+}
+
 test "precompile respects explicit recycling and disabled memory limits" {
     with patch.object(gc, "collect") as collect {
         with patch.dict(
@@ -91,6 +113,41 @@ test "precompile sizes auto workers for its configured memory ceiling" {
             assert pool.default_jobs(worker_bytes=budget, avail_bytes=16 * 1024 ** 3)
                 <= 2;
         }
+    }
+}
+
+test "precompile releases startup trees from the execution program before forking" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
+    import from jaclang.runtime.runtime { JacRuntime }
+    with TemporaryDirectory() as directory {
+        package = Path(directory) / "library";
+        package.mkdir();
+        (package / "__init__.jac").write_text("");
+        program = JacProgram();
+        module = program.parse_str(
+            "def startup_value() -> int { return 42; }\n",
+            str(Path(directory) / "startup.jac")
+        );
+        tree = weakref.ref(module);
+        del module;
+        retained = CodeGenTarget();
+        program.hub.artifacts["startup-native"] = retained;
+        with patch.object(JacRuntime, "program", program), patch.object(
+            pool, "resolve_jobs", side_effect=InterruptedError
+        ) {
+            interrupted = False;
+            try {
+                run_precompile(directory, jobs_arg="auto");
+            } except InterruptedError {
+                interrupted = True;
+            }
+            assert interrupted;
+        }
+        gc.collect();
+        assert tree() is None , "workers would inherit the completed startup syntax";
+        assert not program.mod.hub;
+        assert program.hub.artifacts["startup-native"] is retained;
     }
 }
 

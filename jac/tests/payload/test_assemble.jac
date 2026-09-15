@@ -30,7 +30,12 @@ import from jaclang.dist.payload.assemble {
     tar_stage,
     tar_zst_dir
 }
-import from jaclang.dist.payload.fsutil { host_os_arch, copy_tree, skip_jaclang }
+import from jaclang.dist.payload.fsutil {
+    host_os_arch,
+    copy_tree,
+    skip_jaclang,
+    skip_stage_site
+}
 import from jaclang.dist.payload.pins { py_ver }
 
 def wf(stage: str, rel: str, data: bytes, mode: int = 0o644) {
@@ -73,6 +78,27 @@ test "payload excludes interpreted JacPython modules and keeps their license" {
     }
 }
 
+test "catalog producer metadata cannot change shipped payload bytes" {
+    with tempfile.TemporaryDirectory() as tmp {
+        source = os.path.join(tmp, "source");
+        wf(source, "jaclang/_precompiled/stubcat.bin", b"catalog");
+        wf(source, "jaclang/_precompiled/MANIFEST.json", b"sealed manifest");
+        outputs: list[tuple[bytes, bytes]] = [];
+        for build in ("cold", "warm") {
+            wf(source, "jaclang/_precompiled/stubcat.bin.json", build.encode());
+            wf(source, "jaclang/_precompiled/stubcat.bin.lock", build.encode());
+            stage = os.path.join(tmp, build);
+            copy_tree(source, os.path.join(stage, "site"), skip_stage_site);
+            assert rf(os.path.join(stage, "site/jaclang/_precompiled/stubcat.bin"))
+                == b"catalog";
+            assert rf(os.path.join(stage, "site/jaclang/_precompiled/MANIFEST.json"))
+                == b"sealed manifest";
+            outputs.append(tar_stage(stage));
+        }
+        assert outputs[0] == outputs[1];
+    }
+}
+
 """Extract a packed (multi-frame) payload the way the launcher does: decode
 every frame, feed the concatenation to a tar reader."""
 def extract_payload(packed: str, dest: str) {
@@ -87,7 +113,7 @@ def sole_cache_entry(cache: str) -> str {
     names = [
         n
         for n in os.listdir(cache)
-        if os.path.isfile(os.path.join(cache, n))
+        if os.path.isfile(os.path.join(cache, n)) and n.startswith("deps-")
     ];
     assert len(names) == 1 , f"expected a single cache entry, got {names}";
     assert names[0].startswith("deps-") and names[0].endswith(".tar.zst");
@@ -151,13 +177,14 @@ test "payload interface sealing uses the fresh staged catalog" {
                     "catalog construction must load staged sources, not a cached image"
                 );
                 wf(pre, "stubcat.bin", b"fresh catalog");
+                wf(pre, "stubcat.bin.json", b'{"reused":false}');
                 calls.append("catalog");
             } else {
                 assert not env.get("JAC_STUBCAT_BUILDING") , (
                     "interface sealing disabled its stub authority"
                 );
                 assert rf(os.path.join(pre, "stubcat.bin")) == b"fresh catalog";
-                wf(pre, "PRECOMPILE_RESULT.json", b"{}");
+                wf(base, "precompile-result.json", b'{"complete":true}');
                 calls.append("interfaces");
             }
             return True;
@@ -217,7 +244,7 @@ test "skipping the payload catalog cannot reuse a cached catalog" {
             assert argv[2].endswith("precompile_boot.py");
             assert env is not None and env.get("JAC_STUBCAT_BUILDING") == "1";
             assert not os.path.exists(os.path.join(pre, "stubcat.bin"));
-            wf(pre, "PRECOMPILE_RESULT.json", b"{}");
+            wf(base, "precompile-result.json", b'{"complete":true}');
             return True;
         }
         with patch.object(assembly, "run_child", side_effect=child) as runner {
@@ -380,6 +407,41 @@ test "payload is two zstd frames whose concatenation is the full tar" {
     }
 }
 
+test "compression errors propagate without a serial retry" {
+    import jaclang.dist.payload.assemble as assembly;
+    with patch.object(
+        assembly, "compress", side_effect=ValueError("invalid input")
+    ) as compressor {
+        caught = False;
+        try {
+            assembly.zstd_compress(b"payload");
+        } except ValueError as error {
+            caught = str(error) == "invalid input";
+        }
+        assert caught;
+        assert compressor.call_count == 1;
+    }
+}
+
+test "compression producer changes invalidate a verified frame" {
+    import jaclang.dist.payload.assemble as assembly;
+    with tempfile.TemporaryDirectory() as cache {
+        data = b"payload content";
+        original = assembly.compressed_frame_cached(cache, "deps", data);
+        path = sole_cache_entry(cache);
+        with patch.object(assembly, "zstd_version_info", (99, 0, 0)) {
+            with patch.object(
+                assembly, "zstd_compress", wraps=assembly.zstd_compress
+            ) as compressor {
+                rebuilt = assembly.compressed_frame_cached(cache, "deps", data);
+                assert compressor.call_count == 1;
+                assert sole_cache_entry(cache) != path;
+                assert decompress(rebuilt) == decompress(original) == data;
+            }
+        }
+    }
+}
+
 test "layer cache: verified reuse, corruption falls back, deps edit rolls the key" {
     base = tempfile.mkdtemp(prefix="jac-payload-layers-");
     try {
@@ -396,6 +458,15 @@ test "layer cache: verified reuse, corruption falls back, deps edit rolls the ke
         assert p1[:len(frame1)] == frame1 , "the cached deps frame is the payload's byte prefix";
         extract_payload(out1, os.path.join(base, "x1"));
         assert rf(os.path.join(base, "x1", "site/jaclang/mod.py")) == b"version = 1\n";
+
+        import jaclang.dist.payload.assemble as assembly;
+        with patch.object(
+            assembly, "zstd_compress", side_effect=AssertionError("warm compression")
+        ) {
+            warm = os.path.join(base, "warm.tar.zst");
+            tar_zst_dir(stage, warm, cache);
+            assert rf(warm) == p1;
+        }
 
         # (1) jaclang-only edit: deps frame identical, jac layer picks up the change.
         wf(stage, "site/jaclang/mod.py", b"version = 2\n");

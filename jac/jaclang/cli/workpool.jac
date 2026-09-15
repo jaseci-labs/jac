@@ -9,6 +9,7 @@ obj WorkPool {
         job: Callable[[dict[(str, any)]], any],
         on_record: Callable[[int, dict[(str, any)]], None],
         jobs: int = 1,
+        prerequisites: dict[int, set[int]] = {},
         request_extra: (Callable[[int, str], dict[(str, any)]] | None) = None,
         should_stop: (Callable[[], bool] | None) = None,
         retire: (Callable[[int, int], bool] | None) = None,
@@ -21,12 +22,19 @@ obj WorkPool {
         cursor: int = 0,
         stopping: bool = False,
         kids: list[dict[(str, any)]] postinit,
-        crashlogs: list[str] postinit;
+        crashlogs: list[str] postinit,
+        pending: list[int] = [],
+        completed: set[int] = set();
 
     def postinit -> None;
     def run -> None;
     def run_inline -> None;
     def _request(idx: int, path: str, crashlog: str) -> dict[(str, any)];
+    def _next_ready -> int | None;
+    def _run_job(
+        request: dict[str, any], served: int, setup_seconds: float
+    ) -> dict[str, any];
+
     def _pump -> None;
     def _spawn(slot: int) -> dict[(str, any)];
     def _worker_loop(dispatch_fd: int, result_fd: int) -> None;

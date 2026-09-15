@@ -138,6 +138,7 @@ impl JacCompiler.get_bytecode(
         );
     }
     actual = self.selfhost.resolve(full_target, target_program);
+    actual.refresh_compile_inputs();
     if not self.selfhost.is_selfhost(actual) {
         options = bind_options(full_target, actual, actual.options);
         actual = context_program(actual, options);
@@ -154,7 +155,6 @@ impl JacCompiler._get_bytecode(
 ) -> (types.CodeType | None) {
     actual_program = self.selfhost.resolve(full_target, target_program);
     (rebuild, no_precompile) = cache_mode();
-    symtab_only_recovery = False;
 
     if (
         (not rebuild)
@@ -164,13 +164,6 @@ impl JacCompiler._get_bytecode(
         actual_program.invalidate_module(full_target);
     }
     if (
-        (not rebuild)
-        and (full_target in actual_program.mod.hub)
-        and not actual_program.mod.hub[full_target].gen.py_bytecode
-    ) {
-        actual_program.invalidate_module(full_target);
-        symtab_only_recovery = True;
-    } elif (
         (not rebuild)
         and (full_target in actual_program.mod.hub)
         and actual_program.mod.hub[full_target].gen.py_bytecode
@@ -220,7 +213,13 @@ impl JacCompiler._get_bytecode(
                     else {}
             );
             bc = secs.get(SEC_BYTECODE);
-            if bc is not None {
+            if bc is not None
+                and (
+                    self.selfhost.is_selfhost(actual_program)
+                    or actual_program.iface_registry().dependencies_match(
+                        full_target, jir_data
+                    )
+                ) {
                 self._restore_sections(full_target, actual_program, secs);
                 _had_native_secs = SEC_NATIVE_OBJ in secs or SEC_LLVM_IR in secs;
                 if (
@@ -242,14 +241,14 @@ impl JacCompiler._get_bytecode(
                 if SEC_IFACE not in secs and SEC_CLIENT not in secs {
                     cache_path.unlink(missing_ok=True);
                 }
-                actual_program.invalidate_module(full_target);
-                symtab_only_recovery = True;
             }
         } except Exception {}
     }
 
     allow_unsealed = (not rebuild) and (not no_precompile);
-    precompiled = self._get_precompiled_jir_bytecode(full_target, allow_unsealed);
+    precompiled = self._get_precompiled_jir_bytecode(
+        full_target, actual_program, allow_unsealed
+    );
     if precompiled is not None {
         (precompiled_bc, precompiled_ctdeps) = precompiled;
         try {
@@ -273,7 +272,7 @@ impl JacCompiler._get_bytecode(
         setup_progress.on_internal_compile(full_target);
         self.selfhost.enter_bytecode();
     }
-    options = CompileOptions();
+    options = actual_program.options.for_executable();
     result: (uni.Module | None) = None;
     enclosing_closure = self._closure_opts;
     self._closure_opts = options;
@@ -282,7 +281,6 @@ impl JacCompiler._get_bytecode(
             file_path=full_target, target_program=actual_program, options=options
         );
         if result.gen.py_bytecode {
-            actual_program.hub_cache_stamp(full_target);
             self._persist_module_cache(full_target, result, actual_program);
             if is_internal {
                 note_compiler_source_failure(full_target, '');
@@ -512,57 +510,51 @@ impl JacCompiler._restore_sections(
 }
 
 impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None) {
-    import from pathlib { Path as _Path }
-    import from jaclang.jac0core { sealed as _sealed }
-    norm_file = os.path.normpath(os.path.abspath(full_target));
-    d = os.path.dirname(norm_file);
-    pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
-    while True {
-        bundle_dir = os.path.join(d, '_precompiled');
-        if os.path.isdir(bundle_dir) {
-            if _sealed.image_for_bundle_dir(bundle_dir) is None {
-                return None;
-            }
-            norm_root = os.path.normpath(d);
-            if not norm_file.startswith(norm_root + os.sep) {
-                return None;
-            }
-            rel_path = norm_file[len(norm_root) + 1:];
-            jir_path = os.path.join(
-                bundle_dir, pyver, os.path.splitext(rel_path)[0] + '.jir'
-            );
-            if os.path.isfile(jir_path) {
-                try {
-                    return (_Path(jir_path).read_bytes(), d);
-                } except OSError {
-                    return None;
-                }
-            }
-            return None;
-        }
-        parent = os.path.dirname(d);
-        if parent == d {
-            return None;
-        }
-        d = parent;
-    }
+    return self._precompiled_jir_data(full_target, allow_unsealed=False);
 }
 
 impl JacCompiler._get_precompiled_jir_bytecode(
-    full_target: str, allow_unsealed: bool = True
+    full_target: str, target_program: JacProgram, allow_unsealed: bool = True
 ) -> (tuple[bytes, bytes] | None) {
-    import from pathlib { Path as _Path }
     import from jaclang.compiler.driver.jir {
         PRECOMPILE_SENTINEL,
         SEC_CTDEPS,
         absolutize_ct_deps_section,
         cache_mode
     }
-    import from jaclang.jac0core { sealed as _sealed }
     (rebuild_flag, no_precompile) = cache_mode();
     if rebuild_flag or no_precompile {
         return None;
     }
+    found = self._precompiled_jir_data(full_target, allow_unsealed);
+    if found is None {
+        return None;
+    }
+    (data, package_root) = found;
+    if not self.selfhost.is_selfhost(target_program)
+        and not target_program.iface_registry().dependencies_match(
+            full_target, data, package_root
+        ) {
+        return None;
+    }
+    bytecode = read_bytecode_only(data);
+    if bytecode is None {
+        return None;
+    }
+    dependencies = read_section_bytes(data, SEC_CTDEPS);
+    return (
+        patch_co_filenames_bytes(bytecode, PRECOMPILE_SENTINEL, package_root),
+        absolutize_ct_deps_section(dependencies, package_root) if dependencies else b""
+    );
+}
+
+impl JacCompiler._precompiled_jir_data(
+    full_target: str, allow_unsealed: bool = True
+) -> (tuple[bytes, str] | None) {
+    import from pathlib { Path as _Path }
+    import from jaclang.jac0core { sealed as _sealed }
+    (rebuild, no_precompile) = cache_mode();
+    reusable = allow_unsealed and not rebuild and not no_precompile;
     norm_file = os.path.normpath(os.path.abspath(full_target));
     d = os.path.dirname(norm_file);
     pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
@@ -578,7 +570,7 @@ impl JacCompiler._get_precompiled_jir_bytecode(
             jir_path = os.path.join(bundle_dir, pyver, jir_rel);
 
             sealed_img = _sealed.image_for_bundle_dir(bundle_dir);
-            if sealed_img is None and not allow_unsealed {
+            if sealed_img is None and not reusable {
                 break;
             }
             if os.path.isfile(jir_path) {
@@ -593,17 +585,7 @@ impl JacCompiler._get_precompiled_jir_bytecode(
                         )
                     );
                     if trusted {
-                        bc = read_bytecode_only(jir_data);
-                        if bc is not None {
-                            _ct_raw = read_section_bytes(jir_data, SEC_CTDEPS);
-                            return (
-                                patch_co_filenames_bytes(bc, PRECOMPILE_SENTINEL, d),
-                                absolutize_ct_deps_section(_ct_raw, norm_root)
-                                    if _ct_raw
-                                    else b"",
-
-                            );
-                        }
+                        return (jir_data, norm_root);
                     }
                 } except Exception {}
             }
@@ -799,7 +781,11 @@ impl JacCompiler.parse_str(
             );
         } else {
             (mod, had_error) = target_program.source_store.parse(
-                source_str, file_path, target_program, annex_sources(file_path)
+                source_str,
+                file_path,
+                target_program,
+                annex_sources(file_path),
+                early_context=codespace or 'server'
             );
         }
         if (codespace == 'client') {
@@ -1259,9 +1245,11 @@ impl JacCompiler.compile(
         context_program
     }
     caller_program = target_program;
+
     resolved_program = self.selfhost.resolve(file_path, target_program)
         if not options.force_target_program
         else target_program;
+    resolved_program.refresh_compile_inputs();
     if not self.selfhost.is_selfhost(resolved_program) {
         options = bind_options(file_path, resolved_program, options);
         target_program = context_program(resolved_program, options);
@@ -1350,6 +1338,22 @@ impl JacCompiler.compile(
                 }
                 _pre_errs = len(_wrap_prog.errors_had);
                 _pre_warns = len(_wrap_prog.warnings_had);
+
+                def completed(module: uni.Module) -> uni.Module {
+                    if _depth_prev == 0
+                        and not options.symtab_ir_only
+                        and use_str is None
+                        and not self.selfhost.is_selfhost(_wrap_prog) {
+                        registry = _wrap_prog.iface_registry();
+                        if registry.eligible(
+                            self, os.path.realpath(file_path), options
+                        ) {
+                            registry.publish_completed();
+                        }
+                    }
+                    return module;
+                }
+
                 _mod: (uni.Module | None) = None;
                 _crash: (Exception | None) = None;
                 try {
@@ -1392,7 +1396,7 @@ impl JacCompiler.compile(
                         raise _crash;
                     }
                     assert _mod is not None;
-                    return _mod;
+                    return completed(_mod);
                 }
 
                 _is_ice = _crash is not None
@@ -1444,11 +1448,13 @@ impl JacCompiler.compile(
                     );
                     _note_console.print(_note_msg, style=_note_style, file=sys.stderr);
                 } except Exception {}
-                return self._compile_once(
-                    file_path=file_path,
-                    target_program=target_program,
-                    use_str=use_str,
-                    options=options
+                return completed(
+                    self._compile_once(
+                        file_path=file_path,
+                        target_program=target_program,
+                        use_str=use_str,
+                        options=options
+                    )
                 );
             } finally {
                 if target_program is not caller_program
@@ -1506,7 +1512,7 @@ impl JacCompiler._persist_module_cache(
                 not result.gen.js
                 or read_section_bytes(_pmc_data, SEC_CLIENT) is not None
             );
-            if read_section_bytes(_pmc_data, SEC_BYTECODE) is not None
+            if read_section_bytes(_pmc_data, SEC_BYTECODE) == result.gen.py_bytecode
                 and _pmc_client_done {
                 return;
             }
@@ -1574,7 +1580,17 @@ impl JacCompiler._persist_module_cache(
                 result.ct_file_deps, result.ct_body_deps
             );
         }
-        write_module_cache(full_target, cache_bc, extra_sections=sections);
+        if not actual_program.is_compile_closure_fresh(os.path.realpath(full_target)) {
+            return;
+        }
+        write_module_cache(
+            full_target,
+            cache_bc,
+            extra_sections=sections,
+            expected_source_key=actual_program.hub.stamps.get(
+                os.path.realpath(full_target), ""
+            )
+        );
     } except Exception {}
 }
 
@@ -2052,6 +2068,7 @@ impl JacCompiler.get_client_artifact(
         compilation_scope
     }
     actual = self.selfhost.resolve(full_target, target_program);
+    actual.refresh_compile_inputs();
     if not self.selfhost.is_selfhost(actual) {
         options = bind_options(full_target, actual, actual.options);
         actual = context_program(actual, options);

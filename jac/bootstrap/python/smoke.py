@@ -38,6 +38,10 @@ if sys.platform == "darwin":
 sample = b"Jac source-built runtime" * 100
 for codec in (bz2, lzma, zlib, zstd):
     assert codec.decompress(codec.compress(sample)) == sample
+# Payload compression requests workers; a serial-only static zstd silently
+# forced every cold kit build through the producer's single-thread fallback.
+threaded = zstd.compress(sample, options={zstd.CompressionParameter.nb_workers: 2})
+assert zstd.decompress(threaded) == sample
 assert sqlite3.connect(":memory:").execute("select 6 * 7").fetchone() == (42,)
 assert str(decimal.Decimal("0.1") + decimal.Decimal("0.2")) == "0.3"
 assert hashlib.sha256(sample).digest()
@@ -599,6 +603,29 @@ assert _heapq.heappop([1, 2, 3]) == 1
     assert [_heapq.heappop_max(heap) for _ in range(4)] == [4, 3, 2, 1]
     assert required_compiler() == 1
     assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
+    # PEG memo results can contain tokens. Their ownership must stay acyclic
+    # in the native compiler, which does not use Python's cyclic collector.
+    # A child inherits the resident high-water mark of its parent's image at
+    # exec. Spawn through a small interpreter so earlier smoke allocations
+    # cannot hide growth in the measured compiler process.
+    retention = subprocess.run([sys.executable, "-I", "-c",
+        "import subprocess, sys\n"
+        "raise SystemExit(subprocess.call([sys.executable, '-I', '-c', sys.argv[1]]))\n",
+        """
+import gc, resource, sys
+source = '\\n'.join(f'def function_{i}(value):\\n    return value + {i}\\n' for i in range(100))
+for _ in range(20):
+    compile(source, '<parser-lifetime>', 'exec')
+gc.collect()
+before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+for _ in range(100):
+    compile(source, '<parser-lifetime>', 'exec')
+gc.collect()
+after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+growth = (after - before) * (1 if sys.platform == 'darwin' else 1024)
+assert growth < 8 * 1024 * 1024, f'native compiler retained {growth} bytes across repeated requests'
+"""], capture_output=True, text=True)
+    assert retention.returncode == 0, retention.stdout + retention.stderr
     for retired in ("_jacpython_compile", "_jacpython_symtable", "_jacpython_tokenize", "_jacpython_image", "_jacpython_code"):
         assert not hasattr(sys, retired), retired
     assert not any(name.startswith("_jacpython_seed") for name in sys.modules)

@@ -1,3 +1,5 @@
+import from jaclang.dist.payload.metrics { BuildMeasurements }
+
 glob PAYLOAD_ZSTD_LEVEL: int = 19,
      PAYLOAD_WINDOW_LOG: int = 24,
      TAR_PAX_FORMAT: int = 2,
@@ -29,7 +31,8 @@ glob PAYLOAD_ZSTD_LEVEL: int = 19,
          "desktop = jaclang.client.desktop_plugin_config:desktop_sdk_exports\n"
      ),
      PRECOMPILE_BOOT_SRC: str = (
-         "import os, sys\n"
+         "import os, sys, time\n"
+         "os.environ['JAC_PRECOMPILE_BOOT_TIME'] = str(time.perf_counter())\n"
          "if len(sys.argv) > 1:\n"
          "    try:\n"
          "        os.unlink(os.path.join(sys.argv[1], 'jaclang', '_precompiled', 'MANIFEST.json'))\n"
@@ -59,7 +62,12 @@ obj MkPayloadOpts {
         seal: bool = False,
         debug_src: bool = False,
         stubcat_out: str | None = None,
-        skip_stubcat: bool = False;
+        skip_stubcat: bool = False,
+        measurements: BuildMeasurements postinit;
+
+    def postinit {
+        self.measurements = BuildMeasurements();
+    }
 }
 
 obj FoundLib {
@@ -75,6 +83,7 @@ obj TarEntry {
 def mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts);
 def resolve_python(python_dir: str) -> str;
 def assemble_site(repo_root: str, site: str, opts: MkPayloadOpts);
+def build_compiler_kernel(repo_root: str, site: str, opts: MkPayloadOpts);
 def _bundle_bun(site: str, opts: MkPayloadOpts);
 def write_dist_info(repo_root: str, site: str);
 def run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOpts);
@@ -86,7 +95,8 @@ def precompile(
     site: str,
     seal: bool,
     debug_src: bool,
-    skip_stubcat: bool = False
+    skip_stubcat: bool = False,
+    measurements: BuildMeasurements | None = None
 );
 
 def precompile_env(python_dir: str, site: str) -> dict[str, str];
@@ -100,7 +110,7 @@ def stage_tree(
 );
 
 def stage_stdlib(python_lib: str, lib_dst: str);
-def precompile_pyc(py: str, stage: str);
+def precompile_pyc(py: str, stage: str, opts: MkPayloadOpts | None = None);
 def stage_floor(python_dir: str, stage: str);
 def stage_musl(musl_dir: str, stage: str);
 def stage_wasm_libc(wasm_libc_dir: str, stage: str);
@@ -111,8 +121,22 @@ def find_libpython(lib_dir: str) -> FoundLib;
 def is_volatile_path(p: str) -> bool;
 def collect_stage_entries(stage: str) -> list[TarEntry];
 def tar_stage(stage: str) -> tuple[bytes, bytes];
-def tar_zst_dir(stage: str, out: str, layer_cache: str | None);
+def tar_zst_dir(
+    stage: str,
+    out: str,
+    layer_cache: str | None,
+    measurements: BuildMeasurements | None = None
+);
+
+def zstd_options -> dict[int, int];
 def zstd_compress(data: bytes) -> bytes;
 def deps_frame_cached(layer_cache: str | None, tar_bytes: bytes) -> bytes;
+def compressed_frame_cached(
+    layer_cache: str | None,
+    name: str,
+    tar_bytes: bytes,
+    measurements: BuildMeasurements | None = None
+) -> bytes;
+
 def frame_decodes_to(frame: bytes, expect: bytes) -> bool;
 def prune_layer_cache(dir_path: str, keep: str);

@@ -8,13 +8,44 @@ import from contextvars { ContextVar }
 import from collections.abc { Iterator }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.driver.ifacecache { IfaceRegistry }
 import from jaclang.compiler.frontend.unitree { Module }
 import from jaclang.compiler.passes.transform { Alert }
 
 glob _active_options: ContextVar[CompileOptions | None] = ContextVar(
          'jac_active_options', `default=None
      ),
-     _cache_context: ContextVar[str] = ContextVar('jac_compilation_cache', `default='');
+     _cache_context: ContextVar[str] = ContextVar('jac_compilation_cache', `default=''),
+     _pending_interfaces: ContextVar[dict[int, IfaceRegistry] | None] = ContextVar(
+         'jac_pending_interfaces', `default=None
+     );
+
+@contextmanager
+def interface_publication_scope -> Iterator[None] {
+    if _pending_interfaces.get() is not None {
+        yield ;
+        return;
+    }
+    pending: dict[int, IfaceRegistry] = {};
+    token = _pending_interfaces.set(pending);
+    try {
+        yield ;
+    } finally {
+        _pending_interfaces.reset(token);
+    }
+    for registry in pending.values() {
+        registry.publish_completed();
+    }
+}
+
+def defer_interface_publication(registry: IfaceRegistry) -> bool {
+    pending = _pending_interfaces.get();
+    if pending is None {
+        return False;
+    }
+    pending[id(registry)] = registry;
+    return True;
+}
 
 @contextmanager
 def cache_scope(
@@ -54,19 +85,27 @@ obj SourceUnit {
 obj SourceStore {
     has units: dict[str, SourceUnit] = {},
         revisions: dict[str, str] = {},
+        max_units: int = 256,
         parses: int = 0,
         hits: int = 0;
 
-    def parse(
+    def _key(source: str, path: str, annexes: list[tuple[str, str]]) -> str {
+        return hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
+    }
+
+    def load(
         source: str, path: str, program: JacProgram, annexes: list[tuple[str, str]]
-    ) -> tuple[Module, bool] {
+    ) -> SourceUnit {
         import from jaclang.compiler.frontend.parser.frontend { parse_woven }
         import from jaclang.compiler.driver.program { JacProgram }
-        key = hashlib.sha256(repr((path, source, annexes)).encode()).hexdigest();
-        unit = self.units.get(key);
+        key = self._key(source, path, annexes);
+        unit = self.units.pop(key, None);
+        discarded = False;
         if unit is None {
             diagnostics = JacProgram();
-            (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
+            with program.analysis.measure(path, "frontend:parse") {
+                (syntax, failed) = parse_woven(source, path, diagnostics, annexes);
+            }
             unit = SourceUnit(
                 syntax,
                 failed,
@@ -76,18 +115,134 @@ obj SourceStore {
             previous = self.revisions.get(path);
             if previous is not None {
                 self.units.pop(previous, None);
+                discarded = True;
             }
             self.revisions[path] = key;
-            self.units[key] = unit;
             self.parses += 1;
         } else {
             self.hits += 1;
         }
-        syntax = copy.deepcopy(unit.syntax);
-        assert isinstance(syntax, Module);
-        program.errors_had.extend(unit.errors);
-        program.warnings_had.extend(unit.warnings);
-        return (syntax, unit.failed);
+        self.units[key] = unit;
+        while len(self.units) > max(1, self.max_units) {
+            oldest = next(iter(self.units));
+            old_path = self.units[oldest].syntax.loc.mod_path;
+            del self.units[oldest];
+            self.revisions.pop(old_path, None);
+            discarded = True;
+        }
+        if discarded {
+            import from jaclang.compiler.driver.progstate { unit_collect_budget }
+            if unit_collect_budget.due() {
+                import gc;
+                with program.analysis.measure(path, "frontend:collect") {
+                    gc.collect();
+                }
+            }
+        }
+        return unit;
+    }
+
+    def parse(
+        source: str,
+        path: str,
+        program: JacProgram,
+        annexes: list[tuple[str, str]],
+        early_context: str = ""
+    ) -> tuple[Module, bool] {
+        import from jaclang.compiler.frontend.parser.frontend { parse_woven }
+        key = self._key(source, path, annexes);
+        unit = self.units.pop(key, None);
+        previous = self.revisions.pop(path, None);
+        if previous is not None and previous != key {
+            self.units.pop(previous, None);
+        }
+        if unit is not None {
+            self.hits += 1;
+            program.errors_had.extend(unit.errors);
+            program.warnings_had.extend(unit.warnings);
+            return (unit.syntax, unit.failed);
+        }
+        self.parses += 1;
+        with program.analysis.measure(path, "frontend:parse") {
+            return parse_woven(source, path, program, annexes, early_context);
+        }
+    }
+}
+
+obj CompilationSession {
+    has max_modules: int = 256,
+        max_roots: int = 32,
+        program: JacProgram postinit,
+        roots: int = 0,
+        evictions: int = 0,
+        closed: bool = False;
+
+    def postinit {
+        import from jaclang.compiler.driver.program { JacProgram }
+        if self.max_modules < 1 or self.max_roots < 1 {
+            raise ValueError("Compilation session budgets must be positive");
+        }
+        self.program = JacProgram();
+        self.program.session = self;
+        self.program.source_store.max_units = self.max_modules;
+    }
+
+    def programs -> list[JacProgram] {
+        return self.program.context_programs();
+    }
+
+    def refresh {
+        self.program.refresh_compile_inputs();
+    }
+
+    def checkpoint(failed: bool = False) {
+        if self.closed {
+            raise RuntimeError("Compilation session is closed");
+        }
+        self.roots += 1;
+        programs = self.programs();
+        count = sum(
+            1 for program in programs
+            for module in program.mod.hub.values()
+            if not module.stub_only
+        );
+        cancelled = any(
+            program.options.cancel_token is not None
+                and program.options.cancel_token.is_set() for program in programs
+        );
+        if failed
+            or cancelled
+            or count >= self.max_modules
+            or self.roots >= self.max_roots {
+            self.evict();
+        }
+    }
+
+    def evict {
+        if self.closed {
+            raise RuntimeError("Compilation session is closed");
+        }
+        self.program.release_compile_closure(retain_stubs=False);
+        self.roots = 0;
+        self.evictions += 1;
+    }
+
+    def close {
+        if not self.closed {
+            self.program.release_compile_closure(retain_stubs=False);
+            self.closed = True;
+        }
+    }
+
+    def __enter__ -> CompilationSession {
+        if self.closed {
+            raise RuntimeError("Compilation session is closed");
+        }
+        return self;
+    }
+
+    def __exit__(_kind: object, _value: object, _traceback: object) {
+        self.close();
     }
 }
 
@@ -188,6 +343,7 @@ def context_program(program: JacProgram, options: CompileOptions) -> JacProgram 
         selected.context_root = context_root;
         selected._compiler = context_root._get_compiler();
         selected.source_store = context_root.source_store;
+        selected.session = context_root.session;
         selected.options = options;
     }
     selected.options = options;

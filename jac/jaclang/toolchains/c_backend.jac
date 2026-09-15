@@ -3,10 +3,10 @@ import shutil;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
+import from jaclang.jac0core.cache_paths { FileLock }
 import from jaclang.toolchains.host { executable, host_platform, run_step }
 import from jaclang.toolchains.store {
     Artifact,
-    InstallLock,
     cache_root,
     extract,
     fetch,
@@ -38,7 +38,7 @@ def ensure_c_backend -> Path {
         / C_BACKEND.key()
         / (host_platform() + '-' + file_digest(patch)[:16]);
     binary = directory / 'bin' / executable('llvm-cbe');
-    with InstallLock(directory.with_suffix('.lock')) {
+    with FileLock(directory.with_suffix('.lock')) {
         if binary.is_file() {
             return binary;
         }

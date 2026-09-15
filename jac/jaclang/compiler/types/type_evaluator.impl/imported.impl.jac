@@ -311,6 +311,11 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
             if mod_path in self._module_type_cache {
                 resolved_for_cache = str(Path(mod_path).resolve());
                 if self.program.is_hub_entry_fresh(resolved_for_cache) {
+                    if importer_path := self._resolve_importer_path(node_) {
+                        self.program.record_dependency(
+                            importer_path, resolved_for_cache
+                        );
+                    }
                     npath.type = self._module_type_cache[mod_path];
                     if isinstance(npath, Name) {
                         npath._sym_category = SymbolType.MODULE;
@@ -418,7 +423,7 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
 }
 
 impl TypeEvaluator._resolve_submodule_attr(
-    base_type: ModuleType, attr_name: str
+    base_type: ModuleType, attr_name: str, importer_path: str | None = None
 ) -> (ModuleType | None) {
     import from jaclang.project.modresolver { is_untyped_third_party_module }
     if base_type.file_uri is None {
@@ -447,9 +452,14 @@ impl TypeEvaluator._resolve_submodule_attr(
             path_str = str(path);
             if path_str in self._module_type_cache {
                 cached = self._module_type_cache[path_str];
-                if isinstance(cached, ModuleType) {
+                if isinstance(cached, ModuleType)
+                    and self.program.is_hub_entry_fresh(path_str) {
+                    if importer_path is not None {
+                        self.program.record_dependency(importer_path, path_str);
+                    }
                     return cached;
                 }
+                self.program.invalidate_module(path_str);
             }
             if is_untyped_third_party_module(path_str) {
                 return ModuleType(
@@ -459,7 +469,7 @@ impl TypeEvaluator._resolve_submodule_attr(
                     is_external=True,
                 );
             }
-            mod = self._import_module_from_path(path_str);
+            mod = self._import_module_from_path(path_str, importer_path=importer_path);
             mod_type = ModuleType(mod_name=attr_name, file_uri=path, symbol_table=mod);
             self._module_type_cache[path_str] = mod_type;
             return mod_type;
@@ -471,26 +481,9 @@ impl TypeEvaluator._resolve_submodule_attr(
 impl TypeEvaluator._import_module_from_path(
     path: str, importer_path: (str | None) = None, need_tree: bool = False
 ) -> Module {
-    resolved_path = str(Path(path).resolve());
-
-    if resolved_path in self._modules_in_compile {
-        _pending = self.program.find_module(resolved_path);
-        if _pending is not None {
-            mod = _pending;
-        } else {
-            return Module.make_stub(inject_name=Path(resolved_path).stem);
-        }
-    } else {
-        self._modules_in_compile.add(resolved_path);
-        try {
-            mod = self.program.load_dependency_module(
-                path, importer_path=importer_path, need_tree=need_tree
-            );
-        } finally {
-            self._modules_in_compile.discard(resolved_path);
-        }
-    }
-
+    mod = self.program.load_dependency_module(
+        path, importer_path=importer_path, need_tree=need_tree
+    );
     if mod.parent_scope is None and mod is not self.builtins_module {
         mod.parent_scope = self.builtins_module;
     }

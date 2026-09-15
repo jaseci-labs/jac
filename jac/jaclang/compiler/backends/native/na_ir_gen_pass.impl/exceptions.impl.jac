@@ -541,7 +541,7 @@ impl NaIRGenPass._codegen_try_unwind(
                     alloca = self._entry_alloca(i8p, var_name);
                     self.builder.store(handler_exc_msg, alloca);
                 }
-                self.local_vars[var_name] = alloca;
+                self._bind_local_slot(var_name, alloca);
             }
 
             self._caught_error_stack.append((func, self._exception_values(exc_state)));
@@ -651,6 +651,14 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
     i8p = ir.IntType(8).as_pointer();
     for handler in reversed(self._slot_try_stack) {
         if handler.dispatch.parent is self.builder.function {
+            self._emit_loop_iter_cleanup(
+                [
+                    name
+                    for name in self.local_vars
+                    if name in self.owned_temp_slots and name not in handler.owned_temps
+                ],
+                loc=loc
+            );
             self.builder.branch(handler.dispatch);
             return;
         }
@@ -732,7 +740,11 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
     self.builder.store(ir.Constant(i32, 0), kind);
     self.builder.branch(body_bb);
     self.builder.position_at_end(body_bb);
-    self._slot_try_stack.append(NativeErrorHandler(dispatch=dispatch_bb));
+    self._slot_try_stack.append(
+        NativeErrorHandler(
+            dispatch=dispatch_bb, owned_temps=self.owned_temp_slots.copy()
+        )
+    );
     try {
         if isinstance(nd.body, (list, tuple)) {
             self._codegen_body(nd.body);
@@ -740,7 +752,9 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
     } finally {
         self._slot_try_stack.pop();
     }
-    self._slot_try_stack.append(NativeErrorHandler(dispatch=error_bb));
+    self._slot_try_stack.append(
+        NativeErrorHandler(dispatch=error_bb, owned_temps=self.owned_temp_slots.copy())
+    );
     if not self.builder.block.is_terminated {
         if isinstance(nd.else_body, uni.ElseStmt)
             and isinstance(nd.else_body.body, (list, tuple)) {
@@ -810,7 +824,7 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
             }
         }
         if except_node.name is not None {
-            self.local_vars[var_name] = alloca;
+            self._bind_local_slot(var_name, alloca);
         }
         if isinstance(except_node.body, (list, tuple)) {
             self._codegen_body(except_node.body);
@@ -885,6 +899,67 @@ impl NaIRGenPass._emit_finalizers(loop_depth: int = 0) -> bool {
     }
 }
 
+
+impl NaIRGenPass._begin_cleanup_guard(retained: set[str]) -> NativeCleanupGuard | None {
+    if self._slot_lowering_active()
+        or not any(name not in retained for name in self.owned_temp_slots) {
+        return None;
+    }
+    if self._exc_raise_fn is None {
+        self._declare_exception_runtime();
+    }
+    func = self.builder.function;
+    func.attributes.add("optnone");
+    func.attributes.add("noinline");
+    dispatch = func.append_basic_block("cleanup.error");
+    body = func.append_basic_block("cleanup.body");
+    (state, depth) = self._push_exception_handler(dispatch, body);
+    self.builder.position_at_end(body);
+    if self._gen_ctx is not None {
+        self._gen_try_stack.append(
+            NativeGeneratorHandler(state=state, dispatch=dispatch)
+        );
+    }
+    return NativeCleanupGuard(state, depth, dispatch, retained);
+}
+
+impl NaIRGenPass._end_cleanup_guard(guard: NativeCleanupGuard | None) -> None {
+    if guard is None {
+        return;
+    }
+    if self._gen_ctx is not None {
+        self._gen_try_stack.pop();
+    }
+    done = self.builder.function.append_basic_block("cleanup.done");
+    if not self.builder.block.is_terminated {
+        self.builder.call(self._exc_pop_fn, []);
+        self.builder.branch(done);
+    }
+    self.builder.position_at_end(guard.dispatch);
+    self._region_unwind(self.builder.load(guard.depth));
+    values = self._exception_values(guard.state);
+    self.builder.call(self._exc_pop_fn, []);
+    self._release_temps_since(guard.retained);
+    self.builder.call(self._exc_raise_fn, [values[1], values[0], values[2]]);
+    self.builder.unreachable();
+    self.builder.position_at_end(done);
+}
+
+impl NaIRGenPass._codegen_cleanup_operand(
+    nd: uni.UniNode, retained: set[str], required: bool = False
+) -> ir.Value | None {
+    expr = nd.expr if isinstance(nd, uni.CfgExpr) else nd;
+    guard = self._begin_cleanup_guard(retained)
+        if not isinstance(
+            expr, (uni.Name, uni.Null, uni.Int, uni.Float, uni.Bool, uni.String)
+        )
+        else None;
+    try {
+        return self._codegen_required(nd) if required else self._codegen_expr(nd);
+    } finally {
+        self._end_cleanup_guard(guard);
+    }
+}
 
 impl NaIRGenPass._push_exception_handler(
     dispatch: ir.Block, body: ir.Block

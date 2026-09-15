@@ -12,7 +12,8 @@ def write_client(application: PreparedApplication, base: Path) -> str {
     import from jaclang.compiler.backends.native.c_emit { emit_c }
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
     compiler = application.client_compiler;
-    if compiler is None {
+    compiled_dir = compiler.compiled_dir if compiler is not None else None;
+    if compiler is None or compiled_dir is None {
         raise ValueError(
             f'Application {application.name!r} has no prepared client product'
         );
@@ -20,7 +21,7 @@ def write_client(application: PreparedApplication, base: Path) -> str {
     directory = base / 'applications' / application.name;
     workspace = directory / 'client';
     compiled = workspace / 'compiled';
-    shutil.copytree(compiler.compiled_dir, compiled, dirs_exist_ok=True);
+    shutil.copytree(compiled_dir, compiled, dirs_exist_ok=True);
     bundler = ViteBundler(Path(application.root), entry_path=application.entry);
     bundler.build_dir = workspace;
     bundler.output_dir = workspace / 'dist';

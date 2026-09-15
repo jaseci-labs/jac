@@ -163,15 +163,21 @@ def run_pass(
         kwargs['completed'] = completed;
     }
     try {
-        inst = pass_cls(
-            ir_in=ir_in,
-            cancel_token=cancel_token,
-            cancel_requested=bool(cancel_token is not None and cancel_token.is_set()),
-            policy=pol,
-            errors_had=errors,
-            warnings_had=warnings,
-            **kwargs
-        );
+        with prog.analysis.measure(
+            str(getattr(ir_in?.loc, "mod_path", "")), "pass:" + pass_cls.__name__
+        ) {
+            inst = pass_cls(
+                ir_in=ir_in,
+                cancel_token=cancel_token,
+                cancel_requested=bool(
+                    cancel_token is not None and cancel_token.is_set()
+                ),
+                policy=pol,
+                errors_had=errors,
+                warnings_had=warnings,
+                **kwargs
+            );
+        }
     } finally {
         eff = inst.policy if (inst is not None and inst.policy is not None) else pol;
         deliver_alerts(errors, warnings, prog, eff);

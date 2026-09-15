@@ -140,14 +140,12 @@ def invalidate_client_product(program: JacProgram, module: Module) {
     path = os.path.realpath(module.loc.mod_path);
     program.hub.client_artifacts.pop(path, None);
     import from jaclang.compiler.driver.compilation_context { cache_scope }
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
+    import from jaclang.compiler.driver.jir { write_module_cache, SEC_CLIENT }
     identity = ''
         if program._get_compiler().selfhost.is_selfhost(program)
         else program.context_key;
     with cache_scope(identity, program.options) {
-        try {
-            get_module_cache_path(path).unlink(missing_ok=True);
-        } except OSError {}
+        write_module_cache(path, None, remove_sections=(SEC_CLIENT, ));
     }
 }
 
@@ -155,15 +153,32 @@ def invalidate_client_product(program: JacProgram, module: Module) {
 def require_product(
     program: JacProgram, module: Module, product: CompilationProduct
 ) -> bool {
+    if product == CompilationProduct.INTERFACE
+        and not program.iface_registry().ready() {
+        return False;
+    }
+    if program.options.cancel_token is not None
+        and program.options.cancel_token.is_set() {
+        return False;
+    }
     program.analysis.retain_tasks(module);
     tasks = program.analysis.product_tasks.setdefault(id(module), {});
     task = tasks.get(product);
+    if task is not None and task.state == TaskState.CANCELLED {
+        tasks.pop(product);
+        task = None;
+    }
     if task is not None {
         if task.state == TaskState.RUNNING {
             raise RuntimeError(
                 f"Compilation dependency cycle: {product.value} of {module.loc.mod_path}"
             );
         }
+        event = "product_" + product.value + "_" + task.state.value;
+        program.analysis.cache_events[event] = program.analysis.cache_events.get(
+            event, 0
+        )
+            + 1;
         return task.state == TaskState.SUCCEEDED;
     }
     task = ProductTask(product, TaskState.RUNNING);
@@ -207,6 +222,9 @@ def require_product(
                     if len(program.errors_had) == before
                     else TaskState.FAILED
             );
+        if task.state == TaskState.CANCELLED {
+            program.invalidate_module(os.path.realpath(module.loc.mod_path));
+        }
         return task.state == TaskState.SUCCEEDED;
     } except Exception {
         task.state = TaskState.FAILED;
@@ -263,11 +281,18 @@ def compile_module(
     task = ModuleCompilation(compiler, program, path, options, source);
     for step in module_pipeline() {
         if options.cancel_token is not None and options.cancel_token.is_set() {
+            task.discard();
             break;
+        }
+        if not task.inputs_current() {
+            task.discard();
+            raise RuntimeError(f"Source changed during compilation: {path}");
         }
         started = time.perf_counter();
         try {
-            step.execute(task);
+            with program.analysis.measure(path, "phase:" + step.phase.value) {
+                step.execute(task);
+            }
         } finally {
             name = step.phase.name;
             program.analysis.phase_time[name] = (
@@ -275,6 +300,17 @@ def compile_module(
                 - started
             );
         }
+    }
+    if not task.inputs_current()
+        or (
+            source is None
+            and not program.is_compile_closure_fresh(os.path.realpath(path))
+        ) {
+        task.discard();
+        raise RuntimeError(f"Source changed during compilation: {path}");
+    }
+    if options.cancel_token is not None and options.cancel_token.is_set() {
+        task.discard();
     }
     return task.module;
 }
@@ -634,9 +670,11 @@ def _py_codegen_tail -> list[type[Transform]] {
 }
 
 def get_py_code_gen(
-    native: bool = True, provided: (set[AnalysisFact] | None) = None
+    native: bool = True,
+    provided: (set[AnalysisFact] | None) = None,
+    bootstrap: bool = False
 ) -> list[type[Transform]] {
-    if _codegen_tier_reason() {
+    if bootstrap or _codegen_tier_reason() {
         return _py_codegen_tail();
     }
     _tok = _codegen_sched_loading.set(True);
@@ -798,6 +836,17 @@ def route_exports(program: JacProgram, path: str) -> tuple[str | None, str | Non
 
 
 def compile_application(
+    program: JacProgram, entry_path: str, options: CompileOptions
+) -> Module {
+    import from jaclang.compiler.driver.compilation_context {
+        interface_publication_scope
+    }
+    with interface_publication_scope() {
+        return _compile_application(program, entry_path, options);
+    }
+}
+
+def _compile_application(
     program: JacProgram, entry_path: str, options: CompileOptions
 ) -> Module {
     import copy;

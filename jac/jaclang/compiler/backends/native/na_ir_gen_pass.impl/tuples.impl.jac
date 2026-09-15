@@ -10,11 +10,11 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         declared_fields = list(declared.pointee.elements);
     }
 
-    _in_return = False;
+    _linear_return = False;
     _anc = nd.parent;
-    while _anc is not None {
+    while self._gc_mode() == "none" and _anc is not None {
         if isinstance(_anc, uni.ReturnStmt) {
-            _in_return = True;
+            _linear_return = True;
             break;
         }
         if not isinstance(_anc, uni.TupleVal) {
@@ -35,12 +35,12 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         }
 
         _owns = self._is_owned(v);
-        if _in_return and isinstance(v.type, ir.PointerType) and not _owns {
+
+        if _linear_return and isinstance(v.type, ir.PointerType) and not _owns {
             is_named_local = isinstance(val, uni.Name)
                 and val.sym_name in self.local_vars
                 and val.sym_name not in self.param_vars;
             if not is_named_local {
-                self._emit_rc_retain(v, op="return_tuple_elem");
                 self._mark_owned(v);
                 _owns = True;
             } elif _ret_direct {
@@ -107,7 +107,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
     }
 
     rc_ok = (not is_value) or not self._nogc_headerless();
-    pending_old: list = [];
+    pending_old: list[ir.Value] = [];
     for (i, target) in enumerate(targets) {
         if i >= len(struct_type.elements) {
             break;
@@ -138,45 +138,31 @@ impl NaIRGenPass._codegen_tuple_unpack(
                 return False;
             }
             stored = self._coerce_type(elem_val, _slot_ty.pointee);
-            new_ref = self._rc_slot_ref(stored) if rc_ok else None;
-            if new_ref is not None {
+            if rc_ok {
                 if not moved {
-                    self._emit_rc_retain(new_ref, op="unpack", loc="");
+                    self._emit_take_ref(stored, op="unpack");
                 }
-                old_ref = self._rc_slot_ref(
-                    self.builder.load(alloca, name=f"unpack.{i}.old")
+                pending_old.append(
+                    self._mark_owned(self.builder.load(alloca, name=f"unpack.{i}.old"))
                 );
-                if old_ref is not None {
-                    pending_old.append(old_ref);
-                }
             }
             self.builder.store(stored, alloca);
         } else {
             alloca = self._entry_alloca(elem_val.type, var_name);
-            new_ref = self._rc_slot_ref(elem_val) if rc_ok else None;
-            if new_ref is not None {
-                _saved_block = self.builder.block;
-                self.builder.position_after(alloca);
-                self.builder.store(ir.Constant(elem_val.type, None), alloca);
-                self.builder.position_at_end(_saved_block);
+            if rc_ok {
                 if not moved {
-                    self._emit_rc_retain(new_ref, op="unpack", loc="");
+                    self._emit_take_ref(elem_val, op="unpack");
                 }
-                old_ref = self._rc_slot_ref(
-                    self.builder.load(alloca, name=f"unpack.{i}.old")
+                pending_old.append(
+                    self._mark_owned(self.builder.load(alloca, name=f"unpack.{i}.old"))
                 );
-                if old_ref is not None {
-                    pending_old.append(old_ref);
-                }
             }
             self.builder.store(elem_val, alloca);
-            self.local_vars[var_name] = alloca;
+            self._bind_local_slot(var_name, alloca);
         }
     }
 
-    for old_val in pending_old {
-        self._emit_rc_release_simple(old_val, op="unpack_old", loc="");
-    }
+    self._release_owned_args(pending_old, op="unpack_old");
     if (not is_value) and self._is_owned(_orig_tv) {
         self._emit_rc_release_simple(_orig_tv, op="unpack_box", loc="");
     }
@@ -207,32 +193,13 @@ impl NaIRGenPass._sizeof_llvm(ty: ir.Type) -> ir.Value {
     return self.builder.ptrtoint(size_gep, i64, name="sizeof");
 }
 
-impl NaIRGenPass._rc_slot_ref(val: ir.Value) -> (ir.Value | None) {
-    if self?.jacval_type and val.type == self.jacval_type {
-        return None;
-    }
-    if isinstance(val.type, ir.PointerType) {
-        if isinstance(val.type.pointee, ir.FunctionType) {
-            return None;
-        }
-        return val;
-    }
-    if self._opt_ptr_payload_of(val.type) is not None {
-        return self.builder.extract_value(val, 1, name="rc.opt.pv");
-    }
-    return None;
-}
-
-impl NaIRGenPass._tuple_managed_fields(struct_type: ir.LiteralStructType) -> list {
-    out: list = [];
+impl NaIRGenPass._tuple_managed_fields(
+    struct_type: ir.LiteralStructType
+) -> list[tuple[int, bool]] {
+    out: list[tuple[int, bool]] = [];
     for (i, ety) in enumerate(struct_type.elements) {
-        if self?.jacval_type and ety == self.jacval_type {
-            continue;
-        }
-        if isinstance(ety, ir.PointerType) {
-            if not isinstance(ety.pointee, ir.FunctionType) {
-                out.append((i, False));
-            }
+        if self._elem_kind(ety) in ("rc_ptr", "str", "jacval") {
+            out.append((i, False));
         } elif self._opt_ptr_payload_of(ety) is not None {
             out.append((i, True));
         }
@@ -259,7 +226,7 @@ impl NaIRGenPass._box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value {
             if _b_opt {
                 _bfv = self.builder.extract_value(_bfv, 1, name=f"box.f{_bi}.pv");
             }
-            self._emit_rc_retain(_bfv, op="box_field", loc=loc);
+            self._emit_take_ref(_bfv, op="box_field", loc=loc);
         }
     }
 
@@ -298,18 +265,21 @@ impl NaIRGenPass._coerce_tuple_to_struct(
         return val;
     }
     out: ir.Value = ir.Constant(target_struct, ir.Undefined);
+    source_owned = val.na_tuple_owned;
+    field_owned: list[bool] = [];
     for i in range(len(target_struct.elements)) {
         fld = self.builder.extract_value(val, i, name=f"tcoerce.{i}");
+        if source_owned is not None and i < len(source_owned) and source_owned[i] {
+            self._mark_owned(fld);
+        }
         tgt_ty = target_struct.elements[i];
         if fld.type != tgt_ty {
             fld = self._coerce_type(fld, tgt_ty);
         }
+        field_owned.append(self._is_owned(fld));
         out = self.builder.insert_value(out, fld, i, name=f"tcoerce.ins.{i}");
     }
-    _tc_owned = val?.na_tuple_owned;
-    if _tc_owned is not None {
-        out.na_tuple_owned = _tc_owned;
-    }
+    out.na_tuple_owned = field_owned;
     return out;
 }
 

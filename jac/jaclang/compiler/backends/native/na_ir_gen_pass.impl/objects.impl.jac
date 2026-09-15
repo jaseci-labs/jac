@@ -2438,6 +2438,16 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     if not isinstance(trailer, uni.AtomTrailer) or not trailer.is_attr {
         return None;
     }
+    receiver_node = trailer.target;
+    receiver_evaluated = False;
+    cached_receiver: ir.Value | None = None;
+    def receiver_value -> ir.Value | None {
+        if not receiver_evaluated {
+            cached_receiver = self._codegen_receiver(receiver_node);
+            receiver_evaluated = True;
+        }
+        return cached_receiver;
+    }
     import from jaclang.compiler.symbol_utils { imported_module_name }
     module_name = imported_module_name(trailer.target);
     target_name = module_name or self._get_name(trailer.target);
@@ -2760,7 +2770,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
 
     list_spec = self._list_spec_of(trailer.target);
     if list_spec == "u8" and method_name in ("append", "extend") {
-        _ba_recv = self._codegen_receiver(trailer.target);
+        _ba_recv = receiver_value();
         if _ba_recv is not None {
             _ba_res = self._dispatch_bytearray_method(method_name, _ba_recv, nd);
             if _ba_res is not None {
@@ -2769,7 +2779,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         }
     }
     if list_spec is not None {
-        list_val = self._codegen_receiver(trailer.target);
+        list_val = receiver_value();
         if list_val is not None {
             _shape_spec = self._infer_list_elem_type(list_val);
             elem_type_name: str | None = _shape_spec
@@ -2852,7 +2862,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     set_spec = self._set_spec_of(trailer.target);
     if set_spec is not None {
         elem_type_name = set_spec;
-        set_val = self._codegen_receiver(trailer.target);
+        set_val = receiver_value();
         if set_val is not None {
             arg_vals = self._codegen_call_args(nd);
             if method_name == "add" and arg_vals {
@@ -2876,7 +2886,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
 
     tuple_type_key = self._tuple_key_of(trailer.target);
     if tuple_type_key is not None {
-        tuple_val = self._codegen_receiver(trailer.target);
+        tuple_val = receiver_value();
         if tuple_val is not None {
             arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
@@ -2890,7 +2900,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
 
     dict_type_key: (str | None) = self._dict_key_of(trailer.target);
     if dict_type_key is None and target_name is not None {
-        probe_val = self._codegen_receiver(trailer.target);
+        probe_val = receiver_value();
         if probe_val is not None {
             dict_type_info = self._infer_dict_type(probe_val);
             if dict_type_info is not None {
@@ -2899,7 +2909,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         }
     }
     if dict_type_key is not None {
-        dict_val = self._codegen_receiver(trailer.target);
+        dict_val = receiver_value();
         dict_type_key = self._dict_key_reconcile(dict_type_key, dict_val);
         if dict_val is not None and dict_type_key is not None {
             arg_vals = self._codegen_call_args(nd);
@@ -2913,7 +2923,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     if method_name in self._primitive_method_names("int") {
-        int_val = self._codegen_receiver(trailer.target);
+        int_val = receiver_value();
         if int_val is not None and isinstance(int_val.type, ir.IntType) {
             arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
@@ -2926,7 +2936,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     if method_name in self._primitive_method_names("float") {
-        float_val = self._codegen_receiver(trailer.target);
+        float_val = receiver_value();
         if float_val is not None and isinstance(float_val.type, ir.DoubleType) {
             arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
@@ -2939,7 +2949,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     if method_name in self._primitive_method_names("complex") {
-        cval = self._codegen_receiver(trailer.target);
+        cval = receiver_value();
         if cval is not None and cval.type == self.complex_struct_type.as_pointer() {
             result = self._dispatch_primitive_method(
                 "complex", method_name, cval, [], ""
@@ -2952,7 +2962,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
 
     if method_name in ("count", "index") {
         if self._type_key_of(trailer.target) == "range" {
-            rng_val = self._codegen_receiver(trailer.target);
+            rng_val = receiver_value();
             if rng_val is not None {
                 arg_vals = self._codegen_call_args(nd);
                 result = self._dispatch_primitive_method(
@@ -2966,7 +2976,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     if method_name in self._primitive_method_names("bytes") {
-        bytes_val = self._codegen_receiver(trailer.target);
+        bytes_val = receiver_value();
         if bytes_val is not None and self._is_bytes_value(bytes_val) {
             arg_vals = self._codegen_call_args(nd);
             result = self._dispatch_primitive_method(
@@ -2979,7 +2989,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     if method_name in self._primitive_method_names("str") {
-        str_val = self._str_norm_optional(self._codegen_receiver(trailer.target));
+        str_val = self._str_norm_optional(receiver_value());
         if str_val is not None
             and self._opt_payload_of(str_val.type) == ir.IntType(8).as_pointer() {
             str_val = self._coerce_type(str_val, ir.IntType(8).as_pointer());
@@ -2999,7 +3009,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         or self._struct_name_of(trailer.target);
     obj_val: (ir.Value | None) = None;
     if type_name is None {
-        obj_val = self._codegen_receiver(trailer.target);
+        obj_val = receiver_value();
         if obj_val is not None {
             type_name = self._infer_type_name(obj_val);
 
@@ -3091,7 +3101,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     if obj_val is None {
-        obj_val = self._codegen_receiver(trailer.target);
+        obj_val = receiver_value();
     }
     if obj_val is None {
         return None;
@@ -4135,10 +4145,7 @@ impl NaIRGenPass._codegen_field_assign(
         _fs_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{target.loc.first_line
             if target.loc
             else 0}";
-        _fs_new_pv = self.builder.extract_value(
-            value, 1, name=f"field.{field_name}.newpv"
-        );
-        self._emit_take_ref(_fs_new_pv, op="field_set", loc=_fs_loc);
+        self._emit_take_ref(value, op="field_set", loc=_fs_loc);
         _fs_old = self.builder.load(field_ptr, name=f"field.{field_name}.old");
         _fs_old_pv = self.builder.extract_value(
             _fs_old, 1, name=f"field.{field_name}.oldpv"
@@ -4466,6 +4473,15 @@ impl NaIRGenPass._build_jc_layout -> str {
                 code = "optref";
                 _opn = getattr(ft.elements[1].pointee, "name", "") or "";
                 aux = _opn;
+                semantic = semantic_fields.get(fname);
+                if isinstance(semantic, UnionType)
+                    and any(
+                        isinstance(member, ClassType)
+                            and member.shared.class_name == "str"
+                        for member in semantic.types
+                    ) {
+                    code = "optstr";
+                }
             } elif isinstance(ft, ir.IntType) {
                 code = "bool" if ft.width == 1 else "int";
             } elif isinstance(ft, ir.DoubleType) {

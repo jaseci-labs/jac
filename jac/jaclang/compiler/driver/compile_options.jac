@@ -177,6 +177,16 @@ obj CompileOptions {
         return result;
     }
 
+    def for_executable -> CompileOptions {
+        import copy;
+        result = copy.copy(self);
+        result.no_cgen = False;
+        result.symtab_ir_only = False;
+        result.iface_ok = False;
+        result.native_parity = False;
+        return result;
+    }
+
     def clone_for_native_import -> CompileOptions {
         return CompileOptions(
             skip_native_engine=True,

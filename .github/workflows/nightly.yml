@@ -1,7 +1,7 @@
 name: Nightly
 
-# Scheduled checks of source builds and shipped artifacts. On workflow_dispatch every job
-# runs; on schedule each job matches its own cron.
+# Scheduled checks of source builds and shipped artifacts. Manual runs default
+# to every job; native_only selects the JacPython probes. Scheduled jobs match their cron.
 
 on:
   schedule:
@@ -9,6 +9,11 @@ on:
     - cron: '17 8 * * *'  # installer against the LIVE latest release
     - cron: '41 9 * * 1'  # Intel-Mac probe (the manual release leg)
   workflow_dispatch:
+    inputs:
+      native_only:
+        description: Run only the JacPython runtime and packaged binary probes
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -28,7 +33,10 @@ jobs:
             zig_target: aarch64-linux-gnu.2.17
           - os: macos-14
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    # Cold native builds include a 22–26 minute runtime build before packaging.
+    # Keep a separate packaging limit so a slow payload still leaves time to
+    # upload its measurements and logs before the job deadline.
+    timeout-minutes: 120
     env:
       DTARGET: ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) || '' }}
     steps:
@@ -45,17 +53,28 @@ jobs:
         working-directory: jac
         run: zig build build-python $DTARGET --summary all
       - name: Build and probe the packaged native JacPython binary
+        timeout-minutes: 90
         working-directory: jac
         env:
           JAC_NO_DEV_SOURCE: "1"
+          JAC_BUILD_METRICS: ${{ github.workspace }}/jac/.build-metrics/payload.json
+          JAC_PRECOMPILE_RSS_LOG: "1"
         run: |
-          zig build $DTARGET --summary all
+          mkdir -p .build-metrics
+          # This job builds from source without a Zig artifact cache. Streaming
+          # makes stalled or timed-out producers visible in the retained log.
+          set -o pipefail
+          zig build $DTARGET -Dpayload-progress --summary all 2>&1 | tee .build-metrics/native-build.log
           zig-out/bin/jac -c '
           import ast, ctypes, sys
           assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3
           assert not hasattr(sys, "_jacpython_compile")
           assert not hasattr(sys, "_jacpython_image")
           assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42
+          from watchdog.observers import Observer
+          if sys.platform == "darwin":
+              from watchdog.observers.fsevents import FSEventsObserver
+              assert Observer is FSEventsObserver
           print("Packaged JacPython: native compiler active")
           '
       - name: Diagnose macOS native startup failures
@@ -78,17 +97,18 @@ jobs:
               -c 'import ast, ctypes, encodings, sys; assert eval("6 * 7") == 42; assert isinstance(ast.parse("x=1"), ast.Module); assert encodings.search_function.__code__.co_filename == encodings.__file__; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 3'
           fi
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: jacpython-native-build-logs-${{ runner.os }}-${{ runner.arch }}
           path: |
             jac/.python-build/**/*.log
+            jac/.build-metrics/
             jac/zig-out/bin/jac
             ~/Library/Logs/DiagnosticReports/python*.ips
           include-hidden-files: true
 
   notes-app-cef-smoke:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && !inputs.native_only) || github.event.schedule == '0 3 * * *' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - uses: actions/checkout@v5
@@ -152,7 +172,7 @@ jobs:
   # when scripts/install.sh changes; this runs it daily, so a release that
   # ships a missing or broken asset is caught without an installer PR.
   installer-live:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 8 * * *' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && !inputs.native_only) || github.event.schedule == '17 8 * * *' }}
     uses: ./.github/workflows/_installer.yml
 
   # The darwin native lane: sealed macOS kit + the Mach-O / wasm-floor /
@@ -162,7 +182,7 @@ jobs:
   # This is also the only caller that runs on main, so it is what seeds the
   # shared macOS caches -- setup-jac gates every cache save to main.
   macos-native:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && !inputs.native_only) || github.event.schedule == '0 3 * * *' }}
     uses: ./.github/workflows/_macos-native.yml
 
   # The Intel-Mac leg left the release matrix: it is `manual` in
@@ -173,7 +193,7 @@ jobs:
   # weeks the way it once did inside the matrix. No tag, so nothing is
   # uploaded and the post-build jobs stay skipped.
   intel-mac-probe:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '41 9 * * 1' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && !inputs.native_only) || github.event.schedule == '41 9 * * 1' }}
     permissions:
       contents: write
     uses: ./.github/workflows/build-binaries.yml
@@ -188,7 +208,7 @@ jobs:
   # binary via docker/jaclang.Dockerfile (baked-runtime path).
   k8s-real-e2e:
     name: microservice e2e (k8s, ${{ matrix.base }})
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && !inputs.native_only) || github.event.schedule == '0 3 * * *' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 40
     strategy:

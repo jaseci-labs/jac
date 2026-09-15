@@ -1574,6 +1574,7 @@ impl NaIRGenPass._dispatch_primitive_method(
     kwargs: (dict | None) = None,
     kw_node: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
+    temporaries = self.owned_temp_slots.copy();
     target = self._str_norm(target);
     args = [self._str_norm(_a) for _a in args];
     _emitter = self._ensure_emitters().get(type_name);
@@ -1598,8 +1599,21 @@ impl NaIRGenPass._dispatch_primitive_method(
         and isinstance(kw_node.target, uni.AtomTrailer) {
         _ctx.receiver_node = kw_node.target.target;
     }
+    linear = self._nogc_headerless();
+    if not linear {
+        target = self._borrow_owned_temp(target);
+        args = [self._borrow_owned_temp(arg) for arg in args];
+    }
+    guard = self._begin_cleanup_guard(temporaries);
     try {
-        return _emit_fn(_ctx, target, args);
+        result = _emit_fn(_ctx, target, args);
+        if result is not None
+            and not linear
+            and (result is target or any(result is arg for arg in args)) {
+            self._emit_take_ref(result, op="method_result");
+            self._mark_reference_owned(result);
+        }
+        return result;
     } except Exception as _pm_exc {
         if self._na_debug_on() {
             import sys as _pm_sys;
@@ -1619,6 +1633,9 @@ impl NaIRGenPass._dispatch_primitive_method(
             f"required. Original error: {_pm_exc}"
         );
         return None;
+    } finally {
+        self._end_cleanup_guard(guard);
+        self._release_temps_since(temporaries);
     }
 }
 

@@ -58,8 +58,7 @@ obj peg_token {
         level: int = 0,
         metadata: str | None = None,
         filename: str = "<unknown>",
-        warned: bool = False,
-        memo_head: peg_memo | None = None;
+        warned: bool = False;
 }
 
 obj peg_keyword_entry {
@@ -80,6 +79,9 @@ obj peg_parser {
         feature_version: int = 14,
         type_ignores: list[tuple[int, str]] = [],
         tokens: list[peg_token] = [],
+        # A memo result can contain its starting token. Keeping memo chains
+        # on tokens would make those results reference-counted cycles.
+        memo_heads: dict[int, peg_memo] = {},
         source_lines: list[bytes] = [],
         mark: int = 0,
         keyword_lists: list[list[peg_keyword_entry]] = [],
@@ -256,7 +258,7 @@ def peg_check_memo(p: peg_parser, rule_type: int) -> peg_memo_hit {
         # A terminal lexer error cannot seed a left-recursive rule.
         return peg_memo_hit(hit=True);
     }
-    head = p.tokens[p.mark].memo_head;
+    head = p.memo_heads.get(p.mark);
     while head is not None {
         if head.rule_type == rule_type {
             p.mark = head.end_mark;
@@ -277,9 +279,9 @@ def peg_insert_memo(
         rule_type=rule_type,
         result=result,
         end_mark=p.mark,
-        next=p.tokens[start_mark].memo_head
+        next=p.memo_heads.get(start_mark)
     );
-    p.tokens[start_mark].memo_head = m;
+    p.memo_heads[start_mark] = m;
 }
 
 def peg_update_memo(
@@ -289,7 +291,7 @@ def peg_update_memo(
         peg_insert_memo(p, start_mark, rule_type, result);
         return;
     }
-    head = p.tokens[start_mark].memo_head;
+    head = p.memo_heads.get(start_mark);
     while head is not None {
         if head.rule_type == rule_type {
             head.result = result;
@@ -410,11 +412,7 @@ def peg_raise_syntax_error_on_token(
 }
 
 def peg_reset_for_error_pass(p: peg_parser) {
-    i = 0;
-    while i < len(p.tokens) {
-        p.tokens[i].memo_head = None;
-        i = i + 1;
-    }
+    p.memo_heads.clear();
     p.mark = 0;
     p.flags = p.initial_flags;
     p.call_invalid_rules = True;

@@ -62,6 +62,38 @@ test "native validation preserves client code context" {
     }
 }
 
+test "source store preserves native early results and isolates mutable contexts" {
+    import from jaclang.compiler.driver.compilation_context { SourceStore }
+    kernel = ensure_loaded();
+    if kernel is not None {
+        assert kernel.supports_early;
+        store = SourceStore();
+        source = "def f(`from: str) -> str { return `from; }";
+        prior: Module | None = None;
+        for (context, expected) in [("server", 1), ("client", 0)] {
+            program = JacProgram();
+            (module, failed) = store.parse(
+                source, "owned_early_context.jac", program, [], context
+            );
+            assert not failed;
+            assert module is not prior;
+            assert "ASTValidationPass" in program.analysis.early_passes[id(module)];
+            run_pass(ASTValidationPass, module, program);
+            run_pass(SymTabBuildPass, module, program);
+            assert len(
+                [
+                    e
+                    for e in program.errors_had
+                    if e.code and e.code.code == "E0067"
+                ]
+            )
+                == expected;
+            assert id(module) not in program.analysis.early_passes;
+            prior = module;
+        }
+    }
+}
+
 glob SOURCE: str = """
 obj Item {
     has value: int = 0;
@@ -130,7 +162,7 @@ test "native early passes preserve the store parser's symbol graph" {
             SOURCE, "early_scopes.jac", native, [], early_context="server"
         );
         assert not failed;
-        assert "SymTabBuildPass" in native.analysis.early_passes[id(nat_mod)].results;
+        assert "SymTabBuildPass" in native.analysis.early_passes[id(nat_mod)];
         before = scope_profile(nat_mod);
         run_pass(ASTValidationPass, nat_mod, native);
         run_pass(SymTabBuildPass, nat_mod, native);
@@ -171,6 +203,10 @@ test "native validation diagnostics retain inline suppression" {
                 assert errors[0].from_pass is ASTValidationPass;
                 assert errors[0].loc.mod_path == "early_diagnostic.jac";
                 assert errors[0].loc.first_line == 1;
+                diagnostic = errors[0].code;
+                assert diagnostic is not None;
+                assert errors[0].help_text == diagnostic.help_text;
+                assert errors[0].help_text;
             }
         }
     }

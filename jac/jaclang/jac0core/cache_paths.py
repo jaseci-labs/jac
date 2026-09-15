@@ -6,7 +6,8 @@ bytecode cache (``meta_importer``) and the JIR module cache
 (``jaclang.compiler.driver.jir``) derive their directories from here, so the
 platform-resolution logic lives in exactly one place.
 
-This module owns only the genuinely global, config-independent directories.
+This bootstrap-safe module owns global cache directories and their locking and
+atomic publication primitives.
 The per-module cache locations (``jir/modules/`` and its ``native/`` subdir)
 are project-aware and therefore resolved in ``jaclang.compiler.driver.jir`` via
 ``get_module_cache_path``/``get_native_cache_dir(source_path)``, which fall
@@ -18,9 +19,36 @@ Platform roots:
     Windows: %LOCALAPPDATA%/jac/cache/jir/
 """
 
+import errno
+import hashlib
 import os
+import secrets
 import sys
+import time
 from pathlib import Path
+
+
+def file_revision(path: str) -> tuple[int, int, int, int, int]:
+    stat = os.stat(path)
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+def _content_digest(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def content_sha256(path: str) -> str:
+    """Hash current contents; filesystem timestamps are not a content identity."""
+    for _ in range(3):
+        before = file_revision(path)
+        digest = _content_digest(path)
+        if file_revision(path) == before:
+            return digest
+    raise OSError(f"Source changed while reading {path}")
 
 
 def get_jir_cache_dir() -> Path:
@@ -44,3 +72,94 @@ def get_bootstrap_cache_dir() -> Path:
 def get_app_cache_dir() -> Path:
     """Global cache dir for materialized app bundles (.jab), content-keyed."""
     return get_jir_cache_dir().parent / "apps"
+
+
+class FileLock:
+    """Cross-process file lock usable before the Jac importer is initialized.
+
+    The lock file is persistent: removing it can split waiters across inodes.
+    Each acquisition opens its own descriptor, including in sibling threads.
+    """
+
+    def __init__(self, path: str | Path, timeout: float = 1800.0) -> None:
+        self.path = Path(path)
+        self.timeout = timeout
+        self.handle = -1
+
+    def acquire(self) -> None:
+        if self.handle != -1:
+            raise RuntimeError("FileLock is not reentrant")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        handle = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            if os.name == "nt" and os.fstat(handle).st_size == 0:
+                os.write(handle, b"0")
+            deadline = time.monotonic() + self.timeout
+            while True:
+                try:
+                    if os.name == "nt":
+                        import msvcrt
+                        os.lseek(handle, 0, os.SEEK_SET)
+                        msvcrt.locking(handle, msvcrt.LK_NBLCK, 1)
+                    else:
+                        import fcntl
+                        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError as exc:
+                    if exc.errno not in (errno.EACCES, errno.EAGAIN):
+                        raise
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(f"Timed out waiting for {self.path}") from exc
+                    time.sleep(0.05)
+        except BaseException:
+            os.close(handle)
+            raise
+        self.handle = handle
+
+    def release(self) -> None:
+        if self.handle != -1:
+            os.close(self.handle)
+            self.handle = -1
+
+    def __enter__(self) -> "FileLock":
+        self.acquire()
+        return self
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
+        self.release()
+
+
+def atomic_write(path: str | Path, data: bytes, mode: int | None = None) -> None:
+    """Publish complete bytes on a new inode; open readers retain the old image.
+
+    Callers that merge existing contents must hold FileLock across their read
+    and this replacement. Existing permissions are preserved unless mode is
+    explicit; new files use ordinary 0666 permissions filtered by the umask.
+    """
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        # O_EXCL protects the randomly named staging file; os.open applies the
+        # process umask without reading/changing that process-global setting.
+        while True:
+            candidate = destination.parent / f".{destination.name}.{secrets.token_hex(16)}.tmp"
+            try:
+                handle = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+                temporary = candidate
+                break
+            except FileExistsError:
+                continue
+        with os.fdopen(handle, "wb") as output:
+            output.write(data)
+        if mode is None:
+            try:
+                mode = destination.stat().st_mode & 0o777
+            except FileNotFoundError:
+                pass
+        if mode is not None:
+            temporary.chmod(mode)
+        os.replace(temporary, destination)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)

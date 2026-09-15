@@ -157,3 +157,36 @@ test "symbols-only requests never resolve types to serialize an interface" {
         assert not program.analysis.analyses_run.provides(module, AnalysisFact.TYPE_OF);
     }
 }
+
+test "a bootstrap compilation keeps its IR tier after imports finish" {
+    import marshal;
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
+    import jaclang.compiler.driver.pipeline as pipeline;
+    with TemporaryDirectory() as directory {
+        path = Path(directory) / "bootstrap.jac";
+        path.write_text("def answer() -> int { return 42; }\n");
+        compiler = JacCompiler();
+        program = compiler.selfhost.program;
+        task = ModuleCompilation(compiler, program, str(path), CompileOptions());
+        task.parse();
+        with patch.object(
+            pipeline, "get_ir_gen_sched", return_value=pipeline.get_bootstrap_ir_sched()
+        ) {
+            task.ir();
+        }
+        assert not task.full_head;
+        assert not pipeline._codegen_tier_reason();
+        task.codegen();
+        assert not program.errors_had;
+        namespace: dict[str, any] = {};
+        assert task.module.gen.py_bytecode is not None;
+        exec(marshal.loads(task.module.gen.py_bytecode), namespace);
+        assert namespace["answer"]() == 42;
+        compiler.release_compile_state(program);
+    }
+}

@@ -417,7 +417,11 @@ def _copy_fields(m: Mz, row: ClassRow, h: int, o: int) {
                 o, fr.key_h, _K.true_h if _ld8(buf, fr.off) != 0 else _K.false_h
             );
         } elif code == CODE_STR {
-            p = _ld64u(buf, fr.off);
+            if (fr.flags & 1) != 0 and _ld8(buf, fr.off) == 0 {
+                PyObject_SetAttr(o, fr.key_h, _K.none_h);
+                continue;
+            }
+            p = _ld64u(buf, fr.off + (8 if (fr.flags & 1) != 0 else 0));
             if p != 0 {
                 _set_fresh(o, fr.key_h, PyUnicode_FromString(p));
             } else {

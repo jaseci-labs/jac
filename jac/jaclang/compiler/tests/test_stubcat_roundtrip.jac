@@ -60,10 +60,11 @@ test "catalog export releases its temporary compiler and stub trees" {
         only: list[str] | None,
         pkg_dir: str | None,
         quiet: bool,
-        started: float
+        started: float,
+        key: str
     ) -> dict[str, any] {
         refs.append(("program", ref(prog)));
-        result = original(prog, out_path, only, pkg_dir, quiet, started);
+        result = original(prog, out_path, only, pkg_dir, quiet, started, key);
         evaluator = prog.type_evaluator;
         if evaluator is not None {
             refs.append(("evaluator", ref(evaluator)));

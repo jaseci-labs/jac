@@ -22,6 +22,7 @@ import from jaclang.compiler.driver.compiler { JacCompiler }
 import from jaclang.compiler.driver.jir {
     SEC_CTDEPS,
     precompiled_jir_matches_source,
+    read_dep_hashes,
     read_section_bytes
 }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -182,7 +183,16 @@ test "an edit to a module no fold read leaves the consumer's cache alone" {
     with _isolated(paths["root"]) {
         _folded(paths["consmod"]);
         cache = artifact_cache_path(paths["consmod"], JacProgram());
+        data = cache.read_bytes();
+        dependencies = read_dep_hashes(data);
+        assert dependencies and all(digest for (_, digest) in dependencies) , (
+            f"bytecode publication left incomplete dependency proofs: {dependencies}"
+        );
         stamp = os.path.getmtime(cache);
+        _folded(paths["consmod"]);
+        assert os.path.getmtime(cache) == stamp , (
+            "an unchanged warm request rewrote the consumer's bytecode cache"
+        );
         _write(paths["othermod"], OTHER_SRC_EDIT);
         _folded(paths["consmod"]);
         assert os.path.getmtime(cache) == stamp , (

@@ -35,11 +35,12 @@ test "string fields retain their schema while foreign pointers remain opaque" {
     }
 }
 
-test "materialization skips deleted native dictionary entries and preserves order" {
+test "materialization preserves optional strings and sparse dictionary contents" {
     import ctypes;
     import os;
     import sys;
     import tempfile;
+    import from types { SimpleNamespace }
     import from tests.support { NATIVE_FIXTURES }
     import from jaclang.cli.commands.native_build { native_build }
     activate_scope_lowering();
@@ -50,10 +51,38 @@ test "materialization skips deleted native dictionary entries and preserves orde
             source = os.path.join(NATIVE_FIXTURES, "dict_materialization.jac");
             assert native_build(source, output=output, lib=True) == 0;
             with open(output + ".layout.json") as layout_file {
-                fields = json.load(layout_file)["classes"]["DictionaryOwner"]["fields"];
+                classes = json.load(layout_file)["classes"];
+                fields = classes["DictionaryOwner"]["fields"];
                 schema = fields["values"]["schema"];
             }
             library = ctypes.PyDLL(output);
+            optional = classes["OptionalText"];
+            assert optional["fields"]["value"]["code"] == "optstr";
+            copy_text = library.copy_optional_text;
+            copy_text.restype = ctypes.c_int64;
+            copy_text.argtypes = [
+                ctypes.c_int64,
+                ctypes.c_int64,
+                ctypes.c_int64,
+                ctypes.py_object,
+                ctypes.py_object,
+                ctypes.py_object,
+                ctypes.py_object
+            ];
+            for (mode, expected) in enumerate([None, "", "diagnostic help: café"]) {
+                target = SimpleNamespace();
+                assert copy_text(
+                    mode,
+                    optional["size"],
+                    optional["fields"]["value"]["offset"],
+                    target,
+                    "value",
+                    None,
+                    ""
+                )
+                    == 0;
+                assert target.value == expected;
+            }
             copy_dictionary = library.copy_sparse_dictionary;
             copy_dictionary.restype = ctypes.py_object;
             copy_dictionary.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64];

@@ -1,5 +1,6 @@
 import type from jaclang.compiler.driver.program { JacProgram }
 import json;
+import from jaclang.jac0core.cache_paths { atomic_write }
 import os;
 import sys;
 import time;
@@ -116,21 +117,10 @@ def jac_internal_stub_files(pkg_dir: str) -> list[tuple[str, str]] {
 }
 
 def _rss_mb -> int {
-    import resource;
-    usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss;
-    return int(usage // (1024 * 1024))
-        if sys.platform == "darwin"
-        else int(usage // 1024);
+    import from jaclang.runtime.resource_usage { peak_rss_mb }
+    return peak_rss_mb();
 }
 
-def _write_atomic(path: str, data: bytes) {
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True);
-    tmp = f"{path}.tmp.{os.getpid()}";
-    with open(tmp, "wb") as f {
-        f.write(data);
-    }
-    os.replace(tmp, path);
-}
 
 def build_catalog(
     out_path: str,
@@ -138,26 +128,46 @@ def build_catalog(
     pkg_dir: (str | None) = None,
     quiet: bool = False
 ) -> dict[str, any] {
+    import from jaclang.jac0core.cache_paths { FileLock, content_sha256 }
     started = time.monotonic();
-    import from jaclang.compiler.driver.program { JacProgram }
-    prog = JacProgram();
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
-
-    prog._compiler = JacCompiler(
-        stub_catalog_disabled=True, _selfhost=SelfHostCache(_program=prog)
-    );
-    previous_building = os.environ.get(ENV_BUILDING);
-    os.environ[ENV_BUILDING] = "1";
-    try {
-        return _build_catalog_inner(prog, out_path, only, pkg_dir, quiet, started);
-    } finally {
-        if previous_building is None {
-            os.environ.pop(ENV_BUILDING, None);
-        } else {
-            os.environ[ENV_BUILDING] = previous_building;
+    pkg = pkg_dir or jaclang_pkg_dir();
+    selection = sorted(set(only)) if only is not None else None;
+    with FileLock(out_path + ".lock") {
+        key = catalog_key(pkg);
+        try {
+            with open(out_path + ".json", "r", encoding="utf-8") as metadata {
+                saved = json.load(metadata);
+            }
+            if saved.get("key") == key
+                and saved.get("selection") == selection
+                and saved.get("sha256") == content_sha256(out_path) {
+                saved["reused"] = True;
+                atomic_write(
+                    out_path + ".json",
+                    json.dumps(saved, indent=2, sort_keys=True).encode()
+                );
+                return saved;
+            }
+        } except (OSError, ValueError, TypeError, AttributeError) {}
+        import from jaclang.compiler.driver.program { JacProgram }
+        prog = JacProgram();
+        import from jaclang.compiler.driver.compiler { JacCompiler }
+        import from jaclang.compiler.driver.selfhost { SelfHostCache }
+        prog._compiler = JacCompiler(
+            stub_catalog_disabled=True, _selfhost=SelfHostCache(_program=prog)
+        );
+        previous_building = os.environ.get(ENV_BUILDING);
+        os.environ[ENV_BUILDING] = "1";
+        try {
+            return _build_catalog_inner(prog, out_path, only, pkg, quiet, started, key);
+        } finally {
+            if previous_building is None {
+                os.environ.pop(ENV_BUILDING, None);
+            } else {
+                os.environ[ENV_BUILDING] = previous_building;
+            }
+            prog.release_compile_closure(retain_stubs=False);
         }
-        prog.release_compile_closure(retain_stubs=False);
     }
 }
 
@@ -167,7 +177,8 @@ def _build_catalog_inner(
     only: (list[str] | None),
     pkg_dir: (str | None),
     quiet: bool,
-    started: float
+    started: float,
+    key: str
 ) -> dict[str, any] {
     pkg = pkg_dir or jaclang_pkg_dir();
     ev = prog.get_type_evaluator();
@@ -224,19 +235,24 @@ def _build_catalog_inner(
         sys.stderr.flush();
     }
     writer.force_all();
-    data = writer.emit(catalog_key(pkg), ev.ambient_typing_names_by_module);
-    _write_atomic(out_path, data);
+    data = writer.emit(key, ev.ambient_typing_names_by_module);
+    if catalog_key(pkg) != key {
+        raise RuntimeError("Catalog inputs changed during compilation");
+    }
+    atomic_write(out_path, data);
     manifest = writer.manifest();
     manifest["bytes"] = len(data);
-    manifest["key"] = catalog_key(pkg);
+    manifest["key"] = key;
+    manifest["selection"] = sorted(set(only)) if only is not None else None;
+    import hashlib;
+    manifest["sha256"] = hashlib.sha256(data).hexdigest();
+    manifest["reused"] = False;
     manifest["load_failures"] = load_failures;
     manifest["seconds"] = round(time.monotonic() - started, 2);
     manifest["python"] = f"{sys.version_info.major}.{sys.version_info.minor}";
-    try {
-        with open(out_path + ".json", "w", encoding="utf-8") as f {
-            json.dump(manifest, f, indent=2, sort_keys=True);
-        }
-    } except OSError {}
+    atomic_write(
+        out_path + ".json", json.dumps(manifest, indent=2, sort_keys=True).encode()
+    );
     if not quiet {
         sys.stderr.write(
             f"stubcat: {manifest['modules']} modules, {manifest['symbols']} symbols, "

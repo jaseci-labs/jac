@@ -65,6 +65,49 @@ faster together. Total build ranges overlap (3.423–4.193 s baseline,
 3.340–4.145 s new), so the end-to-end figure is a local measurement rather than a
 guaranteed speedup. Both generated executables completed an automatic game.
 
+## Native storage and temporary ownership
+
+Native emitters register local storage through `NaIRGenPass._bind_local_slot`.
+When a source name acquires a different native representation, the previous
+slot and its ownership metadata remain in the existing frame cleanup. Entry
+initialization makes cleanup safe on paths that skip either binding. Lexical
+scopes use `_enter_bindings`, `_shadow_bindings`, and `_leave_bindings`; nested
+functions use the corresponding function-state boundary.
+
+`RcFactsPass` records early release by storage name. Every use of that name
+constrains its lifetime, including uses through borrowed parameters and other
+symbols that cannot independently request early release. Escaping bindings
+retain the ordinary frame cleanup. A symbol's final use is insufficient when
+another symbol lowers to the same storage name.
+
+Owned expression temporaries use the same frame through `_borrow_owned_temp`
+and `_release_temps_since`. Predicate operands and primitive receivers retain
+their cleanup across exceptions; returning an input alias establishes its
+ownership before the input temporaries are released. Primitive dispatch
+evaluates the receiver once. Native ownership regressions check both destructor
+counts and the existing debug allocation registry under reference counting and
+cycle collection, so leaked container buffers and strings are covered too.
+
+String normalization borrows a terminated buffer held by that frame. It uses
+the same materialization helper as escaping string conversions: full buffers
+are retained and substring views are copied when necessary. Temporary slots
+release their previous contents when an expression executes again in a loop.
+Boxed values use the shared reference-acquisition and release helpers for local
+assignments, loop and comprehension bindings, pattern captures, walrus bindings,
+and rebound parameters. Tuple fields participate in acquisition, destruction,
+and cycle tracing; unpacking acquires all replacement values before releasing
+any old value. Reference-counted tuple returns use that same boxing path to
+acquire each borrowed field, including repeated aliases and normalized string
+temporaries. Field coercion carries ownership through the conversion instead
+of inferring a move from the source expression's name. Boxed local values
+participate in iteration and frame cleanup; optional field stores preserve
+the ownership of the whole incoming value.
+Member lookup uses the current native binding's layout after a name changes
+representation, while preserving a flow-narrowed subtype of that binding.
+The binding frame records which names actually changed storage representation.
+Initial bindings keep analysis's union narrowing and explicit cast semantics;
+an LLVM pointer's pointee alone does not identify the active union member.
+
 ## Native hash containers
 
 Dictionaries and sets share `backends/native/na_ir_gen_pass.impl/hash_core.impl.jac`
@@ -98,6 +141,36 @@ Sealing preserves the interface, dependency hashes,
 diagnostic profiles, and placement facts, including for bootstrap modules
 whose executable bytecode is produced by jac0. A bytecode-only cache is
 upgraded through `IfaceRegistry` instead of introducing a second analyzer.
+An executable request extends the live module's completed passes, including
+for selfhost modules. Missing bytecode does not invalidate unchanged analysis.
+Interface hashes describe declarations and exported types. Local escape,
+stack-allocation, region-handle, and parameter-rebinding facts stay on the
+analyzed tree; running lifetime analysis or code generation cannot change
+an interface merely by filling in those facts.
+Equivalent unknown types share their serialized identity, including their
+diagnosed and incomplete flags; allocating another equivalent type object must
+not change the exported interface.
+Client invalidation removes the client section through the shared JIR writer;
+it preserves executable and interface products. Closure publication prepares
+all available interfaces before recording dependency hashes, then republishes
+validated live executable products against that completed dependency set.
+Preparation includes modules discovered while encoding another module's exports.
+Completed diagnostic profiles remain owned by the module's analysis state while
+dependency hashes are finalized and executable products are added. Source
+invalidation and session eviction discard them through the shared task cleanup.
+Application traversal batches this publication across its roots and contexts,
+then publishes each completed context once. Single-module requests still publish
+at their own boundary. Nested traversal shares the enclosing publication scope;
+exceptions discard pending publication, and cancellation retains the registry's
+normal eligibility checks.
+Live source revisions use the same content and annex-membership identity as
+disk products, so restored timestamps and deleted annexes cannot hide edits.
+At an outer request, `JacProgram.refresh_compile_inputs` checks retained inputs
+and invalidates affected dependents before serving products. Ordinary programs
+and bounded sessions share this rule, including compile-time file dependencies.
+Recursive compiler work and the process's executing compiler do not rescan the
+closure on each import; source compilation owns its separate request context.
+Executable requests preserve the producer's compilation options and context.
 Normal code generation keeps its existing interface policy.
 Bytecode loads establish their own compilation request, including when a
 type check lazily loads compiler code. The caller's analysis and full-tree
@@ -132,7 +205,77 @@ keep their path mapping through local cache writes and subsequent packaging. Dia
 profile and dependency checks still govern reuse. Dependencies outside the
 package retain their existing validation and source fallback.
 
-Per-unit release keeps parsed stub trees while a compilation uses them.
+`CompilationSession` owns a bounded set of context programs across roots.
+Contexts share a `SourceStore` of unconsumed syntax from dependency discovery.
+Compilation transfers each tree into its context's module hub and removes it
+from the store. Compatible requests reuse that owned tree and its completed
+products. An incompatible context parses its own tree; copying complete mutable
+syntax graphs is not a prerequisite for compilation. Parser misses use the
+existing native early-pass path when available. Evaluated trees, type memos,
+catalog decodes, and product tasks belong to one context and worker. The default
+budget is 256 source modules or 32 root requests. At a completed request,
+reaching either budget, cancellation, or failure releases mutable analysis and
+preserves compact interface products. A single dependency closure may exceed
+the module budget while it is active; the precompile pool also retires workers
+at its configured RSS limit. Neither bound interrupts an in-progress pass.
+
+Source changes are checked at outer request boundaries and before publication.
+The dependency graph records both imported modules and compile-time file reads.
+Compile-time symbol resolution tracks visited import aliases and keeps its
+recursion guard active through value evaluation. Cyclic reexports terminate
+without a compile-time value; long acyclic chains resolve without a hop limit.
+Type imports use the program's module hub and interface registry to resolve
+cycles. An import encountered during cache validation can hydrate the module's
+interface or enter its source pipeline; the evaluator does not replace an
+in-progress module with an empty symbol table.
+Successful outer analysis and executable requests publish their completed
+interface cohort before returning, using the same publisher as precompile. This fills dependency
+hashes that only become available when a cycle finishes, without rerunning
+completed analysis. Failed or cancelled requests cannot publish that cohort.
+An inferred native placement keeps the ordinary analysis interface unchanged,
+but publishes its dependency records after the cohort's interface digests are
+ready. A bytecode cache hit therefore has complete dependency proofs even when
+the executable itself cannot publish an analysis interface.
+An edit invalidates affected live products and their consumers. Disk replay uses
+interface hashes for ordinary imports and content hashes for compile-time inputs,
+so body-only edits retain the existing interface cutoff. Restored timestamps do
+not establish freshness. Publication holds the JIR lock across validation and
+merge; new dependency revisions cannot relabel older executable or diagnostic
+products. Released trees cannot publish new analysis, even when their encoded
+interfaces remain reusable.
+
+Package precompilation plans work with this same dependency graph and module
+resolver. Each strongly connected component runs its members in order as
+separate jobs. The work pool releases a consumer only after its prerequisite
+groups finish. Progress, failure reporting, and worker retirement operate
+between members as well as between groups. Completed dependency
+interfaces are published through `IfaceRegistry` before worker eviction. A
+replacement worker hydrates those products; it never borrows another worker's
+mutable tree or evaluator. Cold discovery retains at most the syntax budget,
+so an evicted tree may be parsed again when a later product requires it.
+Discovery and interface hydration use the compiler's common JIR lookup, including
+validated artifacts restored into a fresh staging directory. Discarded syntax
+uses the existing collection budget so cyclic trees do not accumulate behind
+the compilation GC thresholds. The temporary planning session closes before
+workers start, transferring only its bounded pristine syntax store.
+Import discovery traverses the syntax without populating descendant indexes
+on every retained node.
+
+Before forking, precompile loads the shared compiler schedules and catalog once,
+then releases completed compiler execution state. Automatic worker selection
+uses at least the same memory budget as worker retirement; explicit worker
+counts remain available for controlled measurements.
+At a memory limit, workers collect released objects first, then evict the
+session's retained trees and collect again before deciding to retire. This
+also releases inherited discovery syntax: a planner cache larger than the
+worker limit must not force a fresh worker for every subsequent module.
+
+The compiler's execution program has a separate lifetime from owned source
+sessions. Nested importer execution defers cleanup until the outer execution
+returns, preserving live analysis needed by imports in progress.
+A module compiled with the bootstrap IR schedule keeps that tier through
+code generation even if the import cycle ends between those phases.
+
 The runtime graph driver indexes anchors with non-owning handles, including
 inside an execution context. Node and edge references keep reachable topology
 alive, and the persistence store owns stored anchors. When the last owner
@@ -140,10 +283,23 @@ releases a component, weak-handle callbacks retire its kernel rows and recycle
 its handles. Closing a context also retires its region, even for graph objects
 still held by callers. Handle metadata uses a slotted weak reference with a
 shared callback, avoiding a closure and captured cells for every anchor.
+The shared graph store recycles empty row slots without retaining retired edge
+objects. Once teardown has traversed every saved row index and no adjacency
+remains, it releases the empty backing tables too. This prevents a large native
+parse from pinning its peak graph storage throughout later compilations; live
+regions retain their row indices and topology.
 At a completed compilation boundary, `release_compile_state` releases both
 source and stub roots. Activating the stub catalog also retires the private
 selfhost bootstrap closure before application compilation starts; it never
 changes the stub lens of an active application compilation.
+
+Build artifact identities, stage measurements, and the cold/warm validation
+procedure are described in [`dist/payload/README.md`](../dist/payload/README.md).
+
+Compile-time execution of user constructors follows the same demand/frame rule
+as user functions. Speculative typing of a runtime constructor must not execute
+its body, force its implementation dependencies, or record compile-time body
+dependencies that disappear when the class is loaded from an interface.
 
 ## Rules
 

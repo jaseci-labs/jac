@@ -527,13 +527,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
     if unpack_target is None and loop_var_name is not None {
         loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
 
-        if isinstance(actual_elem_type, ir.PointerType) {
-            _compr_saved_block = self.builder.block;
-            self.builder.position_after(loop_alloca);
-            self.builder.store(ir.Constant(actual_elem_type, None), loop_alloca);
-            self.builder.position_at_end(_compr_saved_block);
-        }
-        self.local_vars[loop_var_name] = loop_alloca;
+        self._bind_local_slot(loop_var_name, loop_alloca);
     }
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="compr.cond");
@@ -571,10 +565,10 @@ impl NaIRGenPass._codegen_compr_walk_body(
             return;
         }
     } elif loop_alloca is not None {
-        if isinstance(actual_elem_type, ir.PointerType) {
-            _compr_old = self.builder.load(loop_alloca, name="compr.old");
-            self._emit_rc_release_simple(_compr_old, op="compr_elem", loc="");
-            self._emit_rc_retain(elem_val, op="compr_elem", loc="");
+        if self._gc_mode() != "none" {
+            assert loop_var_name is not None;
+            self._emit_take_ref(elem_val, op="compr_elem");
+            self._release_owned_temp(loop_var_name, op="compr_elem");
         }
         self.builder.store(elem_val, loop_alloca);
     }
@@ -660,7 +654,7 @@ impl NaIRGenPass._codegen_compr_range_walk(
     self._shadow_bindings([loop_var_name]);
     loop_alloca = self._entry_alloca(i64, loop_var_name);
     self.builder.store(start_val, loop_alloca);
-    self.local_vars[loop_var_name] = loop_alloca;
+    self._bind_local_slot(loop_var_name, loop_alloca);
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="compr.range.cond");
     body_bb = func.append_basic_block(name="compr.range.body");

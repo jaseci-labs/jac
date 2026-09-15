@@ -192,6 +192,13 @@ impl skip_site_template(p: str) -> bool {
 
 impl skip_stage_site(p: str) -> bool {
     base = p.rsplit("/", 1)[-1];
+    if p
+        in (
+            "jaclang/_precompiled/stubcat.bin.json",
+            "jaclang/_precompiled/stubcat.bin.lock"
+        ) {
+        return True;
+    }
     if base.startswith("._") or base == ".DS_Store" {
         return True;
     }

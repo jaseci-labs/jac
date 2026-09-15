@@ -519,7 +519,8 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
     import from jaclang.dist.precompile_bytecode {
         precompile_unit,
         find_jac_files,
-        _unit_program
+        precompile_worker_init,
+        precompile_worker_exit
     }
     import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
     import from jaclang.compiler.driver.program { JacProgram }
@@ -542,26 +543,37 @@ def _precompile_units(pkg: str, rebuild: bool) -> tuple[int, dict, float] {
     prior_default = get_effective_default_codespace_override();
     set_effective_default_codespace("server");
     started = time.perf_counter();
+    measurements: list[dict[str, any]] = [];
+    precompile_worker_init();
     try {
         for f in files {
-            assert precompile_unit(f, pkg, False, collect=False) is not None , f"{f} did not precompile";
+            assert precompile_unit(
+                f, pkg, False, collect=False, measurements=measurements
+            )
+                is not None , f"{f} did not precompile";
         }
     } finally {
+        precompile_worker_exit();
         set_effective_default_codespace(prior_default);
         if rebuild {
             os.environ.pop("JAC_REBUILD", None);
         }
     }
     wall = time.perf_counter() - started;
-    prog: any = _unit_program[0] if _unit_program else None;
-    runs = sum(prog.analysis.pass_runs.values()) if prog is not None else 0;
-    events = dict(prog.analysis.cache_events) if prog is not None else {};
-    if prog is not None {
-        publish("precompile-pass-runs", str(dict(prog.analysis.pass_runs)));
-        prog.analysis.pass_runs.clear();
-        prog.analysis.pass_time.clear();
-        prog.analysis.cache_events.clear();
+    pass_runs: dict[str, int] = {};
+    events: dict[str, int] = {};
+    for record in measurements {
+        events["frontend_tree_hits"] = events.get("frontend_tree_hits", 0)
+            + sum(record.get("tree_hits", {}).values());
+        for (name, count) in record.get("pass_runs", {}).items() {
+            pass_runs[name] = pass_runs.get(name, 0) + count;
+        }
+        for (name, count) in record.get("cache_events", {}).items() {
+            events[name] = events.get(name, 0) + count;
+        }
     }
+    runs = sum(pass_runs.values());
+    publish("precompile-pass-runs", str(pass_runs));
     return (runs, events, wall, );
 }
 
@@ -569,7 +581,8 @@ test "the cold precompile path stays inside its work envelope" {
     import from jaclang.dist.precompile_bytecode {
         precompile_unit,
         find_jac_files,
-        _unit_program
+        precompile_worker_init,
+        precompile_worker_exit
     }
     import from jaclang.compiler.frontend.codeinfo {
         set_effective_default_codespace,
@@ -586,16 +599,23 @@ test "the cold precompile path stays inside its work envelope" {
         prior_default = get_effective_default_codespace_override();
         set_effective_default_codespace("server");
         started = time.perf_counter();
+        measurements: list[dict[str, any]] = [];
+        precompile_worker_init();
         try {
             for f in find_jac_files(pkg) {
-                assert precompile_unit(f, pkg, False, collect=False) is not None;
+                assert precompile_unit(
+                    f, pkg, False, collect=False, measurements=measurements
+                )
+                    is not None;
             }
         } finally {
+            precompile_worker_exit();
             set_effective_default_codespace(prior_default);
         }
         wall_warm = time.perf_counter() - started;
-        prog: any = _unit_program[0] if _unit_program else None;
-        warm_runs = sum(prog.analysis.pass_runs.values()) if prog is not None else 0;
+        warm_runs = sum(
+            sum(record.get("pass_runs", {}).values()) for record in measurements
+        );
         publish(
             "precompile-gate",
             f"precompile gate x12 units: no-cache {no_cache} runs {wall_none:.2f}s, "
@@ -612,7 +632,10 @@ test "the cold precompile path stays inside its work envelope" {
             f"cold precompile with the cache did {cold} pass runs against {no_cache} without it "
             f"(ratio {cold / max(no_cache, 1):.2f}, ceiling {GATE_COLD_MAX_RATIO})"
         );
-        assert events.get("dep_hydrate", 0) >= 1 , f"the cold run hydrated nothing (events: {events})";
+        assert events.get("dep_hydrate", 0) + events.get("frontend_tree_hits", 0)
+            >= 1 , (
+            f"the cold run reused no dependency products or live trees (events: {events})"
+        );
         assert events.get("boundary_facts", 0) >= 1 , (
             f"the cold run served no boundary facts from the cache (events: {events})"
         );

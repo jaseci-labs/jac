@@ -1,5 +1,9 @@
+import from jaclang.compiler.driver.dependency_graph { DepGraph }
 import os;
 import sys;
+import time;
+import from contextlib { contextmanager }
+import from contextvars { ContextVar }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.relations { ScopeChild }
 import from jaclang.compiler.passes.transform { Alert, PassResult }
@@ -13,40 +17,27 @@ import from jaclang.compiler.driver.pipeline_types {
 
 obj ModuleHub {
     has mod: uni.ProgramModule,
-        stamps: dict[str, float] = {},
+        stamps: dict[str, str] = {},
         artifacts: dict[str, any] = {},
         client_artifacts: dict[str, ClientArtifact] = {};
 
     def stamp(resolved_path: str) {
-        import time;
-        import from jaclang.compiler.driver.bccache { discover_annex_files }
-        seen = time.time();
+        import from jaclang.compiler.driver.jir { module_source_key }
         try {
-            seen = max(seen, os.path.getmtime(resolved_path));
-            for related in discover_annex_files(resolved_path) {
-                seen = max(seen, os.path.getmtime(related));
-            }
-        } except OSError {}
-        self.stamps[resolved_path] = seen;
+            self.stamps[resolved_path] = module_source_key(resolved_path);
+        } except OSError {
+            self.stamps.pop(resolved_path, None);
+        }
     }
 
     def is_fresh(resolved_path: str) -> bool {
-        import os;
-        import from jaclang.compiler.driver.bccache { discover_annex_files }
-        cached_at = self.stamps.get(resolved_path);
-        if cached_at is None {
-            return True;
+        import from jaclang.compiler.driver.jir { module_source_key }
+        revision = self.stamps.get(resolved_path);
+        if revision is None {
+            return False;
         }
         try {
-            if os.path.getmtime(resolved_path) > cached_at {
-                return False;
-            }
-            for related in discover_annex_files(resolved_path) {
-                if os.path.getmtime(related) > cached_at {
-                    return False;
-                }
-            }
-            return True;
+            return module_source_key(resolved_path) == revision;
         } except OSError {
             return False;
         }
@@ -79,7 +70,7 @@ obj ModuleHub {
 
     def reset(retain_stubs: bool = True) {
         retained_mods: dict[str, uni.Module] = {};
-        retained_stamps: dict[str, float] = {};
+        retained_stamps: dict[str, str] = {};
         dropped: list[uni.Module] = [];
         for (path, mod) in self.mod.hub.items() {
             if retain_stubs and path.endswith(".pyi") {
@@ -116,84 +107,6 @@ obj ModuleHub {
     }
 }
 
-obj DepGraph {
-    has dependents: dict[str, set[str]] = {},
-        tracking: bool = False;
-
-    def record(importer_path: str, target_path: str) -> None {
-        if importer_path == target_path {
-            return;
-        }
-        bucket = self.dependents.get(target_path);
-        if bucket is None {
-            bucket = set();
-            self.dependents[target_path] = bucket;
-        }
-        bucket.add(importer_path);
-    }
-
-    def record_module(mod: uni.Module) -> None {
-        import from pathlib { Path }
-        if mod.loc is None {
-            return;
-        }
-        mod_path = mod.loc.mod_path;
-        if not mod_path.endswith(".jac") {
-            return;
-        }
-        try {
-            importer = str(Path(mod_path).resolve());
-        } except Exception {
-            return;
-        }
-        for imp in mod.get_all_sub_nodes(uni.Import) {
-            paths: list[uni.ModulePath] = [];
-            if imp.from_loc is not None {
-                paths.append(imp.from_loc);
-            } else {
-                for item in imp.items {
-                    if isinstance(item, uni.ModulePath) {
-                        paths.append(item);
-                    }
-                }
-            }
-            for mp in paths {
-                try {
-                    target = str(Path(mp.resolve_relative_path()).resolve());
-                } except Exception {
-                    continue;
-                }
-                self.record(importer, target);
-            }
-        }
-    }
-
-    def transitive_dependents(target_path: str) -> set[str] {
-        out: set[str] = set();
-        frontier: list[str] = [target_path];
-        while frontier {
-            current = frontier.pop();
-            for importer in self.dependents.get(current, set()) {
-                if importer in out {
-                    continue;
-                }
-                out.add(importer);
-                frontier.append(importer);
-            }
-        }
-        return out;
-    }
-
-    def forget(resolved_path: str) {
-        for bucket in self.dependents.values() {
-            bucket.discard(resolved_path);
-        }
-    }
-
-    def clear {
-        self.dependents.clear();
-    }
-}
 
 obj DiagLedger {
     has errors: list[Alert] = [],
@@ -310,10 +223,15 @@ class AnalysisLedger {
     }
 }
 
-obj PendingPassResults {
-    has module: uni.Module,
-        results: dict[str, PassResult];
+obj TimingSample {
+    has runs: int = 0,
+        wall_seconds: float = 0.0,
+        exclusive_seconds: float = 0.0;
 }
+
+glob _timing_stack: ContextVar[tuple[list[float], ...]] = ContextVar(
+         "jac_compilation_timing", `default=()
+     );
 
 class AnalysisCaches {
     has placement_summaries: dict[str, any],
@@ -323,13 +241,67 @@ class AnalysisCaches {
         pass_runs: dict[str, int],
         pass_time: dict[str, float],
         phase_time: dict[str, float],
+        parse_runs: dict[str, int],
+        tree_hits: dict[str, int],
         completed_passes: dict[int, set[str]],
         product_tasks: dict[int, dict[CompilationProduct, ProductTask]],
+        module_diagnostics: dict[int, dict[str, DiagLedger]],
         task_owners: dict[int, any],
-        early_passes: dict[int, PendingPassResults],
-        cache_events: dict[str, int];
+        early_passes: dict[int, dict[str, PassResult]],
+        cache_events: dict[str, int],
+        timings: dict[str, dict[str, TimingSample]] = {};
+
+    @contextmanager
+    def measure(self: AnalysisCaches, path: str, name: str) -> Iterator[None] {
+        stack = _timing_stack.get();
+        children = [0.0];
+        token = _timing_stack.set(stack + (children, ));
+        started = time.perf_counter();
+        try {
+            yield ;
+        } finally {
+            elapsed = time.perf_counter() - started;
+            _timing_stack.reset(token);
+            if stack {
+                stack[-1][0] += elapsed;
+            }
+            sample = self.timings.setdefault(path, {}).setdefault(name, TimingSample());
+            sample.runs += 1;
+            sample.wall_seconds += elapsed;
+            sample.exclusive_seconds += max(0.0, elapsed - children[0]);
+        }
+    }
+
+    def measurements(self: AnalysisCaches) -> dict[str, any] {
+        return {
+            "timings": {
+                path: {
+                    name: {
+                        "runs": sample.runs,
+                        "wall_seconds": sample.wall_seconds,
+                        "exclusive_seconds": sample.exclusive_seconds
+                    } for (name, sample) in phases.items()
+                } for (path, phases) in self.timings.items()
+            },
+            "parse_runs": dict(self.parse_runs),
+            "tree_hits": dict(self.tree_hits),
+            "pass_runs": dict(self.pass_runs),
+            "cache_events": dict(self.cache_events)
+        };
+    }
+
+    def reset_measurements(self: AnalysisCaches) {
+        self.timings.clear();
+        self.parse_runs.clear();
+        self.tree_hits.clear();
+        self.pass_runs.clear();
+        self.pass_time.clear();
+        self.phase_time.clear();
+        self.cache_events.clear();
+    }
 
     def init(self: AnalysisCaches) {
+        self.timings = {};
         self.placement_summaries: dict[str, any] = {};
         self.placement_state: dict[str, any] = {};
         self.analyses_run: AnalysisLedger = AnalysisLedger();
@@ -337,10 +309,13 @@ class AnalysisCaches {
         self.pass_runs: dict[str, int] = {};
         self.pass_time: dict[str, float] = {};
         self.phase_time: dict[str, float] = {};
+        self.parse_runs = {};
+        self.tree_hits = {};
         self.completed_passes = {};
         self.product_tasks = {};
+        self.module_diagnostics = {};
         self.task_owners = {};
-        self.early_passes: dict[int, PendingPassResults] = {};
+        self.early_passes = {};
         self.cache_events: dict[str, int] = {};
     }
 
@@ -360,24 +335,36 @@ class AnalysisCaches {
     def drop_tasks(self: AnalysisCaches, key: int) {
         self.completed_passes.pop(key, None);
         self.product_tasks.pop(key, None);
+        self.module_diagnostics.pop(key, None);
+        self.early_passes.pop(key, None);
         self.task_owners.pop(key, None);
+    }
+
+    def clear_tasks(self: AnalysisCaches) {
+        self.completed_passes.clear();
+        self.product_tasks.clear();
+        self.module_diagnostics.clear();
+        self.early_passes.clear();
+        self.task_owners.clear();
     }
 
     def record_early(
         self: AnalysisCaches, module: uni.Module, results: dict[str, PassResult]
     ) {
-        self.early_passes[id(module)] = PendingPassResults(module, results);
+        self.retain_tasks(module);
+        self.early_passes[id(module)] = results;
     }
 
     def take_early(
         self: AnalysisCaches, module: uni.Module, name: str
     ) -> (PassResult | None) {
+        self.retain_tasks(module);
         pending = self.early_passes.get(id(module));
         if pending is None {
             return None;
         }
-        result = pending.results.pop(name, None);
-        if not pending.results {
+        result = pending.pop(name, None);
+        if not pending {
             self.early_passes.pop(id(module));
         }
         return result;
@@ -400,16 +387,8 @@ def _env_int(name: str, fallback: int) -> int {
 }
 
 def _peak_rss_mb -> int {
-    try {
-        import resource;
-    } except ImportError {
-        return 0;
-    }
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss;
-    if sys.platform == "darwin" {
-        return int(peak // (1024 * 1024));
-    }
-    return int(peak // 1024);
+    import from jaclang.runtime.resource_usage { peak_rss_mb }
+    return peak_rss_mb();
 }
 
 obj UnitCollectBudget {

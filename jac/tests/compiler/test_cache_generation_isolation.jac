@@ -69,6 +69,25 @@ test "two compiler generations get disjoint cache slots for one module" {
     );
 }
 
+test "toolchain versions cannot overwrite each other's compiler generation" {
+    import from unittest.mock { patch }
+    src = _seeded_module();
+    _unpin_generation();
+    try {
+        with patch.object(jir, "jaclang_version", return_value="0.0.0") {
+            standalone = get_module_cache_path(src);
+        }
+        _unpin_generation();
+        with patch.object(jir, "jaclang_version", return_value="1.0.0") {
+            packaged = get_module_cache_path(src);
+        }
+        assert standalone != packaged;
+        assert standalone.name == packaged.name;
+    } finally {
+        _unpin_generation();
+    }
+}
+
 test "native artifacts ride the generation of the compiler that emitted them" {
     src = _seeded_module();
     _pin_generation(GEN_A);
@@ -142,10 +161,7 @@ test "a zero TTL disables the sweep" {
 }
 
 test "JacPython sources participate in the producing compiler identity" {
-    import from jaclang.compiler.driver.jir {
-        compiler_source_digest,
-        _manifest_compiler_digest
-    }
+    import from jaclang.compiler.driver.jir { compiler_source_digest }
     prefixes = (
         "compiler/frontend/python/",
         "compiler/backends/py/jacpython/",
@@ -159,7 +175,6 @@ test "JacPython sources participate in the producing compiler identity" {
             before = compiler_source_digest(pkg);
             src.write_text("def f() -> int { return 2; }\n");
             assert compiler_source_digest(pkg) != before;
-            assert _manifest_compiler_digest(pkg) != before;
         }
     }
 }

@@ -1,6 +1,65 @@
 impl WorkPool.postinit -> None {
     self.kids = [];
     self.crashlogs = [];
+    self.pending = list(range(len(self.items)));
+    self.completed = set();
+    remaining = set(self.pending);
+    for (item, dependencies) in self.prerequisites.items() {
+        if item not in remaining or not dependencies <= remaining {
+            raise ValueError("WorkPool prerequisite refers to an unknown item");
+        }
+    }
+    while remaining {
+        ready = {
+            item
+            for item in remaining
+            if not (self.prerequisites.get(item, set()) & remaining)
+        };
+        if not ready {
+            raise ValueError(
+                "WorkPool prerequisites contain a cycle; group cyclic work into one item"
+            );
+        }
+        remaining -= ready;
+    }
+}
+
+impl WorkPool._next_ready -> int | None {
+    for idx in self.pending {
+        if self.prerequisites.get(idx, set()) <= self.completed {
+            self.pending.remove(idx);
+            self.cursor += 1;
+            return idx;
+        }
+    }
+    return None;
+}
+
+impl WorkPool._run_job(
+    request: dict[str, any], served: int, setup_seconds: float
+) -> dict[str, any] {
+    import time;
+    import from traceback { format_exception }
+    wall = time.perf_counter();
+    cpu = time.process_time();
+    record: dict[str, any] = {};
+    try {
+        record["result"] = self.job(request);
+    } except KeyboardInterrupt {
+        raise;
+    } except BaseException as exc {
+        record["error"] = "".join(format_exception(exc)).rstrip();
+    }
+    record["worker_pid"] = os.getpid();
+    record["wall_seconds"] = time.perf_counter() - wall;
+    record["cpu_seconds"] = time.process_time() - cpu;
+    record["setup_seconds"] = setup_seconds if served == 1 else 0.0;
+    record["rss"] = worker_rss_mb();
+    record["retirement_seconds"] = 0.0;
+    record["retirement_cpu_seconds"] = 0.0;
+    record["rss_after_retirement"] = record["rss"];
+    record["served"] = served;
+    return record;
 }
 
 impl WorkPool._should_stop -> bool {
@@ -33,30 +92,38 @@ impl WorkPool._request(idx: int, path: str, crashlog: str) -> dict[(str, any)] {
 }
 
 impl WorkPool.run_inline -> None {
-    import from traceback { format_exception }
-    init_hook = self.worker_init;
-    if init_hook is not None {
-        init_hook();
-    }
-    dispatch_hook = self.on_dispatch;
-    for (idx, path) in enumerate(self.items) {
-        if self._should_stop() {
-            break;
+    import time;
+    started = time.perf_counter();
+    try {
+        init_hook = self.worker_init;
+        if init_hook is not None {
+            init_hook();
         }
-        request = self._request(idx, path, "");
-        request["inline"] = True;
-        if dispatch_hook is not None {
-            dispatch_hook(idx, path);
+        setup_seconds = time.perf_counter() - started;
+        dispatch_hook = self.on_dispatch;
+        while self.pending {
+            if self._should_stop() {
+                break;
+            }
+            idx = self._next_ready();
+            if idx is None {
+                raise RuntimeError("WorkPool has pending work but no ready item");
+            }
+            path = self.items[idx];
+            request = self._request(idx, path, "");
+            request["inline"] = True;
+            if dispatch_hook is not None {
+                dispatch_hook(idx, path);
+            }
+            record = self._run_job(request, self.cursor, setup_seconds);
+            self.completed.add(idx);
+            self.on_record(idx, record);
         }
-        record: dict[(str, any)] = {};
-        try {
-            record = {"result": self.job(request)};
-        } except KeyboardInterrupt {
-            raise;
-        } except BaseException as exc {
-            record = {"error": "".join(format_exception(exc)).rstrip()};
+    } finally {
+        exit_hook = self.worker_exit;
+        if exit_hook is not None {
+            exit_hook();
         }
-        self.on_record(idx, record);
     }
 }
 
@@ -102,10 +169,13 @@ impl WorkPool._spawn(slot: int) -> dict[(str, any)] {
                     os.close(other["result_fd"]);
                 } except OSError {}
             }
-            self._worker_loop(dispatch_r, result_w);
-            exit_hook = self.worker_exit;
-            if exit_hook is not None {
-                exit_hook();
+            try {
+                self._worker_loop(dispatch_r, result_w);
+            } finally {
+                exit_hook = self.worker_exit;
+                if exit_hook is not None {
+                    exit_hook();
+                }
             }
         } except BaseException {}
         os._exit(0);
@@ -129,11 +199,13 @@ impl WorkPool._spawn(slot: int) -> dict[(str, any)] {
 
 impl WorkPool._worker_loop(dispatch_fd: int, result_fd: int) -> None {
     import json;
-    import from traceback { format_exception }
+    import time;
+    started = time.perf_counter();
     init_hook = self.worker_init;
     if init_hook is not None {
         init_hook();
     }
+    setup_seconds = time.perf_counter() - started;
     retire_hook = self.retire;
     served = 0;
     reader = os.fdopen(dispatch_fd, "r", encoding="utf-8");
@@ -151,21 +223,21 @@ impl WorkPool._worker_loop(dispatch_fd: int, result_fd: int) -> None {
         } except Exception {
             break;
         }
-        record: dict[(str, any)] = {};
-        try {
-            record = {"result": self.job(request)};
-        } except BaseException as exc {
-            record = {"error": "".join(format_exception(exc)).rstrip()};
-        }
         served += 1;
-        rss = worker_rss_mb();
+        record = self._run_job(request, served, setup_seconds);
+        rss = int(record["rss"]);
         retire_now = bool(request.get("isolate"));
         if not retire_now and retire_hook is not None {
+            retirement_wall = time.perf_counter();
+            retirement_cpu = time.process_time();
             try {
                 retire_now = bool(retire_hook(served, rss));
             } except Exception {
                 retire_now = False;
             }
+            record["retirement_seconds"] = time.perf_counter() - retirement_wall;
+            record["retirement_cpu_seconds"] = time.process_time() - retirement_cpu;
+            record["rss_after_retirement"] = worker_rss_mb();
         }
         record["idx"] = request["idx"];
         record["retire"] = retire_now;
@@ -186,7 +258,11 @@ impl WorkPool._worker_loop(dispatch_fd: int, result_fd: int) -> None {
             );
         }
         try {
-            os.write(result_fd, (payload + "\n").encode("utf-8"));
+            data = (payload + "\n").encode("utf-8");
+            offset = 0;
+            while offset < len(data) {
+                offset += os.write(result_fd, data[offset:]);
+            }
         } except OSError {
             break;
         }
@@ -201,15 +277,16 @@ impl WorkPool._dispatch(kid: dict[(str, any)]) -> bool {
     if self._should_stop() or (self.cursor >= len(self.items)) {
         return False;
     }
-    idx = self.cursor;
-    self.cursor += 1;
+    idx = self._next_ready();
+    if idx is None {
+        return False;
+    }
     path = self.items[idx];
     kid["inflight"] = idx;
     payload = json.dumps(self._request(idx, path, str(kid["crashlog"])), `default=str);
     try {
         os.write(kid["dispatch_fd"], (payload + "\n").encode("utf-8"));
     } except OSError {
-        kid["inflight"] = None;
         return False;
     }
     dispatch_hook = self.on_dispatch;
@@ -253,6 +330,7 @@ impl WorkPool._handle_record(kid: dict[(str, any)], line: str) -> None {
     kid["inflight"] = None;
     self._log_footprint(kid, record, done);
     if done is not None {
+        self.completed.add(done);
         self.on_record(done, record);
     }
     if record.get("retire") {
@@ -287,6 +365,7 @@ impl WorkPool._reap(kid: dict[(str, any)]) -> None {
     idx = kid["inflight"];
     if idx is not None {
         kid["inflight"] = None;
+        self.completed.add(idx);
         detail = f"worker exited while running this item (wait status {status})";
         spilled = "";
         try {
@@ -322,6 +401,11 @@ impl WorkPool._pump -> None {
         ];
         if not self.kids {
             break;
+        }
+        for kid in self.kids {
+            if kid["inflight"] is None and not kid.get("retired") {
+                self._dispatch(kid);
+            }
         }
         busy = [
             k
@@ -429,30 +513,8 @@ impl pool_available -> bool {
 }
 
 impl worker_rss_mb -> int {
-    import resource;
-    import sys;
-
-    if sys.platform == "linux" {
-        try {
-            with open("/proc/self/statm") as status {
-                resident_pages = int(status.read().split()[1]);
-            }
-            return resident_pages * os.sysconf("SC_PAGE_SIZE") // (1024 * 1024);
-        } except (OSError, ValueError, IndexError) {}
-    }
-    if sys.platform == "darwin" {
-        import subprocess;
-        try {
-            resident_kb = subprocess.check_output(
-                ["ps", "-o", "rss=", "-p", str(os.getpid())], text=True
-            );
-            return int(resident_kb.strip()) // 1024;
-        } except (OSError, ValueError, subprocess.SubprocessError) {}
-    }
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss;
-    return int(peak // (1024 * 1024))
-        if sys.platform == "darwin"
-        else int(peak // 1024);
+    import from jaclang.runtime.resource_usage { resident_rss_mb }
+    return resident_rss_mb();
 }
 
 impl should_retire(served: int, recycle: int, rss_mb: int, rss_cap: int) -> bool {

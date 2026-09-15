@@ -76,10 +76,6 @@ import from jaclang.compiler.types.stubcat.format {
     SYMF_DEFER,
     SYMF_HAS_DEFAULT,
     SYMF_INSTANCE_METHOD,
-    SYMF_NA_ESCAPES,
-    SYMF_NA_REGION_HANDLE,
-    SYMF_NA_STACK_OK,
-    SYMF_PARAM_REBOUND,
     TV_CLASS_PARAM,
     TV_CONTRAVARIANT,
     TV_COVARIANT,
@@ -776,7 +772,7 @@ obj CatalogWriter {
             if isinstance(t, ClassType) {
                 shared = t._shared;
                 if shared is None {
-                    return ("unknown", flags, );
+                    return ("unknown", flags, False, True, );
                 }
                 return (
                     "class",
@@ -878,6 +874,15 @@ obj CatalogWriter {
             }
             if isinstance(t, NeverType) {
                 return ("never", flags, );
+            }
+            if isinstance(t, UnknownType) {
+                return (
+                    "unknown",
+                    flags,
+                    bool(t.is_diagnosed),
+                    bool(t.is_incomplete),
+
+                );
             }
             if isinstance(t, AnyType) {
                 return ("any", flags, bool(t.is_foreign), t.foreign_scalar or "", );
@@ -1166,19 +1171,8 @@ obj CatalogWriter {
             binding = 0;
         }
         put_uvar(out, binding);
+
         symbits = 0;
-        if sym.param_rebound {
-            symbits |= SYMF_PARAM_REBOUND;
-        }
-        if sym.na_escapes {
-            symbits |= SYMF_NA_ESCAPES;
-        }
-        if sym.na_region_handle {
-            symbits |= SYMF_NA_REGION_HANDLE;
-        }
-        if sym.na_stack_ok {
-            symbits |= SYMF_NA_STACK_OK;
-        }
         if self._jac_method_of(sym) is not None {
             symbits |= SYMF_INSTANCE_METHOD;
         }

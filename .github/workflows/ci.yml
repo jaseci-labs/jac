@@ -110,6 +110,16 @@ jobs:
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
 
+      - name: Upload producer measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-kit-measurements
+          path: jac/.build-metrics
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: ignore
+
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2
         with:
@@ -220,6 +230,10 @@ jobs:
           submodules: true
           fetch-depth: 0
 
+      - name: Snapshot compiler inputs
+        id: build-inputs
+        uses: ./.github/actions/build-inputs
+
       # On PRs, scope fmt to .jac files changed vs the merge-base. `jac check`
       # is deliberately NOT scoped: a type error is a property of the whole
       # program, so a scoped run answers a different question than the push
@@ -246,8 +260,8 @@ jobs:
       # The analysis cache is content+env keyed (every entry folds the
       # compiler-source digest), so restoring any prior cache is safe by
       # construction: entries from another compiler generation simply miss
-      # and get swept. The key's digest segment covers the compiler digest
-      # roots, so a compiler edit starts cold exactly when it must, while
+      # and get swept. The key uses the shared committed compiler-input
+      # snapshot, so a compiler edit starts cold exactly when it must, while
       # app-and-test-only PRs restore a fully warm analysis cache and the
       # whole-repo sweep collapses to diagnostics replay. Restored before
       # jac-kit (which pins XDG_CACHE_HOME to this path) so the kit's own
@@ -266,9 +280,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/**', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
+          key: jac-check-cache-v3-${{ runner.os }}-${{ runner.arch }}-c${{ steps.build-inputs.outputs.compiler }}-${{ github.sha }}
           restore-keys: |
-            jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/**', 'jac/jaclang/dist/precompile_bytecode.jac') }}-
+            jac-check-cache-v3-${{ runner.os }}-${{ runner.arch }}-c${{ steps.build-inputs.outputs.compiler }}-
 
       - uses: ./.github/actions/jac-kit
 
@@ -393,7 +407,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/**', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
+          key: jac-check-cache-v3-${{ runner.os }}-${{ runner.arch }}-c${{ steps.build-inputs.outputs.compiler }}-${{ github.sha }}
 
       - name: Error-code breakdown (label "type-error-report")
         if: contains(github.event.pull_request.labels.*.name, 'type-error-report')
