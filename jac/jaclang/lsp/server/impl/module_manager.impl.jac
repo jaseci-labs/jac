@@ -39,9 +39,11 @@ impl ModuleManager.trim -> None {
     }
     import from jaclang.lsp.server.utils { get_symbols_for_outline }
     for (path, manager) in self.sem_managers.items() {
-        products = self.products.get(path);
-        if products is not None and products.outline is None {
-            products.outline = get_symbols_for_outline(manager.ir.sym_tab, path);
+        document_products = self.products.get(path);
+        if document_products is not None and document_products.outline is None {
+            document_products.outline = get_symbols_for_outline(
+                manager.ir.sym_tab, path
+            );
         }
     }
     self.program.trim_analysis_cache(self.budget);

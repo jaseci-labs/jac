@@ -55,32 +55,32 @@ obj ModuleManager {
                 len(self.source_views) > self.editor_budget.max_source_views
                 or chars > self.editor_budget.max_source_chars
             ) {
-            oldest = next(iter(self.source_views));
-            chars -= len(self.source_views.pop(oldest).source);
+            oldest_source = next(iter(self.source_views));
+            chars -= len(self.source_views.pop(oldest_source).source);
         }
         count = sum(len(items) for items in self.completions.values());
         while self.completions and count > self.editor_budget.max_completion_items {
-            oldest = next(iter(self.completions));
-            count -= len(self.completions.pop(oldest));
+            oldest_completion = next(iter(self.completions));
+            count -= len(self.completions.pop(oldest_completion));
         }
     }
 
     def has_current_analysis(path: str) -> bool {
-        products = self.products.get(path);
-        return products is not None
-            and bool(products.index_shards)
-            and products.is_current(self.program.source_store);
+        document_products = self.products.get(path);
+        return document_products is not None
+            and bool(document_products.index_shards)
+            and document_products.is_current(self.program.source_store);
     }
 
     def invalidate(path: str, retain_products: bool = False) {
         if retain_products {
             import from jaclang.lsp.server.utils { get_symbols_for_outline }
             for (file, manager) in self.sem_managers.items() {
-                products = self.products.get(file);
-                if products is not None
-                    and products.unit_path == path
-                    and products.outline is None {
-                    products.outline = get_symbols_for_outline(
+                document_products = self.products.get(file);
+                if document_products is not None
+                    and document_products.unit_path == path
+                    and document_products.outline is None {
+                    document_products.outline = get_symbols_for_outline(
                         manager.ir.sym_tab, file
                     );
                 }
