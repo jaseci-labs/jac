@@ -416,6 +416,7 @@ obj IfaceRegistry {
 
     def ensure(path: str, compile_on_miss: bool = True) -> IfaceEntry | None {
         import from jaclang.compiler.driver.compilation_context { program_for }
+        self.prog.source_store.record_module(path);
         actual = program_for(path, self.prog);
         if actual is not self.prog {
             return actual.iface_registry().ensure(path, compile_on_miss);
@@ -434,6 +435,35 @@ obj IfaceRegistry {
     def prepare_interface(resolved: str, mod: any) -> bool {
         with self._compilation_scope() {
             return self._prepare_interface_in_context(resolved, mod);
+        }
+    }
+
+    def analysis_signature(mod: any) -> str | None {
+        import hashlib;
+        import from jaclang.compiler.placement.placement {
+            get_module_summary,
+            summary_to_bytes
+        }
+        if mod.parse_failed
+            or mod.stub_only
+            or not self.prog.analysis.analyses_run.provides(mod, AnalysisFact.TYPE_OF)
+            or self.prog.errors_had {
+            return None;
+        }
+        codec = iface_codec();
+        if codec is None {
+            return None;
+        }
+        with self._compilation_scope() {
+            encoded = self._encode_iface(
+                codec, mod, JirPaths(base_dir=os.path.dirname(mod.loc.mod_path))
+            );
+            if encoded is None {
+                return None;
+            }
+            return hashlib.sha256(
+                encoded + summary_to_bytes(get_module_summary(mod, self.prog))
+            ).hexdigest();
         }
     }
 
@@ -512,6 +542,9 @@ obj IfaceRegistry {
     def _ensure_in_context(
         path: str, compile_on_miss: bool = True
     ) -> (IfaceEntry | None) {
+        if self.prog.source_store.overrides {
+            return None;
+        }
         resolved = os.path.realpath(path);
         if not _interface_source_path(resolved) {
             return None;
@@ -687,6 +720,9 @@ obj IfaceRegistry {
     }
 
     def eligible(compiler: any, resolved: str, options: any) -> bool {
+        if self.prog.source_store.overrides {
+            return False;
+        }
         if options.aot_mode
             or bool(options.force_codespace)
             or bool(options.default_codespace) {
@@ -935,6 +971,10 @@ obj IfaceRegistry {
         resolved: str, mod: any, options: any, err_start: int, warn_start: int
     ) -> None {
         import json;
+
+        if self.prog.source_store.overrides {
+            return;
+        }
 
         if mod is None
             or mod.parse_failed
@@ -1263,42 +1303,4 @@ obj IfaceRegistry {
             self.verifying = False;
         }
     }
-}
-
-def seed_dep_edges(prog: any, root_dir: str, limit: int = 5000) -> int {
-    import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
-    seeded = 0;
-    scanned = 0;
-    skip_dirs = {".git", ".jac", "node_modules", "__pycache__", ".venv", "venv"};
-    for (walk_dir, dirs, files) in os.walk(root_dir) {
-        dirs[:] = [
-            d
-            for d in dirs
-            if not d.startswith(".") and d not in skip_dirs
-        ];
-        for name in files {
-            if not name.endswith(".jac") {
-                continue;
-            }
-            scanned += 1;
-            if scanned > limit {
-                return seeded;
-            }
-            full = os.path.realpath(os.path.join(walk_dir, name));
-            try {
-                cache_path = artifact_cache_path(full, prog);
-                if not cache_path.exists() {
-                    continue;
-                }
-                data: bytes = cache_path.read_bytes();
-            } except Exception {
-                continue;
-            }
-            for (dep, _digest) in read_dep_hashes(data) {
-                prog.deps.record(full, dep);
-                seeded += 1;
-            }
-        }
-    }
-    return seeded;
 }

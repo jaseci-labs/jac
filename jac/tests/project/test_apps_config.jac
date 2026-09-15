@@ -356,7 +356,7 @@ test "resolve_app: explicit, default, sole, ambiguous" {
 # effective_for_app
 # ===========================================================================
 test "effective_for_app layers base, app overlays, profile and local" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as td {
         root_path = write_workspace(
             Path(td) / "acme",

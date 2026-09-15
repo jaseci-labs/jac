@@ -17,17 +17,40 @@ impl ModuleManager.update(
     update_annexed: bool = True,
     files: (list[str] | None) = None
 ) -> None {
-    self.program.install_module(file_path, build);
-
+    self.completions.clear();
+    snapshot = self.program.source_store.snapshot;
+    inputs = snapshot.manifest() if snapshot is not None else None;
     if update_annexed {
         for f in (files or [file_path]) {
-            self.sem_managers[f] = SemTokManager(ir=build, target_path=f);
+            manager = SemTokManager(ir=build, target_path=f);
+            self.sem_managers[f] = manager;
+            self.products[f] = DocumentProducts(
+                file_path, inputs, list(manager.sem_tokens)
+            );
         }
+    }
+}
 
-        for (p, mod) in self.program.mod.hub.items() {
-            if p != file_path {
-                self.sem_managers[p] = SemTokManager(ir=mod, target_path=p);
-            }
+impl ModuleManager.trim -> None {
+    self.trim_editor_caches();
+    (contexts, nodes) = self.program.analysis_cache_usage();
+    if contexts <= self.budget.max_contexts and nodes <= self.budget.max_nodes {
+        return;
+    }
+    import from jaclang.lsp.server.utils { get_symbols_for_outline }
+    for (path, manager) in self.sem_managers.items() {
+        document_products = self.products.get(path);
+        if document_products is not None and document_products.outline is None {
+            document_products.outline = get_symbols_for_outline(
+                manager.ir.sym_tab, path
+            );
+        }
+    }
+    self.program.trim_analysis_cache(self.budget);
+    self.completions.clear();
+    for path in list(self.sem_managers) {
+        if self.program.module_owner(self.sem_managers[path].ir) is None {
+            self.sem_managers.pop(path);
         }
     }
 }

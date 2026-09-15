@@ -14,7 +14,13 @@ import from jaclang.compiler.placement.placement {
     summarize_module
 }
 
-glob _na_scan_memo: dict[tuple, tuple] = {},
+obj NativeScanEntry {
+    has revision: str,
+        server_reason: str,
+        dependencies: tuple[str, ...];
+}
+
+glob _na_scan_memo: dict[tuple[str, bool], NativeScanEntry] = {},
      _SPACE_BY_NAME: dict[str, CodeContext] = {
          'server': CodeContext.SERVER,
          'client': CodeContext.CLIENT,
@@ -43,60 +49,53 @@ def _native_dep_scan(
     path: str, hold_exempt: bool = False
 ) -> (tuple[str, list[str]] | None) {
     import from jaclang.compiler.placement.placement_pins { _is_demoted_native }
-    import from jaclang.project.source { read_file_with_encoding }
+    import from jaclang.project.source { read_source_unit, source_unit_revision }
     import from jaclang.compiler.driver.program { JacProgram }
     if _is_demoted_native(os.path.realpath(path)) {
         return ("previously-demoted", []);
     }
-    import from jaclang.compiler.driver.bccache { discover_annex_files }
     import from jaclang.compiler.frontend.parser { parse as rd_parse }
-    files = [path]
-        + discover_annex_files(path, '.impl.jac')
-        + discover_annex_files(path, '.test.jac');
-    fresh_parts: list[tuple] = [];
-    for f in files {
-        try {
-            st = os.stat(f);
-            fresh_parts.append((f, st.st_mtime_ns, st.st_size));
-        } except OSError {
-            return None;
-        }
+    path = os.path.realpath(path);
+    try {
+        (source, annexes) = read_source_unit(path);
+    } except OSError {
+        return None;
     }
-    fresh_key = tuple(fresh_parts);
+    fresh_key = source_unit_revision(path, source, annexes);
     cached = _na_scan_memo.get((path, hold_exempt, ));
-    if cached is not None and cached[0] == fresh_key {
-        return (cached[1], cached[2]);
+    if cached is not None and cached.revision == fresh_key {
+        del _na_scan_memo[(path, hold_exempt)];
+        _na_scan_memo[(path, hold_exempt)] = cached;
+        return (cached.server_reason, list(cached.dependencies));
     }
     sv_reason = '';
     deps: list[str] = [];
-    if not sv_reason {
-        base_dir = os.path.dirname(os.path.abspath(path)) or '.';
-        for f in files {
-            try {
-                src = read_file_with_encoding(f);
-            } except Exception {
-                sv_reason = "unreadable annex";
-                break;
-            }
-            (dep_mod, had_err) = rd_parse(src, f, prog=JacProgram());
-            if had_err {
-                sv_reason = "parse error";
-                break;
-            }
-            (f_sv, f_deps) = scan_native_blockers(
-                dep_mod, base_dir, allow_pub=True, hold_exempt=hold_exempt
-            );
-            if f_sv {
-                sv_reason = f_sv;
-                break;
-            }
-            deps.extend(f_deps);
+    base_dir = os.path.dirname(os.path.abspath(path)) or '.';
+    for (src, f) in [(source, path), *annexes] {
+        (dep_mod, had_err) = rd_parse(src, f, prog=JacProgram());
+        if had_err {
+            sv_reason = "parse error";
+            break;
         }
+        (f_sv, f_deps) = scan_native_blockers(
+            dep_mod, base_dir, allow_pub=True, hold_exempt=hold_exempt
+        );
+        if f_sv {
+            sv_reason = f_sv;
+            break;
+        }
+        deps.extend(f_deps);
     }
     if sv_reason {
         deps = [];
     }
-    _na_scan_memo[(path, hold_exempt, )] = (fresh_key, sv_reason, deps);
+    _na_scan_memo.pop((path, hold_exempt), None);
+    if len(_na_scan_memo) >= 1024 {
+        _na_scan_memo.pop(next(iter(_na_scan_memo)));
+    }
+    _na_scan_memo[(path, hold_exempt)] = NativeScanEntry(
+        fresh_key, sv_reason, tuple(deps)
+    );
     return (sv_reason, deps);
 }
 

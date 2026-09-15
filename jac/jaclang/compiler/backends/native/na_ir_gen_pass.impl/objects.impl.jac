@@ -2608,6 +2608,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         ) {
             _obj_v = self._codegen_expr(trailer.target);
             if _obj_v is not None {
+                _obj_v = self._narrow_receiver_ptr(_obj_v, _fld_struct);
+            }
+            if _obj_v is not None {
                 _idx = self.struct_field_indices[_fld_struct][method_name];
                 _fld_ptr = self.builder.gep(
                     _obj_v,

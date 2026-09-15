@@ -231,9 +231,9 @@ def _build_spy -> tuple[(list[str], any)] {
 not leak into the next test in this worker."""
 def _reset_config {
     import from jaclang.project { config as config_mod }
-    config_mod._config = None;
-    config_mod._config_explicit = False;
-    config_mod._config_by_root = {};
+    config_mod.config_state().current = None;
+    config_mod.config_state().explicit = False;
+    config_mod.config_state().by_root = {};
 }
 
 

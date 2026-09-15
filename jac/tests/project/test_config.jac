@@ -55,7 +55,7 @@ def write_multi_profile(project_dir: Path) {
 # TestInterpolateEnvVars
 # ===========================================================================
 test "interpolate simple env var" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     os.environ["TEST_VAR"] = "hello";
     result = interpolate_env_vars("prefix-${TEST_VAR}-suffix");
     assert result == "prefix-hello-suffix";
@@ -63,14 +63,14 @@ test "interpolate simple env var" {
 }
 
 test "interpolate env var with default" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     os.environ.pop("NONEXISTENT_VAR", None);
     result = interpolate_env_vars("${NONEXISTENT_VAR:-default_value}");
     assert result == "default_value";
 }
 
 test "interpolate env var with default when set" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     os.environ["MY_VAR"] = "actual";
     result = interpolate_env_vars("${MY_VAR:-default}");
     assert result == "actual";
@@ -78,7 +78,7 @@ test "interpolate env var with default when set" {
 }
 
 test "interpolate required env var missing" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     os.environ.pop("REQUIRED_VAR", None);
     raised = False;
     try {
@@ -91,7 +91,7 @@ test "interpolate required env var missing" {
 }
 
 test "interpolate required env var with custom error" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     os.environ.pop("MY_SECRET", None);
     raised = False;
     try {
@@ -104,7 +104,7 @@ test "interpolate required env var with custom error" {
 }
 
 test "interpolate multiple env vars" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     os.environ["HOST"] = "localhost";
     os.environ["PORT"] = "8080";
     result = interpolate_env_vars("http://${HOST}:${PORT}/api");
@@ -114,7 +114,7 @@ test "interpolate multiple env vars" {
 }
 
 test "interpolate non string passthrough" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     assert interpolate_env_vars(_as_any(123)) == 123;
     assert interpolate_env_vars(_as_any(None)) is None;
 }
@@ -123,7 +123,7 @@ test "interpolate non string passthrough" {
 # TestFindProjectRoot
 # ===========================================================================
 test "find project in current dir" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         result = find_project_root(temp_project);
@@ -135,7 +135,7 @@ test "find project in current dir" {
 }
 
 test "find project in parent dir" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         subdir = temp_project / "src" / "submodule";
@@ -149,7 +149,7 @@ test "find project in parent dir" {
 }
 
 test "no project found" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         empty_dir = Path(tmpdir) / "empty";
         empty_dir.mkdir();
@@ -159,7 +159,7 @@ test "no project found" {
 }
 
 test "is in project" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         original_cwd = os.getcwd();
@@ -175,7 +175,7 @@ test "is in project" {
 }
 
 test "find project anchored on a file path" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         main_jac = temp_project / "src" / "main.jac";
@@ -188,9 +188,9 @@ test "find project anchored on a file path" {
 }
 
 test "get_config_for_path is cwd-independent (file-anchored)" {
-    config_mod._config = None;
-    config_mod._config_explicit = False;
-    config_mod._config_by_root = {};
+    config_mod.config_state().current = None;
+    config_mod.config_state().explicit = False;
+    config_mod.config_state().by_root = {};
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         main_jac = temp_project / "src" / "main.jac";
@@ -199,8 +199,8 @@ test "get_config_for_path is cwd-independent (file-anchored)" {
             # From an unrelated cwd, the file's config still resolves to its own
             # project root -- resolution follows the file, never the process cwd.
             os.chdir(Path(tmpdir));
-            config_mod._config = None;
-            config_mod._config_by_root = {};
+            config_mod.config_state().current = None;
+            config_mod.config_state().by_root = {};
             cfg = get_config_for_path(main_jac);
             assert cfg is not None;
             proj_root = cfg.project_root;
@@ -213,9 +213,9 @@ test "get_config_for_path is cwd-independent (file-anchored)" {
 }
 
 test "get_config_for_path uses nearest jac.toml, never merges ancestors" {
-    config_mod._config = None;
-    config_mod._config_explicit = False;
-    config_mod._config_by_root = {};
+    config_mod.config_state().current = None;
+    config_mod.config_state().explicit = False;
+    config_mod.config_state().by_root = {};
     with TemporaryDirectory() as tmpdir {
         parent = Path(tmpdir) / "parent";
         parent.mkdir();
@@ -240,9 +240,9 @@ test "get_config_for_path uses nearest jac.toml, never merges ancestors" {
 }
 
 test "explicit set_config overrides file-anchored resolution" {
-    config_mod._config = None;
-    config_mod._config_explicit = False;
-    config_mod._config_by_root = {};
+    config_mod.config_state().current = None;
+    config_mod.config_state().explicit = False;
+    config_mod.config_state().by_root = {};
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         main_jac = temp_project / "src" / "main.jac";
@@ -265,7 +265,7 @@ test "explicit set_config overrides file-anchored resolution" {
 # TestJacConfigLoad
 # ===========================================================================
 test "load basic config" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -277,7 +277,7 @@ test "load basic config" {
 }
 
 test "load dependencies" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -287,7 +287,7 @@ test "load dependencies" {
 }
 
 test "load dev dependencies" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -297,7 +297,7 @@ test "load dev dependencies" {
 }
 
 test "load run config" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -308,7 +308,7 @@ test "load run config" {
 }
 
 test "client_errors verbose defaults to false when section omitted" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -317,7 +317,7 @@ test "client_errors verbose defaults to false when section omitted" {
 }
 
 test "client_errors verbose loads from jac.toml" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = Path(tmpdir) / "verbose_project";
         temp_project.mkdir();
@@ -330,7 +330,7 @@ test "client_errors verbose loads from jac.toml" {
 }
 
 test "client framework defaults to react" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -339,7 +339,7 @@ test "client framework defaults to react" {
 }
 
 test "client framework loads from jac.toml" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = Path(tmpdir) / "fw_project";
         temp_project.mkdir();
@@ -352,7 +352,7 @@ test "client framework loads from jac.toml" {
 }
 
 test "load scripts" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -362,7 +362,7 @@ test "load scripts" {
 }
 
 test "load nonexistent file" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         raised = False;
         try {
@@ -375,7 +375,7 @@ test "load nonexistent file" {
 }
 
 test "project root set" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -388,7 +388,7 @@ test "project root set" {
 # TestJacConfigDiscover
 # ===========================================================================
 test "discover from project root" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.discover(temp_project);
@@ -398,7 +398,7 @@ test "discover from project root" {
 }
 
 test "discover from subdirectory" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         subdir = temp_project / "src";
@@ -409,7 +409,7 @@ test "discover from subdirectory" {
 }
 
 test "discover no project" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         cfg = JacConfig.discover(Path(tmpdir));
         assert cfg is None;
@@ -420,7 +420,7 @@ test "discover no project" {
 # TestJacConfigFromTomlStr
 # ===========================================================================
 test "parse minimal config" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     toml_str = "\n[project]\nname = \"minimal\"\n";
     cfg = JacConfig.from_toml_str(toml_str);
     assert cfg.project.name == "minimal";
@@ -428,30 +428,30 @@ test "parse minimal config" {
 }
 
 test "serve on_conflict default and normalization" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     # Absent -> safe default.
     base = JacConfig.from_toml_str("\n[serve]\nport = 8000\n");
     assert base.serve.on_conflict == "retry";
 
     # Explicit lowercase passes through.
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     fail = JacConfig.from_toml_str("\n[serve]\non_conflict = \"fail\"\n");
     assert fail.serve.on_conflict == "fail";
 
     # Case/whitespace is normalized so a mis-cased value still means fail-fast.
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cased = JacConfig.from_toml_str("\n[serve]\non_conflict = \" Fail \"\n");
     assert cased.serve.on_conflict == "fail";
 
     # A genuine typo falls back to the safe default instead of silently
     # disabling replay under an unrecognized value.
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     typo = JacConfig.from_toml_str("\n[serve]\non_conflict = \"retri\"\n");
     assert typo.serve.on_conflict == "retry";
 }
 
 test "dev section parsing" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     # Absent -> every knob is empty. An empty jobs knob means "unset": the
     # per-command test_jobs/check_jobs/fmt_jobs fall through to the shared
     # [dev] jobs, then to the environment, then to auto in resolve_jobs. A
@@ -462,7 +462,7 @@ test "dev section parsing" {
     assert base.dev.jaclang_source == "";
 
     # Explicit string values pass through.
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig.from_toml_str(
         "\n[dev]\njaclang_source = \"jac\"\ntest_jobs = \"4\"\n"
     );
@@ -471,21 +471,21 @@ test "dev section parsing" {
 
     # A bare integer test_jobs is coerced to str so it flows into the runner's
     # worker count.
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     as_int = JacConfig.from_toml_str("\n[dev]\ntest_jobs = 0\n");
     assert as_int.dev.test_jobs == "0";
 }
 
 test "parse build native_closure_cap" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig.from_toml_str("\n[build]\nnative_closure_cap = 8\n");
     assert cfg.build.native_closure_cap == 8;
 
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     base = JacConfig.from_toml_str("\n[build]\ndir = \".jac\"\n");
     assert base.build.native_closure_cap == 256;
 
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     bad = JacConfig.from_toml_str("\n[build]\nnative_closure_cap = 0\n");
     assert bad.build.native_closure_cap == 256 , "invalid cap falls back to default";
 }
@@ -505,7 +505,7 @@ test "closure cap override resolves through effective_native_closure_cap" {
 }
 
 test "parse full config" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     toml_str = "\n[project]\nname = \"full-project\"\nversion = \"1.2.3\"\ndescription = \"A full project\"\nauthors = [\"Jane Doe <jane@example.com>\"]\nlicense = \"MIT\"\nentry-point = \"app\"\n\n[dependencies]\nnumpy = \">=1.24.0\"\npandas = \">=2.0.0\"\n\n[run]\nsession = \"my_session\"\nmain = false\ncache = false\n\n[build]\ndir = \".jac\"\n\n[test]\ndirectory = \"tests\"\nverbose = true\nfail_fast = true\nmax_failures = 5\n\n[serve]\nport = 9000\n\n[cache]\nenabled = false\ndir = \".cache\"\n\n[scripts]\nstart = \"jac run app.jac\"\nlint = \"jac lint . --fix\"\n\n[byllm]\ndefault_model = \"gpt-4\"\ntemperature = 0.7\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.production]\n[environments.production.serve]\nport = 8000\n";
     cfg = JacConfig.from_toml_str(toml_str);
 
@@ -558,7 +558,7 @@ test "parse full config" {
 # TestJacConfigProfiles
 # ===========================================================================
 test "apply profile" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     toml_str = "\n[project]\nname = \"profile-test\"\n\n[serve]\nport = 8000\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n";
     cfg = JacConfig.from_toml_str(toml_str);
     assert cfg.serve.port == 8000;
@@ -567,7 +567,7 @@ test "apply profile" {
 }
 
 test "profile inheritance" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     toml_str = "\n[project]\nname = \"inherit-test\"\n\n[serve]\nport = 8000\n\n[environments.base]\n[environments.base.serve]\nport = 9000\n\n[environments.staging]\ninherits = \"base\"\n\n[environments.staging.test]\nverbose = true\n";
     cfg = JacConfig.from_toml_str(toml_str);
     cfg.apply_profile("staging");
@@ -576,7 +576,7 @@ test "profile inheritance" {
 }
 
 test "apply nonexistent profile" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     toml_str = "\n[project]\nname = \"no-profile\"\n\n[serve]\nport = 8000\n";
     cfg = JacConfig.from_toml_str(toml_str);
     cfg.apply_profile("nonexistent");
@@ -587,7 +587,7 @@ test "apply nonexistent profile" {
 # TestJacConfigDependencyManagement
 # ===========================================================================
 test "add python dependency" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     cfg.add_dependency("requests", ">=2.28.0");
     assert "requests" in cfg.dependencies;
@@ -595,7 +595,7 @@ test "add python dependency" {
 }
 
 test "add dev dependency" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     cfg.add_dependency("pytest", ">=8.0.0", dev=True);
     assert "pytest" in cfg.dev_dependencies;
@@ -603,7 +603,7 @@ test "add dev dependency" {
 }
 
 test "add git dependency" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     cfg.add_dependency(
         "my-plugin", "https://github.com/user/plugin.git", dep_type="git"
@@ -614,7 +614,7 @@ test "add git dependency" {
 }
 
 test "add npm dependency" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     cfg.add_dependency("react", "^19.0.0", dep_type="npm");
     assert "npm" in cfg.plugin_dependencies;
@@ -622,7 +622,7 @@ test "add npm dependency" {
 }
 
 test "remove python dependency" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     cfg.dependencies["requests"] = ">=2.28.0";
     result = cfg.remove_dependency("requests");
@@ -631,7 +631,7 @@ test "remove python dependency" {
 }
 
 test "remove nonexistent dependency" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     result = cfg.remove_dependency("nonexistent");
     assert result is False;
@@ -641,7 +641,7 @@ test "remove nonexistent dependency" {
 # TestJacConfigMethods
 # ===========================================================================
 test "get build dir default" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     cfg.project_root = Path("/home/user/myproject");
     build_dir = cfg.get_build_dir();
@@ -649,7 +649,7 @@ test "get build dir default" {
 }
 
 test "get build dir custom" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     toml_str = "\n[project]\nname = \"test\"\nversion = \"0.1.0\"\n\n[build]\ndir = \".build\"\n";
     cfg = JacConfig.from_toml_str(toml_str);
     cfg.project_root = Path("/home/user/myproject");
@@ -658,7 +658,7 @@ test "get build dir custom" {
 }
 
 test "get cache dir" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     cfg.project_root = Path("/home/user/myproject");
     cache_dir = cfg.get_cache_dir();
@@ -666,7 +666,7 @@ test "get cache dir" {
 }
 
 test "get venv dir" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     cfg.project_root = Path("/home/user/myproject");
     venv_dir = cfg.get_venv_dir();
@@ -674,7 +674,7 @@ test "get venv dir" {
 }
 
 test "get data dir" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     cfg.project_root = Path("/home/user/myproject");
     data_dir = cfg.get_data_dir();
@@ -682,7 +682,7 @@ test "get data dir" {
 }
 
 test "get client dir" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     cfg.project_root = Path("/home/user/myproject");
     client_dir = cfg.get_client_dir();
@@ -690,7 +690,7 @@ test "get client dir" {
 }
 
 test "all dirs use custom build dir" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     toml_str = "\n[project]\nname = \"test\"\n\n[build]\ndir = \".custom-build\"\n";
     cfg = JacConfig.from_toml_str(toml_str);
     cfg.project_root = Path("/project");
@@ -702,7 +702,7 @@ test "all dirs use custom build dir" {
 }
 
 test "is valid" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -713,7 +713,7 @@ test "is valid" {
 }
 
 test "get plugin config" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     toml_str = "\n[project]\nname = \"plugin-test\"\n\n[byllm]\nmodel = \"gpt-4\"\ntemperature = 0.5\n";
     cfg = JacConfig.from_toml_str(toml_str);
     byllm_config = cfg.get_plugin_config("byllm");
@@ -722,14 +722,14 @@ test "get plugin config" {
 }
 
 test "get plugin config missing" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     result = cfg.get_plugin_config("nonexistent");
     assert result == {};
 }
 
 test "create default toml" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     import from jaclang.project.template_registry {
         get_template_registry,
         initialize_template_registry
@@ -746,7 +746,7 @@ test "create default toml" {
 # TestGlobalConfig
 # ===========================================================================
 test "get config discovers" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         original_cwd = os.getcwd();
@@ -762,7 +762,7 @@ test "get config discovers" {
 }
 
 test "set config" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     custom_config = JacConfig();
     custom_config.project.name = "custom";
     set_config(custom_config);
@@ -772,7 +772,7 @@ test "set config" {
 }
 
 test "get config force discover" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         original_cwd = os.getcwd();
@@ -793,7 +793,7 @@ test "get config force discover" {
 
 """Test that get_config with start_path discovers config from target directory instead of cwd."""
 test "get config with start path" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         # Create two separate projects
         project1 = Path(tmpdir) / "project1";
@@ -856,7 +856,7 @@ test "get config with start path" {
 # TestConfigFilesTracking
 # ===========================================================================
 test "load initializes config files" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -868,7 +868,7 @@ test "load initializes config files" {
 }
 
 test "discover initializes config files" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.discover(temp_project);
@@ -880,7 +880,7 @@ test "discover initializes config files" {
 }
 
 test "active profile default empty" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -892,7 +892,7 @@ test "active profile default empty" {
 # TestMergeFromTomlFile
 # ===========================================================================
 test "merge simple sections" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -907,7 +907,7 @@ test "merge simple sections" {
 }
 
 test "merge preserves unset values" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -921,7 +921,7 @@ test "merge preserves unset values" {
 }
 
 test "merge project kebab case" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -933,7 +933,7 @@ test "merge project kebab case" {
 }
 
 test "merge check with nested lint" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -945,7 +945,7 @@ test "merge check with nested lint" {
 }
 
 test "merge feature config" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -958,7 +958,7 @@ test "merge feature config" {
 }
 
 test "merge dependencies" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -973,7 +973,7 @@ test "merge dependencies" {
 }
 
 test "merge dependencies override" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -986,7 +986,7 @@ test "merge dependencies override" {
 }
 
 test "merge dev dependencies" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -999,7 +999,7 @@ test "merge dev dependencies" {
 }
 
 test "merge scripts" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1013,7 +1013,7 @@ test "merge scripts" {
 }
 
 test "merge environments" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1027,7 +1027,7 @@ test "merge environments" {
 }
 
 test "merge tracks config file" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1045,7 +1045,7 @@ test "merge tracks config file" {
 }
 
 test "merge no duplicate tracking" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1060,7 +1060,7 @@ test "merge no duplicate tracking" {
 }
 
 test "merge updates raw data" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1074,7 +1074,7 @@ test "merge updates raw data" {
 }
 
 test "merge nonexistent file" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1091,7 +1091,7 @@ test "merge nonexistent file" {
 }
 
 test "merge ignores unknown keys" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1104,7 +1104,7 @@ test "merge ignores unknown keys" {
 }
 
 test "merge malformed toml" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1121,7 +1121,7 @@ test "merge malformed toml" {
 }
 
 test "merge env interpolation" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1137,7 +1137,7 @@ test "merge env interpolation" {
 # TestApplyProfileOverlay
 # ===========================================================================
 test "no profile applies local only" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1150,7 +1150,7 @@ test "no profile applies local only" {
 }
 
 test "empty string profile treated as none" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1160,7 +1160,7 @@ test "empty string profile treated as none" {
 }
 
 test "profile merges file and infile" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         jac_toml = temp_project / "jac.toml";
@@ -1178,7 +1178,7 @@ test "profile merges file and infile" {
 }
 
 test "local overrides profile" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         jac_toml = temp_project / "jac.toml";
@@ -1194,7 +1194,7 @@ test "local overrides profile" {
 }
 
 test "profile file missing infile still applied" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         jac_toml = temp_project / "jac.toml";
@@ -1209,7 +1209,7 @@ test "profile file missing infile still applied" {
 }
 
 test "nonexistent profile no crash" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1221,7 +1221,7 @@ test "nonexistent profile no crash" {
 }
 
 test "no project root early return" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     assert cfg.project_root is None;
     cfg.apply_profile_overlay("prod");
@@ -1229,7 +1229,7 @@ test "no project root early return" {
 }
 
 test "overlay tracks all config files" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         jac_toml = temp_project / "jac.toml";
@@ -1250,7 +1250,7 @@ test "overlay tracks all config files" {
 }
 
 test "overlay priority order" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         jac_toml = temp_project / "jac.toml";
@@ -1269,7 +1269,7 @@ test "overlay priority order" {
 }
 
 test "no local file no error" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1282,7 +1282,7 @@ test "no local file no error" {
 # TestMultiProfileBugFixes
 # ===========================================================================
 test "merge storage type mapping" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1296,7 +1296,7 @@ test "merge storage type mapping" {
 }
 
 test "merge plugins deep nested" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         jac_toml = temp_project / "jac.toml";
@@ -1316,7 +1316,7 @@ test "merge plugins deep nested" {
 }
 
 test "apply profile build section" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig.from_toml_str(
         "[project]\nname = \"test\"\n\n[build]\ndir = \"base-out\"\n\n[environments.prod]\n[environments.prod.build]\ndir = \"prod-out\"\n"
     );
@@ -1326,7 +1326,7 @@ test "apply profile build section" {
 }
 
 test "apply profile format section" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig.from_toml_str(
         "[project]\nname = \"test\"\n\n[environments.dev]\n[environments.dev.format]\noutfile = \"formatted.jac\"\n"
     );
@@ -1335,7 +1335,7 @@ test "apply profile format section" {
 }
 
 test "apply profile dot section" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig.from_toml_str(
         "[project]\nname = \"test\"\n\n[environments.debug]\n[environments.debug.dot]\ndepth = 5\ntraverse = true\n"
     );
@@ -1345,7 +1345,7 @@ test "apply profile dot section" {
 }
 
 test "apply profile cache section" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig.from_toml_str(
         "[project]\nname = \"test\"\n\n[environments.ci]\n[environments.ci.cache]\nenabled = false\n"
     );
@@ -1354,7 +1354,7 @@ test "apply profile cache section" {
 }
 
 test "apply profile storage type mapping" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig.from_toml_str(
         "[project]\nname = \"test\"\n\n[environments.prod]\n[environments.prod.storage]\ntype = \"s3\"\nbase_path = \"/prod-data\"\n"
     );
@@ -1364,7 +1364,7 @@ test "apply profile storage type mapping" {
 }
 
 test "apply profile check with lint" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig.from_toml_str(
         "[project]\nname = \"test\"\n\n[environments.strict]\n[environments.strict.check.lint]\nselect = [\"all\"]\n"
     );
@@ -1373,7 +1373,7 @@ test "apply profile check with lint" {
 }
 
 test "apply profile project kebab case" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig.from_toml_str(
         "[project]\nname = \"test\"\nentry-point = \"main\"\n\n[environments.alt]\n[environments.alt.project]\nentry-point = \"app\"\n"
     );
@@ -1382,7 +1382,7 @@ test "apply profile project kebab case" {
 }
 
 test "apply profile dependencies and scripts" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig.from_toml_str(
         "[project]\nname = \"test\"\n\n[dependencies]\nrequests = \">=2.0\"\n\n[scripts]\ntest = \"jac test\"\n\n[environments.prod]\n[environments.prod.dependencies]\ngunicorn = \">=21.0\"\n\n[environments.prod.scripts]\nstart = \"jac run --port 80\"\n"
     );
@@ -1394,7 +1394,7 @@ test "apply profile dependencies and scripts" {
 }
 
 test "circular profile inheritance" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig.from_toml_str(
         "[project]\nname = \"test\"\n\n[environments.a]\ninherits = \"b\"\n[environments.a.serve]\nport = 1000\n\n[environments.b]\ninherits = \"a\"\n[environments.b.serve]\nport = 2000\n"
     );
@@ -1403,7 +1403,7 @@ test "circular profile inheritance" {
 }
 
 test "three way circular inheritance" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig.from_toml_str(
         "[project]\nname = \"test\"\n\n[environments.a]\ninherits = \"b\"\n[environments.a.serve]\nport = 1000\n\n[environments.b]\ninherits = \"c\"\n[environments.b.serve]\nport = 2000\n\n[environments.c]\ninherits = \"a\"\n[environments.c.serve]\nport = 3000\n"
     );
@@ -1412,7 +1412,7 @@ test "three way circular inheritance" {
 }
 
 test "discover with profile" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         jac_toml = temp_project / "jac.toml";
@@ -1427,7 +1427,7 @@ test "discover with profile" {
 }
 
 test "discover with profile none" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.discover(temp_project, profile=None);
@@ -1437,13 +1437,13 @@ test "discover with profile none" {
 }
 
 test "config files none default" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     assert cfg.config_files is None;
 }
 
 test "config files initialized on load" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1453,7 +1453,7 @@ test "config files initialized on load" {
 }
 
 test "merge initializes none config files" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     cfg = JacConfig();
     assert cfg.config_files is None;
     with TemporaryDirectory() as tmpdir {
@@ -1466,7 +1466,7 @@ test "merge initializes none config files" {
 }
 
 test "merge format section" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1478,7 +1478,7 @@ test "merge format section" {
 }
 
 test "merge dot section" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1491,7 +1491,7 @@ test "merge dot section" {
 }
 
 test "merge cache section" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1504,7 +1504,7 @@ test "merge cache section" {
 }
 
 test "merge environment section" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
@@ -1519,7 +1519,7 @@ test "merge environment section" {
 # Integration tests for multi-file config layering (TestJactasticMultiProfile)
 # ===========================================================================
 test "load base only" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         write_multi_profile(temp_project);
@@ -1534,7 +1534,7 @@ test "load base only" {
 }
 
 test "discover no profile multi" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         write_multi_profile(temp_project);
@@ -1546,7 +1546,7 @@ test "discover no profile multi" {
 }
 
 test "discover with prod profile multi" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         write_multi_profile(temp_project);
@@ -1562,7 +1562,7 @@ test "discover with prod profile multi" {
 }
 
 test "prod without local override" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         write_multi_profile(temp_project);
@@ -1574,7 +1574,7 @@ test "prod without local override" {
 }
 
 test "local overrides prod port" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         write_multi_profile(temp_project);
@@ -1585,7 +1585,7 @@ test "local overrides prod port" {
 }
 
 test "config files tracked in order" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         write_multi_profile(temp_project);
@@ -1601,7 +1601,7 @@ test "config files tracked in order" {
 }
 
 test "base dependencies preserved" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         write_multi_profile(temp_project);
@@ -1614,7 +1614,7 @@ test "base dependencies preserved" {
 }
 
 test "nonexistent profile still gets local" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         write_multi_profile(temp_project);
@@ -1627,7 +1627,7 @@ test "nonexistent profile still gets local" {
 }
 
 test "plugin deep merge across files" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         write_multi_profile(temp_project);
@@ -1644,7 +1644,7 @@ test "save preserves special chars and env vars in plugins" {
     # TOML serializer must:
     # 1. Quote table headers with special characters (e.g. //npm.pkg.github.com/)
     # 2. Preserve env var placeholders like ${VAR} without interpolating them
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     # Set an env var that could be interpolated
     os.environ["TEST_AUTH_TOKEN"] = "secret_value_12345";
 
@@ -1690,7 +1690,7 @@ test "save round-trips inline-table authors and maintainers" {
     # The TOML serializer must emit a list of dicts as an array of inline
     # tables ([{ k = v }]), not Python repr strings. Regression test for
     # authors/maintainers corruption on any config.save().
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     toml_with_persons = """[project]
 name = "person-test"
 version = "1.0.0"
@@ -1723,7 +1723,7 @@ jaclang = ">=0.15.2"
 test "save preserves comments when adding a dependency" {
     # save() must perform a surgical edit of jac.toml: adding one dependency
     # may not delete user comments, reorder keys, or touch unrelated lines.
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     commented_toml = """# Top-level note about this project.
 [project]
 name = "repro"
@@ -1762,7 +1762,7 @@ bcrypt = ">=4.0.0,<5.0.0"
 test "save preserves comments when removing a dependency" {
     # Removing one dependency must delete only that key's line; every comment
     # and unrelated line stays byte-for-byte intact.
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     commented_toml = """[project]
 name = "repro"
 version = "0.1.0"
@@ -1817,7 +1817,7 @@ test "serialize_toml preserves arbitrarily deep nested tables" {
 test "discover flags configs found in an ancestor directory" {
     # discovered_from_ancestor drives the pre-write warning; it must be True
     # only when discovery had to climb out of the starting directory.
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         # Discovered from the project root itself -> not an ancestor.
@@ -1838,7 +1838,7 @@ test "discover flags configs found in an ancestor directory" {
 # Uniform ${VAR} interpolation and removed keys
 # ===========================================================================
 test "interpolation applies to every parsed string" {
-    config_mod._config = None;
+    config_mod.config_state().current = None;
     os.environ["JAC_TEST_SESSION"] = "sess-42";
     try {
         cfg = JacConfig.from_toml_str(

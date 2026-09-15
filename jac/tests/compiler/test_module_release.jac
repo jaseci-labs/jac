@@ -8,6 +8,10 @@ This is the memory contract per-module release relies on.
 import gc;
 import weakref;
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compilation_context {
+    CompilationContext,
+    AnalysisCacheBudget
+}
 
 glob SRC = "def area(r: float) -> float { return 3.14 * r * r; }\n";
 
@@ -15,7 +19,7 @@ def _probe(prog: JacProgram) -> tuple {
     mod = prog.parse_str(SRC, "release_probe.jac");
     assert mod is not None;
     return (
-        mod.loc.mod_path,
+        JacProgram.hub_key(mod.loc.mod_path),
         weakref.ref(mod),
         weakref.ref(mod.kid[0]),
         weakref.ref(getattr(mod.kid[0], "__jac__")),
@@ -30,6 +34,171 @@ test "released module trees are garbage collectable" {
     gc.collect();
     dead = [mod_ref() is None, kid_ref() is None, anchor_ref() is None];
     assert all(dead) , f"leaked (module, kid, anchor): {dead}";
+}
+
+test "replacing a main module releases the previous root" {
+    prog = JacProgram();
+    for _ in range(4) {
+        (path, mod_ref, kid_ref, anchor_ref) = _probe(prog);
+        replacement = prog.parse_str(SRC + "# new revision\n", path);
+        assert prog.mod.main_mod is replacement;
+        gc.collect();
+        assert mod_ref() is None and kid_ref() is None and anchor_ref() is None;
+        prog.release_module(JacProgram.hub_key(path));
+    }
+}
+
+test "invalidation releases graph roots in every application context" {
+    owner = JacProgram();
+    child = JacProgram();
+    child.context_root = owner;
+    owner.contexts['second'] = CompilationContext(child.deps, child);
+    (path, owner_ref, _, _) = _probe(owner);
+    (_, child_ref, _, _) = _probe(child);
+    owner.record_dependency('consumer.jac', path);
+    owner.invalidate_module(JacProgram.hub_key(path));
+    gc.collect();
+    assert owner_ref() is None and child_ref() is None;
+    assert owner.mod.main_mod is None and child.mod.main_mod is None;
+    assert owner.transitive_dependents(path) == {JacProgram.hub_key('consumer.jac')};
+}
+
+test "analysis sessions own private compiler contexts and release them together" {
+    first = JacProgram.for_analysis();
+    second = JacProgram.for_analysis();
+    first_internal = first._get_compiler().selfhost.program;
+    second_internal = second._get_compiler().selfhost.program;
+    assert first_internal is not second_internal;
+    assert first_internal._get_compiler() is first._get_compiler();
+    assert first_internal.source_store is first.source_store;
+    assert first.source_store is not second.source_store;
+    assert any(first_internal is context for context in first.owned_contexts());
+    (_, internal_ref, _, _) = _probe(first_internal);
+    first.release_compile_closure();
+    gc.collect();
+    assert internal_ref() is None;
+    assert any(first_internal is context for context in first.owned_contexts());
+}
+
+test "execution artifacts survive tree release until their module is invalidated" {
+    import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
+    program = JacProgram();
+    path = JacProgram.hub_key('retained_execution.jac');
+    carrier = CodeGenTarget();
+    program.hub.artifacts[path] = carrier;
+    program.release_compile_closure();
+    assert program.hub.artifacts[path] is carrier;
+    program.invalidate_module(path);
+    assert path not in program.hub.artifacts;
+}
+
+test "retiring the root analysis context leaves other contexts alive" {
+    import from jaclang.compiler.driver.compilation_context { context_program }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    owner = JacProgram.for_analysis();
+    first = context_program(owner, CompileOptions(entry_point='/tmp/root-context.jac'));
+    second = context_program(
+        owner, CompileOptions(entry_point='/tmp/other-context.jac')
+    );
+    (first_path, first_ref, _, _) = _probe(first);
+    second_module = second.parse_str(SRC, 'other-context.jac');
+    first_identity = first.context_key;
+    owner.release_analysis_context(first_identity);
+    gc.collect();
+    assert first_ref() is None;
+    assert second.mod.hub[JacProgram.hub_key(second_module.loc.mod_path)]
+        is second_module;
+    assert owner.contexts[second.context_key].program is second;
+    assert owner.find_module(first_path) is None;
+    owner.release_compile_closure();
+}
+
+test "analysis cache budgets retire least recently used contexts and oversized units" {
+    import from jaclang.compiler.driver.compilation_context { context_program }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    owner = JacProgram.for_analysis();
+    options = [CompileOptions(entry_point=f'/tmp/budget-{i}.jac') for i in range(3)];
+    refs: list = [];
+    for (i, option) in enumerate(options) {
+        program = context_program(owner, option);
+        module = program.parse_str(SRC, f'/tmp/budget-{i}.jac');
+        refs.append(weakref.ref(module));
+    }
+    del module;
+    del program;
+    context_program(owner, options[0]);
+    owner.trim_analysis_cache(AnalysisCacheBudget(max_contexts=2));
+    gc.collect();
+    assert refs[0]() is not None and refs[1]() is None and refs[2]() is not None;
+    assert owner.analysis_cache_usage()[0] == 2;
+    owner.trim_analysis_cache(AnalysisCacheBudget(max_nodes=0));
+    gc.collect();
+    assert all(ref() is None for ref in refs);
+    assert owner.analysis_cache_usage() == (0, 0);
+    assert len(owner.contexts) == 3 , 'tree eviction erased context identities';
+    owner.release_compile_closure();
+}
+
+test "retiring a context releases its compiler and preserves its dependency identity" {
+    import from jaclang.compiler.driver.compilation_context { context_program }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import os;
+    owner = JacProgram.for_analysis();
+    first = context_program(
+        owner, CompileOptions(entry_point='/tmp/context-first.jac')
+    );
+    options = CompileOptions(entry_point='/tmp/context-second.jac');
+    second = context_program(owner, options);
+    (path, module_ref, _, _) = _probe(second);
+    dependency = os.path.realpath('retained-dependency.jac');
+    second.record_dependency(path, dependency);
+    edges = second.deps;
+    assert edges.tracking;
+    identity = second.context_key;
+    reference = weakref.ref(second);
+    owner.source_store.set_overrides({path: SRC});
+    assert owner.module_owner(module_ref()) is second;
+    assert path in owner.release_analysis_context(identity);
+    del second;
+    gc.collect();
+    assert reference() is None and module_ref() is None;
+    assert owner.contexts[identity].program is None;
+    assert owner.transitive_dependents(dependency) == {path};
+    assert owner.source_store.overrides == {path: SRC};
+    replacement = context_program(owner, options);
+    assert replacement.deps is edges;
+    assert replacement.source_store is owner.source_store;
+    assert replacement is context_program(owner, options);
+    assert first is owner;
+    owner.release_compile_closure(retain_inputs=True);
+    assert owner.transitive_dependents(dependency) == {path};
+    assert owner.source_store.overrides == {path: SRC};
+    owner.release_compile_closure();
+    assert not owner.contexts and not owner.source_store.overrides;
+}
+
+test "retiring an active context leaves its state intact" {
+    import from jaclang.compiler.driver.compilation_context { context_program }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    owner = JacProgram.for_analysis();
+    context_program(owner, CompileOptions(entry_point='/tmp/active-context.jac'));
+    owner.scratch.compile_depth = 1;
+    try {
+        owner.release_analysis_context(owner.context_key);
+        assert False , 'an active context was released';
+    } except RuntimeError {}
+    assert owner.scratch.compile_depth == 1;
+    owner.scratch.compile_depth = 0;
+}
+
+test "releasing a stub main detaches its main role as well as its hub entry" {
+    program = JacProgram();
+    (path, reference, _, _) = _probe(program);
+    program.mod.main.stub_only = True;
+    assert program.mod.main_mod is None;
+    program.release_module(JacProgram.hub_key(path));
+    gc.collect();
+    assert reference() is None;
 }
 
 def _compile_probe(prog: JacProgram) -> tuple {
@@ -60,8 +229,6 @@ test "a compiler phase boundary collects both application and selfhost trees" {
     compiler.release_compile_state(prog);
     assert app_ref() is None;
     assert internal_ref() is None;
-    assert not prog.source_store.units;
-    assert not internal.source_store.units;
     # Releasing working state must leave the compiler reusable.
     (_, next_ref, _, _) = _probe(prog);
     assert next_ref() is not None;

@@ -187,9 +187,9 @@ test "precommit gates the commit on type errors" {
         subprocess.run(["git", "add", "a.jac"], check=True, cwd=repo);
         # The config singleton may hold whatever repo the suite ran from;
         # reset so precommit discovers THIS repo's toml.
-        config_mod._config = None;
+        config_mod.config_state().current = None;
         rc = precommit(staged=True, verify=True);
-        config_mod._config = None;
+        config_mod.config_state().current = None;
     } finally {
         os.chdir(old);
         shutil.rmtree(repo, ignore_errors=True);

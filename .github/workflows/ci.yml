@@ -12,6 +12,11 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      lsp_performance:
+        description: Run the proposed LSP performance budgets against the sealed kit
+        type: boolean
+        default: false
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, labeled]
@@ -470,6 +475,35 @@ jobs:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash scripts/check-release-notes.sh
+
+  lsp-performance:
+    needs: build-kit
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.lsp_performance }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [small, medium, large, annex, workspace, soak]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/jac-kit
+      - name: Measure stdio latency and retention
+        run: >-
+          jac run scripts/lsp_bench.jac
+          --scenario ${{ matrix.scenario }}
+          --rounds 5 --documents 20 --iterations 100 --sealed-server
+          --budgets .github/lsp-performance-budgets.json
+          --output "${{ runner.temp }}/lsp-performance"
+      - name: Preserve raw measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lsp-performance-${{ matrix.scenario }}
+          path: ${{ runner.temp }}/lsp-performance
+          if-no-files-found: warn
 
   test-compiler:
     needs: [changes, build-kit]

@@ -24,7 +24,9 @@ test "unrelated broken source is not discovery input" {
     }
 }
 
-test "source revisions parse once and return isolated syntax" {
+test "source reads isolate mutable syntax without retaining parser trees" {
+    import gc;
+    import weakref;
     store = SourceStore();
     program = JacProgram();
     (first, failed) = store.parse(
@@ -34,8 +36,150 @@ test "source revisions parse once and return isolated syntax" {
     (second, failed) = store.parse(
         'glob value = 1;\n', '/tmp/context-source.jac', program, []
     );
-    assert not failed and store.parses == 1 and store.hits == 1;
+    assert not failed;
     assert first is not second and first.body[0] is not second.body[0];
-    store.parse('glob value = 2;\n', '/tmp/context-source.jac', program, []);
-    assert store.parses == 2 and len(store.units) == 1;
+    first_ref = weakref.ref(first);
+    second_ref = weakref.ref(second);
+    del first;
+    del second;
+    gc.collect();
+    assert first_ref() is None and second_ref() is None;
+    (edited, failed) = store.parse(
+        'glob value = 2;\n', '/tmp/context-source.jac', program, []
+    );
+    assert not failed and edited.source.code == 'glob value = 2;\n';
+}
+
+test "source overlays include unsaved and newly created annexes" {
+    with TemporaryDirectory() as td {
+        base = Path(td) / 'sample.jac';
+        annex = Path(td) / 'sample.impl.jac';
+        base.write_text('def answer -> int;\n');
+        store = SourceStore();
+        source = 'impl answer -> int { return 42; }\n';
+        assert store.set_overrides({str(annex): source}) == {str(annex)};
+        assert store.annexes(str(base)) == [(source, str(annex))];
+        before = store.fingerprint(str(base));
+        store.set_overrides({str(annex): source.replace('42', '43')});
+        assert store.fingerprint(str(base)) != before;
+        assert not annex.exists();
+        assert store.set_overrides({}) == {str(annex)};
+        assert store.annexes(str(base)) == [];
+    }
+}
+
+test "dependency reads use an empty overlay and never persist it as disk content" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    with TemporaryDirectory() as td {
+        library = Path(td) / 'lib.jac';
+        consumer = Path(td) / 'app.jac';
+        library.write_text('obj Foo { has x: int; }\n');
+        consumer.write_text('import from .lib { Foo }\nwith entry { f = Foo(x=1); }\n');
+        program = JacProgram();
+        program.source_store.set_overrides({str(library): ''});
+        dependency = program.load_dependency_module(str(library));
+        assert dependency.source.code == '' , 'the empty editor buffer must override disk';
+        program.source_store.set_overrides({str(library): 'obj Foo { has y: str; }\n'});
+        program.invalidate_module(str(library));
+        program.compile(str(consumer), options=CompileOptions(no_cgen=True));
+        assert program.errors_had , 'the consumer must see the unsaved field change';
+        assert library.read_text() == 'obj Foo { has x: int; }\n';
+        clean = JacProgram();
+        clean.compile(str(consumer), options=CompileOptions(no_cgen=True));
+        assert not clean.errors_had , [str(e) for e in clean.errors_had];
+    }
+}
+
+test "captured disk sources remain stable and detect concurrent writes" {
+    with TemporaryDirectory() as directory {
+        path = Path(directory) / 'main.jac';
+        path.write_text('glob value = 1;\n');
+        store = SourceStore();
+        with store.capture() as inputs {
+            before = store.read(str(path));
+            assert inputs.is_current(store);
+            path.write_text('glob value = 2;\n');
+            assert store.read(str(path)) == before;
+            assert not inputs.is_current(store);
+            with store.capture() as nested {
+                assert nested is inputs;
+            }
+            assert store.snapshot is inputs;
+        }
+        assert store.snapshot is None;
+        with store.capture() as fresh {
+            assert store.read(str(path)) == 'glob value = 2;\n';
+            assert fresh.is_current(store);
+        }
+    }
+}
+
+test "captured annex membership and configuration are revision inputs" {
+    with TemporaryDirectory() as directory {
+        path = Path(directory) / 'main.jac';
+        annex = Path(directory) / 'main.impl.jac';
+        config = Path(directory) / 'jac.toml';
+        path.write_text('def answer -> int;\n');
+        store = SourceStore();
+        with store.capture() as inputs {
+            store.record_module(str(path));
+            assert store.annexes(str(path)) == [];
+            annex.write_text('impl answer -> int { return 42; }\n');
+            assert store.annexes(str(path)) == [];
+            assert not inputs.is_current(store);
+        }
+        with store.capture() as configured {
+            store.record_module(str(path));
+            assert len(store.annexes(str(path))) == 1;
+            assert configured.is_current(store);
+            config.write_text('[project]\nname="changed"\n');
+            assert not configured.is_current(store);
+        }
+    }
+}
+
+test "an editor override is frozen and capture ends after failure" {
+    store = SourceStore();
+    path = '/tmp/unsaved-source-snapshot.jac';
+    store.set_overrides({path: 'before'});
+    try {
+        with store.capture() as inputs {
+            store.set_overrides({path: 'after'});
+            assert store.read(path) == 'before';
+            assert not inputs.is_current(store);
+            raise RuntimeError('abandoned compilation');
+        }
+    } except RuntimeError {}
+    assert store.snapshot is None and store.read(path) == 'after';
+}
+
+test "only read overrides participate in an operation revision" {
+    first = '/tmp/read-set-first.jac';
+    second = '/tmp/read-set-second.jac';
+    store = SourceStore({first: 'first', second: 'before'});
+    with store.capture() as inputs {
+        assert store.read(first) == 'first';
+        store.set_overrides({first: 'first', second: 'after'});
+        assert inputs.is_current(store);
+        assert store.read(second) == 'before';
+        assert not inputs.is_current(store);
+    }
+}
+
+test "existence probes capture missing and binary inputs without decoding them" {
+    import from jaclang.project.source { source_exists }
+    with TemporaryDirectory() as directory {
+        missing = Path(directory) / 'new.jac';
+        binary = Path(directory) / 'asset.bin';
+        binary.write_bytes(b'\xff\x00\xfe');
+        store = SourceStore();
+        with store.capture() as inputs {
+            assert source_exists(str(binary));
+            assert not source_exists(str(missing));
+            assert str(missing) in inputs.manifest().files;
+            missing.write_text('glob value = 1;\n');
+            assert not source_exists(str(missing));
+            assert not inputs.is_current(store);
+        }
+    }
 }

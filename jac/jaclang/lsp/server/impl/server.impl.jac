@@ -1,13 +1,15 @@
-import from jaclang.cli.console { console }
-
 impl run_lang_server -> None {
     logging.getLogger().setLevel(logging.CRITICAL);
     server = JacLangServer();
 
+    server.feature(lspt.INITIALIZED)(initialized);
+    server.feature(lspt.WORKSPACE_SYMBOL)(workspace_symbol);
     server.feature(lspt.TEXT_DOCUMENT_DID_OPEN)(did_open);
     server.feature(lspt.TEXT_DOCUMENT_DID_SAVE)(did_save);
     server.feature(lspt.TEXT_DOCUMENT_DID_CHANGE)(did_change);
     server.feature(lspt.TEXT_DOCUMENT_DID_CLOSE)(did_close);
+    server.feature(lspt.WORKSPACE_DID_CHANGE_WATCHED_FILES)(did_change_watched_files);
+    server.feature(lspt.WORKSPACE_DID_CHANGE_CONFIGURATION)(did_change_configuration);
     server.feature(lspt.TEXT_DOCUMENT_FORMATTING)(formatting);
     server.feature(lspt.TEXT_DOCUMENT_INLAY_HINT)(inlay_hint);
     server.feature(
@@ -84,7 +86,9 @@ impl rename(
 impl references(
     ls: JacLangServer, params: lspt.ReferenceParams
 ) -> list[lspt.Location] {
-    return ls.get_references(params.text_document.uri, params.position);
+    return ls.get_references(
+        params.text_document.uri, params.position, params.context.include_declaration
+    );
 }
 
 impl definition(
@@ -139,8 +143,4 @@ impl lintfix_formatting(
     ls: JacLangServer, params: lspt.DocumentFormattingParams
 ) -> list[lspt.TextEdit] {
     return ls.format_document(params.text_document.uri, auto_lint=True);
-}
-
-impl debug(msg: str) -> None {
-    console.error(f"[SERVER] {msg}");
 }

@@ -20,7 +20,7 @@ import from jaclang.cli.commands { project as proj_cmds }
 """Reset global config singleton (mirrors test_dependencies)."""
 def reset_config {
     import from jaclang.project { config as config_mod }
-    config_mod._config = None;
+    config_mod.config_state().current = None;
 }
 
 """Fabricate an installed package exposing one console-script in `site_dir`.

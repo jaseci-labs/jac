@@ -266,6 +266,15 @@ test "test_go_to_definition_md_path" {
         import_file = uris.from_fs_path(fixture_path("md_path.jac"));
         assert import_file is not None;
         lsp.type_check_file(import_file);
+        protocol_source = (
+            Path(JAC_ROOT) / 'jaclang/lsp/protocol/server.jac'
+        ).read_text();
+        server_line = next(
+            index
+            for (index, line) in enumerate(protocol_source.splitlines())
+            if line.startswith('obj LanguageServer(')
+                or line.startswith('obj LanguageServer {')
+        );
         positions = [
             (3, 11, "asyncio/__init__.pyi:0:0-0:0"),
             (6, 17, "concurrent/__init__.pyi:0:0-0:0"),
@@ -285,7 +294,11 @@ test "test_go_to_definition_md_path" {
             (20, 40, "jaclang/compiler/frontend/unitree.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 37, "jaclang/lsp/protocol/uris.jac:0:0-0:0"),
-            (24, 44, "jaclang/lsp/protocol/server.jac:93:4-93:18"),
+            (
+                24,
+                44,
+                f"jaclang/lsp/protocol/server.jac:{server_line}:4-{server_line}:18"
+            ),
             (26, 31, "jaclang/lsp/protocol/types.jac:0:0-0:0"),
 
         ];
@@ -448,8 +461,6 @@ test "test_missing_mod_warning" {
 }
 
 test "test_completion" {
-    import asyncio;
-
     setup_test();
     try {
         lsp = create_server();
@@ -464,13 +475,9 @@ test "test_completion" {
         ];
         for `case in test_cases {
             results = _as_any(
-                asyncio.run(
-                    _as_any(
-                        lsp.get_completion(
-                            base_module_file,
-                            `case.pos,
-                            completion_trigger=`case.trigger
-                        )
+                _as_any(
+                    lsp.get_completion(
+                        base_module_file, `case.pos, completion_trigger=`case.trigger
                     )
                 )
             );
@@ -485,7 +492,6 @@ test "test_completion" {
 }
 
 test "test_completion_identifier_and_keywords" {
-    import asyncio;
     import tempfile;
 
     setup_test();
@@ -510,11 +516,9 @@ test "test_completion_identifier_and_keywords" {
             }
             lsp.type_check_file(uri);
             members = _as_any(
-                asyncio.run(
-                    _as_any(
-                        lsp.get_completion(
-                            uri, lspt.Position(4, 13), completion_trigger="."
-                        )
+                _as_any(
+                    lsp.get_completion(
+                        uri, lspt.Position(4, 13), completion_trigger="."
                     )
                 )
             );
@@ -535,11 +539,9 @@ test "test_completion_identifier_and_keywords" {
             }
             lsp.type_check_file(uri);
             ident = _as_any(
-                asyncio.run(
-                    _as_any(
-                        lsp.get_completion(
-                            uri, lspt.Position(3, 10), completion_trigger=None
-                        )
+                _as_any(
+                    lsp.get_completion(
+                        uri, lspt.Position(3, 10), completion_trigger=None
                     )
                 )
             );
@@ -562,11 +564,9 @@ test "test_completion_identifier_and_keywords" {
             }
             lsp.type_check_file(uri);
             on_self = _as_any(
-                asyncio.run(
-                    _as_any(
-                        lsp.get_completion(
-                            uri, lspt.Position(3, 10), completion_trigger=None
-                        )
+                _as_any(
+                    lsp.get_completion(
+                        uri, lspt.Position(3, 10), completion_trigger=None
                     )
                 )
             );
@@ -588,11 +588,9 @@ test "test_completion_identifier_and_keywords" {
             }
             lsp.type_check_file(uri);
             blank = _as_any(
-                asyncio.run(
-                    _as_any(
-                        lsp.get_completion(
-                            uri, lspt.Position(4, 8), completion_trigger=None
-                        )
+                _as_any(
+                    lsp.get_completion(
+                        uri, lspt.Position(4, 8), completion_trigger=None
                     )
                 )
             );
@@ -609,7 +607,6 @@ test "test_completion_identifier_and_keywords" {
 test "test_completion_suppressed_in_string_and_comment" {
     # Scope-fallback completions must not leak into string literals or comments,
     # but must still work inside an f-string's interpolated expression.
-    import asyncio;
     import tempfile;
 
     setup_test();
@@ -635,44 +632,36 @@ test "test_completion_suppressed_in_string_and_comment" {
             lsp.type_check_file(uri);
             # Inside the string literal -> no completions
             in_string = _as_any(
-                asyncio.run(
-                    _as_any(
-                        lsp.get_completion(
-                            uri, lspt.Position(3, 18), completion_trigger=None
-                        )
+                _as_any(
+                    lsp.get_completion(
+                        uri, lspt.Position(3, 18), completion_trigger=None
                     )
                 )
             );
             assert len(in_string.items) == 0 , "expected no completions inside a string";
             # Inside the line comment -> no completions
             in_comment = _as_any(
-                asyncio.run(
-                    _as_any(
-                        lsp.get_completion(
-                            uri, lspt.Position(4, 14), completion_trigger=None
-                        )
+                _as_any(
+                    lsp.get_completion(
+                        uri, lspt.Position(4, 14), completion_trigger=None
                     )
                 )
             );
             assert len(in_comment.items) == 0 , "expected no completions inside a comment";
             # Inside the f-string literal text -> no completions
             in_fstring_text = _as_any(
-                asyncio.run(
-                    _as_any(
-                        lsp.get_completion(
-                            uri, lspt.Position(5, 15), completion_trigger=None
-                        )
+                _as_any(
+                    lsp.get_completion(
+                        uri, lspt.Position(5, 15), completion_trigger=None
                     )
                 )
             );
             assert len(in_fstring_text.items) == 0 , "expected no completions in f-string text";
             # Inside the f-string interpolated expression -> completions still work
             in_fstring_expr = _as_any(
-                asyncio.run(
-                    _as_any(
-                        lsp.get_completion(
-                            uri, lspt.Position(5, 20), completion_trigger=None
-                        )
+                _as_any(
+                    lsp.get_completion(
+                        uri, lspt.Position(5, 20), completion_trigger=None
                     )
                 )
             );
@@ -681,11 +670,9 @@ test "test_completion_suppressed_in_string_and_comment" {
             assert "print" in expr_labels;
             # Control: typing at a normal identifier position still completes
             on_ident = _as_any(
-                asyncio.run(
-                    _as_any(
-                        lsp.get_completion(
-                            uri, lspt.Position(3, 9), completion_trigger=None
-                        )
+                _as_any(
+                    lsp.get_completion(
+                        uri, lspt.Position(3, 9), completion_trigger=None
                     )
                 )
             );

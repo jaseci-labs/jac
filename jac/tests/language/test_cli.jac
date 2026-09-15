@@ -107,8 +107,7 @@ def _restore_output(old_stdout: object, old_stderr: object) {
 
 """Reset the global config cache to force rediscovery."""
 def _reset_config {
-    import from jaclang.project { config as config_module }
-    config_module._config = None;
+    set_config(None);
 }
 
 """Ensure template registry is initialized once."""

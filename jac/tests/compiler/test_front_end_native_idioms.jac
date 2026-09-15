@@ -197,15 +197,37 @@ test "source helpers lower when a native unit reaches them" {
     rec = coverage.get(os.path.realpath(helpers_path));
     assert rec is not None , "the coverage recorded nothing for project/source.jac";
     seams = [str(s) for s in (rec["seams"] or [])];
-    reader = [
-        s
-        for s in seams
-        if s.startswith("read_file_with_encoding: ")
-    ];
-    assert len(reader) == 1 and "open" in reader[0] , (
-        f"`open(path, encoding=...)` has to demote its own function and name "
-        f"the construct it refused, got: {seams}"
+    assert not any("native emitter error" in s for s in seams) , (
+        f"source helpers must either lower or name an unsupported construct, "
+        f"not fall back after an internal emitter exception: {seams}"
     );
+}
+
+test "encoded open refuses only its owning reader" {
+    import from jaclang.compiler.driver.na_coverage {
+        na_coverage_begin,
+        na_coverage_end
+    }
+    path = os.path.join(FIXTURES, 'granular_open_kwarg.jac');
+    prog = JacProgram();
+    opts = CompileOptions(no_ir_cache=True).clone_for_native_import();
+    na_coverage_begin();
+    try {
+        ir = prog.compile(file_path=path, options=opts);
+    } finally {
+        coverage = na_coverage_end();
+    }
+    assert not prog.errors_had , fmt_errors(prog);
+    assert ir is not None and ir.gen.llvm_ir is not None;
+    rec = coverage.get(os.path.realpath(path));
+    assert rec is not None;
+    readers = [
+        str(s)
+        for s in (rec['seams'] or [])
+        if str(s).startswith('reads_with_encoding: ')
+    ];
+    assert len(readers) == 1 and 'open' in readers[0] , str(readers);
+    assert not any(str(s).startswith('reads_plain: ') for s in (rec['seams'] or []));
 }
 
 test "helpers no longer exports the moved symbols" {

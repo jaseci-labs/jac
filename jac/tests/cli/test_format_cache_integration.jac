@@ -39,9 +39,9 @@ def make_project -> str {
 
 """Reset the config singleton; call before format()."""
 def reset_state {
-    config_mod._config = None;
-    config_mod._config_explicit = False;
-    config_mod._config_by_root = {};
+    config_mod.config_state().current = None;
+    config_mod.config_state().explicit = False;
+    config_mod.config_state().by_root = {};
 }
 
 test "second run on a clean file is a cache hit (formatter not invoked)" {
@@ -455,9 +455,9 @@ test "staged verify cache key covers tracked annex in the format unit" {
         # Stage ONLY the main file with a different clean content.
         f.write_text(CLEAN_MOD_V2);
         subprocess.run(["git", "add", "mod.jac"], check=True, cwd=repo);
-        config_mod._config = None;
-        config_mod._config_explicit = False;
-        config_mod._config_by_root = {};
+        config_mod.config_state().current = None;
+        config_mod.config_state().explicit = False;
+        config_mod.config_state().by_root = {};
         rc = precommit(staged=True, verify=True);
         assert rc != 0 , (
             "staged verify must fail when a tracked annex is unformatted "

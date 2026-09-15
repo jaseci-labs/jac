@@ -31,14 +31,137 @@ impl JacProgram.iface_registry(self: JacProgram) -> any {
     return reg;
 }
 
+impl JacProgram.for_analysis -> JacProgram {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.driver.selfhost { SelfHostCache }
+    program = JacProgram();
+    internal = JacProgram();
+    compiler = JacCompiler(_selfhost=SelfHostCache(_program=internal));
+    program._compiler = compiler;
+    internal._compiler = compiler;
+    internal.context_root = program;
+    internal.source_store = program.source_store;
+    program.deps.tracking = True;
+    internal.deps.tracking = True;
+    return program;
+}
+
+impl JacProgram.owned_contexts(self: JacProgram) -> list[JacProgram] {
+    owner = self.context_root if self.context_root is not None else self;
+    contexts = [owner];
+    contexts.extend(
+        context.program
+        for context in owner.contexts.values()
+        if context.program is not None and context.program is not owner
+    );
+    compiler = owner._compiler;
+    if compiler is not None and compiler._selfhost is not None {
+        internal = compiler._selfhost.peek_program();
+        if internal is not None
+            and internal.context_root is owner
+            and all(internal is not context for context in contexts) {
+            contexts.append(internal);
+        }
+    }
+    return contexts;
+}
+
+impl JacProgram.dependency_graphs(self: JacProgram) -> list[DepGraph] {
+    owner = self.context_root if self.context_root is not None else self;
+    graphs = {id(context.deps): context.deps for context in self.owned_contexts()};
+    for context in owner.contexts.values() {
+        graphs[id(context.deps)] = context.deps;
+    }
+    return list(graphs.values());
+}
+
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
     self.hub.stamp(resolved_path);
+}
+
+impl JacProgram.module_owner(
+    self: JacProgram, module: uni.Module
+) -> JacProgram | None {
+    path = JacProgram.hub_key(module.loc.mod_path);
+    for context in self.owned_contexts() {
+        if context.mod.hub.get(path) is module {
+            return context;
+        }
+    }
+    return None;
+}
+
+impl JacProgram.release_analysis_context(self: JacProgram, identity: str) -> set[str] {
+    owner = self.context_root if self.context_root is not None else self;
+    context = owner.contexts.get(identity);
+    if context is None or context.program is None {
+        return set();
+    }
+    program = context.program;
+    if program.scratch.compile_depth {
+        raise RuntimeError('Cannot release an active analysis context');
+    }
+    paths = set(program.mod.hub);
+    program._release_local_state(retain_stubs=False, retain_inputs=True);
+    if program is not owner {
+        context.program = None;
+    }
+    return paths;
+}
+
+impl JacProgram.analysis_cache_usage(self: JacProgram) -> tuple[int, int] {
+    context_count = 0;
+    modules: dict[int, uni.Module] = {};
+    for context in self.owned_contexts() {
+        if context.mod.hub {
+            context_count += 1;
+        }
+        for module in context.mod.hub.values() {
+            modules[id(module)] = module;
+        }
+    }
+    return (
+        context_count,
+        sum(len(module._in_mod_nodes) for module in modules.values())
+    );
+}
+
+impl JacProgram.trim_analysis_cache(
+    self: JacProgram, budget: AnalysisCacheBudget
+) -> set[str] {
+    owner = self.context_root if self.context_root is not None else self;
+    released: set[str] = set();
+    for identity in list(owner.contexts) {
+        (context_count, node_count) = owner.analysis_cache_usage();
+        if context_count <= budget.max_contexts and node_count <= budget.max_nodes {
+            return released;
+        }
+        released.update(owner.release_analysis_context(identity));
+    }
+
+    for context in owner.owned_contexts() {
+        (context_count, node_count) = owner.analysis_cache_usage();
+        if context_count <= budget.max_contexts and node_count <= budget.max_nodes {
+            break;
+        }
+        if context.scratch.compile_depth {
+            raise RuntimeError('Cannot trim an active analysis context');
+        }
+        released.update(context.mod.hub);
+        context._release_local_state(retain_stubs=False, retain_inputs=True);
+    }
+    return released;
 }
 
 impl JacProgram.install_module(
     self: JacProgram, resolved_path: str, mod: uni.Module
 ) -> None {
     displaced = self.hub.install(resolved_path, mod);
+    if self.source_store.overrides or self.source_store.snapshot is not None {
+        self.hub.source_revisions[resolved_path] = self.source_store.fingerprint(
+            resolved_path
+        );
+    }
     if displaced is None {
         return;
     }
@@ -53,6 +176,10 @@ impl JacProgram.install_module(
 }
 
 impl JacProgram.is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool {
+    if self.source_store.overrides or resolved_path in self.hub.source_revisions {
+        return self.hub.source_revisions.get(resolved_path)
+            == self.source_store.fingerprint(resolved_path);
+    }
     return self.hub.is_fresh(resolved_path);
 }
 
@@ -63,12 +190,27 @@ impl JacProgram.record_dependency(
 }
 
 impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set[str] {
-    return self.deps.transitive_dependents(target_path);
+    graphs = self.dependency_graphs();
+    seen: set[str] = set();
+    pending = [JacProgram.hub_key(target_path)];
+    while pending {
+        current = pending.pop();
+        for edges in graphs {
+            for importer in edges.dependents.get(current, set()) {
+                if importer not in seen {
+                    seen.add(importer);
+                    pending.append(importer);
+                }
+            }
+        }
+    }
+    seen.discard(JacProgram.hub_key(target_path));
+    return seen;
 }
 
 impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None {
     if self.context_root is None {
-        for context in list(self.contexts.values()) {
+        for context in self.owned_contexts() {
             if context is not self {
                 context.invalidate_module(resolved_path);
             }
@@ -76,7 +218,7 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
     }
     old_module = self.mod.hub.get(resolved_path);
     if old_module is not None {
-        self.analysis.drop_tasks(id(old_module));
+        self.analysis.forget_module(old_module);
     }
     work = self.analysis.placement_state.get('work');
     if work is not None {
@@ -99,40 +241,11 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
     if self._iface is not None {
         self._iface.forget(resolved_path);
     }
-    self.deps.forget(resolved_path);
 }
 
 impl JacProgram.release_module(self: JacProgram, resolved_path: str) -> None {
-    released = self.hub.mod.hub.get(resolved_path) or self.find_module(resolved_path);
     self.invalidate_module(resolved_path);
     self.drop_module_alerts(resolved_path);
-    prog_root = self.mod;
-    main = prog_root.main_mod;
-    if (main is not None and JacProgram.hub_key(main.loc.mod_path) == resolved_path) {
-        released = released or main;
-        prog_root.main_mod = None;
-    }
-    if released is not None {
-        if prog_root.main_mod is released {
-            prog_root.main_mod = None;
-        }
-        prog_root.set_kids(
-            [
-                k
-                for k in prog_root.kid
-                if k is not released
-            ],
-            pos_update=False
-        );
-        del [edge released<-:ScopeChild:<-];
-        if prog_root.kid {
-            (first_tok, last_tok) = prog_root.resolve_tok_range();
-            prog_root.loc.update_token_range(first_tok, last_tok);
-        } else {
-            empty_tok = uni.EmptyToken();
-            prog_root.loc.update_token_range(empty_tok, empty_tok);
-        }
-    }
 }
 
 impl JacProgram.load_dependency_module(
@@ -145,6 +258,7 @@ impl JacProgram.load_dependency_module(
     import from pathlib { Path }
 
     resolved_path = str(Path(source_path).resolve());
+    self.source_store.record_module(resolved_path);
     if resolved_path.endswith('.pyi') {
         catalog = self.stub_catalog();
         if catalog is not None {
@@ -275,7 +389,8 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
     self.analysis.placement_state.pop('work', None);
     self.type_evaluator = None;
     if clear_hub {
-        self.mod.hub.clear();
+        self.hub.reset(retain_stubs=False);
+        self.analysis.release();
         return;
     }
 
@@ -346,7 +461,10 @@ impl JacProgram.release_check_caches(self: JacProgram) -> None {
 }
 
 impl JacProgram.release_compile_closure(
-    self: JacProgram, collect: bool = True, retain_stubs: bool = True
+    self: JacProgram,
+    collect: bool = True,
+    retain_stubs: bool = True,
+    retain_inputs: bool = False
 ) -> None {
     import os;
     if os.environ.get("JAC_NO_UNIT_EVICT") {
@@ -354,37 +472,51 @@ impl JacProgram.release_compile_closure(
     }
 
     if self.context_root is None {
-        for context in list(self.contexts.values()) {
+        for context in self.owned_contexts() {
             if context is not self {
                 context.release_compile_closure(
-                    collect=False, retain_stubs=retain_stubs
+                    collect=False,
+                    retain_stubs=retain_stubs,
+                    retain_inputs=retain_inputs
                 );
             }
         }
-        self.contexts.clear();
-        self.context_key = '';
-        self.source_store.units.clear();
-        self.source_store.revisions.clear();
+        if retain_inputs {
+            for context in self.contexts.values() {
+                if context.program is not self {
+                    context.program = None;
+                }
+            }
+        } else {
+            self.contexts.clear();
+            self.context_key = '';
+            self.source_store.clear();
+        }
     }
-    self.release_native_dep_units();
-    self.hub.reset(retain_stubs=retain_stubs);
-    self.mod = self.hub.mod;
-    self.deps.clear();
-    self.type_evaluator = None;
-    self.diags.clear();
-    self.scratch.clear();
-    self.analysis.analyses_run.clear();
-    self.analysis.placement_state.pop('work', None);
-    self.analysis.early_passes.clear();
-    self.analysis.product_tasks.clear();
-    self.analysis.completed_passes.clear();
-    self.analysis.task_owners.clear();
-    if self._iface is not None {
-        self._iface.on_closure_release();
-    }
+    self._release_local_state(retain_stubs, retain_inputs);
     if collect and unit_collect_budget.due() {
         import gc;
         gc.collect();
+    }
+}
+
+impl JacProgram._release_local_state(
+    self: JacProgram, retain_stubs: bool, retain_inputs: bool
+) -> None {
+    self.release_native_dep_units();
+    self.hub.reset(retain_stubs=retain_stubs);
+    self.mod = self.hub.mod;
+    if retain_inputs {
+        self.deps.pending.clear();
+    } else {
+        self.deps.clear();
+    }
+    self.type_evaluator = None;
+    self.diags.clear();
+    self.scratch.clear();
+    self.analysis.release();
+    if self._iface is not None {
+        self._iface.on_closure_release();
     }
 }
 
@@ -420,7 +552,7 @@ impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) 
     }
 
     if self.context_root is None {
-        for context in self.contexts.values() {
+        for context in self.owned_contexts() {
             if context is not self and context.options.entry_point == keyed {
                 return context.find_module(keyed);
             }

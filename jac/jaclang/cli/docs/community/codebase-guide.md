@@ -171,6 +171,112 @@ Two sibling areas round out the picture: `client/` holds the client toolchain an
 
 This module powers IDE support, in two halves. `lsp/protocol/` implements the Language Server Protocol surface (message types, URIs, the protocol server). `lsp/server/` is the engine underneath -- it manages open modules, coordinates incremental recompilation, and feeds semantic data to the protocol layer (completions, diagnostics, go-to-definition, hover). If you're working on IDE features, you'll usually start in `lsp/protocol/` for the protocol handling and drop into `lsp/server/` for the semantic logic.
 
+Source inputs and dependency lifetime belong to `compiler/driver/`. `SourceStore`
+captures editor overrides alongside disk sources, including implementation and
+test annexes, and returns isolated syntax for each compilation context. Unsaved
+inputs must never populate a disk-keyed interface cache. `DepGraph` keeps both
+directions of dependency edges: invalidating a resident module preserves the
+edges needed to recover after an error, while a completed compilation replaces
+its outgoing dependencies. Failed or cancelled compilations conservatively
+retain the last known edges. Reverse dependency queries span application
+contexts.
+
+`JacProgram.for_analysis()` gives each service its own compiler and internal
+compiler program. `owned_contexts()` defines the shared invalidation and release
+boundary. A source capture freezes the bytes read by both source and project
+configuration readers, then checks those contents before publishing. File
+timestamps alone do not identify a revision. `project/config.jac` scopes project
+selection and discovery caches to an operation, so one workspace cannot change
+another workspace's compilation settings.
+
+Import-resolution probes are inputs too, including files that do not yet exist.
+The source snapshot records their absence without decoding binary assets, and
+the symbol index maps captured input paths back to their consuming units. File
+creation can therefore recheck a previously unresolved import. Compilations
+with semantic errors preserve their last known dependency edges.
+
+The module hub owns both lookup entries and links from the program root.
+Replacement, invalidation, and release detach displaced trees through that
+shared owner. Parser trees transfer directly to their compilation context;
+the source store retains no duplicate syntax graphs. Reuse happens through
+the compiler's module and analysis products. Dependency records have a separate
+lifetime and survive eviction of those trees.
+Executable artifacts also have a separate lifetime: dropping an analysis tree
+does not unload code that is still executing.
+
+Each `CompilationContext` keeps its dependency graph independently of its
+optional live compiler program. The language service retires the least recently
+used contexts when retained analysis exceeds eight contexts or 100,000 syntax
+nodes. The root context can release its own trees without releasing other
+contexts. These are retention limits; a compilation can temporarily exceed them.
+
+The protocol reader applies each document-change batch atomically and captures
+its revision. `lsp/server/scheduler.jac` coalesces checks per compilation unit,
+preserves work for other documents, and bounds the interactive request queue.
+One worker owns mutable compiler state and handles semantic requests; protocol
+input and cancellation continue while it works. Diagnostics include document
+versions and are published only if their captured inputs are current. Each
+request reads through a frozen workspace view, including position conversion.
+Input manifests record the files actually used; editing an unrelated buffer
+does not invalidate a query. Requests queued for an older version of their own
+document receive `ContentModified`.
+Completion can request symbol construction and evaluate the queried expression
+without waiting for workspace diagnostics. Text exclusion ranges and completion
+items are cached by the document or analysis state that owns them. Lexical views
+retain at most 64 files and four million source characters; completion caches
+retain at most 20,000 items. Both discard least recently used entries.
+
+Compiler and engine positions use Unicode code points. The protocol boundary
+converts request positions and response ranges to the client's negotiated
+UTF-8, UTF-16, or UTF-32 units, including semantic-token deltas. Conversion
+creates wire data without modifying cached editor products. Responses are
+prepared before claiming completion, so preparation failures receive an error
+and cancellation remains available while a response is being serialized.
+
+`ModuleManager` keeps editor products separate from mutable compiler graphs.
+Outlines and encoded semantic tokens contain protocol data and remain usable
+after an analysis tree is released. Invalidating a unit also invalidates its
+annex products. Dependent trees retire immediately, while compact consumer
+products can survive a dependency body edit. The existing interface encoder,
+placement summaries, and exported symbol descriptions define the consumer
+contract. When that contract is unchanged, the symbol index refreshes matching
+dependency digests in retained consumer manifests. Each application context
+must remain current before its editor products can be reused. Changes to
+signatures, exported locations, annex membership, and compile-time body inputs
+remain conservative rechecks. File watcher notifications use the same dependency invalidation
+path as buffer edits; renaming an open document preserves its unsaved text and
+version. The server registers file watchers when the client supports dynamic
+registration.
+
+`compiler/tools/symbol_index.jac` shares symbol descriptions with code
+intelligence and stores definitions and reference locations without tree
+references. Index shards carry content digests, annex membership, and a
+compilation-context identity. The existing JIR symbol-index section persists
+shards alongside other compiler products. Loading validates the complete input
+manifest, and dirty editor inputs stay in memory. Reference and rename queries
+combine these records with the current declaration, so retiring compiler trees
+does not discard previously indexed references.
+
+`compiler/tools/workspace_index.jac` restores valid shards and dependency edges
+without constructing live compiler programs. Analysis and indexing use the same
+application target planning. Workspace discovery shares the lazy source-unit
+iterator used by code intelligence; it queues one file at a time and skips
+generated and dependency directories. Indexing yields to editor requests and
+checks. Once a file is indexed, its unopened references and workspace symbols
+remain available after its compiler trees are retired. Workspace symbol search
+returns at most 256 matching declarations and excludes function locals.
+Index reads join the query's input capture, so even results with no resident
+compiler module are checked for concurrent source changes before publication.
+Reference and rename requests wait for pending workspace indexing to complete;
+other interactive requests can run while discovery continues.
+
+`scripts/lsp_bench.jac` measures the real stdio protocol and uses the existing
+`scripts/ci_perf.jac` budget accounting. The proposed scenario budgets live in
+`.github/lsp-performance-budgets.json`. The optional `lsp_performance` input on
+the CI workflow runs the six scenarios against its existing sealed kit and
+preserves the raw measurements. It defaults to off pending budget calibration
+and review.
+
 ### `project/`
 
 Handles `jac.toml` configuration parsing, dependency resolution, capability configuration, and project scaffolding templates.
