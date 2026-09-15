@@ -2,6 +2,18 @@ def _utc_now_iso -> str {
     return datetime.datetime.now(datetime.timezone.utc).isoformat();
 }
 
+
+def _min_interval -> float {
+    try {
+        return float(
+            get_scale_config().get_scheduler_config().get('min_interval', 1.0)
+        );
+    } except Exception {
+        return 1.0;
+    }
+}
+
+
 impl TriggerSpec.validate(
     trigger: str,
     interval: float | None = None,
@@ -18,6 +30,13 @@ impl TriggerSpec.validate(
         }
         if float(interval) <= 0 {
             raise ValueError("interval must be > 0 seconds");
+        }
+        floor = _min_interval();
+        if float(interval) < floor {
+            raise ValueError(
+                f"interval must be at least {floor} seconds; "
+                "raise [scale.scheduler] min_interval to allow a shorter one"
+            );
         }
     } elif trigger == 'cron' {
         if not cron {
@@ -119,6 +138,59 @@ impl PgJobStore.insert(job: dict) -> str {
     return job_id;
 }
 
+impl PgJobStore.insert_within_quota(
+    job: dict, created_by: str, max_active: int
+) -> bool {
+    if max_active <= 0 {
+        self.insert(job);
+        return True;
+    }
+    store = self.store;
+    nested = bool(store.in_txn());
+    if not nested {
+        store.begin(TxnIsolation.READ_COMMITTED);
+    }
+    try {
+        store.rows(
+            'SELECT pg_advisory_xact_lock(hashtext(:k))',
+            {'k': f'jac_sched_quota:{self._collection}:{created_by}'}
+        );
+        held = store.rows(
+            "SELECT count(*) FROM jac_docs WHERE collection = :c "
+            "AND doc->>'status' = 'active' AND doc->>'created_by' = :u",
+            {'c': self._collection, 'u': created_by}
+        );
+        if held and int(held[0][0]) >= max_active {
+            if not nested {
+                store.rollback();
+            }
+            return False;
+        }
+        d = dict(job);
+        store.rows(
+            'INSERT INTO jac_docs (collection, id, doc) '
+            'VALUES (:c, :i, CAST(:d AS jsonb)) '
+            'ON CONFLICT (collection, id) DO UPDATE SET doc = EXCLUDED.doc',
+            {
+                'c': self._collection,
+                'i': str(d['job_id']),
+                'd': json.dumps(d, `default=str)
+            }
+        );
+        if not nested {
+            store.commit();
+        }
+        return True;
+    } except Exception as e {
+        if not nested {
+            try {
+                store.rollback();
+            } except Exception as ignored {}
+        }
+        raise e;
+    }
+}
+
 impl PgJobStore.find_active(
     limit: int | None = None,
     offset: int = 0,
@@ -208,6 +280,27 @@ impl MemoryJobStore.insert(job: dict) -> str {
     job_id = str(job['job_id']);
     self._jobs[job_id] = dict(job);
     return job_id;
+}
+
+impl MemoryJobStore.insert_within_quota(
+    job: dict, created_by: str, max_active: int
+) -> bool {
+    with _memory_jobs_lock {
+        if max_active > 0 {
+            held = 0;
+            for j in self._jobs.values() {
+                if j.get('status') == 'active' and j.get('created_by') == created_by {
+                    held = held + 1;
+                }
+            }
+            if held >= max_active {
+                return False;
+            }
+        }
+        job_id = str(job['job_id']);
+        self._jobs[job_id] = dict(job);
+        return True;
+    }
 }
 
 impl MemoryJobStore.find_active(
@@ -475,8 +568,8 @@ impl JacScaleScheduler.register_dynamic_tasks_from_db -> None {
 }
 
 impl JacScaleScheduler.create_job(
-    name: str, spec: TriggerSpec, created_by: str
-) -> dict {
+    name: str, spec: TriggerSpec, created_by: str, max_active: int = 0
+) -> dict | None {
     if self._apscheduler is None {
         raise RuntimeError(
             "APScheduler is not available — enable the 'scheduler' capability and run 'jac install'."
@@ -500,7 +593,10 @@ impl JacScaleScheduler.create_job(
     job_data.update(spec.to_dict());
 
     store = self._require_store();
-    persisted_id = store.insert(job_data);
+    if not store.insert_within_quota(job_data, created_by, max_active) {
+        return None;
+    }
+    persisted_id = job_id;
     job_data['job_id'] = persisted_id;
 
     try {
@@ -793,11 +889,16 @@ impl JacScaleScheduler._schedule_apscheduler_job(
         self._execute_task(name, user_id, is_walker, job_id=job_id);
     }
 
+    kwargs = spec.apscheduler_kwargs();
+    floor = _min_interval();
+    if spec.trigger == 'interval' and float(kwargs.get('seconds') or 0.0) < floor {
+        logger.warning(
+            f"job {job_id} asks for {kwargs.get('seconds')}s; clamped to the "
+            f"{floor}s floor from [scale.scheduler] min_interval"
+        );
+        kwargs['seconds'] = floor;
+    }
     self._apscheduler.add_job(
-        job_func,
-        spec.trigger,
-        id=job_id,
-        replace_existing=True,
-        **spec.apscheduler_kwargs()
+        job_func, spec.trigger, id=job_id, replace_existing=True, **kwargs
     );
 }

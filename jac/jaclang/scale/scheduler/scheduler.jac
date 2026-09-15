@@ -11,14 +11,18 @@ import from jaclang.scale._optdeps.apscheduler {
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.server.task_scheduler { Scheduler, ScheduleTrigger }
+import threading;
+import from jaclang.data.store { TxnIsolation }
 import from jaclang.server.shared_store { open_docs_store }
 
 glob _jaclang_scale_scheduler: (JacScaleScheduler | None) = None,
      JOBS_CHANGED_CHANNEL: str = 'jac_jobs_changed',
+     _memory_jobs_lock: threading.Lock = threading.Lock(),
      logger = logging.getLogger(__name__);
 
 obj JobStore {
     def insert(job: dict) -> str;
+    def insert_within_quota(job: dict, created_by: str, max_active: int) -> bool;
     def find_active(
         limit: int | None = None,
         offset: int = 0,
@@ -37,6 +41,7 @@ obj PgJobStore(JobStore) {
         _collection: str;
 
     def insert(job: dict) -> str;
+    def insert_within_quota(job: dict, created_by: str, max_active: int) -> bool;
     def find_active(
         limit: int | None = None,
         offset: int = 0,
@@ -55,6 +60,7 @@ obj MemoryJobStore(JobStore) {
 
     def postinit -> None;
     def insert(job: dict) -> str;
+    def insert_within_quota(job: dict, created_by: str, max_active: int) -> bool;
     def find_active(
         limit: int | None = None,
         offset: int = 0,
@@ -100,7 +106,10 @@ obj JacScaleScheduler {
     def start -> None;
     def stop(drain: bool = False) -> None;
     def register_dynamic_tasks_from_db -> None;
-    def create_job(name: str, spec: TriggerSpec, created_by: str) -> dict;
+    def create_job(
+        name: str, spec: TriggerSpec, created_by: str, max_active: int = 0
+    ) -> dict | None;
+
     def list_jobs(
         limit: int | None = None,
         offset: int = 0,
