@@ -750,7 +750,7 @@ impl NaIRGenPass._codegen_varargs_list(
         );
         return None;
     }
-    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     lv = self._rc_call_with_ctx(
@@ -861,7 +861,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
         );
         return None;
     }
-    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     dv = self._rc_call_with_ctx(
@@ -1265,7 +1265,7 @@ impl NaIRGenPass._codegen_intrinsic(
 impl NaIRGenPass._emit_intrinsic_misuse(
     nd: uni.FuncCall, intr: IntrinsicEntry, reason: str
 ) -> None {
-    for e in self.errors_had {
+    for e in self.ctx.errors_had {
         if (
             e.code is E5095
             and e.loc.mod_path == nd.loc.mod_path
@@ -2228,7 +2228,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             else None;
     }
     if func is None {
-        manifest = self.ir_in.gen.interop_manifest;
+        manifest = self.module.gen.interop_manifest;
         binding = manifest.bindings.get(func_name);
         _src_ab: (uni.Ability | None) = None;
         if binding is not None
@@ -3237,7 +3237,7 @@ impl NaIRGenPass._try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None) {
     if nd.tok is None {
         return None;
     }
-    _par_ok = (self.ir_in.gen.nogc_enforced and self._gc_mode() == "none")
+    _par_ok = (self.module.gen.nogc_enforced and self._gc_mode() == "none")
         or (self._gc_mode() == "rc" and not self._rc_debug_codegen);
     if not _par_ok
         or "wasm" in str(self.llvm_module.triple)
@@ -3599,7 +3599,6 @@ impl NaIRGenPass._codegen_sized_builtin_call(
     }
     return None;
 }
-
 
 impl NaIRGenPass._emit_take(nd: uni.FuncCall) -> (ir.Value | None) {
     params_l = list(nd.params or []);

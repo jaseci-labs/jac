@@ -5,6 +5,8 @@ sys.stderr redirect, os.chdir, xfail, etc.  All simple "run fixture
 and check stdout" tests live in test_language.jac.
 """
 
+import from jaclang.compiler.passes.execution { run_walker }
+
 import ast as py_ast;
 import io;
 import os;
@@ -51,12 +53,13 @@ test "pyfunc 1" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            PyastBuildPass(
-                ir_in=uni.PythonModuleAst(
+            run_walker(
+                PyastBuildPass,
+                module=uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).ir_out
+            ).module
         );
     }
     assert "def greet2(**kwargs: any) -> None {" in output;
@@ -73,12 +76,13 @@ test "pyfunc 2" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            PyastBuildPass(
-                ir_in=uni.PythonModuleAst(
+            run_walker(
+                PyastBuildPass,
+                module=uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).ir_out
+            ).module
         );
     }
     assert "class X {\n    with entry {\n        a_b = 67;" in output;
@@ -93,12 +97,13 @@ test "pyfunc 3" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            PyastBuildPass(
-                ir_in=uni.PythonModuleAst(
+            run_walker(
+                PyastBuildPass,
+                module=uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).ir_out
+            ).module
         );
     }
     assert "if (0 <= x <= 5) {" in output;
@@ -113,12 +118,13 @@ test "pyfunc binop" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            PyastBuildPass(
-                ir_in=uni.PythonModuleAst(
+            run_walker(
+                PyastBuildPass,
+                module=uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).ir_out
+            ).module
         );
     }
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
@@ -149,12 +155,13 @@ test "py2jac" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            PyastBuildPass(
-                ir_in=uni.PythonModuleAst(
+            run_walker(
+                PyastBuildPass,
+                module=uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).ir_out
+            ).module
         );
     }
     assert "match Container(inner=Inner(x=a, y=b)) {\n" in output;
@@ -169,12 +176,13 @@ test "py2jac metaclass" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            PyastBuildPass(
-                ir_in=uni.PythonModuleAst(
+            run_walker(
+                PyastBuildPass,
+                module=uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).ir_out
+            ).module
         );
     }
     # The class keyword `metaclass=Meta` must survive py2jac, alongside the
@@ -188,12 +196,13 @@ test "py2jac params" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            PyastBuildPass(
-                ir_in=uni.PythonModuleAst(
+            run_walker(
+                PyastBuildPass,
+                module=uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).ir_out
+            ).module
         );
     }
     assert (
@@ -211,11 +220,12 @@ test "py2jac empty file" {
     py_out_path = os.path.join(FIXTURES, "py2jac_empty.py");
     with open(py_out_path) as f {
         file_source = f.read();
-        converted_ast = PyastBuildPass(
-            ir_in=uni.PythonModuleAst(
+        converted_ast = run_walker(
+            PyastBuildPass,
+            module=uni.PythonModuleAst(
                 py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             )
-        ).ir_out;
+        ).module;
     }
     assert isinstance(converted_ast, uni.Module);
 }
@@ -226,12 +236,13 @@ test "py2jac augassign and doc" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            PyastBuildPass(
-                ir_in=uni.PythonModuleAst(
+            run_walker(
+                PyastBuildPass,
+                module=uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).ir_out
+            ).module
         );
     }
     assert "x += 2;" in output;
@@ -244,12 +255,13 @@ test "py2jac reassign semantics" {
     with open(py_out_path) as f {
         file_source = f.read();
         jac_code = unparse_module(
-            PyastBuildPass(
-                ir_in=uni.PythonModuleAst(
+            run_walker(
+                PyastBuildPass,
+                module=uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).ir_out
+            ).module
         );
     }
 
@@ -286,12 +298,13 @@ test "py namedexpr" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            PyastBuildPass(
-                ir_in=uni.PythonModuleAst(
+            run_walker(
+                PyastBuildPass,
+                module=uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).ir_out
+            ).module
         );
     }
     assert "(x := 10)" in output;
@@ -303,12 +316,13 @@ test "py bool parentheses" {
     with open(py_out_path) as f {
         file_source = f.read();
         output = unparse_module(
-            PyastBuildPass(
-                ir_in=uni.PythonModuleAst(
+            run_walker(
+                PyastBuildPass,
+                module=uni.PythonModuleAst(
                     py_ast.parse(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
-            ).ir_out
+            ).module
         );
     }
     assert "(prev_token_index is None)" in output;

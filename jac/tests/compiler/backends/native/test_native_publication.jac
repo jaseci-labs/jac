@@ -99,7 +99,7 @@ test "new atomic products follow the process umask" {
     }
 }
 
-test "a bytecode compile preserves every stamped native product" {
+test "a bytecode compile preserves native products across compilation contexts" {
     import from jaclang.compiler.driver.jir {
         SEC_NIFACE,
         SEC_NOBJ,
@@ -132,7 +132,10 @@ test "a bytecode compile preserves every stamped native product" {
         bytecode = program._get_compiler().get_bytecode(str(source), bytecode_program);
         assert bytecode is not None;
         after = cache.read_bytes();
-        assert read_section_bytes(after, SEC_BYTECODE) is not None;
+        import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+        bytecode_cache = artifact_cache_path(str(source), bytecode_program);
+        assert read_section_bytes(bytecode_cache.read_bytes(), SEC_BYTECODE)
+            is not None;
         for section in sections {
             assert native_section_payload(read_section_bytes(after, section), stamp)
                 == native_section_payload(read_section_bytes(before, section), stamp) , f"native section {section} changed";

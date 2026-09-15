@@ -927,7 +927,7 @@ test "include preserves the lazy type provider of hydrated dependency symbols" {
         dependency = prog.load_dependency_module(str(base));
         original = dependency.sym_tab.lookup("Exported");
         assert original is not None and original.provider is not None;
-        module = prog.load_dependency_module(str(facade), need_tree=True);
+        module = prog.load_dependency_module(str(facade));
         imported = module.sym_tab.lookup("Exported");
         assert imported is not None and imported.provider is original.provider;
         assert imported.imported_from is original;
@@ -1091,12 +1091,15 @@ test "equivalent external class references have one interface identity" {
     );
     assert build_module_iface(mod, evaluator, pkg) == before;
     hydrated = _context(dep);
-    hydrated_mod = hydrated.load_dependency_module(dep);
+    registry = hydrated.iface_registry();
+    iface_entry = registry.ensure(dep, compile_on_miss=False);
+    assert iface_entry is not None;
+    hydrated_mod = registry._materialize(iface_entry);
+    assert hydrated_mod is not None and hydrated_mod.stub_only;
     cached = hydrated.get_type_evaluator().get_type_of_symbol(
         hydrated_mod.names_in_scope["Foreign"]
     );
     assert isinstance(cached, ClassType);
-    assert hydrated.analysis.cache_events.get("dep_hydrate", 0) == 1;
     fn.return_type = ClassType(
         _shared=cached.shared, private=copy(original.private), flags=original.flags
     );

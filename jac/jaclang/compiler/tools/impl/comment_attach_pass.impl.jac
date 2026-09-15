@@ -117,14 +117,6 @@ impl CommentAttachPass._largest_starting_at(tok: uni.Token) -> uni.UniNode {
     return target;
 }
 
-impl CommentAttachPass.transform(ir_in: uni.Module) -> uni.Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, uni.Module);
-    return out;
-}
-
 impl CommentAttachPass.run_walk with uni.Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }

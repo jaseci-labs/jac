@@ -1,3 +1,4 @@
+import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.driver.native_iface { NativeIface, NativeExport }
 import jaclang.compiler.frontend.unitree as uni;
 import os;
@@ -15,7 +16,7 @@ import from jaclang.compiler.backends.native.lowering {
     NativeLoweringKind
 }
 import from jaclang.runtime.scalars { ScalarShape }
-import from jaclang.compiler.passes.transform { Transform }
+
 import from jaclang.compiler.frontend.codeinfo {
     HDR_ALLOC_ID_OFF,
     HDR_DTOR_OFF,
@@ -158,10 +159,12 @@ obj NativeFunctionState {
             list[tuple[ir.Function, tuple[ir.Value, ir.Value, ir.Value]]];
 }
 
-walker NaIRGenPass(Transform) {
-    has prog: JacProgram;
+walker NaIRGenPass {
+    has ctx: CompileContext,
+        prog: JacProgram;
+
     static has HOST_PASS: bool = True;
-    has ir_in: uni.Module,
+    has module: uni.Module,
         _llvm_module: (ir.Module | None) = None,
         _type_map: (dict[str, ir.Type] | None) = None,
         _complex_struct_type: (ir.IdentifiedStructType | None) = None,
@@ -942,7 +945,6 @@ walker NaIRGenPass(Transform) {
     ) -> None;
 
     def postinit -> None;
-    def transform(ir_in: uni.Module) -> uni.Module;
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;
     def _register_imported_struct_types -> None;
@@ -980,7 +982,7 @@ walker NaIRGenPass(Transform) {
     def _build_class_layouts -> dict[str, any];
     def _osp_kernel_init_fns -> list[ir.Function];
     def _vtable_symbol(arch_name: str) -> str;
-    override def emit(
+    def emit(
         diag: DiagnosticInfo,
         node_override: (uni.UniNode | None) = None,
         related: (list[tuple[str, uni.UniNode]] | None) = None,
@@ -1084,7 +1086,7 @@ walker NaIRGenPass(Transform) {
     def _na_debug_on -> bool;
     def _attach_di_subprogram(func: ir.Function, name: str, line: int) -> None;
     def _finalize_di_locations(func: ir.Function, fallback_line: int) -> None;
-    def post_transform -> None;
+    can finish with exit;
     def _peer_dict_key -> (str | None);
     def _hash_key_spec(key_type: ir.Type) -> tuple[str, int];
     def _dict_val_spec(val_type: ir.Type) -> str;

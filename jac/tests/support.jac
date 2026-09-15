@@ -194,8 +194,9 @@ def compile_native(
     fixture: str, fixture_dir: str = ""
 ) -> tuple[ExecutionEngine, Module] {
     ir = _compile_native_fixture(fixture, fixture_dir, native_force_opts());
+    import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
     eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
+    assert isinstance(eng, ExecutionEngine) , f"No JIT engine produced for {fixture}";
     remember_native_unit(eng, ir);
     return (eng, ir);
 }

@@ -4,7 +4,7 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     if nd is None {
         return None;
     }
-    _jac_loc: str = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _jac_loc: str = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     _folded = self._ct_fold(nd);
@@ -157,10 +157,10 @@ impl NaIRGenPass._codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None
     if nd is None {
         return None;
     }
-    _errs_before = len(self.errors_had);
+    _errs_before = len(self.ctx.errors_had);
     val = self._codegen_expr(nd);
     if val is None
-        and len(self.errors_had) == _errs_before
+        and len(self.ctx.errors_had) == _errs_before
         and not self._reads_unlowered_local(nd) {
         self.emit(E5092, node_override=nd, kind="expression", name=type(nd).__name__);
     }
@@ -299,10 +299,10 @@ impl NaIRGenPass._codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None) {
     assert self.builder.function is gc.resume_fn;
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
-    _errs0 = len(self.errors_had);
+    _errs0 = len(self.ctx.errors_had);
     built = self._build_iter_from_expr(nd.expr) if nd.expr is not None else None;
     if built is None {
-        if len(self.errors_had) == _errs0 {
+        if len(self.ctx.errors_had) == _errs0 {
             self.emit(
                 E5092,
                 node_override=nd,
@@ -416,7 +416,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         }
 
         body = nd.body;
-        _lam_errs0 = len(self.errors_had);
+        _lam_errs0 = len(self.ctx.errors_had);
         if not isinstance(body, uni.Expr) {
             tail = nd.tail_return_expr();
             if tail is not None {
@@ -424,7 +424,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
                 if body_value is not None {
                     self.builder.ret(self._coerce_type(body_value, ret_type));
                 } else {
-                    if len(self.errors_had) == _lam_errs0 {
+                    if len(self.ctx.errors_had) == _lam_errs0 {
                         self.emit(
                             E5092,
                             node_override=nd,
@@ -443,7 +443,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
             if body_value is not None {
                 self.builder.ret(self._coerce_type(body_value, ret_type));
             } else {
-                if len(self.errors_had) == _lam_errs0 {
+                if len(self.ctx.errors_had) == _lam_errs0 {
                     self.emit(
                         E5092,
                         node_override=nd,
@@ -581,7 +581,7 @@ impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
     if value is None {
         return None;
     }
-    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     if var_name in self.local_vars {
@@ -719,7 +719,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
         return walker_val;
     }
 
-    _spawn_model = self.ir_in.gen.osp_model;
+    _spawn_model = self.module.gen.osp_model;
     if (_spawn_model is not None)
         and (walker_name in _spawn_model.tags)
         and (self._osp_rt_global is not None)
@@ -811,7 +811,7 @@ impl NaIRGenPass._spawn_operand_name(nd: uni.UniNode) -> (str | None) {
 }
 
 impl NaIRGenPass._is_walker_arch(name: str) -> bool {
-    _model = self.ir_in.gen.osp_model;
+    _model = self.module.gen.osp_model;
     return (_model is not None) and (_model.arch_kind.get(name) == "walker");
 }
 
@@ -1464,12 +1464,12 @@ impl NaIRGenPass._codegen_compare_chain(
         }
         operands.append(right);
         left_node = nd.left if i == 0 else nd.rights[i - 1];
-        _errs_before = len(self.errors_had);
+        _errs_before = len(self.ctx.errors_had);
         link = self._codegen_compare_link(
             op_name, cur, right, left_node, nd.rights[i], release_operands=False
         );
         if link is None {
-            if len(self.errors_had) == _errs_before {
+            if len(self.ctx.errors_had) == _errs_before {
                 self.emit(
                     E5092,
                     node_override=nd,

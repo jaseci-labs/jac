@@ -4,7 +4,6 @@ impl NaIRGenPass._int_width_of(val: ir.Value) -> int {
     return ty.width;
 }
 
-
 import from jaclang.runtime.scalars { range_of, shape_of, wrap_value }
 
 glob OVERFLOW_MSG: str = "integer overflow",

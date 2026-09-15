@@ -39,7 +39,7 @@ impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
     if arch.arch_kind is not None or self._arch_is_osp_name(arch_name) {
         return None;
     }
-    _own_path = os.path.realpath(self.ir_in.loc.mod_path) if self.ir_in?.loc else "";
+    _own_path = os.path.realpath(self.module.loc.mod_path) if self.module?.loc else "";
     for base_expr in (arch.base_classes or []) {
         if isinstance(base_expr, uni.AtomTrailer)
             and isinstance(base_expr.right, uni.IndexSlice) {

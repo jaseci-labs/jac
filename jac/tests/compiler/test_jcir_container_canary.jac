@@ -31,6 +31,8 @@ The corpus is the one the cutover requirements name: comments,
 diagnostics, string-named tests, and circular includes.
 """
 
+import from jaclang.compiler.passes.execution { run_walker }
+
 import ast as pyast;
 import marshal;
 import types;
@@ -53,7 +55,7 @@ def emit_both(src: str, path: str) -> tuple[any, ...] {
     );
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
     ref_tree = mod.gen.py_ast[0];
-    blob = JcirGenPass(ir_in=mod).ir_bytes();
+    blob = run_walker(JcirGenPass, module=mod).ir_bytes();
     (mods, diags) = transcribe(blob);
     assert len(mods) == 1 , f"{path}: container carried {len(mods)} modules";
     return (ref_tree, mods[0][1], blob, diags, );
@@ -179,7 +181,6 @@ glob CORPUS: tuple[any, ...] = (
          ("circular include b", CIRCULAR_B, "circular_b.jac", )
      );
 
-
 test "container bytes are byte stable across emissions" {
     for (label, src, path) in CORPUS {
         first = emit_bytes(src, path);
@@ -193,7 +194,6 @@ test "container bytes are byte stable across emissions" {
         );
     }
 }
-
 
 test "the container round trip reproduces the pyast tree exactly" {
     for (label, src, path) in CORPUS {
@@ -216,7 +216,6 @@ test "the container round trip reproduces the pyast tree exactly" {
     }
 }
 
-
 test "code objects agree field by field, never by marshal bytes" {
     for (label, src, path) in CORPUS {
         (ref_tree, got_tree, _blob, _diags) = emit_both(src, path);
@@ -229,7 +228,6 @@ test "code objects agree field by field, never by marshal bytes" {
         );
     }
 }
-
 
 test "marshal bytes are not the parity token this canary uses" {
     (ref_tree, got_tree, _blob, _diags) = emit_both(
@@ -249,7 +247,6 @@ test "marshal bytes are not the parity token this canary uses" {
     );
 }
 
-
 test "the container carries its module path and string table" {
     for (label, src, path) in CORPUS {
         blob = emit_bytes(src, path);
@@ -267,7 +264,6 @@ test "the container carries its module path and string table" {
         );
     }
 }
-
 
 test "diagnostics cross the container with text severity and span" {
     import from jaclang.compiler.backends.py.codegen_ir {
@@ -315,7 +311,6 @@ test "diagnostics cross the container with text severity and span" {
         );
     }
 }
-
 
 test "an emitted container decodes to the same bytes it was written from" {
     for (label, src, path) in CORPUS {

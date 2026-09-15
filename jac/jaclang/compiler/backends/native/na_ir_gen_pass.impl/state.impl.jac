@@ -14,10 +14,10 @@ demotion of a function is decided by the errors its lowering recorded, so a
 suppressed code must still be recorded here. The pass driver applies the
 policy when it delivers the pass's alerts to the program, so a suppressed
 diagnostic never reaches a user.""";
-    saved = self.policy;
-    self.policy = None;
+    saved = self.ctx.policy;
+    self.ctx.policy = None;
     try {
-        return super.emit(
+        return self.ctx.emit(
             diag,
             node_override=node_override,
             related=related,
@@ -25,7 +25,7 @@ diagnostic never reaches a user.""";
             **kwargs
         );
     } finally {
-        self.policy = saved;
+        self.ctx.policy = saved;
     }
 }
 

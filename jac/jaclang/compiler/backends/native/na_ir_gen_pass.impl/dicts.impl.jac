@@ -366,14 +366,14 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
             and isinstance(semantic_val_type.pointee, ir.LiteralStructType)
         else None;
 
-    _dict_new_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _dict_new_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     dict_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_dict_new_loc, name="dict.new"
     );
     self._nogc_stamp_elem_drops(dict_val, self._nogc_type_arg_mangles(nd));
-    _dinit_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _dinit_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
 
@@ -560,7 +560,7 @@ impl NaIRGenPass._codegen_dict_set(
     key_val = self._coerce_type(key_val, key_type);
     value = self._coerce_type(value, val_type);
     _dset_ctx_loc = getattr(
-        _orig_value, 'jac_loc', f"{os.path.basename(self.ir_in.loc.mod_path)}:0"
+        _orig_value, 'jac_loc', f"{os.path.basename(self.module.loc.mod_path)}:0"
     );
     (_set_fn, _kh) = self._static_key_op(helpers, "set", key_node);
     _set_args = [target_val, key_val, value];

@@ -41,7 +41,7 @@ def compile_with_backend(fixture_name: str, backend: object) -> str {
         f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
     es_pass = run_pass(EsastGenPass, ir, prog, backend=backend);
-    return es_to_js(es_pass.ir_out.gen.es_ast);
+    return es_to_js(es_pass.module.gen.es_ast);
 }
 
 def assert_store_contract(js: str, backend_name: str) {

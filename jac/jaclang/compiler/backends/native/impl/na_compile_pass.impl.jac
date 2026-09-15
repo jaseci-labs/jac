@@ -57,7 +57,6 @@ impl optimize_unit(
 impl NativeCompilePass.postinit -> None {
     llvm.initialize_native_target();
     llvm.initialize_native_asmprinter();
-    super.postinit();
 }
 
 impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
@@ -108,7 +107,7 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             debug_obj_path = self._emit_debug_products(module, mod, target_machine);
         }
 
-        if options.aot_mode or options.skip_native_engine or self.errors_had {
+        if options.aot_mode or options.skip_native_engine or self.ctx.errors_had {
             return ir_in;
         }
 
@@ -149,11 +148,11 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
     } except Exception as e {
         import from jaclang.compiler.backends.native.link_plan { SymbolCollision }
         if isinstance(e, SymbolCollision) {
-            self.emit(
+            self.ctx.emit(
                 E5026, symbol=e.symbol, existing_module=e.first, new_module=e.second
             );
         } else {
-            self.emit(E5020, error=str(e));
+            self.ctx.emit(E5020, error=str(e));
         }
     }
     return ir_in;
@@ -234,16 +233,8 @@ impl NativeCompilePass._write_symbol_map(
     } except Exception {}
 }
 
-impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, uni.Module);
-    return out;
-}
-
 impl NativeCompilePass.run_walk with uni.Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }
 
 impl native_linked_ir_text(module: uni.Module) -> str {

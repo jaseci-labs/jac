@@ -1,3 +1,4 @@
+import from jaclang.runtime.osp_kernel { osp_skip_rest }
 impl JcirGenPass._get_builtin_names -> set[str] {
     return set(JCIR_BUILTIN_NAMES);
 }
@@ -13,7 +14,7 @@ impl JcirGenPass.postinit -> None {
     _typing: set[str] = set();
     self.jaclib_imports = _jaclib;
     self._runtime_aliases = {};
-    self._reserved_names = {nd.sym_name for nd in self.ir_in.get_all_sub_nodes(Name)};
+    self._reserved_names = {nd.sym_name for nd in self.module.get_all_sub_nodes(Name)};
     self.builtin_imports = _builtins;
     self.sized_imports = _sized;
     self.typing_imports = _typing;
@@ -30,23 +31,22 @@ impl JcirGenPass.postinit -> None {
                         'alias',
                         ['name', 'asname'],
                         ['annotations', None],
-                        jac_node=self.ir_in
+                        jac_node=self.module
                     )
                 ],
                 0
             ],
-            jac_node=self.ir_in
+            jac_node=self.module
         )
     ];
-    super.postinit();
 }
 
 impl JcirGenPass._is_native_ext_module -> bool {
-    return self.ir_in is not None and self.ir_in.decided_codespace == 'native';
+    return self.module is not None and self.module.decided_codespace == 'native';
 }
 
 impl JcirGenPass._refuse(nd: (UniNode | None), construct: str) -> None {
-    target = nd if nd is not None else self.cur_node;
+    target = nd if nd is not None else self.ctx.current_node;
     where = '';
     if (target is not None and target.loc is not None) {
         where = (
@@ -61,12 +61,12 @@ impl JcirGenPass._refuse(nd: (UniNode | None), construct: str) -> None {
 }
 
 impl JcirGenPass.enter_walk with UniNode entry {
-    if self.is_canceled() or here.ct_pruned {
+    if self.ctx.is_canceled() or here.ct_pruned {
         osp_skip_rest();
         return;
     }
-    self.cur_node = here;
-    if (isinstance(here, Module) and (here is not self.ir_in)) {
+    self.ctx.current_node = here;
+    if (isinstance(here, Module) and (here is not self.module)) {
         osp_skip_rest();
         return;
     }
@@ -82,7 +82,7 @@ impl JcirGenPass.enter_walk with UniNode entry {
         and not self._is_native_ext_module()
     ) {
         first_native = True;
-        for sib in self.ir_in.body {
+        for sib in self.module.body {
             if sib is here {
                 break;
             }
@@ -125,12 +125,12 @@ impl JcirGenPass.exit_walk with UniNode exit {
         osp_skip_rest();
         return;
     }
-    self.cur_node = here;
-    if self.is_canceled() {
+    self.ctx.current_node = here;
+    if self.ctx.is_canceled() {
         osp_skip_rest();
         return;
     }
-    if (isinstance(here, Module) and (here is not self.ir_in)) {
+    if (isinstance(here, Module) and (here is not self.module)) {
         osp_skip_rest();
         return;
     }
@@ -180,7 +180,7 @@ impl JcirGenPass.finish_expr with Expr exit {
 impl JcirGenPass.nod(
     cls_name: str, keys: list[str], vals: list[any], jac_node: (UniNode | None) = None
 ) -> CgNode {
-    src = jac_node if jac_node is not None else self.cur_node;
+    src = jac_node if jac_node is not None else self.ctx.current_node;
     loc = src.loc;
     l2 = loc.last_line
         if (loc.last_line and (loc.last_line > loc.first_line))
@@ -233,7 +233,7 @@ impl JcirGenPass.val(nd: UniNode) -> CgNode {
     if not got {
         loc = nd.loc;
         raise RuntimeError(
-            self.ice(
+            self.ctx.ice(
                 f"Empty JCIR recipe on {type(nd).__name__} "
                 f"at {loc.mod_path}:{loc.first_line}:{loc.col_start}"
             )
@@ -243,7 +243,7 @@ impl JcirGenPass.val(nd: UniNode) -> CgNode {
     if not isinstance(first, CgNode) {
         loc = nd.loc;
         raise RuntimeError(
-            self.ice(
+            self.ctx.ice(
                 f"JCIR recipe on {type(nd).__name__} is a splice, not a value "
                 f"at {loc.mod_path}:{loc.first_line}:{loc.col_start}"
             )
@@ -328,7 +328,7 @@ impl JcirGenPass.needs_enum_kind(kind: str) -> None {
                 ],
                 0
             ],
-            jac_node=self.ir_out
+            jac_node=self.module
         )
     );
 }
@@ -438,12 +438,12 @@ impl JcirGenPass._report_leaked_hoisted_lambdas -> None {
         leftover.extend(frame);
     }
     for func_def in leftover {
-        jac_node: UniNode = self.ir_out;
+        jac_node: UniNode = self.module;
         if func_def.jac_src is not None {
             jac_node = func_def.jac_src;
         }
         leaked_name = func_def.get('name');
-        self.emit(
+        self.ctx.emit(
             E5098,
             node_override=jac_node,
             name=leaked_name if isinstance(leaked_name, str) else ''

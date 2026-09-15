@@ -11,7 +11,7 @@ impl NaIRGenPass.postinit -> None {
 
     _ni_opts = self.prog.options;
     self._rc_debug_codegen = bool(_ni_opts.rc_debug_codegen);
-    _ni_src: str = self.ir_in.loc.mod_path if self.ir_in.loc else "";
+    _ni_src: str = self.module.loc.mod_path if self.module.loc else "";
     _ni_mod_name: str = _ni_os.path.basename(_ni_src) if _ni_src else "jac_native";
     self._llvm_module = ir.Module(name=_ni_mod_name, context=ir.Context());
     import jaclang.compiler.backends.native.llvm.binding as _llvm_bind;
@@ -89,8 +89,6 @@ impl NaIRGenPass.postinit -> None {
 
     self._jacval_type = self.llvm_module.context.get_identified_type("JacVal");
     self.jacval_type.set_body(ir.IntType(8), ir.IntType(64));
-
-    super.postinit();
 }
 
 impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
@@ -100,11 +98,11 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     }
     self._capability_demotions = {};
     self._claimed_capability_demotions = set();
-    _viols = native_capability_violations(self.ir_in);
+    _viols = native_capability_violations(self.module);
     if _viols {
         (_fatal_viols, _demotable) = partition_native_capability_violations(_viols);
         if _fatal_viols {
-            if not self.ir_in.native_viols_reported {
+            if not self.module.native_viols_reported {
                 _report = list(_fatal_viols);
                 for _unit_viols in _demotable.values() {
                     _report.extend(_unit_viols);
@@ -119,30 +117,30 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
                     );
                 }
             }
-            return self.ir_in;
+            return self.module;
         }
         self._capability_demotions = _demotable;
     }
 
     self._emit_rc_helpers();
 
-    self._process_clib_imports(self.ir_in);
+    self._process_clib_imports(self.module);
 
-    self._register_enums(self.ir_in);
+    self._register_enums(self.module);
 
-    self._forward_declare_archetype_names(self.ir_in);
+    self._forward_declare_archetype_names(self.module);
 
     self._register_imported_struct_types();
     self._declare_pending_clib_abilities();
-    self._register_globals(self.ir_in);
-    self._register_entry_globals(self.ir_in);
+    self._register_globals(self.module);
+    self._register_entry_globals(self.module);
 
-    self._register_enum_methods(self.ir_in, declare=True);
-    self._register_archetypes(self.ir_in);
-    self._register_enum_methods(self.ir_in, declare=False);
+    self._register_enum_methods(self.module, declare=True);
+    self._register_archetypes(self.module);
+    self._register_enum_methods(self.module, declare=False);
 
     _entry_nodes: list[uni.UniNode] = [];
-    for stmt in ModuleFacts.iter_context_stmts(self.ir_in, CodeContext.NATIVE) {
+    for stmt in ModuleFacts.iter_context_stmts(self.module, CodeContext.NATIVE) {
         if (
             isinstance(stmt, uni.Ability)
             and stmt.signature is not None
@@ -168,20 +166,20 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
         }
     }
     if _unclaimed {
-        return self.ir_in;
+        return self.module;
     }
     self._codegen_entry(_entry_nodes);
     self._finalize_trace_lookup();
 
     if self.has_native_code {
-        if self.errors_had {
-            return self.ir_in;
+        if self.ctx.errors_had {
+            return self.module;
         }
         if "__jac_glob_init" not in self.func_symtab {
             self._emit_glob_init_func();
         }
-        self.ir_in.gen.llvm_ir = self.llvm_module;
-        self.ir_in.gen.native_deps = list(self._native_dep_paths);
+        self.module.gen.llvm_ir = self.llvm_module;
+        self.module.gen.native_deps = list(self._native_dep_paths);
 
         import os;
         if self.prog.options.rc_stats {
@@ -199,7 +197,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
                     else ""
             );
             sys.stderr.write(
-                f"rc-stats [{os.path.basename(self.ir_in.loc.mod_path)}] "
+                f"rc-stats [{os.path.basename(self.module.loc.mod_path)}] "
                 f"gc={self._gc_mode()} retains={self.rc_retains_emitted} "
                 f"releases={self.rc_releases_emitted} "
                 f"elided={self.rc_ops_elided} coverage={_rc_pct:.1f}%"
@@ -216,7 +214,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
         self._export_native_layout();
         self._export_native_iface();
     }
-    return self.ir_in;
+    return self.module;
 }
 
 impl NaIRGenPass._record_lowering_issue(issue: NativeLoweringIssue) -> None {
@@ -235,12 +233,12 @@ impl NaIRGenPass._export_native_iface -> None {
         native_glob_init_name,
         native_module_key
     }
-    mod_path = self.ir_in.loc.mod_path if self.ir_in?.loc else "";
+    mod_path = self.module.loc.mod_path if self.module?.loc else "";
     iface = NativeIface(
         module=native_module_key(mod_path) if mod_path else "",
         prefix=self._own_prefix()
     );
-    layout = self.ir_in.gen.native_layout;
+    layout = self.module.gen.native_layout;
     iface.layout = layout;
     for (name, ex) in self._unit_exports.items() {
         sig: any = None;
@@ -292,7 +290,7 @@ impl NaIRGenPass._export_native_iface -> None {
         );
     }
     for (ename, members) in self.enum_string_values.items() {
-        if self._enum_source_name.get(ename, self.ir_in.name) == self.ir_in.name {
+        if self._enum_source_name.get(ename, self.module.name) == self.module.name {
             iface.enums[ename] = [str(m) for m in members];
         }
     }
@@ -306,11 +304,11 @@ impl NaIRGenPass._export_native_iface -> None {
     iface.demoted = sorted(
         self._demoted_names | {issue.symbol for issue in self._lowering_issues}
     );
-    iface.clib_paths = list(self.ir_in.gen._clib_paths or []);
+    iface.clib_paths = list(self.module.gen._clib_paths or []);
     iface.python_imports = [
-        binding.name for binding in self.ir_in.gen.interop_manifest.native_imports
+        binding.name for binding in self.module.gen.interop_manifest.native_imports
     ];
-    iface.clib_symbol_lib = dict(self.ir_in.gen._clib_symbol_lib or {});
+    iface.clib_symbol_lib = dict(self.module.gen._clib_symbol_lib or {});
     iface.deps = list(self._native_dep_paths);
     try {
         import from jaclang.compiler.driver.na_coverage { na_coverage_capture }
@@ -318,8 +316,8 @@ impl NaIRGenPass._export_native_iface -> None {
     } except Exception {
         iface.coverage = {};
     }
-    self.ir_in.gen.native_iface = iface;
-    self.ir_in.gen.native_deps = list(self._native_dep_paths);
+    self.module.gen.native_iface = iface;
+    self.module.gen.native_deps = list(self._native_dep_paths);
 }
 
 impl NaIRGenPass._build_class_layouts -> dict[str, any] {
@@ -343,7 +341,7 @@ impl NaIRGenPass._prefix_of_path(path: str) -> str {
 }
 
 impl NaIRGenPass._prefix_of_module(mod: (uni.Module | None)) -> str {
-    if mod is None or mod is self.ir_in or not (mod?.loc and mod.loc.mod_path) {
+    if mod is None or mod is self.module or not (mod?.loc and mod.loc.mod_path) {
         return self._own_prefix();
     }
     return self._prefix_of_path(mod.loc.mod_path);
@@ -356,7 +354,7 @@ impl NaIRGenPass._symbol_for(
         native_symbol_name,
         native_unit_identity
     }
-    module = owner if owner is not None else self.ir_in;
+    module = owner if owner is not None else self.module;
     bundled_library = native_unit_identity(module.loc.mod_path).startswith(
         "jaclang/runtime/na_stdlib/"
     );
@@ -380,7 +378,9 @@ impl NaIRGenPass._record_export(
 impl NaIRGenPass._note_native_dep(path: str) -> None {
     import os as _nd_os;
     real = _nd_os.path.realpath(path);
-    own_path = _nd_os.path.realpath(self.ir_in.loc.mod_path) if self.ir_in?.loc else "";
+    own_path = _nd_os.path.realpath(self.module.loc.mod_path)
+        if self.module?.loc
+        else "";
     if real == own_path or real in self._native_dep_paths {
         return;
     }
@@ -466,7 +466,7 @@ impl NaIRGenPass._load_native_unit_module(path: str) -> (uni.Module | None) {
 
 impl NaIRGenPass._is_kernel_unit -> bool {
     import from jaclang.compiler.frontend.codeinfo { is_kernel_unit_path }
-    return bool(self.ir_in?.loc) and is_kernel_unit_path(self.ir_in.loc.mod_path);
+    return bool(self.module?.loc) and is_kernel_unit_path(self.module.loc.mod_path);
 }
 
 impl NaIRGenPass._predemote_capability_unit(
@@ -475,7 +475,7 @@ impl NaIRGenPass._predemote_capability_unit(
     viols: list[tuple[uni.UniNode, str, str, str | None]],
     keep_func: bool = False
 ) -> bool {
-    _local_mark = len(self.errors_had);
+    _local_mark = len(self.ctx.errors_had);
     for (_vnode, _vkind, _vname, _vhelp) in viols {
         self.emit(
             E5090, node_override=_vnode, kind=_vkind, name=_vname, help_text=_vhelp
@@ -758,7 +758,7 @@ impl NaIRGenPass._export_native_layout -> None {
             NativeTestLayout(name=tname, symbol=tsymbol, description=tdesc, line=tline)
         );
     }
-    self.ir_in.gen.native_layout = layout;
+    self.module.gen.native_layout = layout;
 }
 
 impl NaIRGenPass._exported_accessors(arch_name: str) -> dict[(str, dict[(str, str)])] {
@@ -822,22 +822,22 @@ impl NaIRGenPass._register_imported_struct_types -> None {
 
     processed_modules: set[str] = set();
     imported_mods: list[tuple[str, uni.Module]] = [];
-    manifest = self.ir_in.gen.interop_manifest;
+    manifest = self.module.gen.interop_manifest;
 
-    entry_base = os.path.dirname(os.path.abspath(self.ir_in.loc.mod_path))
-        if (self.ir_in?.loc)
+    entry_base = os.path.dirname(os.path.abspath(self.module.loc.mod_path))
+        if (self.module?.loc)
         else os.getcwd();
 
     _native_ids: set = {
-        id(_s) for _s in ModuleFacts.iter_context_stmts(self.ir_in, CodeContext.NATIVE)
+        id(_s) for _s in ModuleFacts.iter_context_stmts(self.module, CodeContext.NATIVE)
     };
     _has_native_code: bool = len(_native_ids) > 0;
-    _nested_native = ModuleFacts.iter_nested_imports(self.ir_in, CodeContext.NATIVE);
+    _nested_native = ModuleFacts.iter_nested_imports(self.module, CodeContext.NATIVE);
     for _nested_imp in _nested_native {
         _native_ids.add(id(_nested_imp));
     }
     wq: list[tuple[str, str, str | None, bool]] = [];
-    for imp in ModuleFacts.iter_module_imports(self.ir_in) + _nested_native {
+    for imp in ModuleFacts.iter_module_imports(self.module) + _nested_native {
         mod_name = self._extract_import_module_name(imp);
         if not mod_name {
             continue;
@@ -868,7 +868,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     }
 
     _self_key = (
-        os.path.realpath(self.ir_in.loc.mod_path) if (self.ir_in?.loc) else None
+        os.path.realpath(self.module.loc.mod_path) if (self.module?.loc) else None
     );
 
     _canon_src: dict[str, any] = {};
@@ -922,7 +922,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             if env_na_debug() {
                 import sys as _ti_sys;
                 _ti_sys.stderr.write(
-                    f"NA_DEBUG typed import {full_path} has no AST in {self.ir_in.loc.mod_path}\n"
+                    f"NA_DEBUG typed import {full_path} has no AST in {self.module.loc.mod_path}\n"
                 );
             }
             continue;
@@ -940,7 +940,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
                 if isinstance(_st, uni.Archetype)
             );
             _ti_sys2.stderr.write(
-                f"NA_DEBUG typed walk {os.path.basename(self.ir_in.loc.mod_path)} <- "
+                f"NA_DEBUG typed walk {os.path.basename(self.module.loc.mod_path)} <- "
                 f"{os.path.basename(abs_key)} {type(imported_mod).__name__} "
                 f"body={len(imported_mod.body)} archetypes={_n_arch} "
                 f"codespace={imported_mod.decided_codespace} typed_only={typed}\n"
@@ -1021,7 +1021,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     }
 
     import from jaclang.compiler.passes.layout_pass { adopt_imported_bases }
-    adopt_imported_bases(self.ir_in);
+    adopt_imported_bases(self.module);
 
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_types(imported_mod);
@@ -1276,7 +1276,7 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
 impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None {
     import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     _imp_reg = get_layout_registry(imported_mod, self.prog);
-    _cons_reg = get_layout_registry(self.ir_in, self.prog);
+    _cons_reg = get_layout_registry(self.module, self.prog);
     for (_name, _parents) in _imp_reg.class_parents.items() {
         if _name not in _cons_reg.class_parents
             or (_name in _imp_reg.layouts and _name not in _cons_reg.layouts) {
@@ -1898,18 +1898,10 @@ impl NaIRGenPass._ct_ctor_slots(target: uni.UniNode) -> list[tuple[str, uni.UniN
     return out;
 }
 
-impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    if self.errors_had {
-        self.prog.native_units().failures[os.path.realpath(ir_in.loc.mod_path)] = "Native module lowering failed:\n"
-            + "\n".join(alert.pretty_print() for alert in self.errors_had);
-    }
-    out = self.ir_out;
-    assert isinstance(out, uni.Module);
-    return out;
-}
-
 impl NaIRGenPass.run_walk with uni.Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
+    if self.ctx.errors_had {
+        self.prog.native_units().failures[os.path.realpath(here.loc.mod_path)] = "Native module lowering failed:\n"
+            + "\n".join(alert.pretty_print() for alert in self.ctx.errors_had);
+    }
 }

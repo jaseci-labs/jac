@@ -87,10 +87,6 @@ impl public_surface(mod: Module) -> dict[str, tuple[str, str, UniNode]] {
     return out;
 }
 
-impl VariantAgreementPass.postinit -> None {
-    super.postinit();
-}
-
 impl VariantAgreementPass._run_impl(ir_in: Module) -> Module {
     if ir_in.is_raised_from_py or ir_in.stub_only {
         return ir_in;
@@ -129,7 +125,7 @@ impl VariantAgreementPass._parse_sibling(path: str) -> (Module | None) {
 
 impl VariantAgreementPass._emit_once(nd: UniNode, **kwargs: any) -> None {
     msg = E5105.format_message(**kwargs);
-    for pool in (self.prog.errors_had, self.errors_had) {
+    for pool in (self.prog.errors_had, self.ctx.errors_had) {
         for e in pool {
             if (
                 e.code is E5105
@@ -142,7 +138,7 @@ impl VariantAgreementPass._emit_once(nd: UniNode, **kwargs: any) -> None {
             }
         }
     }
-    self.emit(E5105, node_override=nd, **kwargs);
+    self.ctx.emit(E5105, node_override=nd, **kwargs);
 }
 
 impl VariantAgreementPass._compare(base: Module, variant: Module) -> None {
@@ -196,14 +192,6 @@ impl VariantAgreementPass._compare(base: Module, variant: Module) -> None {
     }
 }
 
-impl VariantAgreementPass.transform(ir_in: Module) -> Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, Module);
-    return out;
-}
-
 impl VariantAgreementPass.run_walk with Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }

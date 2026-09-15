@@ -144,7 +144,8 @@ def _alert_record(alert: any) -> dict[str, any] {
 
 def _alert_from_record(rec: dict[str, any]) -> any {
     import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
-    import from jaclang.compiler.passes.transform { Alert, Transform }
+    import from jaclang.compiler.passes.context { Alert }
+
     code_str: str = str(rec.get("code") or "");
     code = DIAGNOSTICS.get(code_str) if code_str else None;
     related: list[any] = [];
@@ -156,7 +157,7 @@ def _alert_from_record(rec: dict[str, any]) -> any {
     return Alert(
         msg=str(rec.get("msg", "")),
         loc=_span_from_record(span_rec),
-        from_pass=Transform,
+        from_pass=IfaceEntry,
         code=code,
         related=related,
         help_text=help_val if isinstance(help_val, str) else None

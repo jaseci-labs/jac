@@ -10,7 +10,7 @@ impl NaIRGenPass._require_trace_fn(
     if participates and not has_trace {
         self.emit(
             E9002,
-            node_override=self.ir_in,
+            node_override=self.module,
             details=(
                 f"type '{type_name}' has managed reference fields but no cycle "
                 f"trace function; it cannot safely participate in cycle "

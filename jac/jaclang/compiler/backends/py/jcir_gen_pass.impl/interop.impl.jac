@@ -1,5 +1,5 @@
 impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
-    manifest = self.ir_in.gen.interop_manifest;
+    manifest = self.module.gen.interop_manifest;
     parts: list[str] = [];
     names: list[str] = [];
     if (manifest and manifest.bindings) {
@@ -9,7 +9,7 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
             native_unit_prefix
         }
         import from jaclang.compiler.frontend.constant { Tokens as _NsTok }
-        mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
+        mod_path = self.module.loc.mod_path if self.module.loc else "";
         prefix = native_unit_prefix(mod_path) if mod_path else "";
         for binding in manifest.native_exports {
             params = ', '.join(binding.param_names);
@@ -44,7 +44,7 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
 }
 
 impl JcirGenPass._native_import_registration_map -> dict[str, list[CgSplice]] {
-    manifest = self.ir_in.gen.interop_manifest;
+    manifest = self.module.gen.interop_manifest;
     if not (manifest and manifest.bindings and manifest.native_imports) {
         return {};
     }
@@ -120,7 +120,7 @@ impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list[CgItem] {
     }
     test_name = nd.name.sym_name;
     line = nd.loc.first_line if nd.loc else 0;
-    mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
+    mod_path = self.module.loc.mod_path if self.module.loc else "";
     symbol = native_test_symbol(
         test_name, line, native_unit_prefix(mod_path) if mod_path else ""
     );
@@ -136,7 +136,7 @@ impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list[CgItem] {
 }
 
 impl JcirGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
-    manifest = self.ir_in.gen.interop_manifest;
+    manifest = self.module.gen.interop_manifest;
     if (not manifest) {
         return False;
     }
@@ -339,7 +339,7 @@ impl JcirGenPass._gen_py_sv_boundary_types -> None {
     }
     self._sv_boundary_registry = self._reserve_name('_jac_sv_boundary_types');
     self._sv_serializer = self._reserve_name('_jac_wire_serializer');
-    manifest = self.ir_in.gen.interop_manifest;
+    manifest = self.module.gen.interop_manifest;
     boundary_types = manifest.boundary_types;
     parts: list[str] = [
         'from jaclang.data.serializer import Serializer as ' + self._sv_serializer,
@@ -454,7 +454,7 @@ impl JcirGenPass._sv_endpoint_effects(binding: InteropBinding, key: str) -> list
 
 impl JcirGenPass._sv_consumer_app_expr -> str {
     import from jaclang.compiler.driver.boundary_classify { module_app }
-    consumer = module_app(self.ir_in);
+    consumer = module_app(self.module);
     if consumer {
         return "'" + consumer + "'";
     }
@@ -480,7 +480,7 @@ impl JcirGenPass._sv_bridge_walker_call(expr: Expr) -> (FuncCall | None) {
     }
     target = expr.target;
     item: (ModuleItem | None) = None;
-    for imp_nd in self.ir_in.get_all_sub_nodes(Import) {
+    for imp_nd in self.module.get_all_sub_nodes(Import) {
         for cand in imp_nd.items {
             if (
                 isinstance(cand, ModuleItem)
@@ -500,7 +500,7 @@ impl JcirGenPass._sv_bridge_walker_call(expr: Expr) -> (FuncCall | None) {
     }
     imp = item.from_parent;
     if (
-        classify_cross_app_import(imp, self.ir_in.gen.interop_manifest)
+        classify_cross_app_import(imp, self.module.gen.interop_manifest)
         != CrossAppKind.SERVICE_BRIDGE
     ) {
         return None;
@@ -509,7 +509,7 @@ impl JcirGenPass._sv_bridge_walker_call(expr: Expr) -> (FuncCall | None) {
     item_name = getattr(item.name, 'value', str(item.name));
     in_walkers = facts is not None and item_name in facts.sv_walkers;
     if not in_walkers {
-        binding = self.ir_in.gen.interop_manifest.bindings.get(target.sym_name);
+        binding = self.module.gen.interop_manifest.bindings.get(target.sym_name);
         if binding is None or binding.kind != 'walker' {
             return None;
         }

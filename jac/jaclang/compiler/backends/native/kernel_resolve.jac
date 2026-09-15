@@ -127,6 +127,9 @@ def kernel_options -> CompileOptions {
     units, its source key or its plan.""";
     return CompileOptions(
         aot_mode=True,
+        native_require=[],
+        native_link_mode="objects",
+        na_debug=False,
         default_codespace="native",
         native_unit=True,
         skip_native_engine=True,

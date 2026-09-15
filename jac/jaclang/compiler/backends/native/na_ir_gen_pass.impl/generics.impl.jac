@@ -442,7 +442,7 @@ impl NaIRGenPass._instantiate_generic(
 impl NaIRGenPass._stamp_mono_fn(
     ability: uni.Ability, spec_name: str, memo_key: str
 ) -> (ir.Function | None) {
-    self.ir_in.record_comptime_dependency(ability.loc.mod_path, body=True);
+    self.module.record_comptime_dependency(ability.loc.mod_path, body=True);
     name = ability.name_ref.sym_name if ability.name_ref else "unnamed";
     sig = ability.signature;
     if not isinstance(sig, uni.FuncSignature) {
@@ -600,7 +600,7 @@ impl NaIRGenPass._stamp_mono_method(
     spec_name: str,
     memo_key: str
 ) -> (ir.Function | None) {
-    self.ir_in.record_comptime_dependency(ability.loc.mod_path, body=True);
+    self.module.record_comptime_dependency(ability.loc.mod_path, body=True);
     full_name = f"{arch_name}.{method_name}";
     if full_name in self._native_skipped_methods {
         return None;
@@ -657,7 +657,7 @@ impl NaIRGenPass._find_source_ability(
 ) -> (uni.Ability | None) {
     import os;
     import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
-    _base = os.path.dirname(self.ir_in.loc.mod_path);
+    _base = os.path.dirname(self.module.loc.mod_path);
     _clean = mod_name[:-3] if mod_name.endswith(".na") else mod_name;
     (_src, full_path) = resolve_native_module(_clean, _base);
     if full_path is None {

@@ -61,7 +61,7 @@ impl NaIRGenPass._compute_osp_model(archetypes: list[uni.Archetype]) -> None {
     }
     import from jaclang.compiler.passes.osp_analysis { get_osp_model }
     _model = get_osp_model(
-        self.ir_in,
+        self.module,
         archetypes=(list(archetypes) + list(self.arch_ast_map.values())),
         context=CodeContext.NATIVE
     );
@@ -76,13 +76,13 @@ impl NaIRGenPass._compute_osp_model(archetypes: list[uni.Archetype]) -> None {
 }
 
 impl NaIRGenPass._osp_active -> bool {
-    _model = self.ir_in.gen.osp_model;
+    _model = self.module.gen.osp_model;
     return (_model is not None)
         and (_model.has_event_ability() or _model.uses_construct);
 }
 
 impl NaIRGenPass._xmod_osp_help(names: list[str | None]) -> (str | None) {
-    _model = self.ir_in.gen.osp_model;
+    _model = self.module.gen.osp_model;
     _tags = _model.tags if (_model is not None) else {};
     for _n in names {
         if (
@@ -204,7 +204,7 @@ impl NaIRGenPass._osp_collect_slots(
     arch_name: str, is_entry: bool
 ) -> list[tuple[int, ir.Function]] {
     slots: list[tuple[int, ir.Function]] = [];
-    _model = self.ir_in.gen.osp_model;
+    _model = self.module.gen.osp_model;
     if _model is None {
         return slots;
     }
@@ -412,7 +412,7 @@ impl NaIRGenPass._osp_emit_callbacks -> dict[str, any] {
 }
 
 impl NaIRGenPass._emit_osp_setup -> None {
-    _model = self.ir_in.gen.osp_model;
+    _model = self.module.gen.osp_model;
     if (_model is None) or (not self._osp_active()) {
         return;
     }
@@ -666,7 +666,7 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
             _etname = self._spawn_operand_name(co.conn_type);
         }
         if _etname is not None {
-            _ce_model = self.ir_in.gen.osp_model;
+            _ce_model = self.module.gen.osp_model;
             edge_tag = _ce_model.tags.get(_etname, -1)
                 if (_ce_model is not None)
                 else -1;
@@ -805,7 +805,7 @@ impl NaIRGenPass._codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     i64 = ir.IntType(64);
     edge_tag = -1;
     if (_fcond is not None) and (_fcond.f_type is not None) {
-        _dc_model = self.ir_in.gen.osp_model;
+        _dc_model = self.module.gen.osp_model;
         _dc_tags = _dc_model.tags if (_dc_model is not None) else {};
         edge_tag = _dc_tags.get(_etname, -1) if (_etname is not None) else -1;
         if edge_tag < 0 {
@@ -939,7 +939,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         return None;
     }
 
-    _er_model = self.ir_in.gen.osp_model;
+    _er_model = self.module.gen.osp_model;
     _er_tags = _er_model.tags if (_er_model is not None) else {};
     _many_fn = self.func_symtab.get("osp_refs_many");
     _cur: (ir.Value | None) = None;
@@ -1158,7 +1158,7 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
     _result = target_val;
     _filter_fn = self.func_symtab.get("osp_filter");
     if _f.f_type is not None {
-        _model = self.ir_in.gen.osp_model;
+        _model = self.module.gen.osp_model;
         _tags = _model.tags if _model is not None else {};
         _ntag = _tags.get(_fname, -1);
         _tpair = self._osp_type_pair(_ntag) if _ntag >= 0 else None;

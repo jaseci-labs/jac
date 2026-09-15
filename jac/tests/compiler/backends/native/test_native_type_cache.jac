@@ -5,7 +5,7 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.unitree { Module }
 import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 import from jaclang.compiler.backends.native.llvm { ir }
-import from jaclang.compiler.passes.transform { PassResult }
+import from jaclang.compiler.passes.context { CompileContext }
 
 test "native type caching preserves primitive and class value storage in either order" {
     program = JacProgram();
@@ -25,7 +25,10 @@ test "native type caching preserves primitive and class value storage in either 
     class_value.private.type_args = [annotation.clone_as_instance()];
     assert annotation.mangle() == class_value.mangle();
     for reverse in [False, True] {
-        lowering = NaIRGenPass(ir_in=module, prog=program, completed=PassResult());
+        ctx = CompileContext(
+            current_node=module, from_pass=NaIRGenPass, pass_name="NaIRGenPass"
+        );
+        lowering = NaIRGenPass(module=module, prog=program, ctx=ctx);
         first = class_value if reverse else annotation;
         second = annotation if reverse else class_value;
         lowering._lower_type(first);

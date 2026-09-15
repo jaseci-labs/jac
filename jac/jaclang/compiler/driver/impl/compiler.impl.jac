@@ -338,7 +338,10 @@ impl JacCompiler._load_native_from_cache(
     driver read left in a sealed pass. It now consumes a bool.
     """;
     import from jaclang.compiler.frontend.codeinfo { CodeGenTarget }
-    engine = self._sealed_native_engine(full_target);
+    import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+    engine: ExecutionEngine | SharedNativeEngine | None = self._sealed_native_engine(
+        full_target
+    );
     if engine is None {
         import from jaclang.compiler.backends.native.link_plan { jit_engine_for_cached }
         engine = jit_engine_for_cached(
@@ -391,6 +394,24 @@ impl JacCompiler._restore_sections(
     secs: dict[int, bytes],
     base_dir: str = ""
 ) -> None {
+    # Building an engine releases analysis scratch; restore serialized products after it.
+    if (SEC_NBITCODE in secs or SEC_NOBJ in secs)
+        and self._wants_native_engine(full_target, actual_program) {
+        try {
+            import json;
+            cached_interop: (dict[str, any] | None) = None;
+            interop_bytes = secs.get(SEC_INTEROP);
+            if interop_bytes is not None {
+                cached_interop = json.loads(interop_bytes.decode('utf-8'));
+            }
+            self._load_native_from_cache(full_target, actual_program, cached_interop);
+        } except Exception as e {
+            import logging;
+            logging.getLogger(__name__).debug(
+                f"Failed to load native module from cache: {e}"
+            );
+        }
+    }
     import pickle;
     client_bytes = secs.get(SEC_CLIENT);
     if client_bytes is not None {
@@ -422,24 +443,6 @@ impl JacCompiler._restore_sections(
                 summary_store(actual_program)[os.path.abspath(full_target)] = restored;
             }
         } except Exception {}
-    }
-
-    if (SEC_NBITCODE in secs or SEC_NOBJ in secs)
-        and self._wants_native_engine(full_target, actual_program) {
-        try {
-            import json;
-            cached_interop: (dict[str, any] | None) = None;
-            interop_bytes = secs.get(SEC_INTEROP);
-            if interop_bytes is not None {
-                cached_interop = json.loads(interop_bytes.decode('utf-8'));
-            }
-            self._load_native_from_cache(full_target, actual_program, cached_interop);
-        } except Exception as e {
-            import logging;
-            logging.getLogger(__name__).debug(
-                f"Failed to load native module from cache: {e}"
-            );
-        }
     }
 }
 
@@ -635,8 +638,8 @@ impl JacCompiler.parse_str(
             target_program,
             cancel_token=cancel_token
         );
-        had_error = len(py_ast_ret.errors_had) > 0;
-        converted = py_ast_ret.ir_out;
+        had_error = len(py_ast_ret.ctx.errors_had) > 0;
+        converted = py_ast_ret.module;
         assert isinstance(converted, uni.Module);
         mod = converted;
     } else {
@@ -1649,7 +1652,7 @@ impl JacCompiler.build(
 impl JacCompiler.run_schedule(
     mod: uni.Module,
     target_program: JacProgram,
-    passes: list[type[Transform]],
+    passes: list[type],
     cancel_token: (Event | None) = None
 ) -> None {
     import from jaclang.compiler.driver.pipeline { execute_passes }
@@ -1749,7 +1752,7 @@ impl JacCompiler._report_missing_native_ir(
     }
     import from jaclang.compiler.frontend.diagnostics { E5092 }
     import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-    import from jaclang.compiler.passes.transform { Alert }
+    import from jaclang.compiler.passes.context { Alert }
     reason = native_schedule_failure();
     if not reason {
         (_avail, _why) = native_pipeline_available();

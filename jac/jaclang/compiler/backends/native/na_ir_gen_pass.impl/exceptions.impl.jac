@@ -581,7 +581,7 @@ impl NaIRGenPass._codegen_try_unwind(
 
 impl NaIRGenPass._slot_lowering_active -> bool {
     return (
-        bool(getattr(self.ir_in.gen, "nogc_enforced", False))
+        bool(getattr(self.module.gen, "nogc_enforced", False))
         or "wasm" in str(self.llvm_module.triple)
     )
         and self._gen_ctx is None;
@@ -857,7 +857,6 @@ impl NaIRGenPass._codegen_try_slot(nd: uni.TryStmt) -> None {
     self.builder.position_at_end(merge_bb);
 }
 
-
 impl NaIRGenPass._emit_finalizers(loop_depth: int = 0) -> bool {
     saved_finalizers = self._finally_stack;
     saved_handlers = self._slot_try_stack;
@@ -886,7 +885,6 @@ impl NaIRGenPass._emit_finalizers(loop_depth: int = 0) -> bool {
         self._slot_try_stack = saved_handlers;
     }
 }
-
 
 impl NaIRGenPass._push_exception_handler(
     dispatch: ir.Block, body: ir.Block

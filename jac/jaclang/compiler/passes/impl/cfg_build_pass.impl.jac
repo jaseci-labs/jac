@@ -11,7 +11,6 @@ impl cfg_dot_from_file(file_name: str) -> str {
     return dot;
 }
 
-
 impl CoalesceBBPass.printgraph_cfg -> str {
     bb_tails: dict[int, (UniCFGNode | None)] = {};
     bb_heads: dict[int, (UniCFGNode | None)] = {};
@@ -249,12 +248,13 @@ impl CoalesceBBPass.get_bb(nd: UniCFGNode) -> list[UniCFGNode] {
     return bb_list;
 }
 
-impl CoalesceBBPass.before_pass -> None {
+impl CoalesceBBPass.prepare with entry {
+    if self.ctx.nested_depth {
+        return;
+    }
     self.basic_blocks = {};
     self.bb_counter = 0;
 }
-
-impl CFGBuildPass.before_pass -> None {}
 
 impl CFGBuildPass.link_bbs(source: UniCFGNode, target: UniCFGNode) -> None {
     if source and target {

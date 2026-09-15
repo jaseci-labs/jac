@@ -1,4 +1,7 @@
 import from jaclang.compiler.frontend.unitree {
+    Module,
+    TreeWalker,
+    UniNode,
     Ability,
     ArchHas,
     Archetype,
@@ -33,7 +36,6 @@ import from jaclang.compiler.frontend.unitree {
     LambdaExpr,
     ListVal,
     Literal,
-    Module,
     ModuleCode,
     ModuleItem,
     ModulePath,
@@ -52,7 +54,6 @@ import from jaclang.compiler.frontend.unitree {
     UnaryExpr,
     TupleVal,
     TypeAlias,
-    UniNode,
     VisitStmt,
     in_type_position,
     type_only_import_of,
@@ -62,7 +63,8 @@ import from jaclang.compiler.frontend.unitree {
     WithStmt,
     YieldExpr
 }
-import from jaclang.compiler.passes.uni_pass { UniPass }
+import from jaclang.compiler.passes.context { CompileContext }
+
 import from jaclang.compiler.symbol_utils { return_type_is_jsx }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
@@ -139,25 +141,34 @@ import from jaclang.compiler.frontend.diagnostics {
     E2015
 }
 
-
 glob FW_INTERVAL_OPS: dict[str, str] = {
          "PLUS": "+",
          "MINUS": "-",
          "STAR_MUL": "*"
      };
 
-walker TypeCheckPass(UniPass) {
-    has prog: JacProgram,
+walker TypeCheckPass(TreeWalker) {
+    can enter_walk with UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext,
+        module: Module,
+        prog: JacProgram,
         evaluator: TypeEvaluator postinit,
         _lambda_depth: int = 0;
 
     def postinit -> None;
+    can initialize with entry;
 
     static has HOST_PASS: bool = True;
 
-    def transform(ir_in: Module) -> Module;
-    def before_pass -> None;
-    def after_pass -> None;
+    can prepare with entry;
+    can finish with exit;
     def _stamp_fixed_width -> None;
     def _provably_in_range(nd: Expr, name: str) -> bool;
     def _insert_builtin_symbols -> None;

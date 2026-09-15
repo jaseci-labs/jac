@@ -1036,8 +1036,8 @@ impl NaIRGenPass._program_has_subclasses(arch_name: str) -> bool {
     if self._subclassed_arch_names is None {
         _names: set[str] = set();
         _mods: list[uni.Module] = list(self.prog.mod.hub.values());
-        if self.ir_in not in _mods {
-            _mods.append(self.ir_in);
+        if self.module not in _mods {
+            _mods.append(self.module);
         }
         for _mod in _mods {
             for _arch in _mod.get_all_sub_nodes(uni.Archetype) {
@@ -1077,12 +1077,12 @@ impl NaIRGenPass._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         if not self._type_base_is_unknown(_ptb) {
             _sig_cn = _ptb.shared.class_name if isinstance(_ptb, ClassType) else None;
             if _sig_cn in ("tuple", "list", "dict", "set", "type") {
-                _sig_lmark = len(self.errors_had);
+                _sig_lmark = len(self.ctx.errors_had);
                 _sig_res = self._resolve_jac_type(type_expr);
-                if len(self.errors_had) == _sig_lmark {
+                if len(self.ctx.errors_had) == _sig_lmark {
                     return _sig_res;
                 }
-                del self.errors_had[_sig_lmark:];
+                del self.ctx.errors_had[_sig_lmark:];
             }
             return ir.IntType(8).as_pointer();
         }
@@ -1685,7 +1685,6 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
     }
     return val;
 }
-
 
 impl NaIRGenPass._jacval_truthy(jv: ir.Value) -> ir.Value {
     b = self.builder;
@@ -2414,7 +2413,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             }
             self.emit(
                 E5092,
-                node_override=self.ir_in,
+                node_override=self.module,
                 kind="coercion",
                 name=f"list[{_lc_src}] -> list[{_lc_dst}]",
                 help_text=(
@@ -2564,7 +2563,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             }
             self.emit(
                 E5092,
-                node_override=self.cur_node,
+                node_override=self.ctx.current_node,
                 kind="silent narrowing",
                 name=f"{val.type} into {target_type}"
             );
@@ -3030,7 +3029,7 @@ impl NaIRGenPass._emit_binary_op(
         and (left.type == self.jacval_type or right.type == self.jacval_type) {
         self.emit(
             E5092,
-            node_override=self.cur_node,
+            node_override=self.ctx.current_node,
             kind="binary operator",
             name=f"{op} on a tagged `any` operand"
         );
@@ -3083,7 +3082,7 @@ impl NaIRGenPass._emit_binary_op(
             or not isinstance(right.type, ir.IntType) {
             self.emit(
                 E5092,
-                node_override=self.cur_node,
+                node_override=self.ctx.current_node,
                 kind="integer operator layout",
                 name=f"{op} on {left.type} vs {right.type}"
             );
@@ -3104,7 +3103,7 @@ impl NaIRGenPass._emit_binary_op(
         if left.type != right.type {
             self.emit(
                 E5092,
-                node_override=self.cur_node,
+                node_override=self.ctx.current_node,
                 kind="integer operator layout",
                 name=f"{op} on {left.type} vs {right.type}"
             );
@@ -3155,7 +3154,9 @@ impl NaIRGenPass._emit_binary_op(
         return self.builder.or_(left, right, name="or");
     }
 
-    self.emit(E5092, node_override=self.cur_node, kind="binary operator", name=op);
+    self.emit(
+        E5092, node_override=self.ctx.current_node, kind="binary operator", name=op
+    );
     return None;
 }
 

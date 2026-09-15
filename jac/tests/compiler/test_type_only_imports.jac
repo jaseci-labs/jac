@@ -20,7 +20,7 @@ import from tempfile { TemporaryDirectory }
 import from typing { cast }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.transform { Alert }
+import from jaclang.compiler.passes.context { Alert }
 import from tests.compiler.passes.checker_npm_harness {
     check_npm_file,
     client_node_modules,
@@ -44,7 +44,6 @@ glob KIND_DTS: str = (
          "export default mermaid;\n"
      );
 
-
 """The diagnostic codes carried by a list of alerts, in order."""
 def codes_of(alerts: list[Alert]) -> list[str] {
     return [
@@ -54,7 +53,6 @@ def codes_of(alerts: list[Alert]) -> list[str] {
     ];
 }
 
-
 """Every alert in `alerts` registered under `code`."""
 def alerts_with(alerts: list[Alert], code: str) -> list[Alert] {
     return [
@@ -63,7 +61,6 @@ def alerts_with(alerts: list[Alert], code: str) -> list[Alert] {
         if a.code is not None and a.code.code == code
     ];
 }
-
 
 """Install a package shipping one `.d.ts` and write the client project."""
 def make_dts_project(
@@ -83,7 +80,6 @@ def make_dts_project(
     return proj_dir;
 }
 
-
 """Materialize the mixed-kind `kindpkg` fixture project."""
 def make_kind_project(proj_dir: Path) -> Path {
     return make_dts_project(
@@ -94,7 +90,6 @@ def make_kind_project(proj_dir: Path) -> Path {
         "kindfixture"
     );
 }
-
 
 """Materialize the `mermaid` reproduction fixture project."""
 def make_mermaid_project(proj_dir: Path) -> Path {
@@ -107,7 +102,6 @@ def make_mermaid_project(proj_dir: Path) -> Path {
     );
 }
 
-
 """Write a JavaScript package project root directory and return it."""
 def write_client_project(proj_root: Path) -> Path {
     (proj_root / "jac.toml").write_text(
@@ -117,14 +111,12 @@ def write_client_project(proj_root: Path) -> Path {
     return proj_root;
 }
 
-
 """Compile `path` and return (program, module)."""
 def compile_module(path: Path) -> tuple[JacProgram, any] {
     prog = JacProgram();
     mod = prog.compile(str(path));
     return (prog, mod);
 }
-
 
 # ---------------------------------------------------------------------------
 # 1. npm `.d.ts`: only the type-only kinds are refused
@@ -154,7 +146,6 @@ test "plain import of a d.ts interface is refused, its sibling function is not" 
     }
 }
 
-
 test "plain import of a d.ts type alias is refused" {
     with TemporaryDirectory() as td {
         proj = make_kind_project(Path(cast(str, td)));
@@ -167,7 +158,6 @@ test "plain import of a d.ts type alias is refused" {
     }
 }
 
-
 test "plain import of a d.ts class, const, or function is accepted" {
     with TemporaryDirectory() as td {
         proj = make_kind_project(Path(cast(str, td)));
@@ -179,7 +169,6 @@ test "plain import of a d.ts class, const, or function is accepted" {
         )}";
     }
 }
-
 
 # ---------------------------------------------------------------------------
 # 2. `import type` is the accepted spelling and emits no JS
@@ -207,7 +196,6 @@ test "import type of a d.ts interface checks clean and emits no specifier" {
         assert "Iface" not in js , f"A type-only binding must not reach the ESM output:\n{js}";
     }
 }
-
 
 # ---------------------------------------------------------------------------
 # 3. Jac-to-Jac: a `type` alias is type-only with no npm involved
@@ -243,7 +231,6 @@ test "plain import of a jac type alias is refused; import type is clean" {
     }
 }
 
-
 glob BRAND_SRC: str = "type UserId := int;\n",
      BRAND_USE_SRC: str = (
          "import from .brands { UserId }\n\n"
@@ -251,7 +238,6 @@ glob BRAND_SRC: str = "type UserId := int;\n",
          "    return UserId(raw);\n"
          "}\n"
      );
-
 
 """Write an unpinned (server) jac project root and return it."""
 def write_server_project(proj_root: Path, entry_mod: str) -> Path {
@@ -262,7 +248,6 @@ def write_server_project(proj_root: Path, entry_mod: str) -> Path {
     );
     return proj_root;
 }
-
 
 test "a server module may value-import a jac type alias and construct it" {
     # The python backend lowers `type UserId := int;` to a real runtime binding
@@ -280,7 +265,6 @@ test "a server module may value-import a jac type alias and construct it" {
         ]}";
     }
 }
-
 
 test "a client module may not value-import a jac type alias" {
     # Only the ES backend erases an alias, so the very same pair is an error
@@ -303,7 +287,6 @@ test "a client module may not value-import a jac type alias" {
     }
 }
 
-
 test "import type of a jac alias erases it on the server too, so value use is E1132" {
     # The remedy E1131 offers has teeth: on the server an `import type` lowers
     # to a TYPE_CHECKING guard, so the name is not there at run time and the
@@ -325,7 +308,6 @@ test "import type of a jac alias erases it on the server too, so value use is E1
     }
 }
 
-
 test "a server has-field may be typed by a plainly imported jac alias" {
     # The docs' own caveat: an archetype field type is resolved at run time
     # through typing.get_type_hints, so pushing this onto `import type` would
@@ -346,7 +328,6 @@ test "a server has-field may be typed by a plainly imported jac alias" {
         ]}";
     }
 }
-
 
 # ---------------------------------------------------------------------------
 # 4. E1132: a type-only binding used in value position
@@ -378,7 +359,6 @@ glob POINT_SRC: str = (
          "}\n"
      );
 
-
 test "value uses of an import-type binding are refused in a client module" {
     with TemporaryDirectory() as td {
         proj_root = write_client_project(Path(cast(str, td)));
@@ -396,7 +376,6 @@ test "value uses of an import-type binding are refused in a client module" {
     }
 }
 
-
 test "type uses of an import-type binding are accepted in a client module" {
     with TemporaryDirectory() as td {
         proj_root = write_client_project(Path(cast(str, td)));
@@ -409,7 +388,6 @@ test "type uses of an import-type binding are accepted in a client module" {
         )}";
     }
 }
-
 
 test "value uses of an import-type binding are refused in a server module" {
     with TemporaryDirectory() as td {
@@ -429,7 +407,6 @@ test "value uses of an import-type binding are refused in a server module" {
     }
 }
 
-
 test "type uses of an import-type binding are accepted in a server module" {
     with TemporaryDirectory() as td {
         proj_root = Path(cast(str, td));
@@ -446,7 +423,6 @@ test "type uses of an import-type binding are accepted in a server module" {
         )}";
     }
 }
-
 
 # ---------------------------------------------------------------------------
 # 5. Guard: the bridged-import stub path still skips archetypes, keeps functions
@@ -494,7 +470,6 @@ test "bridged import stubs skip archetype items and keep function items" {
     }
 }
 
-
 # ---------------------------------------------------------------------------
 # 6. The original shape: mermaid's default export plus its interface
 # ---------------------------------------------------------------------------
@@ -535,7 +510,6 @@ test "the mermaid shape is refused as written and clean when split" {
         assert "Mermaid" not in js.replace('import mermaid from "mermaid"', "") , f"The interface must not reach the ESM output:\n{js}";
     }
 }
-
 
 # ---------------------------------------------------------------------------
 # 6. The binding's symbol category agrees with its kind
@@ -581,7 +555,6 @@ test "an imported d.ts binding takes the symbol category its kind implies" {
         )}";
     }
 }
-
 
 # ---------------------------------------------------------------------------
 # 7. The import chain is walked once, and every hop still counts

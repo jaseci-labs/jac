@@ -1,7 +1,7 @@
 impl DeclImplMatchPass._run_impl(ir_in: Module) -> Module {
     fresh_reported: set[int] = set();
     self._e2026_reported = fresh_reported;
-    self.cur_node = ir_in;
+    self.ctx.current_node = ir_in;
 
     self.connect_impls(ir_in.sym_tab, ir_in.sym_tab);
 
@@ -127,7 +127,7 @@ impl DeclImplMatchPass._connect_one_impl(
     }
     if not decl_node {
         if len(name_of_links) > 0 {
-            self.emit(E2009, node_override=impl_node);
+            self.ctx.emit(E2009, node_override=impl_node);
         }
         return;
     }
@@ -136,7 +136,7 @@ impl DeclImplMatchPass._connect_one_impl(
         or not (valid_decl.sym_tab and impl_node.sym_tab)
     ) {
         raise RuntimeError(
-            self.ice(
+            self.ctx.ice(
                 f"Expected AstImplNeedingNode, got {valid_decl.__class__.__name__}. Not possible."
             )
         );
@@ -146,9 +146,9 @@ impl DeclImplMatchPass._connect_one_impl(
             if valid_decl.body is impl_node {
                 return;
             }
-            self.emit(E2017, node_override=impl_node);
+            self.ctx.emit(E2017, node_override=impl_node);
         } else {
-            self.emit(E2016, node_override=impl_node);
+            self.ctx.emit(E2016, node_override=impl_node);
         }
         return;
     }
@@ -171,7 +171,7 @@ impl DeclImplMatchPass._connect_one_impl(
                 if isinstance(i, Name) {
                     scope = find_python_scope_node_of(i);
                     if scope is not None and i.sym_name in scope.implicit_rebinds {
-                        self.emit(E0064, node_override=i, name=i.sym_name);
+                        self.ctx.emit(E0064, node_override=i, name=i.sym_name);
                     }
                 }
             }
@@ -227,7 +227,7 @@ impl DeclImplMatchPass._report_bare_redecls(sym_tab: UniScopeNode) -> None {
                 continue;
             }
             self._e2026_reported.add(node_key);
-            self.emit(E2026, node_override=bare, name=sym.sym_name);
+            self.ctx.emit(E2026, node_override=bare, name=sym.sym_name);
         }
     }
 }
@@ -245,8 +245,8 @@ impl DeclImplMatchPass.validate_params_match(
         decl_count = len(params_decl) if params_decl else 0;
         defn_count = len(params_defn) if params_defn else 0;
         if (defn_count != decl_count) {
-            self.emit(E2011, node_override=impl_node.name_spec, name=sym_name);
-            self.emit(
+            self.ctx.emit(E2011, node_override=impl_node.name_spec, name=sym_name);
+            self.ctx.emit(
                 E2012,
                 node_override=valid_decl.name_spec,
                 name=valid_decl.name_spec.sym_name
@@ -264,7 +264,7 @@ impl DeclImplMatchPass.validate_params_match(
                 decl_name = decl_param.name.value;
                 impl_name = defn_param.name.value;
                 if decl_name != impl_name {
-                    self.emit(
+                    self.ctx.emit(
                         W2013,
                         node_override=defn_param.name,
                         decl_name=decl_name,
@@ -303,7 +303,6 @@ impl DeclImplMatchPass._resolve_symbols_in_subtree(root_node: UniNode) -> None {
     }
 }
 
-
 impl DeclImplMatchPass._populate_self_member_symbols(
     impl_def: ImplDef, archetype: Archetype
 ) -> None {
@@ -340,7 +339,7 @@ impl DeclImplMatchPass._populate_self_member_symbols(
             } elif (impl_def.decl_link and isinstance(impl_def.decl_link, Ability)) {
                 method_name = impl_def.decl_link.name_spec.sym_name;
             }
-            self.emit(
+            self.ctx.emit(
                 W2080,
                 node_override=attr_name,
                 attr=attr_name.sym_name,
@@ -396,7 +395,7 @@ impl DeclImplMatchPass._populate_inline_init_symbols(archetype: Archetype) -> No
             display_name = "postinit"
                 if method_name == "__post_init__"
                 else method_name;
-            self.emit(
+            self.ctx.emit(
                 W2080,
                 node_override=attr_name,
                 attr=attr_name.sym_name,
@@ -408,14 +407,6 @@ impl DeclImplMatchPass._populate_inline_init_symbols(archetype: Archetype) -> No
     }
 }
 
-impl DeclImplMatchPass.transform(ir_in: Module) -> Module {
-    self.ir_out = ir_in;
-    ir_in spawn self;
-    out = self.ir_out;
-    assert isinstance(out, Module);
-    return out;
-}
-
 impl DeclImplMatchPass.run_walk with Module entry {
-    self.ir_out = self._run_impl(here);
+    self.module = self._run_impl(here);
 }

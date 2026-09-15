@@ -1,12 +1,14 @@
 import from jaclang.compiler.frontend.unitree {
-    JsxElement,
     Module,
+    TreeWalker,
+    UniNode,
+    JsxElement,
     Name,
-    Token,
-    UniNode
+    Token
 }
+import from jaclang.compiler.passes.context { CompileContext }
 import from jaclang.compiler.frontend.diagnostics { E1105 }
-import from jaclang.compiler.passes.uni_pass { UniPass }
+
 import from jaclang.runtime.osp_kernel { osp_skip_rest }
 import from jaclang.project.mobui_scope { mobui_module_exempt }
 
@@ -27,12 +29,25 @@ def _suggestion_for(tag: str) -> str {
     return _tag_suggestions.get(tag, _GENERIC_SUGGESTION);
 }
 
-walker JsxIntrinsicGuardPass(UniPass) {
-    has _enforced_root: (str | None) = None,
+walker JsxIntrinsicGuardPass(TreeWalker) {
+    can enter_walk with UniNode entry {
+        self.ctx.enter_node(here);
+    }
+
+    can exit_walk with UniNode exit {
+        self.ctx.exit_node(here);
+    }
+
+    has ctx: CompileContext,
+        module: Module,
+        _enforced_root: (str | None) = None,
         _exempt_paths: dict[str, bool] = {};
 
-    def before_pass {
-        self._enforced_root = self.ir_in.mobui_enforced_root;
+    can prepare with entry {
+        if self.ctx.nested_depth {
+            return;
+        }
+        self._enforced_root = self.module.mobui_enforced_root;
         self._exempt_paths.clear();
     }
 
@@ -59,7 +74,7 @@ walker JsxIntrinsicGuardPass(UniPass) {
             first = el.name.parts[0];
             tag = first.value or "" if isinstance(first, (Name, Token)) else "";
             if tag and tag[0].islower() and not self._resolves_in_scope(el, first) {
-                self.emit(
+                self.ctx.emit(
                     E1105, node_override=first, tag=tag, suggestion=_suggestion_for(tag)
                 );
             }

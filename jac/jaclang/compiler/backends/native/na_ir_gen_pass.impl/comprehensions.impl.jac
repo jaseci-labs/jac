@@ -81,7 +81,7 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
         return None;
     }
 
-    _lcompr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _lcompr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     list_val = self._rc_call_with_ctx(
@@ -182,7 +182,7 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
         return None;
     }
 
-    _dcompr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _dcompr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     dict_val = self._rc_call_with_ctx(
@@ -271,7 +271,7 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
         return None;
     }
 
-    _scompr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _scompr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
     set_val = self._rc_call_with_ctx(
@@ -285,7 +285,6 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
 
     return set_val;
 }
-
 
 impl NaIRGenPass._emit_compr_element(
     kind: str,
@@ -375,10 +374,10 @@ impl NaIRGenPass._emit_compr_element(
             if isinstance(_compr_loc_raw, str) {
                 _compr_loc = _compr_loc_raw;
             } elif _compr_loc_raw is not None {
-                _compr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{_compr_loc_raw.first_line}";
+                _compr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{_compr_loc_raw.first_line}";
             }
             if not _compr_loc {
-                _compr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:0";
+                _compr_loc = f"{os.path.basename(self.module.loc.mod_path)}:0";
             }
             self._rc_call_with_ctx(
                 helpers["append"], [acc, val], op="compr_elem", loc=_compr_loc
@@ -616,7 +615,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
     self.builder.position_at_end(end_bb);
 
     if isinstance(coll_val.type, ir.PointerType) and self._is_owned(coll_val) {
-        _coll_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:0";
+        _coll_loc = f"{os.path.basename(self.module.loc.mod_path)}:0";
         self._emit_rc_release_simple(coll_val, op="compr_coll", loc=_coll_loc);
     }
 }

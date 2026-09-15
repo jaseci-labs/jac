@@ -804,7 +804,7 @@ def _compile_solid(path: str) -> str {
     ];
     assert not fatal , f"compile errors in {path}: {[str(e) for e in fatal]}";
     es_pass = run_pass(EsastGenPass, ir, prog, backend=SolidBackend());
-    return es_to_js(es_pass.ir_out.gen.es_ast);
+    return es_to_js(es_pass.module.gen.es_ast);
 }
 
 """Point the shim's dotted core import at a flat sibling (mirrors the bundler)."""

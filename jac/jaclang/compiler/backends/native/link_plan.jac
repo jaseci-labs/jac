@@ -799,12 +799,16 @@ def units_source_key(paths: list[str], options: CompileOptions) -> str {
     h.update(running_compiler_digest().encode("utf-8"));
     h.update(options.codegen_identity().encode("utf-8"));
     h.update(options.effective_triple().encode("utf-8"));
-    for path in sorted(os.path.realpath(p) for p in paths) {
-        h.update(native_unit_identity(path).encode("utf-8"));
-        try {
-            h.update(module_cache_key(path).encode("utf-8"));
-        } except OSError {
-            h.update(b"missing");
+    import from jaclang.compiler.driver.compilation_context { cache_scope }
+    # Unit source identity belongs to the link plan, independent of its caller.
+    with cache_scope("", options) {
+        for path in sorted(os.path.realpath(p) for p in paths) {
+            h.update(native_unit_identity(path).encode("utf-8"));
+            try {
+                h.update(module_cache_key(path).encode("utf-8"));
+            } except OSError {
+                h.update(b"missing");
+            }
         }
     }
     return h.hexdigest();

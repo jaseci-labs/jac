@@ -14,7 +14,6 @@ demand, the hub being transient by contract."""
 import os;
 import jaclang;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.jir { get_module_cache_path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 
@@ -43,8 +42,18 @@ def _reset_selfhost {
 }
 
 def _forget_verdict(path: str) {
+    import from jaclang.compiler.driver.compilation_context {
+        artifact_cache_path,
+        bind_options,
+        context_program
+    }
+    prog = JacProgram();
+    options = bind_options(
+        path, prog, CompileOptions(no_cgen=True, native_parity=True, iface_ok=True)
+    );
+    actual = context_program(prog, options);
     try {
-        os.unlink(get_module_cache_path(path));
+        os.unlink(artifact_cache_path(path, actual));
     } except OSError {}
 }
 
@@ -86,7 +95,7 @@ test "a compiler-tree analysis hydrates its dependencies instead of re-ingesting
         }
         return original(pass_cls, ir_in, prog, **kwargs);
     }
-    _check(target);
+    _check(target, JacProgram());
     with patch.object(driver, 'run_pass', record) {
         _reset_selfhost();
         _check_recomputed(target, active[0]);
@@ -143,8 +152,8 @@ test "variadic tuple annotations resolve ellipsis on cold and warm checks" {
         source.write_text(
             'import from values { values }\ndef:pub first -> int { return values()[0]; }\n'
         );
-        cold = _check_recomputed(str(source));
-        warm = _check(str(source));
+        cold = _check_recomputed(str(source), JacProgram());
+        warm = _check(str(source), JacProgram());
         assert not any(
             'error[' in diagnostic or 'W1051' in diagnostic for diagnostic in cold
         ) , cold;

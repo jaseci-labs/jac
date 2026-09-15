@@ -48,7 +48,7 @@ impl NaIRGenPass._codegen_body(stmts: Sequence[uni.UniNode]) -> None {
 }
 
 impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
-    _map = self.ir_in.rc_last_use;
+    _map = self.module.rc_last_use;
     if not _map {
         return;
     }
@@ -144,7 +144,7 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
 
             is_false = self.builder.not_(cond_bool, name="assert.fail");
 
-            _a_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
+            _a_path = self.module.loc.mod_path if self.module.loc else "";
             _a_line = nd.loc.first_line if nd.loc else 0;
             _a_text = "assertion failed";
             if isinstance(nd.error_msg, uni.String) {
@@ -228,7 +228,7 @@ impl NaIRGenPass._del_target_holds_graph(target: uni.Expr) -> bool {
     if uni.DeleteStmt.type_has_graph_member(target.type) {
         return True;
     }
-    _model = self.ir_in.gen.osp_model;
+    _model = self.module.gen.osp_model;
     _type_key = self._type_key_of(target);
     if (_model is None) or (_type_key is None) {
         return False;
@@ -323,7 +323,7 @@ impl NaIRGenPass._codegen_delete_location(
 impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     _gc = self._gen_ctx;
     if _gc is not None and self.builder.function is _gc.resume_fn {
-        _gr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        _gr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
             if nd.loc
             else 0}";
         if nd.expr is not None {
@@ -354,7 +354,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
         }
         self._emit_scope_cleanup(
             skip_var=None,
-            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+            loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                 if nd.loc
                 else 0}"
         );
@@ -454,7 +454,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 self._emit_rc_retain(
                     val,
                     op="return",
-                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                    loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                         if nd.loc
                         else 0}"
                 );
@@ -477,7 +477,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 self._emit_rc_retain(
                     self.builder.extract_value(val, 1, name="ret.opt.pv"),
                     op="return",
-                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                    loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                         if nd.loc
                         else 0}"
                 );
@@ -489,7 +489,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
             self._emit_scope_cleanup(
                 skip_var=skip_var,
                 ret_val=val,
-                loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                     if nd.loc
                     else 0}"
             );
@@ -503,7 +503,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     }
     self._emit_scope_cleanup(
         skip_var=None,
-        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
             if nd.loc
             else 0}"
     );
@@ -678,7 +678,7 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
         self._codegen_body(nd.body);
     }
     if not self.builder.block.is_terminated {
-        _while_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+        _while_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.last_line
             if nd.loc
             else 0}";
         self._emit_loop_iter_cleanup(
@@ -729,7 +729,7 @@ impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
         return;
     }
     self._region_leave();
-    _region_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+    _region_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.last_line
         if nd.loc
         else 0}";
     self._emit_loop_iter_cleanup(
@@ -765,7 +765,7 @@ impl NaIRGenPass._codegen_forever(nd: uni.ForeverStmt) -> None {
         self._codegen_body(nd.body);
     }
     if not self.builder.block.is_terminated {
-        _forever_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+        _forever_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.last_line
             if nd.loc
             else 0}";
         self._emit_loop_iter_cleanup(
@@ -812,7 +812,7 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }
-    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+    _loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.last_line
         if nd.loc
         else 0}";
     if not self.builder.block.is_terminated {
@@ -1503,7 +1503,7 @@ impl NaIRGenPass._bind_match_seq(
     if star is None or star_name is None or star_name == "_" {
         return;
     }
-    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{star.loc.first_line
+    _loc = f"{os.path.basename(self.module.loc.mod_path)}:{star.loc.first_line
         if star.loc
         else 0}";
     rest = self._rc_call_with_ctx(
@@ -1571,7 +1571,7 @@ impl NaIRGenPass._bind_match_map(
     if star is None or star_name is None or star_name == "_" {
         return;
     }
-    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{star.loc.first_line
+    _loc = f"{os.path.basename(self.module.loc.mod_path)}:{star.loc.first_line
         if star.loc
         else 0}";
     rest = self._rc_call_with_ctx(
@@ -1686,7 +1686,7 @@ impl NaIRGenPass._apply_scalar_aug_op(
 }
 
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
-    _rhs_errs_before = len(self.errors_had);
+    _rhs_errs_before = len(self.ctx.errors_had);
     if self._lower_partition_unpack(nd) {
         return;
     }
@@ -1732,7 +1732,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     }
     if pending_value is None {
         if nd.value is not None
-            and len(self.errors_had) == _rhs_errs_before
+            and len(self.ctx.errors_had) == _rhs_errs_before
             and not self._reads_unlowered_local(nd.value) {
             self.emit(
                 E5092,
@@ -1762,9 +1762,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     for target_expr in targets {
         value: ir.Value = assignment_rhs;
         if isinstance(target_expr, uni.TupleVal) {
-            _unpack_errs = len(self.errors_had);
+            _unpack_errs = len(self.ctx.errors_had);
             if not self._codegen_tuple_unpack(target_expr.values, value, nd.value) {
-                if len(self.errors_had) == _unpack_errs {
+                if len(self.ctx.errors_had) == _unpack_errs {
                     self.emit(
                         E5092,
                         node_override=target_expr,
@@ -1789,7 +1789,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
 
         if isinstance(target_expr, uni.AtomTrailer) and target_expr.is_attr {
             if nd.aug_op is not None {
-                _faug_errs = len(self.errors_had);
+                _faug_errs = len(self.ctx.errors_had);
                 field_val = self._codegen_field_aug_assign(
                     target_expr, value, nd.aug_op.value, nd.value
                 );
@@ -1799,7 +1799,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         field_val,
                         skip_narrow_coerce=(nd.aug_op.value == "**=")
                     );
-                } elif len(self.errors_had) == _faug_errs {
+                } elif len(self.ctx.errors_had) == _faug_errs {
                     self.emit(
                         E5092,
                         node_override=target_expr,
@@ -1856,7 +1856,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     continue;
                 }
             }
-            _idx_errs_before = len(self.errors_had);
+            _idx_errs_before = len(self.ctx.errors_had);
             _idx_stored = False;
             idx_target_name = self._get_name(target_expr.target);
             target_val = self._codegen_expr(target_expr.target);
@@ -2023,7 +2023,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     }
                 }
             }
-            if not _idx_stored and len(self.errors_had) == _idx_errs_before {
+            if not _idx_stored and len(self.ctx.errors_had) == _idx_errs_before {
                 self.emit(
                     E5092,
                     node_override=target_expr,
@@ -2124,7 +2124,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         if augmented is not None {
                             if self._is_owned(_aug_str_rhs) {
                                 _aug_rhs_loc = f"{os.path.basename(
-                                    self.ir_in.loc.mod_path
+                                    self.module.loc.mod_path
                                 )}:{nd.loc.first_line if nd.loc else 0}";
                                 self._emit_rc_release_typed(
                                     _aug_str_rhs, op="str_rhs", loc=_aug_rhs_loc
@@ -2330,7 +2330,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                         rhs_set,
                                         op="op_assign",
                                         loc=f"{os.path.basename(
-                                            self.ir_in.loc.mod_path
+                                            self.module.loc.mod_path
                                         )}:{nd.loc.first_line if nd.loc else 0}"
                                     );
 
@@ -2440,7 +2440,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         self._emit_rc_retain(
                             coerced,
                             op="assign",
-                            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                            loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                                 if nd.loc
                                 else 0}"
                         );
@@ -2459,7 +2459,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         self._emit_rc_release_typed(
                             old_val,
                             op="overwrite",
-                            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                            loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                                 if nd.loc
                                 else 0}"
                         );
@@ -2530,7 +2530,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     self._emit_rc_retain(
                         value,
                         op="assign_box",
-                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                        loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                             if nd.loc
                             else 0}"
                     );
@@ -2550,7 +2550,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 if self._nogc_borrow_local_assign(nd) {
                     self.nogc_no_free_vars.add(var_name);
                 }
-                _opt_re_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                _opt_re_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                     if nd.loc
                     else 0}";
                 _opt_re_owned = self._opt_result_owned(value, nd.value);
@@ -2604,7 +2604,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         if augmented is not None {
                             if self._is_owned(_aug_gstr_rhs) {
                                 _aug_grhs_loc = f"{os.path.basename(
-                                    self.ir_in.loc.mod_path
+                                    self.module.loc.mod_path
                                 )}:{nd.loc.first_line if nd.loc else 0}";
                                 self._emit_rc_release_typed(
                                     _aug_gstr_rhs, op="str_rhs", loc=_aug_grhs_loc
@@ -2726,7 +2726,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     self._emit_rc_retain(
                         coerced,
                         op="assign",
-                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                        loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                             if nd.loc
                             else 0}"
                     );
@@ -2776,7 +2776,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     self._emit_rc_release_typed(
                         old_glob,
                         op="overwrite",
-                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                        loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                             if nd.loc
                             else 0}"
                     );
@@ -2950,7 +2950,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             self._emit_rc_retain(
                                 value,
                                 op="assign",
-                                loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                                     if nd.loc
                                     else 0}"
                             );
@@ -3003,7 +3003,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         self._emit_rc_release_typed(
                             old_val,
                             op="overwrite",
-                            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                            loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                                 if nd.loc
                                 else 0}"
                         );
@@ -3020,7 +3020,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     self._emit_rc_retain(
                         _pre_box_val,
                         op="assign_box",
-                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                        loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                             if nd.loc
                             else 0}"
                     );
@@ -3031,7 +3031,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 if self._nogc_borrow_local_assign(nd) {
                     self.nogc_no_free_vars.add(var_name);
                 }
-                _opt_asg_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                _opt_asg_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
                     if nd.loc
                     else 0}";
                 if not self._opt_result_owned(value, nd.value)
@@ -3166,7 +3166,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         return;
     }
 
-    _for_errs0 = len(self.errors_had);
+    _for_errs0 = len(self.ctx.errors_had);
     _unpack_target = nd.target if isinstance(nd.target, uni.TupleVal) else None;
     loop_var_name = "for.unpack"
         if _unpack_target is not None
@@ -3207,7 +3207,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         }
     }
     if loop_var_name is None {
-        if len(self.errors_had) == _for_errs0 {
+        if len(self.ctx.errors_had) == _for_errs0 {
             self.emit(
                 E5092,
                 node_override=nd,
@@ -3350,7 +3350,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     if self._tuple_iter_shape(nd.collection, _coll_memo) {
         _tup_seq = self._tuple_iter_seq(nd.collection, _coll_memo);
         if _tup_seq is None {
-            if len(self.errors_had) == _for_errs0 {
+            if len(self.ctx.errors_had) == _for_errs0 {
                 self.emit(
                     E5092,
                     node_override=nd.collection or nd,
@@ -3378,7 +3378,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     }
 
     if _coll_memo is None {
-        if len(self.errors_had) == _for_errs0 {
+        if len(self.ctx.errors_had) == _for_errs0 {
             self.emit(
                 E5092,
                 node_override=nd.collection,
@@ -3434,7 +3434,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     }
     helpers = self.list_helpers.get(elem_type_name) if elem_type_name else None;
     if helpers is None {
-        if len(self.errors_had) == _for_errs0 {
+        if len(self.ctx.errors_had) == _for_errs0 {
             self.emit(
                 E5092,
                 node_override=nd.collection or nd,
@@ -3487,7 +3487,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
     if not _is_flow {
         return False;
     }
-    _par_ok = (self.ir_in.gen.nogc_enforced and self._gc_mode() == "none")
+    _par_ok = (self.module.gen.nogc_enforced and self._gc_mode() == "none")
         or (self._gc_mode() == "rc" and not self._rc_debug_codegen);
     if not _par_ok {
         return False;
@@ -4149,10 +4149,10 @@ impl NaIRGenPass._codegen_for_indexed(
     range_step: (ir.Value | None) = None
 ) -> None {
     i64 = ir.IntType(64);
-    _for_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+    _for_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.last_line
         if nd.loc
         else 0}";
-    _rc_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+    _rc_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
 

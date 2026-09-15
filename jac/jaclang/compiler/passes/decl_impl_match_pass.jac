@@ -1,5 +1,5 @@
-import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.unitree {
+    Module,
     Ability,
     Archetype,
     Assignment,
@@ -9,7 +9,6 @@ import from jaclang.compiler.frontend.unitree {
     FuncSignature,
     HasVar,
     ImplDef,
-    Module,
     Name,
     NameAtom,
     ParamVar,
@@ -21,7 +20,9 @@ import from jaclang.compiler.frontend.unitree {
     find_python_scope_node_of,
     is_identifier_slot
 }
-import from jaclang.compiler.passes.transform { Transform }
+import from jaclang.compiler.passes.context { CompileContext }
+import from jaclang.runtime.object_model { field }
+
 import from jaclang.compiler.frontend.diagnostics {
     E2009,
     E2011,
@@ -33,10 +34,11 @@ import from jaclang.compiler.frontend.diagnostics {
     W2080
 }
 
-walker DeclImplMatchPass(Transform) {
-    has _e2026_reported: set[int] = field(default_factory=`set);
+walker DeclImplMatchPass {
+    has ctx: CompileContext,
+        module: Module,
+        _e2026_reported: set[int] = field(default_factory=`set);
 
-    def transform(ir_in: Module) -> Module;
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def defn_lookup(lookup: Symbol) -> (NameAtom | None);

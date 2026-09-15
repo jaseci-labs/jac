@@ -21,7 +21,7 @@ impl JcirGenPass.resolve_switch_pattern(pattern: MatchPattern, target: Expr) -> 
             [self.val(target), [self.nod('Is', [], [])], [self.val(pattern.value)]]
         );
     } else {
-        raise RuntimeError(self.ice('Unsupported switch pattern type'));
+        raise RuntimeError(self.ctx.ice('Unsupported switch pattern type'));
     }
 }
 
@@ -111,8 +111,8 @@ impl JcirGenPass._move_release_stmts(stmt: UniNode) -> list[CgNode] {
     if isinstance(stmt, (ReturnStmt, RaiseStmt)) {
         return [];
     }
-    sites = self.ir_in.own_move_sites;
-    last_uses: any = self.ir_in.rc_last_use.get(id(stmt)) or [];
+    sites = self.module.own_move_sites;
+    last_uses: any = self.module.rc_last_use.get(id(stmt)) or [];
     if not sites and not last_uses {
         return [];
     }
@@ -746,7 +746,7 @@ impl JcirGenPass.exit_return_stmt with ReturnStmt exit {
 impl JcirGenPass._scope_cleanup_body(
     scope: UniNode, body: list[CgNode]
 ) -> list[CgNode] {
-    names = self.ir_in.rc_scope_cleanup.get(id(scope), []);
+    names = self.module.rc_scope_cleanup.get(id(scope), []);
     if not names {
         return body;
     }

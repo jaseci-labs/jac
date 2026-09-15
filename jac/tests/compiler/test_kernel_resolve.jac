@@ -227,3 +227,19 @@ test "kernel publication never accepts mismatched library and sidecar images" {
         assert observed == [False, True];
     }
 }
+
+
+test "kernel source identity is independent of the caller compilation context" {
+    import from jaclang.compiler.driver.compilation_context { cache_scope }
+    with tempfile.TemporaryDirectory() as directory {
+        source = Path(directory) / "unit.jac";
+        source.write_text("def answer -> int { return 42; }\n");
+        options = kernel_options();
+        with cache_scope("build-context", options) {
+            built = units_source_key([str(source)], options);
+        }
+        with cache_scope("application-context", options) {
+            assert units_source_key([str(source)], options) == built;
+        }
+    }
+}

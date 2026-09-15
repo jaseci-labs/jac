@@ -1,5 +1,5 @@
 import asyncio;
-import type from jaclang.compiler.passes.transform { Alert }
+import type from jaclang.compiler.passes.context { Alert }
 import logging;
 import os;
 import sys;

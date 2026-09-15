@@ -1,4 +1,3 @@
-import from jaclang.runtime.osp_kernel { osp_skip_rest }
 import json;
 import from typing { cast }
 import jaclang.compiler.backends.es.estree as es;
@@ -287,7 +286,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
 
     static has HOST_PASS: bool = True;
 
-    def before_pass -> None;
+    can prepare with entry;
     can enter_walk with uni.UniNode entry;
     can exit_walk with uni.UniNode exit;
     def _fw_call(
