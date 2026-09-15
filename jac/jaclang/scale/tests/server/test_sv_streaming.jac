@@ -280,6 +280,9 @@ obj _StubTransport {
 }
 
 
+obj _GreetStub {}
+
+
 test "spawn_walker hands the idempotency key to the scale transport" {
     import asyncio;
     import unittest.mock;
@@ -299,7 +302,7 @@ test "spawn_walker hands the idempotency key to the scale transport" {
                     "scale_hdr_mod",
                     "Greet",
                     {"name": "ada"},
-                    None,
+                    _GreetStub,
                     idempotency_key="k-2"
                 )
             );
@@ -311,6 +314,37 @@ test "spawn_walker hands the idempotency key to the scale transport" {
         assert "X-Jac-Idempotency-Key" not in stub.calls[1]["headers"];
     } finally {
         sv_client.unregister("scale_hdr_mod");
+    }
+}
+
+
+test "spawn_walker refuses a stub-less spawn before the scale transport runs it" {
+    import asyncio;
+    import unittest.mock;
+    import from jaclang.server.bridge { BridgeError }
+    stub = _StubTransport();
+
+    def _transport -> any {
+        return stub;
+    }
+    patcher: any = unittest.mock.patch.object(
+        sv_client, "_scale_transport", _transport
+    );
+    try {
+        sv_client.register("scale_nostub_mod", "http://demo.invalid");
+        with patcher {
+            try {
+                asyncio.run(
+                    sv_client.spawn_walker("scale_nostub_mod", "Greet", {}, None)
+                );
+                assert False , "a spawn with no boundary contract must raise";
+            } except BridgeError as e {
+                assert "no declared boundary contract" in str(e);
+            }
+        }
+        assert stub.calls == [] , "the transport must not have been called";
+    } finally {
+        sv_client.unregister("scale_nostub_mod");
     }
 }
 
