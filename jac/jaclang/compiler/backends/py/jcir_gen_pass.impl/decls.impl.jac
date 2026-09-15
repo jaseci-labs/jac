@@ -68,7 +68,7 @@ impl JcirGenPass.enter_archetype with Archetype entry {
 
 impl JcirGenPass.exit_archetype with Archetype exit {
     inner = ModuleFacts.unwrap_body(here);
-    decorators = [self.val(i) for i in here.decorators] if here.decorators else [];
+    decorators = [self.val(i) for i in here.decorators if not isinstance(i, CompilerAnnotation)] if here.decorators else [];
     body: list = self.resolve_stmt_block(inner, doc=here.doc);
     if here.arch_type.name != Tok.KW_CLASS {
         import from jaclang.compiler.frontend.codeinfo { endpoint_key }
@@ -156,7 +156,7 @@ impl JcirGenPass.enter_enum with Enum entry {
 
 impl JcirGenPass.exit_enum with Enum exit {
     inner = ModuleFacts.unwrap_body(here);
-    decorators = [self.val(i) for i in here.decorators] if here.decorators else [];
+    decorators = [self.val(i) for i in here.decorators if not isinstance(i, CompilerAnnotation)] if here.decorators else [];
     body = self.resolve_stmt_block(inner, doc=here.doc);
     if (sem_decorator := self._get_sem_decorator(here)) {
         decorators.append(sem_decorator);
@@ -209,7 +209,7 @@ impl JcirGenPass.exit_ability with Ability exit {
     }
     if here.decorators {
         for d in here.decorators {
-            if d {
+            if d and not isinstance(d, CompilerAnnotation) {
                 sig_roots.append(d);
             }
         }
@@ -247,7 +247,7 @@ impl JcirGenPass.exit_ability with Ability exit {
     if (here.is_abstract and here.body) {
         self.emit(E5004, node_override=here, name=str(here.sym_name));
     }
-    decorator_list = [self.val(i) for i in here.decorators] if here.decorators else [];
+    decorator_list = [self.val(i) for i in here.decorators if not isinstance(i, CompilerAnnotation)] if here.decorators else [];
     if (sem_decorator := self._get_sem_decorator(here)) {
         decorator_list.append(sem_decorator);
     }

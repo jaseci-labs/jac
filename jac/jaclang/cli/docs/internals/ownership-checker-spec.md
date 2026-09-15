@@ -106,6 +106,36 @@ The analysis stamps documented facts; consumers read them:
   as does the sendability rule. Parser-stamped syntax facts
   (`SubTag.ownership` / `UnaryExpr.ownership`) remain available and are what
   survives the JIR cache.
+- **Explicit lifetime signatures**: `Parameter.lifetime_sources` and
+  `FunctionType.return_sources` contain normalized parameter indices. The
+  source spellings live on annotation nodes only. Ownership, linearity, and
+  dependencies survive callable cloning and interface serialization together;
+  a cached signature must not silently remove any part of the contract.
+  Callable compatibility rebases indices around omitted implicit receivers and
+  compares source sets; a dependency on `self` cannot turn into a dependency on
+  the first explicit parameter.
+- **Owned dependents**: a dependent binding can remain `OwnershipKind.OWN`.
+  Its transitive `BorrowMeta` roots pin sources through consumption or cleanup,
+  including after its last ordinary read. Matching consuming call parameters
+  can transfer source and dependent together. `Module.own_dependency_order`
+  records destruction order per ability, with dependents preceding sources.
+  The resource's declared destructor can discharge a dependent owner without
+  restating its dependency; all source owners stay live through that call.
+  See the [migration contract and validation status](foreign-lifetime-contracts.md)
+  for storage shapes and backend gates still under implementation.
+- **Foreign contracts**: `ClassDetailsShared.foreign_resource` carries the
+  declared ABI, empty sentinel, deallocator symbol, aliasing policy, and
+  destructor reentrancy. `FunctionType.required_capabilities`, `foreign_errors`,
+  and `reentrant` describe call requirements and effects. A Python error
+  protocol is distinct from Jac's error slot; an empty `raises` set is not
+  evidence that arithmetic or cleanup cannot raise.
+  For annotated native bodies, ownership analysis checks the declared capability
+  and reentry bounds after effect propagation. Native lowering checks every
+  emitted non-intrinsic call against its resolved declaration or indirect
+  callable contract, including compiler-generated calls. Such a body requires
+  `nogc`, cannot demote to Python, and cannot invoke a Jac-slot error producer.
+  `errors="none"` additionally excludes Python-error producers. The annotation
+  does not change parameter layouts or add C export conversions.
 - **`Assignment.na_move_lowerable`**: stamped by the core `RcFactsPass`
   (scheduled in the native codegen slot) from a backward-liveness proof on the
   shared dataflow framework -- a `b = a` alias whose LOCAL source is dead-out
@@ -176,3 +206,11 @@ stamps are always freshly computed in-process for the module being lowered.
 The checker's cost is proportional to the number of *annotated* symbols;
 unannotated modules exit the E13xx analyses early (the move-elision liveness
 proof runs regardless, as it serves unannotated code too).
+
+Borrowed aliases preserve their source dependencies. A declared source may name
+the original owner through such an alias, but an owned intermediate resource
+cannot be replaced by its parent: a cursor still needs the cursor itself alive.
+A call may consume an owner alongside a view declared `from owner` when that
+view has no subsequent use. Both the declared source and last-use condition are
+checked. Return contracts follow transitive parameter dependencies; naming a
+borrowed intermediary cannot hide a consumed parameter.

@@ -38,7 +38,15 @@ impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
         import jaclang as _jl;
         _pkg = str(_os.path.dirname(_os.path.abspath(str(_jl.__file__))));
         if str(_os.path.abspath(_mp)).startswith(_pkg + _os.sep) {
-            return None;
+            if not getattr(self.prog.options, "nogc_enforce_all", False) {
+                return None;
+            }
+            import from jaclang.compiler.foreign_refs { foreign_resource_name }
+            if not any(
+                foreign_resource_name(name.type) is not None for name in self.idx_names
+            ) {
+                return None;
+            }
         }
     }
     opts = self.prog?.options;
@@ -1406,6 +1414,11 @@ impl OwnershipCheckPass._stamp_arch_view_bindings -> None {
 }
 
 impl OwnershipCheckPass._view_call_owner(call: FuncCall) -> (SymId | None) {
+    import from jaclang.compiler.types.types { FunctionType }
+    if isinstance(call.target.type, FunctionType) and call.target.type.return_sources {
+        owners = self._lifetime_expr_owners(call);
+        return owners[0] if owners else None;
+    }
     _tgt = call.target;
     _ab: (Ability | None) = None;
     if isinstance(_tgt, Name) and _tgt.sym is not None and _tgt.sym.decl is not None {
@@ -1417,10 +1430,17 @@ impl OwnershipCheckPass._view_call_owner(call: FuncCall) -> (SymId | None) {
         and _tgt.right.sym.decl is not None {
         _ab = _tgt.right.sym.decl.find_parent_of_type(Ability);
     }
-    if _ab is None or id(_ab) not in self.view_elision_fns {
+    if _ab is None {
         return None;
     }
-    _fct = self.view_elision_fns[id(_ab)];
+    import from jaclang.compiler.foreign_refs { borrowed_return_source }
+    _fct = self.view_elision_fns.get(id(_ab));
+    if _fct is None {
+        _fct = borrowed_return_source(_ab);
+    }
+    if _fct is None {
+        return None;
+    }
     if _fct == -1 {
         if isinstance(_tgt, AtomTrailer) {
             _recv = self._place_of(_tgt.target);
@@ -1508,6 +1528,10 @@ impl OwnershipCheckPass._stamp_view_borrows -> None {
     _seen: set[int] = set();
     for _ab in self.ir_in.get_all_sub_nodes(Ability) {
         self._stamp_view_call_results(_ab, _seen);
+        import from jaclang.compiler.types.types { FunctionType }
+        if isinstance(_ab.name_spec.type, FunctionType) and _ab.name_spec.type.return_sources {
+            continue;
+        }
         _all_params = [
             p
             for p in self.idx_params
@@ -1600,7 +1624,11 @@ impl OwnershipCheckPass._stamp_view_call_results(
             continue;
         }
         if nd.type_tag is not None and nd.type_tag.ownership != OwnershipKind.NONE {
-            continue;
+            import from jaclang.compiler.foreign_refs { foreign_resource_name }
+            if nd.type_tag.ownership != OwnershipKind.BORROW
+                or foreign_resource_name(nd.type_tag.tag.type) is None {
+                continue;
+            }
         }
         _tgt = nd.target[0];
         if not (isinstance(_tgt, Name) and _tgt.sym) {
@@ -1617,8 +1645,13 @@ impl OwnershipCheckPass._stamp_view_call_results(
             continue;
         }
         _sid = self._name_sym_id(_tgt);
-        self.owned_decl.pop(_sid, None);
-        _tgt.sym.ownership = OwnershipKind.BORROW;
+        import from jaclang.compiler.types.types { FunctionType }
+        owned_result = isinstance(nd.value.target.type, FunctionType)
+            and nd.value.target.type.return_ownership == OwnershipKind.OWN;
+        if not owned_result {
+            self.owned_decl.pop(_sid, None);
+            _tgt.sym.ownership = OwnershipKind.BORROW;
+        }
         self.borrow_meta[_sid] = BorrowMeta(name=_tgt.sym_name, owner=_own_sid);
         self.borrow_created_at[_sid] = nd;
         self.view_syms.add(_sid);
@@ -1632,7 +1665,9 @@ impl OwnershipCheckPass._emit_view_diagnostics -> None {
     for nd in self.idx_assignments {
         if nd.type_tag is not None
             and nd.type_tag.ownership == OwnershipKind.OWN
-            and self._is_view_expr(nd.value) {
+            and self._is_view_expr(nd.value)
+            and not (len(nd.target) == 1 and isinstance(nd.target[0], Name)
+                and self._name_sym_id(nd.target[0]) in self.dependent_syms) {
             self.emit(E1315, node_override=nd, name="an `own` binding of a view");
         }
         if len(nd.target) == 1 and nd.aug_op is None {

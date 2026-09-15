@@ -153,7 +153,49 @@ cpython() {
         cp "$recipe/compiler_runtime.c" Python/jac_runtime.c
         cp "$recipe/object_api.c" Python/jac_objects.c
         cp "$recipe/binding_api.c" Python/jac_bindings.c
+        cp "$recipe/evaluator_refs.c" Python/jac_evaluator_refs.c
+        cp "$recipe/evaluator_refs.h" Python/evaluator_refs.h
+        cp "$recipe/evaluator_frames.c" Python/jac_evaluator_frames.c
+        cp "$recipe/evaluator_frames.h" Python/evaluator_frames.h
+        cp "$recipe/evaluator_objects.c" Python/jac_evaluator_objects.c
+        cp "$recipe/evaluator_objects.h" Python/evaluator_objects.h
+        cp "$recipe/evaluator_binding.c" Python/jac_evaluator_binding.c
+        cp "$recipe/evaluator_binding.h" Python/evaluator_binding.h
+        cp "$recipe/evaluator_recursion.c" Python/jac_evaluator_recursion.c
+        cp "$recipe/evaluator_recursion.h" Python/evaluator_recursion.h
+        cp "$recipe/evaluator_metadata.c" Python/jac_evaluator_metadata.c
+        cp "$recipe/evaluator_metadata.h" Python/evaluator_metadata.h
+        cp "$recipe/evaluator_entry.c" Python/jac_evaluator_entry.c
+        cp "$recipe/evaluator_entry.h" Python/evaluator_entry.h
+        cp "$recipe/evaluator_activation.c" Python/jac_evaluator_activation.c
+        cp "$recipe/evaluator_activation.h" Python/evaluator_activation.h
+        cp "$recipe/evaluator_operations.h" Python/evaluator_operations.h
+        cp "$recipe/generated/evaluator_scratch.h" Python/evaluator_scratch.h
+        cp "$recipe/generated/evaluator_tier1_abi.c" Python/jac_evaluator_tier1_abi.c
+        cp "$recipe/generated/evaluator_tier2_abi.c" Python/jac_evaluator_tier2_abi.c
+        cp "$recipe/generated/evaluator_jit_abi.c" Python/evaluator_jit_abi.c
+        cp "$recipe/generated/evaluator-generation.json" Python/evaluator-generation.json
+        cp "$recipe/evaluator_jit_template.c" Tools/jit/template.c
+        cp "$recipe/link_jit.py" Tools/jit/native_link.py
+        export JAC_NATIVE_ROOT="$root" JAC_NATIVE_ARTIFACTS="$work/native"
+        export JAC_NATIVE_PYTHON="$host/python/install/bin/python3.14"
         cp "$work/native/jacpython.o" Python/jacpython.o
+        cp "$work/native/evaluator_support.o" Python/jac_evaluator_support.o
+        cp "$work/native/evaluator_frames.o" Python/jac_evaluator_frame_clear.o
+        cp "$work/native/evaluator_monitoring.o" Python/jac_evaluator_monitoring.o
+        cp "$work/native/evaluator_errors.o" Python/jac_evaluator_errors.o
+        cp "$work/native/evaluator_imports.o" Python/jac_evaluator_imports.o
+        cp "$work/native/evaluator_exceptions.o" Python/jac_evaluator_exceptions.o
+        cp "$work/native/evaluator_arguments.o" Python/jac_evaluator_arguments.o
+        cp "$work/native/evaluator_binding.o" Python/jac_evaluator_bind_locals.o
+        cp "$work/native/evaluator_calls.o" Python/jac_evaluator_calls.o
+        cp "$work/native/evaluator_legacy.o" Python/jac_evaluator_legacy.o
+        cp "$work/native/evaluator_context.o" Python/jac_evaluator_context.o
+        cp "$work/native/evaluator_unpack.o" Python/jac_evaluator_unpack.o
+        cp "$work/native/evaluator_matching.o" Python/jac_evaluator_matching.o
+        cp "$work/native/evaluator_groups.o" Python/jac_evaluator_groups.o
+        cp "$work/native/evaluator_recursion.o" Python/jac_evaluator_recursion_policy.o
+        cp "$work/native/evaluator_utilities.o" Python/jac_evaluator_utilities.o
     fi
     # The shared interpreter must survive relocation into the Jac payload.
     case "$platform" in
@@ -268,7 +310,10 @@ python_make() {
         # executable needs to run before the reduced runtime is linked.
         freezer="$host/python/install/bin/python3.14 $src/cpython/Programs/_freeze_module.py"
         make "$@" "FREEZE_MODULE_BOOTSTRAP=$freezer" FREEZE_MODULE_BOOTSTRAP_DEPS= \
-            "FREEZE_MODULE=$freezer" FREEZE_MODULE_DEPS=
+            "FREEZE_MODULE=$freezer" FREEZE_MODULE_DEPS= \
+            "JAC_NATIVE_ROOT=$root" "JAC_NATIVE_ARTIFACTS=$work/native" \
+            "JAC_NATIVE_LINKER=$recipe/link_evaluator.py" \
+            "JAC_NATIVE_PYTHON=$host/python/install/bin/python3.14"
     else
         make "$@"
     fi
@@ -278,7 +323,7 @@ if [ -n "$host" ]; then
     cp -R "$host/python/build/include/." "$deps/include/"
     cp "$host/python/build/lib/"*.a "$deps/lib/"
     cp -R "$host/python/licenses" "$work/python/licenses"
-    step native "$host/python/install/bin/python3.14" -I "$recipe/prepare_native.py" "$root" "$work/native" "$platform"
+    step native "$host/python/install/bin/python3.14" -I "$recipe/prepare_native.py" "$root" "$work/native" "$platform" "$src/cpython"
 else
     # Preserve notices before discarding each dependency's installed build tree.
     mkdir -p "$work/python/licenses"
@@ -305,6 +350,29 @@ cp "$deps/lib/"*.a "$work/python/build/lib/"
 if [ -n "$host" ]; then
     cp "$host/python/build/cacert.pem" "$work/python/build/cacert.pem"
     cp "$work/native/sha256" "$work/python/build/jacpython-native-sha256"
+    cp "$work/native/evaluator_support.sha256" "$work/python/build/jacpython-evaluator-support-sha256"
+    cp "$work/native/evaluator_frames.sha256" "$work/python/build/jacpython-evaluator-frames-sha256"
+    cp "$work/native/evaluator_monitoring.sha256" "$work/python/build/jacpython-evaluator-monitoring-sha256"
+    cp "$work/native/evaluator_errors.sha256" "$work/python/build/jacpython-evaluator-errors-sha256"
+    cp "$work/native/evaluator_imports.sha256" "$work/python/build/jacpython-evaluator-imports-sha256"
+    cp "$work/native/evaluator_exceptions.sha256" "$work/python/build/jacpython-evaluator-exceptions-sha256"
+    cp "$work/native/evaluator_arguments.sha256" "$work/python/build/jacpython-evaluator-arguments-sha256"
+    cp "$work/native/evaluator_binding.sha256" "$work/python/build/jacpython-evaluator-binding-sha256"
+    cp "$work/native/evaluator_calls.sha256" "$work/python/build/jacpython-evaluator-calls-sha256"
+    cp "$work/native/evaluator_legacy.sha256" "$work/python/build/jacpython-evaluator-legacy-sha256"
+    cp "$work/native/evaluator_context.sha256" "$work/python/build/jacpython-evaluator-context-sha256"
+    cp "$work/native/evaluator_unpack.sha256" "$work/python/build/jacpython-evaluator-unpack-sha256"
+    cp "$work/native/evaluator_matching.sha256" "$work/python/build/jacpython-evaluator-matching-sha256"
+    cp "$work/native/evaluator_groups.sha256" "$work/python/build/jacpython-evaluator-groups-sha256"
+    cp "$work/native/evaluator_recursion.sha256" "$work/python/build/jacpython-evaluator-recursion-sha256"
+    cp "$work/native/evaluator_utilities.sha256" "$work/python/build/jacpython-evaluator-utilities-sha256"
+    cp "$work/native/evaluator_entry.sha256" "$work/python/build/jacpython-evaluator-entry-sha256"
+    cp "$work/native/evaluator-provenance.json" "$work/python/build/jacpython-evaluator-provenance.json"
+    for stencil_provenance in "$src/cpython"/jit_stencils-*.native.json; do
+        if [ -f "$stencil_provenance" ]; then
+            cp "$stencil_provenance" "$work/python/build/"
+        fi
+    done
     rm -rf "$work/native"
 else
     # Only dependency headers/archives are reused by the target build. Host

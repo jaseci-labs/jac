@@ -121,6 +121,7 @@ walker OwnershipCheckPass(Transform) {
         name_uses_by_sym: dict[SymId, list[Name]] = {},
         imm_decl: dict[SymId, Name] = {},
         view_syms: set[SymId] = set(),
+        dependent_syms: set[SymId] = set(),
         view_elision_fns: dict[int, int] = {},
         nogc_prov: (str | None) = None,
         receiver_modes: dict[int, OwnershipKind] = {},
@@ -187,6 +188,14 @@ walker OwnershipCheckPass(Transform) {
     def _emit_enforcement_diagnostics -> None;
     def _build_index(tree: UniNode) -> None;
     def _stamp_ownership -> None;
+    def _lifetime_call_args(call: FuncCall) -> list[Expr | None];
+    def _lifetime_expr_owners(expr: Expr | None) -> list[SymId];
+    def _lifetime_source_roots(sources: list[SymId]) -> list[SymId];
+    def _stamp_lifetime_dependencies -> None;
+    def _stamp_dependency_cleanup_order -> None;
+    def _stamp_foreign_effects -> None;
+    def _lifetime_cotransfer(cfg: UniCFGNode, dependent: SymId, owner: SymId) -> bool;
+    def _emit_lifetime_diagnostics -> None;
     def _stamp_overwrite_consumed -> None;
     def _stamp_move_sites -> None;
     def _receiver_mode(ability: Ability | None) -> OwnershipKind;
@@ -214,6 +223,7 @@ walker OwnershipCheckPass(Transform) {
     def _node_within(nd: UniNode, scope: UniNode) -> bool;
     def _is_scope_exit(nd: UniCFGNode) -> bool;
     def _call_consumes_args(call: FuncCall) -> bool;
+    def _call_consumes_arg(call: FuncCall, arg: Expr | None) -> bool;
     def _grow_arg_moves(call: FuncCall, arg: Expr | None) -> bool;
     def _nogc_moved_arch_elem(expr: Expr | None) -> bool;
     def _has_region_blocks -> bool;

@@ -32,8 +32,9 @@ glob BITS_1_5 = 4609434218613702656,  # 0x3FF8000000000000
      BITS_NEG_ZERO = -9223372036854775808;  # 0x8000000000000000
 
 
-def _native_opts(gc_mode: str | None = None) -> any {
+def _native_opts(gc_mode: str | None = None, memory_profile: str = "managed") -> any {
     kwargs: dict = {"force_codespace": "native", "force_target_program": True};
+    kwargs["memory_profile"] = memory_profile;
     if gc_mode is not None {
         kwargs["na_gc_mode"] = gc_mode;
     }
@@ -41,14 +42,18 @@ def _native_opts(gc_mode: str | None = None) -> any {
 }
 
 """Compile a probe source in an isolated tempdir; return (prog, module)."""
-def _compile_src(source: str, gc_mode: str | None = None) -> tuple {
+def _compile_src(
+    source: str, gc_mode: str | None = None, memory_profile: str = "managed"
+) -> tuple {
     with tempfile.TemporaryDirectory() as tmp {
         src = os.path.join(tmp, "intrinsic_probe.jac");
         with open(src, "w") as f {
             f.write(source);
         }
         prog = JacProgram();
-        ir_mod = prog.compile(file_path=src, options=_native_opts(gc_mode));
+        ir_mod = prog.compile(
+            file_path=src, options=_native_opts(gc_mode, memory_profile)
+        );
         return (prog, ir_mod);
     }
 }
@@ -88,6 +93,10 @@ glob RAW_MEM_IMPORTS = "import from c { def malloc(n: int) -> int; def free(p: i
 
 """Probe source per dispatch kind; a new dispatch kind must add one here."""
 def _probe_source(intr: any) -> str {
+    if intr.dispatch == IntrinsicDispatch.MUSTTAIL {
+        return "def target(x: int) -> int { return x + 7; } "
+        "def probe(x: int) -> int { return __musttail(target(x)); }\n";
+    }
     if intr.dispatch == IntrinsicDispatch.FLOAT_BITS {
         return "def probe(x: f64) -> i64 { return " + intr.name + "(x); }\n";
     }
@@ -138,12 +147,22 @@ test "every registry intrinsic lowers through its registered emitter" {
     entries = INTRINSIC_REGISTRY.entries();
     assert len(entries) >= 7 , "registry lost entries";
     for intr in entries {
-        (prog, ir_mod) = _compile_src(_probe_source(intr), gc_mode=intr.gc_mode_gate);
+        (prog, ir_mod) = _compile_src(
+            _probe_source(intr),
+            gc_mode=intr.gc_mode_gate,
+            memory_profile="nogc"
+                if intr.dispatch == IntrinsicDispatch.MUSTTAIL
+                else "managed"
+        );
         errs = [str(e) for e in prog.errors_had] if prog.errors_had else [];
         assert not errs , f"{intr.name}: compile errors: {errs}";
         eng = ir_mod.gen.native_engine;
         assert eng is not None , f"{intr.name}: no native engine produced";
-        if intr.dispatch == IntrinsicDispatch.FLOAT_BITS {
+        if intr.dispatch == IntrinsicDispatch.MUSTTAIL {
+            assert "musttail call" in str(ir_mod.gen.llvm_ir);
+            fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);
+            assert fn(35) == 42;
+        } elif intr.dispatch == IntrinsicDispatch.FLOAT_BITS {
             fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_double);
             assert fn(1.5) == BITS_1_5 , f"{intr.name}(1.5) != IEEE-754 bits";
             assert fn(-0.0) == BITS_NEG_ZERO , f"{intr.name}(-0.0) lost sign bit";

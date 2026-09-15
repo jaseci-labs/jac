@@ -1,7 +1,7 @@
 import struct;
 
-glob MAGIC: bytes = b"JSCAT004",
-     FORMAT_VERSION: int = 4,
+glob MAGIC: bytes = b"JSCAT006",
+     FORMAT_VERSION: int = 6,
      HEADER_FMT: str = "<8sI6I8QII",
      HEADER_SIZE: int = 108,
      TY_UNKNOWN: int = 0,

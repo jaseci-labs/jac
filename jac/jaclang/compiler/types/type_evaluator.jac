@@ -24,6 +24,7 @@ import from jaclang.compiler.frontend.unitree {
     CfgExpr,
     CodeBlockStmt,
     CompareExpr,
+    CompilerAnnotation,
     ConcurrentExpr,
     CtrlStmt,
     DictCompr,
@@ -511,6 +512,9 @@ walker TypeEvaluator {
     def get_type_of_class(node_: Archetype) -> ClassType;
     def get_type_of_enum(node_: Enum) -> ClassType;
     def get_type_of_ability(node_: Ability) -> TypeBase;
+    def _set_foreign_resource_contract(typ: ClassType, arch: Archetype) -> None;
+    def _set_foreign_call_contract(fn: FunctionType, ability: Ability) -> None;
+    def _set_lifetime_contract(fn: FunctionType, annotations: list[Expr | None], result: Expr | None) -> None;
     def _apply_function_decorators(
         node_: Ability, func_type: FunctionType
     ) -> FunctionType;

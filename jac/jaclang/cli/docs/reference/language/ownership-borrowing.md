@@ -24,6 +24,7 @@ The checker is one of the compiler's required analyses on the native pathway: it
 |---|---|---|
 | Own and transfer state | `own`, owned fields, generic containers, consuming returns/callbacks | [Owners](#declaring-an-owner), [containers](#containers-take-ownership) |
 | Borrow state safely | `&`, `&mut`, field splitting, inferred/explicit receivers, local views and borrowed results | [Borrowing](#borrowing), [receivers](#receiver-modes), [views](#views-and-zero-copy-current-state-and-direction) |
+| Express lifetime dependencies | `T from owner`, multiple sources, named Callable parameters | [Explicit lifetime contracts](#explicit-lifetime-contracts) |
 | Update ownership in place | Optional `take`, same-typed `swap`, container `pop` | [Places](#moving-out-of-places-take-and-swap) |
 | Require consumption or prevent writes | `lin`, `imm` annotations, `imm` freeze operator | [Markers](#imm-and-lin-markers), [freezing](#the-imm-operator-promoting-into-the-immutable-world) |
 | Scope allocation and graph lifetime | Named/anonymous Region, `in`, `region_of`, elision, reboxing, seal, partition/reabsorb, inferred regions | [Regions](#regions-first-class-region-handles-and-in-opens) |
@@ -177,6 +178,80 @@ with entry {
     take_final(a);
 }
 ```
+
+## Explicit lifetime contracts
+
+The evaluator migration introduces `from` clauses that describe dependency
+separately from ownership. The implementation and remaining validation gates
+are tracked in [Lifetime contracts for the native evaluator](../../internals/foreign-lifetime-contracts.md).
+
+```jac
+def choose(a: &Item, b: &Item, first: bool) -> &Item from (a, b) {
+    if first { return a; }
+    return b;
+}
+
+def open_cursor(connection: &Connection) -> own Cursor from connection;
+type Choose = Callable[
+    [left: &Item, right: &Item, first: bool], &Item from (left, right)
+];
+```
+
+`own Cursor from connection` owns the cursor's release obligation and still
+requires the connection to remain alive through the cursor's destruction.
+Moving the cursor preserves that requirement. A last read does not end the
+dependency of an owned value; consumption or destruction does. A borrowed
+value can stop borrowing after its last use.
+
+The names in a Callable annotation introduce parameter labels for its
+contract. They resolve to parameter positions: changing `left` to `source`
+consistently leaves the contract unchanged. Unknown, repeated, self-referential,
+or cyclic sources are invalid (`E1320`). Return bodies cannot substitute an
+owner absent from the declared contract. A consuming call must preserve its
+arguments' dependencies; it can accept an owner and its dependent together
+when both parameter contracts describe that transfer.
+
+### Foreign release obligations
+
+```jac
+@foreign_resource(abi="word", empty=1, drop=close_handle,
+                  aliasing="shared", reentrant_drop=True)
+obj Handle;
+
+import from c {
+    @foreign_call(requires=["gil"], errors="none", reentrant=True)
+    def close_handle(value: own Handle);
+}
+```
+
+A foreign resource is an opaque native value with declared cleanup. Its
+`own` annotation owns one release obligation, not exclusive access to the
+foreign object. Shared foreign resources do not imply LLVM `noalias`,
+`readonly`, deep immutability, or thread safety. They use their declared empty
+sentinel and do not acquire Jac RC headers. Replacement state must be published
+before invoking a destructor that can reenter user code.
+
+`foreign_call` describes required capabilities, the foreign error protocol, and
+whether the call can reenter. C declarations are trusted; synchronous native
+`nogc` bodies are checked against the same annotation. It is not an ordinary
+runtime decorator. A malformed declaration is `E1321`. These contracts do not
+prove that borrowed container elements survive mutation or callbacks; consult
+the implementation status before using a new storage or suspension shape.
+
+```jac
+@foreign_call(errors="none", reentrant=False)
+def next_index(index: i64) -> i64 {
+    return wrapping_add(index, 1);
+}
+```
+
+The native body check includes implicit calls produced by arithmetic, cleanup,
+and error handling. Calling an unannotated Jac function, or performing an
+operation that uses Jac's exception slot, rejects this contract with `E5120`.
+`errors="none"` also rejects calls that may set a Python error. GIL and reentry
+effects must fit the declaration. Use normal Jac functions when ordinary Jac
+exception propagation is needed. This annotation does not alter data layouts
+or introduce a C export adapter.
 
 ## Moving out of places: `take` and `swap`
 
@@ -818,3 +893,11 @@ The native backend does hand the checked facts to the optimizer: heap-typed para
 - [Ownership Checker Specification](../../internals/ownership-checker-spec.md) -- the authoritative statement of what each `E13xx` code guarantees, the checker's symbol-level granularity, and the facts contract backends consume.
 - [Errors and Warnings](../diagnostics.md#ownership-borrow-errors) -- ownership, view, place, and zero-RC enforcement diagnostics.
 - [Native Compilation Reference](native-pathway.md#memory-management) -- the `--memory` profiles, zero-RC ownership compilation, and how the native backend proves [reference-count elision](native-pathway.md#reference-count-elision) independently of this checker.
+
+Borrowed aliases preserve their source dependencies. A declared source may name
+the original owner through such an alias, but an owned intermediate resource
+cannot be replaced by its parent: a cursor still needs the cursor itself alive.
+A call may consume an owner alongside a view declared `from owner` when that
+view has no subsequent use. Both the declared source and last-use condition are
+checked. Return contracts follow transitive parameter dependencies; naming a
+borrowed intermediary cannot hide a consumed parameter.

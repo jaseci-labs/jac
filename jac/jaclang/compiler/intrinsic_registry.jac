@@ -5,7 +5,8 @@ enum IntrinsicDispatch {
     MEM_LOAD = "mem_load",
     MEM_STORE = "mem_store",
     ATOMIC_XCHG = "atomic_xchg",
-    CALL_DTOR = "call_dtor"
+    CALL_DTOR = "call_dtor",
+    MUSTTAIL = "musttail"
 }
 
 obj IntrinsicEntry {
@@ -42,6 +43,12 @@ obj IntrinsicRegistry {
 
 glob INTRINSIC_REGISTRY = IntrinsicRegistry(
          _entries={
+             "__musttail": IntrinsicEntry(
+                 name="__musttail",
+                 param_specs=["call"],
+                 result_spec="call_result",
+                 dispatch=IntrinsicDispatch.MUSTTAIL
+             ),
              "__rc_debug_enable": IntrinsicEntry(
                  name="__rc_debug_enable",
                  param_specs=[],

@@ -45,6 +45,13 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
     } elif isinstance(t, _ClassType) {
         lowered = self._lower_class_type(t);
     } elif isinstance(t, _UnionType) {
+        import from jaclang.compiler.foreign_refs { foreign_resource_name }
+        if any(foreign_resource_name(member) is not None for member in (t.types or [])) {
+            self.emit(
+                E5120,
+                reason="foreign resources use their ABI null value, not Jac optional or union storage"
+            );
+        }
         lowered = ir.VoidType();
         _members: list = [];
         for m in (t.types or []) {
@@ -759,6 +766,9 @@ impl NaIRGenPass._lower_view_container(t: any) -> (ir.Type | None) {
 }
 
 impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
+    if t.shared.foreign_resource is not None {
+        return self._foreign_resource_type(t);
+    }
     cname = t.shared.class_name;
     if t.is_builtin("Node") or t.is_builtin("Edge") or t.is_builtin("Walker") {
         return ir.IntType(8).as_pointer();
@@ -1435,6 +1445,11 @@ impl NaIRGenPass._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.T
 }
 
 impl NaIRGenPass._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type {
+    if isinstance(type_expr, uni.Expr) and isinstance(type_expr.type, ClassType)
+        and type_expr.type.shared.foreign_resource is not None {
+        typ = self._foreign_resource_type(type_expr.type);
+        return ir.IntType(64) if self._foreign_word_type(typ) else typ;
+    }
     if type_expr is None {
         return ir.VoidType();
     }
@@ -1449,6 +1464,12 @@ impl NaIRGenPass._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type 
         type_name = type_expr.value;
     }
     if type_name is not None and type_name in self.clib_struct_names {
+        if isinstance(type_expr.parent, uni.SubTag)
+            and type_expr.parent.ownership in (
+                OwnershipKind.BORROW, OwnershipKind.MUT_BORROW
+            ) {
+            return self.struct_types[type_name].as_pointer();
+        }
         if type_name in self.clib_struct_abi_types {
             return self.clib_struct_abi_types[type_name];
         }
@@ -1571,6 +1592,12 @@ impl NaIRGenPass._consume_bool(val: ir.Value) -> ir.Value {
 }
 
 impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
+    if self._foreign_resource_kind(val.type) is not None {
+        self.emit(
+            E5120, reason="use the typed foreign ABI to test a foreign resource"
+        );
+        return ir.Constant(ir.IntType(1), 0);
+    }
     if self._str_desc_ty is not None and val.type == self._str_desc_ty {
         return self.builder.icmp_signed(
             "!=",
@@ -1766,6 +1793,13 @@ impl NaIRGenPass._jacval_is_none(jv: ir.Value, negate: bool) -> ir.Value {
 }
 
 impl NaIRGenPass._zero_const(ty: ir.Type) -> ir.Constant {
+    kind = self._foreign_resource_kind(ty);
+    spec = self._foreign_resource_specs.get(kind) if kind is not None else None;
+    if spec is not None {
+        empty = ir.Constant(ir.IntType(64), spec[1]).inttoptr(ty);
+        assert isinstance(empty, ir.Constant);
+        return empty;
+    }
     if isinstance(ty, (ir.PointerType, ir.Aggregate)) {
         return ir.Constant(ty, None);
     }
@@ -2105,6 +2139,13 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
     if val.type == target_type {
         return val;
     }
+    if self._foreign_resource_kind(val.type) is not None
+        or self._foreign_resource_kind(target_type) is not None {
+        self.emit(
+            E5120, reason="foreign resources cannot be cast, boxed, or reinterpreted"
+        );
+        return self._zero_const(target_type);
+    }
 
     if isinstance(val.type, ir.PointerType)
         and isinstance(target_type, ir.PointerType) {
@@ -2398,6 +2439,19 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
 
     if isinstance(val.type, ir.PointerType)
         and isinstance(target_type, ir.PointerType) {
+        if not target_type.is_opaque
+            and isinstance(target_type.pointee, ir.FunctionType) {
+            if isinstance(val, ir.Constant) and val.constant in (None, 0) {
+                return ir.Constant(target_type, None);
+            }
+            self.emit(
+                E5092,
+                kind="function pointer coercion",
+                name=f"{val.type} -> {target_type}",
+                help_text="A function pointer requires a bare function with the declared native ABI. Closure environments cannot be reinterpreted as code addresses."
+            );
+            return ir.Constant(target_type, None);
+        }
         _lc_src = self._spec_from_list_slot_type(val.type);
         _lc_dst = self._spec_from_list_slot_type(target_type);
         if (

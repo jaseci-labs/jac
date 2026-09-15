@@ -22,6 +22,7 @@ import from jaclang.compiler.frontend.unitree {
     CodeBlockStmt,
     CommentToken,
     CompareExpr,
+    CompilerAnnotation,
     ConcurrentExpr,
     ConnectOp,
     ContextAwareNode,

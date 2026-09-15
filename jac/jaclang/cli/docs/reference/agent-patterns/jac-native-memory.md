@@ -156,3 +156,81 @@ Under `--memory nogc` an enforced module compiles **headerless**: owned payloads
 - Spell the must-consume marker `lin`, not `linear`. A static ownership contract does not validate aliases hidden behind `any`, opaque C/Wasm handles, or separately obtained managed references.
 - `managed(x)` is the identity function on the Python backend; annotations there are checked, then erased.
 - `jac build --as native` does not take the gc flags; use file-level `jac build --native` for zero-RC builds.
+
+## Evaluator lifetime contracts
+
+The accepted design and its current implementation status are documented in
+[Lifetime contracts for the native evaluator](../../internals/foreign-lifetime-contracts.md).
+It separates `own`/`lin` release obligations from `from` dependencies, preserves
+contracts in named Callable parameters and interface caches, and specifies
+foreign-resource ABI, reentry, GIL, and error-state requirements. Follow that
+status when working on PR 9188; do not infer completed evaluator migration from
+a successful ownership test or a `nogc` build.
+
+Import CPython resource types and primitives from
+`jaclang.runtime.python.references`. They use the ordinary `foreign_resource`
+and `foreign_call` declarations; spelling a type `PyObjectRef` or naming a C
+function `jacpy_*` does not establish a lifetime or error contract.
+
+Native `nogc` helper bodies can declare `foreign_call` too. Those bodies are
+checked, including calls introduced by arithmetic and cleanup. All callees must
+preserve the external error protocol and the declared capability/reentry bounds.
+Unannotated Jac functions retain Jac error handling. These effects do not
+change the argument layout or provide a C export adapter.
+
+For optional object lookups, `evaluator_lookup.PyLookupRef` retains the separate
+error, absent, and owned-value outcomes without a heap wrapper. Its private
+missing marker cannot be used as a Python object; consume the result through
+`jacpy_lookup_take`.
+
+An explicit call to a foreign resource's declared destructor can consume a
+dependent owner without restating the dependency in its parameter. The source
+owners remain live through cleanup. This exception follows the resolved
+declaration; another same-named consumer cannot erase the dependency.
+
+An `own PyStackRef from frame` remains dependent on that frame and needs
+promotion before suspension or frame destruction. A `lin PyFrameRef from tstate`
+owns the active-frame cleanup obligation, not a generator's embedded allocation.
+Close dependent executable references before consuming a thread frame. Consult
+the migration status before assuming general foreign storage or reentry stability
+is implemented; the current opcode evaluator remains C.
+
+For staged foreign transfers, describe the release obligation separately from
+the caller's storage. `evaluator_binding.PyBindingRef` tracks the unconsumed
+argument suffix and preserves stackref bits when moving values into locals.
+`evaluator_calls.PyCallArgsRef` frees its temporary array only after frame
+binding consumes the entries. A returned frame must retain dependencies on
+borrowed caller arguments; freeing an array alone does not make borrowed
+references heap-safe. Conditional C transfer slots must state when ownership
+moves and what happens before that point; do not silently turn a conditional
+steal into an unconditional `own` parameter.
+
+A multi-place foreign transfer may require an interval with no errors or
+reentry. The starred-unpack tail in `evaluator_unpack` uses a native
+`foreign_call(errors="none", reentrant=False)` helper to keep list entry
+transfers and the final size update together. Borrowed results from locals or
+builtins APIs must name their frame/interpreter source, not a temporary new
+reference that is closed before return.
+
+Borrowed aliases preserve their source dependencies. A declared source may name
+the original owner through such an alias, but an owned intermediate resource
+cannot be replaced by its parent: a cursor still needs the cursor itself alive.
+A call may consume an owner alongside a view declared `from owner` when that
+view has no subsequent use. Both the declared source and last-use condition are
+checked. Return contracts follow transitive parameter dependencies; naming a
+borrowed intermediary cannot hide a consumed parameter.
+
+The generated evaluator's `PyVMRef` is a linear aggregate tied to caller storage
+and a thread. Its typed C scratch places preserve the pinned transfer ledger,
+including transient aliases that are not separate references. Do not add drops
+for every scratch field, clear const caller arrays, or promote every stackref.
+The checker tracks the aggregate, not individual C-slot lifetimes. Keep scratch
+addresses in the outer evaluation storage so they survive native tail transfers.
+Edit `bootstrap/python/generate_evaluator.py` and regenerate its checked-in
+outputs; do not hand-edit handler output or restore C fallback handlers.
+JIT stencils use the same native uop policies under a linear `PyJITStepRef`.
+A consumed step permission publishes the continuation to caller storage; its
+C trampoline regains access after the native body returns. Preserve the pinned
+patch points and `preserve_none` ABI, and require native bodies and expression
+adapters to inline into stencils. Consult the migration status before claiming
+per-slot ownership proof or compatibility/performance parity.

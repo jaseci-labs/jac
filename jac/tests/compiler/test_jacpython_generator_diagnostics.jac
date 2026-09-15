@@ -51,3 +51,29 @@ test "invalid augmented targets identify the expression and its source span" {
         assert caught , source;
     }
 }
+
+test "async generators reject value returns even with unreachable yields" {
+    for source in [
+        "async def f():\n await work\n yield\n return 123\n",
+        "async def f():\n yield\n return None\n",
+        "async def f():\n if False:\n  yield\n return 12\n",
+        "async def f():\n return 12\n yield\n"
+    ] {
+        caught = False;
+        try {
+            pycompile(source, "async_return.py", "exec");
+        } except SyntaxError as error {
+            caught = True;
+            assert error.msg == "'return' with value in async generator";
+            assert error.filename == "async_return.py";
+        }
+        assert caught , source;
+    }
+    for source in [
+        "async def f():\n def inner():\n  yield\n return 12\n",
+        "async def f():\n yield\n def inner():\n  return 12\n",
+        "async def f():\n yield\n return\n"
+    ] {
+        pycompile(source, "async_return.py", "exec");
+    }
+}

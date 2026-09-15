@@ -11,6 +11,15 @@ impl NaIRGenPass._forward_declare_functions(module: uni.Module) -> None {
 impl NaIRGenPass._apply_ownership_param_attrs(
     func: ir.Function, params: list[uni.ParamVar], base: int
 ) -> None {
+    foreign_abi = self._foreign_resource_kind(func.function_type.return_type) is not None
+        or any(
+            self._foreign_resource_kind(arg.type) is not None
+                or (isinstance(arg.type, ir.PointerType)
+                    and not arg.type.is_opaque
+                    and isinstance(arg.type.pointee, ir.IdentifiedStructType)
+                    and arg.type.pointee.name in self.clib_struct_names)
+            for arg in func.args
+        );
     for (i, p) in enumerate(params) {
         if p.type_tag is None {
             continue;
@@ -20,7 +29,16 @@ impl NaIRGenPass._apply_ownership_param_attrs(
             continue;
         }
         arg = func.args[i + base];
-        if not isinstance(arg.type, ir.PointerType) {
+
+        if self._foreign_resource_kind(arg.type) is not None {
+            if kind not in (OwnershipKind.OWN, OwnershipKind.BORROW) {
+                self.emit(
+                    E5120, reason="foreign resource parameters require own or a shared borrow"
+                );
+            }
+            continue;
+        }
+        if foreign_abi or not isinstance(arg.type, ir.PointerType) {
             continue;
         }
         if kind
@@ -88,12 +106,16 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         and not isinstance(nd.parent, uni.Archetype)
         and nd.find_parent_of_type(uni.Ability) is None
         and name not in self.generator_fns {
-        for _dx in nd.decorators {
+        _runtime_decorators = [
+            decorator for decorator in nd.decorators
+            if not isinstance(decorator, uni.CompilerAnnotation)
+        ];
+        for _dx in _runtime_decorators {
             if isinstance(_dx, uni.Name) {
                 _dec_names.append(_dx.value);
             }
         }
-        if len(_dec_names) != len(nd.decorators) {
+        if len(_dec_names) != len(_runtime_decorators) {
             _dec_names = [];
         }
     }
@@ -118,6 +140,12 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
                 _def_module.source.file_path, name
             );
         }
+        if _emit_name in self.clib_functions {
+            import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+            _source = _def_module.source.file_path if _def_module is not None
+                else self.ir_in.source.file_path;
+            _emit_name = f"__jac_native_{native_safe_sym(os.path.realpath(_source))}_{name}";
+        }
         if nd.access
             and nd.access.tag.name == Tok.KW_PRIV
             and nd.find_parent_of_type(uni.Archetype) is None {
@@ -136,6 +164,7 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
     }
     self._apply_ownership_param_attrs(func, sig.get_parameters(), 0);
+    self._record_linked_decl(func, nd);
     self.func_symtab[name] = func;
     _fdm = nd.find_parent_of_type(uni.Module);
     if _fdm is not None {
@@ -318,15 +347,19 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
             }
         } else {
             sysv_ret_type = self._resolve_clib_type(sig.return_type);
-            sysv_ret_plan["type"] = sysv_ret_type;
+            sysv_ret_plan["type"] = self._resolve_jac_type(sig.return_type)
+                if isinstance(sig.return_type, uni.Expr)
+                    and isinstance(sig.return_type.type, ClassType)
+                    and sig.return_type.type.shared.foreign_resource is not None
+                else sysv_ret_type;
         }
         sysv_fnty = ir.FunctionType(
             sysv_ret_type, sysv_param_types, var_arg=is_variadic
         );
-        if name in self.extern_funcs {
+        if name in self.clib_functions {
+            sysv_func = self.clib_functions[name];
+        } elif name in self.extern_funcs {
             sysv_func = self.extern_funcs[name];
-        } elif name in self.func_symtab {
-            sysv_func = self.func_symtab[name];
         } else {
             sysv_func = ir.Function(self.llvm_module, sysv_fnty, name=name);
         }
@@ -363,12 +396,17 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
             }
         }
         sysv_ret_plan["is_str"] = _fdecl["ret"] == "str";
+        import from jaclang.compiler.foreign_refs { borrowed_return_source }
+        sysv_ret_plan["borrowed_foreign"] = borrowed_return_source(nd) is not None;
         self.clib_fn_abi[name] = {
             "params": param_plan,
             "ret": sysv_ret_plan,
             "sret": sysv_sret
         };
         self.func_symtab[name] = sysv_func;
+        self.clib_functions[name] = sysv_func;
+        self.extern_funcs[name] = sysv_func;
+        self._record_linked_decl(sysv_func, nd);
         self.has_native_code = True;
         return;
     }
@@ -392,11 +430,16 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     ret_type = self._resolve_clib_type(sig.return_type);
 
     fnty = ir.FunctionType(ret_type, param_types, var_arg=is_variadic);
-    self.clib_declared_sigs[name] = (ret_type, list(param_types));
-    if name in self.extern_funcs {
+    declared_ret = self._resolve_jac_type(sig.return_type)
+        if isinstance(sig.return_type, uni.Expr)
+            and isinstance(sig.return_type.type, ClassType)
+            and sig.return_type.type.shared.foreign_resource is not None
+        else ret_type;
+    self.clib_declared_sigs[name] = (declared_ret, list(param_types));
+    if name in self.clib_functions {
+        func = self.clib_functions[name];
+    } elif name in self.extern_funcs {
         func = self.extern_funcs[name];
-    } elif name in self.func_symtab {
-        func = self.func_symtab[name];
     } else {
         func = ir.Function(self.llvm_module, fnty, name=name);
     }
@@ -405,6 +448,9 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
     }
     self.func_symtab[name] = func;
+    self.clib_functions[name] = func;
+    self.extern_funcs[name] = func;
+    self._record_linked_decl(func, nd);
     self.has_native_code = True;
 }
 
@@ -418,6 +464,12 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         return;
     }
     func = self.func_symtab.get(name);
+    declaration_module = nd.find_parent_of_type(uni.Module);
+    if declaration_module is not None {
+        func = self._module_functions.get(
+            (os.path.realpath(declaration_module.source.file_path), name), func
+        );
+    }
     if func is None {
         if id(nd) in self._capability_demotions {
             self._claimed_capability_demotions.add(id(nd));
@@ -425,10 +477,13 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         return;
     }
 
-    if name in self.clib_extern_names {
+    import from jaclang.compiler.foreign_refs { is_foreign_ability }
+    if is_foreign_ability(nd) {
         return;
     }
 
+    self._record_tail_requirement(func, nd);
+    self._record_foreign_requirement(func, nd);
     _pre_viols = self._capability_demotions.get(id(nd));
     if _pre_viols is not None {
         self._claimed_capability_demotions.add(id(nd));

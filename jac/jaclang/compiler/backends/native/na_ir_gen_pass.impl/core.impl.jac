@@ -92,6 +92,7 @@ impl NaIRGenPass.postinit -> None {
 }
 
 impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
+    self._validate_foreign_resources();
     import from jaclang.compiler.passes.capability_check_pass {
         native_capability_violations,
         partition_native_capability_violations
@@ -170,6 +171,7 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     }
     self._codegen_entry(_entry_nodes);
     self._finalize_trace_lookup();
+    self._validate_foreign_protocols();
 
     if self.has_native_code {
         if self.errors_had {
@@ -270,7 +272,7 @@ impl NaIRGenPass._llvm_type_str(ty: ir.Type) -> str {
         return "void";
     }
     if isinstance(ty, ir.PointerType) {
-        if ty?.pointee {
+        if not ty.is_opaque {
             if isinstance(ty.pointee, ir.IntType) and ty.pointee.width == 8 {
                 return "i8*";
             }
@@ -1251,6 +1253,8 @@ impl NaIRGenPass._record_linked_decl(
         return;
     }
     self._linked_fn_decls[id(func)] = (func, decl);
+    self._record_tail_requirement(func, decl);
+    self._record_foreign_requirement(func, decl);
 }
 
 impl NaIRGenPass._ensure_dep_inference(dep_mod: uni.Module) -> None {

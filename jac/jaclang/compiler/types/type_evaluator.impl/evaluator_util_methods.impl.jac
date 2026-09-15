@@ -1619,6 +1619,10 @@ impl TypeEvaluator._create_callable_type(
     type_args_expr: Expr | None, error_node: Expr
 ) -> FunctionType {
     param_types: list[TypeBase] = [];
+    param_ownership: list[OwnershipKind] = [];
+    annotations: list[Expr | None] = [];
+    result_annotation: Expr | None = None;
+    return_ownership = OwnershipKind.NONE;
     return_type: TypeBase = UnknownType();
     is_gradual: bool = False;
     if type_args_expr is None {
@@ -1638,9 +1642,15 @@ impl TypeEvaluator._create_callable_type(
             is_gradual = True;
         } elif isinstance(first_arg, ListVal) {
             for param_expr in first_arg.values {
+                annotations.append(param_expr);
                 param_type = self.get_type_of_expression(param_expr);
                 param_type = self._convert_to_instance(param_type);
                 param_types.append(param_type);
+                param_ownership.append(
+                    param_expr.ownership
+                        if isinstance(param_expr, UnaryExpr)
+                        else OwnershipKind.NONE
+                );
             }
         } else {
             resolved_first = self.get_type_of_expression(first_arg);
@@ -1658,6 +1668,10 @@ impl TypeEvaluator._create_callable_type(
 
         if len(type_arg_values) >= 2 {
             return_type_expr = type_arg_values[1];
+            result_annotation = return_type_expr;
+            return_ownership = return_type_expr.ownership
+                if isinstance(return_type_expr, UnaryExpr)
+                else OwnershipKind.NONE;
             return_type = self.get_type_of_expression(return_type_expr);
             return_type = self._convert_to_instance(return_type);
         } else {
@@ -1673,7 +1687,21 @@ impl TypeEvaluator._create_callable_type(
         return_type = self._convert_to_instance(return_type);
         is_gradual = True;
     }
-    return create_callable_type(param_types, return_type, is_gradual=is_gradual);
+    result = create_callable_type(param_types, return_type, is_gradual=is_gradual);
+    for (index, ownership) in enumerate(param_ownership) {
+        result.parameters[index].ownership = ownership;
+    }
+    result.return_ownership = return_ownership;
+    for (index, annotation) in enumerate(annotations) {
+        if isinstance(annotation, UnaryExpr) {
+            result.parameters[index].linear = getattr(annotation, "linear", False);
+            if getattr(annotation, "annotation_name", "") {
+                result.parameters[index].name = annotation.annotation_name;
+            }
+        }
+    }
+    self._set_lifetime_contract(result, annotations, result_annotation);
+    return result;
 }
 
 impl TypeEvaluator._get_special_form_type(

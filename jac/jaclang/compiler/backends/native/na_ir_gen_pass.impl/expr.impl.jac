@@ -501,6 +501,24 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     return anon_fn;
 }
 
+impl NaIRGenPass._resolved_function_value(nd: uni.Expr) -> (ir.Function | None) {
+    import from jaclang.compiler.symbol_utils { ability_of_symbol, resolve_expr_symbol }
+    import from jaclang.compiler.foreign_refs { is_foreign_ability }
+    declaration = ability_of_symbol(resolve_expr_symbol(nd));
+    if declaration is None or declaration.name_ref is None {
+        return None;
+    }
+    name = declaration.name_ref.sym_name;
+    if is_foreign_ability(declaration) {
+        return self.clib_functions.get(name);
+    }
+    module = declaration.parent_scope;
+    if isinstance(module, uni.Module) {
+        return self._module_functions.get((os.path.realpath(module.source.file_path), name));
+    }
+    return None;
+}
+
 impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     var_name = nd.value;
     _ct_owner = self._ct_type_param_owner(nd);
@@ -540,6 +558,10 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
             );
         }
         return value;
+    }
+    declared_function = self._resolved_function_value(nd);
+    if declared_function is not None {
+        return declared_function;
     }
     if var_name in self.func_symtab {
         return self.func_symtab[var_name];
@@ -1818,6 +1840,10 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
         return self._codegen_chained_filter(nd);
     }
     if nd.is_attr {
+        declared_function = self._resolved_function_value(nd);
+        if declared_function is not None {
+            return declared_function;
+        }
         target_name = self._get_name(nd.target);
         right_name = self._get_name(nd.right);
 

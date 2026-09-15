@@ -75,6 +75,9 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
             continue;
         }
         slot_ty = allocation_type.pointee;
+        if self._foreign_resource_kind(slot_ty) is not None {
+            continue;
+        }
         _lu_ptr = isinstance(slot_ty, ir.PointerType) and slot_ty?.pointee;
         if not _lu_ptr
             and (
@@ -91,7 +94,7 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
         }
         val = self._rc_unwrap_optional(self.builder.load(alloca, name=f"lu.{name}"));
         self._emit_rc_release_typed(val, op="last_use", loc="");
-        self.builder.store(ir.Constant(slot_ty, None), alloca);
+        self.builder.store(self._zero_const(slot_ty), alloca);
     }
 }
 
@@ -321,6 +324,12 @@ impl NaIRGenPass._codegen_delete_location(
 }
 
 impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
+    if isinstance(nd.expr, uni.FuncCall)
+        and isinstance(nd.expr.target, uni.Name)
+        and nd.expr.target.sym_name == "__musttail" {
+        self._codegen_expr(nd.expr);
+        return;
+    }
     _gc = self._gen_ctx;
     if _gc is not None and self.builder.function is _gc.resume_fn {
         _gr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
@@ -422,7 +431,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                                 );
                             } else {
                                 self.builder.store(
-                                    ir.Constant(tup_alloca.type.pointee, None),
+                                    self._zero_const(tup_alloca.type.pointee),
                                     tup_alloca
                                 );
                             }
@@ -495,7 +504,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     if isinstance(func_ret_type, ir.VoidType) {
         self.builder.ret_void();
     } elif isinstance(func_ret_type, ir.PointerType) {
-        self.builder.ret(ir.Constant(func_ret_type, None));
+        self.builder.ret(self._zero_const(func_ret_type));
     } else {
         _fb = 0 if isinstance(func_ret_type, (ir.IntType, ir.DoubleType)) else None;
         self.builder.ret(ir.Constant(func_ret_type, _fb));
@@ -2390,7 +2399,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 coerced = self._coerce_type(value, alloca.pointee_type);
             }
 
-            _is_raw_int_ptr = getattr(coerced, 'opname', '') == 'inttoptr';
+            _is_raw_int_ptr = getattr(coerced, 'opname', '') == 'inttoptr'
+                and self._foreign_resource_kind(coerced.type) is None;
             self._register_region_handle_var(nd, var_name);
             if (
                 isinstance(alloca.pointee_type, ir.PointerType)
@@ -2439,6 +2449,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             and var_name in self.nogc_no_free_vars
                         ) {
                         old_val = self.builder.load(alloca, name=f"{var_name}.old");
+                        if self._foreign_resource_kind(alloca.pointee_type) is not None {
+                            self.builder.store(coerced, alloca);
+                        }
                         self._emit_rc_release_typed(
                             old_val,
                             op="overwrite",
@@ -2483,7 +2496,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         );
                         coerced = self.builder.insert_value(
                             self.builder.insert_value(
-                                ir.Constant(alloca.pointee_type, None),
+                                self._zero_const(alloca.pointee_type),
                                 _osr_new,
                                 0,
                                 name="own.re.d0"
@@ -2769,7 +2782,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 if isinstance(_gxfer_slot.type, ir.PointerType)
                     and isinstance(_gxfer_slot.type.pointee, ir.PointerType) {
                     self.builder.store(
-                        ir.Constant(_gxfer_slot.type.pointee, None), _gxfer_slot
+                        self._zero_const(_gxfer_slot.type.pointee), _gxfer_slot
                     );
                 }
             }
@@ -2889,7 +2902,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } else {
                     self.builder.position_at_end(_ebb);
                 }
-                self.builder.store(ir.Constant(var_type, None), alloca);
+                self.builder.store(self._zero_const(var_type), alloca);
                 self.builder.position_at_end(_cur_bb);
             }
             self._register_region_handle_var(nd, var_name);
@@ -2897,7 +2910,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 var_type, ir.PointerType
             )
                 or (self._str_desc_ty is not None and var_type == self._str_desc_ty) {
-                if getattr(value, 'opname', '') == 'inttoptr' {
+                if getattr(value, 'opname', '') == 'inttoptr'
+                    and self._foreign_resource_kind(value.type) is None {
                     self.param_vars.add(var_name);
                 } else {
                     import from jaclang.compiler.frontend.constant { OwnershipKind }
@@ -2955,7 +2969,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             );
                             value = self.builder.insert_value(
                                 self.builder.insert_value(
-                                    ir.Constant(var_type, None),
+                                    self._zero_const(var_type),
                                     _osf_new,
                                     0,
                                     name="own.lit.d0"
@@ -2975,6 +2989,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             and var_name in self.nogc_no_free_vars
                         ) {
                         old_val = self.builder.load(alloca, name=f"{var_name}.old");
+                        if self._foreign_resource_kind(var_type) is not None {
+                            self.builder.store(value, alloca);
+                        }
                         if _own_str_tgt {
                             self._nogc_str_free_owned(old_val);
                         }

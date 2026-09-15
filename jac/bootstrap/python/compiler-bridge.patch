@@ -272,7 +272,11 @@
      {"builtins", NULL},
 --- a/Makefile.pre.in
 +++ b/Makefile.pre.in
-@@ -381,38 +381,2 @@
+@@ -377,75 +377,60 @@
+
+ ##########################################################################
+ # Parser
+
 -PEGEN_OBJS=		\
 -		Parser/pegen.o \
 -		Parser/pegen_errors.o \
@@ -313,29 +317,130 @@
 -		$(TOKENIZER_HEADERS)
 +PARSER_OBJS= Parser/myreadline.o
 +PARSER_HEADERS= $(srcdir)/Include/internal/pycore_parser.h
-@@ -427,1 +391,5 @@
+
+ ##########################################################################
+ # Python
+
+ PYTHON_OBJS=	\
+ 		Python/_contextvars.o \
+ 		Python/_warnings.o \
+ 		Python/Python-ast.o \
 -		Python/Python-tokenize.o \
 +		Python/jac_compile.o \
 +		Python/jac_runtime.o \
 +		Python/jac_objects.o \
 +		Python/jac_bindings.o \
++		Python/jac_evaluator_refs.o \
++		Python/jac_evaluator_support.o \
++		Python/jac_evaluator_frames.o \
++		Python/jac_evaluator_frame_clear.o \
++		Python/jac_evaluator_monitoring.o \
++		Python/jac_evaluator_objects.o \
++		Python/jac_evaluator_errors.o \
++		Python/jac_evaluator_imports.o \
++		Python/jac_evaluator_exceptions.o \
++		Python/jac_evaluator_arguments.o \
++		Python/jac_evaluator_binding.o \
++		Python/jac_evaluator_bind_locals.o \
++		Python/jac_evaluator_calls.o \
++		Python/jac_evaluator_legacy.o \
++		Python/jac_evaluator_context.o \
++		Python/jac_evaluator_unpack.o \
++		Python/jac_evaluator_matching.o \
++		Python/jac_evaluator_groups.o \
++		Python/jac_evaluator_recursion.o \
++		Python/jac_evaluator_recursion_policy.o \
++		Python/jac_evaluator_utilities.o \
++		Python/jac_evaluator_metadata.o \
++		Python/jac_evaluator_entry.o \
++		Python/jac_evaluator_entry_policy.o \
++		Python/jac_evaluator_activation.o \
 +		Python/jacpython.o \
-@@ -429,3 +392,0 @@
+ 		Python/asdl.o \
 -		Python/assemble.o \
 -		Python/ast.o \
 -		Python/ast_preprocess.o \
-@@ -437,2 +397,0 @@
+ 		Python/ast_unparse.o \
+ 		Python/bltinmodule.o \
+ 		Python/brc.o \
+-		Python/ceval.o \
+ 		Python/codecs.o \
 -		Python/codegen.o \
 -		Python/compile.o \
-@@ -444,1 +402,0 @@
+ 		Python/context.o \
+ 		Python/critical_section.o \
+ 		Python/crossinterp.o \
+ 		Python/dynamic_annotations.o \
+ 		Python/errors.o \
 -		Python/flowgraph.o \
-@@ -447,1 +404,0 @@
+ 		Python/frame.o \
+ 		Python/frozenmain.o \
 -		Python/future.o \
-@@ -465,1 +421,0 @@
+ 		Python/gc.o \
+ 		Python/gc_free_threading.o \
+ 		Python/gc_gil.o \
+ 		Python/getargs.o \
+@@ -461,9 +446,8 @@
+ 		Python/index_pool.o \
+ 		Python/initconfig.o \
+ 		Python/interpconfig.o \
+ 		Python/instrumentation.o \
 -		Python/instruction_sequence.o \
-@@ -495,1 +450,0 @@
+ 		Python/intrinsics.o \
+ 		Python/jit.o \
+ 		Python/legacy_tracing.o \
+ 		Python/lock.o \
+@@ -491,9 +475,8 @@
+ 		Python/bootstrap_hash.o \
+ 		Python/specialize.o \
+ 		Python/stackrefs.o \
+ 		Python/structmember.o \
 -		Python/symtable.o \
-@@ -1986,8 +1941,2 @@
+ 		Python/sysmodule.o \
+ 		Python/thread.o \
+ 		Python/traceback.o \
+ 		Python/tracemalloc.o \
+@@ -588,9 +571,9 @@
+
+ # On some systems, object files that reference DTrace probes need to be modified
+ # in-place by dtrace(1).
+ DTRACE_DEPS = \
+-	Python/ceval.o Python/gc.o Python/import.o Python/sysmodule.o
++	Python/jac_evaluator_entry.o Python/gc.o Python/import.o Python/sysmodule.o
+
+ ##########################################################################
+ # decimal's libmpdec
+
+@@ -1360,11 +1343,11 @@
+ 		$(srcdir)/Include/internal/pycore_import.h \
+ 		$(srcdir)/Include/internal/pycore_importdl.h \
+ 		$(srcdir)/Include/internal/pycore_index_pool.h \
+ 		$(srcdir)/Include/internal/pycore_initconfig.h \
+-		$(srcdir)/Include/internal/pycore_instruments.h \
++		$(srcdir)/Include/internal/pycore_import.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_instruments.h \
+ 		$(srcdir)/Include/internal/pycore_instruction_sequence.h \
+-		$(srcdir)/Include/internal/pycore_interp.h \
++		$(srcdir)/Include/internal/pycore_import.h $(srcdir)/Include/internal/pycore_interp.h \
+ 		$(srcdir)/Include/internal/pycore_interp_structs.h \
+ 		$(srcdir)/Include/internal/pycore_interpframe.h \
+ 		$(srcdir)/Include/internal/pycore_interpframe_structs.h \
+ 		$(srcdir)/Include/internal/pycore_interpolation.h \
+@@ -1429,9 +1412,9 @@
+ 		$(srcdir)/Include/internal/pycore_tracemalloc.h \
+ 		$(srcdir)/Include/internal/pycore_tstate.h \
+ 		$(srcdir)/Include/internal/pycore_tuple.h \
+ 		$(srcdir)/Include/internal/pycore_typedefs.h \
+-		$(srcdir)/Include/internal/pycore_typeobject.h \
++		$(srcdir)/Include/internal/pycore_moduleobject.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_typeobject.h \
+ 		$(srcdir)/Include/internal/pycore_typevarobject.h \
+ 		$(srcdir)/Include/internal/pycore_ucnhash.h \
+ 		$(srcdir)/Include/internal/pycore_unicodeobject.h \
+ 		$(srcdir)/Include/internal/pycore_unicodeobject_generated.h \
+@@ -1982,16 +1965,10 @@
+ 	$(srcdir)/Tools/peg_generator/pegen/grammar_parser.py.new
+
+ .PHONY: regen-pegen
+ regen-pegen:
 -	@$(MKDIR_P) $(srcdir)/Parser
 -	@$(MKDIR_P) $(srcdir)/Parser/tokenizer
 -	@$(MKDIR_P) $(srcdir)/Parser/lexer
@@ -346,7 +451,15 @@
 -	$(UPDATE_FILE) --create $(srcdir)/Parser/parser.c $(srcdir)/Parser/parser.c.new
 +	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
 +	@false
-@@ -2015,21 +1964,2 @@
+
+ .PHONY: regen-ast
+ regen-ast:
+ 	# Regenerate 3 files using Parser/asdl_c.py:
+@@ -2011,29 +1988,10 @@
+ 	$(UPDATE_FILE) $(srcdir)/Python/Python-ast.c $(srcdir)/Python/Python-ast.c.new
+
+ .PHONY: regen-token
+ regen-token:
 -	# Regenerate Doc/library/token-list.inc from Grammar/Tokens
 -	# using Tools/build/generate_token.py
 -	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/build/generate_token.py rst \
@@ -370,10 +483,74 @@
 -		$(srcdir)/Lib/token.py
 +	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
 +	@false
-@@ -2065,1 +1995,1 @@
+
+ .PHONY: regen-keyword
+ regen-keyword:
+ 	# Regenerate Lib/keyword.py from Grammar/python.gram and Grammar/Tokens
+@@ -2061,9 +2019,9 @@
+ 		$(srcdir)/Lib/re/_constants.py \
+ 		$(srcdir)/Modules/_sre/sre_constants.h \
+ 		$(srcdir)/Modules/_sre/sre_targets.h
+
 -Python/compile.o Python/codegen.o Python/symtable.o Python/ast_unparse.o Python/ast.o Python/future.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
 +Python/ast_unparse.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
-@@ -2201,7 +2130,0 @@
+
+ Python/getplatform.o: $(srcdir)/Python/getplatform.c
+ 		$(CC) -c $(PY_CORE_CFLAGS) -DPLATFORM='"$(MACHDEP)"' -o $@ $(srcdir)/Python/getplatform.c
+
+@@ -2137,24 +2095,18 @@
+ # Pass CASESFLAG=-l to insert #line directives in the output
+
+ .PHONY: regen-cases
+ regen-cases: \
+-        regen-opcode-ids regen-opcode-targets regen-uop-ids regen-opcode-metadata-py \
+-		regen-generated-cases regen-executor-cases regen-optimizer-cases \
++        regen-opcode-ids regen-uop-ids regen-opcode-metadata-py \
++		regen-optimizer-cases \
+ 		regen-opcode-metadata regen-uop-metadata
+
+ .PHONY: regen-opcode-ids
+ regen-opcode-ids:
+ 	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/opcode_id_generator.py \
+ 	    -o $(srcdir)/Include/opcode_ids.h.new $(srcdir)/Python/bytecodes.c
+ 	$(UPDATE_FILE) $(srcdir)/Include/opcode_ids.h $(srcdir)/Include/opcode_ids.h.new
+
+-.PHONY: regen-opcode-targets
+-regen-opcode-targets:
+-	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/target_generator.py \
+-	    -o $(srcdir)/Python/opcode_targets.h.new $(srcdir)/Python/bytecodes.c
+-	$(UPDATE_FILE) $(srcdir)/Python/opcode_targets.h $(srcdir)/Python/opcode_targets.h.new
+-
+ .PHONY: regen-uop-ids
+ regen-uop-ids:
+ 	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/uop_id_generator.py \
+ 	    -o $(srcdir)/Include/internal/pycore_uop_ids.h.new $(srcdir)/Python/bytecodes.c
+@@ -2164,20 +2116,8 @@
+ regen-opcode-metadata-py:
+ 	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/py_metadata_generator.py \
+ 	    -o $(srcdir)/Lib/_opcode_metadata.py.new $(srcdir)/Python/bytecodes.c
+ 	$(UPDATE_FILE) $(srcdir)/Lib/_opcode_metadata.py $(srcdir)/Lib/_opcode_metadata.py.new
+-
+-.PHONY: regen-generated-cases
+-regen-generated-cases:
+-	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/tier1_generator.py \
+-	    -o $(srcdir)/Python/generated_cases.c.h.new $(srcdir)/Python/bytecodes.c
+-	$(UPDATE_FILE) $(srcdir)/Python/generated_cases.c.h $(srcdir)/Python/generated_cases.c.h.new
+-
+-.PHONY: regen-executor-cases
+-regen-executor-cases:
+-	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/tier2_generator.py \
+-	    -o $(srcdir)/Python/executor_cases.c.h.new $(srcdir)/Python/bytecodes.c
+-	$(UPDATE_FILE) $(srcdir)/Python/executor_cases.c.h $(srcdir)/Python/executor_cases.c.h.new
+
+ .PHONY: regen-optimizer-cases
+ regen-optimizer-cases:
+ 	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/optimizer_generator.py \
+@@ -2197,27 +2137,9 @@
+ 	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/uop_metadata_generator.py -o \
+ 	    $(srcdir)/Include/internal/pycore_uop_metadata.h.new $(srcdir)/Python/bytecodes.c
+ 	$(UPDATE_FILE) $(srcdir)/Include/internal/pycore_uop_metadata.h $(srcdir)/Include/internal/pycore_uop_metadata.h.new
+
 -Python/compile.o Python/codegen.o Python/assemble.o Python/flowgraph.o Python/instruction_sequence.o: \
 -                $(srcdir)/Include/internal/pycore_compile.h \
 -                $(srcdir)/Include/internal/pycore_flowgraph.h \
@@ -381,21 +558,249 @@
 -                $(srcdir)/Include/internal/pycore_opcode_metadata.h \
 -                $(srcdir)/Include/internal/pycore_opcode_utils.h
 -
-@@ -2214,3 +2136,0 @@
+-Python/ceval.o: \
+-		$(srcdir)/Python/ceval_macros.h \
+-		$(srcdir)/Python/condvar.h \
+-		$(srcdir)/Python/generated_cases.c.h \
+-		$(srcdir)/Python/executor_cases.c.h \
+-		$(srcdir)/Python/opcode_targets.h
 -
 -Python/flowgraph.o: \
 -		$(srcdir)/Include/internal/pycore_opcode_metadata.h
-@@ -2817,1 +2737,1 @@
+-
+ Python/optimizer.o: \
+-		$(srcdir)/Python/executor_cases.c.h \
+ 		$(srcdir)/Include/internal/pycore_opcode_metadata.h \
+ 		$(srcdir)/Include/internal/pycore_optimizer.h
+
+ Python/optimizer_analysis.o: \
+@@ -2236,9 +2158,8 @@
+ 	: sed in-place edit with POSIX-only tools
+ 	sed 's/PYTHON_/PyDTrace_/' $@ > $@.tmp
+ 	mv $@.tmp $@
+
+-Python/ceval.o: $(srcdir)/Include/pydtrace.h
+ Python/gc.o: $(srcdir)/Include/pydtrace.h
+ Python/import.o: $(srcdir)/Include/pydtrace.h
+
+ Python/pydtrace.o: $(srcdir)/Include/pydtrace.d $(DTRACE_DEPS)
+@@ -2813,14 +2734,14 @@
+ 		echo "Applying app store compliance patch"; \
+ 		patch --force --reject-file "$(abs_builddir)/app-store-compliance.rej" --strip 2 --directory "$(DESTDIR)$(LIBDEST)" --input "$(abs_srcdir)/$(APP_STORE_COMPLIANCE_PATCH)" || true ; \
+ 	fi
+ 	@ # Build PYC files for the 3 optimization levels (0, 1, 2)
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -2822,1 +2742,1 @@
+ 		$(PYTHON_FOR_BUILD) -Wi $(DESTDIR)$(LIBDEST)/compileall.py \
+ 		-o 0 -o 1 -o 2 $(COMPILEALL_OPTS) -d $(LIBDEST) -f \
+ 		-x 'bad_coding|badsyntax|site-packages' \
+ 		$(DESTDIR)$(LIBDEST)
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -3422,0 +3343,7 @@
+ 		$(PYTHON_FOR_BUILD) -Wi $(DESTDIR)$(LIBDEST)/compileall.py \
+ 		-o 0 -o 1 -o 2 $(COMPILEALL_OPTS) -d $(LIBDEST)/site-packages -f \
+ 		-x badsyntax $(DESTDIR)$(LIBDEST)/site-packages
+
+@@ -3119,9 +3040,12 @@
+
+ JIT_DEPS = \
+ 		$(srcdir)/Tools/jit/*.c \
+ 		$(srcdir)/Tools/jit/*.py \
+-		$(srcdir)/Python/executor_cases.c.h \
++		$(srcdir)/Python/evaluator-generation.json \
++		$(srcdir)/Python/evaluator_jit_abi.c \
++		$(wildcard $(srcdir)/Python/evaluator_*.h) $(wildcard $(srcdir)/Include/internal/*.h) $(wildcard $(srcdir)/Include/*.h) \
++		$(wildcard $(JAC_NATIVE_ARTIFACTS)/jit/*.ll) \
+ 		pyconfig.h
+
+ jit_stencils.h: $(JIT_DEPS)
+ 	@REGEN_JIT_COMMAND@
+@@ -3142,11 +3066,8 @@
+ # causing rounding issues. Compile dtoa.c using -fno-strict-aliasing on clang.
+ # https://bugs.llvm.org//show_bug.cgi?id=31928
+ Python/dtoa.o: Python/dtoa.c
+ 	$(CC) -c $(PY_CORE_CFLAGS) $(CFLAGS_ALIASING) -o $@ $<
+-
+-Python/ceval.o: Python/ceval.c
+-	$(CC) -c $(PY_CORE_CFLAGS) $(CFLAGS_CEVAL) -o $@ $<
+
+ # Run reindent on the library
+ .PHONY: reindent
+ reindent:
+@@ -3419,4 +3340,29 @@
+ # IF YOU PUT ANYTHING HERE IT WILL GO AWAY
+ # Local Variables:
+ # mode: makefile
+ # End:
 +
 +# Compiler/parser objects are supplied by native Jac and retained-runtime ABI adapters.
 +Python/jac_compile.o: $(srcdir)/Python/jac_compile.c $(srcdir)/Python/jac_compile.h
 +Python/jac_runtime.o: $(srcdir)/Python/jac_runtime.c
 +Python/jac_objects.o: $(srcdir)/Python/jac_objects.c
 +Python/jac_bindings.o: $(srcdir)/Python/jac_bindings.c
++Python/jac_evaluator_refs.o: $(srcdir)/Python/jac_evaluator_refs.c $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_genobject.h $(srcdir)/Include/internal/pycore_pyerrors.h
++Python/jac_evaluator_frames.o: $(srcdir)/Python/jac_evaluator_frames.c $(srcdir)/Python/evaluator_frames.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_audit.h $(srcdir)/Include/internal/pycore_import.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_instruments.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_interpframe_structs.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/frameobject.h $(srcdir)/Include/internal/pycore_unicodeobject.h $(srcdir)/Include/internal/pycore_pyatomic_ft_wrappers.h
 +Python/pythonrun.o Python/bltinmodule.o: $(srcdir)/Python/jac_compile.h
++Python/jac_evaluator_objects.o: $(srcdir)/Python/jac_evaluator_objects.c $(srcdir)/Python/evaluator_objects.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_code.h $(srcdir)/Include/internal/pycore_object.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_moduleobject.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_typeobject.h $(srcdir)/Include/internal/pycore_unicodeobject.h $(srcdir)/Include/internal/pycore_call.h $(srcdir)/Include/internal/pycore_pystate.h $(srcdir)/Include/internal/pycore_traceback.h
++Python/jac_evaluator_binding.o: $(srcdir)/Python/jac_evaluator_binding.c $(srcdir)/Python/evaluator_binding.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_code.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_tuple.h $(srcdir)/Python/evaluator_frames.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_pystate.h $(srcdir)/Include/internal/pycore_stats.h $(srcdir)/Include/internal/pycore_call.h $(srcdir)/Include/internal/pycore_function.h
++Python/jac_evaluator_recursion.o: $(srcdir)/Python/jac_evaluator_recursion.c $(srcdir)/Python/evaluator_recursion.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_obmalloc.h $(srcdir)/Include/internal/pycore_pystate.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_pythonrun.h $(srcdir)/Include/internal/pycore_runtime.h
++Python/jac_evaluator_metadata.o: $(srcdir)/Python/jac_evaluator_metadata.c $(srcdir)/Python/evaluator_metadata.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_function.h $(srcdir)/Include/internal/pycore_object.h $(srcdir)/Include/internal/pycore_opcode_utils.h $(srcdir)/Include/internal/pycore_unicodeobject.h $(srcdir)/Include/opcode.h $(srcdir)/Include/internal/pycore_abstract.h
++Python/jac_evaluator_entry.o: $(srcdir)/Python/jac_evaluator_entry.c $(srcdir)/Python/evaluator_entry.h $(srcdir)/Python/evaluator_metadata.h $(srcdir)/Python/evaluator_frames.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_instruments.h $(srcdir)/Include/internal/pycore_pystate.h $(srcdir)/Include/internal/pycore_stats.h $(srcdir)/Python/evaluator_activation.h $(srcdir)/Python/evaluator_operations.h $(srcdir)/Python/evaluator_scratch.h
++
++# Generated native handlers and target-configured ABI expressions are optimized
++# together before object emission. The C evaluator is absent from LIBRARY_OBJS.
++JAC_EVALUATOR_HEADERS = $(wildcard $(srcdir)/Include/internal/*.h) $(wildcard $(srcdir)/Include/*.h) $(wildcard $(srcdir)/Python/evaluator_*.h) pyconfig.h
++Python/jac_evaluator_activation.o: $(srcdir)/Python/jac_evaluator_activation.c $(JAC_EVALUATOR_HEADERS)
++Python/jac_evaluator_tier1_abi.ll: $(srcdir)/Python/jac_evaluator_tier1_abi.c $(JAC_EVALUATOR_HEADERS)
++	$(CC) $(PY_CORE_CFLAGS) -fno-lto -O1 -S -emit-llvm -o $@ $<
++Python/jac_evaluator_tier2_abi.ll: $(srcdir)/Python/jac_evaluator_tier2_abi.c $(JAC_EVALUATOR_HEADERS)
++	$(CC) $(PY_CORE_CFLAGS) -fno-lto -O1 -S -emit-llvm -o $@ $<
++Python/jac_evaluator_entry_policy.o: $(JAC_NATIVE_ARTIFACTS)/evaluator_entry.ll $(JAC_NATIVE_ARTIFACTS)/evaluator_entry.exports.json Python/jac_evaluator_tier1_abi.ll Python/jac_evaluator_tier2_abi.ll $(JAC_NATIVE_LINKER)
++	$(JAC_NATIVE_PYTHON) -I $(JAC_NATIVE_LINKER) $(JAC_NATIVE_ROOT) $(JAC_NATIVE_ARTIFACTS) $@ Python/jac_evaluator_tier1_abi.ll Python/jac_evaluator_tier2_abi.ll
+--- a/Tools/jit/_targets.py
++++ b/Tools/jit/_targets.py
+@@ -24,9 +24,14 @@
+ TOOLS_JIT = TOOLS_JIT_BUILD.parent
+ TOOLS = TOOLS_JIT.parent
+ CPYTHON = TOOLS.parent
+ EXTERNALS = CPYTHON / "externals"
+-PYTHON_EXECUTOR_CASES_C_H = CPYTHON / "Python" / "executor_cases.c.h"
++NATIVE_EVALUATOR_GENERATION = CPYTHON / "Python" / "evaluator-generation.json"
++NATIVE_ARTIFACTS = pathlib.Path(os.environ["JAC_NATIVE_ARTIFACTS"])
++NATIVE_ROOT = pathlib.Path(os.environ["JAC_NATIVE_ROOT"])
++NATIVE_PYTHON = os.environ["JAC_NATIVE_PYTHON"]
++# Stencil source is generated native Jac; no interpreter/C-handler fallback.
++NATIVE_JIT_EXPORTS = json.loads(NATIVE_EVALUATOR_GENERATION.read_text())["jit_exports"]
+ TOOLS_JIT_TEMPLATE_C = TOOLS_JIT / "template.c"
+
+ ASYNCIO_RUNNER = asyncio.Runner()
+
+@@ -49,8 +54,9 @@
+     verbose: bool = False
+     cflags: str = ""
+     known_symbols: dict[str, int] = dataclasses.field(default_factory=dict)
+     pyconfig_dir: pathlib.Path = pathlib.Path.cwd().resolve()
++    native_stencil_provenance: dict = dataclasses.field(default_factory=dict)
+
+     def _get_nop(self) -> bytes:
+         if re.fullmatch(r"aarch64-.*", self.triple):
+             nop = b"\x1f\x20\x03\xd5"
+@@ -65,9 +71,20 @@
+         hasher.update(self.triple.encode())
+         hasher.update(self.debug.to_bytes())
+         hasher.update(self.cflags.encode())
+         # These dependencies are also reflected in _JITSources in regen.targets:
+-        hasher.update(PYTHON_EXECUTOR_CASES_C_H.read_bytes())
++        hasher.update(NATIVE_EVALUATOR_GENERATION.read_bytes())
++        for path in sorted((CPYTHON / "Python").glob("evaluator_*.h")):
++            hasher.update(path.name.encode())
++            hasher.update(path.read_bytes())
++        hasher.update((CPYTHON / "Python" / "evaluator_jit_abi.c").read_bytes())
++        for directory in [CPYTHON / "Include", CPYTHON / "Include" / "internal"]:
++            for path in sorted(directory.glob("*.h")):
++                hasher.update(str(path.relative_to(CPYTHON)).encode())
++                hasher.update(path.read_bytes())
++        for path in sorted((NATIVE_ARTIFACTS / "jit").glob("*.ll")):
++            hasher.update(path.name.encode())
++            hasher.update(path.read_bytes())
+         hasher.update((self.pyconfig_dir / "pyconfig.h").read_bytes())
+         for dirpath, _, filenames in sorted(os.walk(TOOLS_JIT)):
+             # Exclude cache files from digest computation to ensure reproducible builds.
+             if dirpath.endswith("__pycache__"):
+@@ -163,33 +180,40 @@
+             *self.args,
+             # Allow user-provided CFLAGS to override any defaults
+             *shlex.split(self.cflags),
+         ]
+-        await _llvm.run("clang", args, echo=self.verbose)
++        if opname == "shim":
++            await _llvm.run("clang", args, echo=self.verbose)
++        else:
++            # Compile only the patch-point ABI and expressions with the pinned
++            # JIT toolchain. Native Jac supplies the instruction control flow.
++            ir = tempdir / f"{opname}.ll"
++            args[args.index("-c")] = "-S"
++            args.insert(args.index("-S") + 1, "-emit-llvm")
++            args[args.index(str(o))] = str(ir)
++            await _llvm.run("clang", args, echo=self.verbose)
++            result = await _llvm._run(NATIVE_PYTHON, [
++                "-I", str(TOOLS_JIT / "native_link.py"), str(NATIVE_ROOT),
++                str(NATIVE_ARTIFACTS / "jit" / f"{opname}.ll"), str(ir), str(o),
++                NATIVE_JIT_EXPORTS[opname], json.dumps(args),
++            ], echo=self.verbose)
++            if result is None:
++                raise RuntimeError("Pinned native JIT linker is unavailable")
++            self.native_stencil_provenance[opname] = json.loads(o.with_suffix(".provenance.json").read_text())
+         return await self._parse(o)
+
+     async def _build_stencils(self) -> dict[str, _stencils.StencilGroup]:
+-        generated_cases = PYTHON_EXECUTOR_CASES_C_H.read_text()
+-        cases_and_opnames = sorted(
+-            re.findall(
+-                r"\n {8}(case (\w+): \{\n.*?\n {8}\})", generated_cases, flags=re.DOTALL
+-            )
+-        )
++        opnames = sorted(NATIVE_JIT_EXPORTS)
+         tasks = []
+         with tempfile.TemporaryDirectory() as tempdir:
+             work = pathlib.Path(tempdir).resolve()
+             async with asyncio.TaskGroup() as group:
+                 coro = self._compile("shim", TOOLS_JIT / "shim.c", work)
+                 tasks.append(group.create_task(coro, name="shim"))
+                 template = TOOLS_JIT_TEMPLATE_C.read_text()
+-                for case, opname in cases_and_opnames:
+-                    # Write out a copy of the template with *only* this case
+-                    # inserted. This is about twice as fast as #include'ing all
+-                    # of executor_cases.c.h each time we compile (since the C
+-                    # compiler wastes a bunch of time parsing the dead code for
+-                    # all of the other cases):
++                for opname in opnames:
+                     c = work / f"{opname}.c"
+-                    c.write_text(template.replace("CASE", case))
++                    c.write_text(template.replace("JAC_NATIVE_STEP", NATIVE_JIT_EXPORTS[opname]))
+                     coro = self._compile(opname, c, work)
+                     tasks.append(group.create_task(coro, name=opname))
+         stencil_groups = {task.get_name(): task.result() for task in tasks}
+         for stencil_group in stencil_groups.values():
+@@ -218,11 +242,16 @@
+         if (
+             not force
+             and jit_stencils.exists()
+             and jit_stencils.read_text().startswith(digest)
++            and jit_stencils.with_suffix(".native.json").is_file()
+         ):
+             return
+         stencil_groups = ASYNCIO_RUNNER.run(self._build_stencils())
++        jit_stencils.with_suffix(".native.json").write_text(json.dumps({
++            "generator_digest": digest.strip(), "source": "native-jac",
++            "stencils": dict(sorted(self.native_stencil_provenance.items())),
++        }, indent=2, sort_keys=True) + "\n")
+         jit_stencils_new = jit_stencils.parent / "jit_stencils.h.new"
+         try:
+             with jit_stencils_new.open("w") as file:
+                 file.write(digest)
+--- a/Python/bytecodes.c
++++ b/Python/bytecodes.c
+@@ -43,9 +43,9 @@
+ #include "setobject.h"
+
+
+ #define USE_COMPUTED_GOTOS 0
+-#include "ceval_macros.h"
++#include "evaluator_operations.h"
+
+ /* Flow control macros */
+
+ #define inst(name, ...) case name:
+--- a/Python/jit.c
++++ b/Python/jit.c
+@@ -26,8 +26,9 @@
+ #include "pycore_tuple.h"
+ #include "pycore_unicodeobject.h"
+
+ #include "pycore_jit.h"
++#include "evaluator_operations.h"
+
+ // Memory management stuff: ////////////////////////////////////////////////////
+
+ #ifndef MS_WINDOWS

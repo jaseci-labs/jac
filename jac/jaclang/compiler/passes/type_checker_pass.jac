@@ -10,6 +10,7 @@ import from jaclang.compiler.frontend.unitree {
     BuiltinType,
     CodeBlockStmt,
     CompareExpr,
+    CompilerAnnotation,
     DeleteStmt,
     EdgeRefTrailer,
     Enum,
@@ -162,6 +163,7 @@ walker TypeCheckPass(UniPass) {
     def _install_client_state_setters -> None;
     def _client_state_field_owner(nd: HasVar) -> (Ability | None);
     can enter_ability with Ability entry;
+    can exit_compiler_annotation with CompilerAnnotation exit;
     can exit_ability with Ability exit;
     can enter_lambda_expr with LambdaExpr entry;
     can exit_lambda_expr with LambdaExpr exit;

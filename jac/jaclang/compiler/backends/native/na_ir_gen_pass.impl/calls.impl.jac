@@ -97,6 +97,7 @@ impl NaIRGenPass._transfer_own_args(
     }
     _sig = None if _is_ctor else self._callee_sig_of(nd, func);
     _sig_params = _sig.get_parameters() if _sig is not None else [];
+    _callable_type = nd.target.type;
     _own_idx: set = set();
     if _is_ctor {
         for _oi in range(len(release_args)) {
@@ -109,6 +110,14 @@ impl NaIRGenPass._transfer_own_args(
                 _own_idx.add(_oi + offset);
             }
         }
+    } elif _sig is None
+        and isinstance(_callable_type, SemanticFunctionType)
+        and len(_callable_type.parameters) + offset == len(release_args) {
+        for (_oi, _op_type) in enumerate(_callable_type.parameters) {
+            if _op_type.ownership == OwnershipKind.OWN {
+                _own_idx.add(_oi + offset);
+            }
+        }
     }
     if not _own_idx {
         return release_args;
@@ -116,6 +125,11 @@ impl NaIRGenPass._transfer_own_args(
     _param_idx: dict = {};
     for (_pi2, _p2) in enumerate(_sig_params) {
         _param_idx[_p2.name.sym_name] = _pi2 + offset;
+    }
+    if _sig is None and isinstance(_callable_type, SemanticFunctionType) {
+        for (_pi2, _p2_type) in enumerate(_callable_type.parameters) {
+            _param_idx[_p2_type.name] = _pi2 + offset;
+        }
     }
     _pos = offset;
     for _pa in (nd.params or []) {
@@ -144,7 +158,7 @@ impl NaIRGenPass._transfer_own_args(
             or not isinstance(_salloca.type.pointee, ir.PointerType) {
             continue;
         }
-        self.builder.store(ir.Constant(_salloca.type.pointee, None), _salloca);
+        self.builder.store(self._zero_const(_salloca.type.pointee), _salloca);
         if not _hl and 0 <= _aidx < len(args) {
             self._mark_owned(args[_aidx]);
         }
@@ -184,7 +198,7 @@ impl NaIRGenPass._callee_sig_of(
     if linked is not None and isinstance(linked.signature, uni.FuncSignature) {
         return linked.signature;
     }
-    decl = nd.callee_decl;
+    decl = self._callee_ability_of(nd);
     sig = decl.signature if decl is not None else None;
     return sig if isinstance(sig, uni.FuncSignature) else None;
 }
@@ -206,6 +220,9 @@ impl NaIRGenPass._arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None)
 }
 
 impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
+    if self._foreign_resource_kind(t) is not None {
+        return self._zero_const(t);
+    }
     if isinstance(t, ir.PointerType) {
         if t.pointee == self._get_bytes_struct_type() {
             return self._make_global_bytes(b"");
@@ -1245,7 +1262,8 @@ impl NaIRGenPass._codegen_intrinsic(
         IntrinsicDispatch.MEM_LOAD: self._emit_intrinsic_mem_load,
         IntrinsicDispatch.MEM_STORE: self._emit_intrinsic_mem_store,
         IntrinsicDispatch.ATOMIC_XCHG: self._emit_intrinsic_atomic_xchg,
-        IntrinsicDispatch.CALL_DTOR: self._emit_intrinsic_call_dtor
+        IntrinsicDispatch.CALL_DTOR: self._emit_intrinsic_call_dtor,
+        IntrinsicDispatch.MUSTTAIL: self._emit_intrinsic_musttail
     };
     handler = _emitters.get(intr.dispatch);
     if handler is None {
@@ -1263,9 +1281,11 @@ impl NaIRGenPass._codegen_intrinsic(
 impl NaIRGenPass._emit_intrinsic_misuse(
     nd: uni.FuncCall, intr: IntrinsicEntry, reason: str
 ) -> None {
+    import from jaclang.compiler.intrinsic_registry { IntrinsicDispatch }
+    code = E5109 if intr.dispatch == IntrinsicDispatch.MUSTTAIL else E5095;
     for e in self.errors_had {
         if (
-            e.code is E5095
+            e.code in (E5095, code)
             and e.loc.mod_path == nd.loc.mod_path
             and e.loc.first_line == nd.loc.first_line
             and e.loc.col_start == nd.loc.col_start
@@ -1273,7 +1293,7 @@ impl NaIRGenPass._emit_intrinsic_misuse(
             return;
         }
     }
-    self.emit(E5095, node_override=nd, name=intr.name, reason=reason);
+    self.emit(code, node_override=nd, name=intr.name, reason=reason);
 }
 
 impl NaIRGenPass._intrinsic_operand(
@@ -1451,8 +1471,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     _call_kind = nd.call_kind or "";
+    import from jaclang.compiler.foreign_refs { is_foreign_ability }
+    declaration = self._callee_ability_of(nd);
+    _is_foreign = is_foreign_ability(declaration);
 
-    _sized_call = self._codegen_sized_builtin_call(
+    _sized_call = None if _is_foreign else self._codegen_sized_builtin_call(
         nd, self._get_name(nd.target), _call_kind
     );
     if _sized_call is not None {
@@ -1461,7 +1484,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
     func_name: str | None = None;
     _mod_qual: (str | None) = None;
-    if _call_kind == "method" {
+    if _is_foreign and declaration is not None and declaration.name_ref is not None {
+        func_name = declaration.name_ref.sym_name;
+    } elif _call_kind == "method" {
         _mod_fn = self._native_module_call_target(nd);
         if _mod_fn is None {
             return self._codegen_method_call(nd);
@@ -1486,11 +1511,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     _intrinsic_entry = INTRINSIC_REGISTRY.get(func_name);
-    if _intrinsic_entry is not None {
+    if not _is_foreign and _intrinsic_entry is not None {
         return self._codegen_intrinsic(nd, _intrinsic_entry);
     }
 
-    if _call_kind != "method" and func_name not in self.local_vars {
+    if not _is_foreign and _call_kind != "method" and func_name not in self.local_vars {
         _ec_name = self._enum_ctor_target(nd);
         if _ec_name is not None {
             return self._codegen_enum_ctor(nd, _ec_name);
@@ -1532,7 +1557,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
 
-    if _call_kind == "builtin" {
+    if not _is_foreign and _call_kind == "builtin" {
         if func_name == "print" {
             return self._emit_print(nd);
         }
@@ -2173,15 +2198,16 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
 
-    if func_name in self.struct_types {
+    if not _is_foreign and func_name in self.struct_types {
         return self._codegen_instantiation(nd, type_name_override=func_name);
     }
     _alias_arch = self._arch_alias_target(nd.target);
-    if _alias_arch is not None and _alias_arch in self.struct_types {
+    if not _is_foreign and _alias_arch is not None and _alias_arch in self.struct_types {
         return self._codegen_instantiation(nd, type_name_override=_alias_arch);
     }
     if (
-        func_name in self._native_skipped_methods and func_name not in self.generic_fns
+        not _is_foreign
+        and func_name in self._native_skipped_methods and func_name not in self.generic_fns
     ) {
         self.emit(
             E5092,
@@ -2195,12 +2221,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         );
         return None;
     }
-    if func_name in self.decorated_fns {
+    if not _is_foreign and func_name in self.decorated_fns {
         return self._codegen_decorated_call(nd, func_name);
     }
-    func: ir.Function | None = self.func_symtab.get(func_name);
-    declaration = self._callee_ability_of(nd);
-    if declaration is not None and declaration.name_ref is not None {
+    func: ir.Function | None = self.clib_functions.get(func_name)
+        if _is_foreign else self.func_symtab.get(func_name);
+    if not _is_foreign and declaration is not None and declaration.name_ref is not None {
         declaring_module = declaration.parent_scope;
         if isinstance(declaring_module, uni.Module) {
             declared_function = self._module_functions.get(
@@ -2316,11 +2342,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
     args: list[ir.Value] = self._codegen_bound_args(nd, func, self_offset=0);
 
-    if func_name in self.clib_fn_abi {
-        return self._codegen_clib_call(func, func_name, args);
+    if _is_foreign and func_name in self.clib_fn_abi {
+        return self._codegen_clib_call(func, func_name, args, nd);
     }
 
-    _is_foreign = func_name in self.clib_extern_names;
     coerced: list[ir.Value] = [];
 
     _clib_str_args: set = set();
@@ -2378,9 +2403,10 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             coerced.append(_c);
             release_args.append(_c);
         } elif i < len(func.args) {
-            _c = self._coerce_type(arg, func.args[i].type);
+            _c = self._clib_reinterpret(arg, func.args[i].type, name="foreign.arg")
+                if _is_foreign else self._coerce_type(arg, func.args[i].type);
             coerced.append(_c);
-            release_args.append(_c);
+            release_args.append(arg if _is_foreign and self._foreign_resource_kind(arg.type) is not None else _c);
         } else {
             coerced.append(arg);
             release_args.append(arg);
@@ -2401,7 +2427,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
     call_result: ir.Value = self.builder.call(func, coerced, name=f"call.{func_name}");
-    if func_name in self.clib_extern_names {
+    if _is_foreign {
         _declared = self.clib_declared_sigs.get(func_name);
         _declared_ret = _declared[0] if _declared is not None else None;
         if (
@@ -2420,13 +2446,22 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             call_result = self._mark_owned(call_result);
         }
     }
+    if self._foreign_resource_kind(call_result.type) is not None {
+        import from jaclang.compiler.foreign_refs { borrowed_return_source }
+        if borrowed_return_source(self._callee_ability_of(nd)) is None {
+            self._mark_owned(call_result);
+        }
+    }
 
     self._release_owned_args(release_args, op="call_arg");
-    self._emit_err_check(self._callee_ability_of(nd) or self._linked_callee_decl(func));
+    self._emit_err_check(
+        self._callee_ability_of(nd) or self._linked_callee_decl(func), call=nd
+    );
 
-    if func_name in self.clib_extern_names {
+    if _is_foreign {
+        _declared_struct = self._struct_name_of(nd);
         for (sname, abi_type) in self.clib_struct_abi_types.items() {
-            if call_result.type == abi_type {
+            if sname == _declared_struct and call_result.type == abi_type {
                 call_result = self._coerce_type(
                     call_result, self.struct_types[sname].as_pointer()
                 );
@@ -2436,7 +2471,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
         if not isinstance(call_result.type, ir.PointerType) {
             for (sname, stype) in self.struct_types.items() {
-                if sname in self.clib_struct_names and call_result.type == stype {
+                if sname == _declared_struct
+                    and sname in self.clib_struct_names
+                    and call_result.type == stype {
                     call_result = self._coerce_type(call_result, stype.as_pointer());
                     break;
                 }
@@ -2845,7 +2882,11 @@ impl NaIRGenPass._emit_isinstance_core(
     unresolved: list[str] = [];
     static_seen = False;
     static_hit = False;
-    source_type = params[0].type;
+    source = params[0];
+    if not isinstance(source, uni.Expr) {
+        return None;
+    }
+    source_type = source.type;
     source_members = source_type.types
         if isinstance(source_type, UnionType)
         else [source_type];
@@ -3307,11 +3348,11 @@ impl NaIRGenPass._try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None) {
         return None;
     }
     fname = call.target.sym_name;
-    callee = self.func_symtab.get(fname);
+    import from jaclang.compiler.foreign_refs { is_foreign_ability }
+    callee = self._resolved_function_value(call.target) or self.func_symtab.get(fname);
     if callee is None
         or not isinstance(callee, ir.Function)
-        or fname in self.clib_fn_abi
-        or fname in self.clib_extern_names {
+        or is_foreign_ability(self._callee_ability_of(call)) {
         return None;
     }
     _res_ty = callee.function_type.return_type;
@@ -3616,7 +3657,7 @@ impl NaIRGenPass._emit_take(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
     _val = self.builder.load(_slot, name="take.val");
-    self.builder.store(ir.Constant(_slot.pointee_type, None), _slot);
+    self.builder.store(self._zero_const(_slot.pointee_type), _slot);
     return _val;
 }
 
@@ -3683,10 +3724,20 @@ impl NaIRGenPass._codegen_callable_value(
     for (name, slot) in captures {
         coerced.append(self.builder.load(slot, name=f"cap.{name}"));
     }
+    release_args = self._transfer_own_args(nd, None, coerced, args);
     result = self.builder.call(value, coerced, name="icall");
-    for arg in args {
+    self._record_indirect_foreign_contract(result, nd);
+    for arg in release_args {
         if isinstance(arg.type, ir.PointerType) and self._is_owned(arg) {
             self._emit_rc_release_simple(arg, op="icall_arg", loc="");
+        }
+    }
+    self._emit_err_check(self._callee_ability_of(nd), call=nd, indirect=True);
+    if self._foreign_resource_kind(result.type) is not None {
+        function_type = nd.target.type;
+        if not isinstance(function_type, SemanticFunctionType)
+            or function_type.return_ownership != OwnershipKind.BORROW {
+            self._mark_owned(result);
         }
     }
     return result;

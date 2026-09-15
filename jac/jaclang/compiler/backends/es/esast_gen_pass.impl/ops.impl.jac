@@ -249,6 +249,10 @@ impl EsastGenPass.exit_unary_expr with uni.UnaryExpr exit {
             here.operand, default_factory=lambda (_src: any) { es.Literal(value=0); }
         )
     );
+    if getattr(here, "lifetime_sources", []) or getattr(here, "annotation_name", "") {
+        here.gen.es_ast = operand;
+        return;
+    }
     op_tok = Tok(here.op.name) if (here.op.name in Tok.__members__) else None;
 
     if op_tok in (Tok.MINUS, Tok.BW_NOT) {

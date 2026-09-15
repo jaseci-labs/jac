@@ -339,19 +339,25 @@ impl NaIRGenPass._codegen_closure_call(
         clos_val, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="ccall.env.slot"
     );
     env = self.builder.load(env_slot, name="ccall.env");
+    release_args = self._transfer_own_args(nd, None, coerced, raw_args);
     result: any = None;
     if isinstance(fnty_env.return_type, ir.VoidType) {
         result = self.builder.call(fn_ptr, coerced + [env]);
     } else {
         result = self.builder.call(fn_ptr, coerced + [env], name="ccall");
     }
-    for a in raw_args {
+    for a in release_args {
         if isinstance(a.type, ir.PointerType) and self._is_owned(a) {
             self._emit_rc_release_simple(a, op="ccall_arg", loc="");
         }
     }
     if isinstance(clos_val.type, ir.PointerType) and self._is_owned(clos_val) {
         self._emit_rc_release_simple(clos_val, op="ccall_target", loc="");
+    }
+    self._record_indirect_foreign_contract(result, nd);
+    self._emit_err_check(self._callee_ability_of(nd), call=nd, indirect=True);
+    if self._foreign_resource_kind(result.type) is not None {
+        self._mark_owned(result);
     }
     return result;
 }

@@ -776,18 +776,30 @@ obj StubCatalog {
             function_flags = c.u();
             is_async = c.u() == 1;
             guard_strict = c.u() == 1;
+            return_ownership = OwnershipKind(c.u());
+            return_sources = c.refs();
+            return_linear = c.u() == 1;
+            n_capabilities = c.u();
+            capabilities = [self.string(c.u()) for i in range(n_capabilities)];
+            foreign_errors = self.string(c.u());
+            reentrant = c.u() == 1;
             ret = c.ref();
             guard = c.ref();
             type_params = c.refs();
             n_params = c.u();
-            raw_params: list[tuple[str, int, int, int, int]] = [];
+            raw_params: list[tuple[str, int, int, int, int, int, bool, list[int]]] = [];
             for i in range(n_params) {
                 pname = self.string(c.u());
                 category = c.u();
                 kind = c.u();
                 ptype = c.ref();
                 bits = c.u();
-                raw_params.append((pname, category, kind, ptype, bits));
+                ownership = c.u();
+                linear = c.u() == 1;
+                lifetime_sources = c.refs();
+                raw_params.append(
+                    (pname, category, kind, ptype, bits, ownership, linear, lifetime_sources)
+                );
             }
             fn = FunctionType(
                 func_name=name,
@@ -798,12 +810,18 @@ obj StubCatalog {
                 is_async=is_async,
                 type_guard=None,
                 type_guard_is_strict=guard_strict,
+                return_ownership=return_ownership,
+                return_sources=return_sources,
+                return_linear=return_linear,
+                required_capabilities=capabilities,
+                foreign_errors=foreign_errors,
+                reentrant=reentrant,
                 flags=flags
             );
             self._type_memo[tid] = fn;
             fn.return_type = self.type_of(ret);
             params: list[Parameter] = [];
-            for (pname, category, kind, ptype, bits) in raw_params {
+            for (pname, category, kind, ptype, bits, ownership, linear, lifetime_sources) in raw_params {
                 params.append(
                     Parameter(
                         name=pname,
@@ -814,7 +832,10 @@ obj StubCatalog {
                         is_cls=(bits & PM_CLS) != 0,
                         param_kind=ParamKind(kind),
                         has_default=(bits & PM_HAS_DEFAULT) != 0,
-                        is_comptime=(bits & PM_COMPTIME) != 0
+                        is_comptime=(bits & PM_COMPTIME) != 0,
+                        ownership=OwnershipKind(ownership),
+                        linear=linear,
+                        lifetime_sources=lifetime_sources
                     )
                 );
             }
@@ -990,6 +1011,10 @@ obj StubCatalog {
             self._shared_memo[shid] = resolved;
             return resolved;
         }
+        resource: tuple[str, int, str, str, bool] | None = None;
+        if c.u() == 1 {
+            resource = (self.string(c.u()), c.u(), self.string(c.u()), self.string(c.u()), c.u() == 1);
+        }
         scope_id = c.ref();
         mro = c.refs();
         type_params = c.refs();
@@ -1048,7 +1073,8 @@ obj StubCatalog {
             enum_value_type=None,
             enum_members=None,
             _identity_key=identity,
-            ct_params=ct_params_opt
+            ct_params=ct_params_opt,
+            foreign_resource=resource
         );
         self._shared_memo[shid] = shared;
         if bases {

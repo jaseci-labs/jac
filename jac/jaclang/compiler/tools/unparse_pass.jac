@@ -72,6 +72,7 @@ walker UnparsePass(UniPass) {
     can exit_bool_expr with uni.BoolExpr exit;
     can exit_lambda_expr with uni.LambdaExpr exit;
     can exit_unary_expr with uni.UnaryExpr exit;
+    can exit_compiler_annotation with uni.CompilerAnnotation exit;
     can exit_if_else_expr with uni.IfElseExpr exit;
     can exit_multi_string with uni.MultiString exit;
     can exit_f_string with uni.FString exit;

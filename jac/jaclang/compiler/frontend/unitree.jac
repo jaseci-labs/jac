@@ -665,7 +665,8 @@ node Module(AstDocNode, UniScopeNode) {
         rc_last_use: dict[int, list[str]] postinit,
         rc_scope_cleanup: dict[int, list[str]] postinit,
         rc_move_in: set[int] postinit,
-        own_move_sites: set[int] postinit;
+        own_move_sites: set[int] postinit,
+        own_dependency_order: dict[int, list[str]] postinit;
 
     has body: Sequence[ElementStmt | String | EmptyToken] { getter; }
 
@@ -1647,8 +1648,18 @@ node LambdaExpr(Expr, UniScopeNode) {
     def __repr__ -> str;
 }
 
+node CompilerAnnotation(Expr) {
+    has annotation_kind: str = "";
+    has arguments: list[KWPair] { getter; }
+    def init(*, annotation_kind: str, arguments: list[KWPair], kid: Sequence[UniNode] = []) -> None;
+    def postinit -> None;
+}
+
 node UnaryExpr(Expr) {
     has ownership: OwnershipKind = OwnershipKind.NONE;
+    has linear: bool = False;
+    has lifetime_sources: list[str] = [];
+    has annotation_name: str = "";
     has operand: Expr { getter; }
     has op: Token { getter; }
 

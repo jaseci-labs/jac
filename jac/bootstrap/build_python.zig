@@ -11,7 +11,20 @@ const inputs = [_][]const u8{
     "bootstrap/python/finalize.py",        "bootstrap/python/compiler-bridge.patch",
     "bootstrap/python/compiler_runtime.c", "bootstrap/python/compiler_bridge.c",
     "bootstrap/python/object_api.c",       "bootstrap/python/binding_api.c",
-
+    "bootstrap/python/evaluator_refs.c",   "bootstrap/python/evaluator_refs.h",
+    "bootstrap/python/evaluator_frames.c", "bootstrap/python/evaluator_frames.h",
+    "bootstrap/python/evaluator_objects.c", "bootstrap/python/evaluator_objects.h",
+    "bootstrap/python/evaluator_binding.c", "bootstrap/python/evaluator_binding.h",
+    "bootstrap/python/evaluator_recursion.c", "bootstrap/python/evaluator_recursion.h",
+    "bootstrap/python/evaluator_metadata.c", "bootstrap/python/evaluator_metadata.h",
+    "bootstrap/python/evaluator_entry.c", "bootstrap/python/evaluator_entry.h",
+    "bootstrap/python/evaluator_activation.c", "bootstrap/python/evaluator_activation.h",
+    "bootstrap/python/evaluator_operations.h", "bootstrap/python/generate_evaluator.py",
+    "bootstrap/python/link_evaluator.py", "bootstrap/python/generated/evaluator_scratch.h",
+    "bootstrap/python/generated/evaluator_tier1_abi.c", "bootstrap/python/generated/evaluator_tier2_abi.c",
+    "bootstrap/python/generated/evaluator-generation.json",
+    "bootstrap/python/generated/evaluator_jit_abi.c", "bootstrap/python/evaluator_jit_template.c",
+    "bootstrap/python/link_jit.py",
     "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
@@ -161,7 +174,18 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
         if (mode != .jacpython and (std.mem.endsWith(u8, path, "/compiler-bridge.patch") or
             std.mem.endsWith(u8, path, "/compiler_bridge.c") or std.mem.endsWith(u8, path, "/compiler_bridge.h") or
             std.mem.endsWith(u8, path, "/prepare_native.py") or std.mem.endsWith(u8, path, "/compiler_runtime.c") or
-            std.mem.endsWith(u8, path, "/object_api.c") or std.mem.endsWith(u8, path, "/binding_api.c"))) continue;
+            std.mem.endsWith(u8, path, "/object_api.c") or std.mem.endsWith(u8, path, "/binding_api.c") or
+            std.mem.endsWith(u8, path, "/evaluator_refs.c") or std.mem.endsWith(u8, path, "/evaluator_refs.h") or
+            std.mem.endsWith(u8, path, "/evaluator_frames.c") or std.mem.endsWith(u8, path, "/evaluator_frames.h") or
+            std.mem.endsWith(u8, path, "/evaluator_objects.c") or std.mem.endsWith(u8, path, "/evaluator_objects.h") or
+            std.mem.endsWith(u8, path, "/evaluator_binding.c") or std.mem.endsWith(u8, path, "/evaluator_binding.h") or
+            std.mem.endsWith(u8, path, "/evaluator_recursion.c") or std.mem.endsWith(u8, path, "/evaluator_recursion.h") or
+            std.mem.endsWith(u8, path, "/evaluator_metadata.c") or std.mem.endsWith(u8, path, "/evaluator_metadata.h") or
+            std.mem.endsWith(u8, path, "/evaluator_entry.c") or std.mem.endsWith(u8, path, "/evaluator_entry.h") or
+            std.mem.endsWith(u8, path, "/evaluator_activation.c") or std.mem.endsWith(u8, path, "/evaluator_activation.h") or
+            std.mem.endsWith(u8, path, "/evaluator_operations.h") or std.mem.endsWith(u8, path, "/generate_evaluator.py") or
+            std.mem.endsWith(u8, path, "/link_evaluator.py") or std.mem.endsWith(u8, path, "/link_jit.py") or
+            std.mem.endsWith(u8, path, "/evaluator_jit_template.c") or std.mem.startsWith(u8, path, "bootstrap/python/generated/"))) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
         const content = try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited);
         hash.update(path);
@@ -186,7 +210,9 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
                     !std.mem.eql(u8, entry.basename, "node_modules") and
                     !std.mem.eql(u8, entry.basename, "__pycache__") and
                     !std.mem.eql(u8, entry.basename, "vendor")) try walker.enter(io, entry);
-            } else if (entry.kind == .file and (std.mem.endsWith(u8, entry.path, ".jac") or std.mem.endsWith(u8, entry.path, ".py"))) {
+            } else if (entry.kind == .file and (std.mem.endsWith(u8, entry.path, ".jac") or
+                std.mem.endsWith(u8, entry.path, ".py") or std.mem.endsWith(u8, entry.path, ".pyi")))
+            {
                 try paths.append(a, try a.dupe(u8, entry.path));
             }
         }
@@ -395,6 +421,28 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/compiler_runtime.c", .data = "changed native adapter" });
     try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
+    for ([_][]const u8{
+        "bootstrap/python/evaluator_refs.c", "bootstrap/python/evaluator_refs.h",
+        "bootstrap/python/evaluator_frames.c", "bootstrap/python/evaluator_frames.h",
+        "bootstrap/python/evaluator_objects.c", "bootstrap/python/evaluator_objects.h",
+        "bootstrap/python/evaluator_binding.c", "bootstrap/python/evaluator_binding.h",
+        "bootstrap/python/evaluator_recursion.c", "bootstrap/python/evaluator_recursion.h",
+        "bootstrap/python/evaluator_metadata.c", "bootstrap/python/evaluator_metadata.h",
+        "bootstrap/python/evaluator_entry.c", "bootstrap/python/evaluator_entry.h",
+        "bootstrap/python/evaluator_activation.c", "bootstrap/python/evaluator_activation.h",
+        "bootstrap/python/evaluator_operations.h", "bootstrap/python/generate_evaluator.py",
+        "bootstrap/python/link_evaluator.py", "bootstrap/python/generated/evaluator_scratch.h",
+        "bootstrap/python/generated/evaluator_tier1_abi.c", "bootstrap/python/generated/evaluator_tier2_abi.c",
+        "bootstrap/python/generated/evaluator-generation.json",
+        "bootstrap/python/generated/evaluator_jit_abi.c", "bootstrap/python/evaluator_jit_template.c",
+        "bootstrap/python/link_jit.py",
+        "jaclang/native.pyi",
+    }) |path| {
+        const before_refs = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
+        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "changed reference ABI" });
+        try std.testing.expect(!std.mem.eql(u8, &before_refs, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
+        try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
+    }
     const before_recipe = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
     try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/cpython-sources.txt", .data = "changed C source selection" });
     try std.testing.expect(!std.mem.eql(u8, &before_host, &(try buildKey(io, a, hostPlatform(), root, host, .host))));

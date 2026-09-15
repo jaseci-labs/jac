@@ -14,6 +14,8 @@
 - [C Library Interop](#c-library-interop) - Calling C functions from Jac
 - [Platform Support](#platform-support-currently) - Supported OS and architecture targets
 - [Memory Management](#memory-management) - GC modes and ownership-checked zero-RC builds
+- [Checked Tail Transfers](#checked-tail-transfers) - Require bounded stack usage between native functions
+- [CPython Reference Ownership](#cpython-reference-ownership) - Typed handles for the evaluator's foreign ABI
 - [Debugging](#debugging) - Tools for inspecting native compilation
 - [Roadmap Items](#roadmap-items-current-limitations) - Features not yet available in native code
 - [Examples](#examples) - Complete native programs
@@ -933,6 +935,146 @@ The codegen options carry a canonical identity string and a short hash of it, th
 | `[native] threads` | run time: `JAC_THREADS` | The `flow for` width compiled into the binary (default 4). |
 
 No compile-time environment variable sets behavior. The diagnostic surfaces that used to hide behind environment variables are verbs: `jac explain ir <file>` writes the final optimized IR beside the source and prints the symbol map, `jac explain memory <file>` prints the inferred ownership facts, move sites, and release points, and `jac explain placement <file>` prints every element's codespace with the evidence that decided it.
+
+## Checked Tail Transfers
+
+In native code compiled with `--memory nogc`, use
+`return __musttail(handler(arguments));` to require a tail transfer. Every edge
+of a dispatch cycle must use this operation to guarantee bounded native stack
+usage. The guarantee applies at every optimization level on x86-64 and ARM64.
+
+```jac
+def even(n: int) -> int {
+    if n == 0 { return 1; }
+    return __musttail(odd(n - 1));
+}
+
+def odd(n: int) -> int {
+    if n == 0 { return 0; }
+    return __musttail(even(n - 1));
+}
+```
+
+The caller and callee must have identical fixed argument layouts and calling
+conventions. Returns may be scalar, void, or an owning foreign resource. The
+operand must be one call to a
+named native function or a function-pointer field on a borrowed native record.
+Ordinary `Callable` values carry a closure environment; their additional ABI
+argument cannot be discarded to match a handler signature. Argument expressions
+execute normally, including their exception checks. The callee's result and
+pending exception slot pass unchanged to the caller's caller, which checks the
+slot through the ordinary native call protocol.
+When an error is pending, the returned value is a placeholder and must not be
+used; ordinary native callers check the slot before consuming the result.
+
+Compilation reports `E5109` if cleanup, temporary releases, result conversions,
+active exception handlers, context managers, finalizers, regions, or closure
+cells require work after the call. A native frame's local addresses cannot
+escape, even through integer casts or aggregate storage. Foreign calls,
+generators, and unsupported ABI attributes are rejected. A function containing
+this requirement cannot be demoted to Python when native lowering fails. The
+operation does not infer non-raising behavior from an empty exception-effects
+list and never discards cleanup to obtain a tail call.
+
+## CPython Reference Ownership
+
+The native evaluator boundary imports the sealed `PyObjectRef` and `PyStackRef`
+types from `jaclang.runtime.python.references` under `--memory nogc`. They are
+ordinary `@foreign_resource` declarations, not ambient native builtins. An
+`own` binding owns a CPython reference. A shared
+borrow protects that reference's lifetime without asserting that the Python
+object is immutable or has no other aliases. Both types lower to opaque handles;
+they allocate no Jac wrapper and use no Jac reference counting.
+
+The declarations expose the trusted ABI in `bootstrap/python/evaluator_refs.h`.
+`PyObjectRef` uses the pointer ABI with zero as its empty value; `PyStackRef`
+uses the word ABI with one as its empty value. Their C primitives explicitly
+declare GIL requirements, Python error behavior, and reentry effects with
+`@foreign_call`. A function's name does not grant it those contracts.
+New-reference operations return an owner,
+stealing operations consume an owner, and cleanup calls CPython. Foreign owners
+close on explicit consumption or scope exit; Jac's last-use optimization does
+not advance their finalizers. Cleanup publishes an empty slot before releasing
+its previous reference, because a decref can execute Python and resurrect an
+object.
+
+An independent owning `PyStackRef` is heap-safe. An `own PyStackRef from frame`
+also carries a release obligation, but remains dependent on the frame. Copying
+a tagged mortal frame borrow with CPython's `DUP` operation does not make it
+heap-safe: promotion must acquire the missing reference before the frame can
+clear, unwind, or suspend. The boundary
+uses the pinned upstream stack-reference operations, including its nonzero null
+value, tagged integers, and immortal references. It rejects debug, stack-reference
+debug, free-threaded, non-64-bit, and different CPython versions at build time.
+
+These types are not ordinary Jac objects. Construction, casts, generic container
+storage and implicit truth tests are rejected. Reference returns must transfer
+ownership or declare the borrowed result's source, as this library primitive does:
+
+```jac
+import from jaclang.runtime.python.references {
+    PyObjectRef, PyStackRef, jacpy_stack_object_borrow
+}
+
+def peek(stack: &PyStackRef) -> &PyObjectRef from stack {
+    return jacpy_stack_object_borrow(stack);
+}
+```
+
+The result borrows the supplied stack owner, which cannot be consumed while that
+borrow is live. This operation does not allocate or increment a reference count.
+Frame borrows, suspension, and foreign storage require dedicated
+contracts. A function using these resources cannot fall back to Python code.
+
+The frame-cleanup port declares `PyFrameRef` in
+`jaclang.runtime.python.evaluator_frames`. A `lin PyFrameRef from tstate`
+requires explicit completion of the active frame's cleanup while its thread
+remains alive. It does not own a generator's embedded frame allocation.
+Thread-frame cleanup releases its executable before popping the frame;
+generator cleanup unlinks the thread's exception state before releasing
+frame references. An explicit call to the resource's declared destructor may
+consume a dependent owner while its sources remain alive through the call.
+
+Candidate sources port slice-index conversion,
+async iterator/awaitable acquisition, exception-clause validation, raise logic,
+active-frame cleanup, monitoring and tracing control, coroutine-origin and
+async-generator setters, evaluator diagnostics, name lookup, imports,
+exception-table search, argument binding and its diagnostics, frame push, and
+vector/tuple/dict call preparation, legacy code evaluation, frame introspection
+and builtins handling, iterable unpacking, structural pattern matching,
+exception-group matching, recursion policy, global loading, compiler flags,
+code-extra registration, and borrowed argument-array conversion. A linear argument resource tracks exactly
+which references still need cleanup; temporary call buffers are freed before
+evaluation. The latest source changes await validation.
+The candidate also contains generated native Jac entry, opcode, dispatch,
+exception-unwind, and tier-two interpreter control flow. The source generator
+uses CPython's instruction definitions and stack transformations. A linear
+activation owns the active frame chain and in-flight references in stable,
+typed C scratch storage. C expressions retain the pinned ABI and reference
+operations; the build merges their LLVM IR with native Jac before optimization.
+The checker tracks the activation as an aggregate, not each internal C slot.
+
+The candidate removes `ceval.c`, `generated_cases.c.h`, `opcode_targets.h`,
+`executor_cases.c.h`, and `ceval_macros.h` from runtime sources and their build
+prerequisites. `bytecodes.c` remains generation input. Optional JIT stencils use
+native Jac uop bodies, inlined into a C patch-point trampoline that preserves
+CPython's `preserve_none` tail ABI and relocation machinery. A linear step
+permission prevents its native body from retaining the caller's activation.
+The full bootstrap host still uses its complete pinned CPython implementation.
+
+The build emits `python/build/jacpython-evaluator-provenance.json` with source,
+ABI IR, and object hashes. The existing execution runner and benchmark accept
+`--require-native-evaluator` to observe native entry independently of compiler
+calls. Neither a manifest nor an entry counter establishes compatibility,
+ownership correctness, or performance parity. These source changes await builds,
+execution, artifact inspection, and platform validation.
+
+Native helper composition can use a checked `@foreign_call` body contract under
+`nogc`. Every emitted call, including implicit cleanup and arithmetic error
+paths, must preserve the declared external error protocol. This permits native
+Python-error helpers to call one another without touching Jac's exception slot;
+an unannotated Jac callee still uses normal Jac error handling. See
+[foreign calls and reentry](../../internals/foreign-lifetime-contracts.md#foreign-calls-and-reentry).
 
 ## Debugging
 

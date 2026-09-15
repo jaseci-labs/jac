@@ -632,7 +632,7 @@ impl Parser.parse_pipe(allow_cast: bool = True) -> Expr {
         right = self.parse_pipe_back(allow_cast);
         left = BinaryExpr(left=left, op=op, right=right, kid=[left, op, right]);
     }
-    return left;
+    return self.parse_lifetime_suffix(left) if self._type_depth > 0 else left;
 }
 
 impl Parser.parse_pipe_back(allow_cast: bool = True) -> Expr {
@@ -1077,15 +1077,18 @@ impl Parser.parse_unpack -> Expr {
 }
 
 impl Parser.parse_ref -> Expr {
-    if self.match_tok(TokenKind.KW_OWN) {
+    if self.check_any(TokenKind.KW_OWN, TokenKind.KW_LIN) {
+        self.advance();
         own_op = self.make_uni_token(self.previous());
         own_target = self.parse_await_expr();
-        return UnaryExpr(
+        owned_expr = UnaryExpr(
             operand=own_target,
             op=own_op,
             ownership=OwnershipKind.OWN,
             kid=[own_op, own_target]
         );
+        owned_expr.linear = own_op.value == "lin";
+        return owned_expr;
     }
     if self.match_tok(TokenKind.KW_IMM) {
         imm_op = self.make_uni_token(self.previous());
@@ -1307,7 +1310,12 @@ impl Parser.parse_atomic_chain -> Expr {
                 is_null_ok_index = True;
                 null_ok_idx_uni = self.make_uni_token(self.previous());
             }
-            index_slice = self.parse_index_slice();
+            is_callable = isinstance(expr, Name) and expr.sym_name == "Callable";
+            if isinstance(expr, AtomTrailer) and expr.is_attr
+                and isinstance(expr.right, Name) and expr.right.sym_name == "Callable" {
+                is_callable = True;
+            }
+            index_slice = self.parse_callable_index() if is_callable else self.parse_index_slice();
             kid: list[UniNode] = [expr];
             if is_null_ok_index and null_ok_idx_uni is not None {
                 kid.append(null_ok_idx_uni);
@@ -2712,7 +2720,7 @@ impl Parser.parse_lambda_expr -> Expr {
     ret_hint_uni: Token | None = None;
     if self.match_tok(TokenKind.RETURN_HINT) {
         ret_hint_uni = self.make_uni_token(self.previous());
-        return_type = self.parse_expression();
+        return_type = self.parse_type_expression();
     }
     body_stmts2: (list | None) = None;
     body_expr2: Expr | None = None;
@@ -4892,7 +4900,7 @@ impl Parser.parse_assignment_with_target(
 
         own_kid: list[UniNode] = [colon_uni];
         (own_kind, own_lin) = self.parse_ownership_prefix(own_kid);
-        tp = self.parse_pipe();
+        tp = self.parse_type_expression();
         own_kid.append(tp);
         type_tag = SubTag(tag=tp, ownership=own_kind, linear=own_lin, kid=own_kid);
     }
@@ -5176,6 +5184,7 @@ impl Parser.parse_import_items(
     kid.append(self.make_uni_token(self.previous()));
 
     if self.check_any(
+        TokenKind.DECOR_OP,
         TokenKind.KW_DEF,
         TokenKind.KW_CAN,
         TokenKind.KW_OBJECT,
@@ -5244,7 +5253,7 @@ impl Parser.parse_archetype -> Archetype {
     decor_unis: list[Token] = [];
     while self.check(TokenKind.DECOR_OP) {
         decor_unis.append(self.make_uni_token(self.expect(TokenKind.DECOR_OP)));
-        decorators.append(self.parse_atomic_chain());
+        decorators.append(self.parse_decorator_expression());
     }
     is_async = False;
     async_uni = None;
@@ -5641,7 +5650,7 @@ impl Parser.parse_has_var -> HasVar {
     name_tok = self.expect_name("field");
     name: Name = self.make_name(name_tok);
     colon_uni = self.consume_uni(TokenKind.COLON);
-    type_expr = self.parse_pipe();
+    type_expr = self.parse_type_expression();
     type_tag = SubTag(tag=type_expr, kid=[colon_uni, type_expr]);
     value: (Expr | None) = None;
     defer = False;
@@ -5776,7 +5785,7 @@ impl Parser.parse_ability -> Ability {
     decor_unis: list[Token] = [];
     while self.check(TokenKind.DECOR_OP) {
         decor_unis.append(self.make_uni_token(self.expect(TokenKind.DECOR_OP)));
-        decorators.append(self.parse_atomic_chain());
+        decorators.append(self.parse_decorator_expression());
     }
     is_comptime = False;
     comptime_tok: LexToken | None = None;
@@ -6013,7 +6022,7 @@ impl Parser.parse_func_signature -> FuncSignature {
     }
     if self.match_tok(TokenKind.RETURN_HINT) {
         kid.append(self.make_uni_token(self.previous()));
-        return_type = self.parse_pipe();
+        return_type = self.parse_type_expression();
         kid.append(return_type);
     }
 
@@ -6183,7 +6192,7 @@ impl Parser.parse_param_var -> ParamVar | None {
         param_colon_uni = self.make_uni_token(self.previous());
         param_type_kid: list[UniNode] = [param_colon_uni];
         (param_kind, param_lin) = self.parse_ownership_prefix(param_type_kid);
-        tp = self.parse_pipe();
+        tp = self.parse_type_expression();
         param_type_kid.append(tp);
         type_tag = SubTag(
             tag=tp, ownership=param_kind, linear=param_lin, kid=param_type_kid
@@ -6226,7 +6235,7 @@ impl Parser.parse_enum -> Enum {
     enum_decor_unis: list[Token] = [];
     while self.check(TokenKind.DECOR_OP) {
         enum_decor_unis.append(self.make_uni_token(self.expect(TokenKind.DECOR_OP)));
-        decorators.append(self.parse_atomic_chain());
+        decorators.append(self.parse_decorator_expression());
     }
     enum_kw_uni = self.consume_uni(TokenKind.KW_ENUM);
     access = self.parse_access_tag();
@@ -6364,7 +6373,7 @@ impl Parser.parse_test -> Test {
     decor_unis: list[Token] = [];
     while self.check(TokenKind.DECOR_OP) {
         decor_unis.append(self.make_uni_token(self.expect(TokenKind.DECOR_OP)));
-        decorators.append(self.parse_atomic_chain());
+        decorators.append(self.parse_decorator_expression());
     }
     test_kw_uni = self.consume_uni(TokenKind.KW_TEST);
 
@@ -6521,7 +6530,7 @@ impl Parser.parse_global_var_assignment -> Assignment {
         gv_colon_uni = self.make_uni_token(self.previous());
         gv_own_kid: list[UniNode] = [gv_colon_uni];
         (gv_own_kind, gv_lin) = self.parse_ownership_prefix(gv_own_kid);
-        tp = self.parse_pipe();
+        tp = self.parse_type_expression();
         gv_own_kid.append(tp);
         type_tag = SubTag(tag=tp, ownership=gv_own_kind, linear=gv_lin, kid=gv_own_kid);
     }
@@ -6573,7 +6582,7 @@ impl Parser.parse_impl_def -> ImplDef {
     impl_decor_unis: list[Token] = [];
     while self.check(TokenKind.DECOR_OP) {
         impl_decor_unis.append(self.make_uni_token(self.expect(TokenKind.DECOR_OP)));
-        decorators.append(self.parse_atomic_chain());
+        decorators.append(self.parse_decorator_expression());
     }
     impl_uni = self.consume_uni(TokenKind.KW_IMPL);
 
@@ -6862,7 +6871,7 @@ impl Parser.parse_impl_enum_body -> tuple[(list[Assignment], list[Token])] {
 
             if self.match_tok(TokenKind.COLON) {
                 ieb_colon_uni = self.make_uni_token(self.previous());
-                tp = self.parse_pipe();
+                tp = self.parse_type_expression();
                 type_tag = SubTag(tag=tp, kid=[ieb_colon_uni, tp]);
             }
             ieb_eq_uni: Token | None = None;
@@ -6971,7 +6980,7 @@ impl Parser.parse_type_alias -> TypeAlias {
     } else {
         eq_uni = self.consume_uni(TokenKind.EQ);
     }
-    value = self.parse_pipe();
+    value = self.parse_type_expression();
     self.expect(TokenKind.SEMI);
     kid: list[UniNode] = [type_kw_uni];
     if access {
@@ -7125,4 +7134,120 @@ impl Parser.parse_report_stmt -> ReportStmt {
 
 impl Parser._lookahead_advance -> None {
     self.advance();
+}
+
+
+impl Parser.parse_type_expression -> Expr {
+    self._type_depth += 1;
+    try {
+        return self.parse_pipe();
+    } finally {
+        self._type_depth -= 1;
+    }
+}
+
+impl Parser.parse_lifetime_suffix(expr: Expr) -> Expr {
+    if not self.match_tok(TokenKind.KW_FROM) {
+        return expr;
+    }
+    op = self.make_uni_token(self.previous());
+    kids: list[UniNode] = [expr, op];
+    sources: list[str] = [];
+    grouped = bool(self.match_tok(TokenKind.LPAREN));
+    if grouped {
+        kids.append(self.make_uni_token(self.previous()));
+    }
+    while True {
+        source_tok = self.advance() if self.check(TokenKind.KW_SELF)
+            else self.expect_name("lifetime source");
+        source = self.make_uni_token(source_tok);
+        sources.append(source.value);
+        kids.append(source);
+        if not grouped or not self.match_tok(TokenKind.COMMA) {
+            break;
+        }
+        kids.append(self.make_uni_token(self.previous()));
+    }
+    if grouped {
+        kids.append(self.consume_uni(TokenKind.RPAREN));
+    }
+    result = UnaryExpr(operand=expr, op=op,
+        ownership=expr.ownership if isinstance(expr, UnaryExpr) else OwnershipKind.NONE,
+        kid=kids);
+    result.lifetime_sources = sources;
+    result.linear = isinstance(expr, UnaryExpr) and expr.linear;
+    return result;
+}
+
+impl Parser.parse_callable_index -> IndexSlice {
+    kids: list[UniNode] = [self.consume_uni(TokenKind.LSQUARE)];
+    arguments: list[Expr] = [];
+    if self.match_tok(TokenKind.LSQUARE) {
+        param_kids: list[UniNode] = [self.make_uni_token(self.previous())];
+        parameters: list[Expr] = [];
+        while not self.check(TokenKind.RSQUARE) and not self.at_end() {
+            label: Token | None = None;
+            colon: Token | None = None;
+            if self.check_name() and self.check_peek(TokenKind.COLON) {
+                label = self.make_uni_token(self.expect_name("Callable parameter"));
+                colon = self.consume_uni(TokenKind.COLON);
+            }
+            parameter = self.parse_type_expression();
+            if label is not None and colon is not None {
+                named = UnaryExpr(operand=parameter, op=colon,
+                    ownership=parameter.ownership if isinstance(parameter, UnaryExpr) else OwnershipKind.NONE,
+                    kid=[label, colon, parameter]);
+                named.annotation_name = label.value;
+                named.linear = isinstance(parameter, UnaryExpr) and parameter.linear;
+                if isinstance(parameter, UnaryExpr) {
+                    named.lifetime_sources = list(parameter.lifetime_sources);
+                }
+                parameter = named;
+            }
+            parameters.append(parameter);
+            param_kids.append(parameter);
+            if not self.match_tok(TokenKind.COMMA) {
+                break;
+            }
+            param_kids.append(self.make_uni_token(self.previous()));
+        }
+        param_kids.append(self.consume_uni(TokenKind.RSQUARE));
+        arguments.append(ListVal(values=parameters, kid=param_kids));
+    } else {
+        arguments.append(self.parse_type_expression());
+    }
+    kids.append(arguments[0]);
+    while self.match_tok(TokenKind.COMMA) {
+        kids.append(self.make_uni_token(self.previous()));
+        if self.check(TokenKind.RSQUARE) {
+            break;
+        }
+        argument = self.parse_type_expression();
+        arguments.append(argument);
+        kids.append(argument);
+    }
+    kids.append(self.consume_uni(TokenKind.RSQUARE));
+    expression = TupleVal(values=arguments, kid=kids);
+    slice_node = Slice(start=expression, stop=None, step=None, kid=[expression]);
+    return IndexSlice(slices=[slice_node], is_range=False, kid=[slice_node]);
+}
+
+
+impl Parser.parse_decorator_expression -> Expr {
+    if self.check_name() and self.current().value in ("foreign_resource", "foreign_call") {
+        name_tok = self.advance();
+        kids: list[UniNode] = [self.make_uni_token(name_tok), self.consume_uni(TokenKind.LPAREN)];
+        parsed = self.parse_call_args(kids);
+        arguments: list[KWPair] = [];
+        for argument in parsed {
+            if isinstance(argument, KWPair) and argument.key is not None {
+                arguments.append(argument);
+            } else {
+                self.emit_diag("Foreign contracts require named arguments", "E0081", loc=name_tok.loc);
+            }
+        }
+        kids.append(self.consume_uni(TokenKind.RPAREN));
+        return CompilerAnnotation(annotation_kind=name_tok.value, arguments=arguments, kid=kids);
+    }
+    return self.parse_atomic_chain();
 }

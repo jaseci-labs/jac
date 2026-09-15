@@ -6,6 +6,9 @@ these are tests of Python bytecode execution, not Jac's source compiler.
 """
 
 from collections.abc import Callable, Generator
+import gc
+import traceback
+import weakref
 
 
 def arithmetic() -> int:
@@ -211,4 +214,167 @@ WORKLOADS: dict[str, tuple[Callable[[], int], int]] = {
     "patterns": (patterns, 1584),
     "reentrant_cleanup": (reentrant_cleanup, 496),
     "coroutines": (coroutines, 16),
+}
+
+
+def operand_reentrancy() -> None:
+    events: list[str] = []
+
+    class Value:
+        def __add__(self, other: int) -> int:
+            events.append("add")
+            return 41 + other
+
+        def __del__(self) -> None:
+            events.append("del")
+
+    values = [Value()]
+
+    def clear_owner() -> int:
+        values.clear()
+        assert events == []  # The left operand must still keep the object alive.
+        return 1
+
+    assert values[0] + clear_owner() == 42
+    assert events == ["add", "del"]
+
+
+def finalizer_resurrection() -> None:
+    events: list[str] = []
+    survivors: list[object] = []
+
+    class Value:
+        def __del__(self) -> None:
+            events.append("del")
+            survivors.append(self)
+
+    value = Value()
+    ref = weakref.ref(value, lambda _: events.append("weakref"))
+    del value
+    assert events == ["del"]
+    assert ref() is survivors[0]
+    survivors.clear()
+    assert ref() is None
+    assert events == ["del", "weakref"]  # Resurrection must not run __del__ twice.
+
+
+def suspended_generator_ownership() -> None:
+    events: list[str] = []
+
+    class Value:
+        def __del__(self) -> None:
+            events.append("del")
+
+    def generate(value: Value) -> Generator[Value, None, None]:
+        try:
+            yield value
+        finally:
+            events.append("finally")
+
+    value = Value()
+    ref = weakref.ref(value)
+    stream = generate(value)
+    yielded = next(stream)
+    del value, yielded
+    gc.collect()
+    assert ref() is not None and events == []
+    stream.close()
+    assert ref() is None and events == ["finally", "del"]
+    stream.close()
+    assert events == ["finally", "del"]
+
+
+def suspended_coroutine_ownership() -> None:
+    events: list[str] = []
+
+    class Value:
+        def __del__(self) -> None:
+            events.append("del")
+
+    class Pause:
+        def __await__(self) -> Generator[None, int, int]:
+            return (yield)
+
+    async def suspend(value: Value) -> int:
+        try:
+            result = await Pause()
+            assert ref() is value
+            return result
+        finally:
+            events.append("finally")
+
+    value = Value()
+    ref = weakref.ref(value)
+    coroutine = suspend(value)
+    assert coroutine.send(None) is None
+    del value
+    gc.collect()
+    assert ref() is not None and events == []
+    try:
+        coroutine.send(42)
+    except StopIteration as result:
+        assert result.value == 42
+    else:
+        raise AssertionError("coroutine did not return")
+    assert ref() is None and events == ["finally", "del"]
+
+
+def traceback_ownership() -> None:
+    events: list[str] = []
+
+    class Value:
+        def __del__(self) -> None:
+            events.append("del")
+
+    references: list[weakref.ReferenceType[Value]] = []
+
+    def fail() -> None:
+        local = Value()
+        references.append(weakref.ref(local))
+        raise ValueError("keep the frame alive")
+
+    try:
+        fail()
+    except ValueError as error:
+        assert references[0]() is not None and events == []
+        assert error.__traceback__ is not None
+        traceback.clear_frames(error.__traceback__)
+        assert references[0]() is None and events == ["del"]
+    assert events == ["del"]
+
+
+def cyclic_finalization() -> None:
+    events: list[str] = []
+
+    class Value:
+        def __init__(self) -> None:
+            self.cycle: Value | None = self
+
+        def __del__(self) -> None:
+            events.append("del")
+
+    enabled = gc.isenabled()
+    gc.disable()
+    try:
+        value = Value()
+        ref = weakref.ref(value, lambda _: events.append("weakref"))
+        del value
+        assert events == [] and ref() is not None
+        gc.collect()
+        assert ref() is None and events == ["weakref", "del"]
+        gc.collect()
+        assert events == ["weakref", "del"]
+    finally:
+        if enabled:
+            gc.enable()
+
+
+# These checks run once in fresh processes, outside the timed workloads.
+OWNERSHIP_CHECKS: dict[str, Callable[[], None]] = {
+    "operand_reentrancy": operand_reentrancy,
+    "finalizer_resurrection": finalizer_resurrection,
+    "suspended_generator": suspended_generator_ownership,
+    "suspended_coroutine": suspended_coroutine_ownership,
+    "traceback_ownership": traceback_ownership,
+    "cyclic_finalization": cyclic_finalization,
 }

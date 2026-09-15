@@ -29,6 +29,7 @@ import from jaclang.compiler.frontend.unitree {
     CfgExpr,
     CodeBlockStmt,
     CompareExpr,
+    CompilerAnnotation,
     ConcurrentExpr,
     ConnectOp,
     ContextAwareNode,
@@ -381,6 +382,7 @@ def _test_ident_from_desc(desc_text: str) -> str {
 obj Parser {
     has tokens: list[LexToken],
         pos: int = 0,
+        _type_depth: int = 0,
         _tokens_len: int = 0,
         error_count: int = 0,
         file_path: str = "<input>",
@@ -467,6 +469,9 @@ obj Parser {
     def parse_atomic_pipe_back -> Expr;
     def parse_spawn -> Expr;
     def parse_unpack -> Expr;
+    def parse_type_expression -> Expr;
+    def parse_lifetime_suffix(expr: Expr) -> Expr;
+    def parse_callable_index -> IndexSlice;
     def parse_ref -> Expr;
     def parse_await_expr -> Expr;
     def parse_pipe_call -> Expr;
@@ -573,6 +578,7 @@ obj Parser {
     def parse_accessor -> Ability;
     def _consume_accessor_kind -> tuple[(str, LexToken)];
     def parse_ability -> Ability;
+    def parse_decorator_expression -> Expr;
     def _parse_post_async_modifiers(
         is_override: bool,
         override_tok: (LexToken | None),
