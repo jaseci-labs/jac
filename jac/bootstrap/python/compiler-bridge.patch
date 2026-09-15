@@ -272,7 +272,7 @@
      {"builtins", NULL},
 --- a/Makefile.pre.in
 +++ b/Makefile.pre.in
-@@ -377,75 +377,52 @@
+@@ -377,75 +377,56 @@
 
  ##########################################################################
  # Parser
@@ -346,6 +346,10 @@
 +		Python/jac_evaluator_legacy.o \
 +		Python/jac_evaluator_context.o \
 +		Python/jac_evaluator_unpack.o \
++		Python/jac_evaluator_matching.o \
++		Python/jac_evaluator_groups.o \
++		Python/jac_evaluator_recursion.o \
++		Python/jac_evaluator_recursion_policy.o \
 +		Python/jacpython.o \
  		Python/asdl.o \
 -		Python/assemble.o \
@@ -371,7 +375,7 @@
  		Python/gc_free_threading.o \
  		Python/gc_gil.o \
  		Python/getargs.o \
-@@ -461,9 +438,8 @@
+@@ -461,9 +442,8 @@
  		Python/index_pool.o \
  		Python/initconfig.o \
  		Python/interpconfig.o \
@@ -381,7 +385,7 @@
  		Python/jit.o \
  		Python/legacy_tracing.o \
  		Python/lock.o \
-@@ -491,9 +467,8 @@
+@@ -491,9 +471,8 @@
  		Python/bootstrap_hash.o \
  		Python/specialize.o \
  		Python/stackrefs.o \
@@ -391,7 +395,7 @@
  		Python/thread.o \
  		Python/traceback.o \
  		Python/tracemalloc.o \
-@@ -1360,11 +1335,11 @@
+@@ -1360,11 +1339,11 @@
  		$(srcdir)/Include/internal/pycore_import.h \
  		$(srcdir)/Include/internal/pycore_importdl.h \
  		$(srcdir)/Include/internal/pycore_index_pool.h \
@@ -405,7 +409,7 @@
  		$(srcdir)/Include/internal/pycore_interpframe.h \
  		$(srcdir)/Include/internal/pycore_interpframe_structs.h \
  		$(srcdir)/Include/internal/pycore_interpolation.h \
-@@ -1429,9 +1404,9 @@
+@@ -1429,9 +1408,9 @@
  		$(srcdir)/Include/internal/pycore_tracemalloc.h \
  		$(srcdir)/Include/internal/pycore_tstate.h \
  		$(srcdir)/Include/internal/pycore_tuple.h \
@@ -416,7 +420,7 @@
  		$(srcdir)/Include/internal/pycore_ucnhash.h \
  		$(srcdir)/Include/internal/pycore_unicodeobject.h \
  		$(srcdir)/Include/internal/pycore_unicodeobject_generated.h \
-@@ -1982,16 +1957,10 @@
+@@ -1982,16 +1961,10 @@
  	$(srcdir)/Tools/peg_generator/pegen/grammar_parser.py.new
 
  .PHONY: regen-pegen
@@ -435,7 +439,7 @@
  .PHONY: regen-ast
  regen-ast:
  	# Regenerate 3 files using Parser/asdl_c.py:
-@@ -2011,29 +1980,10 @@
+@@ -2011,29 +1984,10 @@
  	$(UPDATE_FILE) $(srcdir)/Python/Python-ast.c $(srcdir)/Python/Python-ast.c.new
 
  .PHONY: regen-token
@@ -467,7 +471,7 @@
  .PHONY: regen-keyword
  regen-keyword:
  	# Regenerate Lib/keyword.py from Grammar/python.gram and Grammar/Tokens
-@@ -2061,9 +2011,9 @@
+@@ -2061,9 +2015,9 @@
  		$(srcdir)/Lib/re/_constants.py \
  		$(srcdir)/Modules/_sre/sre_constants.h \
  		$(srcdir)/Modules/_sre/sre_targets.h
@@ -478,7 +482,7 @@
  Python/getplatform.o: $(srcdir)/Python/getplatform.c
  		$(CC) -c $(PY_CORE_CFLAGS) -DPLATFORM='"$(MACHDEP)"' -o $@ $(srcdir)/Python/getplatform.c
 
-@@ -2197,24 +2147,14 @@
+@@ -2197,24 +2151,14 @@
  	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/uop_metadata_generator.py -o \
  	    $(srcdir)/Include/internal/pycore_uop_metadata.h.new $(srcdir)/Python/bytecodes.c
  	$(UPDATE_FILE) $(srcdir)/Include/internal/pycore_uop_metadata.h $(srcdir)/Include/internal/pycore_uop_metadata.h.new
@@ -503,7 +507,7 @@
  Python/optimizer.o: \
  		$(srcdir)/Python/executor_cases.c.h \
  		$(srcdir)/Include/internal/pycore_opcode_metadata.h \
-@@ -2813,14 +2753,14 @@
+@@ -2813,14 +2757,14 @@
  		echo "Applying app store compliance patch"; \
  		patch --force --reject-file "$(abs_builddir)/app-store-compliance.rej" --strip 2 --directory "$(DESTDIR)$(LIBDEST)" --input "$(abs_srcdir)/$(APP_STORE_COMPLIANCE_PATCH)" || true ; \
  	fi
@@ -520,7 +524,7 @@
  		-o 0 -o 1 -o 2 $(COMPILEALL_OPTS) -d $(LIBDEST)/site-packages -f \
  		-x badsyntax $(DESTDIR)$(LIBDEST)/site-packages
 
-@@ -3419,4 +3359,15 @@
+@@ -3419,4 +3363,16 @@
  # IF YOU PUT ANYTHING HERE IT WILL GO AWAY
  # Local Variables:
  # mode: makefile
@@ -534,11 +538,12 @@
 +Python/jac_evaluator_refs.o: $(srcdir)/Python/jac_evaluator_refs.c $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_genobject.h $(srcdir)/Include/internal/pycore_pyerrors.h
 +Python/jac_evaluator_frames.o: $(srcdir)/Python/jac_evaluator_frames.c $(srcdir)/Python/evaluator_frames.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_audit.h $(srcdir)/Include/internal/pycore_import.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_instruments.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_interpframe_structs.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/frameobject.h $(srcdir)/Include/internal/pycore_unicodeobject.h
 +Python/pythonrun.o Python/bltinmodule.o: $(srcdir)/Python/jac_compile.h
-+Python/jac_evaluator_objects.o: $(srcdir)/Python/jac_evaluator_objects.c $(srcdir)/Python/evaluator_objects.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_code.h $(srcdir)/Include/internal/pycore_object.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_moduleobject.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_typeobject.h $(srcdir)/Include/internal/pycore_unicodeobject.h
++Python/jac_evaluator_objects.o: $(srcdir)/Python/jac_evaluator_objects.c $(srcdir)/Python/evaluator_objects.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_code.h $(srcdir)/Include/internal/pycore_object.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_moduleobject.h $(srcdir)/Include/internal/pycore_sysmodule.h $(srcdir)/Include/internal/pycore_typeobject.h $(srcdir)/Include/internal/pycore_unicodeobject.h $(srcdir)/Include/internal/pycore_call.h $(srcdir)/Include/internal/pycore_pystate.h $(srcdir)/Include/internal/pycore_traceback.h
 +Python/jac_evaluator_binding.o: $(srcdir)/Python/jac_evaluator_binding.c $(srcdir)/Python/evaluator_binding.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_stackref.h $(srcdir)/Include/internal/pycore_code.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_tuple.h $(srcdir)/Python/evaluator_frames.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_frame.h $(srcdir)/Include/internal/pycore_interpframe.h $(srcdir)/Include/internal/pycore_pystate.h $(srcdir)/Include/internal/pycore_stats.h $(srcdir)/Include/internal/pycore_call.h $(srcdir)/Include/internal/pycore_function.h
++Python/jac_evaluator_recursion.o: $(srcdir)/Python/jac_evaluator_recursion.c $(srcdir)/Python/evaluator_recursion.h $(srcdir)/Python/evaluator_refs.h $(srcdir)/Include/internal/pycore_ceval.h $(srcdir)/Include/internal/pycore_interp.h $(srcdir)/Include/internal/pycore_obmalloc.h $(srcdir)/Include/internal/pycore_pystate.h $(srcdir)/Include/internal/pycore_pyerrors.h $(srcdir)/Include/internal/pycore_pythonrun.h $(srcdir)/Include/internal/pycore_runtime.h
 --- a/Python/ceval.c
 +++ b/Python/ceval.c
-@@ -279,29 +279,35 @@
+@@ -279,351 +279,39 @@
  }
 
  #endif
@@ -583,11 +588,559 @@
  #ifdef HAVE_ERRNO_H
  #include <errno.h>
  #endif
-@@ -949,59 +955,16 @@
-     return NULL;
- }
+-
+-int
+-Py_GetRecursionLimit(void)
+-{
+-    PyInterpreterState *interp = _PyInterpreterState_GET();
+-    return interp->ceval.recursion_limit;
+-}
+-
+-void
+-Py_SetRecursionLimit(int new_limit)
+-{
+-    PyInterpreterState *interp = _PyInterpreterState_GET();
+-    _PyEval_StopTheWorld(interp);
+-    interp->ceval.recursion_limit = new_limit;
+-    _Py_FOR_EACH_TSTATE_BEGIN(interp, p) {
+-        int depth = p->py_recursion_limit - p->py_recursion_remaining;
+-        p->py_recursion_limit = new_limit;
+-        p->py_recursion_remaining = new_limit - depth;
+-    }
+-    _Py_FOR_EACH_TSTATE_END(interp);
+-    _PyEval_StartTheWorld(interp);
+-}
+-
+-int
+-_Py_ReachedRecursionLimitWithMargin(PyThreadState *tstate, int margin_count)
+-{
+-    uintptr_t here_addr = _Py_get_machine_stack_pointer();
+-    _PyThreadStateImpl *_tstate = (_PyThreadStateImpl *)tstate;
+-#if _Py_STACK_GROWS_DOWN
+-    if (here_addr > _tstate->c_stack_soft_limit + margin_count * _PyOS_STACK_MARGIN_BYTES) {
+-#else
+-    if (here_addr <= _tstate->c_stack_soft_limit - margin_count * _PyOS_STACK_MARGIN_BYTES) {
+-#endif
+-        return 0;
+-    }
+-    if (_tstate->c_stack_hard_limit == 0) {
+-        _Py_InitializeRecursionLimits(tstate);
+-    }
+-#if _Py_STACK_GROWS_DOWN
+-    return here_addr <= _tstate->c_stack_soft_limit + margin_count * _PyOS_STACK_MARGIN_BYTES &&
+-        here_addr >= _tstate->c_stack_soft_limit - 2 * _PyOS_STACK_MARGIN_BYTES;
+-#else
+-    return here_addr > _tstate->c_stack_soft_limit - margin_count * _PyOS_STACK_MARGIN_BYTES &&
+-        here_addr <= _tstate->c_stack_soft_limit + 2 * _PyOS_STACK_MARGIN_BYTES;
+-#endif
+-}
+-
+-void
+-_Py_EnterRecursiveCallUnchecked(PyThreadState *tstate)
+-{
+-    uintptr_t here_addr = _Py_get_machine_stack_pointer();
+-    _PyThreadStateImpl *_tstate = (_PyThreadStateImpl *)tstate;
+-#if _Py_STACK_GROWS_DOWN
+-    if (here_addr < _tstate->c_stack_hard_limit) {
+-#else
+-    if (here_addr > _tstate->c_stack_hard_limit) {
+-#endif
+-        Py_FatalError("Unchecked stack overflow.");
+-    }
+-}
+-
+-#if defined(__s390x__)
+-#  define Py_C_STACK_SIZE 320000
+-#elif defined(_WIN32)
+-   // Don't define Py_C_STACK_SIZE, ask the O/S
+-#elif defined(__ANDROID__)
+-#  define Py_C_STACK_SIZE 1200000
+-#elif defined(__sparc__)
+-#  define Py_C_STACK_SIZE 1600000
+-#elif defined(__hppa__) || defined(__powerpc64__)
+-#  define Py_C_STACK_SIZE 2000000
+-#else
+-#  define Py_C_STACK_SIZE 4000000
+-#endif
+-
+-#if defined(__EMSCRIPTEN__)
+-
+-// Temporary workaround to make `pthread_getattr_np` work on Emscripten.
+-// Emscripten 4.0.6 will contain a fix:
+-// https://github.com/emscripten-core/emscripten/pull/23887
+-
+-#include "emscripten/stack.h"
+-
+-#define pthread_attr_t workaround_pthread_attr_t
+-#define pthread_getattr_np workaround_pthread_getattr_np
+-#define pthread_attr_getguardsize workaround_pthread_attr_getguardsize
+-#define pthread_attr_getstack workaround_pthread_attr_getstack
+-#define pthread_attr_destroy workaround_pthread_attr_destroy
+-
+-typedef struct {
+-    void *_a_stackaddr;
+-    size_t _a_stacksize, _a_guardsize;
+-} pthread_attr_t;
+-
+-extern __attribute__((__visibility__("hidden"))) unsigned __default_guardsize;
+-
+-// Modified version of pthread_getattr_np from the upstream PR.
+-
+-int pthread_getattr_np(pthread_t thread, pthread_attr_t *attr) {
+-  attr->_a_stackaddr = (void*)emscripten_stack_get_base();
+-  attr->_a_stacksize = emscripten_stack_get_base() - emscripten_stack_get_end();
+-  attr->_a_guardsize = __default_guardsize;
+-  return 0;
+-}
+-
+-// These three functions copied without any changes from Emscripten libc.
+-
+-int pthread_attr_getguardsize(const pthread_attr_t *restrict a, size_t *restrict size)
+-{
+-	*size = a->_a_guardsize;
+-	return 0;
+-}
+-
+-int pthread_attr_getstack(const pthread_attr_t *restrict a, void **restrict addr, size_t *restrict size)
+-{
+-/// XXX musl is not standard-conforming? It should not report EINVAL if _a_stackaddr is zero, and it should
+-///     report EINVAL if a is null: http://pubs.opengroup.org/onlinepubs/009695399/functions/pthread_attr_getstack.html
+-	if (!a) return EINVAL;
+-//	if (!a->_a_stackaddr)
+-//		return EINVAL;
+-
+-	*size = a->_a_stacksize;
+-	*addr = (void *)(a->_a_stackaddr - *size);
+-	return 0;
+-}
+-
+-int pthread_attr_destroy(pthread_attr_t *a)
+-{
+-	return 0;
+-}
+-
+-#endif
+-
+-static void
+-hardware_stack_limits(uintptr_t *base, uintptr_t *top, uintptr_t sp)
+-{
+-#ifdef WIN32
+-    ULONG_PTR low, high;
+-    GetCurrentThreadStackLimits(&low, &high);
+-    *top = (uintptr_t)high;
+-    ULONG guarantee = 0;
+-    SetThreadStackGuarantee(&guarantee);
+-    *base = (uintptr_t)low + guarantee;
+-#elif defined(__APPLE__)
+-    pthread_t this_thread = pthread_self();
+-    void *stack_addr = pthread_get_stackaddr_np(this_thread); // top of the stack
+-    size_t stack_size = pthread_get_stacksize_np(this_thread);
+-    *top = (uintptr_t)stack_addr;
+-    *base = ((uintptr_t)stack_addr) - stack_size;
+-#else
+-    /// XXX musl supports HAVE_PTHRED_GETATTR_NP, but the resulting stack size
+-    /// (on alpine at least) is much smaller than expected and imposes undue limits
+-    /// compared to the old stack size estimation.  (We assume musl is not glibc.)
+-#  if defined(HAVE_PTHREAD_GETATTR_NP) && !defined(_AIX) && \
+-        !defined(__NetBSD__) && (defined(__GLIBC__) || !defined(__linux__))
+-    size_t stack_size, guard_size;
+-    void *stack_addr;
+-    pthread_attr_t attr;
+-    int err = pthread_getattr_np(pthread_self(), &attr);
+-    if (err == 0) {
+-        err = pthread_attr_getguardsize(&attr, &guard_size);
+-        err |= pthread_attr_getstack(&attr, &stack_addr, &stack_size);
+-        err |= pthread_attr_destroy(&attr);
+-    }
+-    if (err == 0) {
+-        *base = ((uintptr_t)stack_addr) + guard_size;
+-        *top = (uintptr_t)stack_addr + stack_size;
+-        return;
+-    }
+-#  endif
+-    // Add some space for caller function then round to minimum page size
+-    // This is a guess at the top of the stack, but should be a reasonably
+-    // good guess if called from _PyThreadState_Attach when creating a thread.
+-    // If the thread is attached deep in a call stack, then the guess will be poor.
+-#if _Py_STACK_GROWS_DOWN
+-    uintptr_t top_addr = _Py_SIZE_ROUND_UP(sp + 8*sizeof(void*), SYSTEM_PAGE_SIZE);
+-    *top = top_addr;
+-    *base = top_addr - Py_C_STACK_SIZE;
+-#  else
+-    uintptr_t base_addr = _Py_SIZE_ROUND_DOWN(sp - 8*sizeof(void*), SYSTEM_PAGE_SIZE);
+-    *base = base_addr;
+-    *top = base_addr + Py_C_STACK_SIZE;
+-#endif
+-#endif
+-}
+-
+-static void
+-tstate_set_stack(PyThreadState *tstate,
+-                 uintptr_t base, uintptr_t top)
+-{
+-    assert(base < top);
+-    assert((top - base) >= _PyOS_MIN_STACK_SIZE);
+-
+-#ifdef _Py_THREAD_SANITIZER
+-    // Thread sanitizer crashes if we use more than half the stack.
+-    uintptr_t stacksize = top - base;
+-#  if _Py_STACK_GROWS_DOWN
+-    base += stacksize / 2;
+-#  else
+-    top -= stacksize / 2;
+-#  endif
+-#endif
+-    _PyThreadStateImpl *_tstate = (_PyThreadStateImpl *)tstate;
+-#if _Py_STACK_GROWS_DOWN
+-    _tstate->c_stack_top = top;
+-    _tstate->c_stack_hard_limit = base + _PyOS_STACK_MARGIN_BYTES;
+-    _tstate->c_stack_soft_limit = base + _PyOS_STACK_MARGIN_BYTES * 2;
+-#  ifndef NDEBUG
+-    // Sanity checks
+-    _PyThreadStateImpl *ts = (_PyThreadStateImpl *)tstate;
+-    assert(ts->c_stack_hard_limit <= ts->c_stack_soft_limit);
+-    assert(ts->c_stack_soft_limit < ts->c_stack_top);
+-#  endif
+-#else
+-    _tstate->c_stack_top = base;
+-    _tstate->c_stack_hard_limit = top - _PyOS_STACK_MARGIN_BYTES;
+-    _tstate->c_stack_soft_limit = top - _PyOS_STACK_MARGIN_BYTES * 2;
+-#  ifndef NDEBUG
+-    // Sanity checks
+-    _PyThreadStateImpl *ts = (_PyThreadStateImpl *)tstate;
+-    assert(ts->c_stack_hard_limit >= ts->c_stack_soft_limit);
+-    assert(ts->c_stack_soft_limit > ts->c_stack_top);
+-#  endif
+-#endif
+-}
+-
+-
+-void
+-_Py_InitializeRecursionLimits(PyThreadState *tstate)
+-{
+-    uintptr_t base, top;
+-    uintptr_t here_addr = _Py_get_machine_stack_pointer();
+-    hardware_stack_limits(&base, &top, here_addr);
+-    assert(top != 0);
+-
+-    tstate_set_stack(tstate, base, top);
+-    _PyThreadStateImpl *ts = (_PyThreadStateImpl *)tstate;
+-    ts->c_stack_init_base = base;
+-    ts->c_stack_init_top = top;
+-}
+-
+-
+-int
+-PyUnstable_ThreadState_SetStackProtection(PyThreadState *tstate,
+-                                void *stack_start_addr, size_t stack_size)
+-{
+-    if (stack_size < _PyOS_MIN_STACK_SIZE) {
+-        PyErr_Format(PyExc_ValueError,
+-                     "stack_size must be at least %zu bytes",
+-                     _PyOS_MIN_STACK_SIZE);
+-        return -1;
+-    }
+-
+-    uintptr_t base = (uintptr_t)stack_start_addr;
+-    uintptr_t top = base + stack_size;
+-    tstate_set_stack(tstate, base, top);
+-    return 0;
+-}
+-
+-
+-void
+-PyUnstable_ThreadState_ResetStackProtection(PyThreadState *tstate)
+-{
+-    _PyThreadStateImpl *ts = (_PyThreadStateImpl *)tstate;
+-    if (ts->c_stack_init_top != 0) {
+-        tstate_set_stack(tstate,
+-                         ts->c_stack_init_base,
+-                         ts->c_stack_init_top);
+-        return;
+-    }
+-
+-    _Py_InitializeRecursionLimits(tstate);
+-}
+-
+-
+-/* The function _Py_EnterRecursiveCallTstate() only calls _Py_CheckRecursiveCall()
+-   if the stack pointer is between the stack base and c_stack_hard_limit. */
+-int
+-_Py_CheckRecursiveCall(PyThreadState *tstate, const char *where)
+-{
+-    _PyThreadStateImpl *_tstate = (_PyThreadStateImpl *)tstate;
+-    uintptr_t here_addr = _Py_get_machine_stack_pointer();
+-    assert(_tstate->c_stack_soft_limit != 0);
+-    assert(_tstate->c_stack_hard_limit != 0);
+-#if _Py_STACK_GROWS_DOWN
+-    assert(here_addr >= _tstate->c_stack_hard_limit - _PyOS_STACK_MARGIN_BYTES);
+-    if (here_addr < _tstate->c_stack_hard_limit) {
+-        /* Overflowing while handling an overflow. Give up. */
+-        int kbytes_used = (int)(_tstate->c_stack_top - here_addr)/1024;
+-#else
+-    assert(here_addr <= _tstate->c_stack_hard_limit + _PyOS_STACK_MARGIN_BYTES);
+-    if (here_addr > _tstate->c_stack_hard_limit) {
+-        /* Overflowing while handling an overflow. Give up. */
+-        int kbytes_used = (int)(here_addr - _tstate->c_stack_top)/1024;
+-#endif
+-        char buffer[80];
+-        snprintf(buffer, 80, "Unrecoverable stack overflow (used %d kB)%s", kbytes_used, where);
+-        Py_FatalError(buffer);
+-    }
+-    if (tstate->recursion_headroom) {
+-        return 0;
+-    }
+-    else {
+-#if _Py_STACK_GROWS_DOWN
+-        int kbytes_used = (int)(_tstate->c_stack_top - here_addr)/1024;
+-#else
+-        int kbytes_used = (int)(here_addr - _tstate->c_stack_top)/1024;
+-#endif
+-        tstate->recursion_headroom++;
+-        _PyErr_Format(tstate, PyExc_RecursionError,
+-                    "Stack overflow (used %d kB)%s",
+-                    kbytes_used,
+-                    where);
+-        tstate->recursion_headroom--;
+-        return -1;
+-    }
+-}
+-
+
+ const binaryfunc _PyEval_BinaryOps[] = {
+     [NB_ADD] = PyNumber_Add,
+     [NB_AND] = PyNumber_And,
+@@ -723,285 +411,25 @@
 
 
+ // Return a tuple of values corresponding to keys, with error checks for
+ // duplicate/missing keys.
+-PyObject *
+-_PyEval_MatchKeys(PyThreadState *tstate, PyObject *map, PyObject *keys)
+-{
+-    assert(PyTuple_CheckExact(keys));
+-    Py_ssize_t nkeys = PyTuple_GET_SIZE(keys);
+-    if (!nkeys) {
+-        // No keys means no items.
+-        return PyTuple_New(0);
+-    }
+-    PyObject *seen = NULL;
+-    PyObject *dummy = NULL;
+-    PyObject *values = NULL;
+-    // We use the two argument form of map.get(key, default) for two reasons:
+-    // - Atomically check for a key and get its value without error handling.
+-    // - Don't cause key creation or resizing in dict subclasses like
+-    //   collections.defaultdict that define __missing__ (or similar).
+-    _PyCStackRef self, method;
+-    _PyThreadState_PushCStackRef(tstate, &self);
+-    _PyThreadState_PushCStackRef(tstate, &method);
+-    self.ref = PyStackRef_FromPyObjectBorrow(map);
+-    int res = _PyObject_GetMethodStackRef(tstate, &self.ref, &_Py_ID(get), &method.ref);
+-    if (res < 0) {
+-        goto fail;
+-    }
+-    PyObject *get = PyStackRef_AsPyObjectBorrow(method.ref);
+-    seen = PySet_New(NULL);
+-    if (seen == NULL) {
+-        goto fail;
+-    }
+-    // dummy = object()
+-    dummy = _PyObject_CallNoArgs((PyObject *)&PyBaseObject_Type);
+-    if (dummy == NULL) {
+-        goto fail;
+-    }
+-    values = PyTuple_New(nkeys);
+-    if (values == NULL) {
+-        goto fail;
+-    }
+-    for (Py_ssize_t i = 0; i < nkeys; i++) {
+-        PyObject *key = PyTuple_GET_ITEM(keys, i);
+-        if (PySet_Contains(seen, key) || PySet_Add(seen, key)) {
+-            if (!_PyErr_Occurred(tstate)) {
+-                // Seen it before!
+-                _PyErr_Format(tstate, PyExc_ValueError,
+-                              "mapping pattern checks duplicate key (%R)", key);
+-            }
+-            goto fail;
+-        }
+-        PyObject *self_obj = PyStackRef_AsPyObjectBorrow(self.ref);
+-        PyObject *args[] = { self_obj, key, dummy };
+-        PyObject *value = NULL;
+-        if (!PyStackRef_IsNull(self.ref)) {
+-            value = PyObject_Vectorcall(get, args, 3, NULL);
+-        }
+-        else {
+-            value = PyObject_Vectorcall(get, &args[1], 2, NULL);
+-        }
+-        if (value == NULL) {
+-            goto fail;
+-        }
+-        if (value == dummy) {
+-            // key not in map!
+-            Py_DECREF(value);
+-            Py_DECREF(values);
+-            // Return None:
+-            values = Py_NewRef(Py_None);
+-            goto done;
+-        }
+-        PyTuple_SET_ITEM(values, i, value);
+-    }
+-    // Success:
+-done:
+-    _PyThreadState_PopCStackRef(tstate, &method);
+-    _PyThreadState_PopCStackRef(tstate, &self);
+-    Py_DECREF(seen);
+-    Py_DECREF(dummy);
+-    return values;
+-fail:
+-    _PyThreadState_PopCStackRef(tstate, &method);
+-    _PyThreadState_PopCStackRef(tstate, &self);
+-    Py_XDECREF(seen);
+-    Py_XDECREF(dummy);
+-    Py_XDECREF(values);
+-    return NULL;
+-}
+
+ // Extract a named attribute from the subject, with additional bookkeeping to
+ // raise TypeErrors for repeated lookups. On failure, return NULL (with no
+ // error set). Use _PyErr_Occurred(tstate) to disambiguate.
+-static PyObject *
+-match_class_attr(PyThreadState *tstate, PyObject *subject, PyObject *type,
+-                 PyObject *name, PyObject *seen)
+-{
+-    assert(PyUnicode_CheckExact(name));
+-    assert(PySet_CheckExact(seen));
+-    if (PySet_Contains(seen, name) || PySet_Add(seen, name)) {
+-        if (!_PyErr_Occurred(tstate)) {
+-            // Seen it before!
+-            _PyErr_Format(tstate, PyExc_TypeError,
+-                          "%s() got multiple sub-patterns for attribute %R",
+-                          ((PyTypeObject*)type)->tp_name, name);
+-        }
+-        return NULL;
+-    }
+-    PyObject *attr;
+-    (void)PyObject_GetOptionalAttr(subject, name, &attr);
+-    return attr;
+-}
+
+ // On success (match), return a tuple of extracted attributes. On failure (no
+ // match), return NULL. Use _PyErr_Occurred(tstate) to disambiguate.
+-PyObject*
+-_PyEval_MatchClass(PyThreadState *tstate, PyObject *subject, PyObject *type,
+-                   Py_ssize_t nargs, PyObject *kwargs)
+-{
+-    if (!PyType_Check(type)) {
+-        const char *e = "called match pattern must be a class";
+-        _PyErr_Format(tstate, PyExc_TypeError, e);
+-        return NULL;
+-    }
+-    assert(PyTuple_CheckExact(kwargs));
+-    // First, an isinstance check:
+-    if (PyObject_IsInstance(subject, type) <= 0) {
+-        return NULL;
+-    }
+-    // So far so good:
+-    PyObject *seen = PySet_New(NULL);
+-    if (seen == NULL) {
+-        return NULL;
+-    }
+-    PyObject *attrs = PyList_New(0);
+-    if (attrs == NULL) {
+-        Py_DECREF(seen);
+-        return NULL;
+-    }
+-    // NOTE: From this point on, goto fail on failure:
+-    PyObject *match_args = NULL;
+-    // First, the positional subpatterns:
+-    if (nargs) {
+-        int match_self = 0;
+-        if (PyObject_GetOptionalAttr(type, &_Py_ID(__match_args__), &match_args) < 0) {
+-            goto fail;
+-        }
+-        if (match_args) {
+-            if (!PyTuple_CheckExact(match_args)) {
+-                const char *e = "%s.__match_args__ must be a tuple (got %s)";
+-                _PyErr_Format(tstate, PyExc_TypeError, e,
+-                              ((PyTypeObject *)type)->tp_name,
+-                              Py_TYPE(match_args)->tp_name);
+-                goto fail;
+-            }
+-        }
+-        else {
+-            // _Py_TPFLAGS_MATCH_SELF is only acknowledged if the type does not
+-            // define __match_args__. This is natural behavior for subclasses:
+-            // it's as if __match_args__ is some "magic" value that is lost as
+-            // soon as they redefine it.
+-            match_args = PyTuple_New(0);
+-            match_self = PyType_HasFeature((PyTypeObject*)type,
+-                                            _Py_TPFLAGS_MATCH_SELF);
+-        }
+-        assert(PyTuple_CheckExact(match_args));
+-        Py_ssize_t allowed = match_self ? 1 : PyTuple_GET_SIZE(match_args);
+-        if (allowed < nargs) {
+-            const char *plural = (allowed == 1) ? "" : "s";
+-            _PyErr_Format(tstate, PyExc_TypeError,
+-                          "%s() accepts %zd positional sub-pattern%s (%zd given)",
+-                          ((PyTypeObject*)type)->tp_name,
+-                          allowed, plural, nargs);
+-            goto fail;
+-        }
+-        if (match_self) {
+-            // Easy. Copy the subject itself, and move on to kwargs.
+-            if (PyList_Append(attrs, subject) < 0) {
+-                goto fail;
+-            }
+-        }
+-        else {
+-            for (Py_ssize_t i = 0; i < nargs; i++) {
+-                PyObject *name = PyTuple_GET_ITEM(match_args, i);
+-                if (!PyUnicode_CheckExact(name)) {
+-                    _PyErr_Format(tstate, PyExc_TypeError,
+-                                  "__match_args__ elements must be strings "
+-                                  "(got %s)", Py_TYPE(name)->tp_name);
+-                    goto fail;
+-                }
+-                PyObject *attr = match_class_attr(tstate, subject, type, name,
+-                                                  seen);
+-                if (attr == NULL) {
+-                    goto fail;
+-                }
+-                if (PyList_Append(attrs, attr) < 0) {
+-                    Py_DECREF(attr);
+-                    goto fail;
+-                }
+-                Py_DECREF(attr);
+-            }
+-        }
+-        Py_CLEAR(match_args);
+-    }
+-    // Finally, the keyword subpatterns:
+-    for (Py_ssize_t i = 0; i < PyTuple_GET_SIZE(kwargs); i++) {
+-        PyObject *name = PyTuple_GET_ITEM(kwargs, i);
+-        PyObject *attr = match_class_attr(tstate, subject, type, name, seen);
+-        if (attr == NULL) {
+-            goto fail;
+-        }
+-        if (PyList_Append(attrs, attr) < 0) {
+-            Py_DECREF(attr);
+-            goto fail;
+-        }
+-        Py_DECREF(attr);
+-    }
+-    Py_SETREF(attrs, PyList_AsTuple(attrs));
+-    Py_DECREF(seen);
+-    return attrs;
+-fail:
+-    // We really don't care whether an error was raised or not... that's our
+-    // caller's problem. All we know is that the match failed.
+-    Py_XDECREF(match_args);
+-    Py_DECREF(seen);
+-    Py_DECREF(attrs);
+-    return NULL;
+-}
+-
+-
 -static int do_raise(PyThreadState *tstate, PyObject *exc, PyObject *cause);
 -
 -PyObject *
@@ -621,6 +1174,8 @@
 -    Py_DECREF(func);
 -    return res;
 -}
++
++
 +int jacpy_eval_raise(PyThreadState *tstate, PyObject *exc, PyObject *cause);
 +#define do_raise jacpy_eval_raise
 +
@@ -647,7 +1202,36 @@
  #include "ceval_macros.h"
 
 
-@@ -1381,912 +1344,19 @@
+@@ -1023,28 +451,8 @@
+     *self_or_null = _PyThreadState_PopCStackRefSteal(tstate, &self);
+     return _PyThreadState_PopCStackRefSteal(tstate, &method);
+ }
+
+-int _Py_CheckRecursiveCallPy(
+-    PyThreadState *tstate)
+-{
+-    if (tstate->recursion_headroom) {
+-        if (tstate->py_recursion_remaining < -50) {
+-            /* Overflowing while handling an overflow. Give up. */
+-            Py_FatalError("Cannot recover from Python stack overflow.");
+-        }
+-    }
+-    else {
+-        if (tstate->py_recursion_remaining <= 0) {
+-            tstate->recursion_headroom++;
+-            _PyErr_Format(tstate, PyExc_RecursionError,
+-                        "maximum recursion depth exceeded");
+-            tstate->recursion_headroom--;
+-            return -1;
+-        }
+-    }
+-    return 0;
+-}
+
+ static const _Py_CODEUNIT _Py_INTERPRETER_TRAMPOLINE_INSTRUCTIONS[] = {
+     /* Put a NOP at the start, so that the IP points into
+     * the code, rather than before it */
+@@ -1381,1514 +789,46 @@
  #elif defined(_MSC_VER) /* MS_WINDOWS */
  #  pragma warning(pop)
  #endif
@@ -1563,7 +2147,95 @@
  /* Logic for matching an exception in an except* clause (too
     complicated for inlining).
  */
-@@ -2382,513 +1452,22 @@
+
+-int
+-_PyEval_ExceptionGroupMatch(_PyInterpreterFrame *frame, PyObject* exc_value,
+-                            PyObject *match_type, PyObject **match, PyObject **rest)
+-{
+-    if (Py_IsNone(exc_value)) {
+-        *match = Py_NewRef(Py_None);
+-        *rest = Py_NewRef(Py_None);
+-        return 0;
+-    }
+-    assert(PyExceptionInstance_Check(exc_value));
+-
+-    if (PyErr_GivenExceptionMatches(exc_value, match_type)) {
+-        /* Full match of exc itself */
+-        bool is_eg = _PyBaseExceptionGroup_Check(exc_value);
+-        if (is_eg) {
+-            *match = Py_NewRef(exc_value);
+-        }
+-        else {
+-            /* naked exception - wrap it */
+-            PyObject *excs = PyTuple_Pack(1, exc_value);
+-            if (excs == NULL) {
+-                return -1;
+-            }
+-            PyObject *wrapped = _PyExc_CreateExceptionGroup("", excs);
+-            Py_DECREF(excs);
+-            if (wrapped == NULL) {
+-                return -1;
+-            }
+-            PyFrameObject *f = _PyFrame_GetFrameObject(frame);
+-            if (f == NULL) {
+-                Py_DECREF(wrapped);
+-                return -1;
+-            }
+-
+-            PyObject *tb = _PyTraceBack_FromFrame(NULL, f);
+-            if (tb == NULL) {
+-                return -1;
+-            }
+-            PyException_SetTraceback(wrapped, tb);
+-            Py_DECREF(tb);
+-            *match = wrapped;
+-        }
+-        *rest = Py_NewRef(Py_None);
+-        return 0;
+-    }
+-
+-    /* exc_value does not match match_type.
+-     * Check for partial match if it's an exception group.
+-     */
+-    if (_PyBaseExceptionGroup_Check(exc_value)) {
+-        PyObject *pair = PyObject_CallMethod(exc_value, "split", "(O)",
+-                                             match_type);
+-        if (pair == NULL) {
+-            return -1;
+-        }
+-
+-        if (!PyTuple_CheckExact(pair)) {
+-            PyErr_Format(PyExc_TypeError,
+-                         "%.200s.split must return a tuple, not %.200s",
+-                         Py_TYPE(exc_value)->tp_name, Py_TYPE(pair)->tp_name);
+-            Py_DECREF(pair);
+-            return -1;
+-        }
+-
+-        // allow tuples of length > 2 for backwards compatibility
+-        if (PyTuple_GET_SIZE(pair) < 2) {
+-            PyErr_Format(PyExc_TypeError,
+-                         "%.200s.split must return a 2-tuple, "
+-                         "got tuple of size %zd",
+-                         Py_TYPE(exc_value)->tp_name, PyTuple_GET_SIZE(pair));
+-            Py_DECREF(pair);
+-            return -1;
+-        }
+-
+-        *match = Py_NewRef(PyTuple_GET_ITEM(pair, 0));
+-        *rest = Py_NewRef(PyTuple_GET_ITEM(pair, 1));
+-        Py_DECREF(pair);
+-        return 0;
+-    }
+-    /* no match */
+-    *match = Py_NewRef(Py_None);
+-    *rest = Py_NewRef(exc_value);
+-    return 0;
+-}
+
+ /* Iterate v argcnt times and store the results on the stack (via decreasing
+    sp).  Return 1 for success, 0 if error.
+
     If argcntafter == -1, do a simple unpack. If it is >= 0, do an unpack
     with a variable target.
  */
@@ -2089,7 +2761,7 @@
  PyObject *
  _PyEval_GetGlobalsFromRunningMain(PyThreadState *tstate)
  {
-@@ -2904,120 +1483,14 @@
+@@ -2904,120 +844,14 @@
      Py_DECREF(mod);
      return globals;
  }
@@ -2216,7 +2888,7 @@
  int
  PyEval_MergeCompilerFlags(PyCompilerFlags *cf)
  {
-@@ -3036,486 +1509,8 @@
+@@ -3036,486 +870,8 @@
      return result;
  }
 
@@ -2703,11 +3375,19 @@
  PyUnstable_Eval_RequestCodeExtraIndex(freefunc free)
  {
      PyInterpreterState *interp = _PyInterpreterState_GET();
-@@ -3555,47 +1550,8 @@
+@@ -3547,56 +903,9 @@
 
- void Py_LeaveRecursiveCall(void)
- {
-     _Py_LeaveRecursiveCall();
+ /* Implement Py_EnterRecursiveCall() and Py_LeaveRecursiveCall() as functions
+    for the limited API. */
+
+-int Py_EnterRecursiveCall(const char *where)
+-{
+-    return _Py_EnterRecursiveCall(where);
+-}
+-
+-void Py_LeaveRecursiveCall(void)
+-{
+-    _Py_LeaveRecursiveCall();
 -}
 -
 -PyObject *
@@ -2747,11 +3427,13 @@
 -    }
 -    Py_DECREF(next_iter);
 -    return awaitable;
- }
+-}
++
 
  void
  _PyEval_LoadGlobalStackRef(PyObject *globals, PyObject *builtins, PyObject *name, _PyStackRef *writeto)
-@@ -3636,90 +1592,5 @@
+ {
+@@ -3636,90 +945,5 @@
          *writeto = PyStackRef_FromPyObjectSteal(res);
      }
  }

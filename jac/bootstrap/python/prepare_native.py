@@ -174,6 +174,18 @@ emit_evaluator_unit("evaluator_context", "evaluator_context", [
 emit_evaluator_unit("evaluator_unpack", "evaluator_unpack", [
     "jacpy_unpack_iterable", "jacpy_unpack_close_impl",
 ])
+emit_evaluator_unit("evaluator_matching", "evaluator_matching", [
+    "jacpy_match_keys_impl", "_PyEval_MatchClass",
+])
+emit_evaluator_unit("evaluator_groups", "evaluator_groups", [
+    "_PyEval_ExceptionGroupMatch",
+])
+emit_evaluator_unit("evaluator_recursion", "evaluator_recursion", [
+    "Py_GetRecursionLimit", "Py_SetRecursionLimit", "_Py_CheckRecursiveCallPy",
+    "PyUnstable_ThreadState_ResetStackProtection", "jacpy_initialize_recursion",
+    "jacpy_set_stack_protection", "jacpy_reached_recursion_margin",
+    "jacpy_enter_recursion_unchecked", "jacpy_check_recursion",
+])
 provenance_inputs = [
     "jaclang/runtime/python/references.jac",
     "jaclang/runtime/python/evaluator_lookup.jac",
@@ -186,6 +198,8 @@ provenance_inputs = [
     "bootstrap/python/evaluator_objects.h",
     "bootstrap/python/evaluator_binding.c",
     "bootstrap/python/evaluator_binding.h",
+    "bootstrap/python/evaluator_recursion.c",
+    "bootstrap/python/evaluator_recursion.h",
 ]
 (output / "evaluator-provenance.json").write_text(json.dumps({
     "schema": 1,

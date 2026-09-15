@@ -74,4 +74,30 @@ void jacpy_format_positional_error(PyThreadState *tstate, JacPyObjectRef qualnam
     JacPyObjectRef keyword_signature, const char *verb);
 int32_t jacpy_stack_array_is_null(const void *array, int64_t index);
 int32_t jacpy_stack_array_has_object(const void *array, int64_t index);
+typedef struct JacPyMatchStorage JacPyMatchStorage;
+typedef JacPyMatchStorage *JacPyMatchRootsRef;
+JacPyMatchRootsRef jacpy_match_roots_begin(JacPyMatchStorage *storage, PyThreadState *tstate,
+    JacPyObjectRef mapping);
+void jacpy_match_roots_close(JacPyMatchRootsRef roots);
+int32_t jacpy_match_get_method(JacPyMatchRootsRef roots);
+int32_t jacpy_match_has_self(JacPyMatchRootsRef roots);
+JacPyObjectRef jacpy_match_call_self(JacPyMatchRootsRef roots, JacPyObjectRef key, JacPyObjectRef missing);
+JacPyObjectRef jacpy_match_call_bound(JacPyMatchRootsRef roots, JacPyObjectRef key, JacPyObjectRef missing);
+JacPyObjectRef jacpy_match_dummy(void);
+int32_t jacpy_type_check(JacPyObjectRef value);
+int32_t jacpy_tuple_exact(JacPyObjectRef value);
+int32_t jacpy_unicode_exact(JacPyObjectRef value);
+int32_t jacpy_type_match_self(JacPyObjectRef type);
+JacPyObjectRef jacpy_match_args_name(PyThreadState *tstate);
+void jacpy_match_duplicate(PyThreadState *tstate, JacPyObjectRef type, JacPyObjectRef name);
+void jacpy_match_args_type_error(PyThreadState *tstate, JacPyObjectRef type, JacPyObjectRef match_args);
+void jacpy_match_arity_error(PyThreadState *tstate, JacPyObjectRef type, int64_t allowed,
+    const char *plural, int64_t given);
+int32_t jacpy_exception_group_check(JacPyObjectRef value);
+JacPyObjectRef jacpy_tuple_single(JacPyObjectRef value);
+JacPyObjectRef jacpy_traceback_from_frame(JacPyObjectRef frame);
+JacPyObjectRef jacpy_exception_group_split(JacPyObjectRef exception, JacPyObjectRef type);
+void jacpy_exception_split_type_error(JacPyObjectRef exception, JacPyObjectRef pair);
+void jacpy_exception_split_size_error(JacPyObjectRef exception, int64_t size);
+void jacpy_exception_group_leak_on_traceback_error(JacPyObjectRef exception);
 #endif

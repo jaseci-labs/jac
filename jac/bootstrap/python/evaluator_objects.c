@@ -7,11 +7,14 @@
 #endif
 #include "evaluator_objects.h"
 #include "internal/pycore_ceval.h"
+#include "internal/pycore_call.h"
+#include "internal/pycore_pystate.h"
 #include "internal/pycore_code.h"
 #include "internal/pycore_object.h"
 #include "internal/pycore_moduleobject.h"
 #include "internal/pycore_pyerrors.h"
 #include "internal/pycore_typeobject.h"
+#include "internal/pycore_traceback.h"
 #include "internal/pycore_sysmodule.h"
 #include "internal/pycore_stackref.h"
 #include "internal/pycore_unicodeobject.h"
@@ -30,7 +33,7 @@ JacPyObjectRef jacpy_exception_type(PyThreadState *tstate, int32_t kind) {
     /* Indices belong to this boundary, not CPython's type or opcode numbering. */
     PyObject *types[] = {PyExc_TypeError, PyExc_AttributeError, PyExc_KeyError,
                         PyExc_NameError, PyExc_UnboundLocalError, PyExc_SystemError,
-                        PyExc_ImportError};
+                        PyExc_ImportError, PyExc_ValueError};
     assert(kind >= 0 && kind < (int32_t)(sizeof(types) / sizeof(types[0])));
     return types[kind];
 }
@@ -230,4 +233,91 @@ int32_t jacpy_stack_array_is_null(const void *array, int64_t index) {
 }
 int32_t jacpy_stack_array_has_object(const void *array, int64_t index) {
     return PyStackRef_AsPyObjectBorrow(((const _PyStackRef *)array)[index]) != NULL;
+}
+
+struct JacPyMatchStorage {
+    PyThreadState *tstate;
+    _PyCStackRef self;
+    _PyCStackRef method;
+    int closed;
+};
+extern JacPyObjectRef jacpy_match_keys_impl(JacPyMatchStorage *, PyThreadState *,
+    JacPyObjectRef, JacPyObjectRef);
+PyObject *_PyEval_MatchKeys(PyThreadState *tstate, PyObject *mapping, PyObject *keys) {
+    assert(PyTuple_CheckExact(keys));
+    JacPyMatchStorage storage = {0};
+    return jacpy_match_keys_impl(&storage, tstate, mapping, keys);
+}
+JacPyMatchRootsRef jacpy_match_roots_begin(JacPyMatchStorage *storage, PyThreadState *tstate,
+    JacPyObjectRef mapping) {
+    storage->tstate = tstate;
+    _PyThreadState_PushCStackRef(tstate, &storage->self);
+    _PyThreadState_PushCStackRef(tstate, &storage->method);
+    storage->self.ref = PyStackRef_FromPyObjectBorrow(mapping);
+    return storage;
+}
+void jacpy_match_roots_close(JacPyMatchRootsRef roots) {
+    if (roots != NULL) {
+        assert(!roots->closed);
+        roots->closed = 1;
+        _PyThreadState_PopCStackRef(roots->tstate, &roots->method);
+        _PyThreadState_PopCStackRef(roots->tstate, &roots->self);
+    }
+}
+int32_t jacpy_match_get_method(JacPyMatchRootsRef roots) {
+    return _PyObject_GetMethodStackRef(roots->tstate, &roots->self.ref,
+        &_Py_ID(get), &roots->method.ref);
+}
+int32_t jacpy_match_has_self(JacPyMatchRootsRef roots) { return !PyStackRef_IsNull(roots->self.ref); }
+JacPyObjectRef jacpy_match_call_self(JacPyMatchRootsRef roots, JacPyObjectRef key, JacPyObjectRef missing) {
+    PyObject *arguments[] = { PyStackRef_AsPyObjectBorrow(roots->self.ref), key, missing };
+    return PyObject_Vectorcall(PyStackRef_AsPyObjectBorrow(roots->method.ref), arguments, 3, NULL);
+}
+JacPyObjectRef jacpy_match_call_bound(JacPyMatchRootsRef roots, JacPyObjectRef key, JacPyObjectRef missing) {
+    PyObject *arguments[] = { key, missing };
+    return PyObject_Vectorcall(PyStackRef_AsPyObjectBorrow(roots->method.ref), arguments, 2, NULL);
+}
+JacPyObjectRef jacpy_match_dummy(void) { return _PyObject_CallNoArgs((PyObject *)&PyBaseObject_Type); }
+int32_t jacpy_type_check(JacPyObjectRef value) { return PyType_Check(value); }
+int32_t jacpy_tuple_exact(JacPyObjectRef value) { return PyTuple_CheckExact(value); }
+int32_t jacpy_unicode_exact(JacPyObjectRef value) { return PyUnicode_CheckExact(value); }
+int32_t jacpy_type_match_self(JacPyObjectRef type) { return PyType_HasFeature((PyTypeObject *)type, _Py_TPFLAGS_MATCH_SELF); }
+JacPyObjectRef jacpy_match_args_name(PyThreadState *tstate) { (void)tstate; return &_Py_ID(__match_args__); }
+void jacpy_match_duplicate(PyThreadState *tstate, JacPyObjectRef type, JacPyObjectRef name) {
+    _PyErr_Format(tstate, PyExc_TypeError, "%s() got multiple sub-patterns for attribute %R",
+        ((PyTypeObject *)type)->tp_name, name);
+}
+void jacpy_match_args_type_error(PyThreadState *tstate, JacPyObjectRef type, JacPyObjectRef match_args) {
+    _PyErr_Format(tstate, PyExc_TypeError, "%s.__match_args__ must be a tuple (got %s)",
+        ((PyTypeObject *)type)->tp_name, Py_TYPE(match_args)->tp_name);
+}
+void jacpy_match_arity_error(PyThreadState *tstate, JacPyObjectRef type, int64_t allowed,
+    const char *plural, int64_t given) {
+    _PyErr_Format(tstate, PyExc_TypeError, "%s() accepts %zd positional sub-pattern%s (%zd given)",
+        ((PyTypeObject *)type)->tp_name, (Py_ssize_t)allowed, plural, (Py_ssize_t)given);
+}
+
+int32_t jacpy_exception_group_check(JacPyObjectRef value) { return _PyBaseExceptionGroup_Check(value); }
+JacPyObjectRef jacpy_tuple_single(JacPyObjectRef value) { return PyTuple_Pack(1, value); }
+JacPyObjectRef jacpy_traceback_from_frame(JacPyObjectRef frame) {
+    return _PyTraceBack_FromFrame(NULL, (PyFrameObject *)frame);
+}
+JacPyObjectRef jacpy_exception_group_split(JacPyObjectRef exception, JacPyObjectRef type) {
+    return PyObject_CallMethod(exception, "split", "(O)", type);
+}
+void jacpy_exception_split_type_error(JacPyObjectRef exception, JacPyObjectRef pair) {
+    PyErr_Format(PyExc_TypeError, "%.200s.split must return a tuple, not %.200s",
+        Py_TYPE(exception)->tp_name, Py_TYPE(pair)->tp_name);
+}
+void jacpy_exception_split_size_error(JacPyObjectRef exception, int64_t size) {
+    PyErr_Format(PyExc_TypeError, "%.200s.split must return a 2-tuple, got tuple of size %zd",
+        Py_TYPE(exception)->tp_name, (Py_ssize_t)size);
+}
+void jacpy_exception_group_leak_on_traceback_error(JacPyObjectRef exception) {
+    /* CPython 3.14.6 ceval.c returns without decrefing `wrapped` when
+     * _PyTraceBack_FromFrame fails. This deliberately preserves that leak.
+     * Removing it is a separate Python-semantics change, not an implicit
+     * cleanup insertion by the ownership compiler.
+     */
+    (void)exception;
 }

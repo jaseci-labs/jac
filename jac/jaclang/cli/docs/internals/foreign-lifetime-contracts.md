@@ -160,7 +160,8 @@ The evaluator sources include raise logic, active-frame cleanup, monitoring and
 tracing control, coroutine-origin and async-generator setters, error formatting,
 name lookup, import handling, exception-table search, argument binding and its
 diagnostics, frame push, vector/tuple/dict call preparation, legacy code evaluation,
-frame locals/globals/builtins APIs, and iterable unpacking using these contracts. A linear frame owns a cleanup obligation tied to the current thread;
+frame locals/globals/builtins APIs, iterable unpacking, structural pattern
+matching, exception-group matching, and recursion policy using these contracts. A linear frame owns a cleanup obligation tied to the current thread;
 a dependent executable reference is closed before its thread frame is popped.
 The source changes in this review batch have not been built or tested.
 
@@ -198,6 +199,19 @@ Moving a starred-unpack list tail is isolated in an `errors="none"`,
 `reentrant=False` native helper: no callback or error edge can observe its
 intermediate ownership state before the list size is reduced.
 
+Mapping-pattern lookups preserve CPython's C-stack-reference protocol for the
+method and receiver. The C adapter provides the storage; its linear resource
+closes the method before the receiver. Actual root-chain registration remains
+conditional in the upstream headers. Recursion policy uses numeric machine
+stack bounds separately from Python object lifetimes and holds a linear
+thread-list lock while updating per-thread limits.
+
+The pinned exception-group matcher has an existing leak when allocating a
+traceback for a newly wrapped group fails. The port names that exceptional
+transfer explicitly at the C boundary instead of silently introducing a decref
+and changing finalizer timing. Fixing the pinned behavior is separate from
+claiming a faithful evaluator source migration.
+
 Generic foreign-resource storage, arbitrary closure capture, suspension,
 container-element stability across reentry, and complete effect propagation
 through every storage/interface shape remain migration prerequisites. These
@@ -206,8 +220,8 @@ evaluator and tier-two executor remain in the candidate build.
 
 The full source migration is still unfinished. Remaining C algorithms include
 opcode dispatch and all enabled instruction families, tier-two execution,
-recursion handling, pattern matching, exception-group splitting, main-module
-globals lookup, compiler flag merging, and the remaining evaluator utilities. Their source/object prerequisites remain active.
+main-module globals lookup, compiler flag merging, and the remaining evaluator
+utilities. Their source/object prerequisites remain active.
 Removing these entries from the build before replacing their implementations
 would not complete the migration.
 
