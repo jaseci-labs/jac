@@ -2,6 +2,7 @@ import time;
 import from jaclang.compiler.frontend.srcloc { CodeLocInfo, Span }
 import from jaclang.compiler.frontend.diagnostics {
     DiagnosticInfo,
+    E0111,
     E9001,
     LINT_ALIASES,
     Severity
@@ -85,6 +86,7 @@ walker Transform(BaseTransform) {
     static has HOST_PASS: bool = False;
 
     def postinit -> None;
+    def timed_transform(ir_in: UniNode) -> UniNode;
     def emit(
         diag: DiagnosticInfo,
         node_override: (UniNode | None) = None,

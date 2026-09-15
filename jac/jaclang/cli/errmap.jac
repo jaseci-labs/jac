@@ -24,6 +24,16 @@ def humanize_error(e: Exception) -> (tuple[str, (str | None)] | None) {
     import from jaclang.data.pgwire { PgWireError }
     import from jaclang.server.net { PortInUseError }
 
+    if isinstance(e, RecursionError) {
+        return (
+            'A construct in this program is nested too deeply for the compiler'
+            ' to process.',
+            'A long chain of operators nests one level per operator, so a chain'
+            ' of a few thousand exhausts the working stack. Split it across'
+            ' several statements, or build the value in a loop.'
+        );
+    }
+
     if isinstance(e, PortInUseError) {
         return (
             str(e),

@@ -151,6 +151,18 @@ impl Transform.postinit -> None {
     super.postinit();
 }
 
+impl Transform.timed_transform(ir_in: UniNode) -> UniNode {
+    start_time = time.time();
+    try {
+        ir_out = self.transform(ir_in=ir_in);
+    } except RecursionError {
+        ir_out = ir_in;
+        self.emit(E0111, node_override=self.cur_node);
+    }
+    self.time_taken = time.time() - start_time;
+    return ir_out;
+}
+
 impl Transform.emit(
     diag: DiagnosticInfo,
     node_override: (UniNode | None) = None,
