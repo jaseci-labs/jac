@@ -1,8 +1,4 @@
-"""Fixture with module name ending in 'a' to test scope name resolution."""
-
-import from jaclang.byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
+"""A module whose name ends in 'a', for scope name resolution."""
 
 obj DataItem {
     has value: str;

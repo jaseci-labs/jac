@@ -10,7 +10,7 @@ import from jaclang.byllm.exceptions { ConfigurationError }
 import from jaclang.byllm.telemetry { _current_invocation_id }
 import from jaclang.byllm.lib { Model }
 import from jaclang.byllm.lib { MockLLM }
-import from support_tests {
+import from support {
     call,
     chunk_text,
     event_types,

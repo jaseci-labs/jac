@@ -1,4 +1,4 @@
-"""Shared helpers for the byLLM suite.
+"""Shared helpers for the byLLM suite. `TESTING.md` holds the rules.
 
 Tests fake the model with `MockLLM`, which replaces only the network call, so byLLM
 builds the real request and parses the reply. The builders below script its turns:
@@ -8,19 +8,16 @@ builds the real request and parses the reply. The builders below script its turn
     assert task("x") == "done";
     assert llm.sent("tools")[0] is not None;
 
-A typed answer is queued as the value itself, and `MockLLM` sends it in the envelope
-the parser expects. For a real `Model` (provider quirks, api-key resolution):
+A typed answer is queued as the value itself. For what a queue cannot say:
 
-    with scripted(model, [say("hi")]) as llm { ... llm.seen ... }
+    scripted(model, replies)   a real `Model` answering from a queue
+    ProviderLLM(...)           a served model, a stream `logging_obj`, a dropped stream
 
 The file is not collected as a suite: it has no `test_` prefix by design.
 """
 
-import contextlib;
-import io;
 import logging;
 import os;
-import types;
 import from typing { Generator }
 import from unittest { mock }
 import from jaclang { JacRuntimeInterface as Jac }
@@ -76,8 +73,10 @@ def calls(
 }
 
 
-def finish(output: object, call_id: str = "call_finish") -> MockRawResponse {
-    return call("finish_tool", {"final_output": output}, call_id=call_id);
+def finish(
+    output: object, call_id: str = "call_finish", usage: dict[str, any] | None = None
+) -> MockRawResponse {
+    return call("finish_tool", {"final_output": output}, call_id=call_id, usage=usage);
 }
 
 
@@ -91,6 +90,19 @@ def fail(error: Exception, content: str = "", after: int = 0) -> MockError {
 """Tool names as the model would see them in one recorded params dict."""
 def tool_names(params: dict[str, any]) -> list[any] {
     return [t["function"]["name"] for t in (params.get("tools") or [])];
+}
+
+
+"""One streamed text chunk, as litellm delivers it."""
+def text_chunk(text: str, model: str = "fake") -> object {
+    import litellm;
+    return litellm.ModelResponseStream(
+        id="chunk",
+        object="chat.completion.chunk",
+        created=1,
+        model=model,
+        choices=[{"index": 0, "delta": {"content": text}, "finish_reason": None}]
+    );
 }
 
 
@@ -136,6 +148,80 @@ def scripted(model: BaseLLM, replies: list[any], chunk_size: int = 12) -> Script
 }
 
 
+"""Clear the id and name on a streamed chunk's tool-call fragments."""
+def _drop_call_names(chunk: any) {
+    for choice in chunk.choices {
+        for fragment in choice.delta.tool_calls or [] {
+            fragment.id = None;
+            fragment.function.name = None;
+        }
+    }
+}
+
+
+"""A stream carrying litellm's `logging_obj`, as its CustomStreamWrapper does."""
+obj LoggedStream {
+    has chunks: Iterable[object],
+        logging_obj: object;
+
+    def __iter__ -> Iterator[object] {
+        return iter(self.chunks);
+    }
+}
+
+
+"""A MockLLM for the provider details a reply queue cannot express.
+
+    served_as      the model the provider reports, as after a router fallback
+    logging_obj    carried on every stream, as litellm's CustomStreamWrapper does
+    breaks[n]      raised once call n's chunks are out: a stream dropped mid-reply
+    unnamed_args   streamed tool-call fragments carry arguments but no id or name
+"""
+obj ProviderLLM(MockLLM) {
+    has served_as: str = "",
+        logging_obj: object | None = None,
+        breaks: dict[int, Exception] = {},
+        unnamed_args: bool = False;
+
+    override def model_call_no_stream(params: dict[str, any]) -> object {
+        reply = super.model_call_no_stream(params);
+        if self.served_as {
+            setattr(reply, "model", self.served_as);
+        }
+        return reply;
+    }
+
+    override def model_call_with_stream(
+        params: dict[str, any]
+    ) -> Generator[object, None, None] {
+        stream = self._served_stream(params, len(self.seen));
+        if self.logging_obj is not None {
+            wrapped: any = LoggedStream(chunks=stream, logging_obj=self.logging_obj);
+            return wrapped;
+        }
+        return stream;
+    }
+
+    def _served_stream(
+        params: dict[str, any], call: int
+    ) -> Generator[object, None, None] {
+        for chunk in super.model_call_with_stream(params) {
+            if self.served_as {
+                setattr(chunk, "model", self.served_as);
+            }
+            if self.unnamed_args {
+                _drop_call_names(chunk);
+            }
+            yield chunk;
+        }
+        failure = self.breaks.get(call);
+        if failure is not None {
+            raise failure;
+        }
+    }
+}
+
+
 """An MTRuntime with sane defaults. Plain callables in `tools` are wrapped, and a
 finish tool is appended whenever tools are given unless `finish` says otherwise."""
 def mk_run(
@@ -169,39 +255,49 @@ def mk_run(
 }
 
 
+"""The path of the fixture file or directory `name`."""
+def fixture_path(name: str) -> str {
+    return os.path.join(FIXTURE_DIR, name);
+}
+
+
+"""Import fixture module `name`. Imports are cached, so tests that load one share it."""
 def load_fixture(name: str) -> any {
     return Jac.jac_import(name, base_path=FIXTURE_DIR + "/")[0];
 }
 
 
-"""Import a fixture program and return what it printed."""
-def run_fixture(name: str) -> str {
-    buf = io.StringIO();
-    with contextlib.redirect_stdout(buf) {
-        Jac.jac_import(name, base_path=FIXTURE_DIR + "/");
+"""A write-only text sink that keeps what it is given, for a log handler."""
+obj _Lines {
+    has lines: list[str] = [];
+
+    def write(text: str) {
+        self.lines.append(text);
     }
-    return buf.getvalue();
+
+    def flush {}
 }
 
 
-"""Collect every log record at or above `level` from logger `name` (root by default)."""
+"""Collect std `logging` records at or above `level` from logger `name` (root by default)."""
 obj LogCapture {
     has level: int = logging.DEBUG,
         name: str = "",
-        buf: io.StringIO | None = None,
+        sink: _Lines | None = None,
         _handler: logging.Handler | None = None,
         _logger: logging.Logger | None = None,
         _prev_level: int = 0;
 
     def __enter__ -> LogCapture {
-        self.buf = io.StringIO();
-        handler = logging.StreamHandler(self.buf);
-        handler.setLevel(self.level);
+        self.sink = _Lines();
+        level: any = self.level;
+        handler = logging.StreamHandler(self.sink);
+        handler.setLevel(level);
         handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"));
         target = logging.getLogger(self.name);
         self._prev_level = target.level;
         target.addHandler(handler);
-        target.setLevel(self.level);
+        target.setLevel(level);
         self._handler = handler;
         self._logger = target;
         return self;
@@ -209,20 +305,56 @@ obj LogCapture {
 
     def __exit__(*_exc: any) -> bool {
         if self._logger is not None and self._handler is not None {
+            previous: any = self._prev_level;
             self._logger.removeHandler(self._handler);
-            self._logger.setLevel(self._prev_level);
+            self._logger.setLevel(previous);
         }
         return False;
     }
 
     def text -> str {
-        return self.buf.getvalue() if self.buf is not None else "";
+        return "".join(self.sink.lines) if self.sink is not None else "";
     }
 }
 
 
 def capture_logs(level: int = logging.DEBUG, name: str = "") -> LogCapture {
     return LogCapture(level=level, name=name);
+}
+
+
+"""Collect loguru records at or above `level`. Sinks already installed stay installed."""
+obj LoguruCapture {
+    has level: str = "DEBUG",
+        sink: _Lines | None = None,
+        _sink_id: any = None;
+
+    def __enter__ -> LoguruCapture {
+        import from loguru { logger }
+        self.sink = _Lines();
+        self._sink_id = logger.add(
+            self.sink.write, level=self.level, format="{level} {message}"
+        );
+        return self;
+    }
+
+    def __exit__(*_exc: any) -> bool {
+        import from loguru { logger }
+        if self._sink_id is not None {
+            logger.remove(self._sink_id);
+            self._sink_id = None;
+        }
+        return False;
+    }
+
+    def text -> str {
+        return "".join(self.sink.lines) if self.sink is not None else "";
+    }
+}
+
+
+def capture_loguru(level: str = "DEBUG") -> LoguruCapture {
+    return LoguruCapture(level=level);
 }
 
 
@@ -282,6 +414,24 @@ def need(module: str, package: str = "") {
         testskip(f"This test requires {package or module} to be installed");
     }
 }
+
+
+"""Skip the calling test unless `path` compiles into the runtime's own program.
+
+A file inside the jaclang package compiles into the compiler's program instead, so the
+MTIR it registers never reaches `JacRuntime.program`. CI runs such tests from a copy.
+"""
+def need_outside_jaclang(path: str) {
+    import from jaclang.runtime.runtime { JacRuntime }
+    program = JacRuntime.get_program();
+    if JacRuntime.get_selfhost().resolve(path, program) is not program {
+        testskip(
+            "this fixture compiles into the compiler's own program here; "
+            "run from a copy outside the jaclang tree, as CI does"
+        );
+    }
+}
+
 
 """The whole conversation of call `n` as one string, for `in` assertions.
 

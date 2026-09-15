@@ -7,10 +7,7 @@ returns, enums and scalars on the way back. Assert on both directions.
 import os;
 import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.byllm.lib { MockLLM }
-import from support_tests { call, prompt_text, roles, say, tool_names }
-
-
-glob FIXTURE_DIR: str = os.path.join(os.path.dirname(__file__), "fixtures");
+import from support { FIXTURE_DIR, call, prompt_text, roles, say, tool_names }
 
 
 enum _Sentiment { POSITIVE, NEGATIVE, NEUTRAL }
