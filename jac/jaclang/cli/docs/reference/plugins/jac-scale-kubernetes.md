@@ -1015,7 +1015,7 @@ DATABASE_PASSWORD = "${DB_PASS}"
 STATIC_VALUE = "hardcoded-value"
 ```
 
-Values using `${ENV_VAR}` syntax are resolved from the local environment at deploy time; an unset variable fails the config load. Shell-style fallback operators are supported: `${VAR:-default}` substitutes a default when the variable is unset, and `${VAR:?message}` fails with your own error message. The resolved key-value pairs are created as a proper Kubernetes Secret (`{app_name}-secrets`) and injected into pods via `envFrom.secretRef`.
+Values using `${ENV_VAR}` syntax are resolved from the local environment at deploy time; an unset variable fails the config load. Shell-style fallback operators are supported: `${VAR:-default}` substitutes a default when the variable is unset, and `${VAR:?message}` fails with your own error message. The resolved key-value pairs are created as a proper Kubernetes Secret (`{app_name}-secrets`) and injected into pods via `envFrom.secretRef`. The variable has to be in the environment of the command itself. A project `.env` is read by the deploy after `jac.toml` has already been loaded, so it does not supply these values; export them, or give them a `${VAR:-default}`.
 
 ### How It Works
 
