@@ -12,24 +12,16 @@ store of the bytes already at a key leaves the file alone rather than
 rewriting it under whatever other process is watching.
 """
 
-import glob;
 import os;
 import jaclang.compiler.backends.es.jac_runtime_js as _rtjs;
 import jaclang.compiler.backends.native.na_compile_pass as _nacp;
 import from jaclang.compiler.backends.common.kernel_units {
     OSP_CORE_PARTS,
+    es_pass_fingerprint,
     osp_core_unit_path,
     store_unit_artifact,
     unit_artifact_path,
     unit_source
-}
-
-def _sole_artifact(unit_path: str, kind: str) -> str {
-    units_dir = os.path.dirname(unit_path);
-    stem = os.path.splitext(os.path.basename(unit_path))[0];
-    hits = sorted(`glob.`glob(os.path.join(units_dir, f"{stem}.*.{kind}")));
-    assert len(hits) == 1 , f"expected one {stem} {kind} artifact, got {hits}";
-    return hits[0];
 }
 
 test "unit path is stable and carries the exact concatenated sources" {
@@ -165,7 +157,7 @@ test "client kernel JS is deterministic and the rebuild is a warm artifact read"
     for nm in driver_names {
         assert nm in js1 , f"kernel JS lost the driver-referenced name {nm}";
     }
-    art = _sole_artifact(osp_core_unit_path('cl'), "mjs");
+    art = unit_artifact_path(osp_core_unit_path('cl'), "mjs", es_pass_fingerprint());
     mtime1 = os.path.getmtime(art);
     _rtjs._OSP_CORE_JS_CACHE.clear();
     js2 = _rtjs.build_osp_core_js();
@@ -179,7 +171,13 @@ test "native kernel IR is deterministic and the rebuild is a warm artifact read"
     _nacp._OSP_KERNEL_IR_CACHE.clear();
     ir1 = _nacp._compile_osp_kernel_ir("cycles", False);
     assert ir1 is not None , "kernel IR build failed";
-    art = _sole_artifact(osp_core_unit_path('na_cycles'), "ll");
+    art = unit_artifact_path(
+        osp_core_unit_path('na_cycles'),
+        "ll",
+        _nacp.native_compiler_fingerprint(
+            _nacp._kernel_unit_opts("cycles", False, False)
+        )
+    );
     mtime1 = os.path.getmtime(art);
     _nacp._OSP_KERNEL_IR_CACHE.clear();
     ir2 = _nacp._compile_osp_kernel_ir("cycles", False);

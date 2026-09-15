@@ -54,6 +54,8 @@ jobs:
               - '.github/workflows/build-binaries.yml'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
+              - 'scripts/ci_cache_keys.sh'
+              - 'scripts/test_ci_cache_keys.sh'
             scale:
               - 'jac/jaclang/scale/**'
             byllm:
@@ -100,6 +102,7 @@ jobs:
               - 'jac/jaclang/cli/commands/precompile.jac'
               - 'jac/jaclang/cli/commands/impl/precompile.impl.jac'
               - '.github/actions/**'
+              - 'scripts/ci_cache_keys.sh'
 
   # The kit lane builds this checkout and publishes it for every test lane.
   build-kit:
@@ -124,6 +127,8 @@ jobs:
       # if-no-files-found blind to it because the other paths matched.
       - name: Materialize typeshed + vendored runtimes
         working-directory: jac
+        env:
+          JACPYTHON: "1"
         run: |
           zig build fetch-typeshed --summary all
           zig build vendor-musl --summary all
@@ -220,6 +225,10 @@ jobs:
           submodules: true
           fetch-depth: 0
 
+      - name: Fingerprint immutable build inputs
+        id: inputs
+        run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
+
       # On PRs, scope fmt to .jac files changed vs the merge-base. `jac check`
       # is deliberately NOT scoped: a type error is a property of the whole
       # program, so a scoped run answers a different question than the push
@@ -266,9 +275,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/**', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
+          key: jac-check-cache-v3-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-${{ github.sha }}
           restore-keys: |
-            jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/**', 'jac/jaclang/dist/precompile_bytecode.jac') }}-
+            jac-check-cache-v3-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-
 
       - uses: ./.github/actions/jac-kit
 
@@ -393,7 +402,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/**', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
+          key: jac-check-cache-v3-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-${{ github.sha }}
 
       - name: Error-code breakdown (label "type-error-report")
         if: contains(github.event.pull_request.labels.*.name, 'type-error-report')
@@ -944,6 +953,8 @@ jobs:
       - name: Bootstrap unit tests (zig build test)
         working-directory: jac
         run: zig build test --summary all
+      - name: Cache key mutation tests
+        run: bash scripts/test_ci_cache_keys.sh
 
   # The CEF dispatch build + export/runpath/deps audit lives in the suite
   # (tests/client/test_cef_dispatch_build.jac, in test-client's lane).
@@ -1578,6 +1589,7 @@ jobs:
       - test-scale-k8s
       - test-native-aarch64
       - test-bootstrap
+      - test-launcher-jac
       - test-jac-pack-smoke
       - test-jac-pack-eject
       - installer-test

@@ -241,6 +241,11 @@ jobs:
         with:
           ref: ${{ inputs.channel == 'dev' && github.sha || inputs.commit || inputs.tag || github.event.release.tag_name }}
 
+      - name: Fingerprint immutable build inputs
+        id: inputs
+        shell: bash
+        run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
+
       # The provenance line the v0.37.0 post-mortem had to reconstruct from a
       # cache key. It is also the assertion: if the checkout ever resolves
       # something other than the commit the release named, this leg stops
@@ -283,38 +288,6 @@ jobs:
           path: jac/.llvm-build
           key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
 
-      # Identity of the compiler this build runs, as git blob ids over the same
-      # file set jir.jac hashes for its module keys (jaclang.compiler.driver.jir:
-      # COMPILER_DIGEST_ROOTS, .jac/.py only, test material excluded). Same
-      # rule as the step in .github/actions/setup-jac, which seeds the entries
-      # this leg reads; keep the three in lockstep.
-      - name: Fingerprint the compiler tree (dev channel)
-        if: inputs.channel == 'dev'
-        id: compiler-fp
-        shell: bash
-        run: |
-          list="$(git ls-tree -r HEAD -- \
-            jac/jaclang/jac0.py \
-            jac/jaclang/bootstrap_manifest.py \
-            jac/jaclang/meta_importer.py \
-            jac/jaclang/jac0core \
-            jac/jaclang/compiler \
-            jac/jaclang/runtime \
-            jac/jaclang/lib \
-            jac/jaclang/cli/cli_boot.jac \
-            jac/jaclang/project \
-            jac/jaclang/dist/precompile_bytecode.jac \
-            | grep -E '\.(jac|py)$' \
-            | grep -vE '(^|/)(tests|test)/|\.test\.jac$' || true)"
-          n="$(printf '%s\n' "$list" | grep -c . || true)"
-          if [ "$n" -lt 100 ]; then
-            echo "::error::compiler fingerprint listed only $n file(s): the roots moved. Update this step and COMPILER_DIGEST_ROOTS in jaclang/compiler/driver/jir.jac together."
-            exit 1
-          fi
-          fp="$(printf '%s\n' "$list" | git hash-object --stdin)"
-          echo "fp=${fp:0:16} ($n compiler sources)"
-          echo "fp=${fp:0:16}" >> "$GITHUB_OUTPUT"
-
       # mkpayload re-validates every seeded .jir per module, so a stale tree
       # from the previous push is safe and exactly what restore-keys is for --
       # but only within one compiler. Module keys carry a compiler-content
@@ -327,9 +300,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: jac/.precompiled-build/${{ matrix.runtime }}
-          key: jac-precompiled-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-${{ hashFiles('jac/jaclang/**') }}
+          key: jac-precompiled-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
           restore-keys: |
-            jac-precompiled-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-
+            jac-precompiled-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-c${{ steps.inputs.outputs.compiler }}-
 
       # Cache the selected runtime and any build host. Release builds remain cold.
       - name: Resolve Python SDK cache input
@@ -345,7 +318,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: jac/.python-build/${{ matrix.runtime }}
-          key: python-build-v3-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ hashFiles('jac/bootstrap/build_python.zig', 'jac/bootstrap/seed.zig', 'jac/bootstrap/python/**', 'jac/jaclang/**/*.jac', 'jac/jaclang/**/*.py', 'jac/jaclang/vendor/typeshed/PIN', 'jac/jaclang/vendor/typeshed/TARBALL_SHA256') }}
+          key: python-build-v4-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ matrix.runtime == 'cpython' && steps.inputs.outputs.python_cpython || steps.inputs.outputs.python_jacpython }}
+          restore-keys: |
+            python-build-v4-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
 
       - name: Restore cached bun runtime (dev channel)
         if: inputs.channel == 'dev'
@@ -363,7 +338,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: jac/.payload-layers/${{ matrix.runtime }}
-          key: payload-layers-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/bootstrap/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/jaclang/client/bun_installer.jac', 'jac/jaclang/compiler/backends/native/wasm_rt/**') }}
+          key: payload-layers-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
           restore-keys: |
             payload-layers-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-
 
