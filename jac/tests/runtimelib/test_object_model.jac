@@ -1,9 +1,8 @@
-"""Jac field semantics are independent of Python's dataclass implementation."""
+"""Python runtime implementation tests and compiled Jac object contract tests."""
 import from inspect { signature, Parameter }
 import from jaclang.runtime.archetype { WalkerArchetype }
 import from jaclang.runtime.object_model {
     ObjectField,
-    field,
     MISSING,
     fields,
     is_jac_object,
@@ -19,8 +18,8 @@ class BaseFields {
 @make_object
 class DerivedFields(BaseFields) {
     has required: str,
-        items: list[int] = field(default_factory=`list),
-        hidden: int = field(`default=7, repr=False, `init=False);
+        items: list[int] = ObjectField(default_factory=`list),
+        hidden: int = ObjectField(`default=7, repr=False, `init=False);
 
     with entry {
         category: ClassVar[str] = "example";
@@ -39,14 +38,14 @@ class CustomInit {
 @make_object
 class PostInit {
     has value: int = 1,
-        ready: bool = field(`init=False);
+        ready: bool = ObjectField(`init=False);
 
     def postinit(self: PostInit) {
         self.ready = True;
     }
 }
 
-test "field order, keyword-only requirements and factories are Jac-owned" {
+test "runtime descriptors preserve field order, keyword-only requirements and factories" {
     first = DerivedFields(required="a");
     second = DerivedFields(required="b");
     first.items.append(9);
@@ -80,12 +79,12 @@ test "reflection copies values and does not mutate class field metadata" {
 test "a default and a factory cannot describe the same field" {
     rejected = False;
     try {
-        field(`default=[], default_factory=`list);
+        ObjectField(`default=[], default_factory=`list);
     } except ValueError {
         rejected = True;
     }
     assert rejected;
-    assert field().`default is MISSING;
+    assert ObjectField().`default is MISSING;
 }
 
 glob _jac_runtime_ObjectField: int = 99;
@@ -166,9 +165,9 @@ test "constructor implementation names do not collide with fields" {
 }
 
 obj ExplicitFields {
-    has values: list[int] = field(default_factory=`list),
-        count: int = field(`default=4),
-        ready: bool = field(`init=False);
+    has values: list[int] = [],
+        count: int = 4,
+        ready: bool postinit;
 
     def postinit {
         self.ready = True;
@@ -179,7 +178,7 @@ obj RequiredAfterDefaults(JacFields) {
     has required: str;
 }
 
-test "field declarations retain defaults, factories and deferred initialization" {
+test "ObjectField declarations retain defaults, factories and deferred initialization" {
     first = ExplicitFields();
     second = ExplicitFields();
     first.values.append(7);

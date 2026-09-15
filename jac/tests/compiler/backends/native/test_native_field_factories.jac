@@ -9,7 +9,7 @@ test "native field factories use ordinary calls and fresh values per instance" {
     assert probe();
 }
 
-test "internal descriptors preserve deferred and keyword-only constructor slots" {
+test "field helpers preserve deferred and keyword-only constructor slots" {
     (engine, _) = compile_native("native_object_field_descriptors.jac");
     probe = get_func(engine, "probe", ctypes.c_bool);
     assert probe();

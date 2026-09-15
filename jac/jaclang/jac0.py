@@ -2834,7 +2834,6 @@ class CodeGen:
                     d.endswith(")")
                     and not d.startswith("(")
                     and not d.startswith("ObjectField(")
-                    and not d.startswith("field(")
                     and not d.startswith("ClassVar")
                 ):
                     # A call expression builds a fresh value per instance;

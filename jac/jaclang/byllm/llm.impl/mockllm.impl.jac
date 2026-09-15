@@ -1,5 +1,5 @@
 def _mock_jsonable(value: object) -> object {
-    import from dataclasses { fields, is_dataclass }
+    import from jaclang.runtime.object_interop { fields, is_record }
     import from enum { Enum }
     import from jaclang.runtime.archetype { Archetype }
     if value is None or isinstance(value, (bool, int, float, str)) {
@@ -25,7 +25,7 @@ def _mock_jsonable(value: object) -> object {
             if not k.startswith("_")
         };
     }
-    if is_dataclass(value) and not isinstance(value, type) {
+    if is_record(value) and not isinstance(value, type) {
         return {
             f.name: _mock_jsonable(getattr(value, f.name))
             for f in fields(value)

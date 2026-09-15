@@ -268,13 +268,11 @@ glob NATIVE_ERASED_BASES: frozenset = NATIVE_ERASED_ABC_BASES;
 
 glob NATIVE_ERASED_IDENTITY_CALLS: frozenset = frozenset({"cast"});
 
-glob NATIVE_ERASED_FIELD_MARKERS: frozenset = frozenset({"ObjectField", "field"});
+glob NATIVE_ERASED_FIELD_MARKERS: frozenset = frozenset({"ObjectField"});
 
 glob NATIVE_ERASED_IMPORTS: dict[str, frozenset] = {
          "abc": NATIVE_ERASED_ABC_BASES,
          "jaclang.runtime.object_model": NATIVE_ERASED_FIELD_MARKERS,
-         "jaclang.lib": frozenset({"field"}),
-         "jaclang.lib.jaclib": frozenset({"field"}),
          "typing": TYPE_PARAM_CONSTRUCTORS
              | NATIVE_ERASED_IDENTITY_CALLS
              | NATIVE_ERASED_TYPE_MARKERS

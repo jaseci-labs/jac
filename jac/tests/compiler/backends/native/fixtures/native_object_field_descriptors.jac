@@ -1,4 +1,4 @@
-"""Regression coverage for native lowering of internal object-field descriptors."""
+"""Regression coverage for native lowering of internal object descriptors."""
 import from jaclang.runtime.object_model { ObjectField }
 
 glob calls: int = 0;

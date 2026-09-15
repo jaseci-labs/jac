@@ -212,3 +212,13 @@ WORKLOADS: dict[str, tuple[Callable[[], int], int]] = {
     "reentrant_cleanup": (reentrant_cleanup, 496),
     "coroutines": (coroutines, 16),
 }
+
+
+def python_contract_record() -> type:
+    """A Python-owned record for the Jac contract adapter's compatibility test."""
+    from dataclasses import field, make_dataclass
+
+    return make_dataclass(
+        "PythonContractRecord",
+        [("name", str), ("items", list[int], field(default_factory=list))],
+    )

@@ -1,4 +1,3 @@
-import from jaclang.runtime.object_model { field }
 import from jaclang.runtime.archetype { GenericEdge, Root }
 import from jaclang.runtime.archetype { ObjectSpatialFunction as DSFunc }
 import from jaclang.runtime.constants { EdgeDir }
@@ -10,7 +9,6 @@ import from jaclang.runtime.constructs { WalkerArchetype as Walker }
 import from jaclang.runtime.graph_query { GraphQuery, QHop, QOrder, QPred }
 import from jaclang.runtime.runtime { JacRuntimeInterface }
 glob __all__ = [
-         'field',
          'GraphQuery',
          'QHop',
          'QOrder',

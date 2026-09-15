@@ -1,9 +1,6 @@
 import sys;
 import platform as _platform;
-import from jaclang.runtime.object_model {
-    MISSING as _MISSING,
-    field as _field
-}
+import from jaclang.runtime.object_model { MISSING as _MISSING, ObjectField as _field }
 import from jaclang.runtime.object_interop {
     fields as _record_fields,
     is_record as _is_record

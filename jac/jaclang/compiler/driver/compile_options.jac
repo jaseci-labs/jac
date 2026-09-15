@@ -1,4 +1,3 @@
-
 glob _config_probe: dict[str, bool] = {"active": False};
 
 def _project_config -> any {
