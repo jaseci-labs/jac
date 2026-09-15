@@ -336,6 +336,27 @@ test "E0058: break inside loop is valid" {
     assert not has_err;
 }
 
+test "E0059: continue inside loop else block" {
+    (has_err, prog) = parse_and_validate(
+        'with entry { for i in [1,2] { } else { continue; } }'
+    );
+    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0059"));
+}
+
+test "E0059: break inside loop else block is valid" {
+    (has_err, _) = parse_and_validate(
+        'with entry { for i in [1,2] { } else { break; } }'
+    );
+    assert not has_err;
+}
+
+test "E0059: continue inside if-else inside loop is valid" {
+    (has_err, _) = parse_and_validate(
+        'with entry { for i in [1,2] { if i == 1 { } else { continue; } } }'
+    );
+    assert not has_err;
+}
+
 test "E0065: duplicate keyword argument" {
     (prog, _) = compile_and_check("parser_E0065_duplicate_kwarg.jac");
     assert has_diagnostic_code(prog, "E0065");

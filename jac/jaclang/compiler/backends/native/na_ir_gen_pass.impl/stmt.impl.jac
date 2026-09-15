@@ -639,7 +639,7 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="while.cond");
     body_bb = func.append_basic_block(name="while.body");
-    end_bb = func.append_basic_block(name="while.end");
+    (else_bb, end_bb) = self._loop_exit_blocks(func, nd, "while");
 
     self.builder.branch(cond_bb);
 
@@ -647,9 +647,9 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     cond = self._codegen_required(nd.condition);
     if cond is not None {
         cond = self._consume_bool(cond);
-        self.builder.cbranch(cond, body_bb, end_bb);
+        self.builder.cbranch(cond, body_bb, else_bb if else_bb is not None else end_bb);
     } else {
-        self.builder.branch(end_bb);
+        self.builder.branch(else_bb if else_bb is not None else end_bb);
     }
 
     self.loop_stack.append((cond_bb, end_bb));
@@ -678,9 +678,8 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
         );
         self.builder.branch(cond_bb);
     }
+    self._emit_loop_else(nd, else_bb, end_bb);
     self.loop_stack.pop();
-
-    self.builder.position_at_end(end_bb);
 }
 
 impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
@@ -776,16 +775,16 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
     cond_bb = func.append_basic_block(name="iterfor.cond");
     body_bb = func.append_basic_block(name="iterfor.body");
     step_bb = func.append_basic_block(name="iterfor.step");
-    end_bb = func.append_basic_block(name="iterfor.end");
+    (else_bb, end_bb) = self._loop_exit_blocks(func, nd, "iterfor");
     self.builder.branch(cond_bb);
 
     self.builder.position_at_end(cond_bb);
     cond = self._codegen_required(nd.condition);
     if cond is not None {
         cond = self._consume_bool(cond);
-        self.builder.cbranch(cond, body_bb, end_bb);
+        self.builder.cbranch(cond, body_bb, else_bb if else_bb is not None else end_bb);
     } else {
-        self.builder.branch(end_bb);
+        self.builder.branch(else_bb if else_bb is not None else end_bb);
     }
 
     self.loop_stack.append((step_bb, end_bb));
@@ -813,15 +812,14 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
         );
         self.builder.branch(step_bb);
     }
-    self.loop_stack.pop();
-
     self.builder.position_at_end(step_bb);
     if not self.builder.block.is_terminated {
         self._codegen_assignment(nd.count_by);
         self.builder.branch(cond_bb);
     }
 
-    self.builder.position_at_end(end_bb);
+    self._emit_loop_else(nd, else_bb, end_bb);
+    self.loop_stack.pop();
 }
 
 impl NaIRGenPass._codegen_match(nd: uni.MatchStmt) -> None {
@@ -3456,6 +3454,10 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
 
 impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
     import from jaclang.compiler.frontend.constant { Tokens as Tok }
+
+    if nd.else_body is not None {
+        return False;
+    }
     _is_flow = False;
     for k in nd.kid {
         if isinstance(k, uni.Token) and k.name == Tok.KW_FLOW {
@@ -4233,7 +4235,7 @@ impl NaIRGenPass._codegen_for_indexed(
     cond_bb = func.append_basic_block(name="for.cond");
     body_bb = func.append_basic_block(name="for.body");
     incr_bb = func.append_basic_block(name="for.incr");
-    end_bb = func.append_basic_block(name="for.end");
+    (else_bb, end_bb) = self._loop_exit_blocks(func, nd, "for");
     self.builder.branch(cond_bb);
     self.builder.position_at_end(cond_bb);
     if _gen_stop_slot is not None {
@@ -4267,7 +4269,7 @@ impl NaIRGenPass._codegen_for_indexed(
     } else {
         cmp = self.builder.icmp_signed("<", cur_idx, len_val, name="for.cmp");
     }
-    self.builder.cbranch(cmp, body_bb, end_bb);
+    self.builder.cbranch(cmp, body_bb, else_bb if else_bb is not None else end_bb);
     self.loop_stack.append((incr_bb, end_bb));
     self.builder.position_at_end(body_bb);
 
@@ -4369,7 +4371,6 @@ impl NaIRGenPass._codegen_for_indexed(
         );
         self.builder.branch(incr_bb);
     }
-    self.loop_stack.pop();
     self.builder.position_at_end(incr_bb);
     if _gen_step_slot is not None {
         range_step = self.builder.load(_gen_step_slot, name="for.step.inc");
@@ -4381,7 +4382,9 @@ impl NaIRGenPass._codegen_for_indexed(
     next_idx = self.builder.add(inc_idx, _idx_delta, name="for.next.idx");
     self.builder.store(next_idx, idx_alloca);
     self.builder.branch(cond_bb);
-    self.builder.position_at_end(end_bb);
+
+    self._emit_loop_else(nd, else_bb, end_bb);
+    self.loop_stack.pop();
 
     if _gen_coll_slot is not None {
         _coll_end = self.builder.load(_gen_coll_slot, name="for.coll.end");
@@ -4520,12 +4523,14 @@ impl NaIRGenPass._try_chunked_for(nd: uni.InForStmt) -> bool {
     _c_cond = func.append_basic_block("chunk.cond");
     _c_body = func.append_basic_block("chunk.body");
     _c_incr = func.append_basic_block("chunk.incr");
-    _c_end = func.append_basic_block("chunk.end");
+    (_c_else, _c_end) = self._loop_exit_blocks(func, nd, "chunk");
     self.builder.branch(_c_cond);
     self.builder.position_at_end(_c_cond);
     _ci = self.builder.load(_ci_slot, name="chunk.ci.cur");
     self.builder.cbranch(
-        self.builder.icmp_signed("<", _ci, _ntasks, name="chunk.ci.lt"), _c_body, _c_end
+        self.builder.icmp_signed("<", _ci, _ntasks, name="chunk.ci.lt"),
+        _c_body,
+        _c_else if _c_else is not None else _c_end
     );
     self.builder.position_at_end(_c_body);
     self._emit_chunk_header(coll, _nv, _ci, _hdr, helpers["len"]);
@@ -4540,7 +4545,7 @@ impl NaIRGenPass._try_chunked_for(nd: uni.InForStmt) -> bool {
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }
-    self.loop_stack.pop();
+
     if not self.builder.block.is_terminated {
         self._emit_loop_iter_cleanup(
             [
@@ -4562,6 +4567,8 @@ impl NaIRGenPass._try_chunked_for(nd: uni.InForStmt) -> bool {
         _ci_slot
     );
     self.builder.branch(_c_cond);
-    self.builder.position_at_end(_c_end);
+
+    self._emit_loop_else(nd, _c_else, _c_end);
+    self.loop_stack.pop();
     return True;
 }

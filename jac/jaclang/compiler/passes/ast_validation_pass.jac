@@ -71,6 +71,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E0052,
     E0055,
     E0058,
+    E0059,
     E0063,
     E0065,
     E0066,

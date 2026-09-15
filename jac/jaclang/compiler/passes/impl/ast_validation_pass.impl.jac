@@ -304,6 +304,12 @@ impl ASTValidationPass.enter_ctrl_stmt with CtrlStmt entry {
         if kw == "break" and isinstance(parent, (SwitchStmt, MatchStmt)) {
             return;
         }
+        if kw == "continue" and isinstance(parent, ElseStmt) {
+            if isinstance(parent.parent, (InForStmt, IterForStmt, WhileStmt)) {
+                self.emit(E0059, node_override=here);
+                return;
+            }
+        }
 
         if isinstance(parent, (Ability, ImplDef, Module)) {
             break;
