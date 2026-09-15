@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass
 import hashlib
 import json
 import marshal
+import ctypes
 import math
 from pathlib import Path
 import platform
@@ -75,8 +76,14 @@ class Sample:
 
 def runtime_metadata() -> dict[str, object]:
     configure = str(sysconfig.get_config_var("CONFIG_ARGS") or "")
+    native_probe = getattr(ctypes.pythonapi, "_PyJac_NativeEvaluatorEntries", None)
+    if native_probe is not None:
+        native_probe.restype = ctypes.c_uint64
+        native_probe.argtypes = []
+    native_entries = int(native_probe()) if native_probe is not None else None
     return {
         "executable": sys.executable,
+        "native_evaluator_entries": native_entries,
         "version": list(sys.version_info[:3]),
         "implementation": sys.implementation.name,
         "build": sys.version,
@@ -249,6 +256,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, required=True)
+    parser.add_argument("--require-native-evaluator", action="store_true",
+                        help="require a native evaluator entry counter in the candidate only")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--samples", type=int, default=7)
     parser.add_argument("--warmups", type=int, default=128)
@@ -270,6 +279,11 @@ def main() -> int:
     baseline_info = run_worker(baseline_path, "_metadata")
     candidate_info = run_worker(candidate_path, "_metadata")
     validate_runtimes(baseline_info, candidate_info)
+    if args.require_native_evaluator:
+        if not candidate_info.get("native_evaluator_entries"):
+            raise ValueError("candidate did not enter the native Jac evaluator")
+        if baseline_info.get("native_evaluator_entries"):
+            raise ValueError("use the pinned C tail-call evaluator as the baseline")
     results: dict[str, Comparison] = {}
     regressions: list[str] = []
     with tempfile.TemporaryDirectory(prefix="jac-evaluator-bench-") as directory:

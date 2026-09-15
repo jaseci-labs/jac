@@ -1,12 +1,12 @@
-/* Interpreter trampoline storage and C ABI dispatch adapters.
- * The entry algorithm is native Jac. Opcode handlers are still CPython C;
- * these adapters must be retired with those handlers, not counted as a port.
+/* Interpreter trampoline storage and C entry ABI.
+ * Entry and generated opcode control flow are native Jac. The outer C frame
+ * owns activation storage across all native tail transfers.
  * CPython 3.14.6, PSF licensed; see jaclang/runtime/python/LICENSE.cpython.
  */
 #ifndef Py_BUILD_CORE
 #define Py_BUILD_CORE
 #endif
-#include "evaluator_entry.h"
+#include "evaluator_activation.h"
 #include "evaluator_metadata.h"
 #include "internal/pycore_ceval.h"
 #include "internal/pycore_frame.h"
@@ -16,50 +16,18 @@
 #include "internal/pycore_pystate.h"
 #include "internal/pycore_stats.h"
 
-struct JacPyEvalStorage {
-    _PyInterpreterFrame frame;
-    _PyStackRef stack[1];
-};
-extern PyObject *jacpy_eval_frame_entry(JacPyEvalStorage *, PyThreadState *, JacPyFrameRef, int32_t);
-
-#if Py_TAIL_CALL_INTERP
-/* This bridge uses the precise pinned C handler convention and optional stats
- * argument. Native generated handlers will replace both bridge declarations.
- */
-#define JAC_TAIL_CC __attribute__((preserve_none))
-#if Py_STATS
-#define JAC_TAIL_STATS_PARAM , int
-#define JAC_TAIL_STATS_ARG , 0
-#else
-#define JAC_TAIL_STATS_PARAM
-#define JAC_TAIL_STATS_ARG
-#endif
-extern JAC_TAIL_CC PyObject *_TAIL_CALL_start_frame(_PyInterpreterFrame *, _PyStackRef *,
-    PyThreadState *, _Py_CODEUNIT *, int JAC_TAIL_STATS_PARAM);
-extern JAC_TAIL_CC PyObject *_TAIL_CALL_error(_PyInterpreterFrame *, _PyStackRef *,
-    PyThreadState *, _Py_CODEUNIT *, int JAC_TAIL_STATS_PARAM);
+extern PyObject *jacpy_eval_frame_entry(JacPyVMStorage *, PyThreadState *, JacPyFrameRef, int32_t);
 
 PyObject *_PyEval_EvalFrameDefault(PyThreadState *tstate, _PyInterpreterFrame *frame, int throwflag) {
     _Py_EnsureTstateNotNULL(tstate);
     CALL_STAT_INC(pyeval_calls);
-    JacPyEvalStorage storage;
+    JacPyVMStorage storage;
     return jacpy_eval_frame_entry(&storage, tstate, frame, throwflag);
 }
-JacPyObjectRef jacpy_entry_dispatch_start(JacPyEvalStorage *storage, PyThreadState *tstate, JacPyFrameRef frame) {
-    (void)storage;
-    return _TAIL_CALL_start_frame(frame, NULL, tstate, NULL, 0 JAC_TAIL_STATS_ARG);
-}
-JacPyObjectRef jacpy_entry_dispatch_error(JacPyEvalStorage *storage, PyThreadState *tstate,
-    JacPyFrameRef frame, _Py_CODEUNIT *instruction) {
-    (void)storage;
-    _PyStackRef *stack = _PyFrame_GetStackPointer(frame);
-    return _TAIL_CALL_error(frame, stack, tstate, instruction, 0 JAC_TAIL_STATS_ARG);
-}
-#endif
 int32_t jacpy_entry_recursive_guard(PyThreadState *tstate) {
     return _Py_EnterRecursiveCallTstate(tstate, "");
 }
-JacPyFrameRef jacpy_entry_link(JacPyEvalStorage *storage, PyThreadState *tstate, JacPyFrameRef frame) {
+JacPyFrameRef jacpy_entry_link(JacPyVMStorage *storage, PyThreadState *tstate, JacPyFrameRef frame) {
     storage->stack[0] = PyStackRef_NULL;
     storage->frame.f_executable = PyStackRef_None;
     storage->frame.instr_ptr = (_Py_CODEUNIT *)jacpy_interpreter_trampoline + 1;
@@ -81,7 +49,7 @@ JacPyObjectRef jacpy_entry_executor(PyThreadState *tstate) {
     return NULL;
 #endif
 }
-void jacpy_entry_save_executor(JacPyEvalStorage *storage, PyThreadState *tstate, JacPyStackRef executor) {
+void jacpy_entry_save_executor(JacPyVMStorage *storage, PyThreadState *tstate, JacPyStackRef executor) {
 #ifdef _Py_TIER2
     storage->frame.localsplus[0].bits = executor;
     tstate->current_executor = NULL;
@@ -92,7 +60,7 @@ void jacpy_entry_save_executor(JacPyEvalStorage *storage, PyThreadState *tstate,
 }
 void jacpy_thread_remaining_set(PyThreadState *tstate, int32_t remaining) { tstate->py_recursion_remaining = remaining; }
 void jacpy_entry_unlink(PyThreadState *tstate, JacPyFrameRef frame) { tstate->current_frame = frame->previous; }
-void jacpy_entry_finish_early(JacPyEvalStorage *storage, PyThreadState *tstate) {
+void jacpy_entry_finish_early(JacPyVMStorage *storage, PyThreadState *tstate) {
     assert(tstate->current_frame == &storage->frame);
     storage->frame.return_offset = 0;
     tstate->current_frame = storage->frame.previous;

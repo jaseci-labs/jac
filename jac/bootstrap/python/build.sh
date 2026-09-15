@@ -167,6 +167,12 @@ cpython() {
         cp "$recipe/evaluator_metadata.h" Python/evaluator_metadata.h
         cp "$recipe/evaluator_entry.c" Python/jac_evaluator_entry.c
         cp "$recipe/evaluator_entry.h" Python/evaluator_entry.h
+        cp "$recipe/evaluator_activation.c" Python/jac_evaluator_activation.c
+        cp "$recipe/evaluator_activation.h" Python/evaluator_activation.h
+        cp "$recipe/evaluator_operations.h" Python/evaluator_operations.h
+        cp "$recipe/generated/evaluator_scratch.h" Python/evaluator_scratch.h
+        cp "$recipe/generated/evaluator_tier1_abi.c" Python/jac_evaluator_tier1_abi.c
+        cp "$recipe/generated/evaluator_tier2_abi.c" Python/jac_evaluator_tier2_abi.c
         cp "$work/native/jacpython.o" Python/jacpython.o
         cp "$work/native/evaluator_support.o" Python/jac_evaluator_support.o
         cp "$work/native/evaluator_frames.o" Python/jac_evaluator_frame_clear.o
@@ -184,7 +190,6 @@ cpython() {
         cp "$work/native/evaluator_groups.o" Python/jac_evaluator_groups.o
         cp "$work/native/evaluator_recursion.o" Python/jac_evaluator_recursion_policy.o
         cp "$work/native/evaluator_utilities.o" Python/jac_evaluator_utilities.o
-        cp "$work/native/evaluator_entry.o" Python/jac_evaluator_entry_policy.o
     fi
     # The shared interpreter must survive relocation into the Jac payload.
     case "$platform" in
@@ -299,7 +304,10 @@ python_make() {
         # executable needs to run before the reduced runtime is linked.
         freezer="$host/python/install/bin/python3.14 $src/cpython/Programs/_freeze_module.py"
         make "$@" "FREEZE_MODULE_BOOTSTRAP=$freezer" FREEZE_MODULE_BOOTSTRAP_DEPS= \
-            "FREEZE_MODULE=$freezer" FREEZE_MODULE_DEPS=
+            "FREEZE_MODULE=$freezer" FREEZE_MODULE_DEPS= \
+            "JAC_NATIVE_ROOT=$root" "JAC_NATIVE_ARTIFACTS=$work/native" \
+            "JAC_NATIVE_LINKER=$recipe/link_evaluator.py" \
+            "JAC_NATIVE_PYTHON=$host/python/install/bin/python3.14"
     else
         make "$@"
     fi

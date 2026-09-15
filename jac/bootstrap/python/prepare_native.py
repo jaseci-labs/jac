@@ -37,6 +37,16 @@ from jaclang.compiler.backends.native.shared_emit import (
 )
 import jaclang.compiler.backends.native.llvm.binding as llvm
 
+generation = json.loads((root / "bootstrap/python/generated/evaluator-generation.json").read_text())
+if generation["cpython"] != pin["version"]:
+    raise RuntimeError("Native handler generation does not match the CPython pin")
+if generation["generator_sha256"] != hashlib.sha256((root / "bootstrap/python/generate_evaluator.py").read_bytes()).hexdigest():
+    raise RuntimeError("Regenerate native evaluator sources after changing the generator")
+for name, expected in generation["outputs"].items():
+    generated_path = root / ("jaclang/runtime/python" if name.endswith(".jac") else "bootstrap/python/generated") / name
+    if hashlib.sha256(generated_path.read_bytes()).hexdigest() != expected:
+        raise RuntimeError("Native evaluator generated source changed independently: " + name)
+
 program = JacProgram()
 entry = root / "jaclang/compiler/backends/py/jacpython/native_api.jac"
 module = program.compile(file_path=str(entry), options=CompileOptions(
@@ -95,6 +105,25 @@ def emit_evaluator_unit(module_name, artifact_name, exports):
     missing = set(exports) - defined
     if missing:
         raise RuntimeError("Missing native evaluator definitions: " + ", ".join(sorted(missing)))
+    if artifact_name == "evaluator_entry":
+        # The generated ABI expressions need the target's configured headers.
+        # Keep checked native IR until that C IR can be linked and optimized.
+        support_module.verify()
+        for function in support_module.functions:
+            if function.name.startswith("__jac_") or function.name in {
+                "malloc", "calloc", "realloc", "free", "pthread_getspecific",
+                "pthread_setspecific", "pthread_key_create",
+            }:
+                raise RuntimeError("Evaluator retains Jac runtime machinery: " + function.name)
+        (output / "evaluator_entry.ll").write_text(str(support_module))
+        (output / "evaluator_entry.exports.json").write_text(json.dumps(exports) + "\n")
+        evaluator_units.append({
+            "source": str(support_entry.relative_to(root)),
+            "source_sha256": hashlib.sha256(support_entry.read_bytes()).hexdigest(),
+            "object": "evaluator_entry.o", "exports": sorted(exports),
+            "memory_profile": "nogc", "emission": "awaiting target-configured ABI IR",
+        })
+        return
     internalize_native_implementation(support_module, exports)
     support_module.verify()
     with llvm.create_pipeline_tuning_options(speed_level=2) as tuning:
@@ -192,7 +221,7 @@ emit_evaluator_unit("evaluator_utilities", "evaluator_utilities", [
     "jacpy_object_array_from_stack_impl",
 ])
 emit_evaluator_unit("evaluator_entry", "evaluator_entry", [
-    "jacpy_eval_frame_entry",
+    "jacpy_eval_frame_entry", "jacpy_enter_recursive_py", "jacpy_leave_recursive_py",
 ])
 provenance_inputs = [
     "jaclang/runtime/python/references.jac",
@@ -212,16 +241,27 @@ provenance_inputs = [
     "bootstrap/python/evaluator_metadata.h",
     "bootstrap/python/evaluator_entry.c",
     "bootstrap/python/evaluator_entry.h",
+    "bootstrap/python/evaluator_activation.c", "bootstrap/python/evaluator_activation.h",
+    "bootstrap/python/evaluator_operations.h", "bootstrap/python/generate_evaluator.py",
+    "bootstrap/python/link_evaluator.py",
+    "bootstrap/python/generated/evaluator_scratch.h",
+    "bootstrap/python/generated/evaluator_tier1_abi.c",
+    "bootstrap/python/generated/evaluator_tier2_abi.c",
+    "bootstrap/python/generated/evaluator-generation.json",
+    "jaclang/runtime/python/evaluator_activation.jac",
+    "jaclang/runtime/python/evaluator_handlers.jac",
 ]
 (output / "evaluator-provenance.json").write_text(json.dumps({
     "schema": 1,
     "cpython_version": pin["version"],
     "cpython_archive_sha256": pin["sha256"],
     "target": triple,
-    "main_evaluator": "jac-native-entry/cpython-dispatch",
-    "non_tail_evaluator_source": "cpython-c",
-    "opcode_handlers": "cpython-c",
-    "tier_two_executor": "cpython-c",
+    "main_evaluator": "jac-native",
+    "dispatch": "checked native tail transfers",
+    "opcode_handlers": "jac-native-control/typed-c-slot-primitives",
+    "tier_two_executor": "jac-native-interpreter",
+    "jit_stencils": "retained CPython generation inputs; optional JIT configuration",
+    "retired_runtime_sources": ["Python/ceval.c", "Python/generated_cases.c.h", "Python/opcode_targets.h"],
     "units": evaluator_units,
     "inputs": {
         path: hashlib.sha256((root / path).read_bytes()).hexdigest()

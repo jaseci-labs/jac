@@ -1035,7 +1035,7 @@ generator cleanup unlinks the thread's exception state before releasing
 frame references. An explicit call to the resource's declared destructor may
 consume a dependent owner while its sources remain alive through the call.
 
-The migration is incomplete. Candidate sources port slice-index conversion,
+Candidate sources port slice-index conversion,
 async iterator/awaitable acquisition, exception-clause validation, raise logic,
 active-frame cleanup, monitoring and tracing control, coroutine-origin and
 async-generator setters, evaluator diagnostics, name lookup, imports,
@@ -1046,12 +1046,26 @@ exception-group matching, recursion policy, global loading, compiler flags,
 code-extra registration, and borrowed argument-array conversion. A linear argument resource tracks exactly
 which references still need cleanup; temporary call buffers are freed before
 evaluation. The latest source changes await validation.
-The evaluator entry and throw setup are native Jac; temporary C adapters still
-enter the pinned tail handlers. Opcode dispatch and the tier-two executor remain
-CPython C, with the non-tail C entry retained conditionally. The build emits
-`python/build/jacpython-evaluator-provenance.json` to identify native support
-objects and their inputs; that manifest alone does not prove linked-runtime
-compatibility, complete C retirement, or performance parity.
+The candidate also contains generated native Jac entry, opcode, dispatch,
+exception-unwind, and tier-two interpreter control flow. The source generator
+uses CPython's instruction definitions and stack transformations. A linear
+activation owns the active frame chain and in-flight references in stable,
+typed C scratch storage. C expressions retain the pinned ABI and reference
+operations; the build merges their LLVM IR with native Jac before optimization.
+The checker tracks the activation as an aggregate, not each internal C slot.
+
+The candidate removes `ceval.c`, `generated_cases.c.h`, and `opcode_targets.h`
+from runtime sources and object prerequisites. `bytecodes.c` remains generation
+input; `executor_cases.c.h` and `ceval_macros.h` remain inputs for the optional
+CPython JIT stencil generator. Those C stencils are explicitly retained.
+The full bootstrap host still uses its complete pinned CPython implementation.
+
+The build emits `python/build/jacpython-evaluator-provenance.json` with source,
+ABI IR, and object hashes. The existing execution runner and benchmark accept
+`--require-native-evaluator` to observe native entry independently of compiler
+calls. Neither a manifest nor an entry counter establishes compatibility,
+ownership correctness, or performance parity. These source changes await builds,
+execution, artifact inspection, and platform validation.
 
 Native helper composition can use a checked `@foreign_call` body contract under
 `nogc`. Every emitted call, including implicit cleanup and arithmetic error

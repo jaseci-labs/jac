@@ -13,36 +13,35 @@ import from jaclang.runtime.python.evaluator_recursion {
     jacpy_thread_recursion_remaining, _Py_CheckRecursiveCallPy
 }
 
+import from jaclang.runtime.python.evaluator_activation {
+    JacPyVMStorage, PyVMRef, jacpy_vm_begin, jacpy_vm_begin_error
+}
+import from jaclang.runtime.python.evaluator_handlers { jacpy_vm_start_frame, jacpy_vm_error }
+
 import from c {
-    obj JacPyEvalStorage;
+    @foreign_call(requires=["gil"], errors="none", reentrant=False)
+    def jacpy_vm_record_native_entry();
     @foreign_call(requires=["gil"], errors="python", reentrant=True)
     def jacpy_entry_recursive_guard(tstate: &JacPyThreadState) -> i32;
     @foreign_call(requires=["gil"], errors="none", reentrant=False)
-    def jacpy_entry_link(storage: &JacPyEvalStorage, tstate: &JacPyThreadState,
+    def jacpy_entry_link(storage: &JacPyVMStorage, tstate: &JacPyThreadState,
         frame: lin PyFrameRef from tstate) -> lin PyFrameRef from (storage, tstate);
     @foreign_call(requires=["gil"], errors="none", reentrant=False)
     def jacpy_entry_executor(tstate: &JacPyThreadState) -> &PyObjectRef from tstate;
     @foreign_call(requires=["gil"], errors="none", reentrant=False)
-    def jacpy_entry_save_executor(storage: &JacPyEvalStorage, tstate: &JacPyThreadState,
+    def jacpy_entry_save_executor(storage: &JacPyVMStorage, tstate: &JacPyThreadState,
         executor: own PyStackRef);
     @foreign_call(requires=["gil"], errors="none", reentrant=False)
     def jacpy_thread_remaining_set(tstate: &JacPyThreadState, remaining: i32);
     @foreign_call(requires=["gil"], errors="none", reentrant=False)
     def jacpy_entry_unlink(tstate: &JacPyThreadState, frame: &PyFrameRef);
     @foreign_call(requires=["gil"], errors="none", reentrant=False)
-    def jacpy_entry_finish_early(storage: &JacPyEvalStorage, tstate: &JacPyThreadState);
+    def jacpy_entry_finish_early(storage: &JacPyVMStorage, tstate: &JacPyThreadState);
     @foreign_call(requires=["gil"], errors="python", reentrant=True)
     def jacpy_entry_instrument(tstate: &JacPyThreadState, frame: &PyFrameRef);
     @foreign_call(requires=["gil"], errors="none", reentrant=False)
     def jacpy_entry_instruction(frame: &PyFrameRef) -> &JacPyCodeUnit from frame;
-    # These C-ABI bridges enter the existing preserve_none handlers while their
-    # implementations are being replaced. Provenance identifies C dispatch.
-    @foreign_call(requires=["gil"], errors="python", reentrant=True)
-    def jacpy_entry_dispatch_start(storage: &JacPyEvalStorage, tstate: &JacPyThreadState,
-        frame: lin PyFrameRef from (storage, tstate)) -> own PyObjectRef;
-    @foreign_call(requires=["gil"], errors="python", reentrant=True)
-    def jacpy_entry_dispatch_error(storage: &JacPyEvalStorage, tstate: &JacPyThreadState,
-        frame: lin PyFrameRef from (storage, tstate), instruction: &JacPyCodeUnit from frame) -> own PyObjectRef;
+
 }
 
 @foreign_call(requires=["gil"], errors="python", reentrant=True)
@@ -61,8 +60,9 @@ def jacpy_leave_recursive_py(tstate: &JacPyThreadState) {
 }
 
 @foreign_call(requires=["gil"], errors="python", reentrant=True)
-def jacpy_eval_frame_entry(storage: &JacPyEvalStorage, tstate: &JacPyThreadState,
+def jacpy_eval_frame_entry(storage: &JacPyVMStorage, tstate: &JacPyThreadState,
     frame: lin PyFrameRef from tstate, throwflag: i32) -> own PyObjectRef {
+    jacpy_vm_record_native_entry();
     if jacpy_entry_recursive_guard(tstate) != 0 {
         jacpy_frame_close(frame);
         return jacpy_ref_null();
@@ -84,7 +84,9 @@ def jacpy_eval_frame_entry(storage: &JacPyEvalStorage, tstate: &JacPyThreadState
         jacpy_entry_instrument(tstate, &active);
         instruction: &JacPyCodeUnit from active = jacpy_entry_instruction(&active);
         jacpy_monitor_throw(tstate, &active, instruction);
-        return jacpy_entry_dispatch_error(storage, tstate, active, instruction);
+        vm: lin PyVMRef from (storage, tstate) = jacpy_vm_begin_error(storage, tstate, active, instruction);
+        return jacpy_vm_error(storage, tstate, vm);
     }
-    return jacpy_entry_dispatch_start(storage, tstate, active);
+    vm: lin PyVMRef from (storage, tstate) = jacpy_vm_begin(storage, tstate, active);
+    return jacpy_vm_start_frame(storage, tstate, vm);
 }

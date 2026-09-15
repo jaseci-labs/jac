@@ -18,6 +18,11 @@ const inputs = [_][]const u8{
     "bootstrap/python/evaluator_recursion.c", "bootstrap/python/evaluator_recursion.h",
     "bootstrap/python/evaluator_metadata.c", "bootstrap/python/evaluator_metadata.h",
     "bootstrap/python/evaluator_entry.c", "bootstrap/python/evaluator_entry.h",
+    "bootstrap/python/evaluator_activation.c", "bootstrap/python/evaluator_activation.h",
+    "bootstrap/python/evaluator_operations.h", "bootstrap/python/generate_evaluator.py",
+    "bootstrap/python/link_evaluator.py", "bootstrap/python/generated/evaluator_scratch.h",
+    "bootstrap/python/generated/evaluator_tier1_abi.c", "bootstrap/python/generated/evaluator_tier2_abi.c",
+    "bootstrap/python/generated/evaluator-generation.json",
     "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
@@ -174,7 +179,10 @@ fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8
             std.mem.endsWith(u8, path, "/evaluator_binding.c") or std.mem.endsWith(u8, path, "/evaluator_binding.h") or
             std.mem.endsWith(u8, path, "/evaluator_recursion.c") or std.mem.endsWith(u8, path, "/evaluator_recursion.h") or
             std.mem.endsWith(u8, path, "/evaluator_metadata.c") or std.mem.endsWith(u8, path, "/evaluator_metadata.h") or
-            std.mem.endsWith(u8, path, "/evaluator_entry.c") or std.mem.endsWith(u8, path, "/evaluator_entry.h"))) continue;
+            std.mem.endsWith(u8, path, "/evaluator_entry.c") or std.mem.endsWith(u8, path, "/evaluator_entry.h") or
+            std.mem.endsWith(u8, path, "/evaluator_activation.c") or std.mem.endsWith(u8, path, "/evaluator_activation.h") or
+            std.mem.endsWith(u8, path, "/evaluator_operations.h") or std.mem.endsWith(u8, path, "/generate_evaluator.py") or
+            std.mem.endsWith(u8, path, "/link_evaluator.py") or std.mem.startsWith(u8, path, "bootstrap/python/generated/"))) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
         const content = try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited);
         hash.update(path);
@@ -418,6 +426,11 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
         "bootstrap/python/evaluator_recursion.c", "bootstrap/python/evaluator_recursion.h",
         "bootstrap/python/evaluator_metadata.c", "bootstrap/python/evaluator_metadata.h",
         "bootstrap/python/evaluator_entry.c", "bootstrap/python/evaluator_entry.h",
+        "bootstrap/python/evaluator_activation.c", "bootstrap/python/evaluator_activation.h",
+        "bootstrap/python/evaluator_operations.h", "bootstrap/python/generate_evaluator.py",
+        "bootstrap/python/link_evaluator.py", "bootstrap/python/generated/evaluator_scratch.h",
+        "bootstrap/python/generated/evaluator_tier1_abi.c", "bootstrap/python/generated/evaluator_tier2_abi.c",
+        "bootstrap/python/generated/evaluator-generation.json",
         "jaclang/native.pyi",
     }) |path| {
         const before_refs = try buildKey(io, a, hostPlatform(), root, host, .jacpython);

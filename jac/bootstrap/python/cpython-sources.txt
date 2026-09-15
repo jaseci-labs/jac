@@ -97,8 +97,9 @@ Python/bltinmodule.c
 Python/bootstrap_hash.c
 Python/brc.c
 Python/bytecodes.c
-Python/ceval.c
+# Python/ceval.c  # removed: 3725 source lines
 Python/ceval_gil.c
+# Retained as input to optional Tools/jit/template.c; native dispatch does not include it.
 Python/ceval_macros.h
 # Python/clinic/Python-tokenize.c.h  # removed: 86 source lines
 Python/clinic/_contextvars.c.h
@@ -125,6 +126,7 @@ Python/dtoa.c
 Python/dynamic_annotations.c
 Python/dynload_shlib.c
 Python/errors.c
+# Retained for optional JIT stencil generation; native tier-two interpretation uses Jac.
 Python/executor_cases.c.h
 Python/fileutils.c
 # Python/flowgraph.c  # removed: 4,167 source lines
@@ -137,7 +139,7 @@ Python/frozenmain.c
 Python/gc.c
 Python/gc_free_threading.c
 Python/gc_gil.c
-Python/generated_cases.c.h
+# Python/generated_cases.c.h  # removed: 12528 source lines
 Python/getargs.c
 Python/getcompiler.c
 Python/getcopyright.c
@@ -162,7 +164,7 @@ Python/modsupport.c
 Python/mysnprintf.c
 Python/mystrtoul.c
 Python/object_stack.c
-Python/opcode_targets.h
+# Python/opcode_targets.h  # removed: 766 source lines
 Python/optimizer.c
 Python/optimizer_analysis.c
 Python/optimizer_cases.c.h

@@ -5,8 +5,8 @@ The runner requires the native compiler bridge. It does not import or install
 an interpreted replacement. Python audit events count native compiler calls;
 optional public API wrappers only count calls into the native entry points.
 Use --execution-tests to count every selected test, including tests without
-a compiler call. This exercises the linked evaluator but does not establish
-that its implementation is native Jac.
+a compiler call. Add --require-native-evaluator to observe entry into the linked native evaluator
+independently of compiler calls; this does not replace artifact inspection.
 No upstream test corpus is checked into this repository.
 """
 import argparse;
@@ -101,7 +101,23 @@ def main -> int {
     # Retained command-line compatibility: every run now uses these native APIs.
     parser.add_argument("--runtime", action="store_true", help=argparse.SUPPRESS);
     parser.add_argument("--ast-api", action="store_true", help=argparse.SUPPRESS);
+    parser.add_argument(
+        "--require-native-evaluator", action="store_true",
+        help="Require entry into the linked native Jac evaluator, independently of compilation"
+    );
     args = parser.parse_args();
+    if args.require_native_evaluator {
+        probe = getattr(ctypes.pythonapi, "_PyJac_NativeEvaluatorEntries", None);
+        if probe is None {
+            raise RuntimeError("The runtime has no native evaluator entry probe");
+        }
+        probe.restype = ctypes.c_uint64;
+        probe.argtypes = [];
+        if probe() == 0 {
+            raise RuntimeError("The runtime has not entered the native Jac evaluator");
+        }
+        print("Native Jac evaluator entry observed independently of the compiler bridge", flush=True);
+    }
     bridge = ctypes.pythonapi?._PyJac_CompilerBridgeVersion;
     if bridge is None or bridge() != 3 {
         raise RuntimeError(
@@ -305,7 +321,9 @@ def run_tests(args: any, calls: list[int]) -> int {
     print("Compiler path: native Jac machine code", flush=True);
     if args.execution_tests {
         print(
-            "Execution coverage: all selected tests; evaluator provenance is not asserted",
+            ("Execution coverage: all selected tests; native evaluator entry observed"
+                if getattr(args, "require_native_evaluator", False)
+                else "Execution coverage: all selected tests; evaluator provenance is not asserted"),
             flush=True
         );
     }

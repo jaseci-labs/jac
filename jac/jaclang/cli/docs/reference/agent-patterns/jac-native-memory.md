@@ -219,3 +219,15 @@ A call may consume an owner alongside a view declared `from owner` when that
 view has no subsequent use. Both the declared source and last-use condition are
 checked. Return contracts follow transitive parameter dependencies; naming a
 borrowed intermediary cannot hide a consumed parameter.
+
+The generated evaluator's `PyVMRef` is a linear aggregate tied to caller storage
+and a thread. Its typed C scratch places preserve the pinned transfer ledger,
+including transient aliases that are not separate references. Do not add drops
+for every scratch field, clear const caller arrays, or promote every stackref.
+The checker tracks the aggregate, not individual C-slot lifetimes. Keep scratch
+addresses in the outer evaluation storage so they survive native tail transfers.
+Edit `bootstrap/python/generate_evaluator.py` and regenerate its checked-in
+outputs; do not hand-edit handler output or restore C fallback handlers.
+Optional JIT stencil inputs remain C and must be reported separately from the
+native tier-two interpreter. Consult the migration status before claiming
+full ownership proof, native JIT stencils, or compatibility/performance parity.

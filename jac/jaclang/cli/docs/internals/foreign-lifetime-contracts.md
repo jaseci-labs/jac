@@ -221,22 +221,46 @@ transfer explicitly at the C boundary instead of silently introducing a decref
 and changing finalizer timing. Fixing the pinned behavior is separate from
 claiming a faithful evaluator source migration.
 
-Generic foreign-resource storage, arbitrary closure capture, suspension,
-container-element stability across reentry, and complete effect propagation
-through every storage/interface shape remain migration prerequisites. These
-design requirements must not be treated as implemented guarantees. The C opcode
-evaluator and tier-two executor remain in the candidate build.
+The generated evaluator now uses a linear `PyVMRef from (storage, tstate)`.
+Its release obligation covers the active frame chain and references temporarily
+held in typed C scratch slots. The outer evaluation entry allocates those slots;
+their addresses survive every native tail transfer. Scratch is reused only when
+an instruction or shared label finishes. It is not copied during dispatch, and
+there is no per-instruction heap allocation or Jac reference counting.
 
-The full source migration is still unfinished. Remaining C algorithms include
-opcode dispatch and all enabled instruction families, tier-two execution,
-and the remaining dispatcher machinery. Native `evaluator_entry` now performs
-entry linking, executor saving, recursion setup, and throw setup. Temporary C
-ABI adapters still enter the pinned tail handlers. The non-tail C entry remains
-conditional in the source. Their source/object prerequisites remain active. Read-only Python ABI tables and the interpreter
-trampoline are separate C data; moving them does not constitute a native opcode
-implementation.
-Removing these entries from the build before replacing their implementations
-would not complete the migration.
+This is a trusted aggregate protocol. Jac checks transfer of the activation and
+its storage/thread dependencies; it does **not** independently prove the lifetime
+of every Python reference inside the C slots. The generated expressions preserve
+the pinned stack generator's publication, aliasing, decref, promotion, frame-copy,
+and suspension operations. General foreign-resource storage, arbitrary closure
+capture, and container-element stability across reentry still require their own
+contracts. The activation must not be used as evidence that those general
+language features have been implemented.
+
+`bootstrap/python/generate_evaluator.py` uses the pinned instruction analyzer and
+both stack generators, then lowers their structured control flow to Jac. Native
+handlers and shared labels use `__musttail` with identical fixed signatures and
+the Python error protocol. Numeric dispatch IDs come from upstream metadata.
+C adapters implement field/reference/API expressions; they contain no opcode
+selection or handler bodies. The build links their target-configured LLVM IR
+with native Jac IR and requires the adapters to disappear during optimization.
+Unknown source constructs stop generation instead of retaining a C handler.
+
+The candidate source retires `Python/ceval.c`, `Python/generated_cases.c.h`, and
+`Python/opcode_targets.h`, including object membership and make prerequisites.
+There is no non-tail C evaluator fallback. `Python/bytecodes.c` remains the
+instruction-generation input. `Python/executor_cases.c.h` and
+`Python/ceval_macros.h` remain inputs for CPython's optional JIT stencil generator;
+the native tier-two **interpreter** does not include them. The optional JIT's
+stencils remain CPython-generated C. No JIT configuration has been silently
+disabled or represented as a completed native stencil port.
+
+Read-only ABI metadata remains C data. Build provenance records the generated
+sources, linked ABI IR, native object, and these retained JIT inputs separately.
+`_PyJac_NativeEvaluatorEntries` counts native entry calls independently of the
+compiler bridge. An observed entry is useful provenance, not compatibility or
+performance evidence. The source changes have not been built, tested, or otherwise
+validated in this source-only review stage.
 
 ## Validation before completing the migration
 
