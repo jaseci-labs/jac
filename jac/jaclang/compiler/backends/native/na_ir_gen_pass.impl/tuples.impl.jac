@@ -35,9 +35,7 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
         }
 
         _owns = self._is_owned(v);
-        # Reference-counted tuple boxes acquire borrowed fields themselves.
-        # Only linear returns transfer local storage by source name: coercion
-        # can replace a string local with a separately owned frame temporary.
+
         if _linear_return and isinstance(v.type, ir.PointerType) and not _owns {
             is_named_local = isinstance(val, uni.Name)
                 and val.sym_name in self.local_vars
