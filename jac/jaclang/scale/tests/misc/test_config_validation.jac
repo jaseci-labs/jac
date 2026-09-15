@@ -457,4 +457,40 @@ test "valid scheduler bounds are accepted quietly" {
         {"scheduler": {"min_interval": 0.5, "max_jobs_per_user": 0}}
     );
     assert len(msgs) == 0 , f"expected no findings, got {msgs}";
+
+    # A whole number spelled as a float loses nothing, so it is not a typo.
+    msgs = validate_scale_config({"scheduler": {"max_jobs_per_user": 25.0}});
+    assert len(msgs) == 0 , f"expected no findings, got {msgs}";
+}
+
+
+test "a fractional job cap is rejected, not truncated to unlimited" {
+    import from jaclang.scale.config.validation { scheduler_job_cap }
+
+    # int(0.5) is 0 and every store reads 0 as unlimited, so truncating a
+    # fractional cap would lift the limit its author was asking to tighten.
+    assert scheduler_job_cap(0.5) is None , scheduler_job_cap(0.5);
+    assert scheduler_job_cap(25.7) is None , scheduler_job_cap(25.7);
+    assert scheduler_job_cap(True) is None , scheduler_job_cap(True);
+    assert scheduler_job_cap(25) == 25 , scheduler_job_cap(25);
+    assert scheduler_job_cap(0) == 0 , scheduler_job_cap(0);
+
+    msgs = validate_scale_config({"scheduler": {"max_jobs_per_user": 0.5}});
+    assert len(msgs) == 1 , f"expected 1 finding, got {msgs}";
+    assert "whole number" in msgs[0] , msgs[0];
+}
+
+
+test "the loader falls back to the default a rejected bound describes" {
+    import from jaclang.scale.config.validation {
+        scheduler_job_cap,
+        scheduler_min_interval
+    }
+
+    # The loader reads both bounds through these, so the value it keeps and
+    # the value the boot finding reports cannot drift apart.
+    assert scheduler_min_interval(-1) is None , scheduler_min_interval(-1);
+    assert scheduler_min_interval("soon") is None , scheduler_min_interval("soon");
+    assert scheduler_min_interval(float("inf")) is None , "inf is not a floor";
+    assert scheduler_min_interval(0.5) == 0.5 , scheduler_min_interval(0.5);
 }
