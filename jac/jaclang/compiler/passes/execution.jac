@@ -21,6 +21,7 @@ def run_walker(
     ctx = CompileContext(
         current_node=module,
         from_pass=walker_type,
+        pass_name=walker_type.__name__,
         cancel_token=cancel_token,
         cancel_requested=cancel_requested,
         policy=policy,

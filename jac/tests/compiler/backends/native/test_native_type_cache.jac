@@ -25,7 +25,9 @@ test "native type caching preserves primitive and class value storage in either 
     class_value.private.type_args = [annotation.clone_as_instance()];
     assert annotation.mangle() == class_value.mangle();
     for reverse in [False, True] {
-        ctx = CompileContext(current_node=module, from_pass=NaIRGenPass);
+        ctx = CompileContext(
+            current_node=module, from_pass=NaIRGenPass, pass_name="NaIRGenPass"
+        );
         lowering = NaIRGenPass(module=module, prog=program, ctx=ctx);
         first = class_value if reverse else annotation;
         second = annotation if reverse else class_value;

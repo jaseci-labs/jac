@@ -164,13 +164,13 @@ impl CompileContext._is_suppressed(
 }
 
 impl CompileContext.ice(msg: str = 'Something went horribly wrong!') -> str {
-    self.emit(E9001, pass_name=self.from_pass.__name__, details=msg);
-    return f"Internal Compiler Error: Pass {self.from_pass.__name__} - {msg}";
+    self.emit(E9001, pass_name=self.pass_name, details=msg);
+    return f"Internal Compiler Error: Pass {self.pass_name} - {msg}";
 }
 
 impl CompileContext.log_info(msg: str) -> None {
     import logging;
-    logging.getLogger(self.from_pass.__name__).info(msg);
+    logging.getLogger(self.pass_name).info(msg);
 }
 
 impl CompileContext.enter_node(nd: UniNode) -> None {

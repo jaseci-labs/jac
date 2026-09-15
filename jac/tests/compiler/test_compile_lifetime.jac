@@ -80,7 +80,9 @@ test "failed checker phases restore the enclosing diagnostic context" {
     mod = prog.mod.main_mod;
     assert mod is not None;
     evaluator = prog.get_type_evaluator();
-    enclosing = CompileContext(current_node=mod, from_pass=TypeCheckPass);
+    enclosing = CompileContext(
+        current_node=mod, from_pass=TypeCheckPass, pass_name="TypeCheckPass"
+    );
     evaluator._pass = enclosing;
     evaluator.ct_quiet = True;
     try {

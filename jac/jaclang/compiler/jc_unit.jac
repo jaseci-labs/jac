@@ -186,7 +186,11 @@ def _finish_unit(
         }
         validation = ASTValidationPass(
             module=mod,
-            ctx=CompileContext(current_node=mod, from_pass=ASTValidationPass)
+            ctx=CompileContext(
+                current_node=mod,
+                from_pass=ASTValidationPass,
+                pass_name="ASTValidationPass"
+            )
         );
         started = time.time();
         mod spawn validation;
@@ -203,7 +207,11 @@ def _finish_unit(
         if not has_absorb {
             symbols = SymTabBuildPass(
                 module=mod,
-                ctx=CompileContext(current_node=mod, from_pass=SymTabBuildPass)
+                ctx=CompileContext(
+                    current_node=mod,
+                    from_pass=SymTabBuildPass,
+                    pass_name="SymTabBuildPass"
+                )
             );
             started = time.time();
             mod spawn symbols;

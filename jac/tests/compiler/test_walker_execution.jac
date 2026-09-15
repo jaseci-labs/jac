@@ -6,7 +6,9 @@ import from jaclang.compiler.passes.freeze_structure_pass { FreezeStructurePass 
 test "constructing a pass leaves the tree untouched until spawn" {
     prog = JacProgram();
     mod = prog.parse_str("with entry { x = 1; }", "walker_spawn.jac");
-    ctx = CompileContext(current_node=mod, from_pass=FreezeStructurePass);
+    ctx = CompileContext(
+        current_node=mod, from_pass=FreezeStructurePass, pass_name="FreezeStructurePass"
+    );
     walk = FreezeStructurePass(module=mod, ctx=ctx);
     assert not mod._struct_frozen;
     mod spawn walk;

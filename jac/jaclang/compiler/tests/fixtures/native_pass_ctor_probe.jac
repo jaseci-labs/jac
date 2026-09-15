@@ -26,7 +26,10 @@ walker LocalCountPass(TreeWalker) {
 
 def probe_construct(m: Module) -> int {
     p = LocalCountPass(
-        module=m, ctx=CompileContext(current_node=m, from_pass=LocalCountPass)
+        module=m,
+        ctx=CompileContext(
+            current_node=m, from_pass=LocalCountPass, pass_name="LocalCountPass"
+        )
     );
     m spawn p;
     return p.seen;

@@ -52,6 +52,7 @@ obj PassResult {
 obj CompileContext {
     has current_node: UniNode,
         from_pass: type,
+        pass_name: str,
         cancel_token: any = None,
         cancel_requested: bool = False,
         errors_had: list[Alert] = [],
